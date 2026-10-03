@@ -4,6 +4,24 @@ import { t } from "../../i18n";
 
 type ProviderModel = ProviderListItem["models"][string];
 
+/**
+ * GPT chat routes older than 5.5 are no longer accepted by the supported
+ * account runtimes. Keep non-GPT products (for example gpt-image) and other
+ * model families available while removing stale GPT chat selections.
+ */
+export function isSupportedChatModelId(id: string) {
+  const modelId = id.trim().toLowerCase().split("/").at(-1) ?? "";
+  const version = /^(?:chat)?gpt-(\d+)(?:\.(\d+))?/.exec(modelId);
+  if (!version) return true;
+  const major = Number(version[1]);
+  const minor = Number(version[2] ?? 0);
+  return major > 5 || (major === 5 && minor >= 5);
+}
+
+export function tokenStarModelSupportsEffort(id: string) {
+  return id === "gpt-5.5" || id.startsWith("gpt-5.6-");
+}
+
 const WELL_KNOWN_VARIANT_ORDER = [
   "none",
   "minimal",

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json", "name": "star-rating-fill", "version": "1.0.0", "type": "hyperframes:block", "title": "Star Rating Fill",
+  "description": "A theme-linked fractional rating with a synchronized value reveal.", "tags": ["component", "data", "rating", "proof", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Star Rating Fill", "url": "https://www.hyperframes.dev/catalog/components/star-rating-fill" },
+  "visualComponent": { "version": 1, "category": "proof", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "rating", "count", "note"], "instructions": "AI may replace the rating and evidence copy, but must keep the rating within the declared scale and visually legible." } },
+  "dimensions": { "width": 1920, "height": 1080 }, "duration": 7, "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "star-rating-fill.html", "target": "compositions/star-rating-fill.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Customer rating", "maxLength": 56, "update": "live" },
+    { "id": "rating", "label": "Rating", "type": "number", "default": 4.8, "min": 0, "max": 5, "step": 0.1, "update": "live" },
+    { "id": "count", "label": "Stars", "type": "number", "default": 5, "min": 1, "max": 10, "step": 1, "update": "live" },
+    { "id": "note", "label": "Evidence", "type": "string", "default": "Based on 12,408 verified reviews", "maxLength": 72, "update": "live" }
+  ]
+}

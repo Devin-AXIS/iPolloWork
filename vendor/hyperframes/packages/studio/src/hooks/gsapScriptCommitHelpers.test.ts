@@ -275,13 +275,13 @@ describe("shared GSAP target isolation", () => {
 });
 
 describe("GSAP drag position commits", () => {
-  test("uses the refreshed animation id after converting an effect from-tween", async () => {
+  test("uses the refreshed animation id after converting a component from-tween", async () => {
     const element = document.createElement("section");
     element.className = "card";
     const selection = createSelection(element, {
       selector: ".card",
-      sourceFile: "compositions/effects/effect-ending-douyin-follow.html",
-      compositionPath: "compositions/effects/effect-ending-douyin-follow.html",
+      sourceFile: "compositions/components/route-map.html",
+      compositionPath: "compositions/components/route-map.html",
       dataAttributes: { start: "0", duration: "3.2" },
     });
     const originalAnimation: GsapAnimation = {

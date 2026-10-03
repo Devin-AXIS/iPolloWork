@@ -1,9 +1,11 @@
+import { VerifiedInboxReceiptSchema, type InboxUploadOptions } from "@ipollowork/types/reference-context";
 import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
+import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { desktopFetch } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
+import { fetchWithTimeout as fetchWithRequestTimeout } from "./request-timeout";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
-import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
-import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
+import type { DenResourceSnapshot } from "./den-types";
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
 import {
   templatePackageMediaTypeForFilename,
@@ -16,6 +18,23 @@ import {
   type TemplateValidationReport,
 } from "@ipollowork/types/templates";
 import type { iPolloWorkExtensionManifest } from "../extensions";
+import type {
+  PluginEngineCompatibility,
+  PluginWorkshopExportFormat,
+  PluginWorkshopProjectSnapshot,
+  PluginWorkshopProjectSummary,
+  PluginWorkshopSourceBundle,
+} from "@ipollowork/types/plugins";
+import type {
+  WorkBoardConfig,
+  WorkBoardConfigValue,
+  WorkItem,
+  WorkItemCreateInput,
+  WorkItemListResponse,
+  WorkItemUpdateInput,
+  ProjectSessionExecutionFinishInput,
+  ProjectSessionExecutionStartInput,
+} from "@ipollowork/types/work-items";
 
 export type iPolloWorkServerCapabilities = {
   skills: { read: boolean; write: boolean; source: "ipollowork" | "opencode" };
@@ -26,11 +45,11 @@ export type iPolloWorkServerCapabilities = {
       repo?: { owner: string; name: string; ref: string };
     };
   };
-  plugins: { read: boolean; write: boolean };
   mcp: { read: boolean; write: boolean };
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
   templates?: { read: boolean; install: boolean; import: boolean; uninstall: boolean };
+  work?: { read: boolean; write: boolean; board: boolean; schedule: boolean };
   sandbox?: { enabled: boolean; backend: "none" | "docker" | "container" };
   proxy?: { opencode: boolean };
   toolProviders?: {
@@ -152,13 +171,6 @@ export type iPolloWorkSessionSnapshot = {
 
 export type iPolloWorkResourceScope = "personal" | `enterprise:${string}`;
 
-export type iPolloWorkPluginItem = {
-  spec: string;
-  source: "config" | "dir.project" | "dir.global";
-  scope: "project" | "global";
-  path?: string;
-};
-
 export type iPolloWorkSkillItem = {
   name: string;
   path: string;
@@ -231,15 +243,6 @@ export type iPolloWorkAuthorizedFoldersUpdateResponse = {
   updatedAt: number;
 };
 
-export type iPolloWorkRuntimeConfigMigrationResult = {
-  migrated: boolean;
-  keys: string[];
-  legacyKeys: string[];
-  userOpencodeKeys: string[];
-  updatedAt: number | null;
-  legacyError?: string | null;
-};
-
 export type iPolloWorkRuntimeConfigStatus = {
   runtime: Record<string, unknown>;
   runtimeKeys: string[];
@@ -250,25 +253,12 @@ export type iPolloWorkRuntimeConfigStatus = {
     runtimeDatabase: { keys: string[]; config: Record<string, unknown> };
     injected: { keys: string[]; config: Record<string, unknown> };
   };
-  legacyiPolloWork: {
-    path: string;
-    keys: string[];
-    error: string | null;
-  };
-  userOpencode: {
-    path: string;
-    exists: boolean;
-    keys: string[];
-    migratableKeys: string[];
-  };
 };
 
 export type iPolloWorkDesktopCloudSyncChange = {
   id: string;
   kind: "new" | "modified" | "removed";
-  resourceKind: "llmProvider" | "marketplace" | "plugin" | "configItem";
-  marketplaceId?: string;
-  pluginId?: string;
+  resourceKind: "llmProvider";
   previousLastUpdatedAt: string | null;
   nextLastUpdatedAt: string | null;
   queuedAt: number;
@@ -285,16 +275,6 @@ export type iPolloWorkDesktopCloudSyncResult = {
   state: iPolloWorkDesktopCloudSyncState;
 };
 
-export type iPolloWorkCloudPluginInstallResult = {
-  item: CloudImportedPlugin;
-  warnings: string[];
-};
-
-export type iPolloWorkCloudPluginsResult = {
-  marketplaces: Record<string, CloudImportedMarketplace>;
-  plugins: Record<string, CloudImportedPlugin>;
-};
-
 export type iPolloWorkPluginPackageItem = {
   pluginId: string;
   name: string;
@@ -304,6 +284,19 @@ export type iPolloWorkPluginPackageItem = {
   previousVersion: string | null;
   manifest: iPolloWorkExtensionManifest;
   integrity: { sha256: string; status: "verified" | "unsigned" };
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
+};
+
+export type iPolloWorkPluginUiResource = {
+  pluginId: string;
+  version: string;
+  resource: iPolloWorkExtensionManifest["resources"][number] & {
+    type: "ui";
+    path: string;
+    ui: NonNullable<iPolloWorkExtensionManifest["resources"][number]["ui"]>;
+  };
+  html: string;
 };
 
 export type iPolloWorkPluginPackagePreview = {
@@ -312,13 +305,20 @@ export type iPolloWorkPluginPackagePreview = {
   writes: Array<{ path: string; sha256: string }>;
   integrity: { sha256: string; status: "verified" | "unsigned" };
   safety: iPolloWorkPluginPackageImportSafety;
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
+};
+
+export type iPolloWorkPluginPackageImportPreview = iPolloWorkPluginPackagePreview & {
+  installedVersion: string | null;
+  versionChange: "install" | "same" | "upgrade" | "downgrade";
 };
 
 export type iPolloWorkPluginPackageImportSafety =
   | {
       level: "declarative";
       localCode: false;
-      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
+      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp" | "ui">;
     }
   | {
       level: "signed";
@@ -341,6 +341,8 @@ export type iPolloWorkBundledPluginPackageItem = {
   integrity: { sha256: string; status: "verified" | "unsigned" };
   installedVersion: string | null;
   updateAvailable: boolean;
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
 };
 
 export type iPolloWorkPluginConnectionStatus = {
@@ -379,19 +381,19 @@ export type iPolloWorkPluginAuthorizationFlow = {
   expiresAt: number;
 };
 
-export type iPolloWorkClaudePluginComponent = {
+export type iPolloWorkGitHubPluginComponent = {
   type: "mcp" | "skill" | "command" | "agent";
   name: string;
   description: string | null;
 };
 
-export type iPolloWorkClaudePluginPreview = {
+export type iPolloWorkGitHubPluginPreview = {
   pluginId: string;
   name: string;
   description: string | null;
   version: string | null;
   source: { owner: string; repo: string; ref: string; dir: string | null };
-  components: iPolloWorkClaudePluginComponent[];
+  components: iPolloWorkGitHubPluginComponent[];
   warnings: string[];
 };
 
@@ -641,6 +643,7 @@ export type iPolloWorkAuthorizationServiceId =
   | "openai-images"
   | "aliyun-bailian"
   | "volcengine-video"
+  | "runninghub-video"
   | "aliyun-oss"
   | "wasabi"
   | "storage-routing";
@@ -648,6 +651,7 @@ export type iPolloWorkAuthorizationServiceId =
 export type iPolloWorkAuthorizationService = {
   id: iPolloWorkAuthorizationServiceId;
   configured: boolean;
+  browserLogin?: import("@ipollowork/types/provider-credentials").SharedProviderBrowserLogin;
   fields: Array<{ key: string; configured: boolean }>;
   category: "media" | "storage";
   kind: "credentials" | "routing";
@@ -693,27 +697,6 @@ export type iPolloWorkReloadEvent = {
   workspaceId: string;
   reason: "plugins" | "skills" | "mcp" | "config" | "agents" | "commands";
   trigger?: iPolloWorkReloadTrigger;
-  timestamp: number;
-};
-
-export type iPolloWorkSessionGroupDefinition = {
-  id: string;
-  label: string;
-};
-
-export type iPolloWorkSessionGroupState = {
-  groups: iPolloWorkSessionGroupDefinition[];
-  assignments: Record<string, string>;
-};
-
-export type iPolloWorkSessionGroupEvent = {
-  id: string;
-  seq: number;
-  workspaceId: string;
-  type: "session_groups.updated";
-  action: "created" | "updated" | "deleted" | "assigned" | "reordered" | "imported";
-  groupId?: string;
-  sessionId?: string;
   timestamp: number;
 };
 
@@ -992,7 +975,7 @@ export class iPolloWorkServerError extends Error {
   details?: unknown;
 
   constructor(status: number, code: string, message: string, details?: unknown) {
-    super(message);
+    super(serviceErrorMessage({ code, message }));
     this.status = status;
     this.code = code;
     this.details = details;
@@ -1049,6 +1032,8 @@ const resolveFetch = (url?: string) => {
 };
 
 const DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS = 10_000;
+export const IMAGE_GENERATION_REQUEST_TIMEOUT_MS = 420_000;
+export const VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS = 180_000;
 const ENGINE_RELOAD_TIMEOUT_MS = 60_000;
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -1063,33 +1048,27 @@ async function fetchWithTimeout(
     return fetchImpl(url, init);
   }
 
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const signal = controller?.signal;
-  const initWithSignal = signal && !init.signal ? { ...init, signal } : init;
-
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      try {
-        controller?.abort();
-      } catch {
-        // ignore
-      }
-      reject(new Error("Request timed out."));
-    }, timeoutMs);
-  });
-
   try {
-    return await Promise.race([fetchImpl(url, initWithSignal), timeoutPromise]);
+    return await fetchWithRequestTimeout(fetchImpl, url, init, timeoutMs, "请求超时，请稍后重试。");
   } catch (error) {
-    const name = (error && typeof error === "object" && "name" in error ? (error as any).name : "") as string;
+    const name = error instanceof Error ? error.name : "";
     if (name === "AbortError") {
-      throw new Error("Request timed out.");
+      throw new Error("请求超时，请稍后重试。");
     }
-    throw error;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    throw new Error(serviceErrorMessage(error));
   }
+}
+
+function parseServerJson(response: Response, text: string): unknown {
+  try { return text ? JSON.parse(text) : null; }
+  catch { throw new iPolloWorkServerError(response.status, "invalid_response", response.status >= 500 ? "服务暂时不可用，请稍后重试。" : "服务返回了异常响应，请稍后重试。"); }
+}
+
+function serverResponseError(response: Response, json: unknown) {
+  const body = json !== null && typeof json === "object" ? json : {};
+  const code = "code" in body && typeof body.code === "string" ? body.code : "request_failed";
+  const message = "message" in body && typeof body.message === "string" ? body.message : "服务请求未完成，请稍后重试。";
+  return new iPolloWorkServerError(response.status, code, message, "details" in body ? body.details : undefined);
 }
 
 async function requestJson<T>(
@@ -1111,13 +1090,8 @@ async function requestJson<T>(
   );
 
   const text = await response.text();
-  const json = text ? JSON.parse(text) : null;
-
-  if (!response.ok) {
-    const code = typeof json?.code === "string" ? json.code : "request_failed";
-    const message = typeof json?.message === "string" ? json.message : response.statusText;
-    throw new iPolloWorkServerError(response.status, code, message, json?.details);
-  }
+  const json = parseServerJson(response, text);
+  if (!response.ok) throw serverResponseError(response, json);
 
   return json as T;
 }
@@ -1147,7 +1121,7 @@ async function requestBinary(
   baseUrl: string,
   path: string,
   options: { method?: string; token?: string; hostToken?: string; headers?: Record<string, string>; body?: BodyInit; timeoutMs?: number; direct?: boolean } = {},
-): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null }>{
+): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null; detail: string | null }>{
   const url = `${baseUrl}${path}`;
   const fetchImpl = options.direct ? globalThis.fetch : resolveFetch(url);
   const response = await fetchWithTimeout(
@@ -1163,15 +1137,7 @@ async function requestBinary(
 
   if (!response.ok) {
     const text = await response.text();
-    let json: any = null;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch {
-      json = null;
-    }
-    const code = typeof json?.code === "string" ? json.code : "request_failed";
-    const message = typeof json?.message === "string" ? json.message : response.statusText;
-    throw new iPolloWorkServerError(response.status, code, message, json?.details);
+    throw serverResponseError(response, parseServerJson(response, text));
   }
 
   const contentType = response.headers.get("content-type");
@@ -1180,7 +1146,7 @@ async function requestBinary(
   const filenameRaw = filenameMatch?.[1] ?? filenameMatch?.[2] ?? null;
   const filename = filenameRaw ? decodeURIComponent(filenameRaw) : null;
   const data = await response.arrayBuffer();
-  return { data, contentType, filename };
+  return { data, contentType, filename, detail: response.headers.get("x-artifact-detail") };
 }
 
 async function requestRawJson<T>(
@@ -1198,9 +1164,8 @@ async function requestRawJson<T>(
     body: options.body,
   }, options.timeoutMs ?? DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS);
   const text = await response.text();
-  let json: any = null;
-  try { json = text ? JSON.parse(text) : null; } catch { json = null; }
-  if (!response.ok) throw new iPolloWorkServerError(response.status, typeof json?.code === "string" ? json.code : "request_failed", typeof json?.message === "string" ? json.message : response.statusText, json?.details);
+  const json = parseServerJson(response, text);
+  if (!response.ok) throw serverResponseError(response, json);
   return json as T;
 }
 
@@ -1216,8 +1181,8 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     health: 3_000,
     capabilities: 6_000,
     listWorkspaces: 8_000,
-    activateWorkspace: 10_000,
-    deleteWorkspace: 10_000,
+    workspaceMutation: 30_000,
+    deleteWorkspace: 30_000,
     deleteSession: 12_000,
     sessionRead: 12_000,
     status: 6_000,
@@ -1250,7 +1215,12 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "POST",
         body: payload,
-        timeoutMs: timeouts.binary,
+        timeoutMs: (payload.extensionId === "openai-image-generation" && payload.action !== "status")
+          || (payload.extensionId === "image-studio" && ["generate-image", "edit-image"].includes(payload.action))
+          ? Math.max(timeouts.binary, IMAGE_GENERATION_REQUEST_TIMEOUT_MS)
+          : (["video-console", "video-generation"].includes(payload.extensionId) && payload.action === "submit")
+            ? Math.max(timeouts.binary, VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS)
+            : timeouts.binary,
       }),
     callMedia: (action: iPolloWorkMediaAction, args: Record<string, unknown>, context?: Record<string, unknown>) =>
       requestJson<iPolloWorkExtensionActionResult>(baseUrl, "/experimental/extensions/call", {
@@ -1274,13 +1244,14 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       name: string;
       preset: string;
       workContextId?: `enterprise:${string}` | null;
+      engineId?: string | null;
     }) =>
       requestJson<WorkspaceList>(baseUrl, "/workspaces/local", {
         token,
         hostToken,
         method: "POST",
         body: payload,
-        timeoutMs: timeouts.activateWorkspace,
+        timeoutMs: timeouts.workspaceMutation,
       }),
     createRemoteWorkspace: (payload: {
       baseUrl: string;
@@ -1301,7 +1272,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "POST",
         body: payload,
-        timeoutMs: timeouts.activateWorkspace,
+        timeoutMs: timeouts.workspaceMutation,
       }),
     updateWorkspaceDisplayName: (workspaceId: string, displayName: string | null) =>
       requestJson<WorkspaceList>(baseUrl, `/workspaces/${encodeURIComponent(workspaceId)}/display-name`, {
@@ -1309,14 +1280,14 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "PATCH",
         body: { displayName },
-        timeoutMs: timeouts.activateWorkspace,
+        timeoutMs: timeouts.workspaceMutation,
       }),
     activateWorkspace: (workspaceId: string, options?: { persist?: boolean }) => {
       const query = options?.persist ? "?persist=true" : "";
       return requestJson<{ activeId: string; workspace: iPolloWorkWorkspaceInfo; persisted: boolean }>(
         baseUrl,
         `/workspaces/${encodeURIComponent(workspaceId)}/activate${query}`,
-        { token, hostToken, method: "POST", timeoutMs: timeouts.activateWorkspace },
+        { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceMutation },
       );
     },
     deleteWorkspace: (workspaceId: string) =>
@@ -1369,7 +1340,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: timeouts.workspaceImport,
         direct: true,
       }),
-    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility }) =>
+    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility; purpose?: "template-authoring" | "artifact-delivery"; brief?: unknown }) =>
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/authoring-sessions`, {
         token,
         hostToken,
@@ -1400,6 +1371,25 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}/adopt-video`, { token, hostToken, method: "POST", body: {}, timeoutMs: timeouts.workspaceImport }),
     listTemplateSessions: (workspaceId: string) =>
       requestJson<{ items: TemplateSessionSnapshot[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions`, { token, hostToken }),
+    createSession: (
+      workspaceId: string,
+      title?: string,
+      model?: { providerID: string; modelID: string } | null,
+    ) =>
+      requestJson<{ item: Session }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/sessions`,
+        {
+          token,
+          hostToken,
+          method: "POST",
+          body: {
+            ...(title?.trim() ? { title: title.trim() } : {}),
+            ...(model?.providerID && model.modelID ? { model } : {}),
+          },
+          timeoutMs: timeouts.sessionRead,
+        },
+      ),
     listSessions: (
       workspaceId: string,
       options?: { roots?: boolean; start?: number; search?: string; limit?: number },
@@ -1414,56 +1404,6 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/sessions${suffix}`,
         { token, hostToken, timeoutMs: timeouts.sessionRead },
-      );
-    },
-    getSessionGroups: (workspaceId: string) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number | null }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups`,
-        { token, hostToken, timeoutMs: timeouts.sessionRead },
-      ),
-    putSessionGroups: (workspaceId: string, state: iPolloWorkSessionGroupState) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups`,
-        { token, hostToken, method: "PUT", body: { state }, timeoutMs: timeouts.config },
-      ),
-    createSessionGroup: (workspaceId: string, input: { id?: string; label: string }) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups`,
-        { token, hostToken, method: "POST", body: input, timeoutMs: timeouts.config },
-      ),
-    reorderSessionGroups: (workspaceId: string, groupIds: string[]) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/reorder`,
-        { token, hostToken, method: "PATCH", body: { groupIds }, timeoutMs: timeouts.config },
-      ),
-    assignSessionGroup: (workspaceId: string, sessionId: string, groupId: string | null) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/assignments/${encodeURIComponent(sessionId)}`,
-        { token, hostToken, method: "PATCH", body: { groupId }, timeoutMs: timeouts.config },
-      ),
-    renameSessionGroup: (workspaceId: string, groupId: string, label: string) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/${encodeURIComponent(groupId)}`,
-        { token, hostToken, method: "PATCH", body: { label }, timeoutMs: timeouts.config },
-      ),
-    removeSessionGroup: (workspaceId: string, groupId: string) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/${encodeURIComponent(groupId)}`,
-        { token, hostToken, method: "DELETE", timeoutMs: timeouts.config },
-      ),
-    listSessionGroupEvents: (workspaceId: string, options?: { since?: number }) => {
-      const query = typeof options?.since === "number" ? `?since=${options.since}` : "";
-      return requestJson<{ items: iPolloWorkSessionGroupEvent[]; cursor?: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/events${query}`,
-        { token, hostToken },
       );
     },
     getSession: (workspaceId: string, sessionId: string) =>
@@ -1562,17 +1502,6 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
           timeoutMs: timeouts.config,
         },
       ),
-    migrateRuntimeConfig: (workspaceId: string) =>
-      requestJson<iPolloWorkRuntimeConfigMigrationResult>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/runtime-config/migrate`,
-        {
-          token,
-          hostToken,
-          method: "POST",
-          timeoutMs: timeouts.config,
-        },
-      ),
     getRuntimeConfigStatus: (workspaceId: string) =>
       requestJson<iPolloWorkRuntimeConfigStatus>(
         baseUrl,
@@ -1585,6 +1514,108 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "PATCH",
         body: payload,
+      }),
+    activateProjectBuilderSession: (workspaceId: string, sessionId: string) =>
+      requestJson<{ ok: true; workspaceId: string; sessionId: string }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/project-builder-sessions/${encodeURIComponent(sessionId)}`,
+        { token, hostToken, method: "POST", body: {} },
+      ),
+    listWorkItems: (input: {
+      workspaceIds: string[];
+      from?: number;
+      to?: number;
+      status?: string;
+      cursor?: string;
+      limit?: number;
+    }) => {
+      const query = new URLSearchParams();
+      input.workspaceIds.forEach((workspaceId) => query.append("workspaceId", workspaceId));
+      if (input.from !== undefined) query.set("from", String(input.from));
+      if (input.to !== undefined) query.set("to", String(input.to));
+      if (input.status) query.set("status", input.status);
+      if (input.cursor) query.set("cursor", input.cursor);
+      if (input.limit !== undefined) query.set("limit", String(input.limit));
+      return requestJson<WorkItemListResponse>(baseUrl, `/work-items?${query.toString()}`, {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      });
+    },
+    createWorkItem: (workspaceId: string, input: WorkItemCreateInput) =>
+      requestJson<WorkItem>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-items`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: input,
+        timeoutMs: timeouts.config,
+      }),
+    startProjectSessionExecution: (
+      workspaceId: string,
+      sessionId: string,
+      input: ProjectSessionExecutionStartInput,
+    ) => requestJson<WorkItem>(
+      baseUrl,
+      `/workspace/${encodeURIComponent(workspaceId)}/project-sessions/${encodeURIComponent(sessionId)}/execution`,
+      {
+        token,
+        hostToken,
+        method: "PUT",
+        body: input,
+        timeoutMs: timeouts.config,
+      },
+    ),
+    finishProjectSessionExecution: (
+      workspaceId: string,
+      sessionId: string,
+      input: ProjectSessionExecutionFinishInput,
+    ) => requestJson<WorkItem>(
+      baseUrl,
+      `/workspace/${encodeURIComponent(workspaceId)}/project-sessions/${encodeURIComponent(sessionId)}/execution`,
+      {
+        token,
+        hostToken,
+        method: "PATCH",
+        body: input,
+        timeoutMs: timeouts.config,
+      },
+    ),
+    updateWorkItem: (workspaceId: string, workItemId: string, input: WorkItemUpdateInput) =>
+      requestJson<WorkItem>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`,
+        {
+          token,
+          hostToken,
+          method: "PATCH",
+          body: input,
+          timeoutMs: timeouts.config,
+        },
+      ),
+    deleteWorkItem: (workspaceId: string, workItemId: string, expectedVersion: number) =>
+      requestJson<{ ok: boolean }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}?version=${expectedVersion}`,
+        {
+          token,
+          hostToken,
+          method: "DELETE",
+          timeoutMs: timeouts.config,
+        },
+      ),
+    getWorkBoard: (workspaceId: string) =>
+      requestJson<WorkBoardConfig>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-board`, {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      }),
+    updateWorkBoard: (workspaceId: string, value: WorkBoardConfigValue, expectedVersion: number) =>
+      requestJson<WorkBoardConfig>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-board`, {
+        token,
+        hostToken,
+        method: "PATCH",
+        body: { ...value, expectedVersion },
+        timeoutMs: timeouts.config,
       }),
     getDesktopCloudSync: (workspaceId: string) =>
       requestJson<iPolloWorkDesktopCloudSyncState>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/desktop-cloud-sync`, {
@@ -1600,35 +1631,52 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         body: { snapshot },
         timeoutMs: timeouts.config,
       }),
-    listCloudPlugins: (workspaceId: string) =>
-      requestJson<iPolloWorkCloudPluginsResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/cloud-plugins`, {
-        token,
-        hostToken,
-        timeoutMs: timeouts.config,
-      }),
-    installCloudPlugin: (workspaceId: string, payload: { marketplaceId: string | null; marketplace?: DenOrgMarketplace | null; resolved: DenOrgPluginResolved }) =>
-      requestJson<iPolloWorkCloudPluginInstallResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/cloud-plugins`, {
-        token,
-        hostToken,
-        method: "POST",
-        body: payload,
-        timeoutMs: timeouts.config,
-      }),
-    removeCloudPlugin: (workspaceId: string, pluginId: string) =>
-      requestJson<iPolloWorkCloudPluginInstallResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/cloud-plugins/${encodeURIComponent(pluginId)}`, {
-        token,
-        hostToken,
-        method: "DELETE",
-        timeoutMs: timeouts.config,
-      }),
     listPluginPackages: (workspaceId: string) =>
       requestJson<{ items: iPolloWorkPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages`, {
         token,
         hostToken,
         timeoutMs: timeouts.config,
       }),
+    listPluginWorkshopProjects: (workspaceId: string) =>
+      requestJson<{ items: PluginWorkshopProjectSummary[] }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/projects`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
+    getPluginWorkshopProject: (workspaceId: string, pluginId: string) =>
+      requestJson<PluginWorkshopProjectSnapshot>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/projects/${encodeURIComponent(pluginId)}`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
+    exportPluginWorkshopProject: (
+      workspaceId: string,
+      pluginId: string,
+      format: PluginWorkshopExportFormat = "install",
+    ) =>
+      requestJson<PluginWorkshopSourceBundle>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/projects/${encodeURIComponent(pluginId)}/export?format=${format}`,
+        { token, hostToken, timeoutMs: timeouts.binary },
+      ),
+    importPluginWorkshopProject: (
+      workspaceId: string,
+      upload: iPolloWorkPluginPackageUpload,
+      options?: { overwrite?: boolean },
+    ) =>
+      requestJson<PluginWorkshopProjectSnapshot>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/import${options?.overwrite ? "?overwrite=true" : ""}`,
+        { token, hostToken, method: "POST", body: upload, timeoutMs: timeouts.binary },
+      ),
+    getPluginPackageUiResource: (workspaceId: string, pluginId: string, resourceId: string) =>
+      requestJson<iPolloWorkPluginUiResource>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/ui/${encodeURIComponent(resourceId)}`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
     listBundledPluginPackages: (workspaceId: string) =>
-      requestJson<{ items: iPolloWorkBundledPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
+      requestJson<{ items: iPolloWorkBundledPluginPackageItem[]; errors?: string[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
         token,
         hostToken,
         timeoutMs: timeouts.config,
@@ -1649,19 +1697,23 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: timeouts.config,
       }),
     validatePluginPackageUpload: (workspaceId: string, upload: iPolloWorkPluginPackageUpload) =>
-      requestJson<{ preview: iPolloWorkPluginPackagePreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/validate`, {
+      requestJson<{ preview: iPolloWorkPluginPackageImportPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/validate`, {
         token,
         hostToken,
         method: "POST",
         body: upload,
         timeoutMs: timeouts.binary,
       }),
-    importPluginPackage: (workspaceId: string, upload: iPolloWorkPluginPackageUpload) =>
+    importPluginPackage: (
+      workspaceId: string,
+      upload: iPolloWorkPluginPackageUpload,
+      options?: { allowDowngrade?: boolean },
+    ) =>
       requestJson<{
         result: { status: "installed" | "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string };
         item?: iPolloWorkPluginPackageItem;
         safety: iPolloWorkPluginPackageImportSafety;
-      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import`, {
+      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import${options?.allowDowngrade ? "?allowDowngrade=true" : ""}`, {
         token,
         hostToken,
         method: "POST",
@@ -1757,16 +1809,25 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "DELETE",
         timeoutMs: timeouts.config,
       }),
-    previewClaudePlugin: (workspaceId: string, payload: { url: string; ref?: string }) =>
-      requestJson<{ preview: iPolloWorkClaudePluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/claude-plugins`, {
+    previewGithubPluginPackage: (workspaceId: string, payload: { url: string; ref?: string }) =>
+      requestJson<{ preview: iPolloWorkPluginPackageImportPreview; source: iPolloWorkGitHubPluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github`, {
         token,
         hostToken,
         method: "POST",
         body: { ...payload, dryRun: true },
         timeoutMs: timeouts.config,
       }),
-    installClaudePlugin: (workspaceId: string, payload: { url: string; ref?: string }) =>
-      requestJson<iPolloWorkCloudPluginInstallResult & { preview: iPolloWorkClaudePluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/claude-plugins`, {
+    importGithubPluginPackage: (
+      workspaceId: string,
+      payload: { url: string; ref?: string },
+      options?: { allowDowngrade?: boolean },
+    ) =>
+      requestJson<{
+        result: { status: "installed" | "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string };
+        item?: iPolloWorkPluginPackageItem;
+        safety: iPolloWorkPluginPackageImportSafety;
+        source: iPolloWorkGitHubPluginPreview;
+      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github${options?.allowDowngrade ? "?allowDowngrade=true" : ""}`, {
         token,
         hostToken,
         method: "POST",
@@ -1802,26 +1863,6 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "POST",
         timeoutMs: ENGINE_RELOAD_TIMEOUT_MS,
       }),
-    listPlugins: (workspaceId: string, options?: { includeGlobal?: boolean }) => {
-      const query = options?.includeGlobal ? "?includeGlobal=true" : "";
-      return requestJson<{ items: iPolloWorkPluginItem[]; loadOrder: string[] }>(
-        baseUrl,
-        `/workspace/${workspaceId}/plugins${query}`,
-        { token, hostToken },
-      );
-    },
-    addPlugin: (workspaceId: string, spec: string) =>
-      requestJson<{ items: iPolloWorkPluginItem[]; loadOrder: string[] }>(
-        baseUrl,
-        `/workspace/${workspaceId}/plugins`,
-        { token, hostToken, method: "POST", body: { spec } },
-      ),
-    removePlugin: (workspaceId: string, name: string) =>
-      requestJson<{ items: iPolloWorkPluginItem[]; loadOrder: string[] }>(
-        baseUrl,
-        `/workspace/${workspaceId}/plugins/${encodeURIComponent(name)}`,
-        { token, hostToken, method: "DELETE" },
-      ),
     listSkills: (workspaceId: string, options?: { includeGlobal?: boolean }) => {
       const query = options?.includeGlobal ? "?includeGlobal=true" : "";
       return requestJson<{ items: iPolloWorkSkillItem[] }>(
@@ -1925,6 +1966,20 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "DELETE",
       }),
 
+    startMcpAuthorization: (workspaceId: string, name: string) =>
+      requestJson<{ authorizationUrl: string; expiresAt: number }>(
+        baseUrl,
+        `/workspace/${workspaceId}/mcp/${encodeURIComponent(name)}/auth/start`,
+        { token, hostToken, method: "POST", body: {} },
+      ),
+
+    getMcpAuthorizationStatus: (workspaceId: string, name: string) =>
+      requestJson<{ connected: boolean }>(
+        baseUrl,
+        `/workspace/${workspaceId}/mcp/${encodeURIComponent(name)}/auth`,
+        { token, hostToken },
+      ),
+
     listCommands: (workspaceId: string, scope: "workspace" | "global" = "workspace") =>
       requestJson<{ items: iPolloWorkCommandItem[] }>(
         baseUrl,
@@ -1953,12 +2008,15 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "DELETE",
       }),
-    uploadInbox: async (workspaceId: string, file: File, options?: { path?: string }) => {
+    uploadInbox: async (workspaceId: string, file: File, options?: InboxUploadOptions) => {
       const id = workspaceId.trim();
       if (!id) throw new Error("workspaceId is required");
       if (!file) throw new Error("file is required");
       const form = new FormData();
       form.append("file", file);
+      const digest = options?.verify || options?.referenceAssembly ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())), (byte) => byte.toString(16).padStart(2, "0")).join("") : undefined;
+      if (digest) form.append("sha256", digest);
+      if (options?.referenceAssembly) form.append("referenceAssembly", JSON.stringify(options.referenceAssembly));
       if (options?.path?.trim()) {
         form.append("path", options.path.trim());
       }
@@ -1989,6 +2047,11 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }
 
       const body = result.text.trim();
+      if (digest) {
+        const receipt = VerifiedInboxReceiptSchema.parse(JSON.parse(body));
+        if (receipt.sha256 !== (options?.referenceAssembly?.sha256 ?? digest) || receipt.bytes !== (options?.referenceAssembly?.bytes ?? file.size)) throw new Error("附件落盘校验失败，未开始生成，请重试上传。");
+        return receipt;
+      }
       if (body) {
         try {
           const parsed = JSON.parse(body) as Partial<iPolloWorkInboxUploadResult>;
@@ -2094,6 +2157,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         },
       ),
 
+    renameWorkspaceArtifact: (workspaceId: string, payload: { path: string; name: string; sessionId: string }) =>
+      requestJson<{ path: string; updatedReferences?: number }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/artifacts/rename`, { token, hostToken, method: "POST", body: payload }),
+
     deleteWorkspaceFiles: async (
       workspaceId: string,
       files: Array<{ path: string; recursive?: boolean }>,
@@ -2136,6 +2202,12 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }
     },
 
+    uploadWorkspaceMedia: (workspaceId: string, path: string, file: File) => {
+      const body = new FormData();
+      body.set("file", file);
+      return requestRawJson<iPolloWorkWorkspaceFileWriteResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/files/raw?path=${encodeURIComponent(path)}`, { token, hostToken, body, timeoutMs: timeouts.binary });
+    },
+
     writeWorkspaceBinaryFile: (
       workspaceId: string,
       payload: { path: string; data: ArrayBuffer; baseUpdatedAt?: number | null; force?: boolean },
@@ -2156,6 +2228,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         },
       ),
 
+    downloadWorkspaceThumbnail: (workspaceId: string, path: string) =>
+      requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/files/raw?thumbnail=1&path=${encodeURIComponent(path)}`, { token, hostToken, timeoutMs: timeouts.binary }),
+
     downloadWorkspaceFile: (workspaceId: string, path: string) =>
       requestBinary(
         baseUrl,
@@ -2168,6 +2243,13 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         token,
         hostToken,
       }),
+
+    listSessionArtifacts: (workspaceId: string, sessionId: string, cursor: number | null = null) =>
+      requestJson<import("@ipollowork/types/workspace").SessionArtifactPage>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/artifacts?sessionId=${encodeURIComponent(sessionId)}${cursor === null ? "" : `&cursor=${cursor}`}`,
+        { token, hostToken },
+      ),
 
     resolveArtifacts: (
       workspaceId: string,
@@ -2196,7 +2278,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     // User-level env vars (host-auth only — desktop shell is the sole caller).
     // See apps/server/src/env-file.ts and apps/app/pr/environment-variables.md.
     listUserEnvKeys: () =>
-      requestJson<{ keys: string[] }>(
+      requestJson<{ keys: string[]; oauthProviderIds?: string[] }>(
         baseUrl,
         "/env/keys",
         { token, hostToken, timeoutMs: timeouts.config },
@@ -2259,6 +2341,19 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         timeoutMs: timeouts.config,
       }),
+
+    saveAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId, values: Record<string, string>) =>
+      requestJson<{ status: iPolloWorkAuthorizationService }>(
+        baseUrl,
+        `/authorization-services/${encodeURIComponent(serviceId)}/credentials`,
+        {
+          token,
+          hostToken,
+          method: "PUT",
+          body: { values },
+          timeoutMs: timeouts.config,
+        },
+      ),
 
     testAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId) =>
       requestJson<iPolloWorkAuthorizationServiceTestResult>(

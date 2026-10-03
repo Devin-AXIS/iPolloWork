@@ -1,0 +1,19 @@
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Different AI, Inc. and iPolloWork contributors"
+SPDX-License-Identifier = "LicenseRef-iPolloWork-Source-Available-1.0"
+
+[[annotations]]
+path = "vendor/hyperframes/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "HyperFrames contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "**/assets/gsap.min.js"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 GreenSock. All rights reserved."
+SPDX-License-Identifier = "LicenseRef-GSAP-Standard"

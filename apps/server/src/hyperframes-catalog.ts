@@ -6,12 +6,14 @@ import {
   hyperframesCatalogItemSchema,
   hyperframesEffectEngineSchema,
   hyperframesEffectVariableSchema,
+  hyperframesMotionRecipeSchema,
   type HyperframesCatalogItem,
   type HyperframesEffectEngine,
   type HyperframesEffectVariable,
   type HyperframesEffectVariableUpdate,
 } from "@ipollowork/types/hyperframes";
 import { z } from "zod";
+import { ApiError } from "./errors.js";
 
 const CATEGORY_ORDER = [
   "scenes", "data", "code-animation", "social", "scroll", "svg", "text-effects", "transitions",
@@ -19,6 +21,17 @@ const CATEGORY_ORDER = [
 ];
 
 const EFFECT_CATEGORIES = new Set(["scroll", "svg", "text-effects", "transitions", "captions", "effects", "vfx"]);
+
+const RECIPE_PATTERN_LABELS: Record<string, string> = {
+  "progressive-build": "逐步构建",
+  "state-transformation": "状态变换",
+  "kinetic-type": "动态文字",
+  "path-journey": "路径与流程",
+  compare: "并列对比",
+  "focus-transfer": "焦点转移",
+  "camera-journey": "空间运镜",
+  "data-accumulation": "数据累积",
+};
 
 const catalogSourceSchema = z.object({
   provider: z.string().trim().min(1).max(64),
@@ -58,6 +71,7 @@ const registryItemSchema = z.object({
   variables: z.array(z.unknown()).optional(),
   params: z.array(z.unknown()).optional(),
   agentPrompt: z.string().optional(),
+  motionRecipe: z.unknown().optional(),
 }).passthrough();
 
 function resolveCategory(tags: string[]): string {
@@ -205,6 +219,7 @@ export function normalizeHyperframesCatalogItem(
   const category = resolveCategory(tags);
   const engineResult = hyperframesEffectEngineSchema.safeParse(raw.engine);
   const sourceResult = catalogSourceSchema.safeParse(raw.source);
+  const recipeResult = hyperframesMotionRecipeSchema.safeParse(raw.motionRecipe);
   const explicitEngine = engineResult.success ? engineResult.data : undefined;
   const engine = explicitEngine
     ? {
@@ -230,6 +245,12 @@ export function normalizeHyperframesCatalogItem(
       ? sourceResult.data
       : { provider: "hyperframes", label: "HyperFrames" },
     variables: normalizeVariables(raw),
+    recipeSummary: recipeResult.success ? {
+      pattern: recipeResult.data.pattern,
+      intent: recipeResult.data.usage.intent,
+      useWhen: recipeResult.data.usage.useWhen,
+      avoidWhen: recipeResult.data.usage.avoidWhen,
+    } : undefined,
     agentPrompt: raw.agentPrompt,
   });
   return item.success ? item.data : null;
@@ -238,12 +259,104 @@ export function normalizeHyperframesCatalogItem(
 function registryRoot(): string | null {
   const here = dirname(fileURLToPath(import.meta.url));
   const resourcesPath = typeof process.resourcesPath === "string" ? process.resourcesPath : "";
+  const cli = process.env.HYPERFRAMES_CLI_PATH?.trim();
   const candidates = [
+    process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT?.trim() ?? "",
+    process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT ? resolve(process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT, "..") : "",
+    cli ? resolve(dirname(cli), "../../../registry") : "",
     resolve(here, "..", "..", "..", "vendor", "hyperframes", "registry"),
     resolve(here, "..", "..", "..", "..", "vendor", "hyperframes", "registry"),
     resourcesPath ? resolve(resourcesPath, "hyperframes", "registry") : "",
   ].filter(Boolean);
   return candidates.find((candidate) => existsSync(resolve(candidate, "registry.json"))) ?? null;
+}
+
+const shotcraftStyleSchema = z.object({
+  key: z.string(), label: z.string(), description: z.string(), use: z.string(),
+  previewUrl: z.string().nullable(), previewStatus: z.number().nullable(), previewRevision: z.string(),
+  implementationPath: z.string().nullable(), implementationPaths: z.array(z.string()), sourceResolution: z.string(),
+  conversion: z.object({ status: z.string(), path: z.string().nullable(), url: z.string().nullable() }),
+}).passthrough();
+const shotcraftCardSchema = z.object({
+  name: z.string(), summary: z.string(), use: z.string(), duration: z.string(), energy: z.string(),
+  intention: z.string(), category: z.string(), tags: z.array(z.string()), sourcePath: z.string(), sourceUrl: z.string(),
+  rules: z.string(), implementations: z.array(z.object({ path: z.string(), url: z.string(), dependencies: z.array(z.string()) }).passthrough()),
+  styles: z.array(shotcraftStyleSchema),
+});
+const shotcraftCatalogSchema = z.object({
+  schemaVersion: z.literal(1), repository: z.string(), revision: z.string(), conversionRepository: z.string(), conversionRevision: z.string(),
+  license: z.string(), licenseFile: z.string(), stats: z.object({ cardCount: z.number(), styleCount: z.number() }),
+  methodology: z.object({ sourceUrl: z.string(), rules: z.string() }), cards: z.array(shotcraftCardSchema),
+});
+export const videoRecipeCatalogInput = z.object({
+  query: z.string().max(200).optional(), category: z.string().max(64).optional(),
+  cardIds: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).min(1).max(3).optional(),
+  offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(20).default(20),
+  includeMethodology: z.boolean().default(false),
+}).strict();
+
+export async function queryVideoRecipeCatalog(raw: unknown) {
+  const input = videoRecipeCatalogInput.parse(raw);
+  const root = registryRoot();
+  if (!root || !existsSync(resolve(root, "shotcraft-references.json"))) throw new ApiError(503, "video_recipe_catalog_unavailable", "The executable Shotcraft recipe catalog is missing from this runtime.");
+  const catalog = shotcraftCatalogSchema.parse(JSON.parse(await readFile(resolve(root, "shotcraft-references.json"), "utf8")));
+  const localSchema = z.object({ name: z.string(), motionRecipe: hyperframesMotionRecipeSchema, upstream: z.object({ rules: z.string(), implementation: z.string(), revision: z.string() }) });
+  const locals: z.infer<typeof localSchema>[] = [];
+  for (const entry of await readdir(resolve(root, "blocks"), { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith("shotcraft-")) continue;
+    const parsed = localSchema.safeParse(JSON.parse(await readFile(resolve(root, "blocks", entry.name, "registry-item.json"), "utf8")));
+    if (parsed.success) locals.push(parsed.data);
+  }
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const aliases: Record<string, string> = { trackingexpandreveal: "trackingexpand", multiplanereal: "multiplane", dollyzoomreal: "dollyzoom" };
+  const cards = catalog.cards.map(card => ({ ...card, styles: card.styles.map(style => {
+    const componentIds = locals.filter(local => {
+      if (local.upstream.rules !== card.sourcePath || ![catalog.revision, catalog.conversionRevision].includes(local.upstream.revision)) return false;
+      if (local.upstream.revision === catalog.conversionRevision && local.upstream.implementation === style.conversion.path) return true;
+      if (card.styles.length === 1) return true;
+      const path = local.upstream.implementation;
+      const stem = normalize(path.endsWith("/index.html") ? path.split("/").at(-2)! : path.split("/").at(-1)!.replace(/\.tsx$/, ""));
+      return normalize(style.key) === (aliases[stem] ?? stem);
+    }).map(local => local.name);
+    return { ...style, executable: componentIds.length > 0, componentIds,
+      migrationStatus: componentIds.length ? "validated-local-recipe" : "unavailable" };
+  }).filter(style => style.executable) })).filter(card => card.styles.length > 0);
+  if (input.cardIds?.some(id => !cards.some(card => card.name === id))) throw new ApiError(404, "video_recipe_card_not_found", "One or more requested Shotcraft card IDs do not exist.");
+  const tokens = input.query?.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean) ?? [];
+  const selected = cards.filter(card => (!input.cardIds || input.cardIds.includes(card.name))
+    && (!input.category || input.category === card.category)
+    && tokens.every(token => [card.name, card.summary, card.use, card.intention, ...card.tags, ...card.styles.flatMap(style => [style.key, style.description, style.use])].join(" ").toLocaleLowerCase().includes(token)));
+  const recipes = (await listHyperframesCatalog()).filter(item => item.recipeSummary);
+  const matchingRecipes = input.cardIds ? [] : recipes.filter(item =>
+    (!input.category || item.recipeSummary?.pattern === input.category)
+    && tokens.every(token => [item.name, item.title, item.description, item.recipeSummary?.intent, item.recipeSummary?.useWhen, item.recipeSummary?.avoidWhen].join(" ").toLocaleLowerCase().includes(token)));
+  const categoryCounts = new Map<string, number>();
+  for (const recipe of recipes) {
+    const pattern = recipe.recipeSummary?.pattern;
+    if (pattern) categoryCounts.set(pattern, (categoryCounts.get(pattern) ?? 0) + 1);
+  }
+  const recipeCategories = [...categoryCounts].map(([name, count]) => ({ name, label: RECIPE_PATTERN_LABELS[name] ?? name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { repository: catalog.repository, revision: catalog.revision, conversionRevision: catalog.conversionRevision,
+    license: catalog.license, licenseFile: catalog.licenseFile,
+    stats: { cardCount: cards.length, styleCount: cards.flatMap(card => card.styles).length, executableVariantCount: cards.flatMap(card => card.styles).length, localRecipeCount: locals.length, availableRecipeCount: recipes.length },
+    categories: [...new Set(cards.map(card => card.category))].sort(), total: selected.length,
+    nextOffset: input.offset + input.limit < selected.length ? input.offset + input.limit : null,
+    recipeCategories, recipeTotal: matchingRecipes.length,
+    nextRecipeOffset: input.offset + input.limit < matchingRecipes.length ? input.offset + input.limit : null,
+    recipes: matchingRecipes.slice(input.offset, input.offset + input.limit).map(item => ({
+      componentId: item.name, title: item.title, description: item.description,
+      pattern: item.recipeSummary?.pattern, intent: item.recipeSummary?.intent, useWhen: item.recipeSummary?.useWhen,
+      avoidWhen: item.recipeSummary?.avoidWhen, source: item.source?.provider,
+    })),
+    policy: "Only locally installable recipes are listed. Install returned componentIds rather than copying preview markup. If no recipe fits, disclose the library gap under recipes-only policy. Finished-video requests continue after saving the script unless the user explicitly asks for review.",
+    methodologySourceUrl: catalog.methodology.sourceUrl,
+    methodology: input.includeMethodology ? { ...catalog.methodology, referenceOnly: true, adaptation: "The active iPolloWork video.md production order is authoritative. Upstream Remotion commands and genre-specific audio defaults do not override the HyperFrames runtime, user audio choices or an explicit script-review request." } : undefined,
+    cards: selected.slice(input.offset, input.offset + input.limit).map(card => {
+      const { rules, implementations, ...summary } = card;
+      return input.cardIds ? { ...summary, rules, implementations } : summary;
+    }),
+  };
 }
 
 export async function listHyperframesCatalog(): Promise<HyperframesCatalogItem[]> {

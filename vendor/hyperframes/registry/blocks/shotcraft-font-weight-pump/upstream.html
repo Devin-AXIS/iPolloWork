@@ -1,0 +1,31 @@
+<!-- FontWeightPump -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="FontWeightPump"] { width: 1920px; height: 1080px; overflow: hidden; background: #ececea; font-family: Helvetica, Arial, sans-serif; position: relative; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="FontWeightPump" data-start="0" data-duration="4.6667" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={line:'#dcdcda',ink:'#2f2f2f'}; const BEATS=[30,50,70,90,110], ACCENTS=new Set([2,4]), DECAY=10, TOTAL=140;
+    const envAt=(frame,beat)=>{const t=frame-beat;return t<0||t>=DECAY?0:Math.pow(1-t/DECAY,0.8);};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))); let env=0,activeBeat=-1;
+      BEATS.forEach((b,i)=>{const e=envAt(frame,b);if(e>env){env=e;activeBeat=i;}});
+      const strokeW=10*env,weight=env>0.15?900:400,accent=activeBeat>=0&&ACCENTS.has(activeBeat),scaleX=accent?1+0.08*env:1;
+      const dots=BEATS.map((b,i)=>{const e=envAt(frame,b),dotOpacity=e>0.02?Math.min(1,0.3+e*1.2):0,dotScale=1+0.8*e;
+        return `<div style="width:26px;height:26px;border-radius:13px;background:${G.line};position:relative;transform:scale(${dotScale})"><div style="position:absolute;inset:0;border-radius:13px;background:${G.ink};opacity:${dotOpacity}"></div></div>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="font-size:150px;font-weight:${weight};color:${G.ink};letter-spacing:6px;white-space:nowrap;-webkit-text-stroke:${strokeW}px ${G.ink};transform:scaleX(${scaleX});transform-origin:center center">PUMP IT UP</div></div>
+        <div style="position:absolute;left:0;bottom:130px;width:1920px;display:flex;justify-content:center;gap:56px">${dots}</div>`;
+    }},0);
+    window.__timelines['FontWeightPump']=tl;
+  </script>
+</body>
+</html>

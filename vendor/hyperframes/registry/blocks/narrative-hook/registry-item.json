@@ -1,0 +1,209 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "narrative-hook",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Narrative Hook",
+  "description": "Open with a tension-and-payoff story hook.",
+  "tags": [
+    "component",
+    "scene",
+    "editorial",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "scene",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "items",
+        "highlight",
+        "note"
+      ],
+      "instructions": "用现象、矛盾和待解问题建立观看动机。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "narrative-hook.html",
+      "target": "compositions/narrative-hook.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/narrative-hook.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "忙碌为何没有带来进展",
+      "maxLength": 76,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Items (label::detail | ...)",
+      "type": "string",
+      "default": "现象::任务越来越多|矛盾::结果没有改善|转折::先看协作方式|问题::哪里可以减少等待",
+      "maxLength": 280,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlighted item",
+      "type": "number",
+      "default": 1,
+      "min": 1,
+      "max": 4,
+      "step": 1,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Supporting note",
+      "type": "string",
+      "default": "引出问题，不先堆结论",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "focus-transfer",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "items",
+      "separator": "|",
+      "minItems": 2,
+      "maxItems": 4,
+      "fieldSeparator": "::",
+      "fieldsPerItem": 2,
+      "maxFieldLength": 24
+    },
+    "textLimits": {
+      "title": {
+        "maxLines": 1,
+        "maxLineLength": 24
+      },
+      "note": {
+        "maxLines": 1,
+        "maxLineLength": 40
+      }
+    },
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".vc-item:nth-child(1)",
+        "time": 1.2,
+        "duration": 0.5,
+        "action": "Explain supplied item 1 in narration order"
+      },
+      {
+        "id": "step-2",
+        "target": ".vc-item:nth-child(2)",
+        "time": 2.6,
+        "duration": 0.5,
+        "action": "Explain supplied item 2 in narration order"
+      },
+      {
+        "id": "step-3",
+        "target": ".vc-item:nth-child(3)",
+        "time": 4.1,
+        "duration": 0.5,
+        "action": "Explain supplied item 3 in narration order"
+      },
+      {
+        "id": "step-4",
+        "target": ".vc-item:nth-child(4)",
+        "time": 5.5,
+        "duration": 0.5,
+        "action": "Explain supplied item 4 in narration order"
+      },
+      {
+        "id": "resolve",
+        "target": ".vc-item",
+        "time": 6.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable relationship"
+      }
+    ],
+    "usage": {
+      "intent": "用真实现象与预期冲突提出待解问题，让观众产生有依据的观看动机。",
+      "useWhen": [
+        "用现象、矛盾和待解问题建立观看动机。"
+      ],
+      "avoidWhen": [
+        "不适合直接解释机制或罗列证据；单一提问用 question-opener，因果说明用 cause-effect-chain。",
+        "This is a text-led treatment: not a measured chart, real screenshot, spatial camera or continuous simulation."
+      ],
+      "inputRules": {
+        "title": "One content-specific heading, at most 24 characters.",
+        "items": "2–4 label::detail entries separated by |; each field at most 24 characters. 各项组成同一矛盾的推进，不编造悬念或把相关现象写成因果。",
+        "highlight": "A real integer pointing to an existing item; it marks the final emphasis, not an inferred metric.",
+        "note": "One qualifier or source note, at most 40 characters. Retain uncertainty and evidence limitations."
+      },
+      "readingOrder": [
+        "建立可核验的现象",
+        "指出现象与预期的冲突",
+        "把注意力落到一个待解问题"
+      ],
+      "cueBindings": {
+        "step-1": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-2": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-3": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-4": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "resolve": "Bind to the concluding phrase that resolves the shown relationship."
+      },
+      "fallback": {
+        "overflow": "Split at a semantic boundary or choose a suitable recipe; never truncate or shrink text.",
+        "missingInput": "Report the missing real content or evidence; do not substitute demo defaults.",
+        "timingMismatch": "Bind every active event to measured narration while preserving order, nonoverlap and a readable final hold.",
+        "inapplicable": "Choose another proven native recipe. Under recipes-only policy report the capability gap; do not create custom graphics."
+      },
+      "example": {
+        "values": {
+          "title": "忙碌为何没有带来进展",
+          "items": "现象::任务越来越多|矛盾::结果没有改善|转折::先看协作方式|问题::哪里可以减少等待",
+          "highlight": 1,
+          "note": "引出问题，不先堆结论"
+        },
+        "narration": "现象，矛盾，转折，问题，最后把它们放回同一个问题中理解。"
+      },
+      "acceptance": [
+        "观众能说出冲突和待解问题，而不是只记住入场特效。",
+        "Every active phrase changes its real visible target; forward and reverse seek reproduce the same state.",
+        "Chinese content fits at minimum and maximum capacity without cropped or overlapping labels.",
+        "This text-led treatment communicates its declared purpose, without pretending to render charts, real media or physical simulations."
+      ]
+    }
+  }
+}

@@ -113,6 +113,16 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [gridPopoverOpen]);
 
+  useEffect(() => {
+    const group = toolbarSlots.grid?.closest(".hf-timeline-toolbar-group");
+    if (!group) return;
+    const closeWithGroup = () => {
+      if (!group.matches(":popover-open")) setGridPopoverOpen(false);
+    };
+    group.addEventListener("toggle", closeWithGroup);
+    return () => group.removeEventListener("toggle", closeWithGroup);
+  }, [toolbarSlots.grid]);
+
   const iconButton =
     "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35";
   const snapControls = (
@@ -183,7 +193,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           <span>{tx("Snap to grid")}</span>
         </label>
       </div>,
-      document.body,
+      gridButtonRef.current?.closest("[popover]") ?? document.body,
     );
 
   if (toolbarSlots.snap && toolbarSlots.grid) {

@@ -56,14 +56,14 @@ describe("syncTimedClipVisibility", () => {
   it("keeps compiled sub-compositions visible from preserved authored timing", () => {
     const root = document.getElementById("root")!;
     root.innerHTML = `
-      <div id="effect" data-composition-id="effect-ending" data-start="8"
+      <div id="outro" data-composition-id="outro-card" data-start="8"
         data-hf-authored-duration="3.4" data-track-index="0" style="position:absolute"></div>`;
 
     syncTimedClipVisibility(document, 9.7);
-    expect(sceneState("effect").visibility).toBe("visible");
+    expect(sceneState("outro").visibility).toBe("visible");
 
     syncTimedClipVisibility(document, 11.4);
-    expect(sceneState("effect").visibility).toBe("hidden");
+    expect(sceneState("outro").visibility).toBe("hidden");
   });
 
   it("shows only the newest overlapping scene even when scenes use different tracks", () => {

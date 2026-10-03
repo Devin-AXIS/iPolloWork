@@ -6,13 +6,26 @@ import {
 import { useStudioI18n } from "../../i18n";
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
 
+/**
+ * Text-like controls may persist to disk and remount the preview. Keep that
+ * work well behind normal typing cadence so a short pause between keystrokes
+ * cannot replace the user's in-progress draft or disturb focus.
+ */
+export const PROPERTY_INPUT_DEBOUNCE_MS = 700;
+
 export function CommitField({
   value,
   disabled,
   liveCommit,
   align = "left",
   inputType = "text",
+  placeholder,
+  maxLength,
+  min,
+  max,
+  step,
   ariaLabel,
+  className,
   onPreview,
   onCommit,
 }: {
@@ -25,7 +38,13 @@ export function CommitField({
    *  right-hand box instead of lining up with every other row's value. */
   align?: "left" | "right";
   inputType?: "text" | "number";
+  placeholder?: string;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  step?: number;
   ariaLabel?: string;
+  className?: string;
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
@@ -34,6 +53,7 @@ export function CommitField({
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
+  const lastSubmittedRef = useRef(value);
   const onPreviewRef = useRef(onPreview);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -42,7 +62,8 @@ export function CommitField({
   onPreviewRef.current = onPreview;
 
   useEffect(() => {
-    setDraft(value);
+    lastSubmittedRef.current = value;
+    if (document.activeElement !== inputRef.current) setDraft(value);
   }, [value]);
 
   useEffect(() => {
@@ -71,16 +92,26 @@ export function CommitField({
     [],
   );
 
+  const submitDraft = (nextDraft: string) => {
+    commitTimerRef.current = null;
+    if (nextDraft === valueRef.current || nextDraft === lastSubmittedRef.current) return;
+    lastSubmittedRef.current = nextDraft;
+    onCommit(nextDraft);
+  };
+
   const commitDraft = (nextDraft: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+    submitDraft(nextDraft);
   };
 
   const scheduleCommit = (nextDraft: string) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 120);
+      submitDraft(nextDraft);
+    }, PROPERTY_INPUT_DEBOUNCE_MS);
   };
   const scheduleCommitRef = useRef(scheduleCommit);
   scheduleCommitRef.current = scheduleCommit;
@@ -90,7 +121,11 @@ export function CommitField({
       ref={inputRef}
       type={inputType}
       inputMode={inputType === "number" ? "decimal" : undefined}
-      step={inputType === "number" ? "any" : undefined}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      min={inputType === "number" ? min : undefined}
+      max={inputType === "number" ? max : undefined}
+      step={inputType === "number" ? (step ?? "any") : undefined}
       aria-label={ariaLabel}
       value={draft}
       disabled={disabled}
@@ -99,7 +134,7 @@ export function CommitField({
         onPreview?.(e.target.value);
         if (liveCommit) scheduleCommit(e.target.value);
       }}
-      onBlur={() => commitDraft(draft)}
+      onBlur={() => commitDraft(draftRef.current)}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           (e.target as HTMLInputElement).blur();
@@ -114,7 +149,7 @@ export function CommitField({
         scheduleCommit(nextDraft);
       }}
       title={parseNumericToken(value) ? tx("Scroll or use Arrow keys to adjust") : undefined}
-      className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${
+      className={`min-w-0 w-full bg-transparent outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${className ?? "text-[11px] font-medium text-neutral-100"} ${
         align === "right" ? "text-right" : "text-left"
       }`}
     />

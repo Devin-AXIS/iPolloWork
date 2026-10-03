@@ -90,6 +90,7 @@ export function isTimelineIgnoredElement(el: Element): boolean {
         "[data-hyperframes-picker-ignore]",
         "[data-hf-ignore]",
         "[data-hf-color-grading-canvas]",
+        "[data-avatar-source]",
       ].join(","),
     ),
   );
@@ -393,6 +394,23 @@ function findTimelineDomNode(doc: Document, id: string): Element | null {
   );
 }
 
+/**
+ * Runtime avatar cutouts keep a transparent foreground video beside the
+ * authored source so graphics can sit between the background and the person.
+ * That foreground is an implementation detail: the editor must expose only
+ * the authored source as the single draggable/selectable timeline element.
+ */
+export function filterEditableTimelineManifestClips(
+  doc: Document | null,
+  clips: readonly ClipManifestClip[],
+): ClipManifestClip[] {
+  if (!doc) return [...clips];
+  return clips.filter((clip) => {
+    const host = clip.id ? findTimelineDomNode(doc, clip.id) : null;
+    return !host || !isTimelineIgnoredElement(host);
+  });
+}
+
 export function findTimelineDomNodeForClip(
   doc: Document,
   clip: ClipManifestClip,
@@ -400,6 +418,7 @@ export function findTimelineDomNodeForClip(
   usedNodes = new Set<Element>(),
 ): Element | null {
   const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
+  if (byIdentity && isTimelineIgnoredElement(byIdentity)) return null;
   // A loaded sub-composition can contain an inner root with the same authored
   // id as its outer timed host. Identity alone may therefore select the inner
   // root and make timeline edits persist into the child file instead of the

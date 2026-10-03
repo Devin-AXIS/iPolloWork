@@ -5,7 +5,12 @@
   "librarySection": "interface-animation",
   "title": "Data Chart",
   "description": "Animated bar + line chart with staggered reveal, NYT-style typography, and value labels",
-  "tags": ["data", "chart", "statistics"],
+  "tags": ["component", "data", "chart", "statistics", "theme"],
+  "version": "1.0.0",
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Data Chart", "url": "https://www.hyperframes.dev/catalog/blocks/data-chart" },
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "barSeries", "lineSeries", "source"], "instructions": "AI may replace both six-point series and explain their relationship while retaining a legible combined chart." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
@@ -22,18 +27,10 @@
     "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.mp4",
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png"
   },
-  "params": [
-    {
-      "key": "--bg-color",
-      "label": "Background",
-      "type": "color",
-      "default": "#faf9f6"
-    },
-    {
-      "key": "--text-color",
-      "label": "Text color",
-      "type": "color",
-      "default": "#333333"
-    }
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Monthly Revenue vs. Conversion Rate", "maxLength": 72, "update": "live" },
+    { "id": "barSeries", "label": "Bar data", "description": "Six comma-separated values.", "type": "string", "default": "8,12,15,11,18,22", "maxLength": 72, "update": "live" },
+    { "id": "lineSeries", "label": "Line data", "description": "Six comma-separated values.", "type": "string", "default": "2.1,2.8,3.2,2.9,3.8,4.2", "maxLength": 72, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source: Internal analytics", "maxLength": 64, "update": "live" }
   ]
 }

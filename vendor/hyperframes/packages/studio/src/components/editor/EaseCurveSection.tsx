@@ -35,7 +35,7 @@ function MiniCurveSvg({
       <path
         d={d}
         fill="none"
-        stroke={active ? "#3CE6AC" : "#737373"}
+        stroke={active ? "#1FBAC0" : "#737373"}
         strokeWidth="1.5"
         strokeLinecap="round"
       />
@@ -100,7 +100,7 @@ const VMIN = -HR / S; // bottom of visible view (undershoot headroom)
 // of snapping to the view edge; the handle DOT is still clampView'd into view.
 const DRAG_VMAX = 2;
 const DRAG_VMIN = -1;
-const ACCENT = "#3CE6AC";
+const ACCENT = "#1FBAC0";
 
 type Pts = [number, number, number, number];
 

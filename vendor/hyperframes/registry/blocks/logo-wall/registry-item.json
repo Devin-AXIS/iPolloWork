@@ -1,0 +1,14 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json", "name": "logo-wall", "version": "1.0.0", "type": "hyperframes:block", "title": "Logo Wall",
+  "description": "A theme-linked social-proof wall generated from a short logo list.", "tags": ["component", "data", "logos", "social-proof", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Logo Wall", "url": "https://www.hyperframes.dev/catalog/components/logo-wall" },
+  "visualComponent": { "version": 1, "category": "proof", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "logos", "note", "columns"], "instructions": "AI may replace the names or arrange the wall while preserving equal visual weight and the current theme." } },
+  "dimensions": { "width": 1920, "height": 1080 }, "duration": 8, "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "logo-wall.html", "target": "compositions/logo-wall.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Trusted by teams", "maxLength": 56, "update": "live" },
+    { "id": "logos", "label": "Names", "description": "Comma-separated names or lettermarks.", "type": "string", "default": "Atlas,Nova,Field,Orbit,North,Mono,Axis,Signal,Frame,Base", "maxLength": 180, "update": "live" },
+    { "id": "note", "label": "Note", "type": "string", "default": "A growing network of product teams", "maxLength": 72, "update": "live" },
+    { "id": "columns", "label": "Columns", "type": "number", "default": 5, "min": 3, "max": 6, "step": 1, "update": "live" }
+  ]
+}

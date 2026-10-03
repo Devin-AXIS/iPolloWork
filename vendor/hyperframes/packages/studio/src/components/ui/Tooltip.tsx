@@ -5,6 +5,7 @@ interface TooltipProps {
   label: string;
   children: ReactNode;
   delay?: number;
+  maxWidth?: number;
   side?: "top" | "bottom";
 }
 
@@ -13,7 +14,7 @@ interface TooltipProps {
 const APPROX_BUBBLE_H = 28;
 const VIEWPORT_MARGIN = 8;
 
-export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipProps) {
+export function Tooltip({ label, children, delay = 400, side = "top", maxWidth }: TooltipProps) {
   const [visible, setVisible] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [resolvedSide, setResolvedSide] = useState<"top" | "bottom">(side);
@@ -40,9 +41,10 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
       ) {
         nextSide = "top";
       }
+      const edgeInset = VIEWPORT_MARGIN + (maxWidth === undefined ? 0 : Math.min(maxWidth, window.innerWidth - VIEWPORT_MARGIN * 2) / 2);
       const x = Math.min(
-        Math.max(rect.left + rect.width / 2, VIEWPORT_MARGIN),
-        window.innerWidth - VIEWPORT_MARGIN,
+        Math.max(rect.left + rect.width / 2, edgeInset),
+        window.innerWidth - edgeInset,
       );
       setResolvedSide(nextSide);
       setPos({
@@ -51,7 +53,7 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
       });
       setVisible(true);
     }, delay);
-  }, [delay, side]);
+  }, [delay, side, maxWidth]);
 
   const hide = useCallback(() => {
     if (timerRef.current) {
@@ -97,12 +99,13 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
             <div
               role="tooltip"
               id={tooltipId}
-              className="px-2 py-1 rounded-md bg-neutral-800 border border-neutral-700/50 text-[10px] font-medium text-neutral-200 whitespace-nowrap shadow-lg"
+              className={`px-2 py-1 rounded-md bg-neutral-800 border border-neutral-700/50 text-[10px] font-medium text-neutral-200 shadow-lg ${maxWidth === undefined ? "whitespace-nowrap" : "whitespace-normal leading-relaxed"}`}
+              style={maxWidth === undefined ? undefined : { width: maxWidth, maxWidth: "calc(100vw - 16px)" }}
             >
               {label}
             </div>
           </div>,
-          document.body,
+          triggerRef.current?.closest("[popover]") ?? document.body,
         )}
     </>
   );

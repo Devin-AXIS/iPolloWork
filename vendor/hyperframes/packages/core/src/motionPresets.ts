@@ -405,6 +405,8 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {
+  if (preset.id.startsWith("camera.")) return 3;
+  if (preset.id.startsWith("transition.")) return 0.9;
   const migratedCaptionDuration = MIGRATED_CAPTION_DURATIONS[preset.id];
   if (migratedCaptionDuration !== undefined) return migratedCaptionDuration;
   if (preset.id.startsWith("background.")) return 3.2;

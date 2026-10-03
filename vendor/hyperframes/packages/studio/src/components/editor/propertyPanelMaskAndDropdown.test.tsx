@@ -72,6 +72,34 @@ describe("FlatDropdown", () => {
     expect(document.body.querySelector('[role="listbox"]')).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("keeps unavailable options visible but skips them for pointer and keyboard selection", () => {
+    const onChange = vi.fn();
+    flushSync(() =>
+      root.render(
+        <FlatDropdown
+          ariaLabel="Resolution"
+          value="720p"
+          options={[
+            { value: "720p", label: "720p" },
+            { value: "auto", label: "Auto", disabled: true },
+            { value: "1080p", label: "1080p" },
+          ]}
+          onChange={onChange}
+        />,
+      ),
+    );
+    const trigger = container.querySelector('[aria-label="Resolution"]');
+    if (!(trigger instanceof HTMLButtonElement)) throw new Error("Dropdown trigger missing");
+    flushSync(() => trigger.click());
+    const unavailable = document.body.querySelector('[role="option"][disabled]');
+    expect(unavailable?.textContent).toContain("Auto");
+    if (!(unavailable instanceof HTMLButtonElement)) throw new Error("Disabled option missing");
+    flushSync(() => unavailable.click());
+    expect(onChange).not.toHaveBeenCalled();
+    flushSync(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    expect(onChange).toHaveBeenCalledWith("1080p");
+  });
 });
 
 describe("mask geometry", () => {

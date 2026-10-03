@@ -75,7 +75,9 @@ export function shouldUseDirectRuntimeAdapter(
   requiredDuration: number,
 ): boolean {
   if (!isFinitePositive(runtimeDuration)) return false;
-  return !isFinitePositive(requiredDuration) || runtimeDuration >= requiredDuration;
+  // Summing decimal clip boundaries can exceed the same authored duration by
+  // floating-point noise. Do not downgrade audible playback for that difference.
+  return !isFinitePositive(requiredDuration) || runtimeDuration >= requiredDuration - 1e-6;
 }
 
 const durationLimitAdapterCache = new WeakMap<PlaybackAdapter, Map<number, PlaybackAdapter>>();

@@ -1,0 +1,181 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "milestone-timeline",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Milestone Timeline",
+  "description": "A three-step roadmap that turns a process into a clear time-bound story.",
+  "tags": [
+    "component",
+    "flow",
+    "timeline",
+    "roadmap",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "diagrams",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "stepOne",
+        "stepTwo",
+        "stepThree"
+      ],
+      "instructions": "AI may rewrite, add dates, or tailor the three milestones; use a custom diagram only when the process no longer fits a simple three-step path."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "milestone-timeline.html",
+      "target": "compositions/milestone-timeline.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/milestone-timeline.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "A path from intent to impact",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "stepOne",
+      "label": "Step one",
+      "type": "string",
+      "default": "Frame the decision",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "stepTwo",
+      "label": "Step two",
+      "type": "string",
+      "default": "Build the artifact",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "stepThree",
+      "label": "Step three",
+      "type": "string",
+      "default": "Review and move",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "path-journey",
+    "minHoldSeconds": 0.7,
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".step:nth-child(1)",
+        "time": 1.2,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-2",
+        "target": ".step:nth-child(2)",
+        "time": 3.85,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-3",
+        "target": ".step:nth-child(3)",
+        "time": 6.5,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "resolve",
+        "target": ".step",
+        "time": 7.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable result"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "Show exactly three genuine ordered milestones with short labels."
+      ],
+      "avoidWhen": [
+        "Do not invent dates, imply causality from chronology or squeeze a long history into three arbitrary points."
+      ],
+      "inputRules": {
+        "title": "Supply real title within the declared character limit. Do not substitute demo text.",
+        "stepOne": "A genuine ordered milestone, not an invented date; at most 40 characters.",
+        "stepTwo": "A genuine ordered milestone, not an invented date; at most 40 characters.",
+        "stepThree": "A genuine ordered milestone, not an invented date; at most 40 characters."
+      },
+      "readingOrder": [
+        "Identify the time span",
+        "Advance through three milestones",
+        "Read the full timeline"
+      ],
+      "cueBindings": {
+        "step-1": "When narration reaches milestone 1, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-2": "When narration reaches milestone 2, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-3": "When narration reaches milestone 3, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real semantic boundary or use a more suitable component; never truncate items or shrink text until unreadable.",
+        "missingInput": "Resolve the actual required input or report the missing content; do not substitute demo defaults or custom graphics under recipes-only policy.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose another validated recipe whose narrative job fits, split at a meaningful boundary, or report the library gap. Under recipes-only policy, never author custom graphics or force-fit content."
+      },
+      "example": {
+        "values": {
+          "title": "从调研到第一次开课",
+          "stepOne": "完成走访",
+          "stepTwo": "准备场地",
+          "stepThree": "开始试课"
+        },
+        "narration": "先完成走访，再准备场地，最后开始试课。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Identify the time span → Advance through three milestones → Read the full timeline. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ],
+      "intent": "沿真实时间顺序连接三个节点，让观众理解事件怎样走到当前状态。"
+    }
+  }
+}

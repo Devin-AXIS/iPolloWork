@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "donut-breakdown",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Donut Breakdown",
+  "description": "Explain a compact proportional breakdown around one key total.",
+  "tags": [
+    "component",
+    "data",
+    "radial",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "items",
+        "highlight",
+        "note"
+      ],
+      "instructions": "AI may rewrite the title, supporting note, and up to four category shares. Keep pipe separators between items and preserve the radial layout."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "donut-breakdown.html",
+      "target": "compositions/donut-breakdown.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "Donut Breakdown",
+      "maxLength": 76,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Items (label::detail | ...)",
+      "type": "string",
+      "default": "Research::36%|Build::28%|Review::22%|Share::14%",
+      "maxLength": 280,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlighted item",
+      "type": "number",
+      "default": 1,
+      "min": 1,
+      "max": 4,
+      "step": 1,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Supporting note",
+      "type": "string",
+      "default": "100% of the workflow, made visible",
+      "maxLength": 100,
+      "update": "live"
+    }
+  ]
+}

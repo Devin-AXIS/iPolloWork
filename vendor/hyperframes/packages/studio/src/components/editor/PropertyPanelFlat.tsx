@@ -128,32 +128,15 @@ export function resolveInspectorGroupOrder({
   return ordered;
 }
 
-export function resolveOpenInspectorGroup({
-  currentGroupId,
-  orderedGroupIds,
-  hasManualSelection,
-}: {
-  currentGroupId: string;
-  orderedGroupIds: readonly string[];
-  hasManualSelection: boolean;
-}): string {
-  if (
-    hasManualSelection &&
-    (currentGroupId === "" || orderedGroupIds.includes(currentGroupId))
-  ) {
-    return currentGroupId;
-  }
-  return orderedGroupIds[0] ?? "";
-}
-
 /**
  * The flat "Ledger" inspector shell (design_handoff_studio_inspector).
  *
  * Extracted from PropertyPanel so that file stays under the 600-LOC gate
  * (same one-directional-import precedent as FlatTextSection). Rendered only
- * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the one-open group state.
+ * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the inspector group state.
  *
- * The Text/Style/Layout/Motion/Media/Grade groups share the one-open accordion.
+ * Every available group with parameters opens by default; users can close or
+ * reopen groups independently.
  */
 // fallow-ignore-next-line complexity
 export function PropertyPanelFlat({
@@ -335,37 +318,19 @@ export function PropertyPanelFlat({
     availableGroupIds,
   });
   const orderedGroupKey = orderedGroupIds.join("|");
-  const [openGroupId, setOpenGroupId] = useState<string>(() =>
-    resolveOpenInspectorGroup({
-      currentGroupId: "",
-      orderedGroupIds,
-      hasManualSelection: false,
-    }),
-  );
+  const [openGroupIds, setOpenGroupIds] = useState<string[]>(() => orderedGroupIds);
   const hasManualGroupSelectionRef = useRef(false);
   useEffect(() => {
-    setOpenGroupId((currentGroupId) =>
-      resolveOpenInspectorGroup({
-        currentGroupId,
-        orderedGroupIds: orderedGroupKey ? orderedGroupKey.split("|") : [],
-        hasManualSelection: hasManualGroupSelectionRef.current,
-      }),
-    );
+    const available = orderedGroupKey ? orderedGroupKey.split("|") : [];
+    setOpenGroupIds((current) => {
+      if (hasManualGroupSelectionRef.current) {
+        return current.filter((id) => available.includes(id));
+      }
+      return available;
+    });
   }, [orderedGroupKey]);
 
-  // Tracks which group(s) are actively transitioning this toggle cycle, so
-  // their header/body gets the fast entrance animation (hf-flat-group-enter)
-  // and no one else's does. Deliberately NOT derived from remounting alone:
-  // FlatGroupHeader instances are keyed by group id and React normally
-  // preserves them across re-renders, but toggling a non-adjacent group still
-  // shifts the untouched collapsed siblings between the before/after-open
-  // slices below, and Chromium restarts a CSS animation on that kind of
-  // position shift even though nothing about the sibling actually changed.
-  // Gating on these ids (cleared shortly after the 120ms CSS animation
-  // finishes) keeps the animation scoped to only the groups that actually
-  // just toggled. Two ids, not one: the clicked (newly-opening/closing) group
-  // AND whichever group was open immediately before the click and got
-  // implicitly closed by it — both freshly-mounted headers need to animate.
+  // Only animate the group the user toggled; other open groups stay in place.
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
   const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -390,14 +355,12 @@ export function PropertyPanelFlat({
 
   const toggleOpen = (groupId: string) => {
     hasManualGroupSelectionRef.current = true;
-    // Capture what was open BEFORE this click (this render's closure over
-    // openGroupId), so the group that's about to be implicitly closed can be
-    // tracked too — not just the one the user clicked.
-    const previousOpenGroupId = openGroupId;
-    setOpenGroupId((current) => (current === groupId ? "" : groupId));
-    const implicitlyClosedId =
-      previousOpenGroupId && previousOpenGroupId !== groupId ? previousOpenGroupId : null;
-    setJustToggledIds(implicitlyClosedId ? [groupId, implicitlyClosedId] : [groupId]);
+    setOpenGroupIds((current) =>
+      current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId],
+    );
+    setJustToggledIds([groupId]);
     if (justToggledTimeoutRef.current) clearTimeout(justToggledTimeoutRef.current);
     justToggledTimeoutRef.current = setTimeout(() => setJustToggledIds([]), 200);
   };
@@ -421,9 +384,7 @@ export function PropertyPanelFlat({
   const parsedOpacity = Number.parseFloat(styles.opacity ?? "1");
   const opacityPercent = Math.round((Number.isFinite(parsedOpacity) ? parsedOpacity : 1) * 100);
 
-  // Ordered group descriptors — one per FlatGroup this panel renders, gated by
-  // the same conditions the inline JSX used. Split below into before-open/
-  // open/after-open regions for the one-open accordion.
+  // Ordered group descriptors — one per available inspector section.
   const groups: FlatGroupDescriptor[] = [];
   if (showMotionTiming) {
     groups.push({
@@ -657,13 +618,7 @@ export function PropertyPanelFlat({
     });
   }
 
-  // Fixed-headers + scrollable-open-section layout (design_handoff
-  // scrollable-open-section, replaces the prior sticky-stacking mechanism):
-  // collapsed headers before/after the open group render in normal document
-  // flow and never move. Only the open group's own body content scrolls, in
-  // a dedicated region between the two fixed header stacks. When no group is
-  // open, every group is just a collapsed header — there's no scrollable
-  // middle region at all, since nothing is expanded.
+  // All groups share one scroll surface so any number may remain open.
   const visibleGroups = groups.filter((group) => availableGroupIds.includes(group.id));
   visibleGroups.sort((a, b) => orderedGroupIds.indexOf(a.id) - orderedGroupIds.indexOf(b.id));
   return (
@@ -690,7 +645,7 @@ export function PropertyPanelFlat({
         >
           {showInspectorChrome
             ? visibleGroups.map((group) => {
-                const isOpen = group.id === openGroupId;
+                const isOpen = openGroupIds.includes(group.id);
                 return (
                   <DesignPanelInputProvider
                     key={group.id}

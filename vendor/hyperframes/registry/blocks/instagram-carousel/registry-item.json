@@ -1,0 +1,119 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "instagram-carousel",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Instagram Carousel",
+  "description": "A saveable Instagram-style carousel with four editable slides and an active-card focus.",
+  "tags": [
+    "component",
+    "social",
+    "instagram",
+    "carousel",
+    "slides",
+    "structured",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "replace",
+      "rowId": "slide",
+      "binding": {
+        "variable": "slides",
+        "encoding": "key-value-list"
+      },
+      "columns": [
+        {
+          "id": "slide",
+          "label": "Slide",
+          "labelZh": "页码",
+          "type": "string",
+          "role": "id",
+          "required": true
+        },
+        {
+          "id": "message",
+          "label": "Message",
+          "labelZh": "内容",
+          "type": "string",
+          "role": "label",
+          "required": true
+        }
+      ],
+      "minRows": 2,
+      "maxRows": 4,
+      "highlightVariable": "active"
+    },
+    "ai": {
+      "slots": [
+        "title",
+        "slides",
+        "active",
+        "cta"
+      ],
+      "instructions": "Provide two to four Slide:Message pairs, make active match a slide id, and keep the call to action short."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "instagram-carousel.html",
+      "target": "compositions/instagram-carousel.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Carousel title",
+      "type": "string",
+      "default": "Four ways to make the story clearer",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "slides",
+      "label": "Slides",
+      "description": "Slide and message pairs.",
+      "type": "string",
+      "default": "01:Lead with one promise,02:Show the before state,03:Make the change visible,04:End with one action",
+      "maxLength": 520,
+      "update": "live"
+    },
+    {
+      "id": "active",
+      "label": "Active slide",
+      "type": "string",
+      "default": "02",
+      "maxLength": 20,
+      "update": "live"
+    },
+    {
+      "id": "cta",
+      "label": "Call to action",
+      "type": "string",
+      "default": "Save this for your next launch",
+      "maxLength": 56,
+      "update": "live"
+    }
+  ]
+}

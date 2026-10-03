@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useEffect, useId } from "react";
 import { RenderQueueItem } from "./RenderQueueItem";
 import { Button } from "../ui/Button";
+import { FlatDropdown } from "../editor/propertyPanelFlatSelectRow";
 import type { OutputSize, RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
@@ -294,91 +295,81 @@ function FormatExportButton({
   const showQuality = format !== "mov";
 
   const selectCls =
-    "h-7 w-full px-2 text-[11px] bg-panel-input rounded-md text-panel-text-1 outline-none cursor-pointer disabled:opacity-50 hover:bg-panel-hover transition-colors";
+    "h-[34px] w-full rounded-[6px] border border-panel-border-input bg-panel-input px-2.5 text-xs text-panel-text-1 cursor-pointer transition-colors hover:bg-panel-hover";
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center gap-1">
-            <span className="text-[10px] text-panel-text-4">{tx("Format")}</span>
+            <span className="text-[11px] text-panel-text-3">{tx("Format")}</span>
             <FormatInfoTooltip format={format} />
           </div>
-          <select
+          <FlatDropdown
+            ariaLabel="Format"
             value={format}
-            onChange={(e) => {
-              const v = e.target.value as "mp4" | "webm" | "mov";
+            options={[{ value: "mp4", label: "MP4" }, { value: "mov", label: "MOV (ProRes)" }, { value: "webm", label: "WebM" }]}
+            onChange={(value) => {
+              const v = value === "mp4" || value === "mov" || value === "webm" ? value : format;
               setFormat(v);
               persistRenderSettings(v, quality, fps, resolution);
             }}
             disabled={exportBusy}
             className={selectCls}
-          >
-            <option value="mp4">MP4</option>
-            <option value="mov">MOV (ProRes)</option>
-            <option value="webm">WebM</option>
-          </select>
+          />
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[10px] text-panel-text-4">{tx("Resolution")}</span>
-          <select
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="text-[11px] text-panel-text-3">{tx("Resolution")}</span>
+          <FlatDropdown
+            ariaLabel="Resolution"
             value={resolution}
-            onChange={(e) => {
-              const v = e.target.value as RenderScale;
+            options={SCALE_OPTION_ORDER.map((value) => ({
+              value,
+              label: scaleOptionLabel(value, compositionDimensions),
+              disabled: !scaleApplies(value, compositionDimensions),
+            }))}
+            onChange={(value) => {
+              const v = SCALE_OPTION_ORDER.find((scale) => scale === value);
+              if (!v) return;
               setResolution(v);
               persistRenderSettings(format, quality, fps, v);
             }}
             disabled={exportBusy}
             className={selectCls}
-          >
-            {SCALE_OPTION_ORDER.map((value) => (
-              <option
-                key={value}
-                value={value}
-                disabled={!scaleApplies(value, compositionDimensions)}
-              >
-                {scaleOptionLabel(value, compositionDimensions)}
-              </option>
-            ))}
-          </select>
+          />
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[10px] text-panel-text-4">{tx("Frame rate")}</span>
-          <select
-            value={fps}
-            onChange={(e) => {
-              const v = Number(e.target.value) as 15 | 24 | 30 | 60;
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="text-[11px] text-panel-text-3">{tx("Frame rate")}</span>
+          <FlatDropdown
+            ariaLabel="Frame rate"
+            value={String(fps)}
+            options={[15, 24, 30, 60].map((value) => ({ value: String(value), label: `${value} fps` }))}
+            onChange={(value) => {
+              const v = Number(value);
+              if (v !== 15 && v !== 24 && v !== 30 && v !== 60) return;
               setFps(v);
               persistRenderSettings(format, quality, v, resolution);
             }}
             disabled={exportBusy}
             className={selectCls}
-          >
-            <option value={15}>15 fps</option>
-            <option value={24}>24 fps</option>
-            <option value={30}>30 fps</option>
-            <option value={60}>60 fps</option>
-          </select>
+          />
         </div>
         {showQuality && (
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] text-panel-text-4">{tx("Quality")}</span>
-            <select
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-[11px] text-panel-text-3">{tx("Quality")}</span>
+            <FlatDropdown
+              ariaLabel="Quality"
               value={quality}
-              onChange={(e) => {
-                const v = e.target.value as "draft" | "standard" | "high";
+              options={QUALITY_OPTIONS.map(({ value, label }) => ({ value, label }))}
+              onChange={(value) => {
+                const v = QUALITY_OPTIONS.find((option) => option.value === value)?.value;
+                if (!v) return;
                 setQuality(v);
                 persistRenderSettings(format, v, fps, resolution);
               }}
               disabled={exportBusy}
               className={selectCls}
-            >
-              {QUALITY_OPTIONS.map((q) => (
-                <option key={q.value} value={q.value}>
-                  {tx(q.label)}
-                </option>
-              ))}
-            </select>
+            />
           </div>
         )}
       </div>
@@ -407,7 +398,7 @@ function FormatExportButton({
             onStartRender(format, quality, outputResolution, fps, outputSize, captureSize),
           ).finally(() => setIsStarting(false));
         }}
-        className="w-full text-[11px] font-semibold"
+        className="hf-export-button w-full text-xs font-medium"
       >
         {tx(isRendering ? "Rendering…" : isStarting ? "Preparing…" : "Export")}
       </Button>
@@ -452,7 +443,7 @@ export const RenderQueue = memo(function RenderQueue({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-3 border-b border-panel-border flex-shrink-0">
+      <div className="px-4 py-3 border-b border-panel-border flex-shrink-0">
         <FormatExportButton
           onStartRender={onStartRender}
           isRendering={isRendering}

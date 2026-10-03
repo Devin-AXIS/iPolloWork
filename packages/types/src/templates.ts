@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
 export const TEMPLATE_AUTHORING_ID_PREFIX = "ipollowork.authoring.";
+export const ARTIFACT_DELIVERY_ID_PREFIX = "ipollowork.delivery.";
 
 export const IPOLLOWORK_PACKAGE_EXTENSION = ".ipwp";
 export const LEGACY_TEMPLATE_PACKAGE_EXTENSION = ".ipwt";
@@ -110,9 +111,14 @@ export const templateManifestV1Schema = z.object({
     tokens: z.string().trim().min(1).optional(),
     variables: z.array(templateVariableSchema).max(64).default([]),
   }).strict(),
+  authoringGuide: z.string().trim().min(1).max(240).optional(),
+  layoutLibrary: z.literal("core-v1").optional(),
   applyChecklist: z.array(z.string().trim().min(1).max(240)).min(1),
   minimumAppVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
 }).strict().superRefine((manifest, context) => {
+  if (manifest.layoutLibrary && !["slides", "site", "video"].includes(manifest.category)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["layoutLibrary"], message: "The core layout library supports slides, site and video templates" });
+  }
   if (manifest.pptxCompatibility && manifest.category !== "slides") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["pptxCompatibility"], message: "PPTX compatibility is only supported for slide templates" });
   }
@@ -136,10 +142,44 @@ export type TemplateStyle = z.infer<typeof templateStyleSchema>;
 export type TemplateVariable = z.infer<typeof templateVariableSchema>;
 export type PptxCompatibility = z.infer<typeof pptxCompatibilitySchema>;
 
+const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
+  "ipollowork.html-anything.prototype-web",
+  "ipollowork.site-afterglow-festival",
+  "ipollowork.html-anything.web-proto-soft",
+  "ipollowork.site-signal-workspace",
+  "ipollowork.site-orbit-data",
+  "ipollowork.html-anything.wireframe-sketch",
+  "ipollowork.site-atelier-architecture",
+  "ipollowork.hyperframes.agent-command-center",
+  "ipollowork.hyperframes.ai-trend-briefing",
+  "ipollowork.hyperframes.multi-agent-relay",
+  "ipollowork.hyperframes.course-journey",
+  "ipollowork.html-anything.motion-frames",
+  "ipollowork.hyperframes.permission-vault",
+  "ipollowork.hyperframes.code-explainer",
+  "ipollowork.hyperframes.vertical-social-story",
+  "ipollowork.pptx-ipollo-vi-enterprise",
+  "ipollowork.pptx-brand-narrative",
+  "ipollowork.html-anything.deck-blueprint",
+  "ipollowork.html-anything.deck-xhs-pastel",
+  "ipollowork.html-anything.deck-hermes-cyber",
+  "ipollowork.html-anything.deck-presenter-mode",
+]);
+const CUSTOMER_CURATED_TEMPLATE_CATEGORIES = new Set<TemplateCategory>(["site", "video", "slides"]);
+
+/** Shared visibility contract for every first-party template catalog host. */
+export function isCustomerVisibleBundledTemplate(manifest: TemplateManifestV1): boolean {
+  return CUSTOMER_CURATED_TEMPLATE_CATEGORIES.has(manifest.category)
+    ? CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS.has(manifest.id)
+    : true;
+}
+
 export type TemplateAuthoringInput = {
   sessionId: string;
   category: TemplateCategory;
   pptxCompatibility?: PptxCompatibility;
+  purpose?: "template-authoring" | "artifact-delivery";
+  brief?: unknown;
 };
 
 export type TemplateValidationIssue = {
@@ -209,4 +249,8 @@ export type TemplateSessionSnapshot = {
 
 export function isTemplateAuthoringManifest(manifest: Pick<TemplateManifestV1, "id">): boolean {
   return manifest.id.startsWith(TEMPLATE_AUTHORING_ID_PREFIX);
+}
+
+export function isArtifactDeliveryManifest(manifest: Pick<TemplateManifestV1, "id">): boolean {
+  return manifest.id.startsWith(ARTIFACT_DELIVERY_ID_PREFIX);
 }

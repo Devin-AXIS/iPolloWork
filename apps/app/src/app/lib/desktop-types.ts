@@ -20,6 +20,9 @@ export type {
   DesktopFetchResult,
   EngineDoctorResult,
   EngineInfo,
+  EnginePackageInfo,
+  EnginePackageSource,
+  EnginePackageStatus,
   EvalRelaunchResult,
   ExecResult,
   LocalSkillCard,
@@ -53,6 +56,9 @@ export type BrowserPanelTab = {
   type: "browser";
   label: string;
   url: string;
+  /** Conversation that owns the tab UI. Account state remains profile-scoped. */
+  sessionId?: string | null;
+  profileId?: string | null;
   favicon: string | null;
   status: "loading" | "ready";
   canGoBack: boolean;

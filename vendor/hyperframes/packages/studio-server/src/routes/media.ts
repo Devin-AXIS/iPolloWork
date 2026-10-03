@@ -111,6 +111,9 @@ export function registerMediaRoutes(
 ): void {
   const mediaJobs = new Map<string, JobWithCreatedAt>();
   const TTL_MS = 300_000;
+  const CLEANUP_INTERVAL_MS = 60_000;
+  const MAX_MEDIA_JOBS = 256;
+  let cleanupTimer: ReturnType<typeof setInterval> | null = null;
   const readMediaMetadata = options.probeMediaMetadata ?? probeMediaMetadata;
 
   function cleanupFinishedJobs(): void {
@@ -120,6 +123,23 @@ export function registerMediaRoutes(
         mediaJobs.delete(id);
       }
     }
+    const finishedOldestFirst = Array.from(mediaJobs.entries())
+      .filter(([, job]) => job.status === "complete" || job.status === "failed")
+      .sort(([, left], [, right]) => left.createdAt - right.createdAt);
+    while (mediaJobs.size >= MAX_MEDIA_JOBS && finishedOldestFirst.length > 0) {
+      const oldest = finishedOldestFirst.shift();
+      if (oldest) mediaJobs.delete(oldest[0]);
+    }
+    if (mediaJobs.size === 0 && cleanupTimer) {
+      clearInterval(cleanupTimer);
+      cleanupTimer = null;
+    }
+  }
+
+  function ensureCleanupTimer(): void {
+    if (cleanupTimer) return;
+    cleanupTimer = setInterval(cleanupFinishedJobs, CLEANUP_INTERVAL_MS);
+    if (typeof cleanupTimer === "object" && "unref" in cleanupTimer) cleanupTimer.unref();
   }
 
   api.get("/projects/:id/media/metadata", async (c) => {
@@ -145,6 +165,9 @@ export function registerMediaRoutes(
     // fallow-ignore-next-line complexity
     async (c) => {
       cleanupFinishedJobs();
+      if (mediaJobs.size >= MAX_MEDIA_JOBS) {
+        return c.json({ error: "too many active media jobs" }, 429);
+      }
       if (!adapter.startBackgroundRemoval) {
         return c.json({ error: "background removal is not available in this Studio server" }, 501);
       }
@@ -222,6 +245,7 @@ export function registerMediaRoutes(
       }) as JobWithCreatedAt;
       state.createdAt = Date.now();
       mediaJobs.set(jobId, state);
+      ensureCleanupTimer();
 
       return c.json({
         jobId,

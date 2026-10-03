@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"kicker","label":"Kicker","type":"string","default":"A clearer way forward","maxLength":48,"update":"live"},{"id":"headline","label":"Headline","type":"string","default":"Build the work that moves people.","maxLength":80,"update":"live"},{"id":"supporting","label":"Supporting line","type":"string","default":"One focused idea. Made visible.","maxLength":96,"update":"live"},{"id":"motionCueTimes","label":"Semantic cue times","type":"string","default":"{}","maxLength":2048,"update":"reload","description":"JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."}]'>
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=1920,height=1080" /><title>Brand Headline</title>
+    <style>
+      *{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#brand-headline{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--component-text);font-family:var(--ipw-font-display,Inter,sans-serif)}.frame{position:absolute;inset:68px;border:2px solid var(--component-accent);border-radius:42px;opacity:.92}.orb{position:absolute;width:740px;height:740px;right:-160px;top:-220px;border-radius:50%;background:radial-gradient(circle,var(--component-accent),transparent 67%);opacity:.18}.copy{position:absolute;left:150px;top:224px;width:1320px}.kicker{color:var(--component-accent);font:700 24px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.16em;text-transform:uppercase}.headline{max-width:1200px;margin:34px 0 30px;font-size:118px;font-weight:790;line-height:.92;letter-spacing:-.07em}.supporting{color:var(--ipw-color-muted,#68717c);font:600 30px/1.35 var(--ipw-font-body,Inter,sans-serif)}.mark{position:absolute;right:150px;bottom:136px;display:flex;gap:14px;align-items:center;font:700 18px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.1em;text-transform:uppercase}.mark i{width:18px;height:18px;border-radius:50%;background:var(--component-accent)}
+    #brand-headline{--component-text:var(--ipw-color-text,#15171a);--component-accent:var(--ipw-color-primary,#20bbc0)}.headline{line-height:1.4}</style></head>
+  <body><main id="brand-headline" data-composition-id="brand-headline" data-width="1920" data-height="1080" data-start="0" data-duration="8"><div class="orb"></div><div class="frame"></div><section class="copy"><div class="kicker" data-ipw-variable="kicker" data-ipw-ai-slot="kicker"></div><h1 class="headline" data-ipw-variable="headline" data-ipw-ai-slot="headline"></h1><p class="supporting" data-ipw-variable="supporting" data-ipw-ai-slot="supporting"></p></section><div class="mark"><i></i> iPolloWork</div></main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+(function(){const root=document.getElementById("brand-headline"),id=root.dataset.compositionId,values={kicker:"A clearer way forward",headline:"Build the work that moves people.",supporting:"One focused idea. Made visible.",...(window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{})};root.querySelectorAll("[data-ipw-variable]").forEach(el=>el.textContent=String(values[el.dataset.ipwVariable]??""))})();
+</script>
+<script data-ipw-motion-recipe="1">
+(function(){
+const root=document.querySelector("[data-composition-id]"),id=root.dataset.compositionId;
+const values=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{};
+const recipe={"version":1,"pattern":"progressive-build","minHoldSeconds":0.7,"events":[{"id":"headline","target":".headline","time":1.2,"duration":0.85,"action":"Establish the primary message"},{"id":"supporting","target":".supporting","time":3.2,"duration":0.65,"action":"Reveal supporting meaning"},{"id":"resolve","target":".mark","time":6.6,"duration":0.55,"action":"Resolve the brand lockup and hold"}]};
+const times=JSON.parse(String(values.motionCueTimes??"{}"));
+const cue=event=>times[event.id]??event.time;
+window.__timelines=window.__timelines||{};
+window.__timelines[id]?.kill();
+const tl=gsap.timeline({paused:true});
+tl.set(root.querySelectorAll("*"),{clearProps:"transform,opacity,clipPath"},0);
+tl.fromTo(root.querySelector(".frame"),{scale:.96,opacity:0},{scale:1,opacity:1,duration:.8,ease:"power3.out"},0);
+tl.fromTo(root.querySelector(".kicker"),{y:18,opacity:0},{y:0,opacity:1,duration:.5,ease:"power3.out"},.3);
+tl.fromTo(root.querySelector(".headline"),{y:44,opacity:0},{y:0,opacity:1,duration:.85,ease:"power4.out"},cue(recipe.events[0]));
+tl.fromTo(root.querySelector(".supporting"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power3.out"},cue(recipe.events[1]));
+tl.fromTo(root.querySelector(".mark"),{x:20,opacity:0},{x:0,opacity:1,duration:.55,ease:"power3.out"},cue(recipe.events[2]));
+tl.set(root,{visibility:"visible"},8);
+window.__timelines[id]=tl;tl.seek(0);
+})();
+</script>
+</body>
+</html>

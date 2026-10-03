@@ -41,7 +41,7 @@
     "gsap": "^3.12.5",
     "puppeteer-core": "^25.2.1",
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

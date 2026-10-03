@@ -16,7 +16,7 @@ const capabilities = {
 const visualStyle = {
   clip: "#f5f6f9",
   label: "#20262d",
-  accent: "#20bbc0",
+  accent: "#1FBAC0",
   border: "#cccccc",
 };
 

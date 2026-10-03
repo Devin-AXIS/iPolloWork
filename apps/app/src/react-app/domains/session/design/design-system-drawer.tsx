@@ -323,7 +323,7 @@ export function DesignSystemDrawer({
         {!embedded ? <div className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-3">
           <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary"><Palette className="size-3.5" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold">{t("design_system.title")}</p>
+            <p className="text-[13px] font-medium">{t("design_system.title")}</p>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-muted-foreground">
               <span className="truncate">{templateName}</span>
               <span aria-hidden>/</span>
@@ -392,7 +392,7 @@ export function DesignSystemDrawer({
                 </div>
               ) : null}
               <Input
-                className="h-8 rounded-lg bg-muted/45 px-2 text-[11px]"
+                className="h-8 rounded-lg bg-muted/45 px-2 text-xs"
                 placeholder={t("design_system.search_placeholder")}
                 value={themeSearch}
                 onChange={(event) => setThemeSearch(event.currentTarget.value)}
@@ -417,7 +417,7 @@ export function DesignSystemDrawer({
                     <ThemePreview theme={theme} />
                     <div className="space-y-1 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold">{theme.name}</span>
+                        <span className="text-xs font-medium">{theme.name}</span>
                         <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{theme.category}</span>
                       </div>
                       <p className="text-[11px] leading-4 text-muted-foreground">{theme.description}</p>
@@ -473,7 +473,7 @@ export function DesignSystemDrawer({
         </div>
 
         <div className="flex shrink-0 items-center justify-between border-t border-border/70 px-3 py-2">
-          <p className="text-[10px] text-muted-foreground">{t("design_system.variables_footer")}</p>
+          <p className="text-[11px] text-muted-foreground">{t("design_system.variables_footer")}</p>
           <Button variant="ghost" size="xs" onClick={resetAll}><RotateCcw /> {t("design_system.reset_all")}</Button>
         </div>
         </>}
@@ -510,7 +510,7 @@ function ThemePreview({ theme }: { theme: DesignSystemTheme }) {
             ))}
           </div>
           <div>
-            <p className="text-xs font-semibold text-foreground">{theme.name}</p>
+            <p className="text-xs font-medium text-foreground">{theme.name}</p>
             <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
               {failed ? t("design_system.preview_failed") : t("design_system.preview_loading")}
             </p>
@@ -602,7 +602,7 @@ function EmbeddedDesignSystemControls({
         <PanelSection title={t("design_system.embedded.style_preset")}>
           <button type="button" className="flex h-16 w-full items-center gap-3 rounded-[9px] border border-border p-2 text-left hover:border-ring" onClick={() => setPresetOpen((open) => !open)} aria-expanded={presetOpen}>
             <ThemeThumbnail colors={colorValues} />
-            <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold">{selectedTheme?.name ?? t("design_system.embedded.custom")}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{selectedTheme?.description ?? t("design_system.embedded.current_style_preset")}</span></span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{selectedTheme?.name ?? t("design_system.embedded.custom")}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{selectedTheme?.description ?? t("design_system.embedded.current_style_preset")}</span></span>
             {presetOpen ? <img src={designSystemChevronUpIcon} alt="" className="size-4 shrink-0" /> : <ChevronDown className="size-4 shrink-0 text-muted-foreground" />}
           </button>
           {presetOpen ? <div className="mt-3 h-[474px] rounded-xl border border-border p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)]">
@@ -611,7 +611,7 @@ function EmbeddedDesignSystemControls({
             <div className="mt-[9px] max-h-[340px] space-y-[5px] overflow-y-auto">{themes.map((theme) => {
               const active = theme.id === currentThemeId;
               return <button key={theme.id} type="button" className={cn("flex h-16 w-full items-center gap-2.5 rounded-[9px] border p-2 text-left transition-colors", active ? "border-ring bg-accent" : "border-transparent bg-background hover:bg-muted")} onClick={() => { onApplyTheme(theme); setPresetOpen(false); }}>
-                <ThemeThumbnail colors={themeColors(theme)} /><span className="min-w-0 flex-1"><span className="block truncate text-[12px] font-semibold">{theme.name}</span><span className="block truncate text-[10px] text-muted-foreground">{theme.category}</span></span>{active ? <Check className="size-4 text-primary" /> : null}
+                <ThemeThumbnail colors={themeColors(theme)} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{theme.name}</span><span className="block truncate text-[10px] text-muted-foreground">{theme.category}</span></span>{active ? <Check className="size-4 text-primary" /> : null}
               </button>;
             })}</div>
           </div> : null}
@@ -654,10 +654,10 @@ function localizedOptions(defs: ReadonlyArray<{ labelKey: string; value: string 
 function fontOptions(value: string, label: string) { return withPresetOption(localizedOptions(FONT_OPTION_DEFS), value, label); }
 function shadowOptions(value: string | undefined) { return withPresetOption(localizedOptions(SHADOW_OPTION_DEFS), value, t("design_system.embedded.preset_shadow")); }
 
-function PanelSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="border-b border-border px-4 pb-6 pt-2"><h3 className="mb-3 text-[14px] font-semibold leading-5">{title}</h3>{children}</section>; }
-function SegmentButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) { return <button type="button" className={cn("h-[34px] rounded-lg px-1 text-[14px] font-normal transition-colors", active ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent")} onClick={onClick} aria-pressed={active}>{children}</button>; }
+function PanelSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="border-b border-border px-4 pb-6 pt-2"><h3 className="mb-3 text-[13px] font-medium leading-5">{title}</h3>{children}</section>; }
+function SegmentButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) { return <button type="button" className={cn("h-[34px] rounded-lg px-1 text-xs font-medium transition-colors", active ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent")} onClick={onClick} aria-pressed={active}>{children}</button>; }
 function TokenSelect({ value, ariaLabel, options, onChange }: { value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { const option = options.find((item) => item.value === value) ?? options[0]; if (!option) return null; return <DesignPanelSelect value={option.value} options={options} onChange={onChange} ariaLabel={ariaLabel} className="h-[34px] w-full rounded-lg bg-muted" />; }
-function LabeledTokenSelect({ label, ...props }: { label: string; value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { return <label className="block"><span className="mb-1 block text-[10px] text-muted-foreground">{label}</span><TokenSelect {...props} /></label>; }
+function LabeledTokenSelect({ label, ...props }: { label: string; value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { return <label className="block"><span className="mb-1 block text-xs font-normal text-muted-foreground">{label}</span><TokenSelect {...props} /></label>; }
 function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="group relative grid size-[25px] cursor-pointer place-items-center overflow-hidden rounded-[7px] border border-black/10" title={label} style={{ backgroundColor: normalizeHex(value, "#ffffff") }}><input type="color" className="absolute inset-0 size-full cursor-pointer opacity-0" value={normalizeHex(value, "#ffffff")} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`${label} color`} /></label>; }
 function BackgroundSection({ mode, values, colors, onSelectMode, onTokenChange, onChooseMedia }: { mode: BackgroundMode; values: DesignTokenValues; colors: string[]; onSelectMode: (mode: BackgroundMode) => void; onTokenChange: (name: string, value: string) => void; onChooseMedia?: () => void }) {
   const controls: Array<{ mode: BackgroundMode; label: string }> = [{ mode: "none", label: t("design_system.embedded.no_background") }, { mode: "solid", label: t("design_system.embedded.solid_color") }, { mode: "gradient", label: t("design_system.embedded.gradient") }, { mode: "image", label: t("design_system.embedded.image") }];
@@ -683,7 +683,7 @@ function BackgroundSection({ mode, values, colors, onSelectMode, onTokenChange, 
       <DesignImageFitSelect value={imageMode} onChange={(value) => { onTokenChange("--ipw-bg-size", backgroundSizeFor(value)); onTokenChange("--ipw-bg-position", "50% 50%"); }} ariaLabel={t("design_system.embedded.background_image_fit_mode")} />
       <div className="group relative flex h-[100px] w-full items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(45deg,#929292_25%,#9f9f9f_25%,#9f9f9f_50%,#929292_50%,#929292_75%,#9f9f9f_75%)] bg-[length:24px_24px]" style={backgroundImageStyle(values["--ipw-bg-image"], values["--ipw-bg-size"], values["--ipw-bg-position"])}>
         <span className="absolute inset-0 bg-black/45" />
-        <button type="button" className="relative inline-flex h-[30px] items-center justify-center rounded-lg bg-black px-4 text-[10px] text-white transition-colors group-hover:bg-black/80" onClick={onChooseMedia}>{t("design_system.embedded.choose_media")}</button>
+        <button type="button" className="relative inline-flex h-[30px] items-center justify-center rounded-lg bg-black px-4 text-xs font-medium text-white transition-colors group-hover:bg-black/80" onClick={onChooseMedia}>{t("design_system.embedded.choose_media")}</button>
       </div>
     </div> : null}
   </PanelSection>;
@@ -708,7 +708,7 @@ function capitalize(value: string) { return `${value.slice(0, 1).toUpperCase()}$
 function DrawerHeading({ title, description }: { title: string; description?: string }) {
   return (
     <div>
-      <h3 className="text-xs font-semibold">{title}</h3>
+      <h3 className="text-[13px] font-medium">{title}</h3>
       {description ? <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{description}</p> : null}
     </div>
   );
@@ -717,7 +717,7 @@ function DrawerHeading({ title, description }: { title: string; description?: st
 function TokenGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
-      <h4 className="text-[11px] font-semibold text-foreground">{title}</h4>
+      <h4 className="text-xs font-medium text-foreground">{title}</h4>
       <div className="space-y-1.5">{children}</div>
     </section>
   );

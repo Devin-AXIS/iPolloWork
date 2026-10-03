@@ -2,13 +2,21 @@ import { beforeEach, describe, expect, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
 import * as sessionPrompt from "../src/react-app/shell/session-prompt";
-import type { DesignAiSelectionContext } from "../src/react-app/domains/session/design/design-ai-selection";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
 
 const routeUrl = new URL("../src/react-app/shell/session-route.tsx", import.meta.url);
 const promptUrl = new URL("../src/react-app/shell/session-prompt.ts", import.meta.url);
 const runtimeUrl = new URL(
   "../src/react-app/domains/session/sync/runtime-sync.tsx",
+  import.meta.url,
+);
+const engineUrl = new URL(
+  "../src/react-app/domains/session/engine/opencode-conversation-engine.ts",
+  import.meta.url,
+);
+const surfaceUrl = new URL(
+  "../src/react-app/domains/session/surface/session-surface.tsx",
   import.meta.url,
 );
 
@@ -33,6 +41,110 @@ const lifecycleContext: DesignAiSelectionContext = {
 describe("Design AI session lifecycle", () => {
   beforeEach(() => {
     useDesignAiSelectionStore.getState().resetSession("ses_1");
+  });
+
+  test("persists the first user request as the initial session title", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const promptIndex = routeSource.indexOf("const promptResult = await promptDesignSelectionContexts");
+    const persistIndex = routeSource.indexOf("void conversation.rename(targetSessionId, pendingTitlePersist");
+
+    expect(routeSource).toContain("isDefaultSessionTitle(targetSession.title)");
+    expect(routeSource).toContain("sessionTitleFromFirstPrompt(text)");
+    expect(routeSource).toContain("let pendingTitlePersist: string | null = null;");
+    expect(routeSource).toContain("pendingTitlePersist = initialTitle;");
+    expect(persistIndex).toBeGreaterThan(promptIndex);
+    expect(routeSource).toContain("patched before SessionPrompt creates the initial user message");
+  });
+
+  test("keeps the newly created task when the initial draft fails to dispatch", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const rollbackIndex = routeSource.indexOf("const rollbackFailedInitialProjectPrompt = useCallback");
+    const rollbackEnd = routeSource.indexOf("useEffect(() => {", rollbackIndex);
+    const rollbackSource = routeSource.slice(rollbackIndex, rollbackEnd);
+    const undispatchedIndex = routeSource.indexOf("if (!dispatched) {");
+    const catchIndex = routeSource.indexOf(".catch((error) => {");
+
+    expect(rollbackIndex).toBeGreaterThan(-1);
+    expect(rollbackSource).toContain("rollbackOptimisticSessionPrompt(");
+    expect(rollbackSource).not.toContain("deleteSession(");
+    expect(rollbackSource).not.toContain("setSessionsByWorkspaceId(");
+    expect(rollbackSource).not.toContain("writeLastSessionFor(");
+    expect(routeSource.indexOf("rollbackFailedInitialProjectPrompt(pending);", undispatchedIndex)).toBeGreaterThan(undispatchedIndex);
+    expect(routeSource.indexOf("rollbackFailedInitialProjectPrompt(pending);", catchIndex)).toBeGreaterThan(catchIndex);
+  });
+
+  test("drops stale non-work-mode OpenCode agents before sending a prompt", async () => {
+    const engineSource = await Bun.file(engineUrl).text();
+    const resolveIndex = engineSource.indexOf("function resolveOpenCodeWorkModeName");
+    const promptIndex = engineSource.indexOf("client.session.promptAsync");
+
+    expect(resolveIndex).toBeGreaterThan(-1);
+    expect(engineSource).toContain('agent.name === "plan"');
+    expect(engineSource).toContain('agent.name === "build"');
+    expect(engineSource).toContain("const agent = resolveOpenCodeWorkModeName(input.mode);");
+    expect(engineSource.indexOf("agent,", promptIndex)).toBeGreaterThan(promptIndex);
+  });
+
+  test("sends the live composer draft from the control action", async () => {
+    const surfaceSource = await Bun.file(surfaceUrl).text();
+    const sendControlIndex = surfaceSource.indexOf('id: "composer.send"');
+    const liveDraftIndex = surfaceSource.indexOf("getComposerDraft(useComposerStateStore.getState(), props.sessionId)", sendControlIndex);
+
+    expect(sendControlIndex).toBeGreaterThan(-1);
+    expect(liveDraftIndex).toBeGreaterThan(sendControlIndex);
+    expect(surfaceSource.indexOf("await handleSend(liveDraft);", liveDraftIndex)).toBeGreaterThan(liveDraftIndex);
+  });
+
+  test("starts the optimistic busy state for OpenCode prompts immediately", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const surfaceSource = await Bun.file(surfaceUrl).text();
+    const sendIndex = surfaceSource.indexOf("const sendDraft = useCallback");
+    const optimisticIndex = surfaceSource.indexOf("beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)", sendIndex);
+    const initialTaskIndex = routeSource.indexOf("pendingInitialProjectTask?.workspaceId === workspaceId");
+    const initialOptimisticIndex = routeSource.indexOf(
+      "const clientUserMessageId = beginOptimisticSessionPrompt(",
+      initialTaskIndex,
+    );
+    const initialNavigationIndex = routeSource.indexOf(
+      "navigateToWorkspaceSession(workspaceId, session.id);",
+      initialOptimisticIndex,
+    );
+
+    expect(surfaceSource).not.toContain("CODEX_HARNESS_ENGINE_ID");
+    expect(optimisticIndex).toBeGreaterThan(sendIndex);
+    expect(surfaceSource.indexOf("!recoveryDraft", sendIndex)).toBeGreaterThan(sendIndex);
+    expect(initialOptimisticIndex).toBeGreaterThan(initialTaskIndex);
+    expect(initialNavigationIndex).toBeGreaterThan(initialOptimisticIndex);
+  });
+
+  test("adds the current app language to the model system context", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const languageContextIndex = routeSource.indexOf("const languageSystemContext = responseLanguageSystemContext(currentLocale())");
+    const systemContextIndex = routeSource.indexOf("const systemContext = [projectSystemContext");
+
+    expect(sessionPrompt.responseLanguageSystemContext("zh")).toContain("Simplified Chinese");
+    expect(sessionPrompt.responseLanguageSystemContext("zh")).toContain("generated session/task titles");
+    expect(routeSource).toContain('import { currentLocale, t } from "@/i18n";');
+    expect(routeSource).toContain("responseLanguageSystemContext,");
+    expect(languageContextIndex).toBeGreaterThan(-1);
+    expect(systemContextIndex).toBeGreaterThan(languageContextIndex);
+    expect(routeSource.indexOf("languageSystemContext]", systemContextIndex)).toBeGreaterThan(systemContextIndex);
+  });
+
+  test("only asks standalone artifact requests to use a task-specific HTML filename", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const namingPromptIndex = routeSource.indexOf("const artifactNamingPromptPart");
+    const sendIndex = routeSource.indexOf("conversation.sendPrompt({");
+
+    expect(routeSource).toContain("uniqueHtmlArtifactFilenameFromTitle(text, artifactRequestId)");
+    expect(routeSource).toContain("automaticTemplateIntents.length > 0 && sessionTemplates.length === 0");
+    expect(routeSource).toContain("Do not create a new deliverable named entry.html or index.html");
+    expect(routeSource).toContain("do not reuse a filename from an earlier user turn");
+    expect(routeSource).toContain("so every new filename is distinct");
+    expect(namingPromptIndex).toBeGreaterThan(-1);
+    expect(routeSource.indexOf("...artifactNamingPromptPart", namingPromptIndex)).toBeGreaterThan(namingPromptIndex);
+    expect(sendIndex).toBeGreaterThan(namingPromptIndex);
+    expect(routeSource.indexOf("parts: promptParts", sendIndex)).toBeGreaterThan(sendIndex);
   });
 
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {

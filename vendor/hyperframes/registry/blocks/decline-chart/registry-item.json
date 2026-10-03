@@ -1,0 +1,14 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json", "name": "decline-chart", "version": "1.0.0", "type": "hyperframes:block", "title": "Decline Chart",
+  "description": "A theme-linked metric decline with synchronized value and line motion.", "tags": ["component", "data", "chart", "decline", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Decline Chart", "url": "https://www.hyperframes.dev/catalog/components/decline-chart" },
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "startValue", "endValue", "note"], "instructions": "AI may replace the metric range and explanation while preserving the downward visual grammar and deterministic timeline." } },
+  "dimensions": { "width": 1920, "height": 1080 }, "duration": 8, "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "decline-chart.html", "target": "compositions/decline-chart.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Metric", "type": "string", "default": "Retention", "maxLength": 48, "update": "live" },
+    { "id": "startValue", "label": "Start", "type": "number", "default": 82, "min": 0, "max": 100, "step": 1, "update": "live" },
+    { "id": "endValue", "label": "End", "type": "number", "default": 34, "min": 0, "max": 100, "step": 1, "update": "live" },
+    { "id": "note", "label": "Takeaway", "type": "string", "default": "The drop concentrates after the midpoint", "maxLength": 84, "update": "live" }
+  ]
+}

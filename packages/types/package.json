@@ -4,6 +4,25 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./reference-context": { "types": "./src/reference-context.ts", "development": "./src/reference-context.ts", "bun": "./src/reference-context.ts", "default": "./dist/reference-context.js" },
+    "./video-generation": {
+      "types": "./src/video-generation.ts",
+      "development": "./src/video-generation.ts",
+      "bun": "./src/video-generation.ts",
+      "default": "./dist/video-generation.js"
+    },
+    "./provider-errors": {
+      "types": "./src/provider-errors.ts",
+      "development": "./src/provider-errors.ts",
+      "bun": "./src/provider-errors.ts",
+      "default": "./dist/provider-errors.js"
+    },
+    "./video-image-workbench": {
+      "types": "./src/video-image-workbench.ts",
+      "development": "./src/video-image-workbench.ts",
+      "bun": "./src/video-image-workbench.ts",
+      "default": "./dist/video-image-workbench.js"
+    },
     ".": {
       "types": "./src/index.ts",
       "development": "./src/index.ts",
@@ -27,12 +46,19 @@
     "./workspace": {
       "types": "./src/workspace.ts",
       "development": "./src/workspace.ts",
-      "default": "./src/workspace.ts"
+      "bun": "./src/workspace.ts",
+      "default": "./dist/workspace.js"
     },
     "./desktop-ipc": {
       "types": "./src/desktop-ipc.ts",
       "development": "./src/desktop-ipc.ts",
       "default": "./src/desktop-ipc.ts"
+    },
+    "./deepseek-official-models": {
+      "types": "./src/deepseek-official-models.ts",
+      "development": "./src/deepseek-official-models.ts",
+      "bun": "./src/deepseek-official-models.ts",
+      "default": "./dist/deepseek-official-models.js"
     },
     "./hyperframes": {
       "types": "./src/hyperframes.ts",
@@ -40,11 +66,47 @@
       "bun": "./src/hyperframes.ts",
       "default": "./dist/hyperframes.js"
     },
+    "./hyperframes-project": {
+      "types": "./src/hyperframes-project.ts",
+      "development": "./src/hyperframes-project.ts",
+      "bun": "./src/hyperframes-project.ts",
+      "default": "./dist/hyperframes-project.js"
+    },
+    "./opencode-zen-public-models": {
+      "types": "./src/opencode-zen-public-models.ts",
+      "development": "./src/opencode-zen-public-models.ts",
+      "bun": "./src/opencode-zen-public-models.ts",
+      "default": "./dist/opencode-zen-public-models.js"
+    },
+    "./plugins": {
+      "types": "./src/plugins.ts",
+      "development": "./src/plugins.ts",
+      "bun": "./src/plugins.ts",
+      "default": "./dist/plugins.js"
+    },
+    "./provider-credentials": {
+      "types": "./src/provider-credentials.ts",
+      "development": "./src/provider-credentials.ts",
+      "bun": "./src/provider-credentials.ts",
+      "default": "./dist/provider-credentials.js"
+    },
+    "./project-workspace": {
+      "types": "./src/project-workspace.ts",
+      "development": "./src/project-workspace.ts",
+      "bun": "./src/project-workspace.ts",
+      "default": "./dist/project-workspace.js"
+    },
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",
       "bun": "./src/templates.ts",
       "default": "./dist/templates.js"
+    },
+    "./work-items": {
+      "types": "./src/work-items.ts",
+      "development": "./src/work-items.ts",
+      "bun": "./src/work-items.ts",
+      "default": "./dist/work-items.js"
     }
   },
   "files": [

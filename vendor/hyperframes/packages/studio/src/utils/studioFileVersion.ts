@@ -12,8 +12,9 @@ export async function studioFileContentVersion(content: string): Promise<string>
 export async function studioExpectedFileVersion(
   versions: ReadonlyMap<string, string | null>,
   path: string,
-  expectedContent?: string,
+  expectedContent?: string | null,
 ): Promise<string | null | undefined> {
+  if (expectedContent === null) return null; // Explicit create-only precondition.
   if (expectedContent !== undefined) return studioFileContentVersion(expectedContent);
   return versions.get(path);
 }

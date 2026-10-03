@@ -22,6 +22,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (compPath && !compPath.includes(".")) compPath += ".html";
 
     const url = new URL(c.req.url, `http://${c.req.header("host") || "localhost"}`);
+    const runtimeReview = url.searchParams.get("review") === "runtime";
+    if (runtimeReview && compPath !== "index.html") return c.json({ error: "Runtime review requires the project entry" }, 400);
     const rawSeekTime = url.searchParams.get("t");
     const parsedSeekTime = rawSeekTime == null ? Number.NaN : parseFloat(rawSeekTime);
     const seekTime = Number.isFinite(parsedSeekTime) ? parsedSeekTime : 0.5;
@@ -88,7 +90,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       : "";
     const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
     const cachePath = join(cacheDir, cacheKey);
-    if (existsSync(cachePath)) {
+    if (!runtimeReview && existsSync(cachePath)) {
       return new Response(new Uint8Array(readFileSync(cachePath)), {
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
@@ -105,6 +107,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         selector,
         format,
         selectorIndex,
+        runtimeReview,
       });
       if (!buffer) {
         return c.json(
@@ -112,6 +115,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
           500,
         );
       }
+      if (!Buffer.isBuffer(buffer)) return c.json(buffer);
       if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
       writeFileSync(cachePath, buffer);
       return new Response(new Uint8Array(buffer), {

@@ -17,12 +17,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // TTL cleanup for completed jobs (5 minutes)
   const TTL_MS = 300_000;
   const CLEANUP_INTERVAL_MS = 60_000;
+  const MAX_RENDER_JOBS = 256;
   let cleanupTimer: ReturnType<typeof setInterval> | null = null;
-
-  const cleanupEnabled = () =>
-    typeof process !== "undefined" &&
-    process.env.NODE_ENV !== "production" &&
-    !process.argv.includes("build");
 
   const cleanupFinishedJobs = () => {
     const now = Date.now();
@@ -31,6 +27,13 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         renderJobs.delete(key);
       }
     }
+    const finishedOldestFirst = Array.from(renderJobs.entries())
+      .filter(([, job]) => job.status !== "rendering")
+      .sort(([, left], [, right]) => left.createdAt - right.createdAt);
+    while (renderJobs.size >= MAX_RENDER_JOBS && finishedOldestFirst.length > 0) {
+      const oldest = finishedOldestFirst.shift();
+      if (oldest) renderJobs.delete(oldest[0]);
+    }
     if (renderJobs.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer);
       cleanupTimer = null;
@@ -38,17 +41,19 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   };
 
   const ensureCleanupTimer = () => {
-    if (cleanupTimer || !cleanupEnabled()) return;
+    if (cleanupTimer) return;
     cleanupTimer = setInterval(cleanupFinishedJobs, CLEANUP_INTERVAL_MS);
     if (typeof cleanupTimer === "object" && "unref" in cleanupTimer) {
       cleanupTimer.unref();
     }
   };
 
-  ensureCleanupTimer();
-
   // Start a render
   api.post("/projects/:id/render", async (c) => {
+    cleanupFinishedJobs();
+    if (renderJobs.size >= MAX_RENDER_JOBS) {
+      return c.json({ error: "too many active render jobs" }, 429);
+    }
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
@@ -323,7 +328,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       .sort((a, b) => b.createdAt - a.createdAt);
     // Register on-disk renders that aren't in the current session's job map
     // so they remain downloadable after a server restart.
-    for (const file of files) {
+    for (const file of files.slice(0, MAX_RENDER_JOBS - 1)) {
       if (!renderJobs.has(file.id)) {
         renderJobs.set(file.id, {
           id: file.id,
@@ -334,6 +339,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         } as RenderJobState & { createdAt: number });
       }
     }
+    cleanupFinishedJobs();
+    if (renderJobs.size > 0) ensureCleanupTimer();
     return c.json({ renders: files });
   });
 }

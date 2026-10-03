@@ -137,7 +137,7 @@ export function FlatMediaSection({
               setTimeout(() => setCopied(false), 1500);
             });
           }}
-          className="flex flex-shrink-0 items-center gap-1 text-[10px] text-panel-text-3 hover:text-panel-text-1"
+          className="flex flex-shrink-0 items-center gap-1 text-xs text-panel-text-3 hover:text-panel-text-1"
         >
           {copied ? <Check size={11} /> : <ClipboardList size={11} />}
           {tx(copied ? "Copied" : "Copy")}
@@ -147,7 +147,7 @@ export function FlatMediaSection({
         <div className="ml-[1px] border-l-2 border-panel-border-input py-1 pl-[10px]">
           <div className="flex min-h-6 items-center justify-between">
             <span className="flex items-baseline gap-[7px]">
-              <span className="text-[11px] font-semibold text-panel-text-1">{tx("Cutout")}</span>
+              <span className="text-xs font-medium text-panel-text-1">{tx("Cutout")}</span>
               <span className="font-mono text-[9px] text-panel-text-4">
                 transparent {isVideo ? "WebM" : "PNG"}
               </span>
@@ -157,7 +157,7 @@ export function FlatMediaSection({
               data-flat-media-remove-bg="true"
               disabled={!canRemoveBackground || removeBusy}
               onClick={() => void runBackgroundRemoval()}
-              className="flex items-center gap-1 text-[10px] font-medium text-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1 text-xs font-medium text-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
               title={tx(
                 canRemoveBackground
                   ? "Remove background and save a transparent asset"
@@ -179,7 +179,7 @@ export function FlatMediaSection({
           )}
           {removeProgress && (
             <div className="mt-1 space-y-1">
-              <div className="flex items-center justify-between text-[10px] text-panel-text-4">
+              <div className="flex items-center justify-between text-[11px] text-panel-text-4">
                 <span className="min-w-0 flex-1 truncate">
                   {removeProgress.error ?? tx(removeProgress.stage ?? "Processing")}
                 </span>

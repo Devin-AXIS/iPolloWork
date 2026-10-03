@@ -1,0 +1,41 @@
+<!-- vertical-word-roll-blur-cycle -->
+<!doctype html>
+<html>
+<head><script type="application/json" data-composition-variables="[{&quot;id&quot;:&quot;prefix&quot;,&quot;label&quot;:&quot;prefix&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;适合&quot;,&quot;maxLength&quot;:4,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;words&quot;,&quot;label&quot;:&quot;words&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;写稿|审核|发布|协作&quot;,&quot;maxLength&quot;:19,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;motionCueTimes&quot;,&quot;label&quot;:&quot;实测语义时间&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;{}&quot;,&quot;maxLength&quot;:2048,&quot;update&quot;:&quot;reload&quot;}]"></script>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="shotcraft-vertical-word-roll-blur-cycle"] { background: #F7F7FA; overflow: hidden; }
+    .design-stage { position:absolute;left:0;top:0;width:480px;height:270px;overflow:hidden;transform:scale(4);transform-origin:top left; }
+    #root { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:-apple-system,system-ui,sans-serif; }
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-vertical-word-roll-blur-cycle"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
+</head>
+<body>
+  <div data-ipw-source-ranges="[[0.8,1.8,&quot;从首词聚焦第二个词&quot;],[1.8,2.8,&quot;聚焦第三个词&quot;],[2.8,3.35,&quot;聚焦并保留末词&quot;]]" data-composition-id="shotcraft-vertical-word-roll-blur-cycle" data-start="0" data-duration="4.2" data-fps="30" data-width="1920" data-height="1080"><div class="sc-content">
+    <div class="design-stage"><div id="root"></div></div>
+  </div>
+  </div><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script data-ipw-motion-recipe="1">
+(async function(){await document.fonts.ready;const host=document.querySelector('[data-composition-id="shotcraft-vertical-word-roll-blur-cycle"]');const values={...{"prefix":"适合","words":"写稿|审核|发布|协作"},...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[host.dataset.compositionId]??{})};const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');const measure=(text,font)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=font;return ctx.measureText(text).width;};
+    window.__timelines = window.__timelines || {};
+    const E={outQuint:t=>1-Math.pow(1-t,5),outBack:(t,s=1.70158)=>1+(s+1)*Math.pow(t-1,3)+s*Math.pow(t-1,2)};
+    const seg=(t,t0,t1)=>Math.min(1,Math.max(0,(t-t0)/(t1-t0)));
+    const ROW=44, WORDS=String(values.words).split('|'), STEPS=[0.16,0.36,0.56], ACCENT='#4B4BF5', ACCENT_DIM='#B9B9BE';
+    const clamp01=v=>Math.max(0,Math.min(1,v));
+    const mixHex=(a,b,k)=>{k=clamp01(k);const pa=[1,3,5].map(i=>parseInt(a.slice(i,i+2),16)),pb=[1,3,5].map(i=>parseInt(b.slice(i,i+2),16));const c=pa.map((v,i)=>Math.round(v+(pb[i]-v)*k));return `rgb(${c[0]},${c[1]},${c[2]})`;};
+    const root=document.getElementById('root'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:5,ease:'none',onUpdate:()=>{
+      const t=state.t; let p=0; for(const s of STEPS){const u=seg(t,s,s+0.11);p+=0.7*E.outQuint(u)+0.3*E.outBack(u);}
+      const fade=1; // Land keeps the last word readable instead of fading the whole scene away.
+      const words=WORDS.map((w,i)=>{const d=Math.abs(i-p),blur=d<1?3*d:3+2*Math.min(d-1,1),op=d<1?1-0.65*d:Math.max(0.1,0.35-0.23*(d-1));
+        return `<div style="height:${ROW}px;display:flex;align-items:center;font-size:30px;font-weight:800;letter-spacing:-0.5px;filter:blur(${blur.toFixed(2)}px);opacity:${op};color:${mixHex(ACCENT_DIM,ACCENT,clamp01(1-d*2.4))}">${escape(w)}</div>`;}).join('');
+      root.innerHTML=`<div style="display:flex;align-items:center;gap:14px;opacity:${fade}"><div style="font-size:30px;font-weight:800;color:#0B0B0C;letter-spacing:-0.5px">${escape(String(values.prefix))}</div>
+        <div style="position:relative;height:${ROW*3}px;width:190px;overflow:hidden"><div style="position:absolute;left:0;top:0;transform:translateY(${ROW-p*ROW}px)">${words}</div></div></div>`;
+    }},0);
+    window.__timelines['shotcraft-vertical-word-roll-blur-cycle']=tl;
+  
+const motionStyle=JSON.parse(String(values.motionStyle??'{"durationFactor":1}'));
+const recipe={"version":1,"pattern":"kinetic-type","minHoldSeconds":0.7,"capacity":{"variable":"words","separator":"|","maxItems":4,"minItems":4,"fieldSeparator":"::","fieldsPerItem":1,"maxFieldLength":4},"textLimits":{"prefix":{"maxLines":1,"maxLineLength":4}},"usage":{"useWhen":["在共同前缀下依次聚焦四个短词，最后保留末项。"],"avoidWhen":["不是排行榜或优先级变化；模糊邻词只能作上下文，不承载关键证据。","文字动效不是图表或执行证明；不要为了使用特效改写事实。"],"inputRules":{"prefix":"提供真实prefix，最多1行，每行4字，不使用演示默认内容。","words":"恰好4项，用 | 分隔；每项最多4字，不能含 ::；按真实叙事顺序提供。"},"readingOrder":["建立共同主题","从首词聚焦第二个词","聚焦第三个词","聚焦并保留末词","停留在完整可读的落定状态"],"cueBindings":{"phase-1":"绑定实测旁白或音乐中与“从首词聚焦第二个词”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-2":"绑定实测旁白或音乐中与“聚焦第三个词”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-3":"绑定实测旁白或音乐中与“聚焦并保留末词”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"},"fallback":{"overflow":"按语义拆镜或换配方；禁止截断和缩到不可读。","missingInput":"补真实内容与素材；不要使用源码里的演示文案或模拟 UI。","timingMismatch":"按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。","inapplicable":"优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"},"example":{"values":{"prefix":"适合","words":"写稿|审核|发布|协作"},"narration":"适合。写稿，审核，发布，协作"},"acceptance":["各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。","真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。","实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。","不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"]},"events":[{"id":"phase-1","target":".sc-content *","time":0.65,"duration":1,"action":"从首词聚焦第二个词"},{"id":"phase-2","target":".sc-content *","time":1.65,"duration":0.9999999999999998,"action":"聚焦第三个词"},{"id":"phase-3","target":".sc-content *","time":2.6499999999999995,"duration":0.5500000000000003,"action":"聚焦并保留末词"}]},ranges=[[0.8,1.8,"从首词聚焦第二个词"],[1.8,2.8,"聚焦第三个词"],[2.8,3.35,"聚焦并保留末词"]],cues=JSON.parse(String(values.motionCueTimes??'{}')),native=window.__timelines[host.dataset.compositionId];host.__sourceTimeline=native;const stateClock={time:0};const clockEnd=Math.max(4.2,...recipe.events.map(event=>(cues[event.id]??event.time)+event.duration*motionStyle.durationFactor+4));const master=gsap.timeline({paused:true});const render=()=>{let sourceTime=0;for(let i=0;i<recipe.events.length;i++){const event=recipe.events[i],start=cues[event.id]??event.time,length=event.duration*motionStyle.durationFactor,[from,to]=ranges[i];if(stateClock.time<start)break;sourceTime=from+(to-from)*Math.min(1,(stateClock.time-start)/length);}native.render(Math.max(0.000001,sourceTime),false,true);host.dataset.ipwSourceTime=String(sourceTime);};master.to(stateClock,{time:clockEnd,duration:clockEnd,ease:'none',onUpdate:render},0);window.__timelines[host.dataset.compositionId]=master;render();})();
+</script>
+</body>
+</html>

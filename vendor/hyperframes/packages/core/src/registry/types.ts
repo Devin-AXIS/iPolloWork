@@ -1,4 +1,5 @@
 import type { CompositionVariable } from "../core.types";
+import type { RegistryVisualComponentDataContract } from "./componentData";
 
 // The `enum` arrays in `packages/core/schemas/registry*.json` must match
 // `ITEM_TYPES` / `FILE_TYPES` below — `types.test.ts` is the drift guard.
@@ -48,6 +49,75 @@ export interface RegistryItemEngine {
 
 export type RegistryItemKind = "animation" | "effect";
 
+/** Product-facing visual component categories shared by Studio and registries. */
+export const VISUAL_COMPONENT_CATEGORIES = [
+  "scene",
+  "product",
+  "data",
+  "diagrams",
+  "maps",
+  "proof",
+  "knowledge",
+  "people",
+  "typography",
+  "media",
+  "social",
+  "developer",
+  "brand",
+] as const;
+
+export type RegistryVisualComponentCategory = (typeof VISUAL_COMPONENT_CATEGORIES)[number];
+
+/**
+ * Normalizes category ids from the version-1 catalog into the smaller canonical taxonomy.
+ * Keep these aliases while version-1 registry manifests remain supported.
+ */
+export function resolveVisualComponentCategory(
+  value: unknown,
+): RegistryVisualComponentCategory | null {
+  if (typeof value !== "string") return null;
+  const canonical = VISUAL_COMPONENT_CATEGORIES.find((category) => category === value);
+  if (canonical) return canonical;
+
+  switch (value) {
+    case "intro":
+    case "outro":
+      return "scene";
+    case "flow":
+      return "diagrams";
+    case "compare":
+      return "proof";
+    case "interface":
+      return "media";
+    case "structured":
+      return "data";
+    case "commerce":
+      return "brand";
+    default:
+      return null;
+  }
+}
+
+export type RegistryVisualComponentSurface = "video" | "slides" | "web";
+
+export interface RegistryVisualComponentAi {
+  /** Stable slot ids mirrored by `data-ipw-ai-slot` attributes in the composition. */
+  slots: string[];
+  /** Guardrails supplied to an Agent together with the selected component. */
+  instructions?: string;
+}
+
+/** Optional metadata that promotes a normal registry item into Studio's component library. */
+export interface RegistryVisualComponent {
+  version: 1;
+  category: RegistryVisualComponentCategory;
+  surfaces: RegistryVisualComponentSurface[];
+  themeMode: "inherit";
+  /** Optional normalized data contract shared by Studio, renderers, and agents. */
+  data?: RegistryVisualComponentDataContract;
+  ai?: RegistryVisualComponentAi;
+}
+
 export type RegistryItemLibrarySection =
   | "text-animation"
   | "interface-animation"
@@ -56,10 +126,7 @@ export type RegistryItemLibrarySection =
   | "opening-animation"
   | "ending-animation"
   | "transition-animation"
-  | "caption-animation"
-  | "opening-effect"
-  | "ending-effect"
-  | "transition-effect";
+  | "caption-animation";
 
 export type RegistryMotionPresetCategory = "opening" | "ending" | "transition" | "caption";
 
@@ -108,6 +175,8 @@ interface RegistryItemBase {
   kind?: RegistryItemKind;
   /** Explicit placement within the Studio animation and scene libraries. */
   librarySection?: RegistryItemLibrarySection;
+  /** Placement and capability metadata for Studio's reusable visual component library. */
+  visualComponent?: RegistryVisualComponent;
   /** Editable GSAP keyframes that Video Studio can apply to its current DOM selection. */
   motionPreset?: RegistryMotionPreset;
   /** Item author / maintainer. */

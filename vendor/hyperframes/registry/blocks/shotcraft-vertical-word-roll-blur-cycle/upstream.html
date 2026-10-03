@@ -1,0 +1,37 @@
+<!-- vertical-word-roll-blur-cycle -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="VerticalWordRollBlurCycle"] { background: #F7F7FA; overflow: hidden; }
+    .design-stage { position:absolute;left:0;top:0;width:480px;height:270px;overflow:hidden;transform:scale(4);transform-origin:top left; }
+    #root { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:-apple-system,system-ui,sans-serif; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="VerticalWordRollBlurCycle" data-start="0" data-duration="5" data-fps="30" data-width="1920" data-height="1080">
+    <div class="design-stage"><div id="root"></div></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const E={outQuint:t=>1-Math.pow(1-t,5),outBack:(t,s=1.70158)=>1+(s+1)*Math.pow(t-1,3)+s*Math.pow(t-1,2)};
+    const seg=(t,t0,t1)=>Math.min(1,Math.max(0,(t-t0)/(t1-t0)));
+    const ROW=44, WORDS=['Apps','Teams','Data','Everyone'], STEPS=[0.16,0.36,0.56], ACCENT='#4B4BF5', ACCENT_DIM='#B9B9BE';
+    const clamp01=v=>Math.max(0,Math.min(1,v));
+    const mixHex=(a,b,k)=>{k=clamp01(k);const pa=[1,3,5].map(i=>parseInt(a.slice(i,i+2),16)),pb=[1,3,5].map(i=>parseInt(b.slice(i,i+2),16));const c=pa.map((v,i)=>Math.round(v+(pb[i]-v)*k));return `rgb(${c[0]},${c[1]},${c[2]})`;};
+    const root=document.getElementById('root'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:5,ease:'none',onUpdate:()=>{
+      const t=state.t; let p=0; for(const s of STEPS){const u=seg(t,s,s+0.11);p+=0.7*E.outQuint(u)+0.3*E.outBack(u);}
+      const fade=1-seg(t,0.9,0.985)*0.999;
+      const words=WORDS.map((w,i)=>{const d=Math.abs(i-p),blur=d<1?3*d:3+2*Math.min(d-1,1),op=d<1?1-0.65*d:Math.max(0.1,0.35-0.23*(d-1));
+        return `<div style="height:${ROW}px;display:flex;align-items:center;font-size:30px;font-weight:800;letter-spacing:-0.5px;filter:blur(${blur.toFixed(2)}px);opacity:${op};color:${mixHex(ACCENT_DIM,ACCENT,clamp01(1-d*2.4))}">${w}</div>`;}).join('');
+      root.innerHTML=`<div style="display:flex;align-items:center;gap:14px;opacity:${fade}"><div style="font-size:30px;font-weight:800;color:#0B0B0C;letter-spacing:-0.5px">Built for</div>
+        <div style="position:relative;height:${ROW*3}px;width:190px;overflow:hidden"><div style="position:absolute;left:0;top:0;transform:translateY(${ROW-p*ROW}px)">${words}</div></div></div>`;
+    }},0);
+    window.__timelines['VerticalWordRollBlurCycle']=tl;
+  </script>
+</body>
+</html>

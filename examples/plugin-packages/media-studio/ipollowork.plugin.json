@@ -1,0 +1,706 @@
+{
+  "schemaVersion": 2,
+  "id": "media-studio",
+  "name": "素材工作台",
+  "description": "在一个工作台生成和编辑图片、视频，另存素材或替换后返回原项目。",
+  "category": "设计与创作",
+  "defaultEnabled": true,
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "icon": {
+    "src": "ipollowork-mark.svg"
+  },
+  "composer": {
+    "prompt": "打开素材工作台，生成或编辑图片、视频。"
+  },
+  "package": {
+    "version": "1.0.4",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "ipollowork/media-studio"
+  },
+  "permissions": [
+    {
+      "id": "workspace-read",
+      "reason": "读取用户在当前工作区中选择的图片。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "保存图片副本；仅在用户确认后覆盖原图并移除本次编辑副本。"
+    }
+  ],
+  "resources": [
+    {
+      "type": "ui",
+      "id": "studio",
+      "label": "图片工作台",
+      "description": "使用智能选取、画笔和形状选区精确编辑图片。",
+      "path": "ui/image-studio.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://media-studio/studio",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false
+      }
+    },
+    {
+      "type": "local-service",
+      "id": "media-studio-service",
+      "label": "素材工作台服务",
+      "description": "安全读取工作区图片，并通过统一 Host action 生成或编辑图片。",
+      "path": "service/media-studio.mjs",
+      "requires": [
+        "action:openai-image-generation/status",
+        "action:openai-image-generation/image_generate",
+        "action:openai-image-generation/image_edit",
+        "action:openai-image-generation/selection_capture",
+        "action:openai-image-generation/image_edit_save",
+        "action:video-generation/status",
+        "action:video-generation/jobs",
+        "action:video-generation/submit",
+        "action:video-generation/recover",
+        "action:video-generation/import",
+        "action:video-generation/read",
+        "action:video-generation/inspect",
+        "action:video-generation/local-edit"
+      ],
+      "provides": [
+        "action:save-edit",
+        "action:capture-selection",
+        "action:image-status",
+        "action:load-image",
+        "action:import-image",
+        "action:generate-image",
+        "action:edit-image",
+        "action:video-status",
+        "action:video-jobs",
+        "action:video-submit",
+        "action:video-recover",
+        "action:video-import",
+        "action:video-read",
+        "action:video-inspect",
+        "action:video-local-edit"
+      ],
+      "required": true,
+      "actions": [
+        {
+          "id": "save-edit",
+          "title": "保存编辑结果",
+          "description": "另存为保留两版；仅经用户确认后覆盖原图并移除本次副本。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "editId": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "copy",
+                  "overwrite"
+                ]
+              }
+            },
+            "required": [
+              "editId",
+              "mode"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "capture-selection",
+          "title": "附加图片选区",
+          "description": "冻结当前图片及完整蒙版，供当前会话编辑使用。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sourcePath": {
+                "type": "string"
+              },
+              "sourceDataUrl": {
+                "type": "string"
+              },
+              "maskDataUrl": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourcePath",
+              "sourceDataUrl",
+              "maskDataUrl"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "image-status",
+          "title": "检查图片工作台",
+          "description": "检查图片工作台和当前图片提供方是否可用。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "load-image",
+          "title": "加载工作区图片",
+          "description": "读取当前工作区中的一张图片用于编辑。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sourcePath": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourcePath"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "import-image",
+          "title": "导入图片",
+          "description": "将用户选择的本地图片保存到当前工作区。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dataUrl": {
+                "type": "string"
+              },
+              "filename": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dataUrl",
+              "filename"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "generate-image",
+          "title": "生成图片",
+          "description": "使用用户明确选择的已连接图片模型生成图片并保存到工作区。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "filename": {
+                "type": "string"
+              },
+              "style": {
+                "type": "string"
+              },
+              "camera": {
+                "type": "string"
+              },
+              "lighting": {
+                "type": "string"
+              },
+              "quality": {
+                "type": "string"
+              },
+              "size": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "prompt",
+              "model"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "edit-image",
+          "title": "编辑图片",
+          "description": "使用用户明确选择的图片模型、提示词和可选蒙版编辑图片，结果另存为新文件。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sourcePath": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "maskDataUrl": {
+                "type": "string"
+              },
+              "selectionId": {
+                "type": "string"
+              },
+              "reviewResult": {
+                "type": "boolean"
+              },
+              "sourceRevision": {
+                "type": "string"
+              },
+              "selectionBlend": {
+                "type": "string",
+                "enum": [
+                  "natural",
+                  "strict"
+                ]
+              },
+              "selectionBounds": {
+                "type": "object",
+                "properties": {
+                  "left": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "top": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "right": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "bottom": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "left",
+                  "top",
+                  "right",
+                  "bottom"
+                ],
+                "additionalProperties": false
+              },
+              "filename": {
+                "type": "string"
+              },
+              "style": {
+                "type": "string"
+              },
+              "camera": {
+                "type": "string"
+              },
+              "lighting": {
+                "type": "string"
+              },
+              "quality": {
+                "type": "string"
+              },
+              "size": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourcePath",
+              "prompt",
+              "model"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-status",
+          "title": "检查视频模型",
+          "description": "检查视频模型",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-jobs",
+          "title": "查看本会话视频任务",
+          "description": "查看本会话视频任务",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "before": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-submit",
+          "title": "生成或编辑视频",
+          "description": "使用用户明确选择的已配置视频模型生成或编辑视频。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "resolution": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "string"
+              },
+              "ratio": {
+                "type": "string"
+              },
+              "firstFrame": {
+                "type": "string"
+              },
+              "lastFrame": {
+                "type": "string"
+              },
+              "imageRefs": {
+                "type": "string"
+              },
+              "videoRefs": {
+                "type": "string"
+              },
+              "audioRefs": {
+                "type": "string"
+              },
+              "generateAudio": {
+                "type": "string"
+              },
+              "watermark": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "requestId",
+              "model",
+              "operation",
+              "prompt",
+              "resolution",
+              "duration",
+              "ratio"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-recover",
+          "title": "恢复已有任务查询",
+          "description": "恢复已有任务查询",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "upstreamId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-import",
+          "title": "导入视频素材",
+          "description": "导入视频素材",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "dataUrl": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-read",
+          "title": "预览视频素材",
+          "description": "预览视频素材",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "offset": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-inspect",
+          "title": "读取视频剪辑信息",
+          "description": "读取视频尺寸、时长和版本，不调用模型。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-local-edit",
+          "title": "保存工具栏剪辑",
+          "description": "用本地工具处理视频，支持覆盖或另存为，不调用模型。",
+          "effect": "write",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "copy",
+                  "overwrite"
+                ]
+              },
+              "start": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3600
+              },
+              "end": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 3600
+              },
+              "rotation": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 0
+                  },
+                  {
+                    "type": "number",
+                    "const": 90
+                  },
+                  {
+                    "type": "number",
+                    "const": 180
+                  },
+                  {
+                    "type": "number",
+                    "const": 270
+                  }
+                ]
+              },
+              "flip": {
+                "type": "boolean"
+              },
+              "speed": {
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 2
+              },
+              "volume": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "crop": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "maximum": 1
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "requestId",
+              "path",
+              "revision",
+              "mode",
+              "start",
+              "end",
+              "rotation",
+              "flip",
+              "speed",
+              "volume",
+              "crop"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "image-generation",
+      "label": "图片生成",
+      "description": "把图片需求组织成清晰、可复用的生成参数。",
+      "path": "skills/image-generation/SKILL.md",
+      "provides": [
+        "workflow:image-generation"
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "image-editing",
+      "label": "图片编辑",
+      "description": "根据工作台选区和用户意图进行非破坏图片编辑。",
+      "path": "skills/image-editing/SKILL.md",
+      "provides": [
+        "workflow:image-editing"
+      ]
+    },
+    {
+      "type": "ui",
+      "id": "console",
+      "label": "视频工作台",
+      "path": "ui/video-console.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://media-studio/console",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false
+      }
+    }
+  ],
+  "contributions": [
+    {
+      "type": "workspace-app",
+      "ref": "studio",
+      "label": "素材工作台",
+      "description": "生成图片，或使用智能选取、涂抹和形状选区进行精确编辑。"
+    },
+    {
+      "type": "workspace-app",
+      "ref": "console",
+      "label": "素材工作台",
+      "description": "通过工具栏编辑视频，或使用 AI 生成和修改内容。"
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Media Studio",
+        "description": "Generate and edit images and videos, save copies, or replace assets and return to your project.",
+        "category": "Design & Creative",
+        "composer": {
+          "prompt": "Open Media Studio to generate or edit images and videos."
+        },
+        "resources": {
+          "studio": {
+            "label": "Image Studio",
+            "description": "Precisely edit images with smart, brush, and shape selections."
+          },
+          "image-generation": {
+            "label": "Image Generation",
+            "description": "Turn image requests into clear, reusable generation parameters."
+          },
+          "image-editing": {
+            "label": "Image Editing",
+            "description": "Edit images non-destructively from the active selection and user intent."
+          },
+          "media-studio-service": {
+            "label": "Media Studio Service",
+            "description": "Safely read workspace images and use provider-neutral host actions."
+          },
+          "console": {
+            "label": "Video Workbench"
+          }
+        },
+        "permissions": {
+          "workspace-read": {
+            "reason": "Read images selected by the user in the current workspace."
+          },
+          "workspace-write": {
+            "reason": "Save copies; replace the original and remove this edit's copy only after user confirmation."
+          }
+        }
+      }
+    }
+  }
+}

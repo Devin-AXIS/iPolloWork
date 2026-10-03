@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { CircleAlert, Cpu, Database, Info, RefreshCcw, Server } from "lucide-react";
+import { CircleAlert, Cpu, Info, RefreshCcw, Server } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -320,16 +320,12 @@ export function AdvancedRuntimeSection(props: AdvancedRuntimeSectionProps) {
   );
 }
 
-interface AdvancedRuntimeMigrationSectionProps {
-  busy: boolean;
-  canMigrate: boolean;
-  migrationBusy: boolean;
-  migrationStatus: string | null;
+interface AdvancedRuntimeConfigSectionProps {
+  canRead: boolean;
   configStatus: iPolloWorkRuntimeConfigStatus | null;
   configStatusBusy: boolean;
   configStatusError: string | null;
   onRefresh: () => Promise<void>;
-  onMigrate: () => Promise<void>;
 }
 
 function formatKeys(keys: string[]) {
@@ -423,57 +419,42 @@ function RuntimeConfigSourceBlock(props: {
   );
 }
 
-export function AdvancedRuntimeMigrationSection(props: AdvancedRuntimeMigrationSectionProps) {
+export function AdvancedRuntimeConfigSection(props: AdvancedRuntimeConfigSectionProps) {
   return (
     <LayoutSection>
       <LayoutSectionHeader>
-        <LayoutSectionTitle>{t("settings.runtime_migration.title")}</LayoutSectionTitle>
+        <LayoutSectionTitle>{t("settings.runtime_config_sources.title")}</LayoutSectionTitle>
         <LayoutSectionDescription>
-          {t("settings.runtime_migration.description")}
+          {t("settings.runtime_config_sources.description")}
         </LayoutSectionDescription>
       </LayoutSectionHeader>
 
       <LayoutSectionItem>
         <LayoutSectionItemHeader>
-          <LayoutSectionItemTitle>{t("settings.runtime_migration.move_title")}</LayoutSectionItemTitle>
-          <LayoutSectionItemDescription>
-            {t("settings.runtime_migration.move_description")}
-          </LayoutSectionItemDescription>
           <LayoutSectionItemHeaderActions>
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => void props.onRefresh()}
-              disabled={props.busy || props.configStatusBusy || !props.canMigrate}
+              disabled={props.configStatusBusy || !props.canRead}
             >
               <RefreshCcw size={14} className={props.configStatusBusy ? "animate-spin" : ""} />
-              {t("settings.runtime_migration.refresh")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void props.onMigrate()}
-              disabled={props.busy || props.migrationBusy || !props.canMigrate}
-            >
-              <Database size={14} />
-              {props.migrationBusy ? t("settings.runtime_migration.migrating") : t("settings.runtime_migration.migrate")}
+              {t("settings.runtime_config_sources.refresh")}
             </Button>
           </LayoutSectionItemHeaderActions>
         </LayoutSectionItemHeader>
-        {props.migrationStatus ? <SettingsNotice>{props.migrationStatus}</SettingsNotice> : null}
         {props.configStatusError ? <SettingsNotice>{props.configStatusError}</SettingsNotice> : null}
         {props.configStatus ? (
           <div className="space-y-3 rounded-xl border border-gray-6 bg-gray-1/60 p-3 text-xs text-gray-10">
             <div className="space-y-2 rounded-xl border border-blue-6/50 bg-blue-2/40 p-3">
-              <div className="font-medium text-gray-12">{t("settings.runtime_migration.effective_title")}</div>
+              <div className="font-medium text-gray-12">{t("settings.runtime_config_sources.effective_title")}</div>
               <div className="text-[11px] text-gray-9">
-                {t("settings.runtime_migration.effective_description")}
+                {t("settings.runtime_config_sources.effective_description")}
               </div>
               <RuntimeConfigSummary config={props.configStatus.effectiveRuntime ?? props.configStatus.runtime} />
               <details className="rounded-lg bg-gray-3 p-2">
-                <summary className="cursor-pointer text-[11px] font-medium text-gray-11">{t("settings.runtime_migration.show_injected_json")}</summary>
+                <summary className="cursor-pointer text-[11px] font-medium text-gray-11">{t("settings.runtime_config_sources.show_injected_json")}</summary>
                 <pre className="mt-2 max-h-72 overflow-auto font-mono text-[11px] text-gray-11">
                   {JSON.stringify(props.configStatus.effectiveRuntime ?? props.configStatus.runtime, null, 2)}
                 </pre>
@@ -482,66 +463,41 @@ export function AdvancedRuntimeMigrationSection(props: AdvancedRuntimeMigrationS
             {props.configStatus.sources ? (
               <div className="space-y-3">
                 <div>
-                  <div className="font-medium text-gray-12">{t("settings.runtime_migration.sources_title")}</div>
+                  <div className="font-medium text-gray-12">{t("settings.runtime_config_sources.sources_title")}</div>
                   <div className="text-[11px] text-gray-9">
-                    {t("settings.runtime_migration.sources_description")}
+                    {t("settings.runtime_config_sources.sources_description")}
                   </div>
                 </div>
                 <RuntimeConfigSourceBlock
-                  title={t("settings.runtime_migration.project_config_title")}
-                  description={t("settings.runtime_migration.project_config_description")}
+                  title={t("settings.runtime_config_sources.project_config_title")}
+                  description={t("settings.runtime_config_sources.project_config_description")}
                   path={props.configStatus.sources.projectOpencode.path}
                   exists={props.configStatus.sources.projectOpencode.exists}
                   keys={props.configStatus.sources.projectOpencode.keys}
                   config={props.configStatus.sources.projectOpencode.config}
                 />
                 <RuntimeConfigSourceBlock
-                  title={t("settings.runtime_migration.global_config_title")}
-                  description={t("settings.runtime_migration.global_config_description")}
+                  title={t("settings.runtime_config_sources.global_config_title")}
+                  description={t("settings.runtime_config_sources.global_config_description")}
                   path={props.configStatus.sources.globalOpencode.path}
                   exists={props.configStatus.sources.globalOpencode.exists}
                   keys={props.configStatus.sources.globalOpencode.keys}
                   config={props.configStatus.sources.globalOpencode.config}
                 />
                 <RuntimeConfigSourceBlock
-                  title={t("settings.runtime_migration.runtime_db_title")}
-                  description={t("settings.runtime_migration.runtime_db_description")}
+                  title={t("settings.runtime_config_sources.runtime_db_title")}
+                  description={t("settings.runtime_config_sources.runtime_db_description")}
                   keys={props.configStatus.sources.runtimeDatabase.keys}
                   config={props.configStatus.sources.runtimeDatabase.config}
                 />
                 <RuntimeConfigSourceBlock
-                  title={t("settings.runtime_migration.injected_config_title")}
-                  description={t("settings.runtime_migration.injected_config_description")}
+                  title={t("settings.runtime_config_sources.injected_config_title")}
+                  description={t("settings.runtime_config_sources.injected_config_description")}
                   keys={props.configStatus.sources.injected.keys}
                   config={props.configStatus.sources.injected.config}
                 />
               </div>
             ) : null}
-            <div>
-              <div className="font-medium text-gray-12">{t("settings.runtime_migration.runtime_database")}</div>
-              <div>{t("settings.runtime_migration.stored_keys", { keys: formatKeys(props.configStatus.runtimeKeys) })}</div>
-            </div>
-            <div>
-              <div className="font-medium text-gray-12">{t("settings.runtime_migration.legacy_metadata")}</div>
-              <div className="break-all">{props.configStatus.legacyiPolloWork.path}</div>
-              {props.configStatus.legacyiPolloWork.error ? (
-                <div className="text-amber-11">{t("settings.runtime_migration.legacy_error", { error: props.configStatus.legacyiPolloWork.error })}</div>
-              ) : null}
-              <div>{t("settings.runtime_migration.migratable_keys", { keys: formatKeys(props.configStatus.legacyiPolloWork.keys) })}</div>
-            </div>
-            <div>
-              <div className="font-medium text-gray-12">{t("settings.runtime_migration.user_opencode_config")}</div>
-              <div className="break-all">{props.configStatus.userOpencode.path}</div>
-              <div>{props.configStatus.userOpencode.exists ? t("settings.runtime_config.found") : t("settings.runtime_config.not_found")}</div>
-              <div>{t("settings.runtime_migration.user_owned_keys", { keys: formatKeys(props.configStatus.userOpencode.keys) })}</div>
-              <div>{t("settings.runtime_migration.migratable_keys", { keys: formatKeys(props.configStatus.userOpencode.migratableKeys) })}</div>
-            </div>
-            <div>
-              <div className="font-medium text-gray-12">{t("settings.runtime_migration.runtime_db_json")}</div>
-              <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-gray-3 p-2 font-mono text-[11px] text-gray-11">
-                {JSON.stringify(props.configStatus.runtime, null, 2)}
-              </pre>
-            </div>
           </div>
         ) : null}
       </LayoutSectionItem>

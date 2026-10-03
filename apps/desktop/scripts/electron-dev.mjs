@@ -454,7 +454,10 @@ if (!viteReady && (conflictingViteUrl || occupiedDevUrl)) {
 }
 
 if (!viteReady) {
-  uiChild = run(pnpmCmd, ["-w", "dev:ui"], {
+  // Start the app package directly instead of bouncing through the workspace
+  // dev:ui script. The extra pnpm process can consume the entire Vite startup
+  // timeout on Windows before it ever launches the package script.
+  uiChild = run(pnpmCmd, ["--filter", "@ipollowork/app", "dev"], {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -481,6 +484,7 @@ electronChild = run(developmentElectronExecutable ?? pnpmCmd, developmentElectro
   cwd: desktopRoot,
   env: {
     ...process.env,
+    IPOLLOWORK_NODE_BIN: process.env.IPOLLOWORK_NODE_BIN?.trim() || process.execPath,
     IPOLLOWORK_DEV_MODE: process.env.IPOLLOWORK_DEV_MODE ?? "1",
     IPOLLOWORK_DATA_DIR: process.env.IPOLLOWORK_DATA_DIR ?? defaultDevDataDir,
     IPOLLOWORK_ELECTRON_START_URL: resolvedStartUrl,

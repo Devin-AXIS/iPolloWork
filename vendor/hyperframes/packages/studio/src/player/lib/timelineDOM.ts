@@ -50,6 +50,7 @@ export {
   // fallow-ignore-next-line unused-exports
   getTimelineElementIdentity,
   findTimelineDomNodeForClip,
+  filterEditableTimelineManifestClips,
 } from "./timelineElementHelpers";
 
 // Re-export iframe helpers so the hook can keep a single import source.

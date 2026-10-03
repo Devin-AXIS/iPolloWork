@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "testimonial-card",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Testimonial Card",
+  "description": "A customer proof frame that connects one quote, one identity and one measurable result.",
+  "tags": [
+    "component",
+    "proof",
+    "testimonial",
+    "customer",
+    "result",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "proof",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "quote",
+        "name",
+        "role",
+        "result"
+      ],
+      "instructions": "Preserve the speaker meaning, identify the person and role, and use a result only when it is supported."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "testimonial-card.html",
+      "target": "compositions/testimonial-card.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "quote",
+      "label": "Quote",
+      "type": "string",
+      "default": "We stopped explaining the workflow and started showing it.",
+      "maxLength": 160,
+      "update": "live"
+    },
+    {
+      "id": "name",
+      "label": "Name",
+      "type": "string",
+      "default": "Mina Park",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "role",
+      "label": "Role",
+      "type": "string",
+      "default": "Head of Product Operations",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "result",
+      "label": "Result",
+      "type": "string",
+      "default": "2× faster review cycles",
+      "maxLength": 48,
+      "update": "live"
+    }
+  ]
+}
+

@@ -1,0 +1,193 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-diff-card",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Code Diff Card",
+  "description": "A before-and-after code diff card that makes one implementation change easy to explain.",
+  "tags": [
+    "component",
+    "developer",
+    "code",
+    "diff",
+    "review",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "developer",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "filename",
+        "before",
+        "after",
+        "summary"
+      ],
+      "instructions": "Use short before and after snippets and a plain-language summary of why the change matters."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "code-diff-card.html",
+      "target": "compositions/code-diff-card.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/code-diff-card.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "filename",
+      "label": "File name",
+      "type": "string",
+      "default": "player.ts",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "before",
+      "label": "Removed code",
+      "type": "string",
+      "default": "- pauseOnUpdate();",
+      "maxLength": 240,
+      "update": "live"
+    },
+    {
+      "id": "after",
+      "label": "Added code",
+      "type": "string",
+      "default": "+ preservePlaybackState();",
+      "maxLength": 240,
+      "update": "live"
+    },
+    {
+      "id": "summary",
+      "label": "Summary",
+      "type": "string",
+      "default": "Keep preview playback stable while edits arrive.",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "state-transformation",
+    "minHoldSeconds": 0.7,
+    "events": [
+      {
+        "id": "before",
+        "target": ".diff-before",
+        "time": 1.2,
+        "duration": 0.6,
+        "action": "Show the old code behavior"
+      },
+      {
+        "id": "after",
+        "target": ".diff-after",
+        "time": 3.2,
+        "duration": 0.6,
+        "action": "Show the replacement code"
+      },
+      {
+        "id": "explain",
+        "target": ".diff-summary",
+        "time": 5.5,
+        "duration": 0.65,
+        "action": "Explain the behavioral difference"
+      },
+      {
+        "id": "resolve",
+        "target": ".diff-pane",
+        "time": 7.6,
+        "duration": 0.55,
+        "action": "Restore both code panes for comparison"
+      }
+    ],
+    "textLimits": {
+      "before": {
+        "maxLines": 4,
+        "maxLineLength": 58
+      },
+      "after": {
+        "maxLines": 4,
+        "maxLineLength": 58
+      }
+    },
+    "usage": {
+      "useWhen": [
+        "Explain one small before/after code change in the same file."
+      ],
+      "avoidWhen": [
+        "Do not present unrelated code as a diff, claim tests passed without running them or cram in whole files."
+      ],
+      "inputRules": {
+        "filename": "Supply real file name within the declared character limit. Do not substitute demo text.",
+        "before": "Actual code in the same file: at most four lines, 58 characters per line. Keep the paired change comparable.",
+        "after": "Actual code in the same file: at most four lines, 58 characters per line. Keep the paired change comparable.",
+        "summary": "Supply real summary within the declared character limit. Do not substitute demo text."
+      },
+      "readingOrder": [
+        "Identify the file",
+        "Read the old behavior",
+        "Read the changed behavior",
+        "Explain the difference and compare"
+      ],
+      "cueBindings": {
+        "before": "When the corresponding narration clause begins: Show the old code behavior. Use an actual measured scene-relative cue when available.",
+        "after": "When the corresponding narration clause begins: Show the replacement code. Use an actual measured scene-relative cue when available.",
+        "explain": "When the corresponding narration clause begins: Explain the behavioral difference. Use an actual measured scene-relative cue when available.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real explanation boundary; use a walkthrough for larger code, never silently truncate lines.",
+        "missingInput": "Resolve the actual required input or report the missing content; do not substitute demo defaults or custom graphics under recipes-only policy.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose another validated recipe whose narrative job fits, split at a meaningful boundary, or report the library gap. Under recipes-only policy, never author custom graphics or force-fit content."
+      },
+      "example": {
+        "values": {
+          "filename": "capacity.ts",
+          "before": "return total - booked;",
+          "after": "return Math.max(0, total - booked);",
+          "summary": "避免可用座位显示为负数；是否有效仍需测试。"
+        },
+        "narration": "原来直接相减，修改后把结果限制为不小于零，避免显示负座位数。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Identify the file → Read the old behavior → Read the changed behavior → Explain the difference and compare. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ],
+      "intent": "在同一代码位置对照修改前后，让观众看出哪一行变化带来什么影响。"
+    }
+  }
+}

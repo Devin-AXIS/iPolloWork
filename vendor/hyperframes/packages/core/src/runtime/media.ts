@@ -1,5 +1,115 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
+import { copyMediaVisualStyles } from "../inline-scripts/parityContract";
+import { syncAvatarBackgrounds } from "./avatarBackground";
+
+const retriedAvatarCutouts = new WeakSet<HTMLVideoElement>();
+
+function retryErroredAvatarCutout(foreground: HTMLVideoElement): void {
+  if (!foreground.error || foreground.readyState !== 0 || retriedAvatarCutouts.has(foreground))
+    return;
+  const src = foreground.getAttribute("src");
+  if (!src) return;
+  retriedAvatarCutouts.add(foreground);
+  const url = new URL(src, document.baseURI);
+  url.searchParams.set("_hfAvatarRetry", "1");
+  foreground.src = url.href;
+  foreground.load();
+}
+
+/** Authored foreground videos use the normal media clock/export path, while
+ * geometry and timing remain owned by the original editable avatar clip. */
+export function syncAvatarCutoutLayers(): void {
+  for (const foreground of document.querySelectorAll<HTMLVideoElement>(
+    "video[data-avatar-source]",
+  )) {
+    const source = document.getElementById(foreground.dataset.avatarSource || "");
+    if (
+      !(source instanceof HTMLVideoElement) ||
+      source.parentElement !== foreground.parentElement ||
+      source.dataset.avatarCutout !== foreground.id
+    ) {
+      foreground.style.display = "none";
+      foreground.pause();
+      continue;
+    }
+    retryErroredAvatarCutout(foreground);
+    const styles = getComputedStyle(source);
+    copyMediaVisualStyles(foreground.style, styles);
+    foreground.style.position = styles.position;
+    foreground.style.display = styles.display;
+    foreground.style.pointerEvents = "none";
+    const siblings = Array.from(source.parentElement?.children ?? []).filter(
+      (node) => !node.hasAttribute("data-avatar-source") && node instanceof HTMLElement,
+    );
+    foreground.style.zIndex = String(
+      Math.max(
+        0,
+        ...siblings.map((node) => Number.parseFloat(getComputedStyle(node).zIndex) || 0),
+      ) + 1,
+    );
+    for (const attr of [
+      "data-start",
+      "data-duration",
+      "data-media-start",
+      "data-playback-start",
+      "data-playback-rate",
+      "data-source-duration",
+      "data-hidden",
+      "loop",
+    ]) {
+      const value = source.getAttribute(attr);
+      if (value === null) {
+        if (foreground.hasAttribute(attr)) foreground.removeAttribute(attr);
+      } else if (foreground.getAttribute(attr) !== value) foreground.setAttribute(attr, value);
+    }
+    foreground.defaultPlaybackRate = source.defaultPlaybackRate;
+    foreground.muted = true;
+    foreground.volume = 0;
+  }
+  // The editable source supplies the original background below authored
+  // graphics. Keep its reveal window in the same sync path as the transparent
+  // foreground so normal preview playback cannot update one without the other.
+  syncAvatarBackgrounds();
+}
+
+/** Keep the editor-internal foreground visually attached while Studio applies
+ * live drag/resize/rotate styles to the single editable source video. */
+export function observeAvatarCutoutLayers(): () => void {
+  const root = document.documentElement;
+  if (!root || typeof MutationObserver === "undefined") return () => {};
+  let queued = false;
+  const observer = new MutationObserver((mutations) => {
+    const sourceChanged = mutations.some(
+      ({ target }) =>
+        target instanceof HTMLVideoElement && target.hasAttribute("data-avatar-cutout"),
+    );
+    if (!sourceChanged || queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      syncAvatarCutoutLayers();
+    });
+  });
+  observer.observe(root, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: [
+      "style",
+      "class",
+      "data-avatar-cutout",
+      "data-start",
+      "data-duration",
+      "data-media-start",
+      "data-playback-start",
+      "data-playback-rate",
+      "data-source-duration",
+      "data-hidden",
+      "loop",
+    ],
+  });
+  return () => observer.disconnect();
+}
 
 export function readElementPlaybackRate(el: HTMLMediaElement): number {
   const raw = el.defaultPlaybackRate;

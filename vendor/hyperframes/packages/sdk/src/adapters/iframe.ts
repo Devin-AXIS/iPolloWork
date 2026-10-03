@@ -298,13 +298,27 @@ export const _imgCanvasCache = new Map<string, OffscreenCanvas | null>();
  * ponytail: FIFO eviction, upgrade to LRU if cache hit-rate matters.
  */
 const _IMG_CANVAS_CACHE_MAX = 64;
+const _IMG_CANVAS_CACHE_MAX_BYTES = 128 * 1024 * 1024;
+
+function canvasCacheBytes(): number {
+  let bytes = 0;
+  for (const canvas of _imgCanvasCache.values()) {
+    if (canvas) bytes += canvas.width * canvas.height * 4;
+  }
+  return bytes;
+}
 
 function cacheCanvas(key: string, value: OffscreenCanvas | null): void {
-  if (!_imgCanvasCache.has(key) && _imgCanvasCache.size >= _IMG_CANVAS_CACHE_MAX) {
-    const oldest = _imgCanvasCache.keys().next().value;
-    if (oldest !== undefined) _imgCanvasCache.delete(oldest);
-  }
+  _imgCanvasCache.delete(key);
   _imgCanvasCache.set(key, value);
+  while (
+    _imgCanvasCache.size > _IMG_CANVAS_CACHE_MAX
+    || canvasCacheBytes() > _IMG_CANVAS_CACHE_MAX_BYTES
+  ) {
+    const oldest = _imgCanvasCache.keys().next().value;
+    if (oldest === undefined) break;
+    _imgCanvasCache.delete(oldest);
+  }
 }
 
 /**
@@ -321,10 +335,16 @@ const _MAX_ALPHA_TEST_PIXELS = 16_000_000;
  * is not necessary; suppressing duplicate warnings across resets is harmless.
  */
 const _warnedTaintSrcs = new Set<string>();
+const _WARNED_TAINT_SRCS_MAX = 256;
 
 function warnTaintOnce(src: string): void {
   if (_warnedTaintSrcs.has(src)) return;
   _warnedTaintSrcs.add(src);
+  while (_warnedTaintSrcs.size > _WARNED_TAINT_SRCS_MAX) {
+    const oldest = _warnedTaintSrcs.values().next().value;
+    if (oldest === undefined) break;
+    _warnedTaintSrcs.delete(oldest);
+  }
   // Visibility for the silent-failure path: a cross-origin / uncorsed image
   // taints the canvas, so alpha hit-test is unavailable and we fall back to
   // opaque. Without this, the fall-back is invisible ("hit-test feels wrong").

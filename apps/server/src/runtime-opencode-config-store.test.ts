@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addMcp, listMcp, setMcpEnabled } from "./mcp.js";
 import { buildiPolloWorkRuntimeConfig } from "./ipollowork-runtime-config.js";
 import { readiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
-import { addPlugin, listPlugins, removePlugin } from "./plugins.js";
+import { registerOpencodePluginBinding, unregisterOpencodePluginBinding } from "./opencode-plugin-projection.js";
+import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import {
   onRuntimeOpencodeConfigWrite,
+  readRuntimeProviderChannels,
   readRuntimeOpencodeConfig,
   writeRuntimeOpencodeConfig,
 } from "./runtime-opencode-config-store.js";
@@ -60,6 +62,67 @@ async function expectMissing(path: string): Promise<void> {
 }
 
 describe("runtime OpenCode config store", () => {
+  test("stores provider channels once and projects them into every workspace", async () => {
+    await withWorkspace(async ({ root, config }) => {
+      const secondWorkspaceId = "ws_runtime_second";
+      config.workspaces.push({
+        id: secondWorkspaceId,
+        name: "Second",
+        path: root,
+        preset: "starter",
+        workspaceType: "local",
+      });
+      const server = await startServer(config) as Served;
+      try {
+        const profile = {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Shared channel",
+          options: { baseURL: "https://models.example/v1" },
+          models: { shared: { name: "Shared model" } },
+        };
+        const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/config`, {
+          method: "PATCH",
+          headers: { authorization: `Bearer ${config.token}`, "content-type": "application/json" },
+          body: JSON.stringify({ opencode: { provider: { shared: profile } } }),
+        });
+        expect(response.status).toBe(200);
+
+        expect(await readRuntimeProviderChannels(config)).toEqual({ shared: profile });
+        expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).provider).toBeUndefined();
+
+        for (const workspaceId of [WORKSPACE_ID, secondWorkspaceId]) {
+          const configResponse = await fetch(`http://127.0.0.1:${server.port}/workspace/${workspaceId}/config`, {
+            headers: { authorization: `Bearer ${config.token}` },
+          });
+          expect(configResponse.status).toBe(200);
+          expect(await configResponse.json()).toMatchObject({
+            opencode: { provider: { shared: profile } },
+          });
+          const runtime = JSON.parse(await buildiPolloWorkRuntimeConfig(config, workspaceId));
+          expect(runtime.provider?.shared).toEqual(profile);
+        }
+
+        const deleteResponse = await fetch(`http://127.0.0.1:${server.port}/workspace/${secondWorkspaceId}/config`, {
+          method: "PATCH",
+          headers: { authorization: `Bearer ${config.token}`, "content-type": "application/json" },
+          body: JSON.stringify({ opencode: { provider: { shared: null } } }),
+        });
+        expect(deleteResponse.status).toBe(200);
+        expect(await readRuntimeProviderChannels(config)).toEqual({});
+        for (const workspaceId of [WORKSPACE_ID, secondWorkspaceId]) {
+          const configResponse = await fetch(`http://127.0.0.1:${server.port}/workspace/${workspaceId}/config`, {
+            headers: { authorization: `Bearer ${config.token}` },
+          });
+          expect(configResponse.status).toBe(200);
+          const body = await configResponse.json() as { opencode?: { provider?: Record<string, unknown> } };
+          expect(body.opencode?.provider?.shared).toBeUndefined();
+        }
+      } finally {
+        await server.stop(true);
+      }
+    });
+  });
+
   test("reports no-op writes without notifying listeners", async () => {
     await withWorkspace(async ({ config }) => {
       let writes = 0;
@@ -97,6 +160,38 @@ describe("runtime OpenCode config store", () => {
     });
   });
 
+  test("notifies engine-neutral listeners only when shared MCP capabilities change", async () => {
+    await withWorkspace(async ({ config }) => {
+      let writes = 0;
+      const unsubscribe = onRuntimeMcpConfigWrite((writtenConfig, workspaceId) => {
+        if (writtenConfig === config && workspaceId === WORKSPACE_ID) writes += 1;
+      });
+
+      try {
+        await writeRuntimeOpencodeConfig(config, WORKSPACE_ID, (current) => ({
+          ...current,
+          plugin: ["runtime-plugin"],
+        }));
+        expect(writes).toBe(0);
+
+        await addMcp(config, WORKSPACE_ID, "posthog", {
+          type: "remote",
+          url: "https://mcp.posthog.com/mcp",
+          enabled: true,
+        });
+        expect(writes).toBe(1);
+
+        await writeRuntimeOpencodeConfig(config, WORKSPACE_ID, (current) => ({
+          ...current,
+          provider: { example: { npm: "@ai-sdk/openai-compatible" } },
+        }));
+        expect(writes).toBe(1);
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
+
   test("stores MCP changes in the iPolloWork runtime DB without rewriting workspace files", async () => {
     await withWorkspace(async ({ root, config }) => {
       const opencodePath = join(root, "opencode.jsonc");
@@ -122,16 +217,13 @@ describe("runtime OpenCode config store", () => {
       const opencode = '{\n  "plugin": ["project-plugin"]\n}\n';
       await writeFile(opencodePath, opencode, "utf8");
 
-      expect(await addPlugin(config, WORKSPACE_ID, "runtime-plugin")).toBe(true);
-      expect(await removePlugin(config, WORKSPACE_ID, "runtime-plugin")).toBe(true);
-      expect(await addPlugin(config, WORKSPACE_ID, "runtime-plugin")).toBe(true);
+      expect(await registerOpencodePluginBinding(config, WORKSPACE_ID, "runtime-plugin")).toBe(true);
+      expect(await unregisterOpencodePluginBinding(config, WORKSPACE_ID, "runtime-plugin")).toBe(true);
+      expect(await registerOpencodePluginBinding(config, WORKSPACE_ID, "runtime-plugin")).toBe(true);
 
       expect(await readFile(opencodePath, "utf8")).toBe(opencode);
       await expectMissing(join(root, ".opencode", "ipollowork.json"));
       expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin).toEqual(["runtime-plugin"]);
-
-      const result = await listPlugins(config, WORKSPACE_ID, root, false);
-      expect(result.items.map((item) => item.spec)).toEqual(["project-plugin", "runtime-plugin"]);
 
       await addMcp(config, WORKSPACE_ID, "runtime", { type: "remote", url: "https://runtime.example/mcp", enabled: true });
       const runtimeConfig = JSON.parse(await buildiPolloWorkRuntimeConfig(config, WORKSPACE_ID)) as {
@@ -147,15 +239,15 @@ describe("runtime OpenCode config store", () => {
     await withWorkspace(async ({ root, config }) => {
       await writeFile(join(root, "opencode.jsonc"), '{ "mcp": {\n}\n}\n}\n', "utf8");
       await addMcp(config, WORKSPACE_ID, "runtime", { type: "remote", url: "https://runtime.example/mcp", enabled: true });
-      await addPlugin(config, WORKSPACE_ID, "runtime-plugin");
+      await registerOpencodePluginBinding(config, WORKSPACE_ID, "runtime-plugin");
 
       const mcpItems = await listMcp(config, WORKSPACE_ID, root);
-      const pluginItems = await listPlugins(config, WORKSPACE_ID, root, false);
+      const runtime = await readRuntimeOpencodeConfig(config, WORKSPACE_ID);
 
       // Global MCPs remain visible by design. A malformed project config must
       // not hide the runtime-owned entry that iPolloWork adds for this workspace.
       expect(mcpItems.find((item) => item.name === "runtime")?.source).toBe("config.remote");
-      expect(pluginItems.items.map((item) => item.spec)).toEqual(["runtime-plugin"]);
+      expect(runtime.plugin).toEqual(["runtime-plugin"]);
     });
   });
 
@@ -169,8 +261,8 @@ describe("runtime OpenCode config store", () => {
           body: JSON.stringify({
             ipollowork: {
               cloudImports: {
-                plugins: {
-                  plugin_1: { pluginId: "plugin_1", name: "productivity", files: [] },
+                providers: {
+                  provider_1: { cloudProviderId: "provider_1", providerId: "managed", name: "Managed", modelIds: [] },
                 },
               },
             },
@@ -180,11 +272,11 @@ describe("runtime OpenCode config store", () => {
 
         const legacyiPolloWorkPath = join(root, ".opencode", "ipollowork.json");
         const legacyiPolloWork = await readFile(legacyiPolloWorkPath, "utf8").catch(() => "");
-        expect(legacyiPolloWork).not.toContain("productivity");
+        expect(legacyiPolloWork).not.toContain("provider_1");
         expect(legacyiPolloWork).not.toContain("cloudImports");
         expect((await readiPolloWorkWorkspaceConfig(config, WORKSPACE_ID)).cloudImports).toEqual({
-          plugins: {
-            plugin_1: { pluginId: "plugin_1", name: "productivity", files: [] },
+          providers: {
+            provider_1: { cloudProviderId: "provider_1", providerId: "managed", name: "Managed", modelIds: [] },
           },
         });
 
@@ -195,8 +287,8 @@ describe("runtime OpenCode config store", () => {
         expect(await configResponse.json()).toMatchObject({
           ipollowork: {
             cloudImports: {
-              plugins: {
-                plugin_1: { pluginId: "plugin_1", name: "productivity", files: [] },
+              providers: {
+                provider_1: { cloudProviderId: "provider_1", providerId: "managed", name: "Managed", modelIds: [] },
               },
             },
           },
@@ -207,139 +299,4 @@ describe("runtime OpenCode config store", () => {
     });
   });
 
-  test("explicitly migrates legacy iPolloWork runtime config into the runtime DB", async () => {
-    await withWorkspace(async ({ root, config }) => {
-      await mkdir(join(root, ".opencode"), { recursive: true });
-      const ipolloworkPath = join(root, ".opencode", "ipollowork.json");
-      await writeFile(ipolloworkPath, JSON.stringify({
-        version: 1,
-        workspace: { name: "Test" },
-        plugin: ["legacy-plugin"],
-        mcp: { legacy: { type: "remote", url: "https://legacy.example/mcp" } },
-        permission: { external_directory: { "/legacy/*": "allow" } },
-        provider: { legacy: { npm: "legacy-provider" } },
-      }, null, 2) + "\n", "utf8");
-
-      const server = await startServer(config) as Served;
-      try {
-        const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/runtime-config/migrate`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${config.token}`, "content-type": "application/json" },
-        });
-        expect(response.status).toBe(200);
-        expect(await response.json()).toMatchObject({
-          migrated: true,
-          keys: ["plugin", "mcp", "permission", "provider"],
-        });
-
-        const runtime = await readRuntimeOpencodeConfig(config, WORKSPACE_ID);
-        expect(runtime.plugin).toEqual(["legacy-plugin"]);
-        expect(runtime.mcp?.legacy?.url).toBe("https://legacy.example/mcp");
-        expect(runtime.permission?.external_directory?.["/legacy/*"]).toBe("allow");
-        expect(runtime.provider?.legacy).toEqual({ npm: "legacy-provider" });
-
-        // The legacy file is migrated into the runtime DB and never rewritten.
-        // The cleaned config (legacy runtime keys stripped, metadata kept)
-        // now lives in the DB-backed ipollowork config.
-        const ipollowork = await readiPolloWorkWorkspaceConfig(config, WORKSPACE_ID);
-        expect(ipollowork.version).toBe(1);
-        expect(ipollowork.workspace).toEqual({ name: "Test" });
-        expect(ipollowork.plugin).toBeUndefined();
-        expect(ipollowork.mcp).toBeUndefined();
-        expect(ipollowork.permission).toBeUndefined();
-        expect(ipollowork.provider).toBeUndefined();
-
-        const statusResponse = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/runtime-config`, {
-          headers: { authorization: `Bearer ${config.token}` },
-        });
-        expect(statusResponse.status).toBe(200);
-        const status = await statusResponse.json() as {
-          effectiveRuntime: Record<string, unknown>;
-          sources: Record<string, { exists?: boolean; keys: string[]; config?: Record<string, unknown> }>;
-        };
-        expect(status).toMatchObject({
-          runtimeKeys: ["plugin", "mcp", "permission", "provider"],
-          sources: {
-            projectOpencode: { exists: false, keys: [] },
-            runtimeDatabase: { keys: ["plugin", "mcp", "permission", "provider"] },
-          },
-          legacyiPolloWork: { keys: [] },
-          userOpencode: { exists: false, keys: [] },
-        });
-        expect(status.effectiveRuntime.default_agent).toBe("ipollowork");
-        expect(status.effectiveRuntime.agent).toMatchObject({ ipollowork: { mode: "primary" } });
-        expect(status.effectiveRuntime.provider).toMatchObject({ legacy: { npm: "legacy-provider" } });
-        expect(status.sources.injected.config?.agent).toMatchObject({ ipollowork: { mode: "primary" } });
-        expect(status.sources.injected.keys).toContain("provider");
-        expect(status.sources.globalOpencode).toHaveProperty("path");
-      } finally {
-        await server.stop(true);
-      }
-    });
-  });
-
-  test("runtime config status tolerates malformed legacy iPolloWork metadata", async () => {
-    await withWorkspace(async ({ root, config }) => {
-      await mkdir(join(root, ".opencode"), { recursive: true });
-      await writeFile(join(root, ".opencode", "ipollowork.json"), "{ invalid\n", "utf8");
-      await addMcp(config, WORKSPACE_ID, "runtime", { type: "remote", url: "https://runtime.example/mcp" });
-
-      const server = await startServer(config) as Served;
-      try {
-        const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/runtime-config`, {
-          headers: { authorization: `Bearer ${config.token}` },
-        });
-        expect(response.status).toBe(200);
-        expect(await response.json()).toMatchObject({
-          runtimeKeys: ["mcp"],
-          legacyiPolloWork: { keys: [], error: "Failed to parse ipollowork.json" },
-        });
-      } finally {
-        await server.stop(true);
-      }
-    });
-  });
-
-  test("explicitly migrates safe iPolloWork-managed keys from user opencode config", async () => {
-    await withWorkspace(async ({ root, config }) => {
-      const opencodePath = join(root, "opencode.jsonc");
-      await writeFile(opencodePath, JSON.stringify({
-        $schema: "https://opencode.ai/config.json",
-        default_agent: "ipollowork",
-        plugin: ["opencode-chrome-devtools", "user-plugin"],
-        provider: { local: { npm: "@ai-sdk/openai-compatible" } },
-        disabled_providers: ["old-provider"],
-        custom_user_key: true,
-      }, null, 2) + "\n", "utf8");
-
-      const server = await startServer(config) as Served;
-      try {
-        const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/runtime-config/migrate`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${config.token}`, "content-type": "application/json" },
-        });
-        expect(response.status).toBe(200);
-        expect(await response.json()).toMatchObject({
-          migrated: true,
-          userOpencodeKeys: ["default_agent", "plugin", "disabled_providers", "provider"],
-        });
-
-        const runtime = await readRuntimeOpencodeConfig(config, WORKSPACE_ID);
-        expect(runtime.default_agent).toBe("ipollowork");
-        expect(runtime.plugin).toEqual(["opencode-chrome-devtools", "user-plugin"]);
-        expect(runtime.provider?.local).toEqual({ npm: "@ai-sdk/openai-compatible" });
-        expect(runtime.disabled_providers).toEqual(["old-provider"]);
-
-        const opencode = JSON.parse(await readFile(opencodePath, "utf8")) as Record<string, unknown>;
-        expect(opencode.$schema).toBe("https://opencode.ai/config.json");
-        expect(opencode.custom_user_key).toBe(true);
-        expect(opencode.default_agent).toBeUndefined();
-        expect(opencode.plugin).toBeUndefined();
-        expect(opencode.provider).toBeUndefined();
-        expect(opencode.disabled_providers).toBeUndefined();
-      } finally {
-        await server.stop(true);
-      }
-    });
-  });
 });

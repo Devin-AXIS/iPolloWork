@@ -95,7 +95,7 @@ export function useFileManager({
   );
 
   const writeProjectFile = useCallback(
-    async (path: string, content: string, expectedContent?: string): Promise<void> => {
+    async (path: string, content: string, expectedContent?: string | null): Promise<void> => {
       if (!projectId) throw new Error("No active project");
       const writeProjectId = projectId;
       let expectedVersion = await studioExpectedFileVersion(fileVersions, path, expectedContent);

@@ -1,4 +1,4 @@
-import type { ModelRef, SuggestedPlugin } from "./types";
+import type { ModelRef } from "./types";
 import { t } from "../i18n";
 import { getDenMcpUrl } from "./lib/den";
 import { publicAssetUrl } from "./lib/public-asset";
@@ -10,10 +10,6 @@ import {
   type iPolloWorkExtensionManifest,
 } from "./extensions";
 
-export const MODEL_PREF_KEY = "ipollowork.defaultModel";
-export const SESSION_MODEL_PREF_KEY = "ipollowork.sessionModels";
-export const THINKING_PREF_KEY = "ipollowork.showThinking";
-export const VARIANT_PREF_KEY = "ipollowork.modelVariant";
 export { LANGUAGE_PREF_KEY } from "../i18n";
 export const HIDE_TITLEBAR_PREF_KEY = "ipollowork.hideTitlebar";
 
@@ -21,8 +17,6 @@ export const DEFAULT_MODEL: ModelRef = {
   providerID: "opencode",
   modelID: "big-pickle",
 };
-
-export const SUGGESTED_PLUGINS: SuggestedPlugin[] = [];
 
 export type ExtensionKind = "mcp" | "plugin" | "skill" | "ui-control" | "extension";
 

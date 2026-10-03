@@ -37,3 +37,32 @@ export function resolvePreferredSelectableChatModel(input: {
 
   return currentAvailable ? (input.current ?? null) : null;
 }
+
+/**
+ * Resolve the model an engine can execute without changing the app-wide
+ * preference. Switching engines must not replace the user's shared model just
+ * because one runtime lacks that route; the preferred model becomes active
+ * again as soon as the user returns to an engine that supports it.
+ */
+export function resolveEngineSelectableChatModel(input: {
+  providers: SelectableChatModelSnapshot;
+  defaults?: Record<string, string>;
+  preferred: ModelRef | null | undefined;
+}): ModelRef | null {
+  const preferred = resolvePreferredSelectableChatModel({
+    providers: input.providers,
+    defaults: input.defaults,
+    current: input.preferred,
+  });
+  if (preferred) return preferred;
+
+  for (const provider of input.providers) {
+    const defaultModel = input.defaults?.[provider.providerID];
+    const modelID = defaultModel && provider.modelIDs.includes(defaultModel)
+      ? defaultModel
+      : provider.modelIDs[0];
+    if (modelID) return { providerID: provider.providerID, modelID };
+  }
+
+  return null;
+}

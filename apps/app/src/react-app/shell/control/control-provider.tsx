@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { SerializedActionQueue } from "./serialized-action-queue";
 
 export type iPolloWorkControlSideEffect = "none" | "navigation" | "mutation" | "external";
 
@@ -192,6 +193,7 @@ export function IPolloWorkControlProvider({ children }: { children: ReactNode })
   const [narration, setNarration] = useState("Control mode is off.");
   const [spotlight, setSpotlight] = useState<SpotlightState>({ visible: false, phase: "target", rect: null });
   const busyActionIdRef = useRef<string | null>(null);
+  const actionQueueRef = useRef(new SerializedActionQueue());
   const spotlightRunRef = useRef(0);
 
   const route = `${location.pathname}${location.search}${location.hash}`;
@@ -274,55 +276,56 @@ export function IPolloWorkControlProvider({ children }: { children: ReactNode })
     await wait(SPOTLIGHT_TIMING_MS.release);
   }, []);
 
-  const executeAction = useCallback(async (actionId: string, args?: unknown): Promise<iPolloWorkControlResult> => {
-    const registered = actionsRef.current.get(actionId);
-    const action = registered?.ref.current;
-    if (!registered || !action) return { ok: false, actionId, error: `Unknown action: ${actionId}` };
-    if (action.disabled) return { ok: false, actionId, error: `Action is disabled: ${action.label}` };
-    if (busyActionIdRef.current) return { ok: false, actionId, error: `Already acting: ${busyActionIdRef.current}` };
+  const executeAction = useCallback((actionId: string, args?: unknown): Promise<iPolloWorkControlResult> => {
+    return actionQueueRef.current.run(async () => {
+      const registered = actionsRef.current.get(actionId);
+      const action = registered?.ref.current;
+      if (!registered || !action) return { ok: false, actionId, error: `Unknown action: ${actionId}` };
+      if (action.disabled) return { ok: false, actionId, error: `Action is disabled: ${action.label}` };
 
-    if (action.requiresConfirmation && isBrowser()) {
-      const confirmed = window.confirm(`Allow Control Mode to ${action.label}?`);
-      if (!confirmed) return { ok: false, actionId, error: "User cancelled action." };
-    }
+      if (action.requiresConfirmation && isBrowser()) {
+        const confirmed = window.confirm(`Allow Control Mode to ${action.label}?`);
+        if (!confirmed) return { ok: false, actionId, error: "User cancelled action." };
+      }
 
-    const runId = spotlightRunRef.current + 1;
-    spotlightRunRef.current = runId;
-    busyActionIdRef.current = action.id;
-    setEnabled(true);
-    setBusyActionId(action.id);
-    setNarration(`Moving to ${action.label}…`);
+      const runId = spotlightRunRef.current + 1;
+      spotlightRunRef.current = runId;
+      busyActionIdRef.current = action.id;
+      setEnabled(true);
+      setBusyActionId(action.id);
+      setNarration(`Moving to ${action.label}…`);
 
-    try {
-      await playTargetChoreography(action, runId);
-      setNarration(`Running ${action.label}…`);
-      const effectiveArgs = args === undefined ? action.previewArgs : args;
-      const result = await action.execute(effectiveArgs, { setNarration });
-      const resultError = returnedActionError(result);
-      if (resultError) {
-        setNarration(`Could not ${action.label}: ${resultError}`);
+      try {
+        await playTargetChoreography(action, runId);
+        setNarration(`Running ${action.label}…`);
+        const effectiveArgs = args === undefined ? action.previewArgs : args;
+        const result = await action.execute(effectiveArgs, { setNarration });
+        const resultError = returnedActionError(result);
+        if (resultError) {
+          setNarration(`Could not ${action.label}: ${resultError}`);
+          if (spotlightRunRef.current === runId) {
+            setSpotlight({ visible: false, phase: "target", rect: null });
+          }
+          return { ok: false, actionId, error: resultError };
+        }
+        setNarration(`Done: ${action.label}`);
+        await wait(SPOTLIGHT_TIMING_MS.done);
         if (spotlightRunRef.current === runId) {
           setSpotlight({ visible: false, phase: "target", rect: null });
         }
-        return { ok: false, actionId, error: resultError };
+        return { ok: true, actionId, result };
+      } catch (error) {
+        const message = describeError(error);
+        setNarration(`Could not ${action.label}: ${message}`);
+        if (spotlightRunRef.current === runId) {
+          setSpotlight({ visible: false, phase: "target", rect: null });
+        }
+        return { ok: false, actionId, error: message };
+      } finally {
+        if (busyActionIdRef.current === action.id) busyActionIdRef.current = null;
+        setBusyActionId(null);
       }
-      setNarration(`Done: ${action.label}`);
-      await wait(SPOTLIGHT_TIMING_MS.done);
-      if (spotlightRunRef.current === runId) {
-        setSpotlight({ visible: false, phase: "target", rect: null });
-      }
-      return { ok: true, actionId, result };
-    } catch (error) {
-      const message = describeError(error);
-      setNarration(`Could not ${action.label}: ${message}`);
-      if (spotlightRunRef.current === runId) {
-        setSpotlight({ visible: false, phase: "target", rect: null });
-      }
-      return { ok: false, actionId, error: message };
-    } finally {
-      if (busyActionIdRef.current === action.id) busyActionIdRef.current = null;
-      setBusyActionId(null);
-    }
+    });
   }, [playTargetChoreography, setEnabled]);
 
   const value = useMemo<iPolloWorkControlContextValue>(() => ({

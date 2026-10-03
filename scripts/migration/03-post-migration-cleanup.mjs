@@ -103,12 +103,12 @@ async function main() {
       scripts.dev = "node ./scripts/electron-dev.mjs";
       scripts.build = "node ./scripts/electron-build.mjs";
       scripts.package =
-        "pnpm run build && pnpm exec electron-builder --config electron-builder.yml";
+        "pnpm run package:engine-runtimes && pnpm run build && pnpm exec electron-builder --config electron-builder.yml";
       scripts["dev:electron"] = undefined;
       scripts["build:electron"] = undefined;
       scripts["package:electron"] = undefined;
       scripts["package:electron:dir"] =
-        "pnpm run build && pnpm exec electron-builder --config electron-builder.yml --dir";
+        "pnpm run package:engine-runtimes && pnpm run build && pnpm exec electron-builder --config electron-builder.yml --dir";
       scripts.electron = undefined;
       scripts["dev:react-session"] = undefined;
       scripts["dev:electron:react-session"] =

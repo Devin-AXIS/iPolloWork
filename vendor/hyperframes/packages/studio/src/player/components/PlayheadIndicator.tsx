@@ -26,8 +26,8 @@ interface PlayheadIndicatorProps {
 }
 
 export function PlayheadIndicator({
-  color = "var(--hf-accent, #3CE6AC)",
-  glowColor = "rgba(60,230,172,0.14)",
+  color = "var(--hf-accent, #1FBAC0)",
+  glowColor = "rgba(31,186,192,0.14)",
   scrubbing = false,
   stickyHead = true,
 }: PlayheadIndicatorProps) {

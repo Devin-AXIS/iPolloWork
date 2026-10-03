@@ -18,12 +18,17 @@ type TranslationKey =
   | "header.edit"
   | "header.preview"
   | "header.previewComingSoon"
-  | "header.aiEditingWarning"
+  | "preview.aiEditingWarning"
   | "header.undo"
   | "header.redo"
   | "header.capture"
   | "header.capturing"
   | "header.captureCurrentFrame"
+  | "header.saveAsTemplate"
+  | "header.templates"
+  | "header.askAi"
+  | "header.openRepository"
+  | "header.reloadStudio"
   | "header.inspector"
   | "header.renderInProgress"
   | "header.renderExport"
@@ -36,14 +41,10 @@ type TranslationKey =
   | "sidebar.code"
   | "sidebar.comps"
   | "sidebar.assets"
-  | "sidebar.catalog"
   | "sidebar.codeTooltip"
   | "sidebar.compsTooltip"
   | "sidebar.assetsTooltip"
-  | "sidebar.catalogTooltip"
   | "assets.import"
-  | "assets.source"
-  | "assets.sourceUnavailable"
   | "assets.searchPlaceholder"
   | "assets.dropUpload"
   | "assets.mediaTypes"
@@ -55,6 +56,33 @@ type TranslationKey =
   | "assets.categoryImages"
   | "assets.categoryVideo"
   | "assets.categoryFonts"
+  | "animation.searchPlaceholder"
+  | "animation.searchLabel"
+  | "animation.selected"
+  | "animation.filterAll"
+  | "animation.filterBoxAutomation"
+  | "animation.filterText"
+  | "animation.filterCamera"
+  | "animation.filterTransition"
+  | "animation.used"
+  | "animation.unused"
+  | "animation.inUse"
+  | "animation.apply"
+  | "animation.edit"
+  | "animation.remove"
+  | "animation.close"
+  | "animation.start"
+  | "animation.end"
+  | "animation.speed"
+  | "animation.loop"
+  | "animation.done"
+  | "animation.saving"
+  | "animation.saveError"
+  | "animation.noMatches"
+  | "animation.selectElement"
+  | "animation.applied"
+  | "animation.updated"
+  | "animation.removed"
   | "sidebar.selectFile"
   | "sidebar.lint"
   | "sidebar.linting"
@@ -62,22 +90,22 @@ type TranslationKey =
   | "right.resizePanes"
   | "right.design"
   | "right.designTooltip"
+  | "right.role"
   | "right.voice"
   | "right.voiceTooltip"
   | "right.style"
   | "right.styleTooltip"
+  | "right.componentsHelp"
+  | "right.presetComponents"
+  | "right.avatar"
+  | "right.components"
+  | "right.componentsTooltip"
   | "right.assets"
   | "right.assetsTooltip"
-  | "right.illustration"
-  | "right.illustrationTooltip"
   | "right.animation"
   | "right.animationTooltip"
   | "right.animationTemplates"
   | "right.animationProperties"
-  | "right.catalog"
-  | "right.catalogTooltip"
-  | "right.effects"
-  | "right.effectsTooltip"
   | "right.layers"
   | "right.layersTooltip"
   | "right.renders"
@@ -109,16 +137,21 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "app.loadingProject": "Loading project...",
     "app.waitingForServer": "Waiting for Studio server...",
     "header.viewLabel": "Studio view",
-    "header.storyboard": "Storyboard",
+    "header.storyboard": "Script table",
     "header.edit": "Edit",
     "header.preview": "Preview",
     "header.previewComingSoon": "Preview is coming soon",
-    "header.aiEditingWarning": "AI is editing the video · Avoid manual edits",
+    "preview.aiEditingWarning": "AI is editing the video · Avoid manual edits",
     "header.undo": "Undo",
     "header.redo": "Redo",
     "header.capture": "Capture",
     "header.capturing": "Capturing...",
     "header.captureCurrentFrame": "Capture current frame",
+    "header.saveAsTemplate": "Save as work template",
+    "header.templates": "Templates",
+    "header.askAi": "Ask AI",
+    "header.openRepository": "Open project repository",
+    "header.reloadStudio": "Reload Video Studio",
     "header.inspector": "Properties",
     "header.renderInProgress": "A render is already in progress",
     "header.renderExport": "Open export settings",
@@ -131,14 +164,10 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.code": "Code",
     "sidebar.comps": "Comps",
     "sidebar.assets": "Assets",
-    "sidebar.catalog": "Catalog",
     "sidebar.codeTooltip": "Source code editor",
     "sidebar.compsTooltip": "Compositions and sub-compositions",
     "sidebar.assetsTooltip": "Videos, images, audio, fonts",
-    "sidebar.catalogTooltip": "Browse blocks and components",
     "assets.import": "Import",
-    "assets.source": "Source",
-    "assets.sourceUnavailable": "Source selection is not available yet",
     "assets.searchPlaceholder": "Search assets...",
     "assets.dropUpload": "Drop files to upload",
     "assets.mediaTypes": "Images, video, audio, and fonts",
@@ -150,6 +179,33 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "assets.categoryImages": "Images",
     "assets.categoryVideo": "Video",
     "assets.categoryFonts": "Fonts",
+    "animation.searchPlaceholder": "Search animations...",
+    "animation.searchLabel": "Search animations",
+    "animation.selected": "Selected: {label}",
+    "animation.filterAll": "All",
+    "animation.filterBoxAutomation": "Box & Automation",
+    "animation.filterText": "Text",
+    "animation.filterCamera": "Camera",
+    "animation.filterTransition": "Transitions",
+    "animation.used": "In use",
+    "animation.unused": "Unused",
+    "animation.inUse": "In Use",
+    "animation.apply": "Apply",
+    "animation.edit": "Edit",
+    "animation.remove": "Remove",
+    "animation.close": "Close",
+    "animation.start": "Start",
+    "animation.end": "End",
+    "animation.speed": "Speed",
+    "animation.loop": "Loop",
+    "animation.done": "Done",
+    "animation.saving": "Saving...",
+    "animation.saveError": "The animation couldn't be saved. Please try again.",
+    "animation.noMatches": "No matching animations",
+    "animation.selectElement": "Select an element in the video preview first",
+    "animation.applied": "Animation applied",
+    "animation.updated": "Animation updated",
+    "animation.removed": "Animation removed",
     "sidebar.selectFile": "Select a file to edit",
     "sidebar.lint": "Lint",
     "sidebar.linting": "Linting...",
@@ -157,22 +213,23 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizePanes": "Resize Layers and Design panes",
     "right.design": "Layers",
     "right.designTooltip": "Element styles and properties",
-    "right.voice": "Voice",
-    "right.voiceTooltip": "Voiceover settings",
+    "right.role": "Narration",
+    "right.voice": "Voiceover",
+    "right.voiceTooltip": "Voiceover and avatar narration",
     "right.style": "Style",
     "right.styleTooltip": "Video design system",
+    "right.componentsHelp":
+      "Components follow the current theme. After insertion, adjust their settings or ask AI to edit them.",
+    "right.presetComponents": "Presets",
+    "right.avatar": "Avatar",
+    "right.components": "Components",
+    "right.componentsTooltip": "Reusable, theme-aware visual components",
     "right.assets": "Assets",
     "right.assetsTooltip": "Videos, images, audio, and fonts",
-    "right.illustration": "Illustrations",
-    "right.illustrationTooltip": "Generate video assets with HTML illustrations",
     "right.animation": "Animation",
     "right.animationTooltip": "Browse templates and edit selected-element animation",
     "right.animationTemplates": "Animation templates",
     "right.animationProperties": "Animation properties",
-    "right.catalog": "Effects",
-    "right.catalogTooltip": "Insert opening, ending, and transition effect clips",
-    "right.effects": "Scenes",
-    "right.effectsTooltip": "Browse transition and background scenes",
     "right.layers": "Layers",
     "right.layersTooltip": "Composition layer stack",
     "right.renders": "Export",
@@ -204,16 +261,21 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "app.loadingProject": "正在加载项目...",
     "app.waitingForServer": "正在等待 Studio 服务...",
     "header.viewLabel": "Studio 视图",
-    "header.storyboard": "故事板",
+    "header.storyboard": "脚本表",
     "header.edit": "编辑",
     "header.preview": "预览",
     "header.previewComingSoon": "预览功能即将开放",
-    "header.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
+    "preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
     "header.undo": "撤销",
     "header.redo": "重做",
     "header.capture": "截图",
     "header.capturing": "截图中...",
     "header.captureCurrentFrame": "截取当前帧",
+    "header.saveAsTemplate": "保存为作品模板",
+    "header.templates": "模板",
+    "header.askAi": "交给 AI",
+    "header.openRepository": "打开项目仓库",
+    "header.reloadStudio": "重新加载视频工作室",
     "header.inspector": "属性",
     "header.renderInProgress": "已有渲染任务正在进行",
     "header.renderExport": "打开导出设置",
@@ -226,14 +288,10 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.code": "代码",
     "sidebar.comps": "合成",
     "sidebar.assets": "素材",
-    "sidebar.catalog": "组件",
     "sidebar.codeTooltip": "源代码编辑器",
     "sidebar.compsTooltip": "合成与子合成",
     "sidebar.assetsTooltip": "视频、图片、音频、字体",
-    "sidebar.catalogTooltip": "浏览区块和组件",
     "assets.import": "导入",
-    "assets.source": "来源",
-    "assets.sourceUnavailable": "暂不支持选择来源",
     "assets.searchPlaceholder": "搜索素材...",
     "assets.dropUpload": "拖放文件以上传",
     "assets.mediaTypes": "图片、视频、音频和字体",
@@ -245,6 +303,33 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "assets.categoryImages": "图片",
     "assets.categoryVideo": "视频",
     "assets.categoryFonts": "字体",
+    "animation.searchPlaceholder": "搜索动画...",
+    "animation.searchLabel": "搜索动画",
+    "animation.selected": "已选中：{label}",
+    "animation.filterAll": "全部",
+    "animation.filterBoxAutomation": "盒子与自动化",
+    "animation.filterText": "文字动画",
+    "animation.filterCamera": "运镜",
+    "animation.filterTransition": "转场",
+    "animation.used": "已使用",
+    "animation.unused": "未使用",
+    "animation.inUse": "已应用",
+    "animation.apply": "应用",
+    "animation.edit": "编辑",
+    "animation.remove": "取消应用",
+    "animation.close": "关闭",
+    "animation.start": "开始",
+    "animation.end": "结束",
+    "animation.speed": "倍速",
+    "animation.loop": "循环播放",
+    "animation.done": "完成",
+    "animation.saving": "保存中...",
+    "animation.saveError": "动画未能保存，请重试。",
+    "animation.noMatches": "没有匹配的动画",
+    "animation.selectElement": "请先在视频播放区选中元素",
+    "animation.applied": "动画已应用",
+    "animation.updated": "动画已更新",
+    "animation.removed": "动画已取消应用",
     "sidebar.selectFile": "选择一个文件进行编辑",
     "sidebar.lint": "检查",
     "sidebar.linting": "检查中...",
@@ -252,22 +337,22 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizePanes": "调整图层与设计面板高度",
     "right.design": "图层",
     "right.designTooltip": "元素风格和属性",
+    "right.role": "讲解",
     "right.voice": "配音",
-    "right.voiceTooltip": "视频配音设置",
+    "right.voiceTooltip": "配音与数字人讲解",
     "right.style": "主题",
     "right.styleTooltip": "视频设计系统",
+    "right.componentsHelp": "组件会跟随当前主题。插入后可调整参数，也可以让 AI 帮你修改。",
+    "right.presetComponents": "预设组件",
+    "right.avatar": "数字人",
+    "right.components": "组件",
+    "right.componentsTooltip": "可复用并跟随主题的视觉组件",
     "right.assets": "素材",
     "right.assetsTooltip": "视频、图片、音频和字体",
-    "right.illustration": "插画",
-    "right.illustrationTooltip": "使用 HTML 插画能力生成视频素材",
     "right.animation": "动画",
     "right.animationTooltip": "浏览模板并编辑所选元素动画",
     "right.animationTemplates": "动画模板",
     "right.animationProperties": "动画属性",
-    "right.catalog": "特效",
-    "right.catalogTooltip": "插入开头、结尾和转场特效片段",
-    "right.effects": "场景",
-    "right.effectsTooltip": "浏览转场场景和背景场景",
     "right.layers": "图层",
     "right.layersTooltip": "合成图层堆栈",
     "right.renders": "导出",
@@ -306,7 +391,231 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
  * accessible names without changing the CSS/property values they edit.
  */
 const studioLiteralZh: Record<string, string> = {
+  "Script table": "脚本表",
+  Voiceover: "旁白",
+  Transition: "转场",
+  Actions: "操作",
+  Saved: "已保存",
+  "Unsaved changes": "未保存修改",
+  "Plan the picture first": "先规划画面，再制作视频",
+  shots: "个镜头",
+  "Visuals, voice and materials in one plan": "画面、旁白与素材，一张表规划",
+  "Reset changes": "放弃修改",
+  "Save script": "保存脚本",
+  "Save and regenerate video": "保存并重新生成视频",
+  "Shot title": "镜头标题",
+  "Automatic theme": "自动主题",
+  "Custom theme": "自选主题",
+  "Shot settings": "镜头设置",
+  "Shot": "镜头",
+  "Apply to script": "应用到脚本",
+  "Apply first, then save the script.": "应用后，还需在顶部保存脚本。",
+  "Script updated. Cancel and reopen to edit the latest version.": "脚本已更新，请取消并重新打开，编辑最新版本。",
+  "More settings": "更多设置",
+  "Configured": "已设置",
+  "Recipe": "画面配方",
+  "Selection intent": "选用意图",
+  "Custom graphics": "定制图形",
+  "Not selected": "待选配方",
+  "Mounted in source": "已挂载 · 源码核对",
+  "Planned recipe": "计划使用 · 尚未匹配挂载",
+  "Not set": "未设置",
+  "Picture & materials": "画面与素材",
+  "Close shot settings": "关闭镜头设置",
+  "AI automatic": "AI 自动",
+  "Custom camera direction": "自定义镜头说明",
+  "Confirm script & generate video": "确认脚本并生成视频",
+  "Starting video…": "正在启动制作…",
+  "Production requested": "制作请求已提交",
+  "Video production in progress": "视频制作中",
+  "Follow production progress in this conversation.": "可在当前对话查看制作进度与结果。",
+  "Could not start video generation. Your script is saved; retry or continue in chat.": "未能启动视频制作。脚本已保存，可重试或在对话中继续。",
+  "Save keeps your script for later. Confirm script & generate video saves it and starts production in this conversation.": "保存脚本可稍后继续编辑；确认脚本并生成视频会先保存，再在当前对话中启动制作。",
+  "Could not save script.": "脚本保存失败。",
+  "Discard unsaved script changes?": "放弃尚未保存的脚本修改？",
+  "The script changed on disk. Copy your edits before resetting to the latest version; saving is paused to prevent overwriting.":
+    "脚本已被其他操作修改。请先复制保留你的编辑，再放弃修改以载入最新版本；已暂停保存，避免覆盖。",
+  "Editable shots": "可编辑镜头",
+  "Scroll script table": "滚动脚本表",
+  "Resize column": "调整列宽",
+  "Drag to resize. Double-click to reset. Arrow keys adjust width.":
+    "拖动调整列宽，双击恢复默认，也可使用左右方向键。",
+  "Picture & scene": "画面与场景",
+  "Sound effects": "音效",
+  "Whole-video settings": "全片设置",
+  "Whole-video direction": "全片方向",
+  "Video design theme": "视频主题",
+  "Theme selection mode": "主题选择方式",
+  "Choose video design theme": "选择视频主题",
+  "Let AI choose a suitable theme": "AI 自动选择",
+  "Choose a theme": "手动选择主题",
+  "Select an installed theme": "选择已安装的主题",
+  "Manual theme applies its Work design tokens to this video project":
+    "手动主题会将所选 Work 设计系统应用到当前视频项目",
+  "AI derives the visual direction from the brief; current Work design tokens stay applied":
+    "AI 会根据内容决定画面风格，当前 Work 设计系统保持不变",
+  "Current custom theme": "当前自定义主题",
+  "Theme choices are provided by the Work host": "主题选项由 Work 宿主提供",
+  "Theme was not applied. Please try again in Work.": "主题未应用成功，请在 Work 中重试。",
+  "Open in Work to choose installed themes": "在 Work 视频工作台中打开后，可选择已安装主题",
+  Narration: "旁白",
+  "Choose voice for narration": "选择旁白声线",
+  Character: "角色",
+  Voice: "声线",
+  "Character name": "角色名称",
+  "Character name example": "如：旁白、主讲人、角色 A",
+  "Narration / dialogue": "旁白 / 台词",
+  "Write this shot's narration or dialogue": "填写本镜头的旁白或对白",
+  "Project default voice": "项目默认声线",
+  "Selected voice": "已选声线",
+  "Open this script table inside Work to choose a voice":
+    "请在 iPolloWork 视频工作台中打开脚本表后选择并试听声线",
+  "Voice selection is unavailable in this Work session": "当前 Work 会话未提供声线选择功能",
+  "Standalone voice selection help":
+    "当前是独立预览页，没有 Work 的声音库面板；请从 iPolloWork 的视频会话打开脚本表，再选择并试听旁白声线。",
+  "Voice picker unavailable details":
+    "当前 Work 会话没有可用的角色声线选择器；可先在视频工作台的配音面板设置全片默认声线。",
+  "Whole-video music": "全片配乐",
+  "Music direction mode": "配乐方式",
+  "AI chooses from the script": "AI 自动选择",
+  "Choose from project assets": "项目素材",
+  "No background music": "无配乐",
+  "This video will have no background music": "本片不使用背景音乐",
+  "Music selected — preview or replace below": "已选配乐 · 可在下方试听或更换",
+  "Music pending — a real track must be prepared before video generation": "配乐待准备，制作前需选定音频",
+  "AI plans music from the script, mood and pacing; the actual track is linked after sourcing":
+    "AI 会根据脚本、情绪和节奏规划配乐；素材确认后会关联实际音频文件",
+  "The selected project audio is the exact whole-video music track":
+    "已选项目音频会作为全片配乐",
+  "Whole-video music prompt": "全片配乐要求",
+  "Optional music direction for the AI": "可补充配乐风格；留空由 AI 按脚本判断",
+  "Optional exact audio from the shared project assets": "可从同一项目素材库选择实际音效文件",
+  "Whole-video visual style": "全片画面风格",
+  "Describe the overall visual style": "描述全片画面风格",
+  "Role & narration": "旁白",
+  "Shot content": "镜头内容",
+  "Shot title & picture": "镜头标题与画面描述",
+  "Title first, then describe the picture": "先写镜头标题，换行后描述画面",
+  "Character / voice identity": "角色 / 说话人",
+  "Choose voice for this role": "为这个角色选择声线",
+  "AI matches voice to this role": "AI 按角色匹配声线",
+  "Choose and audition a voice": "选择声线并试听",
+  "Choose and audition a narration voice": "选择并试听旁白声线",
+  "AI chooses a fitting narration voice": "AI 根据旁白匹配声线",
+  "Shot notes": "镜头备注",
+  "Per-shot music override": "单镜头配乐覆盖",
+  Camera: "镜头",
+  "Camera & animation": "镜头与动画",
+  Materials: "素材",
+  "Use project media": "已有 / 关联素材",
+  "Generate visual media": "AI 生成素材",
+  "Open asset": "打开素材",
+  "Asset preview": "素材预览",
+  "Choose existing asset": "选择已有素材",
+  "Choose existing audio asset": "选择已有音频",
+  "Choose existing visual asset": "选择已有图片或视频",
+  "Choose existing assets": "已有素材",
+  "Select asset": "选择素材",
+  "No imported media yet. Add it in the Assets panel, then select it here.":
+    "还没有已导入的媒体素材。请先在素材面板添加，再回到这里选择。",
+  "No imported audio yet. Add it in the Assets panel, then select it here.":
+    "素材库里还没有音频。请先在素材面板导入，再回到这里选择。",
+  "No imported visual media yet. Add it in the Assets panel, then select it here.":
+    "素材库里还没有图片或视频。请先在素材面板导入，再回到这里选择。",
+  "Couldn't load this file — it may be missing or corrupt":
+    "无法加载素材，文件可能已丢失、损坏或暂时不可访问。",
+  "Binary file — preview not available": "此文件暂不支持直接预览",
+  "Move shot": "移动镜头",
+  "Drag to reorder. Use arrow keys to move.": "拖拽调整顺序，也可使用上下方向键移动。",
+  "Camera movement": "景别与运镜",
+  "Choose camera preset": "选择运镜",
+  "Focus push": "焦点推进",
+  "Pull-back reveal": "拉远揭示",
+  "Focus travel": "焦点巡游",
+  "Spatial glide": "空间掠过",
+  "Choose a preset or enter a custom movement": "选择预设，或输入自定义运镜",
+  "Choose camera actions": "选择运镜动作",
+  "Choose one camera movement": "选择一个运镜",
+  "Choose camera and animation": "选择镜头与动画",
+  "Choose one movement per shot. Composite camera paths use a spatial component.":
+    "每个镜头选择一种运镜；组合式空间运镜由空间组件负责。",
+  "This saved shot has stacked camera moves. Selecting one replaces the stack; it is preserved until then.":
+    "此镜头的旧脚本包含多种叠加运镜；选择一种后才会替换，当前仍保留原值。",
+  "Legacy stacked movements": "旧脚本中的叠加运镜",
+  "Camera action order": "运镜动作顺序",
+  "Move camera action up": "运镜动作上移",
+  "Move camera action down": "运镜动作下移",
+  "Remove camera action": "移除运镜动作",
+  "Camera note": "运镜备注",
+  "Add camera note": "添加运镜备注",
+  "Optional camera note": "补充自定义运镜说明（可选）",
+  "Material source": "素材来源",
+  "No external media": "无素材",
+  "HTML components only": "使用 HTML 组件呈现，无需外部素材",
+  "Import audio": "导入音频",
+  "Import media": "导入素材",
+  "Importing media…": "正在导入…",
+  "Choose a compatible media file": "请选择符合素材类型的文件",
+  "No media imported. Check the file and try again.": "未导入素材，请检查文件后重试。",
+  "No project media yet. Import a file above.": "暂无项目素材，可直接在上方导入。",
+  "AI decides": "AI 决定",
+  "AI chooses the source": "AI 按脚本决定素材来源",
+  "Search media": "搜索素材",
+  "Describe what to find or create": "描述需要寻找或生成的素材",
+  "Editable graphics": "代码画面",
+  "Visual media type": "素材类型",
+  "AI chooses image or video": "AI 选择图片或视频",
+  "Describe the subject, event and source to find": "要找什么事件、人物或画面？可附新闻链接",
+  "Describe the chart, diagram or editable scene": "描述需要制作的图表、示意图或可编辑画面",
+  "Describe the picture the story needs": "描述这个镜头需要的画面",
+  "Source and attribution": "来源与说明",
+  "Article URL, source and date; mark illustrations": "原文链接、来源和日期；生成示意请注明",
+  "Spatial camera choreography": "空间运镜编排",
+  "AI / basic camera movement": "AI 决定 / 基础运镜",
+  "Browse audio assets": "浏览音频素材",
+  "Browse visual assets": "浏览图片视频素材",
+  "Find audio assets": "查找音频素材",
+  "Find visual assets": "查找图片视频素材",
+  "Close asset library": "收起素材库",
+  "Replace asset": "更换素材",
+  "Search project assets": "搜索项目素材",
+  "No matching assets": "没有匹配的素材",
+  "Search to narrow the asset list": "输入关键词可查找更多素材",
+  "Reference only — import the media file to use it": "这只是引用，尚未导入对应媒体文件",
+  "Loading project assets…": "正在读取项目素材…",
+  "No file selected yet": "待准备素材",
+  "AI generation": "AI 生成",
+  "Describe the image, video or audio to generate": "描述需要生成的图片、视频或音频",
+  "Shot details": "镜头详情",
+  "Materials & sound": "素材与声音",
+  "Delete shot": "删除镜头",
+  "Delete this shot from the plan? Media files will not be deleted.":
+    "从脚本中删除这个镜头？不会删除视频或素材文件。",
+  "Material brief": "素材需求 / 生成描述",
+  "Sound effects & timing": "音效与触发时机",
+  "Sound effects & cue": "音效与触发时机",
+  "Describe sound and when it plays": "描述音效，以及它在镜头中的触发时机",
+  "For example, 5s": "例如：5s",
+  "For example, crossfade": "例如：交叉淡化",
+  "Clear selected asset": "清除当前素材",
+  "Original shot notes": "原有镜头说明",
+  "Move up": "上移",
+  "Move down": "下移",
+  "Start with the first shot": "从第一个镜头开始",
+  "Describe the shot, then choose existing media or ask AI to generate it.":
+    "先描述镜头，再选择已有素材或让 AI 生成素材。",
+  "New shot": "新镜头",
+  "Add shot": "添加镜头",
+  "The first script version produces the video automatically. Save and regenerate after editing this table.":
+    "第一版脚本会自动生成视频；修改此表后可保存并重新生成。",
+  "Check script fields": "检查脚本字段",
+  "Could not load storyboard.": "无法载入分镜。",
+  "Loading storyboard…": "正在载入分镜…",
   "3D Transform": "3D 变换",
+  Title: "标题",
+  Items: "条目",
+  "Highlighted item": "高亮条目",
+  "Supporting note": "补充说明",
   "Add a new animation effect to this element": "为此元素添加动画效果",
   "Add animation": "添加动画",
   "Add keyframe": "添加关键",
@@ -446,8 +755,12 @@ const studioLiteralZh: Record<string, string> = {
   "Applied cutout": "抠图已应用",
   balanced: "均衡",
   best: "最佳",
-  "Ask AI": "交给 AI",
+  "Ask AI": "交给AI",
   "Ask AI about selected element": "让 AI 处理所选元素",
+  "Edit image": "图片编辑",
+  "Edit video": "视频编辑",
+  "Edit in Image Studio": "在图片工作台编辑",
+  "Edit in Video Console": "在视频控制台编辑",
   "Copy prompt to AI agent": "将提示词复制给 AI Agent",
   "Describe what you want to change…": "描述你想修改的内容…",
   "Context included in prompt": "提示词中包含的上下文",
@@ -462,8 +775,8 @@ const studioLiteralZh: Record<string, string> = {
   Fonts: "字体",
   "Drop files to upload": "拖入文件以上传",
   "Images, video, audio, and fonts": "图片、视频、音频和字体",
-  "Source selection is not available yet": "暂不支持切换素材来源",
-  "Project 01": "项目 01",
+  "Insert asset": "插入素材",
+  "Locate on timeline": "定位到时间线",
   Import: "导入",
   "Search assets…": "搜索素材…",
   All: "全部",
@@ -478,6 +791,9 @@ const studioLiteralZh: Record<string, string> = {
   Bold: "粗体",
   "Bring forward": "上移一层",
   "Bring to front": "置于顶层",
+  "Smart cutout": "智能抠图",
+  "Remove smart cutout": "取消智能抠图",
+  "AI cutout in progress…": "AI 抠图中…",
   "Bulleted list": "项目符号列表",
   Canvas: "画布",
   Cancel: "取消",
@@ -516,6 +832,8 @@ const studioLiteralZh: Record<string, string> = {
   "Current file media": "当前文件中的媒体",
   "Custom LUT": "自定义 LUT",
   Cutout: "抠图",
+  "Low layer · above background": "低层级 · 仅在背景之上",
+  "High layer · above content": "高层级 · 盖住其他元素",
   Circle: "圆形",
   Column: "纵向",
   Custom: "自定义",
@@ -736,6 +1054,7 @@ const studioLiteralZh: Record<string, string> = {
   Text: "文本",
   Timeline: "时间轴",
   "Timeline zoom": "时间轴缩放",
+  "More tools": "更多工具",
   Timing: "时间",
   "Toggle grid": "显示或隐藏网格",
   "Toggle snapping": "开启或关闭吸附",
@@ -745,7 +1064,6 @@ const studioLiteralZh: Record<string, string> = {
   "Ungroup (⌘⇧G)": "取消组合（⌘⇧G）",
   "Copy element info to clipboard": "将元素信息复制到剪贴板",
   "Copied!": "已复制！",
-  "Describe a change to the agent": "向 Agent 描述修改",
   "Hide all": "全部隐藏",
   "Select a single element to edit its properties": "请选择单个元素以编辑属性",
   "shift-click to add or remove": "按住 Shift 单击可添加或移除",
@@ -862,6 +1180,7 @@ const studioLiteralZh: Record<string, string> = {
   "Back (Esc, or double-click empty timeline)": "返回（按 Esc 或双击时间轴空白处）",
   "Back to parent composition": "返回上一级合成",
   "Resize timeline (arrow keys)": "调整时间轴高度（方向键）",
+  "Resize layer panel (arrow keys)": "调整图层面板宽度（方向键）",
   "Close preview": "关闭预览",
   none: "无",
   fade: "淡入淡出",

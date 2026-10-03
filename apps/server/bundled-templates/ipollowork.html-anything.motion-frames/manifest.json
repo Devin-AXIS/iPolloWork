@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.motion-frames",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "video",
   "subcategory": "marketing",
@@ -68,5 +68,7 @@
     "Keep the cinematic visual language and video composition coherent.",
     "Verify responsive layout, links, overflow and editable text before finishing."
   ],
-  "minimumAppVersion": "0.17.20"
+  "minimumAppVersion": "0.17.20",
+  "authoringGuide": "authoring.md",
+  "layoutLibrary": "core-v1"
 }

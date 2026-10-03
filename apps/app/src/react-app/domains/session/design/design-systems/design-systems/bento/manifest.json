@@ -26,26 +26,6 @@
     ],
     "exemptions": []
   },
-  "preview": {
-    "dir": "preview",
-    "pages": [
-      {
-        "path": "preview/colors.html",
-        "role": "colors",
-        "title": "Colors"
-      },
-      {
-        "path": "preview/typography.html",
-        "role": "typography",
-        "title": "Typography"
-      },
-      {
-        "path": "preview/spacing.html",
-        "role": "spacing",
-        "title": "Spacing"
-      }
-    ]
-  },
   "sourceFiles": {
     "evidence": "source/evidence.md",
     "tokens": "source/tokens.source.json",

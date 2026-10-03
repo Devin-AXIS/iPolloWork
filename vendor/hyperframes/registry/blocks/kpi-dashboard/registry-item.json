@@ -1,0 +1,43 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "kpi-dashboard",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "KPI Dashboard",
+  "description": "A four-metric executive dashboard with structured row editing and one highlighted KPI.",
+  "tags": ["component", "structured", "kpi", "dashboard", "data", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "override",
+      "rowId": "metric",
+      "binding": { "variable": "metrics", "encoding": "key-value-list" },
+      "columns": [
+        { "id": "metric", "label": "Metric", "labelZh": "指标", "type": "string", "role": "id", "required": true },
+        { "id": "value", "label": "Value", "labelZh": "数值", "type": "number", "role": "value", "required": true }
+      ],
+      "minRows": 1,
+      "maxRows": 4,
+      "highlightVariable": "highlight",
+      "valueFormat": { "unit": "%", "precision": 0, "notation": "standard" }
+    },
+    "ai": { "slots": ["title", "metrics", "highlight", "note"], "instructions": "Provide one to four percentage values as structured rows and make highlight exactly match one metric label." }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "kpi-dashboard.html", "target": "compositions/kpi-dashboard.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "The operating picture at a glance", "maxLength": 72, "update": "live" },
+    { "id": "metrics", "label": "KPI data", "description": "Metric values from 0 to 100, edited as structured rows.", "type": "string", "default": "Activation:78,Retention:64,Velocity:91,Quality:86", "maxLength": 1000, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "Velocity", "maxLength": 40, "update": "live" },
+    { "id": "note", "label": "Note", "type": "string", "default": "Current period versus operating target", "maxLength": 80, "update": "live" }
+  ]
+}

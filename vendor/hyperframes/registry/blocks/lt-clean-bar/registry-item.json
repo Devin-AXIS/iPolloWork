@@ -1,21 +1,37 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "lt-clean-bar",
+  "version": "2.0.0",
   "type": "hyperframes:block",
-  "librarySection": "interface-animation",
-  "title": "Lower Third — Clean Bar",
-  "description": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance",
-  "tags": ["lower-third", "overlay", "podcast", "interview"],
-  "dimensions": {
-    "width": 1920,
-    "height": 1080
+  "title": "Lower Third",
+  "description": "A clean lower-third identity bar for speakers, roles and interview context.",
+  "tags": ["component", "typography", "lower-third", "speaker", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": ["name", "role", "eyebrow", "alignment"],
+      "instructions": "Keep the name concise, use a credible role, and choose alignment to avoid covering the subject."
+    }
   },
-  "duration": 4.8,
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 6,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
   "files": [
     {
       "path": "lt-clean-bar.html",
       "target": "compositions/lt-clean-bar.html",
       "type": "hyperframes:composition"
     }
+  ],
+  "variables": [
+    { "id": "name", "label": "Name", "type": "string", "default": "Maya Chen", "maxLength": 40, "update": "live" },
+    { "id": "role", "label": "Role", "type": "string", "default": "Product strategist", "maxLength": 56, "update": "live" },
+    { "id": "eyebrow", "label": "Eyebrow", "type": "string", "default": "FIELD NOTE 01", "maxLength": 32, "update": "live" },
+    { "id": "alignment", "label": "Alignment", "type": "enum", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }], "update": "live" }
   ]
 }

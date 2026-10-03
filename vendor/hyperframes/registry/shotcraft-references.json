@@ -1,0 +1,1467 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/Vincentwei1021/video-shotcraft",
+  "revision": "5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab",
+  "conversionRepository": "https://github.com/louiseliu/hyperFrames-video-shotcraft",
+  "conversionRevision": "1df77f1ab080323558f70a5fb880fad0f88f87fc",
+  "license": "Apache-2.0",
+  "licenseFile": "shotcraft-reference-LICENSE.txt",
+  "stats": {
+    "cardCount": 23,
+    "styleCount": 30
+  },
+  "methodology": {
+    "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/pipeline.md",
+    "rules": "# pipeline — 八阶段制作流水线\n\n八阶段，方向性问题不进昂贵的逐镜头阶段。\n实证细节来自多支已交付宣传片的复盘（模板片见 `template/`）。\n\n## 目录\n\n- 阶段 0：产品理解与执行约束\n- 阶段 1：视觉方向与 styleframe\n- 阶段 2：功能到镜头映射\n- 阶段 3：分镜与制作放行\n- 阶段 4：最终素材采集\n- 阶段 5：逐镜头实现\n- 阶段 6：声音设计\n- 阶段 7：独立终检与交付\n\n本文件是**自主自由创作**的完整流水线：阶段 0–3 的判断由 Agent 根据项目内容\n自主完成并记录，不逐阶段等待用户确认，然后连续进入阶段 4–7。用户已给出的\n用途、受众、功能、画幅、音频或数据要求都是硬约束。\n\n直接使用 Ink Press 模板不进入本流水线，按 `template/TEMPLATE.md` 的原有替换\n流程执行；模板文档引用阶段 4 时只借用其中的素材采集方法。\n\n**共同创作从 `guided-free-creation.md` 进入本文件时，不要从头重跑。** 该流程\n已经完成并确认阶段 0–3；直接从阶段 4 最终素材采集继续，不重新询问或重新设计。\n\n两处执行原则（实战复盘已吸收）：\n\n1. **最终设计 spec 与分镜共同构成制作放行。** 分镜表长在设计 spec 里\n   （`| # | 时间 | 镜头 | 关键动效 |` 四列）；确认放行不重新打开已确认的\n   业务或创意问题，只补实现必要的未决项。\n2. **验收贯穿全程，不是最后一个阶段。** 每个镜头任务以 `npx remotion still`\n   静帧肉眼验收收尾（产物按版本归档 `out/qa/`），每轮反馈修改后整片重渲。\n   阶段 7 只是把这套贯穿动作升级为对照 aesthetic-rules.md 的正式自检报告。\n\n另注顺序弹性：styleframe 可以先用 HTML 与少量安全预检素材；重要的是**逐镜头\n实现开始前最终素材必须依据已定案的分镜采集**——素材方向错误拖到逐镜头阶段后\n才暴露，代价是整套场景报废。\n\n---\n\n## 阶段 0：产品理解与执行约束\n\n在写视频代码或采集最终素材前，只读检查项目的定位、主要功能、页面状态、视觉\ntokens、启动方式和数据风险。根据项目证据和用户已有描述，生成产品简报与需求到\n执行决策表，明确用途、受众、核心卖点、必须展示功能、时长/画幅/语言、音频和\n数据口径对本片的实际影响。\n\n自主自由创作由 Agent 对缺省项作动态判断并写入设计 spec，不暂停要求用户确认。\n用户指定了 BGM 时，先按 `references/music-beat-sync.md` 分析节奏；未指定时由 Agent\n根据产品与发布场景在阶段 6 选型。公开演示数据可在确认其公开属性后使用；客户、\n个人、内部、密钥、实时或其他敏感数据一律先虚构、脱敏或冻结。\n\n**产出**：产品简报；需求到执行决策表；明确的数据与音频约束。\n\n---\n\n## 阶段 1：视觉方向与 styleframe\n\n**目标**：用最便宜的产物锁定全片色板、字体、光感与运镜气质，\n让所有方向性争论发生在写第一行 Remotion 代码之前。\n\n**具体操作**：\n\n1. 根据当前项目生成最多 3 个文字方向。每个方向附一组**动效性格 tokens**\n   （推导法见下方“品牌→动效参数”表），但不要把 Ink Press 作为固定选项。\n2. Agent 依据产品视觉、用途和受众自主选择最合适的方向，并把选择与取舍写入\n   设计 spec；不暂停等待用户选择。\n3. 对选定方向**不渲染视频、不写 Remotion 代码**，写一个纯 HTML/CSS\n   styleframe 页，包含 2–3 张 1920×1080 静态关键画面。\n4. 用 Playwright/Puppeteer 截图验证字体、色板、材质、构图、光感与信息密度；\n   缓动和运镜速度仍以 tokens、Gallery 样片或短运动测试判断。若已有严格品牌规范\n   或明确参考片，可记录理由后跳过 styleframe。\n5. 若用户给了参考片：下载后 ffmpeg 抽帧（`select=eq(n,…)` 抽 ~100 帧、\n   `tile=4x5` 拼 contact sheet），逐个动画/转场/特效做 motion breakdown，\n   写成\"手法｜参考片实现｜取舍\"三列表进设计 spec——**选择性适配，\n   不强行套用**。图片参考同理：它描述的是\"某一类镜头\"的感觉，\n   不是全片风格令。\n\n**品牌→动效参数推导**。不凭手感挑 easing/时长，先把品牌放到两根轴上，\n再从最近的预设起步：\n\n- **能量轴**：低（沉稳/premium/机构感）↔ 高（运动/startup/娱乐）——\n  决定时长、过冲、squash 幅度；\n- **调性轴**：严肃（金融/医疗/enterprise）↔ 活泼（消费/社交/儿童）——\n  决定路径曲直、次级动作多寡。产品视觉本身是证据（锐利几何形→工程感，\n  圆角+亮色→柔和活泼）；用户口述的品牌词覆盖视觉推断。\n\n| 预设（品类） | 主时长@30fps | 入场 easing | 过冲 | squash |\n|---|---|---|---|---|\n| 专业信赖（fintech/enterprise/B2B）| ~21f | bezier(0,0,0.2,1) | 1.0 不弹 | 0 |\n| 精致高端（奢侈品/时尚）| ~48f | bezier(0.4,0,0.6,1) | ≤1.02 | 0 |\n| 活力大胆（体育/游戏/startup）| ~18f | bezier(0.16,1,0.3,1) | 1.12 | 0.25 |\n| 活泼愉悦（消费/社交）| ~27f | bezier(0.34,1.56,0.64,1) | 1.08 | 0.18 |\n| 平静关怀（健康/教育）| ~42f | ease-in-out 对称 | 1.0 | ≤0.04 |\n| 亲和友好（小微/社区）| ~26f | bezier(0.25,0.46,0.45,0.94) | 1.04 | 0.08 |\n\n用法：定预设 → 按两轴微调 → tokens 写进设计 spec。自检两条：\n①用三个词描述成片动效，与品牌词对得上吗；②同一套 tokens 必须同时管\n入场/转场/hold 节奏——一个品牌一种动效嗓音，混用两套读作拼盘。\n注意预设值与库内硬判例冲突时判例赢：落地要弹的场合 y1 必须 >1，\n\"专业信赖不弹\"指的是无落地隐喻的淡入/推移类动作。\n\n**产出**：选定方向的 styleframe；色板/字体/光感 tokens + 动效性格 tokens；\n（有参考片时）motion breakdown 表。\n\n**常见坑**：\n\n- 用渲染视频做风格提案：太贵，改方向的心理成本也高。静态帧足够定调。\n- 参考驱动的风格 move 全局一刀切：风格化机位逐镜头决定（信息密集的\n  列表/堆叠镜头正视更可读）。\n\n---\n\n## 阶段 2：功能到镜头映射\n\n**目标**：为每个必须展示的功能选定合适的运动语法，不在此阶段提前写完整分镜。\n\n**具体操作**：\n\n1. **先列产品功能清单，逐一对应镜头**。核心功能漏拍等于返工；\n   一种动画手法（飞入/堆叠/翻页）全片只当一次主角，同质化即返工信号。\n2. 扫描 `references/shots/` 全部卡片的 frontmatter，根据用途、能量、建议时长、\n   限制和所需页面状态，为每项功能选择首选与备选卡；Agent 自主定案并记录依据。\n3. 完整读取选中卡片，并按“参考实现”定位准确 demo 源码。没有合适卡片时可新写，\n   但必须在设计 spec 中说明范围与验证风险。\n\n**产出**：功能到镜头映射表；选中卡名、变体、demo 源码和参考样片定位。\n\n---\n\n## 阶段 3：分镜与制作放行\n\n**目标**：把已定案的功能与镜头映射排成有能量曲线的完整镜头序列，并转成帧级\n实施计划。自主自由创作由 Agent 自行放行，不暂停等待确认。\n\n**具体操作**：\n\n1. 先查 `references/sequences/` 有无适用的桥段模板；有则按其填空流程分配段位\n   与帧预算，再把映射好的镜头排成低能量开场→功能段与呼吸位交替→高能量收尾。\n2. **已有指定 BGM 时**：先出音乐结构表（满能量起点/breakdown 拍号，\n   见 music-beat-sync.md §2），镜头边界全部锚到拍号，最强 hit 分给\n   全片 2–3 个大 slam；breakdown 段天然是品牌呼吸位。\n3. 写完整分镜表：镜头顺序、时长、功能信息、具体页面状态、镜头卡与变体、主动作、\n   素材来源、字幕、转场和 SFX。每镜只讲一个主要动效。\n4. 排时间线时**预留 hold/rest 帧预算**：品牌字标落定 hold ≥1s（30f）、\n   批量动效收尾 0.5s 静止、开场主体动作 ≥3s。节奏返工是单向的——\n   过快必返工、放慢从未被否。\n5. Agent 检查分镜与产品简报、需求决策、视觉方向和镜头映射一致后自行放行，\n   把分镜转译成帧级时间轴进实施计划：\n   `| shot | from | duration | 内容 |`（卡点片则 from/to 全用 `beatF(n)`\n   表达），并给每镜头指定源文件与验收帧号。\n\n**产出**：设计 spec（含风格 tokens + motion breakdown + 分镜表）；\n帧级时间轴。\n\n**常见坑**：\n\n- 没对功能清单，凭手感排镜头：核心功能漏拍、动画手法同质化，两种都返工。\n- 开场贪多：开场信息宁少而聚焦，一个主角、一条完整动作弧。\n- 时长预算不含呼吸位：动效排满每一帧，后期逐镜头补 hold 等于全线挪帧。\n\n---\n\n## 阶段 4：最终素材采集\n\n**前置条件**：最终设计 spec 与分镜已经放行。共同创作以用户确认作为放行；自主\n自由创作以 Agent 完成一致性检查并记录为放行。此前为 styleframe 采过的少量安全\n截图只能作为方向验证，不得直接替代最终素材。\n\n**目标**：严格按最终分镜拿到全部镜头所需的真实页面素材，包括全页纹理、元素\n切片和坐标表，为 2.5D 运镜与页面空间动画打地基。\n\n**具体操作**：\n\n1. 起产品本地 dev server（桌面端产品则用窗口截图工具，同样出三件套）。\n2. 复制 `assets/scripts/capture-template.mjs` 进项目，改 BASE_URL 与选择器，\n   跑一次产出三件套：\n   - **全页 2x 截图**：viewport 1920×1080、`deviceScaleFactor: 2`；截图前\n     `document.fonts.ready` + 600ms settle，实时同步页额外再等 1.5–2s。\n   - **per-element cutout**：按语义选择器逐元素截图；悬浮件用透明底，需要\n     “卡片飞入空板”的镜头则额外截空 backplate。\n   - **layout.json**：记录每个元素在整页坐标系下的 `{x,y,w,h}` bbox 与每页\n     `pageH`，供飞行目标位、遮罩位置和入场区域直接使用。\n3. 支持按页/按元素增量重采。活数据源先按阶段 0 的数据口径冻结、虚构或脱敏，\n   再进行最终采集。\n\n**产出**：`public/textures/` 全页图、元素切片与空 backplate；`layout.json`；\n可重跑的 capture 脚本。\n\n**常见坑**：\n\n- 在分镜放行前做全量采集：页面状态和素材范围尚未确定，会造成重复采集。\n- 手搓 HTML 复刻既有页面：复刻默认走真实截图；手搓 UI 只用于非复刻场景。\n- 活数据源不锁定，或只截整页不记录 layout 坐标。\n\n---\n\n## 阶段 5：逐镜头实现\n\n**前置条件**：需已有可跑的 Remotion 项目（30fps、1920×1080，`src/index.ts`\n注册 Composition；新项目可 `npx create-video@latest` 初始化后把\n`assets/lib/` 组件 copy 进去；走模板路线则直接从 `template/` 起步）。\n\n**目标**：按帧级时间轴逐镜头落地，每镜头完成即自证质量——\n验收在这个阶段就开始，不留到最后。\n\n**具体操作**：\n\n1. **每镜头先解析再三读**（硬规则，不可跳）：用\n   `gallery/api/library.json` 校验卡名和 `style-key` → 读对应配方卡全文 →\n   按卡片“参考实现”定位并读准确的 demo TSX 全文 → copy `assets/lib/`\n   对应组件进项目。同时保存该 style 的 Gallery 参考样片路径，供实现对照和终检。\n   标为“仅供参考，需要自定义实现”的样式不默认推荐，用户明确点名后才可实现并\n   标注风险；标为“缺少预览”的样式不得声称已按动态样片复刻。\n   demo 代码是调校过的参数真相（缓动、时值配比、\n   摘罩时机、已知坑的规避写法都在里面）——允许按目标产品做适配性\n   改动，但配方卡\"已知坑/命门\"标注的参数不得降档，质量标准只升不降。\n   凭卡名和理解新写＝放弃全部调校积累，实测质感差一档。\n2. **PageCam 是一切\"真实页面\"镜头的地基**：整页纹理 + 关键帧 2.5D 相机 +\n   页面空间 overlay，children 按页面 CSS px 定位、与 layout.json 共坐标系。\n3. **静帧验收（最高频动作）**：每镜头在计划里写死 2 个验收帧号，\n   完成即跑 `npx remotion still src/index.ts <Comp> out/qa/<name>.png\n   --frame=<N>`，自己肉眼检查构图/穿帮/文字锐度后才算完成。\n   静帧产物按迭代版本归档 `out/qa/`，用户贴帧反馈时可直接对号。\n4. **每轮修改后整片渲染**：`npx remotion render src/index.ts <Comp>\n   out/promo.mp4`，再用 `ffmpeg -i out/promo.mp4 -vf \"select=eq(n,…)\"`\n   从成片抽关键帧回看。实际形态是\"改哪个镜头就 still 哪几帧，\n   然后整片重渲\"，成本可接受且杜绝接缝意外。\n5. 像素级自检备小工具：裁剪放大看文字锐度（crop）、两帧像素 diff、\n   量元素 bbox 对构图。\n6. **确定性渲染铁律**：禁 `Date.now()` / `Math.random()` / 无参 `new Date()`。\n   一切伪随机用固定种子（mulberry32/哈希函数，seed 从 index 派生），\n   保证逐帧可复现、渲染间零抖动。\n7. 对照 `references/aesthetic-rules.md` 边做边自检（不等阶段 7）：\n   落地要弹的缓动 y1 必须 >1、光效裁进圆角、3D 下文字糊先查\n   栅格化路径（CSS `zoom` 布局级放大，而非 transform scale）而不是调 DoF。\n8. 指代含糊的用户反馈（\"第一个标题\"）先确认对象再动手；改错立即整\n   commit revert 重来，不在错误版本上打补丁——每个改动独立 commit\n   以便干净回滚。\n9. **为交付后的动效工作台留好接口**（`references/workbench.md` §2–3）：时间表只写一份\n   （`SHOTS` 是唯一事实源，字幕表 / SFX 钉帧 / 转场点从它派生并 `export`）；镜头的语境级\n   参数（文案 / 颜色 / 字号 / 位置）做成带默认值的 props，节奏命门保持常量；\n   `src/workbench.ts` 里 import 这些表、给每个单元补 `component` / `props` / `schema`。\n   模板路线已自带（`template/src/workbench.ts`），自由创作在时间线定稿后补写，\n   交付前 `cd workbench && npm run parity` 证明拆解无损。\n\n**产出**：逐镜头 commit；`out/qa/` 静帧档案；每轮全片渲染 mp4；`src/workbench.ts` 清单。\n\n**阶段输出**：整片渲染视频（每轮迭代一版）+ 关键静帧。自主自由创作不因该输出\n暂停等待确认；用户主动反馈时再纳入下一轮。\n用户可能以\"从成片截帧贴图\"方式给反馈，双方基于帧评审。\n\n**常见坑**：\n\n- 首检交给用户：交付前必须自己抽帧看片，\"镜头视角很差，\n  而且有小抖动\"这种问题不该由用户发现。\n- 跳过 demo 代码直接写：参数是几轮真实裁决调校出来的，\n  新写的版本几乎必然回踩已知坑。\n- 产品宣传片默认不加手持 shake；相机噪声只在明确追求纪实感时用。\n- 装饰性 glint/泛光群发：批量元素入场靠运动本身。单点高质量光效可做，\n  群发即廉价。\n- 3D 推进下文字发糊：根因是纹理源分辨率/栅格化路径，先查素材链路\n  （2x 纹理 + CSS zoom + 关键元素 4x 单独截图），别先动相机和景深。\n- 飞入动画终点悬空：元素必须落进页面布局的真实槽位（嵌入、归位、\n  排进滚动流），悬浮在页面上方不落地会显得假。\n\n---\n\n## 阶段 6：声音设计\n\n**目标**：BGM 定全片能量骨架，SFX 逐拍钉在动效关键帧上，\n音色符合\"产品宣传片\"片种而非 UI 事件语义。\n\n**前置条件（最贵的顺序教训）**：**画面时间线锁定后才开始。**\n画面每动一次，钉帧表就要全体重对。若画面确实又改了，收尾动作固定\n包含\"全表 SFX 帧号重对\"，音画错位是必查项。\n\n**具体操作**（细节与判例见 `references/sound-design.md`）：\n\n1. 读 `references/sound-design.md`，从 `assets/audio/sfx/<类别>/` 复制音效\n   （免费商用授权，来源见 `assets/audio/ATTRIBUTION.md`）。音效按场景分 16\n   个类别目录，先按需要的动作定类别（运镜→transition、落地→impact、\n   打字→text、翻页→paper、光效→**light**…），再在类别里挑音色。\n   注意词汇表的 `sparkle` 对应的目录名是 `light/`，库里没有 `sparkle/`。\n2. **BGM**：用户已指定 → 阶段 0 已做节奏分析，此处只做混音\n   （音量压低 ~0.34 给 SFX 留 headroom，interpolate 首尾淡入淡出）。\n   未指定 → 按片种选强鼓点、强节奏的电子底（tech-house 类），判据是\n   \"典型的产品宣传视频\"气质而不是\"好听\"；候选曲必须垫进成片试听，\n   单听曲子选型不可靠；`assets/audio/bgm/` 有节奏感强的备选。\n   BGM 的 `<Audio>` 用布尔 inputProp（如 `bgm`，默认 `true`）单独包住，\n   与 SFX 解耦——终渲要从同一时间线出带 BGM / 无 BGM 两版成片。\n3. **SFX 用电影系词汇按镜头语言选**：运镜=whoosh、落地=impact、\n   铺垫=riser、光效=sparkle（目录 `light/`）、转场=transition；\n   禁用游戏音包**音色**（合成器 pluck/bloop、卡通弹跳一耳朵出戏）。\n   注意\"禁游戏音\"禁的是音色不是动作——画面真有点击/开关/碎裂就该配\n   它的拟音，判别问句见 aesthetic-rules S1。但 **`ui/` 要逐个试听、不能\n   整目录放行**：18 个里只有 `switch-*` 等少数是真实开关拟音，一半以上是\n   合成反馈音（tone/bleep/notification），正属 S1 排除的质感——逐文件\n   取舍表见 sound-design 3.3。`glass/` 是真实碎裂材质音，不在禁列。\n4. **声明式钉帧表集中管理 + 相对钉帧**：单文件 `{ from, src, volume }[]`\n   数组，逐条注释对应的画面动作，每条包 `<Sequence from={s.from}>`。\n   **from 一律写相对表达式**——`SHOTS.x.from + offset`，卡点片写\n   `beatF(n)`——绝不写裸数字帧号。时间线平移时钉帧表自动跟随，\n   免除全表重钉。**长样本（>5s，库里 21 个）必须显式给 `durationInFrames`**\n   ——靠 Sequence 截断而非剪音频文件；漏给会拖到动作结束后还在响。\n   清单与截断判据见 sound-design 4.1。\n5. 连发防机枪感三招：双样本交替、音量阶梯递减（如 pop 六连\n   0.40→0.25）、间隔加速贴动画曲线（密到糊成一片时让声音淡出成 swoosh）。\n6. 通用音之外留\"贴画面定制\"槽位：有辨识度的画面动作配它自己的拟音\n   （打字画面配键盘声、逐条落入配逐个 pop），泛用 swoosh 盖不住。\n7. 强鼓点 BGM 的片子 SFX 克制：鼓点本身就是节拍音，SFX 只钉画面\n   独有动作，大 slam 只给 2–3 处峰值。\n8. 结尾固定句式：riser（组装段起）→ impact（字标落地，全片音量峰值）\n   → sparkle（余韵，取自 `sfx/light/`）。\n9. **音量按素材实测峰值给，不照抄区间**：`volume` 是乘法系数不是目标\n   音量——常规 0.2–0.6 的前提是素材峰值贴近 0dB。库里 7 个录得轻的素材\n   （峰值 <-12dB，最轻 -24.6dB）给到 1.0 仍比 BGM 低十几 dB，会被鼓底\n   盖住：**首选换同类别里录得好的素材，或预归一化后入库**；必要时可给\n   >1 的增益（Remotion 支持真实放大，但预览钳到 1.0，须以渲染产物验峰\n   防削波）。名单与三条出路见 sound-design 4.1。\n\n**产出**：带声整片；SFX 钉帧表（相对帧表达式+音源+音量+注释）；\n音频文件入 repo 并记录来源授权。\n\n**阶段输出**：带声整片渲染。自主自由创作继续进入终检，不暂停等待确认。\n\n**常见坑**：\n\n- 画面没锁就铺音效：全表重对的连带成本（见前置条件）。\n- 按 UI 事件语义选音色（合成器 confirmation/minimize 提示音）：片种错位，整批推翻。\n  但别过度矫正到\"完全不给交互动作配音\"——那违反 S4 拟音优先。\n- 长样本不给 durationInFrames：声音盖过后续镜头（库里 21 个 >5s）。\n- 照抄 0.2–0.6 音量区间不看素材峰值：轻音素材钉了等于没钉。\n- 凭感觉散铺音效不建表：帧号漂移后无法整体平移，也无法和分镜表对照。\n\n---\n\n## 阶段 7：验收\n\n**目标**：把贯穿全程的静帧/整片自检升级为一次正式的全片过检，\n同时验证成片是否忠实执行当前模式下确认或记录的产品简报、需求到执行决策表、视觉方向、镜头映射和分镜，\n对照终检与审美准则逐条出报告，然后终渲交付。\n\n**具体操作**：\n\n1. 全片渲染最新版，ffmpeg 抽全部关键帧（每镜头至少：入场中、\n   动作峰值、落定后三帧）。配了 BGM 的片子在此处就渲出两版——带 BGM 版\n   和无 BGM 版（保留 SFX），无 BGM 版靠阶段 6 预留的 `bgm` inputProp\n   从同一时间线渲出：写一个 `props-nobgm.json`（内容 `{\"bgm\":false}`）\n   然后 `npx remotion render … --props=props-nobgm.json`（跨平台可靠；\n   macOS/Linux 也可内联 `--props='{\"bgm\":false}'`，Windows shell 会剥掉\n   内联 JSON 的双引号，必须走文件）。不另建工程、不用 ffmpeg 后期抽轨。\n   命名区分（如 `promo.mp4` / `promo-nobgm.mp4`）。\n2. **独立终检（必做）**：派一个干净上下文的 subagent 做第三方审查。\n   不给它制作过程中的辩解、修改历史或“应该通过”的暗示，只提供：最新版成片\n   （配 BGM 的片子含两版，供 A8 校验）、\n   抽出的关键帧、创作模式、产品简报、需求到执行决策表、确认或记录的视觉方向/tokens、styleframe 或跳过理由、\n   功能到镜头映射、\n   Gallery 卡名与具体变体、`library.json` 中对应记录、卡片文档定位到的准确\n   demo TSX、Gallery 参考样片或从中抽出的关键帧、最终分镜、选中的镜头卡、\n   `references/final-review.md` 和 `references/aesthetic-rules.md`。\n3. 审查 Agent 按 `final-review.md` 检查产品目标、功能完整性、视觉方向一致性、\n   镜头卡/变体还原度、分镜一致性、数据安全、音画同步和视觉技术质量。逐镜头\n   看帧+看片，给出 \"F2 ✗（第 340 帧缺少已确认的知识图谱功能）\" 或\n   \"Q2 ✗（第 615 帧文字发糊）\" 式结论，每条问题附可复核帧号/截图。\n   镜头卡适配不要求和 Gallery 样片像素级相同，但必须保留动作语法、关键时值、\n   已知坑/命门参数和用户点名的具体变体。\n4. 内容级自查：每个镜头问\"给了什么新信息\"，重复镜头/重复 tagline 删；\n   文案按最终画面重写一遍，纯动画段落也要有解说 caption，不留哑巴段落。\n5. 音画对齐终检：逐条 SFX 对帧回放，确认无错位（时间线若在阶段 6 后\n   还动过，先重对再验）。卡点片按 music-beat-sync.md §5 做渲后回测，\n   全部切点误差 ≤3f 才算过。\n6. 审查报告的修复项回到阶段 3/5/6 小循环：方案或分镜偏差回阶段 3，画面实现\n   问题回阶段 5，声音问题回阶段 6；直到 checklist 通过后终渲出片。\n   终渲重复步骤 1 的双版本渲染——配 BGM 的片子交付带 BGM / 无 BGM 两版，\n   无 BGM 版方便用户后期自配音乐或平台配乐。\n\n**产出**：独立审查报告（final-review + aesthetic-rules checklist + 帧号证据）\n+ 终渲成片（带 BGM / 无 BGM 两版）。\n\n**交付物**：审查报告 + 成片两版（带 BGM + 无 BGM）。\n\n交付后先 `node workbench/scripts/open.mjs <工程目录>` 主动打开动效工作台（浏览器自动\n把成片拆成多轨，用户可视化微调后直接导出；见 `references/workbench.md`），再在最后按\n1-2-3 依次说三件事：① 发布时推荐（非强制）在简介 @ 一下\nskill 作者（三个平台账号都带链接）；② 邀请把成片放到作品展示页（用日常语言\n说，可留自己的账号）；③ 可以导出剪映工程文件（需要则读\n`references/jianying-export.md` 执行）。逐条口径与账号链接见 `SKILL.md`\n「交付收尾」。\n\n**常见坑**：\n\n- 把验收当\"最后才做的事\"：本阶段只是收口。若前五阶段没做静帧自检，\n  这里堆积的问题量会让 checklist 失去意义——验收贯穿全程是定式。\n- 自检报告流于\"全部 ✓\"：用户会读清屏幕上每个字、会自己截帧对比——\n  报告里每条结论都应附可复核的帧号/截图。\n- 制作 agent 自己出审查报告：确认偏差不可避免，独立 subagent 审查\n  不可省略。\n- 只查“好不好看”不查“是否符合当前模式的制作基准”：功能漏拍、视觉方向漂移、\n  镜头变体用错和未经确认的数据都属于终检失败。\n"
+  },
+  "cards": [
+    {
+      "name": "blur-slide",
+      "summary": "标题逐词入场，y 40→0 + blur 10→0 + opacity 0→1 三通道走同一条 outCubic 同步收敛，词间隔约 3.5f；副标题在标题收完前就错峰跟进",
+      "use": "几乎所有标题/副标题成对出现的场合；产品页首屏文案、章节小标题；需要\"专业但不抢戏\"的默认文字 reveal",
+      "duration": "约 3.8s（114f@30fps）",
+      "energy": "低（一次性收敛，无峰值无循环）",
+      "intention": "这是文字 reveal 的**默认解**——没有奇观、没有机械感，只是把词一个个 柔和地放到位。它的专业感全来自一件事：y、blur、opacity 三个通道共用 同一个进度 `p`、同一条缓动，所以词是\"从虚焦里浮出来\"而不是\"滑进来 顺便淡一下\"。当一支片里已经有别的重手法（乱码/翻牌/滚轮），标题就该 用这一卡，让位给主角。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/blur-slide.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/blur-slide.md",
+      "rules": "---\nname: blur-slide\n一句话: 标题逐词入场，y 40→0 + blur 10→0 + opacity 0→1 三通道走同一条 outCubic 同步收敛，词间隔约 3.5f；副标题在标题收完前就错峰跟进\n适用: 几乎所有标题/副标题成对出现的场合；产品页首屏文案、章节小标题；需要\"专业但不抢戏\"的默认文字 reveal\n时长: 约 3.8s（114f@30fps）\n能量: 低（一次性收敛，无峰值无循环）\n---\n\n## 意图\n这是文字 reveal 的**默认解**——没有奇观、没有机械感，只是把词一个个\n柔和地放到位。它的专业感全来自一件事：y、blur、opacity 三个通道共用\n同一个进度 `p`、同一条缓动，所以词是\"从虚焦里浮出来\"而不是\"滑进来\n顺便淡一下\"。当一支片里已经有别的重手法（乱码/翻牌/滚轮），标题就该\n用这一卡，让位给主角。\n\n## 动效核心\n- 单词进度 `p = seg(t0, i·gap, i·gap+0.32, E.outCubic)`，三通道全绑同一个 p：\n  `opacity = p`、`translateY = lerp(p, dy, 0)`、`blur = (1-p)·10`px\n- 标题窗 `seg(t, 0.06, 0.62)` 内部重映射（约 7f→71f，跨度 64f）：\n  词间 `gap = 0.055`（≈3.5f）、单词入场窗 `0.32`（≈20f）、`dy = 40`px\n- 副标题窗 `seg(t, 0.34, 0.9)`（约 39f→103f）：`gap = 0.04`（≈2.5f）、\n  `dy = 26`px——间隔更密、位移更小，**层级差是靠幅度不是靠时长**\n- 错峰而非排队：副标题在 39f 起手，标题要到 71f 才收完，两段有 32f 重叠——\n  排队会读作两拍，重叠才是一句话\n- 拆词不拆字：`text.split(' ')` 后每词一个 span，`line` 用 `gap:0.32em`\n  撑词距（不靠空格）——逐字入场太碎，词级才有\"念出来\"的语感\n- 字号对比 34px/800 对 14px/400，颜色 #eef1fa 对 #7d86a3\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 词间 stagger | 主 0.055（≈3.5f）/ 副 0.04（≈2.5f） | 3–4f 是\"逐词\"的甜点；<2f 整行齐入没有 stagger，>8f 观众开始一个个数词 |\n| 单词入场窗 | 0.32（≈20f），`E.outCubic` | <10f 读作硬弹；>30f 每个词都在慢慢浮，整句拖沓 |\n| y 位移 | 主 40px / 副 26px | 主副不等幅是层级来源；<20px 位移无感，>60px 词从画外飞进来变成滑入 |\n| blur 通道 | `(1-p)·10`px | 这一通道就是\"专业感\"，删了退化成普通淡入上移；>18px 中间帧糊成色块 |\n| 主副错峰 | 主 0.06–0.62 / 副 0.34–0.90 | 重叠 32f 是\"一句话\"；副标题起点推到 0.62 之后就读成两拍 |\n| 字号字重 | 34px/800 对 14px/400 | 差 2 倍以上才有主副关系；副标题上 600+ 字重会和主标打架 |\n| 收尾 hold | 副标题 103f 收完，尾部约 11f 静置 | 静置 <8f 观众还没读完就切了；这是全片唯一的静态帧 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **占位文案是主 4 词 / 副 5 词，换项目文案时词数要贴近**：stagger 总长\n  = `gap × 词数`，词数翻倍末词起点就往后挪一倍，末词的入场会被挤到窗口\n  边缘甚至撞上收尾静置——超过 8 词就该同步把 gap 压到 0.035\n- 三通道必须共用同一个 `p`：分开写三条缓动（哪怕曲线相同）就会出现\n  \"位移到了但还糊着\"的错位，柔和感立刻散掉\n- 词级拆分对中文文案要手动切：`split(' ')` 在中文上得到一整块，\n  须自己按语义分段成 3–5 个 span，别退化成逐字\n- 定位用 `flex` 居中列 + `gap:16px`，主副行高变化会带动整体重排——\n  在此卡里无妨（一次性入场），但别在这套结构上加会变宽的元素\n- 这是**低能量默认卡**：与本类里的乱码/翻牌/滚轮属于不同职能，同片可以\n  也应该共存（主角用重手法，其余标题全用本卡）\n\n## 参考实现\ndemos/typography/blur-slide/\n（BlurSlide.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/blur-slide/BlurSlide.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/blur-slide/BlurSlide.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/blur-slide/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/blur-slide/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "blur-slide",
+          "label": "blur-slide",
+          "description": "标题逐词入场，y 40→0 + blur 10→0 + opacity 0→1 三通道走同一条 outCubic 同步收敛，词间隔约 3.5f；副标题在标题收完前就错峰跟进",
+          "use": "几乎所有标题/副标题成对出现的场合；产品页首屏文案、章节小标题；需要\"专业但不抢戏\"的默认文字 reveal",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/blur-slide.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/blur-slide/BlurSlide.tsx",
+          "implementationPaths": [
+            "demos/typography/blur-slide/BlurSlide.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/blur-slide/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/blur-slide/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "brace-expand",
+      "summary": "一对花括号先小字号出现在正中，随即带过冲向左右滑到 ±148px 并放大到标题级，文字 clip 宽度严格绑括号间距、像被拉开幕布般揭示，落定后字距再细微松弛",
+      "use": "开发者/技术产品的标题字卡；章节开场；需要\"一个符号完成揭示\"的极简一拍",
+      "duration": "约 3.8s（114f@30fps：7f 出现 → 弹开 → 落定后字距松弛 → hold）",
+      "energy": "中（单次过冲是唯一峰值，其余静止）",
+      "intention": "标题揭示的手法里，本卡最省：不做遮罩条、不做逐字、不做位移——只让 一对括号往两边走，文字被\"括出来\"。它天生带代码语感（`{}` 是花括号）， 所以在技术产品语境里读作\"这就是内容本体\"。命门是 clip 宽度**必须严格 绑括号位置**：一旦文字自己淡入或自己擦入，括号就退化成装饰，幕布感全失。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/brace-expand.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/brace-expand.md",
+      "rules": "---\nname: brace-expand\n一句话: 一对花括号先小字号出现在正中，随即带过冲向左右滑到 ±148px 并放大到标题级，文字 clip 宽度严格绑括号间距、像被拉开幕布般揭示，落定后字距再细微松弛\n适用: 开发者/技术产品的标题字卡；章节开场；需要\"一个符号完成揭示\"的极简一拍\n时长: 约 3.8s（114f@30fps：7f 出现 → 弹开 → 落定后字距松弛 → hold）\n能量: 中（单次过冲是唯一峰值，其余静止）\n---\n\n## 意图\n标题揭示的手法里，本卡最省：不做遮罩条、不做逐字、不做位移——只让\n一对括号往两边走，文字被\"括出来\"。它天生带代码语感（`{}` 是花括号），\n所以在技术产品语境里读作\"这就是内容本体\"。命门是 clip 宽度**必须严格\n绑括号位置**：一旦文字自己淡入或自己擦入，括号就退化成装饰，幕布感全失。\n\n## 动效核心\n- 括号先单独出现：`on = t >= 0.07 ? 1 : 0`（约 7f 处，**硬切不淡入**），\n  此时还是 44px 原字号且左右紧贴——先建立\"这是一对括号\"\n- 弹开 `ex = seg(t, 0.13, 0.34, E.outBack)`（约 15f→39f，24f 内完成），\n  过冲约 8% 再回弹\n- 同步放大 `sc = lerp(ex, 0.6, 1)`，括号最终半距 `x = HALF · ex · sc`\n  （HALF=148）——**位移与缩放乘在一起**，所以放大本身也在推开括号，\n  比单独两条曲线更像\"撑开\"\n- 文字揭示宽度 `clip.width = max(0, x·2 - 34)`：减 34 是给括号本体留位，\n  不减的话字会压在括号笔画上\n- 文字同步 `scale(sc)`（38px 基准 × 0.6→1），与括号共用同一个 sc（不同倍率\n  就读作两个元素各自动）；落定后字距松弛\n  `letterSpacing = lerp(seg(t, 0.42, 0.62, E.inOutQuad), 1, 2.6)`px\n  （约 48f→71f）——\"呼一口气\"的细节，全片最后一次运动\n- 定位用 `root` 零尺寸中心锚点 + 三个绝对定位子元素\n  （`translate(-50%,-50%)`），**不用 flex**：宽度全程在变，flex 会重排\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 括号出现 | `t >= 0.07`（≈7f）硬切 | 硬切是对的（符号\"啪\"地在那儿）；改淡入就少了 2 帧的\"先看清括号\"，弹开显得突然 |\n| 弹开窗 | 0.13→0.34（≈24f），`E.outBack` | outBack 的过冲是全片唯一峰值；纯 outCubic 读作滑开，没有\"撑\"的力道；窗 <14f 看不清文字揭示 |\n| 半距 | HALF = 148px | 决定标题可容纳的字数；文案变长必须同步加大，不然字被 clip 裁掉（clip 只裁不缩字） |\n| 缩放 | `lerp(ex, 0.6, 1)`，括号 44px / 字 38px | 0.6 起点是\"小字号\"的量；起点 >0.85 就看不出放大，<0.4 括号一开始小得像标点 |\n| clip 留位 | `x·2 - 34`px | 34 是括号笔画宽的经验值；不减则字压括号，减太多字被裁得早、露不全 |\n| 字距松弛 | `1 → 2.6`px，窗 0.42→0.62 inOutQuad | 这一下是\"落定后的呼吸\"；>4px 标题散架，删了收尾略僵但不算错 |\n| 布局 | 零尺寸 `root` + 三个绝对定位子元素 | 宽度全程变化，**必须绝对定位**；用 flex 会让括号随 clip 宽度被推着走（判例） |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **文案长度必须与 HALF 匹配**：占位文案是 `Your title`（10 字符），\n  clip 只做裁切不做缩放——换成长标题时字会被括号裁掉两头，\n  必须同步加大 HALF（或减小字号）；中文标题字宽约为英文两倍，\n  6 个汉字就接近上限\n- clip 宽度是从 0 长起来的，所以文字**总是从中间往两边露**：文案的\n  视觉重心要在中央（居中单行短句最佳），左右不对称的长短句会露得别扭\n- 括号与文字必须共用同一个 `sc`：分别写两条缩放曲线（哪怕数值相同）\n  会在过冲那几帧出现括号已经到位、字还在长的错位\n- 过冲只此一次：全片其他运动都无过冲，这是把注意力压在\"撑开\"这一\n  动作上；再叠别的 back 缓动就贬值了\n- `overflow:hidden` 的 clip 高度写死 60px，字号大改时要同步——不然\n  上下被切\n- 声音：弹开那一下值得一记短促的机械/木质开合音，落定后无声；\n  配法纪律见 sound-design.md\n\n## 参考实现\ndemos/typography/brace-expand/\n（BraceExpand.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/brace-expand/BraceExpand.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/brace-expand/BraceExpand.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/brace-expand/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/brace-expand/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "brace-expand",
+          "label": "brace-expand",
+          "description": "一对花括号先小字号出现在正中，随即带过冲向左右滑到 ±148px 并放大到标题级，文字 clip 宽度严格绑括号间距、像被拉开幕布般揭示，落定后字距再细微松弛",
+          "use": "开发者/技术产品的标题字卡；章节开场；需要\"一个符号完成揭示\"的极简一拍",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/brace-expand.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/brace-expand/BraceExpand.tsx",
+          "implementationPaths": [
+            "demos/typography/brace-expand/BraceExpand.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/brace-expand/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/brace-expand/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "card-stack",
+      "summary": "8 张卡从屏幕下方逐张 spring 弹入叠成一摞，全员落位后整摞一次性展成 3D 扇面——每张按序号偏转 8°、横移 34px、向后退一层 z",
+      "use": "需要交代\"我们有一组东西\"的产品段落；卡片墙/模板库/方案列表的建立镜头，也能当 logo 前的一拍蓄势",
+      "duration": "约 4.2s（126f@30fps）",
+      "energy": "中高（入场是连续小爆发，展开段收成一次平滑的整体动作）",
+      "intention": "一摞卡先聚成一个物体，再摊开成一组物体——顺序很关键：先给\"整体\"再给\"个体\"。 观众第一眼记住的是有分量的一摞（数量感），第二眼才看清每张不一样（多样性）。 展开动作留到最后一次性完成，是为了不和入场的节拍打架。",
+      "category": "ui-entrance",
+      "tags": [
+        "ui-entrance"
+      ],
+      "sourcePath": "references/shots/ui-entrance/card-stack.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/ui-entrance/card-stack.md",
+      "rules": "---\nname: card-stack\n一句话: 8 张卡从屏幕下方逐张 spring 弹入叠成一摞，全员落位后整摞一次性展成 3D 扇面——每张按序号偏转 8°、横移 34px、向后退一层 z\n适用: 需要交代\"我们有一组东西\"的产品段落；卡片墙/模板库/方案列表的建立镜头，也能当 logo 前的一拍蓄势\n时长: 约 4.2s（126f@30fps）\n能量: 中高（入场是连续小爆发，展开段收成一次平滑的整体动作）\n---\n\n## 意图\n一摞卡先聚成一个物体，再摊开成一组物体——顺序很关键：先给\"整体\"再给\"个体\"。\n观众第一眼记住的是有分量的一摞（数量感），第二眼才看清每张不一样（多样性）。\n展开动作留到最后一次性完成，是为了不和入场的节拍打架。\n\n## 动效核心\n- 两层运动分离叠加：入场（每张自己的 spring）与扇形（全员共享的一条展开进度），\n  最终 transform 是 `translate3d(tx, y, tz) rotate(rot)` 里两层各自算出的分量合成\n- 入场：`seg(t, 0.02+i*0.033, +0.3)` 后过 `E.spring(inT, 0.3)`，`y` 从 300px 抬到 0——\n  起点在画框外，stagger 0.033（约 4f）让 8 张连成一串而不是一起飞\n- 扇形：`seg(t, 0.55, 0.8, E.inOutCubic)` 是唯一的展开时钟，扇形终态是静态偏移量\n  （`k = i-3.5`，`rot = k*8°`、`tx = k*34px`、`tz = -10*|k|`）乘上这条进度\n- `transform-origin: 50% 130%` 把旋转轴放到卡片下缘之外——扇柄在手里，卡片是绕手腕\n  转开的，不是绕自己中心转\n- 透明度用 `min(1, inT*4)` 提前吃满：卡在飞行前 1/4 段就已经全实，观众看到的是实体\n  运动而不是淡入\n- `zIndex = 20 - |k*2|`：中间的卡压在最上层，扇面向两侧递退，配合 `tz` 一起给深度\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 卡数 | N=8（hue 222→334，每张 +16°） | 8 张是扇面 56° 总张角的舒适上限；>10 张要把每张角度降到 5–6°，否则两端卡飞出画框 |\n| 入场 stagger | 0.033/张（≈4f） | 4f 是\"一串\"的手感；≥8f 读作逐张点名，≤2f 读作一团一起冒 |\n| 入场行程 | 窗 0.3（≈38f），y 300→0 | 300px 保证起点在画框外；行程缩到 0.15 以内 spring 的回弹会被截断，落位变硬 |\n| spring 阻尼 | `E.spring(inT, 0.3)` | 0.3 是可见但不夸张的一次回弹；调小回弹次数增多，卡会\"抖两下\"，成组时抖动会互相干扰 |\n| 展开窗 | 0.55→0.8（inOutCubic） | inOut 让展开缓起缓收像一只手在摊牌；换 outBack 会过冲成\"甩开\"，与前段的 spring 撞手感 |\n| 扇形张角 | `k*8°`，横移 `k*34px` | 角度与横移要同比调：只加角度不加横移，卡会互相穿插；34/8 的比值决定扇面是\"疏\"还是\"叠\" |\n| 深度递退 | `tz = -10*|k|`，perspective 900px | 只有 10px/张，深度是暗示级别；调到 40 以上必须同时加大 perspective，否则边缘卡透视畸变 |\n| 旋转轴 | `transform-origin: 50% 130%` | 130% 决定\"扇柄\"离卡多远；改成 50% 50% 立刻退化成风车式散开，失去手持感 |\n\n## 已知坑\n- 两段时间窗刚好首尾相接：末张入场结束于 `0.02+7*0.033+0.3 = 0.551`，展开始于 0.55。\n  加卡数或加大 stagger 会让入场吃进展开段，出现\"还在飞就开始转\"的浑浊——加卡必须\n  同步把展开起点往后推\n- 卡数为偶数时 `k` 取半整数（±0.5, ±1.5…），`zIndex = 20-|k*2|` 让中间两张同层，\n  它们的叠压次序由 DOM 顺序决定；奇数张时中心卡独占顶层，观感更稳\n- 卡片尺寸 110×150 与 `margin:-85px 0 0 -55px` 是绑定的居中量，改尺寸要一起改 margin\n- 卡面内容是灰阶骨架条 + 单个几何字符的占位，落地必须换成真实页面切片；hue 色环是\n  演示用的区分手段，真实素材里应改为同色系或直接取素材主色\n- 展开后没有收尾动作，末帧停在扇面终态。要接下一镜就在 0.8 之后切，别让扇面白停太久\n\n## 参考实现\ndemos/ui-entrance/card-stack/\n（CardStack.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/ui-entrance/card-stack/CardStack.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/ui-entrance/card-stack/CardStack.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "placeholder",
+            "path": "demos/ui-entrance/card-stack/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/ui-entrance/card-stack/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "card-stack",
+          "label": "card-stack",
+          "description": "8 张卡从屏幕下方逐张 spring 弹入叠成一摞，全员落位后整摞一次性展成 3D 扇面——每张按序号偏转 8°、横移 34px、向后退一层 z",
+          "use": "需要交代\"我们有一组东西\"的产品段落；卡片墙/模板库/方案列表的建立镜头，也能当 logo 前的一拍蓄势",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/card-stack.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/ui-entrance/card-stack/CardStack.tsx",
+          "implementationPaths": [
+            "demos/ui-entrance/card-stack/CardStack.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "placeholder",
+            "path": "demos/ui-entrance/card-stack/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/ui-entrance/card-stack/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "depth-layer-moves",
+      "summary": "分层深度两款运镜——多层视差滑轨（3 层速度梯度横移出纵深）与伪 dolly-zoom（主体钉死、背景膨胀压来）",
+      "use": "平面截图要\"有厚度\"的段落；戏剧性蓄力时刻用 dolly-zoom（一支片 ≤1 次）",
+      "duration": "视差滑轨 4–5s 持续；dolly-zoom 3–4s 单向行程",
+      "energy": "视差=中（质感型）；dolly-zoom=中高（压迫感渐强）",
+      "intention": "整页平移是\"看页面\"，分层深度是\"在页面的空间里\"。视差滑轨给横移 加纵深（迪士尼多平面摄影机原理，Linear 片同款质感）；伪 dolly-zoom 反过来——主角纹丝不动、全世界压过来，给戏剧性时刻蓄力。",
+      "category": "camera",
+      "tags": [
+        "camera"
+      ],
+      "sourcePath": "references/shots/camera/depth-layer-moves.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/camera/depth-layer-moves.md",
+      "rules": "---\nname: depth-layer-moves\n一句话: 分层深度两款运镜——多层视差滑轨（3 层速度梯度横移出纵深）与伪 dolly-zoom（主体钉死、背景膨胀压来）\n适用: 平面截图要\"有厚度\"的段落；戏剧性蓄力时刻用 dolly-zoom（一支片 ≤1 次）\n时长: 视差滑轨 4–5s 持续；dolly-zoom 3–4s 单向行程\n能量: 视差=中（质感型）；dolly-zoom=中高（压迫感渐强）\n---\n\n## 意图\n整页平移是\"看页面\"，分层深度是\"在页面的空间里\"。视差滑轨给横移\n加纵深（迪士尼多平面摄影机原理，Linear 片同款质感）；伪 dolly-zoom\n反过来——主角纹丝不动、全世界压过来，给戏剧性时刻蓄力。\n\n## 动效核心\n- **视差滑轨（3 层）**：背景整页（系数 0.35 + blur 2px + 降饱和\n  0.92 + opacity 0.85，退成环境）、中景真实卡切片（系数 0.7，\n  主阅读层，无 blur）、前景浮块（系数 1.4 + blur 3px，掠过镜头）。\n  同一条 drive 位移乘各层系数\n- **伪 dolly-zoom**：主体高清卡固定 px 钉屏中（不参与任何变换）；\n  背景层（整页 + 卡群一体）scale 1→2.25 从画面中心膨胀 + blur 0→3.5px\n  渐深；主体落影随进程加深（12→28px offset）强化\"钉住感\"\n- 两款都不拆真实页面排版：整页作为一体成层，独立元素用切片另起层\n  ——层间关系是\"景深\"，不是\"页面被撕开\"\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 视差层系数 | 0.35 / 0.7 / 1.4 | 梯度 ≥2 倍层间才可辨；层数 ≤4 防过载 |\n| 层次锚 | 前后景 blur + 背景降饱和 | 没有 blur/饱和锚，读作\"贴片乱飞\" |\n| dolly 膨胀行程 | scale 1→2.0–2.5 | 行程小了压迫感不足；背景 opacity ≤0.6 防读作故障 |\n\n## 已知坑\n- 主阅读层/主体必须高清纹理且无 blur——观众在读它\n- 视差与 PageCam rot 3D 的组合（斜拍视差）未验证，实战先渲 still 确认\n- dolly-zoom 是\"戏剧调料\"：一支片 ≤1 次，日常段落用视差滑轨\n- 参数经占位素材调校转正，非实战定稿，首次实战后回验\n\n## 参考实现\ndemos/camera/depth-layer-moves/\n（DollyZoomReal.tsx / MultiplaneReal.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/camera/depth-layer-moves/DollyZoomReal.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/camera/depth-layer-moves/DollyZoomReal.tsx",
+          "dependencies": [
+            "remotion",
+            "../../_textures/live-layout.json"
+          ],
+          "conversion": {
+            "status": "placeholder",
+            "path": "demos/camera/depth-layer-moves/DollyZoomReal/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/camera/depth-layer-moves/DollyZoomReal/index.html"
+          }
+        },
+        {
+          "path": "demos/camera/depth-layer-moves/MultiplaneReal.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/camera/depth-layer-moves/MultiplaneReal.tsx",
+          "dependencies": [
+            "remotion",
+            "../../_textures/live-layout.json"
+          ],
+          "conversion": {
+            "status": "placeholder",
+            "path": "demos/camera/depth-layer-moves/MultiplaneReal/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/camera/depth-layer-moves/MultiplaneReal/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "multiplane",
+          "label": "multiplane",
+          "description": "多层视差滑轨——3 层素材按速度梯度横移（近快远慢），平面截图滑出纵深",
+          "use": "平面截图要\"有厚度\"的段落；戏剧性蓄力时刻用 dolly-zoom（一支片 ≤1 次）",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/multiplane.mp4?v=1784437314556",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/camera/depth-layer-moves/MultiplaneReal.tsx",
+          "implementationPaths": [
+            "demos/camera/depth-layer-moves/MultiplaneReal.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "placeholder",
+            "path": "demos/camera/depth-layer-moves/MultiplaneReal/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/camera/depth-layer-moves/MultiplaneReal/index.html"
+          }
+        },
+        {
+          "key": "dolly-zoom",
+          "label": "dolly-zoom",
+          "description": "伪 dolly-zoom——主体钉死不动、背景层持续膨胀压来，戏剧性蓄力的压迫感",
+          "use": "平面截图要\"有厚度\"的段落；戏剧性蓄力时刻用 dolly-zoom（一支片 ≤1 次）",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/dolly-zoom.mp4?v=1784437314559",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/camera/depth-layer-moves/DollyZoomReal.tsx",
+          "implementationPaths": [
+            "demos/camera/depth-layer-moves/DollyZoomReal.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "placeholder",
+            "path": "demos/camera/depth-layer-moves/DollyZoomReal/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/camera/depth-layer-moves/DollyZoomReal/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "glitch-cycle",
+      "summary": "同一行等宽槽位循环轮播 4 条状态短语，每条头尾按概率关键帧 [1,0,0,0.1,0,0,1] 全乱码、中段偶发单字抖动，切换瞬间叠 RGB 分离与整行位移；末条概率收 0 保证收尾干净",
+      "use": "加载/构建/部署过程的状态播报；技术型片头的\"系统自述\"；需要机器口吻推进时间的一段垫底",
+      "duration": "约 5.6s（168f@30fps，4 条短语各 42f）",
+      "energy": "中高（持续的高频噪声脉冲，切换点是峰值）",
+      "intention": "状态播报最笨的做法是四行字逐条淡入。轮播把它们压进**一个槽位**： 短语头尾用乱码\"熔断\"再\"凝固\"，中段几乎干净只偶尔抽一下——观众读到的 是\"系统在一步步推进\"，而不是四条独立文案。乱码浓度是这卡的语法： 浓 = 正在切换，淡 = 正在这一状态里。底部进度条把四拍串成一条时间线， 最后一条把概率收到 0，落定即结束。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/glitch-cycle.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/glitch-cycle.md",
+      "rules": "---\nname: glitch-cycle\n一句话: 同一行等宽槽位循环轮播 4 条状态短语，每条头尾按概率关键帧 [1,0,0,0.1,0,0,1] 全乱码、中段偶发单字抖动，切换瞬间叠 RGB 分离与整行位移；末条概率收 0 保证收尾干净\n适用: 加载/构建/部署过程的状态播报；技术型片头的\"系统自述\"；需要机器口吻推进时间的一段垫底\n时长: 约 5.6s（168f@30fps，4 条短语各 42f）\n能量: 中高（持续的高频噪声脉冲，切换点是峰值）\n---\n\n## 意图\n状态播报最笨的做法是四行字逐条淡入。轮播把它们压进**一个槽位**：\n短语头尾用乱码\"熔断\"再\"凝固\"，中段几乎干净只偶尔抽一下——观众读到的\n是\"系统在一步步推进\"，而不是四条独立文案。乱码浓度是这卡的语法：\n浓 = 正在切换，淡 = 正在这一状态里。底部进度条把四拍串成一条时间线，\n最后一条把概率收到 0，落定即结束。\n\n## 动效核心\n- 槽位按最长短语预建 `MAXCH` 个 span（`min-width:0.66em` 固定槽宽），\n  短短语右侧填空格——**字符不增删，只换内容**，整行永不重排\n- 时段等分：`slot = floor(t·4)`，短语内进度 `p = t·4 - slot`（每条 42f）\n- glitch 概率关键帧 `KF=[1,0,0,0.1,0,0,1]` 按 p 线性插值：**开头 1.0 全乱、\n  中段 0、约 p=0.5 处回弹到 0.1（偶发抽字）、结尾又回 1.0 熔进下一条**\n- 末条专用 `KF_LAST=[1,0,0,0.1,0,0,0]`，结尾概率归零 → t=1 画面干净\n- 逐字符判定：`rand(i·31 + bucket·17 + slot·97) < g` 才替换成字池字符，\n  命中字随机上 #6c8cff 蓝或 #4a5270 暗灰；`bucket = floor(frame/2)`，\n  即每 2 帧重掷一次\n- 整行抖动与 RGB 分离强度全部乘 g：`jx = ±g·10`px、`jy = ±g·4`px，\n  `text-shadow` 左红右青各偏 `g·3`px（g>0.04 才开）——**噪声浓度一个变量\n  同时驱动换字、位移、色散**，所以三者永不打架；底部 120×2px 进度条\n  `width = t·100%` 线性走满，与四拍无关地铺底\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 短语表 | 4 条，最长 17 字符（`COMPILING SHADERS`） | 每条 42f 是\"读得完一个状态\"的下限；5 条以上单条不足 34f 观众只看到闪 |\n| 概率关键帧 | `[1,0,0,0.1,0,0,1]`（6 段） | 中间那个 0.1 是\"活着\"的证据，删了短语中段死板；把 0 段调到 0.3+ 全片糊成故障 |\n| 重掷频率 | 每 2 帧（`floor(frame/2)`） | 1 帧一换糊成灰带；4 帧以上乱码看得清是\"另一个词\"，不像噪声 |\n| 抖动幅度 | `x ±g·10` / `y ±g·4`px | x 大于 y 是横向撕裂的关键（等比抖动读作地震）；>20px 整行跳出槽位 |\n| RGB 分离 | 左红右青各 `g·3`px，阈值 g>0.04 | 这是\"电子故障\"的身份证；无阈值时中段那 0.1 的概率会让字常年带毛边 |\n| 槽宽字体 | SF Mono 26px、`letter-spacing:3px`、槽 `0.66em` | 等宽 + 固定槽宽是刚需；字距 3px 让乱码之间有呼吸，挤在一起读作乱码块 |\n| 进度条 | 120×2px，`#6c8cff` 填充，线性 | 唯一的线性元素，给四拍噪声一个稳定参照；删了轮播读不出\"在推进\" |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **换项目文案时四条短语字符数要接近（demo 12–17 字符）**：槽位数按最长\n  短语一次建好，短短语靠右填空格——如果一条只有 4 字符、另一条 30 字符，\n  短的那条在 30 格里孤零零居左，行宽全程被最长条撑着，节奏读作漂移\n- 概率关键帧是 6 段等分映射到短语内进度：短语条数变了单条时长跟着变，\n  但关键帧形状不变——所以条数越多，\"全乱码\"那两段的绝对时长越短，\n  切换感越弱，超过 5 条就该把首尾的 1.0 段拉宽\n- 末条必须用 `KF_LAST`（结尾收 0）：用普通 KF 会让 t=1 停在满乱码上，\n  接下一镜时读作没渲染完\n- 深底专用：#0a0b10 底 + 冷蓝噪声是整套配色的地基，浅底上 RGB 分离\n  几乎不可见；声音也强依赖——四个切换点天然是四个节奏点，实战必须配\n  电子故障/开关音；\n  配法纪律见 sound-design.md（同类元素同音，连发交替双样本防机枪感）\n- 与 scramble 分工：那卡是**一次性解密**（乱→定，不再乱），本卡是\n  **循环播报**（乱→定→乱→定）；同片只留一个，两个并置读作同一手法用了两遍\n\n## 参考实现\ndemos/typography/glitch-cycle/\n（GlitchCycle.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/glitch-cycle/GlitchCycle.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/glitch-cycle/GlitchCycle.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/glitch-cycle/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/glitch-cycle/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "glitch-cycle",
+          "label": "glitch-cycle",
+          "description": "同一行等宽槽位循环轮播 4 条状态短语，每条头尾按概率关键帧 [1,0,0,0.1,0,0,1] 全乱码、中段偶发单字抖动，切换瞬间叠 RGB 分离与整行位移；末条概率收 0 保证收尾干净",
+          "use": "加载/构建/部署过程的状态播报；技术型片头的\"系统自述\"；需要机器口吻推进时间的一段垫底",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/glitch-cycle.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/glitch-cycle/GlitchCycle.tsx",
+          "implementationPaths": [
+            "demos/typography/glitch-cycle/GlitchCycle.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/glitch-cycle/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/glitch-cycle/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "gradient-word-sweep",
+      "summary": "黑底标语里关键词被渐变彩光从左到右快速扫过\"充能\"——波前字符辉光最强向后衰减，填满后字符间勾连细紫红闪电、整词稳态泛光呼吸",
+      "use": "标语里给单个动词/卖点词充能（Supercharged/faster/AI…）；能量高潮段的文字戏；黑场品牌片的口号帧",
+      "duration": "扫充 ~15–20f（要快）+ 稳态闪电呼吸 1–2s；全段 2.5–3.5s",
+      "energy": "高（一词爆点，前后都该让位）",
+      "intention": "整句白字里只有关键词被\"通电\"：渐变彩光从左到右快速扫过字符， 像能量注入——扫过的瞬间最亮（波前尾迹），随后衰减到稳态； 填满后字符之间跳起勾连的细闪电，词保持泛光呼吸。三个命门： **快**（扫充 15–20f，慢了读作进度条）、**波前最亮**（刚点亮的 字符效果最强，没有这个梯度就是静态渐变裁切）、**辉光克制** （AE 式多层泛光但别糊成一团，闪电细而稀疏才是点缀）。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "effects"
+      ],
+      "sourcePath": "references/shots/typography/gradient-word-sweep.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/gradient-word-sweep.md",
+      "rules": "---\nname: gradient-word-sweep\n一句话: 黑底标语里关键词被渐变彩光从左到右快速扫过\"充能\"——波前字符辉光最强向后衰减，填满后字符间勾连细紫红闪电、整词稳态泛光呼吸\n适用: 标语里给单个动词/卖点词充能（Supercharged/faster/AI…）；能量高潮段的文字戏；黑场品牌片的口号帧\n时长: 扫充 ~15–20f（要快）+ 稳态闪电呼吸 1–2s；全段 2.5–3.5s\n能量: 高（一词爆点，前后都该让位）\n标签: effects\n---\n\n## 意图\n整句白字里只有关键词被\"通电\"：渐变彩光从左到右快速扫过字符，\n像能量注入——扫过的瞬间最亮（波前尾迹），随后衰减到稳态；\n填满后字符之间跳起勾连的细闪电，词保持泛光呼吸。三个命门：\n**快**（扫充 15–20f，慢了读作进度条）、**波前最亮**（刚点亮的\n字符效果最强，没有这个梯度就是静态渐变裁切）、**辉光克制**\n（AE 式多层泛光但别糊成一团，闪电细而稀疏才是点缀）。\n\n## 动效核心\n- 渐变填充：关键词做双层文字（白/渐变彩），彩层用从左到右推进的\n  mask 揭开；斜切 mask 边缘略糊（~8% 词宽）\n- 波前尾迹增亮：跟随 mask 前沿一条 ~34% 词宽的增亮带，波前处\n  辉光最强、向后衰减；填充结束后 ~10f 淡出到稳态\n- 辉光：4 层泛光（环境大柔光+中晕+近核+亮核），稳态 opacity\n  0.55–0.72 档（实测：0.75–0.95 档被裁\"泛光感有点强\"）\n- 闪电：填满后字符间勾连细闪电，紫红系三层描边（外晕 6/中 2.4/\n  亮核 1.4），mulberry32 种子随机跳位闪烁，稀疏零星（不是持续电弧）\n- 禁：填充过程不带跟随移动的光点/星光（实测判例：跟随白色光点读作廉价装饰，删）\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 扫充时长 | 15–20f | 原片\"速度很快\"；>28f 读作进度条 |\n| 波前增亮带 | ~34% 词宽，波前最亮向后衰减 | 无梯度＝静态渐变；带太宽＝整词一起亮没有\"注入\"感 |\n| 稳态泛光 | 4 层 opacity 0.55/0.55/0.62/0.72 | 0.75+ 档被裁太强；辉光层数<3 读作纯色 |\n| 闪电线宽 | 外 6/中 2.4/核 1.4 @1080p | 加倍即被裁\"粗\"；颜色偏紫红（magenta 216,60,190 系） |\n| 闪电频率 | 稀疏零星（同屏 ≤2 道，间歇 >8f） | 频率高读作电弧故障；实测 demo 仍略密于原片 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 判例三条（用户逐字意见沉淀）：①填充过程禁跟随光点；②闪电\n  必须紫红+细；③泛光宁弱勿强，波前梯度补足冲击力\n- 与 type-rhythm-sync/cel-flash-stomp 分工：那些是节拍/砸字；\n  本卡是单词\"充能\"的能量语义，词必须是句中卖点词\n- 关键词外的正文保持纯白静止——全句都动就没有\"只有它通电\"的戏\n\n## 参考实现\ndemos/typography/gradient-word-sweep/\n（GradientWordSweep.tsx）\n原片出处：clickup-30.mp4\n",
+      "implementations": [
+        {
+          "path": "demos/typography/gradient-word-sweep/GradientWordSweep.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/gradient-word-sweep/GradientWordSweep.tsx",
+          "dependencies": [
+            "react",
+            "remotion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/gradient-word-sweep/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/gradient-word-sweep/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "gradient-word-sweep",
+          "label": "gradient-word-sweep",
+          "description": "黑底标语里关键词被渐变彩光从左到右快速扫过\"充能\"——波前字符辉光最强向后衰减，填满后字符间勾连细紫红闪电、整词稳态泛光呼吸",
+          "use": "标语里给单个动词/卖点词充能（Supercharged/faster/AI…）；能量高潮段的文字戏；黑场品牌片的口号帧",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/gradient-word-sweep.mp4?v=1784437314587",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/gradient-word-sweep/GradientWordSweep.tsx",
+          "implementationPaths": [
+            "demos/typography/gradient-word-sweep/GradientWordSweep.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/gradient-word-sweep/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/gradient-word-sweep/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "lead-word-zoom-assemble",
+      "summary": "首词以 2.3 倍字号占据画面中央、hold 期间继续推近 6%，随后一条曲线同时完成「缩回终字号」与「整行左滑归位」，后续词各自从槽位右侧 0.5em 被推进来；支点横向钉首词中心、纵向钉基线（挂载时实测），整行上移的同一时窗副行浮出，停一拍后整幕 crash-zoom 推近失焦交棒",
+      "use": "品牌名/产品名的 Introducing 字卡；发布会式开场第二镜；一句话主张需要\"先让一个词占满画面、再把整句补齐\"的场合",
+      "duration": "约 2.8s（84f@30fps；组句 f32 完成、上移与副行 f34–50、静止 22f、末 12f crash）",
+      "energy": "中高（起手就是满画面的大字，但全程只有一次运动，没有二次冲击）",
+      "intention": "字卡最容易犯的错是\"整句一起淡入\"——观众同时收到 5 个词，一个都没记住。这张卡把 阅读顺序做成**物理顺序**：先只给一个词，而且大到占满画面、还在继续朝观众推近，观众 被迫先读它；然后这个词退回自己在句子里的尺寸和位置，整句围绕它长出来。落定时观众 已经读过两遍主词。 真正的手感命门不是缩放曲线，而是**支点**。首词从\"画面正中\"走到\"行内第三个字符的 位置\"，如果支点取行盒中心，缩放和左滑会各自把字往两边拽，末尾几帧基线抖得肉眼可见。 把 `transform-origin` 横向钉在首词中心、纵向钉在基线，这两点全程不动，整行就只是 \"收小\"，没有任何漂移。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "opening"
+      ],
+      "sourcePath": "references/shots/typography/lead-word-zoom-assemble.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/lead-word-zoom-assemble.md",
+      "rules": "---\nname: lead-word-zoom-assemble\n一句话: 首词以 2.3 倍字号占据画面中央、hold 期间继续推近 6%，随后一条曲线同时完成「缩回终字号」与「整行左滑归位」，后续词各自从槽位右侧 0.5em 被推进来；支点横向钉首词中心、纵向钉基线（挂载时实测），整行上移的同一时窗副行浮出，停一拍后整幕 crash-zoom 推近失焦交棒\n适用: 品牌名/产品名的 Introducing 字卡；发布会式开场第二镜；一句话主张需要\"先让一个词占满画面、再把整句补齐\"的场合\n时长: 约 2.8s（84f@30fps；组句 f32 完成、上移与副行 f34–50、静止 22f、末 12f crash）\n能量: 中高（起手就是满画面的大字，但全程只有一次运动，没有二次冲击）\n标签: opening\n---\n\n## 意图\n字卡最容易犯的错是\"整句一起淡入\"——观众同时收到 5 个词，一个都没记住。这张卡把\n阅读顺序做成**物理顺序**：先只给一个词，而且大到占满画面、还在继续朝观众推近，观众\n被迫先读它；然后这个词退回自己在句子里的尺寸和位置，整句围绕它长出来。落定时观众\n已经读过两遍主词。\n\n真正的手感命门不是缩放曲线，而是**支点**。首词从\"画面正中\"走到\"行内第三个字符的\n位置\"，如果支点取行盒中心，缩放和左滑会各自把字往两边拽，末尾几帧基线抖得肉眼可见。\n把 `transform-origin` 横向钉在首词中心、纵向钉在基线，这两点全程不动，整行就只是\n\"收小\"，没有任何漂移。\n\n## 动效核心\n- **两段缩放叠加成一条 scale**：\n  `scale = interpolate(f, [0,12], [2.3, 2.3·1.06], PUSH_EASE)\n         + interpolate(f, [12,24], [0, 1-2.3·1.06], ZOOM_EASE)`。\n  第一段是 hold 期间的推近（`cubic-bezier(.25,1,.5,1)`，减速后挂在峰值），第二段是缩回\n  （从峰值一路减到终字号 1）。写成相加而不是分段判断，两段之间没有速度断点\n- **缩回与左滑共用 ZOOM_EASE**（`cubic-bezier(.5,0,.05,1)`，重 ease-in-out、零回弹）：\n  `translate = interpolate(f, [12,36], [slideDistance, 0], ZOOM_EASE)`。两个动作必须读作\n  **一次**运动；各走各的曲线时会读成\"先缩小、再滑走\"两拍\n- **偏心距怎么来**：`slideDistance = lineWidth · (0.5 - leadRatio)`，`leadRatio` =\n  首词中心在整行里的占比。首词要停在画面正中，整行就得先向右偏这么多\n- **支点实测**：挂载时 `delayRender` 挂起渲染，量三个值——整行 `offsetWidth`、\n  首词 `offsetLeft + offsetWidth/2`、基线。基线用一个**零尺寸 inline-block 尺子**读出\n  （`<span style={{display:'inline-block',width:0,height:0}}>` 的 `offsetTop` 就是基线），\n  比 `lineHeight × 0.8` 之类的估算准得多。量到之后 `continueRender`，`transform-origin`\n  写成 `${leadRatio*100}% ${baseline}px`\n- **后续词是被推进来的，不是淡进来的**：第 i 词（i≥1）在\n  `pushStart = 12 + 6 + (i-1)·4` 起，`translate` 从 `0.5em → 0`\n  （`cubic-bezier(.22,.8,.36,1)`，起步快、落地长），透明度只用 2f 淡完。淡入必须极短，\n  否则词会\"浮现\"而不是\"被塞进槽位\"\n- **词间空格必须放在 inline-block 之外**。跟在词 span 内部尾随时会被行盒裁掉，\n  落定后所有词黏成一团（上游原组件的 bug，这里已修）\n- **场景层的三拍收尾**：f34–50 整行 `translateY 0→−56px`（outCubic），副行在**同一时窗**\n  淡入 + 上移 16px——上移让出的空间当帧被副行填掉，没有空当；f50–72 完全静止 22f；\n  f72–83 整幕 `scale 1→1.2` + `blur 0→9px` + `opacity 1→0.45`（ease-in-quad），推近失焦\n  交棒下一镜\n- **强调词**：精确匹配某个词换强调色（demo 里是 `Lumen`）。品牌词推入落位那一下自带\n  高亮，不用再加第二个动作\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 首词起手倍数 | initialScale 2.3 | 2.3 让首词横向溢出画面一点点（读作\"太大了装不下\"）；<1.8 只是\"稍大的字\"，冲击消失 |\n| 推近 | pushScale 1.06，占满 hold 12f | 6% 是\"还在朝观众来\"的最小可感量；>1.15 会在缩回时读作反向弹跳 |\n| hold | 12f | 首词独占画面的时长；<8f 观众读不完一个长单词，>20f 整句节奏塌 |\n| 缩回 | 12f，ZOOM_EASE | 与左滑同曲线；单独给缩回一条更快的曲线会让整行\"先缩完再滑\"，断成两拍 |\n| 左滑 | assembleDuration 24f | 比缩回长一倍：字号已经落定、位置还在走，这段\"滑行尾巴\"是电影感的来源 |\n| 后续词延迟 | wordDelay 6f（缩回起点之后） | 首词开始缩回才放后续词；同帧放会挤在一起看不清谁在动 |\n| 词间错峰 | wordStagger 4f | 4f 读作\"依次被推进\"；0 则整段后缀一起进，回到\"整句淡入\" |\n| 单词推入 | wordDuration 12f，wordPush 0.5em | 0.5em 是\"刚从槽位外面\"；>1em 会读作从画外飞入，与首词的收束方向打架 |\n| 词淡入 | wordFade 2f | 刻意极短。>6f 词会读作\"浮现\"，推入的力学感消失 |\n| 字号/字重/字距 | 96px / 600 / −0.03em | 负字距在放大 2.3 倍时才不会散架；正字距的大字会读作\"标语横幅\" |\n| 上移 + 副行 | f34–50，−56px，副行同窗 | 两件事必须同窗：先上移再出副行会多出一个空当拍 |\n| 静止 | 22f | 落定后的可读时间，低于 15f 观众来不及读副行 |\n| crash | 末 12f，scale→1.2，blur→9px | 这是转场的**前半**，动机要和下一镜的第一帧对上；单独播时看起来像\"没结束\"是正常的 |\n\n## 已知坑\n- **支点错了就抖基线**。`transform-origin` 必须是「首词中心 % + 基线 px」这一对。\n  取行盒中心（默认 `50% 50%`）时缩放与左滑互相拉扯，末尾几帧基线肉眼可见地跳\n- 基线别估算。`lineHeight × 0.8` 这类经验值在不同字体上差几像素，放大 2.3 倍后就是\n  十几像素的抖动。零尺寸 inline-block 尺子的 `offsetTop` 是唯一可靠的读法\n- `delayRender` 期间整行 `opacity: 0`——**必须**如此。否则未量到支点的第一帧会闪一下\n  错位的大字，成片里就是一帧脏帧\n- 布局是挂载时实测的，所以**结果随渲染环境的字体而变**：跨平台字体回退不同时整行宽度\n  会整体漂移（首词占比也跟着变）。介意的话把量到的三个值写死成常量\n- `scale` / `translate` 用的是独立 CSS 属性（不是 `transform` 简写）。混用会让其中一个\n  被覆盖；要合并成 `transform` 就必须自己保证 `translate → scale` 的顺序\n- 词间空格放进词 span 内部会被行盒裁掉（见上）。这个 bug 在小字号下不明显，96px 时\n  所有词会明显黏连\n- 首词必须是**短词**。\"Introducing\" 这类 10 字符左右刚好；首词超过 14 字符时 2.3 倍\n  放大会溢出画面两侧，观众读不到词尾\n- 强调色只给一个词。两个词都上色时观众不知道该记哪个，而且推入落位的高亮变成了\n  \"彩色标题\"，动作的意义被抹掉\n- 末段 crash 是转场的前半式，不是收尾。单独当片尾用会显得\"断了\"——要收尾就把\n  crash 换成静止 hold 或淡出\n\n## 参考实现\ndemos/typography/lead-word-zoom-assemble/\n（LeadWordZoomAssemble.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/lead-word-zoom-assemble/LeadWordZoomAssemble.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/lead-word-zoom-assemble/LeadWordZoomAssemble.tsx",
+          "dependencies": [
+            "react",
+            "remotion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/lead-word-zoom-assemble/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/lead-word-zoom-assemble/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "lead-word-zoom-assemble",
+          "label": "lead-word-zoom-assemble",
+          "description": "首词以 2.3 倍字号占据画面中央、hold 期间继续推近 6%，随后一条曲线同时完成「缩回终字号」与「整行左滑归位」，后续词各自从槽位右侧 0.5em 被推进来；支点横向钉首词中心、纵向钉基线（挂载时实测），整行上移的同一时窗副行浮出，停一拍后整幕 crash-zoom 推近失焦交棒",
+          "use": "品牌名/产品名的 Introducing 字卡；发布会式开场第二镜；一句话主张需要\"先让一个词占满画面、再把整句补齐\"的场合",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/lead-word-zoom-assemble.mp4?v=1788278309998",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/lead-word-zoom-assemble/LeadWordZoomAssemble.tsx",
+          "implementationPaths": [
+            "demos/typography/lead-word-zoom-assemble/LeadWordZoomAssemble.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/lead-word-zoom-assemble/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/lead-word-zoom-assemble/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "marker-underline-title",
+      "summary": "大标题落定后，关键词下方马克笔下划线从左到右快速描画——变宽笔形、毛糙边缘、微上斜跟随斜体字势，贴着字底",
+      "use": "标题里强调单个关键词（new/free/AI…）；手写感/人味的品牌调性；正文标注式强调",
+      "duration": "标题落定 +4~8f 后起笔，划线 8–12f，总 1–1.5s",
+      "energy": "低（一笔点睛，不抢标题的戏）",
+      "intention": "打印体标题里突然出现一笔手绘马克笔，用材质反差把一个词从 排版里拎出来——像人拿笔在海报上圈重点。命门有三：**快** （8–12f 一笔呵成，慢了读作加载条）、**近**（贴着字底，离远了 读作分隔线不是强调）、**跟字势**（斜体词的划线必须左低右高 微上斜——斜向画反是最容易犯且一眼假的错，判例见已知坑）。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/marker-underline-title.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/marker-underline-title.md",
+      "rules": "---\nname: marker-underline-title\n一句话: 大标题落定后，关键词下方马克笔下划线从左到右快速描画——变宽笔形、毛糙边缘、微上斜跟随斜体字势，贴着字底\n适用: 标题里强调单个关键词（new/free/AI…）；手写感/人味的品牌调性；正文标注式强调\n时长: 标题落定 +4~8f 后起笔，划线 8–12f，总 1–1.5s\n能量: 低（一笔点睛，不抢标题的戏）\n---\n\n## 意图\n打印体标题里突然出现一笔手绘马克笔，用材质反差把一个词从\n排版里拎出来——像人拿笔在海报上圈重点。命门有三：**快**\n（8–12f 一笔呵成，慢了读作加载条）、**近**（贴着字底，离远了\n读作分隔线不是强调）、**跟字势**（斜体词的划线必须左低右高\n微上斜——斜向画反是最容易犯且一眼假的错，判例见已知坑）。\n\n## 动效核心\n- SVG path 描画（strokeDashoffset 或裁剪窗），从左到右 8–12f，\n  ease-out 微收尾（起笔快收笔略缓＝手劲）\n- 笔形：路径变宽（中段最宽）、边缘毛糙（轻微噪声扰动/粗糙笔刷\n  贴图），首尾略细＝起笔收笔\n- 位置：贴字底（bottom 偏移 ≈ -0.1em），中轴微上斜跟随斜体字势\n- 时机：标题完全落定后 +4~8f 起笔——划线是\"看完标题后的强调\"，\n  与标题同动就抢戏\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 划线时长 | 10f（原片实测节奏；14f 版被裁偏慢） | >14f 读作进度条；<6f 看不见笔迹方向 |\n| 字底距离 | ≈-0.1em（从 -40 收到 -20@1080p 才贴住字势） | 离远读作分隔线；碰到字底降部又乱 |\n| 斜向 | 左低右高微上斜（跟斜体） | **画反（左高右低）一眼假**——返工判例 |\n| 笔宽 | 中段 ~0.12em，首尾 ~0.6x | 等宽读作机器线；差异>2x 读作书法 |\n| 毛糙度 | 边缘轻噪声 | 太糙读作故障；全平滑读作 CSS border |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 与 draw-svg-trace 撞领域（有意单列为两卡）：那张是通用\n  SVG 描画（图标/插画/任意线稿）；本卡专做**文字强调**的马克笔\n  质感（变宽+毛糙+跟字势），做图形描画去用那张\n- 斜向判例：v1 左高右低被比对环节抓出——划线斜向必须跟字势，\n  正体字则水平微抖\n- 残余差距：原片（notion-ai）笔头飞白颗粒感更细碎，实战可加\n  更细的笔刷噪点\n\n## 参考实现\ndemos/typography/marker-underline-title/\n（MarkerUnderlineTitle.tsx）\n原片出处：notion-ai.mp4\n",
+      "implementations": [
+        {
+          "path": "demos/typography/marker-underline-title/MarkerUnderlineTitle.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/marker-underline-title/MarkerUnderlineTitle.tsx",
+          "dependencies": [
+            "react",
+            "remotion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/marker-underline-title/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/marker-underline-title/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "marker-underline-title",
+          "label": "marker-underline-title",
+          "description": "大标题落定后，关键词下方马克笔下划线从左到右快速描画——变宽笔形、毛糙边缘、微上斜跟随斜体字势，贴着字底",
+          "use": "标题里强调单个关键词（new/free/AI…）；手写感/人味的品牌调性；正文标注式强调",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/marker-underline-title.mp4?v=1784437314635",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/marker-underline-title/MarkerUnderlineTitle.tsx",
+          "implementationPaths": [
+            "demos/typography/marker-underline-title/MarkerUnderlineTitle.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/marker-underline-title/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/marker-underline-title/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "outline-word-fill",
+      "summary": "空心词（1px 灰描边、500 字重）从 3.2 倍急缓收缩落位，虚线大圆随后从 2.8 倍收到字周围并缓慢自转，左右水平虚线从画框边缘内伸；描边先微微增亮，实心白在 0.6 帧内瞬间点亮，一闪辉光即定格",
+      "use": "单词式利益点/口号的重锤一拍；节奏卡点上的\"钉子\"镜；深底品牌片的强调帧",
+      "duration": "约 2.5s（75f@30fps，短促单拍）",
+      "energy": "高（3.2 倍收缩 + 瞬时点亮，短时高冲击）",
+      "intention": "一个词要打成钉子，靠的不是慢慢淡入而是**两次落定**：先是巨大空心字 急速收缩到位（这是尺寸的落定），再是描边在一帧内变实心白（这是质感的 落定）。中间那 1.5s 的虚线圆收缩与水平虚线内伸是\"瞄准\"过程——技术 制图语汇，让点亮那一下读作\"确认\"。填充**必须是瞬时**的：慢扫填充会把 钉子变成缓慢的美化动画。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/outline-word-fill.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/outline-word-fill.md",
+      "rules": "---\nname: outline-word-fill\n一句话: 空心词（1px 灰描边、500 字重）从 3.2 倍急缓收缩落位，虚线大圆随后从 2.8 倍收到字周围并缓慢自转，左右水平虚线从画框边缘内伸；描边先微微增亮，实心白在 0.6 帧内瞬间点亮，一闪辉光即定格\n适用: 单词式利益点/口号的重锤一拍；节奏卡点上的\"钉子\"镜；深底品牌片的强调帧\n时长: 约 2.5s（75f@30fps，短促单拍）\n能量: 高（3.2 倍收缩 + 瞬时点亮，短时高冲击）\n---\n\n## 意图\n一个词要打成钉子，靠的不是慢慢淡入而是**两次落定**：先是巨大空心字\n急速收缩到位（这是尺寸的落定），再是描边在一帧内变实心白（这是质感的\n落定）。中间那 1.5s 的虚线圆收缩与水平虚线内伸是\"瞄准\"过程——技术\n制图语汇，让点亮那一下读作\"确认\"。填充**必须是瞬时**的：慢扫填充会把\n钉子变成缓慢的美化动画。\n\n## 动效核心\n- 空心字急缓收缩：`zoom = seg(t, 0.05, 0.19, E.outCubic)`（约 4f→14f，\n  仅 10f），`scale(lerp(zoom, 3.2, 1))`；同期 `born = seg(t, 0.05, 0.14)`\n  淡入——**收缩窗只 10f**，快到几乎是一次冲击\n- 双层字：`outline`（`color:transparent` + `-webkit-text-stroke:1px #565b63`）\n  与 `solid`（纯白，初始 opacity 0）叠放，48px / **500 字重**\n  （中等字重，不是标题的 800——空心字太粗会糊成块）\n- 虚线大圆（SVG r=88、`dasharray:6 8`）：出现 `cin = seg(0.16, 0.3)`，\n  收缩 `shrink = seg(0.16, 0.76, E.outCubic)` 从 2.8 倍收到 1——\n  **收缩窗 45f，横跨大半片**，是全片最慢的一条曲线；同时 `rotate(t·18)`\n  全程缓慢自转\n- 左右水平虚线（`dasharray:5 7`）：`ext = seg(0.5, 0.72, E.outCubic)`，x2 从\n  ±240 向内推进 144（画框边缘 → 圆边），透明度同步等于 ext；随后\n  **瞬时填充** `pop = seg(t, 0.742, 0.762)`——窗仅 0.02（约 0.6 帧），\n  solid 与 outline 透明度硬交叉，视觉上是硬切\n- 一闪即逝的辉光：`flash = pop · (1 - seg(0.762, 0.86, E.outQuad))`，\n  `0 0 flash·16px rgba(255,255,255,.45)`，约 7f 内衰完后定格纯白\n- 描边预热：`bright = seg(0.66, 0.73, E.outQuad)`，灰度 86→145 —— 点亮前\n  先亮一档，给那 0.6 帧的硬切一个\"充能\"前奏；底层 14 颗静态微尘\n  （不动，随机位置 + 0.06–0.2 透明度）\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 收缩 | `scale 3.2 → 1`，窗 10f，outCubic | 3.2 倍是\"从脸前退开\"的量；<2 倍读作普通缩放；窗 >20f 就成了缓慢 zoom，冲击全失 |\n| 字重字号 | 48px / **500** / `letter-spacing:.5px`，占画宽约三成 | 空心字上 700+ 会让 1px 描边包住一大块空白，读作气球字；500 是空心字的甜点 |\n| 描边 | `1px #565b63`，点亮前预热到灰度 145 | 1px 细描边是\"制图\"语汇；2px+ 变涂鸦；预热那一档删了硬切显得没由来 |\n| 虚线圆 | r=88、`dash 6 8`、scale 2.8→1（45f）、自转 `t·18`° | 45f 慢收缩是全片的\"呼吸\"，与 10f 的字收缩形成快慢对比；窗压到 20f 两者撞在一起 |\n| 水平虚线 | `dash 5 7`，从 ±240 内伸 144，窗 0.5→0.72 | 内伸终点要停在圆边（不进圆内）；伸满全宽读作十字准星，过头了 |\n| 瞬时填充 | `seg(0.742, 0.762)`（≈0.6f） | **这一下是全卡的目的**：任何形式的慢扫（>3f）都会把钉子降级成美化动画 |\n| 辉光 | 峰值 16px，`rgba(255,255,255,.45)`，7f 衰完 | 一闪即逝才像\"点亮\"；持续辉光读作发光字体，质感立刻廉价 |\n| 微尘 | 14 颗，静态不动 | 静态是对的（本卡只 2.5s，动尘会抢戏）；数量 >25 底噪太脏 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **只适合单个短词（demo `Faster`，6 字母）**：字号与虚线圆半径是写死的\n  一组坐标，字一长就顶穿圆、水平虚线内伸终点也会压到字上——换成\n  两个词或中文四字须同步调 `font-size` / `r` / 内伸距离三处\n- `-webkit-text-stroke` 是前缀属性，Chromium/WebKit 才生效；Firefox 下\n  outline 层是全透明（词直到 0.742 才突然出现）。Remotion 走 Chromium 无碍\n- 瞬时填充窗 `0.02` 在 75f 片长下不足一帧：这是**故意的**（要的就是硬切），\n  但如果把本卡拉长到 150f+，这 0.02 会变成 3 帧的可见渐变——拉长时长\n  必须把窗按比例压回去\n- 时间窗注释里的秒数（4.83→5.15s 等）是原片时间轴的残留，与本卡\n  0–2.5s 的 t 无关，读代码时别被误导\n- 深底专用：`#050505` 底 + 白描边 + 辉光是效果的全部；浅底上空心字\n  几乎不可见，需整套重配\n- 声音强依赖：点亮那一帧必须有一记短促重音（金属/开关/低频撞击），\n  这是本卡\"钉子\"感的一半，配法纪律见 sound-design.md；与\n  word-relay-geometry 分工：那卡是三词接力（本卡是它第一段的独立化 +\n  升级版），同片二者不并置\n\n## 参考实现\ndemos/typography/outline-word-fill/\n（OutlineWordFill.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/outline-word-fill/OutlineWordFill.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/outline-word-fill/OutlineWordFill.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/outline-word-fill/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/outline-word-fill/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "outline-word-fill",
+          "label": "outline-word-fill",
+          "description": "空心词（1px 灰描边、500 字重）从 3.2 倍急缓收缩落位，虚线大圆随后从 2.8 倍收到字周围并缓慢自转，左右水平虚线从画框边缘内伸；描边先微微增亮，实心白在 0.6 帧内瞬间点亮，一闪辉光即定格",
+          "use": "单词式利益点/口号的重锤一拍；节奏卡点上的\"钉子\"镜；深底品牌片的强调帧",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/outline-word-fill.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/outline-word-fill/OutlineWordFill.tsx",
+          "implementationPaths": [
+            "demos/typography/outline-word-fill/OutlineWordFill.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/outline-word-fill/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/outline-word-fill/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pill-chip-slot-cycle-handled",
+      "summary": "白底句式 \"Your `chip` Handled\" 里深色胶囊内词竖向滚轮轮换，胶囊宽度按预量文本宽插值平滑伸缩、两侧文字被自然挤开收拢，胶囊上下露出 13% 透明度的灰色幽灵项",
+      "use": "\"我们替你搞定 ___\" 这类句式卖点；SaaS 功能列举的一句话收口；浅底品牌片主视觉一拍",
+      "duration": "约 5.0s（150f@30fps：静置 → 3 次切换（0.25/0.47/0.69）→ 尾部静置）",
+      "energy": "中（三拍稳定节拍，宽度伸缩是唯一的连续运动）",
+      "intention": "词槽轮换有两派：让句子躲开变化（宽度固定的滚轮），或者让句子**接受** 变化（胶囊撑宽、两侧文字被挤开）。这卡是后者，代价是必须把宽度算准， 回报是句子读起来活的——\"Your\" 和 \"Handled\" 被推着走，观众感到胶囊里 的词有分量。上下露出的灰色幽灵项是第二个记号：它明示\"这是个可以滚的 列表\"，让观众预期还有下一个词。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/pill-chip-slot-cycle-handled.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/pill-chip-slot-cycle-handled.md",
+      "rules": "---\nname: pill-chip-slot-cycle-handled\n一句话: 白底句式 \"Your `chip` Handled\" 里深色胶囊内词竖向滚轮轮换，胶囊宽度按预量文本宽插值平滑伸缩、两侧文字被自然挤开收拢，胶囊上下露出 13% 透明度的灰色幽灵项\n适用: \"我们替你搞定 ___\" 这类句式卖点；SaaS 功能列举的一句话收口；浅底品牌片主视觉一拍\n时长: 约 5.0s（150f@30fps：静置 → 3 次切换（0.25/0.47/0.69）→ 尾部静置）\n能量: 中（三拍稳定节拍，宽度伸缩是唯一的连续运动）\n---\n\n## 意图\n词槽轮换有两派：让句子躲开变化（宽度固定的滚轮），或者让句子**接受**\n变化（胶囊撑宽、两侧文字被挤开）。这卡是后者，代价是必须把宽度算准，\n回报是句子读起来活的——\"Your\" 和 \"Handled\" 被推着走，观众感到胶囊里\n的词有分量。上下露出的灰色幽灵项是第二个记号：它明示\"这是个可以滚的\n列表\"，让观众预期还有下一个词。\n\n## 动效核心\n- 宽度预量：setup 期用隐藏 `<span>` 逐词量 `offsetWidth`，各加 74px 内边距\n  存成 `widths[]`（带 `o.w.length·13` 兜底，防 setup 时未挂载量不到）\n- 位置量 `pos` 由 3 段窗累加：切换点 `[0.25, 0.47, 0.69]`，每窗 0.12\n  （≈18f），缓动 `E.inOutCubic`——**两头都缓**，对应\"滚轮起步与停稳\"\n- 内列 `colIn` 竖移 `-pos·48`px（行高 48 = 胶囊高）；胶囊宽度取\n  `lerp(frac, widths[ci], widths[ci+1])`，**帧内插值**所以伸缩是连续的，\n  两侧 `flex:none` 的文字被 flex 布局自然挤开\n- 幽灵项在胶囊外（chipWrap 内）上 -38px / 下 58px，取 `near = round(pos)`\n  的前后邻居文本，随滚动微移 `(pos-near)·48·0.5`（**半速视差**，比胶囊内\n  的词慢一半，才像\"外圈\"）\n- 幽灵项透明度 `0.13 · (0.4 + settle·0.6)`，`settle = 1 - min(1, |pos-near|·3)`\n  ——滚动中途更淡、落定时最清楚\n- 每行内是 emoji + 词的两段结构（emoji 18px、词 700 22px 白字），\n  胶囊 `#1a1c24` 底 + `0 8px 24px rgba(20,22,40,.22)` 投影 + `overflow:hidden`\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 词表 | 4 词 + emoji（Sales/Workflow/Admin/Reports），3 次切换 | 词长差决定挤开幅度的观感：demo 最短 5 字母最长 8 字母；差 >2 倍胶囊跳变太猛，句子重心左右甩 |\n| 切换点 | `[0.25, 0.47, 0.69]`，窗 0.12（≈18f） | 段间约 0.10（≈15f）静置读词；起手 0.25 前的静置让观众先认出句式 |\n| 缓动 | `E.inOutCubic` | 两头缓才像滚轮起停；outCubic（只后缓）读作被甩上来，胶囊宽度也会跟着突变 |\n| 胶囊 | 高 48px、圆角 99、`#1a1c24`、宽 = 文本宽 + 74 | +74 是左右内边距 + emoji 位；<50 词贴边，>100 胶囊胖成按钮 |\n| 幽灵项 | 上 -38 / 下 58px，基础透明度 0.13 | 0.13 是\"看得见但不抢\"的甜点；>0.25 读作三行并列文字，不是幽灵；删了列表暗示就没了 |\n| 幽灵视差 | `(pos-near)·48·0.5`（半速） | 半速是\"外圈更远\"的立体感来源；同速则三行像一整块滑动，幽灵失去意义 |\n| 句子字号 | 两侧 30px/800、胶囊内 22px/700 | 胶囊内比句子小是正确层级（徽章依附句子）；等大或更大就读作两个标题打架 |\n| 配色 | 底 `#fbfbfd`、句子 `#15171d`、胶囊白字 | 浅底 + 单一深色块是本卡的身份证；深底版会让胶囊消失，需整套重配 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **宽度靠 setup 期 `offsetWidth` 实测**：字体没加载完时量到的是回退字体\n  的宽度，胶囊会偏窄或偏宽——移植时须确保 webfont 就绪后再量，或改用\n  离屏 canvas `measureText`；`length·13` 那条兜底只保证不崩，不保证准\n- 词长差要控制在 2 倍内：宽度自适应是本卡的卖点也是风险，\n  `Sales`→`Workflow` 这一跳已经是可接受上限，再大句子两侧甩得晃眼\n- 两侧文字必须 `flex:none`：不然 flex 会去压缩它们而不是移动它们，\n  \"挤开\"变成\"字被压扁\"\n- 幽灵项文本取 `round(pos)` 的邻居，所以在切换的正中间（pos=x.5）会\n  **跳一次文本**——被 `settle` 压到最淡时发生，肉眼基本不可察；但若把\n  透明度调高到 0.25+，这一跳就会露出来\n- emoji 在不同平台字形宽度不一（尤其 `⚙️` 带变体选择符），会让实测宽度\n  漂移几像素；实战建议换成项目自己的单色图标，别依赖系统 emoji\n- 与 vertical-word-roll-blur-cycle 分工：那卡宽度固定、裸词、带滚筒 blur\n  （词是句子成分），本卡宽度自适应、深色胶囊、带幽灵项（词是徽章）——\n  同片只留一个；声音上三次落定是三个节奏点，配轻质开关/胶囊贴合音，\n  连发交替双样本，配法纪律见 sound-design.md\n\n## 参考实现\ndemos/typography/pill-chip-slot-cycle-handled/\n（PillChipSlotCycleHandled.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/pill-chip-slot-cycle-handled/PillChipSlotCycleHandled.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/pill-chip-slot-cycle-handled/PillChipSlotCycleHandled.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/pill-chip-slot-cycle-handled/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/pill-chip-slot-cycle-handled/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "pill-chip-slot-cycle-handled",
+          "label": "pill-chip-slot-cycle-handled",
+          "description": "白底句式 \"Your `chip` Handled\" 里深色胶囊内词竖向滚轮轮换，胶囊宽度按预量文本宽插值平滑伸缩、两侧文字被自然挤开收拢，胶囊上下露出 13% 透明度的灰色幽灵项",
+          "use": "\"我们替你搞定 ___\" 这类句式卖点；SaaS 功能列举的一句话收口；浅底品牌片主视觉一拍",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/pill-chip-slot-cycle-handled.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/pill-chip-slot-cycle-handled/PillChipSlotCycleHandled.tsx",
+          "implementationPaths": [
+            "demos/typography/pill-chip-slot-cycle-handled/PillChipSlotCycleHandled.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/pill-chip-slot-cycle-handled/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/pill-chip-slot-cycle-handled/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pill-slot-cycle",
+      "summary": "句中词槽轮换——固定句干钉死不动，句尾 pill 徽章每 ~0.7s 老虎机滚一格（旧的上飞加速淡出、新的从下带模糊滑入），连换 N 个功能词后落成完整句子收束",
+      "use": "\"功能列举\"类文案的最优雅解法（比逐条列表快、比乱码解码有语义）；一句话卖点 + 多个动词短语的段落",
+      "duration": "入场 12f + 每拍 21f × 词数 + 收束 14f + hold；6 词约 5.8s（demo 175f）",
+      "energy": "中（稳定节拍器，无峰值）",
+      "intention": "罗列六个功能，列表要六行、逐条淡入要六拍还占满屏。词槽轮换把它们 塞进**一句话的一个槽位**里：句干 \"One AI tool to ___\" 是承诺，槽里 滚过的每个 pill 是证据，最后 pill 飞走、\"do it all.\" 落位——证据 列举完毕，结论盖章。结构自带三幕：承诺→列举→收束。命门是句干 **纹丝不动**：观众的眼睛全程钉在槽位上，句干一晃列举感就散。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/pill-slot-cycle.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/pill-slot-cycle.md",
+      "rules": "---\nname: pill-slot-cycle\n一句话: 句中词槽轮换——固定句干钉死不动，句尾 pill 徽章每 ~0.7s 老虎机滚一格（旧的上飞加速淡出、新的从下带模糊滑入），连换 N 个功能词后落成完整句子收束\n适用: \"功能列举\"类文案的最优雅解法（比逐条列表快、比乱码解码有语义）；一句话卖点 + 多个动词短语的段落\n时长: 入场 12f + 每拍 21f × 词数 + 收束 14f + hold；6 词约 5.8s（demo 175f）\n能量: 中（稳定节拍器，无峰值）\n---\n\n## 意图\n罗列六个功能，列表要六行、逐条淡入要六拍还占满屏。词槽轮换把它们\n塞进**一句话的一个槽位**里：句干 \"One AI tool to ___\" 是承诺，槽里\n滚过的每个 pill 是证据，最后 pill 飞走、\"do it all.\" 落位——证据\n列举完毕，结论盖章。结构自带三幕：承诺→列举→收束。命门是句干\n**纹丝不动**：观众的眼睛全程钉在槽位上，句干一晃列举感就散。\n\n## 动效核心\n- 句干绝对定位左端锚死——**不能用 flex 居中**，pill 宽度变化会带着\n  句干重排（首轮踩过的坑，已是判例）\n- 每拍 21f（~0.7s），前 8f 完成换位、后 13f 静置——静置段是给观众\n  读词的，读不完的拍子等于没换\n- 入场：translateY 120→0 + blur 14→4→0，Easing.out(cubic)；\n  离场：translateY 0→-130 + blur 0→10，Easing.in(cubic) 加速飞出\n  ——新来的减速落定、旧的加速逃走，方向感是\"向上翻页\"\n- 槽内用隐形占位 pill（visibility hidden）撑宽度，新旧两枚绝对定位\n  叠放——槽宽随当前词自然变化但不抖\n- 收束拍：末 pill 上飞（7f ease-in），\"do it all.\" 从下 90px 带\n  Easing.back(1.4) 过冲落位——全片唯一一次过冲，留给结论\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 拍长 | 21f/词，5–7 词 | <16f 读不完短语；>28f 节拍器感散掉；8+ 词观众开始数数 |\n| 换位窗 | 拍内前 8f | 拉长到 12f+ 新旧同屏太久，读作两个 pill 打架 |\n| 飞行距离 | 入 +120 / 出 -130px | <80px 读作原地闪换；入出不对称（出略远）让离场更决绝 |\n| 运动模糊 | 入 14→0 / 出 0→10px blur | 去掉 blur 换位读作硬弹；>20px 中间帧糊成色块 |\n| 收束过冲 | Easing.back(1.4)，14f | >2 结论落位像卡通；无过冲结论与列举没有档次差 |\n| 收尾 hold | 完整句静置 ≥45f | 这句话是全段目的，不 hold 等于白列举 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 与 odometer-digit-roll / split-flap-title 分工：那两卡是字符/数位级\n  机械滚动（无语义），本卡是整词级 pill 轮换且嵌在活句子里——文案是\n  \"句干+动词短语\"结构才用本卡，纯数字/纯标题词别硬套\n- 与 typewriter-moves 分工：打字机是\"一个字一个字造句\"，本卡是\n  \"句子造好了换零件\"——同片可共存但别在同一句文案上连用\n- 与 type-rhythm-sync 分工：那是既有文字随音轨变属性（不换内容），\n  本卡换内容——绑音轨时本卡拍点对鼓点即可，别再叠字重脉冲\n- pill 短语长度要接近（demo 最长 \"Draft an agenda\"）——长短差 >2 倍\n  槽宽跳变太猛，句子重心左右甩\n- 收束句与句干字号字重必须完全一致（demo 都是 96px/800）——\n  \"do it all.\" 若比句干大，读作新标题而非句子补完\n\n## 参考实现\ndemos/typography/pill-slot-cycle/\n（PillSlotCycle.tsx）\n原片出处：notion-ai 4.5–8.5s\n",
+      "implementations": [
+        {
+          "path": "demos/typography/pill-slot-cycle/PillSlotCycle.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/pill-slot-cycle/PillSlotCycle.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/pill-slot-cycle/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/pill-slot-cycle/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "pill-slot-cycle",
+          "label": "pill-slot-cycle",
+          "description": "句中词槽轮换——固定句干钉死不动，句尾 pill 徽章每 ~0.7s 老虎机滚一格（旧的上飞加速淡出、新的从下带模糊滑入），连换 N 个功能词后落成完整句子收束",
+          "use": "\"功能列举\"类文案的最优雅解法（比逐条列表快、比乱码解码有语义）；一句话卖点 + 多个动词短语的段落",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/pill-slot-cycle.mp4?v=1784437314703",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/pill-slot-cycle/PillSlotCycle.tsx",
+          "implementationPaths": [
+            "demos/typography/pill-slot-cycle/PillSlotCycle.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/pill-slot-cycle/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/pill-slot-cycle/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scramble",
+      "summary": "等宽整行字符先每 2 帧高速跳乱码，再从左到右逐个锁定为真字，锁定瞬间蓝白高光闪一下——种子驱动可复现的解密感",
+      "use": "技术型开场标题；版本号/代号揭晓；\"系统就绪\"\"数据解锁\"这类带机器口吻的一拍",
+      "duration": "约 3.2s（96f@30fps）",
+      "energy": "中高（持续高频跳字的视觉噪声，无单点冲击）",
+      "intention": "同一句标题的三种\"造字\"手法里，打字机是人在写、翻牌是机器在播报， 乱码锁定是**机器在算**——先满屏噪声表示\"还没解出来\"，再左→右一个个 咬定真字符。它天然带黑客/解密腔，适合技术产品的开场；但也最挑文案： 字符是被逐个点名的，字数就是节拍数。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/scramble.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/scramble.md",
+      "rules": "---\nname: scramble\n一句话: 等宽整行字符先每 2 帧高速跳乱码，再从左到右逐个锁定为真字，锁定瞬间蓝白高光闪一下——种子驱动可复现的解密感\n适用: 技术型开场标题；版本号/代号揭晓；\"系统就绪\"\"数据解锁\"这类带机器口吻的一拍\n时长: 约 3.2s（96f@30fps）\n能量: 中高（持续高频跳字的视觉噪声，无单点冲击）\n---\n\n## 意图\n同一句标题的三种\"造字\"手法里，打字机是人在写、翻牌是机器在播报，\n乱码锁定是**机器在算**——先满屏噪声表示\"还没解出来\"，再左→右一个个\n咬定真字符。它天然带黑客/解密腔，适合技术产品的开场；但也最挑文案：\n字符是被逐个点名的，字数就是节拍数。\n\n## 动效核心\n- 全字符同时跳乱码，字池 47 个大写字母+数字+符号；**每 2 帧换一次字**\n  （`bucket = floor(frame/2)`，96f 全片约 48 次重掷）\n- 锁定点按字序线性铺开：`lockAt = 0.25 + (i/n)·0.6 + rand(i·7)·0.06`\n  ——第 24f 起第一个字定，第 82f 末字定，每字再叠 ≤6f 随机抖动破掉机械等分\n- 锁定瞬间闪光：`flash = 1 - seg(t, lockAt, lockAt+0.1)`，flash>0.4 时字色\n  从 #e8eaf0 提到 #dff3ff，同时打 `0 0 flash·18px` 蓝白光晕，约 3f 内衰完\n- 起手 6f 全空（`t < 0.06` 输出空格）——先给一拍空屏，噪声才是\"开始运算\"\n  而不是\"一直在闪\"\n- 乱码字符与闪光抖动全走种子哈希 `rand(seed)`，**禁 Math.random**，\n  同一帧号永远同一画面\n- 未锁定字色压到 #3d4560（近背景），锁定后才提亮——亮度差本身就是进度条\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 占位文案 | `TEMPLATE MOTION DEMO`，20 字符 | 字符数直接决定 stagger 密度：<10 字锁定太快读不出\"逐个\"，>30 字末字等到片尾 |\n| 锁定窗 | 全局 0.25→0.85（24f→82f） | 起点早于 0.2 噪声段太短没建立感；终点晚于 0.9 没有静置收尾 |\n| 锁定抖动 | `rand(i·7)·0.06`（≤6f） | 去掉就是完美等分，读作进度条而非\"逐个咬定\"；>0.12 顺序会乱 |\n| 跳字频率 | 每 2 帧（15 次/秒） | 1 帧一换糊成灰带；4 帧以上读作\"慢慢翻\"不是高速运算 |\n| 锁定闪光 | 窗 0.1（约 3f），光晕 18px 峰值 | 这一闪是\"咬定\"的画面体，删了只剩换字；>30px 相邻字光晕连成一片 |\n| 字体字距 | SF Mono/Menlo 34px、`letter-spacing:2px`、槽宽 `min-width:0.62em` | 等宽 + 固定槽宽是刚需，比例字体会随乱码字符宽度整行抖动 |\n| 起手空屏 | `t < 0.06`（前 6f） | 直接开噪声读作故障闪烁；>12f 空屏在剪辑里成了黑场 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **换成项目文案时字符数要贴近 20**：lockAt 是按 `i/n` 归一化铺开的，\n  字数变了锁定间隔跟着缩放——8 字标题会在半秒内全锁完（读不出解密过程），\n  40 字标题末字要等到 82f 才定（前面早锁的字已经\"凉了\"）\n- 必须等宽字体：槽宽写死 `0.62em`，比例字体下 `#`/`W`/`I` 宽度不一，\n  整行会随每次重掷左右抽动\n- 空格字符被显式跳过（永不参与乱码），所以词间隙全程保持——文案里\n  空格位置就是节奏的呼吸点，把长标题拆成 3–4 词比一整串更好读\n- 与 split-flap-title / 打字机类分工：那两个是**机械/人工**造字，本卡是\n  **算法**解字；一支片里同类\"造字\"手法只留一次，重复即贬值\n\n## 参考实现\ndemos/typography/scramble/\n（Scramble.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/scramble/Scramble.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/scramble/Scramble.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/scramble/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/scramble/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "scramble",
+          "label": "scramble",
+          "description": "等宽整行字符先每 2 帧高速跳乱码，再从左到右逐个锁定为真字，锁定瞬间蓝白高光闪一下——种子驱动可复现的解密感",
+          "use": "技术型开场标题；版本号/代号揭晓；\"系统就绪\"\"数据解锁\"这类带机器口吻的一拍",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/scramble.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/scramble/Scramble.tsx",
+          "implementationPaths": [
+            "demos/typography/scramble/Scramble.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/scramble/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/scramble/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "split-flap-title",
+      "summary": "机场翻牌屏字标题——每字符上下两半机械翻牌格，翻过 2 个乱码咔哒停在目标字，左→右级联成波",
+      "use": "开场/章节大标题；倒计时、发布日期、数据播报类文案；需要\"机械宣告感\"的一拍",
+      "duration": "约 4.7s（140f：≥20f 乱码静止建立 + 级联翻牌 + ≥15f 停定静止）",
+      "energy": "中（持续的机械动感，非瞬时冲击）",
+      "intention": "文字三式的第三式：压印（paper-title-card）是纸上落墨的\"低语\"，打字机 （document-typewriter-reveal）是文档被人写出来的\"叙述\"，翻牌是车站大屏的 \"播报\"——带机械宣告腔。选翻牌的语境：倒计时/发车感（版本发布、截止日）、 数据播报感（指标揭晓）、或想给标题一层复古机械质感。它天然是等宽深底 格子，在库内纸墨审美里读作\"纸面上摆了一块机械显示屏\"——异色块本身 就是看点，背景产品画面压暗降饱和给它让位。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "opening"
+      ],
+      "sourcePath": "references/shots/typography/split-flap-title.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/split-flap-title.md",
+      "rules": "---\nname: split-flap-title\n一句话: 机场翻牌屏字标题——每字符上下两半机械翻牌格，翻过 2 个乱码咔哒停在目标字，左→右级联成波\n适用: 开场/章节大标题；倒计时、发布日期、数据播报类文案；需要\"机械宣告感\"的一拍\n时长: 约 4.7s（140f：≥20f 乱码静止建立 + 级联翻牌 + ≥15f 停定静止）\n能量: 中（持续的机械动感，非瞬时冲击）\n标签: opening\n---\n\n## 意图\n文字三式的第三式：压印（paper-title-card）是纸上落墨的\"低语\"，打字机\n（document-typewriter-reveal）是文档被人写出来的\"叙述\"，翻牌是车站大屏的\n\"播报\"——带机械宣告腔。选翻牌的语境：倒计时/发车感（版本发布、截止日）、\n数据播报感（指标揭晓）、或想给标题一层复古机械质感。它天然是等宽深底\n格子，在库内纸墨审美里读作\"纸面上摆了一块机械显示屏\"——异色块本身\n就是看点，背景产品画面压暗降饱和给它让位。\n\n## 动效核心\n- 每字符一个深底翻牌格（上下两半 overflow hidden + 中缝铰链线），字符\n  序列固定为 2 个乱码 → 1 个乱码 → 目标字（首态乱码，建立段可见）\n- 单次翻牌 5f 两段式：前半旧字上半叶 rotateX 0→-90 掉落（Easing.in\n  重力感 + brightness 变暗到 0.55），后半新字下半叶 90→0 拍下（回亮）\n- 每格翻 3 次；字符间 stagger 4f，左→右级联成波\n- 停定咔哒：整格 6px 下沉回弹（下沉→过冲 -1.5px→归零）\n- 节拍：开头 ≥20f 整排乱码静止建立，结尾全部停定后 ≥15f 静止收束\n- 乱码用 seed 正弦哈希（sin(i·127.3)·43758 取小数），禁 Math.random\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 单次翻牌 | 5f，p 走 Easing.in(quad)；<0.5 旧字上半叶 0→-90 掉落，≥0.5 新字下半叶 90→0 拍下 | Easing.in 是重力感来源——越掉越快才像机械叶片；匀速读作电子屏假翻 |\n| 翻牌次数 | 每格 3 次（2 乱码中间态 + 1 落定） | 少于 2 次读不出\"翻找\"过程；多于 4 次拖节奏且乱码抢戏 |\n| 级联 | stagger 4f 左→右；10 字符约 36f 波峰扫完 | 4f 是波浪感甜点——太密整排齐翻没有波，太疏尾部字符等太久 |\n| 停定咔哒 | 落定后 local 15→22f：translateY 0→6→-1.5→0，Easing.out(quad) | 6px 是可感下限（4px 无感判例）；这一下就是\"咔哒\"的画面体，删了只剩滑动 |\n| 明暗 | 掉落叶 brightness 1→0.55，拍下叶 0.55→1 | 明暗差是叶片\"转过铰链\"的立体感来源，比 rotateX 本身更被肉眼读到 |\n| 翻牌格 | 118×156，perspective 420，圆角 10，中缝铰链线 4px #141412 | 铰链线压住翻转轴穿帮；perspective 太大叶片透视变形夸张 |\n| 配色字体 | 格底 #262624 / 字 #f4f4f2，Helvetica 800 100px；空格占 52px、格间 gap 12 | 深底浅字是翻牌屏的身份证；等宽格子布局，别用比例字体挤格 |\n| 节拍 | 建立 0–21f 静止 → 22f 起级联 → 全停后静止 ≥15f | 建立段让观众先认出\"这是块翻牌屏\"，直接开翻读作故障闪烁 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 声音强依赖：每格停定的机械拍打声是效果的一半，实战必须配——级联\n  停定天然是一串节奏点，`assets/audio/sfx/ui/switch-click-quick.mp3` 或\n  `sfx/mech/gear-lock-metallic.mp3` 起步（更贴机械翻牌），也可用\n  `sfx/text/typewriter-hit-single.mp3`；配法纪律见 sound-design.md\n  （同类元素同音，拟音与动作等长，连发交替双样本防机枪感）\n- 下沉回弹 6px 是可感下限：肉眼看不出就照可感性判例加大幅度，别调\n  曲线不调幅度\n- 一支片翻牌字 ≤1 次：机械宣告腔太抢，重复即贬值（P4 手法去重精神）；\n  与压印/打字机同片混用时留给最重的那句标题\n\n## 参考实现\ndemos/typography/split-flap-title/\n（SplitFlapFlip.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/split-flap-title/SplitFlapFlip.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/split-flap-title/SplitFlapFlip.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/split-flap-title/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/split-flap-title/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "split-flap-title",
+          "label": "split-flap-title",
+          "description": "机场翻牌屏字标题——每字符上下两半机械翻牌格，翻过 2 个乱码咔哒停在目标字，左→右级联成波",
+          "use": "开场/章节大标题；倒计时、发布日期、数据播报类文案；需要\"机械宣告感\"的一拍",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/split-flap-title.mp4?v=1784437314774",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/split-flap-title/SplitFlapFlip.tsx",
+          "implementationPaths": [
+            "demos/typography/split-flap-title/SplitFlapFlip.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/split-flap-title/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/split-flap-title/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "text-column-converge",
+      "summary": "双词对峙合拢——左\"NEW\"右特性词钉死在等屏边距两侧硬切轮换、全程零收缩，换到最后一词才唯一一次 ease-in-out 滑到居中咬合成短语，下方小字近乎硬切浮现；收尾揭晓型文字卡",
+      "use": "特性清单收束到产品名/口号的段落（\"NEW × 一串特性 → NEW <产品名>\"式）；发布会式 recap、版本号揭晓",
+      "duration": "轮换 7–16f/词 × 8–9 词 + 合拢 ~36f + 小字后静置；全段约 5–6s",
+      "energy": "中低（机器节奏、小字规格清单气质，不是砸字）",
+      "intention": "两词分踞左右像目录页对峙，观众以为只是轮换字幕；直到最后一词 停稳才发现左右其实是同一句话的两半——唯一一次连续合拢把整段 轮换追认为\"悬念铺垫\"。命门是**钉死**：轮换期两词位置一像素不动、 左右屏边距完全相等（原片实测 412 vs 413@1280），任何渐进收缩都会 提前剧透合拢、把揭晓稀释成进度条。合拢只许发生一次，且必须在 最后一词之后——这是收尾揭晓，不是持续动效。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "outro"
+      ],
+      "sourcePath": "references/shots/typography/text-column-converge.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/text-column-converge.md",
+      "rules": "---\nname: text-column-converge\n一句话: 双词对峙合拢——左\"NEW\"右特性词钉死在等屏边距两侧硬切轮换、全程零收缩，换到最后一词才唯一一次 ease-in-out 滑到居中咬合成短语，下方小字近乎硬切浮现；收尾揭晓型文字卡\n适用: 特性清单收束到产品名/口号的段落（\"NEW × 一串特性 → NEW <产品名>\"式）；发布会式 recap、版本号揭晓\n时长: 轮换 7–16f/词 × 8–9 词 + 合拢 ~36f + 小字后静置；全段约 5–6s\n能量: 中低（机器节奏、小字规格清单气质，不是砸字）\n标签: outro\n---\n\n## 意图\n两词分踞左右像目录页对峙，观众以为只是轮换字幕；直到最后一词\n停稳才发现左右其实是同一句话的两半——唯一一次连续合拢把整段\n轮换追认为\"悬念铺垫\"。命门是**钉死**：轮换期两词位置一像素不动、\n左右屏边距完全相等（原片实测 412 vs 413@1280），任何渐进收缩都会\n提前剧透合拢、把揭晓稀释成进度条。合拢只许发生一次，且必须在\n最后一词之后——这是收尾揭晓，不是持续动效。\n\n## 动效核心\n- 左词左缘、右词右缘各自钉死在等屏边距处（原片实测 412/413px\n  @1280，×1.5 → 618/1302@1920）；右词换长换短一律右缘定位\n- 词轮换纯硬切，停留帧数不均（16/12/9/8/7/8/10/12f，机器节奏\n  带人味）；轮换全程间距零收缩（判例：渐进收缩版被用户驳回重做）\n- **唯一一次合拢**：末词停稳 ~10f 后，~1.2s（36f）ease-in-out\n  （cubic）连续滑动，两词滑到以屏幕中线居中定格\n- 合拢终点按等宽字体实际步进算（0.6em+letterSpacing × 字符数），\n  两词恰好一空格咬合，无重叠无缝隙；无 stamp 缩放、无二次补偿移动\n- 定格 ~18f 后斜体小字近乎硬切浮现（4f 快淡、零位移），与整行\n  同左缘、字号同正文\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 屏边距 | 618px@1920（**原片实测** 412/413@1280 ×1.5） | 左右差 >2px 读作没对齐；边距是本卡身份，别改成黄金分割 |\n| 词停留 | 7–16f 不均 | 均匀停留读作节拍器；<7f 读不完词 |\n| 合拢触发 | 末词停稳 +10f（原片 32.4→32.7s 实测） | 停稳期太短，观众没意识到\"这词不换了\"就开始滑 |\n| 合拢时长 | 36f ease-in-out cubic（**原片实测** ~1.2s 连续滑动） | <24f 读作弹跳归位；>50f 读作拖 |\n| 咬合步进 | 0.6em+letterSpacing/字符，等宽字体 | 非等宽字体步进不可预测，会重叠或漏缝 |\n| 字号 | 42@1080p（**原片实测**字高 ~20/720） | 这段是小字规格清单气质，放大到 60+ 就成了砸字（去用 cel-flash-stomp） |\n| 小字浮现 | 定格 +18f，4f 快淡零位移（原片 34.4→34.6s 间直接出现） | 加滑入/长淡入就抢了合拢的戏 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 与 type-rhythm-sync（字属性节拍）/beat-cut-moves（硬切节拍）撞\n  领域：那两张是\"轮换本身即内容\"；本卡命门是**位置钉死 + 末次合拢**\n  的收尾揭晓，轮换只是铺垫。若段落没有\"合拢揭晓\"就别用本卡\n- 合拢只许一次——每切一词收一档的渐进收缩版已被原片对照证伪并\n  删除，别复活\n- 必须等宽字体（demo 用 SF Mono）；比例字体下咬合终点算不准\n- 与原片残余差距：原片词换瞬间带 1 帧亮度闪烁（打字机换行感），\n  demo 是纯硬切；实战可选加回但闪烁 >1f 会读作故障\n\n## 参考实现\ndemos/typography/text-column-converge/\n（TextColumnConverge.tsx）\n原片出处：raycast-teams.mp4 28–36s\n",
+      "implementations": [
+        {
+          "path": "demos/typography/text-column-converge/TextColumnConverge.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/text-column-converge/TextColumnConverge.tsx",
+          "dependencies": [
+            "react",
+            "remotion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/text-column-converge/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/text-column-converge/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "text-column-converge",
+          "label": "text-column-converge",
+          "description": "双词对峙合拢——左\"NEW\"右特性词钉死在等屏边距两侧硬切轮换、全程零收缩，换到最后一词才唯一一次 ease-in-out 滑到居中咬合成短语，下方小字近乎硬切浮现；收尾揭晓型文字卡",
+          "use": "特性清单收束到产品名/口号的段落（\"NEW × 一串特性 → NEW <产品名>\"式）；发布会式 recap、版本号揭晓",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/text-column-converge.mp4?v=1784437314815",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/text-column-converge/TextColumnConverge.tsx",
+          "implementationPaths": [
+            "demos/typography/text-column-converge/TextColumnConverge.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/text-column-converge/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/text-column-converge/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "title-demote-to-label",
+      "summary": "大标题降格为节标签两式——A 大标题居中显影站稳一拍后连续缩小 0.3x 平移到左上角落成小节标签、内容区在其下生长；B 同套路但登场时带文本选中态高亮块扫入再撤掉",
+      "use": "章节开场（标题先当主角再让位给内容）；教程/功能演示片的小节交接；B 式给\"文字/编辑\"类产品加身份暗示",
+      "duration": "A ~3s（92f）/ B ~3.5s（104f）；demo 两式串播 196f",
+      "energy": "低中（版式变换型，氛围镜头）",
+      "intention": "章节标题的常规命运是\"出现→消失→内容登场\"，标题和内容互不认识。 本卡让标题**降格而不退场**：居中大字站稳一拍宣告主题，然后一次连续 补间缩到 0.3x 飞到左上角，落成这一节的栏目标签——它还在屏幕上， 只是从主角变成了门牌。观众获得免费的空间记忆：刚才那个大词就是 现在左上角那个小词，本节讲的就是它。内容骨架在降格进行中就开始 生长，交接零空档。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "transition"
+      ],
+      "sourcePath": "references/shots/typography/title-demote-to-label.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/title-demote-to-label.md",
+      "rules": "---\nname: title-demote-to-label\n一句话: 大标题降格为节标签两式——A 大标题居中显影站稳一拍后连续缩小 0.3x 平移到左上角落成小节标签、内容区在其下生长；B 同套路但登场时带文本选中态高亮块扫入再撤掉\n适用: 章节开场（标题先当主角再让位给内容）；教程/功能演示片的小节交接；B 式给\"文字/编辑\"类产品加身份暗示\n时长: A ~3s（92f）/ B ~3.5s（104f）；demo 两式串播 196f\n能量: 低中（版式变换型，氛围镜头）\n标签: transition\n---\n\n## 意图\n章节标题的常规命运是\"出现→消失→内容登场\"，标题和内容互不认识。\n本卡让标题**降格而不退场**：居中大字站稳一拍宣告主题，然后一次连续\n补间缩到 0.3x 飞到左上角，落成这一节的栏目标签——它还在屏幕上，\n只是从主角变成了门牌。观众获得免费的空间记忆：刚才那个大词就是\n现在左上角那个小词，本节讲的就是它。内容骨架在降格进行中就开始\n生长，交接零空档。\n\n## 动效核心\n- 降格是**单次连续补间**，Easing.inOut(cubic) 20f：scale 1→0.3 +\n  位置 (960,480)→(150,110) 同一条曲线——分两段（先缩后飞）读作两个动作\n- transform-origin 左中；居中修正量 translate(-50%) 随补间同步归零\n  （`translate(${-(1-dem)*50}%, -50%)`）——不归零终点会偏一个半宽\n- 登场显影：12f blur 12→0 + 淡入，Easing.out(cubic)；显影后必须\n  站稳 ≥18f 再降格——没站稳就缩，宣告拍被吃掉\n- 骨架内容错峰生长：每块宽度 0.35→1 + 上移 28px 淡入，块间 t 错峰\n  0.16；生长起点在降格进行到 12f 时（GROW = DEMOTE+12），标题还在\n  飞内容已在长——这个重叠是\"交接无空档\"的来源\n- B 式选中高亮：左缘/宽度两个百分比分别补间——扫入时宽度 0→100%\n  （盖住），撤掉时左缘 0→100%（从左让开）；高亮撤净后再起降格\n- 两式串播用 4f 白闪转场\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 降格补间 | 20f inOut(cubic)，scale→0.3 | <14f 读作标题被弹走；终点 >0.45 标签太大压内容 |\n| 站稳拍 | 显影后 ≥18f 静置 | 省掉这拍，观众没读完标题它就跑了，降格白做 |\n| 骨架错峰 | 块间 0.16t，宽 0.35→1 | 全部同时长出读作页面刷新而非\"生长\" |\n| 生长起点 | 降格开始后 +12f | 等标题完全落位才生长会空 8f 冷场 |\n| 选中高亮 | 扫入 10f / hold ~8f / 撤 8f，35% 透明蓝 | 高亮 hold <5f 读作闪烁 bug；不撤干净就降格，蓝块跟着飞很脏 |\n| 白闪转场 | 4f opacity 1→0 | 仅两式串播用；>6f 读作曝光事故 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 与\"标题钉进 3D 空间随相机透视变形\"的场景锁定拍法（已退役）分工\n  （空间型），本卡是 2D 版式层级的连续降格（版式型）——要\"标题住进\n  产品空间\"用那卡，要\"标题变栏目名\"用本卡，同片选一\n- 降格路径上不许有其他元素动——标题飞行是全屏唯一焦点，骨架生长\n  在它落点下方不抢（起点错开），但弹窗/光标类同帧入场必抢\n- 多节连用（每节一次降格）时左上角标签要**换行不叠放**：新标签落位\n  旧标签上移让位，否则第二节起左上角变成标签坟场\n- B 式的选中高亮是\"文字可被选中\"的产品暗示，非编辑器/文档类产品\n  用了语义空转，别为了好看加\n- 标题文案 ≤3 个词——降格到 0.3x 后还要当可读标签，长句缩完就是一条灰线\n\n## 参考实现\ndemos/typography/title-demote-to-label/\n（TitleDemoteToLabel.tsx）\n原片出处：perplexity-promo 16–18.5s；B 式变体源自 framer text-selection-title\n",
+      "implementations": [
+        {
+          "path": "demos/typography/title-demote-to-label/TitleDemoteToLabel.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/title-demote-to-label/TitleDemoteToLabel.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/title-demote-to-label/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/title-demote-to-label/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "title-demote-to-label",
+          "label": "title-demote-to-label",
+          "description": "大标题降格为节标签两式——A 大标题居中显影站稳一拍后连续缩小 0.3x 平移到左上角落成小节标签、内容区在其下生长；B 同套路但登场时带文本选中态高亮块扫入再撤掉",
+          "use": "章节开场（标题先当主角再让位给内容）；教程/功能演示片的小节交接；B 式给\"文字/编辑\"类产品加身份暗示",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/title-demote-to-label.mp4?v=1784437314825",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/title-demote-to-label/TitleDemoteToLabel.tsx",
+          "implementationPaths": [
+            "demos/typography/title-demote-to-label/TitleDemoteToLabel.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/title-demote-to-label/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/title-demote-to-label/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "type-assembly-moves",
+      "summary": "文字集结四式——split-text-stagger 逐字裂升、letterform-drift-assembly 漂移合拢、tracking-expand-reveal 字距呼吸、text-on-path 沿线流入",
+      "use": "大标题/标语的入场；与 type-entrance-moves 两式、split-flap-title、document-typewriter-reveal 同属标题入场大品类，全片 ≤2 种",
+      "duration": "单式 4–5s（动作段 A ~56f / B ~104f / C ~58f / D ~99f，均含 hold）",
+      "energy": "A 中 / B 中高 / C 低中 / D 中",
+      "intention": "标题入场已有\"原位变形系\"四式（乱码解码/字符坠落/翻牌/打字机——字 在原地换形态）。本卡补\"集结系\"：字符从别处**汇聚成**标题，运动轨迹 本身有戏。A 琴键式——每字从看不见的裁切线下滑升，理性利落，通用度 最高；B 片头式——字符四散带模糊漂入、逐个锁定加深，Stranger Things 的仪式感，适合品牌名亮相;C 呼吸式——字母从叠压一团吸一口气展开， 最安静的一式，适合抒情段落；D 语义式——字符沿一条上升曲线鱼贯流入 再摆正，曲线可以正好描着图表增长线走，文字与数据同框叙事。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/type-assembly-moves.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/type-assembly-moves.md",
+      "rules": "---\nname: type-assembly-moves\n一句话: 文字集结四式——split-text-stagger 逐字裂升、letterform-drift-assembly 漂移合拢、tracking-expand-reveal 字距呼吸、text-on-path 沿线流入\n适用: 大标题/标语的入场；与 type-entrance-moves 两式、split-flap-title、document-typewriter-reveal 同属标题入场大品类，全片 ≤2 种\n时长: 单式 4–5s（动作段 A ~56f / B ~104f / C ~58f / D ~99f，均含 hold）\n能量: A 中 / B 中高 / C 低中 / D 中\n---\n\n## 意图\n标题入场已有\"原位变形系\"四式（乱码解码/字符坠落/翻牌/打字机——字\n在原地换形态）。本卡补\"集结系\"：字符从别处**汇聚成**标题，运动轨迹\n本身有戏。A 琴键式——每字从看不见的裁切线下滑升，理性利落，通用度\n最高；B 片头式——字符四散带模糊漂入、逐个锁定加深，Stranger Things\n的仪式感，适合品牌名亮相;C 呼吸式——字母从叠压一团吸一口气展开，\n最安静的一式，适合抒情段落；D 语义式——字符沿一条上升曲线鱼贯流入\n再摆正，曲线可以正好描着图表增长线走，文字与数据同框叙事。\n\n## 四式选型\n| 式 | 做法 | 适用 |\n|----|------|------|\n| A split-text-stagger 裂升 | 每字 overflow 盒内 translateY(115%→0) 带 10% 过冲，delay i×2f，基线同步生长 | 通用默认；利落理性 |\n| B drift-assembly 漂移合拢 | 字符 seed 方向 ±300px + blur 8px 漂入错峰归位，锁定帧加深脉冲，合体后整词呼吸 1.04 | 品牌名/片头级亮相 |\n| C tracking-expand 字距呼吸 | 字母从 −0.42em 叠压展开到 0.14em，blur 10→0 同曲线 | 安静抒情段；副标题跟进 |\n| D text-on-path 沿线流入 | 字符沿贝塞尔曲线鱼贯滑入（切线角旋转），到达后 12f 摆正水平 | 曲线有语义时（增长线/流程线） |\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| A 过冲 | 10%（原案 6% 可测不可感，实渲加码） | 正常速度要看得见回落那一下 |\n| B 锁定脉冲 | 字色深到 #000 + 描边 0→3px→0 / 8f | 白底上加深+描边，不用发光（判例） |\n| B 漂移三绑定 | 位移 (1−p)、blur 8(1−p)、opacity 0.35→1 共用一条 p | 三者分曲线走，字会\"到了还糊着\" |\n| C 实现命门 | letter-spacing 恒为终态，逐字符 span 只做 translateX=(1−p)(i−词心)(−0.56em) | 直接动 letter-spacing 逐帧重排必抖 |\n| D 摆正 | 到达停 8f 再 12f lerp 到水平基线（y 拉平 rotate→0） | 不摆正就永远是\"挂在线上\"，读不出标题 |\n| D 曲线 | evolve（dashoffset）随最前字符同步生长 | 曲线先画完字再走，读作两个动画 |\n| 收尾 | 全员落定真静止 ≥30f | R1 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 标题入场大品类现已八式（本卡四式 + type-entrance-moves 两式 +\n  split-flap-title + document-typewriter-reveal），**同片 ≤2 种**（P4）铁律不变\n- B 式与 D 式都是高注意力入场，别再叠相机动作——字在飞的时候镜头必须稳\n- C 式幅度命门：起始叠压至少 −0.4em 级（每缝 80px+ 位移）才可感，\n  −0.1em 级\"微展开\"正常速度读不出（可感性判例）\n- D 式字符在曲线低段会短暂交叠，是鱼贯读感的一部分；但字号 >80px 时\n  交叠面积过大会糊成一团，大字改用更长曲线或减字数\n\n## 参考实现\ndemos/typography/type-assembly-moves/\n（LetterformDriftAssembly.tsx / SplitTextStagger.tsx / TextOnPath.tsx / TrackingExpandReveal.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/type-assembly-moves/LetterformDriftAssembly.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-assembly-moves/LetterformDriftAssembly.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/LetterformDriftAssembly/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/LetterformDriftAssembly/index.html"
+          }
+        },
+        {
+          "path": "demos/typography/type-assembly-moves/SplitTextStagger.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-assembly-moves/SplitTextStagger.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/SplitTextStagger/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/SplitTextStagger/index.html"
+          }
+        },
+        {
+          "path": "demos/typography/type-assembly-moves/TextOnPath.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-assembly-moves/TextOnPath.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/TextOnPath/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/TextOnPath/index.html"
+          }
+        },
+        {
+          "path": "demos/typography/type-assembly-moves/TrackingExpandReveal.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-assembly-moves/TrackingExpandReveal.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/TrackingExpandReveal/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/TrackingExpandReveal/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "split-text-stagger",
+          "label": "split-text-stagger 裂升",
+          "description": "每字 overflow 盒内 translateY(115%→0) 带 10% 过冲，delay i×2f，基线同步生长",
+          "use": "通用默认；利落理性",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/split-text-stagger.mp4?v=1784437314844",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-assembly-moves/SplitTextStagger.tsx",
+          "implementationPaths": [
+            "demos/typography/type-assembly-moves/SplitTextStagger.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/SplitTextStagger/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/SplitTextStagger/index.html"
+          }
+        },
+        {
+          "key": "drift-assembly",
+          "label": "drift-assembly 漂移合拢",
+          "description": "字符 seed 方向 ±300px + blur 8px 漂入错峰归位，锁定帧加深脉冲，合体后整词呼吸 1.04",
+          "use": "品牌名/片头级亮相",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/drift-assembly.mp4?v=1784437314846",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-assembly-moves/LetterformDriftAssembly.tsx",
+          "implementationPaths": [
+            "demos/typography/type-assembly-moves/LetterformDriftAssembly.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/LetterformDriftAssembly/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/LetterformDriftAssembly/index.html"
+          }
+        },
+        {
+          "key": "tracking-expand",
+          "label": "tracking-expand 字距呼吸",
+          "description": "字母从 −0.42em 叠压展开到 0.14em，blur 10→0 同曲线",
+          "use": "安静抒情段；副标题跟进",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/tracking-expand.mp4?v=1784437314848",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-assembly-moves/TrackingExpandReveal.tsx",
+          "implementationPaths": [
+            "demos/typography/type-assembly-moves/TrackingExpandReveal.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/TrackingExpandReveal/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/TrackingExpandReveal/index.html"
+          }
+        },
+        {
+          "key": "text-on-path",
+          "label": "text-on-path 沿线流入",
+          "description": "字符沿贝塞尔曲线鱼贯滑入（切线角旋转），到达后 12f 摆正水平",
+          "use": "曲线有语义时（增长线/流程线）",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/text-on-path.mp4?v=1784437314851",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-assembly-moves/TextOnPath.tsx",
+          "implementationPaths": [
+            "demos/typography/type-assembly-moves/TextOnPath.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-assembly-moves/TextOnPath/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-assembly-moves/TextOnPath/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "type-entrance-moves",
+      "summary": "标题文字入场两式——scramble-decode 乱码解码（噪声里长出答案）与 letter-drop-physics 字符坠落（重力砸落弹跳归位），按调性二选一",
+      "use": "大标题/章节字卡的入场；与 split-flap-title（机械翻牌）、document-typewriter-reveal（打字机）同品类互斥选用",
+      "duration": "单式 4–5s（含 hold 与静止收尾；动作段 A ~66f / B ~106f）",
+      "energy": "中高（A 偏理性推进，B 偏物理趣味）",
+      "intention": "标题入场库内已有打字机（沉稳文档感）和翻牌屏（机械仪式感），这两式补 另外两种性格：A 是终端黑客感——字符先是一片高速噪声，从左到右逐个 \"解码\"锁定，观众看着答案从乱码里长出来，适合技术产品的自信亮相； B 是物理喜剧感——字符从天而降、砸地弹跳、歪歪扭扭站定，最后一拍 集体立正归位，适合轻松调性的开场破冰。四种标题入场同片 ≤2 种（P4）。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/type-entrance-moves.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/type-entrance-moves.md",
+      "rules": "---\nname: type-entrance-moves\n一句话: 标题文字入场两式——scramble-decode 乱码解码（噪声里长出答案）与 letter-drop-physics 字符坠落（重力砸落弹跳归位），按调性二选一\n适用: 大标题/章节字卡的入场；与 split-flap-title（机械翻牌）、document-typewriter-reveal（打字机）同品类互斥选用\n时长: 单式 4–5s（含 hold 与静止收尾；动作段 A ~66f / B ~106f）\n能量: 中高（A 偏理性推进，B 偏物理趣味）\n---\n\n## 意图\n标题入场库内已有打字机（沉稳文档感）和翻牌屏（机械仪式感），这两式补\n另外两种性格：A 是终端黑客感——字符先是一片高速噪声，从左到右逐个\n\"解码\"锁定，观众看着答案从乱码里长出来，适合技术产品的自信亮相；\nB 是物理喜剧感——字符从天而降、砸地弹跳、歪歪扭扭站定，最后一拍\n集体立正归位，适合轻松调性的开场破冰。四种标题入场同片 ≤2 种（P4）。\n\n## 两式选型\n| 式 | 做法 | 适用 |\n|----|------|------|\n| A scramble-decode 乱码解码 | 全员字符高速跳乱码 hold，随后从左到右逐个锁定真字符，锁定瞬间反色闪 2f，底部进度条同步推进 | 技术/开发者产品；\"答案浮出\"的理性推进感 |\n| B letter-drop-physics 字符坠落 | 字符错峰从顶砸落，重力加速+两次衰减弹跳+落地歪斜站定，最后一拍全体齐整回正 | 轻松调性开场；\"活物感\"的标题破冰 |\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| A 乱码期 | 0–20f 全员每 2f 跳一个随机字符（字符集 A–F/0–9/#$%&），字色 G.mid | 必须用等宽字体 + 固定 1ch 槽宽，比例字体每跳一下整行抖动 |\n| A 解码节拍 | 第 i 字符帧 20+i×6 锁定为真字符转深色；锁定后前 2f 反色闪（深底白字） | 6f/字是\"逐个可辨\"的下限；上限 10f，再慢读作卡住 |\n| A 伪随机 | `CHARSET[floor(h(i*101+floor(f/2)*7+13)*len)]`，h = sin hash | 严禁 Math.random——跳动必须随帧确定，否则渲染不可复现 |\n| B 坠落 | 第 i 字符帧 10+i×5 起跳；y = −DROP + DROP·(t/24)²（重力）→ 4u(1−u) 抛物线弹跳 30% → 二跳 9% | 弹跳衰减比 30%/9% 是\"有弹性但不闹\"的甜点；三跳以上读作果冻 |\n| B 歪斜 | 落地瞬间 rotate 到 seed hash ±6° 并保持 | 歪角是\"物理感\"的一半；全体笔直落地读作普通位移入场 |\n| B 归位一拍 | 全员落定后（如帧 110）6f ease-out 集体 rotate→0 + scale 1.06→1 | 集体归位是句号——错峰归位会把\"立正\"的仪式感拆散 |\n| 收尾 | 两式动作完毕真静止 ≥20f | R1：静止期所有属性锁死（含 B 的歪角归零后） |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- A 式是声音强依赖候选位：锁定的\"嗒\"声逐字钉帧（sound-design §4.5）\n  会让解码感翻倍；B 式落地砸声同理，无声版两式都还成立但少一半劲\n- A 式字符集别混入与真字符太像的字形（如 O/0 连跳）——观众会误判已锁定\n- B 式字符间不做真实碰撞（demo 为各字符独立轨迹）——字距排开即可；\n  想要\"互相撞歪\"需预烘焙轨迹，成本高收益薄\n- 标题入场品类已四式（本卡两式 + split-flap-title + document-typewriter-reveal），\n  同片 ≤2 种，且都自带高注意力——别和其他高能量入场同帧抢戏\n\n## 参考实现\ndemos/typography/type-entrance-moves/\n（LetterDropPhysics.tsx / ScrambleDecode.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/type-entrance-moves/LetterDropPhysics.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-entrance-moves/LetterDropPhysics.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-entrance-moves/LetterDropPhysics/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-entrance-moves/LetterDropPhysics/index.html"
+          }
+        },
+        {
+          "path": "demos/typography/type-entrance-moves/ScrambleDecode.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-entrance-moves/ScrambleDecode.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-entrance-moves/ScrambleDecode/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-entrance-moves/ScrambleDecode/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "scramble-decode",
+          "label": "scramble-decode 乱码解码",
+          "description": "全员字符高速跳乱码 hold，随后从左到右逐个锁定真字符，锁定瞬间反色闪 2f，底部进度条同步推进",
+          "use": "技术/开发者产品；\"答案浮出\"的理性推进感",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/scramble-decode.mp4?v=1784437314853",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-entrance-moves/ScrambleDecode.tsx",
+          "implementationPaths": [
+            "demos/typography/type-entrance-moves/ScrambleDecode.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-entrance-moves/ScrambleDecode/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-entrance-moves/ScrambleDecode/index.html"
+          }
+        },
+        {
+          "key": "letter-drop-physics",
+          "label": "letter-drop-physics 字符坠落",
+          "description": "字符错峰从顶砸落，重力加速+两次衰减弹跳+落地歪斜站定，最后一拍全体齐整回正",
+          "use": "轻松调性开场；\"活物感\"的标题破冰",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/letter-drop-physics.mp4?v=1784437314856",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-entrance-moves/LetterDropPhysics.tsx",
+          "implementationPaths": [
+            "demos/typography/type-entrance-moves/LetterDropPhysics.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-entrance-moves/LetterDropPhysics/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-entrance-moves/LetterDropPhysics/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "type-rhythm-sync",
+      "summary": "文字随声同步两式——font-weight-pump 字重脉冲（笔画随鼓点变粗弹回）与 karaoke-fill-sync 卡拉OK填色（词随旁白逐个点亮）",
+      "use": "标题/标语与音轨强绑定的段落；A 绑节拍（鼓点），B 绑语音（旁白逐词）",
+      "duration": "单式 4–5s；A 每拍占 10f 衰减窗、B 每词按语速 15–35f",
+      "energy": "A 高（蹦迪感）/ B 中（跟读引导）",
+      "intention": "文字动效库内此前全是\"入场怎么进\"，没有词管\"在场的字怎么跟着声音活\"。 这两式补上：A 让标题变成节奏器官——笔画随低音鼓抽动变粗又弹回， 文字在蹦迪，适合高能段落的视觉低音炮；B 让标语变成跟读字幕—— 旁白读到哪个词哪个词从左到右填色点亮，视线被牵着走，适合口播/ 标语强调段。共同点是**字不动、属性动**：无位移、无入退场， 纯粹是字重/颜色在声音的拍点上呼吸。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "rhythm"
+      ],
+      "sourcePath": "references/shots/typography/type-rhythm-sync.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/type-rhythm-sync.md",
+      "rules": "---\nname: type-rhythm-sync\n一句话: 文字随声同步两式——font-weight-pump 字重脉冲（笔画随鼓点变粗弹回）与 karaoke-fill-sync 卡拉OK填色（词随旁白逐个点亮）\n适用: 标题/标语与音轨强绑定的段落；A 绑节拍（鼓点），B 绑语音（旁白逐词）\n时长: 单式 4–5s；A 每拍占 10f 衰减窗、B 每词按语速 15–35f\n能量: A 高（蹦迪感）/ B 中（跟读引导）\n标签: rhythm\n---\n\n## 意图\n文字动效库内此前全是\"入场怎么进\"，没有词管\"在场的字怎么跟着声音活\"。\n这两式补上：A 让标题变成节奏器官——笔画随低音鼓抽动变粗又弹回，\n文字在蹦迪，适合高能段落的视觉低音炮；B 让标语变成跟读字幕——\n旁白读到哪个词哪个词从左到右填色点亮，视线被牵着走，适合口播/\n标语强调段。共同点是**字不动、属性动**：无位移、无入退场，\n纯粹是字重/颜色在声音的拍点上呼吸。\n\n## 两式选型\n| 式 | 做法 | 适用 |\n|----|------|------|\n| A font-weight-pump 字重脉冲 | 命中帧笔画瞬间变粗（stroke+字重跳变），~10f 衰减弹回；重音拍额外撑宽 8% | 音乐驱动的高能段；标题当低音炮 |\n| B karaoke-fill-sync 填色随读 | 每词深色从左到右填亮，进度跟语速，读完保持；活跃词下带读指下划线 | 旁白/口播强调段；多词标语的视线引导 |\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| A 脉冲包络 | `env=(1−t/10)^0.8`（t=命中后帧数，≥10f 精确归 0）；`-webkit-text-stroke: 10px·env` + fontWeight 在 env>0.15 窗口 400↔900 跳变 | stroke 连续衰减 + 字重离散跳变叠加才读作\"连续变粗\"；单用 fontWeight 只有两挡、单用 stroke 变化太细 |\n| A 节拍 | 每 20f 一拍；重音拍额外 `scaleX = 1+0.08·env`（transform 缩放不改排版） | 拍距必须 > 衰减窗（20>10），两拍重叠读作抽搐 |\n| A 节拍参照物 | 画面下方一排小节拍点，命中哪拍哪个点闪深并放大 | 静音环境（预览/静帧）没有这排点就读不出\"在跟拍\" |\n| B 词级时间表 | 逐词 [start,end] 帧区间，词内 linear 填充；词间留 4–10f 停顿（换气） | 时间戳实战来自旁白打点表；均匀分配读作机器朗读 |\n| B 填色实现 | 每词双层同文本叠放：底层浅灰 + 上层深色 `clipPath: inset(0 X% 0 0)`，X=(1−p)·100 | 逐词独立叠层免量测词宽占比；整行单层 clip 需精确像素表、易漂 |\n| B 读指 | 活跃词下 8px 深色下划线，宽度 = p·100% | 4px 浅灰在 1080p 缩略下不可见（本批实渲踩坑）；读完的词不留线 |\n| 收尾 | A 末拍衰减归零后 / B 末词填完后真静止 ≥20f | R1 呼吸判例 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 两式都是**声音强依赖**手法：A 命中帧必须与鼓点同帧、B 填色区间必须\n  跟旁白词边界（钉帧走 sound-design §4.5 相对起点）——无声上片则 A 读作\n  抽风、B 读作莫名变色，别在无音轨段落用\n- A 式实战想要真·可变字体连续字重（wght 轴逐帧插值）需先确认字体加载\n  与渲染器支持；demo 的 stroke+跳变方案是无字体风险的兜底，效果已可感\n- A 式全片 ≤1 段（P4）——标题蹦迪是抢戏大户，两段同片互相拆台\n- B 式词数 ≤6/屏：更多词时填色进度读不过来，拆行或拆镜\n\n## 参考实现\ndemos/typography/type-rhythm-sync/\n（FontWeightPump.tsx / KaraokeFillSync.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/type-rhythm-sync/FontWeightPump.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-rhythm-sync/FontWeightPump.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-rhythm-sync/FontWeightPump/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-rhythm-sync/FontWeightPump/index.html"
+          }
+        },
+        {
+          "path": "demos/typography/type-rhythm-sync/KaraokeFillSync.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/type-rhythm-sync/KaraokeFillSync.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-rhythm-sync/KaraokeFillSync/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-rhythm-sync/KaraokeFillSync/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "font-weight-pump",
+          "label": "font-weight-pump 字重脉冲",
+          "description": "命中帧笔画瞬间变粗（stroke+字重跳变），~10f 衰减弹回；重音拍额外撑宽 8%",
+          "use": "音乐驱动的高能段；标题当低音炮",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/font-weight-pump.mp4?v=1784437314859",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-rhythm-sync/FontWeightPump.tsx",
+          "implementationPaths": [
+            "demos/typography/type-rhythm-sync/FontWeightPump.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-rhythm-sync/FontWeightPump/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-rhythm-sync/FontWeightPump/index.html"
+          }
+        },
+        {
+          "key": "karaoke-fill-sync",
+          "label": "karaoke-fill-sync 填色随读",
+          "description": "每词深色从左到右填亮，进度跟语速，读完保持；活跃词下带读指下划线",
+          "use": "旁白/口播强调段；多词标语的视线引导",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/karaoke-fill-sync.mp4?v=1784437314860",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/type-rhythm-sync/KaraokeFillSync.tsx",
+          "implementationPaths": [
+            "demos/typography/type-rhythm-sync/KaraokeFillSync.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/type-rhythm-sync/KaraokeFillSync/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/type-rhythm-sync/KaraokeFillSync/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "typewriter-moves",
+      "summary": "打字机两式——terminal-typewriter 终端命令敲完即引爆场景切换、error-retype 误删重打的\"改口\"三幕剧",
+      "use": "开发者产品开场（A）、slogan/卖点字卡（B）；文字自带时间性的入场",
+      "duration": "A ~5s / B ~5.5s",
+      "energy": "A 中高 / B 中低",
+      "intention": "打字是唯一自带时间性的文字入场——字符一个个到来本身就是节奏， 不需要额外动效。A 把打字当**引信**：暗色终端窗逐字敲出命令、 方块光标方波闪，回车帧镜头急推进命令行硬切产品界面，命令行是 场景的导火索，开发者产品标配；B 把打字当**独白**：逐字打出平庸词 （\"just a dashboard\"）→ 停顿犹豫 → 退格删掉 → 更快打出卖点词 （\"your command center\"），犹豫-否定-宣言的三幕剧，戏全在三档 速度差里。与 scramble-decode 的区别：乱码解码是机器在猜， 打字是人在说。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "opening"
+      ],
+      "sourcePath": "references/shots/typography/typewriter-moves.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/typewriter-moves.md",
+      "rules": "---\nname: typewriter-moves\n一句话: 打字机两式——terminal-typewriter 终端命令敲完即引爆场景切换、error-retype 误删重打的\"改口\"三幕剧\n适用: 开发者产品开场（A）、slogan/卖点字卡（B）；文字自带时间性的入场\n时长: A ~5s / B ~5.5s\n能量: A 中高 / B 中低\n标签: opening\n---\n\n## 意图\n打字是唯一自带时间性的文字入场——字符一个个到来本身就是节奏，\n不需要额外动效。A 把打字当**引信**：暗色终端窗逐字敲出命令、\n方块光标方波闪，回车帧镜头急推进命令行硬切产品界面，命令行是\n场景的导火索，开发者产品标配；B 把打字当**独白**：逐字打出平庸词\n（\"just a dashboard\"）→ 停顿犹豫 → 退格删掉 → 更快打出卖点词\n（\"your command center\"），犹豫-否定-宣言的三幕剧，戏全在三档\n速度差里。与 scramble-decode 的区别：乱码解码是机器在猜，\n打字是人在说。\n\n## 两式选型\n| 式 | 做法 | 适用 |\n|----|------|------|\n| A terminal-typewriter | 2f/字符敲出命令，光标 f%12<6 方波闪；回车帧整场景 6f 急推 scale 1→3.2（origin 锁命令行中心）+ 末 2f blur 10px，硬切 dashboard 1.06→1 回稳 | 开发者工具开场；CLI 卖点产品 |\n| B error-retype | 打 2f/字符 → 停顿 16f 光标闪两下 → 退 1.5f/字符 → 重打 1.5f/字符无犹豫；光标打删常亮、停顿才闪 | slogan 字卡的\"改口\"戏；否定式文案 |\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 字符节奏 | substring(0, floor((f-起点)/步长))，帧确定无插值 | 任何缓动打字都读作加载动画 |\n| A 光标 | 方块，f%12<6 方波 | 淡入淡出的光标不是终端是网页 |\n| A 急推 | f58–64 scale 1→3.2 Easing.in(cubic)，origin 钉命令行文字中心 | 幅度小于 3x 读作抖了一下，不是\"冲进去\" |\n| A 硬切 | f64 条件挂载切换（终端整棵卸载，blur 随之摘罩），落定回稳 4f | 交叉溶解毁掉引信-爆炸因果 |\n| B 三档速度 | 打 2f/字符、删 1.5f、重打 1.5f 且零犹豫 | 三档差必须可感——等速改口读作 bug 不是戏，命门 |\n| B 光标三态 | 打删常亮＝果断；停顿 4f 半周期闪两下＝犹豫；完稿闪两下后条件摘除 | 光标就是演员的脸，全程等速闪就没有\"犹豫\" |\n| B 排版 | 逐字符固定宽 span（58px 等宽），左缘锚定 | 变宽字体/整串测宽会逐帧重排抖动 |\n| 收尾 | A 静止 ≥77f / B 静止 ≥50f | 光标残留 0.05 opacity 都毁真静止 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 声音强依赖：键击声逐字符对齐、B 退格音调更低（sound-design\n  §4.5）——无声打字机只剩字幕机\n- A 回车急推是与 crash-zoom 的交棒衔接：急推末帧动势最猛处硬切，\n  切后新场景不得再推（一棒只交一次）\n- B 全片 ≤1 次——改口是一次性的戏剧转折，改两次口是口吃\n- 等宽字体或逐字符 span 二选一必须占一个，否则字符到来时\n  整行重排，打字变成抽搐\n\n## 参考实现\ndemos/typography/typewriter-moves/\n（TerminalTypewriter.tsx / TypewriterErrorRetype.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/typewriter-moves/TerminalTypewriter.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/typewriter-moves/TerminalTypewriter.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/typewriter-moves/TerminalTypewriter/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/typewriter-moves/TerminalTypewriter/index.html"
+          }
+        },
+        {
+          "path": "demos/typography/typewriter-moves/TypewriterErrorRetype.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/typewriter-moves/TypewriterErrorRetype.tsx",
+          "dependencies": [
+            "react",
+            "remotion",
+            "../../_fixtures/Fixtures"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/typewriter-moves/TypewriterErrorRetype/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/typewriter-moves/TypewriterErrorRetype/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "terminal-typewriter",
+          "label": "terminal-typewriter",
+          "description": "2f/字符敲出命令，光标 f%12<6 方波闪；回车帧整场景 6f 急推 scale 1→3.2（origin 锁命令行中心）+ 末 2f blur 10px，硬切 dashboard 1.06→1 回稳",
+          "use": "开发者工具开场；CLI 卖点产品",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/terminal-typewriter.mp4?v=1784437314862",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/typewriter-moves/TerminalTypewriter.tsx",
+          "implementationPaths": [
+            "demos/typography/typewriter-moves/TerminalTypewriter.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/typewriter-moves/TerminalTypewriter/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/typewriter-moves/TerminalTypewriter/index.html"
+          }
+        },
+        {
+          "key": "error-retype",
+          "label": "error-retype",
+          "description": "打 2f/字符 → 停顿 16f 光标闪两下 → 退 1.5f/字符 → 重打 1.5f/字符无犹豫；光标打删常亮、停顿才闪",
+          "use": "slogan 字卡的\"改口\"戏；否定式文案",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/error-retype.mp4?v=1784437314864",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/typewriter-moves/TypewriterErrorRetype.tsx",
+          "implementationPaths": [
+            "demos/typography/typewriter-moves/TypewriterErrorRetype.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/typewriter-moves/TypewriterErrorRetype/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/typewriter-moves/TypewriterErrorRetype/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "typing-code-block",
+      "summary": "同一段语法高亮代码左右并置两种 reveal——左侧行级 stagger 4f 淡入上浮 8px，右侧逐字符打字但字符保持原 token 色，当前字符垫一块 #3a4468 方块光标",
+      "use": "代码/配置揭示镜头；开发者产品的\"就三行\"演示；需要对比两种揭示节奏时的选型参考镜",
+      "duration": "约 4.6s（138f@30fps）",
+      "energy": "中（右侧持续打字推进，左侧一次性收敛）",
+      "intention": "代码揭示只有两种真解法：**整行浮出来**（读的是结构）和**一个字一个字打** （读的是过程）。这卡把两者并排放在同一段代码上，是选型用的对照镜： 左侧 4 行 4 拍就完，适合\"代码不是重点、结果才是\"；右侧 138 帧才打完 59 个字符，适合\"看我写\"。关键细节是右侧**打字不丢色**——常见错误是 打字时先出白字再着色，那就退化成终端回显，不是代码编辑器。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/typing-code-block.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/typing-code-block.md",
+      "rules": "---\nname: typing-code-block\n一句话: 同一段语法高亮代码左右并置两种 reveal——左侧行级 stagger 4f 淡入上浮 8px，右侧逐字符打字但字符保持原 token 色，当前字符垫一块 #3a4468 方块光标\n适用: 代码/配置揭示镜头；开发者产品的\"就三行\"演示；需要对比两种揭示节奏时的选型参考镜\n时长: 约 4.6s（138f@30fps）\n能量: 中（右侧持续打字推进，左侧一次性收敛）\n---\n\n## 意图\n代码揭示只有两种真解法：**整行浮出来**（读的是结构）和**一个字一个字打**\n（读的是过程）。这卡把两者并排放在同一段代码上，是选型用的对照镜：\n左侧 4 行 4 拍就完，适合\"代码不是重点、结果才是\"；右侧 138 帧才打完\n59 个字符，适合\"看我写\"。关键细节是右侧**打字不丢色**——常见错误是\n打字时先出白字再着色，那就退化成终端回显，不是代码编辑器。\n\n## 动效核心\n- token 模型：每行是 `[[文本, 颜色], …]`，6 色板（关键字 #c792ea、\n  标识 #e8eaf0、函数 #82aaff、字符串 #c3e88d、标点 #89ddff、注释 #546e7a）\n- **左侧行级 stagger**：`seg(t, 0.08+i·0.14, +0.3, E.outCubic)`——行间 0.14\n  （≈19f）、单行窗 0.3（≈41f），`opacity = k`、`translateY = (1-k)·8`px\n- **右侧逐字符**：`typed = floor(seg(t, 0.08, 0.9) · chars.length)` 线性推进，\n  每个字符 span 建的时候就带 token 色，打到时只翻 opacity 0→1 ——\n  **着色在 setup 期完成，render 期不碰颜色**，所以字一出来就是对的色\n- 光标是背景块不是竖线：`i === typed` 的字符 `background:#3a4468` 且强制\n  `opacity:1` —— 下一个待打字符先以色块占位，块往右挪即是光标移动\n- 两侧面板同规格（45% 宽、72% 高、#10121a 底 + #1c2030 边框、圆角 8），\n  顶部 8px 字距 2px 的小标签 `LINE FADE-IN` / `CHAR TYPING` 标注手法\n- 右侧行 `min-height:1.9em` 撑住空行——不撑的话未打的行高度为 0，\n  面板内容会随打字往下长（跳版）\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 代码量 | 4 行 / 约 59 字符 | 打字速度 = 字符数 / 113f；行数超过 6 行面板要缩字号，超过 100 字符右侧打不完 |\n| 行 stagger | 0.14（≈19f），单行窗 0.3（≈41f） | 19f 是\"逐行\"可读下限；<8f 四行齐亮没有 stagger，>28f 最后一行等太久 |\n| 行位移 | `(1-k)·8`px 上浮 | 8px 是代码块该有的克制幅度；>20px 行像卡片飞进来，抢了代码本身 |\n| 打字窗 | `seg(t, 0.08, 0.9)`（11f→124f） | 结束点留 14f 静置读全文；推到 1.0 打完即切，最后一行没人读 |\n| 光标块 | `#3a4468` 背景，仅当前字符 | 方块光标是编辑器语感；换成竖线要另加闪烁，代码块里反而更碎 |\n| 面板 | 45%×72%、`#10121a` 底、`#1c2030` 边框、圆角 8、12px/1.9 行高 | 1.9 行高是代码可读下限；两侧必须同规格，尺寸不一就不是对照而是两个镜头 |\n| 空行占位 | 右侧行 `min-height:1.9em` | 不设则面板随打字长高，整块跳版——这是本卡最容易漏的一处 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **换成项目代码时字符总数要贴近 59**：右侧打字是把 113f 平摊到全部\n  字符上的，代码翻倍则每字符不到 1 帧（糊成整行刷出），代码减半则一字\n  一拍慢得像卡顿——改代码量必须同步调打字窗，别只换文案\n- 着色必须在 setup 期写进每个 span：render 期改色（先白后染）会把\n  \"代码编辑器\"降级成\"终端回显\"，这是同类效果最常见的失手\n- 左侧行级淡入与右侧逐字符**不同步**（左侧 4 行 ~68f 就收完，右侧要打到\n  124f），这是对照镜的本意；若实战只留一侧，另一侧的时间窗要重新铺满全片\n- token 数组是手写的，没有真词法分析——换代码时得手动切 token；\n  切错色比不着色更糟（关键字被染成字符串色，懂代码的观众立刻出戏）\n- 实战里通常**只留一侧**：对照版是选型镜，正片里两块面板一起动会分散\n  注意力，选定手法后单面板居中放大\n\n## 参考实现\ndemos/typography/typing-code-block/\n（TypingCodeBlock.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/typing-code-block/TypingCodeBlock.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/typing-code-block/TypingCodeBlock.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/typing-code-block/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/typing-code-block/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "typing-code-block",
+          "label": "typing-code-block",
+          "description": "同一段语法高亮代码左右并置两种 reveal——左侧行级 stagger 4f 淡入上浮 8px，右侧逐字符打字但字符保持原 token 色，当前字符垫一块 #3a4468 方块光标",
+          "use": "代码/配置揭示镜头；开发者产品的\"就三行\"演示；需要对比两种揭示节奏时的选型参考镜",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/typing-code-block.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/typing-code-block/TypingCodeBlock.tsx",
+          "implementationPaths": [
+            "demos/typography/typing-code-block/TypingCodeBlock.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/typing-code-block/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/typing-code-block/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "vertical-word-roll-blur-cycle",
+      "summary": "句尾词换成竖向滚轮，3 次换词各 0.55s（outQuint 七成 + outBack 三成，前快后极慢带微过冲），相邻行按距离上垂直 blur 与灰度，中心词落定瞬间从灰染成强调色",
+      "use": "\"Built for ___\" 这类句干 + 受众/对象列举的一句话卖点；浅底品牌片的干净一拍",
+      "duration": "约 5.0s（150f@30fps：静置 → 3 次换词 → 尾部整组淡出）",
+      "energy": "中（稳定三拍，无峰值）",
+      "intention": "句尾换词的最优解是滚轮而不是淡入淡出：滚轮自带**方向**（往上翻页）， 观众知道\"还有下一个\"。这卡的两个身份记号是相邻行的**垂直 blur** （滚轮景深，模拟机械转筒的失焦）和落定时的**染色**（灰→强调色， \"这个才是答案\"）。句干 `Built for` 全程纹丝不动——眼睛钉在滚轮上， 句干一晃列举感就散。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/vertical-word-roll-blur-cycle.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/vertical-word-roll-blur-cycle.md",
+      "rules": "---\nname: vertical-word-roll-blur-cycle\n一句话: 句尾词换成竖向滚轮，3 次换词各 0.55s（outQuint 七成 + outBack 三成，前快后极慢带微过冲），相邻行按距离上垂直 blur 与灰度，中心词落定瞬间从灰染成强调色\n适用: \"Built for ___\" 这类句干 + 受众/对象列举的一句话卖点；浅底品牌片的干净一拍\n时长: 约 5.0s（150f@30fps：静置 → 3 次换词 → 尾部整组淡出）\n能量: 中（稳定三拍，无峰值）\n---\n\n## 意图\n句尾换词的最优解是滚轮而不是淡入淡出：滚轮自带**方向**（往上翻页），\n观众知道\"还有下一个\"。这卡的两个身份记号是相邻行的**垂直 blur**\n（滚轮景深，模拟机械转筒的失焦）和落定时的**染色**（灰→强调色，\n\"这个才是答案\"）。句干 `Built for` 全程纹丝不动——眼睛钉在滚轮上，\n句干一晃列举感就散。\n\n## 动效核心\n- 位置量 `p` 由 3 段窗累加：`STEPS = [0.16, 0.36, 0.56]`，每段窗 0.11\n  （≈16f，约 0.55s），段间留 0.09 静置给观众读词\n- 每段缓动是**混合曲线**：`0.7·E.outQuint(u) + 0.3·E.outBack(u)`——\n  outQuint 给\"前快后极慢\"的机械减速，outBack 那三成给落定的微过冲回落\n- reel 定位 `translateY(ROW - p·ROW)`，ROW=44px，mask 高 `ROW·3`=132px\n  （露三行）——中心行恒定是 mask 第二行\n- 距离驱动的三通道，`d = |i - p|`：\n  - blur：`d<1` 时 `3d`，`d≥1` 时 `3 + 2·min(d-1,1)`（最远 5px）\n  - opacity：`d<1` 时 `1 - 0.65d`，否则 `max(0.1, 0.35 - 0.23(d-1))`\n  - 颜色：`mixHex(ACCENT_DIM, ACCENT, clamp01(1 - 2.4d))` —— **d>0.42 就完全\n    是暗色**，所以只有真正落定的那一刻才是强调色，滚动中途全程灰\n- 收尾 `seg(t, 0.9, 0.985)` 整组（句干 + 滚轮）淡出，不留残影给下一镜\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 词表 | 4 词（Apps→Teams→Data→Everyone），3 次换词 | 末词是结论（最宽那个词），前三个是例子；>5 词观众开始数，<3 词读不出\"列举\" |\n| 拍点 | `[0.16, 0.36, 0.56]`，窗 0.11（≈16f） | 段间 0.09（≈13f）静置是给读词的，读不完的拍子等于没换；窗 >0.18 新旧同屏太久 |\n| 缓动配方 | `0.7·outQuint + 0.3·outBack` | outQuint 是机械减速的来源；outBack 那三成给落定\"咔\"一下，纯 outQuint 读作电子屏滑动 |\n| 行高/视窗 | ROW 44px、mask `44×3`px、词宽 190px | 露三行才有滚筒感（露一行读作淡入淡出）；宽度写死 190 是为不挤句干，词更长要同步加 |\n| 相邻行 blur | 邻行 3px，最远 5px，**仅垂直向感知** | blur 是\"滚筒景深\"的身份证，删了退化成词条平移；>8px 邻行糊成灰条看不出是字 |\n| 落定染色 | `1 - 2.4d` 映射 ACCENT_DIM→ACCENT | 系数 2.4 让染色只发生在落定瞬间；<1.5 滚动中途就上色，答案感散掉 |\n| 字号字重 | 句干与滚轮同为 30px/800、`letter-spacing:-.5px` | 必须完全一致——滚轮词比句干大就读作两个元素，不是一句话 |\n| 收尾淡出 | `seg(t, 0.9, 0.985)` 整组 | 末词落定后约 40f 静置再淡出；不 hold 等于白列举 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **mask 宽度写死 190px**：换词表时最长词（demo `Everyone`）必须能装进去，\n  否则被裁字；反之词都很短则右侧留大片空白，句子重心偏左——换词表必须\n  重量一次宽度\n- 词长差别不宜过大：mask 宽度是固定的（本卡不做宽度自适应，那是\n  pill-chip-slot-cycle-handled 的活），词长差 >2 倍时短词在框里显得孤立\n- 句干必须钉死：demo 用 `flex + gap:14px` 是因为 mask 宽度恒定不会推挤\n  句干——一旦改成宽度自适应的滚轮，就必须换成绝对定位锚左端，\n  否则句干随词宽左右甩\n- `p` 是三段窗**累加**出来的，所以三段窗不能重叠：重叠会让 p 在一帧内\n  跨越一整行，滚轮\"跳格\"\n- 与 pill-chip-slot-cycle-handled 分工：那卡是深色胶囊 + 宽度自适应挤开\n  （词是徽章），本卡是裸词滚轮（词是句子成分）——同片只留一个\n- 声音：每次落定是一个节奏点，配轻机械/开关音；三连发要交替双样本\n  防机枪感，配法纪律见 sound-design.md\n\n## 参考实现\ndemos/typography/vertical-word-roll-blur-cycle/\n（VerticalWordRollBlurCycle.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/vertical-word-roll-blur-cycle/VerticalWordRollBlurCycle.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/vertical-word-roll-blur-cycle/VerticalWordRollBlurCycle.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/vertical-word-roll-blur-cycle/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/vertical-word-roll-blur-cycle/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "vertical-word-roll-blur-cycle",
+          "label": "vertical-word-roll-blur-cycle",
+          "description": "句尾词换成竖向滚轮，3 次换词各 0.55s（outQuint 七成 + outBack 三成，前快后极慢带微过冲），相邻行按距离上垂直 blur 与灰度，中心词落定瞬间从灰染成强调色",
+          "use": "\"Built for ___\" 这类句干 + 受众/对象列举的一句话卖点；浅底品牌片的干净一拍",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/vertical-word-roll-blur-cycle.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/vertical-word-roll-blur-cycle/VerticalWordRollBlurCycle.tsx",
+          "implementationPaths": [
+            "demos/typography/vertical-word-roll-blur-cycle/VerticalWordRollBlurCycle.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/vertical-word-roll-blur-cycle/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/vertical-word-roll-blur-cycle/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "word-relay-filmstrip",
+      "summary": "左列黑白相间等高页面卡步进滚动、右侧衬线大词原位接力（名词恒定+动词轮换）——切词瞬间才滚动一格，词块垂直中心与当前页面卡中点精确对齐",
+      "use": "\"一个主体 × 多种能力\"的枚举段（Computer researches/builds/codes…）；作品集/案例流展示；产品多场景巡礼",
+      "duration": "每词期 ~1.5–2s × 3–4 词；全段 5–7s",
+      "energy": "中低（编辑部气质，节奏靠切词的\"咔哒\"感）",
+      "intention": "左边是证据（页面截图胶片），右边是论点（大词）：动词换一次， 胶片就步进一格给出新证据——文字与画面互为注脚。命门是**步进制**： 左列平时完全静止，只在切词瞬间滚动一格（滚动=换证据的机械动作）， 持续滚动会让左列沦为背景装饰、切词失去\"咔哒\"感。第二命门是 **对齐**：大词块垂直中心必须与当前页面卡中点精确对齐（像素级）， 歪了整个版式的\"编辑部严谨感\"就塌了。",
+      "category": "typography",
+      "tags": [
+        "typography",
+        "ui-entrance"
+      ],
+      "sourcePath": "references/shots/typography/word-relay-filmstrip.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/word-relay-filmstrip.md",
+      "rules": "---\nname: word-relay-filmstrip\n一句话: 左列黑白相间等高页面卡步进滚动、右侧衬线大词原位接力（名词恒定+动词轮换）——切词瞬间才滚动一格，词块垂直中心与当前页面卡中点精确对齐\n适用: \"一个主体 × 多种能力\"的枚举段（Computer researches/builds/codes…）；作品集/案例流展示；产品多场景巡礼\n时长: 每词期 ~1.5–2s × 3–4 词；全段 5–7s\n能量: 中低（编辑部气质，节奏靠切词的\"咔哒\"感）\n标签: ui-entrance\n---\n\n## 意图\n左边是证据（页面截图胶片），右边是论点（大词）：动词换一次，\n胶片就步进一格给出新证据——文字与画面互为注脚。命门是**步进制**：\n左列平时完全静止，只在切词瞬间滚动一格（滚动=换证据的机械动作），\n持续滚动会让左列沦为背景装饰、切词失去\"咔哒\"感。第二命门是\n**对齐**：大词块垂直中心必须与当前页面卡中点精确对齐（像素级），\n歪了整个版式的\"编辑部严谨感\"就塌了。\n\n## 动效核心\n- 左列：等高页面卡纵向排列，黑白（深浅）强制相间以显滚动步进；\n  切词窗口内 ease-in-out 滚动恰好一卡高，其余时间零位移\n- 右侧：衬线体（Didot 类）两行——主体名词恒定，动词原位接力：\n  旧词灰化淡出（先出），新词落位（后进），先出后进不许叠影\n  （判例：v2 叠影\"resebuilds\"被抓）\n- 对齐：词块总高的垂直中心 = 当前卡顶 + 卡高/2（实测 y=540@1080p，\n  精确到个位像素）\n- 滚动与切词同步：滚动起点=旧词开始灰化，滚动终点=新词落稳\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 页面卡 | 等高（530px@1080p）、黑白相间、约半屏宽 | 不等高/同色系读不出步进；卡太窄失去\"证据\"分量 |\n| 词期 | ~45–60f/词 | <40f 读不完词+胶片看不清；词期不必均匀 |\n| 滚动窗口 | ~12f ease-in-out，恰一卡高 | 持续滚动=命门违例；滚过头/不足读作机械故障 |\n| 词接力 | 旧词 4–6f 灰化淡出 → 新词 6–8f 落位 | 同帧交叉必叠影；间隙 >10f 读作断片 |\n| 垂直对齐 | 词块中心=当前卡中点（像素级） | 用户单点意见\"文字高度和中间的页面中点要对齐\"；差 >8px 可感 |\n| 字体 | 衬线 Didot 类、动词字重比名词轻或同 | 无衬线会丢\"编辑部\"气质 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- 与 text-column-converge 分工：那张是左右对峙合拢的揭晓戏；\n  本卡是纵向证据流+原位接力，无合拢无揭晓\n- 与 pill-slot-cycle 分工：那张是胶囊槽位轮换 UI 元素；\n  本卡是版式级的图文对位系统\n- 实战素材：页面卡应使用真实截图（demo 为灰条示意，残余差距\n  已知）；截图亮度要人工分档保证相间可读\n\n## 参考实现\ndemos/typography/word-relay-filmstrip/\n（WordRelayFilmstrip.tsx）\n原片出处：perplexity-promo.mp4 ≈76–90s\n",
+      "implementations": [
+        {
+          "path": "demos/typography/word-relay-filmstrip/WordRelayFilmstrip.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/word-relay-filmstrip/WordRelayFilmstrip.tsx",
+          "dependencies": [
+            "react",
+            "remotion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/word-relay-filmstrip/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/word-relay-filmstrip/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "word-relay-filmstrip",
+          "label": "word-relay-filmstrip",
+          "description": "左列黑白相间等高页面卡步进滚动、右侧衬线大词原位接力（名词恒定+动词轮换）——切词瞬间才滚动一格，词块垂直中心与当前页面卡中点精确对齐",
+          "use": "\"一个主体 × 多种能力\"的枚举段（Computer researches/builds/codes…）；作品集/案例流展示；产品多场景巡礼",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/word-relay-filmstrip.mp4?v=1784437314883",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/word-relay-filmstrip/WordRelayFilmstrip.tsx",
+          "implementationPaths": [
+            "demos/typography/word-relay-filmstrip/WordRelayFilmstrip.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/word-relay-filmstrip/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/word-relay-filmstrip/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "word-relay-geometry",
+      "summary": "三个利益词各带一套专属几何接力——虚线大圆自转收缩 → 三实线圆 trim 依次生长（相位差 0.06）→ 金属 sheen 扫过后一拍收成纯白；旧词缩到 0.86 淡出，新词描边→填充揭示",
+      "use": "三点式利益陈述（更快/更好/更强）；品牌价值观段落；需要\"一词一世界\"的中段推进",
+      "duration": "约 6.0s（180f@30fps：三段各 0.36 时长窗，段间重叠 0.04）",
+      "energy": "中高（三拍推进 + 全程几何运动 + 背景粒子，无静止帧）",
+      "intention": "三点式利益陈述最容易做成三张字卡硬切。接力的做法是给每个词配一套 **只属于它的几何**：虚线圆是\"在转\"（快）、三圆相扣是\"互相咬合\"（好）、 金属扫光是\"材质硬\"（强）——几何本身就在替形容词做论证。第三个词 留了升格待遇（sheen 扫光 + 收白），因为它是结论。背景 20 颗微尘上浮 把三拍缝成一个连续空间，不然还是三张卡。",
+      "category": "typography",
+      "tags": [
+        "typography"
+      ],
+      "sourcePath": "references/shots/typography/word-relay-geometry.md",
+      "sourceUrl": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/typography/word-relay-geometry.md",
+      "rules": "---\nname: word-relay-geometry\n一句话: 三个利益词各带一套专属几何接力——虚线大圆自转收缩 → 三实线圆 trim 依次生长（相位差 0.06）→ 金属 sheen 扫过后一拍收成纯白；旧词缩到 0.86 淡出，新词描边→填充揭示\n适用: 三点式利益陈述（更快/更好/更强）；品牌价值观段落；需要\"一词一世界\"的中段推进\n时长: 约 6.0s（180f@30fps：三段各 0.36 时长窗，段间重叠 0.04）\n能量: 中高（三拍推进 + 全程几何运动 + 背景粒子，无静止帧）\n---\n\n## 意图\n三点式利益陈述最容易做成三张字卡硬切。接力的做法是给每个词配一套\n**只属于它的几何**：虚线圆是\"在转\"（快）、三圆相扣是\"互相咬合\"（好）、\n金属扫光是\"材质硬\"（强）——几何本身就在替形容词做论证。第三个词\n留了升格待遇（sheen 扫光 + 收白），因为它是结论。背景 20 颗微尘上浮\n把三拍缝成一个连续空间，不然还是三张卡。\n\n## 动效核心\n- 三段时段带重叠：`[0, 0.36] / [0.32, 0.68] / [0.64, 1.0]`——每段入场窗\n  0.07（≈13f，outCubic），出场窗 0.05（≈9f，inQuad，落在段末），\n  重叠 0.04 是交接而非硬切；末段无出场（收在片尾）\n- 每词双层文字（56px/800）：`outline` 层 `-webkit-text-stroke:1px #6a7186`\n  + 透明填充，`fill` 层纯白——**描边先到位，填充后揭示**\n- 前两词的填充是横向擦入：`fill.clipPath = inset(-20% (1-fillp)·100% -20% 0)`，\n  `fillp = seg(t, t0+0.06, t0+0.18, E.inOutCubic)`，同时 outline 透明度\n  降到 0.25（`1 - fillp·0.75`，留一点描边做重影）\n- 第一词的虚线圆（r=100、`stroke-dasharray:5 7`）：`scale(lerp(grow,0.4,1))`\n  从 0.4 长到 1，同时 `rotate(-90 + t·30)`——**用全片 t 做自转**，所以它在\n  自己那一段里持续转，不是转完就停；第二词的三实线圆（r=62，x 轴\n  -110/0/110）走 SVG trim：`pathLength=1` + `dasharray=1` + `dashoffset`\n  从 1 收到 0，三圆延迟 `d = 0/0.06/0.12` 依次生长，出场时 trim 反向减回去\n- Stronger 的 sheen：`linear-gradient(100deg, …#fff 50%…)` + `background-size:280%`\n  + `background-clip:text`，`backgroundPosition` 从 100% 扫到 0%\n  （窗 t0+0.08→+0.26，inOutCubic），随后 `white = seg(t0+0.27, t0+0.34)`\n  把 sheen 换成纯白 fill 并打 18px 白色辉光\n- 出场统一 `scale(lerp(tout, 1, 0.86))` 缩小淡出（**缩小而非放大**，读作\n  \"退场\"不是\"冲出画面\"）；背景 20 颗微尘\n  `y = (1 - ((t·sp + ph) % 1))·110 - 5`（%），速度 `sp = 0.5 + rand·0.8` 各异\n\n## 参数表\n| 参数 | 典型值 | 调节手感 |\n|------|--------|----------|\n| 三段时段 | 各 0.36（≈65f），重叠 0.04（≈7f） | 每词约 2s 是\"读词 + 看几何\"的下限；重叠 <0.02 读作硬切，>0.08 两词同屏打架 |\n| 入/出场窗 | 入 0.07 outCubic / 出 0.05 inQuad | 出场比入场短是对的（退场要决绝）；出场用 out 曲线会读作\"舍不得走\" |\n| outline→fill | 窗 0.12（≈22f）inOutCubic，outline 留 0.25 | 留一点描边做重影是质感来源，降到 0 字变扁；窗 >0.25 擦入慢得像加载条 |\n| 虚线圆 | r=100、`dash 5 7`、scale 0.4→1、自转 `t·30`° | 自转绑全片 t 所以永不停——这是\"快\"的证据；scale 起点 >0.7 就没有\"长出来\" |\n| trim 生长 | `pathLength=1` + dashoffset 1→0，相位差 0.06 | 相位差是\"依次相扣\"的关键，同时生长读作三个独立圆；窗 0.12 与 fill 同步收敛 |\n| sheen 扫光 | `100deg` 渐变、`background-size:280%`、位置 100%→0% | 280% 保证白带只占字宽一小段（=金属高光）；100% 时整字一起变亮，不是扫光 |\n| 收白 | `seg(t0+0.27, t0+0.34)` ≈13f + 18px 辉光 | 这一下是全片唯一的\"结论\"待遇；删了三个词就是平级，第三点没有落点 |\n| 字号配色 | 56px/800、描边 `#6a7186`、几何 `#565e78`、底 `#07080c`，微尘 20 颗 | 几何色比描边略暗一档是层级，几何比字亮就抢主角；微尘是把三拍缝成一个空间的胶水，>40 颗读作雪 |\n\n## 已知坑\n- demo 在灰阶/占位素材上调校通过——参数是调校起点非实战定稿，\n  首次实战须以真实素材回验\n- **三个词必须是同一句法的三点（demo 都是比较级单词，6–8 字母）**：\n  时段是等分的，词长差大时几何（圆半径、间距）都是写死的坐标，\n  长词会顶出虚线圆或压到相扣圆上——换词表要同步调 `CIRC_R` 与 x 偏移\n- `-webkit-text-stroke` 是前缀属性：Chromium/WebKit 才有，Firefox 下描边层\n  直接是透明（词消失）。Remotion 渲染走 Chromium 无碍，但预览环境要注意\n- SVG trim 用的 `pathLength=1` 归一化在部分老版本浏览器上对 `<circle>`\n  支持不全，退化表现是圆一次性全画出（丢生长感）——移植时先在目标\n  渲染器上验一帧\n- 出场 trim 是\"入场 trim 减出场 seg\"直接相减：两段窗若靠得太近\n  （段长 <0.2）会出现还没长完就开始收，圆只画出一小段\n- sheen 层与 fill 层是叠着的两个 DOM：切换靠透明度交叉，若把 `white` 窗\n  与 `sh` 窗调成重叠不足，会有 1–2 帧两层都半透（字发灰）\n- 第三个词的升格待遇只能给一次：全片三个词都上 sheen 就没有结论感\n  （P4 手法去重精神）；声音上三次入场是三个节奏点，第三个词的收白值得\n  单独一记重音，配法纪律见 sound-design.md\n\n## 参考实现\ndemos/typography/word-relay-geometry/\n（WordRelayGeometry.tsx）\n",
+      "implementations": [
+        {
+          "path": "demos/typography/word-relay-geometry/WordRelayGeometry.tsx",
+          "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/demos/typography/word-relay-geometry/WordRelayGeometry.tsx",
+          "dependencies": [
+            "react",
+            "../../_fixtures/Motion"
+          ],
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/word-relay-geometry/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/word-relay-geometry/index.html"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "key": "word-relay-geometry",
+          "label": "word-relay-geometry",
+          "description": "三个利益词各带一套专属几何接力——虚线大圆自转收缩 → 三实线圆 trim 依次生长（相位差 0.06）→ 金属 sheen 扫过后一拍收成纯白；旧词缩到 0.86 淡出，新词描边→填充揭示",
+          "use": "三点式利益陈述（更快/更好/更强）；品牌价值观段落；需要\"一词一世界\"的中段推进",
+          "upstreamStatus": "preview-available",
+          "previewUrl": "https://vincentwei1021.github.io/video-shotcraft/media/word-relay-geometry.mp4?v=1785600000000",
+          "previewStatus": 200,
+          "previewRevision": "live-gallery-not-pinned",
+          "implementationPath": "demos/typography/word-relay-geometry/WordRelayGeometry.tsx",
+          "implementationPaths": [
+            "demos/typography/word-relay-geometry/WordRelayGeometry.tsx"
+          ],
+          "sourceResolution": "resolved",
+          "conversion": {
+            "status": "authored-unverified",
+            "path": "demos/typography/word-relay-geometry/index.html",
+            "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/demos/typography/word-relay-geometry/index.html"
+          }
+        }
+      ]
+    }
+  ]
+}

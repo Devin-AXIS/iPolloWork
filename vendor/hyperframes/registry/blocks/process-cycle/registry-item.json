@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "process-cycle",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Process Cycle",
+  "description": "A circular process diagram that connects up to four stages around one central idea.",
+  "tags": [
+    "component",
+    "diagrams",
+    "cycle",
+    "process",
+    "system",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "diagrams",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "stages",
+        "center",
+        "note"
+      ],
+      "instructions": "Use three or four short stages separated by bars, name the central concept, and add one practical note."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "process-cycle.html",
+      "target": "compositions/process-cycle.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "A loop that improves every pass",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "stages",
+      "label": "Stages",
+      "type": "string",
+      "default": "Observe|Frame|Build|Review",
+      "maxLength": 180,
+      "update": "live"
+    },
+    {
+      "id": "center",
+      "label": "Center",
+      "type": "string",
+      "default": "Shared context",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Note",
+      "type": "string",
+      "default": "Each review becomes input for the next cycle.",
+      "maxLength": 90,
+      "update": "live"
+    }
+  ]
+}
+

@@ -101,7 +101,7 @@ export async function applyColorGradingScopeUpdate({
     readProjectFile,
   );
   if (Object.keys(files).length === 0) {
-    showToast("No color grading changed", "info");
+    showToast("No color grading changed", "error");
     return EMPTY_COLOR_GRADING_SCOPE_RESULT;
   }
 

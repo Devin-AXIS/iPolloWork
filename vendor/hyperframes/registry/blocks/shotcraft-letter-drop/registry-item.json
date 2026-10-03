@@ -1,0 +1,157 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shotcraft-letter-drop",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "字符落地回弹",
+  "description": "字符落地回弹，保留转换版原动作并支持旁白事件绑定。",
+  "tags": [
+    "component",
+    "shotcraft",
+    "typography",
+    "theme"
+  ],
+  "author": "Wei Yihao; louiseliu HyperFrames conversion; iPolloWork integration",
+  "license": "Apache-2.0",
+  "upstream": {
+    "repository": "https://github.com/louiseliu/hyperFrames-video-shotcraft",
+    "revision": "1df77f1ab080323558f70a5fb880fad0f88f87fc",
+    "implementation": "demos/typography/type-entrance-moves/LetterDropPhysics/index.html",
+    "rules": "references/shots/typography/type-entrance-moves.md",
+    "license": "Apache-2.0",
+    "upstreamSha256": "e4b01979842d08c337b18a1a5e2d93f56a06b760f974ae681cce9384d415c76f",
+    "adaptation": "Preserves the converted HTML/GSAP source. Modified: editable escaped content, measured phase cues, explicit canvas, final hold and iPolloWork contracts. No generic replacement animation.",
+    "referenceGallery": "https://github.com/louiseliu/hyperFrames-video-shotcraft/tree/1df77f1ab080323558f70a5fb880fad0f88f87fc/gallery"
+  },
+  "source": {
+    "provider": "hyperframes-video-shotcraft",
+    "label": "HyperFrames Shotcraft · Apache-2.0",
+    "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/references/shots/typography/type-entrance-moves.md"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title"
+      ],
+      "instructions": "用字符落下与回弹为轻松主题、活泼短标题提供一次入场。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6.5,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "shotcraft-letter-drop.html",
+      "target": "compositions/shotcraft-letter-drop.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "LICENSE",
+      "target": "compositions/licenses/hyperframes-video-shotcraft-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/shotcraft-letter-drop.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "title",
+      "type": "string",
+      "default": "负反馈",
+      "maxLength": 8,
+      "update": "reload"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Measured phase cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "kinetic-type",
+    "minHoldSeconds": 0.7,
+    "textLimits": {
+      "title": {
+        "maxLines": 1,
+        "maxLineLength": 8
+      }
+    },
+    "events": [
+      {
+        "id": "phase-1",
+        "target": ".sc-content *",
+        "time": 0.65,
+        "duration": 3.6666666666666665,
+        "action": "字符逐个落下并回弹"
+      },
+      {
+        "id": "phase-2",
+        "target": ".sc-content *",
+        "time": 4.316666666666666,
+        "duration": 1.3333333333333335,
+        "action": "归正字符完成落地"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "用字符落下与回弹为轻松主题、活泼短标题提供一次入场。"
+      ],
+      "avoidWhen": [
+        "严肃事故、医疗风险、财务损失、正式引用不宜使用跳动；不逐字动画长段旁白。",
+        "不要把文字特效当作全场景内容；避免与运镜或另一强调动作同时争抢焦点。"
+      ],
+      "inputRules": {
+        "title": "同一短标题，单行最多8字；按字符落下，不使用空格声称逐词对齐。"
+      },
+      "readingOrder": [
+        "读到短标题整体",
+        "字符落下并回弹",
+        "文字归位后稳定阅读"
+      ],
+      "cueBindings": {
+        "phase-1": "绑定实测旁白中与“字符逐个落下并回弹”对应的精确短语；保持该段原曲线。",
+        "phase-2": "绑定实测旁白中与“归正字符完成落地”对应的精确短语；保持该段原曲线。"
+      },
+      "fallback": {
+        "overflow": "拆分语义或选择其他配方，不缩小文字或截断。",
+        "missingInput": "要求真实内容，不使用英文演示文案或虚构界面。",
+        "timingMismatch": "重新绑定实测短语；内部动作比例不变，超长旁白拆镜。",
+        "inapplicable": "选择合适配方；仅配方模式下报告库缺口，不临时绘制替代图形。"
+      },
+      "example": {
+        "values": {
+          "title": "负反馈"
+        },
+        "narration": "负反馈。"
+      },
+      "acceptance": [
+        "回弹结束后字符基线完整；活泼语气与内容情绪一致。",
+        "原始 GSAP / 逐帧函数真实执行，倒放复现同一画面。",
+        "每个绑定事件改变实际目标，结束文字完整且可读。",
+        "以实际字体和中文内容检查安全边界；不复用演示身份与假素材。"
+      ],
+      "intent": "让短标题字符轻快落位，为轻松内容建立语气，再停住供观众阅读。"
+    }
+  }
+}

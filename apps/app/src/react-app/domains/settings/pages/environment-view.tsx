@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useEffect, useId, useState, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 import {
@@ -468,8 +468,23 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
         }
       }}
     >
-      <DialogContent className="w-full max-w-md sm:max-w-md">
-        <DialogHeader>
+      <DialogContent
+        data-testid="environment-editor-dialog"
+        showCloseButton={false}
+        className="w-[calc(100%-32px)] max-w-[520px] gap-0 rounded-[16px] p-6 ring-0 dark:ring-1 dark:ring-border sm:max-w-[520px]"
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"
+          aria-label={t("common.close")}
+          onClick={props.onClose}
+        >
+          <X className="size-4" />
+        </Button>
+
+        <DialogHeader className="pb-6 pe-8 text-left">
           <DialogTitle id={titleId}>
             {props.editor.mode === "add" ? t("settings.environment.add_title") : t("settings.environment.edit_title")}
           </DialogTitle>
@@ -487,7 +502,7 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
           error={error}
         />
 
-        <DialogFooter>
+        <DialogFooter className="mx-0 mb-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
           <DialogClose render={<Button variant="outline" size="sm" />}>
             {t("settings.environment.cancel")}
           </DialogClose>

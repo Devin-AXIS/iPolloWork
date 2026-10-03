@@ -1,0 +1,116 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "x-poll",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "X Poll",
+  "description": "An X-style audience poll with editable choices, percentages and a highlighted leader.",
+  "tags": [
+    "component",
+    "social",
+    "x",
+    "poll",
+    "audience",
+    "data",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "replace",
+      "rowId": "choice",
+      "binding": {
+        "variable": "choices",
+        "encoding": "key-value-list"
+      },
+      "columns": [
+        {
+          "id": "choice",
+          "label": "Choice",
+          "type": "string",
+          "role": "id",
+          "required": true
+        },
+        {
+          "id": "percent",
+          "label": "Percent",
+          "type": "number",
+          "role": "value",
+          "required": true
+        }
+      ],
+      "highlightVariable": "leading",
+      "minRows": 2,
+      "maxRows": 4
+    },
+    "ai": {
+      "slots": [
+        "question",
+        "choices",
+        "leading",
+        "footer"
+      ],
+      "instructions": "Write a neutral poll question with two to four choices and whole-number percentage values that approximately total 100."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "x-poll.html",
+      "target": "compositions/x-poll.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "question",
+      "label": "Question",
+      "type": "string",
+      "default": "What makes a product story easiest to remember?",
+      "maxLength": 120,
+      "update": "live"
+    },
+    {
+      "id": "choices",
+      "label": "Poll Choices",
+      "type": "string",
+      "default": "One sharp idea:46,A vivid visual:31,A surprising proof:15,A clear next step:8",
+      "maxLength": 260,
+      "update": "live"
+    },
+    {
+      "id": "leading",
+      "label": "Leading Choice",
+      "type": "string",
+      "default": "One sharp idea",
+      "maxLength": 48,
+      "update": "live"
+    },
+    {
+      "id": "footer",
+      "label": "Footer",
+      "type": "string",
+      "default": "4,820 votes · 18 hours left",
+      "maxLength": 64,
+      "update": "live"
+    }
+  ]
+}

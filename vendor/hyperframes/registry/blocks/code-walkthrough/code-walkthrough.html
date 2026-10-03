@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"filename","label":"File name","type":"string","default":"metrics.ts","maxLength":64,"update":"live"},{"id":"language","label":"Language","type":"string","default":"TypeScript","maxLength":32,"update":"live"},{"id":"code","label":"Code","type":"string","default":"export function total(items) {\\n  return items.reduce((sum, item) =>\\n    sum + item.value, 0\\n  );\\n}","maxLength":1000,"update":"live"},{"id":"focusLine","label":"Focus line","type":"number","default":2,"min":1,"max":8,"step":1,"update":"live"},{"id":"motionCueTimes","label":"Semantic cue times","type":"string","default":"{}","maxLength":2048,"update":"reload","description":"JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Code Walkthrough</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
+.code-window{width:1500px;margin:auto;overflow:hidden;border:1px solid var(--ipw-color-border,#2d3540);border-radius:34px;background:color-mix(in srgb,var(--ipw-color-text,#15171a) 94%,#10151c);color:#e9eef3;box-shadow:0 34px 100px rgba(0,0,0,.24)}.code-top{display:flex;align-items:center;gap:13px;height:82px;padding:0 30px;border-bottom:1px solid rgba(255,255,255,.12)}.code-dot{width:14px;height:14px;border-radius:50%;background:var(--ipw-color-primary,#20bbc0)}.code-file{margin-left:16px;font-size:19px;font-weight:700}.code-lang{margin-left:auto;color:#9faab5;font-size:17px}.code-lines{padding:38px 0 44px;counter-reset:line}.code-line{display:block;min-height:56px;padding:8px 46px 8px 96px;white-space:pre-wrap;font:23px/1.7 var(--ipw-font-mono,ui-monospace,monospace);counter-increment:line}.code-line::before{content:counter(line);display:inline-block;width:44px;margin-left:-58px;color:#647080}.code-line.is-highlight{background:color-mix(in srgb,var(--ipw-color-primary,#20bbc0) 20%,transparent);box-shadow:inset 5px 0 var(--ipw-color-primary,#20bbc0)}</style></head>
+<body><main id="root" data-composition-id="code-walkthrough" data-width="1920" data-height="1080" data-start="0" data-duration="10" data-defaults='{"filename":"metrics.ts","language":"TypeScript","code":"export function total(items) {\\n  return items.reduce((sum, item) =>\\n    sum + item.value, 0\\n  );\\n}","focusLine":2}'><section class="code-window vc-animate"><header class="code-top"><i class="code-dot"></i><i class="code-dot"></i><i class="code-dot"></i><span class="code-file" data-ipw-variable="filename" data-ipw-ai-slot="filename"></span><span class="code-lang" data-ipw-variable="language" data-ipw-ai-slot="language"></span></header><code class="code-lines" data-ipw-code="code" data-focus-key="focusLine" data-ipw-ai-slot="code"></code><span hidden data-ipw-ai-slot="focusLine"></span></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="code-walkthrough";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+if(values.style)root.dataset.variant=String(values.style);if(values.mode)root.dataset.mode=String(values.mode);
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"lines",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const item=document.createElement("article");item.className="vc-item vc-animate";const split=pair(raw);
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="comments"||mode==="plans"||mode==="people"||mode==="colors"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="vc-label";value.className="vc-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="people")item.dataset.initial=(split[0].trim().charAt(0)||"?").toUpperCase();
+   if(mode==="colors"){item.style.background=split[1]||"var(--ipw-color-primary,#20bbc0)"}
+   if(mode==="plans"){const period=document.createElement("div");period.className="pricing-period";period.textContent=String(values[host.dataset.periodKey]??"");item.append(period)}
+  }else if(mode==="steps"){
+   const step=document.createElement("div"),value=document.createElement("div");step.className="vc-index";value.className="vc-value";step.textContent="STEP / 0"+(index+1);value.textContent=raw;item.append(step,value);
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+root.querySelectorAll("[data-ipw-code]").forEach(function(host){
+ const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
+ lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
+});
+
+})();</script>
+<script data-ipw-motion-recipe="1">
+(function(){
+const root=document.querySelector("[data-composition-id]"),id=root.dataset.compositionId;
+const values=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{};
+const recipe={"version":1,"pattern":"progressive-build","minHoldSeconds":0.7,"capacity":{"variable":"code","separator":"\n","maxItems":8},"events":[{"id":"step-1","target":".code-line:nth-child(1)","time":1.2,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"step-2","target":".code-line:nth-child(2)","time":2.1,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"step-3","target":".code-line:nth-child(3)","time":3,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"step-4","target":".code-line:nth-child(4)","time":3.9,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"step-5","target":".code-line:nth-child(5)","time":4.8,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"step-6","target":".code-line:nth-child(6)","time":5.7,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"step-7","target":".code-line:nth-child(7)","time":6.6,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"step-8","target":".code-line:nth-child(8)","time":7.5,"duration":0.5,"action":"Move reading focus to this code line"},{"id":"resolve","target":".code-line","time":8.6,"duration":0.55,"action":"Restore the complete readable result"}]};
+const times=JSON.parse(String(values.motionCueTimes??"{}"));
+const cue=event=>times[event.id]??event.time;
+window.__timelines[id]?.kill();
+const tl=gsap.timeline({paused:true});
+tl.set(root.querySelectorAll("*"),{clearProps:"transform,opacity,clipPath"},0);
+const items=[...root.querySelectorAll(".code-line")];
+tl.fromTo(root.querySelectorAll(".code-top"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power3.out"},0);
+tl.set(items,{opacity:.18,y:18},0);
+items.forEach((item,index)=>{
+  const event=recipe.events[index]; if(!event||event.id==="resolve")return;
+  const time=cue(event);
+  tl.to(item,{opacity:1,y:0,duration:event.duration,ease:"power3.out"},time);
+  tl.fromTo(item,{x:12},{x:0,duration:event.duration,ease:"power2.out"},time);
+  if(index>0)tl.to(items[index-1],{opacity:.58,duration:.25,ease:"power2.out"},time);
+});
+const resolved=recipe.events.at(-1);
+tl.to(items,{opacity:1,y:0,x:0,duration:resolved.duration,ease:"power2.out"},cue(resolved));
+
+tl.set(root,{visibility:"visible"},10);
+window.__timelines[id]=tl;tl.seek(0);
+})();
+</script>
+</body></html>

@@ -1,3 +1,18 @@
+const featuredPluginIconSrc: Readonly<Record<string, string>> = {
+  context7: "/ext-context7.svg",
+  "design-agent": "/ext-design.png",
+  figma: "/ext-figma.svg",
+  github: "/ext-github.svg",
+  "media-studio": "/ext-image-studio.png",
+  "image-studio": "/ext-image-studio.png",
+  linear: "/ext-linear.svg",
+  notion: "/ext-notion.svg",
+  sentry: "/ext-sentry.svg",
+  stripe: "/ext-stripe.svg",
+  "video-agent": "/ext-video.png",
+  "video-console": "/ext-video-console.png",
+};
+
 export function resolveExtensionIconSrc(iconSrc: string): string {
   if (!iconSrc.startsWith("/")) {
     return iconSrc;
@@ -8,10 +23,16 @@ export function resolveExtensionIconSrc(iconSrc: string): string {
 }
 
 export function resolveExtensionIconUrl(input: {
+  pluginId?: string;
   iconSrc?: string;
   iconSlug?: string;
   serviceUrl?: string;
 }): string | undefined {
+  const featuredIconSrc = input.pluginId ? featuredPluginIconSrc[input.pluginId] : undefined;
+  if (featuredIconSrc) {
+    return resolveExtensionIconSrc(featuredIconSrc);
+  }
+
   if (input.iconSrc) {
     return resolveExtensionIconSrc(input.iconSrc);
   }

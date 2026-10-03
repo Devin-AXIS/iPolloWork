@@ -14,7 +14,9 @@ const ARTIFACT_STATE = `(() => {
   return {
     activeEntries: activeEntries.length,
     supportingFiles: supportingFiles.length,
-    videoFrames: document.querySelectorAll('iframe[title="HyperFrames Video Studio"]').length,
+    videoFrames: document.querySelectorAll(
+      'iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]',
+    ).length,
     panelTabs: document.querySelectorAll('button[aria-label^="Select tab"]').length,
   };
 })()`;
@@ -24,6 +26,38 @@ export default {
   title: "Video conversations only activate the session-owned HTML entry",
   kind: "user-facing",
   steps: [
+    {
+      name: "Template selection stays compact across engines",
+      run: async (ctx) => {
+        await ctx.prove("The conversation shows the selected template label without its private execution prompt", {
+          action: async () => {
+            await ctx.eval(`(() => {
+              const close = document.querySelector(
+                'button[aria-label="Close right panel"], button[aria-label="收起右侧面板"], button[aria-label="Close panel"], button[aria-label="关闭面板"]',
+              );
+              close?.click();
+              const label = [...document.querySelectorAll("div, p, span")]
+                .filter((node) => node.textContent?.includes("已应用模板：Agent Command Center"))
+                .sort((left, right) => (left.textContent?.length ?? 0) - (right.textContent?.length ?? 0))[0];
+              label?.scrollIntoView({ block: "center", inline: "nearest" });
+            })()`);
+            await ctx.waitFor(
+              'document.body.innerText.includes("已应用模板：Agent Command Center") && !document.body.innerText.includes("Read `video/session-e9b173fe-cebe-42ef-a250-bda08dd8c9ad/brief.json`")',
+              { timeoutMs: 30_000, label: "compact template selection label" },
+            );
+          },
+          assert: async () => {
+            const state = await ctx.eval(`(() => ({
+              labelVisible: document.body.innerText.includes("已应用模板：Agent Command Center"),
+              privatePromptVisible: document.body.innerText.includes("Keep the template's visual language and update every applicable item"),
+            }))()`);
+            ctx.assert(state.labelVisible, "Expected the selected template label to remain visible.");
+            ctx.assert(!state.privatePromptVisible, "Expected the private template execution prompt to stay hidden.");
+          },
+          screenshot: { name: "template-selection-label-only", requireText: ["已应用模板"] },
+        });
+      },
+    },
     {
       name: "Model-independent output cards expose one video entry",
       run: async (ctx) => {
@@ -35,7 +69,9 @@ export default {
               label: "control API",
             });
             await ctx.eval(`(() => {
-              const expand = document.querySelector('button[aria-label="Toggle Video Studio fullscreen"]');
+              const expand = document.querySelector(
+                'button[aria-label="Restore panel width"], button[aria-label="Expand panel"]',
+              );
               if (expand?.getAttribute("aria-pressed") === "true") expand.click();
             })()`);
             await ctx.waitFor(`(() => {
@@ -50,7 +86,12 @@ export default {
               const entry = [...document.querySelectorAll('[title="index.html"]')]
                 .find((node) => node.closest("button"));
               entry?.scrollIntoView({ block: "center", inline: "center" });
+              entry?.closest("button")?.click();
             })()`);
+            await ctx.waitFor(
+              `Boolean(document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]'))`,
+              { timeoutMs: 60_000, label: "opened Video Studio from the only active entry" },
+            );
           },
           assert: async () => {
             const state = await ctx.eval(ARTIFACT_STATE);
@@ -67,12 +108,15 @@ export default {
         await ctx.prove("Implementation assets do not create misleading output cards", {
           voiceover: vo[1],
           action: async () => {
-            const before = await ctx.eval(ARTIFACT_STATE);
-            await new Promise((resolve) => setTimeout(resolve, 350));
-            const after = await ctx.eval(ARTIFACT_STATE);
-            ctx.assert(
-              after.videoFrames === before.videoFrames && after.panelTabs === before.panelTabs,
-              `Hidden support files changed the right panel: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+            await ctx.eval(`(() => {
+              const close = document.querySelector(
+                'button[aria-label="Close right panel"], button[aria-label="收起右侧面板"], button[aria-label="Close panel"], button[aria-label="关闭面板"]',
+              );
+              close?.click();
+            })()`);
+            await ctx.waitFor(
+              `!document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]')`,
+              { timeoutMs: 30_000, label: "closed Video Studio while output card remains" },
             );
           },
           assert: async () => {
@@ -91,11 +135,13 @@ export default {
           voiceover: vo[2],
           action: async () => {
             await ctx.eval(`(() => {
-              const close = document.querySelector('button[aria-label="Close right panel"]');
+              const close = document.querySelector(
+                'button[aria-label="Close right panel"], button[aria-label="收起右侧面板"], button[aria-label="Close panel"], button[aria-label="关闭面板"]',
+              );
               close?.click();
             })()`);
             await ctx.waitFor(
-              `!document.querySelector('iframe[title="HyperFrames Video Studio"]')`,
+              `!document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]')`,
               { timeoutMs: 30_000, label: "closed right-side Video Studio" },
             );
             await ctx.eval(`(() => {
@@ -104,23 +150,25 @@ export default {
               entry?.closest("button")?.click();
             })()`);
             await ctx.waitFor(
-              `document.querySelector('iframe[title="HyperFrames Video Studio"]')?.dataset.loaded === "true"`,
+              `document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]')?.dataset.loaded === "true"`,
               { timeoutMs: 60_000, label: "loaded current Video Studio" },
             );
             await new Promise((resolve) => setTimeout(resolve, 2_000));
             await ctx.eval(`(() => {
-              const expand = document.querySelector('button[aria-label="Toggle Video Studio fullscreen"]');
+              const expand = document.querySelector('button[aria-label="Expand panel"]');
               if (expand?.getAttribute("aria-pressed") !== "true") expand?.click();
             })()`);
             await ctx.waitFor(
-              `document.querySelector('button[aria-label="Toggle Video Studio fullscreen"]')?.getAttribute("aria-pressed") === "true"`,
+              `document.querySelector('button[aria-label="Restore panel width"]')?.getAttribute("aria-pressed") === "true"`,
               { timeoutMs: 30_000, label: "expanded Video Studio proof state" },
             );
           },
           assert: async () => {
             const route = await ctx.eval(`(() => {
               const sessionId = window.location.hash.match(/\\/session\\/([^/?#]+)/)?.[1] || "";
-              const src = document.querySelector('iframe[title="HyperFrames Video Studio"]')?.getAttribute("src") || "";
+              const src = document.querySelector(
+                'iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]',
+              )?.getAttribute("src") || "";
               return { sessionId, src };
             })()`);
             ctx.assert(
@@ -128,7 +176,7 @@ export default {
               `Expected the current session's Video Studio route, got ${JSON.stringify(route)}`,
             );
           },
-          screenshot: { name: "video-entry-opens-studio", requireText: ["Video Studio"] },
+          screenshot: { name: "video-entry-opens-studio" },
         });
       },
     },

@@ -1,0 +1,33 @@
+<!-- LetterDropPhysics -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="LetterDropPhysics"] { width: 1920px; height: 1080px; background: #ececea; overflow: hidden; position: relative; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="LetterDropPhysics" data-start="0" data-duration="5" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={bg:'#ececea',bar:'#c2c2c0',ink:'#2f2f2f'};
+    const h=n=>{const s=Math.sin(n*127.3)*43758.5453;return s-Math.floor(s);};
+    const WORD='GRAVITY',SLOT_W=150,FONT=140,WORD_W=WORD.length*SLOT_W,LEFT=(1920-WORD_W)/2,REST_TOP=452,FLOOR_Y=REST_TOP+152;
+    const DROP=720,T_FALL=24,T_B1=16,T_B2=8,SNAP=110,SNAP_DUR=6,TOTAL=150;
+    const dropY=t=>{if(t<=0)return -DROP;if(t<T_FALL)return -DROP+DROP*(t/T_FALL)**2;if(t<T_FALL+T_B1){const u=(t-T_FALL)/T_B1;return -DROP*0.3*4*u*(1-u);}if(t<T_FALL+T_B1+T_B2){const u=(t-T_FALL-T_B1)/T_B2;return -DROP*0.09*4*u*(1-u);}return 0;};
+    const easeOutCubic=t=>1-Math.pow(1-t,3), clamp01=x=>Math.min(1,Math.max(0,x));
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), snap=easeOutCubic(clamp01((frame-SNAP)/SNAP_DUR));
+      const letters=WORD.split('').map((ch,i)=>{const start=10+i*5,t=frame-start,y=dropY(t),tiltTarget=(h(i+1)-0.5)*12,landP=clamp01((t-T_FALL)/6),restJitter=(h(i+11)-0.5)*10;
+        const rot=tiltTarget*landP*(1-snap),jitter=restJitter*landP*(1-snap),scale=frame<SNAP?1:1+0.06*(1-snap);
+        return `<div style="position:absolute;left:${LEFT+i*SLOT_W}px;top:${REST_TOP}px;width:${SLOT_W}px;height:${FONT}px;display:flex;align-items:flex-end;justify-content:center;transform:translateY(${y+jitter}px) rotate(${rot}deg) scale(${scale});transform-origin:50% 100%;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:${FONT}px;line-height:1;color:${G.ink}">${ch}</div>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;left:${LEFT-60}px;top:${FLOOR_Y}px;width:${WORD_W+120}px;height:6px;background:${G.bar};border-radius:3px"></div>${letters}`;
+    }},0);
+    window.__timelines['LetterDropPhysics']=tl;
+  </script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "end-screen",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "End Screen",
+  "description": "A flexible closing frame with brand, final message, primary action and a secondary destination.",
+  "tags": [
+    "component",
+    "outro",
+    "end-screen",
+    "cta",
+    "brand",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "scene",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "brand",
+        "headline",
+        "action",
+        "secondary"
+      ],
+      "instructions": "Close with one short message, one primary action and one secondary destination or handle."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "end-screen.html",
+      "target": "compositions/end-screen.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "brand",
+      "label": "Brand",
+      "type": "string",
+      "default": "iPolloWork",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "headline",
+      "label": "Headline",
+      "type": "string",
+      "default": "Keep the next idea moving.",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "action",
+      "label": "Primary action",
+      "type": "string",
+      "default": "Start a new sequence",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "secondary",
+      "label": "Secondary destination",
+      "type": "string",
+      "default": "ipollowork.com / studio",
+      "maxLength": 64,
+      "update": "live"
+    }
+  ]
+}

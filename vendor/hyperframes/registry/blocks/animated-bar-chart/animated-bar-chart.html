@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1920,height=1080"/>
+<title>Animated Bar Chart</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#animated-bar-chart{position:relative;width:1920px;height:1080px;padding:118px 146px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,sans-serif)}.copy{max-width:740px}.eyebrow{color:var(--ipw-color-muted,#68717c);font:750 16px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.14em;text-transform:uppercase}.title{margin:24px 0 0;font-size:88px;line-height:.94;letter-spacing:-.075em}.annotation{margin-top:38px;color:var(--ipw-color-primary,#20bbc0);font:760 34px/1.05 var(--ipw-font-body,Inter,sans-serif)}.card{position:absolute;right:146px;top:146px;width:790px;height:788px;padding:54px;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:var(--ipw-card-radius,34px);background:var(--ipw-card-bg,var(--ipw-color-surface,#fff));box-shadow:var(--ipw-card-shadow,0 24px 58px rgba(20,30,40,.12))}.bars{height:560px;display:grid;grid-template-columns:repeat(7,1fr);align-items:end;gap:22px;border-bottom:2px solid var(--ipw-color-border,#d8dde3)}.bar{position:relative;min-height:12px;border-radius:18px 18px 5px 5px;background:linear-gradient(180deg,var(--ipw-color-primary,#20bbc0),color-mix(in srgb,var(--ipw-color-primary,#20bbc0) 48%,var(--ipw-color-surface,#fff)));transform-origin:bottom}.bar b{position:absolute;left:50%;bottom:calc(100% + 14px);transform:translateX(-50%);font:800 22px/1 var(--ipw-font-body,Inter,sans-serif)}.labels{display:grid;grid-template-columns:repeat(7,1fr);gap:22px;margin-top:24px;color:var(--ipw-color-muted,#68717c);font:700 15px/1 var(--ipw-font-body,Inter,sans-serif);text-align:center}</style>
+<style>.bar b{top:16px;bottom:auto;color:var(--ipw-color-surface,#fff)}</style>
+</head>
+<body>
+<main id="animated-bar-chart" data-composition-id="animated-bar-chart" data-width="1920" data-height="1080" data-start="0" data-duration="8">
+<section class="copy">
+<div class="eyebrow">Data signal</div>
+<h1 class="title" data-ipw-variable="title" data-ipw-ai-slot="title">
+</h1>
+<div class="annotation" data-ipw-variable="annotation" data-ipw-ai-slot="annotation">
+</div>
+</section>
+<section class="card">
+<div class="bars">
+</div>
+<div class="labels">
+</div>
+</section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js">
+</script>
+<script>window.__timelines=window.__timelines||{};(function(){const root=document.getElementById("animated-bar-chart"),values={title:"Growth becomes visible",series:"42,72,56,88,64,95,78",labels:"M1,M2,M3,M4,M5,M6,M7",annotation:"+42% over the measured period",...(window.__hyperframes?.getVariables?.()??{})},points=String(values.series).split(/[,/\s]+/).map(Number).filter(Number.isFinite).slice(0,7),labels=String(values.labels).split(",").map(v=>v.trim()).slice(0,7),max=Math.max(...points,1);root.querySelectorAll("[data-ipw-variable]").forEach(el=>el.textContent=String(values[el.dataset.ipwVariable]??""));const bars=root.querySelector(".bars"),labelRow=root.querySelector(".labels");for(let i=0;i<7;i+=1){const value=points[i]??0,bar=document.createElement("div"),text=document.createElement("b"),label=document.createElement("span");bar.className="bar";bar.style.height=`${Math.max(5,value/max*92)}%`;text.textContent=String(value);label.textContent=labels[i]??String(i+1);bar.append(text);bars.append(bar);labelRow.append(label)}const tl=gsap.timeline({paused:true});tl.from(root.querySelectorAll(".copy>*"),{y:24,opacity:0,stagger:.1,duration:.48,ease:"power3.out"}).from(root.querySelectorAll(".bar"),{scaleY:0,stagger:.08,duration:.72,ease:"power3.out"},.18).from(root.querySelectorAll(".labels span"),{opacity:0,y:10,stagger:.05,duration:.3},.5);window.__timelines["animated-bar-chart"]=tl;tl.seek(0)})();</script>
+</body>
+</html>

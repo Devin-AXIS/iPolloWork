@@ -1,6 +1,39 @@
 import { createHash } from "node:crypto";
-import { basename, resolve } from "node:path";
-import type { WorkspaceConfig, WorkspaceInfo } from "./types.js";
+import { basename, resolve, sep } from "node:path";
+import { DEFAULT_ENGINE_ID, type WorkspaceConfig, type WorkspaceInfo } from "./types.js";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function comparablePath(value: string): string {
+  const normalized = resolve(value);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+/** The current engine directory identifies the workspace; process-level ids can be stale across sessions. */
+export function findWorkspaceForContext(
+  workspaces: readonly WorkspaceInfo[],
+  context: unknown,
+): WorkspaceInfo | undefined {
+  const record = isRecord(context) ? context : {};
+  const candidates = [record.directory, record.worktree]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => comparablePath(value.trim()));
+
+  for (const candidate of candidates) {
+    const workspace = workspaces.find((entry) => {
+      const roots = [entry.path, entry.directory]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .map((value) => comparablePath(value.trim()));
+      return roots.some((root) => candidate === root || candidate.startsWith(`${root}${sep}`));
+    });
+    if (workspace) return workspace;
+  }
+
+  const workspaceId = typeof record.workspaceId === "string" ? record.workspaceId.trim() : "";
+  return workspaceId ? workspaces.find((workspace) => workspace.id === workspaceId) : undefined;
+}
 
 function workspaceIdForKey(key: string): string {
   const hash = createHash("sha256").update(key).digest("hex");
@@ -55,6 +88,7 @@ export function buildWorkspaceInfos(
       preset: workspace.preset?.trim() || (workspaceType === "remote" ? "remote" : "starter"),
       workContextId: workspace.workContextId,
       workspaceType,
+      engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
       remoteType,
       baseUrl: workspace.baseUrl,
       directory: workspace.directory,
@@ -79,10 +113,14 @@ export function buildWorkspaceInfos(
  * `config.workspaces[0]` is not reliably that: a freshly added remote worker is
  * prepended to the list, so index 0 can be a remote workspace (no local path)
  * even when local workspaces exist — which would leave the engine unstarted.
- * Select the first non-remote workspace with a resolved local path so the engine
- * starts regardless of ordering; returns undefined for remote-only setups (which
- * need no local engine).
+ * Select the first local OpenCode workspace with a resolved path so one engine
+ * never boots inside another engine's project. Returns undefined when no local
+ * OpenCode workspace exists.
  */
 export function findManagedEngineWorkspace(workspaces: WorkspaceInfo[]): WorkspaceInfo | undefined {
-  return workspaces.find((workspace) => workspace.workspaceType !== "remote" && workspace.path.trim() !== "");
+  return workspaces.find((workspace) =>
+    workspace.workspaceType !== "remote" &&
+    workspace.path.trim() !== "" &&
+    (workspace.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
+  );
 }

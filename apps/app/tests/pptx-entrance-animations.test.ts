@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import PptxGenJS from "pptxgenjs";
 
 import {
   addPptxEntranceAnimations,
@@ -44,5 +45,26 @@ describe("PPTX entrance animation writer", () => {
     const outputXml = await outputZip.file("ppt/slides/slide1.xml")?.async("string");
 
     expect(outputXml).toContain("<p:timing>");
+  });
+
+  test("adds all three entrances to a real PptxGenJS export", async () => {
+    const pptx = new PptxGenJS();
+    pptx.layout = "LAYOUT_WIDE";
+    const slide = pptx.addSlide();
+    ["fade-up", "rise", "zoom"].forEach((animation, index) => {
+      slide.addText(animation, {
+        x: 1, y: index + 1, w: 2, h: 0.5,
+        objectName: `ipw-entry-${animation}-${index + 1}`,
+      });
+    });
+    const exported = await pptx.write({ outputType: "blob" });
+    if (!(exported instanceof Blob)) throw new Error("PptxGenJS did not return a Blob.");
+    const finalized = await addPptxEntranceAnimations(exported);
+    const zip = await JSZip.loadAsync(await finalized.arrayBuffer());
+    const xml = await zip.file("ppt/slides/slide1.xml")?.async("string");
+
+    expect(xml).toContain('presetID="2" presetClass="entr" presetSubtype="1"');
+    expect(xml).toContain('presetID="37" presetClass="entr" presetSubtype="0"');
+    expect(xml).toContain('presetID="23" presetClass="entr" presetSubtype="16"');
   });
 });

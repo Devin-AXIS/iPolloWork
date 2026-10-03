@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "instagram-reel",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Instagram Reel",
+  "description": "A vertical Instagram-style reel frame with creator, caption, audio attribution and metrics.",
+  "tags": [
+    "component",
+    "social",
+    "instagram",
+    "reel",
+    "short-video",
+    "vertical",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "creator",
+        "caption",
+        "audio",
+        "stats"
+      ],
+      "instructions": "Write a quick reel caption, a short audio credit and compact engagement metrics."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "instagram-reel.html",
+      "target": "compositions/instagram-reel.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "creator",
+      "label": "Creator",
+      "type": "string",
+      "default": "mira.moves",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "caption",
+      "label": "Caption",
+      "type": "string",
+      "default": "Three transitions that make product demos feel effortless.",
+      "maxLength": 150,
+      "update": "live"
+    },
+    {
+      "id": "audio",
+      "label": "Audio",
+      "type": "string",
+      "default": "Original audio · Mira Studio",
+      "maxLength": 56,
+      "update": "live"
+    },
+    {
+      "id": "stats",
+      "label": "Engagement",
+      "type": "string",
+      "default": "84K ♥ · 1.2K comments",
+      "maxLength": 64,
+      "update": "live"
+    }
+  ]
+}
+

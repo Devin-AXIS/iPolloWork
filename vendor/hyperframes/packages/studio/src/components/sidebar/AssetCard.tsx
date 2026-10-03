@@ -3,8 +3,9 @@
  * Extracted from AssetsTab.tsx to keep that file under the 600-line CI gate.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { LocateFixed, Plus } from "lucide-react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
-import { VIDEO_EXT, IMAGE_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -12,7 +13,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 import { basename, ext, formatDuration } from "./assetHelpers";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
-import { HtmlIllustrationPreview } from "./HtmlIllustrationPreview";
+import { useStudioI18n } from "../../i18n";
 
 /** Drag payload writer shared by the asset tile and the font row: copy effect
  *  plus the timeline-asset MIME and a plain-text path fallback. */
@@ -40,6 +41,7 @@ function openAssetContextMenu(
 function useProbedDuration(src: string, skip: boolean): number | null | undefined {
   const [duration, setDuration] = useState<number | null | undefined>(undefined);
   useEffect(() => {
+    setDuration(undefined);
     if (skip) return;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -99,9 +101,8 @@ export interface AssetCardProps {
 /**
  * Thumbnail card for images and video assets. Renders in a 2-col grid.
  *
- * Click behaviour (CapCut-style):
- *   - Already added  → selects the clip on the timeline (setSelectedElementId).
- *   - Not yet added  → opens the asset preview overlay over the canvas.
+ * Click opens preview for every image/video. A separate action reveals an
+ * already-used clip on the timeline, and drag still inserts on the timeline.
  * Drag behaviour is preserved: a pointer movement exceeding DRAG_THRESHOLD_PX
  * before pointerup is treated as drag-start, not a click.
  */
@@ -117,6 +118,7 @@ export function AssetCard({
   onRename,
   onAddAssetToTimeline,
 }: AssetCardProps) {
+  const { tx } = useStudioI18n();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState(false);
   const fullName = asset.split("/").pop() ?? asset;
@@ -125,9 +127,9 @@ export function AssetCard({
   const serveUrl = resolveMediaPreviewUrl(asset, projectId);
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
-  const isIllustrationHtml = isHtmlIllustrationAsset(asset);
-  const probedDuration = useProbedDuration(serveUrl, !isVideo || duration != null);
-  const resolvedDuration = duration ?? probedDuration ?? undefined;
+  const knownDuration = duration != null && Number.isFinite(duration) && duration > 0 ? duration : undefined;
+  const probedDuration = useProbedDuration(serveUrl, !isVideo || knownDuration != null);
+  const resolvedDuration = knownDuration ?? probedDuration ?? undefined;
   const durationLabel = formatDuration(resolvedDuration ?? 0);
 
   // Drag-threshold click gate: track pointer-down position so we can ignore
@@ -140,6 +142,19 @@ export function AssetCard({
   const setPreviewAsset = useAssetPreviewStore((s) => s.setPreviewAsset);
   const clearPreviewAsset = useAssetPreviewStore((s) => s.clearPreviewAsset);
 
+  const openPreview = useCallback(() => {
+    setPreviewAsset(asset, projectId);
+  }, [asset, projectId, setPreviewAsset]);
+
+  const locateOnTimeline = useCallback(() => {
+    const clip = findClipForAsset(elements, asset);
+    if (!clip) return;
+    clearPreviewAsset();
+    const clipKey = clip.key ?? clip.id;
+    setSelectedElementId(clipKey);
+    requestClipReveal(clipKey);
+  }, [asset, clearPreviewAsset, elements, requestClipReveal, setSelectedElementId]);
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     pointerDownRef.current = { x: e.clientX, y: e.clientY };
   }, []);
@@ -150,60 +165,50 @@ export function AssetCard({
       pointerDownRef.current = null;
       if (!origin) return;
       if (!isPointerClick(e.clientX - origin.x, e.clientY - origin.y)) return;
-      // Treat as click
-      if (used) {
-        const clip = findClipForAsset(elements, asset);
-        if (clip) {
-          // Dismiss any open preview overlay (from another asset) — the reveal
-          // must not leave a stale preview card floating over the canvas.
-          clearPreviewAsset();
-          const clipKey = clip.key ?? clip.id;
-          setSelectedElementId(clipKey);
-          // Scroll the timeline so the selected clip is actually visible.
-          requestClipReveal(clipKey);
-          return;
-        }
-      }
-      // Not added (or no matching clip found) → preview overlay
-      setPreviewAsset(asset, projectId);
+      openPreview();
     },
-    [
-      used,
-      elements,
-      asset,
-      projectId,
-      setSelectedElementId,
-      requestClipReveal,
-      setPreviewAsset,
-      clearPreviewAsset,
-    ],
+    [openPreview],
   );
 
   return (
     <>
       <div
+        data-testid="asset-card"
+        data-asset-path={asset}
         draggable
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onDragStart={(e) => writeAssetDragData(e, asset)}
+        onDragStart={(e) => {
+          pointerDownRef.current = null;
+          writeAssetDragData(e, asset);
+        }}
         onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        className={`flex min-w-0 cursor-pointer flex-col transition-shadow ${
+        className={`group/card relative flex min-w-0 cursor-pointer flex-col rounded-lg outline-none focus-within:ring-2 focus-within:ring-[#1FBAC0]/60 ${
           isCopied ? "rounded-lg ring-2 ring-studio-accent/30" : ""
         }`}
       >
+        <button
+          type="button"
+          aria-label={`${tx("Preview")}: ${fullName}`}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => { pointerDownRef.current = null; }}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            openPreview();
+          }}
+          className="absolute inset-0 z-[1] rounded-lg focus-visible:outline-none"
+        />
         {/* Thumbnail */}
-        <div className="relative aspect-[37/26] w-full overflow-hidden rounded-lg border border-panel-border bg-[#f4f5f7]">
+        <div className="relative h-[100px] w-full overflow-hidden rounded-lg border border-panel-border bg-panel-input">
           {isImage && (
             <img
               src={serveUrl}
               alt={name}
               loading="lazy"
               className={`h-full w-full ${extension === "SVG" ? "object-contain p-4" : "object-cover"}`}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
             />
           )}
           {isVideo && (
@@ -216,42 +221,67 @@ export function AssetCard({
                   muted
                   loop
                   playsInline
-                  className="absolute inset-0 w-full h-full object-cover"
+                  className="pointer-events-none absolute inset-0 w-full h-full object-cover"
                 />
               )}
             </>
           )}
-          {isIllustrationHtml && (
-            <div className="absolute inset-0 flex items-center bg-white">
-              <HtmlIllustrationPreview src={serveUrl} title={name} className="w-full" />
-            </div>
-          )}
-          {!isImage && !isVideo && !isIllustrationHtml && (
+          {!isImage && !isVideo && (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-[10px] font-medium text-neutral-600">{extension}</span>
             </div>
           )}
 
-          {/* Figma usage badge — top-right */}
+          {/* Usage and duration remain readable over the preview. */}
           {used && (
-            <span className="absolute right-[7px] top-[7px] flex h-5 items-center gap-1 rounded-full bg-white/90 px-[7px] text-[9px] font-bold text-[#168e92] shadow-sm">
+            <span className="pointer-events-none absolute right-2 top-2 z-[4] flex h-5 items-center gap-1 rounded-full bg-white/90 px-2 text-[10px] font-medium text-[#168e92] shadow-sm">
               <span aria-hidden="true">●</span>
-              In use
+              {tx("In use")}
             </span>
           )}
-
-          {/* Duration stays visible without competing with the usage badge. */}
-          {durationLabel && (
-            <span className="absolute left-[7px] top-[7px] rounded bg-neutral-950/80 px-1.5 py-[3px] text-[9px] font-medium leading-none text-white tabular-nums">
-              {durationLabel}
+          {isVideo && (
+            <span data-testid="asset-video-duration" className="pointer-events-none absolute bottom-2 left-2 z-[4] rounded bg-white/90 px-1.5 py-1 text-[10px] font-medium leading-none text-[#4d5159] shadow-sm tabular-nums">
+              {durationLabel || "—"}
             </span>
           )}
+          <div className="pointer-events-none absolute inset-0 z-[3] bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-100" />
+          <div className="absolute bottom-2 right-2 z-[4] flex items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-100">
+            {used && (
+              <button
+                type="button"
+                data-testid="asset-locate-action"
+                aria-label={tx("Locate on timeline")}
+                title={tx("Locate on timeline")}
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); locateOnTimeline(); }}
+                className="flex size-7 items-center justify-center rounded-md bg-panel-input text-panel-text-1 shadow-sm hover:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60"
+              >
+                <LocateFixed aria-hidden="true" size={16} strokeWidth={1.5} />
+              </button>
+            )}
+            {onAddAssetToTimeline && (
+              <button
+                type="button"
+                data-testid="asset-insert-action"
+                aria-label={tx("Insert asset")}
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onAddAssetToTimeline(asset); }}
+                className="flex h-7 items-center gap-1 rounded-md bg-panel-input px-2 text-xs font-medium text-panel-text-1 shadow-sm hover:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60"
+              >
+                <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
+                <span>{tx("Insert asset")}</span>
+              </button>
+            )}
+          </div>
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[5] rounded-[inherit] border-2 border-[#1FBAC0] opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100" />
         </div>
 
         {/* Filename caption */}
         <div className="flex w-full min-w-0 items-start justify-between gap-1 px-0.5 pt-[7px] leading-4">
           <span
-            className="min-w-0 truncate text-[10px] font-medium text-panel-text-1"
+            className="min-w-0 truncate text-xs font-medium text-panel-text-1"
             title={fullName}
           >
             {fullName}

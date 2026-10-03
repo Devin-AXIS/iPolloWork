@@ -1,0 +1,14 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json", "name": "number-wheel", "version": "1.0.0", "type": "hyperframes:block", "title": "Number Wheel",
+  "description": "A large theme-linked rolling number for metrics, prices, and scores.", "tags": ["component", "data", "number", "counter", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Number Wheel", "url": "https://www.hyperframes.dev/catalog/components/number-wheel" },
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "value", "suffix", "note"], "instructions": "AI may calculate or replace the number and supporting explanation while keeping one dominant metric." } },
+  "dimensions": { "width": 1920, "height": 1080 }, "duration": 7, "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "number-wheel.html", "target": "compositions/number-wheel.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Active creators", "maxLength": 56, "update": "live" },
+    { "id": "value", "label": "Value", "type": "string", "default": "30222", "maxLength": 14, "update": "live" },
+    { "id": "suffix", "label": "Suffix", "type": "string", "default": "+", "maxLength": 8, "update": "live" },
+    { "id": "note", "label": "Note", "type": "string", "default": "Measured across the last 30 days", "maxLength": 72, "update": "live" }
+  ]
+}

@@ -107,6 +107,13 @@ export interface StudioApiAdapter {
   /** Optional: cached signature for project files that should invalidate preview frame caches. */
   getProjectSignature?: (projectDir: string) => string;
 
+  /**
+   * Synchronously invalidate a host-owned project signature after a successful
+   * mutation. File watchers remain a fallback for out-of-process edits, but an
+   * API write must not race the preview request that immediately follows it.
+   */
+  invalidateProjectSignature?: (projectDir: string) => void;
+
   /** Lint a single HTML string. */
   lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
 
@@ -194,7 +201,8 @@ export interface StudioApiAdapter {
     selector?: string;
     format?: "jpeg" | "png";
     selectorIndex?: number;
-  }) => Promise<Buffer | null>;
+    runtimeReview?: boolean;
+  }) => Promise<Buffer | import("./helpers/screenshotClip.js").VideoRuntimeReview | null>;
 
   /** Optional: resolve session ID to project (multi-project mode). */
   resolveSession?: (sessionId: string) => Promise<{ projectId: string; title: string } | null>;

@@ -1,101 +1,89 @@
 import {
-  Check as PhCheck,
-  Clock as PhClock,
-  Eye as PhEye,
-  FilmStrip,
-  Stack,
-  ArrowsOutCardinal,
-  MusicNote,
-  Palette as PhPalette,
-  Minus as PhMinus,
-  Plus as PhPlus,
-  Square as PhSquare,
-  SquareSplitVertical as PhSquareSplitVertical,
-  TextT,
-  X as PhX,
-  Lightning,
-  CaretRight,
-  ClipboardText,
-  ArrowCounterClockwise,
-  Camera as PhCamera,
-  ArrowClockwise,
-  Gear,
-  Scissors as PhScissors,
-  Link as PhLink,
-  FlipHorizontal as PhFlipHorizontal,
-  FlipVertical as PhFlipVertical,
-  DotsNine as PhDotsNine,
-  ImageSquare as PhImageSquare,
-  Eyedropper as PhEyedropper,
-  ExcludeSquare as PhExcludeSquare,
-  Trash as PhTrash,
-  ArrowsLeftRight as PhArrowsLeftRight,
-  ListBullets as PhListBullets,
-  ListNumbers as PhListNumbers,
-  TextAlignCenter as PhTextAlignCenter,
-  TextAlignLeft as PhTextAlignLeft,
-  TextAlignRight as PhTextAlignRight,
-  TextIndent as PhTextIndent,
-} from "@phosphor-icons/react";
-import type { Icon as PhosphorIcon, IconProps as PhosphorIconProps } from "@phosphor-icons/react";
+  AlignCenter as AlignCenterIcon,
+  AlignLeft as AlignLeftIcon,
+  AlignRight as AlignRightIcon,
+  ArrowLeftRight as ArrowLeftRightIcon,
+  Camera as CameraIcon,
+  Check as CheckIcon,
+  ChevronDown as ChevronDownIcon,
+  ChevronRight as ChevronRightIcon,
+  ClipboardList as ClipboardListIcon,
+  Clock as ClockIcon,
+  Columns2,
+  Eye as EyeIcon,
+  FileImage,
+  Film as FilmIcon,
+  FlipHorizontal as FlipHorizontalIcon,
+  FlipVertical as FlipVerticalIcon,
+  Grip,
+  IndentIncrease,
+  Layers as LayersIcon,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Minus as MinusIcon,
+  Move as MoveIcon,
+  Music as MusicIcon,
+  Palette as PaletteIcon,
+  Pipette,
+  Plus as PlusIcon,
+  RotateCcw as RotateCcwIcon,
+  RotateCw as RotateCwIcon,
+  Scissors as ScissorsIcon,
+  Settings as SettingsIcon,
+  Square as SquareIcon,
+  SquareDashed,
+  Trash2,
+  Type as TypeIcon,
+  X as XIcon,
+  Zap as ZapIcon,
+  type LucideIcon,
+  type LucideProps,
+} from "lucide-react";
 
-type IconProps = PhosphorIconProps & { title?: string };
+type IconProps = LucideProps & { title?: string };
 
-const makeIcon = (Icon: PhosphorIcon) => {
-  const Wrapped = ({ title, ...props }: IconProps) => (
-    <Icon alt={title} aria-label={title} aria-hidden={title ? undefined : true} {...props} />
-  );
-  return Wrapped;
-};
+function makeIcon(Icon: LucideIcon) {
+  return function SystemIcon({ title, ...props }: IconProps) {
+    return <Icon aria-label={title} aria-hidden={title ? undefined : true} {...props} />;
+  };
+}
 
-// Lucide name → Phosphor equivalent
-export const Check = makeIcon(PhCheck);
-export const Clock = makeIcon(PhClock);
-export const Eye = makeIcon(PhEye);
-export const Film = makeIcon(FilmStrip);
-export const Layers = makeIcon(Stack);
-export const Move = makeIcon(ArrowsOutCardinal);
-export const Music = makeIcon(MusicNote);
-export const Palette = makeIcon(PhPalette);
-export const Minus = makeIcon(PhMinus);
-export const Plus = makeIcon(PhPlus);
-export const Square = makeIcon(PhSquare);
-export const Compare = makeIcon(PhSquareSplitVertical);
-export const Type = makeIcon(TextT);
-export const X = makeIcon(PhX);
-export const Zap = makeIcon(Lightning);
-// Extra icons used in this project (not in lucide's default mapping above)
-export const ChevronDown = ({ title, style, ...props }: IconProps) => {
-  const transform = style?.transform ? `${style.transform} rotate(90deg)` : "rotate(90deg)";
-  return (
-    <CaretRight
-      alt={title}
-      aria-label={title}
-      aria-hidden={title ? undefined : true}
-      style={{ ...style, transform }}
-      {...props}
-    />
-  );
-};
-export const ChevronRight = makeIcon(CaretRight);
-export const ClipboardList = makeIcon(ClipboardText);
-export const RotateCcw = makeIcon(ArrowCounterClockwise);
-export const Camera = makeIcon(PhCamera);
-export const RotateCw = makeIcon(ArrowClockwise);
-export const Settings = makeIcon(Gear);
-export const Scissors = makeIcon(PhScissors);
-export const Link = makeIcon(PhLink);
-export const FlipHorizontal = makeIcon(PhFlipHorizontal);
-export const FlipVertical = makeIcon(PhFlipVertical);
-export const DotsNine = makeIcon(PhDotsNine);
-export const ImageSquare = makeIcon(PhImageSquare);
-export const Eyedropper = makeIcon(PhEyedropper);
-export const ExcludeSquare = makeIcon(PhExcludeSquare);
-export const Trash = makeIcon(PhTrash);
-export const ArrowLeftRight = makeIcon(PhArrowsLeftRight);
-export const AlignLeft = makeIcon(PhTextAlignLeft);
-export const AlignCenter = makeIcon(PhTextAlignCenter);
-export const AlignRight = makeIcon(PhTextAlignRight);
-export const ListBullets = makeIcon(PhListBullets);
-export const ListNumbers = makeIcon(PhListNumbers);
-export const TextIndent = makeIcon(PhTextIndent);
+export const Check = makeIcon(CheckIcon);
+export const Clock = makeIcon(ClockIcon);
+export const Eye = makeIcon(EyeIcon);
+export const Film = makeIcon(FilmIcon);
+export const Layers = makeIcon(LayersIcon);
+export const Move = makeIcon(MoveIcon);
+export const Music = makeIcon(MusicIcon);
+export const Palette = makeIcon(PaletteIcon);
+export const Minus = makeIcon(MinusIcon);
+export const Plus = makeIcon(PlusIcon);
+export const Square = makeIcon(SquareIcon);
+export const Compare = makeIcon(Columns2);
+export const Type = makeIcon(TypeIcon);
+export const X = makeIcon(XIcon);
+export const Zap = makeIcon(ZapIcon);
+export const ChevronDown = makeIcon(ChevronDownIcon);
+export const ChevronRight = makeIcon(ChevronRightIcon);
+export const ClipboardList = makeIcon(ClipboardListIcon);
+export const RotateCcw = makeIcon(RotateCcwIcon);
+export const Camera = makeIcon(CameraIcon);
+export const RotateCw = makeIcon(RotateCwIcon);
+export const Settings = makeIcon(SettingsIcon);
+export const Scissors = makeIcon(ScissorsIcon);
+export const Link = makeIcon(LinkIcon);
+export const FlipHorizontal = makeIcon(FlipHorizontalIcon);
+export const FlipVertical = makeIcon(FlipVerticalIcon);
+export const DotsNine = makeIcon(Grip);
+export const ImageSquare = makeIcon(FileImage);
+export const Eyedropper = makeIcon(Pipette);
+export const ExcludeSquare = makeIcon(SquareDashed);
+export const Trash = makeIcon(Trash2);
+export const ArrowLeftRight = makeIcon(ArrowLeftRightIcon);
+export const AlignLeft = makeIcon(AlignLeftIcon);
+export const AlignCenter = makeIcon(AlignCenterIcon);
+export const AlignRight = makeIcon(AlignRightIcon);
+export const ListBullets = makeIcon(List);
+export const ListNumbers = makeIcon(ListOrdered);
+export const TextIndent = makeIcon(IndentIncrease);

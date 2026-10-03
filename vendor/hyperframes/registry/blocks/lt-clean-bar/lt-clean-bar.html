@@ -1,111 +1,42 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"name","label":"Name","type":"string","default":"Maya Chen","maxLength":40},{"id":"role","label":"Role","type":"string","default":"Product strategist","maxLength":56},{"id":"eyebrow","label":"Eyebrow","type":"string","default":"FIELD NOTE 01","maxLength":32},{"id":"alignment","label":"Alignment","type":"enum","default":"left","options":[{"value":"left","label":"Left"},{"value":"right","label":"Right"}]}]'>
   <head>
     <meta charset="UTF-8" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <meta name="viewport" content="width=1920,height=1080" />
+    <title>Lower Third</title>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      html,
-      body {
-        background: transparent;
-        overflow: hidden;
-      }
-      body {
-        width: 1920px;
-        height: 1080px;
-        font-family: "Montserrat", sans-serif;
-      }
-
-      #root .lt {
-        position: absolute;
-        left: 120px;
-        bottom: 110px;
-        display: flex;
-        align-items: stretch;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 14px 44px rgba(15, 17, 21, 0.18);
-        will-change: clip-path;
-      }
-      #root .lt-tab {
-        width: 12px;
-        background: #ff5a36;
-        flex-shrink: 0;
-      }
-      #root .lt-body {
-        background: #ffffff;
-        padding: 22px 40px 24px 30px;
-        display: flex;
-        flex-direction: column;
-        gap: 7px;
-      }
-      #root .lt-name {
-        font-size: 52px;
-        font-weight: 700;
-        color: #0f1115;
-        line-height: 1.06;
-        letter-spacing: -0.015em;
-        white-space: nowrap;
-      }
-      #root .lt-role {
-        font-size: 27px;
-        font-weight: 400;
-        color: #5a6170;
-        line-height: 1.2;
-        letter-spacing: 0.01em;
-        white-space: nowrap;
-      }
+      *{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}
+      #lt-clean-bar{position:relative;width:1920px;height:1080px;overflow:hidden;font-family:var(--ipw-font-display,Inter,sans-serif);color:var(--ipw-color-text,#15171a)}
+      .lt-shell{position:absolute;left:112px;bottom:96px;display:grid;grid-template-columns:12px auto;min-width:580px;overflow:hidden;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:var(--ipw-card-radius,28px);background:var(--ipw-card-bg,var(--ipw-color-surface,#fff));box-shadow:var(--ipw-card-shadow,0 24px 58px rgba(20,30,40,.14));transform-origin:left center;will-change:transform,clip-path}
+      .lt-shell.is-right{left:auto;right:112px;transform-origin:right center}.lt-accent{background:var(--ipw-color-primary,#20bbc0);transform-origin:bottom}.lt-copy{padding:26px 40px 28px 32px}.lt-eyebrow{margin-bottom:10px;color:var(--ipw-color-primary,#20bbc0);font:760 16px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.16em;text-transform:uppercase}.lt-name{font-size:54px;font-weight:790;line-height:.96;letter-spacing:-.045em;white-space:nowrap}.lt-role{margin-top:12px;color:var(--ipw-color-muted,#68717c);font:610 24px/1.2 var(--ipw-font-body,Inter,sans-serif);white-space:nowrap}.lt-rule{position:absolute;left:30px;right:30px;bottom:0;height:3px;background:var(--ipw-color-primary,#20bbc0);transform-origin:left}
     </style>
   </head>
   <body>
-    <div
-      id="root"
-      data-composition-id="lt-clean-bar"
-      data-width="1920"
-      data-height="1080"
-      data-start="0"
-      data-duration="4.8"
-    >
-      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
-        <div id="lt" class="lt">
-          <div id="lt-tab" class="lt-tab"></div>
-          <div class="lt-body">
-            <div id="lt-name" class="lt-name">Dr. Maya Chen</div>
-            <div id="lt-role" class="lt-role">Host · Neuroscientist</div>
-          </div>
+    <main id="lt-clean-bar" data-composition-id="lt-clean-bar" data-width="1920" data-height="1080" data-start="0" data-duration="6" data-ipw-ai-slot="alignment">
+      <section class="lt-shell">
+        <i class="lt-accent"></i>
+        <div class="lt-copy">
+          <div class="lt-eyebrow" data-ipw-variable="eyebrow" data-ipw-ai-slot="eyebrow"></div>
+          <div class="lt-name" data-ipw-variable="name" data-ipw-ai-slot="name"></div>
+          <div class="lt-role" data-ipw-variable="role" data-ipw-ai-slot="role"></div>
+          <i class="lt-rule"></i>
         </div>
-      </div>
-    </div>
-
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
     <script>
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
-
-      var card = document.getElementById("lt");
-      var tab = document.getElementById("lt-tab");
-      var nameEl = document.getElementById("lt-name");
-      var role = document.getElementById("lt-role");
-
-      // Card wipes in from the left (clip-path), accent tab grows, text rises with a small stagger.
-      gsap.set(card, { clipPath: "inset(0 100% 0 0)" });
-      gsap.set(tab, { scaleY: 0, transformOrigin: "50% 0%" });
-      gsap.set(nameEl, { y: 22, opacity: 0 });
-      gsap.set(role, { y: 22, opacity: 0 });
-
-      tl.to(card, { clipPath: "inset(0 0% 0 0)", duration: 0.55, ease: "power3.out" }, 0.1);
-      tl.to(tab, { scaleY: 1, duration: 0.45, ease: "power2.out" }, 0.28);
-      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.34);
-      tl.to(role, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.44);
-
-      // Exit: settle out, then hard kill the inner element.
-      tl.to(card, { y: 18, opacity: 0, duration: 0.35, ease: "power2.in" }, 4.3);
-      tl.set(card, { visibility: "hidden" }, 4.75);
-
-      window.__timelines["lt-clean-bar"] = tl;
+      window.__timelines=window.__timelines||{};(function(){
+        const root=document.getElementById("lt-clean-bar"),id=root.dataset.compositionId,values={name:"Maya Chen",role:"Product strategist",eyebrow:"FIELD NOTE 01",alignment:"left",...(window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{})};
+        root.querySelectorAll("[data-ipw-variable]").forEach(el=>{el.textContent=String(values[el.dataset.ipwVariable]??"")});
+        const shell=root.querySelector(".lt-shell");shell.classList.toggle("is-right",values.alignment==="right");
+        const direction=values.alignment==="right"?90:-90,tl=gsap.timeline({paused:true});
+        tl.fromTo(shell,{x:direction,clipPath:values.alignment==="right"?"inset(0 0 0 100%)":"inset(0 100% 0 0)",opacity:0},{x:0,clipPath:"inset(0 0 0 0)",opacity:1,duration:.62,ease:"power4.out"},.08)
+          .fromTo(root.querySelector(".lt-accent"),{scaleY:0},{scaleY:1,duration:.42,ease:"power3.out"},.22)
+          .fromTo(root.querySelectorAll(".lt-copy>*:not(.lt-rule)"),{y:28,opacity:0},{y:0,opacity:1,duration:.46,stagger:.08,ease:"power3.out"},.28)
+          .fromTo(root.querySelector(".lt-rule"),{scaleX:0},{scaleX:1,duration:.5,ease:"power2.out"},.55)
+          .to(shell,{y:16,opacity:0,duration:.32,ease:"power2.in"},5.55);
+        window.__timelines[id]=tl;tl.seek(0);
+      })();
     </script>
   </body>
 </html>

@@ -1,0 +1,235 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-walkthrough",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Code Walkthrough",
+  "description": "A readable code window that reveals a small snippet and spotlights one important line.",
+  "tags": [
+    "component",
+    "developer",
+    "code",
+    "walkthrough",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "developer",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "filename",
+        "language",
+        "code",
+        "focusLine"
+      ],
+      "instructions": "Keep the snippet under eight lines, use escaped newline characters, and set focus line to a one-based visible line number."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "code-walkthrough.html",
+      "target": "compositions/code-walkthrough.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/code-walkthrough.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "filename",
+      "label": "File name",
+      "type": "string",
+      "default": "metrics.ts",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "language",
+      "label": "Language",
+      "type": "string",
+      "default": "TypeScript",
+      "maxLength": 32,
+      "update": "live"
+    },
+    {
+      "id": "code",
+      "label": "Code",
+      "type": "string",
+      "default": "export function total(items) {\\n  return items.reduce((sum, item) =>\\n    sum + item.value, 0\\n  );\\n}",
+      "maxLength": 1000,
+      "update": "live"
+    },
+    {
+      "id": "focusLine",
+      "label": "Focus line",
+      "type": "number",
+      "default": 2,
+      "min": 1,
+      "max": 8,
+      "step": 1,
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "progressive-build",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "code",
+      "separator": "\n",
+      "maxItems": 8,
+      "minItems": 1
+    },
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".code-line:nth-child(1)",
+        "time": 1.2,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "step-2",
+        "target": ".code-line:nth-child(2)",
+        "time": 2.1,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "step-3",
+        "target": ".code-line:nth-child(3)",
+        "time": 3,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "step-4",
+        "target": ".code-line:nth-child(4)",
+        "time": 3.9,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "step-5",
+        "target": ".code-line:nth-child(5)",
+        "time": 4.8,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "step-6",
+        "target": ".code-line:nth-child(6)",
+        "time": 5.7,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "step-7",
+        "target": ".code-line:nth-child(7)",
+        "time": 6.6,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "step-8",
+        "target": ".code-line:nth-child(8)",
+        "time": 7.5,
+        "duration": 0.5,
+        "action": "Move reading focus to this code line"
+      },
+      {
+        "id": "resolve",
+        "target": ".code-line",
+        "time": 8.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable result"
+      }
+    ],
+    "textLimits": {
+      "code": {
+        "maxLines": 8,
+        "maxLineLength": 64
+      }
+    },
+    "usage": {
+      "useWhen": [
+        "Explain a bounded real code fragment line by line."
+      ],
+      "avoidWhen": [
+        "Do not use for full files, long horizontal lines or output that has not been executed."
+      ],
+      "inputRules": {
+        "filename": "Supply real file name within the declared character limit. Do not substitute demo text.",
+        "language": "Supply real language within the declared character limit. Do not substitute demo text.",
+        "code": "Actual code, at most eight lines and 64 characters per line; do not drop qualifiers or executable lines.",
+        "focusLine": "Use a real in-range integer; a focus index must point to an existing item."
+      },
+      "readingOrder": [
+        "Identify the file and language",
+        "Follow actual code lines",
+        "Restore the whole fragment"
+      ],
+      "cueBindings": {
+        "step-1": "When narration reaches code 1, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "step-2": "When narration reaches code 2, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "step-3": "When narration reaches code 3, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "step-4": "When narration reaches code 4, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "step-5": "When narration reaches code 5, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "step-6": "When narration reaches code 6, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "step-7": "When narration reaches code 7, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "step-8": "When narration reaches code 8, move reading focus to this code line. Do not infer a word timestamp from character count.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real explanation boundary; use a walkthrough for larger code, never silently truncate lines.",
+        "missingInput": "Resolve the actual required input or report the missing content; do not substitute demo defaults or custom graphics under recipes-only policy.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose another validated recipe whose narrative job fits, split at a meaningful boundary, or report the library gap. Under recipes-only policy, never author custom graphics or force-fit content."
+      },
+      "example": {
+        "values": {
+          "filename": "capacity.ts",
+          "language": "TypeScript",
+          "code": "export function seats(total, booked) {\\n  const available = total - booked;\\n  return Math.max(0, available);\\n}",
+          "focusLine": 2
+        },
+        "narration": "先用总座位减去已预约人数，再把结果限制为不小于零。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Identify the file and language → Follow actual code lines → Restore the whole fragment. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ],
+      "intent": "沿真实代码的阅读顺序聚焦关键行，让观众理解整体片段怎样工作。"
+    }
+  }
+}

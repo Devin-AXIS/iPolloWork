@@ -23,6 +23,8 @@ import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
 import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAddAssetAtPlayhead } from "./hooks/useAddAssetAtPlayhead";
+import { useAssetPreviewStore } from "./utils/assetPreviewStore";
+import { resolveGeneratedAvatarCompositePaths } from "./utils/timelineAssetDrop";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useIPolloWorkHostHistoryBridge } from "./hooks/useIPolloWorkHostHistoryBridge";
 import { useClipboard } from "./hooks/useClipboard";
@@ -58,7 +60,6 @@ import {
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
 const HIDE_LEFT_SIDEBAR = true;
-const HIDE_STORYBOARD_VIEW = true;
 const StudioLeftSidebar = lazy(() =>
   import("./components/StudioLeftSidebar").then((module) => ({
     default: module.StudioLeftSidebar,
@@ -191,7 +192,7 @@ export function StudioApp() {
       void loadStudioRightPanelModule()
         .then((module) =>
           Promise.all([
-            module.preloadStudioEffectsPanel(),
+            module.preloadStudioComponentsPanel(),
             module.preloadStudioAnimationPanel(),
           ]),
         )
@@ -278,15 +279,81 @@ export function StudioApp() {
     },
     [timelineEditing.handleTimelineGroupMove],
   );
-  const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(timelineEditing.handleTimelineAssetDrop);
+  const resolveHostAssetStart = useCallback((assetPath: string, currentTime: number) => {
+    if (!projectId || window.parent === window || !resolveGeneratedAvatarCompositePaths(assetPath)) {
+      return currentTime;
+    }
+    const requestId = crypto.randomUUID();
+    let parentOrigin = "";
+    try { parentOrigin = new URL(document.referrer).origin; } catch { return currentTime; }
+    return new Promise<number | { start: number; duration?: number }>((resolve) => {
+      const cleanup = () => {
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("message", handleResult);
+      };
+      const handleResult = (event: MessageEvent) => {
+        if (event.source !== window.parent || event.origin !== parentOrigin) return;
+        if (event.data?.type !== "ipollowork:video-avatar-asset-start-result" || event.data.projectId !== projectId || event.data.requestId !== requestId) return;
+        cleanup();
+        const start = event.data.start;
+        const duration = event.data.duration;
+        resolve(typeof start === "number" && Number.isFinite(start) && start >= 0
+          ? { start, ...(typeof duration === "number" && Number.isFinite(duration) && duration > 0 ? { duration } : {}) }
+          : currentTime);
+      };
+      const timeoutId = window.setTimeout(() => { cleanup(); resolve(currentTime); }, 3_000);
+      window.addEventListener("message", handleResult);
+      window.parent.postMessage({ type: "ipollowork:video-avatar-asset-start-request", projectId, requestId, path: assetPath }, parentOrigin);
+    });
+  }, [projectId]);
+  const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(
+    timelineEditing.handleTimelineAssetDrop,
+    resolveHostAssetStart,
+  );
+  const [focusedHostAsset, setFocusedHostAsset] = useState("");
+  useEffect(() => {
+    if (!projectId || window.parent === window) return;
+    const handleHostAsset = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.data?.type !== "ipollowork:video-avatar-asset" || event.data.projectId !== projectId) return;
+      const { action, path, requestId, start, duration } = event.data;
+      if ((action !== "view" && action !== "insert") || typeof path !== "string" || !/^(assets|renders)\/[\w./-]+\.(mp4|webm)$/i.test(path) || typeof requestId !== "string") return;
+      void (async () => {
+        try {
+          await fileManager.refreshFileTree();
+          if (action === "view") {
+            panelLayout.setRightCollapsed(false);
+            panelLayout.setRightPanelTab("assets");
+            setFocusedHostAsset(path);
+            useAssetPreviewStore.getState().setPreviewAsset(path, projectId);
+          } else {
+            const requestedStart = typeof start === "number" && Number.isFinite(start) && start >= 0
+              ? start
+              : usePlayerStore.getState().currentTime;
+            const requestedDuration = typeof duration === "number" && Number.isFinite(duration) && duration > 0 ? duration : undefined;
+            await timelineEditing.handleTimelineAssetDrop(path, { start: requestedStart, track: 0 }, requestedDuration, true, { videoHasAudio: true });
+          }
+          window.parent.postMessage({ type: "ipollowork:video-avatar-asset-result", projectId, requestId, ok: true }, "*");
+        } catch (error) {
+          window.parent.postMessage({ type: "ipollowork:video-avatar-asset-result", projectId, requestId, ok: false, error: error instanceof Error ? error.message : "素材操作失败" }, "*");
+        }
+      })();
+    };
+    window.addEventListener("message", handleHostAsset);
+    return () => window.removeEventListener("message", handleHostAsset);
+  }, [fileManager, panelLayout, projectId, timelineEditing]);
+  const clearDomSelectionRef = useRef<() => void>(() => {});
+  const clearDomSelection = useCallback(() => clearDomSelectionRef.current(), []);
   const {
     activeBlockParams,
     setActiveBlockParams,
     handleAddBlock,
+    handleBlockVariableChange,
     handleTimelineBlockDrop,
     handlePreviewBlockDrop,
   } = useBlockHandlers({
     projectId,
+    compositionLoading,
+    clearDomSelection,
     blockCtxDeps: {
       activeCompPath,
       timelineElements,
@@ -297,12 +364,12 @@ export function StudioApp() {
       refreshFileTree: fileManager.refreshFileTree,
       reloadPreview,
       showToast,
+      dismissToast,
     },
     setCompositionLoading,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
   });
-  const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
   const handleDomEditElementDeleteRef = useRef<(s: DomEditSelection) => Promise<void>>(
     async () => {},
@@ -509,6 +576,7 @@ export function StudioApp() {
     activeCompPath,
     setActiveCompPath,
     showToast,
+    dismissToast,
     previewIframeRef,
     captionEditMode,
     compositionLoading,
@@ -546,7 +614,7 @@ export function StudioApp() {
         <StudioSplash waiting={waitingForServer} />
       </StudioI18nProvider>
     );
-  const activeViewMode = HIDE_STORYBOARD_VIEW ? "timeline" : viewModeValue.viewMode;
+  const activeViewMode = viewModeValue.viewMode;
   return (
     <StudioI18nProvider>
       <StudioShellProvider value={studioCtxValue}>
@@ -576,7 +644,6 @@ export function StudioApp() {
                       <Suspense fallback={<StudioSplash />}>
                         <StoryboardView
                           projectId={projectId}
-                          onSelectComposition={handleSelectComposition}
                         />
                       </Suspense>
                     )}
@@ -589,7 +656,6 @@ export function StudioApp() {
                             <StudioLeftSidebar
                               leftSidebarRef={leftSidebarRef}
                               onSelectComposition={handleSelectComposition}
-                              onAddBlock={handleAddBlock}
                               onLint={handleLint}
                               linting={linting}
                               lintFindingCount={lintModal?.length ?? findingsByFile.size}
@@ -601,14 +667,18 @@ export function StudioApp() {
                       }
                       right={
                         panelLayout.rightCollapsed ? null : (
-                          <Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}>
+                          <Suspense
+                            fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}
+                          >
                             <StudioRightPanel
                               designPanelActive={designPanelActive}
                               activeBlockParams={activeBlockParams}
-                              onCloseBlockParams={() => {
+                              onBackFromBlockParams={() => {
+                                const returnTab = activeBlockParams?.returnTab ?? "design";
                                 setActiveBlockParams(null);
-                                panelLayout.setRightPanelTab("design");
+                                panelLayout.setRightPanelTab(returnTab);
                               }}
+                              onBlockVariableChange={handleBlockVariableChange}
                               recordingState={gestureState}
                               recordingDuration={gestureRecording.recordingDuration}
                               onToggleRecording={recordingToggle}
@@ -620,6 +690,8 @@ export function StudioApp() {
                               recordEdit={editHistory.recordEdit}
                               onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                               onAddBlock={handleAddBlock}
+                              onAddAssetToTimeline={handleAddAssetAtPlayhead}
+                              focusedHostAsset={focusedHostAsset}
                             />
                           </Suspense>
                         )

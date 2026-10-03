@@ -4,7 +4,6 @@ import { PlayheadIndicator } from "./PlayheadIndicator";
 import { getTimelineEditCapabilities, type TimelineRangeSelection } from "./timelineEditing";
 import { getRenderedTimelineElement } from "./timelineTheme";
 import {
-  GUTTER,
   TRACK_H,
   RULER_H,
   CLIP_Y,
@@ -125,7 +124,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
       };
     }
     return {
-      left: GUTTER + TRACKS_LEFT_PAD + draggedClip.element.start * props.pps,
+      left: props.gutterWidth + TRACKS_LEFT_PAD + draggedClip.element.start * props.pps,
       top:
         draggedClip.pointerClientY -
         scrollBounds.top +
@@ -141,7 +140,10 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
   return (
     <div
       className="relative"
-      style={{ height: props.totalH, width: GUTTER + TRACKS_LEFT_PAD + props.trackContentWidth }}
+      style={{
+        height: props.totalH,
+        width: props.gutterWidth + TRACKS_LEFT_PAD + props.trackContentWidth,
+      }}
     >
       <TimelineRuler
         major={props.major}
@@ -154,6 +156,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         theme={props.theme}
         beatAnalysis={props.beatAnalysis}
         visibleWindow={props.visibleWindow}
+        gutterWidth={props.gutterWidth}
       />
 
       {/* Breathing room between the sticky ruler and the first track lane — the
@@ -181,7 +184,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
       <div
         className="pointer-events-none absolute"
         style={{
-          left: GUTTER + TRACKS_LEFT_PAD,
+          left: props.gutterWidth + TRACKS_LEFT_PAD,
           top: RULER_H + TRACKS_TOP_PAD,
           width: props.trackContentWidth,
           height: displayTrackOrder.length * TRACK_H,
@@ -213,10 +216,10 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             className="pointer-events-none absolute"
             style={{
               top: getTimelineRowTop(rowIndex) + CLIP_Y,
-              left: GUTTER + TRACKS_LEFT_PAD + gap.start * props.pps,
+              left: props.gutterWidth + TRACKS_LEFT_PAD + gap.start * props.pps,
               width: Math.max((gap.end - gap.start) * props.pps, 2),
               height: TRACK_H - CLIP_Y * 2,
-              background: loud ? "rgba(60,230,172,0.18)" : "rgba(60,230,172,0.055)",
+              background: loud ? "rgba(31,186,192,0.18)" : "rgba(31,186,192,0.055)",
               borderRadius: 4,
               zIndex: 25,
             }}
@@ -231,11 +234,11 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             top: getTimelineRowTop(draggedRowIndex) + CLIP_Y,
-            left: GUTTER + TRACKS_LEFT_PAD + draggedClip.previewStart * props.pps,
+            left: props.gutterWidth + TRACKS_LEFT_PAD + draggedClip.previewStart * props.pps,
             width: Math.max(draggedClip.element.duration * props.pps, 4),
             height: TRACK_H - CLIP_Y * 2,
-            border: "1px solid rgba(60,230,172,0.55)",
-            background: "rgba(60,230,172,0.12)",
+            border: "1px solid rgba(31,186,192,0.55)",
+            background: "rgba(31,186,192,0.12)",
             borderRadius: 4,
             zIndex: 30,
           }}
@@ -251,11 +254,11 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             className="absolute pointer-events-none"
             style={{
               top: getTimelineRowTop(draggedClip.insertRow) - 0.5,
-              left: GUTTER + TRACKS_LEFT_PAD,
+              left: props.gutterWidth + TRACKS_LEFT_PAD,
               width: props.trackContentWidth,
               height: 1,
-              background: "#3CE6AC",
-              boxShadow: "0 0 3px rgba(60,230,172,0.5)",
+              background: "#1FBAC0",
+              boxShadow: "0 0 3px rgba(31,186,192,0.5)",
               zIndex: 55,
             }}
           />
@@ -269,15 +272,15 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           <div
             className="absolute pointer-events-none"
             style={{
-              left: GUTTER + TRACKS_LEFT_PAD + draggedClip.snapTime * props.pps,
+              left: props.gutterWidth + TRACKS_LEFT_PAD + draggedClip.snapTime * props.pps,
               top: RULER_H,
               bottom: 0,
               width: 1,
               background:
-                draggedClip.snapType === "playhead" ? "#3CE6AC" : "rgba(255,255,255,0.6)",
+                draggedClip.snapType === "playhead" ? "#1FBAC0" : "rgba(255,255,255,0.6)",
               boxShadow:
                 draggedClip.snapType === "playhead"
-                  ? "0 0 6px rgba(60,230,172,0.5)"
+                  ? "0 0 6px rgba(31,186,192,0.5)"
                   : "0 0 6px rgba(255,255,255,0.4)",
               zIndex: 60,
             }}
@@ -339,8 +342,8 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             top: props.marqueeRect.top,
             width: props.marqueeRect.width,
             height: props.marqueeRect.height,
-            background: "rgba(60,230,172,0.10)",
-            border: "1px dashed rgba(60,230,172,0.7)",
+            background: "rgba(31,186,192,0.10)",
+            border: "1px dashed rgba(31,186,192,0.7)",
             borderRadius: 2,
             zIndex: 70,
           }}
@@ -353,7 +356,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             left:
-              GUTTER +
+              props.gutterWidth +
               TRACKS_LEFT_PAD +
               Math.min(props.rangeSelection.start, props.rangeSelection.end) * props.pps,
             width: Math.abs(props.rangeSelection.end - props.rangeSelection.start) * props.pps,
@@ -376,7 +379,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         ref={props.playheadRef}
         className="absolute top-0 bottom-0 pointer-events-none"
         style={{
-          left: `${getTimelinePlayheadLeft(0, 0)}px`,
+          left: `${getTimelinePlayheadLeft(0, 0, props.gutterWidth)}px`,
           width: PLAYHEAD_HEAD_W,
           zIndex: 100,
           display: beatDragging ? "none" : undefined,

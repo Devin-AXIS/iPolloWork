@@ -169,6 +169,19 @@ function pruneOnnxRuntimeBinaries(nodeModulesRoot) {
   }
 }
 
+function pruneStaticMediaBinaries(nodeModulesRoot) {
+  for (const packageName of ["ffmpeg-static", "ffprobe-static"]) {
+    rmSync(resolve(nodeModulesRoot, packageName), { recursive: true, force: true });
+    const bunRoot = resolve(nodeModulesRoot, ".bun");
+    if (!existsSync(bunRoot)) continue;
+    for (const entry of readdirSync(bunRoot)) {
+      if (entry.startsWith(`${packageName}@`)) {
+        rmSync(resolve(bunRoot, entry), { recursive: true, force: true });
+      }
+    }
+  }
+}
+
 function runtimePackageJson() {
   const sourcePackage = JSON.parse(readFileSync(resolve(sourceRoot, "package.json"), "utf8"));
   const cliPackage = JSON.parse(
@@ -218,6 +231,7 @@ const key = runtimeKey();
 // source registry separately, and two concurrent writers to the same Windows
 // destination intermittently fail with EBUSY.
 rmSync(resolve(runtimeRoot, "registry"), { recursive: true, force: true });
+pruneStaticMediaBinaries(resolve(runtimeRoot, "node_modules"));
 
 if (readStamp()?.key === key && existsSync(resolve(runtimeRoot, "node_modules"))) {
   console.log("HyperFrames packaged runtime is up to date; skipping staging.");
@@ -237,6 +251,7 @@ if (cachedRuntimeMatches(expectedRuntimePackage)) {
   }
   materializeBunPackages(resolve(runtimeRoot, "node_modules"));
   pruneOnnxRuntimeBinaries(resolve(runtimeRoot, "node_modules"));
+  pruneStaticMediaBinaries(resolve(runtimeRoot, "node_modules"));
   writeFileSync(resolve(runtimeRoot, "package.json"), `${JSON.stringify(expectedRuntimePackage, null, 2)}\n`);
   run(
     process.execPath,
@@ -272,24 +287,12 @@ run(
 );
 materializeBunPackages(resolve(runtimeRoot, "node_modules"));
 pruneOnnxRuntimeBinaries(resolve(runtimeRoot, "node_modules"));
+pruneStaticMediaBinaries(resolve(runtimeRoot, "node_modules"));
 run(
   process.execPath,
   ["--input-type=module", "--eval", 'await Promise.all([import("fontkit"), import("onnxruntime-node")])'],
   runtimeRoot,
 );
-
-// Electron supplies its own verified ffmpeg/ffprobe binaries to HyperFrames.
-for (const packageName of ["ffmpeg-static", "ffprobe-static"]) {
-  rmSync(resolve(runtimeRoot, "node_modules", packageName), { recursive: true, force: true });
-  const bunRoot = resolve(runtimeRoot, "node_modules", ".bun");
-  if (existsSync(bunRoot)) {
-    for (const entry of readdirSync(bunRoot)) {
-      if (entry.startsWith(`${packageName}@`)) {
-        rmSync(resolve(bunRoot, entry), { recursive: true, force: true });
-      }
-    }
-  }
-}
 
 writeFileSync(stampPath, `${JSON.stringify({ key, updatedAt: new Date().toISOString() }, null, 2)}\n`);
 console.log(`HyperFrames packaged runtime ready: ${runtimeRoot}`);

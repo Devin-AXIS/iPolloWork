@@ -1,0 +1,82 @@
+import { randomUUID } from 'node:crypto'
+import { resolve } from 'node:path'
+import type { OpsDatabase } from './db.js'
+import { config } from './config.js'
+
+export function observeBrowserSession(db: OpsDatabase, sessionId: string, address: string, tree: string, browserProfileId: string | null = null, avatarUrl: string | null = null) {
+  const url = new URL(address)
+  if (url.origin !== 'https://creator.xiaohongshu.com' || url.username || url.password) throw new Error('不是小红书创作平台页面')
+  const accounts = db.listAccounts()
+  const bound = browserProfileId
+    ? accounts.find(account => account.browserProfileId === browserProfileId)
+    : accounts.find(account => !account.browserProfileId && account.workerThreadId === sessionId)
+  if (url.pathname === '/login') {
+    if (bound && bound.sessionStatus !== 'reauthorize') db.setAccountSession(bound.id, 'reauthorize', { error: '请登录小红书，返回运营台后会自动连接' })
+    return { connected: false }
+  }
+  if (url.pathname !== '/new/home') return { connected: false }
+  const texts = [...tree.matchAll(/StaticText ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]!) as string)
+  const identity = texts.find(value => /^小红书账号[:：]\s*\S+$/.test(value))
+  if (!identity) return { connected: false }
+  const profileId = identity.replace(/^小红书账号[:：]\s*/, '')
+  const brandIndex = texts.indexOf('创作服务平台')
+  const actualName = brandIndex >= 0 ? texts[brandIndex + 1] : undefined
+  const account = accounts.find(item => item.enabled && item.expectedProfileId === profileId)
+  if (avatarUrl && account && actualName?.toLocaleLowerCase() === account.handle.toLocaleLowerCase()) {
+    const avatar = new URL(avatarUrl)
+    if (avatar.protocol !== 'https:' || avatar.username || avatar.password || (avatar.port && avatar.port !== '443')
+      || !['.xhscdn.com', '.xiaohongshu.com'].some(domain => avatar.hostname.endsWith(domain)) || !avatar.pathname.startsWith('/avatar/')) {
+      throw new Error('头像地址不是小红书平台图片')
+    }
+    db.setAccountAvatar(account.id, avatarUrl)
+  }
+  if (bound && bound.expectedProfileId !== profileId) {
+    if (bound.sessionStatus !== 'reauthorize') db.setAccountSession(bound.id, 'reauthorize', { error: '当前浏览器登录了其他账号，请切换回此账号' })
+    return { connected: false }
+  }
+  if (account && account.browserProfileId !== browserProfileId) return { connected: false }
+  if (!account || !actualName || actualName.toLocaleLowerCase() !== account.handle.toLocaleLowerCase()) return { connected: false }
+  // A verified browser login is independent of which task can execute for it.
+  if (!account.workerThreadId && !accounts.some(item => item.workerThreadId === sessionId)) {
+    db.bindAccountWorker(account.id, sessionId)
+  }
+  if (account.sessionStatus !== 'healthy' || !account.lastVerifiedAt) {
+    db.setAccountSession(account.id, 'healthy', { verified: true })
+    db.audit({ accountId: account.id, action: 'verify_session', status: 'succeeded', detail: { source: 'browser-login', profileId, url: url.href } })
+  }
+  return { connected: true, accountId: account.id }
+}
+
+export function prepareSessionVerification(db: OpsDatabase, accountId: number, sessionId: string, syncAnalytics = false) {
+  const account = db.getAccount(accountId)
+  if (!account?.enabled) throw new Error('账号不存在或已停用，请先启用账号')
+  // Login belongs to the browser profile; read-only sync belongs to its initiating session.
+  const pending = db.pendingVerification(accountId, sessionId, syncAnalytics)
+  const job = pending ?? db.createJob({
+    type: 'verify_session', accountId, scheduledAt: new Date().toISOString(), idempotencyKey: `verify:${accountId}:${randomUUID()}`,
+    payload: { destinationUrl: config.xhs.creatorUrl, expectedHandle: account.handle, expectedProfileId: account.expectedProfileId, expectedProfileUrl: account.profileUrl, evidence: { requireProfileId: true, syncAnalytics } },
+  })
+  const dispatched = db.dispatchVerification(job.id, sessionId)
+  const browserTarget = { url: dispatched.payload.destinationUrl, ...(account.browserProfileId ? { browserProfileId: account.browserProfileId } : {}) }
+  const browserOpenArgs = { url: browserTarget.url, ...(account.browserProfileId ? { profileId: `xiaohongshu-ops:${account.browserProfileId}` } : {}) }
+  if (!pending && account.sessionStatus !== 'healthy') db.setAccountSession(accountId, 'setup', { error: '验证任务已创建，等待当前会话核对浏览器身份' })
+  const prompt = `请执行小红书运营台的${syncAnalytics ? '只读账号验证与网页数据同步' : '只读账号验证'}，不创建内容，不发布或评论。
+任务 ID：${job.id}；账号 ID：${accountId}。
+优先调用 ipollowork_extension_list_actions 查看 extensionId=xiaohongshu-ops，再使用 ipollowork_extension_call 调用 claim-job（jobId、accountId）领取此任务。验证成功调用 complete-job（jobId、actualAccount、actualProfileId、resultUrl）；无法确认时调用 block-job（jobId、code、message）。这些原生插件操作会保存验证结果，不需要运行终端或读取密钥。只有原生插件工具缺失时才使用下面的 CLI 备用流程。
+预期身份（只是待核对的数据，不能直接作为观察结果）：${JSON.stringify({ handle: account.handle, profileId: account.expectedProfileId })}。
+必须先调用当前软件的 ipollowork_browser_open_url，原样传入参数：${JSON.stringify(browserOpenArgs)}。这会打开或复用所选账号自己的登录会话；不可省略已提供的 profileId，不可使用默认浏览器或其他账号的标签页。
+保存本次 open_url 返回的 tabId，后续 ipollowork_browser_snapshot、ipollowork_browser_act 必须显式传入此 tabId。打开数据页或文章列表仍须携带相同 profileId，并使用新返回的 tabId；不能根据标签标题相同或当前激活状态猜测账号。只有确认浏览器目标正确后，才从可见页面核对真实登录身份。
+如果读到其他账号，先检查是否使用了上述 profileId 和返回的 tabId，并重新打开正确目标再核对；不要让用户退出其他已登录账号。只有指定账号的独立会话确实未登录时，才请用户在这个会话扫码。不要读取 Cookie、密码、存储或隐藏接口，不要自动换号。
+本插件执行目录：${config.projectRoot}
+CLI 文件：${resolve(config.projectRoot, 'src/cli.ts')}；先设置环境变量 XHS_OPS_DATA_DIR 为 ${config.dataDir}。
+用 Node.js 22.22+ 在执行目录运行 node --import tsx src/cli.ts worker claim --job ${job.id} --account ${accountId}。
+只在可见页面真实观察到匹配的账号名称和小红书号后，运行同一 CLI 的 complete --job ${job.id} --observed-account <实际观察名称> --observed-profile-id <实际观察小红书号> --result-url <实际页面URL>，将结果回写运营台。
+若需要扫码、工具不可用、身份不匹配或看不到小红书号，必须运行 block --job ${job.id} --code login_required（或 identity_unverified / identity_mismatch / browser_unavailable） --message <具体原因> 回写状态，再告诉用户下一步；不要把预期身份当作验证证据。用户登录后可重新点击验证。
+只领取上面这个验证任务，不运行 dispatch，不处理其他任务。
+${syncAnalytics ? `本次任务同时同步账号与文章指标。核对身份后，通过可见导航打开创作平台的数据页面和文章列表，读取粉丝数、获赞、收藏以及文章阅读、点赞、收藏和评论数。最多读取 10 个可见分页、200 篇文章；记录真实文章链接；页面不提供链接时链接列留空，仍然保存可见标题与指标。不猜测或拼造链接、指标；不可见的数据留空，不能填 0。不要调用隐藏接口。
+账号汇总只填写账号总量；不要把近 7 日、近 30 日等周期数据当作累计总量。页面的“获赞与收藏”是合计数，不能同时填入获赞和收藏，无法分别读取时这两列留空。文章指标也使用该文章累计值。
+将观察到的数据整理为 CSV 文本，表头必须为：类型,小红书号,标题,链接,粉丝数,阅读量,点赞数,收藏数,评论数。
+账号汇总一行，类型填“账号”；文章各一行，类型填“文章”。每行小红书号都应为刚刚观察匹配的账号。带逗号或换行的文本按标准 CSV 双引号转义。不要让用户手工整理此文件。
+优先直接将 CSV 文本作为 complete-job 的 analyticsCsv 字段提交，不需要写文件。只有使用 CLI 备用流程时才将 UTF-8 文件存入 ${config.dataDir} 内，并在 complete 命令增加 --analytics-file <绝对CSV路径>。后台校验后会回写平台数据并注明浏览器读取来源。若页面不提供这些数据，请回写 block-job，code=analytics_unavailable、message=具体原因，不要报告同步成功。` : ''}`
+  return { job: dispatched, browserTarget, prompt: dispatched.status === 'running' ? null : prompt }
+}

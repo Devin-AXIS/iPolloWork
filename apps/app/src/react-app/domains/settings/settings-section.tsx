@@ -5,6 +5,7 @@ import { cva } from "class-variance-authority";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 
 type SettingsTone = "ready" | "warning" | "neutral" | "error";
 
@@ -61,7 +62,7 @@ export interface SettingsLayoutProps {
 }
 
 export function SettingsStack({ children, className }: SettingsLayoutProps) {
-  return <div className={cn("@container/settings flex w-full max-w-3xl flex-col gap-y-6", className)}>{children}</div>;
+  return <div className={cn(settingsStandardContentClass, "@container/settings flex flex-col gap-y-6", className)}>{children}</div>;
 }
 
 interface SettingsSectionProps {
@@ -187,7 +188,7 @@ interface SettingsItemHeaderTitleProps {
 
 export function SettingsSectionHeaderTitle({ children, className }: SettingsItemHeaderTitleProps) {
   return (
-    <div className={cn("flex items-center gap-2 text-base font-medium text-dls-text", className)}>
+    <div className={cn("flex items-center gap-2 text-ui-body font-semibold text-dls-text", className)}>
       {children}
     </div>
   );
@@ -199,7 +200,7 @@ interface SectionItemHeaderDescriptionProps {
 }
 
 export function SettingsSectionHeaderDescription({ children, className }: SectionItemHeaderDescriptionProps) {
-  return <div className={cn("text-sm text-muted-foreground", className)}>{children}</div>;
+  return <div className={cn("settings-description text-ui-control leading-5 text-muted-foreground", className)}>{children}</div>;
 }
 
 
@@ -209,7 +210,7 @@ interface SectionItemHintProps {
 }
 
 export function SettingsSectionHint({ children, className }: SectionItemHintProps) {
-  return <div className={cn("text-xs text-muted-foreground", className)}>{children}</div>;
+  return <div className={cn("text-ui-compact text-muted-foreground", className)}>{children}</div>;
 }
 
 interface SectionItemHeaderActionsProps {

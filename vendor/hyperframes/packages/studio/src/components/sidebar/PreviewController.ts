@@ -35,6 +35,10 @@ export class PreviewController {
     return this.active?.id ?? null;
   }
 
+  activate(): void {
+    this.disposed = false;
+  }
+
   start(id: string, starter: PreviewStarter): void {
     if (this.disposed) return;
     if (this.active?.id === id) return;

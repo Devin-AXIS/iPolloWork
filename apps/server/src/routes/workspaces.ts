@@ -3,12 +3,14 @@ import { basename, dirname, resolve } from "node:path";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
 import { inheritWorkspaceOpencodeConnection, resolveWorkspaceOpencodeConnection } from "../opencode-connection.js";
-import type { ServerConfig, WorkspaceInfo } from "../types.js";
+import { DEFAULT_ENGINE_ID, type ServerConfig, type WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles } from "../workspace-init.js";
 import { seediPolloWorkWorkspaceConfigIfEmpty } from "../ipollowork-workspace-config-store.js";
 import { workspaceIdForPath, workspaceIdForRemote } from "../workspaces.js";
+import { deleteWorkspaceWorkState } from "../work-items.js";
 import { addRoute, type Route } from "./registry.js";
+import { isBuiltInWorkspaceEngineId } from "@ipollowork/types/workspace";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -17,7 +19,8 @@ type ParseOptionalBoolean = (value: string | null, name: string) => boolean | un
 interface RegisterWorkspaceRoutesOptions {
   routes: Route[];
   config: ServerConfig;
-  onWorkspacesChanged: () => void;
+  onWorkspacesChanged: () => Promise<void>;
+  onLocalWorkspaceReady: (workspace: WorkspaceInfo) => Promise<void>;
   jsonResponse: JsonResponse;
   readJsonBody: ReadJsonBody;
   readOptionalJsonBody: ReadJsonBody;
@@ -25,7 +28,11 @@ interface RegisterWorkspaceRoutesOptions {
   ensureWritable: (config: ServerConfig) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   serializeWorkspace: (workspace: ServerConfig["workspaces"][number]) => unknown;
-  reloadOpencodeEngine: (config: ServerConfig, workspace: WorkspaceInfo) => Promise<void>;
+  reloadOpencodeEngine: (
+    config: ServerConfig,
+    workspace: WorkspaceInfo,
+    options?: { skipIfBusy?: boolean },
+  ) => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -201,6 +208,7 @@ function serializeWorkspaceConfigEntry(workspace: WorkspaceInfo): Record<string,
     preset: workspace.preset,
     ...(workspace.workContextId ? { workContextId: workspace.workContextId } : {}),
     workspaceType: workspace.workspaceType,
+    engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
     ...(workspace.remoteType ? { remoteType: workspace.remoteType } : {}),
     ...(!isLocalWorkspace && workspace.baseUrl ? { baseUrl: workspace.baseUrl } : {}),
     ...(!isLocalWorkspace && workspace.directory ? { directory: workspace.directory } : {}),
@@ -248,6 +256,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     routes,
     config,
     onWorkspacesChanged,
+    onLocalWorkspaceReady,
     jsonResponse,
     readJsonBody,
     readOptionalJsonBody,
@@ -280,16 +289,34 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : basename(folderPath || "Workspace");
     const preset = typeof body.preset === "string" && body.preset.trim() ? body.preset.trim() : "starter";
     const workContextId = readWorkContextId(body);
+    const engineId = typeof body.engineId === "string" && body.engineId.trim()
+      ? body.engineId.trim()
+      : DEFAULT_ENGINE_ID;
 
     if (!folderPath) {
       throw new ApiError(400, "invalid_payload", "folderPath is required");
     }
+    if (!isBuiltInWorkspaceEngineId(engineId)) {
+      throw new ApiError(400, "invalid_payload", `Unsupported workspace engine: ${engineId}`);
+    }
 
     const workspacePath = resolve(folderPath);
+    const workspaceId = workspaceIdForPath(workspacePath);
+    const existingWorkspace = config.workspaces.find((entry) =>
+      entry.workspaceType !== "remote" && entry.id === workspaceId
+    );
+    if (existingWorkspace) {
+      await onLocalWorkspaceReady(existingWorkspace);
+      return jsonResponse({
+        activeId: existingWorkspace.id,
+        workspaces: config.workspaces.map(serializeWorkspace),
+        persisted: true,
+      });
+    }
+
     await ensureDir(workspacePath);
     await ensureWorkspaceFiles(workspacePath, preset);
 
-    const workspaceId = workspaceIdForPath(workspacePath);
     // Seed the per-workspace ipollowork config in the runtime DB (replaces the
     // legacy `.opencode/ipollowork.json` file). No-op if a row already exists.
     await seediPolloWorkWorkspaceConfigIfEmpty(
@@ -305,7 +332,8 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       preset,
       ...(workContextId ? { workContextId } : {}),
       workspaceType: "local",
-      ...inheritWorkspaceOpencodeConnection(config),
+      engineId,
+      ...(engineId === DEFAULT_ENGINE_ID ? inheritWorkspaceOpencodeConnection(config) : {}),
     };
 
     config.workspaces = [workspace, ...config.workspaces.filter((entry) => entry.id !== workspace.id)];
@@ -313,7 +341,8 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       config.authorizedRoots = [...config.authorizedRoots, workspacePath];
     }
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    await onWorkspacesChanged();
+    await onLocalWorkspaceReady(workspace);
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -392,6 +421,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       preset: "remote",
       ...(workContextId ? { workContextId } : {}),
       workspaceType: "remote",
+      engineId: DEFAULT_ENGINE_ID,
       remoteType,
       baseUrl: remoteType === "ipollowork" ? (ipolloworkHostUrl ?? baseUrl) : baseUrl,
       ...(directory ? { directory } : {}),
@@ -407,7 +437,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
 
     config.workspaces = [workspace, ...config.workspaces.filter((entry) => entry.id !== workspace.id)];
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -445,7 +475,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     );
 
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -476,7 +506,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       ...config.workspaces.filter((entry) => entry.id !== workspace.id),
     ];
     const persisted = persist ? await persistServerWorkspaceState(config) : false;
-    if (persist) onWorkspacesChanged();
+    if (persist) await onWorkspacesChanged();
     await recordAudit(workspace.path, {
       id: shortId(),
       workspaceId: workspace.id,
@@ -486,9 +516,17 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       summary: "Switched active workspace",
       timestamp: Date.now(),
     });
-    // Re-activating the already-active workspace must not dispose its engine instance; switch reloads stay (#870).
-    if (!wasActive && workspace.workspaceType === "local" && resolveWorkspaceOpencodeConnection(config, workspace).baseUrl?.trim()) {
-      await reloadOpencodeEngine(config, workspace);
+    // Activation must never interrupt an accepted task. Harness workspaces do
+    // not need an OpenCode instance reload, and an OpenCode workspace defers
+    // the reload while any of its sessions are active.
+    const engineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+    if (
+      !wasActive
+      && engineId === DEFAULT_ENGINE_ID
+      && workspace.workspaceType === "local"
+      && resolveWorkspaceOpencodeConnection(config, workspace).baseUrl?.trim()
+    ) {
+      await reloadOpencodeEngine(config, workspace, { skipIfBusy: true });
     }
     return jsonResponse({ activeId: workspace.id, workspace: serializeWorkspace(workspace), persisted });
   });
@@ -507,7 +545,8 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       config.authorizedRoots = config.authorizedRoots.filter((root) => resolve(root) !== resolve(workspace.path));
     }
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    if (deleted) await deleteWorkspaceWorkState(config, workspace.id);
+    await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {
       id: shortId(),

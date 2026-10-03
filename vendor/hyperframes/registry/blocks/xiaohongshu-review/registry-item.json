@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "xiaohongshu-review",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Xiaohongshu Review",
+  "description": "A Xiaohongshu-style product review card with verdict, score breakdown and a concise takeaway.",
+  "tags": [
+    "component",
+    "social",
+    "xiaohongshu",
+    "review",
+    "rating",
+    "product",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "product",
+        "verdict",
+        "scores",
+        "footer"
+      ],
+      "instructions": "写一个产品名称、简洁结论、两到四个维度评分和一句适用人群总结；评分使用 10 分制。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "xiaohongshu-review.html",
+      "target": "compositions/xiaohongshu-review.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "product",
+      "label": "产品名称",
+      "type": "string",
+      "default": "Pocket Creator Mini",
+      "maxLength": 52,
+      "update": "live"
+    },
+    {
+      "id": "verdict",
+      "label": "评测结论",
+      "type": "string",
+      "default": "轻巧、上手快，最适合需要随时记录灵感的人。",
+      "maxLength": 110,
+      "update": "live"
+    },
+    {
+      "id": "scores",
+      "label": "评分列表",
+      "type": "string",
+      "default": "便携性:9.4 / 10|易用性:8.8 / 10|画面表现:8.6 / 10|性价比:8.2 / 10",
+      "maxLength": 260,
+      "update": "live"
+    },
+    {
+      "id": "footer",
+      "label": "适用总结",
+      "type": "string",
+      "default": "适合通勤创作者与轻量内容团队",
+      "maxLength": 64,
+      "update": "live"
+    }
+  ]
+}
+

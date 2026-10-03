@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"author","label":"Creator","type":"string","default":"Mira Studio","maxLength":40},{"id":"location","label":"Location","type":"string","default":"Shanghai · Creative District","maxLength":56},{"id":"caption","label":"Caption","type":"string","default":"Quiet details make the loudest product moments.","maxLength":180},{"id":"engagement","label":"Engagement","type":"string","default":"12.8K likes · 684 comments","maxLength":72}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Instagram Post</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.ig-post{width:1420px;height:840px;margin:auto;display:grid;grid-template-columns:58% 42%;overflow:hidden;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:38px;background:var(--ipw-color-surface,#fff);box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.14))}.ig-media{position:relative;overflow:hidden;background:linear-gradient(145deg,#833ab4,#fd1d1d 48%,#fcb045)}.ig-media::before{content:"";position:absolute;width:520px;height:520px;left:120px;top:145px;border-radius:44% 56% 58% 42%;background:rgba(255,255,255,.9);box-shadow:0 0 0 80px rgba(255,255,255,.13)}.ig-media::after{content:"IG";position:absolute;inset:0;display:grid;place-items:center;color:#121212;font-size:128px;font-weight:900;letter-spacing:-.1em}.ig-copy{display:flex;flex-direction:column;padding:48px}.ig-head{display:flex;align-items:center;gap:18px}.ig-avatar{display:grid;place-items:center;width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#fcb045,#fd1d1d,#833ab4);color:#fff;font-size:22px;font-weight:900}.ig-author{font-size:24px;font-weight:820}.ig-location{margin-top:5px;color:var(--ipw-color-muted,#68717c);font-size:16px}.ig-caption{margin:auto 0;font-size:38px;line-height:1.18;letter-spacing:-.03em}.ig-actions{display:flex;gap:22px;padding:22px 0;border-top:1px solid var(--ipw-color-border,#d8dde3);font-size:28px}.ig-engagement{color:var(--ipw-color-muted,#68717c);font-size:18px;font-weight:700}
+</style></head>
+<body><main id="root" data-composition-id="instagram-post" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"author":"Mira Studio","location":"Shanghai · Creative District","caption":"Quiet details make the loudest product moments.","engagement":"12.8K likes · 684 comments"}'><article class="ig-post sm-animate"><div class="ig-media"></div><div class="ig-copy"><header class="ig-head"><div class="ig-avatar sm-pop">MS</div><div><div class="ig-author" data-ipw-variable="author" data-ipw-ai-slot="author"></div><div class="ig-location" data-ipw-variable="location" data-ipw-ai-slot="location"></div></div></header><p class="ig-caption" data-ipw-variable="caption" data-ipw-ai-slot="caption"></p><div class="ig-actions"><span>♡</span><span>◯</span><span>⌁</span></div><div class="ig-engagement" data-ipw-variable="engagement" data-ipw-ai-slot="engagement"></div></div></article></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="instagram-post";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("scale"==="slide-left")Object.assign(initial,{x:-58,opacity:0});
+else if("scale"==="slide-right")Object.assign(initial,{x:58,opacity:0});
+else if("scale"==="scale")Object.assign(initial,{scale:.88,opacity:0});
+else if("scale"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08)
+  .fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38)
+  .fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

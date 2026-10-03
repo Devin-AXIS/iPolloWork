@@ -25,7 +25,6 @@ export function canSplitElement(el: TimelineElement): boolean {
   return (
     !el.timelineLocked &&
     el.timingSource !== "implicit" &&
-    !el.compositionSrc &&
     !!el.duration &&
     Number.isFinite(el.duration)
   );

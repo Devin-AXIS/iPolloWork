@@ -1,8 +1,8 @@
 /**
  * Tiny Zustand slice that carries the "asset preview overlay" state.
  *
- * When a user clicks an asset card that has NOT yet been added to the
- * timeline the overlay fires up: a dark scrim + centered media element
+ * Clicking an image/video asset card opens the overlay whether or not the asset
+ * is already on the timeline: a dark scrim + centered media element
  * (img / video / audio) + filename label rendered inside PreviewPane.
  *
  * State lives here so AssetsTab (sidebar) and PreviewPane (preview column)

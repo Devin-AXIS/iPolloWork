@@ -167,7 +167,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -364,7 +364,7 @@ jobs:
       - name: Upload unsigned Windows installer for SignPath
         if: matrix.os_type == 'windows' && env.SIGN_WINDOWS == 'true'
         id: upload-unsigned-windows-installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-generic-installer-windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/signpath-unsigned/*.exe
@@ -426,7 +426,7 @@ jobs:
 
       - name: Upload workflow artifact
         if: env.PUBLISH_MODE == 'artifact'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: generic-installer-${{ matrix.platform_id }}
           path: ${{ runner.temp }}/out/${{ matrix.asset }}

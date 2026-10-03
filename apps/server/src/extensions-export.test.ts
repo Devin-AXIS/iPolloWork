@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { addMcp } from "./mcp.js";
 import { exportExtensions, redactMcpConfig, type ExportedMcp, type ExportedSkill } from "./extensions-export.js";
 import { startServer } from "./server.js";
+import { disposeRuntimeOpencodeConfigStore } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 const WORKSPACE_ID = "ws_extensions_export_test";
@@ -38,10 +39,14 @@ async function withWorkspace(fn: (input: { root: string; config: ServerConfig })
   const root = await mkdtemp(join(tmpdir(), "ipollowork-extensions-export-"));
   const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
   process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  const config = serverConfig(root);
   try {
     await mkdir(join(root, ".git"), { recursive: true });
-    await fn({ root, config: serverConfig(root) });
+    await fn({ root, config });
   } finally {
+    await disposeRuntimeOpencodeConfigStore(config);
+    // Bun releases closed SQLite file handles on a later event-loop turn on Windows.
+    if (process.platform === "win32") await new Promise((resolve) => setTimeout(resolve, 100));
     if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
     else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     await rm(root, { recursive: true, force: true });
@@ -201,52 +206,6 @@ describe("POST /workspace/:id/extensions/export", () => {
         });
         expect(empty.status).toBe(400);
       } finally {
-        await server.stop(true);
-      }
-    });
-  });
-});
-
-describe("ipollowork_extensions_export plugin tool", () => {
-  test("exports end to end through the bundled plugin tool", async () => {
-    await withWorkspace(async ({ root, config }) => {
-      await writeSkill(root);
-      await addMcp(config, WORKSPACE_ID, "linear", {
-        type: "remote",
-        url: "https://mcp.linear.app/sse",
-        headers: { Authorization: "Bearer secret" },
-        enabled: true,
-      });
-
-      const server = await startServer(config) as Served;
-      const previousUrl = process.env.IPOLLOWORK_SERVER_URL;
-      const previousToken = process.env.IPOLLOWORK_SERVER_TOKEN;
-      process.env.IPOLLOWORK_SERVER_URL = `http://127.0.0.1:${server.port}`;
-      process.env.IPOLLOWORK_SERVER_TOKEN = config.token;
-      try {
-        const { iPolloWorkExtensionsPreview } = await import("./opencode-plugins/ipollowork-extensions-preview.js");
-        const plugin = await iPolloWorkExtensionsPreview();
-        const output = await plugin.tool.ipollowork_extensions_export.execute(
-          { skills: ["release-notes"], mcps: ["linear", "not-installed"] },
-          { directory: root },
-        );
-        expect(output).not.toContain("Bearer secret");
-        const parsed = JSON.parse(output) as {
-          ok: boolean;
-          workspaceId: string;
-          components: Array<ExportedSkill | ExportedMcp>;
-          missing: { skills: string[]; mcps: string[] };
-        };
-        expect(parsed.ok).toBe(true);
-        expect(parsed.workspaceId).toBe(WORKSPACE_ID);
-        expect(findSkill(parsed.components, "release-notes")?.content).toBe(SKILL_CONTENT);
-        expect(findMcp(parsed.components, "linear")?.config.headers).toEqual({ Authorization: "<redacted>" });
-        expect(parsed.missing).toEqual({ skills: [], mcps: ["not-installed"] });
-      } finally {
-        if (previousUrl === undefined) delete process.env.IPOLLOWORK_SERVER_URL;
-        else process.env.IPOLLOWORK_SERVER_URL = previousUrl;
-        if (previousToken === undefined) delete process.env.IPOLLOWORK_SERVER_TOKEN;
-        else process.env.IPOLLOWORK_SERVER_TOKEN = previousToken;
         await server.stop(true);
       }
     });

@@ -7,6 +7,31 @@ const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(serverRoot, "bundled-templates");
 const target = process.argv[2] ?? join(serverRoot, "dist", "bundled-templates");
 
+// Typecheck tests with the server, but never distribute their compiled output,
+// including leftovers from tests removed since the previous incremental build.
+async function removeTestOutput(directory) {
+  const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  for (const entry of entries) {
+    const absolute = join(directory, entry.name);
+    if (/\.(?:test|spec)\./.test(entry.name) || (entry.isDirectory() && /^(?:tests|__tests__|__fixtures__|__mocks__)$/.test(entry.name))) {
+      await rm(absolute, { recursive: true, force: true });
+    } else if (entry.isDirectory() && absolute !== join(serverRoot, "dist", "bundled-templates")) {
+      await removeTestOutput(absolute);
+    }
+  }
+}
+await removeTestOutput(join(serverRoot, "dist"));
+
+// Remove retired plugin output from incremental builds before distribution.
+for (const name of ["ipollowork-extensions-preview", "ipollowork-extensions-preview-connect-steering", "ipollowork-capabilities-knowledge", "ipollowork-anthropic-adaptive-thinking", "ipollowork-anthropic-tool-schema", "ipollowork-moonshot-temperature"]) {
+  for (const extension of ["js", "js.map", "d.ts", "d.ts.map"]) {
+    await rm(join(serverRoot, "dist", "opencode-plugins", `${name}.${extension}`), { force: true });
+  }
+}
+
 await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
 await mkdir(dirname(target), { recursive: true });
 await cp(source, target, { recursive: true });

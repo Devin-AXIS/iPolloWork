@@ -15,11 +15,13 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { t } from "@/i18n";
-import type { PendingPermission } from "@/app/types";
+import type { ConversationPermission } from "../engine/conversation-engine";
 import { cn } from "@/lib/utils";
 
 type PermissionPresentation = {
@@ -40,7 +42,7 @@ type PermissionDetail = {
 };
 
 type PermissionApprovalModalProps = {
-  permission: PendingPermission;
+  permission: ConversationPermission;
   busy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
   safeStringify?: (value: unknown) => string;
@@ -76,15 +78,20 @@ function PermissionAllowMenu(props: PermissionAllowMenuProps) {
           </Button>
         )}
       />
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "once")}>
-          <Clock3 />
-          {t("session.allow_once")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "always")}>
-          <Check />
-          {t("session.allow_for_session")}
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="max-w-72 whitespace-normal text-xs font-normal text-muted-foreground">
+            {t("session.permission_decision_hint")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "once")}>
+            <Clock3 />
+            {t("session.allow_once")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "always")}>
+            <Check />
+            {t("session.allow_for_session")}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -214,9 +221,9 @@ function isFocusableElement(element: HTMLElement) {
   return style.display !== "none" && style.visibility !== "hidden";
 }
 
-function describePermissionRequest(permission: PendingPermission): PermissionPresentation {
-  const patterns = permission.patterns.filter((pattern) => pattern.trim().length > 0);
-  if (permission.permission === "doom_loop") {
+function describePermissionRequest(permission: ConversationPermission): PermissionPresentation {
+  const patterns = permission.resources.filter((pattern) => pattern.trim().length > 0);
+  if (permission.kind === "doom_loop") {
     const tool =
       permission.metadata && typeof permission.metadata === "object" && typeof permission.metadata.tool === "string"
         ? permission.metadata.tool
@@ -234,12 +241,12 @@ function describePermissionRequest(permission: PendingPermission): PermissionPre
     };
   }
 
-  const copy = permissionCopy(permission.permission);
-  const isExternalDirectory = permission.permission === "external_directory";
+  const copy = permissionCopy(permission.kind);
+  const isExternalDirectory = permission.kind === "external_directory";
   return {
     title: copy.title,
     message: copy.message,
-    permissionLabel: readablePermissionLabel(permission.permission),
+    permissionLabel: readablePermissionLabel(permission.kind),
     scopeLabel: isExternalDirectory ? t("session.permission_detail_path") : t("session.scope_label"),
     scopeValue: patterns.join(", ") || t("session.permission_scope_empty"),
     isDoomLoop: false,
@@ -412,6 +419,27 @@ export function PermissionApprovalModal(props: PermissionApprovalModalProps) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+export function PendingConfirmationNotice(props: { waitingFor: "approval" | "input"; onStop: () => void; onRefresh?: () => void; refreshing?: boolean }) {
+  return (
+    <div role="status" data-testid="pending-confirmation-notice" className="mx-4 my-3 rounded-xl border border-border bg-muted/40 p-4">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Clock3 className="size-4 shrink-0" aria-hidden />
+        {t("session.confirmation_recovering")}
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{t("session.confirmation_missing")}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+      {props.onRefresh ? <Button type="button" variant="outline" size="sm" onClick={props.onRefresh} disabled={props.refreshing}>
+        <RefreshCcw className={props.refreshing ? "size-3.5 animate-spin" : "size-3.5"} />
+        {t("session.confirmation_refresh")}
+      </Button> : null}
+      <Button type="button" variant="ghost" size="sm" onClick={props.onStop}>
+        {t("session.stop_waiting_run")}
+      </Button>
+      </div>
+    </div>
   );
 }
 

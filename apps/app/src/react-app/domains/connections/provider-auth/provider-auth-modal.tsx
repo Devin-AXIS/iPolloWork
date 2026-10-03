@@ -31,6 +31,7 @@ import {
   parseTokenStarModels,
   TOKENSTAR_PROVIDER,
 } from "./tokenstar-provider";
+import { ORCAROUTER_PROVIDER } from "./orcarouter-provider";
 import {
   buildProviderAuthEntries,
   getProviderAuthEntryGroups,
@@ -101,7 +102,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const providerPollRef = useRef<number | null>(null);
-  const oauthAutoPollRef = useRef<number | null>(null);
+  const oauthAutoCompletionKeyRef = useRef<string | null>(null);
   const oauthCodeCopiedResetRef = useRef<number | null>(null);
   const autoOpenedPreferredProviderIdRef = useRef<string | null>(null);
 
@@ -112,9 +113,11 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
   const isiPolloWorkBuiltInProvider = (id: string) => id.trim().toLowerCase() === "opencode";
   const isTokenStarProvider = (id: string) => id.trim().toLowerCase() === TOKENSTAR_PROVIDER.providerId;
+  const isOrcaRouterProvider = (id: string) => id.trim().toLowerCase() === ORCAROUTER_PROVIDER.providerId;
 
   const OPENCODE_ZEN_KEY_URL = "https://opencode.ai/auth";
   const TOKENSTAR_WEBSITE_URL = "https://tokenstar.io";
+  const ORCAROUTER_WEBSITE_URL = ORCAROUTER_PROVIDER.signupUrl;
 
   const openExternalUrl = async (url: string) => {
     if (!url) return;
@@ -162,7 +165,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const isOpenAiHeadlessSession = Boolean(
     oauthSession && oauthSession.providerId === "openai" && oauthSession.methodLabel.toLowerCase().includes("headless"),
   );
-  const shouldStartOauthAutoPolling =
+  const shouldStartOauthAutoCompletion =
     props.open &&
     resolvedView === "oauth-auto" &&
     oauthSession &&
@@ -202,6 +205,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     setSearchQuery("");
     setActiveEntryIndex(0);
     setLocalError(null);
+    oauthAutoCompletionKeyRef.current = null;
+    setOauthAutoBusy(false);
     setOauthCodeCopied(false);
     setOauthBrowserOpened(false);
     setShowMoreProviders(false);
@@ -215,16 +220,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
   };
 
-  const stopOauthAutoPolling = () => {
-    if (oauthAutoPollRef.current !== null) {
-      window.clearInterval(oauthAutoPollRef.current);
-      oauthAutoPollRef.current = null;
-    }
-  };
-
   const handleClose = () => {
     void props.onRefreshProviders?.();
-    stopOauthAutoPolling();
     stopProviderPolling();
     resetState();
     props.onClose();
@@ -275,7 +272,6 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
   useEffect(() => {
     return () => {
-      stopOauthAutoPolling();
       stopProviderPolling();
       if (oauthCodeCopiedResetRef.current !== null) {
         window.clearTimeout(oauthCodeCopiedResetRef.current);
@@ -370,36 +366,26 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
   };
 
-  const attemptOauthAutoCompletion = async () => {
-    const session = oauthSession;
-    if (!session || oauthAutoBusy) return;
+  const attemptOauthAutoCompletion = async (session: ProviderOAuthSession) => {
+    const completionKey = `${session.providerId}:${session.methodIndex}`;
+    if (oauthAutoCompletionKeyRef.current === completionKey) return;
+    oauthAutoCompletionKeyRef.current = completionKey;
     setOauthAutoBusy(true);
     try {
-      const result = await submitOauth(session.providerId, session.methodIndex);
-      if (result?.connected) {
-        stopOauthAutoPolling();
-      }
+      await submitOauth(session.providerId, session.methodIndex);
+    } catch {
+      // submitOauth already exposes the actionable provider error in the modal.
     } finally {
-      setOauthAutoBusy(false);
+      if (oauthAutoCompletionKeyRef.current === completionKey) {
+        setOauthAutoBusy(false);
+      }
     }
-  };
-
-  const startOauthAutoPolling = () => {
-    if (typeof window === "undefined") return;
-    if (oauthAutoPollRef.current !== null) return;
-    void attemptOauthAutoCompletion();
-    oauthAutoPollRef.current = window.setInterval(() => {
-      void attemptOauthAutoCompletion();
-    }, 2000);
   };
 
   useEffect(() => {
-    if (!shouldStartOauthAutoPolling) {
-      stopOauthAutoPolling();
-      return;
-    }
-    startOauthAutoPolling();
-  }, [shouldStartOauthAutoPolling]);
+    if (!shouldStartOauthAutoCompletion || !oauthSession) return;
+    void attemptOauthAutoCompletion(oauthSession);
+  }, [oauthSession, shouldStartOauthAutoCompletion]);
 
   const startOauth = async (entry: ProviderAuthEntry, methodIndex?: number) => {
     if (actionDisabled) return;
@@ -443,13 +429,16 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
   };
 
-  const handleMethodSelect = async (method: ProviderAuthMethod) => {
-    if (!selectedEntry || actionDisabled) return;
+  const handleMethodSelect = async (
+    method: ProviderAuthMethod,
+    entry: ProviderAuthEntry | null = selectedEntry,
+  ) => {
+    if (!entry || actionDisabled) return;
     setLocalError(null);
     setSelectedCloudMethod(null);
 
     if (method.type === "oauth") {
-      await startOauth(selectedEntry, method.methodIndex);
+      await startOauth(entry, method.methodIndex);
       return;
     }
 
@@ -460,7 +449,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
 
     setView("api");
-    if (selectedEntry && isTokenStarProvider(selectedEntry.id)) {
+    if (isTokenStarProvider(entry.id)) {
       resetTokenStarState();
     }
   };
@@ -475,8 +464,15 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       return;
     }
 
+    // OpenAI OAuth methods arrive asynchronously after the API-key placeholder.
+    // Keep its method chooser live instead of prematurely opening the API form.
+    if (entry.id === "openai") {
+      setView("method");
+      return;
+    }
+
     if (entry.methods.length === 1) {
-      void handleMethodSelect(entry.methods[0]);
+      void handleMethodSelect(entry.methods[0], entry);
       return;
     }
 
@@ -599,6 +595,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       }
       setOauthSession(null);
       setOauthCodeInput("");
+      oauthAutoCompletionKeyRef.current = null;
+      setOauthAutoBusy(false);
       setOauthCodeCopied(false);
       setOauthBrowserOpened(false);
       setLocalError(null);
@@ -690,6 +688,9 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
     if (isTokenStarProvider(entry.id)) {
       return "Connect TokenStar, check available models, and choose which models to show in iPolloWork.";
+    }
+    if (isOrcaRouterProvider(entry.id)) {
+      return "Connect OrcaRouter and use it from every supported agent engine.";
     }
     return "Paste a secret key that iPolloWork stores locally on this device.";
   };
@@ -911,6 +912,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                           ? "Paste your iPolloWork built-in models API key."
                           : isTokenStarProvider(selectedEntry.id)
                             ? "Paste your TokenStar API key. iPolloWork verifies it and finds your available models automatically."
+                            : isOrcaRouterProvider(selectedEntry.id)
+                              ? "Paste your OrcaRouter API key to route through the OrcaRouter gateway."
                           : "Paste your API key to connect."}
                       </div>
                     </div>
@@ -944,6 +947,18 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                       </button>
                     </div>
                   ) : null}
+                  {isOrcaRouterProvider(selectedEntry.id) ? (
+                    <div className="rounded-lg border border-indigo-5/30 bg-indigo-3/15 px-3 py-2.5 text-xs text-indigo-12 space-y-1.5">
+                      <div>OrcaRouter routes each request to the best model for the task across OpenAI, Anthropic, Google, DeepSeek, and more.</div>
+                      <button
+                        type="button"
+                        className="text-indigo-11 hover:text-indigo-12 underline underline-offset-2 font-medium"
+                        onClick={() => void openExternalUrl(ORCAROUTER_WEBSITE_URL)}
+                      >
+                        No API key? Visit OrcaRouter to get one.
+                      </button>
+                    </div>
+                  ) : null}
                   {selectedTokenStarConnected ? (
                     <div className="rounded-lg border border-gray-6/60 bg-gray-1/60 px-3 py-2.5 text-xs text-gray-10">
                       A TokenStar API key is configured on this device. Delete it before adding a new one.
@@ -952,7 +967,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     <TextInput
                       label="API key"
                       type="password"
-                      placeholder={isTokenStarProvider(selectedEntry.id) ? "vk_..." : isiPolloWorkBuiltInProvider(selectedEntry.id) ? "ock_..." : "sk-..."}
+                      placeholder={isTokenStarProvider(selectedEntry.id) ? "vk_..." : isiPolloWorkBuiltInProvider(selectedEntry.id) ? "ock_..." : isOrcaRouterProvider(selectedEntry.id) ? "sk-orca-..." : "sk-..."}
                       value={apiKeyInput}
                       onChange={(event) => {
                         setApiKeyInput(event.currentTarget.value);

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "split-screen",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Split Screen",
+  "description": "A balanced two-panel media layout for parallel stories, perspectives or before-and-after framing.",
+  "tags": ["component", "media", "split-screen", "comparison", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "media", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["leftTitle", "rightTitle", "labels", "mediaUrls"], "instructions": "Use parallel phrasing for both panels. Separate labels and optional image URLs with vertical bars." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "split-screen.html", "target": "compositions/split-screen.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "leftTitle", "label": "Left title", "type": "string", "default": "What the market says", "maxLength": 56, "update": "live" },
+    { "id": "rightTitle", "label": "Right title", "type": "string", "default": "What people actually do", "maxLength": 56, "update": "live" },
+    { "id": "labels", "label": "Panel labels", "description": "Left | Right", "type": "string", "default": "SIGNAL|BEHAVIOR", "maxLength": 56, "update": "live" },
+    { "id": "mediaUrls", "label": "Image URLs", "description": "Left URL | Right URL; leave blank for themed placeholders", "type": "string", "default": "|", "maxLength": 4096, "update": "live" }
+  ]
+}

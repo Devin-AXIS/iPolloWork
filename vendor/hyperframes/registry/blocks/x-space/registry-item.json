@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "x-space",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "X Space",
+  "description": "An X Spaces-style live audio room card with host, speakers and listener context.",
+  "tags": [
+    "component",
+    "social",
+    "x",
+    "space",
+    "audio",
+    "live",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "host",
+        "topic",
+        "speakers",
+        "listeners"
+      ],
+      "instructions": "Write a focused live-audio topic, two to four speaker label pairs and a realistic listener count."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "x-space.html",
+      "target": "compositions/x-space.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "host",
+      "label": "Host",
+      "type": "string",
+      "default": "Hosted by Future Craft",
+      "maxLength": 56,
+      "update": "live"
+    },
+    {
+      "id": "topic",
+      "label": "Topic",
+      "type": "string",
+      "default": "How small teams turn product signals into momentum",
+      "maxLength": 120,
+      "update": "live"
+    },
+    {
+      "id": "speakers",
+      "label": "Speakers",
+      "type": "string",
+      "default": "Maya:Design systems|Jon:Product strategy|Lin:Creative tooling",
+      "maxLength": 220,
+      "update": "live"
+    },
+    {
+      "id": "listeners",
+      "label": "Listeners",
+      "type": "string",
+      "default": "1,248 listening now",
+      "maxLength": 48,
+      "update": "live"
+    }
+  ]
+}
+

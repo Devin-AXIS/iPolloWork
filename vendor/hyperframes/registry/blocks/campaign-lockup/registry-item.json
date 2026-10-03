@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "campaign-lockup",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Campaign Lockup",
+  "description": "An editorial campaign frame that combines identity, headline, message and date.",
+  "tags": [
+    "component",
+    "brand",
+    "campaign",
+    "editorial",
+    "identity",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "brand",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "campaign",
+        "headline",
+        "message",
+        "date"
+      ],
+      "instructions": "Keep the campaign label and date compact, use a decisive headline, and add only one supporting sentence."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "campaign-lockup.html",
+      "target": "compositions/campaign-lockup.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "campaign",
+      "label": "Campaign",
+      "type": "string",
+      "default": "MAKE IT LEGIBLE",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "headline",
+      "label": "Headline",
+      "type": "string",
+      "default": "Ideas move when people can see them.",
+      "maxLength": 84,
+      "update": "live"
+    },
+    {
+      "id": "message",
+      "label": "Message",
+      "type": "string",
+      "default": "A shared visual language for every launch moment.",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "date",
+      "label": "Date",
+      "type": "string",
+      "default": "AUTUMN / 2026",
+      "maxLength": 32,
+      "update": "live"
+    }
+  ]
+}
+

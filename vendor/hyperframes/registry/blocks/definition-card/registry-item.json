@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "definition-card",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Definition Card",
+  "description": "An editorial definition frame that explains one term and grounds it with an example.",
+  "tags": [
+    "component",
+    "knowledge",
+    "definition",
+    "explain",
+    "education",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "knowledge",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "term",
+        "definition",
+        "example",
+        "label"
+      ],
+      "instructions": "Use a precise term, a plain-language definition, one concrete example and a short subject label."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "definition-card.html",
+      "target": "compositions/definition-card.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "term",
+      "label": "Term",
+      "type": "string",
+      "default": "Visual continuity",
+      "maxLength": 48,
+      "update": "live"
+    },
+    {
+      "id": "definition",
+      "label": "Definition",
+      "type": "string",
+      "default": "The sense that motion, layout and timing belong to the same story.",
+      "maxLength": 150,
+      "update": "live"
+    },
+    {
+      "id": "example",
+      "label": "Example",
+      "type": "string",
+      "default": "A camera move finishes where the next title begins.",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "label",
+      "label": "Subject label",
+      "type": "string",
+      "default": "MOTION LANGUAGE / 04",
+      "maxLength": 36,
+      "update": "live"
+    }
+  ]
+}
+

@@ -1,4 +1,5 @@
 import {
+  parsePptxColor,
   createPptxShapeOverlay,
   createPptxTextOverlay,
   createPptxVisualShadow,
@@ -7,7 +8,7 @@ import {
   type PptxShapeOverlay,
   type PptxTextOverlay,
 } from "./pptx-export";
-import { isPptxExportElement } from "./pptx-dom";
+import { isPptxExportElement, pptxCssPixels, pptxEffectiveOpacity } from "./pptx-dom";
 
 export type PptxElementKind = "shape" | "text" | "image" | "fallback";
 
@@ -62,38 +63,7 @@ function round(value: number) {
   return Number(value.toFixed(3));
 }
 
-function cssPixels(value: string) {
-  const pixels = Number.parseFloat(value);
-  return Number.isFinite(pixels) ? pixels : 0;
-}
 
-function parseColor(value: string) {
-  if (!value || value === "transparent") return { color: "000000", transparency: 100 };
-  const hexadecimal = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
-  if (hexadecimal) {
-    const expanded = hexadecimal.length === 3 || hexadecimal.length === 4
-      ? hexadecimal.split("").map((part) => `${part}${part}`).join("")
-      : hexadecimal;
-    const alpha = expanded.length === 8 ? Number.parseInt(expanded.slice(6), 16) / 255 : 1;
-    return { color: expanded.slice(0, 6).toUpperCase(), transparency: Math.round((1 - alpha) * 100) };
-  }
-  const match = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!match) return { color: "111827", transparency: 0 };
-  const alpha = match[4] == null ? 1 : Math.max(0, Math.min(1, Number(match[4])));
-  return {
-    color: match.slice(1, 4).map((part) => Number(part).toString(16).padStart(2, "0")).join("").toUpperCase(),
-    transparency: Math.round((1 - alpha) * 100),
-  };
-}
-
-function effectiveOpacity(element: HTMLElement, slide: HTMLElement) {
-  let opacity = 1;
-  for (let current: HTMLElement | null = element; current && current !== slide; current = current.parentElement) {
-    const value = Number.parseFloat(current.ownerDocument.defaultView?.getComputedStyle(current).opacity ?? "1");
-    opacity *= Number.isFinite(value) ? value : 1;
-  }
-  return opacity;
-}
 
 function isUnsupportedVisualStyle(style: PptxElementStyle) {
   return style.backgroundImage !== "none"
@@ -132,9 +102,9 @@ export function hasPptxBlurredBoxShadow(value: string) {
 
 function pseudoElementPaints(style: CSSStyleDeclaration) {
   if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0) return false;
-  return parseColor(style.backgroundColor).transparency < 100
+  return parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
-    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => cssPixels(width) > 0)
+    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => pptxCssPixels(width) > 0)
     || style.boxShadow !== "none"
     || style.filter !== "none"
     || style.backdropFilter !== "none"
@@ -182,8 +152,8 @@ function elementFrame(slideBox: DOMRect, box: DOMRect): PptxFrame {
 }
 
 function hasSimpleShapePaint(style: CSSStyleDeclaration) {
-  const fill = parseColor(style.backgroundColor).transparency < 100;
-  const borderWidths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(cssPixels);
+  const fill = parsePptxColor(style.backgroundColor).transparency < 100;
+  const borderWidths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(pptxCssPixels);
   const uniformBorder = borderWidths.every((width) => width > 0)
     && new Set([style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor]).size === 1
     && new Set(borderWidths).size === 1;
@@ -191,9 +161,9 @@ function hasSimpleShapePaint(style: CSSStyleDeclaration) {
 }
 
 function hasVisibleElementPaint(style: CSSStyleDeclaration) {
-  return parseColor(style.backgroundColor).transparency < 100
+  return parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
-    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => cssPixels(width) > 0)
+    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => pptxCssPixels(width) > 0)
     || style.boxShadow !== "none"
     || style.outlineStyle !== "none"
     || style.filter !== "none"
@@ -210,10 +180,10 @@ export function pptxShapeNeedsFallback(style: PptxElementStyle & {
   borderLeftWidth: string;
   outlineStyle: string;
 }) {
-  const hasPaint = parseColor(style.backgroundColor).transparency < 100
+  const hasPaint = parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
     || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
-      .some((width) => cssPixels(width) > 0)
+      .some((width) => pptxCssPixels(width) > 0)
     || style.boxShadow !== "none"
     || style.outlineStyle !== "none"
     || style.filter !== "none"
@@ -243,9 +213,9 @@ export function pptxVisualElementPaints(input: {
   if (["img", "svg", "canvas", "video"].includes(tag)) return true;
   if (input.text.trim()) return true;
   if (input.hasVisiblePseudo || input.hasStaticAnimation) return true;
-  return parseColor(input.backgroundColor).transparency < 100
+  return parsePptxColor(input.backgroundColor).transparency < 100
     || input.backgroundImage !== "none"
-    || input.borderWidths.some((width) => cssPixels(width) > 0)
+    || input.borderWidths.some((width) => pptxCssPixels(width) > 0)
     || input.boxShadow !== "none"
     || input.outlineStyle !== "none"
     || input.filter !== "none"
@@ -353,7 +323,7 @@ function createTextPlan(element: HTMLElement, slide: HTMLElement, slideBox: DOMR
       textAlign: style.textAlign,
       lineHeight: style.lineHeight,
       letterSpacing: style.letterSpacing,
-      opacity: effectiveOpacity(element, slide),
+      opacity: pptxEffectiveOpacity(element, slide),
     },
   });
   const runs = editableTextRuns(element, slideBox.width);
@@ -380,7 +350,7 @@ function createShapePlan(element: HTMLElement, slide: HTMLElement, slideBox: DOM
         borderWidth: style.borderTopWidth,
         borderRadius: style.borderTopLeftRadius,
         boxShadow: style.boxShadow,
-        opacity: effectiveOpacity(element, slide),
+        opacity: pptxEffectiveOpacity(element, slide),
       },
     }),
   };
@@ -420,7 +390,7 @@ export function collectPptxElementPlans(slide: HTMLElement): PptxElementPlan[] {
 
     if (shouldFallbackElement(element, style)) {
       const minimumPadding = element.matches("h1,h2,h3,h4,h5,h6,p,li,pre") || hasPptxCapturedPseudoElement(element)
-        ? Math.max(4, cssPixels(style.fontSize) * 0.2)
+        ? Math.max(4, pptxCssPixels(style.fontSize) * 0.2)
         : 0;
       const capturePadding = pptxFallbackCapturePadding(style.boxShadow, style.filter, minimumPadding);
       const paddedBox = {
@@ -511,10 +481,10 @@ export function collectPptxBackgroundPlan(slide: HTMLElement): PptxBackgroundPla
   const frame = { x: 0, y: 0, w: PPTX_SLIDE_WIDTH_INCHES, h: PPTX_SLIDE_HEIGHT_INCHES };
   const slideStyle = view.getComputedStyle(slide);
   if (needsPptxBackgroundFallback(slideStyle) || hasVisiblePseudoElement(slide)) return { kind: "fallback", element: slide, frame };
-  const slideColor = parseColor(slideStyle.backgroundColor);
+  const slideColor = parsePptxColor(slideStyle.backgroundColor);
   if (slideColor.transparency < 100) return { kind: "color", color: slideColor.color };
   const deckStyle = view.getComputedStyle(deck);
   if (needsPptxBackgroundFallback(deckStyle) || hasVisiblePseudoElement(deck)) return { kind: "fallback", element: deck, frame };
-  const deckColor = parseColor(deckStyle.backgroundColor);
+  const deckColor = parsePptxColor(deckStyle.backgroundColor);
   return deckColor.transparency < 100 ? { kind: "color", color: deckColor.color } : null;
 }

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.pptx-ipollo-vi-enterprise",
+  "version": "4.0.7",
+  "kind": "design",
+  "category": "slides",
+  "subcategory": "enterprise-presentation",
+  "style": "custom",
+  "tags": [
+    "ipollo",
+    "figma",
+    "node-139",
+    "enterprise",
+    "corporate",
+    "high-fidelity",
+    "native-editable",
+    "presentation",
+    "16:9"
+  ],
+  "pptxCompatibility": "native-editable",
+  "surface": "design",
+  "title": "iPollo VI Enterprise Presentation · 38 Native Slides",
+  "description": "A high-fidelity native-editable enterprise presentation template rebuilt from 38 iPollo VI Figma layouts with deterministic geometry, replaceable image frames, and local assets.",
+  "cover": "cover.png",
+  "entry": "entry.html",
+  "source": {
+    "name": "iPollo VI (Figma node 139 set)",
+    "repository": "https://www.figma.com/design/6YPJfLm6rkl2UwtpreteoD/iPollo-VI",
+    "license": "User-provided design",
+    "revision": "139-design-set",
+    "attribution": "Converted from the user-provided Figma nodes for iPolloWork use."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography"
+    ],
+    "tokens": "design-tokens.css",
+    "variables": [
+      {
+        "id": "--ipw-color-primary",
+        "label": "iPollo cyan",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-secondary",
+        "label": "Warm neutral",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "--ipw-color-canvas",
+        "label": "Canvas",
+        "type": "color",
+        "group": "background"
+      },
+      {
+        "id": "--ipw-font-body",
+        "label": "Body font",
+        "type": "font",
+        "group": "typography"
+      },
+      {
+        "id": "--ipw-font-display",
+        "label": "Display font",
+        "type": "font",
+        "group": "typography"
+      }
+    ]
+  },
+  "applyChecklist": [
+    "Rewrite every data-pptx-text object for the requested purpose while preserving the selected node 139 slide order and exact geometry.",
+    "Preserve all slide roots and native PPT object markers; keep every SVG line, connector, arrow, and complex vector embedded as an export-safe image data URL.",
+    "Keep the Figma white-space, line-height, and text-frame behavior to prevent unintended wrapping or clipping.",
+    "Replace editable image objects only when the brief supplies an appropriate visual.",
+    "Never invent metrics; mark missing evidence for replacement before presenting."
+  ],
+  "minimumAppVersion": "0.17.20"
+}

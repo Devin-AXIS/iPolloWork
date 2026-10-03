@@ -41,7 +41,7 @@ import {
   isTransientBrowserError,
   probeBeginFrameLiveness,
 } from "@hyperframes/engine";
-import { fpsToNumber } from "@hyperframes/core";
+import { fpsToNumber, durationToFrameCount } from "@hyperframes/core";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import {
   discoverMediaFromBrowser,
@@ -83,16 +83,6 @@ export interface ProbeStageInput {
   needsAlpha: boolean;
   deviceScaleFactor: number;
   renderBodyScripts?: string[];
-}
-
-const FRAME_BOUNDARY_EPSILON = 1e-3;
-
-function durationToFrameCount(duration: number, fps: number): number {
-  const rawFrameCount = duration * fps;
-  const nearestFrame = Math.round(rawFrameCount);
-  return Math.abs(rawFrameCount - nearestFrame) <= FRAME_BOUNDARY_EPSILON
-    ? nearestFrame
-    : Math.ceil(rawFrameCount);
 }
 
 export interface ProbeStageResult {
@@ -594,8 +584,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   }
   const browserProbeMs = Date.now() - probeStart;
 
-  const duration = composition.duration;
-  const totalFrames = durationToFrameCount(duration, fpsToNumber(job.config.fps));
+  const totalFrames = durationToFrameCount(composition.duration, job.config.fps);
+  const duration = totalFrames / fpsToNumber(job.config.fps);
 
   if (duration <= 0) {
     // Gather diagnostics to help users understand why the render would produce a black video.

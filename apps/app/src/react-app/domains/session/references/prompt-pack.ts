@@ -1,29 +1,17 @@
-import { selectReferenceChunks } from "./compression";
+import { normalizeLimit, selectReferenceChunks, truncate } from "./compression";
 import type { PromptPackOptions, ReferenceContextPack, ReferenceIngestionResult } from "./types";
 
-function normalizeLimit(value: number | undefined, fallback: number, ceiling: number) {
-  const limit = value ?? fallback;
-  return Number.isFinite(limit) ? Math.min(ceiling, Math.max(0, Math.floor(limit))) : fallback;
-}
-
-function truncate(text: string, max: number, ceiling = 1200) {
-  const limit = normalizeLimit(max, ceiling, ceiling);
-  if (text.length <= limit) return text;
-  if (limit < 3) return text.slice(0, limit);
-  return `${text.slice(0, limit - 3).trimEnd()}...`;
-}
-
 export function packReferenceContext(files: ReferenceIngestionResult[], options: PromptPackOptions = {}): ReferenceContextPack {
-  const maxSummaryChars = normalizeLimit(options.maxSummaryChars, 1200, 1200);
-  const maxChunkChars = normalizeLimit(options.maxChunkChars, 1200, 1200);
-  const maxChunksPerFile = normalizeLimit(options.maxChunksPerFile, 8, 8);
-  const maxTotalChars = normalizeLimit(options.maxTotalChars, 12000, 12000);
+  const maxSummaryChars = normalizeLimit(options.maxSummaryChars, 300, 1200);
+  const maxChunkChars = normalizeLimit(options.maxChunkChars, 500, 1200);
+  const maxChunksPerFile = normalizeLimit(options.maxChunksPerFile, 3, 8);
+  const maxTotalChars = normalizeLimit(options.maxTotalChars, 4000, 12000);
   const accepted = files.filter((file) => file.quality === "high" || file.quality === "medium");
   const rejected = files.length - accepted.length;
   const warnings = rejected ? [`Excluded ${rejected} low-quality reference file${rejected === 1 ? "" : "s"}.`] : [];
   if (!accepted.length) return { files: [], promptText: "", totalChars: 0, warnings };
 
-  const sections: string[] = ["Reference context for this iPolloWork template task:"];
+  const sections: string[] = ["Reference preview for this template task (bounded; full evidence is in reference-context.json).", "Use extracted context only; original files are not attached by default."];
 
   for (const [index, file] of accepted.entries()) {
     const chunks = selectReferenceChunks(file.chunks, { maxChunks: maxChunksPerFile, maxChunkChars });
@@ -32,7 +20,6 @@ export function packReferenceContext(files: ReferenceIngestionResult[], options:
       `File ${index + 1}: ${file.fileName}`,
       `Type: ${file.mimeType}`,
       `Quality: ${file.quality}`,
-      "Use policy: extracted context only; original file not attached by default.",
       "",
       "Summary:",
       truncate(file.summary, maxSummaryChars),
@@ -48,9 +35,10 @@ export function packReferenceContext(files: ReferenceIngestionResult[], options:
   sections.push([
     "",
     "When applying the selected template:",
-    "- Prefer explicit facts from these excerpts.",
-    "- Do not invent missing evidence.",
-    "- Preserve the selected template layout and visual contract.",
+    "- Use explicit facts; report missing evidence.",
+    "- Treat the selected template as a visual and technical system, not a finished artifact to copy.",
+    "- Derive the content structure from the current brief; retain sample content/layout only when it fits.",
+    "- Preserve the template's design tokens, distinctive visual language, editor hooks, and export/runtime contracts.",
   ].join("\n"));
 
   const promptText = truncate(sections.join("\n"), maxTotalChars, 12000);

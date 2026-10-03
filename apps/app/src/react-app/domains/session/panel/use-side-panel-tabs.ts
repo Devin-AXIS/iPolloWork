@@ -3,6 +3,7 @@ import * as React from "react";
 import type { BrowserStatePayload } from "@/app/lib/desktop";
 
 import {
+  browserTabsForSession,
   type PanelTab,
   usePanelTabStore,
 } from "./panel-tab-store";
@@ -12,8 +13,7 @@ export function useSidePanelTabs(sessionId: string) {
   const syncBrowserTabs = usePanelTabStore((state) => state.syncBrowserTabs);
 
   const applyBrowserState = React.useCallback((browserState: BrowserStatePayload) => {
-    const tabs = browserState.tabs ?? [];
-    const activeTabId = browserState.activeTabId ?? tabs[0]?.id ?? null;
+    const { tabs, activeTabId } = browserTabsForSession(browserState, sessionId);
 
     syncBrowserTabs(sessionId, tabs, activeTabId);
   }, [sessionId, syncBrowserTabs]);
@@ -36,7 +36,7 @@ export function useSidePanelTabs(sessionId: string) {
     return unsub;
   }, [applyBrowserState]);
 
-  const createTab = useCreateTab();
+  const createTab = useCreateTab(sessionId);
 
   const closeTab = useCloseTab();
 
@@ -52,10 +52,10 @@ export function useSidePanelTabs(sessionId: string) {
   };
 }
 
-export function useCreateTab() {
+export function useCreateTab(sessionId: string) {
   return React.useCallback((url?: string) => {
-    void getElectronBrowser()?.createTab?.(url);
-  }, []);
+    void getElectronBrowser()?.createTab?.(url, { sessionId });
+  }, [sessionId]);
 }
 
 export function useCloseTab() {
@@ -116,6 +116,6 @@ export function useReorderTabs() {
 
     reorderTabs(sessionId, tabIds);
 
-    void getElectronBrowser()?.reorderTabs?.(browserTabIds);
+    void getElectronBrowser()?.reorderTabs?.(browserTabIds, { sessionId });
   }, [reorderTabs]);
 }

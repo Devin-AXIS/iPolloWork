@@ -13,7 +13,7 @@ export interface InitialPanelLayoutState {
   rightPanelTab?: RightPanelTab | null;
 }
 
-export const MIN_RIGHT_PANEL_WIDTH = 280;
+export const MIN_RIGHT_PANEL_WIDTH = 360;
 
 function getInitialRightInspectorPanes(tab?: RightPanelTab | null): RightInspectorPanes {
   if (tab === "layers") return { layers: true, design: false };

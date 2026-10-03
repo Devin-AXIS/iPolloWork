@@ -70,11 +70,12 @@ export function FlatTimingRow({
 
   const cell = (label: string, value: string, onCommit: (next: string) => void) => (
     <div className="flex h-[34px] min-w-0 items-center justify-between gap-1.5 rounded-[6px] border border-[#f5f6f9] bg-[#f5f6f9] px-[10px] py-px dark:border-panel-input dark:bg-panel-input">
-      <span className="flex-shrink-0 text-[10px] font-normal text-[#878984] dark:text-panel-text-4">
+      <span className="flex-shrink-0 text-xs font-normal text-panel-text-3">
         {tx(label)}
       </span>
-      <span className="min-w-0 font-sans text-[13px] font-normal text-[#242522] dark:text-panel-text-0">
+      <span className="min-w-0 font-sans text-xs font-normal text-panel-text-1">
         <CommitField
+          className="text-xs font-normal text-panel-text-1"
           value={value}
           onCommit={(next) => {
             track("metric", label);
@@ -90,7 +91,7 @@ export function FlatTimingRow({
       {cell("Start", formatTimingValue(start), (value) => commitRange("start", value))}
       {cell("End", formatTimingValue(end), (value) => commitRange("end", value))}
       {derived && (
-        <p className="col-span-2 mt-1 text-[10px] leading-snug text-panel-text-3">
+        <p className="col-span-2 mt-1 text-[11px] leading-snug text-panel-text-3">
           {tx("Inferred from this element's animation — edit to pin an explicit clip range.")}
         </p>
       )}

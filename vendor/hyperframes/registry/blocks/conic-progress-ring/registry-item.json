@@ -1,0 +1,14 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json", "name": "conic-progress-ring", "version": "1.0.0", "type": "hyperframes:block", "title": "Conic Progress Ring",
+  "description": "A theme-linked progress ring with a synchronized center value.", "tags": ["component", "data", "progress", "ring", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Conic Progress Ring", "url": "https://www.hyperframes.dev/catalog/components/conic-progress-ring" },
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "progress", "label", "note"], "instructions": "AI may calculate or replace the progress and supporting copy, but must keep one dominant percentage and a legible ring." } },
+  "dimensions": { "width": 1920, "height": 1080 }, "duration": 7, "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "conic-progress-ring.html", "target": "compositions/conic-progress-ring.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Completion status", "maxLength": 64, "update": "live" },
+    { "id": "progress", "label": "Progress", "type": "number", "default": 76, "min": 0, "max": 100, "step": 1, "unit": "%", "update": "live" },
+    { "id": "label", "label": "Label", "type": "string", "default": "Ready for review", "maxLength": 48, "update": "live" },
+    { "id": "note", "label": "Note", "type": "string", "default": "One signal, one clear outcome", "maxLength": 72, "update": "live" }
+  ]
+}

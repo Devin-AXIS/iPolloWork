@@ -1,8 +1,9 @@
 import {
+  parsePptxColor,
   PPTX_SLIDE_HEIGHT_INCHES,
   PPTX_SLIDE_WIDTH_INCHES,
 } from "./pptx-export";
-import { isPptxExportImage } from "./pptx-dom";
+import { isPptxExportImage, pptxEffectiveOpacity } from "./pptx-dom";
 
 export type PptxCompatibleTextRun = {
   text: string;
@@ -106,22 +107,7 @@ export function pointsForPptxCompatibleSlide(value: string, slideWidthPixels: nu
 }
 
 function parseColor(value: string) {
-  if (!value || value === "transparent") return { color: "000000", transparency: 100 };
-  const hex = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
-  if (hex) {
-    const expanded = hex.length === 3 || hex.length === 4
-      ? hex.split("").map((part) => `${part}${part}`).join("")
-      : hex;
-    const alpha = expanded.length === 8 ? Number.parseInt(expanded.slice(6), 16) / 255 : 1;
-    return { color: expanded.slice(0, 6).toUpperCase(), transparency: Math.round((1 - alpha) * 100) };
-  }
-  const rgb = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!rgb) return { color: "000000", transparency: 100 };
-  const alpha = rgb[4] == null ? 1 : Math.max(0, Math.min(1, Number(rgb[4])));
-  return {
-    color: rgb.slice(1, 4).map((channel) => Number(channel).toString(16).padStart(2, "0")).join("").toUpperCase(),
-    transparency: Math.round((1 - alpha) * 100),
-  };
+  return parsePptxColor(value, { color: "000000", transparency: 100 });
 }
 
 function transparency(colorTransparency: number, opacity: number) {
@@ -213,14 +199,6 @@ function requiresPptxCompatibleFallback(element: HTMLElement, view: Window) {
     .some((candidate) => unsupported(view.getComputedStyle(candidate)) || hasVisiblePseudoElement(candidate, view));
 }
 
-function effectiveOpacity(element: HTMLElement, slide: HTMLElement) {
-  let opacity = 1;
-  for (let current: HTMLElement | null = element; current && current !== slide; current = current.parentElement) {
-    const value = Number.parseFloat(current.ownerDocument.defaultView?.getComputedStyle(current).opacity ?? "1");
-    opacity *= Number.isFinite(value) ? value : 1;
-  }
-  return opacity;
-}
 
 function elementTextRuns(element: HTMLElement, slideWidthPixels: number): PptxCompatibleTextRun[] {
   const view = element.ownerDocument.defaultView;
@@ -261,7 +239,7 @@ function elementTextRuns(element: HTMLElement, slideWidthPixels: number): PptxCo
 function shapeFor(element: HTMLElement, slide: HTMLElement, slideBox: DOMRect, style: CSSStyleDeclaration): PptxCompatibleShape {
   const fill = parseColor(style.backgroundColor);
   const line = parseColor(style.borderTopColor);
-  const opacity = effectiveOpacity(element, slide);
+  const opacity = pptxEffectiveOpacity(element, slide);
   const kind = element.dataset.pptxShape;
   if (kind !== "rect" && kind !== "roundRect" && kind !== "line" && kind !== "ellipse") {
     throw new Error("Unsupported PPTX shape marker.");

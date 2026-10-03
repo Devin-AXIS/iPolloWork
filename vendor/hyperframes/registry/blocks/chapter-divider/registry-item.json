@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "chapter-divider",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Chapter Divider",
+  "description": "A numbered editorial divider that clearly opens a new chapter or section.",
+  "tags": ["component", "typography", "chapter", "divider", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "typography", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["chapter", "title", "supporting", "layout"], "instructions": "Use a short chapter number, a decisive title, and one supporting sentence. Choose centered or editorial-left layout." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "chapter-divider.html", "target": "compositions/chapter-divider.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "chapter", "label": "Chapter", "type": "string", "default": "CHAPTER 02", "maxLength": 24, "update": "live" },
+    { "id": "title", "label": "Title", "type": "string", "default": "From signal to system", "maxLength": 64, "update": "live" },
+    { "id": "supporting", "label": "Supporting line", "type": "string", "default": "Turn scattered evidence into a repeatable decision.", "maxLength": 100, "update": "live" },
+    { "id": "layout", "label": "Layout", "type": "enum", "default": "center", "options": [{ "value": "center", "label": "Centered" }, { "value": "left", "label": "Editorial left" }], "update": "live" }
+  ]
+}

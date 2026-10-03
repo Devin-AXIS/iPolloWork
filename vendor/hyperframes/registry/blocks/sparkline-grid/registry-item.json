@@ -1,0 +1,209 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "sparkline-grid",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Sparkline Grid",
+  "description": "Compare several short-term trends in one frame.",
+  "tags": [
+    "component",
+    "data",
+    "dashboard",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "items",
+        "highlight",
+        "note"
+      ],
+      "instructions": "2–4组同单位、同采样间隔的数据，各有三个非负观测值。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "sparkline-grid.html",
+      "target": "compositions/sparkline-grid.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/sparkline-grid.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "四组数据的变化轨迹",
+      "maxLength": 76,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Items (label::detail | ...)",
+      "type": "string",
+      "default": "组一::12,18,14|组二::8,16,20|组三::20,12,8|组四::10,15,19",
+      "maxLength": 280,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlighted item",
+      "type": "number",
+      "default": 1,
+      "min": 1,
+      "max": 4,
+      "step": 1,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Supporting note",
+      "type": "string",
+      "default": "示例数据 · 同一单位 · 三期 · 共享零基线",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "progressive-build",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "items",
+      "separator": "|",
+      "minItems": 2,
+      "maxItems": 4,
+      "fieldSeparator": "::",
+      "fieldsPerItem": 2,
+      "maxFieldLength": 24
+    },
+    "textLimits": {
+      "title": {
+        "maxLines": 1,
+        "maxLineLength": 24
+      },
+      "note": {
+        "maxLines": 1,
+        "maxLineLength": 40
+      }
+    },
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".vc-item:nth-child(1)",
+        "time": 1.2,
+        "duration": 0.5,
+        "action": "Explain supplied item 1 in narration order"
+      },
+      {
+        "id": "step-2",
+        "target": ".vc-item:nth-child(2)",
+        "time": 2.6,
+        "duration": 0.5,
+        "action": "Explain supplied item 2 in narration order"
+      },
+      {
+        "id": "step-3",
+        "target": ".vc-item:nth-child(3)",
+        "time": 4.1,
+        "duration": 0.5,
+        "action": "Explain supplied item 3 in narration order"
+      },
+      {
+        "id": "step-4",
+        "target": ".vc-item:nth-child(4)",
+        "time": 5.5,
+        "duration": 0.5,
+        "action": "Explain supplied item 4 in narration order"
+      },
+      {
+        "id": "resolve",
+        "target": ".vc-item",
+        "time": 6.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable relationship"
+      }
+    ],
+    "usage": {
+      "intent": "用共同尺度连接各组三期观测值，让观众比较已发生的方向而不臆测中间过程。",
+      "useWhen": [
+        "2–4组同单位、同采样间隔的数据，各有三个非负观测值。"
+      ],
+      "avoidWhen": [
+        "不同单位、负值、缺期；不能推断插值期间发生过什么或把曲线当物理模拟。",
+        "No fabricated or independently rescaled data; supply provenance and a common measurement basis."
+      ],
+      "inputRules": {
+        "title": "One content-specific heading, at most 24 characters.",
+        "items": "2–4 label::detail entries separated by |; each field at most 24 characters. 组名::第1期值,第2期值,第3期值；全组共享最大值与零基线。",
+        "highlight": "A real integer pointing to an existing item; it marks the final emphasis, not an inferred metric.",
+        "note": "One qualifier or source note, at most 40 characters. Retain uncertainty and evidence limitations."
+      },
+      "readingOrder": [
+        "说明单位和三期定义",
+        "按旁白绘制各组折线",
+        "保留共同尺度比较方向"
+      ],
+      "cueBindings": {
+        "step-1": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-2": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-3": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-4": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "resolve": "Bind to the concluding phrase that resolves the shown relationship."
+      },
+      "fallback": {
+        "overflow": "Split at a semantic boundary or choose a suitable recipe; never truncate or shrink text.",
+        "missingInput": "Report the missing real content or evidence; do not substitute demo defaults.",
+        "timingMismatch": "Bind every active event to measured narration while preserving order, nonoverlap and a readable final hold.",
+        "inapplicable": "Choose another proven native recipe. Under recipes-only policy report the capability gap; do not create custom graphics."
+      },
+      "example": {
+        "values": {
+          "title": "四组数据的变化轨迹",
+          "items": "组一::12,18,14|组二::8,16,20|组三::20,12,8|组四::10,15,19",
+          "highlight": 1,
+          "note": "示例数据 · 同一单位 · 三期 · 共享零基线"
+        },
+        "narration": "组一，组二，组三，组四，最后把它们放回同一个问题中理解。"
+      },
+      "acceptance": [
+        "折线端点来自真实三个输入，零基线和共享尺度一致；无装饰性随机波形。",
+        "Every active phrase changes its real visible target; forward and reverse seek reproduce the same state.",
+        "Chinese content fits at minimum and maximum capacity without cropped or overlapping labels.",
+        "Numeric geometry uses actual input values and the documented shared scale, not decorative bars."
+      ]
+    }
+  }
+}

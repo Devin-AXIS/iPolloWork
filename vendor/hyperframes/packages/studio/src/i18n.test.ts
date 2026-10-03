@@ -26,10 +26,18 @@ describe("translateStudioLiteral", () => {
     );
   });
 
+  it("translates narration and whole-video music controls", () => {
+    expect(translateStudioLiteral("zh", "AI chooses from the script")).toBe("AI 根据脚本选择");
+    expect(translateStudioLiteral("zh", "Choose from project assets")).toBe("从项目素材中选择");
+    expect(translateStudioLiteral("zh", "Optional music direction for the AI")).toBe(
+      "可补充配乐风格；留空由 AI 按脚本判断",
+    );
+  });
+
   it("uses the approved AI video-editing warning copy", () => {
     const source = readFileSync(new URL("./i18n.tsx", import.meta.url), "utf8");
     expect(source).toContain(
-      '"header.aiEditingWarning": "AI 修改视频中，建议不要手动修改"',
+      '"preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改"',
     );
   });
 

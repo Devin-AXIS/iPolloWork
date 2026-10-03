@@ -307,7 +307,9 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   const content = safeReadFileBuffer(filePath);
   if (content == null) return null;
   const dataUrl = `data:${mimeType};base64,${content.toString("base64")}`;
-  return appendSuffixToUrl(dataUrl, suffix);
+  // Cache-busting queries are not valid base64 payload. Preserve only SVG fragments.
+  const hashIndex = suffix.indexOf("#");
+  return hashIndex >= 0 ? appendSuffixToUrl(dataUrl, suffix.slice(hashIndex)) : dataUrl;
 }
 
 function isExternalSvgFragmentUse(el: Element, attr: string, urlValue: string): boolean {
@@ -726,8 +728,9 @@ function hoistExternalScript(
   seenSrcs: Set<string>,
   chunks: string[],
 ): void {
-  if (seenSrcs.has(src)) return;
-  seenSrcs.add(src);
+  const sourceKey = isRelativeUrl(src) ? resolve(projectDir, src) : src;
+  if (seenSrcs.has(sourceKey)) return;
+  seenSrcs.add(sourceKey);
   if (!isNonRelativeUrl(src) && !isAbsolute(src)) {
     const jsPath = resolveWithinProject(projectDir, src);
     const js = jsPath ? safeReadFile(jsPath) : null;
@@ -849,6 +852,9 @@ export async function bundleToSingleHtml(
 
   // Inline local JS
   const localJsChunks: string[] = [];
+  // Retain resource identity after replacing <script src> with inline code.
+  // Loading a second GSAP copy splits parent/child Timeline constructors.
+  const inlinedScriptPaths = new Set<string>();
   let jsAnchorPlaced = false;
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
@@ -860,6 +866,11 @@ export async function bundleToSingleHtml(
     const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
+    if (jsPath && inlinedScriptPaths.has(jsPath)) {
+      el.remove();
+      continue;
+    }
+    if (jsPath) inlinedScriptPaths.add(jsPath);
     localJsChunks.push(js);
     if (!jsAnchorPlaced) {
       const anchor = document.createElement("script");
@@ -915,15 +926,16 @@ export async function bundleToSingleHtml(
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
     ...subCompResult.variablesByComp,
   };
-  const seenCompScriptSrcs = new Set<string>();
+  const seenCompScriptSrcs = new Set(inlinedScriptPaths);
   for (const scriptItem of subCompResult.scriptItems) {
     if (scriptItem.kind === "inline") {
       compScriptChunks.push(scriptItem.content);
       continue;
     }
     const extSrc = scriptItem.src;
-    if (seenCompScriptSrcs.has(extSrc)) continue;
-    seenCompScriptSrcs.add(extSrc);
+    const sourceKey = isRelativeUrl(extSrc) ? resolveEntryPath(extSrc) ?? extSrc : extSrc;
+    if (seenCompScriptSrcs.has(sourceKey)) continue;
+    seenCompScriptSrcs.add(sourceKey);
     if (isRelativeUrl(extSrc)) {
       const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;

@@ -3,22 +3,25 @@
 // settings-route was missing the remote-workspace clobber fix in
 // mergeRouteWorkspaces and used older session-status logic. One copy now.
 
-import type { Session } from "@opencode-ai/sdk/v2/client";
-
 import type { iPolloWorkWorkspaceInfo } from "@/app/lib/ipollowork-server";
 import type { WorkspaceInfo } from "@/app/lib/desktop-types";
-import type { WorkspaceSessionGroup } from "@/app/types";
+import type { ProjectSessionList } from "@/app/types";
+import {
+  CODEX_HARNESS_ENGINE_ID,
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEFAULT_ENGINE_ID,
+} from "@ipollowork/types/workspace";
 import {
   normalizeDirectoryPath,
-  normalizeSessionStatus,
+  readSessionRunStatus,
   safeStringify,
 } from "@/app/utils";
 import {
-  DEFAULT_SESSION_TITLE,
   getDisplaySessionTitle,
-  isGeneratedSessionTitle,
+  isDefaultSessionTitle,
 } from "@/app/lib/session-title";
 import { t } from "@/i18n";
+import type { ConversationSession } from "@/react-app/domains/session/engine/conversation-engine";
 
 export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
   displayNameResolved: string;
@@ -29,7 +32,7 @@ export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
  * ipollowork-server's listSessions, optionally enriched with run-status
  * fields that the sidebar probes defensively via getSessionStatus.
  */
-export type RouteSession = Session & {
+export type RouteSession = ConversationSession & {
   agent?: string;
   status?: unknown;
   state?: unknown;
@@ -100,6 +103,51 @@ export function describeRouteError(error: unknown) {
   return serialized && serialized !== "{}" ? serialized : t("app.unknown_error");
 }
 
+export function isModelUnavailableError(message: string | null | undefined) {
+  const value = (message ?? "").toLowerCase();
+  return (
+    value.includes("providermodelnotfounderror") ||
+    value.includes("model not found") ||
+    value.includes("model_not_found") ||
+    value.includes("model is not available") ||
+    (value.includes("model") && value.includes("did you mean"))
+  );
+}
+
+export function isSidecarLaunchBlockedError(message: string | null | undefined) {
+  const value = (message ?? "").toLowerCase();
+  return value.includes("spawn eperm") || (value.includes("spawn") && value.includes("eperm"));
+}
+
+function workspaceEngineName(engineId: string | null | undefined) {
+  const resolved = engineId?.trim() || DEFAULT_ENGINE_ID;
+  if (resolved === CODEX_HARNESS_ENGINE_ID) return "Codex Harness";
+  if (resolved === DEEPSEEK_HARNESS_ENGINE_ID) return "DeepSeek Harness";
+  return "OpenCode";
+}
+
+export function describeSidecarLaunchBlockedError(engineId: string | null | undefined) {
+  const engineName = workspaceEngineName(engineId);
+  if (engineId?.trim() === CODEX_HARNESS_ENGINE_ID) {
+    return "Windows denied starting the Codex Harness runtime (spawn EPERM). iPolloWork will ignore that unusable executable and select a launchable local or managed Codex runtime after restart. Restart iPolloWork; if the problem continues, repair Codex Harness in Engine Management.";
+  }
+  if (engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID) {
+    return "Windows denied starting the DeepSeek Harness runtime (spawn EPERM). Check antivirus, Controlled Folder Access, and app permissions, then repair DeepSeek Harness in Engine Management or restart iPolloWork.";
+  }
+  return `Windows denied starting the ${engineName} sidecar (spawn EPERM). Check whether antivirus, Controlled Folder Access, app permissions, or a quarantined opencode.exe is blocking iPolloWork, then retry or restart the app.`;
+}
+
+export function describeWorkspaceUnavailableTitle(input: {
+  message: string | null | undefined;
+  workspaceType?: string | null;
+  engineId?: string | null;
+}) {
+  if (isModelUnavailableError(input.message)) return "Model unavailable";
+  if (isSidecarLaunchBlockedError(input.message)) return `${workspaceEngineName(input.engineId)} launch blocked`;
+  if (input.workspaceType === "remote") return "Remote workspace unavailable";
+  return `${workspaceEngineName(input.engineId)} unavailable`;
+}
+
 export function describeWorkspaceCreateError(error: unknown) {
   const message = describeRouteError(error);
   const lower = message.toLowerCase();
@@ -151,6 +199,7 @@ export function mergeRouteWorkspaces(
             : match.displayName,
           name: match.name?.trim() ? match.name : workspace.name,
           workContextId: workspace.workContextId ?? match.workContextId,
+          isDefault: workspace.isDefault ?? match.isDefault,
         }
       : workspace;
     return {
@@ -199,11 +248,11 @@ export function partitionInitialWorkspaceLoads<T extends { id: string }>(
   workspaces: T[],
   selectedWorkspaceId: string,
   alreadyLoadedWorkspaceIds: ReadonlySet<string>,
-): { blocking: T[]; background: T[] } {
+): { selected: T[]; deferred: T[] } {
   const selected = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
   return {
-    blocking: selected ? [selected] : [],
-    background: workspaces.filter((workspace) => (
+    selected: selected ? [selected] : [],
+    deferred: workspaces.filter((workspace) => (
       workspace.id !== selectedWorkspaceId && !alreadyLoadedWorkspaceIds.has(workspace.id)
     )),
   };
@@ -215,23 +264,43 @@ export function isInternalSubtaskSession(session: RouteSession) {
   return Boolean(parentID && agent.trim() && agent !== "orchestrator");
 }
 
-export function isBlankDefaultSession(session: RouteSession) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isUnstartedSession(session: RouteSession) {
   const title = session.title?.trim() ?? "";
-  const hasDefaultTitle =
-    !title ||
-    title === DEFAULT_SESSION_TITLE ||
-    title === t("session.default_title") ||
-    title === "新建会话" ||
-    isGeneratedSessionTitle(title);
-  if (!hasDefaultTitle) return false;
+  const hasDefaultTitle = isDefaultSessionTitle(title);
+  const dsh = isRecord(session.dsh) ? session.dsh : null;
+  if (typeof dsh?.blank === "boolean") {
+    return dsh.blank && !isInternalSubtaskSession(session);
+  }
 
   const created = session.time?.created;
   const updated = session.time?.updated ?? created;
+  if (isRecord(session.codex)) {
+    return (
+      typeof created === "number" &&
+      typeof updated === "number" &&
+      created === updated &&
+      !isInternalSubtaskSession(session) &&
+      hasDefaultTitle
+    );
+  }
   return (
     typeof created === "number" &&
     typeof updated === "number" &&
     created === updated &&
-    !isInternalSubtaskSession(session)
+    !isInternalSubtaskSession(session) &&
+    (
+      hasDefaultTitle ||
+      !session.summary ||
+      (
+        typeof session.summary === "object" &&
+        !Array.isArray(session.summary) &&
+        Object.keys(session.summary).length === 0
+      )
+    )
   );
 }
 
@@ -243,10 +312,47 @@ export function userVisibleSessionsByWorkspaceId(
       workspaceId,
       sessions.filter((session) => (
         !isInternalSubtaskSession(session) &&
-        !isBlankDefaultSession(session)
+        !isUnstartedSession(session)
       )),
     ]),
   );
+}
+
+export function reconcilePendingCreatedSessions(
+  fetched: RouteSession[],
+  current: RouteSession[],
+  pending: Record<string, number>,
+  now = Date.now(),
+): { sessions: RouteSession[]; pending: Record<string, number> } {
+  const remaining = Object.fromEntries(
+    Object.entries(pending).filter(([, createdAt]) => now - createdAt <= 30_000),
+  );
+  const currentById = new Map(current.flatMap((session) => (
+    session.id ? [[session.id, session] as const] : []
+  )));
+  const fetchedIds = new Set(fetched.flatMap((session) => session.id ? [session.id] : []));
+  const mergedFetched = fetched.map((session) => {
+    const id = session.id;
+    const optimistic = id ? currentById.get(id) : undefined;
+    if (
+      id
+      && remaining[id] !== undefined
+      && optimistic
+      && isUnstartedSession(session)
+      && !isUnstartedSession(optimistic)
+    ) {
+      return optimistic;
+    }
+    if (id) delete remaining[id];
+    return session;
+  });
+  const preserved = current.filter((session) => (
+    Boolean(session.id && !fetchedIds.has(session.id) && remaining[session.id] !== undefined)
+  ));
+  return {
+    sessions: preserved.length > 0 ? [...preserved, ...mergedFetched] : mergedFetched,
+    pending: remaining,
+  };
 }
 
 export type TaskPaletteSessionOption = {
@@ -309,17 +415,18 @@ export function orderRouteWorkspaces(workspaces: RouteWorkspace[], orderIds: str
   for (const workspace of workspaces) {
     if (usedIds.has(workspace.id)) continue;
     ordered.push(workspace);
+    usedIds.add(workspace.id);
   }
 
   return ordered;
 }
 
-export function toSessionGroups(
+export function toProjectSessionLists(
   workspaces: RouteWorkspace[],
   sessionsByWorkspaceId: Record<string, RouteSession[]>,
   errorsByWorkspaceId: Record<string, string | null>,
   loadingWorkspaceIds: Set<string>,
-): WorkspaceSessionGroup[] {
+): ProjectSessionList[] {
   return workspaces.map((workspace) => ({
     workspace,
     sessions: sessionsByWorkspaceId[workspace.id] ?? [],
@@ -337,6 +444,5 @@ export function isActiveSessionStatus(status: unknown) {
 }
 
 export function getSessionStatus(session: RouteSession | null | undefined) {
-  const status = session?.status ?? session?.state ?? session?.runStatus ?? null;
-  return typeof status === "string" ? status : normalizeSessionStatus(status);
+  return readSessionRunStatus(session) ?? "idle";
 }

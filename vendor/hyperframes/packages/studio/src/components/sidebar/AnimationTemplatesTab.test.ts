@@ -1,14 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { compileMotionInstance, createMotionInstance } from "@hyperframes/core/motion-presets";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
   ANIMATION_TEMPLATES,
+  animationTemplateMatchesCategory,
   createAnimationTemplateSections,
   isAdvancedTextAnimationTemplate,
   resolveAnimationTemplateParameters,
   resolveAnimationTemplateApplication,
   resolveAnimationTemplatePreset,
+  resolveAppliedAnimationTemplate,
   sortTextAnimationTemplates,
 } from "./AnimationTemplatesTab";
+import { resolveMotionInstances } from "../editor/SemanticMotionPanel";
 
 const MIGRATED_TEMPLATES = [
   ["text-editorial-emphasis", "text.enter.editorial-emphasis"],
@@ -31,10 +36,117 @@ const MIGRATED_TEMPLATES = [
 ] as const;
 
 describe("AnimationTemplatesTab catalog", () => {
+  it("filters the Figma category controls without changing catalog ownership", () => {
+    const box = ANIMATION_TEMPLATES.find((template) => template.id === "box-scale");
+    const text = ANIMATION_TEMPLATES.find((template) => template.id === "text-typewriter");
+    const general = ANIMATION_TEMPLATES.find((template) => template.id === "general-fade-in");
+    if (!box || !text || !general) throw new Error("Expected animation templates are missing");
+
+    expect(animationTemplateMatchesCategory(box, "box-automation")).toBe(true);
+    expect(animationTemplateMatchesCategory(text, "text")).toBe(true);
+    expect(animationTemplateMatchesCategory(general, "box-automation")).toBe(false);
+    expect(animationTemplateMatchesCategory(general, "all")).toBe(true);
+  });
+
+  it("matches an applied card to its exact persisted template before using legacy fallback", () => {
+    const template = ANIMATION_TEMPLATES.find((candidate) => candidate.id === "general-fade-in");
+    if (!template) throw new Error("Expected animation template is missing");
+    const createAnimation = (templateId?: string): GsapAnimation => {
+      const instance = createMotionInstance({
+        presetId: "element.enter.fade",
+        templateId,
+        target: { selector: "#card", elementId: "card" },
+        targetKind: "element",
+        applicationKind: "general",
+        start: 0,
+      });
+      const compiled = compileMotionInstance(instance);
+      return {
+        id: templateId ?? "legacy-fade",
+        targetSelector: compiled.targetSelector,
+        method: "to",
+        position: compiled.position,
+        duration: compiled.duration,
+        properties: {},
+        extras: compiled.extras,
+      };
+    };
+
+    expect(
+      resolveAppliedAnimationTemplate(
+        template,
+        "element",
+        resolveMotionInstances([createAnimation("different-template")]),
+      ),
+    ).toBeNull();
+    expect(
+      resolveAppliedAnimationTemplate(
+        template,
+        "element",
+        resolveMotionInstances([createAnimation("general-fade-in")]),
+      )?.animation.id,
+    ).toBe("general-fade-in");
+    expect(
+      resolveAppliedAnimationTemplate(
+        template,
+        "element",
+        resolveMotionInstances([createAnimation()]),
+      )?.animation.id,
+    ).toBe("legacy-fade");
+  });
+
+  it("exposes stable hooks for grouped card states and the anchored editor", () => {
+    const source = readFileSync(new URL("./AnimationTemplatesTab.tsx", import.meta.url), "utf8");
+    const editor = readFileSync(
+      new URL("../editor/SemanticMotionPanel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('data-testid="animation-category-filter"');
+    expect(source).toContain('testId="animation-used-section"');
+    expect(source).toContain('testId="animation-unused-section"');
+    expect(source).toContain("data-state={state}");
+    expect(source).toContain('data-animation-action="apply"');
+    expect(source).toContain("disabled={loading || applyDisabled}");
+    expect(source).toContain("applyDisabled={!domEditSelection}");
+    expect(source).toContain('data-animation-action="edit"');
+    expect(source).toContain('data-animation-action="remove"');
+    expect(editor).toContain('data-testid="animation-editor-popover"');
+    expect(source).toContain(
+      'type AnimationMutationStatus = "applied" | "updated" | "removed" | "selection-required";',
+    );
+    expect(source).toContain('onStatus?.("selection-required")');
+    expect(source).toContain('targetKind ?? (template.category === "text" ? "text" : "element")');
+    expect(source).toContain(
+      "if (targetKind && !resolveAnimationTemplateApplication(template, targetKind)) return false;",
+    );
+    expect(source).not.toContain("!domEditSelection ? (");
+    expect(source).toContain('t("animation.selected", { label: domEditSelection.label })');
+    expect(source).toContain("usedTemplates.length === 0 ? (");
+    expect(source).toContain("renderCards(unusedTemplates)");
+  });
+
+  it("keeps hover and category styling inside the card without outlining Remove", () => {
+    const source = readFileSync(new URL("./AnimationTemplatesTab.tsx", import.meta.url), "utf8");
+    const styles = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
+    const removeAction = source.indexOf('data-animation-action="remove"');
+
+    expect(source).toContain("absolute inset-0 rounded-[8px] border-2 border-[#1FBAC0] opacity-0");
+    expect(source).toContain('data-testid="animation-card-hover-border"');
+    expect(source).toContain("hf-animation-category-filter");
+    expect(source).toContain('? "bg-black text-white');
+    expect(source).toContain(': "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:');
+    expect(styles).toContain(
+      '.hf-animation-category-filter[aria-pressed="true"] {\n  color: #ffffff !important;',
+    );
+    expect(removeAction).toBeGreaterThan(-1);
+    expect(source.slice(removeAction, removeAction + 350)).not.toContain("border border-[#5a6774]");
+  });
+
   it("shows one universal catalog and appends text animation for text selections", () => {
-    expect(ANIMATION_TEMPLATES).toHaveLength(43);
+    expect(ANIMATION_TEMPLATES).toHaveLength(51);
     expect(new Set(ANIMATION_TEMPLATES.map((template) => template.category))).toEqual(
-      new Set(["general", "text"]),
+      new Set(["general", "text", "camera", "transition"]),
     );
     expect(
       ANIMATION_TEMPLATES.filter((template) => template.id.startsWith("box-")).every(
@@ -109,7 +221,7 @@ describe("AnimationTemplatesTab catalog", () => {
   it("shows universal and box automation animations for non-text selections", () => {
     expect(
       createAnimationTemplateSections(ANIMATION_TEMPLATES, "element").map((section) => section.key),
-    ).toEqual(["general", "box-automation"]);
+    ).toEqual(["general", "box-automation", "camera", "transition"]);
   });
 
   it("runs every text preview through the real preset only while its card is hovered", () => {
@@ -121,6 +233,30 @@ describe("AnimationTemplatesTab catalog", () => {
     expect(source).toContain("onMouseEnter={() => setPreviewActive(true)}");
     expect(source).toContain("onMouseLeave={() => setPreviewActive(false)}");
     expect(source).toContain('contentVisibility: "auto"');
+  });
+
+  it("reuses semantic camera and transition presets instead of installing effect components", () => {
+    const spatial = ANIMATION_TEMPLATES.filter(
+      (template) => template.category === "camera" || template.category === "transition",
+    );
+    expect(spatial).toHaveLength(8);
+    for (const template of spatial) {
+      const application = resolveAnimationTemplateApplication(template, "element");
+      expect(application?.preset.id).toBe(template.presetId);
+      expect(application?.targetKind).toBe("element");
+      const instance = createMotionInstance({
+        presetId: template.presetId!,
+        target: { selector: "#world" },
+        targetKind: "element",
+        start: 0,
+      });
+      expect(compileMotionInstance(instance).keyframes.length).toBeGreaterThanOrEqual(2);
+    }
+    expect(
+      createAnimationTemplateSections(ANIMATION_TEMPLATES, "text").flatMap(
+        (section) => section.templates,
+      ),
+    ).not.toEqual(expect.arrayContaining(spatial));
   });
 
   it("resolves universal templates per target", () => {

@@ -19,7 +19,7 @@ const element: TimelineElement = {
 };
 
 const visualStyle = {
-  accent: "#20bbc0",
+  accent: "#1FBAC0",
   clip: "#f5f6f9",
   label: "#20262d",
 };
@@ -56,6 +56,7 @@ describe("TimelineLayerHeader", () => {
           expandable={false}
           theme={defaultTimelineTheme}
           visualStyle={visualStyle}
+          gutterWidth={255}
           onToggleHidden={vi.fn()}
           onToggleLocked={vi.fn()}
           onSelect={onSelect}
@@ -88,6 +89,7 @@ describe("TimelineLayerHeader", () => {
           expandable={false}
           theme={defaultTimelineTheme}
           visualStyle={visualStyle}
+          gutterWidth={255}
           onToggleHidden={onToggleHidden}
           onToggleLocked={vi.fn()}
           onSelect={vi.fn()}
@@ -100,5 +102,34 @@ describe("TimelineLayerHeader", () => {
     expect(eye?.getAttribute("aria-label")).toBe("Hide Opening title");
     await act(async () => eye?.click());
     expect(onToggleHidden).toHaveBeenCalledWith(true);
+  });
+
+  it("uses the full layer row as a selection target", async () => {
+    const onSelect = vi.fn();
+    await act(async () => {
+      root.render(
+        <TimelineLayerHeader
+          track={0}
+          elements={[element]}
+          hidden={false}
+          locked={false}
+          selected={false}
+          expanded={false}
+          expandable={false}
+          theme={defaultTimelineTheme}
+          visualStyle={visualStyle}
+          gutterWidth={320}
+          onToggleHidden={vi.fn()}
+          onToggleLocked={vi.fn()}
+          onSelect={onSelect}
+          onToggleExpanded={vi.fn()}
+        />,
+      );
+    });
+
+    const row = container.querySelector<HTMLElement>(".hf-timeline-layer-header");
+    expect(row?.style.width).toBe("320px");
+    await act(async () => row?.click());
+    expect(onSelect).toHaveBeenCalledWith(element);
   });
 });

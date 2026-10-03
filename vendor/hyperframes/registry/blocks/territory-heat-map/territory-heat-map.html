@@ -1,0 +1,267 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Demand intensity by territory","maxLength":72},{"id":"regions","label":"Regions","description":"Local region names and intensity values.","type":"string","default":"North:87,Harbor:76,Central:96,East:64,South:58,West:71,River:82,Hills:49","maxLength":1400},{"id":"highlight","label":"Highlight","type":"string","default":"Central","maxLength":40},{"id":"source","label":"Source","type":"string","default":"Illustrative demand index","maxLength":72}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920,height=1080" />
+    <title>Territory Heat Map</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      #th-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        padding: 94px 136px;
+        background: var(--ipw-color-bg, #f4f6f8);
+        color: var(--ipw-color-text, #15171a);
+        font-family: var(--ipw-font-display, Inter, sans-serif);
+      }
+      .th-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+      }
+      .th-kicker {
+        margin-bottom: 18px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 780 15px/1 var(--ipw-font-body, Inter, sans-serif);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .th-title {
+        margin: 0;
+        font-size: 72px;
+        line-height: 0.96;
+        letter-spacing: -0.055em;
+      }
+      .th-source {
+        color: var(--ipw-color-muted, #68717c);
+        font: 650 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .th-card {
+        position: absolute;
+        left: 136px;
+        right: 136px;
+        top: 272px;
+        bottom: 78px;
+        display: grid;
+        grid-template-columns: 1fr 280px;
+        gap: 38px;
+        padding: 38px;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: var(--ipw-card-radius, 32px);
+        background: var(--ipw-color-surface, #fff);
+        box-shadow: var(--ipw-card-shadow, 0 26px 70px rgba(20, 30, 40, 0.11));
+      }
+      .th-map {
+        width: 100%;
+        height: 100%;
+      }
+      .th-region {
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .th-shape {
+        fill: var(--ipw-color-primary, #20bbc0);
+        stroke: var(--ipw-color-surface, #fff);
+        stroke-width: 8;
+        stroke-linejoin: round;
+      }
+      .th-region.is-highlight .th-shape {
+        stroke: var(--ipw-color-text, #15171a);
+        stroke-width: 12;
+        filter: drop-shadow(0 12px 16px rgba(20, 30, 40, 0.16));
+      }
+      .th-region text {
+        fill: var(--ipw-color-text, #15171a);
+        font: 760 20px var(--ipw-font-body, Inter, sans-serif);
+        text-anchor: middle;
+        pointer-events: none;
+      }
+      .th-region .th-number {
+        font-size: 26px;
+        fill: var(--ipw-color-on-primary, #102f31);
+      }
+      .th-legend {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 20px;
+      }
+      .th-legend h2 {
+        margin: 0 0 28px;
+        font-size: 28px;
+        letter-spacing: -0.035em;
+      }
+      .th-scale {
+        height: 320px;
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        gap: 20px;
+      }
+      .th-gradient {
+        border-radius: 99px;
+        background: linear-gradient(
+          to top,
+          color-mix(in srgb, var(--ipw-color-primary, #20bbc0) 18%, var(--ipw-color-surface, #fff)),
+          var(--ipw-color-primary, #20bbc0)
+        );
+        transform-origin: bottom;
+      }
+      .th-labels {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        color: var(--ipw-color-muted, #68717c);
+        font: 700 15px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="th-root"
+      data-composition-id="territory-heat-map"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="7"
+    >
+      <header class="th-head">
+        <div>
+          <div class="th-kicker">Regional intensity</div>
+          <h1 class="th-title" data-ipw-variable="title" data-ipw-ai-slot="title"></h1>
+        </div>
+        <div class="th-source" data-ipw-variable="source" data-ipw-ai-slot="source"></div>
+      </header>
+      <section class="th-card" data-ipw-ai-slot="regions">
+        <svg class="th-map" viewBox="0 0 1240 650"></svg>
+        <aside class="th-legend">
+          <h2>Intensity index</h2>
+          <div class="th-scale">
+            <div class="th-gradient"></div>
+            <div class="th-labels"><span>High</span><span>Medium</span><span>Low</span></div>
+          </div>
+        </aside>
+      </section>
+      <span hidden data-ipw-ai-slot="highlight"></span>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        const root = document.getElementById("th-root"),
+          id = root.dataset.compositionId,
+          values = {
+            title: "Demand intensity by territory",
+            regions: "North:87,Harbor:76,Central:96,East:64,South:58,West:71,River:82,Hills:49",
+            highlight: "Central",
+            source: "Illustrative demand index",
+            ...(window.__hyperframes?.getVariables?.() ?? window.__hfVariablesByComp?.[id] ?? {}),
+          };
+        root.querySelectorAll("[data-ipw-variable]").forEach((el) => {
+          el.textContent = String(values[el.dataset.ipwVariable] ?? "");
+        });
+        const rows = String(values.regions)
+            .split(/[,|]/)
+            .map((part) => {
+              const split = part.lastIndexOf(":");
+              return split > 0
+                ? { label: part.slice(0, split).trim(), value: Number(part.slice(split + 1)) }
+                : null;
+            })
+            .filter((row) => row && Number.isFinite(row.value))
+            .slice(0, 8),
+          shapes = [
+            "80,70 380,40 440,220 250,275 50,210",
+            "390,45 700,80 680,270 440,220",
+            "710,85 1050,60 1160,245 930,300 680,270",
+            "60,220 250,280 300,485 70,540 20,385",
+            "250,280 455,225 660,315 590,540 300,485",
+            "680,275 930,305 1110,440 930,590 590,540 660,315",
+            "70,545 300,490 590,545 525,640 180,625",
+            "930,305 1160,250 1210,505 935,590 1110,440",
+          ],
+          svg = root.querySelector(".th-map"),
+          max = Math.max(...rows.map((row) => row.value), 1),
+          min = Math.min(...rows.map((row) => row.value), max);
+        rows.forEach((row, index) => {
+          const group = document.createElementNS("http://www.w3.org/2000/svg", "g"),
+            polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon"),
+            label = document.createElementNS("http://www.w3.org/2000/svg", "text"),
+            number = document.createElementNS("http://www.w3.org/2000/svg", "text"),
+            points = shapes[index],
+            pairs = points.split(" ").map((pair) => pair.split(",").map(Number)),
+            center = pairs.reduce(
+              (acc, pair) => ({
+                x: acc.x + pair[0] / pairs.length,
+                y: acc.y + pair[1] / pairs.length,
+              }),
+              { x: 0, y: 0 },
+            ),
+            intensity = 0.18 + 0.72 * ((row.value - min) / Math.max(1, max - min));
+          group.setAttribute(
+            "class",
+            "th-region" + (row.label === String(values.highlight) ? " is-highlight" : ""),
+          );
+          polygon.setAttribute("class", "th-shape");
+          polygon.setAttribute("points", points);
+          polygon.setAttribute("fill-opacity", String(intensity));
+          label.setAttribute("x", String(center.x));
+          label.setAttribute("y", String(center.y - 5));
+          label.textContent = row.label;
+          number.setAttribute("class", "th-number");
+          number.setAttribute("x", String(center.x));
+          number.setAttribute("y", String(center.y + 28));
+          number.textContent = String(Math.round(row.value));
+          group.append(polygon, label, number);
+          svg.append(group);
+        });
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          root.querySelectorAll(".th-head>*"),
+          { y: 24, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.45, stagger: 0.08, ease: "power3.out" },
+          0.05,
+        )
+          .fromTo(
+            root.querySelector(".th-card"),
+            { scale: 0.985, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0.16,
+          )
+          .fromTo(
+            root.querySelectorAll(".th-region"),
+            { scale: 0.86, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.45, stagger: 0.07, ease: "power3.out" },
+            0.35,
+          )
+          .fromTo(
+            root.querySelector(".th-gradient"),
+            { scaleY: 0 },
+            { scaleY: 1, duration: 0.7, ease: "power2.out" },
+            0.55,
+          )
+          .to(
+            root.querySelector(".th-region.is-highlight"),
+            { scale: 1.05, duration: 0.32, ease: "power2.out" },
+            1.05,
+          );
+        window.__timelines[id] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

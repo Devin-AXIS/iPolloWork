@@ -1,0 +1,42 @@
+<!-- word-relay-filmstrip -->
+<!doctype html>
+<html>
+<head><script type="application/json" data-composition-variables="[{&quot;id&quot;:&quot;prefix&quot;,&quot;label&quot;:&quot;prefix&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;团队&quot;,&quot;maxLength&quot;:4,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;words&quot;,&quot;label&quot;:&quot;words&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;观察|判断|行动&quot;,&quot;maxLength&quot;:17,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;mediaUrl&quot;,&quot;label&quot;:&quot;真实页面素材&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;assets/evidence.svg&quot;,&quot;maxLength&quot;:2000,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;motionCueTimes&quot;,&quot;label&quot;:&quot;实测语义时间&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;{}&quot;,&quot;maxLength&quot;:2048,&quot;update&quot;:&quot;reload&quot;}]"></script>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="shotcraft-word-relay-filmstrip"] { width: 1920px; height: 1080px; background: #faf8f3; position: relative; overflow: hidden; }
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-word-relay-filmstrip"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
+</head>
+<body>
+  <div data-ipw-source-ranges="[[0,1.033333,&quot;第一页进入并显示首词&quot;],[1.033333,2.6,&quot;胶片推进并接力第二个词&quot;],[2.6,4.2,&quot;第三个词接力并落定&quot;]]" data-composition-id="shotcraft-word-relay-filmstrip" data-start="0" data-duration="5.866666666666666" data-fps="30" data-width="1920" data-height="1080"><div class="sc-content" id="comp"></div>
+  </div><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script data-ipw-motion-recipe="1">
+(async function(){await document.fonts.ready;const host=document.querySelector('[data-composition-id="shotcraft-word-relay-filmstrip"]');const values={...{"prefix":"团队","words":"观察|判断|行动","mediaUrl":"assets/evidence.svg"},...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[host.dataset.compositionId]??{})};const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');const measure=(text,font)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=font;return ctx.measureText(text).width;};const media=new Image();media.src=String(values.mediaUrl);await media.decode();
+    window.__timelines = window.__timelines || {};
+    const CARD_W=940,CARD_H=530,GAP=105,STEP=CARD_H+GAP,SWITCHES=[14,62,108],SW_DUR=16,WORDS=String(values.words).split('|'),TOTAL=140;
+    const cardShell=(y,i)=>`<div style="position:absolute;top:${y}px;left:106px;width:${CARD_W}px;height:${CARD_H}px;border-radius:12px;overflow:hidden;box-shadow:0 12px 40px rgba(30,26,20,.14)"><img src="${escape(String(values.mediaUrl))}" style="width:100%;height:100%;object-fit:contain"></div>`;
+    const clamp=(f,a,b,va,vb)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));return va+(vb-va)*t;};
+    const smooth=x=>x*x*(3-2*x), inOutCubic=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
+      let stepF=0; SWITCHES.forEach(s=>{const p=clamp(frame,s,s+SW_DUR,0,1);stepF+=inOutCubic(p);});
+      const scroll=stepF*STEP, total=6*STEP; let cards='';
+      for(let rep=-1;rep<2;rep++)for(let i=0;i<6;i++){const y=275+i*STEP+rep*total-scroll;if(y>1200||y<-CARD_H-120)continue;cards+=cardShell(y,i);}
+      const wordNodes=WORDS.map((w,i)=>{const sIn=SWITCHES[i],sOut=i+1<SWITCHES.length?SWITCHES[i+1]:null;
+        const pIn=clamp(frame,sIn+7,sIn+SW_DUR,0,1); if(i===0?frame<sIn:pIn<=0)return '';
+        const pInEff=i===0?clamp(frame,sIn,sIn+12,0,1):pIn;
+        const grey=sOut?clamp(frame,sOut-14,sOut-2,0,1):0, pOut=sOut?clamp(frame,sOut,sOut+8,1,0):1;
+        const op=smooth(pInEff)*smooth(pOut); if(op<=0)return '';
+        const mix=smooth(grey), ch=Math.round(0x19+(0x9d-0x19)*mix);
+        return `<div style="position:absolute;right:0;top:0;font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;white-space:nowrap;color:rgb(${ch},${Math.round(0x19+(0x98-0x19)*mix)},${Math.round(0x19+(0x8e-0x19)*mix)});opacity:${op}">${escape(w)}</div>`;}).join('');
+      comp.innerHTML=cards+`<div style="position:absolute;right:210px;top:402px"><div style="font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;color:#191919">${escape(String(values.prefix))}</div><div style="position:relative;height:140px">${wordNodes}</div></div>`;
+    }},0);
+    window.__timelines['shotcraft-word-relay-filmstrip']=tl;
+  
+const motionStyle=JSON.parse(String(values.motionStyle??'{"durationFactor":1}'));
+const recipe={"version":1,"pattern":"kinetic-type","minHoldSeconds":0.7,"capacity":{"variable":"words","separator":"|","maxItems":3,"minItems":3,"fieldSeparator":"::","fieldsPerItem":1,"maxFieldLength":5},"textLimits":{"prefix":{"maxLines":1,"maxLineLength":4}},"usage":{"useWhen":["同一真实页面的胶片滚动与三个关联动词同步接力。"],"avoidWhen":["只支持同一素材反复经过，不宣称是三个不同页面；不使用假代码骨架。","文字动效不是图表或执行证明；不要为了使用特效改写事实。"],"inputRules":{"prefix":"提供真实prefix，最多1行，每行4字，不使用演示默认内容。","words":"恰好3项，用 | 分隔；每项最多5字，不能含 ::；按真实叙事顺序提供。","mediaUrl":"当前项目 assets/ 中已有的真实页面图片，必须与讲述内容对应。演示 SVG 仅用于测试，不是交付素材。"},"readingOrder":["建立共同主题","第一页进入并显示首词","胶片推进并接力第二个词","第三个词接力并落定","停留在完整可读的落定状态"],"cueBindings":{"phase-1":"绑定实测旁白或音乐中与“第一页进入并显示首词”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-2":"绑定实测旁白或音乐中与“胶片推进并接力第二个词”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-3":"绑定实测旁白或音乐中与“第三个词接力并落定”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"},"fallback":{"overflow":"按语义拆镜或换配方；禁止截断和缩到不可读。","missingInput":"补真实内容与素材；不要使用源码里的演示文案或模拟 UI。","timingMismatch":"按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。","inapplicable":"优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"},"example":{"values":{"prefix":"团队","words":"观察|判断|行动","mediaUrl":"assets/evidence.svg"},"narration":"团队。观察，判断，行动"},"acceptance":["各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。","真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。","实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。","不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"]},"events":[{"id":"phase-1","target":".sc-content *","time":0.65,"duration":1.033333,"action":"第一页进入并显示首词"},{"id":"phase-2","target":".sc-content *","time":1.6833330000000002,"duration":1.566667,"action":"胶片推进并接力第二个词"},{"id":"phase-3","target":".sc-content *","time":3.25,"duration":1.6,"action":"第三个词接力并落定"}]},ranges=[[0,1.033333,"第一页进入并显示首词"],[1.033333,2.6,"胶片推进并接力第二个词"],[2.6,4.2,"第三个词接力并落定"]],cues=JSON.parse(String(values.motionCueTimes??'{}')),native=window.__timelines[host.dataset.compositionId];host.__sourceTimeline=native;const stateClock={time:0};const clockEnd=Math.max(5.866666666666666,...recipe.events.map(event=>(cues[event.id]??event.time)+event.duration*motionStyle.durationFactor+4));const master=gsap.timeline({paused:true});const render=()=>{let sourceTime=0;for(let i=0;i<recipe.events.length;i++){const event=recipe.events[i],start=cues[event.id]??event.time,length=event.duration*motionStyle.durationFactor,[from,to]=ranges[i];if(stateClock.time<start)break;sourceTime=from+(to-from)*Math.min(1,(stateClock.time-start)/length);}native.render(Math.max(0.000001,sourceTime),false,true);host.dataset.ipwSourceTime=String(sourceTime);};master.to(stateClock,{time:clockEnd,duration:clockEnd,ease:'none',onUpdate:render},0);window.__timelines[host.dataset.compositionId]=master;render();})();
+</script>
+</body>
+</html>

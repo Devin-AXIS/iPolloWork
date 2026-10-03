@@ -20,19 +20,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [blacksmith-4vcpu-ubuntu-2204, macos-14]
+        os: [ubuntu-latest, macos-14]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
@@ -119,6 +119,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Provide bundled video codecs to tests
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { createRequire } from 'node:module';
+          import { appendFileSync } from 'node:fs';
+          import { dirname } from 'node:path';
+          const require = createRequire(new URL('./apps/desktop/package.json', `file://${process.cwd()}/`));
+          const ffmpeg = require('@ffmpeg-installer/ffmpeg').path;
+          const ffprobe = require('@ffprobe-installer/ffprobe').path;
+          appendFileSync(process.env.GITHUB_ENV, `HYPERFRAMES_FFMPEG_PATH=${ffmpeg}\nHYPERFRAMES_FFPROBE_PATH=${ffprobe}\n`);
+          appendFileSync(process.env.GITHUB_PATH, `${dirname(ffmpeg)}\n${dirname(ffprobe)}\n`);
+          NODE
+
       - name: Run app unit tests
         run: pnpm --filter @ipollowork/app test
 
@@ -126,7 +140,23 @@ jobs:
         run: pnpm --filter ipollowork-server test
 
       - name: Run desktop unit tests
-        run: pnpm --filter @ipollowork/desktop test
+        shell: bash
+        run: |
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            sandbox="$(node -e "const path=require('node:path');const electron=require('./apps/desktop/node_modules/electron');process.stdout.write(path.join(path.dirname(electron),'chrome-sandbox'))")"
+            sudo chown root:root "$sandbox"
+            sudo chmod 4755 "$sandbox"
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends openbox
+            xvfb-run -a bash -c '
+              openbox &
+              window_manager=$!
+              trap "kill $window_manager" EXIT
+              pnpm --filter @ipollowork/desktop test
+            '
+          else
+            pnpm --filter @ipollowork/desktop test
+          fi
 
       - name: Typecheck Electron main against the IPC contract
         run: pnpm --filter @ipollowork/desktop typecheck:electron

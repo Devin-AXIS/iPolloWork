@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "bullet-stack",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Bullet Stack",
+  "description": "A paced vertical list for arguments, takeaways and step-by-step narration.",
+  "tags": ["component", "typography", "list", "bullets", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "typography", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "items", "footer", "emphasis"], "instructions": "Separate list items with vertical bars, keep each item under ten words, and set emphasis to the one-based item number to feature." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 9,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "bullet-stack.html", "target": "compositions/bullet-stack.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Three moves that change the outcome", "maxLength": 72, "update": "live" },
+    { "id": "items", "label": "Items", "description": "Separate items with |", "type": "string", "default": "Name the real constraint|Make the signal visible|Choose the next action", "maxLength": 180, "update": "live" },
+    { "id": "footer", "label": "Footer", "type": "string", "default": "A practical decision stack", "maxLength": 56, "update": "live" },
+    { "id": "emphasis", "label": "Emphasized item", "type": "number", "default": 2, "min": 1, "max": 5, "step": 1, "update": "live" }
+  ]
+}

@@ -102,16 +102,24 @@ if (args.verbose) {
   logger.log("info", `Host token source: ${config.hostTokenSource}`);
 }
 
-const shutdown = () => {
-  void managedOpencode?.close();
-  (server as { stop?: (closeActiveConnections?: boolean) => void }).stop?.(true);
+let shuttingDown = false;
+const shutdown = async (exitCode: number) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    // startServer.stop owns every engine runtime. Await it before exiting so
+    // DSH children cannot survive a desktop/dev restart and contend for the
+    // same DSH_HOME on the next launch.
+    await server.stop();
+    await managedOpencode?.close();
+  } finally {
+    process.exit(exitCode);
+  }
 };
 
 process.once("SIGINT", () => {
-  shutdown();
-  process.exit(0);
+  void shutdown(0);
 });
 process.once("SIGTERM", () => {
-  shutdown();
-  process.exit(0);
+  void shutdown(0);
 });

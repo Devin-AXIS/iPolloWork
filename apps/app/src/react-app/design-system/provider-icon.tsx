@@ -29,6 +29,7 @@ export function ProviderIcon(props: ProviderIconProps) {
 
   const fallbackLetters = (() => {
     if (normalizedId === "openrouter") return "OR";
+    if (normalizedId === "orcarouter") return "OC";
     if (normalizedId === "deepseek") return "DS";
     if (normalizedId === "google") return "GO";
     if (normalizedId.length >= 2) return normalizedId.substring(0, 2).toUpperCase();
