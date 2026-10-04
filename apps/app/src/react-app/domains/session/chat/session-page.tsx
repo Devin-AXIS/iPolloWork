@@ -3829,13 +3829,14 @@ export function SessionPage(props: SessionPageProps) {
     sourceTabId?: string;
   }) => {
     const source = input.sourceTabId ? sessionPanelState.tabs.find(tab => tab.id === input.sourceTabId) : activePanelTab;
-    if (!props.selectedSessionId || (source?.type !== "workspace-app" && source?.type !== "plugin-studio" && source?.type !== "video")) return false;
+    if (!props.selectedSessionId || (source?.type !== "workspace-app" && source?.type !== "plugin-studio" && source?.type !== "video" && source?.type !== "browser")) return false;
     const context = source.type === "workspace-app"
       ? [
           workspaceAppCapabilityInstruction(source.label),
           input.modelContext ? `Current workbench context:\n${JSON.stringify(input.modelContext, null, 2)}` : null,
         ].filter(Boolean).join("\n\n")
       : source.type === "plugin-studio" ? pluginWorkshopSystemInstruction(source.pluginId)
+      : source.type === "browser" ? `Continue the current browser task on tab ${JSON.stringify(source.id)} in this conversation. Take a fresh semantic snapshot before any input, preserve the selected account and browser decision mode, and verify the actual result before reporting completion. The user has returned control; prior page references are expired.`
       : `Use the current video project video/${source.sessionId}/ and its saved STORYBOARD.md. The user approved this script and requested video production.`;
     useComposerStateStore.getState().appendQueuedDraft(props.selectedSessionId, {
       mode: "prompt",
@@ -3846,7 +3847,7 @@ export function SessionPage(props: SessionPageProps) {
       capability: {
         id: source.type === "workspace-app"
           ? `workspace-app:${source.surface.pluginId}:${source.surface.resource.id}`
-          : source.type === "plugin-studio" ? "plugin-workshop" : "video",
+          : source.type === "plugin-studio" ? "plugin-workshop" : source.type === "browser" ? "browser" : "video",
         instruction: context,
       },
     });

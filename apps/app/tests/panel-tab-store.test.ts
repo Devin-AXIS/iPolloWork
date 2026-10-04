@@ -54,12 +54,39 @@ describe("panel tab store", () => {
 
     expect(browserTabsForSession({ tabs: [first, second], activeTabId: second.id }, "session-1")).toEqual({
       tabs: [first],
-      activeTabId: first.id,
+      activeTabId: null,
     });
     expect(browserTabsForSession({ tabs: [first, second], activeTabId: second.id }, "session-2")).toEqual({
       tabs: [second],
       activeTabId: second.id,
     });
+  });
+
+  test("preserves the selected browser when another conversation owns the native active tab", () => {
+    const first = { ...browserTab, id: "browser:first", sessionId: "session-1" };
+    const selected = { ...first, id: "browser:selected" };
+    const foreign = { ...first, id: "browser:foreign", sessionId: "session-2" };
+    const store = usePanelTabStore.getState();
+    store.openTab("session-1", first);
+    store.openTab("session-1", selected);
+    const scoped = browserTabsForSession({ tabs: [first, selected, foreign], activeTabId: foreign.id }, "session-1");
+    store.syncBrowserTabs("session-1", scoped.tabs, scoped.activeTabId);
+    expect(usePanelTabStore.getState().sessions["session-1"].activeTabId).toBe(selected.id);
+  });
+
+  test("updates control, decision and verified progress without replacing the selected work surface", () => {
+    const store = usePanelTabStore.getState();
+    store.openTab("session-1", browserTab);
+    store.openTab("session-1", { id: "design:session-1:entry", type: "design", label: "Design", sessionId: "session-1" });
+    store.syncBrowserTabs("session-1", [{ ...browserTab, controller: "human", decisionEngine: "jev", activity: { status: "paused", actionCount: 1 } }], browserTab.id);
+    const first = usePanelTabStore.getState().sessions["session-1"];
+    expect(first.activeTabId).toBe("design:session-1:entry");
+    const paused = first.tabs.find(tab => tab.id === browserTab.id);
+    expect(paused?.type === "browser" && paused.controller).toBe("human");
+    store.syncBrowserTabs("session-1", [{ ...browserTab, controller: "agent", decisionEngine: "agent", activity: { status: "verified", actionCount: 2 } }], browserTab.id);
+    const verified = usePanelTabStore.getState().sessions["session-1"].tabs.find(tab => tab.id === browserTab.id);
+    expect(verified?.type === "browser" && verified.activity?.status).toBe("verified");
+    expect(verified?.type === "browser" && verified.decisionEngine).toBe("agent");
   });
 
   test("does not let background browser updates steal an existing work surface", () => {

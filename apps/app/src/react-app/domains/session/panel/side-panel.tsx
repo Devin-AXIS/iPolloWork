@@ -6,16 +6,19 @@ import {
   Code2,
   FileText,
   Globe,
+  Hand,
   Images,
   Loader2,
   Maximize2,
   Minimize2,
   PanelsTopLeft,
   Plus,
+  Play,
   RotateCw,
   SquarePlay,
   ToolCase,
   X,
+  Zap,
 } from "lucide-react";
 import { motion, useDragControls } from "motion/react";
 
@@ -332,6 +335,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
 type BrowserPanelContentProps = {
   tab: BrowserPanelTab;
   onClose: () => void;
+  onResume?: () => Promise<boolean>;
 };
 
 function browserAddressLabel(url: string) {
@@ -347,16 +351,57 @@ function browserAddressLabel(url: string) {
 function BrowserPanelContent({
   tab,
   onClose,
+  onResume,
 }: BrowserPanelContentProps) {
   const isAvailable = Boolean(getElectronBrowser());
   const [addressExpanded, setAddressExpanded] = React.useState(false);
   const [urlInput, setUrlInput] = React.useState(tab.url);
+  const [controlPending, setControlPending] = React.useState(false);
+  const [controlError, setControlError] = React.useState<string | null>(null);
   const urlFocusedRef = React.useRef(false);
   const contentRef = React.useRef<HTMLDivElement>(null);
   const urlInputRef = React.useRef<HTMLInputElement>(null);
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
   const lastBoundsRef = React.useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const humanControl = tab.controller === "human";
+  const activityLabels = {
+    idle: "side_panel.browser_background", acting: "side_panel.browser_acting",
+    executed: "side_panel.browser_executed", verified: "side_panel.browser_verified",
+    paused: "side_panel.browser_human_control", failed: "side_panel.browser_failed",
+  };
+  const activityLabel = humanControl ? "side_panel.browser_human_control" : activityLabels[tab.activity?.status ?? "idle"];
+  const decisionLabel = tab.decisionStatus === "ready" ? "side_panel.browser_jev_ready"
+    : tab.decisionStatus === "unavailable" ? "side_panel.browser_jev_unavailable" : "side_panel.browser_jev_pending";
+
+  const changeControl = async () => {
+    setControlPending(true);
+    setControlError(null);
+    try {
+      await getElectronBrowser()?.setControl?.(tab.id, humanControl ? "agent" : "human");
+      if (humanControl && onResume && !(await onResume())) {
+        await getElectronBrowser()?.setControl?.(tab.id, "human");
+        throw new Error(t("side_panel.browser_control_error"));
+      }
+    } catch (error) {
+      if (humanControl) await getElectronBrowser()?.setControl?.(tab.id, "human").catch(() => undefined);
+      setControlError(error instanceof Error ? error.message : t("side_panel.browser_control_error"));
+    } finally {
+      setControlPending(false);
+    }
+  };
+
+  const changeDecisionEngine = async (engine: "agent" | "jev") => {
+    setControlPending(true);
+    setControlError(null);
+    try {
+      await getElectronBrowser()?.setDecisionEngine?.(tab.id, engine);
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : t("side_panel.browser_control_error"));
+    } finally {
+      setControlPending(false);
+    }
+  };
 
   React.useEffect(() => {
     if (!urlFocusedRef.current) {
@@ -366,10 +411,7 @@ function BrowserPanelContent({
 
   React.useEffect(() => {
     setAddressExpanded(false);
-  }, [tab.id]);
-
-  React.useEffect(() => {
-    void getElectronBrowser()?.selectTab?.(tab.id);
+    setControlError(null);
   }, [tab.id]);
 
   const expandAddress = React.useCallback(() => {
@@ -615,6 +657,41 @@ function BrowserPanelContent({
                 <span className="truncate">{browserAddressLabel(tab.url)}</span>
               </Button>
             )}
+            <Tooltip>
+              <TooltipTrigger render={(
+                <Button
+                  variant={humanControl ? "secondary" : "ghost"}
+                  size="icon-sm"
+                  data-browser-control={humanControl ? "human" : "agent"}
+                  disabled={controlPending}
+                  onClick={() => void changeControl()}
+                  aria-label={t(humanControl ? "side_panel.browser_resume" : "side_panel.browser_takeover")}
+                >
+                  {controlPending ? <Loader2 className="animate-spin" /> : humanControl ? <Play /> : <Hand />}
+                </Button>
+              )} />
+              <TooltipContent>{t(humanControl ? "side_panel.browser_resume_hint" : "side_panel.browser_takeover_hint")}</TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={(
+                <Button variant="ghost" size="icon-sm" aria-label={t("side_panel.browser_decision")} data-browser-decision={tab.decisionEngine ?? "agent"}>
+                  <Zap className={tab.decisionEngine === "jev" ? "text-primary" : "text-muted-foreground"} />
+                </Button>
+              )} />
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t("side_panel.browser_decision")}</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem checked={tab.decisionEngine !== "jev"} disabled={controlPending} onCheckedChange={() => void changeDecisionEngine("agent")}>
+                    {t("side_panel.browser_agent_decision")}
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={tab.decisionEngine === "jev"} disabled={controlPending} onCheckedChange={() => void changeDecisionEngine("jev")}>
+                    {t("side_panel.browser_jev_decision")}
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <p className="px-2 py-1.5 text-xs leading-5 text-muted-foreground">{t("side_panel.browser_jev_hint")}</p>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={(
@@ -660,6 +737,15 @@ function BrowserPanelContent({
           <X />
         </Button>
       </div>
+      {isAvailable && (tab.sessionId || controlError) ? (
+        <div className="flex min-h-7 items-center gap-2 border-b px-3 py-1 text-xs text-muted-foreground" aria-live="polite" data-browser-activity={tab.activity?.status ?? "idle"}>
+          {tab.activity?.status === "acting" ? <Loader2 className="size-3 animate-spin" /> : null}
+          <span className={controlError ? "text-destructive" : undefined}>
+            {controlError ?? t(activityLabel)}
+          </span>
+          {tab.decisionEngine === "jev" ? <span className="ml-auto shrink-0" data-browser-decision-status={tab.decisionStatus ?? "pending"}>{t(decisionLabel)}</span> : null}
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {isAvailable ? <div ref={contentRef} className="h-full overflow-hidden" /> : null}
       </div>
@@ -971,7 +1057,6 @@ export function SidePanel({
         {activeTab?.type === "video" ? (
           <VideoPanel
             conversationId={sessionId}
-            key={activeTab.id}
             title={activeTab.label}
             sessionId={activeTab.sessionId}
             onGenerateVideo={onSendWorkspaceAppMessage ? async () => {
@@ -995,7 +1080,19 @@ export function SidePanel({
             onSaveAsTemplate={onSaveAsTemplate}
           />
         ) : activeTab?.type === "browser" ? (
-          <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
+          <BrowserPanelContent
+            key={activeTab.id}
+            tab={activeTab}
+            onClose={() => closeTab(activeTab)}
+            onResume={onSendWorkspaceAppMessage ? async () => {
+              const result = await onSendWorkspaceAppMessage({
+                text: t("side_panel.browser_resume_prompt"),
+                modelContext: null,
+                sourceTabId: activeTab.id,
+              });
+              return typeof result === "boolean" ? result : result.accepted;
+            } : undefined}
+          />
         ) : activeTab?.type === "plugin-studio" && client && workspaceId ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <PluginWorkshopPanel

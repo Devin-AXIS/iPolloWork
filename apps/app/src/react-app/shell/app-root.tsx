@@ -40,7 +40,10 @@ import { ShellConfigProvider } from "./shell-config";
 
 
 function BrowserControlActions() {
-  function controlObjectArg(args: unknown) { return args && typeof args === "object" && !Array.isArray(args) ? args : null; }
+  function controlObjectArg(args: unknown): Record<string, unknown> | null {
+    if (!args || typeof args !== "object" || Array.isArray(args)) return null;
+    return Object.fromEntries(Object.entries(args));
+  }
   function controlStringArg(args: unknown, key: string) { const object = controlObjectArg(args); const value = object ? Reflect.get(object, key) : null; return typeof value === "string" ? value.trim() : ""; }
   const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.open_url",
@@ -52,6 +55,7 @@ function BrowserControlActions() {
       { name: "url", type: "string", required: true, description: "The website URL to open." },
       { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
       { name: "taskId", type: "string", required: false, description: "Host-owned task scope for an isolated tab that shares the selected profile login." },
+      { name: "background", type: "boolean", description: "Keep the user's selected page and window focus unchanged." },
       { name: "loginUi", type: "object", required: false, description: "Host-owned plugin login UI policy." },
       { name: "sessionRecovery", type: "object", required: false, description: "Host-owned plugin session recovery policy." },
     ],
@@ -63,6 +67,8 @@ function BrowserControlActions() {
       const profileId = controlStringArg(args, "profileId");
       const taskId = controlStringArg(args, "taskId");
       const object = controlObjectArg(args);
+      const background = object ? Reflect.get(object, "background") : undefined;
+      if (background !== undefined && typeof background !== "boolean") return { ok: false, error: "Invalid background option." };
       const rawLoginUi = object ? controlObjectArg(Reflect.get(object, "loginUi")) : null;
       const loginOrigin = controlStringArg(rawLoginUi, "origin");
       const loginPath = controlStringArg(rawLoginUi, "path");
@@ -83,9 +89,10 @@ function BrowserControlActions() {
         || !Array.isArray(rawCookieNames) || cookieNames.length !== rawCookieNames.length)) {
         return { ok: false, error: "Invalid browser session recovery policy." };
       }
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId || taskId || rawLoginUi || rawRecovery ? {
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId || taskId || rawLoginUi || rawRecovery || background !== undefined ? {
         ...(profileId ? { profileId } : {}),
         ...(taskId ? { taskId } : {}),
+        ...(typeof background === "boolean" ? { background } : {}),
         ...(rawLoginUi ? { loginUi: {
           origin: loginOrigin,
           path: loginPath,
@@ -103,6 +110,41 @@ function BrowserControlActions() {
     },
   }), []);
   useControlAction(openBrowserUrlControlAction);
+  const listBrowserTabsControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.list_tabs",
+    label: "List task browser pages",
+    sideEffect: "none",
+    disabled: !isElectronRuntime(),
+    args: [{ name: "taskId", type: "string", description: "Host-injected task scope." }],
+    execute: async (args) => {
+      const taskId = controlStringArg(args, "taskId");
+      const listTabs = window.__IPOLLOWORK_ELECTRON__?.browser?.listTabs;
+      if (!listTabs) return { ok: false, error: "Built-in browser runtime is not available." };
+      const tabs = await listTabs();
+      return { ok: true, tabs: taskId ? tabs.filter(tab => tab.sessionId === taskId) : tabs };
+    },
+  }), []);
+  useControlAction(listBrowserTabsControlAction);
+  const reportBrowserDecisionAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.report_decision",
+    label: "Report optional browser decision availability",
+    sideEffect: "none",
+    requiresArgs: true,
+    disabled: !isElectronRuntime(),
+    args: [
+      { name: "tabId", type: "string", required: true },
+      { name: "taskId", type: "string" },
+      { name: "status", type: "string", required: true },
+    ],
+    execute: async args => {
+      const status = controlStringArg(args, "status");
+      if (status !== "ready" && status !== "unavailable") return { ok: false, error: "Invalid decision status." };
+      return window.__IPOLLOWORK_ELECTRON__?.browser?.reportDecision?.({
+        tabId: controlStringArg(args, "tabId"), taskId: controlStringArg(args, "taskId") || undefined, status,
+      });
+    },
+  }), []);
+  useControlAction(reportBrowserDecisionAction);
   const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.snapshot",
     label: "Read built-in browser page",
@@ -110,6 +152,7 @@ function BrowserControlActions() {
     sideEffect: "none",
     requiresArgs: true,
     args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
       { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
       { name: "mode", type: "string", description: "mixed, interactive, or content." },
       { name: "scopeRef", type: "string", description: "Optional ref from the previous snapshot whose subtree should be read." },
@@ -127,6 +170,7 @@ function BrowserControlActions() {
       if (mode !== "" && mode !== "content" && mode !== "interactive" && mode !== "mixed") return { ok: false, error: "Invalid snapshot mode." };
       return snapshot({
         tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
         mode: mode || undefined,
         ...(scopeRef ? { scopeRef } : {}),
         ...(object && Reflect.get(object, "delta") === true ? { delta: true } : {}),
@@ -141,6 +185,7 @@ function BrowserControlActions() {
     sideEffect: "none",
     requiresArgs: true,
     args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
       { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
       { name: "mode", type: "string", description: "page, article, links, tables, or forms." },
       { name: "maxChars", type: "number", description: "Maximum returned content characters." },
@@ -158,6 +203,7 @@ function BrowserControlActions() {
       if (rawMaxChars !== undefined && (typeof rawMaxChars !== "number" || !Number.isFinite(rawMaxChars) || rawMaxChars <= 0)) return { ok: false, error: "Invalid maxChars." };
       return read({
         tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
         mode: mode || undefined,
         ...(typeof rawMaxChars === "number" ? { maxChars: rawMaxChars } : {}),
       });
@@ -171,6 +217,7 @@ function BrowserControlActions() {
     sideEffect: "none",
     requiresArgs: true,
     args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
       { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
       { name: "snapshotId", type: "string", description: "Latest snapshot ID, required for ref or annotated captures." },
       { name: "target", type: "string", description: "viewport, region, or ref." },
@@ -206,6 +253,7 @@ function BrowserControlActions() {
       if (target === "region" && !region) return { ok: false, error: "Missing screenshot region." };
       return screenshot({
         tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
         ...(controlStringArg(args, "snapshotId") ? { snapshotId: controlStringArg(args, "snapshotId") } : {}),
         target: target || undefined,
         ...(controlStringArg(args, "ref") ? { ref: controlStringArg(args, "ref") } : {}),
@@ -223,11 +271,13 @@ function BrowserControlActions() {
     sideEffect: "mutation",
     requiresArgs: true,
     args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
       { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
       { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
       { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
       { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
       { name: "observe", type: "object", description: "Optional compact semantic observation returned after the action batch." },
+      { name: "expect", type: "object", description: "Text or URL postcondition checked before reporting verified." },
     ],
     disabled: !isElectronRuntime(),
     execute: async (args) => {
@@ -236,6 +286,7 @@ function BrowserControlActions() {
       const snapshotId = controlStringArg(args, "snapshotId");
       const actions = object ? Reflect.get(object, "actions") : null;
       const observe = object ? Reflect.get(object, "observe") : null;
+      const expect = object ? controlObjectArg(Reflect.get(object, "expect")) : null;
       if (!tabId || !snapshotId || !Array.isArray(actions)) {
         return { ok: false, error: "tabId, snapshotId, and actions are required." };
       }
@@ -243,12 +294,14 @@ function BrowserControlActions() {
       if (!act) return { ok: false, error: "Built-in browser runtime is not available." };
       return act({
         tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
         snapshotId,
         workspaceRoot: controlStringArg(args, "workspaceRoot") || undefined,
         actions: actions.filter((action): action is Record<string, unknown> => (
           Boolean(action) && typeof action === "object" && !Array.isArray(action)
         )),
         ...(observe && typeof observe === "object" && !Array.isArray(observe) ? { observe } : {}),
+        ...(expect ? { expect } : {}),
       });
     },
   }), []);

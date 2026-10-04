@@ -277,6 +277,9 @@ export function IPolloWorkControlProvider({ children }: { children: ReactNode })
   }, []);
 
   const executeAction = useCallback((actionId: string, args?: unknown): Promise<iPolloWorkControlResult> => {
+    const browserAction = actionId.startsWith("browser.");
+    const tabId = browserAction && args && typeof args === "object" && "tabId" in args
+      && typeof args.tabId === "string" ? args.tabId : "catalog";
     return actionQueueRef.current.run(async () => {
       const registered = actionsRef.current.get(actionId);
       const action = registered?.ref.current;
@@ -286,6 +289,18 @@ export function IPolloWorkControlProvider({ children }: { children: ReactNode })
       if (action.requiresConfirmation && isBrowser()) {
         const confirmed = window.confirm(`Allow Control Mode to ${action.label}?`);
         if (!confirmed) return { ok: false, actionId, error: "User cancelled action." };
+      }
+
+      // Browser tasks own their page and input. They do not animate or focus
+      // the app control surface, and unrelated tabs can run concurrently.
+      if (browserAction) {
+        try {
+          const result = await action.execute(args === undefined ? action.previewArgs : args, { setNarration: () => {} });
+          const error = returnedActionError(result);
+          return error ? { ok: false, actionId, error } : { ok: true, actionId, result };
+        } catch (error) {
+          return { ok: false, actionId, error: describeError(error) };
+        }
       }
 
       const runId = spotlightRunRef.current + 1;
@@ -325,7 +340,7 @@ export function IPolloWorkControlProvider({ children }: { children: ReactNode })
         if (busyActionIdRef.current === action.id) busyActionIdRef.current = null;
         setBusyActionId(null);
       }
-    });
+    }, browserAction ? `browser:${tabId}` : "ui");
   }, [playTargetChoreography, setEnabled]);
 
   const value = useMemo<iPolloWorkControlContextValue>(() => ({

@@ -9,6 +9,10 @@ export type {
   AppBuildInfo,
   BrandIconApplyResult,
   BrandIconState,
+  BrowserActivity,
+  BrowserController,
+  BrowserDecisionEngine,
+  BrowserPanelTab,
   CacheResetResult,
   DesktopBootstrapConfig,
   DesktopCommandArgs,
@@ -48,19 +52,3 @@ export type {
 // Canonical wire shape shared with ipollowork-server and the desktop bridge.
 // Single source of truth: packages/types/src/workspace.ts.
 export type WorkspaceInfo = WorkspaceWire;
-
-// Browser tab state mirrored across the desktop IPC bridge. Owned here (the
-// framework-agnostic layer); the session panel store re-exports it.
-export type BrowserPanelTab = {
-  id: string;
-  type: "browser";
-  label: string;
-  url: string;
-  /** Conversation that owns the tab UI. Account state remains profile-scoped. */
-  sessionId?: string | null;
-  profileId?: string | null;
-  favicon: string | null;
-  status: "loading" | "ready";
-  canGoBack: boolean;
-  canGoForward: boolean;
-};

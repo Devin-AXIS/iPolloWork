@@ -450,6 +450,7 @@ export function createBrowserRuntime({
   focusWindow,
   listLocalWorkspaces,
   getUserDataPath,
+  onActivity,
   platform = process.platform,
 }) {
   const tabStates = new Map();
@@ -503,13 +504,20 @@ export function createBrowserRuntime({
     ]);
   }
 
-  function resolveTab(rawTabId) {
+  function resolveTab(rawTabId, taskId) {
     const tabId = typeof rawTabId === "string" ? rawTabId.trim() : "";
     const tab = getTab?.(tabId);
     if (!tab || tab.view?.webContents?.isDestroyed?.()) {
       throw new Error("Unknown or closed built-in browser tab.");
     }
+    if (taskId && tab.taskId !== taskId) throw new Error("Browser tab belongs to another task.");
     return tab;
+  }
+
+  function assertAgentControl(tab, epoch = stateFor(tab.tabId).activeControlEpoch) {
+    if (tab.controller === "human" || (epoch !== undefined && epoch !== (tab.controlEpoch ?? 0))) {
+      throw new Error("Browser is under user control. Wait until the user returns control, then take a fresh snapshot.");
+    }
   }
 
   function enqueue(tabId, job) {
@@ -769,7 +777,7 @@ export function createBrowserRuntime({
   }
 
   async function snapshot(payload = {}) {
-    const tab = resolveTab(payload.tabId);
+    const tab = resolveTab(payload.tabId, payload.taskId);
     return withDebugger(tab, (debuggerApi) => captureSnapshot(tab, debuggerApi, payload));
   }
 
@@ -807,7 +815,7 @@ export function createBrowserRuntime({
   }
 
   async function read(payload = {}) {
-    const tab = resolveTab(payload.tabId);
+    const tab = resolveTab(payload.tabId, payload.taskId);
     const mode = payload.mode === undefined ? "page" : String(payload.mode);
     if (!READ_MODES.has(mode)) throw new Error("Browser read mode must be article, forms, links, page, or tables.");
     const maxChars = payload.maxChars === undefined ? MAX_READ_TEXT : Number(payload.maxChars);
@@ -852,7 +860,7 @@ export function createBrowserRuntime({
   }
 
   async function screenshot(payload = {}) {
-    const tab = resolveTab(payload.tabId);
+    const tab = resolveTab(payload.tabId, payload.taskId);
     const target = payload.target === undefined ? "viewport" : String(payload.target);
     if (!["ref", "region", "viewport"].includes(target)) {
       throw new Error("Browser screenshot target must be viewport, region, or ref.");
@@ -1000,20 +1008,28 @@ export function createBrowserRuntime({
   }
 
   function focusBrowserTarget(tab) {
+    assertAgentControl(tab);
+    if (tab.background) return;
     focusWindow?.();
     selectTab?.(tab.tabId);
     tab.view.webContents.focus();
   }
 
-  function sendPointerClick(tab, metadata) {
+  async function sendPointerClick(tab, metadata, debuggerApi) {
     focusBrowserTarget(tab);
     const point = { x: Math.round(metadata.x), y: Math.round(metadata.y) };
+    if (tab.background) {
+      await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+      await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
+      await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
+      return;
+    }
     tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
     tab.view.webContents.sendInputEvent({ type: "mouseDown", ...point, button: "left", clickCount: 1 });
     tab.view.webContents.sendInputEvent({ type: "mouseUp", ...point, button: "left", clickCount: 1 });
   }
 
-  async function interceptFileChooser(debuggerApi, trigger) {
+  async function interceptFileChooser(debuggerApi, trigger, cleanupDebuggerApi) {
     let chooser = null;
     const onMessage = (_event, method, params) => {
       if (method === "Page.fileChooserOpened") chooser = params;
@@ -1026,7 +1042,7 @@ export function createBrowserRuntime({
       if (!chooser) await new Promise((resolve) => setTimeout(resolve, FILE_CHOOSER_EVENT_MS));
       return chooser;
     } finally {
-      await debuggerCommand(debuggerApi, "Page.setInterceptFileChooserDialog", { enabled: false }).catch(() => {});
+      await debuggerCommand(cleanupDebuggerApi, "Page.setInterceptFileChooserDialog", { enabled: false }).catch(() => {});
       debuggerApi.removeListener("message", onMessage);
     }
   }
@@ -1055,6 +1071,16 @@ export function createBrowserRuntime({
     }
   }
 
+  async function waitWithControl(tab, durationMs) {
+    const until = Date.now() + durationMs;
+    while (true) {
+      assertAgentControl(tab);
+      const remaining = until - Date.now();
+      if (remaining <= 0) return;
+      await new Promise(resolve => setTimeout(resolve, Math.min(WAIT_POLL_MS, remaining)));
+    }
+  }
+
   async function performStructuredWait({ action, debuggerApi, state, tab }) {
     const timeoutMs = action.timeoutMs === undefined ? DEFAULT_WAIT_FOR_MS : Number(action.timeoutMs);
     if (!Number.isInteger(timeoutMs) || timeoutMs < WAIT_POLL_MS || timeoutMs > MAX_WAIT_FOR_MS) {
@@ -1067,6 +1093,7 @@ export function createBrowserRuntime({
       const match = action.match === "contains" ? "contains" : "equals";
       if (!value || value.length > 2_048) throw new Error("Browser waitFor URL requires a bounded non-empty value.");
       elapsedMs = await waitUntil(() => {
+        assertAgentControl(tab);
         const currentUrl = tab.view.webContents.getURL();
         return match === "contains" ? currentUrl.includes(value) : currentUrl === value;
       }, timeoutMs, `URL to ${match} ${value}`);
@@ -1074,20 +1101,25 @@ export function createBrowserRuntime({
       const value = typeof action.value === "string" ? normalizeText(action.value) : "";
       if (!value || value.length > 500) throw new Error("Browser waitFor text requires a bounded non-empty value.");
       const expected = value.toLocaleLowerCase();
+      const match = action.match === "equals" ? "equals" : "contains";
       elapsedMs = await waitUntil(async () => {
+        assertAgentControl(tab);
         const trees = await readAccessibilityTrees(debuggerApi).catch(() => []);
         return trees.some((tree) => tree.nodes.some((node) => {
           if (node?.ignored) return false;
           const name = normalizeText(axValue(node.name));
           const protectedValue = axProperty(node, "protected") === true;
           const currentValue = protectedValue ? "" : normalizeText(axValue(node.value));
-          return `${name} ${currentValue}`.toLocaleLowerCase().includes(expected);
+          return [name, currentValue].some(text => match === "equals"
+            ? text.toLocaleLowerCase() === expected
+            : text.toLocaleLowerCase().includes(expected));
         }));
       }, timeoutMs, `accessible text ${value}`);
     } else if (condition === "ref") {
       const { ref, entry } = requireRef(state, action);
       const requestedState = action.state === "visible" ? "visible" : "attached";
       elapsedMs = await waitUntil(async () => {
+        assertAgentControl(tab);
         try {
           await currentAccessibleEntry(debuggerApi, entry);
           if (requestedState === "attached") return true;
@@ -1101,6 +1133,7 @@ export function createBrowserRuntime({
     } else if (condition === "load") {
       const requestedState = action.state === "interactive" ? "interactive" : "complete";
       elapsedMs = await waitUntil(async () => {
+        assertAgentControl(tab);
         const response = await debuggerCommand(debuggerApi, "Runtime.evaluate", {
           expression: "document.readyState",
           returnByValue: true,
@@ -1197,7 +1230,7 @@ export function createBrowserRuntime({
       if (!Number.isInteger(durationMs) || durationMs < 0 || durationMs > MAX_WAIT_MS) {
         throw new Error(`Browser wait must be between 0 and ${MAX_WAIT_MS} ms.`);
       }
-      await new Promise((resolve) => setTimeout(resolve, durationMs));
+      await waitWithControl(tab, durationMs);
       return { type: "wait", durationMs };
     }
     if (action.type === "waitFor") {
@@ -1246,7 +1279,7 @@ export function createBrowserRuntime({
           code,
           windowsVirtualKeyCode,
         });
-      });
+      }, tab.view.webContents.debugger);
       if (chooser) return fileChooserResult(state, chooser);
       state.latestSnapshotId = null;
       return { type: "press", key, ref, name: current.name };
@@ -1265,13 +1298,16 @@ export function createBrowserRuntime({
         y: Math.max(1, Math.round(Number(bounds.height || 600) / 2)),
       };
       const signedDistance = direction === "up" || direction === "left" ? -distance : distance;
-      tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
-      tab.view.webContents.sendInputEvent({
-        type: "mouseWheel",
+      const wheel = {
         ...point,
         deltaX: direction === "left" || direction === "right" ? signedDistance : 0,
         deltaY: direction === "up" || direction === "down" ? signedDistance : 0,
-      });
+      };
+      if (tab.background) await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mouseWheel", ...wheel });
+      else {
+        tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
+        tab.view.webContents.sendInputEvent({ type: "mouseWheel", ...wheel });
+      }
       state.latestSnapshotId = null;
       return { type: "scroll", direction, amount };
     }
@@ -1294,7 +1330,7 @@ export function createBrowserRuntime({
       let backendNodeId = entry.backendNodeId;
       try {
         if (!metadata?.fileInput) {
-          const chooser = await interceptFileChooser(debuggerApi, () => sendPointerClick(tab, metadata));
+          const chooser = await interceptFileChooser(debuggerApi, () => sendPointerClick(tab, metadata, debuggerApi), tab.view.webContents.debugger);
           backendNodeId = Number(chooser?.backendNodeId);
           if (!Number.isInteger(backendNodeId) || backendNodeId <= 0) {
             throw new Error("Upload control did not expose a file input. Take a new snapshot and upload through its file-input ref.");
@@ -1339,7 +1375,7 @@ export function createBrowserRuntime({
       if (!metadata.buttonLike || !metadata.unobstructed) {
         throw new Error("Browser click target is not an unobstructed interactive control.");
       }
-      const chooser = await interceptFileChooser(debuggerApi, () => sendPointerClick(tab, metadata));
+      const chooser = await interceptFileChooser(debuggerApi, () => sendPointerClick(tab, metadata, debuggerApi), tab.view.webContents.debugger);
       if (chooser) return fileChooserResult(state, chooser);
       state.latestSnapshotId = null;
       return { type: "click", ref, name: current.name };
@@ -1353,7 +1389,13 @@ export function createBrowserRuntime({
       if (value.length > MAX_FILL_TEXT) throw new Error("Browser fill text is too long.");
       focusBrowserTarget(tab);
       await debuggerCommand(debuggerApi, "DOM.focus", { backendNodeId: entry.backendNodeId });
-      tab.view.webContents.selectAll();
+      assertAgentControl(tab);
+      if (tab.background) {
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: platform === "darwin" ? 4 : 2, commands: ["selectAll"] });
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA" });
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+      } else tab.view.webContents.selectAll();
       await debuggerCommand(debuggerApi, "Input.insertText", { text: value });
       return { type: "fill", ref, characters: Array.from(value).length };
     }
@@ -1362,11 +1404,9 @@ export function createBrowserRuntime({
       requireExpectedName(action, current, "hover");
       if (!metadata.unobstructed) throw new Error("Browser hover target is obstructed.");
       focusBrowserTarget(tab);
-      tab.view.webContents.sendInputEvent({
-        type: "mouseMove",
-        x: Math.round(metadata.x),
-        y: Math.round(metadata.y),
-      });
+      const point = { x: Math.round(metadata.x), y: Math.round(metadata.y) };
+      if (tab.background) await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+      else tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
       state.latestSnapshotId = null;
       return { type: "hover", ref, name: current.name };
     }
@@ -1415,7 +1455,7 @@ export function createBrowserRuntime({
         return { type: "check", ref, name: current.name, checked, changed: false };
       }
       if (!metadata.unobstructed) throw new Error("Browser check target is obstructed.");
-      sendPointerClick(tab, metadata);
+      await sendPointerClick(tab, metadata, debuggerApi);
       state.latestSnapshotId = null;
       return { type: "check", ref, name: current.name, checked, changed: true };
     }
@@ -1425,12 +1465,15 @@ export function createBrowserRuntime({
 
   async function act(payload = {}) {
     const startedAt = Date.now();
-    const tab = resolveTab(payload.tabId);
+    const tab = resolveTab(payload.tabId, payload.taskId);
+    const controlEpoch = tab.controlEpoch ?? 0;
+    assertAgentControl(tab, controlEpoch);
     const actions = Array.isArray(payload.actions) ? payload.actions : [];
     if (actions.length === 0 || actions.length > MAX_ACTIONS) {
       throw new Error(`Browser act requires 1-${MAX_ACTIONS} actions.`);
     }
-    const totalWait = actions.reduce((sum, action) => {
+    if (payload.expect && !["text", "url"].includes(payload.expect.condition)) throw new Error("Browser verification requires a text or URL postcondition.");
+    const totalWait = (payload.expect ? Number(payload.expect.timeoutMs ?? DEFAULT_WAIT_FOR_MS) : 0) + actions.reduce((sum, action) => {
       if (action?.type === "wait") return sum + Number(action.durationMs || 0);
       if (action?.type === "waitFor") {
         return sum + (action.timeoutMs === undefined ? DEFAULT_WAIT_FOR_MS : Number(action.timeoutMs));
@@ -1449,7 +1492,15 @@ export function createBrowserRuntime({
         throw new Error(`Browser observation settleMs must be between 0 and ${MAX_OBSERVATION_SETTLE_MS}.`);
       }
     }
-    return withDebugger(tab, async (debuggerApi) => {
+    return withDebugger(tab, async (baseDebuggerApi) => {
+      assertAgentControl(tab, controlEpoch);
+      const debuggerApi = new Proxy(baseDebuggerApi, {
+        get(target, property) {
+          if (property === "sendCommand") return (...args) => { assertAgentControl(tab, controlEpoch); return target.sendCommand(...args); };
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
       const state = stateFor(tab.tabId);
       const snapshotId = typeof payload.snapshotId === "string" ? payload.snapshotId.trim() : "";
       if (!snapshotId || snapshotId !== state.latestSnapshotId || state.url !== tab.view.webContents.getURL()) {
@@ -1457,11 +1508,24 @@ export function createBrowserRuntime({
       }
       // Windows may deny foreground focus to a scheduled background task. Keep
       // Chromium input active for this bounded batch, then release it again.
-      await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: true });
+      state.activeControlEpoch = controlEpoch;
       try {
+        await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: true });
         const results = [];
-        for (const action of actions) {
-          if (!action || typeof action !== "object") throw new Error("Browser actions must be objects.");
+        onActivity?.(tab, { status: "acting", actionCount: 0 });
+        for (const [index, requestedAction] of actions.entries()) {
+          assertAgentControl(tab, controlEpoch);
+          if (!requestedAction || typeof requestedAction !== "object") throw new Error("Browser actions must be objects.");
+          let action = requestedAction;
+          if (requestedAction.target) {
+            const { role, name } = requestedAction.target;
+            if (typeof role !== "string" || typeof name !== "string" || !name.trim() || name.length > MAX_EXPECTED_NAME) throw new Error("Browser target requires a bounded exact role and name.");
+            if (requestedAction.expectedName && requestedAction.expectedName !== name) throw new Error("Browser target and expectedName must match.");
+            await captureSnapshot(tab, debuggerApi, { mode: "interactive" });
+            const matches = [...state.refs].filter(([, entry]) => entry.role === role && normalizeText(entry.name) === normalizeText(name));
+            if (matches.length !== 1) throw new Error("Browser target is missing or ambiguous. Take a fresh snapshot and use a unique ref.");
+            action = { ...requestedAction, ref: matches[0][0], expectedName: name };
+          } else if (action.ref && !state.latestSnapshotId) throw new Error("Browser reference is stale. Take a fresh snapshot.");
           const result = await performAction({
             action,
             debuggerApi,
@@ -1470,12 +1534,18 @@ export function createBrowserRuntime({
             workspaceRoot: payload.workspaceRoot,
           });
           results.push(result);
-          if (state.latestSnapshotId !== snapshotId || result.type === "fileChooser") break;
+          const next = actions[index + 1];
+          if (result.type === "fileChooser" || (!state.latestSnapshotId && next && !next.target && !["wait", "waitFor"].includes(next.type))) break;
+        }
+        let verification = null;
+        if (payload.expect) {
+          if (results.length !== actions.length) throw new Error("Browser batch stopped before all actions completed; its result cannot be verified.");
+          verification = await performStructuredWait({ action: { ...payload.expect, type: "waitFor" }, debuggerApi, state, tab });
         }
         let observation = null;
         if (observe) {
           const settleMs = observe.settleMs === undefined ? 100 : Number(observe.settleMs);
-          if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs));
+          if (settleMs > 0) await waitWithControl(tab, settleMs);
           if (observe.waitForLoad) {
             await performStructuredWait({
               action: {
@@ -1491,8 +1561,13 @@ export function createBrowserRuntime({
           }
           observation = await captureSnapshot(tab, debuggerApi, observe);
         }
+        assertAgentControl(tab, controlEpoch);
+        const status = verification ? "verified" : "executed";
+        onActivity?.(tab, { status, actionCount: results.length });
         return {
           ok: true,
+          status,
+          ...(verification ? { verification } : {}),
           provider: "builtin",
           tabId: tab.tabId,
           url: tab.view.webContents.getURL(),
@@ -1501,8 +1576,13 @@ export function createBrowserRuntime({
           ...(observation ? { observation } : {}),
           metrics: { elapsedMs: Date.now() - startedAt },
         };
+      } catch (error) {
+        const paused = tab.controller === "human" || controlEpoch !== (tab.controlEpoch ?? 0);
+        onActivity?.(tab, { status: paused ? "paused" : "failed", actionCount: 0, message: String(error?.message ?? error).slice(0, 300) });
+        throw error;
       } finally {
-        await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: false }).catch(() => {});
+        delete state.activeControlEpoch;
+        await debuggerCommand(baseDebuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: false }).catch(() => {});
       }
     });
   }

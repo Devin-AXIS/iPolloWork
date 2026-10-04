@@ -41,7 +41,8 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
   let menuOverlayShowSerial = 0;
 
   function window() {
-    return getWindow?.() ?? null;
+    const current = getWindow?.() ?? null;
+    return current && !current.isDestroyed() ? current : null;
   }
 
   function focusBrowserWindow() {
@@ -121,7 +122,18 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     });
   }
 
-  async function openBrowserUrlForAutomation(rawUrl, { profileId = null, taskId = null, loginUi = null, sessionRecovery = null } = {}) {
+  function browserControlIsCurrent(tab, controlEpoch, allowHuman = false) {
+    return browserTabs.get(tab.tabId) === tab && !tab.view.webContents.isDestroyed()
+      && tab.controlEpoch === controlEpoch && (allowHuman || tab.controller !== "human");
+  }
+
+  function assertBrowserControl(tab, controlEpoch, allowHuman) {
+    if (!browserControlIsCurrent(tab, controlEpoch, allowHuman)) {
+      throw new Error("Browser is under user control. Wait until the user returns control, then take a fresh snapshot.");
+    }
+  }
+
+  async function openBrowserUrlForAutomation(rawUrl, { profileId = null, taskId = null, loginUi = null, sessionRecovery = null, background = false } = {}) {
     if (profileId !== null && (typeof profileId !== "string" || !/^[a-zA-Z0-9:_-]{1,200}$/.test(profileId))) {
       throw new Error("Invalid browser profile ID");
     }
@@ -130,28 +142,38 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     }
     const url = normalizeBrowserUrl(rawUrl);
     const recovery = normalizeSessionRecovery(sessionRecovery, url);
-    focusBrowserWindow();
+    if (!background) focusBrowserWindow();
     // Reopening an account focuses its page without resetting an in-flight QR login.
     const existing = profileId && [...browserTabs.values()].find(tab => tab.profileId === profileId
       && tab.taskId === taskId
       && !tab.view.webContents.isDestroyed() && /^https?:/.test(tab.view.webContents.getURL())
       && new URL(tab.view.webContents.getURL()).origin === new URL(url).origin);
     if (existing) {
+      const controlEpoch = existing.controlEpoch;
+      assertBrowserControl(existing, controlEpoch, !background);
+      // Showing an agent page is a UI choice; it must keep using background input.
+      if (background) existing.background = true;
       if (recovery) existing.sessionRecovery = recovery;
-      selectBrowserTab(existing.tabId);
+      if (!background) selectBrowserTab(existing.tabId);
       if (!loginUi && !recovery && existing.view.webContents.getURL() !== url) await existing.view.webContents.loadURL(url);
-      if (recovery) await recoverAuthenticatedSession(existing);
-      sendToRenderer("ipollowork:browser:panel-opened", { sessionId: existing.taskId, tabId: existing.tabId });
+      assertBrowserControl(existing, controlEpoch, !background);
+      if (recovery) await recoverAuthenticatedSession(existing, { controlEpoch, allowHuman: !background });
+      assertBrowserControl(existing, controlEpoch, !background);
+      if (!background) sendToRenderer("ipollowork:browser:panel-opened", { sessionId: existing.taskId, tabId: existing.tabId });
       return { provider: "builtin", tabId: existing.tabId, url: existing.view.webContents.getURL() };
     }
     const partition = profileId
       ? `persist:ipollowork-browser-${createHash("sha256").update(profileId).digest("hex")}`
       : BROWSER_SESSION_PARTITION;
     if (profileId) await applyBrowserProxy(session.fromPartition(partition), browserProxy);
-    const tab = createBrowserTab("about:blank", { select: true, profileId, taskId, partition, sessionRecovery: recovery });
+    const tab = createBrowserTab("about:blank", { select: !background, profileId, taskId, partition, sessionRecovery: recovery, background, controller: "agent" });
+    const controlEpoch = tab.controlEpoch;
     await tab.initialLoad;
+    assertBrowserControl(tab, controlEpoch, !background);
     await tab.view.webContents.loadURL(url);
-    if (recovery) await recoverAuthenticatedSession(tab);
+    assertBrowserControl(tab, controlEpoch, !background);
+    if (recovery) await recoverAuthenticatedSession(tab, { controlEpoch, allowHuman: !background });
+    assertBrowserControl(tab, controlEpoch, !background);
     if (profileId && loginUi) {
       // Only switch a declared login mode. Never inspect credentials or submit a login form.
       await tab.view.webContents.executeJavaScript(`new Promise(resolve => {
@@ -171,6 +193,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
         observer.observe(document.documentElement, { childList: true, subtree: true });
         check();
       })`);
+      assertBrowserControl(tab, controlEpoch, !background);
     }
     return {
       provider: "builtin",
@@ -203,10 +226,11 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     return { origin, loginPath, authenticatedUrl: authenticatedUrl.href, cookieNames: [...new Set(cookieNames)] };
   }
 
-  async function recoverAuthenticatedSession(tab) {
+  async function recoverAuthenticatedSession(tab, { controlEpoch = tab?.controlEpoch, allowHuman = false } = {}) {
     const recovery = tab?.sessionRecovery;
     const contents = tab?.view?.webContents;
-    if (!recovery || !contents || contents.isDestroyed() || tab.authenticatedRecoveryBusy) return false;
+    if (!recovery || !contents || tab.authenticatedRecoveryBusy
+      || !browserControlIsCurrent(tab, controlEpoch, allowHuman)) return false;
     let current;
     try {
       current = new URL(contents.getURL());
@@ -217,6 +241,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     tab.authenticatedRecoveryBusy = true;
     try {
       const cookies = await contents.session.cookies.get({ url: `${recovery.origin}/` });
+      if (!browserControlIsCurrent(tab, controlEpoch, allowHuman) || contents.getURL() !== current.href) return false;
       const required = recovery.cookieNames.map(name => cookies.find(cookie => cookie.name === name));
       if (required.some(cookie => !cookie?.value)) return false;
       const recoveryKey = createHash("sha256")
@@ -249,6 +274,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     focusWindow: focusBrowserWindow,
     listLocalWorkspaces,
     getUserDataPath: () => app.getPath("userData"),
+    onActivity: (tab, activity) => { tab.activity = activity; sendBrowserState(); },
   });
 
   const BROWSER_SCROLLBAR_CSS = `
@@ -305,6 +331,10 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       url,
       sessionId: tab.taskId,
       profileId: tab.profileId,
+      controller: tab.controller,
+      decisionEngine: tab.decisionEngine,
+      decisionStatus: tab.decisionStatus,
+      activity: tab.activity,
       favicon: tab.favicon ?? null,
       status: isLoading ? "loading" : "ready",
       canGoBack: webContents.canGoBack(),
@@ -579,7 +609,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     callback(browserProxy.username, browserProxy.password);
   });
 
-  function createBrowserTab(url = "about:blank", { select = true, profileId = null, taskId = null, partition = BROWSER_SESSION_PARTITION, sessionRecovery = null } = {}) {
+  function createBrowserTab(url = "about:blank", { select = true, profileId = null, taskId = null, partition = BROWSER_SESSION_PARTITION, sessionRecovery = null, background = false, controller = "human" } = {}) {
     const tabId = createBrowserTabId();
     const view = new WebContentsView({
       webPreferences: {
@@ -599,7 +629,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     // though this surface otherwise behaves like the matching Chromium build.
     view.webContents.setUserAgent(BROWSER_USER_AGENT);
     if (profileId?.startsWith("douyin-ops:")) view.webContents.setAudioMuted(true);
-    const tab = { tabId, view, favicon: null, profileId, taskId, sessionRecovery, initialLoad: view.webContents.loadURL("about:blank") };
+    const tab = { tabId, view, favicon: null, profileId, taskId, sessionRecovery, background, controller, controlEpoch: 0, decisionEngine: "agent", activity: { status: "idle", actionCount: 0 }, initialLoad: view.webContents.loadURL("about:blank") };
     browserTabs.set(tabId, tab);
     browserTabOrder.push(tabId);
     const mainWindow = window();
@@ -621,8 +651,8 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     });
     view.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
       if (blocksAppLaunch(targetUrl)) return { action: "deny" };
-      if (profileId && /^https?:\/\//i.test(targetUrl)) {
-        createBrowserTab(targetUrl, { select: true, profileId, taskId, partition, sessionRecovery });
+      if ((profileId || taskId) && /^https?:\/\//i.test(targetUrl)) {
+        createBrowserTab(targetUrl, { select: !tab.background, profileId, taskId, partition, sessionRecovery, background: tab.background, controller: tab.controller });
         return { action: "deny" };
       }
       void shell.openExternal(targetUrl);
@@ -654,16 +684,9 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
         }, 200);
         return;
       }
-      // Host-driven navigation can target a background tab whose view is
-      // detached. Bring that tab on screen so the visible panel always matches
-      // the tab returned to the engine.
-      if (activeBrowserTabId !== tabId) {
-        try {
-          selectBrowserTab(tabId);
-        } catch {
-          // The tab may be mid-close; the panel-opened event below still fires.
-        }
-      }
+      // A redirect or navigation in another page must not change the user's selection.
+      // Explicit foreground opens already select their tab before loading it.
+      if (tab.background || activeBrowserTabId !== tabId) return;
       sendToRenderer("ipollowork:browser:panel-opened", { sessionId: tab.taskId, tabId });
     });
     view.webContents.on("dom-ready", () => injectBrowserScrollbarCss(view.webContents));
@@ -716,7 +739,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
   }
 
   function parkBrowserTab(tab) {
-    if (tab?.profileId) {
+    if (tab) {
       const [windowWidth, windowHeight] = window()?.getContentSize?.() ?? [1, 1];
       // Keep one clipped pixel inside the content view. Chromium otherwise
       // collapses a fully hidden/offscreen WebContentsView to a 0x0 viewport.
@@ -728,7 +751,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       tab.view.setVisible(true);
       return;
     }
-    tab?.view.setVisible(false);
+
   }
 
   // The renderer reports bounds in CSS pixels, which Electron scales by the main
@@ -943,6 +966,32 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     ipcMain.handle("ipollowork:browser:read", (_event, payload) => browserRuntime.read(payload));
     ipcMain.handle("ipollowork:browser:screenshot", (_event, payload) => browserRuntime.screenshot(payload));
     ipcMain.handle("ipollowork:browser:act", (_event, payload) => browserRuntime.act(payload));
+    ipcMain.handle("ipollowork:browser:reportDecision", (_event, payload) => {
+      const tab = getBrowserTab(payload.tabId);
+      if (!tab || (payload.taskId && tab.taskId !== payload.taskId)) throw new Error("Unknown task browser tab.");
+      if (!["ready", "unavailable"].includes(payload.status)) throw new Error("Invalid decision status.");
+      if (tab.decisionEngine === "jev") tab.decisionStatus = payload.status;
+      sendBrowserState();
+      return browserTabToPanelTab(tab.tabId, tab);
+    });
+    ipcMain.handle("ipollowork:browser:setControl", (_event, tabId, controller) => {
+      const tab = getBrowserTab(tabId);
+      if (!tab || !["human", "agent"].includes(controller)) throw new Error("Invalid browser control change.");
+      tab.controller = controller;
+      tab.controlEpoch += 1;
+      browserRuntime.invalidate(tabId);
+      tab.activity = { status: controller === "human" ? "paused" : "idle", actionCount: 0 };
+      sendBrowserState();
+      return browserTabToPanelTab(tabId, tab);
+    });
+    ipcMain.handle("ipollowork:browser:setDecisionEngine", (_event, tabId, engine) => {
+      const tab = getBrowserTab(tabId);
+      if (!tab || !["agent", "jev"].includes(engine)) throw new Error("Invalid browser decision engine.");
+      tab.decisionEngine = engine;
+      tab.decisionStatus = engine === "jev" ? "pending" : undefined;
+      sendBrowserState();
+      return browserTabToPanelTab(tabId, tab);
+    });
     ipcMain.handle("ipollowork:browser:navigate", (_event, url) => {
       const view = getActiveBrowserView() ?? createBrowserTab("about:blank", { select: true }).view;
       view.webContents.loadURL(normalizeBrowserUrl(url));
