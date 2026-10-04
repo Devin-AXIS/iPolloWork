@@ -142,6 +142,45 @@ function snapshotWithMessages(
 }
 
 const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+describe("session context compaction sync", () => {
+  test("updates assistant usage without replacing the snapshot session or run state", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+    const query = getReactQueryClient();
+    query.setQueryData(snapshotKey("workspace-a", "session-a"), snapshotWithMessages([]));
+    const original = query.getQueryData<ConversationSnapshot>(snapshotKey("workspace-a", "session-a"))!;
+    try {
+      __applySessionSyncEventForTest(syncInput, { type: "session.compaction", sessionId: "session-a", running: true });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a",
+        message: { ...uiMessage("summary", "assistant", "Summary"), metadata: { ipollowork: { contextUsage: { usedTokens: 420, contextWindow: 128000 } } } },
+      });
+      const updated = query.getQueryData<ConversationSnapshot>(snapshotKey("workspace-a", "session-a"))!;
+      expect(updated.contextUsage).toEqual({ usedTokens: 420, contextWindow: 128000 });
+      expect(updated.session).toBe(original.session);
+      expect(updated.messages).toBe(original.messages);
+      expect(updated.status).toBe(original.status);
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("compacting");
+      expect(query.getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.[0]?.id).toBe("summary");
+    } finally { release(); cleanup(); }
+  });
+
+  test("refreshes only the selected snapshot after native compaction finishes", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+    const query = getReactQueryClient();
+    query.setQueryData(snapshotKey("workspace-a", "session-a"), snapshotWithMessages([]));
+    query.setQueryData(snapshotKey("workspace-a", "session-b"), snapshotWithMessages([], "session-b"));
+    try {
+      __applySessionSyncEventForTest(syncInput, { type: "session.compaction", sessionId: "session-a", running: true });
+      expect(query.getQueryState(snapshotKey("workspace-a", "session-a"))?.isInvalidated).toBe(false);
+      __applySessionSyncEventForTest(syncInput, { type: "session.compaction", sessionId: "session-a", running: false });
+      expect(query.getQueryState(snapshotKey("workspace-a", "session-a"))?.isInvalidated).toBe(true);
+      expect(query.getQueryState(snapshotKey("workspace-a", "session-b"))?.isInvalidated).toBe(false);
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("idle");
+    } finally { release(); cleanup(); }
+  });
+});
 test("repairs legacy client-only reconnect errors but preserves authoritative and terminal errors", () => {
   const retry = uiMessage("session-error:retry", "assistant", "Reconnecting... waiting for network");
   const failure = uiMessage("session-error:failure", "assistant", "Unauthorized");

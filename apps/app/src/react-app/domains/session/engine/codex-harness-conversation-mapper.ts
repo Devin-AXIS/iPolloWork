@@ -395,8 +395,12 @@ export function mapCodexHarnessEvent(
     const hasVisibleResult = turnKey ? state.visibleResultTurns.has(turnKey) : false;
     const completedAt = typeof turn.completedAt === "number" ? turn.completedAt * 1_000 : Date.now();
     const parentUserMessageId = turnKey ? state.parentUserMessageIdByTurn.get(turnKey) : undefined;
+    const hasCompaction = turnKey && [...(state.itemsByTurn.get(turnKey) ?? [])]
+      .some((id) => state.itemKinds.get(id) === "contextCompaction");
     const completed = turnId
-      ? [...(state.itemsByTurn.get(`${threadId}:${turnId}`) ?? [])].map((messageId): ConversationEvent => ({
+      ? [...(state.itemsByTurn.get(`${threadId}:${turnId}`) ?? [])]
+        .filter((id) => state.itemKinds.get(id) !== "contextCompaction")
+        .map((messageId): ConversationEvent => ({
           type: "message.completed",
           sessionId: threadId,
           messageId,
@@ -412,6 +416,7 @@ export function mapCodexHarnessEvent(
     const activeTurnId = state.activeTurnByThread.get(threadId);
     const supersededByNewTurn = Boolean(turnId && activeTurnId && activeTurnId !== turnId);
     if (supersededByNewTurn) return completed;
+    if (hasCompaction) completed.push({ type: "session.compaction", sessionId: threadId, running: false });
     state.retryingThreads.delete(threadId);
     if (!turnId || activeTurnId === turnId) state.activeTurnByThread.delete(threadId);
     if (turn.status === "failed") {
@@ -422,7 +427,7 @@ export function mapCodexHarnessEvent(
         errorText: serviceErrorMessage(turn.error, error ?? "Codex 处理失败，请稍后重试。"),
         ...(parentUserMessageId ? { parentUserMessageId } : {}),
       });
-    } else if (turn.status === "completed" && !hasVisibleResult) {
+    } else if (turn.status === "completed" && !hasVisibleResult && !(hasCompaction && !parentUserMessageId)) {
       completed.push({
         type: "session.error",
         sessionId: threadId,
@@ -456,6 +461,9 @@ export function mapCodexHarnessEvent(
       const items = state.itemsByTurn.get(turnKey) ?? new Set<string>();
       items.add(id);
       state.itemsByTurn.set(turnKey, items);
+    }
+    if (item.type === "contextCompaction") {
+      return [{ type: "session.compaction", sessionId: threadId, running: method === "item/started" }];
     }
     if (!message) return [];
     if (

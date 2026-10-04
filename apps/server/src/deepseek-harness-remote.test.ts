@@ -57,7 +57,7 @@ const runtimeRoot = fileURLToPath(new URL("../../desktop/dsh-runtime/", import.m
 const cli = join(runtimeRoot, "node_modules/@deepseek-ai/dsh/lib/bin.js");
 const nodeBin = join(runtimeRoot, "node-runtime", process.platform === "win32" ? "node.exe" : "node");
 
-test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH authenticates, streams a tool-backed answer and restores its session", async () => {
+test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH streams, compacts and restores a tool-backed session", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-dsh-remote-"));
   const overrides = {
     IPOLLOWORK_DSH_HOME: join(root, "dsh"),
@@ -69,7 +69,12 @@ test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH authenticates
   const previous = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
   Object.assign(process.env, overrides);
   let completions = 0;
+  let compactions = 0;
   let toolCalls = 0;
+  let releaseModel = () => {};
+  let markModelStarted = () => {};
+  const blockedModel = new Promise<void>((resolve) => { releaseModel = resolve; });
+  const modelStarted = new Promise<void>((resolve) => { markModelStarted = resolve; });
   const host = Bun.serve({ port: 0, hostname: "127.0.0.1", async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === "/engine-tools") return Response.json({ tools: [{ name: "ipollowork_test_ping", description: "Return a test greeting", parameters: { type: "object", properties: {} } }] });
@@ -83,12 +88,20 @@ test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH authenticates
       completions += 1;
       const body = await request.json();
       const hasToolResult = body.messages.some((message: { role: string }) => message.role === "tool");
-      const delta = hasToolResult ? { content: "upgrade-ok" } : {
+      const isCompaction = body.messages.some((message: { content?: unknown }) => (
+        typeof message.content === "string" && message.content.includes("You are now acting as a compaction engine")
+      ));
+      if (isCompaction) compactions += 1;
+      if (!isCompaction && !hasToolResult && body.tools?.some((tool: { function?: { name?: string } }) => tool.function?.name === "ipollowork_test_ping")) {
+        markModelStarted();
+        await blockedModel;
+      }
+      const delta = isCompaction ? { content: "Checkpoint: the test ping returned upgrade-ok; continue checking the project labels." } : hasToolResult ? { content: "upgrade-ok" } : {
         tool_calls: [{ index: 0, id: "call_ping", type: "function", function: { name: "ipollowork_test_ping", arguments: "{}" } }],
       };
       const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
       const chunk = (delta: unknown, finish: string | null) => ({ id: "chatcmpl-test", object: "chat.completion.chunk", created: 1, model: "test-model", choices: [{ index: 0, delta, finish_reason: finish }] });
-      return new Response(frame(chunk({ role: "assistant", ...delta }, null)) + frame(chunk({}, hasToolResult ? "stop" : "tool_calls")) + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+      return new Response(frame(chunk({ role: "assistant", ...delta }, null)) + frame(chunk({}, isCompaction || hasToolResult ? "stop" : "tool_calls")) + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
     }
     return new Response("not found", { status: 404 });
   } });
@@ -124,7 +137,15 @@ test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH authenticates
         if (frames.join("").includes('"type":"turn/end"')) break;
       }
     })();
-    await runtime.call("session.prompt", { sessionId: created.sessionId, clientUserMessageId: "test-prompt", mode: "queue", content: [{ type: "text", text: "Call ipollowork_test_ping and report its greeting." }] });
+    await runtime.call("session.prompt", { sessionId: created.sessionId, clientUserMessageId: "test-prompt", mode: "queue", content: [{ type: "text", text: "Call ipollowork_test_ping and report its greeting. " + "Keep the project labels and all review decisions consistent throughout the task. ".repeat(20) }] });
+    await modelStarted;
+    const busyCompaction = await runtime.call<{ result: { kind: string; text?: string } }>("commands/execute", {
+      args: { agentId: created.sessionId, line: "/compact" },
+    });
+    expect(busyCompaction.result.kind).toBe("error");
+    expect(busyCompaction.result.text).toContain("not idle");
+    expect(compactions).toBe(0);
+    releaseModel();
     await Promise.race([consume, new Promise((_, reject) => setTimeout(() => reject(new Error(`No completed DSH turn (${completions} model requests, ${toolCalls} tool calls)`)), 20_000))]);
     expect(toolCalls).toBe(1);
     expect(frames.join("")).toContain("upgrade-ok");
@@ -132,11 +153,23 @@ test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH authenticates
     expect(completions).toBeGreaterThanOrEqual(2);
     const history = await runtime.call<{ events: unknown[] }>("session.history", { sessionId: created.sessionId });
     expect(JSON.stringify(history.events)).toContain("upgrade-ok");
+    const compacted = await runtime.call<{ result: { kind: string } }>("commands/execute", {
+      args: { agentId: created.sessionId, line: "/compact" },
+    });
+    expect(compacted.result.kind).toBe("success");
+    expect(compactions).toBe(1);
+    const compactedHistory = await runtime.call<{ events: unknown[] }>("session.history", { sessionId: created.sessionId });
+    expect(JSON.stringify(compactedHistory.events)).toContain("compaction/summary");
+    expect(JSON.stringify(compactedHistory.events)).toContain("compaction/end");
+    expect(JSON.stringify(compactedHistory.events)).toContain("Checkpoint: the test ping returned upgrade-ok");
     abort.abort();
     await runtime.close();
     const restored = await runtime.call<{ events: unknown[] }>("session.history", { sessionId: created.sessionId });
     expect(JSON.stringify(restored.events)).toContain("upgrade-ok");
+    expect(JSON.stringify(restored.events)).toContain("compaction/summary");
+    expect(JSON.stringify(restored.events)).toContain("Checkpoint: the test ping returned upgrade-ok");
   } finally {
+    releaseModel();
     abort.abort();
     await runtime.close();
     host.stop(true);

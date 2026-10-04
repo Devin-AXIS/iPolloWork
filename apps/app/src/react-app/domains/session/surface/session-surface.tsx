@@ -7,6 +7,7 @@ import type { UIMessage } from "ai";
 import { useSessionArtifacts } from "@/react-app/infra/session-artifacts-query";
 import { withStudioResults } from "../sync/message-merge";
 import { useQuery } from "@tanstack/react-query";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
 import type { TemplateCatalogItem, TemplateCategory } from "@ipollowork/types/templates";
 import { Check, Minimize2, Sparkles, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
@@ -914,6 +915,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const moveQueuedDraftToComposer = useComposerStateStore((state) => state.moveQueuedDraftToComposer);
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
+  const compactionInFlight = useRef(false);
+  const [compaction, setCompaction] = useState<{
+    sessionId: string;
+    running: boolean;
+    error?: string;
+  } | null>(null);
   const [stopAcknowledged, setStopAcknowledged] = useState(false);
   const [stoppedImageMessageIds, setStoppedImageMessageIds] = useState<Set<string>>(() => new Set());
   const [artifactRequestOwnership, setArtifactRequestOwnership] = useState<ArtifactRequestOwnership[]>([]);
@@ -1074,14 +1081,20 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => reactStatusKey(props.workspaceId, props.sessionId),
     [props.workspaceId, props.sessionId],
   );
+  const readSessionSnapshot = useCallback(async (sessionId: string) => {
+    const mapped = props.conversation.mapSnapshot(
+      (await props.client.getSessionSnapshot(props.workspaceId, sessionId, { limit: 140 })).item,
+    );
+    // Some engines report usage only through live events, outside thread/read.
+    const cached = getReactQueryClient().getQueryData<ConversationSnapshot>(reactSnapshotKey(props.workspaceId, sessionId));
+    return sanitizeInterruptedSessionSnapshot(props.workspaceId, {
+      ...mapped,
+      contextUsage: mapped.contextUsage ?? cached?.contextUsage,
+    });
+  }, [props.client, props.conversation, props.workspaceId]);
   const snapshotQuery = useQuery<ConversationSnapshot>({
     queryKey: snapshotQueryKey,
-    queryFn: async () => sanitizeInterruptedSessionSnapshot(
-      props.workspaceId,
-      props.conversation.mapSnapshot(
-        (await props.client.getSessionSnapshot(props.workspaceId, props.sessionId, { limit: 140 })).item,
-      ),
-    ),
+    queryFn: () => readSessionSnapshot(props.sessionId),
     staleTime: 500,
   });
 
@@ -1185,7 +1198,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
   useEffect(() => {
     if (!currentSnapshot) return;
     seedSessionState(props.workspaceId, currentSnapshot);
-  }, [currentSnapshot, props.sessionId, props.workspaceId]);
+  // Usage-only cache updates must not replay the snapshot's older run state.
+  }, [currentSnapshot?.session, currentSnapshot?.messages, currentSnapshot?.status, currentSnapshot?.todos, props.sessionId, props.workspaceId]);
 
   useEffect(() => {
     if (!currentSnapshot) return;
@@ -1343,14 +1357,49 @@ export function SessionSurface(props: SessionSurfaceProps) {
     return subscribeHostVideoDelivery(accept);
   }, [props.onOpenPublishingStudio, props.sessionId, props.workspaceId, renderedMessages, visibleUserRequestCount]);
   const contextUsage = useMemo(() => (
-    [...renderedMessages]
+    snapshot?.contextUsage
+    ?? [...renderedMessages]
       .reverse()
       .flatMap((message) => message.role === "assistant"
         ? conversationMessageContextUsage(message) ?? []
         : [])[0]
-    ?? snapshot?.contextUsage
     ?? null
   ), [renderedMessages, snapshot?.contextUsage]);
+  const compactionAvailable = snapshot
+    ? Boolean(props.conversation.compact && props.conversation.supportsCompaction?.(snapshot.session) !== false)
+    : undefined;
+  const compactionResult = compaction?.sessionId === props.sessionId ? compaction : null;
+  const compacting = compactionResult?.running === true || sessionActivityStatus === "compacting";
+  const compactionDisabled = chatStreaming || liveStatus.type !== "idle" || compacting || compaction?.running === true;
+  const handleCompact = useCallback(async () => {
+    if (!compactionAvailable || compactionDisabled || compactionInFlight.current || !props.conversation.compact) return;
+    compactionInFlight.current = true;
+    const sessionId = props.sessionId;
+    setCompaction({ sessionId, running: true });
+    try {
+      await props.conversation.compact({
+        sessionId,
+        model: props.selectedModel,
+        directory: props.workspaceRoot || undefined,
+      });
+      try {
+        const refreshed = await readSessionSnapshot(sessionId);
+        getReactQueryClient().setQueryData(reactSnapshotKey(props.workspaceId, sessionId), refreshed);
+        seedSessionState(props.workspaceId, refreshed);
+      } catch {
+        // Compaction succeeded even if the follow-up read is temporarily unavailable.
+        void getReactQueryClient().invalidateQueries({ queryKey: reactSnapshotKey(props.workspaceId, sessionId) });
+      }
+      setCompaction({ sessionId, running: false });
+      toast.success(t("session.compaction_complete"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("session.compaction_failed");
+      setCompaction({ sessionId, running: false, error: message });
+      toast.error(t("session.compaction_failed"), { description: message });
+    } finally {
+      compactionInFlight.current = false;
+    }
+  }, [compactionAvailable, compactionDisabled, props.conversation, props.selectedModel, props.sessionId, props.workspaceId, props.workspaceRoot, readSessionSnapshot]);
   const inputHistory = useMemo(
     () => deriveComposerInputHistory(renderedMessages),
     [renderedMessages],
@@ -1651,6 +1700,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   // Core sender used only while the session is idle. Busy follow-ups remain
   // in the local queue until the current run has completed.
   const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[], voiceoverRequest?: Pick<VideoVoiceoverRequest, "videoSessionId" | "settings">) => {
+    if (compacting || compactionInFlight.current) return false;
     setError(null);
     setStopAcknowledged(false);
     runActivityObservedRef.current = false;
@@ -1844,7 +1894,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [newConversationMode, openTargets, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, selectedImageReference, visibleUserRequestCount]);
+  }, [compacting, newConversationMode, openTargets, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, selectedImageReference, visibleUserRequestCount]);
 
   useEffect(() => {
     const generateVoiceover = (event: Event) => {
@@ -2586,7 +2636,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const drainingQueueRef = useRef(false);
   const dispatchNextQueuedDraft = useCallback(() => {
     if (drainingQueueRef.current || queuedDrafts.length === 0) return;
-    if (chatStreaming || liveStatus.type !== "idle") return;
+    if (chatStreaming || compacting || compactionInFlight.current || liveStatus.type !== "idle") return;
     if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     const next = queuedDrafts[0];
     drainingQueueRef.current = true;
@@ -2602,7 +2652,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         drainingQueueRef.current = false;
       }
     })();
-  }, [chatStreaming, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, removeQueuedDraftFromStore, sendDraft, setQueuePaused]);
+  }, [chatStreaming, compacting, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, removeQueuedDraftFromStore, sendDraft, setQueuePaused]);
 
   useEffect(() => {
     if (queuePaused || runOutcome !== "completed") return;
@@ -2610,11 +2660,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [dispatchNextQueuedDraft, queuePaused, runOutcome]);
 
   const continueQueuedDrafts = useCallback(() => {
-    if (chatStreaming || liveStatus.type !== "idle") return;
+    if (chatStreaming || compacting || compactionInFlight.current || liveStatus.type !== "idle") return;
     if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     setQueuePaused(props.sessionId, false);
     dispatchNextQueuedDraft();
-  }, [chatStreaming, dispatchNextQueuedDraft, liveStatus.type, props.sessionId, setQueuePaused]);
+  }, [chatStreaming, compacting, dispatchNextQueuedDraft, liveStatus.type, props.sessionId, setQueuePaused]);
   const editQueuedDraft = useCallback((index: number) => {
     moveQueuedDraftToComposer(props.sessionId, index);
   }, [moveQueuedDraftToComposer, props.sessionId]);
@@ -3097,9 +3147,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
           inputDisabled={false}
-          disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
+          disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable) || compacting}
           modelUnavailable={Boolean(props.modelUnavailable)}
-          statusLabel={waitingLabel ?? (finalizingRun
+          statusLabel={compacting ? t("session.assistant_compacting") : waitingLabel ?? (finalizingRun
             ? t("session.status_finalizing")
             : statusLabel(runSettled ? undefined : snapshot ?? undefined, chatStreaming))}
           modelPickerOpen={props.modelPickerOpen}
@@ -3117,11 +3167,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onModelVariantChange={props.onModelVariantChange}
           onConfigureTokenStar={props.onConfigureTokenStar}
           selectedMode={selectedMode}
-          modeSelectionDisabled={modeSelectionLocked}
+          modeSelectionDisabled={modeSelectionLocked || compacting}
           listModes={props.listModes}
           onSelectMode={props.onSelectMode}
           selectedAccessMode={selectedAccessMode}
-          accessModeSelectionDisabled={accessModeState?.mutable === false}
+          accessModeSelectionDisabled={accessModeState?.mutable === false || compacting}
           listAccessModes={props.conversation.listAccessModes ? listAccessModes : undefined}
           onSelectAccessMode={props.conversation.setAccessMode ? selectAccessMode : undefined}
           listAgents={props.listAgents}
@@ -3148,6 +3198,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
           contextUsage={contextUsage}
+          compactionAvailable={compactionAvailable}
+          compactionDisabled={compactionDisabled}
+          compacting={compacting}
+          onCompact={handleCompact}
+          compactionResult={compactionResult}
           modelContextWindow={props.modelContextWindow}
           placeholder={isEmptyConversation ? newConversationPlaceholder() : undefined}
           compactTopSpacing={composerTopAccessoryVisible}

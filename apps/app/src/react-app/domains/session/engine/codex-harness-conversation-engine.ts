@@ -397,6 +397,9 @@ function codexHarnessConnection(input: {
     async abort(sessionId) {
       return interruptSession(sessionId);
     },
+    async compact(request) {
+      await client.call("thread/compact/start", { threadId: request.sessionId }, { timeoutMs: 190_000 });
+    },
     async revert(sessionId) {
       const result = await client.call<{ thread?: Record<string, unknown> }>("thread/rollback", {
         threadId: sessionId,

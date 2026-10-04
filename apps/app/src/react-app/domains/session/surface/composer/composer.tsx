@@ -121,6 +121,11 @@ export type ComposerProps = {
   topAccessory?: ReactNode;
   contextUsage?: ConversationContextUsage | null;
   modelContextWindow?: number | null;
+  compactionAvailable?: boolean;
+  compacting?: boolean;
+  compactionDisabled?: boolean;
+  onCompact?: () => void | Promise<void>;
+  compactionResult?: { error?: string } | null;
 };
 
 const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
@@ -159,10 +164,15 @@ function ContextProgress({ percentage }: { percentage: number | null }) {
 function ContextHealth({
   usage,
   modelContextWindow,
+  compactionAvailable,
+  compacting,
+  compactionDisabled,
+  onCompact,
+  compactionResult,
 }: {
   usage?: ConversationContextUsage | null;
   modelContextWindow?: number | null;
-}) {
+} & Pick<ComposerProps, "compactionAvailable" | "compacting" | "compactionDisabled" | "onCompact" | "compactionResult">) {
   const health = resolveConversationContextHealth(usage, modelContextWindow);
   const usedLabel = formatContextTokenCount(health.usedTokens);
   const limitLabel = health.contextWindow ? formatContextTokenCount(health.contextWindow) : t("composer.context_limit_unknown");
@@ -206,6 +216,33 @@ function ContextHealth({
         {health.compressionWarning ? (
           <div className="mt-4 rounded-xl bg-amber-3 px-3 py-2 text-xs leading-5 text-amber-11">
             {t("composer.context_compression_warning")}
+          </div>
+        ) : null}
+        {compactionAvailable !== undefined ? (
+          <div className="mt-4 border-t border-gray-4 pt-3">
+            {compactionAvailable ? (
+              <button
+                type="button"
+                data-testid="composer-compact-session"
+                disabled={compacting || compactionDisabled}
+                onClick={() => { void onCompact?.(); }}
+                className="w-full rounded-lg bg-gray-3 px-3 py-2 text-sm font-medium text-gray-12 transition-colors hover:bg-gray-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {t(compacting ? "session.assistant_compacting" : "session.compact_now")}
+              </button>
+            ) : (
+              <p className="text-xs leading-5 text-gray-10">{t("session.compaction_unavailable")}</p>
+            )}
+            {compactionDisabled && !compacting && compactionAvailable ? (
+              <p className="mt-2 text-xs leading-5 text-gray-10">{t("session.compaction_busy")}</p>
+            ) : null}
+            {compacting ? (
+              <p role="status" className="mt-2 text-xs leading-5 text-gray-10">{t("session.assistant_compacting")}</p>
+            ) : compactionResult ? (
+              <p role={compactionResult.error ? "alert" : "status"} className={`mt-2 text-xs leading-5 ${compactionResult.error ? "text-red-11" : "text-gray-10"}`}>
+                {compactionResult.error ? `${t("session.compaction_failed")} ${compactionResult.error}` : t("session.compaction_complete")}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </PopoverContent>
@@ -1558,6 +1595,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                 <ContextHealth
                   usage={props.contextUsage}
                   modelContextWindow={props.modelContextWindow}
+                  compactionAvailable={props.compactionAvailable}
+                  compacting={props.compacting}
+                  compactionDisabled={props.compactionDisabled}
+                  onCompact={props.onCompact}
+                  compactionResult={props.compactionResult}
                 />
                 {props.busy ? (
                   <>

@@ -114,6 +114,7 @@ const WRITE_METHODS = new Set([
   "thread/unarchive",
   "thread/name/set",
   "thread/rollback",
+  "thread/compact/start",
   "thread/shellCommand",
   "turn/start",
   "turn/steer",
@@ -323,6 +324,13 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
     if (WRITE_METHODS.has(method)) requireClientScope(ctx, "collaborator");
     try {
       const workspaceRuntime = runtime.forWorkspace(workspace);
+      if (method === "thread/compact/start") {
+        if (!isRecord(body.payload) || typeof body.payload.threadId !== "string" || !body.payload.threadId.trim()) {
+          throw new ApiError(400, "invalid_payload", "Codex Harness thread/compact/start requires a threadId");
+        }
+        await workspaceRuntime.compactThread(body.payload.threadId.trim(), ctx.request.signal);
+        return Response.json({ value: {} });
+      }
       if (method === "thread/start") {
         if (!isRecord(body.payload)) {
           throw new ApiError(400, "invalid_payload", "Codex Harness thread/start payload must be an object");

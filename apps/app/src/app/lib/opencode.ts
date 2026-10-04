@@ -337,7 +337,7 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
   const sessionOverrides = session as any as {
     list: (parameters?: SessionListParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Session[]>>;
     get: (parameters: SessionLookupParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Session>>;
-    messages: (parameters: SessionMessagesParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Array<{ info: Message; parts: Part[] }>>>;
+    messages: (parameters: SessionMessagesParameters, options?: { throwOnError?: boolean; signal?: AbortSignal }) => Promise<FieldsResult<Array<{ info: Message; parts: Part[] }>>>;
     todo: (parameters: SessionLookupParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Todo[]>>;
     promptAsync: (parameters: PromptAsyncParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<{}>>;
     command: (parameters: CommandParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<{}>>;
@@ -375,7 +375,7 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
   };
 
   const messagesOriginal = sessionOverrides.messages.bind(session);
-  sessionOverrides.messages = (parameters: SessionMessagesParameters, options?: { throwOnError?: boolean }) => {
+  sessionOverrides.messages = (parameters: SessionMessagesParameters, options?: { throwOnError?: boolean; signal?: AbortSignal }) => {
     if (!ipolloworkMount || !ipolloworkSessionClient) {
       return messagesOriginal(parameters, options);
     }
@@ -387,6 +387,7 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
       async () =>
         (await ipolloworkSessionClient.getSessionMessages(ipolloworkMount.workspaceId, parameters.sessionID, {
           limit: parameters.limit,
+          signal: options?.signal,
         })).items,
       options,
     );

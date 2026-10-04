@@ -496,6 +496,66 @@ export class CodexHarnessRuntime {
     return this.#attachedThreadSelections.get(threadId)?.awaitingFirstTurn === true;
   }
 
+  async compactThread(threadId: string, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    const process = await this.#ensureStarted();
+    const { thread } = await process.call<{ thread?: Record<string, unknown> }>("thread/read", {
+      threadId, includeTurns: false,
+    });
+    const status = thread && isRecord(thread.status) ? thread.status.type : null;
+    if (status === "active") {
+      throw new StdioJsonRpcError("Wait for the current task to finish before compacting its context", { code: -32602 });
+    }
+    if (status === "notLoaded") await this.call("thread/resume", { threadId });
+    signal.throwIfAborted();
+
+    let turnId: string | null = null;
+    let compacted = false;
+    let cleanup = () => {};
+    const completion = new Promise<void>((resolve, reject) => {
+      const fail = (message: string) => reject(new StdioJsonRpcError(message));
+      const listener = (event: CodexHarnessEvent) => {
+        if (event.type !== "notification" || !isRecord(event.params) || event.params.threadId !== threadId) return;
+        const params = event.params;
+        const eventTurnId = isRecord(params.turn) ? params.turn.id : params.turnId;
+        if (turnId && typeof eventTurnId === "string" && eventTurnId !== turnId) return;
+        if (event.method === "turn/started" && isRecord(params.turn) && typeof params.turn.id === "string") {
+          turnId = params.turn.id;
+        }
+        if ((event.method === "item/started" || event.method === "item/completed") && isRecord(params.item) && params.item.type === "contextCompaction") {
+          if (typeof params.turnId === "string") turnId = params.turnId;
+          if (event.method === "item/completed") compacted = true;
+        }
+        if (event.method === "error" && params.willRetry !== true && (!turnId || !params.turnId || params.turnId === turnId)) {
+          const error = isRecord(params.error) ? params.error.message : null;
+          fail(typeof error === "string" ? error : "Codex context compaction failed");
+        }
+        if (event.method === "thread/closed") fail("Codex thread closed before context compaction completed");
+        if (event.method !== "turn/completed" || !isRecord(params.turn) || params.turn.id !== turnId) return;
+        if (params.turn.status === "completed" && compacted) resolve();
+        else {
+          const error = isRecord(params.turn.error) ? params.turn.error.message : null;
+          fail(typeof error === "string" ? error : "Codex context compaction did not complete");
+        }
+      };
+      const timeout = setTimeout(() => fail("Codex context compaction timed out; refresh the conversation to check its status"), 180_000);
+      const abort = () => fail("Codex context compaction request was disconnected");
+      this.#eventListeners.add(listener);
+      signal.addEventListener("abort", abort, { once: true });
+      cleanup = () => {
+        clearTimeout(timeout);
+        this.#eventListeners.delete(listener);
+        signal.removeEventListener("abort", abort);
+      };
+    });
+    try {
+      // Native start is an acknowledgement; only its completed lifecycle proves success.
+      await Promise.all([process.call("thread/compact/start", { threadId }), completion]);
+    } finally {
+      cleanup();
+    }
+  }
+
   #markThreadUsed(params: unknown): void {
     if (!isRecord(params) || typeof params.threadId !== "string") return;
     const attached = this.#attachedThreadSelections.get(params.threadId);

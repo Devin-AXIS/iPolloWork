@@ -23,6 +23,7 @@ import type {
 import {
   completeConversationMessage,
   conversationMessageCreatedAt,
+  conversationMessageContextUsage,
   conversationMessageMetadata,
   conversationMessageParentUserMessageId,
   mergeConversationSessionUpdate,
@@ -1097,6 +1098,9 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   if (event.type === "session.compaction") {
     if (interrupted?.interrupted) return;
     useSessionActivityStore.getState().setCompacting(workspaceId, event.sessionId, event.running);
+    if (!event.running && isTrackedSession(entry, event.sessionId)) {
+      void queryClient.invalidateQueries({ queryKey: snapshotKey(workspaceId, event.sessionId) });
+    }
     return;
   }
 
@@ -1200,6 +1204,13 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
       return recovered.messages;
     });
     settleRecoveredNoFinalOutputError(workspaceId, event.sessionId, recoveredTurnId);
+    const usage = event.message.role === "assistant" ? conversationMessageContextUsage(event.message) : undefined;
+    if (usage) {
+      queryClient.setQueryData<ConversationSnapshot>(
+        snapshotKey(workspaceId, event.sessionId),
+        (current) => current ? { ...current, contextUsage: usage } : current,
+      );
+    }
     return;
   }
 

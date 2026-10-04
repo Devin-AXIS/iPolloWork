@@ -4,6 +4,7 @@ import { classifyProviderFailure, type ProviderFailure } from "@ipollowork/types
 import { createClient, unwrap } from "@/app/lib/opencode";
 import type { Client } from "@/app/types";
 import { t } from "@/i18n";
+import { describeConversationSessionError } from "./opencode-message-adapter";
 import {
   conversationIsRecord as isRecord,
   type ConversationAccessMode,
@@ -245,6 +246,35 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
     },
     async create(directory) {
       return mapSession(unwrap(await client.session.create({ directory })));
+    },
+    async compact(input) {
+      if (!input.model) throw new Error(t("composer.model_unavailable"));
+      const signal = AbortSignal.timeout(180_000);
+      const statuses = unwrap(await client.session.status({ directory: input.directory }, { signal }));
+      if (statuses[input.sessionId]?.type && statuses[input.sessionId]?.type !== "idle") {
+        throw new Error(t("session.compaction_busy"));
+      }
+      const parameters = { sessionID: input.sessionId, directory: input.directory, limit: 2 };
+      const previousMessageIds = new Set(unwrap(await client.session.messages(parameters, { signal }))
+        .map((message) => message.info.id));
+      const completed = unwrap(await client.session.summarize({
+        sessionID: input.sessionId,
+        directory: input.directory,
+        providerID: input.model.providerID,
+        modelID: input.model.modelID,
+        auto: false,
+      }, { signal }));
+      if (completed !== true) throw new Error(t("session.compaction_failed"));
+      // OpenCode returns true even when its summary assistant carries a native error.
+      const summary = unwrap(await client.session.messages(parameters, { signal }))
+        .findLast((message) => message.info.role === "assistant" && message.info.summary === true
+          && !previousMessageIds.has(message.info.id));
+      if (!summary || summary.info.role !== "assistant") throw new Error(t("session.compaction_failed"));
+      if (summary.info.error) throw new Error(describeConversationSessionError(summary.info.error));
+      if (typeof summary.info.time.completed !== "number"
+        || !summary.parts.some((part) => part.type === "text" && part.text.trim())) {
+        throw new Error(t("session.compaction_failed"));
+      }
     },
     async abort(sessionId, directory) {
       const accepted = unwrap(await client.session.abort({ sessionID: sessionId, directory })) === true;
