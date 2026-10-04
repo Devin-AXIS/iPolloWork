@@ -2731,6 +2731,8 @@ export default {
   "settings.authorization.apply_confirm": "iPolloWork 会重启本地智能体以使用最新授权，正在运行的本地任务可能会停止。",
   "settings.authorization.apply": "应用变更",
   "settings.authorization.applying": "应用中…",
+  "settings.authorization.service.minimax_video_template.title": "MiniMax video templates",
+  "settings.authorization.service.minimax_video_template.description": "Connect MiniMax Video Agent template generation. This API is deprecated.",
   "settings.authorization.service.openai_images.title": "OpenAI",
   "settings.authorization.service.openai_images.description": "API Key 用于 OpenAI 媒体接口，也可登录 ChatGPT 账号使用 Codex 生图。",
   "settings.authorization.browser_login": "浏览器登录",

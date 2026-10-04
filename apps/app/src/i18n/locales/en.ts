@@ -3138,6 +3138,8 @@ export default {
   "settings.authorization.apply_confirm": "iPolloWork will restart local agents so they can use the latest authorizations. Running local tasks may stop.",
   "settings.authorization.apply": "Apply changes",
   "settings.authorization.applying": "Applying…",
+  "settings.authorization.service.minimax_video_template.title": "MiniMax video templates",
+  "settings.authorization.service.minimax_video_template.description": "Connect MiniMax Video Agent template generation. This API is deprecated.",
   "settings.authorization.service.openai_images.title": "OpenAI",
   "settings.authorization.service.openai_images.description": "Use an API key for OpenAI media, or sign in with ChatGPT for Codex image generation.",
   "settings.authorization.browser_login": "Browser sign-in",

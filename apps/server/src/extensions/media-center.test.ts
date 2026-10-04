@@ -1541,3 +1541,91 @@ describe("Media Center extension", () => {
     expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
   });
 });
+
+describe("MiniMax video template actions", () => {
+  function templateAuthorization(): AuthorizationAccess {
+    return { read: async (serviceId) => {
+      expect(serviceId).toBe("minimax-video-template");
+      return { MINIMAX_API_KEY: "test-key" };
+    } };
+  }
+
+  function mockTemplateFetch(handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>) {
+    Reflect.set(globalThis, mediaProviderFetchKey, handler);
+  }
+
+  test("registers distinct create and query contracts", () => {
+    expect(MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_template_generate")?.inputSchema).toMatchObject({ required: ["templateId"], additionalProperties: false });
+    expect(MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_template_get")?.inputSchema).toMatchObject({ required: ["taskId"], additionalProperties: false });
+  });
+
+  test("creates a template task using documented inputs and the selected region", async () => {
+    mockTemplateFetch(async (input, init) => {
+      expect(String(input)).toBe("https://api.minimaxi.com/v1/video_template_generation");
+      expect(init?.method).toBe("POST");
+      expect(init?.redirect).toBe("error");
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test-key");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        template_id: "template-123",
+        text_inputs: [{ value: "A lion" }],
+        media_inputs: [{ value: "https://example.com/image.png" }],
+        callback_url: "https://example.com/callback",
+      });
+      return Response.json({ task_id: "task-123", base_resp: { status_code: 0 } });
+    });
+    const result = await callMediaExtensionAction(config, templateAuthorization(), "video_template_generate", {
+      region: "cn_zh", templateId: "template-123", textInputs: [{ value: "A lion" }],
+      mediaInputs: [{ value: "https://example.com/image.png" }], callbackUrl: "https://example.com/callback",
+    }, {});
+    expect(result).toMatchObject({ ok: true, result: { provider: "minimax", taskId: "task-123", output: { taskId: "task-123", region: "cn_zh" } } });
+    expect(JSON.stringify(result)).not.toContain("test-key");
+  });
+
+  test("omits optional inputs without inventing template defaults", async () => {
+    mockTemplateFetch(async (input, init) => {
+      expect(String(input)).toBe("https://api.minimax.io/v1/video_template_generation");
+      expect(JSON.parse(String(init?.body))).toEqual({ template_id: "template-123" });
+      return Response.json({ task_id: "task-123", base_resp: { status_code: 0 } });
+    });
+    await callMediaExtensionAction(config, templateAuthorization(), "video_template_generate", { templateId: "template-123" }, {});
+  });
+
+  test.each(["Preparing", "Processing", "Success", "Fail"])("queries and preserves the %s task status", async (status) => {
+    mockTemplateFetch(async (input, init) => {
+      expect(String(input)).toBe("https://api.minimax.io/v1/query/video_template_generation?task_id=task%2F123");
+      expect(init?.method).toBe("GET");
+      expect(init?.body).toBeUndefined();
+      return Response.json({ task_id: "task/123", status, ...(status === "Success" ? { video_url: "https://example.com/video.mp4" } : {}), base_resp: { status_code: 0 } });
+    });
+    const result = await callMediaExtensionAction(config, templateAuthorization(), "video_template_get", { taskId: "task/123" }, {});
+    expect(result).toMatchObject({ result: { output: { taskId: "task/123", status, ...(status === "Success" ? { videoUrl: "https://example.com/video.mp4" } : {}) } } });
+  });
+
+  test("rejects invalid inputs before accessing credentials or the network", async () => {
+    const authorization: AuthorizationAccess = { read: async () => { throw new Error("Credentials must not be accessed"); } };
+    for (const args of [{}, { templateId: "t", region: "invalid" }, { templateId: "t", textInputs: "bad" }, { templateId: "t", mediaInputs: [{}] }, { templateId: "t", callbackUrl: 7 }]) {
+      await expect(callMediaExtensionAction(config, authorization, "video_template_generate", args, {})).rejects.toMatchObject({ status: 400 });
+    }
+  });
+
+  test("requires the dedicated credential before making a request", async () => {
+    mockTemplateFetch(async () => { throw new Error("Network must not be called"); });
+    await expect(callMediaExtensionAction(config, env({}), "video_template_generate", { templateId: "t" }, {})).rejects.toMatchObject({ code: "minimax_api_key_missing" });
+  });
+
+  test("rejects API errors without exposing provider error payloads", async () => {
+    mockTemplateFetch(async () => Response.json({ base_resp: { status_code: 1008, status_msg: "test-key" } }));
+    const call = callMediaExtensionAction(config, templateAuthorization(), "video_template_generate", { templateId: "t" }, {});
+    await expect(call).rejects.toMatchObject({ code: "minimax_template_request_failed" });
+    await expect(call).rejects.not.toThrow("test-key");
+  });
+
+  test.each([
+    { base_resp: { status_code: 0 } },
+    { task_id: "t", status: "unknown", base_resp: { status_code: 0 } },
+    { task_id: "t", status: "Success", base_resp: { status_code: 0 } },
+  ])("rejects an incomplete query response", async (payload) => {
+    mockTemplateFetch(async () => Response.json(payload));
+    await expect(callMediaExtensionAction(config, templateAuthorization(), "video_template_get", { taskId: "t" }, {})).rejects.toMatchObject({ code: "minimax_template_response_invalid" });
+  });
+});
