@@ -19,9 +19,11 @@ function axNode({ nodeId, role, name, backendDOMNodeId = undefined, childIds = [
   };
 }
 
-function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces = null, fileChooserOnClick = false, platform = process.platform, selectedFileSizes = null } = {}) {
+function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces = null, fileChooserOnClick = false, platform = process.platform, selectedFileSizes = null, onCommand = null } = {}) {
   const commands = [];
   const inputEvents = [];
+  const focusCalls = [];
+  const activities = [];
   const flattenedNodes = [];
   const frameNodes = [];
   let attached = false;
@@ -50,6 +52,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
     isAttached() { return attached; },
     async sendCommand(method, params = {}) {
       commands.push({ method, params });
+      await onCommand?.(method, params);
       if (method === "Page.setInterceptFileChooserDialog") fileChooserIntercepted = params.enabled;
       if (method === "Page.getFrameTree") {
         return {
@@ -141,13 +144,14 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
   const tab = { tabId: "tab-1", view: { getBounds: () => ({ width: 640, height: 480 }), webContents } };
   const runtime = createBrowserRuntime({
     getTab: (tabId) => tabId === tab.tabId ? tab : null,
-    selectTab() {},
-    focusWindow() {},
+    selectTab() { focusCalls.push("select"); },
+    focusWindow() { focusCalls.push("focus"); },
+    onActivity(_tab, activity) { activities.push(activity); },
     listLocalWorkspaces: async () => workspaces ?? (workspacePath ? [{ id: "workspace-1", path: workspacePath }] : []),
     getUserDataPath: () => userDataPath,
     platform,
   });
-  return { commands, flattenedNodes, frameNodes, inputEvents, nodes, runtime, nativeDialogs: () => nativeDialogs, selectedOption: () => selectedOption, setUrl(value) { url = value; } };
+  return { tab, focusCalls, activities, commands, flattenedNodes, frameNodes, inputEvents, nodes, runtime, nativeDialogs: () => nativeDialogs, selectedOption: () => selectedOption, setUrl(value) { url = value; } };
 }
 
 function addSemanticControls(fixture) {
@@ -724,4 +728,127 @@ it("uploads only the named plugin's file from its registered runtime storage", a
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+it("scopes every browser read and input operation to its owning task", async () => {
+  const fixture = createFixture();
+  fixture.tab.taskId = "task-a";
+  for (const operation of ["snapshot", "read", "screenshot", "act"]) {
+    await assert.rejects(fixture.runtime[operation]({ tabId: "tab-1", taskId: "task-b" }), /another task/);
+  }
+  assert.equal(fixture.commands.length, 0);
+});
+
+it("uses Chromium input in background tabs without changing the user's selected page", async () => {
+  const fixture = createFixture();
+  fixture.tab.background = true;
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const result = await fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId, actions: [
+    { type: "fill", target: { role: "textbox", name: "Title" }, value: "" },
+    { type: "click", target: { role: "button", name: "Publish" } },
+  ] });
+  assert.equal(result.results.length, 2);
+  assert.equal(result.status, "executed");
+  assert.deepEqual(fixture.focusCalls, []);
+  assert.deepEqual(fixture.inputEvents, []);
+  assert.ok(fixture.commands.some(command => command.method === "Input.dispatchMouseEvent"));
+  assert.ok(fixture.commands.some(command => command.params.key === "Backspace"));
+});
+
+it("stops input when the user takes control during an asynchronous action", async () => {
+  const fixture = createFixture({ onCommand(method) {
+    if (method === "DOM.focus") { fixture.tab.controller = "human"; fixture.tab.controlEpoch = 1; }
+  } });
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "fill", ref: "@e1", value: "must not be inserted" }],
+  }), /under user control/);
+  assert.ok(!fixture.commands.some(command => command.method === "Input.insertText" || command.method === "selectAll"));
+  assert.equal(fixture.activities.at(-1).status, "paused");
+});
+
+it("cancels a fixed wait promptly and releases the tab queue after takeover", async () => {
+  const fixture = createFixture();
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const started = Date.now();
+  const pending = fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "wait", durationMs: 10_000 }],
+  });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  fixture.tab.controller = "human";
+  fixture.tab.controlEpoch = 1;
+  await assert.rejects(pending, /under user control/);
+  assert.ok(Date.now() - started < 1_000, "Takeover must not wait for the full fixed delay");
+  assert.ok((await fixture.runtime.snapshot({ tabId: "tab-1" })).snapshotId);
+});
+
+it("clears file chooser interception when takeover interrupts an attached debugger", async () => {
+  const fixture = createFixture({ onCommand(method, params) {
+    if (method === "Page.setInterceptFileChooserDialog" && params.enabled) {
+      fixture.tab.controller = "human";
+      fixture.tab.controlEpoch = 1;
+    }
+  } });
+  fixture.tab.background = true;
+  fixture.tab.view.webContents.debugger.attach();
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "click", target: { role: "button", name: "Publish" } }],
+  }), /under user control/);
+  assert.equal(fixture.commands.filter(command => command.method === "Page.setInterceptFileChooserDialog").at(-1).params.enabled, false);
+  assert.equal(fixture.tab.view.webContents.debugger.isAttached(), true);
+});
+
+it("requires a new snapshot after takeover and does not revive an old batch when control returns quickly", async () => {
+  const fixture = createFixture({ onCommand(method) {
+    if (method === "DOM.focus") { fixture.tab.controlEpoch = 2; fixture.tab.controller = "agent"; }
+  } });
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "fill", ref: "@e1", value: "old batch" }],
+  }), /under user control/);
+  assert.ok(!fixture.commands.some(command => command.method === "Input.insertText"));
+});
+
+it("refreshes semantic targets between mutations and rejects ambiguous or conflicting names", async () => {
+  const fixture = createFixture();
+  let snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const result = await fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId, actions: [
+    { type: "click", target: { role: "button", name: "Publish" } },
+    { type: "fill", target: { role: "textbox", name: "Title" }, value: "after mutation" },
+  ] });
+  assert.equal(result.results.length, 2);
+  snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "click", target: { role: "button", name: "Publish" }, expectedName: "Preview" }],
+  }), /must match/);
+  fixture.nodes.push(axNode({ nodeId: "duplicate", role: "button", name: "Publish", backendDOMNodeId: 25 }));
+  fixture.nodes[0].childIds.push("duplicate");
+  snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "click", target: { role: "button", name: "Publish" } }],
+  }), /ambiguous/);
+});
+
+it("reports verified only when the declared page postcondition is observed", async () => {
+  const fixture = createFixture();
+  let snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const result = await fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "fill", ref: "@e1", value: "draft" }],
+    expect: { condition: "text", value: "Create post", match: "equals", timeoutMs: 100 }, observe: { settleMs: 0 },
+  });
+  assert.equal(result.status, "verified");
+  assert.ok(result.observation.snapshotId);
+  snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "fill", ref: "@e1", value: "draft" }], expect: { condition: "text", value: "Success that never happened", timeoutMs: 100 },
+  }), /timed out/);
+  assert.equal(fixture.activities.at(-1).status, "failed");
+  snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "fill", ref: "@e1", value: "Not saved yet" }],
+    expect: { condition: "text", value: "saved", match: "equals", timeoutMs: 100 },
+  }), /timed out/);
+  assert.equal(fixture.activities.at(-1).status, "failed");
 });

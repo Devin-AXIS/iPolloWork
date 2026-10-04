@@ -74,7 +74,7 @@ export function browserTabsForSession(
     tabs,
     activeTabId: tabs.some((tab) => tab.id === browserState.activeTabId)
       ? browserState.activeTabId ?? null
-      : tabs[0]?.id ?? null,
+      : null,
   };
 }
 
@@ -236,6 +236,12 @@ function isSameTab(left: PanelTab, right: PanelTab) {
       left.url === right.url &&
       left.sessionId === right.sessionId &&
       left.profileId === right.profileId &&
+      left.controller === right.controller &&
+      left.decisionEngine === right.decisionEngine &&
+      left.decisionStatus === right.decisionStatus &&
+      left.activity?.status === right.activity?.status &&
+      left.activity?.actionCount === right.activity?.actionCount &&
+      left.activity?.message === right.activity?.message &&
       left.favicon === right.favicon &&
       left.status === right.status &&
       left.canGoBack === right.canGoBack &&
@@ -531,7 +537,7 @@ export const usePanelTabStore = create<PanelTabStore>()(
           activeBrowserTabId && !session.tabs.some((tab) => tab.id === activeBrowserTabId),
         );
         const shouldSyncActiveFromElectron =
-          !session.activeTabId || currentActiveTab?.type === "browser" || activeBrowserTabIsNew;
+          !session.activeTabId || Boolean(activeBrowserTabId && (currentActiveTab?.type === "browser" || activeBrowserTabIsNew));
 
         const activeTabId = shouldSyncActiveFromElectron
           ? resolveActiveTabId(mergedTabs, activeBrowserTabId)

@@ -42,7 +42,7 @@ import type {
   EvalRelaunchResult,
   WorkspaceList,
 } from "./desktop-types";
-import type { BrowserPanelTab } from "./desktop-types";
+import type { BrowserController, BrowserDecisionEngine, BrowserPanelTab } from "./desktop-types";
 import type { BrowserLoginUi } from "@ipollowork/types/plugins";
 
 export const LOCAL_IMAGE_FILE_EXTENSIONS = ["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"];
@@ -134,6 +134,7 @@ declare global {
         openUrl?: (url: string, options?: {
           profileId?: string;
           taskId?: string;
+          background?: boolean;
           loginUi?: BrowserLoginUi & { origin: string };
           sessionRecovery?: {
             origin: string;
@@ -148,6 +149,7 @@ declare global {
         }>;
         snapshot?: (payload: {
           tabId: string;
+          taskId?: string;
           imageSelector?: string;
           mode?: "content" | "interactive" | "mixed";
           scopeRef?: string;
@@ -171,6 +173,7 @@ declare global {
         }>;
         read?: (payload: {
           tabId: string;
+          taskId?: string;
           mode?: "article" | "forms" | "links" | "page" | "tables";
           maxChars?: number;
         }) => Promise<{
@@ -187,6 +190,7 @@ declare global {
         }>;
         screenshot?: (payload: {
           tabId: string;
+          taskId?: string;
           snapshotId?: string;
           target?: "ref" | "region" | "viewport";
           ref?: string;
@@ -208,9 +212,11 @@ declare global {
         }>;
         act?: (payload: {
           tabId: string;
+          taskId?: string;
           snapshotId: string;
           workspaceRoot?: string;
           actions: Array<Record<string, unknown>>;
+          expect?: Record<string, unknown>;
           observe?: {
             mode?: "content" | "interactive" | "mixed";
             scopeRef?: string;
@@ -224,11 +230,16 @@ declare global {
           provider: "builtin";
           tabId: string;
           url: string;
+          status: "executed" | "verified";
+          verification?: Record<string, unknown>;
           results: Array<Record<string, unknown>>;
           snapshotRequired: boolean;
           observation?: Record<string, unknown>;
           metrics: { elapsedMs: number };
         }>;
+        reportDecision?: (payload: { tabId: string; taskId?: string; status: "ready" | "unavailable" }) => Promise<BrowserPanelTab>;
+        setControl?: (tabId: string, controller: BrowserController) => Promise<BrowserPanelTab>;
+        setDecisionEngine?: (tabId: string, engine: BrowserDecisionEngine) => Promise<BrowserPanelTab>;
         navigate?: (url: string) => Promise<void>;
         back?: () => Promise<void>;
         forward?: () => Promise<void>;

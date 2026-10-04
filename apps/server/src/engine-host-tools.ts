@@ -7,6 +7,8 @@ export const ENGINE_HOST_TOOL_NAMES = {
   scheduleApply: "ipollowork_schedule_apply",
   workspaceAppListTools: "ipollowork_workspace_app_list_tools",
   workspaceAppCallTool: "ipollowork_workspace_app_call_tool",
+  browserListTabs: "ipollowork_browser_list_tabs",
+  browserDecide: "ipollowork_browser_decide",
   browserOpenUrl: "ipollowork_browser_open_url",
   browserSnapshot: "ipollowork_browser_snapshot",
   browserRead: "ipollowork_browser_read",
@@ -35,7 +37,8 @@ const objectParameters = (
 
 export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
 External websites only; never control iPolloWork itself. Open with ipollowork_browser_open_url, read content with ipollowork_browser_read, and obtain actionable refs with ipollowork_browser_snapshot.
-Use ipollowork_browser_act only with latest snapshot refs; never invent refs. Refresh after navigation, target changes or snapshotRequired. Prefer a bounded semantic action batch with observe; use structured waits instead of guessed coordinates or timing.
+Pages open in the background. Use ipollowork_browser_list_tabs to find this task's pages and control/decision state. When the user has control, stop input until they return control, then take a fresh snapshot. JEV is optional: if selected, call ipollowork_browser_decide with bounded candidate actions before acting; disabled or unavailable means use your normal reasoning. Never require JEV for browsing.
+Use ipollowork_browser_act only with latest snapshot refs; never invent refs. A unique exact role/name target is re-observed before each step so a bounded batch can continue across page changes. Use expect (text or URL) for business-result verification; executed alone does not prove success. Refresh after navigation, target changes or snapshotRequired. Prefer a bounded semantic action batch with observe; use structured waits instead of guessed coordinates or timing.
 Upload generated local files through the upload action with a file-input ref, or an upload-button ref plus exact expectedName. Never click the upload button first: the host handles the chooser without asking the user to select generated files.
 Use screenshots only when semantics are insufficient; bound them to a ref/region, annotate refs and use ifChanged to suppress duplicates.
 Publish/send/submit/pay/buy/confirm/delete or similar consequential controls require user approval for click, key or check; never retry after denial.`;
@@ -58,9 +61,12 @@ export function consequentialBrowserControlNames(value: unknown): string[] {
     ))
     .filter((action) => (
       ["check", "click", "press"].includes(String(action.type))
-      && typeof action.expectedName === "string"
     ))
-    .map((action) => String(action.expectedName).trim())
+    .flatMap(action => {
+      const target = action.target;
+      const name = typeof target === "object" && target !== null ? Reflect.get(target, "name") : undefined;
+      return [action.expectedName, name].filter((value): value is string => typeof value === "string");
+    })
     .filter((name) => name && CONSEQUENTIAL_BROWSER_CONTROL.test(name));
 }
 
@@ -156,6 +162,27 @@ const browserActionSchema = {
     }, ["type", "condition", "state"]),
   ],
 };
+
+const browserTargetSchema = objectParameters({
+  role: { type: "string", maxLength: 40 }, name: { type: "string", minLength: 1, maxLength: 200 },
+}, ["role", "name"]);
+// Re-observe named targets between steps; preserve the existing ref contract for precise single-page work.
+for (const action of [...browserActionSchema.oneOf]) {
+  const properties = action.properties;
+  const required = action.required;
+  if (typeof properties !== "object" || properties === null || !Reflect.has(properties, "ref") || !Array.isArray(required)) continue;
+  const targetedProperties = Object.fromEntries(Object.entries(properties).filter(([field]) => field !== "ref" && field !== "expectedName"));
+  browserActionSchema.oneOf.push(objectParameters({
+    ...targetedProperties, target: browserTargetSchema,
+  }, [...required.filter(field => field !== "ref" && field !== "expectedName"), "target"]));
+}
+
+const browserExpectationSchema = objectParameters({
+  condition: { type: "string", enum: ["text", "url"] },
+  value: { type: "string", minLength: 1, maxLength: 500 },
+  match: { type: "string", enum: ["equals", "contains"] },
+  timeoutMs: { type: "integer", minimum: 100, maximum: 10_000 },
+}, ["condition", "value"]);
 
 const browserObservationSchema = objectParameters({
   mode: { type: "string", enum: ["content", "interactive", "mixed"] },
@@ -269,6 +296,19 @@ ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
     }, ["name"]),
   },
   {
+    name: ENGINE_HOST_TOOL_NAMES.browserListTabs,
+    description: "List this task's browser pages, user/agent control and optional JEV availability. Does not select a page or change focus.",
+    parameters: objectParameters({}),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.browserDecide,
+    description: "When the user selected JEV, choose among 2–32 proposed semantic actions using the connected JEV extension. Sends a fresh bounded page snapshot. Returns a recommendation for browser_act, never executes it. Disabled/unavailable falls back to normal agent reasoning without blocking browsing.",
+    parameters: objectParameters({
+      tabId: { type: "string" }, goal: { type: "string", minLength: 1, maxLength: 2_000 },
+      candidates: { type: "array", minItems: 2, maxItems: 32, items: browserActionSchema },
+    }, ["tabId", "goal", "candidates"]),
+  },
+  {
     name: ENGINE_HOST_TOOL_NAMES.browserOpenUrl,
     description: `Open an external website in a new iPolloWork built-in browser tab. Returns tabId for ipollowork_browser_snapshot. ${ENGINE_BROWSER_INSTRUCTION}`,
     parameters: objectParameters({
@@ -326,6 +366,7 @@ ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
         items: browserActionSchema,
       },
       observe: browserObservationSchema,
+      expect: browserExpectationSchema,
     }, ["tabId", "snapshotId", "actions"]),
   },
   {
