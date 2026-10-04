@@ -95,7 +95,7 @@ export interface HfProtocol {
   /** Total duration of the composition in seconds */
   duration: number;
   /** Seek to a specific time. Must produce deterministic visual output. */
-  seek(time: number): void;
+  seek(time: number, options?: { suppressEvents?: boolean; subframe?: boolean }): void;
   /** Optional: media elements the engine should handle */
   media?: HfMediaElement[];
   /** Optional: shader transition metadata, populated by @hyperframes/shader-transitions */
@@ -124,6 +124,10 @@ export interface CaptureOptions {
    */
   fps: Fps;
   format?: "jpeg" | "png";
+  /** Four temporal samples across a 180° shutter, averaged in linear light (SDR). */
+  motionBlur?: boolean;
+  /** PNG is also used for opaque shutter integration; keep alpha policy separate from the codec. */
+  transparentBackground?: boolean;
   quality?: number;
   deviceScaleFactor?: number;
   /**

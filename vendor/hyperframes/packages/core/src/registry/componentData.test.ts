@@ -23,6 +23,27 @@ const REGION_CONTRACT: RegistryVisualComponentDataContract = {
 };
 
 describe("visual component data contract", () => {
+  it("preserves icon choices and embedded images through the native rows contract", () => {
+    const contract: RegistryVisualComponentDataContract = {
+      version: 1, kind: "category-value", mode: "replace", rowId: "label",
+      binding: { variable: "nodes", encoding: "json" }, minRows: 2, maxRows: 12,
+      columns: [
+        { id: "label", label: "Name", type: "string", role: "label", required: true },
+        { id: "icon", label: "Icon", type: "string", role: "value", options: [{ value: "globe", label: "Globe" }, { value: "bot", label: "Bot" }] },
+        { id: "image", label: "Image", type: "string", role: "value", format: "image" },
+      ],
+    };
+    expect(createVisualComponentDataRow(contract).icon).toBe("globe");
+    const document = { version: 1 as const, kind: "category-value" as const, rows: [
+      { label: "One", icon: "bot", image: "data:image/png;base64,aGVsbG8=" },
+      { label: "Two", icon: "globe", image: "" },
+    ] };
+    const parsed = parseVisualComponentData(contract, serializeVisualComponentData(contract, document));
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.document).toEqual({ ...document, rows: [document.rows[0], { label: "Two", icon: "globe" }] });
+    document.rows[0]!.icon = "unknown";
+    expect(parseVisualComponentData(contract, JSON.stringify(document)).issues.length).toBeGreaterThan(0);
+  });
   it("normalizes compact registry values into typed AI-readable rows", () => {
     const parsed = parseVisualComponentData(REGION_CONTRACT, "CA:253.9,TX:112.8");
 

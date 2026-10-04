@@ -4,6 +4,8 @@ import type { ComposerDraft } from "../src/app/types";
 import {
   getComposerDraft,
   getComposerQueuedDrafts,
+  getInitialTaskOptions,
+  newTaskComposerScope,
   useComposerStateStore,
 } from "../src/react-app/domains/session/surface/composer-state-store";
 import { deriveComposerInputHistory } from "../src/react-app/domains/session/surface/session-render-state";
@@ -25,6 +27,27 @@ function draft(text: string): ComposerDraft {
 
 describe("composer state store", () => {
   beforeEach(reset);
+
+  test("new task views share the prompt, attachments, paste and selected method within a project", () => {
+    const scope = newTaskComposerScope("project-a");
+    const store = useComposerStateStore.getState();
+    const attachments = [{ id: "reference", name: "reference.txt", mimeType: "text/plain", size: 10, kind: "file" as const }];
+    store.setDraft(scope, "Create a page");
+    store.setAttachments(scope, attachments);
+    store.setPasteParts(scope, [{ id: "paste", label: "brief", text: "User brief", lines: 1 }]);
+    store.setInitialTaskOptions(scope, { workTemplateId: "saved-page", accessMode: "auto", mode: "code" });
+    // A newly mounted view reads the same owner, including a method chosen in overview.
+    store.setInitialTaskOptions(scope, { workTemplateId: "saved-review" });
+    const state = useComposerStateStore.getState();
+    expect(state.sessions[scope]).toMatchObject({ draft: "Create a page", attachments, pasteParts: [{ text: "User brief" }] });
+    expect(getInitialTaskOptions(state, scope)).toMatchObject({ workTemplateId: "saved-review", accessMode: "auto", mode: "code" });
+    expect(getComposerDraft(state, newTaskComposerScope("project-b"))).toBe("");
+    expect(getInitialTaskOptions(state, newTaskComposerScope("project-b")).workTemplateId).toBe("auto");
+    store.setDraft(scope, (current) => `${current} with keyboard support`);
+    expect(getComposerDraft(useComposerStateStore.getState(), scope)).toContain("keyboard support");
+    store.clearSession(scope);
+    expect(getInitialTaskOptions(useComposerStateStore.getState(), scope).workTemplateId).toBe("auto");
+  });
 
   test("scopes queued drafts by session", () => {
     const { appendQueuedDraft } = useComposerStateStore.getState();
@@ -101,12 +124,12 @@ describe("composer state store", () => {
 
     setDraft("session-a", submitted.draft);
     clearSession("session-a");
-    restoreSessionIfEmpty("session-a", submitted);
+    expect(restoreSessionIfEmpty("session-a", submitted)).toBe(true);
     expect(getComposerDraft(useComposerStateStore.getState(), "session-a")).toBe("original prompt");
 
     clearSession("session-a");
     setDraft("session-a", "next prompt");
-    restoreSessionIfEmpty("session-a", submitted);
+    expect(restoreSessionIfEmpty("session-a", submitted)).toBe(false);
     expect(getComposerDraft(useComposerStateStore.getState(), "session-a")).toBe("next prompt");
   });
 

@@ -67,6 +67,7 @@ type WorkItemSheetProps = {
   board: WorkBoardConfig;
   defaultStatus: string;
   scheduleMode: boolean;
+  allowAutomation?: boolean;
   initialSchedule: WorkItemScheduleDraft | null;
   saving: boolean;
   deleting: boolean;
@@ -555,7 +556,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
             </div>
           </div>
 
-          {!props.item?.execution ? <div className="space-y-3">
+          {!props.item?.execution && props.agents.length > 0 ? <div className="space-y-3">
             <Label htmlFor="work-item-assignee" className="text-sm font-semibold leading-5">{t("work.field.assignee")}</Label>
             <Select
               value={value.assignee ?? UNASSIGNED_ASSIGNEE_VALUE}
@@ -626,7 +627,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
                   : null}
               </div>
               {invalidRange ? <p id="work-item-range-error" className="mt-2 text-xs text-destructive">{t("work.field.invalid_range")}</p> : null}
-              {!props.item?.execution ? (
+              {!props.item?.execution && props.allowAutomation !== false ? (
                 <div className="mt-4 border-t border-dls-border/70 pt-4" data-testid="work-item-automation">
                   <div className="flex items-center gap-3">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">

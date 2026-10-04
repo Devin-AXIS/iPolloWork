@@ -1,6 +1,22 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { WorkspaceEngineRpcClient } from "../src/app/lib/workspace-engine-rpc-client";
 
+test("OpenCode compaction summaries stay internal in history and streaming", () => {
+  const info = {id: "internal", sessionID: "ses", role: "assistant", parentID: "user", summary: true};
+  const part = {id: "internal-text", sessionID: "ses", messageID: "internal", type: "text", text: "## Objective"};
+  const snapshot = mapOpenCodeConversationSnapshot({
+    session: {id: "ses", title: "Title", time: {created: 1, updated: 2}},
+    messages: [{info, parts: [part]}, {info: {...info, id: "answer", summary: false}, parts: [{...part, messageID: "answer", text: "正常回复"}]}],
+    todos: [], status: {type: "idle"},
+  });
+  expect(snapshot.messages.map(message => message.id)).toEqual(["answer"]);
+  const state = createOpenCodeConversationLiveState();
+  expect(mapOpenCodeConversationEvent({type: "message.updated", properties: {info}}, state)).toEqual({type: "message.removed", sessionId: "ses", messageId: "internal"});
+  expect(mapOpenCodeConversationEvent({type: "message.part.updated", properties: {part}}, state)).toBeNull();
+  expect(mapOpenCodeConversationEvent({type: "message.part.delta", properties: {sessionID: "ses", messageID: "internal", partID: "internal-text", delta: " hidden"}}, state)).toBeNull();
+  expect(mapOpenCodeConversationEvent({type: "message.updated", properties: {info: {...info, id: "answer", summary: false}}}, state)?.type).toBe("message.upsert");
+});
+
 test("longer RPC deadlines apply only to bootstrap, not cancel or ordinary reads", async () => {
   const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
   const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ value: {} }));
@@ -1142,6 +1158,19 @@ describe("conversation engine adapters", () => {
     expect(requests).toContainEqual(expect.objectContaining({
       body: { method: "session.list", payload: {} },
     }));
+  });
+
+  test("maps current native sub-agent activity live without mistaking item completion for agent completion", () => {
+    const state = createCodexLiveState();
+    const event = (kind: string, id: string) => mapCodexHarnessEvent({ type: "notification", method: "item/completed", params: {
+      threadId: "root", turnId: "turn", item: { type: "subAgentActivity", id, kind, agentThreadId: "child", agentPath: "/root/implementation_advice" },
+    } }, state)[0];
+    expect(event("started", "spawn")).toMatchObject({ type: "message.upsert", sessionId: "root", message: { parts: [{
+      type: "dynamic-tool", toolName: "task", state: "input-streaming", input: { description: "/root/implementation_advice", task_id: "child" },
+      callProviderMetadata: { ipollowork: { sessionId: "child", parentSessionId: "root", nativeKind: "started", delegationStatus: "running" } },
+    }] } });
+    expect(event("completed", "done")).toMatchObject({ message: { parts: [{ state: "output-available", output: '<task id="child" state="completed"></task>' }] } });
+    expect(event("interrupted", "interrupted")).toMatchObject({ message: { parts: [{ state: "output-error", errorText: "Codex interrupted this agent" }] } });
   });
 
   test("maps Codex app-server turns, streaming output, and approvals into the shared protocol", () => {
@@ -3277,4 +3306,20 @@ describe("conversation engine adapters", () => {
       },
     });
   });
+});
+
+
+test("projects Codex native plan updates without inventing completed steps", () => {
+  const state = createCodexLiveState();
+  mapCodexHarnessEvent({ type: "notification", method: "turn/started", params: { threadId: "thread", turn: { id: "current" } } }, state);
+  const update = { type: "notification", method: "turn/plan/updated", params: { threadId: "thread", turnId: "current", plan: [
+    { step: "制作源文件", status: "completed" }, { step: "导出视频", status: "inProgress" }, { step: "检查画面", status: "pending" },
+    { step: "Invalid status", status: "done" },
+  ] } };
+  expect(mapCodexHarnessEvent(update, state)).toEqual([{ type: "todo.updated", sessionId: "thread", todos: [
+    { id: "thread:current:plan:0", content: "制作源文件", status: "completed", priority: "medium" },
+    { id: "thread:current:plan:1", content: "导出视频", status: "in_progress", priority: "medium" },
+    { id: "thread:current:plan:2", content: "检查画面", status: "pending", priority: "medium" },
+  ] }]);
+  expect(mapCodexHarnessEvent({ ...update, params: { ...update.params, turnId: "old" } }, state)).toEqual([]);
 });

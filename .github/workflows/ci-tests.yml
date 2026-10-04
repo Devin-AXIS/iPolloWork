@@ -119,6 +119,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build bundled plugin UIs
+        run: |
+          pnpm --filter @ipollowork/labelu-plugin build
+          pnpm --filter ipollowork-short-video-plugin build
+
       - name: Provide bundled video codecs to tests
         shell: bash
         run: |

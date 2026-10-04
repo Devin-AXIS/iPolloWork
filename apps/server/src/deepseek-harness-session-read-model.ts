@@ -42,6 +42,7 @@ const INTERNAL_SESSION_TITLE = /^<system(?:>|\s)/iu;
 
 export type DeepSeekHarnessSessionInfo = {
   id: string;
+  engineId: string;
   title: string;
   status: { type: "busy" | "idle" };
   slug: string;
@@ -116,6 +117,7 @@ function mapSummary(summary: DeepSeekHarnessSummary, archived: boolean): DeepSee
   const tokens = summaryTokens(summary);
   return {
     id: summary.sessionId,
+    engineId: DEEPSEEK_HARNESS_ENGINE_ID,
     title: summaryTitle(summary),
     status: summary.running ? { type: "busy" } : { type: "idle" },
     slug: summary.sessionId,

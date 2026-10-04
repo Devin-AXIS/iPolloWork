@@ -16,6 +16,12 @@ import type { VideoJob } from "./video-generation.js";
  */
 export type WorkspaceKind = "local" | "remote";
 
+/** Native cumulative usage for one session, excluding its child sessions. */
+export type SessionTokenMetering = {
+  /** Absent when the engine has not reported a measured total. */
+  totalTokens?: number;
+};
+
 /** Persisted files produced outside the chat transcript, scoped to one session. */
 export type SessionArtifact = {
   path: string;
@@ -51,6 +57,23 @@ export const DEFAULT_ENGINE_ID = "opencode";
 export const DEEPSEEK_HARNESS_ENGINE_ID = "deepseek-harness";
 export const CODEX_HARNESS_ENGINE_ID = "codex-harness";
 export const DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX = "<system>\n<!-- ipollowork-internal-context -->\n";
+
+/** Display projection of Codex turn/plan/updated; the engine owns every status. */
+export type CodexNativePlanTodo = {
+  id: string; content: string; status: "pending" | "in_progress" | "completed"; priority: string;
+};
+
+export function codexNativePlanTodos(threadId: string, turnId: string, plan: unknown): CodexNativePlanTodo[] {
+  if (!Array.isArray(plan)) return [];
+  return plan.slice(0, 100).flatMap<CodexNativePlanTodo>((entry: unknown, index) => {
+    if (!entry || typeof entry !== "object" || !("step" in entry) || !("status" in entry)
+      || typeof entry.step !== "string" || !entry.step.trim()
+      || (entry.status !== "pending" && entry.status !== "inProgress" && entry.status !== "completed")) return [];
+    return [{ id: `${threadId}:${turnId}:plan:${index}`, content: entry.step,
+      status: entry.status === "inProgress" ? "in_progress" : entry.status === "completed" ? "completed" : "pending",
+      priority: "medium" }];
+  });
+}
 
 export type DeepSeekHarnessModelDirectory = {
   groups: ReadonlyArray<{

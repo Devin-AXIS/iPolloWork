@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>操作录制 · iPolloWork</title>
+  <style>
+    :root { color-scheme: light; --bg: #fff; --surface: #fff; --subtle: #f5f6f7; --text: #202328; --muted: #686d75; --line: #e8eaed; --accent: #202328; --accent-text: #fff; --focus: #5575cf; --danger: #b5353c; --danger-bg: #fff2f3; --good: #35705b; --radius: 12px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; -webkit-font-smoothing: antialiased; }
+    button, input, textarea { font: inherit; }
+    button, input, textarea { color: inherit; }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; font-weight: 550; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
+    button:hover:enabled { background: var(--subtle); border-color: var(--muted); }
+    button:disabled { cursor: not-allowed; opacity: .42; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+    button.primary:hover:enabled { background: var(--accent); filter: brightness(.85); }
+    button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+    button.ghost:hover:enabled { background: var(--subtle); border-color: transparent; color: var(--text); }
+    button.danger { color: var(--danger); border-color: transparent; background: transparent; }
+    button.danger:hover:enabled { background: var(--danger-bg); border-color: transparent; }
+    #stop { background: #b5353c; color: #fff; border-color: #b5353c; }
+    input, textarea { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); min-width: 0; font-size: 12px; }
+    textarea { resize: vertical; line-height: 1.65; }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+    input:focus-visible, textarea:focus-visible { outline-offset: 1px; }
+    [hidden] { display: none !important; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 13px; font-weight: 600; letter-spacing: -.2px; }
+    h2 { font-size: 14px; font-weight: 600; letter-spacing: -.2px; }
+    h3 { font-size: 13px; font-weight: 550; }
+    small, .muted { color: var(--muted); }
+    small { display: block; font-size: 11px; margin-top: 5px; }
+    label { display: block; font-size: 12px; font-weight: 500; }
+    label > input, label > textarea { margin-top: 6px; font-weight: 400; }
+    summary { cursor: pointer; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    .chevron { display: inline-block; width: 5px; height: 5px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); margin: 0 2px 3px 6px; }
+    details[open] > summary .chevron { transform: rotate(225deg); margin-bottom: 0; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 8px; }
+    .brand-mark { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--subtle); font-size: 17px; line-height: 1; }
+    .header-actions { display: flex; align-items: center; gap: 14px; }
+    .connection { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+    .connection[data-state="ready"] .dot { background: var(--good); }
+    .connection[data-state="error"] .dot { background: var(--danger); }
+    .history { position: relative; }
+    .history > summary { font-size: 11px; color: var(--muted); padding: 8px 0; }
+    .history > summary:hover { color: var(--text); }
+    .history-panel { position: absolute; top: 36px; right: 0; z-index: 5; width: min(300px, calc(100vw - 32px)); padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: 0 8px 28px #0000000c; }
+    .sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+    .sidebar-head h2 { font-size: 12px; }
+    .recording-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
+    .recording-item { width: 100%; text-align: left; align-items: flex-start; flex-direction: column; gap: 2px; white-space: normal; border-color: transparent; background: transparent; padding: 8px; }
+    .recording-item[aria-current="true"] { background: var(--subtle); }
+    .recording-item strong { font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
+    .recording-item small { font-size: 10px; font-weight: 400; margin: 0; }
+    #list-empty { font-size: 12px; padding: 10px 8px; }
+    main { max-width: 600px; min-width: 0; padding: 22px 24px 36px; margin: 0 auto; }
+    .phases { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; color: var(--muted); font-size: 11px; }
+    .phase { display: inline-flex; align-items: center; gap: 5px; }
+    .phase-number { display: grid; place-items: center; width: 16px; height: 16px; background: var(--subtle); border-radius: 50%; font-size: 9px; font-variant-numeric: tabular-nums; }
+    .phase[aria-current="step"] { color: var(--text); font-weight: 600; }
+    .phase[aria-current="step"] .phase-number { background: var(--accent); color: var(--accent-text); }
+    .phase[data-complete="true"] .phase-number { color: var(--good); }
+    .phase-line { width: 20px; height: 1px; background: var(--line); }
+    .intro { margin-bottom: 18px; }
+    .intro h2 { font-size: 21px; letter-spacing: -.65px; font-weight: 550; line-height: 1.4; }
+    .intro p { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .composer { padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 2px 8px #00000003; }
+    .composer:focus-within { border-color: var(--muted); }
+    .composer label { color: var(--muted); font-size: 11px; }
+    .capture-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 0; }
+    .capture-state { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; min-width: 0; overflow-wrap: anywhere; }
+    .capture-state[data-state="recording"] { color: var(--danger); }
+    .capture-state[data-state="recording"]::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; animation: recording-pulse 1.8s ease-in-out infinite; }
+    .capture-state[data-state="paused"] { color: var(--text); }
+    .toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    #capture-actions { flex-shrink: 0; }
+    .options { margin-top: 10px; }
+    .options > summary { color: var(--muted); font-size: 11px; width: fit-content; padding: 5px 0; }
+    .options-body { padding: 10px 0 6px; }
+    .permission { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+    #request-permissions { font-size: 11px; margin-top: 8px; }
+    .import-box { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .import-box summary { color: var(--muted); font-size: 11px; }
+    .import-box p { color: var(--muted); font-size: 11px; margin-top: 8px; }
+    .file-input { font-size: 11px; margin-top: 8px; padding: 7px; }
+    .notice { margin-top: 14px; padding: 9px 11px; border-radius: 8px; background: var(--subtle); font-size: 12px; overflow-wrap: anywhere; }
+    .notice[data-tone="error"] { color: var(--danger); background: var(--danger-bg); }
+    .notice[data-tone="success"] { color: var(--good); }
+    .review-area { margin-top: 26px; }
+    .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .section-head p { color: var(--muted); margin-top: 3px; font-size: 11px; overflow-wrap: anywhere; }
+    .counter { font-size: 11px; color: var(--muted); margin-left: 7px; font-weight: 400; font-variant-numeric: tabular-nums; }
+    .save-state { font-size: 10px; color: var(--muted); padding-top: 3px; white-space: nowrap; }
+    .empty { color: var(--muted); padding: 14px 0; font-size: 12px; }
+    .empty h3 { color: var(--text); margin-bottom: 4px; }
+    .steps { list-style: none; padding: 0; margin: 0; }
+    .step { position: relative; padding-left: 1px; }
+    .step::before { content: ""; position: absolute; top: 27px; left: 11px; bottom: -7px; border-left: 1px solid var(--line); }
+    .step:last-child::before { display: none; }
+    .step summary { display: flex; align-items: center; gap: 8px; padding: 8px 0; min-height: 39px; }
+    .step summary:hover .step-action { color: var(--focus); }
+    .step summary::after { content: ""; width: 5px; height: 5px; border-right: 1px solid var(--muted); border-bottom: 1px solid var(--muted); transform: rotate(45deg); margin: 0 4px 3px auto; flex-shrink: 0; }
+    .step details[open] summary::after { transform: rotate(225deg); margin-bottom: 0; }
+    .step-index { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--subtle); font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .step-action { font-size: 12px; font-weight: 500; flex-shrink: 0; }
+    .step-target { color: var(--muted); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .step-body { padding: 4px 0 16px 28px; }
+    .step-context { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; margin-bottom: 10px; }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field-grid .wide { grid-column: 1 / -1; }
+    .step-body .toolbar { margin-top: 10px; justify-content: space-between; }
+    .check { display: flex; align-items: flex-start; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 400; }
+    .check input { width: 13px; height: 13px; margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; }
+    .check span { min-width: 0; }
+    .compile-area { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 18px; }
+    .compile-form { display: grid; gap: 12px; }
+    .optional-settings > summary { color: var(--muted); font-size: 11px; }
+    .optional-settings > label { margin-top: 12px; }
+    #compile { width: 100%; }
+    .output-area { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .output-heading { display: flex; align-items: center; gap: 6px; }
+    .output-heading::before { content: "✓"; font-size: 12px; color: var(--good); }
+    .output-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 14px 0; }
+    #ask-ai { min-height: 36px; }
+    .draft-editor { border: 1px solid var(--line); border-radius: 8px; }
+    .draft-editor summary { padding: 9px 11px; color: var(--muted); font-size: 11px; }
+    .markdown { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; min-height: 300px; padding: 12px; tab-size: 2; white-space: pre; }
+    .output-note { color: var(--muted); font-size: 11px; margin: 10px 0; }
+    .export-options { margin-top: 14px; }
+    .export-options > summary { color: var(--muted); font-size: 11px; }
+    .export-options > .toolbar { margin-top: 12px; }
+    .paths { margin: 12px 0; font-size: 11px; }
+    .paths dt { font-weight: 500; color: var(--muted); margin-top: 10px; }
+    .paths dd { margin: 2px 0 0; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+    .footer-note { margin-top: 24px; color: var(--muted); font-size: 10px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    :root[data-theme="dark"] { color-scheme: dark; --bg: #17191c; --surface: #1c1e22; --subtle: #24272c; --text: #e4e6e9; --muted: #9b9fa8; --line: #30333a; --accent: #e4e6e9; --accent-text: #202328; --focus: #8ca5ed; --danger: #e57880; --danger-bg: #372328; --good: #89b8a5; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; --bg: #17191c; --surface: #1c1e22; --subtle: #24272c; --text: #e4e6e9; --muted: #9b9fa8; --line: #30333a; --accent: #e4e6e9; --accent-text: #202328; --focus: #8ca5ed; --danger: #e57880; --danger-bg: #372328; --good: #89b8a5; } }
+    @media (max-width: 420px) { .topbar { padding: 0 16px; } .header-actions { gap: 10px; } main { padding: 20px 16px 28px; } .intro h2 { font-size: 20px; } .field-grid { grid-template-columns: 1fr; } .capture-footer { gap: 6px; flex-wrap: wrap; } .output-actions { grid-template-columns: 1fr; } }
+    @media (max-width: 300px) { .connection { font-size: 10px; } .header-actions { gap: 6px; } .brand { gap: 5px; } .phase-line { width: 12px; } .phases { gap: 5px; } }
+    @keyframes recording-pulse { 50% { opacity: .35; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">✦</span><h1>操作录制</h1></div>
+    <div class="header-actions">
+      <span id="connection" class="connection" data-state="loading" role="status"><span class="dot" aria-hidden="true"></span><span id="connection-label">连接中</span></span>
+      <details id="history" class="history"><summary>历史<span id="history-count"></span><span class="chevron" aria-hidden="true"></span></summary><div class="history-panel"><div class="sidebar-head"><h2>我的录制</h2><button id="refresh" class="ghost" type="button">刷新</button></div><p id="list-empty" class="muted">正在读取…</p><ul id="recording-list" class="recording-list"></ul></div></details>
+    </div>
+  </header>
+  <main id="main">
+    <nav class="phases" aria-label="当前进度">
+      <span id="phase-capture" class="phase" aria-current="step"><span class="phase-number">1</span>录制</span><span class="phase-line" aria-hidden="true"></span>
+      <span id="phase-review" class="phase"><span class="phase-number">2</span>保存</span><span class="phase-line" aria-hidden="true"></span>
+      <span id="phase-skill" class="phase"><span class="phase-number">3</span>Skill</span>
+    </nav>
+    <div id="intro" class="intro"><h2>把你的操作，变成 Skill</h2><p>示范一次，让 AI 学会你的工作方式。</p></div>
+    <section aria-label="录制控制">
+      <form id="capture-form" class="composer">
+        <div class="capture-footer">
+          <p id="capture-state" class="capture-state" data-state="idle" aria-live="polite">正在检查…</p>
+          <div id="capture-actions" class="toolbar"><button id="pause" type="button" hidden>暂停</button><button id="resume" type="button" hidden>继续</button><button id="stop" type="button" hidden>结束录制</button><button id="start" type="submit" class="primary" disabled>开始录制</button></div>
+        </div>
+      </form>
+      <details id="capture-options" class="options"><summary><span id="options-label">录制选项</span><span class="chevron" aria-hidden="true"></span></summary><div class="options-body"><p id="permission" class="permission">正在检查系统权限。</p><button id="request-permissions" type="button" hidden>检查系统权限</button><details class="import-box"><summary>导入浏览器录制<span class="chevron" aria-hidden="true"></span></summary><p>选择 Chrome Recorder 导出的 JSON 文件。</p><label class="sr-only" for="import-file">Chrome Recorder JSON 文件</label><input id="import-file" class="file-input" type="file" accept=".json,application/json" disabled></details></div></details>
+    </section>
+    <p id="message" class="notice" role="status" hidden></p>
+    <details id="review-area" class="review-area" aria-labelledby="review-title" hidden>
+      <summary class="section-head"><div><h2 id="review-title">操作步骤<span id="step-count" class="counter">0</span><span class="chevron" aria-hidden="true"></span></h2><p id="review-description"></p></div><span id="save-state" class="save-state" role="status">已自动保存</span></summary>
+      <div id="steps-empty" class="empty"><h3>等待第一步操作</h3><p>切换到目标应用，按平常的方法完成任务。</p></div>
+      <ol id="steps" class="steps"></ol>
+    </details>
+    <section id="compile-area" class="compile-area" aria-label="生成 Skill" hidden>
+      <form id="compile-form" class="compile-form">
+        <button id="compile" type="submit" class="primary">生成 Skill</button>
+        <details id="optional-settings" class="optional-settings"><summary>补充完成条件（可选）<span class="chevron" aria-hidden="true"></span></summary><label for="success-condition">完成后应该看到什么？<textarea id="success-condition" name="successCondition" rows="2" placeholder="可以留空，例如：CSV 已导出，月份和订单数正确" maxlength="2000"></textarea></label></details>
+      </form>
+    </section>
+    <section id="output-area" class="output-area" aria-labelledby="output-title" hidden>
+      <div class="section-head"><div><h2 id="output-title" class="output-heading">Skill 草稿已生成</h2><p>继续交给 AI 提炼，或直接下载。</p></div></div>
+      <div class="output-actions"><button id="ask-ai" type="button" hidden>✦ 让 AI 提炼</button><button id="copy-ai" type="button">复制给 AI 提炼</button><button id="download" type="button" class="primary">下载 Skill 插件</button></div>
+      <details id="draft-editor" class="draft-editor"><summary>查看与编辑草稿<span class="chevron" aria-hidden="true"></span></summary><label class="sr-only" for="skill-markdown">可编辑的 SKILL.md</label><textarea id="skill-markdown" class="markdown" spellcheck="false" aria-describedby="output-note"></textarea></details>
+      <p id="output-note" class="output-note">草稿尚未经过 AI 提炼或实际重放验证。</p>
+      <details class="export-options"><summary>更多导出选项<span class="chevron" aria-hidden="true"></span></summary><div class="toolbar"><button id="download-markdown" type="button">SKILL.md</button><button id="download-json" type="button">JSON 工作流</button><button id="copy-path" type="button">复制目录</button></div><dl id="paths" class="paths"></dl></details>
+    </section>
+    <p class="footer-note">自动保存 · 自动命名 · 三引擎通用</p>
+  </main>
+</body>
+</html>

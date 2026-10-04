@@ -62,6 +62,7 @@ import {
   type DesignViewRestore,
 } from "./design-view-restore";
 import { DesignExportMenu } from "./design-export-menu";
+import { normalizeDesignColorHex } from "./design-color-field";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSaveMenu } from "./design-save-menu";
 import { DesignSystemDrawer } from "./design-system-drawer";
@@ -438,14 +439,6 @@ async function capturePptxSvgElement(element: SVGSVGElement, scale: number) {
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
-}
-
-function normalizeHexColor(value: string) {
-  const trimmed = value.trim();
-  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed;
-  const rgb = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-  if (!rgb) return "#111827";
-  return `#${rgb.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0")).join("")}`;
 }
 
 async function imageFileToPortableDataUrl(file: File) {
@@ -2395,7 +2388,7 @@ export function DesignPanel({
                               <input
                                 type="color"
                                 className="absolute inset-0 cursor-pointer opacity-0"
-                                value={normalizeHexColor(selection.styles[selection.colorField])}
+                                value={normalizeDesignColorHex(selection.styles[selection.colorField])}
                                 onChange={(event) => applyField(selection.colorField, event.currentTarget.value, false)}
                                 aria-label={selection.colorField === "color" ? "Custom text color" : "Custom background color"}
                               />

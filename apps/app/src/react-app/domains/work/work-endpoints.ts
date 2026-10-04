@@ -21,6 +21,7 @@ export type WorkEndpointGroup = {
 
 type WorkItemListFilter = {
   workspaceIds: string[];
+  sessionId?: string;
   from?: number;
   to?: number;
 };

@@ -1,0 +1,280 @@
+{
+  "name": "process-steps",
+  "type": "hyperframes:block",
+  "title": "流程步骤演示台",
+  "description": "立体流程节点、路径进度、当前步骤抬升与讲解文字。适合教程、操作步骤和知识教育。",
+  "version": "1.0.0",
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "tags": [
+    "component",
+    "knowledge",
+    "isometric",
+    "theme",
+    "讲解",
+    "宣传"
+  ],
+  "visualComponent": {
+    "version": 1,
+    "category": "knowledge",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "replace",
+      "rowId": "label",
+      "binding": {
+        "variable": "nodes",
+        "encoding": "json"
+      },
+      "columns": [
+        {
+          "id": "label",
+          "label": "Name",
+          "labelZh": "名称",
+          "type": "string",
+          "role": "label",
+          "required": true
+        },
+        {
+          "id": "icon",
+          "label": "Icon",
+          "labelZh": "图标",
+          "type": "string",
+          "role": "value",
+          "options": [
+            {
+              "value": "workflow",
+              "label": "工作流"
+            },
+            {
+              "value": "settings",
+              "label": "设置"
+            },
+            {
+              "value": "zap",
+              "label": "闪电"
+            },
+            {
+              "value": "layers",
+              "label": "图层"
+            },
+            {
+              "value": "brain",
+              "label": "智能"
+            },
+            {
+              "value": "database",
+              "label": "数据库"
+            },
+            {
+              "value": "bot",
+              "label": "机器人"
+            },
+            {
+              "value": "globe",
+              "label": "全球"
+            },
+            {
+              "value": "cpu",
+              "label": "算力"
+            },
+            {
+              "value": "chart",
+              "label": "分析"
+            },
+            {
+              "value": "mail",
+              "label": "消息"
+            },
+            {
+              "value": "code",
+              "label": "代码"
+            }
+          ]
+        },
+        {
+          "id": "description",
+          "label": "Description",
+          "labelZh": "讲解内容",
+          "type": "string",
+          "role": "value"
+        },
+        {
+          "id": "value",
+          "label": "Value",
+          "labelZh": "数字 / 关键词",
+          "type": "string",
+          "role": "value"
+        },
+        {
+          "id": "image",
+          "label": "Custom icon",
+          "labelZh": "自定义图标",
+          "type": "string",
+          "role": "value",
+          "format": "image"
+        }
+      ],
+      "minRows": 2,
+      "maxRows": 8
+    },
+    "ai": {
+      "slots": [
+        "title",
+        "eyebrow",
+        "nodes",
+        "speed",
+        "hold",
+        "depth",
+        "textSpeed",
+        "cycle",
+        "active",
+        "glow",
+        "labels",
+        "grid"
+      ],
+      "instructions": "Edit native variables and structured node rows; do not rewrite the drawing. Icon is a provided enum or embedded image. Node count is the number of rows. Theme colors and typography inherit from the project. Playback is deterministic and owned by the host timeline."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 30,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "process-steps.html",
+      "target": "compositions/process-steps/process-steps.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "gsap.min.js",
+      "target": "compositions/process-steps/gsap.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "NOTICE",
+      "target": "compositions/process-steps/NOTICE",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "主标题",
+      "type": "string",
+      "default": "复杂的知识，\n一步一步讲清楚。",
+      "maxLength": 48,
+      "update": "reload"
+    },
+    {
+      "id": "eyebrow",
+      "label": "上方标注",
+      "type": "string",
+      "default": "PROCESS / MADE SIMPLE",
+      "maxLength": 40,
+      "update": "reload"
+    },
+    {
+      "id": "nodes",
+      "label": "节点 / 内容",
+      "type": "string",
+      "default": "{\"version\":1,\"kind\":\"category-value\",\"rows\":[{\"label\":\"提出问题\",\"description\":\"先定义要解决的问题，明确这次学习或实践的目标。\",\"value\":\"01\",\"icon\":\"brain\"},{\"label\":\"收集信息\",\"description\":\"找到关键资料，将分散的信息整理成可靠的依据。\",\"value\":\"02\",\"icon\":\"database\"},{\"label\":\"形成思路\",\"description\":\"建立清晰的思考框架，把复杂问题拆成可执行的步骤。\",\"value\":\"03\",\"icon\":\"workflow\"},{\"label\":\"动手实践\",\"description\":\"把方法带入真实场景，在行动中验证自己的理解。\",\"value\":\"04\",\"icon\":\"cpu\"},{\"label\":\"检验结果\",\"description\":\"对照最初的目标，观察数据、发现偏差与改进空间。\",\"value\":\"05\",\"icon\":\"chart\"},{\"label\":\"迭代提升\",\"description\":\"把验证有效的经验沉淀下来，开始下一轮进步。\",\"value\":\"06\",\"icon\":\"layers\"}]}",
+      "update": "reload"
+    },
+    {
+      "id": "speed",
+      "label": "动画速度",
+      "type": "number",
+      "default": 1,
+      "min": 0.3,
+      "max": 2.5,
+      "step": 0.1,
+      "update": "reload"
+    },
+    {
+      "id": "hold",
+      "label": "每项停留",
+      "type": "number",
+      "default": 5,
+      "min": 3,
+      "max": 10,
+      "step": 0.5,
+      "update": "reload"
+    },
+    {
+      "id": "depth",
+      "label": "空间层距",
+      "type": "number",
+      "default": 1,
+      "min": 0.6,
+      "max": 1.3,
+      "step": 0.05,
+      "update": "reload"
+    },
+    {
+      "id": "textSpeed",
+      "label": "出字速度",
+      "type": "number",
+      "default": 1,
+      "min": 0.4,
+      "max": 2.5,
+      "step": 0.1,
+      "update": "reload"
+    },
+    {
+      "id": "cycle",
+      "label": "自动轮转",
+      "type": "boolean",
+      "default": true,
+      "update": "reload"
+    },
+    {
+      "id": "active",
+      "label": "固定聚焦项",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 7,
+      "step": 1,
+      "update": "reload"
+    },
+    {
+      "id": "glow",
+      "label": "辉光强度",
+      "type": "number",
+      "default": 1,
+      "min": 0,
+      "max": 1.5,
+      "step": 0.1,
+      "update": "reload"
+    },
+    {
+      "id": "labels",
+      "label": "显示节点名称",
+      "type": "boolean",
+      "default": true,
+      "update": "reload"
+    },
+    {
+      "id": "grid",
+      "label": "背景网格",
+      "type": "boolean",
+      "default": true,
+      "update": "reload"
+    }
+  ],
+  "source": {
+    "provider": "ipollowork-local-import",
+    "label": "iPolloWork reusable components"
+  }
+}

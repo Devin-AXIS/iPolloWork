@@ -60,11 +60,11 @@ Use the same transition for repeated continuity when that supports the story. Va
 | Primary pattern | Default attention path | Recipe | Components |
 | --- | --- | --- | ---: |
 | `progressive-build` | Reveal ordered ideas, layers, or a statement in meaningful beats. | [progressive-build.md](progressive-build.md) | 34 |
-| `focus-transfer` | Move attention among peers while their relationship remains visible. | [focus-transfer.md](focus-transfer.md) | 23 |
-| `path-journey` | Advance a route, workflow, dependency, or chronology. | [path-journey.md](path-journey.md) | 28 |
+| `focus-transfer` | Move attention among peers while their relationship remains visible. | [focus-transfer.md](focus-transfer.md) | 25 |
+| `path-journey` | Advance a route, workflow, dependency, or chronology. | [path-journey.md](path-journey.md) | 32 |
 | `state-transformation` | Make a before/after, correction, resolution, or completion legible. | [state-transformation.md](state-transformation.md) | 8 |
 | `data-accumulation` | Build quantitative evidence, rank, distribution, or signal over time. | [data-accumulation.md](data-accumulation.md) | 33 |
-| `asset-exploration` | Guide attention through media, an interface, a device, or social content. | [asset-exploration.md](asset-exploration.md) | 22 |
+| `asset-exploration` | Guide attention through media, an interface, a device, or social content. | [asset-exploration.md](asset-exploration.md) | 23 |
 | `montage` | Compress distinct shots or assets into one accumulating meaning. | [montage.md](montage.md) | overlay |
 | `camera-journey` | Travel through space, media, routes, or interfaces with continuous orientation. | [camera-journey.md](camera-journey.md) | overlay |
 | `dialogue` | Alternate speakers or viewpoints with explicit turn and response timing. | [dialogue.md](dialogue.md) | overlay |
@@ -128,6 +128,8 @@ Move attention among peers while their relationship remains visible.
 | `douyin-comment-stack` | body | seekable | A stacked Douyin-style comment panel for audience reactions, Q and A, and pinned responses. |
 | `expert-panel` | body | seekable | Present several expert viewpoints in one balanced frame. |
 | `feature-grid` | body | seekable | A product showcase that stages three focused benefits as a theme-aware card system. |
+| `feature-spotlight` | body | seekable | Pull one layer from a capability stack into a spotlight, reveal its editable description, then transfer attention to the next feature while retaining the stack. |
+| `intelligence-network` | body | seekable | Rotate a named capability node into a stable foreground position, raise its beam and reveal its description before moving to the next node around the shared hub. |
 | `interface-state-board` | body | seekable | Compare important UI states before a walkthrough. |
 | `logo-wall` | body | seekable | A theme-linked social-proof wall generated from a short logo list. |
 | `partner-logo-feature` | body | seekable | Feature partner names with a clear collaboration message. |
@@ -151,6 +153,7 @@ Advance a route, workflow, dependency, or chronology.
 | `agent-tool-trace` | body | seekable | Visualize how an agent selects and invokes tools. |
 | `api-request-flow` | body | seekable | Explain an API request from client through response. |
 | `architecture-hub` | body | seekable | A theme-aware system diagram that connects one core capability to three clear outcomes. |
+| `automation-hub` | body | seekable | Trace signals from editable capability nodes into a shared hub while preserving their spatial relationships; use the streams to explain connections, not to claim verified automation execution. |
 | `capability-map` | body | seekable | Group related capabilities around a shared platform. |
 | `cause-effect-chain` | body | seekable | Teach how one condition creates a sequence of effects. |
 | `conversion-funnel` | body | seekable | Explain how an audience narrows toward a final action. |
@@ -161,6 +164,7 @@ Advance a route, workflow, dependency, or chronology.
 | `feature-adoption-ladder` | body | seekable | Show how customers progress from discovery to mastery. |
 | `feedback-loop` | body | seekable | Explain a repeatable review-and-improve cycle. |
 | `integration-showcase` | body | seekable | Show how integrations connect to the core product workflow. |
+| `intelligent-decision-flow` | body | seekable | Reveal input sources, intake and analysis, route cases between automation and human review, then accumulate resolved and pending outcomes with editable counts. |
 | `learning-path` | body | seekable | Turn a learning objective into a progressive route. |
 | `location-pulse-map` | body | seekable | A local-area map that reveals multiple named locations with proportional values and sequential signal pulses. |
 | `map-flow` | body | seekable | A theme-aware origin-to-destination map story with a clear route, signal, and annotation. |
@@ -168,11 +172,13 @@ Advance a route, workflow, dependency, or chronology.
 | `milestone-timeline` | body | seekable | A three-step roadmap that turns a process into a clear time-bound story. |
 | `process-cycle` | body | seekable | A circular process diagram that connects up to four stages around one central idea. |
 | `process-handoff-map` | body | seekable | Show the critical handoffs in a delivery process. |
+| `process-steps` | body | seekable | Follow ordered editable steps with an active marker, typed explanation, completed-step checks and a connector that advances toward the next step. |
 | `product-benefit-orbit` | body | seekable | Connect product benefits to one central promise. |
 | `product-steps` | body | seekable | A numbered three-step product flow with one active stage and a clear outcome. |
 | `project-roadmap` | body | seekable | A four-phase horizontal roadmap with a time horizon and one highlighted milestone. |
 | `route-map` | body | seekable | Theme-aware animated map route with a focused location and annotation contract. |
 | `sequence-diagram` | body | seekable | Explain messages exchanged between systems over time. |
+| `split-merge-network` | body | seekable | Split one input into parallel branches, explain each branch in turn, then move its signals into a shared output and hold the merged result. |
 | `swimlane-workflow` | body | seekable | Show responsibility moving across a multi-role workflow. |
 | `terminal-command-sequence` | body | seekable | Explain a command workflow without exposing a full terminal log. |
 | `us-map-flow` | body | legacy metadata | Animated connection arcs between US cities over a base map — composable origin-destination flow visualization |
@@ -264,7 +270,7 @@ Guide attention through media, an interface, a device, or social content.
 
 ## Imported executable shotcraft recipes
 
-These additional recipes retain their manifest-owned primary pattern and capacity rules. The family summary above describes the original curated families; this table covers the imported recipes. Read only the selected recipe when fitting a shot.
+These additional recipes retain their manifest-owned primary pattern and capacity rules. The family summary above covers native and reusable personal components; this table covers the imported Shotcraft recipes. Read only the selected recipe when fitting a shot.
 
 | Component | Typical phase | Registry contract | Primary pattern | Intended use |
 | --- | --- | --- | --- | --- |
@@ -298,6 +304,19 @@ These additional recipes retain their manifest-owned primary pattern and capacit
 | `shotcraft-vertical-word-roll-blur-cycle` | body | seekable | `kinetic-type` | 在共同前缀下依次聚焦四个短词，最后保留末项。 |
 | `shotcraft-word-relay-filmstrip` | body | seekable | `kinetic-type` | 同一真实页面的胶片滚动与三个关联动词同步接力。 |
 | `shotcraft-word-relay-geometry` | body | seekable | `kinetic-type` | 三个短关键词依次接力，以装饰圆形和填色形成强调层级。 |
+
+## Reusable personal component states
+
+These six components retain their authored paused timelines and full editable content/control schemas. Read the selected manifest and source rather than treating their original many-variable controls as the four-content-slot native recipe schema. The following windows describe the default source clock (`speed=1` and the authored node count); convert them to project frames and fit actual narration. They are not measured speech cues. Preserve a useful Land frame before a configured cycle resets, and do not turn looping signal decoration into evidence of a completed operation.
+
+| Component | Native window | Establish → Develop → Land | Use boundary |
+| --- | --- | --- | --- |
+| `intelligent-decision-flow` | 24s | Sources and intake establish the inputs; `ingest` → `analyze` → `route` → `resolve` change at 2.8s, 5.7s and 8.4s. Connections draw, packets travel and counts resolve into the editable automation/manual and resolved/pending totals. | Use actual supplied counts and shares. The source's demo metrics and signal particles do not certify live processing or measured performance. |
+| `split-merge-network` | 18s | Split paths establish the branches before 2.6s; the default three branches receive successive 2.1s focus windows. Merging begins at 8.9s, reaches the output by 11s and holds until the 13.4s cycle reset. | Choose a complete split/process/merge interval and keep its result readable; the native 18s window starts a second cycle rather than extending the first result. Branch count and speed change these boundaries. |
+| `automation-hub` | 16s | The complete node/hub topology is visible initially. Moving packets and traced beams repeatedly travel from each node toward the hub while its ring marks the shared destination. | This component explains a connected architecture. Its repeating streams have no intrinsic task-completion state; the host must supply a meaningful final explanation or hold. |
+| `intelligence-network` | 30s | Each default 5s node slot rotates into position over 0.95s, then settles while its beam and editable description become readable. Focus advances around the six-node network without losing the shared hub. | End on the chosen settled explanation before cycling back to the first node. `rotationSpeed`, `speed`, `cycle` and `active` control the sequence; beams alone are not semantic development. |
+| `feature-spotlight` | 24s | Each default 5s feature slot pulls its layer forward and upward, lights its beam and types its description; the remaining stack stays visible while attention transfers to the next layer. | Four default features form a 20s cycle. Land on the final selected feature before the restart, or select one feature with `cycle=false`; replace demo benefit claims with supported content. |
+| `process-steps` | 30s | Each default 5s step raises the active node, reveals its explanation and retains checks on earlier steps. During the last part of each hold, its connector traces and a marker travels toward the next step. | Preserve dependency order and finish on the last completed step before the six-step cycle resets. An editable illustrative process does not prove these steps actually ran. |
 
 ## Adaptation boundary
 

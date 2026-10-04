@@ -16,7 +16,9 @@ import {
 import { listPortablePluginPromptCapabilities } from "../plugin-package-lifecycle.js";
 import { StdioJsonRpcError } from "../stdio-json-rpc-runtime.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
-import { buildCodexHarnessAdditionalContext } from "../workspace-session-runtime.js";
+import { buildCodexHarnessAdditionalContext, resolveWorkspaceSession } from "../workspace-session-runtime.js";
+import { bindConversationSession } from "../work-items.js";
+import { readCodexHarnessThread } from "../codex-harness-session-read-model.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -129,16 +131,12 @@ interface RegisterCodexHarnessRoutesOptions {
   requireClientScope: (ctx: RequestContext, required: TokenScope) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   rememberSessionContext: (workspaceId: string, sessionId: string) => void;
+  preparePlugins: (workspace: WorkspaceInfo) => Promise<void>;
+  monitorSessionExecution?: (workspace: WorkspaceInfo, sessionId: string, turnId?: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function ensureCodexWorkspace(workspace: WorkspaceInfo): void {
-  if (workspace.engineId !== CODEX_HARNESS_ENGINE_ID) {
-    throw new ApiError(409, "workspace_engine_mismatch", "This project does not use Codex Harness");
-  }
 }
 
 function remapCodexError(error: unknown): never {
@@ -232,8 +230,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
   const { routes, config, runtime, readJsonBody, requireClientScope, resolveWorkspace, rememberSessionContext } = options;
 
   addRoute(routes, "GET", "/workspace/:id/engine/codex-harness/plugin-capabilities", "client", async (ctx) => {
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureCodexWorkspace(workspace);
+    await resolveWorkspace(config, ctx.params.id);
     return Response.json({
       items: (await listPortablePluginPromptCapabilities({
         serverConfig: config,
@@ -244,11 +241,14 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
 
   addRoute(routes, "POST", "/workspace/:id/engine/codex-harness/prompt", "client", async (ctx) => {
     requireClientScope(ctx, "collaborator");
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureCodexWorkspace(workspace);
+    let workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: CODEX_HARNESS_ENGINE_ID };
     const body = await readJsonBody(ctx.request);
     if (!isRecord(body.payload) || typeof body.payload.threadId !== "string" || !body.payload.threadId.trim()) {
       throw new ApiError(400, "invalid_payload", "A Codex Harness threadId is required");
+    }
+    workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), body.payload.threadId.trim(), { codexHarness: runtime });
+    if (workspace.engineId !== CODEX_HARNESS_ENGINE_ID) {
+      throw new ApiError(409, "session_engine_mismatch", "This conversation is bound to a different engine");
     }
     const selection = parseEnginePluginPromptSelection(body.plugins);
     const instructions = await resolveEnginePluginPrompt({
@@ -270,6 +270,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       [...instructions.systemInstructions, ...instructions.userInstructions],
       providerID && modelID ? { providerID, modelID } : null,
     );
+    await options.preparePlugins(workspace);
     const workspaceRuntime = runtime.forWorkspace(workspace);
     try {
       const resumed = await workspaceRuntime.resumeThread({
@@ -282,6 +283,13 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       const effectiveThreadId = typeof resumedThread?.id === "string" && resumedThread.id.trim()
         ? resumedThread.id.trim()
         : body.payload.threadId;
+      if (effectiveThreadId !== body.payload.threadId) {
+        await bindConversationSession(config, workspace, effectiveThreadId, {
+          title: typeof resumedThread?.name === "string" ? resumedThread.name : "New conversation",
+          engineId: CODEX_HARNESS_ENGINE_ID,
+          parentSessionId: body.payload.threadId,
+        });
+      }
       rememberSessionContext(workspace.id, effectiveThreadId);
       const started = await workspaceRuntime.call<{ turn?: Record<string, unknown> }>("turn/start", {
         threadId: effectiveThreadId,
@@ -301,6 +309,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       const turnId = typeof started.turn?.id === "string" && started.turn.id.trim()
         ? started.turn.id.trim()
         : undefined;
+      options.monitorSessionExecution?.(workspace, effectiveThreadId, turnId);
       return Response.json({ ok: true, sessionId: effectiveThreadId, ...(turnId ? { turnId } : {}) });
     } catch (error) {
       remapCodexError(error);
@@ -308,10 +317,18 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
   });
 
   addRoute(routes, "POST", "/workspace/:id/engine/codex-harness/rpc", "client", async (ctx) => {
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureCodexWorkspace(workspace);
+    let workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: CODEX_HARNESS_ENGINE_ID };
     const body = await readJsonBody(ctx.request);
     const method = typeof body.method === "string" ? body.method.trim() : "";
+    const sessionId = isRecord(body.payload) && typeof body.payload.threadId === "string"
+      ? body.payload.threadId.trim()
+      : "";
+    if (sessionId) {
+      workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), sessionId, { codexHarness: runtime });
+      if (workspace.engineId !== CODEX_HARNESS_ENGINE_ID) {
+        throw new ApiError(409, "session_engine_mismatch", "This conversation is bound to a different engine");
+      }
+    }
     if (method === "ipollowork/providerList") {
       return Response.json({ value: await providerList(runtime.forWorkspace(workspace)) });
     }
@@ -322,8 +339,12 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       throw new ApiError(400, "invalid_payload", `Unsupported Codex Harness method: ${method || "missing"}`);
     }
     if (WRITE_METHODS.has(method)) requireClientScope(ctx, "collaborator");
+    if (["thread/start", "thread/resume", "thread/fork", "turn/start"].includes(method)) await options.preparePlugins(workspace);
     try {
       const workspaceRuntime = runtime.forWorkspace(workspace);
+      if (method === "thread/read" && isRecord(body.payload) && body.payload.includeTurns === true && sessionId) {
+        return Response.json({ value: { thread: await readCodexHarnessThread(workspaceRuntime, sessionId) } });
+      }
       if (method === "thread/compact/start") {
         if (!isRecord(body.payload) || typeof body.payload.threadId !== "string" || !body.payload.threadId.trim()) {
           throw new ApiError(400, "invalid_payload", "Codex Harness thread/compact/start requires a threadId");
@@ -335,7 +356,14 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
         if (!isRecord(body.payload)) {
           throw new ApiError(400, "invalid_payload", "Codex Harness thread/start payload must be an object");
         }
-        return Response.json({ value: await workspaceRuntime.startThread(body.payload) });
+        const value = await workspaceRuntime.startThread(body.payload);
+        if (isRecord(value) && isRecord(value.thread) && typeof value.thread.id === "string") {
+          await bindConversationSession(config, workspace, value.thread.id, {
+            title: typeof value.thread.name === "string" ? value.thread.name : "New conversation",
+            engineId: CODEX_HARNESS_ENGINE_ID,
+          });
+        }
+        return Response.json({ value });
       }
       if (method === "thread/resume") {
         if (!isRecord(body.payload) || typeof body.payload.threadId !== "string" || !body.payload.threadId.trim()) {
@@ -347,9 +375,28 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
           ...(typeof body.payload.modelProvider === "string" ? { modelProvider: body.payload.modelProvider } : {}),
           ...(typeof body.payload.model === "string" ? { model: body.payload.model } : {}),
         }, { force: true });
+        if (value && isRecord(value.thread) && typeof value.thread.id === "string" && value.thread.id !== sessionId) {
+          await bindConversationSession(config, workspace, value.thread.id, {
+            title: typeof value.thread.name === "string" ? value.thread.name : "New conversation",
+            engineId: CODEX_HARNESS_ENGINE_ID,
+            parentSessionId: sessionId,
+          });
+        }
         return Response.json({ value });
       }
-      return Response.json({ value: await workspaceRuntime.call(method, body.payload ?? {}) });
+      const value = await workspaceRuntime.call(method, body.payload ?? {});
+      if (method === "turn/start" && sessionId) {
+        const turn = isRecord(value) && isRecord(value.turn) ? value.turn : null;
+        options.monitorSessionExecution?.(workspace, sessionId, typeof turn?.id === "string" ? turn.id : undefined);
+      }
+      if (method === "thread/fork" && isRecord(value) && isRecord(value.thread) && typeof value.thread.id === "string") {
+        await bindConversationSession(config, workspace, value.thread.id, {
+          title: typeof value.thread.name === "string" ? value.thread.name : "New conversation",
+          engineId: CODEX_HARNESS_ENGINE_ID,
+          parentSessionId: sessionId,
+        });
+      }
+      return Response.json({ value });
     } catch (error) {
       remapCodexError(error);
     }
@@ -357,8 +404,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
 
   addRoute(routes, "POST", "/workspace/:id/engine/codex-harness/respond", "client", async (ctx) => {
     requireClientScope(ctx, "collaborator");
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureCodexWorkspace(workspace);
+    const workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: CODEX_HARNESS_ENGINE_ID };
     const body = await readJsonBody(ctx.request);
     const rpcId = typeof body.rpcId === "string" || typeof body.rpcId === "number" ? body.rpcId : null;
     if (rpcId === null || !("result" in body)) {
@@ -373,8 +419,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
   });
 
   addRoute(routes, "GET", "/workspace/:id/engine/codex-harness/events", "client", async (ctx) => {
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureCodexWorkspace(workspace);
+    const workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: CODEX_HARNESS_ENGINE_ID };
     try {
       return await runtime.forWorkspace(workspace).events(ctx.request.signal);
     } catch (error) {

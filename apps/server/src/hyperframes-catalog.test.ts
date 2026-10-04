@@ -1,5 +1,21 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { listHyperframesCatalog, normalizeHyperframesCatalogItem, queryVideoRecipeCatalog } from "./hyperframes-catalog.js";
+
+const originalComponentLibrary = process.env.HYPERFRAMES_COMPONENT_LIBRARY;
+let componentLibrary: string | null = null;
+beforeEach(() => {
+  componentLibrary = mkdtempSync(join(tmpdir(), "ipollowork-catalog-library-"));
+  process.env.HYPERFRAMES_COMPONENT_LIBRARY = componentLibrary;
+});
+afterEach(() => {
+  if (originalComponentLibrary === undefined) delete process.env.HYPERFRAMES_COMPONENT_LIBRARY;
+  else process.env.HYPERFRAMES_COMPONENT_LIBRARY = originalComponentLibrary;
+  if (componentLibrary) rmSync(componentLibrary, { recursive: true, force: true });
+  componentLibrary = null;
+});
 
 describe("HyperFrames catalog parameters", () => {
   test("indexes only locally installable cards and variants", async () => {
@@ -144,13 +160,24 @@ describe("HyperFrames catalog parameters", () => {
     const animations = gsapItems.filter((item) => item.kind === "animation");
     const effects = gsapItems.filter((item) => item.kind === "effect");
 
-    expect(gsapItems).toHaveLength(325);
-    expect(animations).toHaveLength(245);
+    expect(gsapItems).toHaveLength(331);
+    expect(animations).toHaveLength(251);
     expect(effects).toHaveLength(80);
     expect(gsapItems.filter((item) => item.source?.provider === "gsap-docs")).toHaveLength(25);
     expect(gsapItems.filter((item) => item.source?.provider === "hyperframes")).toHaveLength(236);
     expect(gsapItems.filter((item) => item.source?.provider === "video-shotcraft")).toHaveLength(5);
     expect(gsapItems.filter((item) => item.source?.provider === "ipollowork")).toHaveLength(18);
+    expect(
+      gsapItems.filter((item) => item.source?.provider === "ipollowork-local-import")
+        .map((item) => item.name).sort(),
+    ).toEqual([
+      "automation-hub",
+      "feature-spotlight",
+      "intelligence-network",
+      "intelligent-decision-flow",
+      "process-steps",
+      "split-merge-network",
+    ]);
     expect(gsapItems.find((item) => item.name === "app-showcase")?.engine?.version).toBe("3.14.2");
     expect(
       gsapItems.find((item) => item.name === "gsap-scrolltrigger-story")?.engine?.plugins,

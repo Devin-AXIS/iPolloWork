@@ -2,11 +2,12 @@
 import * as React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
-import type { TemplateCatalogItem, TemplateCategory } from "@ipollowork/types/templates";
+import { matchesTemplateFilters, type TemplateCatalogItem, type TemplateCategory, type TemplateStyle, type TemplateTopicFilter } from "@ipollowork/types/templates";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TemplateIcon } from "@/components/template-icon";
+import { TemplateCatalogFilters } from "@/components/template-catalog-filters";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
@@ -92,6 +93,8 @@ function TemplateCover(props: {
 export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps<Applied>) {
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState<TemplateCategory | "all">("all");
+  const [style, setStyle] = React.useState<TemplateStyle | "all">("all");
+  const [topic, setTopic] = React.useState<TemplateTopicFilter>("all");
   const [pending, setPending] = React.useState<TemplateCatalogItem | null>(null);
   const templatesQuery = useQuery({
     queryKey: props.queryKey,
@@ -113,20 +116,17 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
     () => Array.from(new Set(templates.map((template) => template.manifest.category))),
     [templates],
   );
-  const visible = React.useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return templates.filter((template) => {
-      if (category !== "all" && template.manifest.category !== category) return false;
-      if (!normalized) return true;
-      return [template.manifest.title, template.manifest.description, template.manifest.subcategory, ...template.manifest.tags]
-        .join(" ").toLowerCase().includes(normalized);
-    });
-  }, [category, query, templates]);
+  const visible = React.useMemo(
+    () => templates.filter((template) => matchesTemplateFilters(template.manifest, { category, style, topic, query })),
+    [category, query, style, templates, topic],
+  );
 
   React.useEffect(() => {
     if (!props.open) {
       setQuery("");
       setCategory("all");
+      setStyle("all");
+      setTopic("all");
       setPending(null);
     }
   }, [props.open]);
@@ -134,7 +134,7 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
   return (
     <>
       <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-        <DialogContent className="grid h-[min(760px,calc(100dvh-48px))] grid-rows-[auto_auto_minmax(0,1fr)] gap-4 p-5 sm:p-6" data-testid="template-catalog-dialog">
+        <DialogContent className="grid h-[min(760px,calc(100dvh-48px))] grid-cols-1 grid-rows-[auto_auto_minmax(0,1fr)] gap-4 p-5 sm:p-6" data-testid="template-catalog-dialog">
           <DialogHeader className="pr-12">
             <DialogTitle>{props.copy.title}</DialogTitle>
             <DialogDescription>{props.copy.description}</DialogDescription>
@@ -149,14 +149,24 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
                 className="h-10 rounded-xl pl-9"
               />
             </div>
-            {categories.length > 1 ? (
-              <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1" aria-label={t("template_market.category")}>
-                <Button size="sm" variant={category === "all" ? "secondary" : "ghost"} className="rounded-full" onClick={() => setCategory("all")}>{t("template_market.all")}</Button>
-                {categories.map((value) => (
-                  <Button key={value} size="sm" variant={category === value ? "secondary" : "ghost"} className="rounded-full" onClick={() => setCategory(value)}>{categoryLabel(value)}</Button>
-                ))}
-              </div>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-3 pb-1">
+              {categories.length > 1 ? (
+                <div className="no-scrollbar flex min-w-0 max-w-full flex-1 basis-[320px] gap-2 overflow-x-auto" aria-label={t("template_market.category")}>
+                  <Button size="sm" variant={category === "all" ? "secondary" : "ghost"} className="rounded-full focus-visible:ring-inset" onClick={() => setCategory("all")}>{t("template_market.all")}</Button>
+                  {categories.map((value) => (
+                    <Button key={value} size="sm" variant={category === value ? "secondary" : "ghost"} className="rounded-full focus-visible:ring-inset" onClick={() => setCategory(value)}>{categoryLabel(value)}</Button>
+                  ))}
+                </div>
+              ) : null}
+              <TemplateCatalogFilters
+                templates={templates}
+                category={category}
+                style={style}
+                topic={topic}
+                onStyleChange={setStyle}
+                onTopicChange={setTopic}
+              />
+            </div>
           </div>
           <div className="min-h-0 overflow-y-auto pr-1">
             {templatesQuery.isLoading ? (

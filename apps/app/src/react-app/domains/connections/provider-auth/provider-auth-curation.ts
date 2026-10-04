@@ -35,11 +35,13 @@ export const PROVIDER_LABELS: Record<string, string> = {
   orcarouter: "OrcaRouter",
   qwen: "Qwen",
   tokenstar: "TokenStar",
+  ipolloos: "iPolloOS 本地模型",
   "deepseek-official": "DeepSeek",
 };
 
 const RECOMMENDED_PROVIDER_IDS = [
   IPOLLOWORK_MODELS_PROVIDER_ID,
+  "ipolloos",
   "openai",
   "anthropic",
   "google",

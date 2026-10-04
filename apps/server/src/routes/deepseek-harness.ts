@@ -15,6 +15,8 @@ import {
 } from "../plugin-prompt-adapter.js";
 import { listPortablePluginPromptCapabilities } from "../plugin-package-lifecycle.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
+import { resolveWorkspaceSession } from "../workspace-session-runtime.js";
+import { bindConversationSession } from "../work-items.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -64,12 +66,8 @@ interface RegisterDeepSeekHarnessRoutesOptions {
   requireClientScope: (ctx: RequestContext, required: TokenScope) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   rememberSessionContext: (workspaceId: string, sessionId: string) => void;
-}
-
-function ensureDeepSeekHarnessWorkspace(workspace: WorkspaceInfo): void {
-  if (workspace.engineId !== DEEPSEEK_HARNESS_ENGINE_ID) {
-    throw new ApiError(409, "workspace_engine_mismatch", "This project does not use DeepSeek Harness");
-  }
+  preparePlugins: (workspace: WorkspaceInfo) => Promise<void>;
+  monitorSessionExecution?: (workspace: WorkspaceInfo, sessionId: string, turnId?: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -116,8 +114,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
   const { routes, config, runtime, readJsonBody, requireClientScope, resolveWorkspace, rememberSessionContext } = options;
 
   addRoute(routes, "GET", "/workspace/:id/engine/deepseek-harness/plugin-capabilities", "client", async (ctx) => {
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureDeepSeekHarnessWorkspace(workspace);
+    await resolveWorkspace(config, ctx.params.id);
     return Response.json({
       items: (await listPortablePluginPromptCapabilities({
         serverConfig: config,
@@ -128,11 +125,14 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
 
   addRoute(routes, "POST", "/workspace/:id/engine/deepseek-harness/prompt", "client", async (ctx) => {
     requireClientScope(ctx, "collaborator");
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureDeepSeekHarnessWorkspace(workspace);
+    let workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: DEEPSEEK_HARNESS_ENGINE_ID };
     const body = await readJsonBody(ctx.request);
     if (!isRecord(body.payload) || typeof body.payload.sessionId !== "string" || !body.payload.sessionId.trim()) {
       throw new ApiError(400, "invalid_payload", "A DeepSeek Harness sessionId is required");
+    }
+    workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), body.payload.sessionId.trim(), { deepseekHarness: runtime });
+    if (workspace.engineId !== DEEPSEEK_HARNESS_ENGINE_ID) {
+      throw new ApiError(409, "session_engine_mismatch", "This conversation is bound to a different engine");
     }
     const promptPayload = await withPluginPromptInstructions(
       config,
@@ -140,8 +140,10 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
       parseEnginePluginPromptSelection(body.plugins),
     );
     rememberSessionContext(workspace.id, body.payload.sessionId.trim());
+    await options.preparePlugins(workspace);
     try {
       await runtime.forWorkspace(workspace).call("session.prompt", promptPayload);
+      options.monitorSessionExecution?.(workspace, body.payload.sessionId.trim());
       return Response.json({ ok: true });
     } catch (error) {
       remapDeepSeekHarnessError(error);
@@ -149,17 +151,34 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
   });
 
   addRoute(routes, "POST", "/workspace/:id/engine/deepseek-harness/rpc", "client", async (ctx) => {
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureDeepSeekHarnessWorkspace(workspace);
-    const workspaceRuntime = runtime.forWorkspace(workspace);
+    let workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: DEEPSEEK_HARNESS_ENGINE_ID };
     const body = await readJsonBody(ctx.request);
     const method = typeof body.method === "string" ? body.method.trim() : "";
     if (!ALLOWED_METHODS.has(method)) {
       throw new ApiError(400, "invalid_payload", `Unsupported DeepSeek Harness method: ${method || "missing"}`);
     }
     if (!READ_METHODS.has(method)) requireClientScope(ctx, "collaborator");
+    const sessionId = isRecord(body.payload) && typeof body.payload.sessionId === "string"
+      ? body.payload.sessionId.trim()
+      : "";
+    if (sessionId) {
+      workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), sessionId, { deepseekHarness: runtime });
+      if (workspace.engineId !== DEEPSEEK_HARNESS_ENGINE_ID) {
+        throw new ApiError(409, "session_engine_mismatch", "This conversation is bound to a different engine");
+      }
+    }
+    if (["session.create", "session.fork", "commands/execute"].includes(method)) await options.preparePlugins(workspace);
     try {
-      return Response.json({ value: await workspaceRuntime.call(method, body.payload ?? {}) });
+      const value = await runtime.forWorkspace(workspace).call(method, body.payload ?? {});
+      if (method === "commands/execute" && sessionId) options.monitorSessionExecution?.(workspace, sessionId);
+      if ((method === "session.create" || method === "session.fork") && isRecord(value) && typeof value.sessionId === "string") {
+        await bindConversationSession(config, workspace, value.sessionId, {
+          title: "New conversation",
+          engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+          ...(method === "session.fork" && sessionId ? { parentSessionId: sessionId } : {}),
+        });
+      }
+      return Response.json({ value });
     } catch (error) {
       remapDeepSeekHarnessError(error);
     }
@@ -167,8 +186,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
 
   addRoute(routes, "POST", "/workspace/:id/engine/deepseek-harness/respond", "client", async (ctx) => {
     requireClientScope(ctx, "collaborator");
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureDeepSeekHarnessWorkspace(workspace);
+    const workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: DEEPSEEK_HARNESS_ENGINE_ID };
     const workspaceRuntime = runtime.forWorkspace(workspace);
     const body = await readJsonBody(ctx.request);
     const rpcId = typeof body.rpcId === "string" ? body.rpcId.trim() : "";
@@ -184,8 +202,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
   });
 
   addRoute(routes, "GET", "/workspace/:id/engine/deepseek-harness/events/:stream", "client", async (ctx) => {
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    ensureDeepSeekHarnessWorkspace(workspace);
+    const workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: DEEPSEEK_HARNESS_ENGINE_ID };
     const workspaceRuntime = runtime.forWorkspace(workspace);
     const stream = ctx.params.stream;
     if (stream !== "mux" && stream !== "host") {

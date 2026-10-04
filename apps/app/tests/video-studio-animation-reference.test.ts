@@ -59,7 +59,8 @@ describe("Video Studio animation reference handoff", () => {
     expect(surfaceSource).toContain("window.addEventListener(VIDEO_VOICEOVER_REQUEST");
     expect(surfaceSource).toContain("videoProjectEntryPath(request.videoSessionId)");
     expect(surfaceSource).toContain("Do not create or apply another template.");
-    expect(surfaceSource).toContain("the client will rerun its aggregate delivery validator");
+    expect(surfaceSource).toContain("verify the updated audio using the existing media tools");
+    expect(surfaceSource).not.toContain("the client will rerun its aggregate delivery validator");
   });
 
   test("localizes the complete voice panel instead of rendering Chinese copy in English", () => {

@@ -1,0 +1,15 @@
+import { build } from 'esbuild';
+import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
+import { manifest } from '../src/contracts.mjs';
+const root = new URL('../', import.meta.url);
+const out = new URL('../dist/package/', import.meta.url);
+await mkdir(new URL('ui/', out), { recursive: true });
+await mkdir(new URL('service/', out), { recursive: true });
+const ui = await build({ entryPoints: [new URL('src/ui.mjs', root).pathname], bundle: true, write: false, outfile: 'studio.js', format: 'esm', target: 'es2022', minify: true });
+const js = ui.outputFiles.find(f => f.path.endsWith('.js')).text;
+const css = ui.outputFiles.find(f => f.path.endsWith('.css')).text;
+await writeFile(new URL('ui/studio.html', out), `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>短片创作工作台</title><style>${css}</style></head><body><script type="module">${js.replaceAll('</script', '<\\/script')}</script></body></html>`);
+await build({ entryPoints: [new URL('src/service.mjs', root).pathname], bundle: true, platform: 'node', format: 'esm', target: 'node22', outfile: new URL('service/studio.mjs', out).pathname });
+await cp(new URL('skills/', root), new URL('skills/', out), { recursive: true });
+await writeFile(new URL('ipollowork.plugin.json', out), JSON.stringify(manifest, null, 2)+'\n');
+console.log('Built independent MCP App, service, manifest and package-owned skill.');

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.human-approval-branch",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "human-in-the-loop",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "human-in-the-loop"
+    "human-in-the-loop",
+    "topic:business"
   ],
   "surface": "video",
   "title": "Human Approval Branch",

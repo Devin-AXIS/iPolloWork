@@ -21,6 +21,11 @@ export const bundledPluginPackageIds = [
   "reference-context",
   "media-studio",
   "deepseek-harness",
+  "operation-recorder",
+  "labelu-data-annotation",
+  "short-video-studio",
+  "jev-decision-model",
+  "ipollo-onto",
 ] as const;
 
 export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "reference-context", "media-studio"] as const;
@@ -53,12 +58,17 @@ export async function resolveBundledPluginPackageRoot(pluginId: string, roots = 
     throw new ApiError(404, "plugin_package_catalog_not_found", "Bundled plugin package was not found");
   }
   for (const root of roots) {
-    const packageRoot = join(root, pluginId);
-    try {
-      await access(join(packageRoot, "ipollowork.plugin.json"));
-      return packageRoot;
-    } catch {
-      // Try the next development or packaged resource root.
+    const sourceRoot = join(root, pluginId);
+    // Native recorder helpers are built into this package; source remains usable
+    // for portable Chrome workflows when no native build has been prepared.
+    const candidates = ["operation-recorder", "labelu-data-annotation", "short-video-studio"].includes(pluginId) ? [join(sourceRoot, "dist/package"), sourceRoot] : [sourceRoot];
+    for (const packageRoot of candidates) {
+      try {
+        await access(join(packageRoot, "ipollowork.plugin.json"));
+        return packageRoot;
+      } catch {
+        // Try the next development or packaged resource root.
+      }
     }
   }
   throw new ApiError(404, "plugin_package_catalog_unavailable", `Bundled plugin package is unavailable: ${pluginId}`);

@@ -1,0 +1,343 @@
+{
+  "name": "intelligent-decision-flow",
+  "type": "hyperframes:block",
+  "title": "智能决策流",
+  "version": "1.0.0",
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "description": "多路信号汇入旋转粒子分析核，自动／人工分流后汇总处理结果。来源、图标、比例和速度可编辑；继承视频主题。数字为可编辑演示数据，不接真实业务。",
+  "tags": [
+    "component",
+    "diagrams",
+    "flow",
+    "decision",
+    "particles",
+    "sankey",
+    "theme",
+    "智能",
+    "决策",
+    "汇流"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 24,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "diagrams",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "replace",
+      "rowId": "label",
+      "binding": {
+        "variable": "sources",
+        "encoding": "json"
+      },
+      "minRows": 2,
+      "maxRows": 12,
+      "columns": [
+        {
+          "id": "label",
+          "label": "Name",
+          "labelZh": "名称",
+          "type": "string",
+          "role": "label",
+          "required": true
+        },
+        {
+          "id": "icon",
+          "label": "Icon",
+          "labelZh": "图标",
+          "type": "string",
+          "role": "value",
+          "options": [
+            {
+              "value": "workflow",
+              "label": "工作流"
+            },
+            {
+              "value": "settings",
+              "label": "设置"
+            },
+            {
+              "value": "zap",
+              "label": "闪电"
+            },
+            {
+              "value": "layers",
+              "label": "图层"
+            },
+            {
+              "value": "brain",
+              "label": "智能"
+            },
+            {
+              "value": "database",
+              "label": "数据库"
+            },
+            {
+              "value": "bot",
+              "label": "机器人"
+            },
+            {
+              "value": "globe",
+              "label": "全球"
+            },
+            {
+              "value": "cpu",
+              "label": "算力"
+            },
+            {
+              "value": "chart",
+              "label": "分析"
+            },
+            {
+              "value": "mail",
+              "label": "消息"
+            },
+            {
+              "value": "code",
+              "label": "代码"
+            }
+          ]
+        },
+        {
+          "id": "image",
+          "label": "Custom icon",
+          "labelZh": "自定义图标",
+          "type": "string",
+          "role": "value",
+          "format": "image"
+        }
+      ]
+    },
+    "ai": {
+      "slots": [
+        "sources",
+        "sourceLabel",
+        "coreLabel",
+        "inputLabel",
+        "inputCount",
+        "caseLabel",
+        "caseCount",
+        "automaticShare",
+        "resolutionShare",
+        "automaticLabel",
+        "manualLabel",
+        "resolvedLabel",
+        "pendingLabel",
+        "speed",
+        "density",
+        "glow",
+        "labels",
+        "metrics",
+        "explanation",
+        "background"
+      ],
+      "instructions": "Edit native variables and source rows, not the composition. 2–12 sources. Automatic and manual counts partition caseCount; completed and pending counts partition the same total. Percentages control route thickness. Numbers are illustrative, never assert real integration. Colors and typography inherit the host. Animation is driven by a single seekable host timeline."
+    }
+  },
+  "variables": [
+    {
+      "id": "sources",
+      "label": "输入来源",
+      "type": "string",
+      "default": "{\"version\":1,\"kind\":\"category-value\",\"rows\":[{\"label\":\"业务系统\",\"icon\":\"database\"},{\"label\":\"客户反馈\",\"icon\":\"mail\"},{\"label\":\"市场情报\",\"icon\":\"globe\"},{\"label\":\"知识资料\",\"icon\":\"layers\"},{\"label\":\"智能体\",\"icon\":\"bot\"},{\"label\":\"运营数据\",\"icon\":\"chart\"},{\"label\":\"开放接口\",\"icon\":\"code\"},{\"label\":\"设备信号\",\"icon\":\"cpu\"}]}",
+      "update": "reload"
+    },
+    {
+      "id": "sourceLabel",
+      "label": "来源标题",
+      "type": "string",
+      "default": "多源接入",
+      "update": "reload",
+      "maxLength": 24
+    },
+    {
+      "id": "coreLabel",
+      "label": "中心名称",
+      "type": "string",
+      "default": "智能决策核心",
+      "update": "reload",
+      "maxLength": 24
+    },
+    {
+      "id": "inputLabel",
+      "label": "输入指标名称",
+      "type": "string",
+      "default": "业务信号",
+      "update": "reload",
+      "maxLength": 20
+    },
+    {
+      "id": "inputCount",
+      "label": "输入信号数",
+      "type": "number",
+      "default": 2422,
+      "update": "reload",
+      "min": 0,
+      "max": 99999999,
+      "step": 1
+    },
+    {
+      "id": "caseLabel",
+      "label": "分析指标名称",
+      "type": "string",
+      "default": "关联任务",
+      "update": "reload",
+      "maxLength": 20
+    },
+    {
+      "id": "caseCount",
+      "label": "关联任务数",
+      "type": "number",
+      "default": 93,
+      "update": "reload",
+      "min": 0,
+      "max": 999999,
+      "step": 1
+    },
+    {
+      "id": "automaticShare",
+      "label": "自动处理比例（%）",
+      "type": "number",
+      "default": 83,
+      "update": "reload",
+      "min": 0,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "id": "resolutionShare",
+      "label": "完成比例（%）",
+      "type": "number",
+      "default": 89,
+      "update": "reload",
+      "min": 0,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "id": "automaticLabel",
+      "label": "自动分支名称",
+      "type": "string",
+      "default": "自动处理",
+      "update": "reload",
+      "maxLength": 24
+    },
+    {
+      "id": "manualLabel",
+      "label": "人工分支名称",
+      "type": "string",
+      "default": "人工复核",
+      "update": "reload",
+      "maxLength": 24
+    },
+    {
+      "id": "resolvedLabel",
+      "label": "完成结果名称",
+      "type": "string",
+      "default": "已完成",
+      "update": "reload",
+      "maxLength": 24
+    },
+    {
+      "id": "pendingLabel",
+      "label": "待办结果名称",
+      "type": "string",
+      "default": "待跟进",
+      "update": "reload",
+      "maxLength": 24
+    },
+    {
+      "id": "speed",
+      "label": "动画速度",
+      "type": "number",
+      "default": 1,
+      "update": "reload",
+      "min": 0.3,
+      "max": 2.5,
+      "step": 0.1
+    },
+    {
+      "id": "density",
+      "label": "粒子密度",
+      "type": "number",
+      "default": 1,
+      "update": "reload",
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.1
+    },
+    {
+      "id": "glow",
+      "label": "辉光强度",
+      "type": "number",
+      "default": 0.7,
+      "update": "reload",
+      "min": 0,
+      "max": 1.5,
+      "step": 0.1
+    },
+    {
+      "id": "labels",
+      "label": "显示节点名称",
+      "type": "boolean",
+      "default": true,
+      "update": "reload"
+    },
+    {
+      "id": "metrics",
+      "label": "显示底部指标",
+      "type": "boolean",
+      "default": true,
+      "update": "reload"
+    },
+    {
+      "id": "explanation",
+      "label": "显示阶段讲解",
+      "type": "boolean",
+      "default": true,
+      "update": "reload"
+    },
+    {
+      "id": "background",
+      "label": "显示背景底色",
+      "type": "boolean",
+      "default": false,
+      "update": "reload"
+    }
+  ],
+  "files": [
+    {
+      "path": "intelligent-decision-flow.html",
+      "target": "compositions/intelligent-decision-flow/intelligent-decision-flow.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "gsap.min.js",
+      "target": "compositions/intelligent-decision-flow/gsap.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "NOTICE",
+      "target": "compositions/intelligent-decision-flow/NOTICE",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "source": {
+    "provider": "ipollowork-local-import",
+    "label": "iPolloWork reusable components"
+  }
+}

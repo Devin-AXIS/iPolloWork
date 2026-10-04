@@ -2,7 +2,7 @@ import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { mkdir, realpath, stat, copyFile, open, unlink } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, basename, extname } from 'node:path';
 import { DouyinApi, ApiError, CAPABILITY_SCOPES, MAX_VIDEO_BYTES } from './api.mjs';
-import { BrowserOperations, routedActions, canUseBrowser } from './browser.mjs';
+import { BrowserOperations, routedActions, canUseBrowser, douyinUrl, isBrowserReadJob, canCancelReadJob } from './browser.mjs';
 
 export { MAX_VIDEO_BYTES } from './api.mjs';
 export function fail(message, code = 'invalid_input') { throw Object.assign(new Error(message), { code }); }
@@ -36,7 +36,17 @@ function accountCapability(account, definition, now) {
 }
 
 export function accountCapabilities(account, now = Date.now()) {
-  return Object.fromEntries(Object.entries(ACCOUNT_CAPABILITIES).map(([name, definition]) => [name, accountCapability(account, definition, now)]));
+  return Object.fromEntries(Object.entries(ACCOUNT_CAPABILITIES).map(([name, definition]) => [name, browserCapability(account, accountCapability(account, definition, now))]));
+}
+
+function browserCapability(account, api) {
+  if (api.available) return { ...api, transport: 'api', apiAvailable: true, apiStatus: api.status };
+  if (!account?.browserProfileId) return { ...api, apiAvailable: false, apiStatus: api.status };
+  return { ...api, available: true, transport: 'browser', apiAvailable: false, apiStatus: api.status,
+    status: account.webIdentity ? 'browser' : 'login_required', requiresIdentityCheck: true,
+    reason: account.webIdentity
+      ? '复用此账号的插件浏览器，操作前核对当前登录身份；无需开放平台权限。通过插件创建任务并回写结果。'
+      : '使用此账号已有的插件浏览器完成登录识别，再执行已保存任务；无需开放平台配置。' };
 }
 
 export function applicationCapabilities(settings) {
@@ -56,7 +66,7 @@ export class Operations {
     this.browser = new BrowserOperations(this);
     // A process may have exited after an external submit but before its receipt.
     for (const job of store.list('job', null, 1000)) if (job.status === 'running') {
-      const readOnly = job.transport === 'browser' && ['search-videos', 'list-videos', 'list-comments', 'video-data'].includes(job.browserAction);
+      const readOnly = isBrowserReadJob(job);
       store.put('job', { ...job, status: readOnly ? 'pending' : 'uncertain', message: readOnly ? '读取期间服务重启，可继续交给 AI 重新读取。' : '服务在执行期间退出，请先到抖音核对结果。' });
       if (readOnly) store.setSecret(`browser-job:${job.id}`, null);
     }
@@ -86,12 +96,16 @@ export class Operations {
     });
   }
   accounts() {
-    return this.store.list('account', null, 50).map(account => ({ ...account, capabilities: accountCapabilities(account) }));
+    const { searchVideos } = applicationCapabilities(this.settings());
+    return this.store.list('account', null, 50).map(account => ({ ...account,
+      capabilities: { ...accountCapabilities(account), searchVideos: browserCapability(account, searchVideos) } }));
   }
   state() {
     const settings = this.settings();
-    return { settings, capabilities: { ...accountCapabilities(null), ...applicationCapabilities(settings) }, accounts: this.accounts(),
-      drafts: this.store.list('draft', null, 100), assets: this.store.list('asset', null, 100), jobs: this.store.list('job', null, 100) };
+    const accounts = this.accounts();
+    return { settings, capabilities: accounts.length === 1 ? accounts[0].capabilities : { ...accountCapabilities(null), ...applicationCapabilities(settings) }, accounts,
+      drafts: this.store.list('draft', null, 100), assets: this.store.list('asset', null, 100),
+      jobs: this.store.list('job', null, 100).map(job => ({ ...job, canCancelRead: canCancelReadJob(job) })) };
   }
   account(id) { return this.store.get('account', text(id, '账号 ID', 100)) ?? fail('账号不存在', 'account_not_found'); }
   async startAuthorization() {
@@ -189,8 +203,7 @@ export class Operations {
   saveDraft(input) {
     const account = this.account(input.accountId);
     const existing = input.id ? this.store.get('draft', text(input.id, '草稿 ID', 100)) : null;
-    if (input.id && !existing) fail('草稿不存在：id 只用于修改已有草稿，必须来自 studio-state 或 save-draft 返回值。创建新草稿请省略 id，使用同一 runKey 防止重复创建；不要原样重试。', 'draft_not_found');
-    if (existing && existing.accountId !== account.id) fail('草稿不属于当前账号', 'account_mismatch');
+    if (input.id && !existing) fail('草稿不存在：id 只用于修改已有草稿，必须来自 studio-state 或 save-draft 返回值。创建新草稿请省略 id，使用同一 runKey 防止重复创建；不要原样重试。', 'draft_not_found');    if (existing && existing.accountId !== account.id) fail('草稿不属于当前账号', 'account_mismatch');
     if (existing && existing.status !== 'draft') fail('已提交的草稿已锁定，请先核对发布记录');
     const operationKey = text(input.runKey, '日程运行标识', 700, true) || existing?.operationKey;
     if (operationKey && !existing) {
@@ -316,7 +329,12 @@ export class Operations {
     if (!job || job.status !== 'uncertain') fail('只能核对状态为待核对的操作');
     if (!['succeeded', 'failed'].includes(input.outcome)) fail('请选择核对结果');
     const evidence = text(input.evidence, '在抖音核对得到的结果说明', 2000);
-    const resolved = this.store.put('job', { ...job, status: input.outcome, message: `人工核对：${evidence}`, reconciledAt: Date.now() });
+    const result = { ...job.result, evidence };
+    if (input.outcome === 'succeeded' && job.transport === 'browser' && ['publish-draft', 'reply-comment', 'comment-video'].includes(job.browserAction)) {
+      result.url = douyinUrl(input.resultUrl, 'video');
+      if (job.browserAction !== 'publish-draft' && job.targetUrl.startsWith('https://www.douyin.com/video/') && result.url !== job.targetUrl) fail('评论回执不属于任务目标作品');
+    }
+    const resolved = this.store.put('job', { ...job, status: input.outcome, result, message: `人工核对：${evidence}`, reconciledAt: Date.now() });
     if (job.kind === 'publish') {
       const draft = this.store.get('draft', job.payload.draftId);
       if (draft) this.store.put('draft', { ...draft, status: input.outcome });
@@ -354,18 +372,24 @@ export class Operations {
     const account = input.accountId ? this.account(input.accountId) : null;
     if (!['creator', 'search'].includes(input.kind)) fail('不支持的网页入口');
     return { url: input.kind === 'creator' ? 'https://creator.douyin.com/' : `https://www.douyin.com/search/${encodeURIComponent(text(input.keyword, '关键词', 100))}`,
-      ...(account ? { browserProfileId: account.browserProfileId } : {}) };
+      ...(account ? { browserProfileId: account.browserProfileId } : {}),
+      usage: '仅导航，不会建立发布记录。发布必须先 save-draft → publish-draft → claim-browser-job，最后 finish-browser-job 回写。' };
   }
   async action(name, input = {}) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) fail('参数必须为对象');
     if (name === 'connect-browser') return this.browser.connect(input);
     if (name === 'verify-browser-account') return this.browser.verify(input);
+    if (name === 'observe-browser-session') return this.browser.observe(input);
     if (name === 'claim-browser-job') return this.browser.claim(input);
     if (name === 'finish-browser-job') return this.browser.finish(input);
+    if (name === 'cancel-read-job') return this.browser.cancelRead(input);
     if (routedActions.has(name)) {
       if (input.operationKey && input.accountId) {
         const existing = this.store.byOperation('job', input.accountId, input.operationKey);
         if (existing?.transport === 'browser') return this.browser.prepare(name, input, existing.reason);
+      }
+      if (name !== 'search-videos' && input.accountId && this.account(input.accountId).connection === 'browser') {
+        return this.browser.prepare(name, input, '复用插件账号浏览器，无需开放平台配置；执行前核对当前登录身份。');
       }
       if (name === 'comment-video' || (name === 'reply-comment' && input.targetUrl && !input.ownVideo)) return this.browser.prepare(name, input, '第三方作品互动使用网页');
       if (name === 'list-comments' && !input.ownVideo && (input.targetUrl || input.itemId?.startsWith('https://'))) return this.browser.prepare(name, input, '按作品链接读取网页评论');
@@ -377,7 +401,7 @@ export class Operations {
         return result;
       } catch (error) {
         if (!canUseBrowser(error)) throw error;
-        return this.browser.prepare(name, input, error.message);
+        return this.browser.prepare(name, input, 'API 当前不可用，改用此账号的插件浏览器；无需为网页操作重新申请 API 权限。');
       }
     }
     return this.apiAction(name, input);

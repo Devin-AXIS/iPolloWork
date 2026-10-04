@@ -13,6 +13,25 @@ const PROJECT_SOURCE = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
+    <script>
+      // Test-only readback of the signal sent to the real output destination.
+      window.__audioProbes = [];
+      const originalConnect = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function(destination, ...args) {
+        const result = originalConnect.call(this, destination, ...args);
+        if (destination === this.context.destination) {
+          const analyser = this.context.createAnalyser();
+          originalConnect.call(this, analyser);
+          window.__audioProbes.push(analyser);
+        }
+        return result;
+      };
+      window.__audioOutputLevel = () => Math.max(0, ...window.__audioProbes.map(analyser => {
+        const samples = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(samples);
+        return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+      }));
+    </script>
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #f2eee4; }
@@ -197,7 +216,8 @@ export default {
                 const pauseButton = document.querySelector(
                   '[data-testid="figma-player-controls"] button[aria-label="暂停"], [data-testid="figma-player-controls"] button[aria-label="Pause"]'
                 );
-                return Boolean(player && player.getTime() > 1.5 && player.isPlaying() && pauseButton && audio && !audio.paused && audio.currentTime > 0.5 && !audio.error);
+                const audioLevel = ${previewFrameExpression}?.contentWindow?.__audioOutputLevel?.() ?? 0;
+                return Boolean(player && player.getTime() > 1.5 && player.isPlaying() && pauseButton && audio && !audio.paused && audio.currentTime > 0.5 && !audio.error && audioLevel > 0.005);
               })()`, { timeoutMs: 10_000, label: "active playback beyond initialization" });
             },
             screenshot: {
@@ -213,7 +233,8 @@ export default {
             assert: async () => {
               await ctx.waitFor(`(() => {
                 const player = ${previewFrameExpression}?.contentWindow?.__player;
-                return Boolean(player && player.getTime() > ${Number(firstTime) + 0.6} && player.isPlaying());
+                const audioLevel = ${previewFrameExpression}?.contentWindow?.__audioOutputLevel?.() ?? 0;
+                return Boolean(player && player.getTime() > ${Number(firstTime) + 0.6} && player.isPlaying() && audioLevel > 0.005);
               })()`, { timeoutMs: 5_000, label: "continued uninterrupted playback" });
             },
             screenshot: {

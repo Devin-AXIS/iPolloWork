@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-word-relay-filmstrip"] { width: 1920px; height: 1080px; background: #faf8f3; position: relative; overflow: hidden; }
+    [data-composition-id="shotcraft-word-relay-filmstrip"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#faf8f3); position: relative; overflow: hidden; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-word-relay-filmstrip"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -30,8 +30,8 @@
         const grey=sOut?clamp(frame,sOut-14,sOut-2,0,1):0, pOut=sOut?clamp(frame,sOut,sOut+8,1,0):1;
         const op=smooth(pInEff)*smooth(pOut); if(op<=0)return '';
         const mix=smooth(grey), ch=Math.round(0x19+(0x9d-0x19)*mix);
-        return `<div style="position:absolute;right:0;top:0;font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;white-space:nowrap;color:rgb(${ch},${Math.round(0x19+(0x98-0x19)*mix)},${Math.round(0x19+(0x8e-0x19)*mix)});opacity:${op}">${escape(w)}</div>`;}).join('');
-      comp.innerHTML=cards+`<div style="position:absolute;right:210px;top:402px"><div style="font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;color:#191919">${escape(String(values.prefix))}</div><div style="position:relative;height:140px">${wordNodes}</div></div>`;
+        return `<div style="position:absolute;right:0;top:0;font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;white-space:nowrap;color:var(--ipw-color-text,rgb(${ch},${Math.round(0x19+(0x98-0x19)*mix)},${Math.round(0x19+(0x8e-0x19)*mix)}));opacity:${op}">${escape(w)}</div>`;}).join('');
+      comp.innerHTML=cards+`<div style="position:absolute;right:210px;top:402px"><div style="font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;color:var(--ipw-color-text,#191919)">${escape(String(values.prefix))}</div><div style="position:relative;height:140px">${wordNodes}</div></div>`;
     }},0);
     window.__timelines['shotcraft-word-relay-filmstrip']=tl;
   

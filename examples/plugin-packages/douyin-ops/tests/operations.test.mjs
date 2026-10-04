@@ -114,30 +114,101 @@ test('public state derives route capabilities from each account granted scopes',
   const { account } = await f.connect();
   f.store.put('account', { ...account, scopes: ['user_info', 'item.comment'] });
   let state = f.ops.state(), selected = state.accounts[0];
-  assert.equal(selected.capabilities.publish.available, false);
-  assert.equal(selected.capabilities.publish.status, 'scope_required');
+  assert.equal(selected.capabilities.publish.available, true);
+  assert.equal(selected.capabilities.publish.transport, 'browser');
+  assert.equal(selected.capabilities.publish.apiStatus, 'scope_required');
   assert.deepEqual(selected.capabilities.publish.missingScopes, ['video.create.bind']);
-  assert.equal(selected.capabilities.listVideos.available, false);
-  assert.equal(selected.capabilities.videoData.available, false);
+  assert.equal(selected.capabilities.listVideos.transport, 'browser');
+  assert.equal(selected.capabilities.videoData.transport, 'browser');
   assert.equal(selected.capabilities.comments.available, true);
+  assert.equal(selected.capabilities.comments.transport, 'api');
   assert.equal(state.capabilities.searchVideos.status, 'runtime_check');
   assert.match(state.capabilities.searchVideos.reason, /官方 API 验证/);
 
   f.store.put('account', { ...account, scopes: ['user_info', 'video.create.bind'], refreshExpiresAt: 0 });
   state = f.ops.state(); selected = state.accounts[0];
-  assert.equal(selected.capabilities.publish.status, 'reauthorization_required');
-  assert.equal(selected.capabilities.publish.available, false);
+  assert.equal(selected.capabilities.publish.apiStatus, 'reauthorization_required');
+  assert.equal(selected.capabilities.publish.available, true);
+  assert.equal(selected.capabilities.publish.transport, 'browser');
   assert.doesNotMatch(JSON.stringify(state), /fixture-secret|secret-access|secret-refresh/);
 });
 
 test('draft updates preserve account ownership and scheduled run keys deduplicate', async t => {
   const f = await fixture(t), a = (await f.connect()).account, b = (await f.connect('open-account-b')).account;
   const input = { accountId: a.id, title: '草稿', text: '内容', runKey: 'schedule:2026-09-10:post-1' };
+  assert.throws(() => f.ops.saveDraft({ ...input, id: 'invented-draft-name' }), error => error.code === 'draft_not_found' && /(?:新建|创建新草稿)请省略 id/.test(error.message));
+  assert.equal(f.ops.state().drafts.length, 0);
   const first = f.ops.saveDraft(input).draft;
   assert.equal(f.ops.saveDraft({ ...input, text: 'retry' }).draft.id, first.id);
   assert.equal(f.ops.saveDraft({ ...input, runKey: 'schedule:2026-09-11:post-1' }).draft.id === first.id, false);
   assert.throws(() => f.ops.saveDraft({ ...input, id: first.id, accountId: b.id }), /不属于当前账号/);
   assert.equal(f.ops.saveDraft({ ...input, id: first.id, text: '已保存的更新' }).draft.text, '已保存的更新');
+});
+
+test('logged-in browser account exposes the same usable route to AI and workbench without OAuth', async t => {
+  const f = await fixture(t); f.store.remove('settings', 'application');
+  const { account } = await browserAccount(f);
+  const state = f.ops.state(), selected = state.accounts[0];
+  assert.deepEqual(selected.scopes, []);
+  assert.deepEqual(state.capabilities, selected.capabilities);
+  for (const capability of Object.values(selected.capabilities)) {
+    assert.equal(capability.available, true);
+    assert.equal(capability.transport, 'browser');
+    assert.equal(capability.status, 'browser');
+    assert.equal(capability.apiAvailable, false);
+    assert.equal(capability.requiresIdentityCheck, true);
+  }
+  const reused = await f.ops.action('connect-browser', { accountId: account.id });
+  assert.equal(reused.account.browserProfileId, account.browserProfileId);
+  assert.equal(f.ops.state().accounts.length, 1);
+  await f.ops.action('connect-browser');
+  assert.equal(f.ops.state().capabilities.publish.status, 'account_required', 'multiple accounts must be explicitly selected');
+  assert.deepEqual(f.calls, []);
+});
+
+test('browser publishing persists draft, task, SMS uncertainty and reconciled receipt without resubmitting', async t => {
+  const f = await fixture(t); f.store.remove('settings', 'application');
+  const { account, identity } = await browserAccount(f);
+  await writeFile(resolve(f.workspaceRoot, 'video.mp4'), mp4);
+  const { asset } = await f.ops.action('import-media', { sourcePath: 'video.mp4' });
+  const input = { accountId: account.id, title: '合同审阅', text: '已确认的发布文案', assetId: asset.id, runKey: 'session:publish-draft' };
+  const { draft } = await f.ops.action('save-draft', input);
+  assert.equal((await f.ops.action('save-draft', input)).draft.id, draft.id);
+  const publish = { accountId: account.id, draftId: draft.id, operationKey: 'session:publish' };
+  const { job, browserTask } = await f.ops.action('publish-draft', publish);
+  assert.equal(job.status, 'pending');
+  assert.equal(browserTask.profileId, identity.actualProfileId);
+  assert.equal(browserTask.nextAction, 'claim-browser-job');
+  assert.equal(f.ops.state().jobs.length, 1, 'record exists before any browser action');
+  const claim = await f.ops.action('claim-browser-job', { jobId: job.id, ...identity });
+  assert.equal(claim.nextAction, 'finish-browser-job');
+  assert.equal(claim.extensionId, 'douyin-ops');
+  assert.match(claim.instruction, /不得复用历史 tabId/);
+  assert.match(claim.instruction, /最多2次/);
+  assert.match(claim.instruction, /只核对，不重发/);
+  assert.equal(claim.mediaPath, resolve(f.dataDir, 'assets', asset.id + '.mp4'));
+  await f.ops.action('finish-browser-job', { ...identity, jobId: job.id, executionToken: claim.executionToken,
+    outcome: 'uncertain', evidence: '点击发布后出现短信验证码，等待用户验证，尚无成功回执。' });
+  assert.equal((await f.ops.action('get-job', { jobId: job.id })).job.status, 'uncertain');
+  assert.equal(f.ops.state().drafts[0].status, 'uncertain');
+  assert.equal((await f.ops.action('publish-draft', publish)).job.id, job.id);
+  await assert.rejects(f.ops.action('claim-browser-job', { jobId: job.id, ...identity }), /已领取|已完成/);
+  const resolveInput = { jobId: job.id, outcome: 'succeeded', evidence: '用户验证后，在创作者中心核对到对应作品。' };
+  await assert.rejects(f.ops.action('resolve-job', resolveInput), /地址/);
+  await assert.rejects(f.ops.action('resolve-job', { ...resolveInput, resultUrl: 'https://example.com/video/123' }), /实际抖音作品/);
+  assert.equal(f.ops.state().jobs[0].status, 'uncertain', 'invalid receipts do not change records');
+  const resultUrl = 'https://www.douyin.com/video/1234567890';
+  await f.ops.action('resolve-job', { ...resolveInput, resultUrl });
+  const recorded = (await f.ops.action('get-job', { jobId: job.id })).job;
+  assert.equal(recorded.status, 'succeeded');
+  assert.equal(recorded.result.url, resultUrl);
+  assert.equal(recorded.payload.assetId, asset.id);
+  assert.equal(recorded.accountId, account.id);
+  assert.equal(f.ops.state().drafts[0].status, 'succeeded');
+  assert.equal((await f.ops.action('publish-draft', publish)).job.id, job.id);
+  assert.equal(f.ops.state().jobs.length, 1);
+  assert.equal(f.ops.state().drafts.length, 1);
+  assert.deepEqual(f.calls, [], 'test never calls the real platform or an OAuth endpoint');
 });
 
 test('imports only real MP4 files in workspace, including symlink containment', async t => {
@@ -248,6 +319,39 @@ test('ordinary accounts connect without OAuth, isolate profiles and cannot switc
   await assert.rejects(f.ops.action('verify-browser-account', { ...identity, actualAccount: 'other', evidence: 'other' }), /其他账号/);
   assert.equal(f.calls.length, 0);
   assert.equal(f.ops.account(account.id).openId, undefined);
+});
+
+test('visible own-page observation connects separate same-name accounts without changing their profiles', async t => {
+  const f = await fixture(t);
+  const tree = id => `heading "Devin" level=1\nStaticText "抖音号："\nStaticText "${id}"\n[@e1] button "批量管理"\n[@e2] tab "私密作品"`;
+  const first = await f.ops.action('connect-browser');
+  assert.equal(first.url, 'https://www.douyin.com/user/self');
+  const input = { browserProfileId: first.browserProfileId, url: first.url, tree: tree('10422309') };
+  assert.equal((await f.ops.action('observe-browser-session', input)).connected, true);
+  const second = await f.ops.action('connect-browser');
+  assert.notEqual(first.account.id, second.account.id);
+  assert.equal((await f.ops.action('observe-browser-session', { ...input, browserProfileId: second.browserProfileId, tree: tree('dy3pahfnxihi') })).connected, true);
+  assert.deepEqual(f.ops.state().accounts.map(a => a.webIdentity).sort(), ['10422309', 'dy3pahfnxihi']);
+  assert.equal(f.ops.account(second.account.id).nickname, 'Devin');
+  assert.equal((await f.ops.action('observe-browser-session', { ...input, tree: tree('dy3pahfnxihi') })).reason, 'account_mismatch');
+  assert.equal(f.ops.account(first.account.id).webIdentity, '10422309', 'never silently rebind the previous account');
+  assert.equal(f.ops.account(second.account.id).browserProfileId, second.browserProfileId);
+  assert.deepEqual(f.calls, [], 'identity is read from supplied visible page, not a hidden API');
+});
+
+test('automatic login recognition rejects foreign profiles, visitor pages and incomplete identity', async t => {
+  const f = await fixture(t), { account, url } = await f.ops.action('connect-browser');
+  const input = { browserProfileId: account.browserProfileId, url, tree: 'heading "Devin" level=1\nStaticText "抖音号：12345"\n[@e1] button "编辑资料"\n[@e2] tab "观看历史"' };
+  for (const invalid of [
+    { ...input, browserProfileId: 'unknown-profile' }, { ...input, url: 'https://example.com/user/self' },
+    { ...input, url: 'https://www.douyin.com/user/someone-else' },
+    { ...input, tree: 'heading "Devin" level=1\nStaticText "抖音号：12345"\nbutton "关注"' },
+    { ...input, tree: input.tree.replace('抖音号：12345', '扫码登录') },
+    { ...input, tree: input.tree.replace('heading "Devin" level=1', 'heading "登录" level=2') },
+  ]) assert.equal((await f.ops.action('observe-browser-session', invalid)).connected, false);
+  assert.equal(f.ops.account(account.id).webIdentity, undefined);
+  assert.equal((await f.ops.action('observe-browser-session', input)).account.webIdentity, '12345');
+  assert.equal(f.ops.state().accounts.length, 1);
 });
 
 test('browser search persists real results, then a third-party comment is claimed once and target-checked', async t => {
@@ -363,6 +467,92 @@ test('browser links route data without pretending to be API IDs, and read counts
   const finish = { jobId: comments.job.id, executionToken: claim.executionToken, actualProfileId: claim.profileId, outcome: 'succeeded', evidence: '模拟实际评论列表' };
   await assert.rejects(f.ops.action('finish-browser-job', { ...finish, items: [{ title: '第一条' }, { title: '第二条' }] }), /数量/);
   await f.ops.action('finish-browser-job', { ...finish, items: [{ title: '第一条', link, content: '第一条', nickname: '作者' }] });
+});
+
+test('interrupted browser read can release its lock without losing or duplicating a queued publish', async t => {
+  const f = await fixture(t), { account, identity } = await browserAccount(f);
+  const { job: read } = await f.ops.action('search-videos', { accountId: account.id, keyword: '11' });
+  const claim = await f.ops.action('claim-browser-job', { ...identity, jobId: read.id });
+  assert.equal(claim.job.canCancelRead, true);
+  assert.match(claim.instruction, /页面关闭或工具失败用 failed/);
+  await writeFile(resolve(f.workspaceRoot, 'video.mp4'), mp4);
+  const { asset } = await f.ops.action('import-media', { sourcePath: 'video.mp4' });
+  const { draft } = await f.ops.action('save-draft', { accountId: account.id, title: 'Jev', text: '已确认的发布文案', assetId: asset.id });
+  const publishInput = { accountId: account.id, draftId: draft.id, operationKey: 'existing-publish' };
+  const { job: publish } = await f.ops.action('publish-draft', publishInput);
+  const blocked = await f.ops.action('claim-browser-job', { ...identity, jobId: publish.id });
+  assert.equal(blocked.queued, true);
+  assert.equal(blocked.blockedByJobId, read.id);
+  assert.equal(blocked.canCancelRead, true);
+  assert.match(blocked.instruction, /cancel-read-job/);
+  const input = { jobId: read.id, accountId: account.id, evidence: 'Unknown or closed built-in browser tab；原会话已结束' };
+  await assert.rejects(f.ops.action('cancel-read-job', { ...input, accountId: 'other-account' }), /不属于/);
+  await assert.rejects(f.ops.action('cancel-read-job', { ...input, evidence: '' }), /原因/);
+  assert.equal(f.store.get('job', read.id).status, 'running');
+  const { job: cancelled } = await f.ops.action('cancel-read-job', input);
+  assert.equal(cancelled.status, 'failed');
+  assert.equal(cancelled.errorCode, 'read_cancelled');
+  assert.equal(f.store.secret(`browser-job:${read.id}`), null);
+  assert.deepEqual((await f.ops.action('cancel-read-job', input)).job, cancelled, 'retry does not change finished record');
+  await assert.rejects(f.ops.action('finish-browser-job', { ...identity, jobId: read.id, executionToken: claim.executionToken, outcome: 'succeeded', evidence: 'late result', items: [] }), /不是正在执行/);
+  await assert.rejects(f.ops.action('claim-browser-job', { ...identity, jobId: read.id }), /已领取|已完成/);
+  assert.equal(f.ops.state().jobs.find(job => job.id === read.id).canCancelRead, false);
+  assert.deepEqual(f.store.get('job', publish.id).payload, publish.payload);
+  assert.equal((await f.ops.action('publish-draft', publishInput)).job.id, publish.id);
+  assert.equal((await f.ops.action('claim-browser-job', { ...identity, jobId: publish.id })).job.status, 'running');
+  assert.equal(f.ops.state().drafts[0].jobId, publish.id);
+  assert.equal(f.ops.state().assets[0].id, asset.id);
+  assert.equal(f.ops.state().jobs.filter(job => job.kind === 'publish').length, 1);
+  assert.deepEqual(f.calls, [], 'no platform submission during recovery');
+});
+
+test('confirmed pre-submit failure can retry identical content once while preserving the failed attempt', async t => {
+  const f = await fixture(t), { account, identity } = await browserAccount(f);
+  await writeFile(resolve(f.workspaceRoot, 'video.mp4'), mp4);
+  const { asset } = await f.ops.action('import-media', { sourcePath: 'video.mp4' });
+  const content = { accountId: account.id, title: '原视频标题', text: '原发布文案', assetId: asset.id };
+  const { draft } = await f.ops.action('save-draft', content);
+  const original = { accountId: account.id, draftId: draft.id, operationKey: 'initial-attempt' };
+  const { job } = await f.ops.action('publish-draft', original);
+  const claim = await f.ops.action('claim-browser-job', { ...identity, jobId: job.id });
+  await f.ops.action('finish-browser-job', { ...identity, jobId: job.id, executionToken: claim.executionToken, outcome: 'failed', evidence: '页面已关闭，尚未上传或点击发布' });
+  const retryContent = { ...content, runKey: `retry:${job.id}:draft` };
+  const retryDraft = (await f.ops.action('save-draft', retryContent)).draft;
+  assert.equal((await f.ops.action('save-draft', retryContent)).draft.id, retryDraft.id);
+  const retryInput = { accountId: account.id, draftId: retryDraft.id, operationKey: `retry:${job.id}:publish` };
+  const retry = (await f.ops.action('publish-draft', retryInput)).job;
+  assert.equal((await f.ops.action('publish-draft', retryInput)).job.id, retry.id);
+  assert.equal((await f.ops.action('publish-draft', original)).job.status, 'failed', 'original attempt remains terminal');
+  assert.deepEqual(retry.payload, { ...job.payload, draftId: retryDraft.id });
+  assert.equal(f.ops.state().assets.length, 1, 'same media is reused');
+  assert.equal(f.ops.state().jobs.length, 2, 'one failed attempt and one retry');
+  assert.equal((await f.ops.action('claim-browser-job', { ...identity, jobId: retry.id })).job.status, 'running');
+  assert.deepEqual(f.calls, [], 'creating retry does not submit to platform');
+});
+
+test('read cancellation covers all read kinds and refuses writes, API jobs and completed results', async t => {
+  const f = await fixture(t), { account } = await browserAccount(f);
+  for (const browserAction of ['search-videos', 'list-videos', 'list-comments', 'video-data']) {
+    for (const status of ['pending', 'running', 'uncertain']) {
+      const job = f.store.put('job', { id: `${browserAction}-${status}`, accountId: account.id, transport: 'browser', browserAction, status });
+      assert.equal(f.ops.state().jobs.find(item => item.id === job.id).canCancelRead, true);
+      assert.equal((await f.ops.action('cancel-read-job', { jobId: job.id, accountId: account.id, evidence: '读取已经停止' })).job.status, 'failed');
+    }
+  }
+  for (const browserAction of ['publish-draft', 'reply-comment', 'comment-video', 'unknown-action']) {
+    for (const status of ['pending', 'running', 'uncertain']) {
+      const job = f.store.put('job', { id: `${browserAction}-${status}`, accountId: account.id, transport: 'browser', browserAction, status });
+      assert.equal(f.ops.state().jobs.find(item => item.id === job.id).canCancelRead, false);
+      await assert.rejects(f.ops.action('cancel-read-job', { jobId: job.id, accountId: account.id, evidence: '不能强制解锁' }), /只能结束网页读取/);
+      assert.equal(f.store.get('job', job.id).status, status);
+    }
+  }
+  const apiJob = f.store.put('job', { id: 'api-read', accountId: account.id, transport: 'api', browserAction: 'search-videos', status: 'running' });
+  await assert.rejects(f.ops.action('cancel-read-job', { jobId: apiJob.id, accountId: account.id, evidence: 'API 不适用' }), /只能结束网页读取/);
+  await assert.rejects(f.ops.action('cancel-read-job', { jobId: 'missing', accountId: account.id, evidence: '不存在' }), /只能结束网页读取/);
+  const done = f.store.put('job', { id: 'done', accountId: account.id, transport: 'browser', browserAction: 'search-videos', status: 'succeeded', result: { list: [{ title: '保留实际结果' }] } });
+  await assert.rejects(f.ops.action('cancel-read-job', { jobId: done.id, accountId: account.id, evidence: '不能覆盖完成结果' }), /已经结束/);
+  assert.deepEqual(f.store.get('job', done.id), done);
 });
 
 test('browser instructions queue while only one job may own an account browser', async t => {

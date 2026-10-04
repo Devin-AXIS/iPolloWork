@@ -7,11 +7,11 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     [data-composition-id="shotcraft-lead-word-zoom-assemble"] {
       width: 1920px; height: 1080px; overflow: hidden;
-      background: radial-gradient(52% 44% at 18% 22%, rgba(122,90,248,0.20) 0%, rgba(122,90,248,0) 70%),
+      background: var(--ipw-color-bg,radial-gradient(52% 44% at 18% 22%, rgba(122,90,248,0.20) 0%, rgba(122,90,248,0) 70%),
         radial-gradient(46% 42% at 84% 18%, rgba(255,138,178,0.20) 0%, rgba(255,138,178,0) 70%),
         radial-gradient(58% 50% at 78% 84%, rgba(96,190,255,0.20) 0%, rgba(96,190,255,0) 70%),
         radial-gradient(50% 46% at 24% 88%, rgba(255,196,112,0.20) 0%, rgba(255,196,112,0) 70%),
-        linear-gradient(180deg, #f7f6f9 0%, #f2f1f5 100%);
+        linear-gradient(180deg, #f7f6f9 0%, #f2f1f5 100%));
       font-family: -apple-system, "PingFang SC", BlinkMacSystemFont, sans-serif;
     }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-lead-word-zoom-assemble"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
@@ -40,11 +40,11 @@
       const wordSpans=words.map((word,i)=>{const isLead=i===0,pushStart=zoomStart+WORD_DELAY+(i-1)*WORD_STAGGER;
         const op=isLead?clamp(frame,0,INTRO,0,1):clamp(frame,pushStart,pushStart+WORD_FADE,0,1);
         const tx=isLead?'':`${clamp(frame,pushStart,pushStart+WORD_DUR,WORD_PUSH*FONT_SIZE,0,'word')}px`;
-        return `<span style="display:inline-block;opacity:${op};color:${word===HIGHLIGHT?ACCENT:INK};translate:${tx}">${escape(word)}</span>${i<words.length-1?' ':''}`;}).join('');
+        return `<span style="display:inline-block;opacity:${op};color:var(--ipw-color-text,${word===HIGHLIGHT?ACCENT:INK});translate:${tx}">${escape(word)}</span>${i<words.length-1?' ':''}`;}).join('');
       comp.innerHTML=`<div style="position:absolute;inset:0;transform:scale(${innerScale});filter:${innerBlur>0.01?`blur(${innerBlur}px)`:''};opacity:${innerOp}">
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:translateY(${lift*LIFT_D}px)">
-          <span style="position:relative;display:inline-block;font-size:${FONT_SIZE}px;font-weight:600;color:${INK};letter-spacing:-0.03em;line-height:1.1;white-space:nowrap;transform-origin:${leadRatio*100}% ${baseline}px;scale:${scalePart};translate:${slide}px">${wordSpans}<span style="display:inline-block;width:0;height:0"></span></span></div>
-        <div style="position:absolute;left:0;right:0;top:50%;margin-top:62px;text-align:center;font-size:32px;color:${INK_DIM};opacity:${lift};transform:translateY(${(1-lift)*16}px)">${escape(SUBLINE)}</div></div>`;
+          <span style="position:relative;display:inline-block;font-size:${FONT_SIZE}px;font-weight:600;color:var(--ipw-color-text,${INK});letter-spacing:-0.03em;line-height:1.1;white-space:nowrap;transform-origin:${leadRatio*100}% ${baseline}px;scale:${scalePart};translate:${slide}px">${wordSpans}<span style="display:inline-block;width:0;height:0"></span></span></div>
+        <div style="position:absolute;left:0;right:0;top:50%;margin-top:62px;text-align:center;font-size:32px;color:var(--ipw-color-text,${INK_DIM});opacity:${lift};transform:translateY(${(1-lift)*16}px)">${escape(SUBLINE)}</div></div>`;
     }},0);
     window.__timelines['shotcraft-lead-word-zoom-assemble']=tl;
   

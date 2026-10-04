@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.research-evidence-wall",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "research",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "research"
+    "research",
+    "topic:data"
   ],
   "surface": "video",
   "title": "Research Evidence Wall",

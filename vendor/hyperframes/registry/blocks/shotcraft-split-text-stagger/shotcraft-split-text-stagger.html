@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-split-text-stagger"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+    [data-composition-id="shotcraft-split-text-stagger"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#ececea); position: relative; overflow: hidden; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-split-text-stagger"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -21,9 +21,9 @@
     const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
     tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
       const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), lineW=clamp(frame,START,START+26,0,100,'outCubic');
-      const chars=TEXT.split('').map((c,i)=>`<div style="overflow:hidden;height:${FONT*1.35}px;display:flex;align-items:flex-end"><span style="display:inline-block;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:${FONT}px;line-height:1.05;color:${G.ink};letter-spacing:2px;transform:translateY(${charY(frame,i)}%)">${c===' '?'&nbsp;':escape(c)}</span></div>`).join('');
-      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:${G.ink}">${escape(String(values.label))}</div>
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column"><div style="display:flex">${chars}</div><div style="width:920px;margin-top:10px"><div style="height:2px;width:${lineW}%;background:${G.bar}"></div></div></div>`;
+      const chars=TEXT.split('').map((c,i)=>`<div style="overflow:hidden;height:${FONT*1.35}px;display:flex;align-items:flex-end"><span style="display:inline-block;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:${FONT}px;line-height:1.05;color:var(--ipw-color-text,${G.ink});letter-spacing:2px;transform:translateY(${charY(frame,i)}%)">${c===' '?'&nbsp;':escape(c)}</span></div>`).join('');
+      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:var(--ipw-color-text,${G.ink})">${escape(String(values.label))}</div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column"><div style="display:flex">${chars}</div><div style="width:920px;margin-top:10px"><div style="height:2px;width:${lineW}%;background:var(--ipw-color-surface,${G.bar})"></div></div></div>`;
     }},0);
     window.__timelines['shotcraft-split-text-stagger']=tl;
   

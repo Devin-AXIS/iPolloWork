@@ -1,4 +1,4 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
+<!-- Distribution reference: maintained in examples/plugin-packages/design-agent/skills/ipollowork-presentations/references/; checked against the source by plugin-package-manifest.test.ts. -->
 
 # PPT Layout Guide · core-v1
 
@@ -14,7 +14,7 @@ For a session that declares `layoutLibrary: "core-v1"`, the server materializes 
 
 If the directory is absent in an older session, inspect available local patterns and the active contract. Do not invent file paths, assume missing layouts exist or overwrite the user's project merely to obtain a library. Read only the relevant candidate HTML and styles.
 
-Repository ownership: this document is maintained in `.codex/skills/ipollowork-template-generation/references/layout.md`. The server bundle and both presentation Skill distributions carry checked copies. Source HTML/CSS lives under `apps/server/bundled-templates/core-v1-slides-*`; the server assembles those flat resources into the session directory above.
+Repository ownership: this document is maintained in `examples/plugin-packages/design-agent/skills/ipollowork-presentations/references/layout.md`. The server bundle and repository Skill mirror carry checked copies. Source HTML/CSS lives under `apps/server/bundled-templates/core-v1-slides-*`; the server assembles those flat resources into the session directory above.
 
 ## Selection map
 

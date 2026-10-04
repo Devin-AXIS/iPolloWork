@@ -65,7 +65,7 @@
     }
   },
   "package": {
-    "version": "0.3.13",
+    "version": "0.3.23",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -101,7 +101,7 @@
       "type": "skill",
       "id": "ipollowork-video-studio",
       "label": "Video Studio",
-      "description": "识别当前视频任务范围，按需调用专业能力并接续宿主交付。",
+      "description": "识别当前视频任务范围，按需调用专业能力并完成原生制作与交付。",
       "path": "skills/ipollowork-video-studio/SKILL.md",
       "provides": [
         "workflow:ipollowork-video-studio"

@@ -12,6 +12,7 @@ import type { ServerConfig } from "./types.js";
 
 export const AUTHORIZATION_SERVICE_IDS = [
   "openai-images",
+  "fal-images",
   "aliyun-bailian",
   "volcengine-video",
   "runninghub-video",
@@ -58,6 +59,16 @@ export type AuthorizationAccess = {
 };
 
 const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
+  {
+    id: "fal-images",
+    keys: ["FAL_KEY"],
+    category: "media",
+    agent: {
+      capability: "Image text and element layer extraction",
+      useWhen: "Use when converting a flat image into editable text or independent image layers.",
+      instruction: "Use only available iPolloWork image actions. Keep the user's generation model unchanged. Never expose the fal API key to engines or generated content.",
+    },
+  },
   {
     id: "openai-images",
     keys: ["OPENAI_API_KEY"],
@@ -263,6 +274,16 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
   }
 
   switch (serviceId) {
+    case "fal-images": {
+      // A read-only account check, not a billable inference request. This does
+      // not certify model permissions, credit balance, or extraction quality.
+      const result = await fetchAuthorizationTest("https://api.fal.ai/v1/account/billing", {
+        headers: { Authorization: `Key ${resolved.values.FAL_KEY}` },
+      });
+      return { ...result, detail: result.ok
+        ? "fal 账户连接已验证；模型权限、额度及分层效果仍需实际任务验证。本次未生成图片。"
+        : `${result.detail} 此测试需要账户查询权限；失败不一定表示模型调用权限无效。` };
+    }
     case "openai-images":
       return fetchAuthorizationTest("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${resolved.values.OPENAI_API_KEY}` } });
     case "aliyun-bailian":

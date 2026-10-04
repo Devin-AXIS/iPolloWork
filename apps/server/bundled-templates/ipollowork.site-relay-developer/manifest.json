@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-relay-developer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "developer-tools",
@@ -10,7 +10,8 @@
     "developer-tools",
     "technical",
     "responsive",
-    "themeable"
+    "themeable",
+    "topic:education"
   ],
   "surface": "design",
   "title": "Relay Developer Hub",

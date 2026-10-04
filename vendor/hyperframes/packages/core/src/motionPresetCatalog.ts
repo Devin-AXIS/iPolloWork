@@ -1458,7 +1458,7 @@ const REACT_BITS_GENERAL_PRESETS: readonly MotionPreset[] = [
       { id: "overshoot", label: "回弹幅度", kind: "number", min: 0, max: 1, step: 0.05 },
     ],
     defaults: {
-      ease: "power3.out",
+      ease: "none",
       direction: "right",
       intensity: 1,
       distance: 22,
@@ -1601,7 +1601,7 @@ const REACT_BITS_BOX_PRESETS: readonly MotionPreset[] = [
       MOTION_INTENSITY_PARAMETER,
       { id: "rotation", label: "入场倾角", kind: "number", min: 0, max: 24, step: 1, unit: "°" },
     ],
-    defaults: { ease: "back.out(1.7)", direction: "up", intensity: 1, rotation: 8 },
+    defaults: { ease: "none", direction: "up", intensity: 1, rotation: 8 },
     semantics: {
       intents: ["弹性入场", "卡片落位", "回弹"],
       tones: ["活泼", "友好"],

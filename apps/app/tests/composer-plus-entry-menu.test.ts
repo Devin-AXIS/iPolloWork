@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { composerEscapeToStopAllowed } from "../src/react-app/domains/session/surface/composer/composer";
 
 const composerSource = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx"),
@@ -37,6 +38,26 @@ function plusMenuOutsideClickHandlerSource() {
 }
 
 describe("composer plus entry menu", () => {
+  test("leaves Escape from portaled menus and expanded menu triggers to their dismiss handler", () => {
+    for (const role of ["menu", "expanded-trigger"]) {
+      const target = { closest: (selector: string) => {
+        expect(selector).toContain('[role="menu"]');
+        expect(selector).toContain('[data-slot="dropdown-menu-trigger"][aria-expanded="true"]');
+        return { role };
+      } };
+      expect(composerEscapeToStopAllowed("Escape", target, true, false)).toBe(false);
+    }
+  });
+
+  test("keeps the Escape stop shortcut limited to a busy composer with no menu consuming it", () => {
+    const editor = { closest: () => null };
+    expect(composerEscapeToStopAllowed("Escape", editor, true, false)).toBe(true);
+    expect(composerEscapeToStopAllowed("Escape", editor, true, true)).toBe(false);
+    expect(composerEscapeToStopAllowed("Escape", editor, false, false)).toBe(false);
+    expect(composerEscapeToStopAllowed("Enter", editor, true, false)).toBe(false);
+    expect(composerSource).toContain("composerEscapeToStopAllowed(event.key, target, props.busy, anyMenuOpen)");
+  });
+
   test("routes files, templates, plugins, MCP settings, and agents from one list", () => {
     const templateLabelIndex = composerSource.indexOf('t("composer.plus_use_template")');
     const templateButtonStart = composerSource.lastIndexOf("<button", templateLabelIndex);

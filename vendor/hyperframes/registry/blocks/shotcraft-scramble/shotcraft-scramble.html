@@ -5,9 +5,9 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-scramble"] { background: #07080c; overflow: hidden; }
+    [data-composition-id="shotcraft-scramble"] { background: var(--ipw-color-bg,#07080c); overflow: hidden; }
     .design-stage { position:absolute;left:0;top:0;width:480px;height:270px;overflow:hidden;transform:scale(4);transform-origin:top left; }
-    #row { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#07080c;font-family:"SF Mono",Menlo,monospace;font-size:34px;letter-spacing:2px; }
+    #row { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--ipw-color-bg,#07080c);font-family:"SF Mono",Menlo,monospace;font-size:34px;letter-spacing:2px; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-scramble"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -29,7 +29,7 @@
         if(ch!==' '){const lockAt=0.25+(i/CHARS.length)*0.6+rand(i*7)*0.06;
           if(t<0.06)content=' '; else if(t<lockAt)content=POOL[Math.floor(rand(i*131+Math.floor(frame/2))*POOL.length)];
           else{const flash=1-seg(t,lockAt,lockAt+0.1);color=flash>0.4?'#dff3ff':'#e8eaf0';textShadow=`0 0 ${flash*18}px rgba(120,200,255,${flash})`;}}
-        return `<span style="min-width:0.62em;text-align:center;color:${color};text-shadow:${textShadow}">${content===' '?'&nbsp;':escape(content)}</span>`;
+        return `<span style="min-width:0.62em;text-align:center;color:var(--ipw-color-text,${color});text-shadow:${textShadow}">${content===' '?'&nbsp;':escape(content)}</span>`;
       }).join('');
     }},0);
     window.__timelines['shotcraft-scramble']=tl;

@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-drift-assembly"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+    [data-composition-id="shotcraft-drift-assembly"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#ececea); position: relative; overflow: hidden; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-drift-assembly"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -25,8 +25,8 @@
         const ang=h(i+1)*Math.PI*2,mag=260+h(i+101)*100,dx=Math.cos(ang)*mag*(1-p),dy=Math.sin(ang)*mag*(1-p),blur=8*(1-p),op=0.35+0.65*p;
         const pulse=frame<=lock||frame>=lock+8?0:frame<lock+4?(frame-lock)/4:(lock+8-frame)/4;
         const shade=Math.round(47*(1-pulse)),color=`rgb(${shade},${shade},${shade})`,strokeW=3*pulse;
-        return `<span style="font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:140px;letter-spacing:8px;color:${color};display:inline-block;transform:translate(${dx}px,${dy}px);opacity:${op};filter:${blur>0.01?`blur(${blur}px)`:'none'};-webkit-text-stroke:${strokeW>0.01?`${strokeW}px #000`:'0'}">${escape(c)}</span>`;}).join('');
-      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:#2f2f2f">${escape(String(values.label))}</div>
+        return `<span style="font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:140px;letter-spacing:8px;color:var(--ipw-color-text,${color});display:inline-block;transform:translate(${dx}px,${dy}px);opacity:${op};filter:${blur>0.01?`blur(${blur}px)`:'none'};-webkit-text-stroke:${strokeW>0.01?`${strokeW}px #000`:'0'}">${escape(c)}</span>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:var(--ipw-color-text,#2f2f2f)">${escape(String(values.label))}</div>
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:scale(${breath})">${chars}</div>`;
     }},0);
     window.__timelines['shotcraft-drift-assembly']=tl;

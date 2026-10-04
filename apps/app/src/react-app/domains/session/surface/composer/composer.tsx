@@ -46,6 +46,17 @@ type PastedTextChip = {
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
 
+export function composerEscapeToStopAllowed(
+  key: string,
+  target: { closest(selector: string): unknown } | null,
+  busy: boolean,
+  menuOpen: boolean,
+): boolean {
+  return key === "Escape" && busy && !menuOpen && !target?.closest(
+    '[role="menu"], [data-slot="dropdown-menu-trigger"][aria-expanded="true"]',
+  );
+}
+
 export type ComposerPlusMenuData = {
   extensions: iPolloWorkPluginPackageItem[];
   externalAgents: iPolloWorkPluginPackageItem[];
@@ -947,11 +958,12 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (event.key === "Enter" && imeActive) {
       return;
     }
-    // Escape-to-stop while the agent is busy. Only when no menu is open so
-    // Escape can still close menus. First press arms a confirmation prompt
-    // for 3s; a second Escape within that window stops the agent.
+    // React capture also reaches menus portaled from composer accessories.
+    // Let their Escape close the menu before considering the stop shortcut.
+    // First press arms confirmation; a second press within 3s stops the agent.
     const anyMenuOpen = plusMenuOpen || Boolean(activeMenu);
-    if (event.key === "Escape" && props.busy && !anyMenuOpen) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (composerEscapeToStopAllowed(event.key, target, props.busy, anyMenuOpen)) {
       event.preventDefault();
       if (escapeArmed) {
         disarmEscape();

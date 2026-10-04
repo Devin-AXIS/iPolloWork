@@ -142,6 +142,40 @@ export type TemplateStyle = z.infer<typeof templateStyleSchema>;
 export type TemplateVariable = z.infer<typeof templateVariableSchema>;
 export type PptxCompatibility = z.infer<typeof pptxCompatibilitySchema>;
 
+/** Use-case facets shared across every template format, independent of visual style. */
+export const TEMPLATE_TOPIC_OPTIONS = [
+  "education", "product", "brand", "commerce", "business",
+  "data", "events", "social", "culture", "lifestyle",
+] as const;
+
+export type TemplateTopic = (typeof TEMPLATE_TOPIC_OPTIONS)[number];
+export type TemplateTopicFilter = TemplateTopic | "all" | "unclassified";
+export type TemplateFilters = {
+  category?: TemplateCategory | "all";
+  style?: TemplateStyle | "all";
+  topic?: TemplateTopicFilter;
+  query?: string;
+};
+
+type TemplateTopicMetadata = Pick<TemplateManifestV1, "category" | "tags">;
+
+export function getTemplateTopic(manifest: TemplateTopicMetadata): TemplateTopic | undefined {
+  return TEMPLATE_TOPIC_OPTIONS.find((topic) => manifest.tags.includes(`topic:${topic}`));
+}
+
+/** The same conjunctive filters apply in the marketplace and both editor catalogs. */
+export function matchesTemplateFilters(manifest: TemplateManifestV1, filters: TemplateFilters): boolean {
+  if (filters.category && filters.category !== "all" && manifest.category !== filters.category) return false;
+  if (filters.style && filters.style !== "all" && manifest.style !== filters.style) return false;
+  if (filters.topic && filters.topic !== "all") {
+    const topic = getTemplateTopic(manifest);
+    if (filters.topic === "unclassified" ? topic !== undefined : topic !== filters.topic) return false;
+  }
+  const query = filters.query?.trim().toLowerCase();
+  return !query || [manifest.title, manifest.description, manifest.subcategory, manifest.style, ...manifest.tags]
+    .join(" ").toLowerCase().includes(query);
+}
+
 const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.prototype-web",
   "ipollowork.site-afterglow-festival",
@@ -158,6 +192,7 @@ const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
   "ipollowork.hyperframes.permission-vault",
   "ipollowork.hyperframes.code-explainer",
   "ipollowork.hyperframes.vertical-social-story",
+  "ipollowork.hyperframes.ai-assistant-launch",
   "ipollowork.pptx-ipollo-vi-enterprise",
   "ipollowork.pptx-brand-narrative",
   "ipollowork.html-anything.deck-blueprint",

@@ -17,7 +17,7 @@ type ProjectOrchestrationGraphProps = {
   config: ProjectWorkspaceConfig;
   items: WorkItem[];
   runtimeMetrics: ProjectRuntimeMetrics | null;
-  onOpenAgent: (agent: ProjectAgent) => void;
+  onOpenAgent?: (agent: ProjectAgent) => void;
 };
 
 type GraphNode = {
@@ -62,11 +62,14 @@ function assignedTaskCount(agent: ProjectAgent, items: WorkItem[], metrics: Proj
     if (item.execution) return item.execution.agent.id === agent.id;
     return item.assignee && identities.has(item.assignee.trim().toLowerCase());
   }).length;
-  const runtimeUsage = metrics?.agents.find((usage) => usage.agentId === agent.id);
-  return workItems
-    + (runtimeUsage?.executions.running ?? 0)
-    + (runtimeUsage?.executions.completed ?? 0)
-    + (runtimeUsage?.executions.failed ?? 0);
+  const boundSessionIds = new Set(items.flatMap((item) => [
+    ...(item.execution ? [item.execution.sessionId] : []),
+    ...(item.automationLastSessionId ? [item.automationLastSessionId] : []),
+  ]));
+  const delegatedSessions = new Set((metrics?.executionRecords ?? [])
+    .filter((record) => record.agentId === agent.id && !boundSessionIds.has(record.sessionId))
+    .map((record) => record.sessionId));
+  return workItems + delegatedSessions.size;
 }
 
 function graphLevels(config: ProjectWorkspaceConfig): Map<string, number> {
@@ -212,7 +215,10 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-dls-border/70 px-4 py-3">
         <div className="flex items-center gap-2">
           <Network className="size-4 text-dls-secondary" />
-          <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.orchestration")}</h2>
+          <div>
+            <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("conversation_work.roles")}</h2>
+            <p className="mt-0.5 text-[11px] leading-[15px] text-dls-tertiary">{t("conversation_work.roles_hint")}</p>
+          </div>
         </div>
         <div className="flex items-center gap-3 text-[11px] leading-[15px] text-dls-text/45">
           <span className="flex items-center gap-1.5"><span className="h-px w-5 bg-primary/65" />{t("project_overview.dependency")}</span>
@@ -346,11 +352,14 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
               <button
                 key={node.agent.id}
                 type="button"
+                data-agent-id={node.agent.id}
+                data-testid="project-orchestration-agent"
+                disabled={!props.onOpenAgent}
                 className={cn(
                   "absolute z-10 flex items-center gap-2.5 rounded-xl border bg-white px-3 text-left transition-colors hover:bg-dls-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-dls-surface",
                   primary ? "border-primary/35" : "border-dls-border/75",
                 )}
-                onClick={() => props.onOpenAgent(node.agent)}
+                onClick={() => props.onOpenAgent?.(node.agent)}
                 style={{ height: NODE_HEIGHT, left: node.x, top: node.y, width: NODE_WIDTH }}
               >
                 <span
@@ -378,7 +387,7 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
 
       {graph.edges.length === 0 ? (
         <p className="border-t border-dls-border/60 px-4 py-2.5 text-[11px] leading-[15px] text-dls-text/45">
-          {t("project_overview.no_orchestration_relations_description")}
+          {t("project_overview.no_orchestration_relations")}
         </p>
       ) : null}
     </section>

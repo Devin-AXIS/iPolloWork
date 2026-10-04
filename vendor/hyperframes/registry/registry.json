@@ -1370,6 +1370,30 @@
     {
       "name": "shotcraft-word-relay-geometry",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "automation-hub",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "feature-spotlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "intelligence-network",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "intelligent-decision-flow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "process-steps",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "split-merge-network",
+      "type": "hyperframes:block"
     }
   ]
 }

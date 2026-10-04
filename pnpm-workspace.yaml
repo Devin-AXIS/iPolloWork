@@ -16,6 +16,8 @@ supportedArchitectures:
 packages:
   - "apps/*"
   - "packages/*"
+  - "examples/plugin-packages/labelu-data-annotation"
+  - "examples/plugin-packages/short-video-studio"
 
 catalog:
   react: 19.2.4
@@ -34,6 +36,7 @@ allowBuilds:
   "@ffprobe-installer/linux-x64": true
   "@whiskeysockets/baileys": true
   better-sqlite3: true
+  canvas: false
   core-js: true
   electron: true
   esbuild: true

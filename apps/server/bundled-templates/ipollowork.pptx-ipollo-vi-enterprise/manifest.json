@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-ipollo-vi-enterprise",
-  "version": "4.0.7",
+  "version": "4.0.8",
   "kind": "design",
   "category": "slides",
   "subcategory": "enterprise-presentation",
@@ -15,7 +15,8 @@
     "high-fidelity",
     "native-editable",
     "presentation",
-    "16:9"
+    "16:9",
+    "topic:brand"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

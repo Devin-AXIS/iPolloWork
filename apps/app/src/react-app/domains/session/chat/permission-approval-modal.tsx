@@ -56,44 +56,52 @@ type PermissionAllowMenuProps = {
   className?: string;
 };
 
-function PermissionAllowMenu(props: PermissionAllowMenuProps) {
+export function PermissionAllowMenu(props: PermissionAllowMenuProps) {
   const disabled = props.busy || !props.respondPermission;
-  const triggerClassName = cn("min-w-0 whitespace-nowrap", props.className);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={(
-          <Button
-            type="button"
-            variant={props.variant}
-            size="sm"
-            className={triggerClassName}
-            disabled={disabled}
-            aria-label={t("session.allow_once")}
-          >
-            <Clock3 data-icon="inline-start" />
-            {t("session.allow_once")}
-            <ChevronDown data-icon="inline-end" className="size-4" />
-          </Button>
-        )}
-      />
-      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="max-w-72 whitespace-normal text-xs font-normal text-muted-foreground">
-            {t("session.permission_decision_hint")}
-          </DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "once")}>
-            <Clock3 />
-            {t("session.allow_once")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "always")}>
-            <Check />
-            {t("session.allow_for_session")}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className={cn("inline-flex min-w-0 items-stretch", props.className)}>
+      <Button
+        type="button"
+        variant={props.variant}
+        size="sm"
+        className="min-w-0 flex-1 whitespace-nowrap rounded-r-none"
+        disabled={disabled}
+        onClick={() => props.respondPermission?.(props.permissionId, "once")}
+        data-testid="permission-allow-once"
+      >
+        <Clock3 data-icon="inline-start" />
+        {t("session.allow_once")}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={(
+            <Button
+              type="button"
+              variant={props.variant}
+              size="icon-sm"
+              className="rounded-l-none border-l border-l-current/15"
+              disabled={disabled}
+              aria-label={t("session.permission_allow_options")}
+              data-testid="permission-allow-options"
+            >
+              <ChevronDown className="size-4" />
+            </Button>
+          )}
+        />
+        <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="max-w-72 whitespace-normal text-xs font-normal text-muted-foreground">
+              {t("session.permission_decision_hint")}
+            </DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "always")}>
+              <Check />
+              {t("session.allow_for_session")}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.frame-logo-outro",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "video",
   "subcategory": "video",
@@ -12,7 +12,8 @@
     "outro",
     "branding",
     "end-card",
-    "frame"
+    "frame",
+    "topic:brand"
   ],
   "surface": "video",
   "title": "Logo Outro Frame",

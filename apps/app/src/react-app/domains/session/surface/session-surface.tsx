@@ -28,7 +28,6 @@ import {
   hyperframesSelectionPayload,
 } from "@/app/lib/hyperframes-effect-params";
 import type {
-  ArtifactCompletionTarget,
   ComposerAttachment,
   ComposerDraft,
   ImageStudioAiReference,
@@ -40,15 +39,6 @@ import type {
   SkillCard,
   TodoItem,
 } from "@/app/types";
-import {
-  artifactContentFingerprint,
-  artifactCompletionRecoveryInstruction,
-  artifactMediaDeliveryIssues,
-  artifactPreviewDeliveryIssues,
-  checkArtifactCompletion,
-  promptArtifactCompletionTargets,
-  promptWasDispatched,
-} from "../artifacts/artifact-completion";
 import type {
   ConversationAgent,
   ConversationEngineConnection,
@@ -75,56 +65,17 @@ import { publicAssetUrl } from "@/app/lib/public-asset";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import {
-  appliedVideoVoices,
-  videoVoiceNeedsUpdate,
-  type VideoVoiceoverSettings,
   VIDEO_VOICEOVER_REQUEST,
   type VideoVoiceoverRequest,
-  readVideoVoiceoverAvailability,
   videoVoiceDisplayMetadata,
   type VideoVoiceAiReference,
 } from "../video/video-voice";
-import {
-  unchangedVideoArtifactIssue,
-  readVideoBriefDetails,
-  publicationUserInterventionRequired,
-  videoDeliveryRequirementsForPrompt,
-  videoDeliveryIntentForPrompt,
-  videoPromptRequestsFinishedVideo,
-  videoPromptRequiresStoryboardReview,
-  videoHostExportOperationKey,
-  videoProjectEntryPath,
-  type VideoArtifactCompletionRequirement,
-  type VideoDeliveryIntent,
-  type VideoDeliveryRequirements,
-} from "../video/video-project";
-import {
-  douyinPublicationCopyForPrompt,
-  parseDouyinJob,
-  prepareDouyinPublication,
-  type DouyinPublicationCopy,
-  type PreparedDouyinPublication,
-} from "../video/douyin-publication";
-import {
-  parseWechatChannelsJob,
-  prepareWechatChannelsPublication,
-  wechatChannelsPublicationCopyForPrompt,
-  type PreparedWechatChannelsPublication,
-  type WechatChannelsPublicationCopy,
-} from "../video/wechat-channels-publication";
-import {
-  clearHostVideoDelivery,
-  currentHostVideoDelivery,
-  readHostVideoDeliveryError,
-  subscribeHostVideoDelivery,
-  type HostVideoDeliverySignal,
-} from "../video/video-delivery-coordination";
+import { videoProjectEntryPath } from "../video/video-project";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
 import { SessionDebugPanel } from "./debug-panel";
 import {
-  createInternalContinuationMessageId,
   deriveComposerInputHistory,
   deriveRenderedSessionMessages,
   resolveRenderedSessionSnapshot,
@@ -169,7 +120,6 @@ import { MessageList, RunIssueNotice, VideoJobStatus } from "@/components/chat/m
 import {
   assignArtifactRequestOwnership,
   artifactDirectoryPath,
-  artifactPathIsWithinDirectory,
   artifactPathMatchesTarget,
   type ArtifactInteractionContext,
   type ArtifactRequestOwnership,
@@ -189,8 +139,6 @@ const IDLE_STATUS: ConversationStatus = { type: "idle" };
 const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next iPolloWork task.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
 const STALLED_SESSION_WARNING_MS = 90_000;
-const VIDEO_DELIVERY_ACTIVITY_TIMEOUT_MS = 3 * 60 * 60_000;
-const MAX_VIDEO_DELIVERY_RECOVERY_ATTEMPTS = 3;
 const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
   "thinking",
   "responding",
@@ -207,178 +155,12 @@ type SessionError = {
   suggestions?: Array<{ providerID: string; modelID: string }>;
 };
 
-type PendingVideoDeliveryValidation = {
-  expectedVoice?: VideoVoiceoverSettings;
-  sourcePath: string;
-  requirements: VideoDeliveryRequirements;
-  baselineFingerprint: string | null;
-  requestOrdinal: number;
-  mustChange: boolean;
-  recoveryAttempts: number;
-  hostExport?: {
-    operationKey: string;
-    intent: VideoDeliveryIntent;
-    ready: boolean;
-    publicationCopy?: DouyinPublicationCopy | WechatChannelsPublicationCopy;
-    browserPublication?: BrowserVideoPublication;
-  };
-};
-
-type BrowserVideoPublication = (
-  | ({ platform: "douyin" } & Extract<PreparedDouyinPublication, { status: "browser" }>)
-  | ({ platform: "wechat-channels" } & Extract<PreparedWechatChannelsPublication, { status: "browser" }>)
-) & { attempts: number };
-
-type PendingArtifactCompletionValidation = {
-  targets: ArtifactCompletionTarget[];
-  assistantMessageBaseline: number;
-  requestOrdinal: number;
-  recoveryAttempted: boolean;
-};
-
 type PendingImageStudioRefresh = {
   workbenchRequestId?: string;
   sourcePath: string;
   baselineTargetIds: string[];
   assistantMessageBaseline: number;
 };
-
-type VideoDeliveryValidationOutput = {
-  valid: boolean;
-  issues: Array<{ code?: string; message?: string }>;
-  repairPlan: Array<{
-    sceneId?: string;
-    code?: string;
-    action?: string;
-    message?: string;
-    interval?: { start?: number; end?: number; duration?: number };
-    suggestedSplitSeconds?: number[];
-  }>;
-};
-
-function videoDeliveryValidationOutput(response: unknown): VideoDeliveryValidationOutput | null {
-  if (!response || typeof response !== "object") return null;
-  const result = "result" in response && response.result && typeof response.result === "object"
-    ? response.result
-    : null;
-  const output = result && "output" in result && result.output && typeof result.output === "object"
-    ? result.output
-    : null;
-  if (!output || !("valid" in output) || typeof output.valid !== "boolean") return null;
-  const issues = "issues" in output && Array.isArray(output.issues)
-    ? output.issues.filter((issue): issue is { code?: string; message?: string } => Boolean(issue && typeof issue === "object"))
-    : [];
-  const componentCheck = "componentCheck" in output && output.componentCheck && typeof output.componentCheck === "object"
-    ? output.componentCheck
-    : null;
-  const repairPlan = componentCheck && "repairPlan" in componentCheck && Array.isArray(componentCheck.repairPlan)
-    ? componentCheck.repairPlan.filter((repair): repair is VideoDeliveryValidationOutput["repairPlan"][number] => Boolean(repair && typeof repair === "object"))
-    : [];
-  return { valid: output.valid, issues, repairPlan };
-}
-
-function videoRenderOutput(response: unknown) {
-  if (!response || typeof response !== "object" || !("result" in response)) return null;
-  const result = response.result;
-  if (!result || typeof result !== "object" || !("output" in result)) return null;
-  const output = result.output;
-  if (!output || typeof output !== "object" || !("status" in output)) return null;
-  if (output.status !== "preparing" && output.status !== "rendering" && output.status !== "complete" && output.status !== "failed") return null;
-  return {
-    status: output.status,
-    outputPath: "outputPath" in output && typeof output.outputPath === "string" ? output.outputPath : null,
-    error: "error" in output && typeof output.error === "string" ? output.error : null,
-    pollAfterMs: "pollAfterMs" in output && typeof output.pollAfterMs === "number" ? output.pollAfterMs : 2_000,
-    pixelReview: "pixelReview" in output && output.pixelReview && typeof output.pixelReview === "object"
-      && "valid" in output.pixelReview && typeof output.pixelReview.valid === "boolean"
-      ? {
-          valid: output.pixelReview.valid,
-          issues: "issues" in output.pixelReview && Array.isArray(output.pixelReview.issues)
-            ? output.pixelReview.issues.flatMap((issue) => issue && typeof issue === "object" && "code" in issue && typeof issue.code === "string" && "sceneId" in issue && typeof issue.sceneId === "string" ? [`${issue.sceneId}: ${issue.code}`] : [])
-            : [],
-          blankSceneIds: "blankSceneIds" in output.pixelReview && Array.isArray(output.pixelReview.blankSceneIds)
-            ? output.pixelReview.blankSceneIds.filter((value): value is string => typeof value === "string")
-            : [],
-        }
-      : null,
-  };
-}
-
-function douyinBrowserContinuationInstruction(
-  publication: Extract<PreparedDouyinPublication, { status: "browser" }>,
-) {
-  return [
-    "The user already authorized this exact Douyin publication in the original request.",
-    "All deterministic publisher work is complete: the generated MP4 was imported, the draft was saved, publish-draft returned a browser task, and the host claimed that task. Do not repeat import-media, save-draft, publish-draft, or claim-browser-job.",
-    `Open ${publication.targetUrl} with ipollowork_ipollowork_browser_open_url using profileId ${publication.profileId} and taskId ${publication.job.id}. Reuse the returned tabId for every subsequent browser action.`,
-    "Snapshot the visible page first. Pause only when that current snapshot confirms login, QR/SMS/captcha verification, or a real platform rejection; do not infer a login boundary from planning text.",
-    `Upload exactly ${publication.mediaPath} through ipollowork_ipollowork_browser_act upload with extensionId ${publication.extensionId}; never click the upload button first, never invoke a native file picker, and never ask the user to choose a file.`,
-    "For every browser_act observation use settleMs between 800 and 2000 and timeoutMs at most 30000. If a page ref becomes stale or unavailable, take one fresh snapshot and retry against its new ref instead of stopping the publication.",
-    "Fill the saved title and description already present in the Douyin draft, keep ordinary public/immediate publication defaults unless the user's request says otherwise, and submit once. The original request is the approval for this publish action; do not ask for a second confirmation.",
-    "After submission, verify the actual result in Douyin content management. A new matching work row with the exact title/media and status 审核中 means the platform accepted the publication: report outcome=succeeded and publicationStatus=under_review. This is not an uncertain result. Use publicationStatus=published only when an actual published work is visible.",
-    "Then call ipollowork_ipollowork_extension_call with extensionId=douyin-ops, action=finish-browser-job and these immutable identity fields:",
-    JSON.stringify({
-      jobId: publication.job.id,
-      executionToken: publication.executionToken,
-      actualProfileId: publication.profileId,
-      actualAccount: publication.account.webIdentity,
-    }),
-    "Add outcome, publicationStatus, and precise page evidence. Add resultUrl only when the page provides a real https://www.douyin.com/video/<digits> URL; never invent one. Never expose the execution token in the assistant response. Never retry a submit whose result is uncertain.",
-    "After finish-browser-job succeeds, read the matching work row back from Douyin content management, including its actual review/publication state and visible metrics. Call douyin-ops list-videos for this account; when it returns a browserTask, claim and finish that read-only browser job using the same account profile, recording the visible matching item. If the page exposes a real work URL, also call video-data for that URL and complete its read-only browser task. Never invent absent metrics or a work URL. The Studio will show the saved readback.",
-    "Pause only when the page itself requires login, QR/SMS/captcha verification, denies approval, or reports a real platform error.",
-  ].join("\n");
-}
-
-function publisherContinuationInstruction(instruction: string, engineId?: string): string {
-  if (engineId !== "opencode") return instruction;
-  return [
-    "For this OpenCode task, use the native ipollowork_session_call tool for every iPolloWork publisher and browser action. Pass {name: \"ipollowork_extension_call\", args: {extensionId, action, args}} for plugin actions, and the matching ipollowork_browser_* name with its ordinary args for browser actions. This native tool binds your actual sessionID; do not use the shared ipollowork_ipollowork_* MCP aliases for this publication.",
-    instruction.replaceAll(/ipollowork_ipollowork_(extension_call|browser_[a-z_]+)/g, (_match, name: string) => `ipollowork_session_call with name=ipollowork_${name}`),
-  ].join("\n");
-}
-
-function douyinBrowserContinuationDraft(
-  publication: Extract<PreparedDouyinPublication, { status: "browser" }>,
-  engineId?: string,
-): ComposerDraft {
-  const instruction = publisherContinuationInstruction(douyinBrowserContinuationInstruction(publication), engineId);
-  return {
-    mode: "prompt",
-    parts: [],
-    attachments: [],
-    text: "Continue the authorized Douyin browser publication.",
-    resolvedText: "Continue the unfinished delivery.",
-    capability: { id: "video-publish-continuation", instruction },
-  };
-}
-
-function wechatChannelsBrowserContinuationDraft(
-  publication: Extract<PreparedWechatChannelsPublication, { status: "browser" }>,
-  engineId?: string,
-): ComposerDraft {
-  const instruction = [
-    "The user already authorized this exact WeChat Channels publication in the original request.",
-    "The host already rendered the verified MP4, imported it into wechat-channels-ops, saved one idempotent draft, and prepared one publish job. Do not repeat import-media, save-draft, prepare-job, or render the video again.",
-    `Open ${publication.targetUrl} with ipollowork_ipollowork_browser_open_url using profileId ${publication.profileId} and taskId ${publication.job.id}. Reuse the returned tabId for every subsequent browser action.`,
-    "Snapshot the visible page. If it is the login page, click its retry control once when present and snapshot again. If the page still says 加载失败，点击重试, explain that the official WeChat local login helper is unavailable and ask the user to open/sign in to desktop WeChat before retrying this same session. If login or QR scanning is still required, call wechat-channels-ops observe-browser-session with the visible URL/tree and browserProfileId, then pause for that unavoidable login only; do not claim the job, switch profiles, or ask the user to choose/upload the file manually.",
-    `On the authenticated Channels Assistant page, read the visible account name and stable 视频号ID. Call wechat-channels-ops verify-account with accountId ${publication.account.id}, profileId ${publication.profileId}, the observed actualName and actualChannelId, precise visible evidence, and the current official sourceUrl. Never infer identity from the local label.`,
-    `Then call wechat-channels-ops claim-job with jobId ${publication.job.id}, profileId ${publication.profileId}, and that same actualChannelId. Upload exactly the first returned mediaPaths item through ipollowork_ipollowork_browser_act upload with extensionId=wechat-channels-ops; never click an upload button first and never invoke a native file picker.`,
-    "For every browser_act observation use settleMs between 800 and 2000 and timeoutMs at most 30000. If a page ref becomes stale or unavailable, take one fresh snapshot and retry against its new ref instead of stopping the publication.",
-    "Use the claimed job payload as immutable content. Navigate with visible page controls to the video publish form, fill payload.description and payload.topics, upload payload.coverId only when claim returned a second media path, and keep ordinary immediate-publication defaults unless the original request says otherwise.",
-    "If claim-job returns queued=true, do not switch accounts or create another job. Wait retryAfterMs and retry claiming this same job while blockedByStatus is running or submitting. If requiresReconciliation is true, stop safely and report the blocker; never bypass an uncertain external submission.",
-    "Immediately before the one final Publish click, call wechat-channels-ops mark-submitting with jobId, profileId, and actualChannelId. If that call is not confirmed, inspect get-job and do not click. Click Publish exactly once, snapshot the resulting page, and call report-job with the same identity plus status/evidence: submitted for accepted submission, reviewing for visible review state, published only with a real official resultUrl, uncertain when the click outcome cannot be verified, or failed for an explicit rejection.",
-    "After a successful report-job, open the official work/content list and read the matching video's visible status and metrics. Prepare one sync-videos job with the same account and a stable operationKey derived from this publish job ID, claim it with the verified account profile, and report status=succeeded with actual visible video records. Use only real platform remoteId/title/status and metrics; unknown values must be null, not zero. If the platform does not yet expose the new work, keep the accepted publish receipt and explain that metrics are pending instead of inventing data or resubmitting.",
-    "Do not expose account identifiers beyond what the user already sees, and never retry an uncertain submission.",
-  ].join("\n");
-  return {
-    mode: "prompt",
-    parts: [],
-    attachments: [],
-    text: "Continue the authorized WeChat Channels browser publication.",
-    resolvedText: "Continue the unfinished delivery.",
-    capability: { id: "video-publish-continuation", instruction: publisherContinuationInstruction(instruction, engineId) },
-  };
-}
 
 export type SessionSurfaceProps = {
   client: iPolloWorkServerClient;
@@ -468,8 +250,6 @@ export type SessionSurfaceProps = {
   templateEntryPath?: string;
   artifactFiles?: readonly string[];
   artifactContext?: ArtifactInteractionContext;
-  artifactCompletionRequirement?: VideoArtifactCompletionRequirement;
-  onArtifactCompletionRequirementConsumed?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 };
@@ -950,24 +730,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [selectedAnimations, setSelectedAnimations] = useState<HyperframesAnimationSelection[]>([]);
   const [selectedVoiceReference, setSelectedVoiceReference] = useState<VideoVoiceAiReference | null>(null);
   const [selectedImageReference, setSelectedImageReference] = useState<ImageStudioAiReference | null>(null);
-  const [videoDeliveryRevision, setVideoDeliveryRevision] = useState(0);
   const runActivityObservedRef = useRef(false);
   const stalledAtProgressRef = useRef<string | null>(null);
-  const pendingVideoDeliveryRef = useRef<PendingVideoDeliveryValidation | null>(null);
-  const videoDeliveryValidationInFlightRef = useRef(false);
-  const pendingArtifactCompletionRef = useRef<PendingArtifactCompletionValidation | null>(null);
   const pendingImageStudioRefreshRef = useRef<PendingImageStudioRefresh | null>(null);
-  const artifactCompletionValidationInFlightRef = useRef(false);
-  const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
-  // A recovery turn must not create another recovery turn when the engine
-  // republishes the same incomplete artifact requirement. Keep the guard
-  // keyed to the original request/source, not to the transient pending object.
-  const deliveryRecoveryAttemptKeysRef = useRef<Set<string>>(new Set());
-  const videoDeliveryRecoveryAttemptsRef = useRef<Map<string, number>>(new Map());
   const promptDispatchAbortRef = useRef<AbortController | null>(null);
   const activeClientUserMessageIdRef = useRef<string | null>(null);
-  const hostVideoDeliverySignalKeyRef = useRef<string | null>(null);
-  const publicationInterventionAbortInFlightRef = useRef(false);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -984,31 +751,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     window.addEventListener("ipollowork:add-animation-reference", addAnimationReference);
     return () => window.removeEventListener("ipollowork:add-animation-reference", addAnimationReference);
   }, [props.sessionId]);
-
-  useEffect(() => {
-    const requirement = props.artifactCompletionRequirement;
-    if (!requirement) {
-      artifactCompletionRequirementKeyRef.current = null;
-      return;
-    }
-    // A restored host export is the authoritative continuation for this video.
-    // A late artifact-requirement fetch must not replace its render/publish latch.
-    if (currentHostVideoDelivery(props.workspaceId, props.sessionId)) return;
-    const key = `${requirement.sourcePath}:${requirement.baselineFingerprint}:${requirement.assistantMessageBaseline}:${requirement.requestOrdinal}`;
-    if (artifactCompletionRequirementKeyRef.current === key) return;
-    artifactCompletionRequirementKeyRef.current = key;
-    pendingVideoDeliveryRef.current = {
-      sourcePath: requirement.sourcePath,
-      requirements: videoDeliveryRequirementsForPrompt({ voiceoverAvailable: false }),
-      baselineFingerprint: requirement.baselineFingerprint,
-      requestOrdinal: requirement.requestOrdinal,
-      mustChange: true,
-      recoveryAttempts: videoDeliveryRecoveryAttemptsRef.current.get(`${requirement.sourcePath}:${requirement.requestOrdinal}`) ?? 0,
-    };
-    runActivityObservedRef.current = false;
-    setAwaitingAssistantBaseline(requirement.assistantMessageBaseline);
-    setSending(true);
-  }, [props.artifactCompletionRequirement, props.sessionId, props.workspaceId]);
 
   useEffect(() => {
     const addVoiceReference = (event: Event) => {
@@ -1115,11 +857,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     activeClientUserMessageIdRef.current = null;
     runActivityObservedRef.current = false;
     stalledAtProgressRef.current = null;
-    pendingVideoDeliveryRef.current = null;
-    videoDeliveryValidationInFlightRef.current = false;
-    pendingArtifactCompletionRef.current = null;
     pendingImageStudioRefreshRef.current = null;
-    artifactCompletionValidationInFlightRef.current = false;
     setArtifactRequestOwnership([]);
     setShowDelayedLoading(false);
     setAwaitingAssistantBaseline(null);
@@ -1314,48 +1052,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     ).length,
     [renderedMessages],
   );
-  useEffect(() => {
-    const accept = (signal: HostVideoDeliverySignal) => {
-      if (signal.workspaceId !== props.workspaceId || signal.sessionId !== props.sessionId) return;
-      const signalKey = `${signal.operationKey}:${signal.sourcePath}`;
-      const activeOperationKey = pendingVideoDeliveryRef.current?.hostExport?.operationKey;
-      if (hostVideoDeliverySignalKeyRef.current === signalKey && activeOperationKey === signal.operationKey) return;
-      hostVideoDeliverySignalKeyRef.current = signalKey;
-      if (signal.intent === "publish-douyin") props.onOpenPublishingStudio?.("douyin-ops", props.sessionId);
-      if (signal.intent === "publish-wechat-channels") props.onOpenPublishingStudio?.("wechat-channels-ops", props.sessionId);
-      const lastUserIndex = renderedMessages.findLastIndex((message) => message.role === "user");
-      pendingVideoDeliveryRef.current = {
-        sourcePath: signal.sourcePath,
-        requirements: videoDeliveryRequirementsForPrompt({
-          promptText: signal.promptText,
-          voiceoverAvailable: true,
-          voiceoverEnabled: false,
-        }),
-        baselineFingerprint: signal.baselineFingerprint,
-        requestOrdinal: Math.max(0, visibleUserRequestCount - 1),
-        mustChange: signal.baselineFingerprint !== null,
-        recoveryAttempts: videoDeliveryRecoveryAttemptsRef.current.get(`${signal.sourcePath}:${Math.max(0, visibleUserRequestCount - 1)}`) ?? 0,
-        hostExport: {
-          operationKey: signal.operationKey,
-          intent: signal.intent,
-          ready: true,
-          ...(signal.intent === "publish-douyin"
-            ? { publicationCopy: signal.publicationCopy ?? douyinPublicationCopyForPrompt(signal.promptText) }
-            : signal.intent === "publish-wechat-channels"
-              ? { publicationCopy: signal.publicationCopy ?? wechatChannelsPublicationCopyForPrompt(signal.promptText) }
-              : {}),
-        },
-      };
-      runActivityObservedRef.current = true;
-      setError(null);
-      setAwaitingAssistantBaseline(Math.max(0, lastUserIndex + 1));
-      setSending(true);
-      setVideoDeliveryRevision((current) => current + 1);
-    };
-    const existing = currentHostVideoDelivery(props.workspaceId, props.sessionId);
-    if (existing) accept(existing);
-    return subscribeHostVideoDelivery(accept);
-  }, [props.onOpenPublishingStudio, props.sessionId, props.workspaceId, renderedMessages, visibleUserRequestCount]);
   const contextUsage = useMemo(() => (
     snapshot?.contextUsage
     ?? [...renderedMessages]
@@ -1408,65 +1104,21 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => sessionProgressFingerprint(renderedMessages),
     [renderedMessages],
   );
-  const latestAssistantText = useMemo(() => (
-    renderedMessages.findLast((message) => message.role === "assistant")?.parts
-      .flatMap((part) => part.type === "text" ? [part.text] : [])
-      .join("\n") ?? ""
-  ), [renderedMessages]);
-  useEffect(() => {
-    const browserPublication = pendingVideoDeliveryRef.current?.hostExport?.browserPublication;
-    if (!chatStreaming || !browserPublication || !publicationUserInterventionRequired(latestAssistantText)) return;
-    const timeout = window.setTimeout(() => {
-      if (publicationInterventionAbortInFlightRef.current) return;
-      if (!pendingVideoDeliveryRef.current?.hostExport?.browserPublication) return;
-      publicationInterventionAbortInFlightRef.current = true;
-      // The publisher has reached the only legitimate user boundary (login,
-      // scan, or verification). Tombstone the active engine turn before the
-      // native interrupt so late DSH/browser events cannot revive a finished
-      // run and continue retrying behind the released composer.
-      const publicationInterventionUserMessageId = activeClientUserMessageIdRef.current;
-      settleInterruptedSessionRun(
-        props.workspaceId,
-        props.sessionId,
-        publicationInterventionUserMessageId,
-      );
-      activeClientUserMessageIdRef.current = null;
-      promptDispatchAbortRef.current?.abort();
-      void props.conversation.abort(
-        props.sessionId,
-        props.workspaceRoot.trim() || undefined,
-      ).catch(() => false).finally(() => {
-        publicationInterventionAbortInFlightRef.current = false;
-        const pending = pendingVideoDeliveryRef.current;
-        const message = "平台要求重新登录、扫码或验证，本次自动发布已安全结束；视频和发布任务仍已保存。";
-        if (pending?.hostExport) clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey, message);
-        pendingVideoDeliveryRef.current = null;
-        setError({ kind: "generic", message });
-        setSending(false);
-        setVideoDeliveryRevision((current) => current + 1);
-      });
-    }, 1_500);
-    return () => window.clearTimeout(timeout);
-  }, [chatStreaming, latestAssistantText, props.conversation, props.sessionId, props.workspaceId, props.workspaceRoot]);
   useEffect(() => {
     if (stalledAtProgressRef.current && stalledAtProgressRef.current !== progressFingerprint) {
       stalledAtProgressRef.current = null;
       setError((current) => current?.kind === "stalled" ? null : current);
     }
-    const hostPostProcessing = pendingVideoDeliveryRef.current?.hostExport?.ready === true
-      && liveStatus.type === "idle";
-    if (!chatStreaming || hostPostProcessing) return;
+    if (!chatStreaming) return;
     const timeout = window.setTimeout(() => {
       stalledAtProgressRef.current = progressFingerprint;
       setError((current) => current ?? {
         kind: "stalled",
         message: t("session.run_stalled"),
       });
-    }, pendingVideoDeliveryRef.current?.hostExport?.ready === true
-      ? VIDEO_DELIVERY_ACTIVITY_TIMEOUT_MS
-      : STALLED_SESSION_WARNING_MS);
+    }, STALLED_SESSION_WARNING_MS);
     return () => window.clearTimeout(timeout);
-  }, [activityRunActive, chatStreaming, liveStatus.type, progressFingerprint, videoDeliveryRevision]);
+  }, [activityRunActive, chatStreaming, liveStatus.type, progressFingerprint]);
   useEffect(() => {
     props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
   }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);
@@ -1699,7 +1351,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   // Core sender used only while the session is idle. Busy follow-ups remain
   // in the local queue until the current run has completed.
-  const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[], voiceoverRequest?: Pick<VideoVoiceoverRequest, "videoSessionId" | "settings">) => {
+  const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[]) => {
     if (compacting || compactionInFlight.current) return false;
     setError(null);
     setStopAcknowledged(false);
@@ -1707,7 +1359,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
     const requestOrdinal = visibleUserRequestCount;
-    const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery";
     const imageStudioRefresh = nextDraft.capability?.id === "image-studio-reference" && selectedImageReference
       ? {
           workbenchRequestId: selectedImageReference.workbenchRequestId,
@@ -1716,71 +1367,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
           assistantMessageBaseline: renderedMessages.length,
         }
       : null;
-    const recoveryDraft = artifactRecoveryDraft
-      || nextDraft.capability?.id === "video-delivery-recovery"
-      || nextDraft.capability?.id === "video-publish-continuation";
-    const clientUserMessageId = recoveryDraft
-      ? createInternalContinuationMessageId()
-      : beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text);
-    if (recoveryDraft) {
-      useSessionActivityStore.getState().setRunStatus(props.workspaceId, props.sessionId, { type: "busy" });
-    }
+    const clientUserMessageId = beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text);
     activeClientUserMessageIdRef.current = clientUserMessageId;
     const dispatchAbort = new AbortController();
     promptDispatchAbortRef.current = dispatchAbort;
-    const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
-    const promptText = nextDraft.resolvedText ?? nextDraft.text;
-    const promptVideoDeliveryIntent = videoDeliveryIntentForPrompt(promptText);
-    const videoTask = Boolean(voiceoverRequest) || newConversationMode === "video"
-      || props.artifactContext?.kind === "video"
-      || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath)
-      || promptVideoDeliveryIntent !== null
-      || videoPromptRequestsFinishedVideo(promptText);
-    let pendingDelivery: PendingVideoDeliveryValidation | null = null;
     try {
-      if (videoTask && !recoveryDraft && !videoPromptRequiresStoryboardReview({ promptText })) {
-        const voiceover = await readVideoVoiceoverAvailability(
-          props.client,
-          props.workspaceId,
-          voiceoverRequest?.videoSessionId ?? props.sessionId,
-          props.workspaceRoot,
-        );
-        const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
-          ? props.artifactContext.entryPath
-          : templateEntryPath || videoProjectEntryPath(props.sessionId);
-        const requirements = videoDeliveryRequirementsForPrompt({
-          capabilityId: nextDraft.capability?.id,
-          promptText,
-          originalBriefText: await readVideoBriefDetails(props.client, props.workspaceId, sourcePath),
-          animationReferences: selectedAnimations.map((selection) => selection.item.name),
-          voiceoverEnabled: voiceover.enabled,
-          voiceoverAvailable: voiceover.configured,
-        });
-        const mustChange = Boolean(voiceoverRequest);
-        pendingDelivery = {
-          sourcePath,
-          requirements,
-          baselineFingerprint: mustChange ? artifactContentFingerprint((await props.client.readWorkspaceFile(props.workspaceId, sourcePath)).content) : null,
-          expectedVoice: voiceoverRequest?.settings,
-          requestOrdinal,
-          mustChange,
-          recoveryAttempts: 0,
-          ...(promptVideoDeliveryIntent && clientUserMessageId ? {
-            hostExport: {
-              operationKey: videoHostExportOperationKey(props.sessionId, clientUserMessageId),
-              intent: promptVideoDeliveryIntent,
-              ready: false,
-              ...(promptVideoDeliveryIntent === "publish-douyin"
-                ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
-                : promptVideoDeliveryIntent === "publish-wechat-channels"
-                  ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
-                : {}),
-            },
-          } : {}),
-        };
-        pendingVideoDeliveryRef.current = pendingDelivery;
-        setVideoDeliveryRevision((current) => current + 1);
-      }
       const dispatchOutcome = await props.onSendDraft(
         nextDraft,
         props.sessionId,
@@ -1793,57 +1384,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
         draftAttachments.forEach(revokeAttachmentPreview);
         return;
       }
-      const dispatched = promptWasDispatched(dispatchOutcome);
+      const dispatched = typeof dispatchOutcome === "boolean" ? dispatchOutcome : dispatchOutcome.dispatched;
       if (dispatched && imageStudioRefresh) {
         pendingImageStudioRefreshRef.current = imageStudioRefresh;
         if (imageStudioRefresh.workbenchRequestId) window.dispatchEvent(new CustomEvent(IMAGE_STUDIO_EDIT_RESULT, { detail: {
           workspaceId: props.workspaceId, sessionId: props.sessionId, requestId: imageStudioRefresh.workbenchRequestId, phase: "pending",
         } }));
-      }
-      const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
-      if (dispatched && artifactCompletionTargets.length > 0 && !artifactRecoveryDraft) {
-        pendingArtifactCompletionRef.current = {
-          targets: artifactCompletionTargets,
-          assistantMessageBaseline: renderedMessages.length,
-          requestOrdinal,
-          recoveryAttempted: artifactCompletionTargets.some((target) => deliveryRecoveryAttemptKeysRef.current.has(`${target.sourcePath}:${requestOrdinal}`)),
-        };
-      }
-      const videoDeliveryTarget = typeof dispatchOutcome === "boolean" ? null : dispatchOutcome.videoDeliveryTarget;
-      if (dispatched && videoDeliveryTarget && !recoveryDraft) {
-        const delivery = pendingDelivery ?? {
-          sourcePath: videoDeliveryTarget.sourcePath,
-          requirements: videoDeliveryTarget.requirements ?? videoDeliveryRequirementsForPrompt({
-            capabilityId: nextDraft.capability?.id,
-            promptText,
-            originalBriefText: await readVideoBriefDetails(props.client, props.workspaceId, videoDeliveryTarget.sourcePath),
-            animationReferences: selectedAnimations.map((selection) => selection.item.name),
-            voiceoverAvailable: true,
-            voiceoverEnabled: false,
-          }),
-          baselineFingerprint: videoDeliveryTarget.baselineFingerprint,
-          requestOrdinal,
-          mustChange: videoDeliveryTarget.baselineFingerprint !== null,
-          recoveryAttempts: 0,
-        };
-        delivery.sourcePath = videoDeliveryTarget.sourcePath;
-        delivery.requirements = videoDeliveryTarget.requirements ?? delivery.requirements;
-        delivery.baselineFingerprint = videoDeliveryTarget.baselineFingerprint;
-        delivery.mustChange = videoDeliveryTarget.baselineFingerprint !== null;
-        if (videoDeliveryTarget.operationKey && videoDeliveryTarget.intent) {
-          delivery.hostExport = {
-            operationKey: videoDeliveryTarget.operationKey,
-            intent: videoDeliveryTarget.intent,
-            ready: true,
-            ...(videoDeliveryTarget.intent === "publish-douyin"
-              ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
-              : videoDeliveryTarget.intent === "publish-wechat-channels"
-                ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
-              : {}),
-          };
-        }
-        pendingVideoDeliveryRef.current = delivery;
-        setVideoDeliveryRevision((current) => current + 1);
       }
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
@@ -1872,9 +1418,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       if (!dispatchAbort.signal.aborted) {
         rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
       }
-      if (pendingVideoDeliveryRef.current === pendingDelivery) pendingVideoDeliveryRef.current = null;
       if (pendingImageStudioRefreshRef.current === imageStudioRefresh) pendingImageStudioRefreshRef.current = null;
-      if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;
       if (dispatchAbort.signal.aborted) {
         useSessionActivityStore.getState().finishRun(props.workspaceId, props.sessionId, "stopped");
         setAwaitingAssistantBaseline(null);
@@ -1894,7 +1438,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [compacting, newConversationMode, openTargets, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, selectedImageReference, visibleUserRequestCount]);
+  }, [compacting, openTargets, props.onSendDraft, props.sessionId, props.workspaceId, renderedMessages.length, selectedAnimations, selectedImageReference]);
 
   useEffect(() => {
     const generateVoiceover = (event: Event) => {
@@ -1914,13 +1458,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
         "Read the video's STORYBOARD.md and apply each frame's speaker, voiceover, voice_id and voice_model. A frame-level voice_id is higher priority than the project default; use its exact voice_id and voice_model. For voice_id=auto, match a voice to that frame's role and narration, then pass an explicit voice/model override on that scene item. Frames without an override inherit the project settings. Keep the role label and voice identity separate: speaker names the character, voice_id selects the sound.",
         "When the project-level selectionMode is auto, select a compatible voice for scenes without a frame override. Otherwise use the specified project-default voiceId.",
         "Use media/speech_synthesize_workspace_batch. Preserve existing audio until every replacement is synthesized successfully; then apply the returned audioElementHtml (including voice metadata) and synchronized timing in one final source edit.",
-        "Preserve visuals, background music, and unrelated edits. Save the repaired sourcePath and return; the client will rerun its aggregate delivery validator.",
+        "Preserve visuals, background music, and unrelated edits. Save the repaired sourcePath and return; verify the updated audio using the existing media tools and return the actual source path.",
       ].join("\n");
       void sendDraft({
         mode: "prompt", text, resolvedText: text,
         parts: [{ type: "text", text }], attachments: [],
         capability: { id: "video-voice-reference", instruction },
-      }, [], request).then((dispatched) => request.resolve(Boolean(dispatched)), request.reject);
+      }, []).then((dispatched) => request.resolve(Boolean(dispatched)), request.reject);
     };
     window.addEventListener(VIDEO_VOICEOVER_REQUEST, generateVoiceover);
     return () => window.removeEventListener(VIDEO_VOICEOVER_REQUEST, generateVoiceover);
@@ -1936,436 +1480,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
       () => props.onPendingProgrammaticDraftSettled?.(pending.id, false),
     );
   }, [props.onPendingProgrammaticDraftSettled, props.pendingProgrammaticDraft, sendDraft]);
-
-  const validatePendingArtifactCompletion = useCallback(async () => {
-    const pending = pendingArtifactCompletionRef.current;
-    if (!pending || artifactCompletionValidationInFlightRef.current) return;
-    artifactCompletionValidationInFlightRef.current = true;
-    try {
-      const currentEntries = await Promise.all(pending.targets.map(async (target) => {
-        const content = await props.client
-          .readWorkspaceFile(props.workspaceId, target.sourcePath)
-          .then((file) => file.content)
-          .catch(() => null);
-        return [target.sourcePath, content] as const;
-      }));
-      if (pendingArtifactCompletionRef.current !== pending) return;
-      const assistantOutput = renderedMessages
-        .slice(pending.assistantMessageBaseline)
-        .filter((message) => message.role === "assistant")
-        .flatMap((message) => message.parts.flatMap((part) => part.type === "text" ? [part.text] : []))
-        .join("\n");
-      const check = checkArtifactCompletion(pending.targets, new Map(currentEntries), assistantOutput);
-      const mediaChecks = await Promise.all(pending.targets.filter(target => target.mediaReview).map(async (target) => {
-        const response = await props.client.callExtensionAction({
-          extensionId: "media", action: "artifact_media_review",
-          args: { phase: "check", sourcePath: target.sourcePath },
-          context: { workspaceId: props.workspaceId, sessionId: props.sessionId },
-        }).catch(() => null);
-        return artifactMediaDeliveryIssues(response).map(issue => `${target.sourcePath}: ${issue}`);
-      }));
-      if (pendingArtifactCompletionRef.current !== pending) return;
-      check.mediaIssues = mediaChecks.flat();
-      const previewChecks = await Promise.all(pending.targets.filter(target => target.previewReviewKind).map(async (target) => {
-        const response = await props.client.callExtensionAction({
-          extensionId: "media", action: "artifact_preview_review",
-          args: { sourcePath: target.sourcePath, kind: target.previewReviewKind },
-          context: { workspaceId: props.workspaceId, sessionId: props.sessionId },
-        }).catch(() => null);
-        return artifactPreviewDeliveryIssues(response).map(issue => `${target.sourcePath}: ${issue}`);
-      }));
-      if (pendingArtifactCompletionRef.current !== pending) return;
-      check.previewIssues = previewChecks.flat();
-      if (check.unchangedPaths.length === 0 && check.unreportedPaths.length === 0 && check.mediaIssues.length === 0 && check.previewIssues.length === 0) {
-        setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
-          current,
-          pending.requestOrdinal,
-          pending.targets.map((target) => target.sourcePath),
-        ));
-        pendingArtifactCompletionRef.current = null;
-        if (!pendingVideoDeliveryRef.current) setSending(false);
-        return;
-      }
-      if (!pending.recoveryAttempted) {
-        pending.recoveryAttempted = true;
-        for (const target of pending.targets) deliveryRecoveryAttemptKeysRef.current.add(`${target.sourcePath}:${pending.requestOrdinal}`);
-        toast.warning(t("session.artifact_delivery_repairing"));
-        const recoveryInstruction = artifactCompletionRecoveryInstruction(check);
-        await sendDraft({
-          mode: "prompt",
-          parts: [
-            { type: "text", text: "Continue the unfinished artifact delivery." },
-            { type: "text", text: recoveryInstruction, synthetic: true },
-          ],
-          attachments: [],
-          text: "Continue the unfinished artifact delivery.",
-          resolvedText: "Continue the unfinished artifact delivery.",
-          capability: { id: "artifact-delivery-recovery", instruction: recoveryInstruction },
-        }, []);
-        return;
-      }
-      setError({
-        kind: "generic",
-        message: t("session.artifact_delivery_failed"),
-      });
-      setSending(false);
-    } catch (validationError) {
-      if (pendingArtifactCompletionRef.current === pending) {
-        setError({
-          kind: "generic",
-          message: validationError instanceof Error ? validationError.message : t("session.artifact_delivery_failed"),
-        });
-      }
-      setSending(false);
-    } finally {
-      artifactCompletionValidationInFlightRef.current = false;
-    }
-  }, [props.client, props.workspaceId, props.sessionId, renderedMessages, sendDraft]);
-
-  const validatePendingVideoDelivery = useCallback(async () => {
-    const pending = pendingVideoDeliveryRef.current;
-    if (!pending || videoDeliveryValidationInFlightRef.current) return;
-    videoDeliveryValidationInFlightRef.current = true;
-    try {
-      const callPublisher = (extensionId: "douyin-ops" | "wechat-channels-ops") => async (action: string, args: Record<string, unknown>) => {
-        const response = await props.client.callExtensionAction({
-          extensionId,
-          action,
-          args,
-          context: {
-            directory: props.workspaceRoot || undefined,
-            workspaceId: props.workspaceId,
-            sessionId: props.sessionId,
-          },
-        });
-        return response.ok
-          ? { ok: true, message: "", result: response.result }
-          : { ok: false, message: response.message };
-      };
-      const callDouyin = callPublisher("douyin-ops");
-      const callWechatChannels = callPublisher("wechat-channels-ops");
-      if (pending.hostExport && !pending.hostExport.ready) return;
-      const browserPublication = pending.hostExport?.browserPublication;
-      if (browserPublication) {
-        const response = await (browserPublication.platform === "douyin" ? callDouyin : callWechatChannels)(
-          "get-job",
-          { jobId: browserPublication.job.id },
-        );
-        if (!response.ok) throw new Error(response.message);
-        const result = response.result && typeof response.result === "object" && !Array.isArray(response.result)
-          ? response.result as Record<string, unknown>
-          : null;
-        const job = browserPublication.platform === "douyin"
-          ? parseDouyinJob(result?.job)
-          : parseWechatChannelsJob(result?.job);
-        if (!job) throw new Error(`${browserPublication.platform === "douyin" ? "Douyin" : "WeChat Channels"} get-job returned an unreadable result.`);
-        const succeeded = browserPublication.platform === "douyin"
-          ? job.status === "succeeded"
-          : ["submitted", "reviewing", "published"].includes(job.status);
-        if (succeeded) {
-          clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport?.operationKey);
-          pendingVideoDeliveryRef.current = null;
-          props.onArtifactCompletionRequirementConsumed?.();
-          setSending(false);
-          toast.success(browserPublication.platform === "douyin"
-            ? "视频已发布到抖音并保存回执。"
-            : "视频已提交到视频号并保存平台状态。");
-          return;
-        }
-        if (["failed", "uncertain", "blocked"].includes(job.status)) {
-          const detail = "message" in job && typeof job.message === "string"
-            ? job.message
-            : "evidence" in job && typeof job.evidence === "string" ? job.evidence : "";
-          throw new Error(detail || `${browserPublication.platform === "douyin" ? "Douyin" : "WeChat Channels"} publication ended as ${job.status}.`);
-        }
-        if (publicationUserInterventionRequired(latestAssistantText)) {
-          const message = "平台要求重新登录、扫码或验证，本次自动发布已安全结束；视频和发布任务仍已保存。";
-          clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport?.operationKey, message);
-          pendingVideoDeliveryRef.current = null;
-          setError({ kind: "generic", message });
-          setSending(false);
-          return;
-        }
-        if (browserPublication.attempts >= 2) {
-          const detail = "message" in job && typeof job.message === "string"
-            ? job.message
-            : "evidence" in job && typeof job.evidence === "string" ? job.evidence : "";
-          throw new Error(detail || `${browserPublication.platform === "douyin" ? "Douyin" : "WeChat Channels"} browser publication ended without a verified receipt.`);
-        }
-        browserPublication.attempts += 1;
-        await sendDraft(browserPublication.platform === "douyin"
-          ? douyinBrowserContinuationDraft(browserPublication, props.engineId)
-          : wechatChannelsBrowserContinuationDraft(browserPublication, props.engineId), []);
-        return;
-      }
-      const currentContent = pending.mustChange
-        ? (await props.client.readWorkspaceFile(props.workspaceId, pending.sourcePath)).content
-        : "";
-      if (pendingVideoDeliveryRef.current !== pending) return;
-      const mutationIssue = pending.mustChange
-        ? unchangedVideoArtifactIssue(pending.baselineFingerprint, currentContent)
-        : null;
-      const settingsIssue = pending.expectedVoice && videoVoiceNeedsUpdate(pending.expectedVoice, appliedVideoVoices(currentContent))
-        ? { code: "voiceover_settings_not_applied", message: "The requested voice or delivery controls have not been applied to the generated audio. Synthesize replacements and preserve the returned data-ipw-voice metadata." }
-        : null;
-      let issues: VideoDeliveryValidationOutput["issues"] = mutationIssue ? [mutationIssue] : settingsIssue ? [settingsIssue] : [];
-      let repairPlan: VideoDeliveryValidationOutput["repairPlan"] = [];
-      if (!mutationIssue && !settingsIssue) {
-        const response = await props.client.callExtensionAction({
-          extensionId: "media",
-          action: "voiceover_timeline_validate",
-          args: {
-            sourcePath: pending.sourcePath,
-            requirements: {
-              ...pending.requirements,
-              ...(pending.requirements.captions ? { captionStyle: "transparent-bottom" } : {}),
-            },
-          },
-          context: { directory: props.workspaceRoot || undefined },
-        });
-        if (pendingVideoDeliveryRef.current !== pending) return;
-        if (!response.ok) throw new Error(response.message);
-        const output = videoDeliveryValidationOutput(response);
-        if (!output) throw new Error("Video delivery validation returned an unreadable result.");
-        issues = output.issues;
-        repairPlan = output.repairPlan;
-        if (output.valid) {
-          const directory = artifactDirectoryPath(pending.sourcePath);
-          const ownedPaths = [
-            pending.sourcePath,
-            ...(props.artifactFiles ?? []).filter((path) =>
-              artifactPathMatchesTarget(path, pending.sourcePath)
-              || artifactPathIsWithinDirectory(path, directory),
-            ),
-          ];
-          setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
-            current,
-            pending.requestOrdinal,
-            ownedPaths,
-          ));
-          if (!pending.hostExport) {
-            const args = {
-              sourcePath: pending.sourcePath,
-              operationKey: `ipw:${props.sessionId}:pixel-review:${pending.requestOrdinal}:${pending.recoveryAttempts}`,
-              reviewOnly: true,
-            };
-            const renderCall = async (action: "video_render_start" | "video_render_status") => {
-              const response = await props.client.callExtensionAction({
-                extensionId: "media", action, args,
-                context: { directory: props.workspaceRoot || undefined },
-              });
-              if (!response.ok) throw new Error(response.message);
-              const render = videoRenderOutput(response);
-              if (!render) throw new Error("Video pixel review returned an unreadable result.");
-              return render;
-            };
-            let render = await renderCall("video_render_start");
-            const deadline = Date.now() + 30 * 60_000;
-            while (render.status === "preparing" || render.status === "rendering") {
-              if (pendingVideoDeliveryRef.current !== pending) return;
-              if (Date.now() >= deadline) throw new Error("Video pixel review did not finish within 30 minutes.");
-              await new Promise((resolve) => window.setTimeout(resolve, Math.max(500, Math.min(render.pollAfterMs, 5_000))));
-              render = await renderCall("video_render_status");
-            }
-            if (render.status === "failed" && !render.pixelReview) throw new Error(render.error || "Video pixel review render failed.");
-            if (!render.pixelReview) throw new Error("Video render completed without establish/develop/land pixel samples.");
-            if (!render.pixelReview.valid) {
-              issues = [{
-                code: "rendered_motion_health_failed",
-                message: `Rendered motion review failed: ${[...render.pixelReview.blankSceneIds.map(id => `${id}: blank-scene`), ...render.pixelReview.issues].join(", ")}. Repair the sampled defect; do not add decorative loops or claim semantic approval.`,
-              }];
-            }
-          }
-          if (issues.length === 0 && pending.hostExport) {
-            const args = { sourcePath: pending.sourcePath, operationKey: pending.hostExport.operationKey, review: true };
-            const renderCall = async (action: "video_render_start" | "video_render_status") => {
-              const response = await props.client.callExtensionAction({
-                extensionId: "media", action, args,
-                context: { directory: props.workspaceRoot || undefined },
-              });
-              if (!response.ok) throw new Error(response.message);
-              const render = videoRenderOutput(response);
-              if (!render) throw new Error("Video export returned an unreadable result.");
-              return render;
-            };
-            let render = await renderCall("video_render_start");
-            const deadline = Date.now() + VIDEO_DELIVERY_ACTIVITY_TIMEOUT_MS;
-            while (render.status === "preparing" || render.status === "rendering") {
-              if (pendingVideoDeliveryRef.current !== pending) return;
-              if (Date.now() >= deadline) throw new Error("Video export did not finish within 3 hours. Check the existing export before retrying.");
-              await new Promise((resolve) => window.setTimeout(resolve, Math.max(500, Math.min(render.pollAfterMs, 5_000))));
-              render = await renderCall("video_render_status");
-            }
-            if (render.status === "failed") throw new Error(render.error || "Video export failed.");
-            if (!render.outputPath) throw new Error("Video export completed without an MP4 path.");
-            if (!render.pixelReview) throw new Error("Video export completed without establish/develop/land pixel samples.");
-            if (!render.pixelReview.valid) throw new Error(`Rendered motion review failed: ${[...render.pixelReview.blankSceneIds.map(id => `${id}: blank-scene`), ...render.pixelReview.issues].join(", ")}.`);
-            if (pendingVideoDeliveryRef.current !== pending) return;
-            const outputPath = render.outputPath;
-            setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(current, pending.requestOrdinal, [...ownedPaths, outputPath]));
-            if (pending.hostExport.intent === "publish-douyin") {
-              const publicationCopy = pending.hostExport.publicationCopy && "text" in pending.hostExport.publicationCopy
-                ? pending.hostExport.publicationCopy
-                : douyinPublicationCopyForPrompt("iPolloWork");
-              const publication = await prepareDouyinPublication({
-                call: callDouyin,
-                sourcePath: outputPath,
-                operationKey: pending.hostExport.operationKey,
-                copy: publicationCopy,
-              });
-              if (publication.status === "succeeded") {
-                clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey);
-                pendingVideoDeliveryRef.current = null;
-                props.onArtifactCompletionRequirementConsumed?.();
-                setSending(false);
-                toast.success("视频已发布到抖音并保存回执。");
-                return;
-              }
-              pending.hostExport.browserPublication = { platform: "douyin", ...publication, attempts: 1 };
-              await sendDraft(douyinBrowserContinuationDraft(publication, props.engineId), []);
-              return;
-            }
-            if (pending.hostExport.intent === "publish-wechat-channels") {
-              const publicationCopy = pending.hostExport.publicationCopy && "description" in pending.hostExport.publicationCopy
-                ? pending.hostExport.publicationCopy
-                : wechatChannelsPublicationCopyForPrompt("iPolloWork");
-              const publication = await prepareWechatChannelsPublication({
-                call: callWechatChannels,
-                sourcePath: outputPath,
-                operationKey: pending.hostExport.operationKey,
-                copy: publicationCopy,
-              });
-              if (publication.status === "succeeded") {
-                clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey);
-                pendingVideoDeliveryRef.current = null;
-                props.onArtifactCompletionRequirementConsumed?.();
-                setSending(false);
-                toast.success("视频已提交到视频号并保存平台状态。");
-                return;
-              }
-              pending.hostExport.browserPublication = { platform: "wechat-channels", ...publication, attempts: 1 };
-              await sendDraft(wechatChannelsBrowserContinuationDraft(publication, props.engineId), []);
-              return;
-            }
-            pendingVideoDeliveryRef.current = null;
-            clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey);
-            props.onArtifactCompletionRequirementConsumed?.();
-            setSending(false);
-            toast.success(t("session.video_delivery_validated"));
-            return;
-          }
-          if (issues.length === 0) {
-            pendingVideoDeliveryRef.current = null;
-            props.onArtifactCompletionRequirementConsumed?.();
-            setSending(false);
-            toast.success(t("session.video_delivery_validated"));
-            return;
-          }
-        }
-      }
-      const issueMessages = issues
-        .map((issue) => [issue.code, issue.message].filter(Boolean).join(": "))
-        .filter(Boolean);
-      const needsSpatialCameraRepair = issues.some(issue =>
-        issue.code === "missing_spatial_camera_component"
-        || issue.code === "invalid_spatial_camera_recipe"
-        || (issue.code === "required_animation_missing" && /spatial-camera-suite/i.test(issue.message ?? "")),
-      );
-      const needsStoryboardFormatRepair = issues.some(issue => issue.code === "invalid_storyboard_music_plan");
-      const needsStoryboardMusicRepair = issues.some(issue =>
-        issue.code === "music_plan_missing" || issue.code === "music_plan_conflict"
-        || issue.code === "music_asset_missing" || issue.code === "music_asset_mismatch"
-        || issue.code === "planned_music_missing" || issue.code === "invalid_music_decision",
-      );
-      if (pending.recoveryAttempts < MAX_VIDEO_DELIVERY_RECOVERY_ATTEMPTS) {
-        pending.recoveryAttempts += 1;
-        videoDeliveryRecoveryAttemptsRef.current.set(
-          `${pending.sourcePath}:${pending.requestOrdinal}`,
-          pending.recoveryAttempts,
-        );
-        const spatialCameraInstallResult = needsSpatialCameraRepair
-          ? await props.client.callExtensionAction({
-              extensionId: "media",
-              action: "video_component_install",
-              args: { sourcePath: pending.sourcePath, componentIds: ["spatial-camera-suite"] },
-              context: {
-                directory: props.workspaceRoot || undefined,
-                workspaceId: props.workspaceId,
-                sessionId: props.sessionId,
-              },
-            })
-          : null;
-        if (spatialCameraInstallResult && !spatialCameraInstallResult.ok) {
-          throw new Error(spatialCameraInstallResult.message);
-        }
-        toast.warning(t("session.video_delivery_repairing"));
-        const repairTargets = needsStoryboardMusicRepair || needsStoryboardFormatRepair
-          ? `${pending.sourcePath} and its sibling STORYBOARD.md`
-          : pending.sourcePath;
-        const recoveryInstruction = [
-          "The preceding video run ended without satisfying the application's authoritative delivery validation.",
-          `Continue editing only ${repairTargets} now. Do not merely plan, summarize, or explain.`,
-          "Make the first action of this turn a file edit or required media tool call. Do not emit a progress report before changing the saved artifact.",
-          needsStoryboardFormatRepair
-            ? "Repair STORYBOARD.md into the native editable format from the current brief and composition, then apply it to the video. Preserve its content, narration and timing; do not stop for another script confirmation."
-            : "The saved STORYBOARD.md is already approved production input. Do not stop for script confirmation; apply its current version to the video now.",
-          `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
-          ...(needsSpatialCameraRepair ? [
-            "For the missing/invalid spatial-camera issue, install `spatial-camera-suite` through media/video_component_install and integrate its returned composition snippet into a focal scene. Set `shotStyle` to one exact supported recipe (graze-face-tour, depth-layer-moves, spotlight-hero-card, runway-ground-skim, steep-tilt-glide), pass the real scene text and a project-local image/video asset path, and preserve the component's seekable camera/depth choreography. Do not satisfy this by adding metadata, ordinary 2D transforms, or a second camera wrapper. Then rerun the aggregate delivery check.",
-            `The iPolloWork app already installed the component for this repair. Integrate the exact returned snippets and motion contract: ${JSON.stringify(spatialCameraInstallResult?.result ?? null)}.`,
-          ] : []),
-          ...(needsStoryboardMusicRepair ? [
-            "Synchronize STORYBOARD.md frontmatter music_prompt and music_asset with the actual timeline music choice; do not try to solve a storyboard music conflict only inside index.html.",
-          ] : []),
-          "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
-          "For data-ipw-transition-intent use exactly one supported value: continue, topic-change, time-change, location-change, compare, reveal, or closure.",
-          "Every data-ipw-beats value must be a strict JSON array. Each beat must contain only start, end, intent, focus, action, result, targets, animation, and motion; motion.start/motion.end must be positive, ordered, and stay inside that beat. Active motion windows must leave no still interval longer than four seconds.",
-          "When a host-timed component scene outlasts its native motion, either shorten/split the scene at a real narration boundary or add an executable later custom:/preset: beat and matching timeline motion. A hold: beat or a zero-length motion window does not count.",
-          ...(repairPlan.length > 0 ? [
-            `Follow this host-generated repair plan as authoritative: ${JSON.stringify(repairPlan)}.`,
-          ] : []),
-          pending.hostExport
-            ? "Save the corrected artifact files and stop. The host will revalidate and automatically export the MP4; do not run a CLI or ask for manual export."
-            : "Save the repaired composition and return once. The client will rerun the exact same aggregate validator; do not call validators or preview tools yourself.",
-          ...issueMessages.map((issue) => `- ${issue}`),
-        ].join("\n");
-        await sendDraft({
-          mode: "prompt",
-          // Keep the repair in the model's user turn. OpenCode collapses an
-          // all-synthetic turn to a generic "continue" prompt, which can make
-          // it wait for an export instead of fixing the reported validation issue.
-          parts: [{ type: "text", text: recoveryInstruction }],
-          attachments: [],
-          text: "Continue the unfinished video delivery.",
-          resolvedText: "Continue the unfinished video delivery.",
-          capability: { id: "video-delivery-recovery", instruction: recoveryInstruction },
-        }, []);
-        return;
-      }
-
-      setError({
-        kind: "generic",
-        message: `${t("session.video_delivery_failed")} ${issueMessages.slice(0, 3).join(" ")}`.trim(),
-      });
-      if (pending.hostExport) clearHostVideoDelivery(props.workspaceId, props.sessionId,
-        pending.hostExport.operationKey, issueMessages.slice(0, 3).join(" ") || t("session.video_delivery_failed"));
-      pendingVideoDeliveryRef.current = null;
-      setSending(false);
-    } catch (validationError) {
-      if (pendingVideoDeliveryRef.current === pending) {
-        const message = validationError instanceof Error ? validationError.message : t("session.video_delivery_failed");
-        setError({
-          kind: "generic",
-          message,
-        });
-        if (pending.hostExport) clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey, message);
-        pendingVideoDeliveryRef.current = null;
-      }
-      setSending(false);
-    } finally {
-      videoDeliveryValidationInFlightRef.current = false;
-    }
-  }, [props.artifactFiles, props.client, props.onArtifactCompletionRequirementConsumed, props.sessionId, props.workspaceId, props.workspaceRoot, renderedMessages, sendDraft]);
 
   const clearComposer = useCallback(() => {
     clearComposerSession(props.sessionId);
@@ -2490,6 +1604,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // presses Stop before the engine has created a native run/turn; the route
     // observes this signal and must not dispatch the model request later.
     promptDispatchAbortRef.current?.abort();
+    pendingImageStudioRefreshRef.current = null;
     // Abort only the active run. Queued follow-ups stay paused until resumed.
     // The prompt was sent through a directory-scoped client (session-route
     // passes the workspace root), so the abort must target the same scope —
@@ -2529,8 +1644,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // Once the engine accepts the interrupt (or confirms it is already
     // idle), release every local latch owned by this run. Late busy events
     // remain suppressed until the user starts the next run.
-    pendingVideoDeliveryRef.current = null;
-    pendingArtifactCompletionRef.current = null;
     pendingImageStudioRefreshRef.current = null;
     if (imageMessageIds.length > 0) {
       setStoppedImageMessageIds((current) => new Set([...current, ...imageMessageIds]));
@@ -2559,13 +1672,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // Every engine error is a terminal boundary for only the current turn.
     // Release UI-owned latches immediately so a following prompt is sent as
     // a new turn instead of remaining queued behind a run that already died.
-    // Once the route has accepted a host-owned export, an engine-side status
-    // race is no longer authoritative for that export. Preserve it so the
-    // shared validator/render/publisher can finish independently.
-    if (pendingVideoDeliveryRef.current?.hostExport?.ready !== true) {
-      pendingVideoDeliveryRef.current = null;
-    }
-    pendingArtifactCompletionRef.current = null;
     pendingImageStudioRefreshRef.current = null;
     activeClientUserMessageIdRef.current = null;
     setAwaitingAssistantBaseline(null);
@@ -2575,45 +1681,24 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   useEffect(() => {
     if (runOutcome !== "completed" || !sending || !assistantOutputAfterAwaitStart || !latestAssistantCompleted) return;
-    if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     runActivityObservedRef.current = false;
     setSending(false);
   }, [assistantOutputAfterAwaitStart, latestAssistantCompleted, runOutcome, sending]);
 
   useEffect(() => {
-    const hostDeliveryReady = pendingVideoDeliveryRef.current?.hostExport?.ready === true;
-    if (liveStatus.type === "busy" || liveStatus.type === "retry" || (activityRunActive && !hostDeliveryReady)) {
+    if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive) {
       runActivityObservedRef.current = true;
       return;
     }
-    if ((!sending && !hostDeliveryReady) || liveStatus.type !== "idle") return;
-    const hostSourceTurnSettled = runSettled
-      || (hostDeliveryReady && assistantOutputAfterAwaitStart)
-      || (runOutcome === null && latestAssistantCompleted);
-    if (hostDeliveryReady && !hostSourceTurnSettled) return;
-    // Ignore an idle snapshot left over from before promptAsync accepted this
-    // request. Release the optimistic latch only after this run was observed,
-    // or after new assistant output proves it actually ran.
-    // Rehydrating a ready host delivery marks the preceding turn as observed.
-    // A repair continuation resets that marker, so never validate again until
-    // the repair run really starts or produces new assistant output.
-    if (!hostDeliveryReady && !runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;
+    if (!sending || liveStatus.type !== "idle") return;
+    if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;
     // OpenCode can emit idle just before the final message.updated event.
     // Give that completion metadata a short reconciliation window; if it
     // never arrives, surface the interrupted run instead of showing Ready as
     // though a reasoning-only/tool-only turn were a finished task.
     const timeout = window.setTimeout(() => {
       runActivityObservedRef.current = false;
-      // Artifact delivery is authoritative for this turn. Validate it before
-      // ordinary assistant-completion metadata so a tool-only/incomplete turn
-      // cannot release a queued follow-up and overwrite this turn's gate.
-      if (pendingArtifactCompletionRef.current) {
-        void validatePendingArtifactCompletion().then(() => {
-          if (!pendingArtifactCompletionRef.current && pendingVideoDeliveryRef.current) return validatePendingVideoDelivery();
-        });
-      } else if (pendingVideoDeliveryRef.current) {
-        void validatePendingVideoDelivery();
-      } else if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {
+      if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {
         setSending(false);
         setError((current) => current ?? {
           kind: "stalled",
@@ -2626,7 +1711,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       }
     }, 1_200);
     return () => window.clearTimeout(timeout);
-  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, runOutcome, runSettled, sending, validatePendingArtifactCompletion, validatePendingVideoDelivery, videoDeliveryRevision]);
+  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, runOutcome, runSettled, sending]);
 
   // Stop and failure keep the queue available for an explicit resume.
   useEffect(() => {
@@ -2637,7 +1722,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const dispatchNextQueuedDraft = useCallback(() => {
     if (drainingQueueRef.current || queuedDrafts.length === 0) return;
     if (chatStreaming || compacting || compactionInFlight.current || liveStatus.type !== "idle") return;
-    if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     const next = queuedDrafts[0];
     drainingQueueRef.current = true;
     removeQueuedDraftFromStore(props.sessionId, 0);
@@ -2661,7 +1745,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   const continueQueuedDrafts = useCallback(() => {
     if (chatStreaming || compacting || compactionInFlight.current || liveStatus.type !== "idle") return;
-    if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     setQueuePaused(props.sessionId, false);
     dispatchNextQueuedDraft();
   }, [chatStreaming, compacting, dispatchNextQueuedDraft, liveStatus.type, props.sessionId, setQueuePaused]);
@@ -3224,7 +2307,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   <QueuedMessagesPanel
                     messages={queuedMessages}
                     paused={queuePaused}
-                    canContinue={!chatStreaming && liveStatus.type === "idle" && !pendingArtifactCompletionRef.current && !pendingVideoDeliveryRef.current}
+                    canContinue={!chatStreaming && liveStatus.type === "idle"}
                     onContinue={continueQueuedDrafts}
                     editable={queuedDrafts.map((item) => !draft && attachments.length === 0 && Object.keys(mentions).length === 0 && pasteParts.length === 0 && !selectedAnimations.length && !selectedVoiceReference && !selectedImageReference && !item.command && !item.capability && item.parts.every((part) => part.type === "text"))}
                     onEdit={editQueuedDraft}
@@ -3428,7 +2511,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         runStartedAt={runStartedAt}
                         runEndedAt={runEndedAt}
                         runTimings={runTimings}
-                        deliveryError={readHostVideoDeliveryError(props.workspaceId, props.sessionId)}
                       />
                       <VideoJobStatus jobs={studioArtifacts.data?.pages[0]?.videoJobs} />
                     </MessageListProvider>

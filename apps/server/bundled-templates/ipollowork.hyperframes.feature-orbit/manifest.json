@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.feature-orbit",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "product-feature",
@@ -13,7 +13,8 @@
     "features",
     "orbit",
     "ui",
-    "motion"
+    "motion",
+    "topic:product"
   ],
   "surface": "video",
   "title": "Feature Orbit",

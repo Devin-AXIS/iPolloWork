@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   VISUAL_COMPONENT_CATEGORIES,
   type RegistryItem,
@@ -88,6 +88,13 @@ export function useBlockCatalog() {
   const [loading, setLoading] = useState(() => catalogCache === null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const reload = useCallback(async () => {
+    await catalogRequest?.catch(() => {});
+    catalogCache = null;
+    catalogRequest = null;
+    setError(null);
+    setBlocks(await preloadBlockCatalog());
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -139,5 +146,6 @@ export function useBlockCatalog() {
     search,
     setSearch,
     sections,
+    reload,
   };
 }

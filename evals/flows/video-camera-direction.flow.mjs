@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,7 +10,8 @@ const exec = promisify(execFile);
 const vo = await loadVoiceoverParagraphs("video-camera-direction");
 const repo = resolve(import.meta.dirname, "../..");
 const registry = join(repo, "vendor/hyperframes/registry/blocks");
-const gsapPath = join(repo, "vendor/hyperframes/node_modules/.bun/gsap@3.15.0/node_modules/gsap/dist/gsap.min.js");
+const requireStudio = createRequire(new URL("../../vendor/hyperframes/packages/studio/package.json", import.meta.url));
+const gsapPath = requireStudio.resolve("gsap/dist/gsap.min.js");
 const components = ["screenshot-zoom", "device-carousel"];
 const themes = {
   light: { bg: "#f4f6f8", text: "#172126", muted: "#647078", surface: "#ffffff", border: "#d7dde1", primary: "#087d81" },
@@ -34,7 +36,7 @@ export default {
       await mkdir(scenes, { recursive: true });
       await copyFile(gsapPath, join(scenes, "gsap.min.js"));
       await mkdir(project, { recursive: true });
-      await writeFile(join(project, "index.html"), "<!doctype html><html><body>Camera installation fixture</body></html>");
+      await writeFile(join(project, "index.html"), "<!doctype html><html><body><main data-composition-id=\"camera-proof\" data-width=\"1920\" data-height=\"1080\" data-duration=\"16\">Camera installation fixture</main></body></html>");
       const installed = await exec("bun", ["--eval", `
         import { installVideoComponents } from ${JSON.stringify(pathToFileURL(join(repo, "apps/server/src/extensions/video-components.ts")).href)};
         console.log(JSON.stringify(await installVideoComponents({ id: "camera-proof", path: ${JSON.stringify(workspace)} }, { sourcePath: "video/camera-proof/index.html", componentIds: ${JSON.stringify(components)} })));
@@ -48,7 +50,7 @@ export default {
       for (const id of components) {
         const source = await readFile(join(project, "compositions", id + ".html"), "utf8");
         const manifest = JSON.parse(await readFile(join(registry, id, "registry-item.json"), "utf8"));
-        ctx.assert(manifest.variables.length === 4 && manifest.visualComponent.themeMode === "inherit", id + ": four native parameters, theme inheritance");
+        ctx.assert(manifest.variables.length === (id === "device-carousel" ? 5 : 4) && manifest.visualComponent.themeMode === "inherit", id + ": original native parameters retained, optional carousel mode, theme inheritance");
         for (const [theme, tokens] of Object.entries(themes)) {
           const variables = theme === "light" ? {} : id === "screenshot-zoom"
             ? { title: "把镜头交给重要的信息", focusX: 72, focusY: 45 }
@@ -69,7 +71,7 @@ export default {
       await writeFile(join(project, "index.html"), '<!doctype html><html><head><meta charset="UTF-8"><style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden}main{position:relative;width:1920px;height:1080px;' + tokens + '}</style></head><body><main id="camera-demo" data-composition-id="camera-demo" data-width="1920" data-height="1080" data-start="0" data-duration="16">' + hosts + '</main><script src="./gsap.min.js"></script><script>window.__timelines=window.__timelines||{};window.__timelines["camera-demo"]=gsap.timeline({paused:true}).to({}, {duration:16});</script></body></html>');
     },
   }, {
-    name: "Five actual spatial camera recipes move and seek in both themes",
+    name: "Original spatial shots and new continuous carriers move and seek in both themes",
     run: async (ctx) => {
       const installed = await exec("bun", ["--eval", `
         import { installVideoComponents } from ${JSON.stringify(pathToFileURL(join(repo, "apps/server/src/extensions/video-components.ts")).href)};
@@ -79,7 +81,7 @@ export default {
       const source = await readFile(join(project, "compositions/spatial-camera-suite.html"), "utf8");
       const manifest = JSON.parse(await readFile(join(registry, "spatial-camera-suite/registry-item.json"), "utf8"));
       const recipes = manifest.variables.find(variable => variable.id === "shotStyle").options;
-      ctx.assert(recipes.length === 5, "All five runtime recipes are tested from the registry");
+      ctx.assert(recipes.length === 8, "All eight runtime variants are tested from the existing registry");
       for (const recipe of recipes) {
         for (const [theme, tokens] of Object.entries(themes)) {
           const variables = { title: "空间运镜，让信息有层次", shotStyle: recipe.value, items: "*焦点::首先看到关键信息|景深::层次随镜头展开|落点::清晰回到完整画面" };
@@ -90,7 +92,7 @@ export default {
           await writeFile(file, fixture);
           let state;
           await ctx.prove(recipe.value + " / " + theme + ": actual multi-stage spatial motion and exact reverse seek", {
-            voiceover: vo[1],
+            voiceover: ["subject-follow-track","container-morph","gather-lockup"].includes(recipe.value) ? vo[5] : vo[1],
             action: async () => {
               await ctx.client.send("Page.navigate", { url: pathToFileURL(file).href });
               await ctx.waitFor("document.readyState === 'complete' && Boolean(window.__timelines?.['spatial-camera-suite'])", { timeoutMs: 30_000 });
@@ -99,12 +101,23 @@ export default {
                 const sample=time=>{tl.seek(time);return JSON.stringify([...document.querySelectorAll('[data-motion-role],.sc-card,.sc-light')].map(el=>{const s=getComputedStyle(el),matrix=new DOMMatrixReadOnly(s.transform==='none'?undefined:s.transform);return [...matrix.toFloat64Array()].map(value=>Math.round(value*1e6)/1e6).concat(Number(s.opacity),s.filter)}))};
                 const frames=[1.2,2.5,4.2,6.6,2.5].map(sample);
                 const groundDepths=[...document.querySelectorAll('.sc-floor,.sc-runway')].map(el=>{const s=getComputedStyle(el),m=new DOMMatrixReadOnly(s.transform);return m.m43+Math.abs(m.m23)*parseFloat(s.height)});
-                return {frames,groundDepths,pageOverflow:getComputedStyle(document.querySelector('.sc-page')).overflow,spotlightBlend:getComputedStyle(document.querySelector('.sc-light')).mixBlendMode,duration:tl.duration(),recipe:document.querySelector('main').dataset.shotStyle,background:getComputedStyle(document.querySelector('main')).backgroundColor,cards:document.querySelectorAll('.sc-card').length};
+                const carrier=document.querySelector('.sc-card.is-featured'),page=document.querySelector('.sc-page'),box=el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,cx:r.x+r.width/2,cy:r.y+r.height/2}};
+                const track=[1.2,2.5,3.6,5.2,6.4].map(time=>{tl.seek(time);return box(carrier)});
+                tl.seek(7.5);const finalCards=[...document.querySelectorAll('.sc-card')].map(box),finalPage=box(page);
+                tl.seek(2.5);
+                return {frames,track,finalCards,finalPage,carrierIds:[...document.querySelectorAll('[data-ipw-carrier]')].map(el=>el.dataset.ipwCarrier),groundDepths,pageOverflow:getComputedStyle(document.querySelector('.sc-page')).overflow,spotlightBlend:getComputedStyle(document.querySelector('.sc-light')).mixBlendMode,duration:tl.duration(),recipe:document.querySelector('main').dataset.shotStyle,background:getComputedStyle(document.querySelector('main')).backgroundColor,cards:document.querySelectorAll('.sc-card').length};
               })()`);
             },
             assert: async () => {
               ctx.assert(state.duration === 9 && state.recipe === recipe.value, "The selected recipe runs on its declared nine-second timeline");
-              ctx.assert(state.frames.slice(1, 4).every((frame, index) => frame !== state.frames[index]), "Entrance, development, focus and landing have distinct spatial states");
+              if (!['subject-follow-track','container-morph','gather-lockup'].includes(recipe.value)) ctx.assert(state.frames.slice(1, 4).every((frame, index) => frame !== state.frames[index]), "Original entrance, development, focus and landing retain distinct spatial states");
+              else {
+                ctx.assert(state.frames[0] !== state.frames[1] && state.frames[1] !== state.frames[2], "The carrier visibly advances through the content boundary");
+                ctx.assert(state.carrierIds.length === (recipe.value === 'gather-lockup' ? 3 : 1), "Actual original DOM carriers remain owned by the same component");
+                if (recipe.value === 'subject-follow-track') ctx.assert(state.track.every(box => Math.abs(box.cx-960)<3 && box.x>0 && box.x+box.width<1920), "The moving subject stays centered and safely inside the camera viewport");
+                if (recipe.value === 'container-morph') ctx.assert(Math.abs(state.finalCards[0].x-state.finalPage.x)<3 && Math.abs(state.finalCards[0].width-state.finalPage.width)<3 && Math.abs(state.finalCards[0].height-state.finalPage.height)<3, "The original card actually becomes the page's measured rectangle");
+                if (recipe.value === 'gather-lockup') ctx.assert(state.finalCards.every(box => Math.abs(box.cx-state.finalCards[1].cx)<70 && box.width<220), "The original independent members converge to a single measured lockup");
+              }
               ctx.assert(state.frames[1] === state.frames[4], "Reverse seek reconstructs identical spatial transforms and opacity");
               ctx.assert(state.cards === 3, "All three data layers render");
               ctx.assert(state.groundDepths.length === 2 && state.groundDepths.every(depth => depth < 0), "Ground planes stay behind the content plane across their rotated extent");
@@ -146,6 +159,66 @@ export default {
           });
         }
       }
+    },
+  }, {
+    name: "A flowing belt shares its integrated motion clock and settles cleanly",
+    run: async (ctx) => {
+      const source=await readFile(join(scenes,"device-carousel-light.html"),"utf8"),file=join(scenes,"device-carousel-belt.html");
+      await writeFile(file,source.replace('window.__hfVariablesByComp={"device-carousel":{}}','window.__hfVariablesByComp={"device-carousel":{"carouselMode":"flow-belt"}}'));
+      let measured;
+      await ctx.prove("Existing carousel supports a reversible continuously moving belt without changing its default tour",{
+        voiceover:vo[6],
+        action:async()=>{
+          await ctx.client.send("Page.navigate",{url:pathToFileURL(file).href});
+          await ctx.waitFor("Boolean(window.__timelines?.['device-carousel'])");
+          measured=await ctx.eval(`(()=>{
+            const tl=window.__timelines['device-carousel'],sample=time=>{tl.seek(time);return [...document.querySelectorAll('.dc-device,.dc-orbit')].map(el=>getComputedStyle(el).transform).join(';')};
+            const states=[1.4,2.5,4.8,7.4,7.8,2.5].map(sample);
+            return {states,carriers:document.querySelectorAll('[data-ipw-carrier]').length,duration:tl.duration()};
+          })()`);
+        },
+        assert:async()=>{
+          ctx.assert(measured.duration===8&&measured.carriers===3,"Existing three screens remain the editable carriers on the eight-second timeline");
+          ctx.assert(measured.states[0]!==measured.states[1]&&measured.states[1]!==measured.states[2],"Belt travel develops continuously after the ramp");
+          ctx.assert(measured.states[3]===measured.states[4],"Screen movement and interior animation both stop on the same integrated clock");
+          ctx.assert(measured.states[1]===measured.states[5],"Reverse seek restores the identical belt and interior phase");
+        },
+        screenshot:{name:"device-carousel-flow-belt",requireText:["One product. Every moment."]},
+      });
+      await ctx.eval('document.title="iPolloWork Camera Proof"');
+    },
+  }, {
+    name: "Shared physical spring presets survive actual editable GSAP serialization",
+    run:async(ctx)=>{
+      const compiled=await exec("bun",["--eval",`
+        import {compileMotionInstance,createMotionInstance} from ${JSON.stringify(pathToFileURL(join(repo,"vendor/hyperframes/packages/core/src/motionPresets.ts")).href)};
+        import {addAnimationWithKeyframesToScript} from ${JSON.stringify(pathToFileURL(join(repo,"vendor/hyperframes/packages/parsers/src/gsapWriterAcorn.ts")).href)};
+        const motion=compileMotionInstance(createMotionInstance({presetId:'element.enter.bounce-card',target:{selector:'#spring-card'},targetKind:'element',start:0,duration:1}));
+        const script=addAnimationWithKeyframesToScript('const tl=gsap.timeline({paused:true}); window.__timelines={spring:tl};','#spring-card',0,1,motion.keyframes,motion.ease,undefined,motion.extras).script;
+        console.log(JSON.stringify({script,frames:motion.keyframes}));
+      `],{cwd:repo,timeout:60000});
+      const data=JSON.parse(compiled.stdout),file=join(scenes,"spring-preset.html");
+      await writeFile(file,'<!doctype html><html><head><style>body{margin:0;background:#f4f6f8;font:42px sans-serif}#spring-card{position:absolute;left:700px;top:400px;width:500px;height:250px;background:#20bbc0;border-radius:30px;padding:50px;box-sizing:border-box}</style></head><body><article id="spring-card">Physical spring</article><script src="./gsap.min.js"></script><script>'+data.script+'</script></body></html>');
+      let measured;
+      await ctx.prove("The shared oscillator drives the real editable card instead of a fixed bounce approximation",{
+        voiceover:vo[7],
+        action:async()=>{
+          await ctx.client.send("Page.navigate",{url:pathToFileURL(file).href});
+          await ctx.waitFor("Boolean(window.__timelines?.spring)");
+          measured=await ctx.eval(`(()=>{
+            const tl=window.__timelines.spring,sample=time=>{tl.seek(time);return {y:Number(gsap.getProperty('#spring-card','y')),rotation:Number(gsap.getProperty('#spring-card','rotation')),scale:Number(gsap.getProperty('#spring-card','scaleX')),opacity:Number(gsap.getProperty('#spring-card','opacity'))}};
+            const expected=${JSON.stringify(data.frames)},actual=expected.map(frame=>sample(frame.percentage/100));
+            const cold=sample(.34375);sample(1);const reverse=sample(.34375);return {actual,cold,reverse};
+          })()`);
+        },
+        assert:async()=>{
+          ctx.assert(data.frames.every((frame,index)=>Math.abs(measured.actual[index].y-frame.properties.y)<.002&&Math.abs(measured.actual[index].rotation-frame.properties.rotation)<.002&&Math.abs(measured.actual[index].scale-frame.properties.scale)<.002),"Actual GSAP serialized keyframes reproduce the shared physical samples without doubled easing");
+          ctx.assert(Math.min(...measured.actual.map(frame=>frame.y))<-3,"Card crosses its anchor and physically rings out");
+          ctx.assert(JSON.stringify(measured.cold)===JSON.stringify(measured.reverse),"Direct and reverse seeks recover exactly the same physical state");
+        },
+        screenshot:{name:"shared-physical-spring",requireText:["Physical spring"]},
+      });
+      await ctx.eval('document.title="iPolloWork Camera Proof"');
     },
   }, {
     name: "Nested scenes share the actual export clock",

@@ -43,7 +43,7 @@ describe("startup session loading", () => {
     expect(sessionRouteSource).not.toContain("startupConversationPhase");
     expect(sessionRouteSource).toContain("const handleCreateTaskFromDraft = useCallback(");
     expect(sessionRouteSource).toMatch(
-      /setPendingInitialProjectTask\(\{\s*workspaceId,\s*sessionId: null,\s*runtimeWorkspaceId: null,\s*clientUserMessageId: null,\s*draft,\s*\}\);/,
+      /setPendingInitialProjectTask\(\{\s*\.\.\.captureInitialProjectDraftSource\(workspaceId, draft\),\s*workspaceId,\s*engineId: activeEngineId,\s*sessionId: null,\s*runtimeWorkspaceId: null,\s*clientUserMessageId: null,\s*draft,\s*\}\);/,
     );
     expect(sessionRouteSource).toContain(
       "pendingProjectSelectionRef",

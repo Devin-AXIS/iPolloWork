@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-text-on-path"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+    [data-composition-id="shotcraft-text-on-path"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#ececea); position: relative; overflow: hidden; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-text-on-path"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -27,8 +27,8 @@
       const chars=TEXT.split('').map((ch,i)=>{if(ch===' ')return '';const tEnd=0.12+0.82*(i/(N-1)),start=i*2;
         const t=clamp(frame,start,start+45,0,tEnd,'outCubic'),pOn=bez(t),ang=tangent(t),settle=clamp(frame,start+53,start+65,0,1,'inOutCubic');
         const x=pOn.x+(FINAL_X0+i*CHAR_W-pOn.x)*settle,y=pOn.y+(FINAL_Y-pOn.y)*settle,angF=ang*(1-settle),op=clamp(frame,start,start+8,0,1);
-        return `<div style="position:absolute;left:${x}px;top:${y}px;opacity:${op};transform:translate(-50%,-50%) rotate(${angF}deg);font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:64px;color:${G.ink}">${escape(ch)}</div>`;}).join('');
-      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:${G.ink}">${escape(String(values.label))}</div>${path}${chars}`;
+        return `<div style="position:absolute;left:${x}px;top:${y}px;opacity:${op};transform:translate(-50%,-50%) rotate(${angF}deg);font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:64px;color:var(--ipw-color-text,${G.ink})">${escape(ch)}</div>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:var(--ipw-color-text,${G.ink})">${escape(String(values.label))}</div>${path}${chars}`;
     }},0);
     window.__timelines['shotcraft-text-on-path']=tl;
   

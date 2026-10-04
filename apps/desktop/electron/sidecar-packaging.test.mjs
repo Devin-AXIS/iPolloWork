@@ -128,6 +128,9 @@ it("publishes Harness CLIs as verified cloud packages without bundling their arc
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/xiaohongshu-ops\s+to: plugin-packages\/xiaohongshu-ops/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/douyin-ops\s+to: plugin-packages\/douyin-ops/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/wechat-channels-ops\s+to: plugin-packages\/wechat-channels-ops/);
+  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/operation-recorder\/dist\/package\s+to: plugin-packages\/operation-recorder/);
+  assert.match(buildSource, /operation-recorder\/scripts\/build\.mjs/);
+  assert.match(devSource, /operation-recorder\/scripts\/build\.mjs.*--host.*--if-stale/);
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
   const macConfig = builderConfig.match(/\r?\nmac:\r?\n[\s\S]*?\r?\nlinux:\r?\n/)?.[0] ?? "";
   const linuxConfig = builderConfig.match(/\r?\nlinux:\r?\n[\s\S]*?\r?\nwin:\r?\n/)?.[0] ?? "";

@@ -44,7 +44,7 @@ iPolloWork is not positioned as a replacement for a single coding agent. It conn
 
 ## Agent runtime compatibility
 
-OpenCode is the default local execution runtime today. [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) is integrated as an optional peer runtime and subagent delegation target, while [Codex](https://github.com/openai/codex) connects through the [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) control surface. MCP is the integration protocol for that path, not another agent engine alongside Codex, DSH, and OpenCode. These paths share the workbench without pretending that every runtime has the same native capabilities.
+OpenCode is the default local execution runtime today. [Codex](https://github.com/openai/codex) and [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) are optional peer runtimes with native session and tool adapters. The [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) control surface also lets external clients operate the desktop. These paths share the workbench while preserving each runtime's capabilities.
 
 The collaboration model keeps iPolloWork as the project workspace: a task can delegate bounded work to DSH subagents when useful, then bring structured progress and results back into the same project. Each runtime retains its own agents, Skills, plugins, and execution model.
 
@@ -194,13 +194,16 @@ This command creates an isolated development profile, points authentication and 
 Codex / MCP clients ── ipollowork-ui-mcp ──> iPolloWork desktop/UI
                                                    │
                                                    ├── local API ──> Engine Protocol ──> OpenCode (default)
+                                                   │                               ├──> Codex (optional)
                                                    │                               └──> DeepSeek Harness (optional)
                                                    └── optional account/control requests ──> iPolloCloud
 ```
 
 - Agent execution, task state, and streaming are normalized at the shared engine boundary while engine-native behavior remains inside its adapter.
 - Portable Skills, plugins, MCP servers, and project capabilities use one lifecycle; engine-specific enhancements stay optional.
-- Codex compatibility currently uses the MCP control surface rather than claiming a native Codex engine adapter.
+- Each conversation selects its execution engine and optional work template. Projects supply shared goals and resources. Templates provide examples, Skills and result criteria; each engine owns planning, subagents, coordination, checks and final results.
+- Existing template role prompts and Skill references are projected into namespaced native OpenCode subagents and Codex role configuration. Built-in workers remain available; templates do not require a fixed worker count or execution order. Conversation-specific role edits remain scoped task guidance.
+- iPolloWork displays native execution and scoped artifacts. It does not add hidden repair prompts, restart native agent work, or run a second delivery workflow in the client. Existing media and render tools remain available to the engine.
 - iPolloCloud handles identity, organizations, entitlements, hosted worker lifecycle, administration, and commercial Apps.
 - The Cloud connection is optional. Local iPolloWork works without an account or commercial service.
 - OpenCode and DeepSeek Harness remain independent components and can continue to evolve without turning iPolloWork into a fork of either runtime.

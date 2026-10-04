@@ -1,0 +1,9 @@
+node_modules/
+app/dist/
+service/dist/
+.runtime/
+.DS_Store
+*.log
+*.pem
+*.key
+dist/

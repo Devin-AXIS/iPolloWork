@@ -8,24 +8,15 @@ import {
 } from "@ipollowork/types/workspace";
 import { KeyRound, Package, Pencil, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 
-import { formatGenericBehaviorLabel, getModelBehaviorSummary } from "@/app/lib/model-behavior";
 import type {
   iPolloWorkPluginAuthorizationState,
   iPolloWorkPluginPackageItem,
 } from "@/app/lib/ipollowork-server";
-import type { ModelRef, ProviderListItem } from "@/app/types";
+import type { ModelRef } from "@/app/types";
 import { resolveModelDisplayName } from "@/app/utils";
-import { ModelBehaviorMenu } from "@/components/model-behavior-menu";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -51,21 +42,16 @@ type ProjectAgentInspectorProps = {
   canDelete: boolean;
   plugins: iPolloWorkPluginPackageItem[];
   authorizations: Record<string, iPolloWorkPluginAuthorizationState>;
-  providers: ProviderListItem[];
   projectModel: ModelRef;
-  projectEngineId: string | null | undefined;
+  engineId: string | null | undefined;
   saving: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (agent: ProjectAgent, primary: boolean) => void;
   onDelete: () => void;
   onAuthorizePlugin: (pluginId: string) => void;
-  onConfigureModels?: (providerId?: string) => void;
-  onConfigureTokenStar?: () => void;
 };
 
 type SkillOption = ProjectResourceOption & { pluginId: string };
-
-const INHERIT_ENGINE_VALUE = "inherit-project";
 
 function DetailRow(props: { label: string; value: string; detail?: string }) {
   return (
@@ -105,33 +91,13 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
   }, [props.agent, props.isNew, props.isPrimary, props.open]);
 
   if (!draft) return null;
-  const effectiveModel: ModelRef = draft.runtime.model
-    ? { providerID: draft.runtime.model.providerId, modelID: draft.runtime.model.modelId }
-    : props.projectModel;
-  const selectedProvider = props.providers.find((provider) => provider.id === effectiveModel.providerID);
-  const selectedModelDefinition = selectedProvider?.models[effectiveModel.modelID];
-  const behavior = selectedModelDefinition
-    ? getModelBehaviorSummary(effectiveModel.providerID, selectedModelDefinition, draft.runtime.modelVariant, selectedProvider?.name)
-    : {
-      label: formatGenericBehaviorLabel(draft.runtime.modelVariant),
-      value: draft.runtime.modelVariant,
-      options: [],
-    };
-  const modelLabel = resolveModelDisplayName(effectiveModel.modelID) || effectiveModel.modelID;
-  const modelSummary = behavior.options.length ? `${modelLabel} · ${behavior.label}` : modelLabel;
-  const projectEngineId = props.projectEngineId?.trim() || DEFAULT_ENGINE_ID;
-  const engineLabel = draft.runtime.engineId === DEFAULT_ENGINE_ID
-    ? t("projects.engine_opencode")
-    : draft.runtime.engineId === CODEX_HARNESS_ENGINE_ID
-      ? t("projects.engine_codex")
-      : draft.runtime.engineId === DEEPSEEK_HARNESS_ENGINE_ID
-        ? t("projects.engine_dsh")
-        : draft.runtime.engineId || t("project_overview.inherit_project");
-  const modeLabel = draft.runtime.mode === "plan"
-    ? t("project_overview.mode_plan")
-    : draft.runtime.mode === "execute"
-      ? t("project_overview.mode_execute")
-      : t("project_overview.mode_auto");
+  const modelLabel = resolveModelDisplayName(props.projectModel.modelID) || t("conversation_work.follow_conversation");
+  const conversationEngineId = props.engineId?.trim() || DEFAULT_ENGINE_ID;
+  const engineLabel = conversationEngineId === CODEX_HARNESS_ENGINE_ID
+    ? t("projects.engine_codex")
+    : conversationEngineId === DEEPSEEK_HARNESS_ENGINE_ID
+      ? t("projects.engine_dsh")
+      : t("projects.engine_opencode");
   const skillOptions: SkillOption[] = props.plugins.flatMap((item) => item.manifest.resources
     .filter((resource) => resource.type === "skill" && !item.disabledResourceIds.includes(resource.id))
     .map((resource) => ({
@@ -163,10 +129,6 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
   const skillPickerItems = skillOptions.filter((item) => !draft.skillIds.includes(item.id));
 
   const update = (next: Partial<ProjectAgent>) => setDraft((current) => current ? { ...current, ...next } : current);
-  const updateRuntime = (next: Partial<ProjectAgent["runtime"]>) => setDraft((current) => current ? {
-    ...current,
-    runtime: { ...current.runtime, ...next },
-  } : current);
   const addPlugins = (pluginIds: string[]) => setDraft((current) => current ? {
     ...current,
     pluginIds: Array.from(new Set([...current.pluginIds, ...pluginIds])),
@@ -266,7 +228,7 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
                   <div className="flex items-center justify-between rounded-xl border border-dls-border/75 bg-dls-surface/62 px-3.5 py-3 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]">
                     <span>
                       <span className="block font-medium text-dls-text">{t("project_overview.primary_agent")}</span>
-                      <span className="mt-0.5 block text-[9px] text-dls-tertiary">{t("project_overview.primary_agent_description")}</span>
+                      <span className="mt-0.5 block text-[9px] text-dls-tertiary">{t("conversation_work.primary_agent_description")}</span>
                     </span>
                     <Switch
                       className="data-disabled:opacity-100"
@@ -283,8 +245,8 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
                   <DetailRow label={t("project_overview.agent_role")} value={draft.role || t("project_overview.agent_no_role")} />
                   <DetailRow
                     label={t("project_overview.agent_status")}
-                    value={primary ? t("project_overview.primary") : t("project_overview.standby")}
-                    detail={primary ? t("project_overview.primary_agent_description") : undefined}
+                    value={primary ? t("project_overview.primary") : t("conversation_work.preset_available")}
+                    detail={primary ? t("conversation_work.primary_agent_description") : undefined}
                   />
                 </dl>
               )}
@@ -292,105 +254,19 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
 
             <section className="space-y-3 py-5">
               <h3 className="text-[11px] font-medium text-dls-secondary">{t("project_overview.runtime")}</h3>
-              {editing ? (
-                <FieldGroup className="gap-3.5">
-                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                    <Field className="gap-2">
-                      <FieldLabel htmlFor="project-agent-engine">{t("project_overview.engine")}</FieldLabel>
-                      <Select
-                        value={draft.runtime.engineId ?? INHERIT_ENGINE_VALUE}
-                        onValueChange={(value) => {
-                          if (!value) return;
-                          updateRuntime({ engineId: value === INHERIT_ENGINE_VALUE ? null : value });
-                        }}
-                      >
-                        <SelectTrigger id="project-agent-engine" className="w-full rounded-xl bg-dls-surface/75" data-testid="project-agent-engine-select">
-                          <SelectValue>{engineLabel}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent align="start">
-                          <SelectItem value={INHERIT_ENGINE_VALUE}>{t("project_overview.inherit_project")}</SelectItem>
-                          <SelectItem value={projectEngineId}>
-                            {projectEngineId === CODEX_HARNESS_ENGINE_ID
-                              ? t("projects.engine_codex")
-                              : projectEngineId === DEEPSEEK_HARNESS_ENGINE_ID
-                                ? t("projects.engine_dsh")
-                                : t("projects.engine_opencode")}
-                          </SelectItem>
-                          {draft.runtime.engineId && draft.runtime.engineId !== projectEngineId ? (
-                            <SelectItem value={draft.runtime.engineId}>{draft.runtime.engineId}</SelectItem>
-                          ) : null}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field className="gap-2">
-                      <FieldLabel htmlFor="project-agent-mode">{t("project_overview.mode")}</FieldLabel>
-                      <Select value={draft.runtime.mode} onValueChange={(value) => {
-                        if (value === "auto" || value === "plan" || value === "execute") updateRuntime({ mode: value });
-                      }}>
-                        <SelectTrigger id="project-agent-mode" className="w-full rounded-xl bg-dls-surface/75" data-testid="project-agent-mode-select">
-                          <SelectValue>{modeLabel}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent align="start">
-                          <SelectItem value="auto">{t("project_overview.mode_auto")}</SelectItem>
-                          <SelectItem value="plan">{t("project_overview.mode_plan")}</SelectItem>
-                          <SelectItem value="execute">{t("project_overview.mode_execute")}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-                  <p className="text-[9px] leading-4 text-dls-tertiary">{t("project_overview.runtime_new_tasks_only")}</p>
-                  <Field className="gap-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <FieldLabel>{t("project_overview.model_and_reasoning")}</FieldLabel>
-                      {draft.runtime.model ? (
-                        <button type="button" className="text-[10px] text-dls-tertiary hover:text-dls-text" onClick={() => updateRuntime({ model: null, modelVariant: null })}>
-                          {t("project_overview.follow_project")}
-                        </button>
-                      ) : null}
-                    </div>
-                    <ModelBehaviorMenu
-                      appearance="field"
-                      selectedModel={effectiveModel}
-                      modelVariant={behavior.value}
-                      modelVariantLabel={behavior.label}
-                      options={behavior.options}
-                      onModelChange={(model) => {
-                        const provider = props.providers.find((item) => item.id === model.providerID);
-                        const definition = provider?.models[model.modelID];
-                        const nextVariant = definition ? getModelBehaviorSummary(model.providerID, definition, null, provider?.name).value : null;
-                        updateRuntime({ model: { providerId: model.providerID, modelId: model.modelID }, modelVariant: nextVariant });
-                      }}
-                      onModelVariantChange={(modelVariant) => setDraft((current) => current ? {
-                        ...current,
-                        runtime: {
-                          ...current.runtime,
-                          model: current.runtime.model ?? {
-                            providerId: effectiveModel.providerID,
-                            modelId: effectiveModel.modelID,
-                          },
-                          modelVariant,
-                        },
-                      } : current)}
-                      onConfigureModels={props.onConfigureModels}
-                      onConfigureTokenStar={props.onConfigureTokenStar}
-                    />
-                  </Field>
-                </FieldGroup>
-              ) : (
-                <dl className="divide-y divide-dls-border/60 overflow-hidden rounded-xl border border-dls-border/70 bg-dls-surface/52">
-                  <DetailRow label={t("project_overview.engine")} value={engineLabel} detail={!draft.runtime.engineId ? t("project_overview.follow_project") : undefined} />
-                  <DetailRow label={t("project_overview.mode")} value={modeLabel} />
-                  <DetailRow label={t("project_overview.model_and_reasoning")} value={modelSummary} detail={!draft.runtime.model ? t("project_overview.follow_project") : undefined} />
-                </dl>
-              )}
+              <dl className="divide-y divide-dls-border/60 overflow-hidden rounded-xl border border-dls-border/70 bg-dls-surface/52" data-testid="project-agent-native-runtime">
+                <DetailRow label={t("project_overview.engine")} value={engineLabel} detail={t("conversation_work.follow_conversation")} />
+                <DetailRow label={t("project_overview.model_and_reasoning")} value={modelLabel} detail={t("conversation_work.follow_conversation")} />
+              </dl>
+              <p className="text-[11px] leading-5 text-dls-tertiary">{t("conversation_work.runtime_description")}</p>
             </section>
 
             <section className="space-y-3 py-5">
               <h3 className="text-[11px] font-medium text-dls-secondary">{t("project_overview.instructions")}</h3>
               {editing ? (
                 <Field className="gap-2">
-                  <FieldLabel htmlFor="project-agent-prompt">{t("project_overview.primary_prompt")}</FieldLabel>
-                  <Textarea id="project-agent-prompt" className="min-h-32 resize-y rounded-xl bg-dls-surface/75" value={draft.prompt} placeholder={t("project_overview.primary_prompt_placeholder")} onChange={(event) => update({ prompt: event.currentTarget.value })} />
+                  <FieldLabel htmlFor="project-agent-prompt">{t("conversation_work.role_instructions")}</FieldLabel>
+                  <Textarea id="project-agent-prompt" className="min-h-32 resize-y rounded-xl bg-dls-surface/75" value={draft.prompt} placeholder={t("conversation_work.role_instructions_placeholder")} onChange={(event) => update({ prompt: event.currentTarget.value })} />
                 </Field>
               ) : (
                 <div className="min-h-20 rounded-xl border border-dls-border/70 bg-dls-surface/52 px-3.5 py-3 text-[12px] leading-5 text-dls-secondary">
@@ -453,7 +329,7 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
             {props.canDelete ? <Button type="button" variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={props.saving} onClick={props.onDelete}><Trash2 className="size-4" />{t("common.delete")}</Button> : <span />}
             <div className="flex items-center gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={cancelEditing}>{t("common.cancel")}</Button>
-              <Button type="button" size="sm" disabled={props.saving || !draft.name.trim()} onClick={() => props.onSave(draft, primary)}>{props.saving ? t("common.saving") : t("common.save")}</Button>
+              <Button type="button" size="sm" data-testid="project-agent-save" disabled={props.saving || !draft.name.trim()} onClick={() => props.onSave(draft, primary)}>{props.saving ? t("common.saving") : t("common.save")}</Button>
             </div>
           </SheetFooter>
         ) : null}

@@ -47,12 +47,14 @@ export default {
       await ctx.prove('识别入口派发 AI 请求，模拟身份回写后功能可用', {
         voiceover: vo[1], action: async () => {
           await ctx.eval(`[...document.querySelectorAll('#accounts-list button')].find(b=>b.textContent==='已登录，识别账号').click()`); await settled();
-          await service.operations.action('verify-browser-account', identity);
+          await service.operations.action('observe-browser-session', { browserProfileId: account.browserProfileId, url: 'https://www.douyin.com/user/self',
+            tree: 'heading "普通用户 · 测试" level=1\nStaticText "抖音号："\nStaticText "fixture-user"\n[@e1] button "批量管理"\n[@e2] tab "私密作品"' });
           await ctx.waitFor(`!document.querySelector('#account-details-dialog').open && document.querySelector('#account').selectedOptions[0].textContent.includes('普通用户 · 测试')`, { timeoutMs: 8000 }); await click('[data-view="search"]');
         }, assert: async () => {
           ctx.assert((await originalEval('window.sent')).some(m => m.content[0].text.includes('verify-browser-account')), 'UI dispatches identity verification');
           ctx.assert(!await ctx.eval(`document.querySelector('#search-form button[type=submit]').disabled`), 'Search works without API scopes');
           ctx.assert(!await ctx.eval(`document.querySelector('#search-device').required`), 'No device identifier required');
+          ctx.assert(await ctx.eval(`document.querySelector('#account').selectedOptions[0].textContent.includes('fixture-user')`), 'Account selector includes the verified identity, not only a nickname');
         }, screenshot: { name: 'browser-search-ready', requireText: ['普通用户 · 测试', '搜索视频'] },
       });
       await click('[data-view="videos"]'); await click('#load-videos'); await settled();
@@ -83,8 +85,10 @@ export default {
         assert: async () => { ctx.assert(service.operations.state().jobs.filter(j => ['video-data', 'list-comments', 'reply-comment'].includes(j.browserAction)).every(j => j.status === 'succeeded'), 'All three browser receipts persist'); },
         screenshot: { name: 'browser-data-reply', requireText: ['回复评论', '没有发送真实评论'] },
       });
-      await ctx.prove('AI 文案自动同步，素材与发布内容锁定并回写', {
-        voiceover: 'AI 起草后自动显示保存的文案，导入素材后可交给浏览器发布。本段使用模拟发布回执，没有向抖音上传或发布。',
+      const { job: interruptedRead } = await service.operations.action('search-videos', { accountId: account.id, keyword: '中断读取' });
+      const interruptedClaim = await service.operations.action('claim-browser-job', { ...identity, jobId: interruptedRead.id });
+      await ctx.prove('中断读取可从记录结束，保留原发布并拒绝旧结果', {
+        voiceover: vo[4],
         action: async () => {
           await click('[data-view="studio"]'); await click('#ai-draft'); await settled();
           const draft = service.operations.state().drafts[0];
@@ -94,13 +98,46 @@ export default {
           await ctx.fill('#media-path', media); await click('#media-form button[type=submit]'); await settled();
           await click('#publish-draft'); await settled();
           const job = service.operations.state().jobs.find(j => j.browserAction === 'publish-draft');
+          ctx.assert(job.status === 'pending', 'Publish record exists before browser upload');
+          ctx.assert(service.operations.state().accounts.length === 1, 'Existing logged-in account is reused');
+          ctx.assert(service.operations.state().accounts[0].capabilities.publish.transport === 'browser', 'AI and UI share browser route without API scopes');
+          ctx.assert((await originalEval('window.sent')).some(m => m.content[0].text.includes('本轮返回的新 tabId') && m.content[0].text.includes('最多2次')), 'Dispatched task requires fresh browser identity and bounded pre-submit recovery');
+          const blocked = await service.operations.action('claim-browser-job', { ...identity, jobId: job.id });
+          ctx.assert(blocked.queued && blocked.blockedByJobId === interruptedRead.id && blocked.canCancelRead, 'Interrupted read blocks publish with an actionable task ID');
+          await click('[data-view="jobs"]');
+          await ctx.waitFor(`[...document.querySelectorAll('#jobs-list button')].some(b=>b.textContent==='结束读取任务')`, { timeoutMs: 8000 });
+          await ctx.eval(`[...document.querySelectorAll('#jobs-list button')].find(b=>b.textContent==='结束读取任务').click()`); await settled();
+          ctx.assert(service.operations.state().jobs.find(j => j.id === interruptedRead.id).errorCode === 'read_cancelled', 'UI uses durable cancellation action');
+          ctx.assert(service.operations.store.secret('browser-job:' + interruptedRead.id) === null, 'Old executor token is revoked');
+          let lateReceiptRejected = false;
+          try { await service.operations.action('finish-browser-job', { ...identity, jobId: interruptedRead.id, executionToken: interruptedClaim.executionToken, outcome: 'succeeded', evidence: '迟到的旧读取', items: [] }); }
+          catch { lateReceiptRejected = true; }
+          ctx.assert(lateReceiptRejected, 'Cancelled executor cannot overwrite the record');
+          ctx.assert(service.operations.state().jobs.filter(j => j.browserAction === 'publish-draft').length === 1, 'Queued publish was not duplicated');
           const claim = await service.operations.action('claim-browser-job', { ...identity, jobId: job.id });
           ctx.assert(job.payload.title === 'AI 生成标题' && job.payload.text === '模拟 AI 完成的作品文案' && claim.mediaPath.endsWith('.mp4'), 'Locked publish includes title, text and imported media');
-          await service.operations.action('finish-browser-job', { ...identity, jobId: job.id, executionToken: claim.executionToken, outcome: 'succeeded', evidence: '模拟发布成功；没有真实发布', resultUrl: 'https://www.douyin.com/video/1234567801' });
-          await ctx.waitFor(`document.body.dataset.view === 'jobs'`, { timeoutMs: 8000 });
+          await service.operations.action('finish-browser-job', { ...identity, jobId: job.id, executionToken: claim.executionToken, outcome: 'uncertain', evidence: '模拟点击发布后要求短信验证，等待用户验证；没有真实发布。' });
+          await ctx.waitFor(`document.body.dataset.view === 'jobs' && document.querySelector('#jobs-list').innerText.includes('短信验证')`, { timeoutMs: 8000 });
         },
-        assert: async () => { ctx.assert(service.operations.state().drafts[0].status === 'succeeded', 'Draft and job receipt sync'); },
-        screenshot: { name: 'browser-publish', requireText: ['发布视频', '没有真实发布'] },
+        assert: async () => { ctx.assert(service.operations.state().drafts[0].status === 'uncertain', 'Draft and SMS-blocked job status sync'); },
+        screenshot: { name: 'browser-publish', requireText: ['发布视频', '短信验证', '结果待核实', '没有真实发布', '读取任务已结束'] },
+      });
+      await ctx.prove('验证后的实际作品链接回到原任务，不重复发布', {
+        voiceover: vo[5],
+        action: async () => {
+          await ctx.eval(`(() => { const select = document.querySelector('#jobs-list form select'); select.value = 'succeeded'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+          await ctx.fill('#jobs-list form textarea', '模拟验证后核对到对应作品，未重新发送。');
+          await ctx.fill('#jobs-list form input[type=url]', 'https://www.douyin.com/video/1234567801');
+          await click('#jobs-list form button[type=submit]'); await settled();
+        },
+        assert: async () => {
+          const jobs = service.operations.state().jobs.filter(j => j.browserAction === 'publish-draft');
+          ctx.assert(jobs.length === 1 && jobs[0].status === 'succeeded', 'Same task reconciled without a duplicate');
+          ctx.assert(jobs[0].result.url === 'https://www.douyin.com/video/1234567801', 'Verified link persists');
+          ctx.assert(service.operations.state().drafts[0].status === 'succeeded', 'Draft status follows receipt');
+          ctx.assert(await ctx.eval(`document.querySelector('#jobs-list').innerText.includes('查看作品')`), 'User can open the saved work');
+        },
+        screenshot: { name: 'browser-publish-reconciled', requireText: ['已完成', '查看作品', '未重新发送'] },
       });
       await click('[data-view="search"]');
       await ctx.prove('搜索经 AI 桥接派发，模拟网页结果回到卡片', {

@@ -46,6 +46,14 @@ Sample copy, page counts, data and assets are not automatically user requirement
 
 Acceptance must distinguish saved templates without indexes, editable uploads, screenshot-only references and custom work without references, as well as exact-layout versus adaptive modes. Claim verification only for combinations actually exercised; bundled-template tests do not prove all custom-template cases.
 
+#### Reusable-template authoring only
+
+Apply this workflow only when the host marks the session as reusable-template authoring or the user explicitly requests a reusable template. Ordinary artifact creation, applying a template, script-only work and targeted edits keep their requested scope.
+
+On the first turn, acknowledge the goal and ask one unanswered question about purpose and audience when that information is missing. Guide further clarification one critical question at a time: purpose and audience, reusable content structure, reusable variables, visual direction and Design System, type-specific requirements, then generation and validation. Skip supplied answers; when information is sufficient, edit the current project instead of continuing to interview.
+
+Write a package-local `authoring.md` and declare `authoringGuide: "authoring.md"` in `manifest.json`. Describe the actual visual tokens and fixed regions, index real source layouts by selector with content suitability and allowed variations, and label proposed extensions separately from existing layouts. Update the guide after structural changes; exclude session-only facts. Keep the host-selected category, design system, variables, package paths, validation and re-instantiation contracts.
+
 ### 3. Content before structure
 
 Identify audience, purpose, main message, supporting material and intended action before organizing pages, sections or scenes.
@@ -193,7 +201,7 @@ Use the Design routing index to read only the active category. Existing PPT and 
 Rule coverage is not tested generation coverage. Validate representative real artifacts category by category, then feed cross-type findings into the shared source. A successful PPT does not prove another category's rendering, interactions or exports. Define scope, counterexamples and verification before expanding libraries.
 ### 12. Maintenance and references
 
-Maintain cross-type principles here; type-specific details belong in [PPT](slides-ppt.md), [Design](design.md) and [Video](video.md). Template differences belong in each `authoring.md`. Skills and task instructions should link to these sources and retain only short execution summaries. Runtime deduplication and on-demand injection require separate integration verification.
+Maintain cross-type principles here; type-specific details belong to the plugin-owned [PPT](../../../../examples/plugin-packages/design-agent/skills/ipollowork-presentations/references/slides-ppt.md), [Design](../../../../examples/plugin-packages/design-agent/skills/ipollowork-design-studio/references/design.md) and [Video](../../../../examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/video.md) references. Template differences belong in each `authoring.md`. Skills and task instructions should link to these sources and retain only short execution summaries. Runtime deduplication and on-demand injection require separate integration verification.
 
 OpenDesign informed the layering and rule topics below. These are references, not runtime dependencies or universal numerical/aesthetic mandates. This guidance is written for iPolloWork's product constraints and observed model-test issues; it does not copy their rule text or implementation.
 

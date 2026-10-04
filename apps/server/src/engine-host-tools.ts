@@ -1,8 +1,15 @@
+import { z } from "zod";
+
 export const ENGINE_HOST_TOOL_NAMES = {
   extensionListActions: "ipollowork_extension_list_actions",
   extensionCall: "ipollowork_extension_call",
   projectRead: "ipollowork_project_read",
   projectApply: "ipollowork_project_apply",
+  listMotionPresets: "list_motion_presets",
+  mutateMotion: "mutate_motion",
+  conversationRead: "ipollowork_conversation_read",
+  conversationApply: "ipollowork_conversation_apply",
+  workTemplateSave: "ipollowork_work_template_save",
   schedulePreview: "ipollowork_schedule_preview",
   scheduleApply: "ipollowork_schedule_apply",
   workspaceAppListTools: "ipollowork_workspace_app_list_tools",
@@ -33,6 +40,40 @@ const objectParameters = (
   properties,
   required,
   additionalProperties: false,
+});
+
+const engineToolSessionParameter = {
+  type: "string",
+  description: "Current iPolloWork conversation ID when the engine does not forward session context automatically.",
+};
+
+export const engineHostSessionIdSchema = z.string().trim().min(1).max(200).optional().describe(
+  "Current iPolloWork conversation ID when required by the active engine.",
+);
+
+export const listMotionPresetsArgsSchema = z.object({
+  sessionId: engineHostSessionIdSchema,
+  targetKind: z.enum(["text", "element"]).default("text"),
+  phase: z.enum(["enter", "emphasis", "exit"]).optional().describe("Optional phase filter."),
+  intent: z.string().trim().min(1).optional().describe("Optional semantic intent, such as title reveal or warning."),
+  tone: z.string().trim().min(1).optional().describe("Optional tone, such as modern, restrained, playful, or technology."),
+}).strict();
+
+export const mutateMotionArgsSchema = z.object({
+  sessionId: engineHostSessionIdSchema,
+  targetKind: z.enum(["text", "element"]).default("text"),
+  operation: z.enum(["upsert", "remove"]).describe("Add/replace one phase, or remove it."),
+  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one element in the current video."),
+  phase: z.enum(["enter", "emphasis", "exit"]),
+  presetId: z.string().trim().min(1).optional().describe("Stable preset id returned by list_motion_presets. Required for upsert."),
+  start: z.number().finite().nonnegative().optional().describe("Timeline start in seconds. Omit to use the phase-aware default."),
+  end: z.number().finite().positive().optional().describe("Explicit end in seconds, within the target clip."),
+  duration: z.number().finite().positive().optional().describe("Finite duration in seconds."),
+  parameters: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).optional().describe("Only parameters declared by the selected preset."),
+}).strict().superRefine((value, context) => {
+  if (value.operation === "upsert" && !value.presetId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["presetId"], message: "presetId is required for upsert" });
+  }
 });
 
 export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
@@ -216,14 +257,43 @@ ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
     }, ["extensionId", "action"]),
   },
   {
+    name: ENGINE_HOST_TOOL_NAMES.conversationRead,
+    description: "Read this conversation's saved work template and version when the user asks to inspect or edit that method. Ordinary tasks use the engine's native plan and execution; this read is optional. Do not change project defaults.",
+    parameters: objectParameters({}),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.conversationApply,
+    description: "Edit this conversation's example template after reading its version, when the user requests a method change. Preserve user-selected methods. Goals, suggested steps and reference roles are guidance; native agent tools own plans, delegation and results. Optional notes must reflect verified work. This tool cannot change the execution engine or claim accepted completion.",
+    parameters: objectParameters({
+      expectedVersion: { type: "integer", minimum: 0 },
+      templateId: { type: "string" },
+      source: { type: "string", enum: ["auto", "custom"] },
+      goal: { type: "string" },
+      workKind: { type: "string", enum: ["general", "video", "design", "development", "research", "document"] },
+      config: { type: "object", description: "Complete team configuration; preserve fields from conversation_read when editing." },
+      stages: { type: "array", items: { type: "object" } },
+      acceptance: { type: "array", items: { type: "string" } },
+      progress: { type: "object", properties: {
+        summary: { type: "string" }, decisions: { type: "array", items: { type: "string" } },
+        outputs: { type: "array", items: { type: "string" } }, blockers: { type: "array", items: { type: "string" } },
+      }, additionalProperties: false },
+    }, ["expectedVersion"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.workTemplateSave,
+    description: "Save this conversation's reusable work method as a named template when the user asks to save or reuse it. Excludes instance progress and output records. Updates require the saved template version; existing conversations retain their snapshots.",
+    parameters: objectParameters({ name: { type: "string" }, description: { type: "string" }, templateId: { type: "string" }, expectedVersion: { type: "integer", minimum: 0 } }, ["name"]),
+  },
+  {
     name: ENGINE_HOST_TOOL_NAMES.projectRead,
     description: "Read the schema-validated iPolloWork project configuration for the current workspace. Use only in an explicitly opened Project Builder conversation.",
-    parameters: objectParameters({}),
+    parameters: objectParameters({ sessionId: engineToolSessionParameter }),
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.projectApply,
     description: "Apply one complete schema-validated iPolloWork project configuration after the user explicitly confirms the proposal in Project Builder.",
     parameters: objectParameters({
+      sessionId: engineToolSessionParameter,
       config: {
         type: "object",
         additionalProperties: true,
@@ -281,6 +351,36 @@ ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
         description: "One-time preview ID returned by ipollowork_schedule_preview.",
       },
     }, ["previewId"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.listMotionPresets,
+    description: "List the product-owned semantic motion presets for a text or element target in the current Video Studio session. Filter by phase, intent, or tone, then use the returned preset id with mutate_motion.",
+    parameters: objectParameters({
+      sessionId: engineToolSessionParameter,
+      targetKind: { type: "string", enum: ["text", "element"], description: "Use text for leaf text; element for wrapper/camera targets. Defaults to text." },
+      phase: { type: "string", enum: ["enter", "emphasis", "exit"] },
+      intent: { type: "string", minLength: 1 },
+      tone: { type: "string", minLength: 1 },
+    }),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.mutateMotion,
+    description: "Add, replace, update, or remove one semantic motion phase on exactly one text or element target in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
+    parameters: objectParameters({
+      sessionId: engineToolSessionParameter,
+      targetKind: { type: "string", enum: ["text", "element"], description: "Use text for leaf text; element for wrapper/camera targets. Defaults to text." },
+      operation: { type: "string", enum: ["upsert", "remove"] },
+      targetSelector: { type: "string", minLength: 1 },
+      phase: { type: "string", enum: ["enter", "emphasis", "exit"] },
+      presetId: { type: "string", minLength: 1 },
+      start: { type: "number", minimum: 0 },
+      end: { type: "number", exclusiveMinimum: 0 },
+      duration: { type: "number", exclusiveMinimum: 0 },
+      parameters: {
+        type: "object",
+        additionalProperties: { type: ["string", "number", "boolean"] },
+      },
+    }, ["operation", "targetSelector", "phase"]),
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.workspaceAppListTools,

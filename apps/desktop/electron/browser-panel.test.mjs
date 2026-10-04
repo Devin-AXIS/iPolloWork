@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,12 +14,48 @@ if (!process.versions.electron) {
   test("real browser profiles isolate cookies and storage, retain logins and reuse login tabs", { timeout: 45_000 }, async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "ipollowork-browser-test-"));
     try {
+      const appRequire = createRequire(new URL("../../app/package.json", import.meta.url));
+      const sidePanel = await readFile(new URL("../../app/src/react-app/domains/session/panel/side-panel.tsx", import.meta.url), "utf8");
+      const videoBranch = sidePanel.match(/<VideoPanel\b[\s\S]*?\/>/)?.[0];
+      assert.ok(videoBranch, "The fixture must exercise the actual VideoPanel render branch");
+      const fixturePath = path.join(directory, "video-panel.tsx");
+      await writeFile(fixturePath, `
+import React from ${JSON.stringify(appRequire.resolve("react"))};
+import { createRoot } from ${JSON.stringify(appRequire.resolve("react-dom/client"))};
+import { flushSync } from ${JSON.stringify(appRequire.resolve("react-dom"))};
+const host = document.createElement("section"); document.body.append(host);
+const root = createRoot(host), events = []; let serial = 0, edit;
+function VideoPanel({sessionId}) {
+  const [instance] = React.useState(() => ++serial);
+  const [scriptSettingsRequest, setScriptSettingsRequest] = React.useState(null);
+  const [studioHostPanel, setStudioHostPanel] = React.useState(null);
+  const pendingStudioDesignTokensRef = React.useRef(null);
+  React.useEffect(() => { events.push(["mount", instance]); return () => events.push(["unmount", instance]); }, [instance]);
+  edit = () => { setScriptSettingsRequest({projectId: sessionId}); setStudioHostPanel("style"); pendingStudioDesignTokensRef.current = {"--ipw-accent": "red"}; };
+  return React.createElement("output", null, JSON.stringify({instance, scriptSettingsRequest, studioHostPanel, pendingTokens: pendingStudioDesignTokensRef.current}));
+}
+const state = () => JSON.parse(host.querySelector("output").textContent);
+window.__videoPanelTest = {
+  events,
+  render({activeTab, workspaceId, workspaceRoot, theme = "light", expanded = false}) {
+    const sessionId = "conversation", client = null, isRemoteWorkspace = false, aiEditing = false;
+    const onSendWorkspaceAppMessage = undefined, onExpandedChange = undefined, onAskAi = undefined;
+    const onRegenerateVideoFromStoryboard = undefined, onSaveAsTemplate = undefined;
+    document.documentElement.dataset.theme = theme;
+    flushSync(() => root.render(${videoBranch})); return state();
+  },
+  dirty() { flushSync(edit); return state(); },
+  dispose() { root.unmount(); host.remove(); },
+};
+`);
+      await promisify(execFile)("bun", ["build", fixturePath, "--target=browser", "--format=iife", "--jsx-runtime=classic", "--outfile", path.join(directory, "video-panel.js")], { timeout: 10_000, windowsHide: true });
       const { default: electron } = await import("electron");
       const env = { ...process.env, IPOLLOWORK_BROWSER_TEST_DATA: directory, ELECTRON_RUN_AS_NODE: undefined };
       const result = await promisify(execFile)(String(electron), [fileURLToPath(import.meta.url)], { env, windowsHide: true, timeout: 40_000, killSignal: "SIGKILL" });
       assert.match(result.stdout, /browser-profile-checks-passed/);
       assert.match(result.stdout, /web-login-no-client-launch-passed/);
       assert.match(result.stdout, /background-control-and-verification-passed/);
+      assert.match(result.stdout, /video-panel-project-isolation-passed/);
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 } else {
@@ -74,6 +111,32 @@ if (!process.versions.electron) {
   const call = (method, ...args) => handlers.get(`ipollowork:browser:${method}`)(null, ...args);
   const contents = () => webContents.getAllWebContents().find(item => item !== window.webContents && item.getURL() === url && !item.isDestroyed());
   try {
+    await window.webContents.executeJavaScript(await readFile(path.join(process.env.IPOLLOWORK_BROWSER_TEST_DATA, "video-panel.js"), "utf8"));
+    const renderVideo = (scope) => window.webContents.executeJavaScript(`window.__videoPanelTest.render(${JSON.stringify(scope)})`);
+    const dirtyVideo = () => window.webContents.executeJavaScript("window.__videoPanelTest.dirty()");
+    const videoScope = { workspaceId: "ws_a", workspaceRoot: "/workspace/a", activeTab: { id: "video:project-a", sessionId: "project-a", label: "A" } };
+    const firstVideo = await renderVideo(videoScope);
+    const editedVideo = await dirtyVideo();
+    assert.deepEqual(editedVideo.scriptSettingsRequest, { projectId: "project-a" });
+    assert.equal(editedVideo.studioHostPanel, "style");
+    assert.deepEqual(editedVideo.pendingTokens, { "--ipw-accent": "red" });
+    assert.deepEqual(await renderVideo({ ...videoScope, theme: "dark", expanded: true, activeTab: { ...videoScope.activeTab, view: "storyboard" } }), editedVideo,
+      "Same-project view and theme changes preserve its mounted state");
+    const projectScope = { ...videoScope, activeTab: { id: "video:project-b", sessionId: "project-b", label: "B" } };
+    const projectVideo = await renderVideo(projectScope);
+    assert.deepEqual(projectVideo, { instance: firstVideo.instance + 1, scriptSettingsRequest: null, studioHostPanel: null, pendingTokens: null });
+    await dirtyVideo();
+    const workspaceScope = { ...projectScope, workspaceId: "ws_b" };
+    const workspaceVideo = await renderVideo(workspaceScope);
+    assert.deepEqual(workspaceVideo, { ...projectVideo, instance: projectVideo.instance + 1 });
+    await dirtyVideo();
+    assert.deepEqual(await renderVideo({ ...workspaceScope, workspaceRoot: "/workspace/b" }), { ...workspaceVideo, instance: workspaceVideo.instance + 1 });
+    await window.webContents.executeJavaScript("window.__videoPanelTest.dispose()");
+    assert.deepEqual(await window.webContents.executeJavaScript("window.__videoPanelTest.events"), [
+      ["mount", 1], ["unmount", 1], ["mount", 2], ["unmount", 2], ["mount", 3], ["unmount", 3], ["mount", 4], ["unmount", 4],
+    ]);
+    await window.webContents.executeJavaScript("delete window.__videoPanelTest");
+    process.stdout.write("video-panel-project-isolation-passed\n");
     const externalCalls = [];
     const openExternal = shell.openExternal;
     shell.openExternal = async target => { externalCalls.push(target); };

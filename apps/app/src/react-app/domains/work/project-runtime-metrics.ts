@@ -1,5 +1,6 @@
 import type { ProjectAgent } from "@ipollowork/types/project-workspace";
 import type { WorkItem } from "@ipollowork/types/work-items";
+import type { SessionTokenMetering } from "@ipollowork/types/workspace";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 
@@ -29,8 +30,8 @@ export type ProjectRuntimeExecutionRecord = {
   rootSessionId: string;
   rootTaskId: string;
   rootTaskTitle: string;
-  agentId: string;
-  agentName: string;
+  agentId: string | null;
+  agentName: string | null;
   title: string;
   status: "running" | "completed" | "failed" | "unknown";
   tokens: number | null;
@@ -48,6 +49,7 @@ export type ProjectRuntimeMetrics = {
   status: "complete" | "partial" | "unavailable";
   unmeteredConversationCount: number;
   agents: AgentRuntimeUsage[];
+  sessionUsage: (Pick<ProjectRuntimeExecutionRecord, "sessionId" | "title" | "tokens"> & { isMain: boolean })[];
   executionRecords: ProjectRuntimeExecutionRecord[];
 };
 
@@ -62,7 +64,7 @@ function emptyAgentUsage(agents: ProjectAgent[]): AgentRuntimeUsage[] {
   }));
 }
 
-function sessionTokens(session: {
+function sessionTokens(session: SessionTokenMetering & {
   tokens?: {
     input: number;
     output: number;
@@ -70,6 +72,9 @@ function sessionTokens(session: {
     cache?: { read: number; write: number };
   };
 }): number | null {
+  if (typeof session.totalTokens === "number" && Number.isSafeInteger(session.totalTokens) && session.totalTokens >= 0) {
+    return session.totalTokens;
+  }
   if (!session.tokens) return null;
   return Math.max(
     0,
@@ -131,6 +136,8 @@ function agentIdFromText(texts: Array<string | null>, agents: ProjectAgent[]): s
     if (!text) continue;
     const markedId = markedProjectAgentId(text);
     if (markedId && configuredIds.has(markedId)) return markedId;
+    const nativeRole = text.match(/\bipw-[a-zA-Z0-9_-]+\.([a-zA-Z0-9_-]+)/u)?.[1];
+    if (nativeRole && configuredIds.has(nativeRole)) return nativeRole;
   }
 
   const content = texts.filter(Boolean).join("\n").toLocaleLowerCase();
@@ -150,7 +157,14 @@ function agentIdFromText(texts: Array<string | null>, agents: ProjectAgent[]): s
   return strongestMatches.length === 1 ? strongestMatches[0]?.agent.id ?? null : null;
 }
 
+function nativeCodexAgent(session: unknown): Record<string, unknown> | null {
+  return isRecord(session) && isRecord(session.codex) && session.codex.subagent === true
+    ? session.codex : null;
+}
+
 function agentIdFromSession(session: RuntimeSession, agents: ProjectAgent[]): string | null {
+  const nativeRole = readString(nativeCodexAgent(session), "agentRole");
+  if (nativeRole) return agentIdFromText([nativeRole], agents);
   const identity = readString(session, "agent")?.toLocaleLowerCase();
   if (identity) {
     const matchingAgent = agents.find((agent) => (
@@ -158,17 +172,20 @@ function agentIdFromSession(session: RuntimeSession, agents: ProjectAgent[]): st
     ));
     if (matchingAgent) return matchingAgent.id;
   }
-  return agentIdFromText([session.title], agents);
+  return readString(session, "engineId") === "codex-harness" ? null : agentIdFromText([session.title], agents);
 }
 
 type DelegatedAgentBinding = {
-  agentId: string;
+  agentId: string | null;
   description: string | null;
   status: "running" | "completed" | "failed" | "unknown";
 };
 
 function taskDelegation(part: unknown): {
   childSessionId: string;
+  parentSessionId: string | null;
+  createsChild: boolean;
+  nativeActivity: boolean;
   description: string | null;
   prompt: string | null;
   status: DelegatedAgentBinding["status"];
@@ -177,14 +194,24 @@ function taskDelegation(part: unknown): {
   const state = part.state;
   if (!isRecord(state)) return null;
   const output = readString(state, "output");
-  const childSessionId = output?.match(/<task\s+id=["']([^"']+)["']/iu)?.[1]?.trim();
+  const childSessionId = readString(state.metadata, "sessionId")
+    ?? output?.match(/<task\s+id=["']([^"']+)["']/iu)?.[1]?.trim();
   if (!childSessionId) return null;
   const input = state.input;
+  const nativeTool = readString(state.metadata, "nativeTool");
+  const nativeActivity = nativeTool === "subAgentActivity";
+  const nativeStatus = readString(state.metadata, "delegationStatus");
   return {
     childSessionId,
+    parentSessionId: readString(state.metadata, "parentSessionId"),
+    createsChild: !nativeTool || nativeTool === "spawnAgent"
+      || (nativeActivity && readString(state.metadata, "nativeKind") === "started" && Boolean(readString(state.metadata, "parentSessionId"))),
+    nativeActivity,
     description: readString(input, "description"),
-    prompt: readString(input, "prompt"),
-    status: state.status === "completed"
+    prompt: [readString(input, "subagent_type"), readString(input, "prompt")].filter(Boolean).join("\n") || null,
+    status: nativeStatus === "running" || nativeStatus === "completed" || nativeStatus === "failed" || nativeStatus === "unknown"
+      ? nativeStatus
+      : state.status === "completed"
       ? "completed"
       : state.status === "running"
         ? "running"
@@ -214,41 +241,84 @@ async function delegatedAgentIds(input: {
   client: iPolloWorkServerClient;
   workspaceId: string;
   sessions: RuntimeSession[];
-  projectSessionIds: Set<string>;
+  rootSessionIds: Set<string>;
   agents: ProjectAgent[];
-}): Promise<Map<string, DelegatedAgentBinding>> {
+}): Promise<{ agents: Map<string, DelegatedAgentBinding>; parents: Map<string, string> }> {
+  const sessionsById = new Map(input.sessions.map((session) => [session.id, session]));
+  const parents = new Map<string, string>();
   const childIdsByParentId = new Map<string, Set<string>>();
   for (const session of input.sessions) {
-    if (!input.projectSessionIds.has(session.id) || !session.parentID) continue;
+    if (!session.parentID) continue;
+    if (readString(session, "engineId") === "codex-harness" && !nativeCodexAgent(session)) continue;
+    parents.set(session.id, session.parentID);
     const childIds = childIdsByParentId.get(session.parentID) ?? new Set<string>();
     childIds.add(session.id);
     childIdsByParentId.set(session.parentID, childIds);
   }
 
   const result = new Map<string, DelegatedAgentBinding>();
-  await mapWithConcurrency([...childIdsByParentId.entries()], 4, async ([parentSessionId, childSessionIds]) => {
-    try {
-      const response = await input.client.getSessionMessages(input.workspaceId, parentSessionId, { limit: 100 });
-      for (const message of response.items) {
-        for (const part of message.parts) {
-          const delegation = taskDelegation(part);
-          if (!delegation || !childSessionIds.has(delegation.childSessionId)) continue;
-          const agentId = agentIdFromText([delegation.description, delegation.prompt], input.agents);
-          if (agentId) {
+  const visited = new Set<string>();
+  let frontier = [...input.rootSessionIds].filter((sessionId) => sessionsById.has(sessionId));
+  while (frontier.length > 0) {
+    const next = new Set<string>();
+    await mapWithConcurrency(frontier, 4, async (parentSessionId) => {
+      visited.add(parentSessionId);
+      for (const childId of childIdsByParentId.get(parentSessionId) ?? []) next.add(childId);
+      try {
+        const response = await input.client.getSessionMessages(input.workspaceId, parentSessionId, { limit: 100 });
+        // Codex SubAgentActivity has no task prompt. A worker may explicitly
+        // identify its preset in its own result; do not infer one from its prose.
+        const binding = result.get(parentSessionId);
+        if (binding && !binding.agentId && nativeCodexAgent(sessionsById.get(parentSessionId))) {
+          const markedId = response.items.flatMap((message) => readString(message.info, "role") === "assistant" ? message.parts : [])
+            .flatMap((part) => {
+              const text = readString(part, "type") === "text" ? readString(part, "text") : null;
+              return text?.trimStart().startsWith("[project-agent:") ? [markedProjectAgentId(text)] : [];
+            }).find((id) => input.agents.some((agent) => agent.id === id));
+          if (markedId) binding.agentId = markedId;
+        }
+        for (const message of response.items) {
+          for (const part of message.parts) {
+            const delegation = taskDelegation(part);
+            if (!delegation || !sessionsById.has(delegation.childSessionId)) continue;
+            if (delegation.createsChild
+              && (!delegation.parentSessionId || delegation.parentSessionId === parentSessionId)
+              && !parents.has(delegation.childSessionId)
+              && !input.rootSessionIds.has(delegation.childSessionId)) {
+              parents.set(delegation.childSessionId, parentSessionId);
+            }
+            if (parents.get(delegation.childSessionId) !== parentSessionId) continue;
+            next.add(delegation.childSessionId);
+            const previous = result.get(delegation.childSessionId);
+            const childSession = sessionsById.get(delegation.childSessionId);
+            const childRole = readString(nativeCodexAgent(childSession), "agentRole");
+            const configuredNativeRole = childRole ? agentIdFromText([childRole], input.agents) : null;
+            const markedRole = delegation.prompt ? markedProjectAgentId(delegation.prompt) : null;
+            const configuredMarkedRole = input.agents.find((agent) => agent.id === markedRole)?.id;
+            const nativeAgentId = delegation.nativeActivity
+              ? delegation.description?.split("/").reverse().map((segment) => {
+                const role = segment.replace(/^ipw-[a-zA-Z0-9_-]+\./u, "");
+                return input.agents.find((agent) => role === agent.id || role.startsWith(`${agent.id}__`))?.id;
+              }).find(Boolean)
+              : null;
+            const agentId = configuredMarkedRole ?? configuredNativeRole ?? (delegation.nativeActivity
+              ? input.agents.find((agent) => agent.id === nativeAgentId)?.id
+              : agentIdFromText([delegation.description, delegation.prompt], input.agents)) ?? previous?.agentId ?? null;
             result.set(delegation.childSessionId, {
               agentId,
-              description: delegation.description,
-              status: delegation.status,
+              description: delegation.description ?? previous?.description ?? null,
+              status: delegation.status === "unknown" ? previous?.status ?? "unknown" : delegation.status,
             });
           }
         }
+      } catch {
+        // Engines without task-message history still contribute to the project total.
+        // Their usage remains explicitly unattributed instead of being guessed.
       }
-    } catch {
-      // Engines without task-message history still contribute to the project total.
-      // Their usage remains explicitly unattributed instead of being guessed.
-    }
-  });
-  return result;
+    });
+    frontier = [...next].filter((sessionId) => !visited.has(sessionId));
+  }
+  return { agents: result, parents };
 }
 
 export async function loadProjectRuntimeMetrics(input: {
@@ -257,7 +327,7 @@ export async function loadProjectRuntimeMetrics(input: {
   agents: ProjectAgent[];
   items: WorkItem[];
 }): Promise<ProjectRuntimeMetrics> {
-  const sessions = (await input.client.listSessions(input.workspaceId)).items;
+  const sessions = [...new Map((await input.client.listSessions(input.workspaceId)).items.map(session => [session.id, session])).values()];
   const agents = emptyAgentUsage(input.agents);
   const usageByAgent = new Map(agents.map((usage) => [usage.agentId, usage]));
   const executionBySessionId = new Map<string, ProjectExecution>();
@@ -269,6 +339,13 @@ export async function loadProjectRuntimeMetrics(input: {
     }
   }
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+  const delegations = await delegatedAgentIds({
+    client: input.client,
+    workspaceId: input.workspaceId,
+    sessions,
+    rootSessionIds: new Set(executionBySessionId.keys()),
+    agents: input.agents,
+  });
   const rootExecutionCache = new Map<string, ProjectExecution | null>();
   const rootExecutionForSession = (sessionId: string): ProjectExecution | null => {
     const cached = rootExecutionCache.get(sessionId);
@@ -282,7 +359,7 @@ export async function loadProjectRuntimeMetrics(input: {
         for (const visitedId of visited) rootExecutionCache.set(visitedId, execution);
         return execution;
       }
-      currentId = sessionsById.get(currentId)?.parentID;
+      currentId = delegations.parents.get(currentId);
     }
     for (const visitedId of visited) rootExecutionCache.set(visitedId, null);
     return null;
@@ -291,26 +368,18 @@ export async function loadProjectRuntimeMetrics(input: {
     const execution = rootExecutionForSession(session.id);
     return execution ? [{ execution, session }] : [];
   });
-  const projectSessionIds = new Set(projectSessions.map(({ session }) => session.id));
-  const delegatedAgents = await delegatedAgentIds({
-    client: input.client,
-    workspaceId: input.workspaceId,
-    sessions,
-    projectSessionIds,
-    agents: input.agents,
-  });
   let totalTokens = 0;
   let attributedTokens = 0;
-  let unattributedConversationCount = 0;
   let meteredConversationCount = 0;
   const executionRecords: ProjectRuntimeExecutionRecord[] = [];
+  const sessionUsage: ProjectRuntimeMetrics["sessionUsage"] = [];
 
   for (const { execution, session } of projectSessions) {
     const rootSession = execution.sessionId === session.id;
-    const delegatedAgent = delegatedAgents.get(session.id);
+    const delegatedAgent = delegations.agents.get(session.id);
     const agentId = rootSession
       ? execution.agent.id
-      : delegatedAgent?.agentId ?? agentIdFromSession(session, input.agents);
+      : delegatedAgent ? delegatedAgent.agentId : agentIdFromSession(session, input.agents);
     const agentUsage = agentId ? usageByAgent.get(agentId) : undefined;
     if (agentUsage) {
       agentUsage.conversationCount += 1;
@@ -326,11 +395,15 @@ export async function loadProjectRuntimeMetrics(input: {
       if (!rootSession && delegatedAgent?.status === "running") agentUsage.executions.running += 1;
       if (!rootSession && delegatedAgent?.status === "completed") agentUsage.executions.completed += 1;
       if (!rootSession && delegatedAgent?.status === "failed") agentUsage.executions.failed += 1;
-    } else {
-      unattributedConversationCount += 1;
     }
     const tokens = sessionTokens(session);
-    if (!rootSession && agentUsage && agentId) {
+    sessionUsage.push({
+      sessionId: session.id,
+      title: delegatedAgent?.description ?? session.title,
+      tokens,
+      isMain: !delegations.parents.has(session.id),
+    });
+    if (!rootSession) {
       const rootTask = workItemBySessionId.get(execution.sessionId);
       executionRecords.push({
         sessionId: session.id,
@@ -338,7 +411,7 @@ export async function loadProjectRuntimeMetrics(input: {
         rootTaskId: rootTask?.id ?? "",
         rootTaskTitle: rootTask?.title ?? "",
         agentId,
-        agentName: input.agents.find((agent) => agent.id === agentId)?.name ?? agentId,
+        agentName: agentId ? input.agents.find((agent) => agent.id === agentId)?.name ?? agentId : null,
         title: delegatedAgent?.description ?? session.title,
         status: delegatedAgent?.status ?? "unknown",
         tokens,
@@ -370,11 +443,12 @@ export async function loadProjectRuntimeMetrics(input: {
     unattributedTokens: unavailable ? null : unattributedTokens,
     status: unavailable
       ? "unavailable"
-      : missingMeterCount > 0 || unattributedConversationCount > 0
+      : missingMeterCount > 0
       ? "partial"
       : "complete",
     unmeteredConversationCount: missingMeterCount,
     agents,
+    sessionUsage: sessionUsage.sort((left, right) => Number(right.isMain) - Number(left.isMain)),
     executionRecords: executionRecords.sort((left, right) => right.updatedAt - left.updatedAt),
   };
 }

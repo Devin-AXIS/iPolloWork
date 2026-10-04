@@ -205,8 +205,13 @@ test("AI bridge accepts only validated selections and builds draft-only prompts"
   assert.equal(selection.locator, '[data-hf-id="headline"]');
   assert.equal(parseHyperframesAskAiMessage({ type: "ipollowork:hyperframes:ask-ai-selection", target: { file: "../secret", hfId: "x" } }), null);
   assert.equal(isVideoStudioHostMessage({ channel: "wrong", type: "ask-video-ai" }), false);
-  assert.match(videoStudioDocumentPrompt("video/session"), /ipollowork_video_validate/);
-  assert.match(videoStudioSelectionPrompt("video/session", selection), /Change only this element/);
+  const documentPrompt = videoStudioDocumentPrompt("video/session");
+  assert.match(documentPrompt, /Read video\/session\/index\.html.*before editing/);
+  assert.match(documentPrompt, /Preserve the composition id, scene timing, editable hierarchy, and unrelated user edits/);
+  assert.match(documentPrompt, /inspect the actual project with the existing media tools and repair discovered defects before returning the result/);
+  const selectionPrompt = videoStudioSelectionPrompt("video/session", selection);
+  assert.match(selectionPrompt, /Change only this element/);
+  assert.match(selectionPrompt, /repair discovered defects within the requested scope/);
 });
 
 test("Harness client validates message source and fills a draft without sending it", async () => {

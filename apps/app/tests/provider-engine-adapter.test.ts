@@ -2268,6 +2268,164 @@ describe("model runtime adapters", () => {
     );
   });
 
+  test.each(["discovery", "credential"])("isolates a failed shared provider %s read and retries without replacing saved state", async (failure) => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const { calls, client } = createOpenCodeProviderClient();
+    const ipolloOSCredentialKey = sharedProviderCredentialEnvKey("ipolloos");
+    const ipolloOSProfileKey = sharedProviderProfileEnvKey("ipolloos");
+    const savedProfile = JSON.stringify({
+      schemaVersion: 1,
+      providerId: "ipolloos",
+      displayName: "iPolloOS 本地模型",
+      api: "openai-completions",
+      baseURL: "http://127.0.0.1:4318/v1",
+      models: [{ id: "saved-only:latest", name: "Saved model", contextWindow: 4096, maxTokens: 512 }],
+    });
+    const values = new Map([
+      [ipolloOSCredentialKey, "saved-ipolloos-key"],
+      [ipolloOSProfileKey, savedProfile],
+      [sharedProviderCredentialEnvKey("healthy-compatible"), "healthy-key"],
+      [sharedProviderProfileEnvKey("healthy-compatible"), JSON.stringify({
+        schemaVersion: 1,
+        providerId: "healthy-compatible",
+        displayName: "Healthy provider",
+        api: "openai-completions",
+        baseURL: "https://healthy.example/v1",
+        models: [{ id: "healthy-chat", name: "Healthy chat", contextWindow: 8192, maxTokens: 1024 }],
+      })],
+    ]);
+    const savedRuntimeProvider = {
+      npm: "@ai-sdk/openai-compatible",
+      name: "iPolloOS 本地模型",
+      options: { baseURL: "http://127.0.0.1:4318/v1" },
+      models: { "saved-only:latest": { name: "Saved model", contextWindow: 4096, maxTokens: 512 } },
+    };
+    const runtimeProviders: Record<string, unknown> = { ipolloos: savedRuntimeProvider };
+    const runtimePatches: unknown[] = [];
+    const envWrites: Array<{ key: string; value: string }> = [];
+    const deletedEnvKeys: string[] = [];
+    const desktopCalls: unknown[][] = [];
+    let unavailable = true;
+    Object.defineProperty(globalThis, "window", { configurable: true, value: {
+      __IPOLLOWORK_ELECTRON__: { invokeDesktop: async (command: string, ...args: unknown[]) => {
+        desktopCalls.push([command, ...args]);
+        if (command !== "__fetch") throw new Error(`Unexpected desktop command: ${command}`);
+        if (unavailable) throw new Error("ECONNREFUSED 127.0.0.1:4318");
+        return { status: 200, statusText: "OK", headers: [], body: JSON.stringify({ data: [{
+          id: "actual-chat:latest", name: "Actual chat", context_length: 8192, capabilities: ["completion", "tools"],
+        }] }) };
+      } },
+    } });
+    const serverClient = {
+      listUserEnvKeys: async () => ({ keys: [...values.keys()] }),
+      getUserEnv: async (key: string) => {
+        if (unavailable && failure === "credential" && key === ipolloOSCredentialKey) {
+          throw new Error("Credential store temporarily unavailable");
+        }
+        return { item: { key, value: values.get(key) ?? "" } };
+      },
+      getConfig: async () => ({ opencode: { provider: runtimeProviders } }),
+      patchConfig: async (_workspaceId: string, patch: { opencode?: { provider?: Record<string, unknown> } }) => {
+        runtimePatches.push(patch);
+        Object.assign(runtimeProviders, patch.opencode?.provider);
+        return { ok: true };
+      },
+      reloadEngine: async () => ({ ok: true }),
+      upsertUserEnv: async (entries: Array<{ key: string; value: string }>) => {
+        envWrites.push(...entries);
+        for (const entry of entries) values.set(entry.key, entry.value);
+        return { updated: entries.map((entry) => entry.key) };
+      },
+      deleteUserEnv: async (key: string) => {
+        deletedEnvKeys.push(key);
+        values.delete(key);
+        return { deleted: [key] };
+      },
+    };
+    let providers: ProviderListItem[] = [];
+    let connectedProviderIds: string[] = [];
+    const workspaceId = `workspace-shared-import-${failure}-recovery`;
+    const workspaceRoot = `/shared-import-${failure}-recovery`;
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => ({ opencode: "default-model" }),
+      providerConnectedIds: () => connectedProviderIds,
+      disabledProviders: () => [],
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: workspaceId, name: "Provider recovery", path: workspaceRoot,
+        preset: "starter", workspaceType: "local", engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => `http://localhost/provider-${failure}-recovery`,
+      selectedWorkspaceRoot: () => workspaceRoot,
+      runtimeWorkspaceId: () => workspaceId,
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { connectedProviderIds = value; },
+      setDisabledProviders: () => {},
+      markEngineConfigReloadRequired: () => {},
+    });
+    try {
+      await store.refreshProviders({ force: true });
+
+      expect(runtimePatches).toEqual([{ opencode: { provider: { "healthy-compatible": {
+        npm: "@ai-sdk/openai-compatible",
+        name: "Healthy provider",
+        options: { baseURL: "https://healthy.example/v1" },
+        models: { "healthy-chat": { name: "Healthy chat", contextWindow: 8192, maxTokens: 1024 } },
+      } } } }]);
+      expect(calls.filter((call) => call.name === "set").map((call) => call.value)).toEqual([
+        { providerID: "healthy-compatible", auth: { type: "api", key: "healthy-key" } },
+      ]);
+      expect(runtimeProviders.ipolloos).toEqual(savedRuntimeProvider);
+      expect(values.get(ipolloOSCredentialKey)).toBe("saved-ipolloos-key");
+      expect(values.get(ipolloOSProfileKey)).toBe(savedProfile);
+      expect(envWrites.filter((entry) => entry.key === ipolloOSCredentialKey || entry.key === ipolloOSProfileKey)).toEqual([]);
+      expect(deletedEnvKeys).toEqual([]);
+      expect(calls.filter((call) => call.name === "remove")).toEqual([]);
+      expect(desktopCalls).toHaveLength(failure === "discovery" ? 1 : 0);
+      expect(store.getSnapshot().connectedProviderIds).toContain("healthy-compatible");
+
+      unavailable = false;
+      await store.refreshProviders({ force: true });
+
+      expect(desktopCalls.at(-1)).toEqual(["__fetch", "http://127.0.0.1:4318/v1/models", {
+        method: undefined, headers: { authorization: "Bearer saved-ipolloos-key" },
+        body: undefined, timeoutMs: 20000, responseType: "text",
+      }]);
+      expect(runtimeProviders.ipolloos).toEqual({
+        npm: "@ai-sdk/openai-compatible",
+        name: "iPolloOS 本地模型",
+        options: { baseURL: "http://127.0.0.1:4318/v1" },
+        models: { "actual-chat:latest": { name: "Actual chat", tool_call: true, limit: { context: 8192, output: 1024 } } },
+      });
+      expect(calls.filter((call) => call.name === "set").map((call) => call.value)).toEqual([
+        { providerID: "healthy-compatible", auth: { type: "api", key: "healthy-key" } },
+        { providerID: "ipolloos", auth: { type: "api", key: "saved-ipolloos-key" } },
+      ]);
+      expect(parseSharedProviderProfile(values.get(ipolloOSProfileKey) ?? "")?.models).toEqual([
+        { id: "actual-chat:latest", name: "Actual chat", contextWindow: 8192, maxTokens: 1024 },
+      ]);
+      expect(values.get(ipolloOSCredentialKey)).toBe("saved-ipolloos-key");
+      expect(deletedEnvKeys).toEqual([]);
+    } finally {
+      store.dispose();
+      queryClient.clear();
+      if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
   test("imports only OpenAI after DeepSeek is already synchronized", async () => {
     const queryClient = getReactQueryClient();
     queryClient.clear();
@@ -2624,5 +2782,19 @@ describe("model runtime adapters", () => {
     ]);
     expect(calls).toContainEqual({ name: "remove", value: { providerID: "minimax" } });
     expect(connectedIds).not.toContain("minimax");
+  });
+});
+
+import { ipolloOSRuntimeModels } from "../src/react-app/domains/connections/provider-auth/ipolloos-provider";
+test("iPolloOS discovers only actual models and retains runtime limits and tools", () => {
+  expect(ipolloOSRuntimeModels({ data: [{ id: "qwen3:8b", name: "Qwen3 8B", context_length: 8192, capabilities: ["tools"] }] })).toEqual({
+    "qwen3:8b": { name: "Qwen3 8B", tool_call: true, limit: { context: 8192, output: 1024 } },
+  });
+  expect(() => ipolloOSRuntimeModels({ data: [] })).toThrow("启动一个模型");
+  expect(() => ipolloOSRuntimeModels(null)).toThrow("无效");
+});
+test("iPolloOS language channel excludes embedding-only models", () => {
+  expect(ipolloOSRuntimeModels({ data: [{ id: "vectors:latest", capabilities: ["embedding"] }, { id: "chat:latest", capabilities: ["completion", "tools"] }] })).toEqual({
+    "chat:latest": { name: "chat:latest", tool_call: true, limit: { context: 4096, output: 512 } },
   });
 });

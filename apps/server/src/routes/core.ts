@@ -9,12 +9,15 @@ import {
   type ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
 import {
+  conversationWorkflowUpdateSchema,
+  workTemplateSaveSchema,
   workItemAutomationRecurrenceSchema,
   workItemPrioritySchema,
   type WorkItemAutomation,
   type WorkItemCreateInput,
   type WorkItemPriority,
 } from "@ipollowork/types/work-items";
+import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import { z } from "zod";
 import { recordAudit } from "../audit.js";
@@ -35,9 +38,12 @@ import {
   ENGINE_HOST_TOOL_NAMES,
   consequentialBrowserControlNames,
   engineHostTool,
+  listMotionPresetsArgsSchema,
+  mutateMotionArgsSchema,
   type EngineHostToolName,
 } from "../engine-host-tools.js";
 import { ApiError } from "../errors.js";
+import { readProjectSessionWorkItem, listWorkTemplates, writeConversationWorkflow, saveWorkTemplate, WorkItemConflictError } from "../work-items.js";
 import {
   createGoogleWorkspaceConnectFlowManager,
   googleWorkspaceDisconnect,
@@ -96,6 +102,7 @@ interface RegisterCoreRoutesOptions {
   resolveDevLogPath: () => string | null;
   createOpenAiRealtimeVoiceSession: (env: EnvService, input: unknown) => Promise<unknown>;
   resolveEngineSessionContext?: (workspaceId: string) => string | null;
+  resolveEngineArtifactSessionId?: (workspace: WorkspaceInfo, sessionId: string) => Promise<string>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -208,6 +215,23 @@ export function engineCallContext(
   return { ...context, sessionId: fallbackValue };
 }
 
+function requiresConversationIdentity(name: string): boolean {
+  return name === ENGINE_HOST_TOOL_NAMES.conversationRead
+    || name === ENGINE_HOST_TOOL_NAMES.conversationApply
+    || name === ENGINE_HOST_TOOL_NAMES.workTemplateSave
+    || name === ENGINE_HOST_TOOL_NAMES.listMotionPresets
+    || name === ENGINE_HOST_TOOL_NAMES.mutateMotion;
+}
+
+async function conversationToolMutation<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof WorkItemConflictError) throw new ApiError(409, "work_item_conflict", error.message);
+    throw error;
+  }
+}
+
 async function executeUiControlAction(actionId: string, args: Record<string, unknown>): Promise<unknown> {
   const response = await uiControlRequest("/execute", {
     method: "POST",
@@ -253,6 +277,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     resolveDevLogPath,
     createOpenAiRealtimeVoiceSession,
     resolveEngineSessionContext,
+    resolveEngineArtifactSessionId,
   } = options;
   const googleWorkspaceConnectFlows = createGoogleWorkspaceConnectFlowManager(config);
   const envPendingChangesByRuntime = new Map<string, boolean>();
@@ -265,7 +290,16 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     }
     const extensionId = typeof body.extensionId === "string" ? body.extensionId.trim() : "";
     const actionId = typeof body.action === "string" ? body.action.trim() : "";
-    const context = isRecord(body.context) ? body.context : {};
+    let context = isRecord(body.context) ? body.context : {};
+    if (resolveEngineArtifactSessionId && ["media", "openai-image-generation", "video-generation"].includes(extensionId)
+      && typeof context.sessionId === "string" && context.sessionId) {
+      const workspace = findWorkspaceForContext(config.workspaces, context);
+      if (workspace) {
+        const sessionId = await resolveEngineArtifactSessionId(workspace, context.sessionId);
+        context = { ...context, sessionId };
+        body = { ...body, context };
+      }
+    }
     const connectSnapshot = await getConnectSnapshot(config);
     const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
       .find((action) => action.extensionId === extensionId && action.action === actionId);
@@ -333,6 +367,47 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     args: Record<string, unknown>,
     context: Record<string, unknown>,
   ) => Promise<unknown>;
+  const engineToolSessionContext = (
+    args: Record<string, unknown>,
+    context: Record<string, unknown>,
+  ): Record<string, unknown> => {
+    const requestedSessionId = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
+    const contextSessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+    if (requestedSessionId && contextSessionId && requestedSessionId !== contextSessionId) {
+      throw new ApiError(403, "engine_tool_session_mismatch", "An engine host tool cannot access another conversation");
+    }
+    const sessionId = contextSessionId || requestedSessionId;
+    return sessionId ? { ...context, sessionId } : context;
+  };
+
+  const callVideoStudioMotion = async (
+    workspace: WorkspaceInfo,
+    sessionId: string | undefined,
+    path: (artifactSessionId: string) => string,
+    body?: Record<string, unknown>,
+  ): Promise<unknown> => {
+    if (!sessionId) {
+      throw new ApiError(400, "video_session_required", `Video motion tools require an active conversation in ${workspace.name}`);
+    }
+    sessionId = await resolveEngineArtifactSessionId?.(workspace, sessionId) ?? sessionId;
+    const response = await fetch(`http://127.0.0.1:${hyperframesStudioPort(sessionId)}/api${path(sessionId)}`, {
+      method: body ? "POST" : "GET",
+      signal: AbortSignal.timeout(15_000),
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    }).catch(() => {
+      throw new ApiError(503, "video_studio_unavailable", "The current conversation's Video Studio is not available");
+    });
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = isRecord(payload) && typeof payload.message === "string"
+        ? payload.message
+        : "Video Studio motion request failed";
+      throw new ApiError(502, "video_studio_motion_failed", message);
+    }
+    return payload;
+  };
+
   const engineHostToolHandlers = {
     [ENGINE_HOST_TOOL_NAMES.extensionListActions]: async (_ctx, args, context) => {
       const extensionId = typeof args.extensionId === "string" ? args.extensionId.trim() : "";
@@ -348,9 +423,48 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       args: isRecord(args.args) ? args.args : {},
       context,
     }),
-    [ENGINE_HOST_TOOL_NAMES.projectRead]: async (_ctx, _args, context) => {
+    [ENGINE_HOST_TOOL_NAMES.conversationRead]: async (_ctx, _args, context) => {
       const workspace = await resolveEngineToolWorkspace(context);
-      requireProjectBuilderSession(workspace, context);
+      const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+      if (!sessionId) throw new ApiError(400, "conversation_context_missing", "This tool requires the current conversation identity");
+      const item = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+      if (!item?.execution) throw new ApiError(404, "conversation_binding_missing", "The current conversation has no execution binding");
+      const { templates } = await listWorkTemplates(config, workspace);
+      return { ok: true, item, templates: templates.map(({ id, name, description, workKind, version }) => ({ id, name, description, workKind, version })) };
+    },
+    [ENGINE_HOST_TOOL_NAMES.conversationApply]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") throw new ApiError(403, "forbidden", "Viewer tokens cannot update conversation work");
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+      if (!sessionId) throw new ApiError(400, "conversation_context_missing", "This tool requires the current conversation identity");
+      const current = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+      if (!current?.execution) throw new ApiError(404, "conversation_binding_missing", "The current conversation has no execution binding");
+      if (args.runtime !== undefined) throw new ApiError(400, "conversation_runtime_fixed", "This tool cannot change the bound execution runtime");
+      const workflow = current.execution.workflow;
+      if (workflow && workflow.source !== "auto" && args.templateId !== undefined && args.templateId !== workflow.templateId) {
+        throw new ApiError(409, "conversation_template_selected", "The user selected this work template. Refine its goals and stages, or ask the user to change the method in the conversation overview.");
+      }
+      const input = conversationWorkflowUpdateSchema.safeParse({ ...args, runtime: current.execution.runtime, source: args.source ?? current.execution.workflow?.source ?? "custom" });
+      if (!input.success) throw new ApiError(400, "invalid_conversation_workflow", input.error.message);
+      const item = await conversationToolMutation(() => writeConversationWorkflow(config, workspace, sessionId, input.data, { allowRunning: true }));
+      return { ok: true, item };
+    },
+    [ENGINE_HOST_TOOL_NAMES.workTemplateSave]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") throw new ApiError(403, "forbidden", "Viewer tokens cannot save work templates");
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+      if (!sessionId) throw new ApiError(400, "conversation_context_missing", "This tool requires the current conversation identity");
+      const input = workTemplateSaveSchema.safeParse({ ...args, sessionId });
+      if (!input.success) throw new ApiError(400, "invalid_work_template", input.error.message);
+      const template = await conversationToolMutation(() => saveWorkTemplate(config, workspace, input.data));
+      return { ok: true, template };
+    },
+    [ENGINE_HOST_TOOL_NAMES.projectRead]: async (_ctx, args, context) => {
+      const scopedContext = engineToolSessionContext(args, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      requireProjectBuilderSession(workspace, scopedContext);
       const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
       const parsed = projectWorkspaceConfigSchema.safeParse(stored.project);
       return {
@@ -365,8 +479,9 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         throw new ApiError(403, "forbidden", "Viewer tokens cannot change a project configuration");
       }
       ensureWritable(config);
-      const workspace = await resolveEngineToolWorkspace(context);
-      requireProjectBuilderSession(workspace, context);
+      const scopedContext = engineToolSessionContext(args, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      requireProjectBuilderSession(workspace, scopedContext);
       const parsed = projectWorkspaceConfigSchema.safeParse(args.config);
       if (!parsed.success) {
         throw new ApiError(400, "invalid_project_config", "Project Builder produced an invalid project configuration", {
@@ -507,6 +622,43 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         timestamp: Date.now(),
       });
       return { ok: true, previewId, workspaceId: workspace.id, items };
+    },
+    [ENGINE_HOST_TOOL_NAMES.listMotionPresets]: async (_ctx, args, context) => {
+      const parsed = listMotionPresetsArgsSchema.safeParse(args);
+      if (!parsed.success) throw new ApiError(400, "invalid_motion_arguments", "Invalid Video Studio motion preset filters");
+      const scopedContext = engineToolSessionContext(parsed.data, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      const sessionId = typeof scopedContext.sessionId === "string" ? scopedContext.sessionId : undefined;
+      const query = new URLSearchParams({ targetKind: parsed.data.targetKind });
+      if (parsed.data.phase) query.set("phase", parsed.data.phase);
+      if (parsed.data.intent) query.set("intent", parsed.data.intent);
+      if (parsed.data.tone) query.set("tone", parsed.data.tone);
+      return callVideoStudioMotion(
+        workspace,
+        sessionId,
+        (artifactSessionId) => `/projects/${encodeURIComponent(videoProjectId(artifactSessionId))}/motion-presets?${query.toString()}`,
+      );
+    },
+    [ENGINE_HOST_TOOL_NAMES.mutateMotion]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") throw new ApiError(403, "forbidden", "Viewer tokens cannot edit video motion");
+      ensureWritable(config);
+      const parsed = mutateMotionArgsSchema.safeParse(args);
+      if (!parsed.success) throw new ApiError(400, "invalid_motion_arguments", "Invalid Video Studio motion mutation");
+      const scopedContext = engineToolSessionContext(parsed.data, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      const { sessionId: requestedSessionId, ...mutation } = parsed.data;
+      const sessionId = typeof scopedContext.sessionId === "string" ? scopedContext.sessionId : requestedSessionId;
+      return callVideoStudioMotion(
+        workspace,
+        sessionId,
+        (artifactSessionId) => `/projects/${encodeURIComponent(videoProjectId(artifactSessionId))}/gsap-mutations/index.html`,
+        {
+          type: "mutate-motion",
+          ...mutation,
+          targetKind: parsed.data.targetKind,
+          elementId: mutation.targetSelector.startsWith("#") ? mutation.targetSelector.slice(1) : undefined,
+        },
+      );
     },
     [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: async () => uiControlRequest("/execute", {
       method: "POST",
@@ -738,7 +890,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       // Keep it request-scoped so concurrent manual and scheduled sessions cannot share a lease.
       const sessionId = engineMcpSessionId(
         request.params._meta ?? extra._meta,
-        resolveEngineSessionContext?.(workspaceId) ?? null,
+        requiresConversationIdentity(descriptor.name) ? null : resolveEngineSessionContext?.(workspaceId) ?? null,
       );
       const value = await engineHostToolHandlers[descriptor.name](ctx, args, {
         workspaceId,
@@ -1022,7 +1174,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     const workspace = findWorkspaceForContext(config.workspaces, inputContext);
     const context = engineCallContext(
       inputContext,
-      workspace ? resolveEngineSessionContext?.(workspace.id) ?? null : null,
+      workspace && !requiresConversationIdentity(name) ? resolveEngineSessionContext?.(workspace.id) ?? null : null,
     );
     const descriptor = engineHostTool(name);
     if (!descriptor) {

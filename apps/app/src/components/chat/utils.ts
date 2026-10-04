@@ -451,9 +451,24 @@ export interface AssistantRenderSections {
 
 export function getAssistantRenderGroups(
   parts: UIMessage["parts"],
-  showThinking: boolean
+  showThinking: boolean,
+  activityParts: UIMessage["parts"] = parts,
 ): AssistantRenderGroup[] {
-  const filteredParts = parts.filter((part) => showThinking || !isReasoningUIPart(part))
+  const latestNativeActivity = new Map<string, UIMessage["parts"][number]>()
+  for (const part of activityParts) {
+    if (part.type !== "dynamic-tool") continue
+    const metadata = part.callProviderMetadata?.ipollowork
+    if (metadata?.nativeTool === "subAgentActivity" && typeof metadata.sessionId === "string") {
+      latestNativeActivity.set(metadata.sessionId, part)
+    }
+  }
+  const filteredParts = parts.filter((part) => {
+    if (!showThinking && isReasoningUIPart(part)) return false
+    if (part.type !== "dynamic-tool") return true
+    const metadata = part.callProviderMetadata?.ipollowork
+    return metadata?.nativeTool !== "subAgentActivity" || typeof metadata.sessionId !== "string"
+      || latestNativeActivity.get(metadata.sessionId) === part
+  })
   const groups: AssistantRenderGroup[] = []
 
   const appendText = (text: string) => {
@@ -509,7 +524,8 @@ export function getAssistantRenderGroups(
 
     // Intermediate tool failures remain in session history for diagnostics.
     // The conversation shows useful progress and the assistant's final outcome.
-    if (isToolUIPart(part) && part.state !== "output-error") {
+    if (isToolUIPart(part) && (part.state !== "output-error"
+      || (part.type === "dynamic-tool" && part.toolName === "task"))) {
       groups.push({ kind: "tool", part })
     }
   }
