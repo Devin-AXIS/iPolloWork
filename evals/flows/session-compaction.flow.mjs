@@ -16,7 +16,7 @@ async function openHealth(ctx) {
   await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(popup)}))`);
 }
 const popupText = `document.querySelector('${popup}')?.innerText || ''`;
-const screenshot = (name) => ({ name, fromSurface: true, rejectText: ["Something went wrong"] });
+const screenshot = (name, requireText = []) => ({ name, fromSurface: true, requireText, rejectText: ["Something went wrong", "Loading..."] });
 
 export default {
   id: "session-compaction",
@@ -47,7 +47,7 @@ export default {
         assert: async () => {
           await ctx.waitFor(`Boolean(document.querySelector('${compact}') && !document.querySelector('${compact}').disabled)`);
           ctx.assert(/Current context|当前上下文/.test(await ctx.eval(popupText)), "Context details are visible.");
-        }, screenshot: screenshot("available"),
+        }, screenshot: screenshot("available", ["当前上下文", "压缩会话"]),
       });
       await ctx.prove("Native compaction locks duplicate compaction and sending until completion", {
         voiceover: vo[1],
@@ -58,7 +58,7 @@ export default {
         assert: async () => {
           ctx.assert(await ctx.eval(`document.querySelector('${compact}')?.disabled === true`), "Duplicate compaction disabled.");
           ctx.assert(await ctx.eval(`Array.from(document.querySelectorAll('button')).filter(e => /运行任务|Run task/.test(e.getAttribute('title') || '')).every(e => e.disabled)`), "Composer cannot send during compaction.");
-        }, screenshot: screenshot("running"),
+        }, screenshot: screenshot("running", ["正在压缩"]),
       });
       await ctx.prove("Completed native summary refreshes context without a synthetic user command", {
         voiceover: vo[2],
@@ -68,7 +68,7 @@ export default {
           ctx.assert(!await ctx.eval(`Array.from(document.querySelectorAll('[data-message-role=user]')).some(e => e.innerText.trim() === '/compact')`), "Native command is not added as a user prompt.");
           const state = await (await fetch(fixture.fixtureStateUrl)).json();
           ctx.assert(state.compactions > 0, "Actual native compaction called the local model.");
-        }, screenshot: screenshot("complete"),
+        }, screenshot: screenshot("complete", ["会话压缩完成"]),
       });
       await ctx.prove("A follow-up runs normally and blocks compaction while busy", {
         voiceover: vo[3],
@@ -82,15 +82,16 @@ export default {
           await ctx.waitFor(`document.querySelector('${compact}')?.disabled === true`);
         },
         assert: async () => { ctx.assert(/等待当前任务|Wait for the current task/.test(await ctx.eval(popupText)), "Busy reason is visible."); },
-        screenshot: screenshot("task-busy"),
+        screenshot: screenshot("task-busy", ["等待当前任务"]),
       });
       await ctx.prove("Native conversation continues and survives reopening", {
         voiceover: vo[4],
         action: async () => {
           await ctx.waitFor(`Array.from(document.querySelectorAll('[data-message-role=assistant]')).at(-1)?.innerText.includes(${JSON.stringify(fixture.expectedContinuityAnswer)})`, { timeoutMs: 30_000 });
           await ctx.waitFor(`document.querySelector('${compact}')?.disabled === false`);
-          await ctx.eval("location.reload()");
-          await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
+          await ctx.eval("window.__compactionProofReloading = true; location.reload()");
+          await ctx.waitFor("window.__compactionProofReloading !== true && Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
+          await ctx.waitFor("!document.querySelector('[data-testid=startup-logo-animation]')", { timeoutMs: 60_000 });
           await ctx.waitFor(`Boolean(document.querySelector('${health}'))`);
         },
         assert: async () => {
@@ -98,7 +99,7 @@ export default {
           await ctx.waitFor(`Array.from(document.querySelectorAll('[data-message-role=assistant]')).at(-1)?.innerText.includes(${JSON.stringify(fixture.expectedContinuityAnswer)})`);
           const state = await (await fetch(fixture.fixtureStateUrl)).json();
           ctx.assert(state.lastOrdinaryRequestSawCheckpoint && state.lastOrdinaryRequestSawKnownFact, "Native follow-up carries the saved compaction checkpoint and known fact.");
-        }, screenshot: screenshot("continued-and-reopened"),
+        }, screenshot: screenshot("continued-and-reopened", [fixture.expectedContinuityAnswer]),
       });
       await ctx.prove("Native summary failure shows error and releases the control", {
         voiceover: vo[5],
@@ -111,7 +112,7 @@ export default {
         assert: async () => {
           ctx.assert(await ctx.eval(`document.querySelector('${compact}')?.disabled === false`), "Control released after failure.");
           ctx.assert(!/会话压缩完成|compaction completed/i.test(await ctx.eval(popupText)), "Failure is not shown as success.");
-        }, screenshot: screenshot("failed"),
+        }, screenshot: screenshot("failed", ["会话压缩失败"]),
       });
       await ctx.prove("Unsupported DSH preset explains capability instead of offering a broken action", {
         voiceover: vo[6],
@@ -119,7 +120,7 @@ export default {
         assert: async () => {
           ctx.assert(!await ctx.eval(`Boolean(document.querySelector('${compact}'))`), "Unsupported session has no compaction action.");
           ctx.assert(/不支持压缩|does not support compaction/.test(await ctx.eval(popupText)), "Unsupported explanation is visible.");
-        }, screenshot: screenshot("unsupported"),
+        }, screenshot: screenshot("unsupported", ["不支持压缩"]),
       });
       await ctx.prove("OpenCode automatic setting is scoped and survives reopen", {
         voiceover: vo[7],
@@ -137,15 +138,16 @@ export default {
           await ctx.waitFor(`document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-checked') === 'true' && !document.querySelector(${JSON.stringify(selector)}).matches('[data-disabled], [aria-disabled=true]')`);
           await ctx.eval(`document.querySelector(${JSON.stringify(selector)}).click()`);
           await ctx.waitFor(`document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-checked') === 'false' && !document.querySelector(${JSON.stringify(selector)}).matches('[data-disabled], [aria-disabled=true]')`);
-          await ctx.eval("location.reload()");
-          await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
+          await ctx.eval("window.__compactionProofReloading = true; location.reload()");
+          await ctx.waitFor("window.__compactionProofReloading !== true && Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000 });
+          await ctx.waitFor("!document.querySelector('[data-testid=startup-logo-animation]')", { timeoutMs: 60_000 });
           await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(selector)}) && !document.querySelector(${JSON.stringify(selector)}).matches('[data-disabled], [aria-disabled=true]') && document.querySelector(${JSON.stringify(selector)}).getAttribute('aria-checked') === 'false')`);
         },
         assert: async () => {
           ctx.assert(await ctx.eval(`document.querySelector('[role=switch][aria-label="自动上下文压缩"], [role=switch][aria-label="Auto context compaction"]')?.getAttribute('aria-checked') === 'false'`), "Saved switch state restored.");
           const saved = await (await fetch(`${fixture.baseUrl}/workspace/${fixture.openCodeWorkspaceId}/config`, { headers: { authorization: `Bearer ${fixture.token}` } })).json();
           ctx.assert(saved.opencode?.compaction?.auto === false, "Server saved OpenCode auto:false.");
-        }, screenshot: screenshot("settings-persisted"),
+        }, screenshot: screenshot("settings-persisted", ["自动上下文压缩"]),
       });
     },
   }],
