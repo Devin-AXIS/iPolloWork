@@ -10,6 +10,8 @@ type OpenCodeToolContext = {
 const toolNames = [
   ENGINE_HOST_TOOL_NAMES.extensionListActions,
   ENGINE_HOST_TOOL_NAMES.extensionCall,
+  ENGINE_HOST_TOOL_NAMES.browserListTabs,
+  ENGINE_HOST_TOOL_NAMES.browserDecide,
   ENGINE_HOST_TOOL_NAMES.browserOpenUrl,
   ENGINE_HOST_TOOL_NAMES.browserSnapshot,
   ENGINE_HOST_TOOL_NAMES.browserRead,

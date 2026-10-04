@@ -26,15 +26,26 @@ export function useSidePanelTabs(sessionId: string) {
     }
 
     const unsub = browser.onStateChange?.(applyBrowserState);
+    let mounted = true;
 
     void browser.getState?.().then((browserState) => {
-      if (browserState) {
-        applyBrowserState(browserState);
+      if (!mounted || !browserState) return;
+      const store = usePanelTabStore.getState();
+      const session = store.sessions[sessionId];
+      const selected = session?.tabs.find((tab) => tab.id === session.activeTabId);
+      applyBrowserState(browserState);
+      // Restore this conversation once; ordinary native state updates stay passive.
+      if (selected?.type === "browser" && browserState.tabs?.some((tab) => tab.id === selected.id)) {
+        store.selectTab(sessionId, selected.id);
+        if (browserState.activeTabId !== selected.id) void browser.selectTab?.(selected.id);
       }
     });
 
-    return unsub;
-  }, [applyBrowserState]);
+    return () => {
+      mounted = false;
+      unsub?.();
+    };
+  }, [applyBrowserState, sessionId]);
 
   const createTab = useCreateTab(sessionId);
 

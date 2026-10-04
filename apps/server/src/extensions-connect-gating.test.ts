@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES, ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { installPluginPackage } from "./plugin-package-lifecycle.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 import { engineBrowserTaskId, engineCallContext, engineMcpSessionId } from "./routes/core.js";
@@ -23,7 +24,9 @@ test("browser host policy identifies only consequential verified activations", (
     { type: "click", ref: "@e4", expectedName: "Delete post" },
     { type: "press", key: "Enter", ref: "@e5", expectedName: "Submit" },
     { type: "check", ref: "@e6", expectedName: "Authorize access", checked: true },
-  ])).toEqual(["确认发布", "Delete post", "Submit", "Authorize access"]);
+    { type: "click", target: { role: "button", name: "Pay now" } },
+    { type: "click", expectedName: "Preview", target: { role: "button", name: "Delete account" } },
+  ])).toEqual(["确认发布", "Delete post", "Submit", "Authorize access", "Pay now", "Delete account"]);
 });
 
 test("browser host action schema exposes one complete semantic action set", () => {
@@ -282,6 +285,140 @@ afterEach(async () => {
 });
 
 describe("extension and engine host tool gating", () => {
+  test("keeps JEV lazy and optional, chooses an indexed candidate through the installed extension and falls back on failure", async () => {
+    const { base, config } = await boot();
+    const root = config.workspaces[0].path;
+    const packageRoot = join(root, "jev-package");
+    await mkdir(join(packageRoot, "service"), { recursive: true });
+    await writeFile(join(packageRoot, "service/decision.mjs"), `
+      export default async function () {
+        Reflect.set(globalThis, 'browser-jev-test-loads', Number(Reflect.get(globalThis, 'browser-jev-test-loads') || 0) + 1);
+        return { actions: { evaluate: async args => {
+          Reflect.set(globalThis, 'browser-jev-test-input', args);
+          const hook = Reflect.get(globalThis, 'browser-jev-test-hook');
+          if (typeof hook === 'function') await hook();
+          if (args.state.goal.startsWith('fail')) throw new Error('offline');
+          return { answers: { action: { choice: 'a1', confidence: 0.9 } } };
+        } } };
+      }
+    `);
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
+      schemaVersion: 2, id: "jev-decision-model", name: "JEV test adapter", description: "Offline transport fixture, no model request",
+      source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+      package: { version: "1.0.0", updateId: "fixture/browser-jev" }, defaultEnabled: true,
+      resources: [{ type: "local-service", id: "decision", path: "service/decision.mjs", provides: ["action:evaluate"],
+        actions: [{ id: "evaluate", title: "Choose", description: "Fixture decision", inputSchema: { type: "object", additionalProperties: true } }],
+      }],
+    }));
+    await installPluginPackage({ serverConfig: config, packageRoot });
+    let engine = "agent";
+    let controller = "agent";
+    let closed = false;
+    let reportFails = false;
+    let listFails = false;
+    const requests: Array<Record<string, unknown>> = [];
+    const bridge = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
+      const body: unknown = await request.json();
+      const record = typeof body === "object" && body !== null ? Object.fromEntries(Object.entries(body)) : {};
+      requests.push(record);
+      if (record.actionId === "browser.list_tabs") return listFails
+        ? Response.json({ ok: false, error: "fixture state unavailable" })
+        : Response.json({ ok: true, result: { tabs: closed ? [] : [{ id: "tab-1", controller, decisionEngine: engine }] } });
+      if (record.actionId === "browser.snapshot") return Response.json({ ok: true, result: { snapshotId: "s1", tree: '@e1 button "Preview"' } });
+      if (record.actionId === "browser.report_decision" && reportFails) return Response.json({ ok: false, error: "fixture report unavailable" });
+      return Response.json({ ok: true, result: {} });
+    } });
+    stops.push(() => { bridge.stop(true); });
+    const previousDiscovery = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+    const discovery = join(root, "ui-bridge.json");
+    await writeFile(discovery, JSON.stringify({ baseUrl: `http://127.0.0.1:${bridge.port}`, token: "fixture" }));
+    process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
+    const candidates: Array<Record<string, unknown>> = [
+      { type: "click", target: { role: "button", name: "Preview" } },
+      { type: "fill", target: { role: "textbox", name: "Title" }, value: "draft" },
+    ];
+    const call = async (goal: string, proposed = candidates) => {
+      const response = await fetch(`${base}/engine-tools/call`, { method: "POST", headers: clientJsonHeaders(),
+        body: JSON.stringify({ name: ENGINE_HOST_TOOL_NAMES.browserDecide, args: { tabId: "tab-1", goal, candidates: proposed }, context: { workspaceId: "ws_1", sessionId: "task-a" } }),
+      });
+      expect(response.status).toBe(200);
+      const body: unknown = await response.json();
+      return z.object({ engine: z.string(), status: z.string(), action: z.unknown().optional() }).parse(body);
+    };
+    try {
+      const scopedCall = (name: string, context: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+        method: "POST", headers: clientJsonHeaders(), body: JSON.stringify({ name, context,
+          args: { tabId: "other-task-tab", url: "https://example.com/login", profileId: "account:login", snapshotId: "s1", actions: [{ type: "click", target: { role: "button", name: "Preview" } }] },
+        }),
+      });
+      for (const name of [ENGINE_HOST_TOOL_NAMES.browserListTabs, ENGINE_HOST_TOOL_NAMES.browserDecide, ENGINE_HOST_TOOL_NAMES.browserOpenUrl,
+        ENGINE_HOST_TOOL_NAMES.browserSnapshot, ENGINE_HOST_TOOL_NAMES.browserRead, ENGINE_HOST_TOOL_NAMES.browserScreenshot, ENGINE_HOST_TOOL_NAMES.browserAct]) {
+        const response = await scopedCall(name, {});
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ code: "browser_task_context_missing" });
+      }
+      expect(requests).toEqual([]);
+      expect((await scopedCall(ENGINE_HOST_TOOL_NAMES.browserOpenUrl, { workspaceId: "ws_1" })).status).toBe(200);
+      expect((await scopedCall(ENGINE_HOST_TOOL_NAMES.browserOpenUrl, { directory: root })).status).toBe(200);
+      expect(requests).toHaveLength(2);
+      for (const request of requests) expect(request).toMatchObject({ actionId: "browser.open_url", args: { profileId: "account:login", taskId: "ws_1" } });
+      requests.length = 0;
+      const disabled = await call("preview");
+      expect(disabled).toEqual({ engine: "agent", status: "disabled" });
+      expect(Reflect.get(globalThis, "browser-jev-test-loads")).toBeUndefined();
+      expect(requests.some(request => request.actionId === "browser.snapshot")).toBe(false);
+      engine = "jev";
+      const selected = await call("preview");
+      expect(selected.engine).toBe("jev");
+      expect(selected.action).toEqual(candidates[1]);
+      expect(Reflect.get(globalThis, "browser-jev-test-loads")).toBe(1);
+      expect(requests.every(request => !request.args || Reflect.get(request.args, "taskId") === "task-a")).toBe(true);
+      const fallback = await call("fail");
+      expect(fallback.engine).toBe("agent");
+      expect(fallback.status).toBe("unavailable");
+      expect(requests.some(request => request.actionId === "browser.report_decision" && Reflect.get(request.args ?? {}, "status") === "unavailable")).toBe(true);
+
+      const privateCandidates = [
+        { type: "upload", target: { role: "button", name: "Upload file" }, filePaths: ["/private/account/secret.csv"], extensionId: "private-account" },
+        { type: "fill", target: { role: "textbox", name: "Password" }, value: "fixture-secret-password" },
+        { type: "press", key: "fixture-secret-key-text", ref: "@e1", expectedName: "Preview", text: "fixture-secret-text" },
+      ];
+      const privateSelected = await call("choose target", privateCandidates);
+      expect(privateSelected.action).toEqual(privateCandidates[1]);
+      const remoteInput = Reflect.get(globalThis, "browser-jev-test-input");
+      const remotePayload = JSON.stringify(remoteInput);
+      for (const secret of ["/private/account/secret.csv", "private-account", "fixture-secret-password", "fixture-secret-key-text", "fixture-secret-text"]) expect(remotePayload).not.toContain(secret);
+      expect(remotePayload).toContain('"inputLength":23');
+      expect(remotePayload).toContain('"fileCount":1');
+
+      for (const outcome of ["paused", "disabled", "closed"]) {
+        Reflect.set(globalThis, "browser-jev-test-hook", () => {
+          if (outcome === "paused") controller = "human";
+          if (outcome === "disabled") engine = "agent";
+          if (outcome === "closed") closed = true;
+        });
+        const before = requests.filter(request => request.actionId === "browser.report_decision").length;
+        expect(await call(`fail-${outcome}`)).toMatchObject({ engine: "agent", status: outcome });
+        expect(requests.filter(request => request.actionId === "browser.report_decision")).toHaveLength(before);
+        controller = "agent";
+        engine = "jev";
+        closed = false;
+      }
+      Reflect.deleteProperty(globalThis, "browser-jev-test-hook");
+      reportFails = true;
+      expect(await call("fail-report")).toMatchObject({ engine: "agent", status: "unavailable" });
+      expect(await call("report-success")).toMatchObject({ engine: "jev", status: "ready" });
+      reportFails = false;
+      Reflect.set(globalThis, "browser-jev-test-hook", () => { listFails = true; });
+      expect(await call("fail-state")).toMatchObject({ engine: "agent", status: "unavailable" });
+    } finally {
+      restoreEnv("IPOLLOWORK_UI_CONTROL_DISCOVERY", previousDiscovery);
+      Reflect.deleteProperty(globalThis, "browser-jev-test-loads");
+      Reflect.deleteProperty(globalThis, "browser-jev-test-input");
+      Reflect.deleteProperty(globalThis, "browser-jev-test-hook");
+    }
+  });
+
   test("pauses consequential browser clicks and identifies the requesting session", async () => {
     const { base } = await boot({ approval: { mode: "manual", timeoutMs: 5_000 } });
     const pendingCall = fetch(`${base}/engine-tools/call`, {
@@ -336,6 +473,8 @@ describe("extension and engine host tool gating", () => {
       "ipollowork_schedule_apply",
       "ipollowork_workspace_app_list_tools",
       "ipollowork_workspace_app_call_tool",
+      "ipollowork_browser_list_tabs",
+      "ipollowork_browser_decide",
       "ipollowork_browser_open_url",
       "ipollowork_browser_snapshot",
       "ipollowork_browser_read",
@@ -392,6 +531,8 @@ describe("extension and engine host tool gating", () => {
       "ipollowork_schedule_apply",
       "ipollowork_workspace_app_list_tools",
         "ipollowork_workspace_app_call_tool",
+        "ipollowork_browser_list_tabs",
+        "ipollowork_browser_decide",
         "ipollowork_browser_open_url",
         "ipollowork_browser_snapshot",
         "ipollowork_browser_read",

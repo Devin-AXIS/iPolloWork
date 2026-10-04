@@ -14,6 +14,32 @@
  */
 import type { WorkspaceWire } from "./workspace.js";
 
+export type BrowserController = "agent" | "human";
+export type BrowserDecisionEngine = "agent" | "jev";
+export type BrowserActivity = {
+  status: "idle" | "acting" | "executed" | "verified" | "paused" | "failed";
+  actionCount: number;
+  message?: string;
+};
+
+/** Browser identity is profile-scoped; page control and progress are task-scoped. */
+export type BrowserPanelTab = {
+  id: string;
+  type: "browser";
+  label: string;
+  url: string;
+  sessionId?: string | null;
+  profileId?: string | null;
+  controller?: BrowserController;
+  decisionEngine?: BrowserDecisionEngine;
+  decisionStatus?: "pending" | "ready" | "unavailable";
+  activity?: BrowserActivity;
+  favicon: string | null;
+  status: "loading" | "ready";
+  canGoBack: boolean;
+  canGoForward: boolean;
+};
+
 // ---------------------------------------------------------------------------
 // Payload shapes (moved from apps/app/src/app/lib/desktop-types.ts, which
 // re-exports them — keep that file as the app-side import path).

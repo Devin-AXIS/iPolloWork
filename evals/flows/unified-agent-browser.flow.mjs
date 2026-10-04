@@ -565,7 +565,7 @@ export default {
           assert: async () => {
             ctx.assert(ctx.browser.engineSnapshotStatus === 200, "The shared engine-host route failed.");
             ctx.assert(ctx.browser.engineSnapshot.tabId === ctx.browser.opened.tabId, "The engine route created a separate browser session.");
-            ctx.assert(ctx.browser.engineTools.length === 6, "The shared browser tool catalog is incomplete.");
+            ctx.assert(ctx.browser.engineTools.length === 8, "The shared browser tool catalog is incomplete.");
             ctx.assert(
               refFor(ctx.browser.engineSnapshot.tree, "Post title") === refFor(ctx.browser.snapshot.tree, "Post title"),
               "The engine-host route did not preserve the host-owned stable ref.",

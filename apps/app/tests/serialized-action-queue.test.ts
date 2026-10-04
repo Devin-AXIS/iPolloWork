@@ -2,6 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { SerializedActionQueue } from "../src/react-app/shell/control/serialized-action-queue";
 
 describe("serialized control actions", () => {
+  test("runs different browser tabs independently while serializing the same tab", async () => {
+    const queue = new SerializedActionQueue();
+    const events: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const first = queue.run(async () => { events.push("a:start"); await gate; events.push("a:end"); }, "browser:a");
+    const second = queue.run(async () => { events.push("a:next"); }, "browser:a");
+    await queue.run(async () => { events.push("b:start"); }, "browser:b");
+    expect(events).toEqual(["a:start", "b:start"]);
+    release();
+    await Promise.all([first, second]);
+    expect(events).toEqual(["a:start", "b:start", "a:end", "a:next"]);
+  });
+
   test("runs concurrent callers in arrival order and continues after a failure", async () => {
     const queue = new SerializedActionQueue();
     const events: string[] = [];

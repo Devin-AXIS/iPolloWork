@@ -18,6 +18,7 @@ if (!process.versions.electron) {
       const result = await promisify(execFile)(String(electron), [fileURLToPath(import.meta.url)], { env, windowsHide: true, timeout: 40_000, killSignal: "SIGKILL" });
       assert.match(result.stdout, /browser-profile-checks-passed/);
       assert.match(result.stdout, /web-login-no-client-launch-passed/);
+      assert.match(result.stdout, /background-control-and-verification-passed/);
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 } else {
@@ -28,6 +29,11 @@ if (!process.versions.electron) {
   app.setPath("userData", process.env.IPOLLOWORK_BROWSER_TEST_DATA);
   await app.whenReady();
   const server = createServer((_request, response) => {
+    if (_request.url === '/delayed-redirect') {
+      response.writeHead(302, { Location: '/delayed-page' });
+      response.end();
+      return;
+    }
     if (_request.url === '/login-with-cookie') {
       response.setHeader('Set-Cookie', 'sessionid=scanned-session; Path=/; HttpOnly; SameSite=Lax');
       response.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -271,20 +277,157 @@ if (!process.versions.electron) {
     await call('openUrl', postUrl, { profileId: 'plugin:account-a' });
     await restored;
     assert.equal(window.isMinimized(), false);
+    window.hide();
     await assert.rejects(call("openUrl", url, { profileId: "../shared" }), /Invalid browser profile/);
     await assert.rejects(call("openUrl", url, { profileId: "plugin:account-a", taskId: "../shared" }), /Invalid browser task/);
     assert.equal((await call("state")).tabs.some(tab => tab.id === shared.tabId), true);
+    const userUrl = new URL('/human-tab', url).href;
+    const user = await call('openUrl', userUrl, { taskId: 'user-task', background: true });
+    await call('selectTab', user.tabId);
+    await call('setControl', user.tabId, 'human');
+    const userView = webContents.getAllWebContents().find(item => item.getURL() === userUrl);
+    await userView.executeJavaScript("document.querySelector('#title').focus(); document.querySelector('#title').value='User draft'; true");
+    const redirectUrl = new URL('/delayed-page', url).href;
+    const existingContents = new Set(webContents.getAllWebContents().map(item => item.id));
+    const redirect = await call('createTab', redirectUrl, { sessionId: 'user-task' });
+    const redirectView = webContents.getAllWebContents().find(item => !existingContents.has(item.id));
+    if (redirectView.isLoading()) await once(redirectView, 'did-finish-load');
+    await call('selectTab', user.tabId);
+    await redirectView.loadURL(new URL('/delayed-redirect', url).href);
+    assert.equal(redirectView.getURL(), new URL('/delayed-page', url).href);
+    assert.equal((await call('state')).activeTabId, user.tabId);
+    const agentUrl = new URL('/agent-tab', url).href;
+    const agent = await call('openUrl', agentUrl, { taskId: 'agent-task', background: true });
+    assert.equal((await call('state')).activeTabId, user.tabId);
+    const observed = await call('snapshot', { tabId: agent.tabId, taskId: 'agent-task' });
+    const completed = await call('act', { tabId: agent.tabId, taskId: 'agent-task', snapshotId: observed.snapshotId, actions: [
+      { type: 'fill', target: { role: 'textbox', name: '标题' }, value: '' },
+      { type: 'fill', target: { role: 'textbox', name: '标题' }, value: 'Background draft' },
+      { type: 'click', target: { role: 'button', name: '显示二维码' } },
+    ], expect: { condition: 'text', value: '扫码登录', timeoutMs: 1000 }, observe: { settleMs: 0 } });
+    assert.equal(completed.status, 'verified');
+    assert.equal(completed.results.length, 3);
+    assert.equal((await call('state')).activeTabId, user.tabId);
+    assert.deepEqual(await userView.executeJavaScript("[document.activeElement.id,document.querySelector('#title').value]"), ['title', 'User draft']);
+    const loginProfile = { profileId: 'plugin:foreground-login', taskId: 'agent-login-task' };
+    const loginUrl = new URL('/foreground-login', url).href;
+    const foregroundLogin = await call('openUrl', loginUrl, loginProfile);
+    const loginContents = webContents.getAllWebContents().find(item => item.getURL() === loginUrl);
+    await call('selectTab', user.tabId);
+    window.hide();
+    const reusedLogin = await call('openUrl', loginUrl, { ...loginProfile, background: true });
+    assert.equal(reusedLogin.tabId, foregroundLogin.tabId);
+    const loginSnapshot = await call('snapshot', { tabId: reusedLogin.tabId, taskId: loginProfile.taskId });
+    await call('act', { tabId: reusedLogin.tabId, taskId: loginProfile.taskId, snapshotId: loginSnapshot.snapshotId, actions: [
+      { type: 'fill', target: { role: 'textbox', name: '标题' }, value: 'Reused account draft' },
+    ] });
+    assert.equal((await call('state')).activeTabId, user.tabId);
+    assert.equal(window.isVisible(), false);
+    assert.equal(await loginContents.executeJavaScript("document.querySelector('#title').value"), 'Reused account draft');
+    await call('openUrl', loginUrl, loginProfile);
+    await call('selectTab', user.tabId);
+    window.hide();
+    const shownSnapshot = await call('snapshot', { tabId: reusedLogin.tabId, taskId: loginProfile.taskId });
+    await call('act', { tabId: reusedLogin.tabId, taskId: loginProfile.taskId, snapshotId: shownSnapshot.snapshotId, actions: [
+      { type: 'click', target: { role: 'button', name: '显示二维码' } },
+    ] });
+    assert.equal((await call('state')).activeTabId, user.tabId, 'Showing an agent page preserves its background execution mode');
+    assert.equal(window.isVisible(), false);
+    await call('setControl', reusedLogin.tabId, 'human');
+    await assert.rejects(call('openUrl', new URL('/agent-must-not-navigate', url).href, { ...loginProfile, background: true }), /user control/);
+    assert.equal(loginContents.getURL(), loginUrl);
+    assert.equal(await loginContents.executeJavaScript("document.querySelector('#title').value"), 'Reused account draft');
+    const recoveryProfile = { profileId: 'plugin:recovery-takeover', taskId: 'recovery-task' };
+    const recoveryUrl = new URL('/login-with-cookie', url).href;
+    const recoveryOptions = { origin: new URL(url).origin, loginPath: '/login-with-cookie', authenticatedPath: '/platform/', cookieNames: ['sessionid'] };
+    const recoveryTab = await call('openUrl', recoveryUrl, { ...recoveryProfile, background: true });
+    const recoveryContents = webContents.getAllWebContents().find(item => item.getURL() === recoveryUrl);
+    const cookies = recoveryContents.session.cookies;
+    const originalGetCookies = cookies.get;
+    let cookieReadStarted = () => {};
+    let releaseCookieRead = () => {};
+    let cookieReadFinished = () => {};
+    const holdCookies = () => {
+      const started = new Promise(resolve => { cookieReadStarted = () => resolve(undefined); });
+      const release = new Promise(resolve => { releaseCookieRead = () => resolve(undefined); });
+      const finished = new Promise(resolve => { cookieReadFinished = () => resolve(undefined); });
+      cookies.get = async filter => {
+        const result = await originalGetCookies.call(cookies, filter);
+        cookieReadStarted();
+        await release;
+        cookieReadFinished();
+        return result;
+      };
+      return { started, finished };
+    };
+    try {
+      let held = holdCookies();
+      const opening = call('openUrl', recoveryUrl, { ...recoveryProfile, background: true, sessionRecovery: recoveryOptions });
+      const cancelled = assert.rejects(opening, /user control/);
+      await held.started;
+      await call('setControl', recoveryTab.tabId, 'human');
+      await call('setControl', recoveryTab.tabId, 'agent');
+      releaseCookieRead();
+      await cancelled;
+      assert.equal(recoveryContents.getURL(), recoveryUrl, 'An old recovery does not resume after a quick takeover and return');
+      held = holdCookies();
+      await recoveryContents.loadURL(recoveryUrl);
+      await held.started;
+      await call('setControl', recoveryTab.tabId, 'human');
+      await call('setControl', recoveryTab.tabId, 'agent');
+      releaseCookieRead();
+      await held.finished;
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(recoveryContents.getURL(), recoveryUrl, 'Automatic recovery respects the captured control epoch');
+    } finally {
+      releaseCookieRead();
+      cookies.get = originalGetCookies;
+    }
+    await call('setControl', recoveryTab.tabId, 'human');
+    await recoveryContents.loadURL(recoveryUrl);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(recoveryContents.getURL(), recoveryUrl, 'Automatic recovery leaves a human-controlled page in place');
+    await assert.rejects(call('openUrl', recoveryUrl, { ...recoveryProfile, background: true, sessionRecovery: recoveryOptions }), /user control/);
+    const humanRecovery = await call('openUrl', recoveryUrl, { ...recoveryProfile, sessionRecovery: recoveryOptions });
+    assert.equal(humanRecovery.url, new URL('/platform/', url).href, 'An explicit foreground login may recover under human control');
+    assert.equal((await call('state')).tabs.find(tab => tab.id === recoveryTab.tabId).controller, 'human');
+    const agentView = webContents.getAllWebContents().find(item => item.getURL() === agentUrl);
+    assert.equal(await agentView.executeJavaScript("document.querySelector('#title').value"), 'Background draft');
+    const current = await call('snapshot', { tabId: agent.tabId });
+    const pending = call('act', { tabId: agent.tabId, snapshotId: current.snapshotId, actions: [
+      { type: 'waitFor', condition: 'text', value: 'Never arrives', timeoutMs: 5000 },
+      { type: 'fill', target: { role: 'textbox', name: '标题' }, value: 'Must not happen' },
+    ] });
+    const interrupted = assert.rejects(pending, /user control/);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    await call('setControl', agent.tabId, 'human');
+    await interrupted;
+    assert.equal(await agentView.executeJavaScript("document.querySelector('#title').value"), 'Background draft');
+    await call('setControl', agent.tabId, 'agent');
+    await assert.rejects(call('act', { tabId: agent.tabId, snapshotId: current.snapshotId, actions: [{ type: 'fill', target: { role: 'textbox', name: '标题' }, value: 'Stale' }] }), /stale/);
+    await assert.rejects(call('snapshot', { tabId: agent.tabId, taskId: 'user-task' }), /another task/);
+    let closeCleanupError = null;
+    window.once('closed', () => {
+      try { panel.destroy(); } catch (error) { closeCleanupError = error; }
+    });
+    const closed = once(window, 'closed');
+    window.destroy();
+    await closed;
+    assert.equal(closeCleanupError, null, 'Closing the host window safely cleans up background browser tabs');
+    assert.deepEqual((await call('state')).tabs, []);
+    process.stdout.write("background-control-and-verification-passed\n");
     process.stdout.write("browser-profile-checks-passed\n");
   } catch (error) {
     process.stderr.write(`${error.stack}\n`);
     process.exitCode = 1;
   } finally {
+    const mainContents = window.isDestroyed() ? null : window.webContents;
     const closing = webContents.getAllWebContents()
-      .filter(item => item !== window.webContents && !item.isDestroyed())
+      .filter(item => item !== mainContents && !item.isDestroyed())
       .map(item => once(item, "destroyed", { signal: AbortSignal.timeout(5000) }));
     panel.destroy();
     await Promise.all(closing);
-    window.destroy();
+    if (!window.isDestroyed()) window.destroy();
     server.close();
     app.exit(Number(process.exitCode) || 0);
   }

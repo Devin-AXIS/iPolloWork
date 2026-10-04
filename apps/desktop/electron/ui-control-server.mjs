@@ -96,7 +96,7 @@ export function createUiControlServer({ appName, appIdentifier, getWindow, ensur
         }
         control.setEnabled?.(true);
         return control.execute(input.actionId, input.args ?? {});
-      })()`, { focus: true });
+      })()`, { focus: !String(args.actionId ?? "").startsWith("browser.") });
     }
     return { ok: false, error: `Unknown iPolloWork control command: ${command}` };
   }
