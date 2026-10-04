@@ -250,9 +250,10 @@ export function mapCodexMessages(thread: CodexThread) {
       (item.type === "plan" || (item.type === "agentMessage" && item.phase !== "commentary"))
       && Boolean((item.text ?? contentText(item.content)).trim())
     ));
+    const isCompactionTurn = !userItem && turn.items.some((item) => item.type === "contextCompaction");
     const outcomeError = turn.status === "failed"
       ? turn.error?.message || "Codex turn failed"
-      : turn.status === "completed" && !hasVisibleResult
+      : turn.status === "completed" && !hasVisibleResult && !isCompactionTurn
         ? CODEX_NO_OUTPUT_ERROR
         : null;
     const mapped = turn.items.flatMap((item) => {

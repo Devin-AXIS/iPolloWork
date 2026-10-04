@@ -1074,7 +1074,7 @@ function serverResponseError(response: Response, json: unknown) {
 async function requestJson<T>(
   baseUrl: string,
   path: string,
-  options: { method?: string; token?: string; hostToken?: string; headers?: Record<string, string>; body?: unknown; timeoutMs?: number } = {},
+  options: { method?: string; token?: string; hostToken?: string; headers?: Record<string, string>; body?: unknown; timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<T> {
   const url = `${baseUrl}${path}`;
   const fetchImpl = resolveFetch(url);
@@ -1085,6 +1085,7 @@ async function requestJson<T>(
       method: options.method ?? "GET",
       headers: buildHeaders(options.token, options.hostToken, options.headers),
       body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
     },
     options.timeoutMs ?? DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS,
   );
@@ -1412,14 +1413,14 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
         { token, hostToken, timeoutMs: timeouts.sessionRead },
       ),
-    getSessionMessages: (workspaceId: string, sessionId: string, options?: { limit?: number }) => {
+    getSessionMessages: (workspaceId: string, sessionId: string, options?: { limit?: number; signal?: AbortSignal }) => {
       const query = new URLSearchParams();
       if (typeof options?.limit === "number") query.set("limit", String(options.limit));
       const suffix = query.size ? `?${query.toString()}` : "";
       return requestJson<{ items: iPolloWorkSessionMessage[] }>(
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/messages${suffix}`,
-        { token, hostToken, timeoutMs: timeouts.sessionRead },
+        { token, hostToken, timeoutMs: timeouts.sessionRead, signal: options?.signal },
       );
     },
     getSessionSnapshot: (workspaceId: string, sessionId: string, options?: { limit?: number }) => {

@@ -42,12 +42,12 @@ export class WorkspaceEngineRpcClient {
     };
   }
 
-  async call<T>(method: string, payload: unknown = {}): Promise<T> {
+  async call<T>(method: string, payload: unknown = {}, options: { timeoutMs?: number } = {}): Promise<T> {
     const response = await fetch(`${this.#baseUrl}/rpc`, {
       method: "POST",
       headers: this.#headers,
       body: JSON.stringify({ method, payload }),
-      signal: AbortSignal.timeout(BOOTSTRAP_RPC_METHODS.has(method) ? 70_000 : 30_000),
+      signal: AbortSignal.timeout(options.timeoutMs ?? (BOOTSTRAP_RPC_METHODS.has(method) ? 70_000 : 30_000)),
     });
     if (!response.ok) throw await this.#responseError(response);
     return (await response.json() as RpcValue<T>).value;

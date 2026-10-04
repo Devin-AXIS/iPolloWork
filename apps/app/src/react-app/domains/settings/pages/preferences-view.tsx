@@ -32,6 +32,7 @@ export type PreferencesViewProps = {
   busy: boolean;
   showThinking: boolean;
   onToggleShowThinking: () => void;
+  autoCompactContextAvailable: boolean;
   autoCompactContext: boolean;
   autoCompactContextBusy: boolean;
   onToggleAutoCompactContext: () => void;
@@ -85,7 +86,7 @@ export function PreferencesView(props: PreferencesViewProps) {
         </LayoutSectionItem>
 
         {/* Auto context compaction */}
-        <LayoutSectionItem>
+        {props.autoCompactContextAvailable ? <LayoutSectionItem>
           <LayoutSectionItemHeader>
             <LayoutSectionItemTitle>{t("settings.auto_compact")}</LayoutSectionItemTitle>
             <LayoutSectionItemDescription>{t("settings.auto_compact_desc")}</LayoutSectionItemDescription>
@@ -98,7 +99,7 @@ export function PreferencesView(props: PreferencesViewProps) {
               />
             </LayoutSectionItemHeaderActions>
           </LayoutSectionItemHeader>
-        </LayoutSectionItem>
+        </LayoutSectionItem> : null}
       </LayoutSection>
 
       <LayoutSection>

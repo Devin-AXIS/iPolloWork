@@ -57,6 +57,99 @@ import {
 } from "../src/react-app/domains/session/engine/opencode-conversation-engine";
 import { conversationEngineAdapters } from "../src/react-app/domains/session/engine/conversation-engines";
 
+test("DeepSeek Harness compaction follows the observed agent preset capability", () => {
+  const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+    baseUrl: "http://unused.test", serverBaseUrl: "http://fixture.test", workspaceId: "dsh",
+  });
+  for (const agentPreset of ["standard", "cordis", "ptc"]) {
+    expect(connection.supportsCompaction?.({ id: "dsh-session", title: "Session", dsh: { agentPreset } })).toBe(true);
+  }
+  for (const agentPreset of ["minimal", "custom-preset"]) {
+    expect(connection.supportsCompaction?.({ id: "dsh-session", title: "Session", dsh: { agentPreset } })).toBe(false);
+  }
+  expect(connection.supportsCompaction?.({ id: "dsh-session", title: "Session" })).toBe(false);
+});
+
+test("DeepSeek Harness compaction snapshots use native projected context and preset metadata", () => {
+  const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+    baseUrl: "http://unused.test", serverBaseUrl: "http://fixture.test", workspaceId: "dsh",
+  });
+  const source = {
+    engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+    session: { id: "dsh-session", title: "Session", tokens: { input: 90_000 }, dsh: { running: false } },
+    history: { events: [], hasMore: false, projections: { asOfSeq: 1, values: {
+      agentPreset: "standard", contextPressure: { pressureTokens: 24_000, projectedTokens: 24_120, contextWindow: 128_000 },
+    } } },
+  };
+  const before = connection.mapSnapshot(source);
+  expect(before.session.dsh).toMatchObject({ agentPreset: "standard", running: false });
+  expect(connection.supportsCompaction?.(before.session)).toBe(true);
+  expect(before.contextUsage).toEqual({ usedTokens: 24_120, contextWindow: 128_000 });
+  const after = connection.mapSnapshot({ ...source, history: { ...source.history, projections: {
+    asOfSeq: 2, values: { agentPreset: "minimal", contextPressure: { pressureTokens: 24_000, projectedTokens: 14_000, contextWindow: 128_000 } },
+  } } });
+  expect(after.contextUsage).toEqual({ usedTokens: 14_000, contextWindow: 128_000 });
+  expect(connection.supportsCompaction?.(after.session)).toBe(false);
+  const unavailable = connection.mapSnapshot({ ...source, history: { events: [], hasMore: false } });
+  expect(unavailable.contextUsage).toBeUndefined();
+});
+
+test("DeepSeek Harness compaction waits for the native command outcome with a bounded summary deadline", async () => {
+  let releaseCommand = (_response: Response) => {};
+  const commandResponse = new Promise<Response>((resolve) => { releaseCommand = resolve; });
+  const requests: unknown[] = [];
+  const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+  const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return commandResponse;
+  });
+  try {
+    const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+      baseUrl: "http://unused.test", serverBaseUrl: "http://fixture.test", workspaceId: "dsh",
+    });
+    if (!connection.compact) throw new Error("DSH compaction is unavailable");
+    let completed = false;
+    const operation = connection.compact({ sessionId: "dsh-session", model: { providerID: "different", modelID: "unused" } })
+      .then(() => { completed = true; });
+    expect(completed).toBe(false);
+    expect(requests).toEqual([{ method: "commands/execute", payload: { args: { agentId: "dsh-session", line: "/compact" } } }]);
+    expect(timeout.mock.calls).toEqual([[190_000]]);
+    releaseCommand(Response.json({ value: { commandId: "compact-1", result: { kind: "success" } } }));
+    await operation;
+    expect(completed).toBe(true);
+  } finally {
+    releaseCommand(Response.json({ value: { commandId: "compact-1", result: { kind: "success" } } }));
+    fetchMock.mockRestore();
+    timeout.mockRestore();
+  }
+});
+
+test("DeepSeek Harness compaction rejects busy and unsupported native outcomes without sending a prompt", async () => {
+  const requests: unknown[] = [];
+  const replies = [
+    { value: { commandId: "busy-1", result: { kind: "error", text: "Compaction is unavailable because the agent is not idle." } } },
+    {},
+  ];
+  const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return Response.json(replies.shift());
+  });
+  try {
+    const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+      baseUrl: "http://unused.test", serverBaseUrl: "http://fixture.test", workspaceId: "dsh",
+    });
+    if (!connection.compact) throw new Error("DSH compaction is unavailable");
+    await expect(connection.compact({ sessionId: "dsh-session" })).rejects.toThrow("not idle");
+    await expect(connection.compact({ sessionId: "dsh-session" })).rejects.toThrow();
+    expect(requests).toEqual([
+      { method: "commands/execute", payload: { args: { agentId: "dsh-session", line: "/compact" } } },
+      { method: "commands/execute", payload: { args: { agentId: "dsh-session", line: "/compact" } } },
+    ]);
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
 test("OpenCode ends only long quota waits while preserving short and transient retries", () => {
   const now = 1_000;
   expect(terminalOpenCodeRetryFailure({
@@ -474,6 +567,108 @@ describe("conversation engine adapters", () => {
     expect(harness.replies).toHaveLength(1);
   });
 
+  test("OpenCode compaction requires a newly completed native summary instead of only an HTTP acknowledgement", async () => {
+    const requests: Array<{ path: string; search: string; body?: unknown }> = [];
+    const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+    let messageReads = 0;
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      requests.push({ path: url.pathname, search: url.search, ...(request.method === "POST" ? { body: await request.json() } : {}) });
+      if (url.pathname.endsWith("/status")) return Response.json({});
+      if (url.pathname.endsWith("/summarize")) return Response.json(true);
+      return Response.json(messageReads++ === 0 ? [] : [{
+        info: { id: "new-summary", role: "assistant", summary: true, time: { created: 1, completed: 2 } },
+        parts: [{ type: "text", text: "The native summary retained the requested facts." }],
+      }]);
+    });
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+      if (!connection.compact) throw new Error("OpenCode compaction is unavailable");
+      await connection.compact({ sessionId: "ses_compact", model: { providerID: "smoke", modelID: "smoke" }, directory: "/workspace" });
+      expect(requests.map((request) => request.path)).toEqual([
+        "/session/status", "/session/ses_compact/message", "/session/ses_compact/summarize", "/session/ses_compact/message",
+      ]);
+      expect(requests[2]?.body).toEqual({ providerID: "smoke", modelID: "smoke", auto: false });
+      expect(requests[1]?.search).toContain("limit=2");
+      expect(requests[3]?.search).toContain("limit=2");
+      expect(timeout.mock.calls).toEqual([[180_000]]);
+    } finally {
+      fetchMock.mockRestore();
+      timeout.mockRestore();
+    }
+  });
+
+  test("OpenCode compaction rejects native summary errors, missing summaries, and old or incomplete summaries after HTTP true", async () => {
+    const oldSummary = {
+      info: { id: "old-summary", role: "assistant", summary: true, time: { created: 1, completed: 2 } },
+      parts: [{ type: "text", text: "Previous summary" }],
+    };
+    for (const result of [
+      [],
+      [oldSummary],
+      [{ info: { id: "new-summary", role: "assistant", summary: true, time: { created: 3 } }, parts: [{ type: "text", text: "Still streaming" }] }],
+      [{ info: { id: "new-summary", role: "assistant", summary: true, time: { created: 3, completed: 4 } }, parts: [] }],
+      [{ info: { id: "new-summary", role: "assistant", summary: true, time: { created: 3 }, error: { name: "UnknownError", data: { message: "Native summary failed" } } }, parts: [] }],
+    ]) {
+      let messageReads = 0;
+      const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        if (request.url.includes("/status")) return Response.json({});
+        if (request.url.includes("/summarize")) return Response.json(true);
+        return Response.json(messageReads++ === 0 ? [oldSummary] : result);
+      });
+      try {
+        const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+        if (!connection.compact) throw new Error("OpenCode compaction is unavailable");
+        await expect(connection.compact({ sessionId: "ses_compact", model: { providerID: "smoke", modelID: "smoke" } })).rejects.toThrow();
+      } finally {
+        fetchMock.mockRestore();
+      }
+    }
+  });
+
+  test("OpenCode compaction rejects busy sessions before starting native compaction", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ses_busy: { type: "busy" } }));
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+      if (!connection.compact) throw new Error("OpenCode compaction is unavailable");
+      await expect(connection.compact({ sessionId: "ses_busy", model: { providerID: "smoke", modelID: "smoke" } })).rejects.toThrow();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  test("OpenCode compaction keeps its shared deadline through host message reads even if the transport ignores abort", async () => {
+    const deadline = new AbortController();
+    const timeout = spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    let messageReads = 0;
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url.includes("/status")) return Response.json({});
+      if (request.url.includes("/summarize")) return Response.json(true);
+      if (request.url.includes("/messages")) {
+        messageReads += 1;
+        return messageReads === 1 ? Response.json({ items: [] }) : new Promise<Response>(() => {});
+      }
+      return new Response(null, { status: 404 });
+    });
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test/workspace/ws/opencode", token: "test-token" });
+      if (!connection.compact) throw new Error("OpenCode compaction is unavailable");
+      const operation = connection.compact({ sessionId: "ses_compact", model: { providerID: "smoke", modelID: "smoke" } });
+      for (let attempt = 0; attempt < 30 && messageReads < 2; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 1));
+      expect(messageReads).toBe(2);
+      deadline.abort(new Error("Shared compaction deadline elapsed"));
+      await expect(operation).rejects.toThrow("Shared compaction deadline elapsed");
+    } finally {
+      deadline.abort();
+      fetchMock.mockRestore();
+      timeout.mockRestore();
+    }
+  });
+
   test("keeps plugin agents and the iPolloWork runtime agent out of OpenCode work modes", async () => {
     const originalFetch = globalThis.fetch;
     const promptBodies: unknown[] = [];
@@ -654,6 +849,60 @@ describe("conversation engine adapters", () => {
       { permission: "edit", pattern: "*", action: "ask" },
       { permission: "bash", pattern: "*", action: "ask" },
     ]));
+  });
+
+  test("compacts Codex through the native RPC with a bounded completion deadline", async () => {
+    const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ value: {} }));
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test", serverBaseUrl: "http://fixture.test", workspaceId: "ws_codex",
+      });
+      await connection.compact?.({ sessionId: "codex-compact" });
+      expect(fetchMock.mock.calls).toHaveLength(1);
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(String(url)).toContain("/engine/codex-harness/rpc");
+      expect(JSON.parse(String(init?.body))).toEqual({ method: "thread/compact/start", payload: { threadId: "codex-compact" } });
+      expect(timeout.mock.calls).toEqual([[190_000]]);
+    } finally { timeout.mockRestore(); fetchMock.mockRestore(); }
+  });
+
+  test("maps native Codex compaction and keeps a compaction-only turn out of the transcript", () => {
+    const state = createCodexLiveState();
+    mapCodexHarnessEvent({ type: "notification", method: "turn/started", params: {
+      threadId: "thread", turn: { id: "compact-turn" },
+    } }, state);
+    for (const [method, running] of [["item/started", true], ["item/completed", false]]) {
+      expect(mapCodexHarnessEvent({ type: "notification", method: String(method), params: {
+        threadId: "thread", turnId: "compact-turn", item: { id: "compact-item", type: "contextCompaction" },
+      } }, state)).toEqual([{ type: "session.compaction", sessionId: "thread", running }]);
+    }
+    expect(mapCodexHarnessEvent({ type: "notification", method: "turn/completed", params: {
+      threadId: "thread", turn: { id: "compact-turn", status: "completed" },
+    } }, state)).toEqual([
+      { type: "session.compaction", sessionId: "thread", running: false },
+      { type: "session.idle", sessionId: "thread" },
+    ]);
+  });
+
+  test("ends failed Codex compaction and still reports a user turn missing its final answer", () => {
+    for (const status of ["failed", "completed"]) {
+      const state = createCodexLiveState();
+      mapCodexHarnessEvent({ type: "notification", method: "turn/started", params: {
+        threadId: "thread", turn: { id: "user-turn" },
+      } }, state);
+      mapCodexHarnessEvent({ type: "notification", method: "item/completed", params: {
+        threadId: "thread", turnId: "user-turn", item: { id: "user", type: "userMessage", text: "Finish the task" },
+      } }, state);
+      mapCodexHarnessEvent({ type: "notification", method: "item/started", params: {
+        threadId: "thread", turnId: "user-turn", item: { id: "compact", type: "contextCompaction" },
+      } }, state);
+      const events = mapCodexHarnessEvent({ type: "notification", method: "turn/completed", params: {
+        threadId: "thread", turn: { id: "user-turn", status, error: { message: "Compaction failed" } },
+      } }, state);
+      expect(events).toContainEqual({ type: "session.compaction", sessionId: "thread", running: false });
+      expect(events).toContainEqual(expect.objectContaining({ type: "session.error", sessionId: "thread" }));
+    }
   });
 
   test("passes the selected Codex access mode into the next turn", async () => {
@@ -1784,6 +2033,7 @@ describe("conversation engine adapters", () => {
       },
       history: {
         hasMore: false,
+        projections: { asOfSeq: 6, values: { contextPressure: { pressureTokens: 9_000, projectedTokens: 9_000, contextWindow: 128_000 } } },
         events: [
           {
             event: {
@@ -1872,9 +2122,7 @@ describe("conversation engine adapters", () => {
     expect(snapshot.todos).toEqual([expect.objectContaining({ content: "Verify", status: "in_progress" })]);
     expect(snapshot.contextUsage).toEqual({
       usedTokens: 9_000,
-      inputTokens: 7_000,
-      outputTokens: 120,
-      cacheReadTokens: 2_000,
+      contextWindow: 128_000,
     });
   });
 

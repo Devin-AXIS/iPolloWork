@@ -14,7 +14,7 @@ export type DeepSeekHarnessServerRequest = {
 };
 
 export type DeepSeekHarnessRpcClient = {
-  call<T>(method: string, payload?: unknown): Promise<T>;
+  call<T>(method: string, payload?: unknown, options?: { timeoutMs?: number }): Promise<T>;
 };
 
 export class DeepSeekHarnessClient implements DeepSeekHarnessRpcClient {
@@ -28,8 +28,8 @@ export class DeepSeekHarnessClient implements DeepSeekHarnessRpcClient {
     });
   }
 
-  async call<T>(method: string, payload: unknown = {}): Promise<T> {
-    return this.#client.call(method, payload);
+  async call<T>(method: string, payload: unknown = {}, options?: { timeoutMs?: number }): Promise<T> {
+    return this.#client.call(method, payload, options);
   }
 
   async respond(rpcId: string, result: unknown): Promise<void> {

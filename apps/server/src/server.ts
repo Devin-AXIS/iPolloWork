@@ -119,6 +119,7 @@ import {
   mergeRuntimeProviderUpdate,
   readRuntimeOpencodeConfig,
   readRuntimeProviderChannels,
+  runtimeCompactionConfigSchema,
   type RuntimeOpencodeConfig,
   writeRuntimeOpencodeConfig,
   writeRuntimeProviderChannels,
@@ -2609,6 +2610,12 @@ function createRoutes(
     if (opencode) {
       const configPath = ipolloworkConfigPath(workspace.path);
       const nextOpencode = ensurePlainObject(opencode);
+      const compactionUpdate = Object.prototype.hasOwnProperty.call(nextOpencode, "compaction")
+        ? runtimeCompactionConfigSchema.safeParse(nextOpencode.compaction)
+        : undefined;
+      if (compactionUpdate && !compactionUpdate.success) {
+        throw new ApiError(400, "invalid_payload", "Compaction settings must use booleans and nonnegative integer token or turn counts");
+      }
       const { permission, provider, ...topLevelUpdates } = nextOpencode;
       const logicalUpdates: Record<string, unknown> = { ...topLevelUpdates };
 
@@ -2648,6 +2655,7 @@ function createRoutes(
         const result = await writeRuntimeOpencodeConfig(config, workspace.id, (current) => ({
           ...current,
           ...logicalUpdates,
+          ...(compactionUpdate?.success ? { compaction: { ...current.compaction, ...compactionUpdate.data } } : {}),
         }));
         runtimeChanged ||= result.changed;
       }

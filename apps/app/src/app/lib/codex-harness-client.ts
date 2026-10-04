@@ -20,8 +20,8 @@ export class CodexHarnessClient implements CodexHarnessRpcClient {
     });
   }
 
-  call<T>(method: string, payload: unknown = {}): Promise<T> {
-    return this.#client.call(method, payload);
+  call<T>(method: string, payload: unknown = {}, options?: { timeoutMs?: number }): Promise<T> {
+    return this.#client.call(method, payload, options);
   }
 
   respond(rpcId: string | number, result: unknown): Promise<void> {
