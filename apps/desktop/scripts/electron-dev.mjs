@@ -415,6 +415,10 @@ process.once("SIGTERM", () => void stopAll(143));
 if (process.env.IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE !== "1") {
   runSync(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], { cwd: desktopRoot });
   runSync(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--outdir", electronHelperDir], { cwd: desktopRoot });
+  runSync(nodeCmd, [resolve(repoRoot, "examples/plugin-packages/operation-recorder/scripts/build.mjs"), "--host", "--if-stale"], { cwd: repoRoot });
+  for (const pluginId of ["labelu-data-annotation", "short-video-studio"]) {
+    runSync(nodeCmd, [resolve(repoRoot, `examples/plugin-packages/${pluginId}/scripts/build.mjs`)], { cwd: repoRoot });
+  }
 }
 
 // Build the server TS → JS so Electron can import it in-process

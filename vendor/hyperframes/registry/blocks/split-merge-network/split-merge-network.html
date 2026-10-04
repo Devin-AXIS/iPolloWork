@@ -1,0 +1,160 @@
+<!doctype html><html lang="zh" data-composition-variables='[{"id":"branches","label":"分支节点","type":"string","default":"{\"version\":1,\"kind\":\"category-value\",\"rows\":[{\"label\":\"研究\",\"icon\":\"brain\",\"image\":\"\",\"description\":\"收集资料、识别关键问题，为后续创作提供依据。\"},{\"label\":\"创作\",\"icon\":\"code\",\"image\":\"\",\"description\":\"根据目标与资料制作内容，把想法转化为可用成果。\"},{\"label\":\"审核\",\"icon\":\"settings\",\"image\":\"\",\"description\":\"检查质量、事实与规范，让各个分支的成果保持一致。\"}]}","update":"reload"},{"id":"inputLabel","label":"输入名称","type":"string","default":"任务输入","update":"reload","maxLength":24},{"id":"inputIcon","label":"输入图标","type":"enum","default":"layers","update":"reload","options":[{"value":"workflow","label":"工作流"},{"value":"settings","label":"设置"},{"value":"zap","label":"闪电"},{"value":"layers","label":"图层"},{"value":"brain","label":"智能"},{"value":"database","label":"数据库"},{"value":"bot","label":"机器人"},{"value":"globe","label":"全球"},{"value":"cpu","label":"算力"},{"value":"chart","label":"分析"},{"value":"mail","label":"消息"},{"value":"code","label":"代码"}]},{"id":"outputLabel","label":"输出名称","type":"string","default":"成果汇合","update":"reload","maxLength":24},{"id":"outputIcon","label":"输出图标","type":"enum","default":"zap","update":"reload","options":[{"value":"workflow","label":"工作流"},{"value":"settings","label":"设置"},{"value":"zap","label":"闪电"},{"value":"layers","label":"图层"},{"value":"brain","label":"智能"},{"value":"database","label":"数据库"},{"value":"bot","label":"机器人"},{"value":"globe","label":"全球"},{"value":"cpu","label":"算力"},{"value":"chart","label":"分析"},{"value":"mail","label":"消息"},{"value":"code","label":"代码"}]},{"id":"speed","label":"动画速度","type":"number","default":1,"update":"reload","min":0.3,"max":2.5,"step":0.1},{"id":"spread","label":"分支间距","type":"number","default":1,"update":"reload","min":0.6,"max":1.2,"step":0.05},{"id":"nodeScale","label":"节点大小","type":"number","default":1,"update":"reload","min":0.65,"max":1.15,"step":0.05},{"id":"tilt","label":"透视倾角","type":"number","default":0.56,"update":"reload","min":0.4,"max":0.8,"step":0.02},{"id":"glow","label":"流光强度","type":"number","default":0.7,"update":"reload","min":0,"max":1.5,"step":0.1},{"id":"labels","label":"显示节点名称","type":"boolean","default":true,"update":"reload"},{"id":"explanations","label":"显示动画讲解","type":"boolean","default":true,"update":"reload"},{"id":"inputDescription","label":"输入说明","type":"string","default":"把一个目标拆分给多个分支，让专业能力并行协作。","update":"reload","maxLength":140},{"id":"outputDescription","label":"汇合说明","type":"string","default":"汇集各个分支的结果，形成一份完整、可交付的成果。","update":"reload","maxLength":140},{"id":"motion","label":"动感强度","type":"number","default":1,"update":"reload","min":0,"max":2,"step":0.1},{"id":"grid","label":"显示背景网格","type":"boolean","default":true,"update":"reload"},{"id":"background","label":"显示背景底色","type":"boolean","default":false,"update":"reload"}]'><head><meta charset="utf-8"><title>分支与汇合</title></head><body><template>
+<style>#root{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;isolation:isolate;font-family:var(--ipw-font-body,Arial)}#root .smn-scene{display:block;width:100%;height:100%}#root text{font-family:var(--ipw-font-body,Arial)}</style>
+<div id="root" data-composition-id="split-merge-network" data-start="0" data-width="1920" data-height="1080" data-duration="18"><svg class="smn-scene" viewBox="0 0 1040 780" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="分支与汇合"></svg></div>
+<script src="gsap.min.js"></script><script>(() => {
+const root=document.getElementById('root');
+const runtimeId=root.closest('[data-composition-id]').getAttribute('data-composition-id');
+const svg=root.querySelector('svg');
+const NS='http://www.w3.org/2000/svg';
+const values={...{"branches":"{\"version\":1,\"kind\":\"category-value\",\"rows\":[{\"label\":\"研究\",\"icon\":\"brain\",\"image\":\"\",\"description\":\"收集资料、识别关键问题，为后续创作提供依据。\"},{\"label\":\"创作\",\"icon\":\"code\",\"image\":\"\",\"description\":\"根据目标与资料制作内容，把想法转化为可用成果。\"},{\"label\":\"审核\",\"icon\":\"settings\",\"image\":\"\",\"description\":\"检查质量、事实与规范，让各个分支的成果保持一致。\"}]}","inputLabel":"任务输入","inputIcon":"layers","outputLabel":"成果汇合","outputIcon":"zap","speed":1,"spread":1,"nodeScale":1,"tilt":0.56,"glow":0.7,"labels":true,"explanations":true,"inputDescription":"把一个目标拆分给多个分支，让专业能力并行协作。","outputDescription":"汇集各个分支的结果，形成一份完整、可交付的成果。","motion":1,"grid":true,"background":false},...(window.__hyperframes?.getVariables?.()||window.__hfVariablesByComp?.[runtimeId]||{})};
+/*
+ * Parametric isometric automation hub. No network or framework required.
+ * Public API: AutomationHub.setConfig({nodes:[...],centerLabel:'...',...});
+ *             AutomationHub.getConfig(); AutomationHub.seek(seconds);
+ * nodes: 2–12 entries of {id, label, icon, image}. image is an optional data URL.
+ * Keys: centerLabel, accent, tilt, radius, nodeScale, speed, glow, labels, grid.
+ * Icon paths below are from Lucide v0.577.0 (ISC), not copied brand logos.
+ * Copyright (c) Lucide Contributors 2026; portions Cole Bemis 2013–2026.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+ * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Feather portions: Copyright (c) 2013–2026 Cole Bemis. Permission is hereby
+ * granted, free of charge, to any person obtaining a copy of this software
+ * and associated documentation files (the "Software"), to deal in the
+ * Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions: The above copyright
+ * notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+ * WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ * TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+ * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+  const ICONS = {
+    workflow:{label:'工作流',nodes:[['rect',{width:8,height:8,x:3,y:3,rx:2}],['path',{d:'M7 11v4a2 2 0 0 0 2 2h4'}],['rect',{width:8,height:8,x:13,y:13,rx:2}]]},
+    settings:{label:'设置',nodes:[['path',{d:'M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915'}],['circle',{cx:12,cy:12,r:3}]]},
+    zap:{label:'闪电',nodes:[['path',{d:'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'}]]},
+    layers:{label:'图层',nodes:[['path',{d:'M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z'}],['path',{d:'M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12'}],['path',{d:'M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17'}]]},
+    brain:{label:'智能',nodes:[['path',{d:'M12 18V5 M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4 M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5 M17.997 5.125a4 4 0 0 1 2.526 5.77 M18 18a4 4 0 0 0 2-7.464 M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517 M6 18a4 4 0 0 1-2-7.464 M6.003 5.125a4 4 0 0 1 2.526 5.77'}]]},
+    database:{label:'数据',nodes:[['ellipse',{cx:12,cy:5,rx:9,ry:3}],['path',{d:'M3 5V19A9 3 0 0 0 21 19V5 M3 12A9 3 0 0 0 21 12'}]]},
+    bot:{label:'机器人',nodes:[['path',{d:'M12 8V4H8 M2 14h2 M20 14h2 M15 13v2 M9 13v2'}],['rect',{width:16,height:12,x:4,y:8,rx:2}]]},
+    globe:{label:'全球',nodes:[['circle',{cx:12,cy:12,r:10}],['path',{d:'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20 M2 12h20'}]]},
+    cpu:{label:'算力',nodes:[['path',{d:'M12 20v2 M12 2v2 M17 20v2 M17 2v2 M2 12h2 M2 17h2 M2 7h2 M20 12h2 M20 17h2 M20 7h2 M7 20v2 M7 2v2'}],['rect',{x:4,y:4,width:16,height:16,rx:2}],['rect',{x:8,y:8,width:8,height:8,rx:1}]]},
+    chart:{label:'分析',nodes:[['path',{d:'M12 16v5 M16 14v7 M20 10v11 M22 3l-8.646 8.646a.5.5 0 0 1-.708 0L9.354 8.354a.5.5 0 0 0-.707 0L2 15 M4 18v3 M8 14v7'}]]},
+    mail:{label:'消息',nodes:[['path',{d:'m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7'}],['rect',{x:2,y:4,width:20,height:16,rx:2}]]},
+    code:{label:'代码',nodes:[['path',{d:'M18 16l4-4-4-4 M6 8l-4 4 4 4 M14.5 4l-5 16'}]]}
+  };
+
+
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const branches=JSON.parse(values.branches).rows.slice(0,8).map((row,i)=>({...row,label:String(row.label||'').trim()||'分支 '+(i+1)}));
+if(branches.length<2)throw new Error('分支与汇合需要 2–8 个分支');
+const count=branches.length,tilt=clamp(Number(values.tilt),.4,.8),size=clamp(Number(values.nodeScale),.65,1.15);
+const gap=Math.min(170*Number(values.spread),(values.explanations?470:510)/(count-1));
+const motion=clamp(Number(values.motion),0,2),speed=clamp(Number(values.speed),.3,2.5);
+const radius=Math.min(84*size,gap*.58*size,(gap-32)/(2*tilt));
+const centerY=values.explanations?340:390,firstY=centerY-gap*(count-1)/2;
+const processAt=2.6,focusDuration=Math.max(1.15,6.3/count),mergeAt=processAt+focusDuration*count,finishAt=mergeAt+2.1,cycle=finishAt+2.4;
+const textColor='var(--ipw-color-text,#15171a)',surface='var(--ipw-color-surface,#fff)',accent='var(--ipw-color-primary,#20bbc0)';
+root.dataset.nodeCount=String(count);
+function el(tag,attrs={},parent=svg){const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,String(v));parent.append(e);return e;}
+const defs=el('defs');
+const grad=el('linearGradient',{id:runtimeId+'-plate',x1:0,y1:0,x2:0,y2:1},defs);
+el('stop',{offset:0,'stop-color':surface},grad);el('stop',{offset:1,'stop-color':textColor,'stop-opacity':.09},grad);
+const filter=el('filter',{id:runtimeId+'-glow',x:'-150%',y:'-150%',width:'400%',height:'400%'},defs);
+el('feGaussianBlur',{stdDeviation:5},filter);
+if(values.background)el('rect',{width:1040,height:780,fill:'var(--ipw-color-bg,#f4f6f8)'});
+if(values.grid){const g=el('g',{stroke:textColor,'stroke-width':.6,opacity:.065});for(let i=-8;i<=8;i++){
+  el('line',{x1:520+i*60-400,y1:390-400*tilt,x2:520+i*60+400,y2:390+400*tilt},g);
+  el('line',{x1:520+i*60-400,y1:390+400*tilt,x2:520+i*60+400,y2:390-400*tilt},g);
+}}
+const wireLayer=el('g'),nodeLayer=el('g'),signalLayer=el('g');
+function curve(x1,y1,x2,y2){return 'M'+x1+','+y1+' C'+(x1+(x2-x1)*.53)+','+y1+' '+(x1+(x2-x1)*.47)+','+y2+' '+x2+','+y2;}
+function cable(x1,y1,x2,y2){const g=el('g',{},wireLayer),d=curve(x1,y1,x2,y2);
+  el('path',{d,fill:'none',stroke:textColor,'stroke-width':1.25,opacity:.30},g);
+  el('path',{d:curve(x1,y1+4,x2,y2+4),fill:'none',stroke:textColor,'stroke-width':.65,opacity:.19},g);
+  const active=el('path',{d,fill:'none',stroke:accent,'stroke-width':1.8,opacity:0,'stroke-linecap':'round'},g);
+  return {path:active,length:active.getTotalLength()};
+}
+function diamond(r,h,y){return 'M'+(-r+9)+','+(y-5)+' L-9,'+(y-h+3)+' Q0,'+(y-h-1)+' 9,'+(y-h+3)+' L'+(r-9)+','+(y-5)+' Q'+(r+1)+','+y+' '+(r-9)+','+(y+5)+' L9,'+(y+h-3)+' Q0,'+(y+h+1)+' -9,'+(y+h-3)+' L'+(-r+9)+','+(y+5)+' Q'+(-r-1)+','+y+' '+(-r+9)+','+(y-5)+' Z';}
+function node(x,y,row,r,branch=false){const outer=el('g',{transform:'translate('+x+','+y+')','data-node-label':row.label||''},nodeLayer);
+  const plate=el('g',{'class':'smn-plate'},outer),h=r*tilt;
+  for(const offset of [15,10,5])el('path',{d:diamond(r,h,offset),fill:surface,stroke:textColor,'stroke-width':.85,'fill-opacity':.78,'stroke-opacity':.27},plate);
+  const top=el('path',{d:diamond(r,h,0),fill:'url(#'+runtimeId+'-plate)',stroke:textColor,'stroke-width':1.2,'stroke-opacity':.72},plate);
+  const outline=el('path',{d:diamond(r,h,0),fill:'none',stroke:accent,'stroke-width':1.8,opacity:0},plate);
+  const halo=el('path',{d:diamond(r,h,0),fill:'none',stroke:accent,'stroke-width':1,opacity:0},outer);
+  const icon=el('g',{transform:'translate('+(-r*.30)+','+(-h*.41)+') scale('+(r*.025)+','+(r*.025*tilt)+')',stroke:textColor,'stroke-width':1.8,'stroke-linecap':'round','stroke-linejoin':'round',fill:'none'},plate);
+  if(row.image&&/^data:image\/(?:png|jpeg|webp|svg\+xml);/i.test(row.image))el('image',{href:row.image,x:0,y:0,width:24,height:24,preserveAspectRatio:'xMidYMid meet'},icon);
+  else for(const [tag,attrs] of (ICONS[row.icon]||ICONS.workflow).nodes)el(tag,attrs,icon);
+  let label;
+  if(values.labels){label=el('text',{x:branch?r+18:0,y:branch?6:h+44,'text-anchor':branch?'start':'middle',fill:textColor,'font-size':branch?Math.min(22,gap*.3):22,'font-weight':600,'class':'smn-node-name'},outer);label.textContent=String(row.label||'').slice(0,12);}
+  return {plate,top,outline,icon,halo,label};
+}
+const input=node(160,centerY,{label:values.inputLabel,icon:values.inputIcon},84*size);
+const output=node(880,centerY,{label:values.outputLabel,icon:values.outputIcon},84*size);
+const items=branches.map((row,i)=>{const y=firstY+i*gap;
+  return {node:node(520,y,row,radius,true),incoming:cable(160+84*size,centerY+8,520-radius,y+8),outgoing:cable(520+radius,y+8,880-84*size,centerY+8)};
+});
+function dot(){const group=el('g',{opacity:0,'class':'smn-signal'},signalLayer);
+  el('circle',{r:9,fill:accent,opacity:.25*Number(values.glow),filter:'url(#'+runtimeId+'-glow)'},group);
+  el('circle',{r:4.2,fill:accent},group);el('circle',{r:1.4,fill:surface},group);return group;
+}
+items.forEach(item=>{item.inDots=Array.from({length:3},dot);item.outDots=Array.from({length:3},dot);});
+const ease=x=>{x=clamp(x,0,1);return x*x*(3-2*x);};
+function progress(path,p){path.path.setAttribute('stroke-dasharray',path.length);path.path.setAttribute('stroke-dashoffset',path.length*(1-p));path.path.setAttribute('opacity',p>.001?.9:0);}
+function moveDot(dot,path,p,visible){const point=path.path.getPointAtLength(clamp(p,0,1)*path.length);dot.setAttribute('transform','translate('+point.x+','+point.y+')');dot.setAttribute('opacity',visible?1:0);}
+function activate(n,p,wave=0){n.outline.setAttribute('opacity',p);n.plate.setAttribute('transform','translate(0,'+(-(7+5*motion)*p)+') scale('+(1+.025*motion*p)+')');n.icon.setAttribute('stroke',p>.4?accent:textColor);n.halo.setAttribute('transform','scale('+(1+.15*motion*wave)+')');n.halo.setAttribute('opacity',.3*motion*p*(1-wave));}
+const captionLayer=el('g',{'class':'smn-explanations'});
+const measure=document.createElement('canvas').getContext('2d');
+measure.font='18px '+getComputedStyle(root).fontFamily;
+function descriptionLines(text){const lines=[];let line='';for(const char of Array.from(String(text||'').slice(0,140))){if(measure.measureText(line+char).width>760){lines.push(line);line=char;}else line+=char;}if(line)lines.push(line);return lines;}
+function caption(label,description,start,end,index){const outer=el('g',{transform:'translate(520,670)'},captionLayer),g=el('g',{opacity:0,'class':'smn-explanation'},outer);
+  const marker=el('text',{x:0,y:-32,'text-anchor':'middle',fill:textColor,'font-size':13,'letter-spacing':2,'font-weight':600},g);marker.textContent=String(index+1).padStart(2,'0')+' / '+String(count+2).padStart(2,'0');
+  const heading=el('text',{x:0,y:0,'text-anchor':'middle',fill:textColor,'font-size':28,'font-weight':650,'class':'smn-explanation-title'},g);heading.textContent=String(label||'').slice(0,24);
+  descriptionLines(description).slice(0,3).forEach((line,i)=>{const text=el('text',{x:0,y:34+i*26,'text-anchor':'middle',fill:textColor,'font-size':18,opacity:.82},g);text.textContent=line;});
+  return {g,start,end};
+}
+const captions=[];
+if(values.explanations){captions.push(caption(values.inputLabel,values.inputDescription,0,processAt,0));
+  branches.forEach((row,i)=>{const defaultRow=[{"label":"研究","icon":"brain","image":"","description":"收集资料、识别关键问题，为后续创作提供依据。"},{"label":"创作","icon":"code","image":"","description":"根据目标与资料制作内容，把想法转化为可用成果。"},{"label":"审核","icon":"settings","image":"","description":"检查质量、事实与规范，让各个分支的成果保持一致。"}].find(r=>r.label===row.label);const description=typeof row.description==='string'?row.description:defaultRow?.description||'独立处理分配的任务，将专业结果提交到成果汇合。';
+    captions.push(caption(row.label,description,processAt+i*focusDuration,processAt+(i+1)*focusDuration,i+1));});
+  captions.push(caption(values.outputLabel,values.outputDescription,mergeAt,cycle,count+1));
+}
+function renderAt(seconds){const t=seconds*speed%cycle,focus=t>=processAt&&t<mergeAt?Math.floor((t-processAt)/focusDuration):-1;
+  activate(input,.4+.6*ease(t/.8),t%1.6/1.6);let complete=0;
+  items.forEach((item,i)=>{const delay=i*.07,arrival=2.05+delay,release=mergeAt+delay;
+    const incoming=clamp((t-.6-delay)/1.45,0,1),outgoing=clamp((t-release)/1.65,0,1);
+    const processing=t>=arrival&&t<release;
+    const active=ease((t-arrival)/.35)*(1-ease((t-release-.25)/.65))*(focus===i?1:.45);
+    progress(item.incoming,incoming);progress(item.outgoing,outgoing);
+    item.inDots.forEach((dot,k)=>{const p=processing?((t*.72-i*.08-k*.17)%1+1)%1:incoming-k*.13;moveDot(dot,item.incoming,p,processing||(p>0&&p<1));});
+    item.outDots.forEach((dot,k)=>{const p=outgoing-k*.13;moveDot(dot,item.outgoing,p,p>0&&p<1&&t<finishAt+.5);});
+    activate(item.node,active,(t-arrival+cycle)%1.35/1.35);complete+=outgoing;
+  });
+  activate(output,ease(complete/count),t%1.6/1.6);root.dataset.phase=t<processAt?'split':t<mergeAt?'process':t<finishAt?'merge':'hold';root.dataset.focus=String(focus);root.dataset.time=String(seconds);
+}
+let seconds=0;const clock={};
+Object.defineProperty(clock,'seconds',{get:()=>seconds,set:value=>{seconds=value;renderAt(value);}});
+const timeline=gsap.timeline({paused:true});
+timeline.fromTo(clock,{seconds:0},{seconds:18,duration:18,ease:'none'},0);
+if(values.explanations)timeline.fromTo('.smn-explanations',{opacity:0,y:12},{opacity:1,y:0,duration:.55,ease:'power2.out'},.05);
+const names=[input.label,...items.map(item=>item.node.label),output.label].filter(Boolean);
+names.forEach((label,i)=>timeline.fromTo(label,{opacity:0,y:8},{opacity:1,y:0,duration:.45,ease:'power2.out'},.15+i*.06));
+for(let loop=0;loop*cycle/speed<18;loop++)for(const item of captions){const start=(loop*cycle+item.start)/speed,end=Math.min(18,(loop*cycle+item.end)/speed);if(start>=18)continue;
+  timeline.fromTo(item.g,{opacity:0,y:12},{opacity:1,y:0,duration:Math.min(.35,(end-start)/4),ease:'power2.out',immediateRender:false},start);
+  timeline.to(item.g,{opacity:0,y:-6,duration:.14,ease:'power1.in'},Math.max(start,end-.14));
+}
+window.__timelines=window.__timelines||{};window.__timelines[runtimeId]=timeline;renderAt(0);
+})();</script></template></body></html>

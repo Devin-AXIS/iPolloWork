@@ -616,6 +616,22 @@ describe("Media Center extension", () => {
       { sourcePath: "../video.html" }, { directory: workspace.root })).rejects.toBeDefined();
   });
 
+  test("silent storyboard markers do not request synthesis while real narration still requires matching audio", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), '<main data-composition-id="main" data-duration="5"><section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section></main>');
+    const validate = () => callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath: "video.html", requirements: { voiceover: false, captions: false, bgm: false, sfx: false } }, { directory: workspace.root });
+    for (const narration of ["none", '"none"', "无旁白", "实际需要朗读的旁白"]) {
+      await writeFile(join(workspace.root, "STORYBOARD.md"), `---\nmusic_prompt: none\n---\n\n## Frame 1 — Intro\n- duration: 5s\n- voiceover: ${narration}\n`);
+      const result = await validate();
+      expect(result?.ok).toBe(true);
+      if (!result || !result.ok) throw Error("Validation missing");
+      if (narration === "实际需要朗读的旁白") {
+        expect(result.result).toMatchObject({ output: { valid: false, issues: expect.arrayContaining([expect.objectContaining({ code: "storyboard_voiceover_mismatch" })]) } });
+      } else expect(result.result).toMatchObject({ output: { valid: true, voiceoverCount: 0, issues: [] } });
+    }
+  });
+
   test("allows unused immutable voiceover revisions once the chosen audio is mounted", async () => {
     const workspace = await workspaceConfig();
     await mkdir(join(workspace.root, "assets"), { recursive: true });

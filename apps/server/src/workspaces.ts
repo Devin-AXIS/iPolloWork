@@ -113,14 +113,13 @@ export function buildWorkspaceInfos(
  * `config.workspaces[0]` is not reliably that: a freshly added remote worker is
  * prepended to the list, so index 0 can be a remote workspace (no local path)
  * even when local workspaces exist — which would leave the engine unstarted.
- * Select the first local OpenCode workspace with a resolved path so one engine
- * never boots inside another engine's project. Returns undefined when no local
- * OpenCode workspace exists.
+ * Prefer a local OpenCode default, then any local project with a resolved path.
+ * Project defaults do not restrict the engines available to conversations.
  */
 export function findManagedEngineWorkspace(workspaces: WorkspaceInfo[]): WorkspaceInfo | undefined {
-  return workspaces.find((workspace) =>
-    workspace.workspaceType !== "remote" &&
-    workspace.path.trim() !== "" &&
-    (workspace.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
-  );
+  const local = workspaces.filter((workspace) => workspace.workspaceType !== "remote" && workspace.path.trim() !== "");
+  const preferred = local.find((workspace) => (workspace.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID);
+  if (preferred) return preferred;
+  const workspace = local[0];
+  return workspace ? { ...workspace, engineId: DEFAULT_ENGINE_ID } : undefined;
 }

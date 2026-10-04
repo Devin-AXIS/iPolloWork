@@ -1,0 +1,18 @@
+{
+  "name": "ipollowork-short-video-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/dev.mjs",
+    "package": "node scripts/package.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:host": "bun test test/host-compatibility.test.ts test/package-host.test.ts",
+    "test:api": "bun test test/package-api.test.ts"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9",
+    "jszip": "3.10.1"
+  }
+}

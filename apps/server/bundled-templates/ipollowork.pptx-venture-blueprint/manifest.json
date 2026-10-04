@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-venture-blueprint",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "business-plan",
@@ -10,7 +10,8 @@
     "pptx-compatible",
     "venture",
     "business",
-    "plan"
+    "plan",
+    "topic:business"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

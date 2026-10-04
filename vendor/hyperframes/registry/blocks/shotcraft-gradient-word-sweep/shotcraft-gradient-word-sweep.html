@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-gradient-word-sweep"] { width: 1920px; height: 1080px; background: #050505; display: flex; align-items: center; justify-content: center; position: relative; }
+    [data-composition-id="shotcraft-gradient-word-sweep"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#050505); display: flex; align-items: center; justify-content: center; position: relative; }
     .grad { position: absolute; inset: 0; background-image: linear-gradient(92deg, #59c2ff 0%, #9d6bff 32%, #ff6ed4 62%, #ffc46b 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-gradient-word-sweep"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}.sc-content{display:flex;flex-direction:column;align-items:center;justify-content:center}</style>
 </head>
@@ -36,16 +36,16 @@
       const gradLayer=(extra='')=>`<span aria-hidden class="grad" style="background-image:${GRAD};${extra}">${escape(String(values.title))}</span>`;
       const bolts=active.map((f,i)=>{const b=BOLTS[f.bolt],decay=1-(frame-f.at)/f.life;return `<g opacity="${Math.min(1,1.1*decay)}"><path d="${b.d}" fill="none" stroke="rgba(216,60,190,0.65)" stroke-width="${b.long?6:4.5}" style="filter:blur(6px)"/><path d="${b.d}" fill="none" stroke="#ffd8f2" stroke-width="${b.long?1.4:1.1}"/></g>`;}).join('');
       comp.innerHTML=`<div style="position:absolute;left:500px;top:340px;width:820px;height:320px;border-radius:50%;background:radial-gradient(closest-side, rgba(180,110,255,0.6), rgba(255,110,212,0.25) 55%, transparent 78%);filter:blur(38px);opacity:${0.55*glowLvl}"></div>
-        <div style="text-align:center;opacity:${enter};transform:translateY(${(1-enter)*36}px);font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:700;font-style:italic;font-size:92px;letter-spacing:-1px;line-height:1.28;color:#fff;white-space:nowrap">
-          <span style="position:relative;display:inline-block;color:#fff">${escape(String(values.title))}
+        <div style="text-align:center;opacity:${enter};transform:translateY(${(1-enter)*36}px);font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:700;font-style:italic;font-size:92px;letter-spacing:-1px;line-height:1.28;color:var(--ipw-color-text,#fff);white-space:nowrap">
+          <span style="position:relative;display:inline-block;color:var(--ipw-color-text,#fff)">${escape(String(values.title))}
             ${gradLayer(`filter:blur(46px) saturate(1.6);opacity:${0.55*glowLvl};transform:scale(1.05);-webkit-mask-image:${softMask(p,pPct,14)};mask-image:${softMask(p,pPct,14)}`)}
             ${gradLayer(`filter:blur(18px) saturate(1.4) brightness(1.15);opacity:${0.62*glowLvl};-webkit-mask-image:${softMask(p,pPct,10)};mask-image:${softMask(p,pPct,10)}`)}
             ${gradLayer(`clip-path:inset(-25% ${100-pPct}% -25% 0)`)}
             ${trailFade>0.01?gradLayer(`filter:blur(9px) saturate(1.7) brightness(1.7);opacity:${0.95*trailFade};-webkit-mask-image:${trailMask};mask-image:${trailMask}`):''}
-            ${filling&&p<1?`<span aria-hidden style="position:absolute;inset:0;color:#fff;clip-path:inset(-25% ${Math.max(0,100-pPct)}% -25% ${Math.max(0,pPct-10)}%);filter:blur(3px);opacity:${0.9*headFade}">${escape(String(values.title))}</span>`:''}
+            ${filling&&p<1?`<span aria-hidden style="position:absolute;inset:0;color:var(--ipw-color-text,#fff);clip-path:inset(-25% ${Math.max(0,100-pPct)}% -25% ${Math.max(0,pPct-10)}%);filter:blur(3px);opacity:${0.9*headFade}">${escape(String(values.title))}</span>`:''}
             <svg aria-hidden viewBox="0 0 700 240" style="position:absolute;left:-25px;top:-62px;width:700px;height:240px;overflow:visible;pointer-events:none">${bolts}</svg>
           </span> <span>${escape(String(values.suffix))}</span></div>
-        <div style="font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:700;font-style:italic;font-size:92px;color:#fff;text-align:center;margin-top:8px">${escape(String(values.subtitle))}</div>`;
+        <div style="font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:700;font-style:italic;font-size:92px;color:var(--ipw-color-text,#fff);text-align:center;margin-top:8px">${escape(String(values.subtitle))}</div>`;
     }},0);
     window.__timelines['shotcraft-gradient-word-sweep']=tl;
   

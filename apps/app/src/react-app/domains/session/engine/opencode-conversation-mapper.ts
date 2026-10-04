@@ -174,6 +174,7 @@ export type OpenCodeConversationLiveState = {
   parentUserMessageIds: Map<string, string>;
   messageRoles: Map<string, UIMessage["role"]>;
   latestUserMessageIds: Map<string, string>;
+  internalMessageIds: Set<string>;
 };
 
 export function createOpenCodeConversationLiveState(): OpenCodeConversationLiveState {
@@ -181,6 +182,7 @@ export function createOpenCodeConversationLiveState(): OpenCodeConversationLiveS
     parentUserMessageIds: new Map(),
     messageRoles: new Map(),
     latestUserMessageIds: new Map(),
+    internalMessageIds: new Set(),
   };
 }
 
@@ -297,6 +299,10 @@ export function mapOpenCodeConversationEvent(
       typeof info.sessionID !== "string" ||
       (info.role !== "user" && info.role !== "assistant" && info.role !== "system")
     ) return null;
+    if (info.role === "assistant" && info.summary === true) {
+      state?.internalMessageIds.add(info.id);
+      return { type: "message.removed", sessionId: info.sessionID, messageId: info.id };
+    }
     const parentUserMessageId = info.role === "assistant" && typeof info.parentID === "string"
       ? info.parentID.trim()
       : "";
@@ -323,6 +329,7 @@ export function mapOpenCodeConversationEvent(
 
   if (event.type === "message.removed") {
     if (!isRecord(properties) || typeof properties.sessionID !== "string" || typeof properties.messageID !== "string") return null;
+    state?.internalMessageIds.delete(properties.messageID);
     state?.parentUserMessageIds.delete(properties.messageID);
     state?.messageRoles.delete(properties.messageID);
     if (state?.latestUserMessageIds.get(properties.sessionID) === properties.messageID) {
@@ -334,7 +341,7 @@ export function mapOpenCodeConversationEvent(
   if (event.type === "message.part.updated") {
     if (!isRecord(properties) || !isRecord(properties.part)) return null;
     const part = properties.part as unknown as Part;
-    if (!part.id || !part.sessionID || !part.messageID) return null;
+    if (!part.id || !part.sessionID || !part.messageID || state?.internalMessageIds.has(part.messageID)) return null;
     return {
       type: "message.parts",
       sessionId: part.sessionID,
@@ -358,6 +365,7 @@ export function mapOpenCodeConversationEvent(
       typeof properties.delta !== "string" ||
       !properties.delta
     ) return null;
+    if (state?.internalMessageIds.has(properties.messageID)) return null;
     return {
       type: "message.chunk",
       sessionId: properties.sessionID,

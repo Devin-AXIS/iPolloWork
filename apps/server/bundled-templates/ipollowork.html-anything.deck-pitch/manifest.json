@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.deck-pitch",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "slides",
   "subcategory": "finance",
@@ -11,7 +11,8 @@
     "pitch",
     "investor",
     "seed",
-    "vc"
+    "vc",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Investor Pitch Deck",

@@ -98,7 +98,7 @@ import {
   type TemplateCoverLoader,
 } from "@/components/chat/new-conversation-starter";
 import { parseComposerParts, replaceDesignSelectionToken } from "../surface/composer/composer-draft";
-import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
+import { getComposerAttachments, getComposerDraft, getComposerPasteParts, getInitialTaskOptions, newTaskComposerScope, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
   SidebarProvider,
@@ -138,15 +138,13 @@ import {
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
 import {
-  createVideoArtifactCompletionRequirement,
   videoProjectEntryPath,
   videoProjectSessionIdFromEntryPath,
-  type VideoArtifactCompletionRequirement,
 } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import type { ConversationStatus } from "../engine/conversation-engine";
-import { statusKey } from "../sync/session-sync";
+import type { ConversationSnapshot, ConversationStatus } from "../engine/conversation-engine";
+import { snapshotKey, statusKey } from "../sync/session-sync";
 import {
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
@@ -187,7 +185,7 @@ import {
 } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
-import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
+import { isProjectBuilderSession, ConversationWorkspace, WorkCenter } from "@/react-app/domains/work";
 import {
   mergePluginWorkshopInstruction,
   nextPluginWorkshopLabel,
@@ -291,7 +289,7 @@ function createStoryboardRegenerationDraft(sourcePath: string): ComposerDraft {
   const instruction = [
     `Regenerate the existing video at ${sourcePath} from the saved ${storyboardPath}.`,
     "The saved storyboard is approved production input. Do not ask for script confirmation and do not stop after planning.",
-    "Re-read both files from disk, apply every changed scene, narration, caption, visual, audio and timing field, preserve unrelated user edits, then save the complete composition for the application's delivery validator.",
+    "Re-read both files from disk, apply every changed scene, narration, caption, visual, audio and timing field, preserve unrelated user edits, then check and deliver the complete composition using the existing media tools.",
   ].join("\n");
   return {
     mode: "prompt",
@@ -683,6 +681,7 @@ export type SessionPageSidebarProps = {
     folderPath: string;
     engineId: BuiltInWorkspaceEngineId;
   }) => Promise<string | null> | string | null | void;
+  onSelectConversationEngine?: (engineId: string) => void;
   onCreateInitialProjectTask: (draft: ComposerDraft, workspaceId?: string) => Promise<boolean>;
   onCreateTaskFromDraft: (workspaceId: string, draft: ComposerDraft) => Promise<boolean>;
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
@@ -858,9 +857,11 @@ function InitialProjectTaskStarter({
   surface,
   workspaceClient,
   workspaceId,
+  draftScope,
   opencodeBaseUrl,
   ipolloworkToken,
   engineId,
+  onEngineChange,
   templates,
   templatesLoading,
   templateBusyId,
@@ -875,9 +876,11 @@ function InitialProjectTaskStarter({
   surface: SessionPageSurfaceProps;
   workspaceClient?: iPolloWorkServerClient | null;
   workspaceId?: string | null;
+  draftScope: string;
   opencodeBaseUrl?: string | null;
   ipolloworkToken?: string | null;
   engineId?: string | null;
+  onEngineChange?: (engineId: string) => void;
   templates?: TemplateCatalogItem[];
   templatesLoading?: boolean;
   templateBusyId?: string | null;
@@ -889,25 +892,20 @@ function InitialProjectTaskStarter({
   pendingDraft?: ComposerDraft | null;
   onSubmit: (draft: ComposerDraft) => Promise<boolean>;
 }) {
-  const [draft, setDraft] = useState("");
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
-  const attachmentsRef = useRef<ComposerAttachment[]>([]);
-  const [starterAccessMode, setStarterAccessMode] = useState<string | null>(null);
-  const [starterMode, setStarterMode] = useState<NewConversationMode>("work");
-  const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
+  const draft = useComposerStateStore((state) => getComposerDraft(state, draftScope));
+  const attachments = useComposerStateStore((state) => getComposerAttachments(state, draftScope));
+  const pastedText = useComposerStateStore((state) => getComposerPasteParts(state, draftScope));
+  const initialTask = useComposerStateStore((state) => getInitialTaskOptions(state, draftScope));
+  const { accessMode: starterAccessMode, mode: starterMode, capability: starterCapability } = initialTask;
+  const setDraft = useCallback((value: React.SetStateAction<string>) => useComposerStateStore.getState().setDraft(draftScope, value), [draftScope]);
+  const setAttachments = useCallback((value: React.SetStateAction<ComposerAttachment[]>) => useComposerStateStore.getState().setAttachments(draftScope, value), [draftScope]);
+  const setPastedText = useCallback((value: React.SetStateAction<typeof pastedText>) => useComposerStateStore.getState().setPasteParts(draftScope, value), [draftScope]);
+  const setStarterAccessMode = useCallback((value: React.SetStateAction<string | null>) => useComposerStateStore.getState().setInitialTaskOptions(draftScope, (current) => ({ accessMode: typeof value === "function" ? value(current.accessMode) : value })), [draftScope]);
+  const setStarterMode = useCallback((value: NewConversationMode) => useComposerStateStore.getState().setInitialTaskOptions(draftScope, { mode: value }), [draftScope]);
+  const setStarterCapability = useCallback((value: StarterCapability | null) => useComposerStateStore.getState().setInitialTaskOptions(draftScope, { capability: value }), [draftScope]);
   const [sending, setSending] = useState(false);
   const [submittedDraft, setSubmittedDraft] = useState<ComposerDraft | null>(null);
   const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
-  const [pastedText, setPastedText] = useState<Array<{ id: string; label: string; text: string; lines: number }>>([]);
-
-  // Keep the unsent starter input available when a workbench creates a session.
-  useEffect(() => {
-    const scope = `new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`;
-    const store = useComposerStateStore.getState();
-    store.setDraft(scope, draft);
-    store.setAttachments(scope, attachments);
-    store.setPasteParts(scope, pastedText);
-  }, [workspaceId, engineId, draft, attachments, pastedText]);
 
   const opencodeClient = useMemo(
     () => opencodeBaseUrl && ipolloworkToken
@@ -979,7 +977,7 @@ function InitialProjectTaskStarter({
         : modes.find((mode) => mode.isDefault)?.id ?? modes[0]?.id ?? null
     ));
     return modes;
-  }, [surface.conversation, surface.workspaceRoot]);
+  }, [surface.conversation, surface.workspaceRoot, setStarterAccessMode]);
 
   const uploadInboxFiles = useCallback(async (files: File[]) => {
     if (surface.onUploadInboxFiles) return surface.onUploadInboxFiles(files);
@@ -992,25 +990,23 @@ function InitialProjectTaskStarter({
     const label = `${id.slice(-4)} · ${text.split(/\r?\n/).length} lines`;
     setPastedText((current) => [...current, { id, label, text, lines: text.split(/\r?\n/).length }]);
     setDraft((current) => `${current}[pasted text ${label}]`);
-  }, []);
+  }, [setDraft, setPastedText]);
 
   const handleExpandPastedText = useCallback((id: string) => {
-    setPastedText((current) => {
-      const part = current.find((item) => item.id === id);
-      if (!part) return current;
-      setDraft((draftValue) => draftValue.replace(`[pasted text ${part.label}]`, part.text));
-      return current.filter((item) => item.id !== id);
-    });
-  }, []);
+    const current = getComposerPasteParts(useComposerStateStore.getState(), draftScope);
+    const part = current.find((item) => item.id === id);
+    if (!part) return;
+    setDraft((value) => value.replace(`[pasted text ${part.label}]`, part.text));
+    setPastedText(current.filter((item) => item.id !== id));
+  }, [draftScope, setDraft, setPastedText]);
 
   const handleRemovePastedText = useCallback((id: string) => {
-    setPastedText((current) => {
-      const part = current.find((item) => item.id === id);
-      if (!part) return current;
-      setDraft((draftValue) => draftValue.replace(`[pasted text ${part.label}]`, ""));
-      return current.filter((item) => item.id !== id);
-    });
-  }, []);
+    const current = getComposerPasteParts(useComposerStateStore.getState(), draftScope);
+    const part = current.find((item) => item.id === id);
+    if (!part) return;
+    setDraft((value) => value.replace(`[pasted text ${part.label}]`, ""));
+    setPastedText(current.filter((item) => item.id !== id));
+  }, [draftScope, setDraft, setPastedText]);
 
   const composerTooling: InitialProjectComposerTooling = {
     listSkills,
@@ -1018,25 +1014,6 @@ function InitialProjectTaskStarter({
     plusMenuScope: workspaceId ?? "new-project",
     listPlusMenuData,
     onUploadInboxFiles: uploadInboxFiles,
-  };
-
-  useEffect(() => {
-    attachmentsRef.current = attachments;
-  }, [attachments]);
-
-  useEffect(() => () => {
-    attachmentsRef.current.forEach((attachment) => {
-      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
-    });
-  }, []);
-
-  const clearSubmittedDraft = (submittedAttachments: ComposerAttachment[]) => {
-    submittedAttachments.forEach((attachment) => {
-      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
-    });
-    setDraft("");
-    setAttachments([]);
-    setStarterCapability(null);
   };
 
   const submitDraft = async (composerDraft: ComposerDraft) => {
@@ -1048,8 +1025,6 @@ function InitialProjectTaskStarter({
         setSubmittedDraft(null);
         return false;
       }
-      clearSubmittedDraft(composerDraft.attachments);
-      setPastedText([]);
       return true;
     } finally {
       setSending(false);
@@ -1087,6 +1062,7 @@ function InitialProjectTaskStarter({
       mode: "prompt",
       parts,
       attachments,
+      workTemplateId: "auto",
       ...(starterAccessMode ? { accessMode: starterAccessMode } : {}),
       text,
       resolvedText,
@@ -1174,6 +1150,22 @@ function InitialProjectTaskStarter({
             />
           </div>
         )}
+        {!visiblePendingDraft ? (
+          <div className="mt-5 flex flex-wrap items-center gap-2" data-testid="conversation-work-options">
+            {onEngineChange ? (
+              <Select value={engineId || DEFAULT_ENGINE_ID} onValueChange={(value) => { if (value) onEngineChange(value); }}>
+                <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs shadow-none" aria-label={t("conversation_work.engine")} data-testid="conversation-engine-picker">
+                  <SelectValue>{engineId === CODEX_HARNESS_ENGINE_ID ? t("projects.engine_codex") : engineId === DEEPSEEK_HARNESS_ENGINE_ID ? t("projects.engine_dsh") : t("projects.engine_opencode")}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DEFAULT_ENGINE_ID}>{t("projects.engine_opencode")}</SelectItem>
+                  <SelectItem value={CODEX_HARNESS_ENGINE_ID}>{t("projects.engine_codex")}</SelectItem>
+                  <SelectItem value={DEEPSEEK_HARNESS_ENGINE_ID}>{t("projects.engine_dsh")}</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
+        ) : null}
         <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">
           {(surface.providerConnectedCount ?? 0) === 0 ? (
             <button
@@ -1241,7 +1233,7 @@ function InitialProjectTaskStarter({
             isRemoteWorkspace={surface.isRemoteWorkspace}
             isSandboxWorkspace={surface.isSandboxWorkspace}
             onUploadInboxFiles={composerTooling.onUploadInboxFiles}
-            draftScopeKey={`new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}
+            draftScopeKey={draftScope}
             layout="inline"
             placeholder={newConversationPlaceholder()}
             topAccessory={starterCapability ? (
@@ -1690,10 +1682,15 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
 }
 
 export function SessionPage(props: SessionPageProps) {
+  const initialTaskScope = newTaskComposerScope(props.selectedWorkspaceId);
   // Observe the same status cache as the composer: Stop settles it immediately
   // and session-sync suppresses stale busy events until the next prompt.
   const { data: selectedSessionStatus } = useQuery<ConversationStatus>({
     queryKey: statusKey(props.runtimeWorkspaceId ?? "", props.selectedSessionId ?? ""),
+    queryFn: skipToken,
+  });
+  const { data: selectedSessionSnapshot } = useQuery<ConversationSnapshot>({
+    queryKey: snapshotKey(props.runtimeWorkspaceId ?? "", props.selectedSessionId ?? ""),
     queryFn: skipToken,
   });
   const locale = currentLocale();
@@ -1736,8 +1733,9 @@ export function SessionPage(props: SessionPageProps) {
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
   const selectedSessionTitle = useMemo(
-    () => sessionTitleForId(props.sidebar.projectSessionLists, props.selectedSessionId),
-    [props.selectedSessionId, props.sidebar.projectSessionLists],
+    () => sessionTitleForId(props.sidebar.projectSessionLists, props.selectedSessionId)
+      || (selectedSessionSnapshot?.session.id === props.selectedSessionId ? getDisplaySessionTitle(selectedSessionSnapshot.session.title) : ""),
+    [props.selectedSessionId, props.sidebar.projectSessionLists, selectedSessionSnapshot],
   );
   const selectedWorkspaceProject = useMemo(
     () => props.sidebar.projectSessionLists.find(
@@ -1791,15 +1789,6 @@ export function SessionPage(props: SessionPageProps) {
   const [pendingStoryboardRegeneration, setPendingStoryboardRegeneration] = useState<PendingStoryboardRegeneration | null>(null);
   const templateDispatchPreparationRef = useRef<string | null>(null);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
-  const [pendingVideoArtifactCompletion, setPendingVideoArtifactCompletion] = useState<{
-    sessionId: string;
-    requirement: VideoArtifactCompletionRequirement;
-  } | null>(null);
-  const consumePendingVideoArtifactCompletion = useCallback(() => {
-    setPendingVideoArtifactCompletion((current) =>
-      current?.sessionId === props.selectedSessionId ? null : current,
-    );
-  }, [props.selectedSessionId]);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
@@ -1867,9 +1856,11 @@ export function SessionPage(props: SessionPageProps) {
     }
     return undefined;
   }, [currentVideoEntryPath, designTemplateEntryPath, hasRootTemplateFocus, isPresentationSession]);
-  const artifactDirectory = artifactContext
-    ? artifactDirectoryPath(artifactContext.entryPath)
-    : "";
+  const artifactDirectory = currentVideoEntryPath
+    ? artifactDirectoryPath(currentVideoEntryPath)
+    : isPresentationSession && designTemplateEntryPath
+      ? artifactDirectoryPath(designTemplateEntryPath)
+      : "";
   const artifactScopeKey = props.selectedSessionId && artifactDirectory
     ? `${props.selectedSessionId}:${artifactDirectory}`
     : "";
@@ -1899,6 +1890,9 @@ export function SessionPage(props: SessionPageProps) {
   const conversationRequestCount = conversationMessages.filter(
     (message) => message.role === "user" && message.parts.length > 0,
   ).length;
+  const completedArtifactOperations = conversationMessages.reduce((count, message) => count + message.parts.filter((part) =>
+    part.type === "dynamic-tool" && part.state === "output-available",
+  ).length, 0);
   const currentTemplateApplyMode = currentTemplateSessionData?.applyMode
     ?? (conversationMessages.length ? "current-conversation" : "new-conversation");
   useEffect(() => {
@@ -1934,14 +1928,15 @@ export function SessionPage(props: SessionPageProps) {
   }, [
     artifactDirectory,
     artifactScopeKey,
+    completedArtifactOperations,
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   ]);
   const artifactFiles = useMemo(
-    () => artifactContext && artifactCatalogState.scopeKey === artifactScopeKey
+    () => artifactCatalogState.scopeKey === artifactScopeKey
       ? artifactCatalogState.files
       : undefined,
-    [artifactCatalogState, artifactContext, artifactScopeKey],
+    [artifactCatalogState, artifactScopeKey],
   );
   const autoCollapsedSidebarRef = useRef(false);
   const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
@@ -2412,18 +2407,6 @@ export function SessionPage(props: SessionPageProps) {
         }, null, 2),
         baseUpdatedAt: null,
       });
-      if (template.surface === "video") {
-        const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, state.entry);
-        setPendingVideoArtifactCompletion({
-          sessionId: props.selectedSessionId,
-          requirement: createVideoArtifactCompletionRequirement(
-            state.entry,
-            source.content,
-            conversationMessages.length,
-            conversationRequestCount,
-          ),
-        });
-      }
       const referencePrompt = referencePayload.contextPack.promptText.trim();
       const visibleTemplateMessage = templateBriefUserMessage({ template, brief });
       setTemplateAssistantWait(references.length > 0 ? {
@@ -2453,9 +2436,7 @@ export function SessionPage(props: SessionPageProps) {
       });
     } catch (error) {
       setTemplateAssistantWait((current) => current?.sessionId === props.selectedSessionId ? null : current);
-      setPendingVideoArtifactCompletion((current) =>
-        current?.sessionId === props.selectedSessionId ? null : current,
-      );
+
       toast.error(t("templates.brief.submit_failed"), {
         description: error instanceof Error ? error.message : undefined,
       });
@@ -2484,27 +2465,11 @@ export function SessionPage(props: SessionPageProps) {
           sessionId: dispatch.sessionId,
           label: t("templates.brief.reference_agent_processing_label", { count: dispatch.attachments.length }),
         } : null);
-        if (templateSession.manifest.surface === "video") {
-          const source = await client.readWorkspaceFile(
-            workspaceId,
-            templateSession.state.entry,
-          );
-          setPendingVideoArtifactCompletion({
-            sessionId: dispatch.sessionId,
-            requirement: createVideoArtifactCompletionRequirement(
-              templateSession.state.entry,
-              source.content,
-              conversationMessages.length,
-              conversationRequestCount,
-            ),
-          });
-        }
         setPendingTemplateDispatch((current) => current?.requestId === dispatch.requestId
           ? { ...current, draft: createTemplateDispatchDraft(templateSession.manifest, templateSession.state, current) }
           : current);
       } catch (error) {
         setTemplateAssistantWait((current) => current?.sessionId === dispatch.sessionId ? null : current);
-        setPendingVideoArtifactCompletion((current) => current?.sessionId === dispatch.sessionId ? null : current);
         setPendingTemplateDispatch((current) => current?.requestId === dispatch.requestId ? null : current);
         revokeTemplateReferenceAttachmentPreviews(dispatch.attachments);
         toast.error(t("templates.error_apply"), {
@@ -2521,7 +2486,6 @@ export function SessionPage(props: SessionPageProps) {
     setPendingTemplateDispatch(null);
     if (dispatched) return;
     setTemplateAssistantWait((current) => current?.sessionId === sessionId ? null : current);
-    setPendingVideoArtifactCompletion((current) => current?.sessionId === sessionId ? null : current);
     setTemplateSessionData((current) => current?.sessionId === sessionId ? { ...current, hasBrief: false } : current);
     toast.error(t("templates.error_apply"));
   }, [pendingTemplateDispatch]);
@@ -2530,16 +2494,6 @@ export function SessionPage(props: SessionPageProps) {
     const sourcePath = currentVideoEntryPath;
     if (!sessionId || !sourcePath || !props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     try {
-      const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, sourcePath);
-      setPendingVideoArtifactCompletion({
-        sessionId,
-        requirement: createVideoArtifactCompletionRequirement(
-          sourcePath,
-          source.content,
-          conversationMessages.length,
-          conversationRequestCount,
-        ),
-      });
       setPendingStoryboardRegeneration({
         requestId: createTemplateDispatchRequestId(sessionId),
         sessionId,
@@ -2556,7 +2510,6 @@ export function SessionPage(props: SessionPageProps) {
     if (pendingStoryboardRegeneration?.requestId === requestId) {
       setPendingStoryboardRegeneration(null);
       if (!dispatched) {
-        setPendingVideoArtifactCompletion((current) => current?.sessionId === pendingStoryboardRegeneration.sessionId ? null : current);
         toast.error("新版脚本未能提交给当前视频会话，请重试。");
       }
       return;
@@ -3931,14 +3884,14 @@ export function SessionPage(props: SessionPageProps) {
       launcherCreationRef.current = true;
       setLauncherBusy(true);
       const workspaceId = props.selectedWorkspaceId;
-      const scope = `new-task:${workspaceId ?? "new-project"}:${props.selectedWorkspaceDisplay.engineId?.trim() || DEFAULT_ENGINE_ID}`;
+      const scope = initialTaskScope;
       void (async () => {
         try {
           const sessionId = await props.sidebar.onCreateTaskInWorkspace(workspaceId, "work");
           if (!sessionId) throw new Error(t("plugin_workshop.create_session_failed"));
           const store = useComposerStateStore.getState();
           const draft = store.sessions[scope];
-          if (draft) store.restoreSessionIfEmpty(sessionId, draft);
+          if (!draft || store.restoreSessionIfEmpty(sessionId, draft)) store.clearSession(scope);
           setPendingLauncher({ itemId: item.id, sessionId, workspaceId });
         } catch (error) {
           launcherCreationRef.current = false;
@@ -4668,20 +4621,19 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
 
               {mainWorkspaceView === "project-overview" ? (
-                <ProjectOverview
-                  projectName={selectedProjectName}
+                <ConversationWorkspace
+                  sessionId={props.selectedSessionId}
+                  runtime={{ engineId: selectedEngineId, model: props.surface?.selectedModel ? { providerId: props.surface.selectedModel.providerID, modelId: props.surface.selectedModel.modelID } : null, mode: props.surface?.selectedMode ?? null, modelVariant: props.surface?.modelVariant ?? null }}
                   workspaceId={props.runtimeWorkspaceId}
                   client={props.ipolloworkServerClient}
-                  engineId={props.selectedWorkspaceDisplay.engineId}
-                  providers={props.providers ?? []}
-                  projectModel={props.surface?.selectedModel ?? { providerID: "", modelID: "" }}
+                  engineId={selectedEngineId}
+                  title={props.selectedSessionId ? selectedSessionTitle : undefined}
                   onOpenTasks={openProjectBoard}
-                  onConfigureModels={props.surface?.onConfigureModels}
-                  onConfigureTokenStar={props.surface?.onConfigureTokenStar}
                 />
               ) : mainWorkspaceView === "schedule" || mainWorkspaceView === "project-board" ? (
                 <WorkCenter
                   mode={mainWorkspaceView === "schedule" ? "global" : "project"}
+                  sessionId={mainWorkspaceView === "project-board" ? props.selectedSessionId : undefined}
                   selectedWorkspaceId={props.selectedWorkspaceId}
                   runtimeWorkspaceId={props.runtimeWorkspaceId}
                   selectedClient={props.ipolloworkServerClient}
@@ -4690,6 +4642,7 @@ export function SessionPage(props: SessionPageProps) {
                   providers={props.providers ?? []}
                   connectedProviderIds={props.providerConnectedIds}
                   initialAnchorAt={scheduleAnchorAt ?? undefined}
+                  onOpenSession={handleSidebarOpenSession}
                 />
               ) : mainWorkspaceView === "extensions" && props.settingsSlot ? (
                 <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
@@ -4739,13 +4692,15 @@ export function SessionPage(props: SessionPageProps) {
               <AnimatePresence initial={false}>
                 {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
                   <InitialProjectTaskStarter
-                    key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
+                    key={props.selectedWorkspaceId}
                     surface={props.surface}
                     workspaceClient={props.ipolloworkServerClient}
                     workspaceId={props.runtimeWorkspaceId}
+                    draftScope={initialTaskScope}
                     opencodeBaseUrl={props.opencodeBaseUrl}
                     ipolloworkToken={props.ipolloworkServerToken}
                     engineId={props.selectedWorkspaceDisplay.engineId}
+                    onEngineChange={props.sidebar.onSelectConversationEngine}
                     templates={starterTemplateCatalog}
                     templatesLoading={starterTemplateCatalogLoading}
                     templateBusyId={templateBusyId}
@@ -4844,10 +4799,6 @@ export function SessionPage(props: SessionPageProps) {
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
-                        artifactCompletionRequirement={pendingVideoArtifactCompletion?.sessionId === props.selectedSessionId
-                          ? pendingVideoArtifactCompletion.requirement
-                          : undefined}
-                        onArtifactCompletionRequirementConsumed={consumePendingVideoArtifactCompletion}
                         onOpenVideoStudio={openCurrentVideoArtifactStudio}
                         onOpenSchedule={openGlobalSchedule}
                         onOpenWorkspaceApp={openWorkspaceAppForPlugin}

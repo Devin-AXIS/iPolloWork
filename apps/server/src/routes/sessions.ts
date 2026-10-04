@@ -1,5 +1,5 @@
 import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
-import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID, isBuiltInWorkspaceEngineId } from "@ipollowork/types/workspace";
 import {
   CodexHarnessUnavailableError,
   type CodexHarnessRuntimePool,
@@ -23,9 +23,10 @@ import {
 } from "../deepseek-harness-session-read-model.js";
 import { ApiError } from "../errors.js";
 import { StdioJsonRpcError } from "../stdio-json-rpc-runtime.js";
-import { buildSession, buildSessionList, buildSessionMessages, buildSessionSnapshot, buildSessionStatuses } from "../session-read-model.js";
+import { buildSession, buildSessionList, buildSessionMessages, buildSessionSnapshot, buildSessionStatuses, type SessionInfoReadModel } from "../session-read-model.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
-import type { WorkspaceSessionRuntime } from "../workspace-session-runtime.js";
+import { resolveWorkspaceSession, type WorkspaceSessionRuntime } from "../workspace-session-runtime.js";
+import { listConversationSessionBindings } from "../work-items.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
@@ -55,6 +56,7 @@ interface RegisterSessionRoutesOptions {
   deepseekHarness: DeepSeekHarnessRuntimePool;
   codexHarness: CodexHarnessRuntimePool;
   sessionRuntime: WorkspaceSessionRuntime;
+  monitorSessionExecution?: (workspace: WorkspaceInfo, sessionId: string, turnId?: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -155,10 +157,10 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     throw error;
   }
 
-  async function listWorkspaceSessions(
+  async function listEngineSessions(
     workspace: WorkspaceInfo,
     input: { roots?: boolean; start?: number; search?: string; limit?: number },
-  ) {
+  ): Promise<SessionInfoReadModel[]> {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         return await listDeepSeekHarnessSessions(deepseekHarness.forWorkspace(workspace), workspace, input);
@@ -186,9 +188,10 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
         ),
       ]);
       const sessions = buildSessionList(unwrapOpencodeResult(sessionResult, "/session"));
-      if (!statuses) return sessions;
+      if (!statuses) return sessions.map((session) => ({ ...session, engineId: DEFAULT_ENGINE_ID }));
       return sessions.map((session) => ({
         ...session,
+        engineId: DEFAULT_ENGINE_ID,
         status: statuses[session.id] ?? { type: "idle" },
       }));
     } catch (error) {
@@ -196,7 +199,61 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     }
   }
 
+  async function listWorkspaceSessions(
+    workspace: WorkspaceInfo,
+    input: { roots?: boolean; start?: number; search?: string; limit?: number },
+  ): Promise<SessionInfoReadModel[]> {
+    const bindings = await listConversationSessionBindings(config, workspace.id);
+    const engines = Array.from(new Set([
+      workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
+      ...bindings.map((binding) => binding.engineId),
+    ])).filter(isBuiltInWorkspaceEngineId);
+    const limit = Math.min(input.limit ?? 200, 500);
+    if (engines.length === 1 && !bindings.length) return listEngineSessions(workspace, { ...input, limit });
+    const mixed = engines.length > 1;
+    const start = mixed ? input.start ?? 0 : 0;
+    if (mixed && start + limit > 1_000) {
+      throw new ApiError(400, "invalid_query", "Mixed-engine session pages must stay within the latest 1000 conversations");
+    }
+    const results = await Promise.allSettled(engines.map((engineId) => listEngineSessions(
+      { ...workspace, engineId },
+      mixed ? { ...input, start: 0, limit: start + limit } : { ...input, limit },
+    )));
+    const sessions = new Map<string, SessionInfoReadModel>();
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      for (const session of result.value) {
+        const key = `${session.engineId}:${session.id}`;
+        if (!sessions.has(key)) sessions.set(key, session);
+      }
+    }
+    const search = input.search?.trim().toLocaleLowerCase();
+    for (const binding of bindings) {
+      if (!mixed && input.start) continue;
+      const key = `${binding.engineId}:${binding.sessionId}`;
+      const engineResult = results[engines.findIndex((engineId) => engineId === binding.engineId)];
+      if (sessions.has(key) || (binding.status !== "ready" && engineResult?.status === "fulfilled")) continue;
+      if (search && !binding.title.toLocaleLowerCase().includes(search)) continue;
+      sessions.set(key, {
+        id: binding.sessionId,
+        engineId: binding.engineId,
+        title: binding.title,
+        directory: workspace.path,
+        time: { created: binding.createdAt, updated: binding.updatedAt },
+        ...(engineResult?.status === "rejected" ? { runtimeUnavailable: true } : {}),
+      });
+    }
+    if (!sessions.size && results.every((result) => result.status === "rejected")) {
+      const first = results[0];
+      if (first?.status === "rejected") throw first.reason;
+    }
+    return [...sessions.values()]
+      .sort((left, right) => (right.time?.updated ?? 0) - (left.time?.updated ?? 0))
+      .slice(start, start + limit);
+  }
+
   async function readWorkspaceSession(workspace: WorkspaceInfo, sessionId: string) {
+    workspace = await resolveWorkspaceSession(config, workspace, sessionId, { codexHarness, deepseekHarness });
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         return await readDeepSeekHarnessSession(deepseekHarness.forWorkspace(workspace), workspace, sessionId);
@@ -205,12 +262,12 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
         return await readCodexHarnessSession(codexHarness.forWorkspace(workspace), sessionId);
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
-      return buildSession(
+      return { ...buildSession(
         unwrapOpencodeResult(
           await opencode.session.get({ sessionID: sessionId }),
           `/session/${encodeURIComponent(sessionId)}`,
         ),
-      );
+      ), engineId: DEFAULT_ENGINE_ID };
     } catch (error) {
       remapSessionReadError(error);
     }
@@ -221,6 +278,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     sessionId: string,
     input: { limit?: number },
   ) {
+    workspace = await resolveWorkspaceSession(config, workspace, sessionId, { codexHarness, deepseekHarness });
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         return await readDeepSeekHarnessMessages(
@@ -250,6 +308,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     sessionId: string,
     input: { limit?: number },
   ) {
+    workspace = await resolveWorkspaceSession(config, workspace, sessionId, { codexHarness, deepseekHarness });
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         return await readDeepSeekHarnessSnapshot(deepseekHarness.forWorkspace(workspace), workspace, sessionId, input.limit);
@@ -270,7 +329,8 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
           .then((result) => unwrapOpencodeResult(result, `/session/${encodeURIComponent(sessionId)}/todo`)),
         opencode.session.status().then((result) => unwrapOpencodeResult(result, "/session/status")),
       ]);
-      return buildSessionSnapshot({ session, messages, todos, statuses });
+      const snapshot = buildSessionSnapshot({ session, messages, todos, statuses });
+      return { ...snapshot, session: { ...snapshot.session, engineId: DEFAULT_ENGINE_ID } };
     } catch (error) {
       remapSessionReadError(error);
     }
@@ -281,12 +341,17 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
+    const engineId = optionalString(body, "engineId", 80) ?? (workspace.engineId?.trim() || DEFAULT_ENGINE_ID);
+    if (!isBuiltInWorkspaceEngineId(engineId)) {
+      throw new ApiError(400, "invalid_payload", `Unsupported conversation engine: ${engineId}`);
+    }
     let item;
     try {
       item = await sessionRuntime.create(
         workspace,
         optionalString(body, "title", 500),
         sessionModelInput(body),
+        engineId,
       );
     } catch (error) {
       remapSessionReadError(error);
@@ -354,6 +419,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
         sessionId,
         sessionPromptInput(await readJsonBody(ctx.request)),
       );
+      options.monitorSessionExecution?.(workspace, effectiveSessionId);
     } catch (error) {
       remapSessionReadError(error);
     }

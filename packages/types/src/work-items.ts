@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { DEFAULT_ENGINE_ID } from "./workspace.js";
 
 import {
   projectAgentModelSchema,
   projectAgentSchema,
+  projectWorkspaceConfigSchema,
 } from "./project-workspace.js";
 
 export const WORK_ITEM_TITLE_MAX_LENGTH = 80;
@@ -80,6 +82,86 @@ export const projectSessionExecutionRuntimeSchema = z.object({
   modelVariant: z.string().trim().min(1).max(64).nullable(),
 });
 
+export const conversationWorkKindSchema = z.enum(["general", "video", "design", "development", "research", "document"]);
+export const conversationWorkflowStageSchema = z.object({
+  id: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/),
+  title: z.string().trim().min(1).max(80),
+  instructions: z.string().trim().max(4_000).default(""),
+  agentId: z.string().trim().min(1).max(64).optional(),
+  acceptance: z.array(z.string().trim().min(1).max(500)).max(12).default([]),
+});
+const workflowContent = {
+  workKind: conversationWorkKindSchema,
+  config: projectWorkspaceConfigSchema,
+  stages: z.array(conversationWorkflowStageSchema).max(16),
+  acceptance: z.array(z.string().trim().min(1).max(500)).max(16),
+};
+function validateWorkflowStages(value: { config: z.infer<typeof projectWorkspaceConfigSchema>; stages: z.infer<typeof conversationWorkflowStageSchema>[] }, context: z.RefinementCtx) {
+  if (new Set(value.stages.map((stage) => stage.id)).size !== value.stages.length) {
+    context.addIssue({ code: "custom", path: ["stages"], message: "Stage IDs must be unique" });
+  }
+  value.stages.forEach((stage, index) => {
+    if (stage.agentId && !value.config.agents.some((agent) => agent.id === stage.agentId)) {
+      context.addIssue({ code: "custom", path: ["stages", index, "agentId"], message: "Stage Agent must reference the conversation team" });
+    }
+  });
+}
+export const workTemplateSchema = z.object({
+  id: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/),
+  version: z.number().int().positive(),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(500),
+  origin: z.enum(["builtin", "saved"]),
+  ...workflowContent,
+}).superRefine(validateWorkflowStages);
+export const conversationWorkflowSchema = z.object({
+  templateId: workTemplateSchema.shape.id,
+  templateVersion: z.number().int().positive(),
+  templateName: workTemplateSchema.shape.name,
+  source: z.enum(["manual", "auto", "custom"]),
+  goal: z.string().trim().max(2_000),
+  ...workflowContent,
+  progress: z.object({
+    summary: z.string().trim().max(2_000),
+    decisions: z.array(z.string().trim().min(1).max(500)).max(20),
+    outputs: z.array(z.string().trim().min(1).max(1_000)).max(32),
+    blockers: z.array(z.string().trim().min(1).max(500)).max(12),
+  }).optional(),
+  updatedAt: z.number().int().nonnegative(),
+}).superRefine(validateWorkflowStages);
+export const conversationWorkflowUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(WORK_ITEM_TITLE_MAX_LENGTH).optional(),
+  expectedVersion: z.number().int().nonnegative().optional(),
+  runtime: projectSessionExecutionRuntimeSchema,
+  templateId: workTemplateSchema.shape.id.optional(),
+  source: conversationWorkflowSchema.shape.source.default("manual"),
+  goal: conversationWorkflowSchema.shape.goal.optional(),
+  workKind: conversationWorkKindSchema.optional(),
+  config: projectWorkspaceConfigSchema.optional(),
+  stages: conversationWorkflowSchema.shape.stages.optional(),
+  acceptance: conversationWorkflowSchema.shape.acceptance.optional(),
+  progress: conversationWorkflowSchema.shape.progress.unwrap().partial().optional(),
+});
+export const workTemplateSaveSchema = z.object({
+  sessionId: z.string().trim().min(1).max(240),
+  templateId: workTemplateSchema.shape.id.optional(),
+  expectedVersion: z.number().int().nonnegative().optional(),
+  name: workTemplateSchema.shape.name,
+  description: workTemplateSchema.shape.description.optional(),
+});
+export type ConversationWorkKind = z.infer<typeof conversationWorkKindSchema>;
+export type ConversationWorkflowStage = z.infer<typeof conversationWorkflowStageSchema>;
+export type ConversationWorkflow = z.infer<typeof conversationWorkflowSchema>;
+export type ConversationWorkflowUpdateInput = z.input<typeof conversationWorkflowUpdateSchema>;
+export type WorkTemplate = z.infer<typeof workTemplateSchema>;
+export type WorkTemplateSaveInput = z.infer<typeof workTemplateSaveSchema>;
+export type WorkTemplateStats = {
+  byTemplate: Array<{ templateId: string; runs: number; reviewedCompletions: number }>;
+  byWorkKind: Array<{ workKind: ConversationWorkKind; runs: number; reviewedCompletions: number }>;
+};
+export type WorkTemplateListResponse = { templates: WorkTemplate[]; stats: WorkTemplateStats };
+export type ConversationWorkflowResponse = { item: WorkItem | null };
+
 export const projectSessionExecutionSchema = z.object({
   sessionId: z.string().trim().min(1).max(240),
   projectRevision: z.number().int().nonnegative(),
@@ -87,17 +169,23 @@ export const projectSessionExecutionSchema = z.object({
   agent: projectAgentSchema,
   runtime: projectSessionExecutionRuntimeSchema,
   boundAt: z.number().int().nonnegative(),
+  workflow: conversationWorkflowSchema.optional(),
 });
 
+const sessionWorkItemTitleSchema = z.string().trim().min(1).max(500)
+  .transform((title) => title.slice(0, WORK_ITEM_TITLE_MAX_LENGTH));
+
 export const projectSessionExecutionStartSchema = z.object({
-  title: z.string().trim().min(1).max(WORK_ITEM_TITLE_MAX_LENGTH),
+  title: sessionWorkItemTitleSchema,
   agentId: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/).optional(),
   runtime: projectSessionExecutionRuntimeSchema,
+  goal: conversationWorkflowSchema.shape.goal.optional(),
+  workKind: conversationWorkKindSchema.optional(),
 });
 
 export const projectSessionExecutionFinishSchema = z.object({
   status: z.enum(["done", "failed"]),
-  title: z.string().trim().min(1).max(WORK_ITEM_TITLE_MAX_LENGTH).optional(),
+  title: sessionWorkItemTitleSchema.optional(),
   error: z.string().trim().max(2_000).nullable().optional(),
 });
 
@@ -106,23 +194,35 @@ export type ProjectSessionExecutionRuntime = z.infer<typeof projectSessionExecut
 export type ProjectSessionExecutionStartInput = z.infer<typeof projectSessionExecutionStartSchema>;
 export type ProjectSessionExecutionFinishInput = z.infer<typeof projectSessionExecutionFinishSchema>;
 
-export function projectExecutionSystemContext(execution: ProjectSessionExecution): string {
-  const resources = [
-    execution.agent.pluginIds.length
-      ? `Assigned plugins: ${execution.agent.pluginIds.join(", ")}`
-      : null,
-    execution.agent.skillIds.length
-      ? `Assigned skills: ${execution.agent.skillIds.join(", ")}`
-      : null,
-  ].filter((value): value is string => Boolean(value));
+/** Namespaced native roles never replace engine built-ins such as plan or explore. */
+export function nativeWorkAgentType(templateId: string, agentId: string): string {
+  return `ipw-${templateId}.${agentId}`;
+}
 
+export function projectExecutionSystemContext(execution: ProjectSessionExecution): string {
+  const workflow = execution.workflow;
+  const examples = workflow?.source !== "auto" ? workflow?.config.agents.filter((agent) => agent.id !== execution.agent.id).map((agent) => [
+    `${workflow.source === "custom" ? `[project-agent:${agent.id}]` : nativeWorkAgentType(workflow.templateId, agent.id)}: ${agent.name}${agent.role ? ` — ${agent.role}` : ""}`,
+    // A customized conversation remains task guidance, without overwriting a
+    // reusable native role shared with another conversation.
+    workflow.source === "custom" ? agent.prompt : null,
+    workflow.source === "custom" && agent.skillIds.length ? `Skills: ${agent.skillIds.map((id) => id.split(":").at(-1)).join(", ")}` : null,
+  ].filter(Boolean).join("\n")).join("\n\n") : undefined;
   return [
-    `You are ${execution.agent.name}, the project Agent bound to this task.`,
-    execution.agent.role ? `Responsibility: ${execution.agent.role}` : null,
+    `You are ${execution.agent.name}.`,
     execution.projectGoal ? `Project goal: ${execution.projectGoal}` : null,
-    execution.agent.prompt ? `Agent instructions:\n${execution.agent.prompt}` : null,
-    resources.length ? resources.join("\n") : null,
-    "Keep this task within the assigned responsibility. Use the configured project resources when they are relevant, and preserve the task's bound runtime for this conversation.",
+    workflow ? `Task goal: ${workflow.goal || "Follow the current user request."}` : null,
+    "Use your engine's native plan, tools, subagents and result collection; choose the actual workflow yourself. iPolloWork displays native execution and files; it does not run a second agent workflow after your turn.",
+    execution.agent.prompt || execution.agent.role,
+    examples ? `Available preset roles (optional):\n${examples}` : null,
+    examples ? workflow?.source === "custom"
+      ? "If a preset helps, use a built-in native worker and pass its current instructions, Skills and role label with the task inputs. These are conversation-specific definitions, not registered agent types; do not substitute shared named preset types for these edited roles. You may use other workers or complete the task yourself."
+      : "If a preset helps, choose its native agent type above. Its role prompt and Skills are already configured. You may also use built-in workers or complete the task yourself." : null,
+    workflow?.source !== "auto" && workflow?.stages.length ? `Suggested steps: ${workflow.stages.map((stage) => stage.title).join(" → ")}` : null,
+    workflow?.acceptance.length ? `Requested result: ${workflow.acceptance.join("; ")}` : null,
+    execution.agent.pluginIds.length ? `Assigned plugins: ${execution.agent.pluginIds.join(", ")}` : null,
+    execution.agent.skillIds.length ? `Assigned skills: ${execution.agent.skillIds.join(", ")}` : null,
+    "Proactively use native subagents when bounded parallel work or an independent review materially saves time or improves quality. Keep simple tasks on the main agent when delegation adds no value. Delegate with exact inputs, owned paths and the expected result. Parallelize independent tasks; sequence dependent steps after their required inputs are available, and avoid concurrent edits to the same files. Collect native worker results, check source evidence and conflicting claims, then integrate actual paths, evidence and unfinished work into the main answer. Unobserved checks remain unverified. Role labels such as [project-agent:ROLE_ID] are optional display hints, not execution requirements.",
   ].filter((value): value is string => Boolean(value?.trim())).join("\n\n");
 }
 

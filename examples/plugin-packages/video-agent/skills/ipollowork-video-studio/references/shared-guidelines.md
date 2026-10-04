@@ -44,6 +44,14 @@ Sample copy, page counts, data and assets are not automatically user requirement
 
 Acceptance must distinguish saved templates without indexes, editable uploads, screenshot-only references and custom work without references, as well as exact-layout versus adaptive modes. Claim verification only for combinations actually exercised; bundled-template tests do not prove all custom-template cases.
 
+#### Reusable-template authoring only
+
+Apply this workflow only when the host marks the session as reusable-template authoring or the user explicitly requests a reusable template. Ordinary artifact creation, applying a template, script-only work and targeted edits keep their requested scope.
+
+On the first turn, acknowledge the goal and ask one unanswered question about purpose and audience when that information is missing. Guide further clarification one critical question at a time: purpose and audience, reusable content structure, reusable variables, visual direction and Design System, type-specific requirements, then generation and validation. Skip supplied answers; when information is sufficient, edit the current project instead of continuing to interview.
+
+Write a package-local `authoring.md` and declare `authoringGuide: "authoring.md"` in `manifest.json`. Describe the actual visual tokens and fixed regions, index real source layouts by selector with content suitability and allowed variations, and label proposed extensions separately from existing layouts. Update the guide after structural changes; exclude session-only facts. Keep the host-selected category, design system, variables, package paths, validation and re-instantiation contracts.
+
 ### 3. Content before structure
 
 Identify audience, purpose, main message, supporting material and intended action before organizing pages, sections or scenes.

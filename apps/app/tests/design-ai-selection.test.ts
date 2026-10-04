@@ -64,6 +64,20 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("If the locator no longer resolves");
     expect(instruction).toContain("Selected element semantic context:");
     expect(instruction).toContain('"region":"CA"');
+    expect(instruction).toContain("current editable HTML file is the structural source of truth");
+    expect(instruction).toContain("Manual Studio edits are user-owned source state");
+    expect(instruction).toContain("data-hf-id");
+    expect(instruction).toContain("data-hf-studio-*");
+    expect(instruction).toContain("--hf-studio-*");
+    expect(instruction).toContain("final stylesheet/style entry before `</head>`");
+    expect(instruction).toContain("--ipw-color-bg");
+    expect(instruction).toContain("--ipw-card-blur");
+    expect(instruction).toContain("--ipw-motion-ease");
+    expect(instruction).toContain("Theme-only changes preserve content, assets");
+    expect(instruction).toContain("component structure and geometry");
+    expect(instruction).not.toContain("initial confirmed brief");
+    expect(instruction).not.toContain("creative, layout and media decisions");
+    expect(instruction).not.toContain("never replace it with a generic hero");
   });
 
   test("keeps the active visual system while allowing content-led initial structure", () => {
@@ -80,10 +94,13 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("Manual Studio edits are user-owned source state");
     expect(instruction).toContain("data-hf-studio-*");
     expect(instruction).toContain("For targeted or follow-up edits, preserve unrelated root classes");
-    expect(instruction).toContain("initial confirmed brief may require a new content structure");
-    expect(instruction).toContain("derive the artifact's information architecture");
-    expect(instruction).toContain("add, remove, reorder, repeat, or recombine");
-    expect(instruction).toContain("never replace it with a generic hero");
+    expect(instruction).toContain("section hierarchy and order");
+    expect(instruction).toContain("initial confirmed brief may reorganize content");
+    expect(instruction).toContain("Follow ipollowork-design-studio for the active category's creative, layout and media decisions");
+    expect(instruction).toContain("Theme-only changes preserve content, assets");
+    expect(instruction).toContain("component structure and geometry");
+    expect(instruction).not.toContain("derive the artifact's information architecture");
+    expect(instruction).not.toContain("never replace it with a generic hero");
   });
 
   test("keeps generated presentation files inside the current slide session", () => {
@@ -95,6 +112,8 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("Presentation output contract:");
     expect(instruction).toContain("inside `design/ses_slides`");
     expect(instruction).toContain("Do not return code without saving it");
+    expect(instruction).toContain("Follow ipollowork-presentations for the active category's creative, layout and media decisions");
+    expect(instruction).not.toContain("Follow ipollowork-design-studio");
   });
 
   test("stores an immutable Design selection context", () => {

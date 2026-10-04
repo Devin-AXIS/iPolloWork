@@ -20,8 +20,6 @@ import {
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 import {
-  createVideoArtifactCompletionRequirement,
-  unchangedVideoArtifactIssue,
   videoProjectEntryPath,
   videoProjectSessionIdFromEntryPath,
 } from "../src/react-app/domains/session/video/video-project";
@@ -66,6 +64,16 @@ function textMessage(id: string, role: "user" | "assistant", text: string): UIMe
 }
 
 describe("video artifact entry routing", () => {
+  test("keeps native deliverables while excluding copied video reference catalogs", () => {
+    const project = "video/ses_native-artifact-video";
+    const entry = htmlArtifact(`${project}/index.html`);
+    const storyboard = { ...htmlArtifact(`${project}/STORYBOARD.md`), type: "markdown" as const };
+    const reference = htmlArtifact(`${project}/core-v1-video/feature-orbit.html`);
+    const referenceIndex = { ...htmlArtifact(`${project}/core-v1-index.md`), type: "markdown" as const };
+    const preview = { ...htmlArtifact(`${project}/.thumbnails/frame.jpg`), type: "image" as const };
+    expect(selectConversationArtifactCards([entry, storyboard, reference, referenceIndex, preview]))
+      .toEqual([entry, storyboard]);
+  });
   test("routes prepared Design and Video entries to their dedicated Studios", () => {
     const slides = htmlArtifact("design/ses_bank-artifact-slides/entry.html");
     const video = htmlArtifact("video/ses_bank-artifact-video/index.html");
@@ -86,24 +94,7 @@ describe("video artifact entry routing", () => {
     expect(videoProjectEntryPath("ses/video 1")).toBe("video/ses_video_1/index.html");
   });
 
-  test("requires a template video source to change before completion", () => {
-    const requirement = createVideoArtifactCompletionRequirement(
-      "video/ses_video/index.html",
-      "<main>Template</main>",
-      2,
-      1,
-    );
 
-    expect(requirement).toMatchObject({
-      sourcePath: "video/ses_video/index.html",
-      assistantMessageBaseline: 2,
-      requestOrdinal: 1,
-    });
-    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Template</main>")).toMatchObject({
-      code: "artifact_unchanged",
-    });
-    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Finished video</main>")).toBeNull();
-  });
 
   test("matches only the current video entry across workspace path prefixes", () => {
     const entryPath = videoProjectEntryPath("ses_video");

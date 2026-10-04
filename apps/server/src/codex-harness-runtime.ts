@@ -28,6 +28,7 @@ import { readEngineRuntimeMcpConfig } from "./mcp.js";
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import { readRuntimeProviderChannels } from "./runtime-opencode-config-store.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
+import { importNodeSqlite } from "./node-sqlite.js";
 import { engineHostMcp } from "./engine-host-mcp.js";
 import {
   compatibleProviderRuntimeProfiles,
@@ -41,6 +42,7 @@ import {
 } from "./stdio-json-rpc-runtime.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ensureDir } from "./utils.js";
+import { nativeWorkTemplateAgents } from "./work-items.js";
 
 type ProviderProtocol = "openai-responses";
 
@@ -390,6 +392,7 @@ export function codexHarnessHostMcp(
 export function codexHarnessConfig(input: {
   providers: readonly CodexHarnessProvider[];
   mcp: Record<string, Record<string, unknown>>;
+  agents?: readonly { name: string; description: string; configFile: string }[];
 }): string {
   const lines = [
     'approval_policy = "on-request"',
@@ -421,6 +424,9 @@ export function codexHarnessConfig(input: {
     const block = codexMcpConfig(name, value);
     if (block.length) lines.push(...block, "");
   }
+  for (const agent of input.agents ?? []) {
+    lines.push(`[agents.${tomlString(agent.name)}]`, `description = ${tomlString(agent.description)}`, `config_file = ${tomlString(agent.configFile)}`, "");
+  }
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
@@ -446,6 +452,7 @@ export function isCodexUnmaterializedThreadError(error: unknown): boolean {
   if (!(error instanceof StdioJsonRpcError)) return false;
   const message = error.message.toLowerCase();
   return message.includes("no rollout found for thread id")
+    || /^invalid paginated history lineage for [^\s:]+: missing source rollout$/u.test(message)
     || (
       message.includes("not materialized yet")
       && message.includes("includeturns is unavailable before first user message")
@@ -468,6 +475,10 @@ export class CodexHarnessRuntime {
   readonly #eventListeners = new Set<(event: CodexHarnessEvent) => void>();
   // Approval requests outlive renderer subscriptions; replay until answered or cancelled.
   readonly #pendingRequests = new Map<string | number, Extract<CodexHarnessEvent, { type: "request" }>>();
+  // Native plan notifications are not included by thread/read. Retain only the
+  // latest event per thread for snapshot/reconnect display, never execution.
+  readonly #nativePlans = new Map<string, { turnId: string; plan: unknown[] }>();
+  readonly #tokenTotals = new Map<string, number>();
   #unsubscribeProcessEvents = () => {};
   readonly #providerGateway = new CodexProviderGateway();
 
@@ -485,6 +496,20 @@ export class CodexHarnessRuntime {
     try {
       const result = await process.call<T>(method, params);
       this.#rememberThreadProvider(method, params, result);
+      if (method === "thread/read" && isRecord(result) && isRecord(result.thread) && typeof result.thread.id === "string") {
+        const plan = this.#nativePlans.get(result.thread.id);
+        if (plan) result.thread.nativePlan = plan;
+      }
+      if ((method === "thread/list" || method === "thread/read") && isRecord(result)) {
+        const threads = method === "thread/read" ? [result.thread] : Array.isArray(result.data) ? result.data : [];
+        const ids = threads.flatMap((thread) => isRecord(thread) && typeof thread.id === "string" ? [thread.id] : []);
+        const totals = await this.readTokenTotals(ids);
+        for (const thread of threads) {
+          if (!isRecord(thread) || typeof thread.id !== "string") continue;
+          const total = totals.get(thread.id);
+          if (total !== undefined) thread.totalTokens = total;
+        }
+      }
       return result;
     } catch (error) {
       if (error instanceof StdioJsonRpcError) throw error;
@@ -494,6 +519,41 @@ export class CodexHarnessRuntime {
 
   isAwaitingFirstTurn(threadId: string): boolean {
     return this.#attachedThreadSelections.get(threadId)?.awaitingFirstTurn === true;
+  }
+
+  /** Read the managed workspace's native cumulative meter without starting Codex. */
+  async readTokenTotals(threadIds: readonly string[]): Promise<Map<string, number>> {
+    const ids = [...new Set(threadIds)].slice(0, 500);
+    const totals = new Map<string, number>();
+    if (!ids.length) return totals;
+    // Codex's currently supported state_5 schema persists a total per thread.
+    // Missing/changed native storage leaves usage unmetered; never create or migrate it.
+    const path = join(runtimeStorageDir(this.#config), "codex-harness-workspaces", safeRuntimeSegment(this.#workspace.id), "state_5.sqlite");
+    if (existsSync(path)) {
+      try {
+        const db = typeof process.versions.bun === "string"
+          ? new (await import("bun:sqlite")).Database(path, { readonly: true })
+          : new (await importNodeSqlite()).DatabaseSync(path, { readOnly: true });
+        try {
+          const statement = db.prepare(`SELECT id, tokens_used FROM threads WHERE id IN (${ids.map(() => "?").join(",")})`);
+          try {
+            for (const row of statement.all(...ids)) {
+              if (isRecord(row) && typeof row.id === "string" && typeof row.tokens_used === "number" && Number.isSafeInteger(row.tokens_used) && row.tokens_used > 0) {
+                totals.set(row.id, row.tokens_used);
+              }
+            }
+          } finally { if ("finalize" in statement) statement.finalize(); }
+        } finally { db.close(); }
+      } catch {
+        // Usage is observational and must not prevent session history from loading.
+      }
+    }
+    // A live total is newer than a native database snapshot read in flight.
+    for (const id of ids) {
+      const total = this.#tokenTotals.get(id);
+      if (total !== undefined) totals.set(id, total);
+    }
+    return totals;
   }
 
   async compactThread(threadId: string, signal: AbortSignal): Promise<void> {
@@ -671,6 +731,8 @@ export class CodexHarnessRuntime {
     this.#starting = null;
     this.#attachedThreadSelections.clear();
     this.#pendingRequests.clear();
+    this.#nativePlans.clear();
+    this.#tokenTotals.clear();
     this.#unsubscribeProcessEvents();
     this.#unsubscribeProcessEvents = () => {};
     if (process) await process.close();
@@ -878,8 +940,16 @@ export class CodexHarnessRuntime {
       safeRuntimeSegment(this.#workspace.id),
     );
     await ensureDir(codexHome);
+    const roleDirectory = join(codexHome, "agents");
+    await ensureDir(roleDirectory);
+    const agents = await Promise.all(nativeWorkTemplateAgents().map(async (agent) => {
+      const configFile = join(roleDirectory, `${agent.name}.toml`);
+      await writeFile(configFile, `name = ${tomlString(agent.name)}\ndescription = ${tomlString(agent.description)}\ndeveloper_instructions = ${tomlString(agent.prompt)}\n`, "utf8");
+      return { name: agent.name, description: agent.description, configFile };
+    }));
     const config = codexHarnessConfig({
       providers,
+      agents,
       mcp: {
         ...mcp,
         // Reserved built-in bridge. Installed plugin services, Design/Video
@@ -945,6 +1015,33 @@ export class CodexHarnessRuntime {
       this.#unsubscribeProcessEvents = rpc.subscribe((event) => {
         if (event.type === "request") this.#pendingRequests.set(event.id, event);
         if (event.type === "notification" && isRecord(event.params)) {
+          const threadId = event.params.threadId;
+          if (typeof threadId === "string") {
+            if (event.method === "thread/tokenUsage/updated" && isRecord(event.params.tokenUsage) && isRecord(event.params.tokenUsage.total)) {
+              // Native input includes cache and output includes reasoning. Its
+              // reported total already counts both subsets exactly once.
+              const total = event.params.tokenUsage.total.totalTokens;
+              if (typeof total === "number" && Number.isSafeInteger(total) && total >= 0) {
+                this.#tokenTotals.delete(threadId);
+                this.#tokenTotals.set(threadId, total);
+                if (this.#tokenTotals.size > 500) {
+                  const oldest = this.#tokenTotals.keys().next().value;
+                  if (oldest) this.#tokenTotals.delete(oldest);
+                }
+              }
+            }
+            if (event.method === "thread/deleted") this.#tokenTotals.delete(threadId);
+            if (event.method === "turn/started" || event.method === "thread/deleted" || event.method === "thread/archived") this.#nativePlans.delete(threadId);
+            if (event.method === "turn/plan/updated" && typeof event.params.turnId === "string" && Array.isArray(event.params.plan)) {
+              this.#nativePlans.delete(threadId);
+              this.#nativePlans.set(threadId, { turnId: event.params.turnId, plan: event.params.plan.slice(0, 100) });
+              if (this.#nativePlans.size > 128) {
+                const oldest = this.#nativePlans.keys().next().value;
+                if (oldest) this.#nativePlans.delete(oldest);
+              }
+            }
+          }
+
           if (event.method === "serverRequest/resolved") {
             const id = event.params.requestId;
             if (typeof id === "string" || typeof id === "number") this.#pendingRequests.delete(id);

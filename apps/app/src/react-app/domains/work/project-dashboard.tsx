@@ -4,6 +4,7 @@ import type {
   ProjectTaskHealthMetric,
   ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
+import type { ReactNode } from "react";
 import type { WorkBoardConfig, WorkItem } from "@ipollowork/types/work-items";
 import {
   Activity,
@@ -36,7 +37,7 @@ import {
 } from "./project-overview-shared";
 import { ProjectOrchestrationGraph } from "./project-orchestration-graph";
 import { ProjectRuntimeData } from "./project-runtime-data";
-import type { ProjectRuntimeMetrics } from "./project-runtime-metrics";
+import type { ProjectRuntimeExecutionRecord, ProjectRuntimeMetrics } from "./project-runtime-metrics";
 
 type ProjectDashboardProps = {
   projectName: string;
@@ -45,20 +46,21 @@ type ProjectDashboardProps = {
   board: WorkBoardConfig;
   plugins: iPolloWorkPluginPackageItem[];
   authorizations: Record<string, iPolloWorkPluginAuthorizationState>;
-  selectedAgent: ProjectAgent | undefined;
+  selectedAgent?: ProjectAgent;
   runtimeMetrics: ProjectRuntimeMetrics | null;
   runtimeMetricsLoading: boolean;
   runtimeMetricsError: boolean;
-  onOpenAgent: (agent: ProjectAgent) => void;
-  onAddAgent: () => void;
+  onOpenAgent?: (agent: ProjectAgent) => void;
+  showPresets?: boolean;
+  mainSessionId?: string;
+  mainEngineName?: string;
+  executionHref?: (record: ProjectRuntimeExecutionRecord) => string;
+  onAddAgent?: () => void;
   onOpenTasks: () => void;
+  headerControls?: ReactNode;
+  healthContent?: ReactNode;
+  footerContent?: ReactNode;
 };
-
-// Remove after persisted project configs no longer contain localized starter roles.
-const LEGACY_GENERIC_AGENT_ROLES = new Set([
-  "Own one clear project responsibility",
-  "负责一项明确的项目职责",
-]);
 
 function formatDate(timestamp: number | null): string | null {
   if (timestamp === null) return null;
@@ -147,17 +149,33 @@ function tasksForAgent(agent: ProjectAgent, items: WorkItem[]): WorkItem[] {
 }
 
 export function ProjectDashboard(props: ProjectDashboardProps) {
+  const showPresets = props.showPresets ?? false;
   const selectedAgent = props.selectedAgent;
-  const metrics = taskMetrics(
-    props.items,
-    props.config,
-    props.runtimeMetrics?.executionRecords ?? [],
-  );
+  const executionSessionIds = new Set(props.items.flatMap((item) => [
+    ...(item.execution ? [item.execution.sessionId] : []),
+    ...(item.automationLastSessionId ? [item.automationLastSessionId] : []),
+  ]));
+  const runtimeRecords = (props.runtimeMetrics?.executionRecords ?? []).filter((record) => {
+    if (executionSessionIds.has(record.sessionId)) return false;
+    executionSessionIds.add(record.sessionId);
+    return true;
+  });
+  const metrics = taskMetrics(props.items, props.config, runtimeRecords);
+  const presetIds = new Set(props.config.agents.map((agent) => agent.id));
+  const visibleSessionIds = new Set(props.mainSessionId ? [props.mainSessionId] : []);
+  const nativeAgents = showPresets
+    ? runtimeRecords.filter((record) => !record.agentId || !presetIds.has(record.agentId))
+    : (props.runtimeMetrics?.executionRecords ?? []).filter((record) => {
+      if (visibleSessionIds.has(record.sessionId)) return false;
+      visibleSessionIds.add(record.sessionId);
+      return true;
+    });
+  const mainItem = props.items.find((item) => item.execution?.sessionId === props.mainSessionId);
   const sections = new Set(props.config.dashboard.sections);
-  const hasLeftRail = sections.has("health") || sections.has("tasks") || sections.has("usage") || sections.has("orchestration");
+  const hasLeftRail = sections.has("health") || sections.has("tasks") || sections.has("usage") || (showPresets && sections.has("orchestration"));
   const hasRightRail = sections.has("agents") || sections.has("schedule");
   const installedById = new Map(props.plugins.map((item) => [item.pluginId, item]));
-  const referencedPluginIds = Array.from(new Set(props.config.agents.flatMap((agent) => agent.pluginIds)));
+  const referencedPluginIds = showPresets ? Array.from(new Set(props.config.agents.flatMap((agent) => agent.pluginIds))) : [];
   const missingConnections = referencedPluginIds.filter((pluginId) => {
     const item = installedById.get(pluginId);
     return !item || pluginNeedsConfiguration(item, props.authorizations[pluginId]);
@@ -169,7 +187,14 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
       : metrics.overdue > 0
         ? { label: t("project_overview.health_attention"), description: t("project_overview.health_attention_description", { count: metrics.overdue }), tone: "amber" }
         : { label: t("project_overview.health_good"), description: null, tone: "green" };
-  const recentItems = [...props.items].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 5);
+  type TaskActivity = { kind: "work"; item: WorkItem } | { kind: "runtime"; record: ProjectRuntimeExecutionRecord };
+  const recentItems = [
+    ...props.items.map((item): TaskActivity => ({ kind: "work", item })),
+    ...runtimeRecords.map((record): TaskActivity => ({ kind: "runtime", record })),
+  ].sort((left, right) => (
+    (right.kind === "work" ? right.item.updatedAt : right.record.updatedAt)
+    - (left.kind === "work" ? left.item.updatedAt : left.record.updatedAt)
+  )).slice(0, 5);
   const upcomingItems = props.items
     .filter((item) => item.startAt !== null || item.dueAt !== null)
     .sort((left, right) => (left.startAt ?? left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.startAt ?? right.dueAt ?? Number.MAX_SAFE_INTEGER))
@@ -179,23 +204,21 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_10%_0%,rgba(74,158,178,0.10),transparent_30%),radial-gradient(circle_at_92%_6%,rgba(108,120,163,0.07),transparent_28%),var(--dls-surface)] text-dls-text [--primary:#1FBAC0]" data-testid="project-overview">
       <header className="shrink-0 border-b border-white/25 bg-dls-surface/68 px-4 py-4 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/[0.06] sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.45px] text-dls-text">{props.projectName}</h1>
-            </div>
-            <p className="mt-1 max-w-2xl text-[13px] leading-5 text-dls-secondary">
-              {props.config.goal || t("project_overview.default_goal")}
-            </p>
+          <div className="min-w-0 flex-1 self-center">
+            <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.45px] text-dls-text" title={props.projectName}>{props.projectName}</h1>
           </div>
-          <div className={cn(
-            "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] leading-[15px]",
-            health.tone === "green" && "border-emerald-6/50 bg-emerald-3/70 text-emerald-11",
-            health.tone === "amber" && "border-amber-6/50 bg-amber-3/70 text-amber-11",
-            health.tone === "violet" && "border-violet-6/50 bg-violet-3/70 text-violet-11",
-            health.tone === "rose" && "border-rose-6/50 bg-rose-3/70 text-rose-11",
-          )}>
-            {health.tone === "green" ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
-            <span className="font-medium">{health.label}</span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {props.headerControls}
+            <div className={cn(
+              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] leading-[15px]",
+              health.tone === "green" && "border-emerald-6/50 bg-emerald-3/70 text-emerald-11",
+              health.tone === "amber" && "border-amber-6/50 bg-amber-3/70 text-amber-11",
+              health.tone === "violet" && "border-violet-6/50 bg-violet-3/70 text-violet-11",
+              health.tone === "rose" && "border-rose-6/50 bg-rose-3/70 text-rose-11",
+            )}>
+              {health.tone === "green" ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
+              <span className="font-medium">{health.label}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -229,6 +252,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                   <TaskMetric key={metric} id={metric} metrics={metrics} />
                 ))}
               </div>
+              {props.healthContent}
             </section>
             ) : null}
 
@@ -246,16 +270,24 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
               </header>
               {recentItems.length ? (
                 <div className="divide-y divide-dls-border/60">
-                  {recentItems.map((item) => {
-                    const column = props.board.columns.find((candidate) => candidate.id === item.status);
+                  {recentItems.map((entry) => {
+                    const title = entry.kind === "work" ? entry.item.title : entry.record.title;
+                    const assignee = entry.kind === "work"
+                      ? props.config.agents.find((agent) => agent.id === entry.item.assignee)?.name ?? entry.item.assignee ?? t("project_overview.unassigned")
+                      : entry.record.agentName ?? t("conversation_work.engine_created_agent");
+                    const status = entry.kind === "work"
+                      ? props.board.columns.find((candidate) => candidate.id === entry.item.status)?.label ?? entry.item.status
+                      : entry.record.status === "unknown"
+                        ? t("project_overview.execution_recorded")
+                        : t(entry.record.status === "completed" ? "work.status.done" : `work.status.${entry.record.status}`);
                     return (
-                      <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                      <div key={entry.kind === "work" ? `work:${entry.item.id}` : `runtime:${entry.record.sessionId}`} className="flex items-center gap-3 px-4 py-3" data-testid={entry.kind === "runtime" ? "conversation-delegation" : undefined}>
                         <CircleDot className="size-3.5 shrink-0 text-dls-text/45" />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[14px] font-semibold leading-5 text-dls-text">{item.title}</p>
-                          <p className="mt-0.5 truncate text-[11px] leading-[15px] text-dls-text/45">{item.assignee || t("project_overview.unassigned")}</p>
+                          <p className="truncate text-[14px] font-semibold leading-5 text-dls-text">{title}</p>
+                          <p className="mt-0.5 truncate text-[11px] leading-[15px] text-dls-text/45">{assignee}</p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-dls-hover px-2 py-1 text-[11px] leading-[15px] text-dls-secondary">{column?.label || item.status}</span>
+                        <span className="shrink-0 rounded-full bg-dls-hover px-2 py-1 text-[11px] leading-[15px] text-dls-secondary">{status}</span>
                       </div>
                     );
                   })}
@@ -271,13 +303,12 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
             ) : null}
 
             {sections.has("usage") ? <ProjectRuntimeData
-              agents={props.config.agents}
               displayMetrics={props.config.dashboard.usage.metrics}
               metrics={props.runtimeMetrics}
               loading={props.runtimeMetricsLoading}
               error={props.runtimeMetricsError}
             /> : null}
-            {sections.has("orchestration") ? <ProjectOrchestrationGraph
+            {showPresets && sections.has("orchestration") ? <ProjectOrchestrationGraph
               config={props.config}
               items={props.items}
               runtimeMetrics={props.runtimeMetrics}
@@ -294,28 +325,39 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                 <div className="flex items-center gap-2">
                   <Bot className="size-4 text-dls-secondary" />
                   <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.agents")}</h2>
-                  <span className="text-[11px] leading-[15px] tabular-nums text-dls-text/45">{props.config.agents.length}</span>
+                  <span className="text-[11px] leading-[15px] tabular-nums text-dls-text/45">{(showPresets ? props.config.agents.length : props.mainSessionId ? 1 : 0) + nativeAgents.length}</span>
                 </div>
-                <Button type="button" variant="ghost" size="icon-sm" className="size-7 rounded-lg" aria-label={t("project_overview.add_agent")} onClick={props.onAddAgent}>
+                {showPresets && props.onAddAgent ? <Button type="button" variant="ghost" size="icon-sm" className="size-7 rounded-lg" aria-label={t("project_overview.add_agent")} onClick={props.onAddAgent}>
                   <Plus className="size-3.5" />
-                </Button>
+                </Button> : null}
               </header>
               <div className="divide-y divide-dls-border/60" data-testid="project-agent-list">
-                {props.config.agents.map((agent) => {
+                {!showPresets && props.mainSessionId ? <div className="flex items-start gap-3 px-4 py-3" data-testid="project-primary-agent">
+                  <AgentAvatar agent={{ avatarSeed: props.mainSessionId }} className="size-9" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold leading-5">{t("project_overview.primary")}</p>
+                    <p className="mt-0.5 text-[11px] leading-[15px] text-dls-secondary">{props.mainEngineName}</p>
+                    <p className="mt-2 truncate text-[11px] leading-[15px] text-dls-secondary">{props.projectName}</p>
+                    {mainItem ? <span className="mt-2 inline-block rounded-full bg-dls-hover px-2 py-0.5 text-[11px] text-dls-secondary">{props.board.columns.find((column) => column.id === mainItem.status)?.label ?? mainItem.status}</span> : null}
+                  </div>
+                </div> : null}
+                {showPresets ? props.config.agents.map((agent) => {
                   const assignedItems = tasksForAgent(agent, props.items).sort((left, right) => right.updatedAt - left.updatedAt);
                   const runtimeUsage = props.runtimeMetrics?.agents.find((usage) => usage.agentId === agent.id);
-                  const recentRuntimeConversation = runtimeUsage?.recentConversation ?? null;
-                  const agentMetrics = taskMetrics(assignedItems, props.config);
+                  const agentRecords = runtimeRecords.filter((record) => record.agentId === agent.id);
+                  const activeRuntimeConversation = agentRecords.find((record) => record.status === "running");
+                  const recentRuntimeConversation = activeRuntimeConversation ?? runtimeUsage?.recentConversation ?? null;
+                  const agentMetrics = taskMetrics(assignedItems, props.config, agentRecords);
                   const activeStatuses = new Set(props.config.dashboard.taskHealth.statusGroups.active);
                   const completedStatuses = new Set(props.config.dashboard.taskHealth.statusGroups.completed);
                   const failedStatuses = new Set(props.config.dashboard.taskHealth.statusGroups.failed);
                   const recentItem = assignedItems.find((item) => activeStatuses.has(item.status))
-                    ?? assignedItems.find((item) => completedStatuses.has(item.status) || failedStatuses.has(item.status));
+                    ?? (activeRuntimeConversation ? undefined : assignedItems.find((item) => completedStatuses.has(item.status) || failedStatuses.has(item.status)));
                   const recentColumn = recentItem ? props.board.columns.find((column) => column.id === recentItem.status) : undefined;
                   const taskSegments = [
-                    { id: "active", count: agentMetrics.active + (runtimeUsage?.executions.running ?? 0), className: "bg-amber-9", label: t("project_overview.active_tasks") },
-                    { id: "completed", count: agentMetrics.completed + (runtimeUsage?.executions.completed ?? 0), className: "bg-emerald-9", label: t("project_overview.completed_tasks") },
-                    { id: "failed", count: agentMetrics.failed + (runtimeUsage?.executions.failed ?? 0), className: "bg-rose-9", label: t("project_overview.failed_tasks") },
+                    { id: "active", count: agentMetrics.active, className: "bg-amber-9", label: t("project_overview.active_tasks") },
+                    { id: "completed", count: agentMetrics.completed, className: "bg-emerald-9", label: t("project_overview.completed_tasks") },
+                    { id: "failed", count: agentMetrics.failed, className: "bg-rose-9", label: t("project_overview.failed_tasks") },
                   ];
                   const displayedTaskTotal = taskSegments.reduce((total, segment) => total + segment.count, 0);
                   const agentTaskState = recentItem && activeStatuses.has(recentItem.status)
@@ -332,11 +374,10 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                               ? t("project_overview.failed_tasks")
                               : recentRuntimeConversation
                                 ? t("project_overview.execution_recorded")
-                                : t("project_overview.standby");
+                                : t("conversation_work.preset_available");
                   const showAgentTaskState = agentTaskState === t("project_overview.active_tasks")
                     || agentTaskState === t("project_overview.failed_tasks");
                   const primary = agent.id === props.config.orchestration.entryAgentId;
-                  const genericRole = LEGACY_GENERIC_AGENT_ROLES.has(agent.role);
                   const agentNeedsSetup = agent.pluginIds.some((pluginId) => {
                     const item = installedById.get(pluginId);
                     return !item || pluginNeedsConfiguration(item, props.authorizations[pluginId]);
@@ -348,17 +389,19 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                       type="button"
                       aria-pressed={selected}
                       className="group block w-full bg-white px-4 py-3 text-left transition-colors hover:bg-dls-hover/34 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring dark:bg-dls-surface"
-                      onClick={() => props.onOpenAgent(agent)}
+                      onClick={() => props.onOpenAgent?.(agent)}
+                      disabled={!props.onOpenAgent}
                       data-testid="project-agent-tab"
+                      data-agent-id={agent.id}
                     >
                       <span className="flex items-start gap-3">
                         <AgentAvatar agent={agent} className="size-9" />
                         <span className="min-w-0 flex-1">
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="truncate text-[14px] font-semibold leading-5 text-dls-text">{agent.name}</span>
-                            {primary ? <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium leading-[15px] text-primary">{t("project_overview.primary")}</span> : null}
+                            {primary ? <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium leading-[15px] text-primary">{t("project_overview.primary")}</span> : <span className="shrink-0 text-[10px] text-dls-tertiary">{t("conversation_work.preset_role")}</span>}
                           </span>
-                          {genericRole ? null : <span className="mt-0.5 block truncate text-[11px] leading-[15px] text-dls-secondary">{agent.role || t("project_overview.agent_no_role")}</span>}
+                          <span className="mt-0.5 block truncate text-[11px] leading-[15px] text-dls-secondary">{agent.role || t("project_overview.agent_no_role")}</span>
                         </span>
                         <Settings2 className="mt-0.5 size-3.5 shrink-0 text-dls-text/45 transition-colors group-hover:text-dls-text" />
                       </span>
@@ -417,7 +460,27 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                       </span>
                     </button>
                   );
-                })}
+                }) : null}
+                {nativeAgents.map((record) => (
+                  <a
+                    key={record.sessionId}
+                    href={props.executionHref?.(record)}
+                    className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-dls-hover/34 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    data-testid="project-native-agent"
+                    data-session-id={record.sessionId}
+                  >
+                    <AgentAvatar agent={{ avatarSeed: record.sessionId }} className="size-9" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-semibold leading-5 text-dls-text">{record.title}</span>
+                      <span className="mt-0.5 block text-[11px] leading-[15px] text-dls-secondary">{t("conversation_work.engine_created_agent")}</span>
+                      <span className="mt-2 inline-block rounded-full bg-dls-hover px-2 py-0.5 text-[11px] leading-[15px] text-dls-secondary">
+                        {record.status === "unknown" ? t("project_overview.execution_recorded") : t(record.status === "completed" ? "work.status.done" : `work.status.${record.status}`)}
+                      </span>
+                    </span>
+                    <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-dls-text/45 group-hover:text-dls-text" aria-label={t("session.agent_execution")} />
+                  </a>
+                ))}
+                {!showPresets && !props.mainSessionId && !nativeAgents.length ? <p className="px-4 py-6 text-center text-xs text-dls-secondary">{t("conversation_work.no_activity")}</p> : null}
               </div>
             </section>
             ) : null}
@@ -446,6 +509,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
             ) : null}
           </div>
           ) : null}
+          {props.footerContent ? <div className="min-w-0 xl:col-span-2">{props.footerContent}</div> : null}
         </div>
       </main>
     </div>

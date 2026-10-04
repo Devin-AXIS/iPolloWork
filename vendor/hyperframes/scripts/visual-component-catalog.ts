@@ -1433,7 +1433,7 @@ function nativeRecipe(definition: ComponentDefinition) {
   if (!fit) throw new Error(`Missing narrative fit rules for ${definition.name}`);
   const labels = content.items.split("|").map(item => item.split("::")[0]);
   const actions = Array.from({ length: 4 }, (_, index) => `Explain supplied item ${index + 1} in narration order`);
-  const events = actions.map((action, index) => ({ id: `step-${index + 1}`, target: `.vc-item:nth-child(${index + 1})`, time: [1.2, 2.6, 4.1, 5.5][index], duration: .5, action }));
+  const events = actions.map((action, index) => ({ id: `step-${index + 1}`, target: `.vc-item:nth-child(${index + 1})${definition.name === "process-handoff-map" ? ", .vc-carrier" : ""}`, time: [1.2, 2.6, 4.1, 5.5][index], duration: .5, action }));
   events.push({ id: "resolve", target: ".vc-item", time: 6.6, duration: .55, action: "Restore the complete readable relationship" });
   const quantitative = ["bars", "gauge", "funnel", "series", "matrix"].includes(content.mode);
   const connected = content.mode === "flow" || content.mode === "cycle";
@@ -1661,6 +1661,7 @@ h1{font-size:60px;line-height:1.4;margin:0}.vc-note{font-size:24px;line-height:1
 [data-mode="flow"] .vc-meta,[data-mode="cycle"] .vc-meta{text-align:left;font-size:26px}
 .vc-link{position:absolute;left:-62px;top:50%;width:60px;height:3px;background:var(--primary);transform-origin:left}.vc-link:after{content:"";position:absolute;right:0;top:-7px;border-left:12px solid var(--primary);border-top:8px solid transparent;border-bottom:8px solid transparent}
 .vc-return{position:absolute;left:0;top:0;pointer-events:none;display:block;width:100%;height:500px;overflow:visible}.vc-return path{fill:none;stroke:var(--primary);stroke-width:4}.vc-return text{font-size:24px;fill:currentColor}
+${definition.name === "process-handoff-map" ? '.vc-carrier{position:absolute;left:0;top:0;width:280px;padding:8px 12px;border:2px solid var(--primary);border-radius:8px;background:var(--surface);color:inherit;font-size:18px;line-height:1.4;overflow-wrap:anywhere;pointer-events:none;z-index:2}\n' : ''}\
 </style></head><body>
 <main id="${definition.name}" class="vc-root" data-composition-id="${definition.name}" data-width="1920" data-height="1080" data-duration="${definition.duration}" data-mode="${content.mode}"><header class="vc-header"><h1></h1><p class="vc-note"></p></header><p class="vc-axis"></p><div class="vc-items"></div></main>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
@@ -1694,14 +1695,23 @@ h1{font-size:60px;line-height:1.4;margin:0}.vc-note{font-size:24px;line-height:1
    back.append(svgElement("path",{class:"vc-back",d:"M"+right+" 400V462H"+left+"V400l-8 14m8-14 8 14"}));const text=svgElement("text",{x:848,y:494,"text-anchor":"middle"});text.textContent="结果返回下一轮观察";back.append(text);container.append(back);
  }
  window.__timelines=window.__timelines||{};window.__timelines[id]?.kill();const tl=gsap.timeline({paused:true}),items=[...root.querySelectorAll(".vc-item")];
- tl.set(root.querySelectorAll("*"),{x:0,y:0,scale:1,opacity:1},0);tl.fromTo(root.querySelector(".vc-header"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);tl.set(items,{opacity:.18},0);
- const events=recipe.events.filter(event=>root.querySelector(event.target));
+ tl.set(root.querySelectorAll("*"),{x:0,y:0,scale:1},0);tl.fromTo(root.querySelector(".vc-header"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);tl.set(items,{opacity:.18},0);
+ const events=recipe.events.filter(event=>root.querySelector(event.target${definition.name === "process-handoff-map" ? '.split(",")[0]' : ''}));
+${definition.name === "process-handoff-map" ? ` const carrier=element("div","vc-carrier");container.append(carrier);
+ tl.set(root.querySelectorAll(".vc-link"),{scaleX:0},0);
+ const points=items.map(item=>({x:item.offsetLeft+24,y:item.offsetTop-76}));
+ tl.set(carrier,{...points[0],opacity:0,textContent:rows[0].detail},0);
+` : ''}\
  events.filter(event=>event.id!=="resolve").forEach(event=>{
    const target=root.querySelector(event.target),at=cues[event.id]??event.time;tl.to(target,{opacity:.85,duration:event.duration,ease:"power2.out"},at);
    const fill=target.querySelector(".vc-fill"),link=target.querySelector(".vc-link"),path=target.querySelector(".vc-line");
-   if(fill||link)tl.fromTo(fill||link,{scaleX:0},{scaleX:1,duration:event.duration,ease:"power2.out"},at);
+   if(fill||link)tl.${definition.name === "process-handoff-map" ? 'to(fill||link,' : 'fromTo(fill||link,{scaleX:0},'}{scaleX:1,duration:event.duration,ease:"power2.out"},at);
    if(path){const length=path.getTotalLength();tl.set(path,{strokeDasharray:length,strokeDashoffset:length},0);tl.to(path,{strokeDashoffset:0,duration:event.duration,ease:"power2.out"},at);}
    if(mode==="matrix")tl.fromTo(target.querySelectorAll(".vc-cell"),{scaleY:0},{scaleY:1,transformOrigin:"bottom",duration:event.duration,ease:"power2.out"},at);
+${definition.name === "process-handoff-map" ? `   const index=items.indexOf(target);
+   if(index===0)tl.to(carrier,{opacity:1,duration:event.duration,ease:"power2.out"},at);
+   else {tl.fromTo(carrier,points[index-1],{...points[index],duration:event.duration,ease:"power2.inOut",immediateRender:false},at);tl.set(carrier,{textContent:rows[index].detail},at+event.duration);}
+` : ''}\
  });
  const resolve=events.find(event=>event.id==="resolve");tl.to(items,{opacity:1,duration:resolve.duration,ease:"power2.inOut"},cues.resolve??resolve.time);
  const back=root.querySelector(".vc-back");if(back){const length=back.getTotalLength();tl.set(back,{strokeDasharray:length,strokeDashoffset:length},0);tl.to(back,{strokeDashoffset:0,duration:resolve.duration,ease:"power2.out"},cues.resolve??resolve.time);}
@@ -1841,9 +1851,12 @@ async function readRegistryIndex(): Promise<{
 async function updateRegistryIndex(write: boolean, limitWave = 4): Promise<boolean> {
   const registry = await readRegistryIndex();
   const names = new Set(registry.items.map((item) => item.name));
-  const missing = VISUAL_COMPONENT_EXPANSION.filter(
-    (definition) => definition.wave <= limitWave && !names.has(definition.name),
-  ).map((definition) => ({ name: definition.name, type: "hyperframes:block" }));
+  const desired = new Map(
+    VISUAL_COMPONENT_EXPANSION.filter((definition) => definition.wave <= limitWave)
+      .map((definition) => [definition.name, { name: definition.name, type: "hyperframes:block" }]),
+  );
+  for (const item of await visualComponentEntries()) desired.set(item.name, item);
+  const missing = [...desired.values()].filter((item) => !names.has(item.name));
   if (missing.length === 0) return true;
   if (!write) return false;
   registry.items.push(...missing);
@@ -1851,20 +1864,24 @@ async function updateRegistryIndex(write: boolean, limitWave = 4): Promise<boole
   return true;
 }
 
-async function countVisualComponents(): Promise<number> {
-  let count = 0;
+async function visualComponentEntries(): Promise<Array<{ name: string; type: string }>> {
+  const entries: Array<{ name: string; type: string }> = [];
   for (const entry of await readdir(blocksRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     try {
       const manifest: unknown = JSON.parse(
         await readFile(join(blocksRoot, entry.name, "registry-item.json"), "utf8"),
       );
-      if (manifest && typeof manifest === "object" && "visualComponent" in manifest) count += 1;
+      if (manifest && typeof manifest === "object" && "visualComponent" in manifest &&
+        "name" in manifest && typeof manifest.name === "string" &&
+        "type" in manifest && typeof manifest.type === "string") {
+        entries.push({ name: manifest.name, type: manifest.type });
+      }
     } catch {
       // Registry validation reports malformed or missing manifests separately.
     }
   }
-  return count;
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function assertManifest(): void {
@@ -2012,12 +2029,12 @@ async function check(): Promise<void> {
     }
   }
   if (!(await updateRegistryIndex(false))) mismatches.push(registryIndexPath);
-  const total = await countVisualComponents();
-  if (total !== 179) mismatches.push(`visual-component-count:${total}`);
+  const total = (await visualComponentEntries()).length;
+  if (total !== 185) mismatches.push(`visual-component-count:${total}`);
   if (mismatches.length > 0) {
     throw new Error(`Visual component catalog is stale:\n${mismatches.join("\n")}`);
   }
-  console.log("Visual component catalog is current: 149 native components and 30 Shotcraft imports.");
+  console.log("Visual component catalog is current: 149 native components, 30 Shotcraft imports and 6 reusable personal components.");
 }
 
 // Refresh metadata only for reviewed local ports; never restore the unported reference archive.
@@ -2210,6 +2227,9 @@ if (command === "shotcraft-camera-import") {
   console.log(JSON.stringify(await auditNativeRecipeCoverage(), null, 2));
 } else if (command === "recipe-cards-generate") {
   await recipeCards(true);
+} else if (command === "registry-index-generate") {
+  await updateRegistryIndex(true);
+  console.log("Updated the registry index from the owning visual component manifests.");
 } else if (command === "recipes-generate") {
   for (const [path, content] of generatedFiles()) {
     if (!Object.hasOwn(NATIVE_RECIPE_CONTENT, path.split("/").at(-2) ?? "")) continue;

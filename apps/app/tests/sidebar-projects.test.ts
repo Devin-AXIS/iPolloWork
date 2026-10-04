@@ -249,8 +249,10 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain("props.sidebar.onCreateInitialProjectTask");
     expect(sessionPageSource).toContain("modelContextWindow={surface.modelContextWindow}");
     expect(sessionPageSource).toContain("engineId={props.selectedWorkspaceDisplay.engineId}");
-    expect(sessionPageSource).toContain('key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}');
-    expect(sessionPageSource).toContain('draftScopeKey={`new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}');
+    expect(sessionPageSource).toContain('key={props.selectedWorkspaceId}');
+    expect(sessionPageSource).toContain("const initialTaskScope = newTaskComposerScope(props.selectedWorkspaceId);");
+    expect(sessionPageSource).toContain("draftScope={initialTaskScope}");
+    expect(sessionPageSource).toContain("draftScopeKey={draftScope}");
     expect(sessionPageSource).not.toContain('data-testid="initial-project-engine-dialog"');
     expect(sessionPageSource).toContain("await onSubmit(composerDraft)");
     expect(sessionPageSource).toContain("<ProjectEngineOptions");
@@ -359,7 +361,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('project.status === "loading" && project.sessions.length === 0 && !isSelectedProject');
     expect(sessionRouteSource).toContain("taskCreationInFlightRef.current.has(workspaceId)");
     expect(sessionRouteSource).toMatch(
-      /endpoint\.client\.createSession\(\s*endpoint\.workspaceId,\s*undefined,\s*activeSelectedModel,?\s*\)/,
+      /endpoint\.client\.createSession\(\s*endpoint\.workspaceId,\s*undefined,\s*activeSelectedModel,\s*conversationOptions\?\.engineId/,
     );
     expect(sessionRouteSource).not.toContain("workspaceConversation.create(");
     expect(sessionRouteSource).not.toContain("Give the click an immediate destination");

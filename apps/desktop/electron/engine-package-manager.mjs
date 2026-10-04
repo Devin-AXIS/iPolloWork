@@ -139,6 +139,7 @@ function looksLikeOfficialRuntime(descriptor, executablePath) {
   }
   return normalizedPath.includes("/node_modules/@openai/codex/")
     || /\/(?:codex|chatgpt)\.app\/contents\/resources\/codex-cli\/bin\/codex$/.test(normalizedPath)
+    || /\/(?:codex|chatgpt)\.app\/contents\/resources\/codex-cli\/codexcli\.app\/contents\/macos\/codex$/.test(normalizedPath)
     || /\/[^/]+\.app\/contents\/resources\/codex(?:\.exe)?$/.test(normalizedPath)
     || normalizedPath.includes("/windowsapps/openai.codex_")
     || /\/appdata\/local\/openai\/codex\/bin\/[^/]+\/codex\.exe$/.test(normalizedPath)
@@ -192,7 +193,10 @@ async function codexClientCandidates(platform, env, homeDir) {
   if (platform === "darwin") {
     return [
       ...["/Applications", path.join(homeDir, "Applications")].flatMap(root =>
-        ["Codex.app", "ChatGPT.app"].map(app => path.join(root, app, "Contents", "Resources", "codex-cli", "bin", "codex"))),
+        ["Codex.app", "ChatGPT.app"].flatMap(app => [
+          path.join(root, app, "Contents", "Resources", "codex-cli", "bin", "codex"),
+          path.join(root, app, "Contents", "Resources", "codex-cli", "CodexCLI.app", "Contents", "MacOS", "codex"),
+        ])),
       "/Applications/Codex.app/Contents/Resources/codex",
       "/Applications/ChatGPT.app/Contents/Resources/codex",
       path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex"),
@@ -244,15 +248,17 @@ function probeRuntimeExecutable(executablePath, env) {
     }, RUNTIME_PROBE_TIMEOUT_MS);
     child.once("error", (error) => finish(false, error.message));
     child.once("close", (code) => finish(code === 0
-      ? stdout.trim().match(/^codex-cli\s+(\d+\.\d+\.\d+(?:-[\w.-]+)?)(?:\s|$)/)?.[1] || true
+      ? stdout.trim().match(/^codex-cli\s+(\d+\.\d+\.\d+(?:-[\w.-]+)?)(?:\s|$)/)?.[1] || false
       : false, `exit ${code}`));
   });
 }
 
-async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, probeRuntime }) {
+async function resolveLocalRuntime(descriptor, { platform, env, homeDir, probeRuntime }) {
   const resolveCandidate = async (candidate) => {
     const normalized = await normalizeOfficialRuntimePath(descriptor, candidate, platform);
-    if (!normalized || !looksLikeOfficialRuntime(descriptor, normalized)) return null;
+    if (!normalized) return null;
+    const official = looksLikeOfficialRuntime(descriptor, normalized);
+    if (!official && descriptor.id !== CODEX_ENGINE_ID) return null;
     if (descriptor.id === DSH_ENGINE_ID) {
       const manifest = await readJson(path.resolve(path.dirname(normalized), "..", "package.json"));
       const installedVersion = normalizeVersion(manifest?.version);
@@ -264,7 +270,10 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, prob
       }
     }
     const version = await probeRuntime(normalized);
-    return version ? { path: normalized, version: typeof version === "string" ? version : null } : null;
+    // A local CLI outside known installers must identify itself as codex-cli.
+    return version && (official || typeof version === "string")
+      ? { path: normalized, version: typeof version === "string" ? version : null }
+      : null;
   };
   const commandPath = commandOnPath(descriptor.command, {
     env,
@@ -620,17 +629,21 @@ export function createEnginePackageManager(options) {
       };
     }
 
-    // Official desktop/CLI Harnesses own their own lifecycle. Prefer them over
+    // Local desktop/CLI Harnesses own their own lifecycle. Prefer them over
     // iPolloWork's optional package so an existing local engine is never
     // shadowed by, or offered, a duplicate download.
-    const officialRuntime = await resolveOfficialRuntime(descriptor, {
+    const localRuntime = await resolveLocalRuntime(descriptor, {
       platform,
       env: environment,
       homeDir,
       probeRuntime: (candidate) => probeRuntime(descriptor, candidate),
     });
-    if (officialRuntime && !isWithinManagedPackage(descriptor, officialRuntime.path)) {
-      return { ...officialRuntime, source: "official", nodePath: externalNodePath(descriptor) };
+    if (localRuntime && !isWithinManagedPackage(descriptor, localRuntime.path)) {
+      return {
+        ...localRuntime,
+        source: await externalEngineSource(descriptor, localRuntime.path, "system"),
+        nodePath: externalNodePath(descriptor),
+      };
     }
 
     const managedCli = cliPath(descriptor);

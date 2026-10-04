@@ -246,6 +246,7 @@ function stageBundledOpenCodeRuntime() {
   );
 }
 
+run(nodeCmd, [resolve(repoRoot, "scripts", "check-hyperframes-version-sync.mjs")], repoRoot);
 assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath });
 run(pnpmCmd, ["--filter", "@ipollowork/app", "typecheck"], repoRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], desktopRoot);
@@ -254,6 +255,10 @@ run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", 
 ensureHyperframesBuild();
 run(nodeCmd, [resolve(__dirname, "prepare-hyperframes-runtime.mjs")], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "package-video-resources.mjs"), "--bundled"], desktopRoot);
+run(nodeCmd, [resolve(repoRoot, "examples/plugin-packages/operation-recorder/scripts/build.mjs")], repoRoot);
+for (const pluginId of ["labelu-data-annotation", "short-video-studio"]) {
+  run(nodeCmd, [resolve(repoRoot, `examples/plugin-packages/${pluginId}/scripts/build.mjs`)], repoRoot);
+}
 run(pnpmCmd, ["--filter", "ipollowork-server", "build"], repoRoot);
 stageBundledOpenCodeRuntime();
 // IPOLLOWORK_ELECTRON_BUILD tells Vite to emit relative asset paths so

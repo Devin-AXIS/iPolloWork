@@ -33,7 +33,6 @@ import {
 import { createUiControlServer } from "./ui-control-server.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
-import { createBackgroundVideoDeliverySupervisor } from "./background-video-delivery.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import { openExternalUrl } from "./open-external.mjs";
 import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
@@ -1373,7 +1372,6 @@ function envFlagEnabled(name) {
 }
 
 let mainWindow = null;
-let backgroundVideoDeliverySupervisor = null;
 const pendingDeepLinks = [];
 
 function mainWindowStatePath() {
@@ -2949,8 +2947,6 @@ async function createMainWindow() {
   });
 
   mainWindow.on("closed", () => {
-    backgroundVideoDeliverySupervisor?.stop();
-    backgroundVideoDeliverySupervisor = null;
     browserPanel.destroy();
     mainWindow = null;
   });
@@ -3013,41 +3009,6 @@ async function createMainWindow() {
     flushPendingDeepLinks();
   });
 
-  backgroundVideoDeliverySupervisor = createBackgroundVideoDeliverySupervisor({
-    getMainWindow: () => mainWindow,
-    isReady: async (entry, win) => win.webContents.executeJavaScript(`(async () => {
-      const info = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop('ipolloworkServerInfo');
-      if (!info?.baseUrl) return false;
-      const response = await fetch(info.baseUrl + '/workspace/'
-        + ${JSON.stringify(entry.workspaceId)} + '/sessions/'
-        + ${JSON.stringify(entry.sessionId)} + '/snapshot', {
-        headers: {
-          authorization: 'Bearer ' + (info.ownerToken || info.clientToken),
-          'X-iPolloWork-Host-Token': info.hostToken,
-        },
-      });
-      if (!response.ok) return false;
-      const snapshot = (await response.json()).item;
-      return snapshot?.status?.type === 'idle' || snapshot?.status?.type === 'error';
-    })()`, true).catch(() => false),
-    createWorkerWindow: () => new BrowserWindow({
-      width: 1280,
-      height: 800,
-      show: false,
-      skipTaskbar: true,
-      webPreferences: {
-        backgroundThrottling: false,
-        preload: preloadPath,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false,
-      },
-    }),
-  });
-  mainWindow.webContents.on("did-navigate-in-page", (_event, url) => {
-    backgroundVideoDeliverySupervisor?.onMainNavigation(url);
-  });
-
   const startUrl = process.env.IPOLLOWORK_ELECTRON_START_URL?.trim() || process.env.ELECTRON_START_URL?.trim();
   if (startUrl) {
     await mainWindow.loadURL(startUrl);
@@ -3056,8 +3017,6 @@ async function createMainWindow() {
     const devIndexPath = path.resolve(__dirname, "../../app/dist/index.html");
     await mainWindow.loadFile(app.isPackaged ? packagedIndexPath : devIndexPath);
   }
-
-  backgroundVideoDeliverySupervisor.start();
 
   return mainWindow;
 }

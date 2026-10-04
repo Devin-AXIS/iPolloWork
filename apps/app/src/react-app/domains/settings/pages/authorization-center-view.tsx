@@ -59,6 +59,12 @@ type ServicePresentation = {
 };
 
 const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = {
+  "fal-images": {
+    icon: Image,
+    titleKey: "settings.authorization.service.fal_images.title",
+    descriptionKey: "settings.authorization.service.fal_images.description",
+    fields: [{ key: "FAL_KEY", label: "fal API key", placeholder: "Key ID:Key Secret", hintKey: "settings.authorization.fal_key_hint" }],
+  },
   "openai-images": {
     icon: Image,
     titleKey: "settings.authorization.service.openai_images.title",

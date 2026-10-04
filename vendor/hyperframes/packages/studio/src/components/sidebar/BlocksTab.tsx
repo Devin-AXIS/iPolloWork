@@ -34,6 +34,7 @@ import {
   type CatalogColumnCount,
 } from "../../utils/studioUiPreferences";
 import { PreviewController } from "./PreviewController";
+import { ComponentImport } from "./ComponentImport";
 
 interface BlocksTabProps {
   onAddBlock?: (blockName: string) => Promise<boolean>;
@@ -93,7 +94,7 @@ function getReducedMotionServerSnapshot(): boolean {
 
 export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps) {
   const { locale } = useStudioI18n();
-  const { loading, error, search, setSearch, sections } = useBlockCatalog();
+  const { loading, error, search, setSearch, sections, reload } = useBlockCatalog();
   const [previewController] = useState(() => new PreviewController());
   const [activeSection, setActiveSection] = useState<ComponentCatalogSection>(ALL_SECTIONS_FILTER);
   const [insertingBlockName, setInsertingBlockName] = useState<string | null>(null);
@@ -175,6 +176,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps)
               className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-xs text-panel-text-1 outline-none transition-shadow placeholder:text-panel-text-4 focus:ring-1 focus:ring-[#1FBAC0]/50"
             />
           </div>
+          <ComponentImport onImported={async () => { await reload(); setSearch(""); setActiveSection(ALL_SECTIONS_FILTER); }} />
           <FlatDropdown
             value={activeSection}
             onChange={nextSection => {

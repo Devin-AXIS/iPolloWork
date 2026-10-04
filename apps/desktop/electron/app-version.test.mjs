@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { DESKTOP_RESOURCE_APP_VERSION, resolveDesktopAppVersion } from "./app-version.mjs";
 
 test("uses the desktop package version in development instead of Electron's version", () => {
-  assert.equal(resolveDesktopAppVersion({ getVersion: () => "35.7.5", isPackaged: false }), "0.50.14");
+  const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(resolveDesktopAppVersion({ getVersion: () => "35.7.5", isPackaged: false }), version);
 });
 
 test("uses Electron's configured application version when packaged", () => {

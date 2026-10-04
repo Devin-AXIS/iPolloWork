@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-pill-chip-slot-cycle-handled"] { background: #fbfbfd; overflow: hidden; }
+    [data-composition-id="shotcraft-pill-chip-slot-cycle-handled"] { background: var(--ipw-color-bg,#fbfbfd); overflow: hidden; }
     .design-stage { position:absolute;left:0;top:0;width:480px;height:270px;overflow:hidden;transform:scale(4);transform-origin:top left; }
     #root { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:-apple-system,system-ui,sans-serif; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-pill-chip-slot-cycle-handled"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
@@ -27,13 +27,13 @@
       const t=state.t; let pos=0; for(const s0 of [0.25,0.47,0.69]) pos+=seg(t,s0,s0+0.12,E.inOutCubic);
       const ci=Math.min(WORDS.length-1,Math.floor(pos)), frac=pos-ci, chipW=lerp(frac,widths[ci],widths[Math.min(ci+1,WORDS.length-1)]);
       const near=Math.round(pos), roll=(pos-near)*48*0.5, settle=1-Math.min(1,Math.abs(pos-near)*3);
-      const ghost=(top,label)=>`<div style="position:absolute;left:50%;top:${top}px;font:${FONT};color:#15171d;white-space:nowrap;transform:translateX(-50%) translateY(${-roll}px);opacity:${0.13*(0.4+settle*0.6)}">${escape(label)}</div>`;
-      const rows=WORDS.map(({w,e})=>`<div style="height:48px;display:flex;align-items:center;gap:9px;padding-left:18px;white-space:nowrap"><span style="font-size:18px">${e}</span><span style="font:${FONT};color:#fff">${escape(w)}</span></div>`).join('');
-      root.innerHTML=`<div style="color:#15171d;font-weight:800;font-size:30px;letter-spacing:-0.5px;flex:none">${escape(String(values.prefix))}</div>
+      const ghost=(top,label)=>`<div style="position:absolute;left:50%;top:${top}px;font:${FONT};color:var(--ipw-color-text,#15171d);white-space:nowrap;transform:translateX(-50%) translateY(${-roll}px);opacity:${0.13*(0.4+settle*0.6)}">${escape(label)}</div>`;
+      const rows=WORDS.map(({w,e})=>`<div style="height:48px;display:flex;align-items:center;gap:9px;padding-left:18px;white-space:nowrap"><span style="font-size:18px">${e}</span><span style="font:${FONT};color:var(--ipw-color-text,#fff)">${escape(w)}</span></div>`).join('');
+      root.innerHTML=`<div style="color:var(--ipw-color-text,#15171d);font-weight:800;font-size:30px;letter-spacing:-0.5px;flex:none">${escape(String(values.prefix))}</div>
         <div style="position:relative;flex:none;margin:0 14px">${ghost(-38,near>0?WORDS[near-1].w:'')}${ghost(58,near<WORDS.length-1?WORDS[near+1].w:'')}
-          <div style="position:relative;height:48px;width:${chipW}px;border-radius:99px;background:#1a1c24;box-shadow:0 8px 24px rgba(20,22,40,.22);overflow:hidden">
+          <div style="position:relative;height:48px;width:${chipW}px;border-radius:99px;background:var(--ipw-color-surface,#1a1c24);box-shadow:0 8px 24px rgba(20,22,40,.22);overflow:hidden">
             <div style="position:absolute;left:0;right:0;top:0;transform:translateY(${-pos*48}px)">${rows}</div></div></div>
-        <div style="color:#15171d;font-weight:800;font-size:30px;letter-spacing:-0.5px;flex:none">${escape(String(values.suffix))}</div>`;
+        <div style="color:var(--ipw-color-text,#15171d);font-weight:800;font-size:30px;letter-spacing:-0.5px;flex:none">${escape(String(values.suffix))}</div>`;
       root.style.display='flex'; root.style.alignItems='center';
     }},0);
     window.__timelines['shotcraft-pill-chip-slot-cycle-handled']=tl;

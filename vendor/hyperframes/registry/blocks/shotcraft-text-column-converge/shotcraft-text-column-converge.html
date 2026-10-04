@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-text-column-converge"] { width: 1920px; height: 1080px; background: #050506; overflow: hidden; }
+    [data-composition-id="shotcraft-text-column-converge"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#050506); overflow: hidden; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-text-column-converge"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -25,10 +25,10 @@
       const cur=STEPS[idx],isLast=idx===STEPS.length-1,local=t-stepStart,cvT=isLast?local-CONVERGE_DELAY:-1,cv=cvT>=0?clamp(cvT,0,CONVERGE_DUR,0,1,'inOutCubic'):0;
       const newLeft=NEW_LEFT+(MERGED_LEFT-NEW_LEFT)*cv,wordRight=WORD_RIGHT+(MERGED_RIGHT-WORD_RIGHT)*cv,converged=cv>=1;
       const subT=converged?cvT-CONVERGE_DUR-SUB_DELAY:-1,subOp=subT>=0?clamp(subT,0,4,0,1):0;
-      const font=`font-family:'SF Mono',Menlo,monospace;font-weight:500;font-size:${FS}px;letter-spacing:3px;color:#f2f2f4;white-space:nowrap;line-height:1`;
+      const font=`font-family:'SF Mono',Menlo,monospace;font-weight:500;font-size:${FS}px;letter-spacing:3px;color:var(--ipw-color-text,#f2f2f4);white-space:nowrap;line-height:1`;
       comp.innerHTML=`<div style="position:absolute;left:${newLeft}px;top:519px;${font}">${escape(String(values.prefix))}</div>
         <div style="position:absolute;right:${1920-wordRight}px;top:519px;${font}">${escape(cur.word)}</div>
-        <div style="${font};font-style:italic;color:#d8d8dc;position:absolute;left:${MERGED_LEFT}px;top:${519+FS+14}px;opacity:${subOp}">${escape(String(values.subtitle))}</div>`;
+        <div style="${font};font-style:italic;color:var(--ipw-color-text,#d8d8dc);position:absolute;left:${MERGED_LEFT}px;top:${519+FS+14}px;opacity:${subOp}">${escape(String(values.subtitle))}</div>`;
     }},0);
     window.__timelines['shotcraft-text-column-converge']=tl;
   

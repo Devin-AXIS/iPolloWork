@@ -112,7 +112,7 @@ export default {
           },
           screenshot: { name: "shotcraft-reference-selection", targetId: target.id },
         });
-        for (const recipe of recipes) {
+        for (const recipe of process.env.IPOLLOWORK_RECIPE_PROOF_SCOPE === "health" ? [] : recipes) {
           try {
             await ctx.prove(recipe.id + " progresses through real semantic events and rewinds identically", {
             voiceover: recipe.id + " 使用原版组件、语义事件和真实内容变量；中段实际推进，倒放恢复同一画面。",
@@ -140,6 +140,15 @@ export default {
                 });
                 const samples = [];
                 const originalCurveChecks = [];
+                if (componentId === "process-handoff-map") {
+                  const at = cueTimes["step-2"] + events[1].duration * .5;
+                  tl.seek(at, false); const cold = snapshot(".vc-link,.vc-carrier");
+                  tl.seek(duration, false); tl.seek(at, false);
+                  originalCurveChecks.push(JSON.stringify(cold) === JSON.stringify(snapshot(".vc-link,.vc-carrier")));
+                  for (const [index, item] of [...root.querySelectorAll(".vc-item")].entries()) {
+                    if (index > 0 && cueTimes[`step-${index + 1}`] > at) originalCurveChecks.push(Number(gsap.getProperty(item.querySelector(".vc-link"), "scaleX")) === 0);
+                  }
+                }
                 if (["metric-signal", "gauge-scorecard", "benchmark-scorecard", "conversion-funnel", "sparkline-grid", "cohort-retention"].includes(componentId)) {
                   tl.seek(duration - .1, false);
                   const rows = [...root.querySelectorAll(".vc-item")], scale = Number(root.dataset.scale), mode = root.dataset.mode;
@@ -323,6 +332,7 @@ export default {
     name: "Inspect executed events and real layout, including an optional existing video",
     async run(ctx) {
       const repo = new URL("../../", import.meta.url).pathname;
+      const root = await mkdtemp(join(tmpdir(), "ipollowork-reference-proof-"));
       const inspector = await execFileAsync(process.env.BUN_BINARY || "bun", ["--eval", 'import {reviewVideoRuntime} from "./vendor/hyperframes/packages/studio-server/src/helpers/screenshotClip.ts"; console.log(reviewVideoRuntime.toString());'], { cwd: repo });
       const inspect = new Function("return (" + inspector.stdout + ");")();
       const puppeteer = requireStudio("puppeteer-core");
@@ -334,27 +344,92 @@ export default {
         ctx.cdpBaseUrl = base;
         ctx.client = await connect(debuggerUrlFor(base, target));
         const gsap = await readFile(requireStudio.resolve("gsap/dist/gsap.min.js"), "utf8");
+        if (process.env.IPOLLOWORK_RECIPE_PROOF_SCOPE === "health") ctx.output("Proof scope", "Only actual video/reference and runtime acceptance checks; recipe catalog installation is checked, complete recipe visual checks are excluded.");
+        let temporal;
+        await ctx.prove("The local reference tool measures timing instead of approving narrative quality", {
+          voiceover: "同一分析工具读取本地参考和实际成片的帧率、静止区间、画面变化和音频。量化结果用于定位问题，不把像素变化等同于好的叙事。",
+          action: async () => {
+            await mkdir(join(root, "video/proof/assets"), { recursive: true });
+            await writeFile(join(root, "video/proof/index.html"), '<main></main>');
+            for (const [name, source] of [["still", "color=gray:size=192x108"], ["moving", "testsrc2=size=192x108"]]) await execFileAsync(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v", "error", "-f", "lavfi", "-i", source+":rate=30:duration=3", "-c:v", "libx264", join(root, "video/proof/assets", name+".mp4")]);
+            const measured = await execFileAsync(process.env.BUN_BINARY || "bun", ["--eval", 'import {analyzeVideoReference} from "./apps/server/src/extensions/video-render.ts"; const workspace={id:"proof",path:process.env.RECIPE_PROOF_ROOT}; console.log(JSON.stringify({still:await analyzeVideoReference(workspace,{sourcePath:"video/proof/index.html",referencePath:"video/proof/assets/still.mp4"}),moving:await analyzeVideoReference(workspace,{sourcePath:"video/proof/index.html",referencePath:"video/proof/assets/moving.mp4",sampling:"frames"})}));'], { cwd: repo, env: { ...process.env, RECIPE_PROOF_ROOT: root }, maxBuffer: 2_000_000 });
+            temporal = JSON.parse(measured.stdout);
+            await page.setContent('<html><body style="margin:48px;background:#f6f5f1;color:#172c36;font:22px sans-serif"><h1>Reference timing measured from real video</h1><pre></pre></body></html>');
+            await page.$eval('pre', (element, result) => { element.textContent = JSON.stringify({still:result.still.temporalReview,moving:{...result.moving.temporalReview,energyCurve:result.moving.temporalReview.energyCurve.slice(0,12)}}, null, 2); }, temporal);
+          },
+          assert: async () => {
+            ctx.assert(temporal.still.temporalReview.stillFraction === 1 && temporal.still.temporalReview.longestStillSeconds > 2.8, "Measured still video has a real static interval");
+            ctx.assert(temporal.moving.temporalReview.sourceFps === 30 && temporal.moving.temporalReview.sampledFrameCount === 90 && temporal.moving.temporalReview.stillFraction < .2, "Full-frame low-resolution timing samples exactly ninety real moving frames");
+            ctx.assert(temporal.moving.temporalReview.scope.includes('not-semantic'), "Measurement scope explicitly excludes semantic or carrier approval");
+            ctx.output("Reference measurement", JSON.stringify(temporal));
+          },
+          screenshot: { name: "reference-timing-measurement", targetId: target.id, requireText: ["Reference timing", "stillFraction"] },
+        });
         for (const sample of [
           { name: "real-event-aligned", actual: 1, expected: null },
           { name: "metadata-aligned-but-tween-early", actual: .1, expected: "executed-event-time-mismatch" },
           { name: "caption-overlaps-content", actual: 1, captionTop: 400, expected: "caption-content-overlap" },
           { name: "short-event-overlap-between-percent-samples", actual: .2, anchor: .2, end: .4, transient: true, expected: "caption-content-overlap" },
           { name: "visible-media-broken", actual: 1, media: true, expected: "broken-visible-media" },
+          { name: "long-tracking-is-not-development", actual: 1, end: 7, duration: 8, intent: "Develop", from: { letterSpacing: 2.5 }, props: { letterSpacing: 0 }, expected: "long-develop-only-decorative" },
+          { name: "long-micro-scale-is-not-development", actual: 1, end: 7, duration: 8, intent: "Develop", from: { scale: 1 }, props: { scale: 1.012 }, expected: "long-develop-only-decorative" },
+          { name: "long-large-scale-remains-valid", actual: 1, end: 7, duration: 8, intent: "Develop", from: { scale: .6 }, props: { scale: 1 }, expected: null },
+          { name: "strong-ease-out-remains-valid", actual: 1, end: 7, duration: 8, intent: "Develop", from: { scale: .6 }, props: { scale: 1 }, ease: "power4.out", expected: null },
+          { name: "tracking-with-ancestor-camera-remains-valid", actual: 1, end: 7, duration: 8, intent: "Develop", from: { letterSpacing: 2.5 }, props: { letterSpacing: 0 }, camera: true, expected: null },
+          { name: "tracking-with-ancestor-zoom-remains-valid", actual: 1, end: 7, duration: 8, intent: "Develop", from: { letterSpacing: 2.5 }, props: { letterSpacing: 0 }, cameraScale: true, expected: null },
+          { name: "tracking-with-object-state-camera-remains-valid", actual: 1, end: 7, duration: 8, intent: "Develop", from: { letterSpacing: 2.5 }, props: { letterSpacing: 0 }, stateCamera: true, expected: null },
+          { name: "tracking-with-real-child-reveal-remains-valid", actual: 1, end: 7, duration: 8, intent: "Develop", from: { letterSpacing: 2.5 }, props: { letterSpacing: 0 }, reveal: true, expected: null },
+          { name: "tracking-with-content-set-remains-valid", actual: 1, end: 7, duration: 8, intent: "Develop", from: { letterSpacing: 2.5 }, props: { letterSpacing: 0 }, content: true, expected: null },
+          { name: "short-tracking-emphasis-remains-valid", actual: 1, end: 1.5, intent: "Develop", from: { letterSpacing: 2.5 }, props: { letterSpacing: 0 }, expected: null },
+          { name: "declared-reading-hold-remains-valid", actual: 1, end: 7, duration: 8, intent: "Land", animation: "hold:read-result", from: { scale: 1 }, props: { scale: 1.012 }, expected: null },
+          { name: "same-dom-carrier-survives-boundary", actual: 1, duration: 4, carrier: "shared", expected: null },
+          { name: "equal-names-do-not-fake-carrier-identity", actual: 1, duration: 4, carrier: "replace", expected: "declared-carrier-discontinuity" },
+          { name: "ordinary-cut-may-replace-carrier", actual: 1, duration: 4, carrier: "cut", expected: null },
+          { name: "reverse-seek-must-restore-state", actual: 1, duration: 4, reverseDefect: true, expected: "reverse-seek-state-mismatch" },
         ]) {
           let review;
           await ctx.prove(sample.name + " is decided by executed GSAP and actual rectangles", {
             voiceover: "真实浏览器检查实际 GSAP 时间、字幕重叠与坏图；脚本标签正确但动作提前仍然失败。这是验收引擎证据，不是模型生成或审美通过。",
             action: async () => {
-              const beats = JSON.stringify([{ animation: "custom:explain", targets: ["#value"], motion: { start: sample.anchor ?? 1, end: sample.end ?? 1.5 } }]);
-              await page.setContent(`<html><head><style>body{margin:0;background:#14232c;color:#f4eee1;font:48px sans-serif}.content{position:absolute;left:100px;top:300px;width:1600px;height:400px;background:#28424d}.caption{position:absolute;left:100px;top:${sample.captionTop || 800}px}img{width:100px;height:100px}</style></head><body><main data-composition-id="root"><section id="proof" class="scene clip" data-start="0" data-duration="3" data-ipw-beats='${beats}'><h1>${sample.name}</h1><div class="content" data-ipw-content><p id="value">Measured phrase → visual change</p></div><p class="caption" data-ipw-caption>Readable caption outside the diagram</p>${sample.media ? '<img src="data:image/png;base64,broken">' : ''}</section></main><script>${gsap}</script><script>window.__timelines={main:gsap.timeline({paused:true}).to('#value',{x:100,duration:.5,data:'custom:explain'},${sample.actual})};</script></body></html>`, { waitUntil: "domcontentloaded" });
+              const beats = JSON.stringify([{ intent: sample.intent, animation: sample.animation || "custom:explain", targets: ["#value"], motion: { start: sample.anchor ?? 1, end: sample.end ?? 1.5 } }, ...(sample.carrier ? [{ intent: "Land", animation: "hold:read-result", motion: { start: 2, end: 2.4 } }] : [])]);
+              const motion = sample.props
+                ? `.fromTo('#value',${JSON.stringify(sample.from)},${JSON.stringify({ ...sample.props, duration: sample.end - sample.actual, ease: sample.ease || 'none', data: 'custom:explain' })},${sample.actual})`
+                : `.to('#value',{x:100,duration:.5,data:'custom:explain'},${sample.actual})`;
+              await page.setContent(`<html><head><style>body{margin:0;background:#14232c;color:#f4eee1;font:48px sans-serif}h1{max-width:1600px}.content{position:absolute;left:100px;top:300px;width:1600px;height:400px;background:#28424d}.caption{position:absolute;left:100px;top:${sample.captionTop || 800}px}img{width:100px;height:100px}</style></head><body><main data-composition-id="root"><section id="proof" class="scene clip" data-start="0" data-duration="${sample.duration || 3}" data-ipw-beats='${beats}'><h1>${sample.name}</h1><div class="content" data-ipw-content><p id="value">Measured phrase → visual change<span id="next"> → Actual next state</span></p></div><p class="caption" data-ipw-caption>Readable caption outside the diagram</p>${sample.media ? '<img src="data:image/png;base64,broken">' : ''}</section></main><script>${gsap}</script><script>window.__timelines={main:gsap.timeline({paused:true})${motion}};</script></body></html>`, { waitUntil: "domcontentloaded" });
+              if (sample.reveal) await page.evaluate(() => {
+                window.__timelines.main.add(gsap.timeline().fromTo('#next', { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 3 }, 0), 4);
+              });
+              if (sample.camera) await page.evaluate(() => { window.__timelines.main.to('main', { x: 100, duration: 6, ease: 'none' }, 1); });
+              if (sample.cameraScale) await page.evaluate(() => { window.__timelines.main.fromTo('main', { scale: .8 }, { scale: 1, duration: 6, ease: 'power4.out' }, 1); });
+              if (sample.stateCamera) await page.evaluate(() => {
+                const state = { x: 0 }, world = document.querySelector('main');
+                window.__timelines.main.to(state, { x: 100, duration: 6, ease: 'none', onUpdate: () => { world.style.transform = `translateX(${state.x}px)`; } }, 1);
+              });
+              if (sample.content) await page.evaluate(() => { window.__timelines.main.set('#next', { textContent: ' → Delivered actual result' }, 5); });
               if (sample.transient) await page.evaluate(() => {
                 window.__timelines.main.to('.caption', { y: -400, duration: .05 }, .2).to('.caption', { y: 0, duration: .05 }, .35);
+              });
+              if (sample.carrier) await page.evaluate(mode => {
+                const scene = document.getElementById('proof');
+                if (mode !== 'cut') scene.setAttribute('data-ipw-continuity', 'required');
+                const carrier = document.createElement('div'); carrier.id = 'carrier-a'; carrier.dataset.ipwCarrier = 'same-label'; carrier.textContent = 'Visible carried subject';
+                carrier.style.cssText = 'position:absolute;left:100px;top:160px;width:600px;height:80px;background:#c6a667;color:#152630;font-size:40px'; scene.append(carrier);
+                window.__timelines.main.fromTo(carrier, {x:0}, {x:600,duration:4,ease:'none'}, 0);
+                if (mode !== 'shared') { const replacement=carrier.cloneNode(true); replacement.id='carrier-b'; replacement.style.opacity='0'; scene.append(replacement); window.__timelines.main.set(carrier,{opacity:0},2).set(replacement,{opacity:1},2); }
+              }, sample.carrier);
+              if (sample.reverseDefect) await page.evaluate(() => {
+                let maximum = 0;
+                window.__player = {seek(time) { window.__timelines.main.pause(time); if (time < maximum) document.getElementById('value').textContent = 'Unrestored callback state'; maximum = Math.max(maximum, time); }};
               });
               review = await page.evaluate(inspect);
             },
             assert: async () => {
               ctx.assert(review.valid === (sample.expected === null), "The executed timeline receives the expected verdict: " + JSON.stringify(review));
               if (sample.expected) ctx.assert(review.issues.some(issue => issue.code === sample.expected), "The defect is specifically identified, not inferred from source labels");
+              ctx.assert(review.sampledFrameCount <= (sample.carrier ? 10 : 7), "Motion and carrier checks reuse event samples; one additional reverse seek checks restoration");
+              ctx.assert(review.deterministicSeek.checkedSceneCount === 1 && review.deterministicSeek.valid === !sample.reverseDefect, "A real reverse seek reports the actual state restoration verdict");
+              if (sample.carrier) ctx.assert(review.carrierReview.boundaries.length === 1 && (review.carrierReview.boundaries[0].sharedVisibleCarriers > 0) === (sample.carrier === 'shared'), "The boundary compares identical visible DOM nodes, independently of equal labels");
+              ctx.recordEvidence({ type: "assertion", status: "passed", assertion: `${sample.name}: actual GSAP verdict=${review.valid}, issue=${sample.expected || "none"}, frames=${review.sampledFrameCount}` });
               ctx.output(sample.name, JSON.stringify(review));
               if (sample.transient) await page.evaluate(() => { window.__timelines.main.pause(.3); });
             },
@@ -382,7 +457,7 @@ export default {
             });
           }
         }
-      } finally { ctx.client?.close(); await browser.close(); }
+      } finally { ctx.client?.close(); await browser.close(); await rm(root, { recursive: true, force: true }); }
     },
   }, {
     name: "Show planned recipes, source-inspected mounts and custom reasons in the real script table",

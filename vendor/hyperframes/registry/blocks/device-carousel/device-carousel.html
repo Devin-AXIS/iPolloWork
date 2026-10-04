@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"One product. Every moment.","maxLength":76},{"id":"screenUrls","label":"Screen URLs (url | url | url)","type":"string","default":"","maxLength":6000},{"id":"labels","label":"Screen labels (label | label | label)","type":"string","default":"Discover|Create|Review","maxLength":120},{"id":"note","label":"Supporting note","type":"string","default":"A continuous journey through your product","maxLength":100}]'>
+<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"One product. Every moment.","maxLength":76},{"id":"screenUrls","label":"Screen URLs (url | url | url)","type":"string","default":"","maxLength":6000},{"id":"labels","label":"Screen labels (label | label | label)","type":"string","default":"Discover|Create|Review","maxLength":120},{"id":"note","label":"Supporting note","type":"string","default":"A continuous journey through your product","maxLength":100},{"id":"carouselMode","label":"Carousel motion","type":"enum","default":"depth-tour","options":[{"value":"depth-tour","label":"Depth Tour · 景深切换"},{"value":"flow-belt","label":"Flow Belt · 连续流动"}]}]'>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=1920,height=1080" />
@@ -33,7 +33,8 @@
     window.__timelines=window.__timelines||{};
     (function(){
       const root=document.getElementById("device-carousel"),id=root.dataset.compositionId;
-      const values={title:"One product. Every moment.",screenUrls:"",labels:"Discover|Create|Review",note:"A continuous journey through your product",...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
+      const values={title:"One product. Every moment.",screenUrls:"",labels:"Discover|Create|Review",note:"A continuous journey through your product",carouselMode:"depth-tour",...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
+      if(!["depth-tour","flow-belt"].includes(String(values.carouselMode)))throw new Error("Unsupported carousel mode: "+values.carouselMode);
       root.querySelectorAll("[data-ipw-variable]").forEach(el=>{el.textContent=String(values[el.dataset.ipwVariable]??"");});
       const urls=String(values.screenUrls).split("|").map(value=>value.trim()),names=String(values.labels).split("|").map(value=>value.trim());
       const deck=root.querySelector(".dc-deck"),labels=root.querySelector(".dc-device-labels");
@@ -50,6 +51,7 @@
       const overview=index=>({x:0,y:index===1?-12:12,z:0,rotationY:(1-index)*12,scale:.94,opacity:1,filter:"blur(0px)"});
       const pose=(index,focus)=>index===focus?{x:0,y:-20,z:160,rotationY:0,scale:1.03,opacity:1,filter:"blur(0px)"}:{x:(index-focus)*26,y:28,z:-65,rotationY:(focus-index)*18,scale:.9,opacity:.48,filter:"blur(1.5px)"};
       tl.fromTo(root.querySelector(".dc-header"),{y:20,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);
+      if(values.carouselMode!=="flow-belt"){
       devices.forEach((device,index)=>tl.fromTo(device,{...overview(index),y:85,rotationY:30,opacity:0},{...overview(index),duration:.95,ease:"power3.out"},index*.08));
       tl.fromTo(deck,{x:0,rotationY:-4},{x:110,rotationY:2,duration:1.25,ease:"power2.inOut"},1.05);
       // Independent depth planes and a slower background create parallax rather than one flat entrance.
@@ -60,6 +62,31 @@
       });
       devices.forEach((device,index)=>tl.to(device,{...overview(index),duration:.85,ease:"power2.inOut"},6.85));
       tl.to(deck,{x:0,rotationY:0,duration:.85,ease:"power2.inOut"},6.85);
+      }else{
+        // Integral of a smooth velocity profile: the scene clock stops with the belt.
+        const frames=devices.map(()=>({})),interior=devices.map(()=>({})),previous=[];
+        function distance(time){
+          if(time<=0)return 0;
+          if(time<1)return 390*(time/2-Math.sin(Math.PI*time)/(2*Math.PI));
+          if(time<4)return 195+390*(time-1);
+          const u=Math.min(2,time-4);
+          return 1365+390*(u/2+Math.sin(Math.PI*u/2)/Math.PI);
+        }
+        for(let step=0;step<=96;step++){
+          const p=step/96,travel=distance(p*6),phase=travel/780;
+          devices.forEach(function(device,index){
+            const baseCenter=180+780*index,center=((baseCenter-travel+215)%2340+2340)%2340-215;
+            frames[index][(p*100)+"%"]={x:center-(510+450*index),y:0,z:0,rotationY:0,scale:1,opacity:1,filter:"blur(0px)",ease:previous[index]!==undefined&&center-previous[index]>1000?"steps(1)":"none"};
+            previous[index]=center;
+            interior[index][(p*100)+"%"]={rotation:phase*50,ease:"none"};
+          });
+        }
+        devices.forEach(function(device,index){
+          device.dataset.ipwCarrier="screen-"+index;
+          tl.to(device,{keyframes:frames[index],duration:6,ease:"none"},1.25);
+          const orbit=device.querySelector(".dc-orbit");if(orbit)tl.to(orbit,{keyframes:interior[index],duration:6,ease:"none"},1.25);
+        });
+      }
       tl.fromTo(root.querySelector(".dc-grid"),{x:35},{x:-35,duration:8,ease:"none"},0);
       tl.fromTo(root.querySelector(".dc-rule i"),{scaleX:0},{scaleX:1,duration:8,ease:"none"},0);
       window.__timelines[id]=tl;tl.seek(0);

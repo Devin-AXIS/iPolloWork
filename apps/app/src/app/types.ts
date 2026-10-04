@@ -3,7 +3,6 @@ import type {
   Part,
   Session,
 } from "@opencode-ai/sdk/v2/client";
-import type { VideoDeliveryRequirements } from "@ipollowork/types/hyperframes-project";
 import type { createClient } from "./lib/opencode";
 import type { OpencodeConfigFile, WorkspaceInfo } from "./lib/desktop-types";
 
@@ -164,6 +163,8 @@ export type ComposerDraft = {
   mode: PromptMode;
   parts: ComposerPart[];
   attachments: ComposerAttachment[];
+  /** Work method selected for this conversation, independent of artifact templates. */
+  workTemplateId?: string;
   /** Permission preset selected before a new conversation has a session id. */
   accessMode?: string;
   /** Editor-visible text (may include collapsed paste placeholders). */
@@ -190,28 +191,10 @@ export type PromptDispatchOptions = {
 };
 
 /** A workspace artifact that must be changed and reported before a run is complete. */
-export type ArtifactCompletionTarget = {
-  sourcePath: string;
-  baselineFingerprint: string;
-  mediaReview?: boolean;
-  previewReviewKind?: "site" | "slides";
-};
-
-/**
- * Most prompt dispatchers only need a boolean. Artifact-routing dispatchers
- * return the prepared targets as well so the surface can enforce delivery.
- */
+/** The native engine owns execution and delivery; dispatch reports acceptance only. */
 export type PromptDispatchResult = {
   dispatched: boolean;
   sessionId?: string;
-  artifactCompletionTargets?: ArtifactCompletionTarget[];
-  videoDeliveryTarget?: {
-    sourcePath: string;
-    requirements?: VideoDeliveryRequirements;
-    baselineFingerprint: string | null;
-    intent?: "export" | "publish-douyin" | "publish-wechat-channels";
-    operationKey?: string;
-  };
 };
 
 export type PromptDispatchOutcome = boolean | PromptDispatchResult;

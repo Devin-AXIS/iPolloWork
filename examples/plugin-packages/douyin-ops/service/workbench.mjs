@@ -38,15 +38,14 @@ export default function createWorkbench(runtime) {
   }
   const names = ['studio-state', 'list-accounts', 'start-authorization', 'import-media', 'save-draft', 'publish-draft',
     'list-videos', 'video-data', 'list-comments', 'reply-comment', 'search-videos', 'browser-target', 'get-job', 'resolve-job', 'reconcile-publish-link',
-    'connect-browser', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job', 'comment-video'];
+    'connect-browser', 'verify-browser-account', 'observe-browser-session', 'claim-browser-job', 'finish-browser-job', 'cancel-read-job', 'comment-video'];
   return {
     actions: { 'open-workbench': ensureStarted, ...Object.fromEntries(names.map(name => [name, async (input, context) => {
       // Finishing is authorized by the one-time execution token issued to the
       // claimed browser job. Some engines do not preserve the host session
       // metadata on the final tool call, so requiring sessionId here would
       // strand an otherwise completed publication in "running".
-      if (['publish-draft', 'reply-comment', 'comment-video', 'verify-browser-account', 'claim-browser-job'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');
-      await ensureStarted();
+      if (['publish-draft', 'reply-comment', 'comment-video', 'verify-browser-account', 'observe-browser-session', 'claim-browser-job'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');      await ensureStarted();
       const response = await fetch(`${origin}/api/actions/${name}`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(input ?? {}), signal: AbortSignal.timeout(name === 'publish-draft' ? 180_000 : 60_000),
@@ -56,8 +55,7 @@ export default function createWorkbench(runtime) {
         // Preserve the service's sanitized validation error across the host
         // boundary; a plain Error is replaced by an unhelpful internal_error.
         status: response.status,
-        code: `douyin_${typeof result.code === 'string' && /^[a-z][a-z0-9_]*$/.test(result.code) ? result.code : 'operation_failed'}`,
-      });
+        code: `douyin_${typeof result.code === 'string' && /^[a-z][a-z0-9_]*$/.test(result.code) ? result.code : 'operation_failed'}`,      });
       return result;
     }])) },
     async dispose() {

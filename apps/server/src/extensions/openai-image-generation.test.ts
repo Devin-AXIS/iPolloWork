@@ -6,6 +6,7 @@ import { basename, join } from "node:path";
 import sharp from "sharp";
 
 import type { AuthorizationAccess } from "../authorization-center.js";
+import { listAuthorizationServices, readAuthorizationServiceValues, saveAuthorizationService, testAuthorizationService } from "../authorization-center.js";
 import { PROVIDER_FETCH_SYMBOL } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
 import { callOpenAiImageGenerationExtensionAction, openAiImageGenerationStatus, OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS } from "./openai-image-generation.js";
@@ -62,6 +63,27 @@ afterEach(async () => {
 });
 
 describe("OpenAI image editing", () => {
+  test("fal credentials remain private and connection testing never submits inference", async () => {
+    const serverConfig = config(await temporaryRoot());
+    expect(await testAuthorizationService(serverConfig, "fal-images")).toMatchObject({ ok: false, missingKeys: ["FAL_KEY"] });
+    const saved = await saveAuthorizationService(serverConfig, "fal-images", { FAL_KEY: "fixture:private-fal-key" });
+    expect(saved.configured).toBe(true);
+    expect(JSON.stringify(saved)).not.toContain("fixture:private-fal-key");
+    expect(JSON.stringify(await listAuthorizationServices(serverConfig))).not.toContain("fixture:private-fal-key");
+    expect(await readAuthorizationServiceValues(serverConfig, "fal-images")).toEqual({ FAL_KEY: "fixture:private-fal-key" });
+    let calls = 0;
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string, init: RequestInit) => {
+      calls++;
+      expect(url).toBe("https://api.fal.ai/v1/account/billing");
+      expect(init.method ?? "GET").toBe("GET");
+      expect(new Headers(init.headers).get("Authorization")).toBe("Key fixture:private-fal-key");
+      return Response.json({});
+    });
+    const checked = await testAuthorizationService(serverConfig, "fal-images");
+    expect(checked.ok).toBe(true);
+    expect(checked.detail).toContain("仍需实际任务验证");
+    expect(calls).toBe(1);
+  });
   test("generation and editing expose the shared model policy without implicit server selection", () => {
     for (const action of OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS.filter(action => ["image_generate", "image_edit"].includes(action.action))) {
       expect(action.description).toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);

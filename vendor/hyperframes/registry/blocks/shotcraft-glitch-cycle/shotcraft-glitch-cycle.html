@@ -11,7 +11,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     [data-composition-id="shotcraft-glitch-cycle"] {
-      background: #0a0b10;
+      background: var(--ipw-color-bg,#0a0b10);
       overflow: hidden;
     }
 
@@ -30,7 +30,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #0a0b10;
+      background:var(--ipw-color-bg,#0a0b10);
     }
 
     .glitch-row {
@@ -38,7 +38,7 @@
       font-family: "SF Mono", Menlo, monospace;
       font-size: 26px;
       letter-spacing: 3px;
-      color: #dfe6f5;
+      color:var(--ipw-color-text,#dfe6f5);
     }
 
     .glitch-char {
@@ -51,7 +51,7 @@
       left: 50%; top: 63%;
       width: 120px; height: 2px;
       margin-left: -60px;
-      background: #232840;
+      background:var(--ipw-color-surface,#232840);
       border-radius: 1px;
       overflow: hidden;
     }
@@ -59,7 +59,7 @@
     .progress-fill {
       height: 100%;
       width: 0%;
-      background: #6c8cff;
+      background:var(--ipw-color-surface,#6c8cff);
     }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-glitch-cycle"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
@@ -158,10 +158,10 @@
             const hit = rand(i * 31 + bucket * 17 + slot * 97) < g;
             if (hit) {
               el.textContent = POOL[Math.floor(rand(i * 131 + bucket * 7 + slot * 13) * POOL.length)];
-              el.style.color = rand(i + bucket) > 0.5 ? "#6c8cff" : "#4a5270";
+              el.style.color = "var(--ipw-color-text," + (rand(i + bucket) > 0.5 ? "#6c8cff" : "#4a5270") + ")";
             } else {
               el.textContent = ch;
-              el.style.color = "#dfe6f5";
+              el.style.color = "var(--ipw-color-text," + ("#dfe6f5") + ")";
             }
           }
         }

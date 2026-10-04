@@ -125,7 +125,7 @@ export function videoStudioDocumentPrompt(projectDirectory: string) {
     `Project: ${projectDirectory}`,
     `Read ${projectDirectory}/index.html, design-tokens.css, manifest.json, and brief.json when present before editing.`,
     "Preserve the composition id, scene timing, editable hierarchy, and unrelated user edits.",
-    "After editing, call ipollowork_video_validate for this workspace and session, fix every reported error, then stop.",
+    "After editing, inspect the actual project with the existing media tools and repair discovered defects before returning the result.",
     "My requested change:",
   ].join("\n");
 }
@@ -145,7 +145,7 @@ export function videoStudioSelectionPrompt(projectDirectory: string, selection: 
     ...details,
     "Read the current file before editing. Change only this element unless I explicitly request a wider redesign.",
     "Preserve the composition timing, data-hf-id values, unrelated elements, and linked design tokens.",
-    "After editing, call ipollowork_video_validate for this workspace and session.",
+    "After editing, inspect the actual project with the existing media tools and repair discovered defects within the requested scope.",
     "My requested change:",
   ].join("\n");
 }

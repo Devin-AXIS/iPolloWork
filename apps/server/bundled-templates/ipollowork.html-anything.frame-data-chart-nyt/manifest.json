@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.frame-data-chart-nyt",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "video",
   "subcategory": "video",
@@ -12,7 +12,8 @@
     "chart",
     "nyt",
     "editorial",
-    "frame"
+    "frame",
+    "topic:data"
   ],
   "surface": "video",
   "title": "NYT-Style Data Chart Frame",

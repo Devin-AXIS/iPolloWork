@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.deck-obsidian-claude",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "slides",
   "subcategory": "engineering",
@@ -12,7 +12,8 @@
     "dark",
     "purple",
     "mcp",
-    "agent"
+    "agent",
+    "topic:product"
   ],
   "surface": "design",
   "title": "Obsidian Claude Gradient Deck",

@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { attribute, checkVideoComponents, installVideoComponents } from "./video-components.js";
+import { listHyperframesCatalog } from "../hyperframes-catalog.js";
 import { z } from "zod";
 import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
 
@@ -27,10 +28,16 @@ async function recipeFixture(componentId = "comparison-matrix") {
 
 const roots: string[] = [];
 const originalRegistryRoot = process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
+const originalCatalogRoot = process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT;
+const originalComponentLibrary = process.env.HYPERFRAMES_COMPONENT_LIBRARY;
 
 afterEach(async () => {
   if (originalRegistryRoot === undefined) delete process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
   else process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = originalRegistryRoot;
+  if (originalCatalogRoot === undefined) delete process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT;
+  else process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT = originalCatalogRoot;
+  if (originalComponentLibrary === undefined) delete process.env.HYPERFRAMES_COMPONENT_LIBRARY;
+  else process.env.HYPERFRAMES_COMPONENT_LIBRARY = originalComponentLibrary;
   while (roots.length) {
     const root = roots.pop();
     if (root) await rm(root, { recursive: true, force: true });
@@ -40,6 +47,7 @@ afterEach(async () => {
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-video-components-"));
   roots.push(root);
+  process.env.HYPERFRAMES_COMPONENT_LIBRARY = join(root, "component-library");
   const registry = join(root, "registry");
   const project = join(root, "video", "session-one");
   const component = join(registry, "milestone-timeline");
@@ -60,6 +68,71 @@ async function fixture() {
 }
 
 describe("Video Studio registry component integration", () => {
+  test("lists and installs imported components from the same library without replacing bundled resources", async () => {
+    const { root, project } = await fixture();
+    const componentId = "imported-timeline";
+    const packId = createHash("sha256").update("imported timeline fixture").digest("hex");
+    const component = join(root, "component-library", packId, "blocks", componentId);
+    await mkdir(component, { recursive: true });
+    const html = '<main data-composition-id="imported-timeline"><h1>Imported timeline</h1></main>';
+    await writeFile(join(component, "timeline.html"), html);
+    await writeFile(join(component, "registry-item.json"), JSON.stringify({
+      name: componentId, type: "hyperframes:block", title: "Imported timeline", description: "Imported component",
+      duration: 9, visualComponent: { surfaces: ["video"] }, variables: [],
+      files: [{ path: "timeline.html", target: "compositions/imported-timeline/timeline.html", type: "hyperframes:composition" }],
+    }));
+    expect((await listHyperframesCatalog()).some(item => item.name === componentId)).toBe(true);
+    const result = await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [componentId, "milestone-timeline"],
+    });
+    expect(result.components.map(item => item.componentId)).toEqual([componentId, "milestone-timeline"]);
+    const installedHtml = await readFile(join(project, "compositions/imported-timeline/timeline.html"), "utf8");
+    expect(installedHtml).toContain('<h1>Imported timeline</h1>');
+    expect(installedHtml).toContain('data-composition-id="imported-timeline" data-ipw-timing-owner="host"');
+    expect(await readFile(join(project, "compositions/milestone-timeline.html"), "utf8")).toContain("Timeline");
+  });
+  test("installs the same resources exposed by a configured catalog", async () => {
+    const { root, project } = await fixture();
+    const catalog = join(root, "registry");
+    const componentId = "catalog-only-timeline";
+    await mkdir(join(catalog, "blocks"));
+    await rename(join(catalog, "milestone-timeline"), join(catalog, "blocks", componentId));
+    const directory = join(catalog, "blocks", componentId);
+    const manifestPath = join(directory, "registry-item.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, name: componentId, title: "Custom timeline", description: "Configured catalog resource" }));
+    await writeFile(join(catalog, "registry.json"), "{}");
+    delete process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
+    process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT = catalog;
+    const authoredScene = '<section id="authored">Keep authored scene</section>';
+    await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main">${authoredScene}</main>`);
+
+    expect((await listHyperframesCatalog()).map(item => item.name)).toEqual([componentId]);
+    const result = await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [componentId],
+    });
+    expect(result.components.map(component => component.componentId)).toEqual([componentId]);
+    expect(await readFile(join(project, "compositions", "milestone-timeline.html"), "utf8"))
+      .toContain("Timeline");
+    expect(await readFile(join(project, "index.html"), "utf8"))
+      .toContain(authoredScene);
+  });
+  test("ignores incomplete catalog overrides for both listing and installation", async () => {
+    const { root, project } = await fixture();
+    const catalog = join(root, "registry");
+    await mkdir(join(catalog, "blocks"));
+    delete process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
+    process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT = catalog;
+
+    const componentId = "spatial-camera-suite";
+    expect((await listHyperframesCatalog()).some(item => item.name === componentId)).toBe(true);
+    const result = await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [componentId],
+    });
+    expect(result.components.some(component => component.componentId === componentId)).toBe(true);
+    expect((await readFile(join(project, "compositions", `${componentId}.html`), "utf8")).length)
+      .toBeGreaterThan(0);
+  });
   test("rejects unavailable recipe IDs before writing even the valid selections", async () => {
     const { root, project } = await recipeFixture("question-opener");
     const original = await readFile(join(project, "index.html"), "utf8");
@@ -450,7 +523,51 @@ describe("Video Studio registry component integration", () => {
     expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).issues).toEqual([]);
   });
 
-  test("installs the shared spatial stage with all five seekable shot recipes", async () => {
+  test("checks declared recipe motion against actual cue windows without rejecting readable holds", async () => {
+    const { root, project, instance } = await recipeFixture();
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+      instances: [{ ...instance, duration: instance.duration + 2 }],
+    });
+    const snippet = result.instances[0]!.snippet;
+    const rawBeats = attribute(snippet, "data-ipw-beats");
+    const beatSchema = z.array(z.object({
+      start: z.number(), end: z.number(), animation: z.string(),
+      motion: z.object({ start: z.number(), end: z.number() }),
+    }).passthrough());
+    const workspace = { id: "test", path: root };
+    const input = { sourcePath: "video/session-one/index.html" };
+    const save = (beats: z.infer<typeof beatSchema>) => writeFile(join(project, "index.html"),
+      `<main>${snippet.replace(/data-ipw-beats="[^"]*"/u, () => `data-ipw-beats='${JSON.stringify(beats).replaceAll("&", "&amp;").replaceAll("'", "&#39;")}'`)}</main>`);
+
+    // Extend both an inter-event gap and the final reading interval in metadata only.
+    for (const index of [1, beatSchema.parse(JSON.parse(rawBeats)).length - 1]) {
+      const beats = beatSchema.parse(JSON.parse(rawBeats));
+      const beat = beats[index]!;
+      beat.motion.end = beat.end;
+      await save(beats);
+      const checked = await checkVideoComponents(workspace, input);
+      expect(checked.valid).toBe(false);
+      expect(checked.issues.map(issue => issue.code)).toEqual(["component_beat_motion_mismatch"]);
+      expect(checked.repairPlan).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "component_beat_motion_mismatch", action: "repair-metadata",
+          message: expect.stringContaining("actual event and cue windows"),
+        }),
+      ]));
+    }
+
+    const beats = beatSchema.parse(JSON.parse(rawBeats));
+    const final = beats.at(-1)!;
+    const holdStart = final.motion.end;
+    const hold = { ...final, start: holdStart, animation: "hold:reading", motion: { start: holdStart, end: final.end } };
+    final.end = holdStart;
+    beats.push(hold);
+    await save(beats);
+    expect(await checkVideoComponents(workspace, input)).toMatchObject({ valid: true, issues: [], pacing: { maxStillSeconds: 4 } });
+  });
+
+  test("installs the shared spatial stage with original shots and optional carrier recipes", async () => {
     const { root, project } = await fixture();
     process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = join(
       import.meta.dir,
@@ -483,6 +600,9 @@ describe("Video Studio registry component integration", () => {
       "spotlight-hero-card",
       "runway-ground-skim",
       "steep-tilt-glide",
+      "subject-follow-track",
+      "container-morph",
+      "gather-lockup",
     ]) expect(installed).toContain(recipe);
   });
 
@@ -622,6 +742,15 @@ describe("Video Studio registry component integration", () => {
       });
     }
 
+    const installedCamera = join(project, "compositions/spatial-camera-suite.html");
+    const currentCamera = await readFile(installedCamera, "utf8");
+    await writeFile(installedCamera, currentCamera.replaceAll('"value":"subject-follow-track"', '"value":"unavailable-follow-track"'));
+    await writeFile(join(project, "index.html"), host("subject-follow-track"));
+    const preservedOlderCopy = await checkVideoComponents({ id: "workspace", path: root }, {sourcePath: "video/session-one/index.html"});
+    expect(preservedOlderCopy.issues.map(issue => issue.code)).toContain("installed_spatial_camera_recipe_outdated");
+    expect(await readFile(installedCamera, "utf8")).not.toBe(currentCamera);
+    await writeFile(installedCamera, currentCamera);
+
     await writeFile(join(project, "index.html"), host("basic"));
     const invalidRecipe = await checkVideoComponents({ id: "workspace", path: root }, {
       sourcePath: "video/session-one/index.html",
@@ -699,9 +828,10 @@ describe("Video Studio registry component integration", () => {
     expect(result.issues.map(issue => issue.code)).toContain("component_motion_ends_too_early");
     expect(result.issues.map(issue => issue.code)).toContain("scene_hold_too_long");
     expect(result.repairPlan).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sceneId: "roadmap", code: "scene_still_interval_too_long", action: "apply-motion-preset" }),
-      expect.objectContaining({ sceneId: "roadmap", code: "component_motion_ends_too_early", action: "apply-motion-preset" }),
+      expect.objectContaining({ sceneId: "roadmap", code: "scene_still_interval_too_long", action: "develop-beat", message: expect.stringContaining("visible content reveal, focus transfer, comparison, or state change") }),
+      expect.objectContaining({ sceneId: "roadmap", code: "component_motion_ends_too_early", action: "develop-beat", message: expect.stringContaining("specific follow-up target") }),
     ]));
+    expect(result.repairPlan.every(repair => !repair.message.includes("Call list_motion_presets"))).toBe(true);
   });
 
   test("returns a semantic split repair for a still interval longer than eight seconds", async () => {

@@ -7,6 +7,7 @@ import { fetchWithTimeout as fetchWithRequestTimeout } from "./request-timeout";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
 import type { DenResourceSnapshot } from "./den-types";
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
+import type { SessionTokenMetering } from "@ipollowork/types/workspace";
 import {
   templatePackageMediaTypeForFilename,
   type PptxCompatibility,
@@ -34,6 +35,10 @@ import type {
   WorkItemUpdateInput,
   ProjectSessionExecutionFinishInput,
   ProjectSessionExecutionStartInput,
+  ConversationWorkflowUpdateInput,
+  WorkTemplateListResponse,
+  WorkTemplateSaveInput,
+  WorkTemplate,
 } from "@ipollowork/types/work-items";
 
 export type iPolloWorkServerCapabilities = {
@@ -159,8 +164,10 @@ export type iPolloWorkSessionMessage = {
   parts: Part[];
 };
 
+export type iPolloWorkSession = Session & SessionTokenMetering;
+
 export type iPolloWorkSessionSnapshot = {
-  session: Session;
+  session: iPolloWorkSession;
   messages: iPolloWorkSessionMessage[];
   todos: Todo[];
   status:
@@ -641,6 +648,7 @@ export type iPolloWorkUserEnvItem = {
 
 export type iPolloWorkAuthorizationServiceId =
   | "openai-images"
+  | "fal-images"
   | "aliyun-bailian"
   | "volcengine-video"
   | "runninghub-video"
@@ -1376,8 +1384,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       workspaceId: string,
       title?: string,
       model?: { providerID: string; modelID: string } | null,
+      engineId?: string,
     ) =>
-      requestJson<{ item: Session }>(
+      requestJson<{ item: Session & { engineId?: string } }>(
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/sessions`,
         {
@@ -1386,6 +1395,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
           method: "POST",
           body: {
             ...(title?.trim() ? { title: title.trim() } : {}),
+            ...(engineId ? { engineId } : {}),
             ...(model?.providerID && model.modelID ? { model } : {}),
           },
           timeoutMs: timeouts.sessionRead,
@@ -1401,14 +1411,14 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       if (options?.search?.trim()) query.set("search", options.search.trim());
       if (typeof options?.limit === "number") query.set("limit", String(options.limit));
       const suffix = query.size ? `?${query.toString()}` : "";
-      return requestJson<{ items: Session[] }>(
+      return requestJson<{ items: iPolloWorkSession[] }>(
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/sessions${suffix}`,
         { token, hostToken, timeoutMs: timeouts.sessionRead },
       );
     },
     getSession: (workspaceId: string, sessionId: string) =>
-      requestJson<{ item: Session }>(
+      requestJson<{ item: iPolloWorkSession }>(
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
         { token, hostToken, timeoutMs: timeouts.sessionRead },
@@ -1522,8 +1532,17 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         `/workspace/${encodeURIComponent(workspaceId)}/project-builder-sessions/${encodeURIComponent(sessionId)}`,
         { token, hostToken, method: "POST", body: {} },
       ),
+    getConversationWorkflow: (workspaceId: string, sessionId: string) =>
+      requestJson<{ item: WorkItem | null }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/workflow`, { token, hostToken }),
+    setConversationWorkflow: (workspaceId: string, sessionId: string, input: ConversationWorkflowUpdateInput) =>
+      requestJson<WorkItem>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/workflow`, { token, hostToken, method: "PUT", body: input }),
+    listWorkTemplates: (workspaceId: string) =>
+      requestJson<WorkTemplateListResponse>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-templates`, { token, hostToken }),
+    saveWorkTemplate: (workspaceId: string, input: WorkTemplateSaveInput) =>
+      requestJson<WorkTemplate>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-templates`, { token, hostToken, method: "POST", body: input }),
     listWorkItems: (input: {
       workspaceIds: string[];
+      sessionId?: string;
       from?: number;
       to?: number;
       status?: string;
@@ -1532,6 +1551,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     }) => {
       const query = new URLSearchParams();
       input.workspaceIds.forEach((workspaceId) => query.append("workspaceId", workspaceId));
+      if (input.sessionId) query.set("sessionId", input.sessionId);
       if (input.from !== undefined) query.set("from", String(input.from));
       if (input.to !== undefined) query.set("to", String(input.to));
       if (input.status) query.set("status", input.status);

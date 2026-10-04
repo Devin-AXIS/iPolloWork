@@ -1,10 +1,14 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pitch-deck",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "slides",
   "subcategory": "pitch",
+  "style": "minimal",
+  "tags": [
+    "topic:business"
+  ],
   "title": "Pitch Deck",
   "description": "A decision-ready 16:9 presentation with editable slides, notes and keyboard navigation.",
   "cover": "cover.png",

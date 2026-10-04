@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-error-retype"] { width: 1920px; height: 1080px; background: #ececea; position: relative; }
+    [data-composition-id="shotcraft-error-retype"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#ececea); position: relative; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-error-retype"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -22,8 +22,8 @@
       const f=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
       const n1=f<T1?0:Math.min(TEXT1.length,Math.floor((f-T1)/2)+1), removed=f<DS?0:Math.min(DEL,Math.floor((f-DS)/1.5)+1), n2=f<RS?0:Math.min(TEXT2.length,Math.floor((f-RS)/1.5)+1);
       const shown=TEXT1.slice(0,Math.max(KEEP,n1-removed)).slice(0,n1)+TEXT2.slice(0,n2);
-      const chars=shown.split('').map(c=>`<span style="display:inline-block;width:${CHAR_W}px;text-align:center;font-family:'Courier New',Courier,monospace;font-size:96px;font-weight:700;color:${G.ink};line-height:1.1">${c===' '?'&nbsp;':escape(c)}</span>`).join('');
-      comp.innerHTML=`<div style="position:absolute;left:264px;top:490px;display:flex;align-items:center">${chars}${cursorOn(f)?`<span style="display:inline-block;width:7px;height:100px;margin-left:4px;background:${G.ink}"></span>`:''}</div>`;
+      const chars=shown.split('').map(c=>`<span style="display:inline-block;width:${CHAR_W}px;text-align:center;font-family:'Courier New',Courier,monospace;font-size:96px;font-weight:700;color:var(--ipw-color-text,${G.ink});line-height:1.1">${c===' '?'&nbsp;':escape(c)}</span>`).join('');
+      comp.innerHTML=`<div style="position:absolute;left:264px;top:490px;display:flex;align-items:center">${chars}${cursorOn(f)?`<span style="display:inline-block;width:7px;height:100px;margin-left:4px;background:var(--ipw-color-surface,${G.ink})"></span>`:''}</div>`;
     }},0);
     window.__timelines['shotcraft-error-retype']=tl;
   

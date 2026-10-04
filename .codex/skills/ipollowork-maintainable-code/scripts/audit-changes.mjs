@@ -149,7 +149,15 @@ for (const file of changed.filter((path) => added.has(path) && SOURCE_EXTENSIONS
   const content = readFileSync(file, "utf8").trim();
   if (content.length >= 80) {
     const duplicates = hashToFiles.get(createHash("sha256").update(content).digest("hex")) || [];
-    if (duplicates.length) report(errors, "exact-source-duplicate", file, "New source is identical to existing source; reuse the existing implementation.", duplicates);
+    if (duplicates.length) {
+      // Offline templates and installable registry blocks carry the licensed GSAP runtime.
+      const distributionRuntimePath = /^(?:apps\/server\/bundled-templates\/[^/]+\/assets|vendor\/hyperframes\/registry\/blocks\/[^/]+)\/gsap\.min\.js$/;
+      const runtimeCopy = distributionRuntimePath.test(file)
+        && content.slice(0, 400).includes("https://gsap.com/standard-license")
+        && duplicates.every((path) => distributionRuntimePath.test(path));
+      report(runtimeCopy ? warnings : errors, runtimeCopy ? "bundled-runtime-distribution-copy" : "exact-source-duplicate", file,
+        runtimeCopy ? "Licensed runtime distribution copy keeps this package self-contained; preserve its license header." : "New source is identical to existing source; reuse the existing implementation.", duplicates);
+    }
   }
   const name = basename(file);
   if (!IGNORED_DUPLICATE_NAMES.has(name)) {

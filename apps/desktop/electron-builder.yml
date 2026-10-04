@@ -101,6 +101,45 @@ extraResources:
   - from: ../../examples/plugin-packages/deepseek-harness
     to: plugin-packages/deepseek-harness
     filter: *runtimeFiles
+  - from: ../../examples/plugin-packages/operation-recorder/dist/package
+    to: plugin-packages/operation-recorder
+    filter:
+      - "ipollowork.plugin.json"
+      - "service/**/*"
+      - "skills/**/*"
+      - "ui/**/*"
+      - "native/**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
+      - "!**/node_modules/**/*"
+  - from: ../../examples/plugin-packages/labelu-data-annotation/dist/package
+    to: plugin-packages/labelu-data-annotation
+    filter: *runtimeFiles
+  - from: ../../examples/plugin-packages/short-video-studio/dist/package
+    to: plugin-packages/short-video-studio
+    filter: *runtimeFiles
+  - from: ../../examples/plugin-packages/jev-decision-model
+    to: plugin-packages/jev-decision-model
+    filter:
+      - "ipollowork.plugin.json"
+      - "service/**/*"
+      - "skills/**/*"
+      - "ui/**/*"
+      - "assets/**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
+      - "!**/node_modules/**/*"
+  - from: ../../examples/plugin-packages/ipollo-onto
+    to: plugin-packages/ipollo-onto
+    filter:
+      - "ipollowork.plugin.json"
+      - "service/**/*"
+      - "skills/**/*"
+      - "ui/**/*"
+      - "assets/**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
+      - "!**/node_modules/**/*"
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.

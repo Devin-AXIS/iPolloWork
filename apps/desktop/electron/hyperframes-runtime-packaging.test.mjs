@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -39,6 +39,72 @@ test("migrates an existing isolated Bun runtime without downloading it again", (
   assert.match(prepareRuntimeSource, /runtimeFormatVersion = 7/);
   assert.match(prepareRuntimeSource, /pruneOnnxRuntimeBinaries/);
   assert.match(prepareRuntimeSource, /process\.platform, process\.arch/);
+});
+
+test("repairs stamped runtime resources and rejects broken cached imports without reinstalling", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-hyperframes-runtime-cache-"));
+  const script = path.join(root, "apps/desktop/scripts/prepare-hyperframes-runtime.mjs");
+  const runtime = path.join(root, "apps/desktop/hyperframes-runtime");
+  const writeFixture = async (relativePath, body) => {
+    const destination = path.join(root, relativePath);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, body);
+  };
+  const dependencies = { fontkit: "1.0.0", "onnxruntime-node": "1.0.0" };
+  const resources = {
+    "bin/hyperframes.mjs": 'import "../dist/cli.js";\n',
+    "dist/cli.js": "export const fixture = true;\n",
+    "dist/runtimeVersion.js": "export const runtimeVersionError = () => null;\n",
+    "dist/studio/index.html": "<!doctype html><title>Current Studio</title>\n",
+  };
+  const prepare = () => spawnSync(process.execPath, [script], {
+    cwd: root, encoding: "utf8", timeout: 10_000, windowsHide: true,
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== "path")), PATH: "" },
+  });
+  try {
+    await writeFixture("apps/desktop/scripts/prepare-hyperframes-runtime.mjs", prepareRuntimeSource);
+    await writeFixture("vendor/hyperframes/package.json", JSON.stringify({ private: true, resolutions: {}, overrides: {} }));
+    await writeFixture("vendor/hyperframes/bun.lock", "fixture-lock\n");
+    await writeFixture("vendor/hyperframes/LICENSE", "fixture-license\n");
+    await writeFixture("vendor/hyperframes/packages/cli/package.json", JSON.stringify({ type: "module", dependencies }));
+    for (const [relativePath, body] of Object.entries(resources)) {
+      await writeFixture(`vendor/hyperframes/packages/cli/${relativePath}`, body);
+    }
+    await writeFixture("apps/desktop/hyperframes-runtime/package.json", JSON.stringify({
+      name: "ipollowork-hyperframes-runtime", private: true, type: "module", dependencies,
+    }));
+    for (const packageName of Object.keys(dependencies)) {
+      await writeFixture(`apps/desktop/hyperframes-runtime/node_modules/${packageName}/package.json`, JSON.stringify({
+        name: packageName, type: "module", exports: "./index.js",
+      }));
+      await writeFixture(`apps/desktop/hyperframes-runtime/node_modules/${packageName}/index.js`, 'import "./dependency.js";\n');
+      await writeFixture(`apps/desktop/hyperframes-runtime/node_modules/${packageName}/dependency.js`, "export const ready = true;\n");
+    }
+    const initial = prepare();
+    assert.equal(initial.status, 0, initial.stderr);
+    assert.match(initial.stdout, /cached runtime migrated/);
+    const cached = prepare();
+    assert.equal(cached.status, 0, cached.stderr);
+    assert.match(cached.stdout, /up to date; skipping staging/);
+
+    await rm(path.join(runtime, "packages/cli/dist/runtimeVersion.js"));
+    await rm(path.join(runtime, "packages/cli/dist/studio/index.html"));
+    const repaired = prepare();
+    assert.equal(repaired.status, 0, repaired.stderr);
+    for (const [relativePath, body] of Object.entries(resources)) {
+      assert.equal(await readFile(path.join(runtime, "packages/cli", relativePath), "utf8"), body);
+    }
+    assert.match(repaired.stdout, /cached runtime migrated/);
+    assert.doesNotMatch(repaired.stdout, /Preparing slim/);
+
+    const stamp = await readFile(path.join(runtime, ".runtime-stamp.json"), "utf8");
+    await rm(path.join(runtime, "node_modules/fontkit/dependency.js"));
+    const broken = prepare();
+    assert.notEqual(broken.status, 0, "a stamped runtime with a broken import must fail the build");
+    assert.match(broken.stderr, /ERR_MODULE_NOT_FOUND/);
+    assert.doesNotMatch(broken.stdout, /up to date; skipping staging/);
+    assert.equal(await readFile(path.join(runtime, ".runtime-stamp.json"), "utf8"), stamp);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("keeps the separately packaged registry out of the cached runtime", () => {

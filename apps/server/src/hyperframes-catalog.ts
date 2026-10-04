@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -256,19 +257,34 @@ export function normalizeHyperframesCatalogItem(
   return item.success ? item.data : null;
 }
 
-function registryRoot(): string | null {
+export function resolveHyperframesRegistryRoot(surface: "catalog" | "blocks" = "catalog"): string | null {
   const here = dirname(fileURLToPath(import.meta.url));
   const resourcesPath = typeof process.resourcesPath === "string" ? process.resourcesPath : "";
   const cli = process.env.HYPERFRAMES_CLI_PATH?.trim();
+  const blocks = process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT?.trim();
+  if (surface === "blocks" && blocks && existsSync(blocks)) return resolve(blocks);
   const candidates = [
     process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT?.trim() ?? "",
-    process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT ? resolve(process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT, "..") : "",
+    blocks ? resolve(blocks, "..") : "",
     cli ? resolve(dirname(cli), "../../../registry") : "",
     resolve(here, "..", "..", "..", "vendor", "hyperframes", "registry"),
     resolve(here, "..", "..", "..", "..", "vendor", "hyperframes", "registry"),
     resourcesPath ? resolve(resourcesPath, "hyperframes", "registry") : "",
   ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(resolve(candidate, "registry.json"))) ?? null;
+  const catalog = candidates.find(candidate => existsSync(resolve(candidate, "registry.json")));
+  if (!catalog || surface === "catalog") return catalog ?? null;
+  const registryBlocks = resolve(catalog, "blocks");
+  return existsSync(registryBlocks) ? registryBlocks : null;
+}
+
+// Shared disk contract with Studio's importer: immutable registry packs are
+// published by atomic rename and are visible to the AI catalog immediately.
+export function importedVideoRegistryRoots(): string[] {
+  const library = resolve(process.env.HYPERFRAMES_COMPONENT_LIBRARY || resolve(homedir(), ".hyperframes/component-library"));
+  if (!existsSync(library)) return [];
+  return readdirSync(library, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && /^[a-f0-9]{64}$/.test(entry.name))
+    .map(entry => resolve(library, entry.name));
 }
 
 const shotcraftStyleSchema = z.object({
@@ -297,7 +313,7 @@ export const videoRecipeCatalogInput = z.object({
 
 export async function queryVideoRecipeCatalog(raw: unknown) {
   const input = videoRecipeCatalogInput.parse(raw);
-  const root = registryRoot();
+  const root = resolveHyperframesRegistryRoot();
   if (!root || !existsSync(resolve(root, "shotcraft-references.json"))) throw new ApiError(503, "video_recipe_catalog_unavailable", "The executable Shotcraft recipe catalog is missing from this runtime.");
   const catalog = shotcraftCatalogSchema.parse(JSON.parse(await readFile(resolve(root, "shotcraft-references.json"), "utf8")));
   const localSchema = z.object({ name: z.string(), motionRecipe: hyperframesMotionRecipeSchema, upstream: z.object({ rules: z.string(), implementation: z.string(), revision: z.string() }) });
@@ -360,21 +376,26 @@ export async function queryVideoRecipeCatalog(raw: unknown) {
 }
 
 export async function listHyperframesCatalog(): Promise<HyperframesCatalogItem[]> {
-  const root = registryRoot();
-  if (!root) return [];
+  const root = resolveHyperframesRegistryRoot();
   const items: HyperframesCatalogItem[] = [];
-  for (const group of ["blocks", "components"] as const) {
-    const groupRoot = resolve(root, group);
-    if (!existsSync(groupRoot)) continue;
-    for (const entry of await readdir(groupRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      try {
-        const directory = resolve(groupRoot, entry.name);
-        const raw = JSON.parse(await readFile(resolve(directory, "registry-item.json"), "utf8"));
-        const item = normalizeHyperframesCatalogItem(raw, await inferRuntimeEngine(raw, directory));
-        if (item) items.push(item);
-      } catch {
-        // A malformed optional registry item must not hide the remaining catalog.
+  const names = new Set<string>();
+  for (const catalogRoot of [...(root ? [root] : []), ...importedVideoRegistryRoots()]) {
+    for (const group of ["blocks", "components"] as const) {
+      const groupRoot = resolve(catalogRoot, group);
+      if (!existsSync(groupRoot)) continue;
+      for (const entry of await readdir(groupRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        try {
+          const directory = resolve(groupRoot, entry.name);
+          const raw = JSON.parse(await readFile(resolve(directory, "registry-item.json"), "utf8"));
+          const item = normalizeHyperframesCatalogItem(raw, await inferRuntimeEngine(raw, directory));
+          if (item && !names.has(item.name)) {
+            items.push(item);
+            names.add(item.name);
+          }
+        } catch {
+          // A malformed optional registry item must not hide the remaining catalog.
+        }
       }
     }
   }

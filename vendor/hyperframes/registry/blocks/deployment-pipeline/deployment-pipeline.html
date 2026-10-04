@@ -47,7 +47,7 @@ h1{font-size:60px;line-height:1.4;margin:0}.vc-note{font-size:24px;line-height:1
    back.append(svgElement("path",{class:"vc-back",d:"M"+right+" 400V462H"+left+"V400l-8 14m8-14 8 14"}));const text=svgElement("text",{x:848,y:494,"text-anchor":"middle"});text.textContent="结果返回下一轮观察";back.append(text);container.append(back);
  }
  window.__timelines=window.__timelines||{};window.__timelines[id]?.kill();const tl=gsap.timeline({paused:true}),items=[...root.querySelectorAll(".vc-item")];
- tl.set(root.querySelectorAll("*"),{x:0,y:0,scale:1,opacity:1},0);tl.fromTo(root.querySelector(".vc-header"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);tl.set(items,{opacity:.18},0);
+ tl.set(root.querySelectorAll("*"),{x:0,y:0,scale:1},0);tl.fromTo(root.querySelector(".vc-header"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);tl.set(items,{opacity:.18},0);
  const events=recipe.events.filter(event=>root.querySelector(event.target));
  events.filter(event=>event.id!=="resolve").forEach(event=>{
    const target=root.querySelector(event.target),at=cues[event.id]??event.time;tl.to(target,{opacity:.85,duration:event.duration,ease:"power2.out"},at);

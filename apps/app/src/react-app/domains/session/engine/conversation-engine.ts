@@ -11,6 +11,7 @@ export type ConversationSession = {
   [key: string]: unknown;
   id: string;
   title: string;
+  engineId?: string;
   slug?: string | null;
   parentID?: string | null;
   directory?: string | null;

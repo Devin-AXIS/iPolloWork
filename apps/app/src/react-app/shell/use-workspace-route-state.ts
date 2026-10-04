@@ -10,7 +10,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { publishInspectorSlice, recordInspectorEvent } from "@/app/lib/app-inspector";
-import { isBackgroundVideoDeliveryRenderer } from "@/app/lib/background-video-delivery-renderer";
 import {
   desktopResumeEvent,
   resolveWorkspaceListSelectedId,
@@ -156,7 +155,6 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   // at a different workspace than the visible conversation.
   useEffect(() => {
     if (loading || !selectedWorkspace) return;
-    if (isBackgroundVideoDeliveryRenderer()) return;
     const workspaceId = selectedWorkspace.id.trim();
     if (!workspaceId) return;
 
@@ -184,6 +182,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const launchActivatedWorkspaceIdsRef = useRef(new Set<string>());
   const reconnectAttemptedWorkspaceIdRef = useRef("");
   const backgroundSessionLoadInFlight = useRef<Map<string, number>>(new Map());
+  const verifiedMissingSelectedSessionRef = useRef<{ workspaceId: string; sessionId: string } | null>(null);
   useEffect(() => {
     workContextRef.current = workContextId;
     refreshEpochRef.current += 1;
@@ -197,6 +196,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     setSessionsByWorkspaceId(cachedSessions);
     setErrorsByWorkspaceId({});
     setRetryingWorkspaceIds([]);
+    verifiedMissingSelectedSessionRef.current = null;
     setLegacySelectedWorkspaceId("");
   }, [workContextId]);
   const rememberPendingCreatedSession = useCallback((workspaceId: string, sessionId: string) => {
@@ -219,7 +219,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     return reconciled.sessions;
   }, []);
   const loadWorkspaceSessionsInBackground = useCallback(
-    async (workspaces: RouteWorkspace[]) => {
+    async (workspaces: RouteWorkspace[], selectedSessionOnly = false) => {
       const requestedContextId = workContextRef.current;
       const sessionLoadEpoch = refreshEpochRef.current;
       const isCurrentSessionLoad = () =>
@@ -250,10 +250,15 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           }
           return;
         }
-        const startedAt = backgroundSessionLoadInFlight.current.get(workspace.id) ?? 0;
+        const requestedSelection = routeSelectionRef.current;
+        const requestedSessionId = requestedSelection.workspaceId === workspace.id ? requestedSelection.sessionId : null;
+        const requestKey = selectedSessionOnly && requestedSessionId
+          ? `${workspace.id}:session:${requestedSessionId}`
+          : workspace.id;
+        const startedAt = backgroundSessionLoadInFlight.current.get(requestKey) ?? 0;
         if (startedAt && Date.now() - startedAt < 5_000) return;
         const requestStartedAt = Date.now();
-        backgroundSessionLoadInFlight.current.set(workspace.id, requestStartedAt);
+        backgroundSessionLoadInFlight.current.set(requestKey, requestStartedAt);
         if (isRemoteiPolloWorkWorkspace) {
           setWorkspaceConnectionOverrides((current) => ({
             ...current,
@@ -265,7 +270,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           }));
         }
         try {
-          const response = await endpoint.client.listSessions(endpoint.workspaceId, { limit: 200 });
+          const response = selectedSessionOnly
+            ? { items: [] }
+            : await endpoint.client.listSessions(endpoint.workspaceId, { limit: 200 });
           const items = response.items ?? [];
           const selection = routeSelectionRef.current;
           // Unstarted threads may not enter the runtime's list until their first
@@ -275,13 +282,37 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
             try {
               const { item } = await endpoint.client.getSession(endpoint.workspaceId, selection.sessionId);
               items.unshift(item);
+              if (routeSelectionRef.current.workspaceId === workspace.id && routeSelectionRef.current.sessionId === selection.sessionId) {
+                verifiedMissingSelectedSessionRef.current = null;
+              }
             } catch (error) {
               if (!(error instanceof iPolloWorkServerError && error.status === 404)) throw error;
+              if (routeSelectionRef.current.workspaceId === workspace.id && routeSelectionRef.current.sessionId === selection.sessionId) {
+                verifiedMissingSelectedSessionRef.current = { workspaceId: workspace.id, sessionId: selection.sessionId };
+              }
             }
           }
           if (!isCurrentSessionLoad()) return;
           setSessionsByWorkspaceId((current) => {
-            const nextItems = mergeFetchedSessionsWithPending(workspace.id, items, current[workspace.id] ?? []);
+            const currentItems = current[workspace.id] ?? [];
+            let fetched = selectedSessionOnly
+              ? [...items, ...currentItems.filter((session) => !items.some((item) => item.id === session.id))]
+              : items;
+            const currentSelection = routeSelectionRef.current;
+            const selectedItem = currentSelection.workspaceId === workspace.id
+              ? currentItems.find((session) => session.id === currentSelection.sessionId)
+              : undefined;
+            const missingSelection = verifiedMissingSelectedSessionRef.current;
+            const selectedIsMissing = missingSelection?.workspaceId === workspace.id
+              && missingSelection.sessionId === currentSelection.sessionId;
+            // A list started on the previous route can finish after the exact
+            // selected-thread lookup. Retain that canonical selected metadata.
+            if (!selectedSessionOnly && selectedItem && !selectedIsMissing && !items.some((item) => item.id === selectedItem.id)) {
+              fetched = [selectedItem, ...items];
+            }
+            const nextItems = selectedSessionOnly
+              ? fetched
+              : mergeFetchedSessionsWithPending(workspace.id, fetched, currentItems);
             const next = { ...current, [workspace.id]: nextItems };
             sessionsByWorkspaceIdRef.current = next;
             return next;
@@ -312,11 +343,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           // load, OpenCode may still be warming up its index.  Schedule a
           // single delayed retry so the sidebar doesn't stay permanently
           // empty while the managed engine finishes starting.
-          if (items.length === 0 && attempt === 0) {
+          if (!selectedSessionOnly && items.length === 0 && attempt === 0) {
             window.setTimeout(() => {
               if (!isCurrentSessionLoad()) return;
-              if (backgroundSessionLoadInFlight.current.get(workspace.id)) return;
-              backgroundSessionLoadInFlight.current.delete(workspace.id);
+              if (backgroundSessionLoadInFlight.current.get(requestKey)) return;
+              backgroundSessionLoadInFlight.current.delete(requestKey);
               void fetchOnce(workspace, 1);
             }, 3_000);
           }
@@ -330,8 +361,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           // in the meantime instead of flashing "error" next to the
           // workspace name.
           if (attempt + 1 < MAX_ATTEMPTS && isTransientStartupError(message)) {
-            if (backgroundSessionLoadInFlight.current.get(workspace.id) === requestStartedAt) {
-              backgroundSessionLoadInFlight.current.delete(workspace.id);
+            if (backgroundSessionLoadInFlight.current.get(requestKey) === requestStartedAt) {
+              backgroundSessionLoadInFlight.current.delete(requestKey);
             }
             await new Promise((r) => window.setTimeout(r, backoffMs(attempt)));
             await fetchOnce(workspace, attempt + 1);
@@ -357,8 +388,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
             current.includes(workspace.id) ? current.filter((id) => id !== workspace.id) : current,
           );
         } finally {
-          if (backgroundSessionLoadInFlight.current.get(workspace.id) === requestStartedAt) {
-            backgroundSessionLoadInFlight.current.delete(workspace.id);
+          if (backgroundSessionLoadInFlight.current.get(requestKey) === requestStartedAt) {
+            backgroundSessionLoadInFlight.current.delete(requestKey);
           }
         }
       };
@@ -671,6 +702,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       if (disposed || syncInFlight || document.visibilityState === "hidden") return;
       syncInFlight = true;
       try {
+        if (selectedSessionId && !(sessionsByWorkspaceIdRef.current[selectedWorkspace.id] ?? []).some((session) => session.id === selectedSessionId)) {
+          // Opening a delegated thread must not wait for a broad sidebar load
+          // or its workspace debounce before its owning engine can connect.
+          await loadWorkspaceSessionsInBackground([selectedWorkspace], true);
+        }
         await loadWorkspaceSessionsInBackground([selectedWorkspace]);
       } finally {
         syncInFlight = false;
@@ -904,7 +940,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       if (workspaces.length > 0) return null;
       return "Workspace was not found. Select a new workspace from the sidebar.";
     }
-    if (selectedSessionId && !selectedWorkspaceIsLoading && !selectedSessionKnown) {
+    const verifiedMissing = verifiedMissingSelectedSessionRef.current;
+    if (selectedSessionId && !selectedWorkspaceIsLoading && !selectedSessionKnown
+      && verifiedMissing?.workspaceId === selectedWorkspaceId && verifiedMissing.sessionId === selectedSessionId) {
       return "Session was not found. Select a new session from the sidebar.";
     }
     return null;

@@ -57,6 +57,7 @@ if (!config.opencodeBaseUrl && process.env.IPOLLOWORK_MANAGE_OPENCODE === "1") {
     config.opencodeUsername = managedOpencode.username;
     config.opencodePassword = managedOpencode.password;
     for (const entry of config.workspaces) {
+      if (entry.workspaceType === "remote") continue;
       entry.baseUrl ??= managedOpencode.url;
       entry.opencodeUsername ??= managedOpencode.username;
       entry.opencodePassword ??= managedOpencode.password;

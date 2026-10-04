@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { crc32 } from "./alphaBlit.js";
 import { spawn } from "child_process";
 import { readFileSync } from "fs";
 import { extname } from "path";
@@ -126,17 +127,6 @@ interface StillImageMetadata {
   colorSpace: VideoColorSpace | null;
 }
 
-function crc32(buf: Buffer): number {
-  let crc = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) {
-    crc ^= buf[i] ?? 0;
-    for (let bit = 0; bit < 8; bit++) {
-      const mask = -(crc & 1);
-      crc = (crc >>> 1) ^ (0xedb88320 & mask);
-    }
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
 
 export function extractPngMetadataFromBuffer(buf: Buffer): StillImageMetadata | null {
   if (

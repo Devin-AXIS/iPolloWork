@@ -1,10 +1,10 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "spatial-camera-suite",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "hyperframes:block",
   "title": "Spatial Camera Suite",
-  "description": "A theme-aware spatial interface stage with five seekable camera shot recipes: low graze, depth parallax, hero spotlight, runway drop, and steep glide.",
+  "description": "A theme-aware spatial interface stage with eight seekable camera and carrier recipes: the original five shots plus subject tracking, card-to-page morph and gathered lockup.",
   "tags": [
     "component",
     "media",
@@ -30,7 +30,7 @@
         "imageUrl",
         "items"
       ],
-      "instructions": "Use a scene-relevant spatial shotStyle. `items` is up to three pipe-separated `label::detail` pairs; prefix exactly one featured label with `*` for spotlight focus. Supply a project-local imageUrl only when real visual evidence is needed. All five shot styles are complete deterministic camera recipes inside one shared stage; do not add another camera transform to this scene."
+      "instructions": "Use a scene-relevant shotStyle. `items` is up to three pipe-separated `label::detail` pairs; prefix exactly one featured label with `*`. Original five shots retain their behavior. subject-follow-track keeps a moving featured card framed; container-morph expands that same card into its page; gather-lockup brings the same three cards into one cluster. Supply real project-local imageUrl only for visual evidence. All eight styles use one deterministic timeline and shared camera; do not stack another camera transform."
     }
   },
   "dimensions": {
@@ -84,6 +84,18 @@
         {
           "value": "steep-tilt-glide",
           "label": "Steep Tilt Glide · 大倾角滑行"
+        },
+        {
+          "value": "subject-follow-track",
+          "label": "Subject Follow Track · 主体跟拍"
+        },
+        {
+          "value": "container-morph",
+          "label": "Container Morph · 卡片展开"
+        },
+        {
+          "value": "gather-lockup",
+          "label": "Gather Lockup · 聚合收束"
         }
       ],
       "update": "rebuild"

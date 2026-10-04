@@ -1,3 +1,3 @@
 export { WorkCenter } from "./work-center";
-export { ProjectOverview } from "./project-overview";
+export { ConversationWorkspace, WorkTemplatePicker } from "./conversation-workspace";
 export { isProjectBuilderSession } from "./project-builder-session";

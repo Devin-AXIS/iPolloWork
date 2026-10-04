@@ -156,6 +156,23 @@ describe("tool part mapper", () => {
     });
   });
 
+  test("preserves native child identity and results for new and resumed tasks", () => {
+    const part = writeToolPart("completed", { description: "[project-agent:plan] Storyboard", prompt: "Only plan", subagent_type: "general" }, { tool: "task" });
+    if (part.state.status !== "completed") throw Error("Completed task required");
+    part.state.metadata = { sessionId: "child-native" };
+    part.state.output = '<task id="child-native"><task_result>Saved STORYBOARD.md</task_result></task>';
+    expect(parseDynamicToolUIPart(part)).toMatchObject({
+      input: part.state.input, output: part.state.output,
+      callProviderMetadata: { ipollowork: { sessionId: "child-native", parentSessionId: "session-a", nativeTool: "task", delegationStatus: "completed" } },
+    });
+    expect(parseDynamicToolUIPart(writeToolPart("running", { task_id: "child-native", prompt: "Fix one scene" }, { tool: "task" })))
+      .toMatchObject({ callProviderMetadata: { ipollowork: { sessionId: "child-native", delegationStatus: "running" } } });
+    part.state.metadata = { sessionId: "child-native", nativeTool: "subAgentActivity", nativeKind: "completed" };
+    expect(parseDynamicToolUIPart(part)).toMatchObject({
+      callProviderMetadata: { ipollowork: { nativeTool: "subAgentActivity", nativeKind: "completed" } },
+    });
+  });
+
   test("maps completed tools", () => {
     const part = writeToolPart("completed", { content: "hello", filePath: "src/a.ts" });
     expect(parseDynamicToolUIPart(part)).toMatchObject({

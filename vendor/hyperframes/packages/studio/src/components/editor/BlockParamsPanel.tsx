@@ -333,6 +333,7 @@ function ComponentDataFormField({
   };
 
   const displayLabel = tx(label.replace(/\s*\(.+\)\s*$/, ""));
+  const richRows = contract.columns.some(column => column.options || column.format === "image");
 
   return (
     <section
@@ -356,7 +357,7 @@ function ComponentDataFormField({
         {rows.map((row, rowIndex) => (
           <div
             key={rowIndex}
-            className={`group flex min-w-0 items-center gap-1 rounded-[6px] bg-panel-input px-2 py-1.5 transition-opacity ${
+            className={`group ${richRows ? "flex flex-wrap gap-2" : "flex gap-1"} min-w-0 items-center rounded-[6px] bg-panel-input px-2 py-1.5 transition-opacity ${
               draggedRowIndex === rowIndex ? "opacity-50" : ""
             }`}
             data-component-data-row={rowIndex}
@@ -371,7 +372,21 @@ function ComponentDataFormField({
               setDraggedRowIndex(null);
             }}
           >
-            {contract.columns.map((column, columnIndex) => (
+            {contract.columns.map((column, columnIndex) => column.format === "image" ? (
+              <ComponentImageField key={column.id} label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
+                value={String(row[column.id] ?? "")} locale={locale} onChange={value => {
+                  const nextRows = rowsRef.current.map((item, index) => index === rowIndex ? { ...item, [column.id]: value } : item);
+                  commitRows(nextRows);
+                }} />
+            ) : column.options ? (
+              <select key={column.id} aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
+                value={row[column.id] ?? column.options[0]?.value ?? ""} disabled={saving && !liveCommit}
+                onChange={event => commitRows(rowsRef.current.map((item, index) =>
+                  index === rowIndex ? { ...item, [column.id]: event.target.value } : item))}
+                className="h-7 min-w-0 flex-1 rounded bg-panel-bg px-2 text-[11px] text-panel-text-1 outline-none focus:ring-1 focus:ring-panel-accent/40">
+                {column.options.map(option => <option key={option.value} value={option.value}>{tx(option.label)}</option>)}
+              </select>
+            ) : (
               <input
                 key={column.id}
                 type={column.type === "number" ? "number" : "text"}
@@ -380,7 +395,7 @@ function ComponentDataFormField({
                 aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
                 onChange={(event) => updateCell(rowIndex, column, event.target.value)}
                 className={`h-6 min-w-0 bg-transparent px-1 text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-4 disabled:opacity-60 ${
-                  columnIndex === 0
+                  richRows ? "w-full flex-auto border-b border-panel-border pb-1" : columnIndex === 0
                     ? "w-12 flex-none font-medium"
                     : "flex-1 border-l border-panel-border pl-2"
                 }`}
@@ -435,6 +450,27 @@ function ComponentDataFormField({
       ) : null}
     </section>
   );
+}
+
+function ComponentImageField({ label, value, locale, onChange }: { label: string; value: string; locale: "en" | "zh"; onChange: (value: string) => void }) {
+  const [error, setError] = useState("");
+  return <div className="flex min-w-0 items-center gap-2">
+    <label className="flex h-7 cursor-pointer items-center gap-1 rounded border border-panel-border px-2 text-[10px] text-panel-text-2 hover:bg-panel-hover">
+      {value && <img src={value} alt="" className="size-5 object-contain" />}
+      {locale === "zh" ? "自定义图标" : "Custom icon"}
+      <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" aria-label={label} className="hidden" onChange={event => {
+        const file = event.target.files?.[0]; event.target.value = ""; setError("");
+        if (!file) return;
+        if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type) || file.size > 2 * 1024 * 1024) { setError(locale === "zh" ? "请选择小于 2 MB 的图标图片" : "Choose an icon image smaller than 2 MB"); return; }
+        const reader = new FileReader();
+        reader.onload = () => { if (typeof reader.result === "string") onChange(reader.result); };
+        reader.onerror = () => setError(locale === "zh" ? "图片读取失败" : "Unable to read image");
+        reader.readAsDataURL(file);
+      }} />
+    </label>
+    {value && <button type="button" aria-label={locale === "zh" ? `恢复内置图标 ${label}` : `Restore built-in icon ${label}`} onClick={() => onChange("")} className="text-panel-text-3"><RotateCcw size={12} /></button>}
+    {error && <span role="alert" className="text-[10px] text-red-500">{error}</span>}
+  </div>;
 }
 
 function createDataHighlightVariable(

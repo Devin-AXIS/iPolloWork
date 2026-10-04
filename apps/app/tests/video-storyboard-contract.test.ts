@@ -10,13 +10,15 @@ import { VIDEO_STORYBOARD_EXAMPLE, VIDEO_STORYBOARD_FORMAT_CONTRACT, videoProjec
 import { videoTaskSystemContext, hyperframesStudioUrl } from "../src/react-app/domains/session/video/video-project";
 
 describe("video script contract", () => {
-  test("production instructions do not override the client-owned gate or invite audio probing", () => {
+  test("production instructions retain native engine delivery ownership and avoid audio probing", () => {
     const context = videoTaskSystemContext("ses_example");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("prepared task contract owns final validation");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Read ipollowork-video-studio once");
     for (const text of ["speech_synthesize_workspace_batch", "retry", "TTS"]) expect(voiceoverSkill).toContain(text);
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).not.toContain("Before reporting an editable video complete, run its supplied HyperFrames check");
-    expect(context).toContain("single aggregate delivery validator and one bounded repair continuation");
+    expect(context).toContain("Check actual files with the existing media tools, repair discovered defects");
+    expect(context).toContain("it does not continue or repair the task after you stop");
+    expect(context).not.toContain("single aggregate delivery validator and one bounded repair continuation");
     expect(context.length).toBeLessThan(4500);
   });
   test("every video turn supplies a parseable native script even without loading any reference", () => {
@@ -41,8 +43,9 @@ describe("video script contract", () => {
   });
   test("routes specialist stages while preserving content-led reuse and the direct editability contract", () => {
     const context = videoTaskSystemContext("ses_example");
-    expect(context).toContain("load only the specialist needed by the current task or production stage");
-    for (const stage of ["storyboard", "compose", "voiceover", "soundtrack"]) expect(context).toContain(`ipollowork-video-${stage}`);
+    expect(context).toContain("Read ipollowork-video-studio once");
+    const router = readFileSync(new URL("../../../examples/plugin-packages/video-agent/skills/ipollowork-video-studio/SKILL.md", import.meta.url), "utf8");
+    for (const stage of ["storyboard", "compose", "voiceover", "soundtrack"]) expect(router).toContain(`ipollowork-video-${stage}`);
     expect(context).toContain("Do not preload unrelated stages");
     expect(context).not.toContain("Creation/full regeneration must read");
     expect(context).not.toContain("video.md sections");

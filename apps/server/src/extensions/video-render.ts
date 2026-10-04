@@ -15,7 +15,27 @@ export const videoRenderInput = z.object({
   operationKey: z.string().trim().min(1).max(160),
   review: z.boolean().optional(),
   reviewOnly: z.boolean().optional(),
+  motionBlur: z.boolean().optional(),
+  fps: z.number().int().min(1).max(120).optional(),
+  resolution: z.enum(["1080p", "4k", "landscape", "portrait", "square", "landscape-4k", "portrait-4k", "square-4k"]).optional(),
 }).strict();
+export const videoReferenceInput = videoRenderInput.pick({ sourcePath: true }).extend({ referencePath: z.string().min(1), sampling: z.enum(["uniform", "frames"]).default("uniform") }).strict();
+const temporalReviewSchema = z.object({
+  scope: z.literal("sampled-pixel-change-not-semantic-or-carrier-approval"),
+  duration: z.number().positive(), sourceFps: z.number().positive(), sampleFps: z.number().positive(),
+  sampling: z.enum(["uniform", "frames"]), sampledFrameCount: z.number().int().positive(),
+  stillThreshold: z.number(), stillFraction: z.number(), longestStillSeconds: z.number(),
+  stillIntervals: z.array(z.object({ start: z.number(), end: z.number() })),
+  energyCurve: z.array(z.object({ time: z.number(), change: z.number() })),
+  largeFrameChanges: z.array(z.number()),
+  sceneDurationVariation: z.number().nullable(), warnings: z.array(z.string()),
+});
+const audioReviewSchema = z.object({
+  valid: z.boolean(), scope: z.literal("decoded-mix-health-not-audible-sync-approval"), required: z.boolean(),
+  peakDb: z.number().nullable(), rmsDb: z.number().nullable().optional(), peakSampleCount: z.number().nullable().optional(),
+  silenceIntervals: z.array(z.object({ start: z.number(), end: z.number() })).optional(),
+  issues: z.array(z.string()), warnings: z.array(z.string()),
+});
 const pixelReviewSchema = z.object({
   valid: z.boolean(),
   sampledFrameCount: z.number(),
@@ -23,9 +43,13 @@ const pixelReviewSchema = z.object({
   issues: z.array(z.object({ sceneId: z.string(), code: z.string(), time: z.number() })).optional(),
   scope: z.literal("rendered-motion-health-not-semantic-approval").optional(),
   scenes: z.array(z.object({ sceneId: z.string(), sampleTimes: z.array(z.number()), contrast: z.array(z.number()), change: z.array(z.number()) })),
-  runtimeReview: z.object({ valid: z.boolean(), scope: z.literal("runtime-timing-and-layout-not-semantic-approval"), sampledFrameCount: z.number().positive(), issues: z.array(z.object({ sceneId: z.string(), code: z.string(), time: z.number(), detail: z.string() })) }).optional(),
+  runtimeReview: z.object({ valid: z.boolean(), scope: z.literal("runtime-timing-and-layout-not-semantic-approval"), sampledFrameCount: z.number().positive(), issues: z.array(z.object({ sceneId: z.string(), code: z.string(), time: z.number(), detail: z.string() })),
+    carrierReview: z.object({ scope: z.literal("tracked-dom-not-semantic-continuity-approval"), boundaries: z.array(z.object({ sceneId: z.string(), time: z.number(), required: z.boolean(), sharedVisibleCarriers: z.number(), sampleGap: z.number(), displacementPx: z.number().nullable(), scaleRatio: z.number().nullable(), velocityChangePxPerSecond: z.number().nullable() })) }).optional(),
+    deterministicSeek: z.object({ checkedSceneCount: z.number(), valid: z.boolean() }).optional(),
+  }).optional(),
   evidence: z.object({ videoPath: z.string(), frames: z.array(z.object({ sceneId: z.string(), frame: z.number(), path: z.string() })), resolution: z.enum(["draft", "export"]), expression: z.literal("unverified"), audibleSync: z.literal("unverified") }).optional(),
-  audioReview: z.object({ valid: z.boolean(), scope: z.literal("decoded-mix-health-not-audible-sync-approval"), required: z.boolean(), peakDb: z.number().nullable(), issues: z.array(z.string()), warnings: z.array(z.string()) }).optional(),
+  audioReview: audioReviewSchema.optional(),
+  temporalReview: temporalReviewSchema.optional(),
 });
 const receiptSchema = z.object({
   status: z.enum(["preparing", "rendering", "complete", "failed"]),
@@ -35,10 +59,35 @@ const receiptSchema = z.object({
   outputPath: z.string().optional(), size: z.number().optional(),
   pixelReview: pixelReviewSchema.optional(),
   sourceHash: z.string().optional(),
+  renderSettings: z.object({ fps: z.number().positive(), resolution: videoRenderInput.shape.resolution, motionBlurRequested: z.boolean() }).optional(),
 });
 type Receipt = z.infer<typeof receiptSchema>;
 const preparing = new Map<string, Receipt>();
 const RENDER_TIMEOUT_MS = 3 * 60 * 60_000;
+const REVIEW_FRAME_BYTES = 96 * 54 * 3;
+const MAX_REVIEW_FRAMES = 4096;
+const MAX_TEMPORAL_FRAMES = 1024;
+
+async function inspectVideoFile(videoPath: string) {
+  const result = await new Promise<string>((resolve, reject) => {
+    execFile(process.env.HYPERFRAMES_FFPROBE_PATH?.trim() || "ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate,duration:format=duration", "-of", "json", videoPath],
+      { timeout: 30000, maxBuffer: 256 * 1024 }, (error, stdout) => error ? reject(error) : resolve(stdout));
+  });
+  const metadata = z.object({ streams: z.array(z.object({ width: z.number().positive(), height: z.number().positive(), avg_frame_rate: z.string(), duration: z.string().optional() })).min(1), format: z.object({ duration: z.string().optional() }).optional() }).parse(JSON.parse(result));
+  const video = metadata.streams[0]!;
+  const [numerator, denominator = "1"] = video.avg_frame_rate.split("/");
+  const fps = Number(numerator) / Number(denominator);
+  const duration = Number(video.duration ?? metadata.format?.duration);
+  if (!Number.isFinite(fps) || fps <= 0 || !Number.isFinite(duration) || duration <= 0) throw new Error("Video review requires measured positive duration and frame rate");
+  return { duration, fps, width: video.width, height: video.height };
+}
+
+function temporalFrameNumbers(duration: number, fps: number, sampling: "uniform" | "frames" = "uniform") {
+  if (sampling === "frames" && (duration > 30 || Math.ceil(duration * fps) > MAX_TEMPORAL_FRAMES)) throw new ApiError(400, "video_reference_frame_budget", "Full-frame reference analysis is limited to 30 seconds and 1024 frames; use uniform sampling for longer clips.");
+  const sampleFps = sampling === "frames" ? fps : Math.min(fps, 8, MAX_TEMPORAL_FRAMES / duration);
+  const count = Math.max(1, Math.min(MAX_TEMPORAL_FRAMES, Math.ceil(duration * sampleFps)));
+  return { sampleFps, numbers: [...new Set(Array.from({ length: count }, (_, index) => Math.min(Math.max(0, Math.ceil(duration * fps) - 1), Math.round(index / sampleFps * fps))))] };
+}
 
 /** Snapshot the bounded project, including nested composition/media dependencies, not its generated renders. */
 export async function videoProjectFingerprint(directory: string) {
@@ -71,29 +120,42 @@ export async function reviewRenderedAudio(videoPath: string, html: string) {
   const markup = html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
   // A timeline-owned fade may legitimately start at zero; inspect its decoded track anyway.
   const required = openingTags(markup).some(tag => /^<audio\b/i.test(tag) && !/\bmuted(?:\s|=|>)/i.test(tag));
-  if (!required) return { valid: true, scope: "decoded-mix-health-not-audible-sync-approval", required, peakDb: null, issues: [], warnings: [] };
+  if (!required) return audioReviewSchema.parse({ valid: true, scope: "decoded-mix-health-not-audible-sync-approval", required, peakDb: null, rmsDb: null, peakSampleCount: null, silenceIntervals: [], issues: [], warnings: [] });
   const result = await new Promise<{ error: Error | null; log: string }>(resolve => {
-    execFile(process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg", ["-hide_banner", "-nostats", "-i", videoPath, "-map", "0:a:0", "-af", "volumedetect", "-f", "null", "-"],
+    execFile(process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg", ["-hide_banner", "-nostats", "-i", videoPath, "-map", "0:a:0", "-af", "volumedetect,astats=metadata=0:reset=0,silencedetect=noise=-50dB:d=0.5", "-f", "null", "-"],
       { timeout: 120000, maxBuffer: 1024 * 1024 }, (error, _stdout, stderr) => resolve({ error, log: stderr }));
   });
   const peak = /max_volume:\s*(-?[\d.]+|-inf)\s*dB/.exec(result.log)?.[1];
   const peakDb = peak && peak !== "-inf" ? Number(peak) : null;
+  const overall = result.log.slice(result.log.lastIndexOf("Overall"));
+  const rms = /RMS level dB:\s*(-?[\d.]+)/.exec(overall)?.[1];
+  const peakCount = /Peak count:\s*([\d.]+)/.exec(overall)?.[1];
+  const silenceIntervals: { start: number; end: number }[] = [];
+  let silenceStart: number | undefined;
+  for (const match of result.log.matchAll(/silence_(start|end):\s*([\d.]+)/g)) {
+    if (match[1] === "start") silenceStart = Number(match[2]);
+    else if (silenceStart !== undefined) { silenceIntervals.push({ start: silenceStart, end: Number(match[2]) }); silenceStart = undefined; }
+  }
   const issues = result.error || !peak ? ["required-output-audio-unavailable"] : peakDb === null || peakDb < -60 ? ["required-output-audio-silent"] : [];
   const warnings = peakDb !== null && peakDb >= -.1 ? ["output-peak-near-full-scale-check-clipping"] : [];
-  return { valid: issues.length === 0, scope: "decoded-mix-health-not-audible-sync-approval", required, peakDb, issues, warnings };
+  return audioReviewSchema.parse({ valid: issues.length === 0, scope: "decoded-mix-health-not-audible-sync-approval", required, peakDb,
+    rmsDb: rms ? Number(rms) : null, peakSampleCount: peakCount ? Number(peakCount) : null, silenceIntervals: silenceIntervals.slice(0, 64), issues,
+    warnings: [...warnings, "Peak sample count measures the attained peak, not confirmed clipping; silence may be deliberate."] });
 }
 
 async function saveReviewFrames(videoPath: string, html: string, root: string) {
+  const { fps } = await inspectVideoFile(videoPath);
+  const frameStep = 1 / fps;
   const directory = `${videoPath}.review`;
   await mkdir(directory, { recursive: true });
   if (!(await realpath(directory)).startsWith(root + sep)) throw new Error("Review evidence escaped workspace");
   const selected = renderedSceneWindows(html).flatMap(scene => {
     const action = scene.motion[0];
     const times = [action ? scene.start + (action.start + action.end) / 2 : scene.start + scene.duration * .5,
-      ...scene.motion.map(event => scene.start + Math.min(event.end, event.start + 1 / 30)),
-      scene.start + scene.duration - 1 / 30,
-      ...(scene.transitionDuration ? [Math.max(0, scene.start - 1 / 30), scene.start + scene.transitionDuration / 2] : [])];
-    return times.map(time => ({ sceneId: scene.sceneId, frame: Math.max(0, Math.round(time * 30)) }));
+      ...scene.motion.map(event => scene.start + Math.min(event.end, event.start + frameStep)),
+      scene.start + scene.duration - frameStep,
+      ...(scene.transitionDuration ? [Math.max(0, scene.start - frameStep), scene.start + scene.transitionDuration / 2] : [])];
+    return times.map(time => ({ sceneId: scene.sceneId, frame: Math.max(0, Math.round(time * fps)) }));
   });
   const numbers = [...new Set(selected.map(sample => sample.frame))].sort((a, b) => a - b);
   if (!numbers.length || numbers.length > 768) throw new Error("Review requires 1–768 evidence frames");
@@ -134,12 +196,13 @@ export function renderedSceneWindows(html: string) {
 }
 
 function extractRawReviewFrames(videoPath: string, frameNumbers: number[]) {
+  if (!frameNumbers.length || frameNumbers.length > MAX_REVIEW_FRAMES) throw new Error("Video review exceeds its 4096-frame decode budget");
   return new Promise<Buffer>((resolve, reject) => {
     const select = frameNumbers.map((frame) => `eq(n\\,${frame})`).join("+");
     execFile(process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg", [
       "-v", "error", "-i", videoPath, "-vf", `select='${select}',scale=96:54,format=rgb24`,
       "-vsync", "0", "-f", "rawvideo", "pipe:1",
-    ], { encoding: "buffer", maxBuffer: 32 * 1024 * 1024, timeout: 120000 }, (error, stdout) => {
+    ], { encoding: "buffer", maxBuffer: 64 * 1024 * 1024, timeout: 120000 }, (error, stdout) => {
       if (error) reject(error);
       else resolve(stdout);
     });
@@ -152,23 +215,74 @@ function frameDifference(left: Uint8Array, right: Uint8Array) {
   return difference / left.length / 255;
 }
 
+/** Low-resolution change measures timing, not object identity, optical flow, or narrative quality. */
+function summarizeTemporalFrames(samples: { time: number; frame: Uint8Array }[], duration: number, sourceFps: number, sampleFps: number, sampling: "uniform" | "frames", sceneDurations: number[] = []) {
+  const stillThreshold = 0.0005;
+  const energyCurve = samples.slice(1).map((sample, index) => ({ time: sample.time, change: frameDifference(samples[index]!.frame, sample.frame) }));
+  const stillIntervals: { start: number; end: number }[] = [];
+  let stillSeconds = 0;
+  for (let index = 0; index < energyCurve.length; index++) {
+    if (energyCurve[index]!.change >= stillThreshold) continue;
+    const start = samples[index]!.time, end = samples[index + 1]!.time;
+    stillSeconds += end - start;
+    const previous = stillIntervals.at(-1);
+    if (previous && Math.abs(previous.end - start) < 0.00001) previous.end = end;
+    else stillIntervals.push({ start, end });
+  }
+  const measuredSeconds = (samples.at(-1)?.time ?? 0) - (samples[0]?.time ?? 0);
+  const meanDuration = sceneDurations.length ? sceneDurations.reduce((sum, value) => sum + value, 0) / sceneDurations.length : 0;
+  const variation = sceneDurations.length > 1 && meanDuration > 0 ? Math.sqrt(sceneDurations.reduce((sum, value) => sum + (value - meanDuration) ** 2, 0) / sceneDurations.length) / meanDuration : null;
+  return temporalReviewSchema.parse({ scope: "sampled-pixel-change-not-semantic-or-carrier-approval", duration, sourceFps, sampleFps, sampling, sampledFrameCount: samples.length,
+    stillThreshold, stillFraction: measuredSeconds > 0 ? stillSeconds / measuredSeconds : 0,
+    longestStillSeconds: stillIntervals.reduce((longest, interval) => Math.max(longest, interval.end - interval.start), 0),
+    stillIntervals: stillIntervals.slice(0, 64), energyCurve, largeFrameChanges: energyCurve.filter(sample => sample.change > 0.12).map(sample => sample.time).slice(0, 128),
+    sceneDurationVariation: variation, warnings: ["Pixel change does not prove semantic development or continuity; holds, cuts, flashes and camera movement need content review.", ...(samples.length < 2 ? ["Insufficient frames to measure temporal change."] : [])],
+  });
+}
+
+/** Analyze only a local, session-owned reference using the same measured sampling as the export receipt. */
+export async function analyzeVideoReference(workspace: { id: string; path: string }, raw: unknown) {
+  const input = videoReferenceInput.parse(raw);
+  const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
+  const file = resolveWorkspaceFile(workspace.path, input.referencePath);
+  const project = await realpath(dirname(source.absolutePath));
+  const reference = await realpath(file.absolutePath);
+  const workspaceRoot = await realpath(workspace.path);
+  if (!project.startsWith(workspaceRoot + sep) || !reference.startsWith(project + sep + "assets" + sep) || !/\.(?:mp4|mov|webm|mkv)$/i.test(reference)) throw new ApiError(400, "video_reference_path_invalid", "Use a local video reference inside the active project's assets directory.");
+  const info = await stat(reference);
+  if (!info.isFile() || info.size === 0 || info.size > 512 * 1024 * 1024) throw new ApiError(400, "video_reference_size_invalid", "Reference must be a nonempty video of at most 512MB.");
+  const metadata = await inspectVideoFile(reference);
+  const grid = temporalFrameNumbers(metadata.duration, metadata.fps, input.sampling);
+  const decoded = await extractRawReviewFrames(reference, grid.numbers);
+  if (decoded.length !== grid.numbers.length * REVIEW_FRAME_BYTES) throw new Error("Reference frame decode did not cover the requested sampling grid");
+  const samples = grid.numbers.map((frame, index) => ({ time: frame / metadata.fps, frame: decoded.subarray(index * REVIEW_FRAME_BYTES, (index + 1) * REVIEW_FRAME_BYTES) }));
+  return { sourcePath: input.sourcePath, referencePath: file.relativePath, width: metadata.width, height: metadata.height,
+    temporalReview: summarizeTemporalFrames(samples, metadata.duration, metadata.fps, grid.sampleFps, input.sampling),
+    audioReview: await reviewRenderedAudio(reference, "<audio></audio>"),
+    instruction: "Compare measured timing, static intervals and change bursts with the brief and current export's temporalReview. Large pixel changes are not confirmed cuts or carriers; inspect those timestamps. Full-frame sampling remains low resolution and cannot certify sharpness or semantic quality.",
+  };
+}
+
 export async function reviewRenderedPixels(videoPath: string, html: string): Promise<z.infer<typeof pixelReviewSchema>> {
   const scenes = renderedSceneWindows(html);
   if (scenes.length > 48) throw new Error("Pixel review supports at most 48 scenes per render.");
+  const metadata = await inspectVideoFile(videoPath);
+  const grid = temporalFrameNumbers(metadata.duration, metadata.fps);
+  const frameStep = 1 / metadata.fps;
   const requests = scenes.flatMap((scene) => [0.15, 0.5, 0.85, ...scene.motion.flatMap(window => [
-    Math.max(0, window.start - 1 / 30) / scene.duration, (window.start + window.end) / 2 / scene.duration, Math.min(scene.duration - 1 / 30, window.end) / scene.duration,
-  ]), ...(scene.transitionDuration > 0 ? [1 / 30 / scene.duration, scene.transitionDuration / 2 / scene.duration, (scene.transitionDuration + 1 / 30) / scene.duration] : [])].map((position) => ({
+    Math.max(0, window.start - frameStep) / scene.duration, (window.start + window.end) / 2 / scene.duration, Math.min(scene.duration - frameStep, window.end) / scene.duration,
+  ]), ...(scene.transitionDuration > 0 ? [frameStep / scene.duration, scene.transitionDuration / 2 / scene.duration, (scene.transitionDuration + frameStep) / scene.duration] : [])].map((position) => ({
     sceneId: scene.sceneId,
     time: Math.max(0, scene.start + scene.duration * position),
   })));
   if (!requests.length) throw new Error("Pixel review could not find timed scenes in the saved composition.");
-  const frameNumbers = [...new Set(requests.map((request) => Math.max(0, Math.round(request.time * 30))))].sort((a, b) => a - b);
+  const frameNumbers = [...new Set([...grid.numbers, ...requests.map((request) => Math.max(0, Math.round(request.time * metadata.fps)))])].sort((a, b) => a - b);
   const frameIndices = new Map(frameNumbers.map((number, index) => [number, index]));
   const raw = await extractRawReviewFrames(videoPath, frameNumbers);
-  const frameBytes = 96 * 54 * 3;
+  const frameBytes = REVIEW_FRAME_BYTES;
   if (raw.byteLength !== frameNumbers.length * frameBytes) throw new Error(`Pixel review expected ${frameNumbers.length} frames but decoded ${Math.floor(raw.byteLength / frameBytes)}.`);
   const metrics = requests.map((request) => {
-    const index = frameIndices.get(Math.max(0, Math.round(request.time * 30)))!;
+    const index = frameIndices.get(Math.max(0, Math.round(request.time * metadata.fps)))!;
     const frame = raw.subarray(index * frameBytes, (index + 1) * frameBytes);
     let sum = 0;
     let sumSquares = 0;
@@ -204,7 +318,11 @@ export async function reviewRenderedPixels(videoPath: string, html: string): Pro
       ? [{ sceneId: scene.sceneId, code: "blank-transition-sample", time: scene.start }] : [];
     return [...motionIssues, ...transitionIssues];
   });
-  return { valid: blankSceneIds.length === 0 && issues.length === 0, scope: "rendered-motion-health-not-semantic-approval", sampledFrameCount: frameNumbers.length, blankSceneIds, issues, scenes: reviewedScenes };
+  const temporalReview = summarizeTemporalFrames(grid.numbers.map(frame => {
+    const index = frameIndices.get(frame)!;
+    return { time: frame / metadata.fps, frame: raw.subarray(index * frameBytes, (index + 1) * frameBytes) };
+  }), metadata.duration, metadata.fps, grid.sampleFps, "uniform", scenes.map(scene => scene.duration));
+  return { valid: blankSceneIds.length === 0 && issues.length === 0, scope: "rendered-motion-health-not-semantic-approval", sampledFrameCount: frameNumbers.length, blankSceneIds, issues, scenes: reviewedScenes, temporalReview };
 }
 
 /** Owns the durable export receipt; Studio remains the only render engine. */
@@ -275,7 +393,8 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     if (active) return { ...active, operationKey: input.operationKey, pollAfterMs: 2000 };
     if (action !== "video_render_start") throw new ApiError(404, "render_not_found", "No export exists for this operationKey");
     if (preparing.size >= 16) throw new ApiError(429, "render_busy", "Too many exports are preparing");
-    receipt = { status: "preparing", startedAt: Date.now(), progress: 0, stage: "Starting bundled Studio" };
+    receipt = { status: "preparing", startedAt: Date.now(), progress: 0, stage: "Starting bundled Studio",
+      renderSettings: { fps: input.reviewOnly ? 30 : input.fps ?? 30, resolution: input.reviewOnly ? undefined : input.resolution, motionBlurRequested: input.motionBlur === true } };
     preparing.set(receiptPath, receipt);
     // Exclusive creation makes retries and concurrent requests reuse one job.
     try { await writeFile(receiptPath, JSON.stringify(receipt), { flag: "wx" }); }
@@ -296,7 +415,9 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         const job = z.object({ jobId: z.string().regex(/^[A-Za-z0-9_-]+$/) }).parse(await studioJson(`${base}/projects/${project}/render`, {
           format: "mp4",
           quality: input.reviewOnly ? "draft" : "high",
-          fps: 30,
+          fps: input.reviewOnly ? 30 : input.fps ?? 30,
+          motionBlur: input.motionBlur === true,
+          ...(!input.reviewOnly && input.resolution ? { resolution: input.resolution } : {}),
           ...(input.reviewOnly ? { captureSize: { width: 640, height: 360 } } : {}),
         }));
         await save({ ...initial, ...job, studioPort, sourceHash, status: "rendering", stage: "Rendering MP4" });
@@ -315,7 +436,7 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       await save(receipt);
     }
   }
-  if (receipt.status === "complete" && (input.review || input.reviewOnly) && (!receipt.pixelReview?.evidence || receipt.sourceHash !== await videoProjectFingerprint(directory))) {
+  if (receipt.status === "complete" && (input.review || input.reviewOnly) && (!receipt.pixelReview?.evidence || !receipt.pixelReview.temporalReview || receipt.sourceHash !== await videoProjectFingerprint(directory))) {
     receipt = { ...receipt, status: "failed", outputPath: undefined, error: "The saved source changed or this older export has no runtime acceptance evidence; review the current draft again." };
     await save(receipt);
   }

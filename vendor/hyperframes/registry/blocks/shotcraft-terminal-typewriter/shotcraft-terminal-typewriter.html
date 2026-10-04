@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-terminal-typewriter"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+    [data-composition-id="shotcraft-terminal-typewriter"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#ececea); position: relative; overflow: hidden; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-terminal-typewriter"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -20,8 +20,8 @@
     const inCubic=t=>t*t*t, outCubic=t=>1-Math.pow(1-t,3);
     const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='inCubic')t=inCubic(t);else if(e==='outCubic')t=outCubic(t);return va+(vb-va)*t;};
     const fakeDash=()=>`<img src="${escape(String(values.mediaUrl))}" style="width:1920px;height:1080px;object-fit:contain">`;
-    const term=(chars,cursorOn)=>`<div style="width:${TW}px;height:${TH}px;background:#1e1e1c;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,0.35);overflow:hidden"><div style="height:${TITLEBAR}px;background:#2a2a28;border-bottom:1px solid #3a3a38;display:flex;align-items:center;gap:12px;padding:0 22px">${['#6a6a68','#8f8f8d','#b5b5b3'].map(c=>`<div style="width:16px;height:16px;border-radius:8px;background:${c}"></div>`).join('')}</div>
-      <div style="padding:${PAD}px;font-family:Menlo,Consolas,monospace;font-size:40px;color:#d8d8d6;line-height:1.5"><div style="color:#7a7a78;font-size:32px;margin-bottom:18px">${escape(String(values.context))}</div><div style="display:flex;align-items:center"><span style="color:#9f9f9d">$ </span><span>${escape(CMD.substring(0,chars))}</span><span style="display:inline-block;width:24px;height:48px;margin-left:4px;background:#d8d8d6;opacity:${cursorOn?1:0}"></span></div></div></div>`;
+    const term=(chars,cursorOn)=>`<div style="width:${TW}px;height:${TH}px;background:var(--ipw-color-surface,#1e1e1c);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,0.35);overflow:hidden"><div style="height:${TITLEBAR}px;background:var(--ipw-color-surface,#2a2a28);border-bottom:1px solid #3a3a38;display:flex;align-items:center;gap:12px;padding:0 22px">${['#6a6a68','#8f8f8d','#b5b5b3'].map(c=>`<div style="width:16px;height:16px;border-radius:8px;background:var(--ipw-color-surface,${c})"></div>`).join('')}</div>
+      <div style="padding:${PAD}px;font-family:Menlo,Consolas,monospace;font-size:40px;color:var(--ipw-color-text,#d8d8d6);line-height:1.5"><div style="color:var(--ipw-color-text,#7a7a78);font-size:32px;margin-bottom:18px">${escape(String(values.context))}</div><div style="display:flex;align-items:center"><span style="color:var(--ipw-color-text,#9f9f9d)">$ </span><span>${escape(CMD.substring(0,chars))}</span><span style="display:inline-block;width:24px;height:48px;margin-left:4px;background:var(--ipw-color-surface,#d8d8d6);opacity:${cursorOn?1:0}"></span></div></div></div>`;
     const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
     tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
       const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), chars=Math.min(CMD.length,Math.max(0,Math.floor((frame-T.typeStart)/2))), cursorOn=frame%12<6;

@@ -239,3 +239,21 @@ describe("assistant process collapse sections", () => {
     ]);
   });
 });
+
+test("native agent completion replaces its earlier spinner while retaining failed task diagnostics", () => {
+  const activity = (id: string, state: "input-streaming" | "output-available" | "output-error") => ({
+    type: "dynamic-tool" as const, toolName: "task", toolCallId: id, state,
+    input: { task_id: "child" },
+    callProviderMetadata: { ipollowork: { nativeTool: "subAgentActivity", sessionId: "child" } },
+  });
+  const done = activity("done", "output-available");
+  expect(getAssistantRenderGroups([activity("start", "input-streaming"), done], false))
+    .toEqual([{ kind: "tool", part: done }]);
+  const start = activity("earlier-message", "input-streaming");
+  const transcriptParts = [start, done];
+  expect(getAssistantRenderGroups([start], false, transcriptParts)).toEqual([]);
+  expect(getAssistantRenderGroups([done], false, transcriptParts)).toEqual([{ kind: "tool", part: done }]);
+  const failed = activity("failed", "output-error");
+  expect(getAssistantRenderGroups([activity("start", "input-streaming"), failed], false))
+    .toEqual([{ kind: "tool", part: failed }]);
+});

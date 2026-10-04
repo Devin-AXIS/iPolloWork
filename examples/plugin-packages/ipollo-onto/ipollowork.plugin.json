@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 2,
+  "id": "ipollo-onto",
+  "name": "iPollo Onto",
+  "description": "在工作台直接管理项目、业务表、关系图和文档；通过项目 MCP 复用 iPolloWork AI。数据服务独立运行。",
+  "category": "数据与分析",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false
+  },
+  "package": {
+    "version": "0.1.4",
+    "publisher": {
+      "id": "smart-future-school",
+      "name": "智慧未来学校"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.50.12"
+    },
+    "updateId": "devin-axis/ipollo-onto"
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "在工作台显示本机 Onto 页面，仅连接 127.0.0.1 的 5710、5711 端口。"
+    }
+  ],
+  "resources": [
+    {
+      "type": "ui",
+      "id": "workbench",
+      "label": "iPollo Onto",
+      "path": "ui/workbench.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://ipollo-onto/workbench",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false,
+        "csp": {
+          "frameDomains": ["http://127.0.0.1:5710", "http://127.0.0.1:5711"]
+        }
+      }
+    },
+    {
+      "type": "skill",
+      "id": "onto-workflow",
+      "label": "iPollo Onto 业务工作流",
+      "path": "skills/ipollo-onto",
+      "required": true,
+      "provides": ["workflow:business-data"]
+    }
+  ],
+  "contributions": [
+    {
+      "type": "workspace-app",
+      "ref": "workbench",
+      "label": "iPollo Onto",
+      "description": "项目、业务表、关系图和文档"
+    },
+    {
+      "type": "conversation-template",
+      "label": "iPollo Onto · 业务数据",
+      "description": "使用已连接项目的表、关系和文档开展工作。首次使用需连接项目 MCP。",
+      "prompt": "本任务使用 iPollo Onto 工作流。先读取选定项目的真实结构；创建系统时先建立可用的表和关联并在工作台打开，随后将有依据的结果逐批写入和补全，不必先生成完整清单再导入。业务分析先沿已有关系查证，缺失信息再使用现有搜索工具补充；只读问题保持只读。复用本任务已明确的项目，仅在范围不明确时询问；没有连接时说明如何连接项目 MCP。此规则仅适用于本次 Onto 任务，不改变其他任务、Agent 或插件。",
+      "mode": "work"
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "iPollo Onto",
+        "description": "Manage projects, business tables, relationships, and documents directly in the workbench. Use project MCP connections with iPolloWork AI. The data service runs independently.",
+        "category": "Data & Analytics",
+        "resources": {
+          "workbench": {
+            "label": "iPollo Onto"
+          },
+          "onto-workflow": {
+            "label": "iPollo Onto Business Workflow"
+          }
+        },
+        "permissions": {
+          "network": {
+            "reason": "Show the local Onto workbench, connecting only to ports 5710 and 5711 on 127.0.0.1."
+          }
+        }
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-title-demote-to-label"] { width: 1920px; height: 1080px; background: #ececea; position: relative; }
+    [data-composition-id="shotcraft-title-demote-to-label"] { width: 1920px; height: 1080px; background: var(--ipw-color-bg,#ececea); position: relative; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-title-demote-to-label"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -26,14 +26,14 @@
       const growT=clamp(frame,(withSelection?44:32)+12,(withSelection?44:32)+52,0,1);
       return `<div style="position:absolute;left:150px;top:210px;display:flex;flex-direction:column;gap:34px">${skeleton(growT)}</div>
         <div style="position:absolute;left:${x}px;top:${y}px;transform:translate(${-(1-dem)*50}%,-50%) scale(${scale});transform-origin:left center;opacity:${rev};filter:blur(${(1-rev)*12}px)">
-          <div style="position:relative;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:128px;color:${G.ink};letter-spacing:-2px;white-space:nowrap;padding:10px 18px">
-            ${withSelection&&selWidth>0?`<div style="position:absolute;left:${selLeft}%;top:8px;width:${selWidth}%;height:calc(100% - 16px);background:${SEL};border-radius:6px"></div>`:''}
+          <div style="position:relative;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:128px;color:var(--ipw-color-text,${G.ink});letter-spacing:-2px;white-space:nowrap;padding:10px 18px">
+            ${withSelection&&selWidth>0?`<div style="position:absolute;left:${selLeft}%;top:8px;width:${selWidth}%;height:calc(100% - 16px);background:var(--ipw-color-surface,${SEL});border-radius:6px"></div>`:''}
             <span style="position:relative">${escape(title)}</span></div></div>`;};
     const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
     tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
       const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
       if(frame<SPLIT) comp.innerHTML=scene(frame,String(values.title),false);
-      else {const f=frame-SPLIT, flash=clamp(f,0,4,1,0); comp.innerHTML=scene(f,String(values.secondTitle),true)+`<div style="position:absolute;inset:0;background:#fff;opacity:${flash};pointer-events:none"></div>`;}
+      else {const f=frame-SPLIT, flash=clamp(f,0,4,1,0); comp.innerHTML=scene(f,String(values.secondTitle),true)+`<div style="position:absolute;inset:0;background:var(--ipw-color-surface,#fff);opacity:${flash};pointer-events:none"></div>`;}
     }},0);
     window.__timelines['shotcraft-title-demote-to-label']=tl;
   

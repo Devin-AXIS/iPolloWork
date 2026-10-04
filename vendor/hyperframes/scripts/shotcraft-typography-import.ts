@@ -121,6 +121,25 @@ function adapt(source: string, key: string): string {
   }
 }
 
+function inheritThemeColors(html: string, id: string): string {
+  const rootBackground = new RegExp('(\\[data-composition-id="' + id + '"\\]\\s*\\{[^}]*?\\bbackground:\\s*)([^;]+)(;)');
+  const authoredBackground = html.match(rootBackground)?.[2]?.trim();
+  if (!authoredBackground) throw Error("Composition background missing: " + id);
+  html = html.replace(rootBackground, (_, property, value, end) => property + "var(--ipw-color-bg," + value.trim() + ")" + end);
+  html = html.replace(
+    /(?<![\w-])background:\s*(\$\{[^}]+\}|rgba?\((?:\$\{[^}]+\}|[^)])+\)|#[\da-f]{3,8}\b|white\b|black\b)(?=[;\s"'}])/gi,
+    (_, value) => "background:var(--ipw-color-" + (value === authoredBackground ? "bg" : "surface") + "," + value + ")",
+  );
+  html = html.replace(/\.style\.color\s*=\s*([^;\n]+);/g, (assignment, value) =>
+    value.trim() === '""' ? assignment : '.style.color = "var(--ipw-color-text," + (' + value + ') + ")";',
+  );
+  // Bind literal and frame-computed text colors; the authored palette remains the fallback.
+  return html.replace(
+    /(?<![\w-])color:\s*(\$\{[^}]+\}|rgba?\((?:\$\{[^}]+\}|[^)])+\)|#[\da-f]{3,8}\b|white\b|black\b)(?=[;\s"'}])/gi,
+    (_, value) => "color:var(--ipw-color-text," + value + ")",
+  );
+}
+
 const license = await readFile(join(root, "shotcraft-reference-LICENSE.txt"), "utf8");
 const files = new Map<string, string>();
 for (const port of ports) {
@@ -155,7 +174,7 @@ for (const port of ports) {
       example: { values, narration: port.inputs.map(field => field.value.replaceAll("|", "，")).join("。") },
       acceptance: ["各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。", "真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。", "实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。", "不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"] } });
   const prologue = `(async function(){await document.fonts.ready;const host=document.querySelector('[data-composition-id="${id}"]');const values={...${JSON.stringify(values)},...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[host.dataset.compositionId]??{})};const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');const measure=(text,font)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=font;return ctx.measureText(text).width;};${port.media ? "const media=new Image();media.src=String(values.mediaUrl);await media.decode();" : ""}\n`;
-  let html = adapt(source, port.key).replaceAll(oldId, id);
+  let html = inheritThemeColors(adapt(source, port.key).replaceAll(oldId, id), id);
   if (!/<div\s+data-composition-id="[^"]+"[\s\S]*?data-height="1080"[^>]*>/.test(html)) throw Error("Missing fixed canvas: " + port.key);
   html = html.replace(/(<div\s+data-composition-id="[^"]+"[\s\S]*?data-height="1080"[^>]*>)/, "$1<div class=\"sc-content\">");
   html = replace(html, /<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/gsap@[^>]+>/, "</div><script src=\"https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js\">");

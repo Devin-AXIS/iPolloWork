@@ -1,12 +1,19 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.multi-agent-relay",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "agent-collaboration",
   "style": "technical",
-  "tags": ["video", "agents", "parallel", "collaboration", "workflow"],
+  "tags": [
+    "video",
+    "agents",
+    "parallel",
+    "collaboration",
+    "workflow",
+    "topic:business"
+  ],
   "surface": "video",
   "title": "Multi-Agent Relay",
   "description": "A technical relay that splits one objective across focused agents, shows parallel progress, and merges verified outputs.",

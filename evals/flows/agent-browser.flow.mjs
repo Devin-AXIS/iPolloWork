@@ -18,9 +18,11 @@ async function setup(ctx) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   server.unref();
   const workspaceId = await ctx.eval("location.hash.split('/workspace/')[1]?.split('/')[0]");
-  ctx.agentBrowser = { info, context: { workspaceId: workspaceId || status.activeWorkspaceId, sessionId: decodeURIComponent(route) }, server,
+  ctx.agentBrowser = { locale: await ctx.eval('document.documentElement.lang'), info, context: { workspaceId: workspaceId || status.activeWorkspaceId, sessionId: decodeURIComponent(route) }, server,
     url: `http://127.0.0.1:${server.address().port}`, task: null, human: null };
 }
+
+function uiText(ctx, en, zh) { return ctx.agentBrowser.locale === 'zh' ? zh : en; }
 
 async function host(ctx, name, args = {}, { allowError = false } = {}) {
   const { info, context } = ctx.agentBrowser;
@@ -61,7 +63,7 @@ async function showTab(ctx, tabId) {
   if (await ctx.eval('Boolean(document.querySelector(\'button[aria-label="Open right panel"], button[aria-label="打开右侧面板"]\'))')) await click(ctx, 'button[aria-label="Open right panel"], button[aria-label="打开右侧面板"]');
   if (!(await ctx.eval(`Boolean(document.getElementById(${JSON.stringify(tabId)}))`))) {
     await click(ctx, 'button[aria-label="添加侧面板入口"], button[aria-label="Add side panel entry"]');
-    await ctx.clickText('网页', { selector: '[role="menuitem"]' });
+    await ctx.clickText(uiText(ctx, 'Web', '网页'), { selector: '[role="menuitem"]' });
   }
   await click(ctx, `[id="${tabId}"] button[aria-label^="Select tab:"]`);
   await ctx.waitFor(`document.querySelector('[id="${tabId}"] button[aria-selected="true"]') !== null`);
@@ -97,7 +99,7 @@ export default {
           ctx.assert(tabs.tabs.find(t => t.id === ctx.agentBrowser.task.tabId)?.decisionEngine === 'agent', 'Default decision engine must be Agent');
           ctx.assert(ctx.agentBrowser.first.status === 'executed', 'Unverified actions must not claim result verification');
           ctx.assert(await page(ctx, '/agent', "document.querySelector('#result').textContent") === 'Preview ready: Without JEV', 'Real page preview did not update');
-        }, screenshot: { name: 'browser-without-jev', fromSurface: false, requireText: ['动作已执行'] },
+        }, screenshot: { name: 'browser-without-jev', fromSurface: false, requireText: [uiText(ctx, 'Action executed', '动作已执行')] },
       });
     } },
     { name: 'Background input preserves the user page and focus', run: async ctx => {
@@ -139,7 +141,7 @@ export default {
           await ctx.waitFor('document.querySelector("[data-browser-control=human]") !== null');
           const tabs = await host(ctx, 'list_tabs');
           ctx.assert(tabs.tabs.find(t => t.id === ctx.agentBrowser.task.tabId)?.controller === 'human', 'Host did not transfer control');
-        }, screenshot: { name: 'user-takes-control', fromSurface: false, requireText: ['由你操作 · Agent 输入已暂停'] },
+        }, screenshot: { name: 'user-takes-control', fromSurface: false, requireText: [uiText(ctx, 'You have control · Agent input is paused', '由你操作 · Agent 输入已暂停')] },
       });
     } },
     { name: 'Return control re-observes the current page', run: async ctx => {
@@ -157,8 +159,8 @@ export default {
           const tabs = await host(ctx, 'list_tabs');
           ctx.assert(tabs.tabs.find(t => t.id === ctx.agentBrowser.task.tabId)?.controller === 'agent', 'Control was not returned');
           const text = await ctx.eval('document.body.innerText');
-          ctx.assert(text.includes('我已经完成页面操作'), 'Return control did not queue the continuation message');
-        }, screenshot: { name: 'agent-continues-from-user-edit', fromSurface: false, requireText: ['动作已执行'] },
+          ctx.assert(text.includes(uiText(ctx, 'I have finished operating the page', '我已经完成页面操作')), 'Return control did not queue the continuation message');
+        }, screenshot: { name: 'agent-continues-from-user-edit', fromSurface: false, requireText: [uiText(ctx, 'Action executed', '动作已执行')] },
       });
     } },
     { name: 'Batches observe and verify real outcomes', run: async ctx => {
@@ -173,7 +175,7 @@ export default {
           ctx.assert(result.status === 'verified' && result.results.length === 2 && result.observation.snapshotId, 'The bounded batch did not observe and verify its result');
           ctx.assert(await page(ctx, '/agent', 'document.querySelector("#result").textContent') === 'Preview ready: Verified result', 'The actual page result is incorrect');
           await ctx.waitFor('document.querySelector("[data-browser-activity=verified]") !== null');
-        }, screenshot: { name: 'result-verified', fromSurface: false, requireText: ['结果已确认'] },
+        }, screenshot: { name: 'result-verified', fromSurface: false, requireText: [uiText(ctx, 'Result confirmed', '结果已确认')] },
       });
     } },
     { name: 'Optional JEV does not block the browser', run: async ctx => {
@@ -181,7 +183,7 @@ export default {
         await ctx.prove('JEV opt-in displays unavailable state and ordinary Agent work remains usable', {
           voiceover: vo[5], action: async () => {
             await click(ctx, '[data-browser-decision="agent"]');
-            await ctx.clickText('JEV · 可选', { selector: '[role="menuitemcheckbox"]' });
+            await ctx.clickText(uiText(ctx, 'JEV · optional', 'JEV · 可选'), { selector: '[role="menuitemcheckbox"]' });
             await ctx.waitFor('document.querySelector("[data-browser-decision=jev]") !== null');
             await click(ctx, '[data-browser-decision="jev"]');
             ctx.agentBrowser.decision = await host(ctx, 'decide', { tabId: ctx.agentBrowser.task.tabId, goal: 'Preview the final draft', candidates: [
@@ -195,10 +197,10 @@ export default {
             ctx.assert(ctx.agentBrowser.decision.engine === 'agent' && ctx.agentBrowser.decision.status === 'unavailable', 'Missing JEV did not fall back honestly');
             await ctx.waitFor('document.querySelector("[data-browser-decision-status=unavailable]") !== null');
             ctx.assert(await page(ctx, '/agent', 'document.querySelector("#result").textContent') === 'Preview ready: Agent fallback works', 'Normal browser action failed after optional JEV was unavailable');
-          }, screenshot: { name: 'jev-optional-fallback', fromSurface: false, requireText: ['JEV · 不可用，使用 Agent', '结果已确认'] },
+          }, screenshot: { name: 'jev-optional-fallback', fromSurface: false, requireText: [uiText(ctx, 'JEV unavailable · using Agent', 'JEV · 不可用，使用 Agent'), uiText(ctx, 'Result confirmed', '结果已确认')] },
         });
         await click(ctx, '[data-browser-decision="jev"]');
-        await ctx.clickText('Agent · 默认', { selector: '[role="menuitemcheckbox"]' });
+        await ctx.clickText(uiText(ctx, 'Agent · default', 'Agent · 默认'), { selector: '[role="menuitemcheckbox"]' });
         const disabled = await host(ctx, 'decide', { tabId: ctx.agentBrowser.task.tabId, goal: 'Preview', candidates: [] });
         ctx.assert(disabled.status === 'disabled', 'Disabling JEV still invoked optional decision work');
       } finally { await new Promise(resolve => ctx.agentBrowser.server.close(resolve)); }

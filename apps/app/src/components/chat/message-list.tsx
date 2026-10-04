@@ -101,6 +101,7 @@ import {
   isQuestionToolPart,
   isReadToolPart,
   isSkillToolPart,
+  isTaskToolPart,
   isTodoWriteToolPart,
   isWebFetchToolPart,
   isWebSearchToolPart,
@@ -163,7 +164,7 @@ function getToolAction(part: ToolUIPart | DynamicToolUIPart): ToolAction {
 function groupProcessSteps(steps: ProcessStep[]): ProcessRow[] {
   const rows: ProcessRow[] = []
   for (const step of steps) {
-    if (step.group.kind !== "tool") {
+    if (step.group.kind !== "tool" || isTaskToolPart(step.group.part)) {
       rows.push({ kind: "step", step })
       continue
     }
@@ -300,6 +301,7 @@ class ToolMessage extends React.Component<ToolMessageProps, { failed: boolean }>
 }
 
 const ToolMessageInner = ({ part }: ToolMessageProps) => {
+  const { workspaceId } = useMessageList()
   if (isBashToolPart(part)) {
     return <BashTool part={part} />
   }
@@ -356,6 +358,20 @@ const ToolMessageInner = ({ part }: ToolMessageProps) => {
     return <EnvVarRequestTool part={part} />
   }
 
+  if (isTaskToolPart(part)) {
+    const childId = part.callProviderMetadata?.ipollowork?.sessionId
+    return <Tool
+      toolPart={part}
+      title={getToolActivityLabel(part)}
+      details={typeof childId === "string" && childId ? (
+        <a
+          href={`#/workspace/${encodeURIComponent(workspaceId)}/session/${encodeURIComponent(childId)}`}
+          className="text-foreground w-fit underline underline-offset-4"
+          data-testid="agent-execution-link"
+        >{t("session.agent_execution")}</a>
+      ) : undefined}
+    />
+  }
   return <Tool toolPart={part} />
 }
 
@@ -1376,8 +1392,9 @@ function MessageGroup({
   const renderableItems = getRenderableMessages(items.filter((item) => !isSessionErrorMessage(item.message)))
   const lastTextMessage = lastRealItem ? getLastTextPart(lastRealItem.message) : null
 
+  const activityParts = items.flatMap((item) => item.message.parts)
   const itemRenderData = items.map((item) => {
-    const groups = getAssistantRenderGroups(item.message.parts, showThinking)
+    const groups = getAssistantRenderGroups(item.message.parts, showThinking, activityParts)
     return { item, groups, sections: splitAssistantRenderGroups(groups) }
   })
   // Unphased text can be followed by more tools. Keep it in the live timeline

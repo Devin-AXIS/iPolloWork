@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-merger-integration",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "strategy",
@@ -10,7 +10,8 @@
     "strategy",
     "data",
     "pptx-compatible",
-    "themeable"
+    "themeable",
+    "topic:business"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

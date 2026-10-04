@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-typing-code-block"] { background: #0a0b10; overflow: hidden; }
+    [data-composition-id="shotcraft-typing-code-block"] { background: var(--ipw-color-bg,#0a0b10); overflow: hidden; }
     .design-stage { position:absolute;left:0;top:0;width:480px;height:270px;overflow:hidden;transform:scale(4);transform-origin:top left; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-typing-code-block"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
@@ -21,13 +21,13 @@
     const K='#c792ea',ID='#e8eaf0',FN='#82aaff',ST='#c3e88d',PU='#89ddff',CM='#546e7a';
     const LINES=String(values.code).replaceAll('\\n','\n').split('\n').map(line=>[[line,ID]]);
     const FLAT=[]; LINES.forEach((line,row)=>line.forEach(([txt,color])=>[...txt].forEach(ch=>FLAT.push({ch,color,row}))));
-    const panel=(x,label,inner)=>`<div style="position:absolute;left:${x}%;top:14%;width:45%;height:72%;background:#10121a;border:1px solid #1c2030;border-radius:8px;padding:10px 12px;box-sizing:border-box;font-family:'SF Mono',Menlo,monospace;font-size:8px;line-height:1.9"><div style="font-size:8px;letter-spacing:2px;color:#4a5270;margin-bottom:6px">${label}</div>${inner}</div>`;
+    const panel=(x,label,inner)=>`<div style="position:absolute;left:${x}%;top:14%;width:45%;height:72%;background:var(--ipw-color-surface,#10121a);border:1px solid #1c2030;border-radius:8px;padding:10px 12px;box-sizing:border-box;font-family:'SF Mono',Menlo,monospace;font-size:8px;line-height:1.9"><div style="font-size:8px;letter-spacing:2px;color:var(--ipw-color-text,#4a5270);margin-bottom:6px">${label}</div>${inner}</div>`;
     const root=document.getElementById('root'); const tl=gsap.timeline({paused:true}); const state={t:0};
     tl.to(state,{t:1,duration:4.6,ease:'none',onUpdate:()=>{
       const t=state.t, typed=Math.floor(seg(t,0.08,0.9)*FLAT.length);
       const left=LINES.map((line,i)=>{const k=seg(t,0.08+i*0.14,0.08+i*0.14+0.3,E.outCubic);
-        return `<div style="opacity:${k};transform:translateY(${(1-k)*8}px)">${line.map(([txt,color])=>`<span style="color:${color}">${escape(txt)}</span>`).join('')}</div>`;}).join('');
-      const right=LINES.map((_,row)=>`<div style="min-height:1.9em">${FLAT.map((c,i)=>c.row===row?`<span style="color:${c.color};opacity:${i<typed||i===typed?1:0};background:${i===typed&&typed<FLAT.length?'#3a4468':'transparent'}">${escape(c.ch)}</span>`:'').join('')}</div>`).join('');
+        return `<div style="opacity:${k};transform:translateY(${(1-k)*8}px)">${line.map(([txt,color])=>`<span style="color:var(--ipw-color-text,${color})">${escape(txt)}</span>`).join('')}</div>`;}).join('');
+      const right=LINES.map((_,row)=>`<div style="min-height:1.9em">${FLAT.map((c,i)=>c.row===row?`<span style="color:var(--ipw-color-text,${c.color});opacity:${i<typed||i===typed?1:0};background:var(--ipw-color-surface,${i===typed&&typed<FLAT.length?'#3a4468':'transparent'})">${escape(c.ch)}</span>`:'').join('')}</div>`).join('');
       root.innerHTML=panel(3.5,'逐行展示',left)+panel(51.5,'逐字输入',right);
     }},0);
     window.__timelines['shotcraft-typing-code-block']=tl;

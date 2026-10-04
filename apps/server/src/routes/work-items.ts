@@ -4,6 +4,8 @@ import {
   workBoardConfigValueSchema,
   workItemCreateSchema,
   workItemUpdateSchema,
+  conversationWorkflowUpdateSchema,
+  workTemplateSaveSchema,
 } from "@ipollowork/types/work-items";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
@@ -19,6 +21,10 @@ import {
   readWorkBoardConfig,
   updateWorkItem,
   writeWorkBoardConfig,
+  readProjectSessionWorkItem,
+  writeConversationWorkflow,
+  listWorkTemplates,
+  saveWorkTemplate,
 } from "../work-items.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 
@@ -104,9 +110,38 @@ export function registerWorkItemRoutes(options: RegisterWorkItemRoutesOptions): 
       from,
       to,
       status: parseStatus(ctx.url.searchParams.get("status")),
+      sessionId: ctx.url.searchParams.get("sessionId")?.trim() || undefined,
       cursor: ctx.url.searchParams.get("cursor")?.trim() || undefined,
       limit: parseOptionalInteger(ctx.url.searchParams.get("limit"), "limit"),
     }));
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/sessions/:sessionId/workflow", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse({ item: await readProjectSessionWorkItem(config, workspace.id, ctx.params.sessionId) });
+  });
+
+  addRoute(routes, "PUT", "/workspace/:id/sessions/:sessionId/workflow", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const parsed = conversationWorkflowUpdateSchema.safeParse(await readJsonBody(ctx.request));
+    if (!parsed.success) throw schemaError("Conversation work settings are invalid", parsed.error.issues);
+    return jsonResponse(await withConflictHandling(() => writeConversationWorkflow(config, workspace, ctx.params.sessionId, parsed.data)));
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/work-templates", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse(await listWorkTemplates(config, workspace));
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/work-templates", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const parsed = workTemplateSaveSchema.safeParse(await readJsonBody(ctx.request));
+    if (!parsed.success) throw schemaError("Work template is invalid", parsed.error.issues);
+    return jsonResponse(await withConflictHandling(() => saveWorkTemplate(config, workspace, parsed.data)), 201);
   });
 
   addRoute(routes, "POST", "/workspace/:id/work-items", "client", async (ctx) => {

@@ -9,7 +9,6 @@ import {
   videoProjectId,
   videoProjectEntryPath,
 } from "@ipollowork/video-studio/project";
-import { artifactContentFingerprint } from "../artifacts/artifact-completion";
 import { VIDEO_STORYBOARD_FORMAT_CONTRACT } from "./video-storyboard";
 
 export {
@@ -57,7 +56,14 @@ export function shouldInjectVideoTaskContext(
 }
 
 const VOICEOVER_DISABLED_PATTERN = /(?:不要|不用|无需|不需要|关闭|禁用|去掉|取消)\s*(?:旁白|配音|解说|口播|语音合成|tts)|(?:no|without|disable|mute)\s+(?:voice[ -]?over|narration|tts)/i;
-const VOICEOVER_PRESERVED_PATTERN = /(?:保留|保持|不改|不修改|不要改|不动|不用改|无需改)\s*(?:现有|已有|原有|原始|当前|原)?的?\s*(?:旁白|配音)|(?:keep|preserve|retain|leave|(?:do not|don't)\s+(?:change|edit|regenerate))\s+(?:the\s+)?(?:(?:existing|current|original)\s+)?(?:voice[ -]?over|narration)(?:\s+unchanged)?/gi;
+// A single negative can govern a media list: "不要旁白、字幕、音乐和音效".
+// A new affirmative verb ends that scope: "不要音乐，保留音效".
+const DISABLED_VIDEO_MEDIA_PREFIX = new RegExp(
+  "(?:不要|不用|不需要|无需|无|無|关闭|禁用|去掉|取消|不加|移除|删除|\\bno|\\bwithout|\\bdisable|\\bremove|\\bmute|\\bdo not add|\\bdon['’]t add)\\s*(?:任何|所有|添加|加入|加|any)?\\s*"
+  + "(?:(?:旁白|配音|解说|口播|语音合成|字幕|背景音乐|背景音樂|配乐|配樂|音乐|音樂|音效|voice[ -]?over|narration|tts|caption(?:s|ing)?|subtitles?|bgm|sfx|background music|music bed|music|soundtrack|sound[ -]?effects?)\\s*(?:[,，、/]|和|与|及|或|以及|\\band\\b|\\bor\\b)?\\s*)*$",
+  "i",
+);
+const VIDEO_PRESERVED_CONTENT_PATTERN = /(?:保留|保持|不改|不修改|不要改|不动|不用改|无需改|不重做|不重写|不要重做|不用重做|无需重做)\s*(?:现有|已有|原有|原始|当前|原)?的?\s*(?:脚本|分镜|故事板|旁白|配音)(?:\s*(?:[\/、]|和|与|及)\s*(?:现有|已有|原有|原始|当前|原)?的?\s*(?:脚本|分镜|故事板|旁白|配音))*(?:\s*不变)?|(?:keep|preserve|retain|leave|(?:do not|don['’]t)\s+(?:change|edit|regenerate|redo|rewrite))\s+(?:the\s+)?(?:(?:existing|current|original)\s+)?(?:script|storyboard|voice[ -]?over|narration)(?:\s*(?:\/|\band\b|\bor\b)\s*(?:the\s+)?(?:(?:existing|current|original)\s+)?(?:script|storyboard|voice[ -]?over|narration))*(?:\s+unchanged)?/gi;
 const NEGATED_VIDEO_PLANNING_PATTERN = /(?:不要|不用|无需|不需要)\s*(?:只|仅|暂时只)\s*(?:给我)?\s*(?:规划|计划)|\b(?:do\s+not|don['’]t|not|never)\s+(?:only|just)\s+(?:plan|planning)\b/gi;
 
 export function videoPromptRequestsVoiceoverContext(
@@ -69,8 +75,11 @@ export function videoPromptRequestsVoiceoverContext(
   if (requirements?.captions) return true;
   const text = promptText ?? "";
   if (VOICEOVER_DISABLED_PATTERN.test(text)) return false;
-  const narrationText = text.replace(VOICEOVER_PRESERVED_PATTERN, "");
-  const preservesNarration = narrationText !== text;
+  let preservesNarration = false;
+  const narrationText = text.replace(VIDEO_PRESERVED_CONTENT_PATTERN, (preserved) => {
+    if (/(?:旁白|配音|voice[ -]?over|narration)/i.test(preserved)) preservesNarration = true;
+    return "";
+  });
   return (capabilityId === "video-voice-reference" && !preservesNarration)
     || /(?:配音|旁白|解说|语音合成|口播|voice[ -]?over|narrat(?:e|ion)|dub(?:bing)?|text[ -]?to[ -]?speech|\btts\b)/i.test(narrationText)
     || (requirements?.voiceover === true && !preservesNarration && (
@@ -147,18 +156,18 @@ export function videoDeliveryRequirementsForPrompt(input: {
   const targetDurationSeconds = originalDuration != null && !durationChangeRequested
     ? originalDuration
     : requestedVideoDurationSeconds(text) ?? originalDuration;
-  const voiceoverExplicitlyDisabled = VOICEOVER_DISABLED_PATTERN.test(text);
-  const requestsAudio = (terms: RegExp, defaultRequested = false) => {
+  const requestsMedia = (terms: RegExp, defaultRequested = false) => {
     let requested = defaultRequested;
     for (const match of text.matchAll(terms)) {
       const prefix = text.slice(0, match.index);
-      requested = !/(?:不要|不用|不需要|无需|无|無|关闭|禁用|去掉|取消|不加|移除|删除|\bno|\bwithout|\bdisable|\bremove|\bmute|\bdo not add|\bdon['’]t add)\s*(?:任何|所有|添加|加入|加|any)?\s*$/i.test(prefix);
+      requested = !DISABLED_VIDEO_MEDIA_PREFIX.test(prefix);
     }
     return requested;
   };
+  const voiceoverExplicitlyDisabled = !requestsMedia(/(?:旁白|配音|解说|口播|语音合成|\btts\b|voice[ -]?over|narration)/gi, true);
   // Default finished-video sound design belongs to the delivery contract, not
   // just the model's prompt. Planning and local edits must not add new tracks.
-  const planningOnly = /(?:只|仅|先).{0,12}(?:脚本|分镜|规划)|(?:先别|不要|暂不).{0,8}(?:生成|制作|做)(?:视频|成片)|(?:only|just).{0,16}(?:script|storyboard|plan)|(?:script|storyboard|plan)[ -]only/i.test(text.replace(NEGATED_VIDEO_PLANNING_PATTERN, ""));
+  const planningOnly = /(?:只|仅|先).{0,12}(?:脚本|分镜|规划)|(?:先别|不要|暂不).{0,8}(?:生成|制作|做)(?:视频|成片)|(?:only|just).{0,16}(?:script|storyboard|plan)|(?:script|storyboard|plan)[ -]only/i.test(text.replace(NEGATED_VIDEO_PLANNING_PATTERN, "").replace(VIDEO_PRESERVED_CONTENT_PATTERN, ""));
   const createsVideo = videoPromptRequestsFinishedVideo(text);
   const requiresRecipesOnly = /(?:禁止|不允许).{0,8}(?:定制|自定义|手绘)图形|(?:必须|全部|只能|仅用|只用).{0,8}(?:真实)?配方|\brecipes[ -]only\b/i.test(text);
   const silenceRequested = /(?:静音|无声|无音乐|無音樂|仅保留原声|只保留原声)|\b(?:silent|music-free|original[ -]sound[ -]only)\b/i.test(text);
@@ -172,9 +181,9 @@ export function videoDeliveryRequirementsForPrompt(input: {
       : videoPromptRequestsVoiceoverContext(input.capabilityId, text)
         || (input.voiceoverAvailable === false && createsVideo)
         || (input.voiceoverEnabled ?? true),
-    captions: /(?:字幕|caption(?:s|ing)?|subtitles?)/i.test(text),
-    bgm: !planningOnly && !silenceRequested && requestsAudio(/(?:背景音乐|背景音樂|配乐|配樂|音乐|音樂|\bbgm\b|background music|music bed|\bmusic\b|soundtrack)/gi, createsVideo),
-    sfx: requestsAudio(/(?:音效|\bsfx\b|sound[ -]?effects?)/gi),
+    captions: requestsMedia(/(?:字幕|caption(?:s|ing)?|subtitles?)/gi),
+    bgm: !planningOnly && !silenceRequested && requestsMedia(/(?:背景音乐|背景音樂|配乐|配樂|音乐|音樂|\bbgm\b|background music|music bed|\bmusic\b|soundtrack)/gi, createsVideo),
+    sfx: requestsMedia(/(?:音效|\bsfx\b|sound[ -]?effects?)/gi),
     animationReferences: Array.from(new Set((input.animationReferences ?? []).filter(Boolean))),
     ...(requiresRecipesOnly ? { recipesOnly: true } : {}),
     ...(targetDurationSeconds != null ? { targetDurationSeconds } : {}),
@@ -190,66 +199,29 @@ export function videoPromptRequiresStoryboardReview(input: {
   promptText?: string;
   hasReferenceAttachments?: boolean;
 }) {
-  const text = (input.promptText ?? "").replace(NEGATED_VIDEO_PLANNING_PATTERN, "");
+  const text = (input.promptText ?? "").replace(NEGATED_VIDEO_PLANNING_PATTERN, "").replace(VIDEO_PRESERVED_CONTENT_PATTERN, "");
   if (/(?:直接|立即|马上|一次性).{0,12}(?:生成|制作|出)(?:成片|视频)|(?:无需|不用|不要|跳过).{0,12}(?:确认|审核|审阅)(?:脚本|分镜)?|\b(?:skip|without)\b.{0,16}\b(?:script|storyboard)\s+(?:review|approval)\b|\bgo straight to (?:production|video)\b/i.test(text)) return false;
+  // A detailed storyboard brief can put its explicit production stop well
+  // beyond the short "storyboard first" phrase patterns below.
+  if (/(?:脚本|分镜|故事板)|\b(?:script|storyboard)\b/i.test(text)
+    && /(?:不要|不|暂不|无需)\s*(?:开始|进入|继续|进行)\s*(?:视频|成片|画面)?\s*制作|\b(?:do not|don['’]t|without)\s+(?:start(?:ing)?|begin(?:ning)?|enter(?:ing)?)\s+(?:video\s+)?production\b/i.test(text)) return true;
   return /(?:先|首先|只|仅|暂时只).{0,12}(?:看|写|出|做|给我|审核|审阅|确认).{0,8}(?:脚本|分镜|故事板)|(?:脚本|分镜|故事板).{0,12}(?:先给我看|先确认|确认后再|审核后再|审阅后再|暂不制作|不要生成视频)|\b(?:script|storyboard)\s+(?:first|only|for review)\b|\b(?:review|approve)\s+(?:the\s+)?(?:script|storyboard)\s+(?:first|before production)\b/i.test(text)
     || /(?:只|仅|暂时只)\s*(?:给我)?\s*(?:规划|计划)|\b(?:only|just)\s+(?:plan|planning)\b/i.test(text);
 }
 
 export type VideoDeliveryIntent = "export" | "publish-douyin" | "publish-wechat-channels";
 
-export function publicationUserInterventionRequired(text: string) {
-  return text.split(/\r?\n/u).some((line) => {
-    const candidate = line.trim();
-    if (!candidate) return false;
-    return /^(?:请(?:你|先|在)?.{0,40}(?:登录|扫码|输入验证码)|需要你.{0,30}(?:登录|扫码|输入验证码)|(?:(?:当前|视频号|微信视频号|官方)\s*)?页面(?:仍然?)?(?:停留在|显示|提示|要求).{0,30}(?:登录|扫码|验证码|加载失败)|captcha(?:\s+challenge)?|verification code required|sign[ -]?in required|log[ -]?in required)/i.test(candidate);
-  });
-}
+const DISABLED_VIDEO_DELIVERY_PREFIX = /(?:不要|不用|不需要|无需|不必|别|取消|暂不|不|\bdo not|\bdon['’]t|\bwithout|\bno need to|\bno)\s*(?:(?:自动|手动|进行|再|mp4|视频文件|导出|输出|渲染|发布|上传|export|render|publish|upload|post)\s*(?:[,，、/]|和|与|及|或|以及|\band\b|\bor\b)?\s*)*$/i;
 
 export function videoDeliveryIntentForPrompt(promptText: string): VideoDeliveryIntent | null {
-  const publicationCancelled = /(?:不要|无需|不必|别|取消)(?:发布|上传|发到|发至)|(?:do not|don't|without|no need to).{0,12}(?:publish|upload|post)/i.test(promptText);
-  if (!publicationCancelled
-    && /(?:发布|上传|发到|发至|发).{0,12}抖音|抖音.{0,12}(?:发布|上传)|(?:publish|upload|post).{0,20}douyin|douyin.{0,20}(?:publish|upload|post)/i.test(promptText)) return "publish-douyin";
-  if (!publicationCancelled
-    && /(?:发布|上传|发到|发至|发).{0,12}(?:微信)?视频号|(?:微信)?视频号.{0,12}(?:发布|上传)|(?:publish|upload|post).{0,20}wechat channels|wechat channels.{0,20}(?:publish|upload|post)/i.test(promptText)) return "publish-wechat-channels";
-  if (/(?:不要|无需|不必|别|取消)导出|(?:do not|don't|without|no need to).{0,12}export/i.test(promptText)) return null;
-  return /(?:导出|输出|生成).{0,12}(?:mp4|视频文件)|(?:mp4|视频文件).{0,12}(?:导出|输出|生成)|\b(?:export|render)\b.{0,20}(?:mp4|video)/i.test(promptText)
+  const requested = (pattern: RegExp) => [...promptText.matchAll(pattern)]
+    .some(match => !DISABLED_VIDEO_DELIVERY_PREFIX.test(promptText.slice(0, match.index)));
+  if (requested(/(?:发布|上传|发到|发至|发)[^,，。.!！?？;；\n]{0,12}抖音|抖音[^,，。.!！?？;；\n]{0,12}(?:发布|上传)|(?:publish|upload|post)[^,，。.!！?？;；\n]{0,20}douyin|douyin[^,，。.!！?？;；\n]{0,20}(?:publish|upload|post)/gi)) return "publish-douyin";
+  if (requested(/(?:发布|上传|发到|发至|发)[^,，。.!！?？;；\n]{0,12}(?:微信)?视频号|(?:微信)?视频号[^,，。.!！?？;；\n]{0,12}(?:发布|上传)|(?:publish|upload|post)[^,，。.!！?？;；\n]{0,20}wechat channels|wechat channels[^,，。.!！?？;；\n]{0,20}(?:publish|upload|post)/gi)) return "publish-wechat-channels";
+  if (/(?:不要|不用|不需要|无需|不必|别|取消|暂不|不)\s*(?:自动|手动|再)?\s*(?:mp4\s*)?(?:导出|渲染)|(?:do not|don['’]t|without|no need to)\s*(?:mp4\s+)?(?:export|render)/i.test(promptText)) return null;
+  return requested(/(?:导出|输出|生成)[^,，。.!！?？;；\n]{0,12}(?:mp4|视频文件)|(?:mp4|视频文件)[^,，。.!！?？;；\n]{0,12}(?:导出|输出|生成)|\b(?:export|render)\b[^,，。.!！?？;；\n]{0,20}(?:mp4|video)/gi)
     ? "export"
     : null;
-}
-
-export function videoHostExportOperationKey(sessionId: string, requestId: string) {
-  const stableRequestId = requestId.trim().replace(/[^a-z0-9_-]+/gi, "-") || "request";
-  return `ipw:${sessionId}:${stableRequestId}:export`;
-}
-
-export type VideoArtifactCompletionRequirement = {
-  sourcePath: string;
-  baselineFingerprint: string;
-  assistantMessageBaseline: number;
-  requestOrdinal: number;
-};
-
-export function createVideoArtifactCompletionRequirement(
-  sourcePath: string,
-  content: string,
-  assistantMessageBaseline: number,
-  requestOrdinal: number,
-): VideoArtifactCompletionRequirement {
-  return {
-    sourcePath,
-    baselineFingerprint: artifactContentFingerprint(content),
-    assistantMessageBaseline,
-    requestOrdinal,
-  };
-}
-
-export function unchangedVideoArtifactIssue(beforeFingerprint: string | null, after: string) {
-  if (beforeFingerprint === null || beforeFingerprint !== artifactContentFingerprint(after)) return null;
-  return {
-    code: "artifact_unchanged",
-    message: "The video source was not modified before the run ended.",
-  };
 }
 
 /**
@@ -277,16 +249,16 @@ export function videoTaskSystemContext(
   sessionId: string,
   workspaceRoot?: string,
   template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist" | "authoringGuide" | "layoutLibrary"> | null,
-  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements; hostManagedExport?: boolean; hostExportOperationKey?: string; requireStoryboardReview?: boolean } = {},
+  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements; requireStoryboardReview?: boolean } = {},
 ) {
   const projectDirectory = videoProjectDirectory(sessionId);
   const projectPath = videoProjectPath(sessionId, workspaceRoot);
-  const hostManagedExport = options.hostManagedExport || Boolean(options.hostExportOperationKey);
   return [
     "Video task contract:",
-    "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once for routing; load only the specialist needed by the current task or production stage: ipollowork-video-storyboard for script/planning, ipollowork-video-compose for composition/visual edits, ipollowork-video-voiceover for requested narration/captions, ipollowork-video-soundtrack for music/SFX. Do not preload unrelated stages. The Skill owns creative planning.",
+    "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once; it owns creative planning and routes to only the specialist needed now. Do not preload unrelated stages.",
     `Own only \`${projectPath}\`. Video Studio displays \`${projectPath}/index.html\` at http://localhost:${hyperframesStudioPort(sessionId)} and hot-reloads saves. Keep STORYBOARD.md, optional SCRIPT.md, assets and renders in this project. Never create or inspect another session's project.`,
-    "Read the current entry before editing and immediately before replacement; merge user edits; preserve root/aspect ratio, hooks, variables, tokens and media. Save a complete replacement atomically. The app owns Studio/services; do not install runtimes, start another preview, stop Node processes or duplicate validation.",
+    `For Video Studio tools that accept sessionId, use exactly "${sessionId}" when the engine does not forward native conversation context.`,
+    "Read the current entry before editing and immediately before replacement; merge user edits; preserve root/aspect ratio, hooks, variables, tokens and media. Save a complete replacement atomically. The app owns Studio/services; do not install runtimes, start another preview, stop Node processes. Use the existing media tools to inspect, check and render the current project.",
     ...(template ? [
       `Template seed: ${JSON.stringify({ id: template.id, title: template.title, entry: `${projectPath}/${template.entry}`, applyChecklist: template.applyChecklist })}. Adapt this visual and runtime seed to the user's content; sample scene counts and timings do not constrain the deliverable. Read ${projectPath}/brief.json and the current entry.`,
       ...(template.layoutLibrary || template.authoringGuide ? [
@@ -299,12 +271,8 @@ export function videoTaskSystemContext(
       ? `Script review requested: load ipollowork-video-storyboard and create or update only \`${projectPath}/STORYBOARD.md\`, then wait for the user's review. Do not source or generate media or change index.html in this turn.`
       : "For a finished-video request, continue from the saved storyboard through production. Pause only when the user explicitly requests script review or script-only work; discussions and targeted edits keep their requested scope.",
     `Delivery requirements: ${JSON.stringify(options.deliveryRequirements ?? { voiceover: false, captions: false, bgm: false, sfx: false, animationReferences: [] })}. These parsed requirements are enforced independently of HTML metadata; preserve them through repairs.`,
-    "After saving the completed source, the iPolloWork app runs the single aggregate delivery validator and one bounded repair continuation. Do not duplicate its checks or claim an incomplete stage is finished.",
-    ...(hostManagedExport ? [
-      `The iPolloWork app owns the MP4 export, operationKey ${options.hostExportOperationKey ?? "provided-in-continuation"}. Save the source and stop; do not call video_render_start or video_render_status or create a second export. Continue from the app's verified MP4/draft/browser-job receipt when supplied.`,
-    ] : [
-      `For an explicitly requested export, use the existing media actions: action=video_render_start, args={sourcePath:"${projectDirectory}/index.html",operationKey:"${videoProjectId(sessionId)}:export-1"}, then media.video_render_status with the same identifiers and returned pollAfterMs. Never repeat a start because a wait timed out.`,
-    ]),
+    "Use your native plan, tools and subagents to finish the user's request. Check actual files with the existing media tools, repair discovered defects, and return links to the real deliverables. iPolloWork displays your results; it does not continue or repair the task after you stop.",
+    `For requested MP4 delivery, call media/video_render_start with sourcePath:"${projectDirectory}/index.html" and a stable operationKey, then video_render_status with the same identifiers until complete or failed. Return the actual outputPath. Reuse completed exports; never start a duplicate after a wait timeout.`,
     "Export-only requests do not authorize publication. Authorized publishing reuses installed iPolloWork tools, worker, supplied account-specific browser job, draft, media path and operationKey; verify the real receipt. Never re-submit an uncertain publication or import a failed/cancelled render. Follow the supplied session-bound tool instructions.",
     ...(options.includeVoiceover && !options.requireStoryboardReview ? [
       `When narration/caption production begins: Read ipollowork-video-voiceover once and the current \`${projectPath}/voiceover.json\` and STORYBOARD.md. For new requested narration or missing narration required by the finished deliverable, use saved scene/project voice settings and built-in speech_synthesize_workspace_batch defaults. Caption-only work reuses existing audio/word timings without resynthesizing; keep assets under \`${projectDirectory}/assets\`. Check media authorization, preserve explicit enabled=false, and finish mounting the returned audio/captions before completion.`,

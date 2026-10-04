@@ -135,8 +135,11 @@ import {
 } from "./ipollowork-workspace-config-store.js";
 import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.js";
 import {
+  bindConversationSession,
   disposeWorkItemStore,
   finishProjectSessionExecution,
+  listConversationSessionBindings,
+  readProjectSessionWorkItem,
   resolveProjectExecutionPlan,
   startProjectSessionExecution,
   startWorkItemAutomationScheduler,
@@ -664,6 +667,12 @@ function isSessionCommandProxyRequest(method: string, proxyPath: string) {
   return method === "POST" && /^\/session\/[^/]+\/command$/.test(normalizeOpencodeProxyPath(proxyPath));
 }
 
+function promptedOpencodeSession(method: string, proxyPath: string): string | null {
+  if (method !== "POST") return null;
+  const match = /^\/session\/([^/]+)\/(?:prompt_async|message|command|shell)$/.exec(normalizeOpencodeProxyPath(proxyPath));
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
 function pluginPackageEngineState(workspace: WorkspaceInfo, manifest: PluginPackageManifest) {
   const activeEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
   return {
@@ -780,6 +789,52 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     reloadWatcherReconcile = reloadWatcherReconcile.then(reconcile, reconcile);
     return reloadWatcherReconcile;
   };
+  const sessionMonitorAbort = new AbortController();
+  const sessionMonitors = new Map<string, { sessionId: string; startedAt: number; abort: AbortController; promise: Promise<void> }>();
+  const monitorSessionExecution = (workspace: WorkspaceInfo, sessionId: string, turnId?: string): void => {
+    if (config.readOnly || sessionMonitorAbort.signal.aborted) return;
+    void (async () => {
+      const item = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+      if (sessionMonitorAbort.signal.aborted || item?.status !== "running" || item.runStartedAt === null) return;
+      const startedAt = item.runStartedAt;
+      const key = `${workspace.id}\u0000${item.id}`;
+      const existing = sessionMonitors.get(key);
+      if (existing?.sessionId === sessionId && existing.startedAt === startedAt) return;
+      existing?.abort.abort(new Error("Conversation run superseded"));
+      const abort = new AbortController();
+      const stop = () => abort.abort(sessionMonitorAbort.signal.reason);
+      sessionMonitorAbort.signal.addEventListener("abort", stop, { once: true });
+      let monitor: Promise<void>;
+      monitor = (async () => {
+        try {
+          const completion = await sessionRuntime.waitForCompletion(workspace, sessionId, {
+            signal: abort.signal,
+            startedAt,
+            ...(turnId ? { turnId } : {}),
+          });
+          await finishProjectSessionExecution(config, workspace.id, sessionId, completion, { expectedRunStartedAt: startedAt });
+        } catch (error) {
+          if (abort.signal.aborted) return;
+          const message = error instanceof Error ? error.message : "Conversation monitoring failed";
+          try {
+            await finishProjectSessionExecution(config, workspace.id, sessionId, {
+              status: "failed",
+              error: message,
+            }, { expectedRunStartedAt: startedAt });
+          } catch (finishError) {
+            console.error("[conversation-execution] Failed to persist task completion", finishError);
+          }
+        }
+      })().finally(() => {
+        sessionMonitorAbort.signal.removeEventListener("abort", stop);
+        if (sessionMonitors.get(key)?.promise === monitor) sessionMonitors.delete(key);
+      });
+      sessionMonitors.set(key, { sessionId, startedAt, abort, promise: monitor });
+    })().catch((error) => logger.log("warn", "Conversation completion monitor could not start", {
+      workspaceId: workspace.id, sessionId, error: error instanceof Error ? error.message : String(error),
+    }));
+  };
+
   const routes = createRoutes(
     config,
     approvals,
@@ -789,6 +844,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     codexHarness,
     sessionRuntime,
     reconcileReloadWatchers,
+    monitorSessionExecution,
   );
 
   const serverOptions: {
@@ -831,7 +887,9 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           const workspace = await resolveWorkspace(config, mount.workspaceId);
           proxyService = "opencode";
           proxyBaseUrl = workspace.baseUrl?.trim() || undefined;
-          const response = await proxyOpencodeRequest({ config, request, url, workspace, proxyPath: mount.restPath });
+          const response = await proxyOpencodeRequest({ config, request, url, workspace, proxyPath: mount.restPath, preparePlugins: (workspace) => sessionRuntime.preparePlugins(workspace) });
+          const promptedSessionId = promptedOpencodeSession(request.method, mount.restPath);
+          if (response.ok && promptedSessionId) monitorSessionExecution(workspace, promptedSessionId);
           return finalize(response);
         } catch (error) {
           const apiError = toApiError(error);
@@ -878,7 +936,9 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           const actor = await requireClient(request, config, tokens);
           assertOpencodeProxyAllowed(actor, request.method, url.pathname);
           proxyService = "opencode";
-          const response = await proxyOpencodeRequest({ config, request, url, workspace: config.workspaces[0] });
+          const response = await proxyOpencodeRequest({ config, request, url, workspace: config.workspaces[0], preparePlugins: (workspace) => sessionRuntime.preparePlugins(workspace) });
+          const promptedSessionId = promptedOpencodeSession(request.method, url.pathname);
+          if (response.ok && promptedSessionId && config.workspaces[0]) monitorSessionExecution(config.workspaces[0], promptedSessionId);
           return finalize(response);
         } catch (error) {
           const apiError = toApiError(error);
@@ -930,35 +990,13 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     idleTimeout: 120,
   });
   config.port = server.port;
-  const automationMonitorAbort = new AbortController();
-  const automationMonitors = new Map<string, Promise<void>>();
-  const monitorAutomationSession = (workspace: WorkspaceInfo, sessionId: string): void => {
-    const key = `${workspace.id}\u0000${sessionId}`;
-    if (automationMonitors.has(key)) return;
-    let monitor: Promise<void>;
-    monitor = (async () => {
-      try {
-        const completion = await sessionRuntime.waitForCompletion(workspace, sessionId, {
-          signal: automationMonitorAbort.signal,
-        });
-        await finishProjectSessionExecution(config, workspace.id, sessionId, completion);
-      } catch (error) {
-        if (automationMonitorAbort.signal.aborted) return;
-        const message = error instanceof Error ? error.message : "Automatic task monitoring failed";
-        try {
-          await finishProjectSessionExecution(config, workspace.id, sessionId, {
-            status: "failed",
-            error: message,
-          });
-        } catch (finishError) {
-          console.error("[work-item-automation] Failed to persist task completion", finishError);
-        }
+  if (!config.readOnly) {
+    for (const workspace of config.workspaces) {
+      for (const binding of await listConversationSessionBindings(config, workspace.id)) {
+        if (binding.status === "running") monitorSessionExecution(workspace, binding.sessionId);
       }
-    })().finally(() => {
-      if (automationMonitors.get(key) === monitor) automationMonitors.delete(key);
-    });
-    automationMonitors.set(key, monitor);
-  };
+    }
+  }
   const videoJobWorker = startVideoJobWorker(config);
   const workItemAutomationScheduler = startWorkItemAutomationScheduler({
     config,
@@ -997,7 +1035,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           ...(execution.runtime.modelVariant ? { reasoningEffort: execution.runtime.modelVariant } : {}),
           system: projectExecutionSystemContext(execution),
         });
-        monitorAutomationSession(workspace, promptedSessionId);
+        monitorSessionExecution(workspace, promptedSessionId);
         return promptedSessionId;
       } catch (error) {
         await finishProjectSessionExecution(config, workspace.id, session.id, {
@@ -1015,8 +1053,8 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     stop: async () => {
       await videoJobWorker.close();
       await workItemAutomationScheduler.close();
-      automationMonitorAbort.abort(new Error("Server stopped"));
-      await Promise.allSettled(automationMonitors.values());
+      sessionMonitorAbort.abort(new Error("Server stopped"));
+      await Promise.allSettled([...sessionMonitors.values()].map((monitor) => monitor.promise));
       await reloadWatcherReconcile;
       await watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
@@ -1103,6 +1141,7 @@ async function proxyOpencodeRequest(input: {
   url: URL;
   workspace?: WorkspaceInfo;
   proxyPath?: string;
+  preparePlugins: (workspace: WorkspaceInfo) => Promise<void>;
 }) {
   const workspace = input.workspace;
   const baseUrl = workspace ? resolveWorkspaceOpencodeConnection(input.config, workspace).baseUrl?.trim() ?? "" : "";
@@ -1130,6 +1169,16 @@ async function proxyOpencodeRequest(input: {
   }
 
   const method = input.request.method.toUpperCase();
+  const sessionWrite = method === "POST" ? /^\/session(?:$|\/([^/]+)\/(message|prompt_async|command|fork)$)/.exec(normalizeOpencodeProxyPath(proxyPath)) : null;
+  if (workspace && sessionWrite) {
+    if (sessionWrite[1]) {
+      const bound = await readProjectSessionWorkItem(input.config, workspace.id, sessionWrite[1]);
+      if (bound?.execution && bound.execution.runtime.engineId !== DEFAULT_ENGINE_ID) {
+        throw new ApiError(409, "session_engine_mismatch", "This conversation is bound to a different engine");
+      }
+    }
+    await input.preparePlugins({ ...workspace, engineId: DEFAULT_ENGINE_ID });
+  }
   // OpenCode shares OPENCODE_CONFIG across directory instances. Rebind the
   // built-in bridge before each turn, including newly created workspaces and
   // rebuilt instances; never let a stale primary-workspace bridge start work.
@@ -1157,6 +1206,15 @@ async function proxyOpencodeRequest(input: {
     headers,
     body,
   });
+  if (workspace && response.ok && sessionWrite && (!sessionWrite[1] || sessionWrite[2] === "fork")) {
+    const created = await response.clone().json().catch(() => null);
+    if (isRecord(created) && typeof created.id === "string") {
+      await bindConversationSession(input.config, workspace, created.id, {
+        title: typeof created.title === "string" ? created.title : "New conversation", engineId: DEFAULT_ENGINE_ID,
+        ...(sessionWrite[1] ? { parentSessionId: sessionWrite[1] } : {}),
+      });
+    }
+  }
 
   return sanitizeProxyResponse(response);
 }
@@ -1572,6 +1630,7 @@ function createRoutes(
   codexHarness: CodexHarnessRuntimePool,
   sessionRuntime: WorkspaceSessionRuntime,
   onWorkspacesChanged: () => Promise<void>,
+  monitorSessionExecution: (workspace: WorkspaceInfo, sessionId: string, turnId?: string) => void,
 ): Route[] {
   const routes: Route[] = [];
   let defaultPluginPreparation: Promise<void> | null = null;
@@ -1624,6 +1683,7 @@ function createRoutes(
     resolveDevLogPath,
     createOpenAiRealtimeVoiceSession,
     resolveEngineSessionContext: (workspaceId) => sessionRuntime.sessionContextHint(workspaceId),
+    resolveEngineArtifactSessionId: (workspace, sessionId) => sessionRuntime.artifactOwnerSessionId(workspace, sessionId),
   });
 
   registerWorkspaceRoutes({
@@ -1671,26 +1731,31 @@ function createRoutes(
     deepseekHarness,
     codexHarness,
     sessionRuntime,
+    monitorSessionExecution,
   });
 
   registerDeepSeekHarnessRoutes({
     routes,
     config,
     runtime: deepseekHarness,
+    preparePlugins: (workspace) => sessionRuntime.preparePlugins(workspace),
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
     rememberSessionContext: (workspaceId, sessionId) => sessionRuntime.rememberSessionContext(workspaceId, sessionId),
+    monitorSessionExecution,
   });
 
   registerCodexHarnessRoutes({
     routes,
     config,
     runtime: codexHarness,
+    preparePlugins: (workspace) => sessionRuntime.preparePlugins(workspace),
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
     rememberSessionContext: (workspaceId, sessionId) => sessionRuntime.rememberSessionContext(workspaceId, sessionId),
+    monitorSessionExecution,
   });
 
   registerPluginWorkshopRoutes({
@@ -3754,7 +3819,7 @@ export function engineMcpSyncState(workspaceId: string): EngineMcpSyncState | nu
 // something re-syncs them. Best-effort.
 export async function syncAllWorkspacesRuntimeMcpToEngine(config: ServerConfig): Promise<void> {
   for (const workspace of config.workspaces) {
-    if ((workspace.engineId?.trim() || DEFAULT_ENGINE_ID) !== DEFAULT_ENGINE_ID) continue;
+    if (workspace.workspaceType === "remote" || !workspace.path.trim()) continue;
     await syncRuntimeMcpToOpencodeEngine(config, workspace).catch(() => undefined);
   }
 }

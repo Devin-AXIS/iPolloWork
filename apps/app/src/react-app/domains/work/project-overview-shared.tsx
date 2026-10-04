@@ -48,9 +48,9 @@ export function engineLabel(engineId: string | null | undefined): string {
   return engineId?.trim() || t("project_overview.inherit_project");
 }
 
-export function AgentAvatar({ agent, className }: { agent: ProjectAgent; className?: string }) {
+export function AgentAvatar({ agent, className }: { agent: Pick<ProjectAgent, "avatarSeed">; className?: string }) {
   return (
-    <span className={cn("relative inline-flex shrink-0 rounded-full bg-dls-surface p-0.5 shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.09]", className)}>
+    <span data-avatar-seed={agent.avatarSeed} className={cn("relative inline-flex shrink-0 rounded-full bg-dls-surface p-0.5 shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.09]", className)}>
       <MarbleAvatar seed={agent.avatarSeed} className="size-full rounded-full" />
     </span>
   );

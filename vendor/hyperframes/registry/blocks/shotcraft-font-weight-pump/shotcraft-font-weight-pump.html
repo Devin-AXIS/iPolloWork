@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    [data-composition-id="shotcraft-font-weight-pump"] { width: 1920px; height: 1080px; overflow: hidden; background: #ececea; font-family: Helvetica, Arial, sans-serif; position: relative; }
+    [data-composition-id="shotcraft-font-weight-pump"] { width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg,#ececea); font-family: Helvetica, Arial, sans-serif; position: relative; }
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-font-weight-pump"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
 </head>
 <body>
@@ -22,8 +22,8 @@
       BEATS.forEach((b,i)=>{const e=envAt(frame,b);if(e>env){env=e;activeBeat=i;}});
       const strokeW=10*env,weight=env>0.15?900:400,accent=activeBeat>=0&&ACCENTS.has(activeBeat),scaleX=accent?1+0.08*env:1;
       const dots=BEATS.map((b,i)=>{const e=envAt(frame,b),dotOpacity=e>0.02?Math.min(1,0.3+e*1.2):0,dotScale=1+0.8*e;
-        return `<div style="width:26px;height:26px;border-radius:13px;background:${G.line};position:relative;transform:scale(${dotScale})"><div style="position:absolute;inset:0;border-radius:13px;background:${G.ink};opacity:${dotOpacity}"></div></div>`;}).join('');
-      comp.innerHTML=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="font-size:150px;font-weight:${weight};color:${G.ink};letter-spacing:6px;white-space:nowrap;-webkit-text-stroke:${strokeW}px ${G.ink};transform:scaleX(${scaleX});transform-origin:center center">${escape(String(values.title))}</div></div>
+        return `<div style="width:26px;height:26px;border-radius:13px;background:var(--ipw-color-surface,${G.line});position:relative;transform:scale(${dotScale})"><div style="position:absolute;inset:0;border-radius:13px;background:var(--ipw-color-surface,${G.ink});opacity:${dotOpacity}"></div></div>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="font-size:150px;font-weight:${weight};color:var(--ipw-color-text,${G.ink});letter-spacing:6px;white-space:nowrap;-webkit-text-stroke:${strokeW}px ${G.ink};transform:scaleX(${scaleX});transform-origin:center center">${escape(String(values.title))}</div></div>
         <div style="position:absolute;left:0;bottom:130px;width:1920px;display:flex;justify-content:center;gap:56px">${dots}</div>`;
     }},0);
     window.__timelines['shotcraft-font-weight-pump']=tl;

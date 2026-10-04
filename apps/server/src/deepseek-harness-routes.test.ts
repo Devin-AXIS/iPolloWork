@@ -12,6 +12,7 @@ import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import { installPluginPackage } from "./plugin-package-lifecycle.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
+import { bindConversationSession } from "./work-items.js";
 
 const roots: string[] = [];
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
@@ -97,6 +98,7 @@ describe("DeepSeek Harness plugin prompt routes", () => {
     const workspaceRoot = await temporaryRoot("ipollowork-dsh-media-context-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const config = serverConfig(workspaceRoot);
+    await bindConversationSession(config, config.workspaces[0], "session-1", { title: "Video", engineId: DEEPSEEK_HARNESS_ENGINE_ID });
     await mkdir(join(workspaceRoot, "video", "session-1"), { recursive: true });
     await writeFile(join(workspaceRoot, "video", "session-1", "index.html"), "<!doctype html><main></main>", "utf8");
     await writeFile(join(workspaceRoot, "video", "session-1", "brief.json"), "{}\n", "utf8");
@@ -157,6 +159,7 @@ describe("DeepSeek Harness plugin prompt routes", () => {
     const workspaceRoot = await temporaryRoot("ipollowork-dsh-cancel-workspace-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const config = serverConfig(workspaceRoot);
+    await bindConversationSession(config, config.workspaces[0], "session-running", { title: "Running work", engineId: DEEPSEEK_HARNESS_ENGINE_ID });
     let releasePrompt = () => {};
     let markPromptStarted = () => {};
     const promptBlocked = new Promise<void>((resolve) => {
@@ -223,6 +226,7 @@ describe("DeepSeek Harness plugin prompt routes", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     await writePromptPackage(packageRoot);
     const config = serverConfig(workspaceRoot);
+    await bindConversationSession(config, config.workspaces[0], "session-1", { title: "Review", engineId: DEEPSEEK_HARNESS_ENGINE_ID });
     await installPluginPackage({
       serverConfig: config,
       packageRoot,

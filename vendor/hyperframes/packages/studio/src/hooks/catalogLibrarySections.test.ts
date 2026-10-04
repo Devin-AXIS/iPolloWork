@@ -25,6 +25,14 @@ const EXPECTED_VISUAL_COMPONENT_COUNTS = {
   social: 22,
   typography: 10,
 } as const;
+const PERSONAL_COMPONENT_VARIABLE_COUNTS = {
+  "intelligent-decision-flow": 20,
+  "split-merge-network": 17,
+  "intelligence-network": 14,
+  "automation-hub": 9,
+  "feature-spotlight": 12,
+  "process-steps": 12,
+} as const;
 
 const MIGRATED_CAPTION_COMPONENTS = [
   "caption-highlight",
@@ -159,6 +167,7 @@ interface MotionManifest {
   name: string;
   librarySection?: string;
   type: string;
+  source?: { provider: string };
   kind?: string;
   motionPreset?: unknown;
   files?: Array<{ path: string }>;
@@ -206,22 +215,48 @@ function isVariableEntry(value: unknown): value is { id: string } {
   );
 }
 
+function contentVariableIds(manifest: MotionManifest): string[] {
+  return (manifest.variables ?? [])
+    .filter((variable) => variable.id !== "motionCueTimes")
+    .map((variable) => variable.id);
+}
+
 describe("component catalog registry", () => {
-  it("publishes exactly 149 visual components in the intentional category distribution", () => {
+  it("publishes 149 native components, 30 Shotcraft imports and 6 reusable personal components", () => {
     const components = visualComponentManifests();
+    const imported = components.filter(({ manifest }) =>
+      ["video-shotcraft", "hyperframes-video-shotcraft"].includes(manifest.source?.provider ?? ""),
+    );
+    const personal = components.filter(
+      ({ manifest }) => manifest.source?.provider === "ipollowork-local-import",
+    );
+    const native = components.filter(
+      (component) => !imported.includes(component) && !personal.includes(component),
+    );
     const categoryCounts = Object.fromEntries(
       Object.keys(EXPECTED_VISUAL_COMPONENT_COUNTS).map((category) => [
         category,
-        components.filter(({ manifest }) => manifest.visualComponent?.category === category).length,
+        native.filter(({ manifest }) => manifest.visualComponent?.category === category).length,
       ]),
     );
 
-    expect(components).toHaveLength(149);
+    expect(native).toHaveLength(149);
     expect(categoryCounts).toEqual(EXPECTED_VISUAL_COMPONENT_COUNTS);
-    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(149);
+    expect(imported).toHaveLength(30);
+    expect(
+      imported.filter(({ manifest }) => manifest.visualComponent?.category === "media"),
+    ).toHaveLength(3);
+    expect(
+      imported.filter(({ manifest }) => manifest.visualComponent?.category === "typography"),
+    ).toHaveLength(27);
+    expect(personal.map(({ manifest }) => manifest.name).sort()).toEqual(
+      Object.keys(PERSONAL_COMPONENT_VARIABLE_COUNTS).sort(),
+    );
+    expect(components).toHaveLength(185);
+    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(185);
   });
 
-  it("keeps every visual component themeable, seekable, and bounded to four properties", () => {
+  it("keeps visual components themeable, seekable, and within their authored property contracts", () => {
     for (const { manifestPath, manifest } of visualComponentManifests()) {
       const html = readFileSync(
         join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),
@@ -233,18 +268,49 @@ describe("component catalog registry", () => {
         surfaces: ["video"],
         themeMode: "inherit",
       });
-      expect(manifest.variables?.length).toBeGreaterThan(0);
-      expect(manifest.variables?.length).toBeLessThanOrEqual(4);
-      expect(manifest.visualComponent?.ai?.slots).toEqual(
-        manifest.variables?.map((variable) => variable.id),
+      const aiIds = contentVariableIds(manifest);
+      const contentIds =
+        manifest.name === "device-carousel" ? aiIds.filter((id) => id !== "carouselMode") : aiIds;
+      expect(contentIds.length).toBeGreaterThan(0);
+      if (manifest.source?.provider === "ipollowork-local-import") {
+        expect(contentIds).toHaveLength(
+          PERSONAL_COMPONENT_VARIABLE_COUNTS[
+            manifest.name as keyof typeof PERSONAL_COMPONENT_VARIABLE_COUNTS
+          ],
+        );
+      } else {
+        expect(contentIds.length).toBeLessThanOrEqual(4);
+      }
+      expect(new Set(manifest.variables?.map((variable) => variable.id)).size).toBe(
+        manifest.variables?.length,
       );
+      expect(manifest.visualComponent?.ai?.slots).toEqual(aiIds);
+      if (manifest.name === "device-carousel") {
+        expect(contentIds).toEqual(["title", "screenUrls", "labels", "note"]);
+        const carouselMode = manifest.variables?.find((variable) => variable.id === "carouselMode");
+        expect(carouselMode).toMatchObject({ type: "enum", default: "depth-tour" });
+        expect(carouselMode?.options?.map((option) => option.value)).toEqual([
+          "depth-tour",
+          "flow-belt",
+        ]);
+        expect(html).toContain('values.carouselMode!=="flow-belt"');
+      }
+      const cueTimes = manifest.variables?.find((variable) => variable.id === "motionCueTimes");
+      if (cueTimes) {
+        expect(cueTimes).toMatchObject({ type: "string", default: "{}" });
+        expect(manifest.visualComponent?.ai?.slots).not.toContain("motionCueTimes");
+      }
       expect(html).toContain("var(--ipw-color-");
+      if (manifest.source?.provider === "hyperframes-video-shotcraft") {
+        expect(html).toContain("var(--ipw-color-bg,");
+        expect(html).toContain("color:var(--ipw-color-text,");
+      }
       expect(html).toMatch(/gsap\.timeline\(\{\s*paused:\s*true/);
       expect(html).not.toMatch(/Math\.random|Date\.now|repeat\s*:\s*-1/);
     }
   });
 
-  it("exposes the five spatial camera recipes through one editable registry stage", () => {
+  it("exposes the eight spatial camera recipes through one editable registry stage", () => {
     const manifest = parseManifest(
       join(REGISTRY_ROOT, "blocks", "spatial-camera-suite", "registry-item.json"),
     );
@@ -259,6 +325,9 @@ describe("component catalog registry", () => {
       "spotlight-hero-card",
       "runway-ground-skim",
       "steep-tilt-glide",
+      "subject-follow-track",
+      "container-morph",
+      "gather-lockup",
     ];
 
     expect(shotStyle?.type).toBe("enum");
@@ -277,7 +346,7 @@ describe("component catalog registry", () => {
       return html.includes("visual-component-catalog.ts");
     });
 
-    expect(generated).toHaveLength(62);
+    expect(generated).toHaveLength(54);
     for (const { manifestPath, manifest } of generated) {
       const html = readFileSync(
         join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),
@@ -289,12 +358,7 @@ describe("component catalog registry", () => {
         .replaceAll("&amp;", "&");
       const declarations: unknown = JSON.parse(serialized);
 
-      expect(manifest.variables?.map((variable) => variable.id)).toEqual([
-        "title",
-        "items",
-        "highlight",
-        "note",
-      ]);
+      expect(contentVariableIds(manifest)).toEqual(["title", "items", "highlight", "note"]);
       expect(
         Array.isArray(declarations)
           ? declarations.filter(isVariableEntry).map((variable) => variable.id)
@@ -343,6 +407,7 @@ describe("component catalog registry", () => {
       expect.arrayContaining([
         "route-map",
         ...VISUAL_COMPONENTS.map(([name]) => name),
+        ...Object.keys(PERSONAL_COMPONENT_VARIABLE_COUNTS),
         "caption-pill-karaoke",
         "caption-word-pulse",
         "caption-phrase-lift",
@@ -371,10 +436,8 @@ describe("component catalog registry", () => {
         surfaces: ["video"],
         themeMode: "inherit",
       });
-      expect(manifest.variables?.length).toBeLessThanOrEqual(4);
-      expect(manifest.visualComponent?.ai?.slots).toEqual(
-        manifest.variables?.map((variable) => variable.id),
-      );
+      expect(contentVariableIds(manifest).length).toBeLessThanOrEqual(4);
+      expect(manifest.visualComponent?.ai?.slots).toEqual(contentVariableIds(manifest));
       expect(
         Array.isArray(declarations)
           ? declarations.filter(isVariableEntry).map((variable) => variable.id)
@@ -431,10 +494,8 @@ describe("component catalog registry", () => {
         surfaces: ["video"],
         themeMode: "inherit",
       });
-      expect(manifest.variables).toHaveLength(4);
-      expect(manifest.visualComponent?.ai?.slots).toEqual(
-        manifest.variables?.map((variable) => variable.id),
-      );
+      expect(contentVariableIds(manifest)).toHaveLength(4);
+      expect(manifest.visualComponent?.ai?.slots).toEqual(contentVariableIds(manifest));
       for (const variable of manifest.variables ?? []) {
         expect(html).toContain(variable.id);
       }

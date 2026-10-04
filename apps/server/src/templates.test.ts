@@ -3,12 +3,12 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
-import { IPOLLOWORK_PACKAGE_EXTENSION, MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
+import { IPOLLOWORK_PACKAGE_EXTENSION, MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, TEMPLATE_TOPIC_OPTIONS, getTemplateTopic, matchesTemplateFilters, templateManifestV1Schema, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { isCustomerVisibleBundledTemplate, adoptLegacyVideoSession, createTemplateAuthoringSession, exportLocalTemplatePackage, exportTemplateFromSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
 
@@ -122,6 +122,7 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.release-spotlight",
   "ipollowork.hyperframes.research-evidence-wall",
   "ipollowork.hyperframes.vertical-social-story",
+  "ipollowork.hyperframes.ai-assistant-launch",
 ];
 const novelVideoTemplates = [
   { id: "ipollowork.hyperframes.ai-trend-briefing", composition: "ai-trend-briefing", duration: "60", scenes: 10 },
@@ -247,11 +248,13 @@ async function assertImportedTemplateCanMaterialize(input: { originalId: string;
   const serverConfig = config(root);
   const installed = await importTemplate(serverConfig, "alpha", input.archive, input.manifest.category);
   expect(installed.manifest.id).toBe(input.manifest.id);
+  expect(installed.manifest).toEqual(templateManifestV1Schema.parse(input.manifest));
   expect(installed.sourceType).toBe("local");
 
   const ws = workspace(root, "alpha");
   const sessionId = `import_${input.originalId.replace(/[^a-z0-9]/g, "_")}`;
   const created = await materializeTemplate(serverConfig, ws, input.manifest.id, sessionId);
+  expect(created.manifest).toEqual(installed.manifest);
   const folder = input.manifest.surface === "video" ? "video" : "design";
   expect(created.state.entry).toBe(`${folder}/${sessionId}/${input.manifest.entry}`);
   const entry = await readFile(join(ws.path, created.state.entry), "utf8");
@@ -286,6 +289,55 @@ function videoPackage(id = "local.product-video", entry = "<!doctype html><html 
 }
 
 describe("template installations", () => {
+  test("classifies all bundled templates with one shared purpose and an explicit style", async () => {
+    const directories = await bundledTemplateDirectories();
+    expect(directories).toHaveLength(111);
+    expect(TEMPLATE_TOPIC_OPTIONS).toEqual(["education", "product", "brand", "commerce", "business", "data", "events", "social", "culture", "lifestyle"]);
+    expect(new Set(TEMPLATE_TOPIC_OPTIONS).size).toBe(10);
+    for (const directory of directories) {
+      const raw = JSON.parse(await readFile(join(bundledTemplatesRoot, directory, "manifest.json"), "utf8"));
+      const manifest = templateManifestV1Schema.parse(raw);
+      expect(raw.style).toBe(manifest.style);
+      expect(manifest.id).toBe(directory);
+      expect(manifest.tags.filter((tag) => tag.startsWith("topic:"))).toHaveLength(1);
+      const topic = getTemplateTopic(manifest);
+      expect(topic).toBeDefined();
+      if (!topic) throw new Error(`Missing shared purpose: ${manifest.id}`);
+      expect(TEMPLATE_TOPIC_OPTIONS).toContain(topic);
+      expect(matchesTemplateFilters(manifest, { category: manifest.category, style: manifest.style, topic })).toBe(true);
+    }
+  });
+
+  test("combines category, style, topic, and search filters without hiding unclassified user templates", () => {
+    const manifest = templateManifestV1Schema.parse({
+      schemaVersion: 1, id: "local.filtered-site", version: "1.0.0", kind: "design", category: "site", subcategory: "custom-portfolio", style: "editorial", tags: ["topic:commerce", "private-client"], title: "Clean Portfolio", description: "A compact local portfolio template.", cover: "cover.svg", entry: "entry.html", source: { name: "Local author", license: "MIT" }, designSystem: { tokenVersion: 1, editableGroups: ["theme"] }, applyChecklist: ["Update content"], minimumAppVersion: "0.17.0",
+    });
+    const filters = { category: "site", style: "editorial", topic: "commerce", query: "  PRIVATE-CLIENT  " } satisfies Parameters<typeof matchesTemplateFilters>[1];
+    expect(matchesTemplateFilters(manifest, filters)).toBe(true);
+    expect(matchesTemplateFilters(manifest, { ...filters, category: "video" })).toBe(false);
+    expect(matchesTemplateFilters(manifest, { ...filters, style: "minimal" })).toBe(false);
+    expect(matchesTemplateFilters(manifest, { ...filters, topic: "education" })).toBe(false);
+    expect(matchesTemplateFilters(manifest, { ...filters, query: "nonexistent" })).toBe(false);
+    expect(matchesTemplateFilters(manifest, { query: "custom-portfolio" })).toBe(true);
+    expect(matchesTemplateFilters(manifest, { topic: "unclassified" })).toBe(false);
+    for (const category of ["site", "video", "slides"]) {
+      const crossFormat = templateManifestV1Schema.parse({ ...manifest, category, surface: category === "video" ? "video" : "design", entry: category === "video" ? "index.html" : "entry.html" });
+      expect(getTemplateTopic(crossFormat)).toBe("commerce");
+      expect(matchesTemplateFilters(crossFormat, { ...filters, category: "all" })).toBe(true);
+      expect(matchesTemplateFilters(crossFormat, filters)).toBe(category === "site");
+    }
+
+    const legacy = { ...manifest, tags: ["private-client"] };
+    expect(getTemplateTopic(legacy)).toBeUndefined();
+    expect(matchesTemplateFilters(legacy, { category: "all", style: "all", topic: "all" })).toBe(true);
+    expect(matchesTemplateFilters(legacy, { category: "site", style: "editorial", topic: "unclassified", query: "custom-portfolio" })).toBe(true);
+    expect(matchesTemplateFilters(legacy, { topic: "commerce" })).toBe(false);
+    const unknown = { ...legacy, tags: ["topic:unknown-purpose"] };
+    expect(getTemplateTopic(unknown)).toBeUndefined();
+    expect(matchesTemplateFilters(unknown, { topic: "all" })).toBe(true);
+    expect(matchesTemplateFilters(unknown, { topic: "unclassified" })).toBe(true);
+  });
+
   test("ships every built-in design, presentation, and video with the shared theme contract", async () => {
     const currentLogo = await readFile(join(bundledTemplatesRoot, "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg"), "utf8");
     expect(currentLogo).toContain('viewBox="0 0 281 298"');
@@ -380,10 +432,6 @@ describe("template installations", () => {
       expect(TEMPLATE_STYLE_LABELS[manifest.style]).toBeTruthy();
       expect(manifest.source.license).toBe("Apache-2.0");
       expect(manifest.source.revision).toBe("d0efb1eaa3b65c731709981718cd5a0a0d4e8f71");
-      const upgradedCategories = new Set(["site", "other", "video"]);
-      const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
-      const recategorizedTemplates = new Set(["ipollowork.html-anything.wireframe-sketch"]);
-      expect(manifest.version).toBe(manifest.authoringGuide ? "1.1.6" : upgradedCategories.has(manifest.category) || upgradedSlides || recategorizedTemplates.has(manifest.id) ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
       expect(JSON.stringify(manifest)).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
       expect(manifest.designSystem.variables.length).toBeGreaterThanOrEqual(manifest.surface === "video" ? 4 : 20);
@@ -445,9 +493,6 @@ describe("template installations", () => {
       expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
       expect(manifest.category).toBe("video");
       expect(manifest.surface).toBe("video");
-      expect(manifest.version).toBe(
-        templateId === "ipollowork.hyperframes.ai-trend-briefing" ? "1.1.1" : "1.0.1",
-      );
       expect(manifest.entry).toBe("index.html");
       expect(manifest.designSystem.tokens).toBe("design-tokens.css");
       expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
@@ -848,13 +893,14 @@ describe("template installations", () => {
     expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.html-anything.prototype-web")?.installed).toBe(false);
   });
 
-  test("upgrades an installed bundled template before materializing it", async () => {
+  test("upgrades bundled classification without changing existing task snapshots or user assets", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-template-upgrade-"));
     const runtimeDb = join(root, "runtime.sqlite");
     process.env.IPOLLOWORK_RUNTIME_DB = runtimeDb;
     const serverConfig = config(root);
     const ws = workspace(root, "alpha");
     const templateId = "ipollowork.site-atelier-architecture";
+    const sourceManifest = templateManifestV1Schema.parse(JSON.parse(await readFile(join(bundledTemplatesRoot, templateId, "manifest.json"), "utf8")));
 
     await listTemplates(serverConfig, ws.id);
     const sqlite = new Database(runtimeDb);
@@ -863,21 +909,39 @@ describe("template installations", () => {
     ).get("__ipollowork_personal__", templateId);
     if (!current) throw new Error("Expected the bundled template to be installed");
     const legacyPackagePath = join(dirname(current.packagePath), "1.0.0");
-    await mkdir(legacyPackagePath, { recursive: true });
-    await writeFile(join(legacyPackagePath, "entry.html"), '<main class="legacy-template"></main>');
+    const legacyManifest = templateManifestV1Schema.parse({ ...sourceManifest, version: "1.0.0", category: "site", subcategory: "legacy-architecture", style: "retro", tags: ["legacy-client"] });
+    await cp(current.packagePath, legacyPackagePath, { recursive: true });
+    await writeFile(join(legacyPackagePath, "manifest.json"), JSON.stringify(legacyManifest));
+    await writeFile(join(legacyPackagePath, legacyManifest.entry), '<!doctype html><main class="legacy-template"></main>');
     sqlite.run(
-      "UPDATE template_installations SET version = ?, package_path = ?, package_hash = ? WHERE workspace_id = ? AND template_id = ?",
-      ["1.0.0", legacyPackagePath, "legacy-package-hash", "__ipollowork_personal__", templateId],
+      "UPDATE template_installations SET version = ?, package_path = ?, package_hash = ?, manifest_json = ? WHERE workspace_id = ? AND template_id = ?",
+      ["1.0.0", legacyPackagePath, "legacy-package-hash", JSON.stringify(legacyManifest), "__ipollowork_personal__", templateId],
     );
     sqlite.close();
+    await rm(current.packagePath, { recursive: true, force: true });
+    const existing = await materializeTemplate(serverConfig, ws, templateId, "session_existing");
+    const existingRoot = dirname(join(ws.path, existing.state.entry));
+    const userFiles = {
+      [legacyManifest.entry]: '<!doctype html><h1 id="user-native-id">My edited architecture</h1>',
+      "design-tokens.css": ":root { --ipw-color-primary: #ab1234; --user-token: 17px; }",
+      "assets/user.svg": '<svg xmlns="http://www.w3.org/2000/svg"><text>User asset</text></svg>',
+      "brief.json": JSON.stringify({ title: "My existing task", userNotes: "Preserve this brief" }),
+    };
+    for (const [path, contents] of Object.entries(userFiles)) await writeFile(join(existingRoot, path), contents);
 
     const refreshed = await listTemplates(serverConfig, ws.id);
-    expect(refreshed.find((item) => item.manifest.id === templateId)).toMatchObject({ installedVersion: "1.0.0", updateAvailable: true });
-    await installBundledTemplate(serverConfig, ws.id, templateId);
-    expect((await listTemplates(serverConfig, ws.id)).find((item) => item.manifest.id === templateId)).toMatchObject({ installedVersion: "1.1.0", updateAvailable: false });
+    expect(refreshed.find((item) => item.manifest.id === templateId)).toMatchObject({ manifest: sourceManifest, installedVersion: "1.0.0", updateAvailable: true });
+    const upgraded = await installBundledTemplate(serverConfig, ws.id, templateId);
+    expect(upgraded.manifest).toEqual(sourceManifest);
+    expect((await listTemplates(serverConfig, ws.id)).find((item) => item.manifest.id === templateId)).toMatchObject({ installedVersion: sourceManifest.version, updateAvailable: false });
     expect(existsSync(legacyPackagePath)).toBe(false);
     const created = await materializeTemplate(serverConfig, ws, templateId, "session_upgraded");
+    expect(created.manifest).toEqual(sourceManifest);
     expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain('class="project-index"');
+    expect((await readTemplateSession(serverConfig, ws, "session_existing")).manifest).toEqual(legacyManifest);
+    expect(JSON.parse(await readFile(join(existingRoot, "manifest.json"), "utf8"))).toEqual(legacyManifest);
+    for (const [path, contents] of Object.entries(userFiles)) expect(await readFile(join(existingRoot, path), "utf8")).toBe(contents);
+    await rm(root, { recursive: true, force: true });
   });
 
   test("does not ship removed templates into the personal template market", async () => {
@@ -979,6 +1043,58 @@ describe("template installations", () => {
     const detected = await importTemplate(serverConfig, "alpha", localPackage("local.detected-site"));
     expect(detected.manifest.category).toBe("site");
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.scoped-site"), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
+  });
+
+  test("preserves classified and legacy user metadata and assets through save, export, and import", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-template-facets-roundtrip-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const files = {
+      "entry.html": '<!doctype html><html><head><link rel="stylesheet" href="design-tokens.css"></head><body><h1 id="user-native-id">Client design</h1><img src="assets/user.svg"></body></html>',
+      "design-tokens.css": ":root { --client-color: #123abc; --client-spacing: 17px; }",
+      "assets/user.svg": '<svg xmlns="http://www.w3.org/2000/svg"><text>Original asset</text></svg>',
+    };
+    try {
+      for (const classified of [false, true]) {
+        const id = `local.facets-${classified ? "classified" : "legacy"}`;
+        const installed = await importTemplate(serverConfig, ws.id, localPackage(id, {
+          subcategory: "client-custom-layout",
+          ...(classified ? { style: "retro", tags: ["client-private", "topic:commerce"] } : { tags: ["client-private"] }),
+          designSystem: { tokenVersion: 1, editableGroups: ["theme"], tokens: "design-tokens.css" },
+        }, files));
+        expect(installed.manifest).toMatchObject({ category: "site", subcategory: "client-custom-layout", style: classified ? "retro" : "minimal", tags: classified ? ["client-private", "topic:commerce"] : ["client-private"] });
+        expect(getTemplateTopic(installed.manifest)).toBe(classified ? "commerce" : undefined);
+        expect(matchesTemplateFilters(installed.manifest, { category: "all", style: "all", topic: "all" })).toBe(true);
+        expect(matchesTemplateFilters(installed.manifest, { topic: "unclassified" })).toBe(!classified);
+        const catalog = await listTemplates(serverConfig, ws.id);
+        expect(catalog.find((item) => item.manifest.id === id)?.manifest).toEqual(installed.manifest);
+        const exported = await exportLocalTemplatePackage(serverConfig, ws.id, id);
+        expect(exported.manifest).toEqual(installed.manifest);
+        const imported = await importTemplate(serverConfig, ws.id, exported.archive);
+        expect(imported.manifest).toEqual(installed.manifest);
+        const sessionId = `facet_${classified ? "classified" : "legacy"}`;
+        const source = await materializeTemplate(serverConfig, ws, id, sessionId);
+        const sourceRoot = dirname(join(ws.path, source.state.entry));
+        const sourceManifest = await readFile(join(sourceRoot, "manifest.json"), "utf8");
+        const saved = await saveTemplateFromSession(serverConfig, ws, { sessionId, category: "site", title: `Client ${sessionId}` });
+        expect(saved.manifest).toMatchObject({ category: installed.manifest.category, subcategory: installed.manifest.subcategory, style: installed.manifest.style, tags: installed.manifest.tags, designSystem: installed.manifest.designSystem });
+        expect(saved.manifest.id).not.toBe(id);
+        const savedExport = await exportLocalTemplatePackage(serverConfig, ws.id, saved.manifest.id);
+        const savedImport = await importTemplate(serverConfig, ws.id, savedExport.archive);
+        expect(savedImport.manifest).toEqual(saved.manifest);
+        const roundtrip = await materializeTemplate(serverConfig, ws, saved.manifest.id, `${sessionId}_roundtrip`);
+        const roundtripRoot = dirname(join(ws.path, roundtrip.state.entry));
+        for (const [path, contents] of Object.entries(files)) {
+          expect(await readFile(join(sourceRoot, path), "utf8")).toBe(contents);
+          expect(await readFile(join(roundtripRoot, path), "utf8")).toBe(contents);
+        }
+        expect((await readTemplateSession(serverConfig, ws, sessionId)).manifest).toEqual(source.manifest);
+        expect(await readFile(join(sourceRoot, "manifest.json"), "utf8")).toBe(sourceManifest);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("requires slideshow structure and honest PPTX compatibility markers", async () => {
@@ -1107,6 +1223,10 @@ describe("template installations", () => {
     expect(videoHtml).toContain("data-composition-variables");
     expect(videoHtml).toContain("data-composition-id");
     expect(videoHtml).toContain("data-track");
+    expect(videoHtml).toContain('<script src="assets/gsap.min.js"></script>');
+    expect(videoHtml).toContain("gsap.timeline({ paused: true })");
+    expect(videoHtml).toContain("window.__timelines.main");
+    expect(existsSync(join(ws.path, "video", "author_video", "assets", "gsap.min.js"))).toBe(true);
     expect(video.manifest.designSystem.variables.map((variable) => variable.id)).toEqual(["title", "accent"]);
     const studioSerializedVideo = videoHtml.replace(
       /data-composition-variables='([^']+)'/,
@@ -1131,6 +1251,25 @@ describe("template installations", () => {
     expect(report.issues[0]).toMatchObject({ code: "invalid_template_manifest", severity: "error" });
     expect(await readFile(join(ws.path, "design", "author_invalid", "manifest.json"), "utf8")).toBe(manifestBefore);
     expect((await readTemplateSession(serverConfig, ws, created.sessionId)).authoring).toBe(true);
+  });
+
+  test("rejects static HTML from Video template-authoring sessions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-authoring-static-video-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "author_static_video", category: "video" });
+    const videoRoot = join(ws.path, "video", "author_static_video");
+    const entry = await readFile(join(videoRoot, "index.html"), "utf8");
+    await writeFile(
+      join(videoRoot, "index.html"),
+      entry.replace(/<script src="assets\/gsap\.min\.js"><\/script>[\s\S]*?<\/body>/, "</body>"),
+    );
+
+    expect(await validateTemplateFromSession(serverConfig, ws, "author_static_video")).toMatchObject({
+      ready: false,
+      issues: [{ code: "invalid_video_template_motion", severity: "error" }],
+    });
   });
 
   test("uses the shared package validator for missing tokens, false PPT markers and invalid Video variables", async () => {
@@ -1189,12 +1328,13 @@ describe("template installations", () => {
     const ws = workspace(root, "alpha");
     await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "script_export", category: "video" });
     const path = join(ws.path, "video", "script_export", "index.html");
-    const broken = (await readFile(path, "utf8")).replace("</body>", '<script>const tl=gsap.timeline({paused:true});window.__timelines["main"]=tl;</script></body>');
+    const original = await readFile(path, "utf8");
+    const broken = original.replace(/<script[\s\S]*?<\/script>/g, "").replace("</body>", '<script>const tl=gsap.timeline({paused:true});tl.to("h1", {opacity:1,duration:1});window.__timelines["main"]=tl;</script></body>');
     await writeFile(path, broken);
     expect(await validateTemplateFromSession(serverConfig, ws, "script_export")).toMatchObject({ ready: false, issues: [{ code: "missing_video_gsap" }] });
     const input = { sessionId: "script_export", category: "video", title: "Script validation" } satisfies Parameters<typeof exportTemplateFromSession>[2];
     await expect(exportTemplateFromSession(serverConfig, ws, input)).rejects.toThrow("Fix template validation issues");
-    await writeFile(path, broken.replace("<head>", '<head><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>'));
+    await writeFile(path, broken.replace("<head>", '<head><script src="assets/gsap.min.js"></script>'));
     const exported = await exportTemplateFromSession(serverConfig, ws, input);
     const imported = await importTemplate(serverConfig, ws.id, exported.archive, "video");
     const snapshot = await materializeTemplate(serverConfig, ws, imported.manifest.id, "script_roundtrip");
