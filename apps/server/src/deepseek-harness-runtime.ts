@@ -560,15 +560,18 @@ export class DeepSeekHarnessRuntime {
 
   async call<T>(method: string, payload: unknown): Promise<T> {
     const baseUrl = await this.#ensureStarted();
+    const isCompaction = method === "commands/execute"
+      && remoteRecord(remoteRecord(payload).args).line === "/compact";
     if (
       method === "session.selectModel"
       || method === "session.prompt"
       || method === "llm.models"
       || method === "llm.providers"
+      || isCompaction
     ) {
       await this.#syncSharedProviderApiCredentials(baseUrl);
     }
-    return this.#callAtBaseUrl<T>(baseUrl, method, payload);
+    return this.#callAtBaseUrl<T>(baseUrl, method, payload, isCompaction ? 180_000 : 60_000);
   }
 
   async #callAtBaseUrl<T>(

@@ -451,6 +451,27 @@ function deepSeekHarnessConnection(input: {
         return session?.running === false;
       });
     },
+    supportsCompaction(session) {
+      const dsh = isRecord(session.dsh) ? session.dsh : null;
+      return dsh?.agentPreset === "standard" || dsh?.agentPreset === "cordis" || dsh?.agentPreset === "ptc";
+    },
+    async compact({ sessionId }) {
+      try {
+        const execution = await client.call<unknown>("commands/execute", {
+          args: { agentId: sessionId, line: "/compact" },
+        }, { timeoutMs: 190_000 });
+        if (!isRecord(execution) || !isRecord(execution.result)) {
+          throw new Error(t("session.compaction_unavailable"));
+        }
+        if (execution.result.kind !== "success") {
+          throw new Error(typeof execution.result.text === "string"
+            ? execution.result.text
+            : t("session.compaction_unavailable"));
+        }
+      } catch (error) {
+        throw conversationError(error);
+      }
+    },
     async revert() {
       throw new Error("DeepSeek Harness does not expose conversation revert");
     },

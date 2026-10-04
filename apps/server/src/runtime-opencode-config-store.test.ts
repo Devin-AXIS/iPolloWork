@@ -9,6 +9,7 @@ import { registerOpencodePluginBinding, unregisterOpencodePluginBinding } from "
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import {
   onRuntimeOpencodeConfigWrite,
+  mergeOpencodeConfigs,
   readRuntimeProviderChannels,
   readRuntimeOpencodeConfig,
   writeRuntimeOpencodeConfig,
@@ -62,6 +63,19 @@ async function expectMissing(path: string): Promise<void> {
 }
 
 describe("runtime OpenCode config store", () => {
+  test("runtime compaction overrides preserve workspace compaction options", () => {
+    expect(mergeOpencodeConfigs(
+      { compaction: { auto: true, prune: false, tail_turns: 3, reserved: 16_000 } },
+      { compaction: { auto: false, preserve_recent_tokens: 8_000 } },
+    ).compaction).toEqual({
+      auto: false,
+      prune: false,
+      tail_turns: 3,
+      reserved: 16_000,
+      preserve_recent_tokens: 8_000,
+    });
+  });
+
   test("stores provider channels once and projects them into every workspace", async () => {
     await withWorkspace(async ({ root, config }) => {
       const secondWorkspaceId = "ws_runtime_second";

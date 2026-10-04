@@ -393,6 +393,9 @@ export interface ConversationEngineConnection {
     directory?: string;
   }): Promise<void>;
   create(directory?: string): Promise<ConversationSession>;
+  supportsCompaction?(session: ConversationSession): boolean;
+  /** Resolve after native compaction completes; reject native failures. */
+  compact?(input: { sessionId: string; model?: ModelRef; directory?: string }): Promise<void>;
   abort(sessionId: string, directory?: string): Promise<boolean>;
   revert(sessionId: string, messageId: string): Promise<ConversationSession>;
   fork(input: {

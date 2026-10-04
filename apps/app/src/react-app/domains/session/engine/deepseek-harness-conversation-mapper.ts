@@ -520,11 +520,25 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
     );
   }
   const session = mapDeepSeekHarnessSession(source.session);
-  const contextUsage = conversationContextUsageFromTokens(session.tokens);
-  const permissionsProjection = source.history.projections?.values.permissions;
-  if (isRecord(permissionsProjection)) {
+  const projections = source.history.projections?.values;
+  const pressure = isRecord(projections?.contextPressure) ? projections.contextPressure : null;
+  const pressureTokens = [pressure?.projectedTokens, pressure?.pressureTokens]
+    .find((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const contextWindow = typeof pressure?.contextWindow === "number" && Number.isFinite(pressure.contextWindow) && pressure.contextWindow > 0
+    ? Math.round(pressure.contextWindow)
+    : undefined;
+  const contextUsage = pressureTokens === undefined
+    ? undefined
+    : { usedTokens: Math.max(0, Math.round(pressureTokens)), ...(contextWindow ? { contextWindow } : {}) };
+  const permissionsProjection = projections?.permissions;
+  const agentPreset = projections?.agentPreset;
+  if (isRecord(permissionsProjection) || typeof agentPreset === "string") {
     const dsh = isRecord(session.dsh) ? session.dsh : {};
-    session.dsh = { ...dsh, permissions: permissionsProjection };
+    session.dsh = {
+      ...dsh,
+      ...(isRecord(permissionsProjection) ? { permissions: permissionsProjection } : {}),
+      ...(typeof agentPreset === "string" ? { agentPreset } : {}),
+    };
   }
   if (INTERNAL_SESSION_TITLE.test(session.title)) {
     const firstUserText = messages

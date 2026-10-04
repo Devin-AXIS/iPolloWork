@@ -90,6 +90,97 @@ afterEach(async () => {
 });
 
 describe("Codex Harness provider projection", () => {
+  test("waits for native compaction completion, rejects active tasks and propagates failure or disconnect", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-compaction-fixture.js");
+    await writeFile(fixturePath, String.raw`
+const readline = require("node:readline");
+const emit = value => process.stdout.write(JSON.stringify(value) + "\n");
+let starts = 0;
+let resumes = 0;
+readline.createInterface({ input: process.stdin }).on("line", line => {
+  const message = JSON.parse(line);
+  const params = message.params || {};
+  if (message.method === "initialized") return;
+  if (message.method === "thread/read") {
+    emit({ id: message.id, result: { thread: { id: params.threadId, status: { type: params.threadId === "active" ? "active" : params.threadId === "unloaded" ? "notLoaded" : "idle" } } } });
+    return;
+  }
+  if (message.method === "thread/resume") resumes += 1;
+  if (message.method === "thread/compact/start") {
+    if (params.threadId === "rpc-error") { emit({ id: message.id, error: { code: -32602, message: "Cannot compact this thread" } }); return; }
+    starts += 1;
+    emit({ id: message.id, result: {} });
+    emit({ method: "turn/started", params: { threadId: params.threadId, turn: { id: "compact-turn" } } });
+    emit({ method: "item/started", params: { threadId: params.threadId, turnId: "compact-turn", item: { id: "compact-item", type: "contextCompaction" } } });
+    return;
+  }
+  if (message.method === "test/finish") {
+    const turnId = params.turnId || "compact-turn";
+    if (params.status === "completed") emit({ method: "item/completed", params: { threadId: params.threadId, turnId, item: { id: "compact-item", type: "contextCompaction" } } });
+    emit({ method: "turn/completed", params: { threadId: params.threadId, turn: { id: turnId, status: params.status, error: params.status === "failed" ? { message: "Native compaction failed" } : null } } });
+  }
+  emit({ id: message.id, result: { starts, resumes } });
+});
+`, "utf8");
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    const runtime = new CodexHarnessRuntime({ config, env: new EnvService({ path: join(root, "env.json") }), workspace: {
+      id: "compaction", name: "Compaction", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness",
+    } });
+    const eventController = new AbortController();
+    try {
+      const response = await runtime.events(eventController.signal);
+      if (!response.body) throw new Error("Missing native event stream");
+      const reader = response.body.getReader();
+      const started = async (threadId: string) => {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Native stream closed before compaction started");
+          const event = JSON.parse(new TextDecoder().decode(chunk.value).slice(6).trim());
+          if (event.method === "item/started" && event.params.threadId === threadId) return;
+        }
+      };
+      await expect(runtime.compactThread("active", new AbortController().signal)).rejects.toThrow("current task to finish");
+      expect(await runtime.call<{ starts: number; resumes: number }>("test/counts")).toEqual({ starts: 0, resumes: 0 });
+      let settled = false;
+      const success = runtime.compactThread("unloaded", new AbortController().signal).then(() => { settled = true; });
+      await started("unloaded");
+      expect(settled).toBe(false);
+      expect(await runtime.call<{ starts: number; resumes: number }>("test/counts")).toEqual({ starts: 1, resumes: 1 });
+      await runtime.call("test/finish", { threadId: "unloaded", turnId: "unrelated-turn", status: "completed" });
+      expect(settled).toBe(false);
+      await runtime.call("test/finish", { threadId: "unloaded", status: "completed" });
+      await success;
+      expect(settled).toBe(true);
+
+      const failure = runtime.compactThread("failed", new AbortController().signal).catch((error: unknown) => error);
+      await started("failed");
+      await runtime.call("test/finish", { threadId: "failed", status: "failed" });
+      expect(await failure).toMatchObject({ message: "Native compaction failed" });
+      await expect(runtime.compactThread("rpc-error", new AbortController().signal)).rejects.toThrow("Cannot compact this thread");
+
+      const disconnect = new AbortController();
+      const interrupted = runtime.compactThread("disconnected", disconnect.signal).catch((error: unknown) => error);
+      await started("disconnected");
+      disconnect.abort();
+      expect(await interrupted).toMatchObject({ message: "Codex context compaction request was disconnected" });
+      await runtime.call("test/finish", { threadId: "disconnected", status: "completed" });
+      const aborted = new AbortController();
+      aborted.abort();
+      await expect(runtime.compactThread("already-aborted", aborted.signal)).rejects.toThrow();
+      expect(await runtime.call<{ starts: number; resumes: number }>("test/counts")).toEqual({ starts: 3, resumes: 1 });
+      reader.releaseLock();
+    } finally {
+      eventController.abort();
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+    }
+  }, 20_000);
+
   test("replays unresolved approvals and questions on reconnect without approving or reviving resolved requests", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");

@@ -7,6 +7,20 @@ import {
 } from "./codex-harness-session-read-model.js";
 
 describe("Codex Harness session read model", () => {
+  test("omits successful manual compaction turns without masking a user turn missing its answer", () => {
+    expect(mapCodexMessages({ id: "thread", turns: [{ id: "compact", status: "completed", items: [
+      { id: "compact-item", type: "contextCompaction" },
+    ] }] })).toEqual([]);
+    const userTurn = mapCodexMessages({ id: "thread", turns: [{ id: "user-turn", status: "completed", items: [
+      { id: "user", type: "userMessage", text: "Finish the task" },
+      { id: "compact-item", type: "contextCompaction" },
+    ] }] });
+    expect(userTurn).toContainEqual(expect.objectContaining({ info: expect.objectContaining({ role: "assistant", error: expect.any(Object) }) }));
+    const failed = mapCodexMessages({ id: "thread", turns: [{ id: "compact", status: "failed", error: { message: "Compaction failed" }, items: [
+      { id: "compact-item", type: "contextCompaction" },
+    ] }] });
+    expect(failed).toContainEqual(expect.objectContaining({ info: expect.objectContaining({ role: "assistant", error: expect.any(Object) }) }));
+  });
   test("preserves native approval and input waiting flags in snapshots", () => {
     for (const flag of ["waitingOnApproval", "waitingOnUserInput"]) {
       const session = mapCodexThread({ id: "waiting", status: { type: "active", activeFlags: [flag] } });

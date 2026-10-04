@@ -1,6 +1,8 @@
 import { dirname } from "node:path";
+import type { Config } from "@opencode-ai/sdk/v2/types";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { z } from "zod";
 import { importNodeSqlite } from "./node-sqlite.js";
 import { runtimeDbPath } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
@@ -15,7 +17,16 @@ export type RuntimeOpencodeConfig = {
     external_directory?: Record<string, unknown>;
   };
   provider?: Record<string, unknown>;
+  compaction?: Config["compaction"];
 };
+
+export const runtimeCompactionConfigSchema = z.object({
+  auto: z.boolean().optional(),
+  prune: z.boolean().optional(),
+  tail_turns: z.number().int().nonnegative().optional(),
+  preserve_recent_tokens: z.number().int().nonnegative().optional(),
+  reserved: z.number().int().nonnegative().optional(),
+});
 
 const runtimeOpencodeConfigs = sqliteTable("runtime_opencode_configs", {
   workspaceId: text("workspace_id").primaryKey(),
@@ -56,6 +67,7 @@ function normalizeRuntimeOpencodeConfig(value: unknown): RuntimeOpencodeConfig {
   const permission = isRecord(value.permission) ? value.permission : undefined;
   const externalDirectory = permission && isRecord(permission.external_directory) ? permission.external_directory : undefined;
   const provider = isRecord(value.provider) ? value.provider : undefined;
+  const compaction = runtimeCompactionConfigSchema.safeParse(value.compaction);
   return {
     ...(defaultAgent ? { default_agent: defaultAgent } : {}),
     ...(plugin ? { plugin } : {}),
@@ -63,6 +75,7 @@ function normalizeRuntimeOpencodeConfig(value: unknown): RuntimeOpencodeConfig {
     ...(mcp ? { mcp } : {}),
     ...(externalDirectory ? { permission: { external_directory: externalDirectory } } : {}),
     ...(provider ? { provider } : {}),
+    ...(compaction.success && Object.keys(compaction.data).length ? { compaction: compaction.data } : {}),
   };
 }
 
@@ -320,6 +333,12 @@ export function mergeOpencodeConfigs(
     : {};
   return {
     ...persisted,
+    ...(runtime.compaction ? {
+      compaction: {
+        ...(isRecord(persisted.compaction) ? persisted.compaction : {}),
+        ...runtime.compaction,
+      },
+    } : {}),
     plugin: [
       ...(Array.isArray(persisted.plugin) ? persisted.plugin.filter((item) => typeof item === "string") : []),
       ...runtimePluginList(runtime),

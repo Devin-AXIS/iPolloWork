@@ -433,7 +433,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [configActionStatus, setConfigActionStatus] = useState<string | null>(null);
   const [autoCompactContext, setAutoCompactContext] = useState(true);
   const [autoCompactContextBusy, setAutoCompactContextBusy] = useState(false);
-  const [, setAutoCompactContextLoaded] = useState(false);
+  const [autoCompactContextLoaded, setAutoCompactContextLoaded] = useState(false);
+  const autoCompactContextScope = useRef(0);
   const [localProviderBusy, setLocalProviderBusy] = useState(false);
   const [localProviderStatus, setLocalProviderStatus] = useState<string | null>(null);
   const [localProviderError, setLocalProviderError] = useState<string | null>(null);
@@ -1529,7 +1530,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   // Load auto-compaction state from OpenCode config on workspace change.
   useEffect(() => {
-    if (!ipolloworkClient || !selectedWorkspaceId) return;
+    autoCompactContextScope.current += 1;
+    setAutoCompactContextLoaded(false);
+    setAutoCompactContextBusy(false);
+    if (!ipolloworkClient || !selectedWorkspaceId || activeEngineId !== DEFAULT_ENGINE_ID) return;
     const workspaceId = routeStateRef.current.runtimeWorkspaceId?.trim() || selectedWorkspaceId;
     let cancelled = false;
     (async () => {
@@ -1543,16 +1547,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         setAutoCompactContext(auto !== false);
         setAutoCompactContextLoaded(true);
       } catch {
-        if (!cancelled) setAutoCompactContextLoaded(true);
+        // Keep the switch disabled until its saved state is known.
       }
     })();
     return () => { cancelled = true; };
-  }, [ipolloworkClient, selectedWorkspaceId]);
+  }, [activeEngineId, ipolloworkClient, selectedWorkspaceId]);
 
   const toggleAutoCompactContext = useCallback(async () => {
-    if (autoCompactContextBusy) return;
+    if (!autoCompactContextLoaded || autoCompactContextBusy || activeEngineId !== DEFAULT_ENGINE_ID) return;
     const workspaceId = routeStateRef.current.runtimeWorkspaceId?.trim() || selectedWorkspaceId;
     if (!ipolloworkClient || !workspaceId) return;
+    const scope = autoCompactContextScope.current;
     const next = !autoCompactContext;
     setAutoCompactContext(next);
     setAutoCompactContextBusy(true);
@@ -1560,17 +1565,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       await ipolloworkClient.patchConfig(workspaceId, {
         opencode: { compaction: { auto: next } },
       });
+      if (autoCompactContextScope.current !== scope) return;
       reloadCoordinator.markReloadRequired("config", {
         type: "config",
         name: "opencode.json",
         action: "updated",
       });
     } catch {
-      setAutoCompactContext(!next);
+      if (autoCompactContextScope.current === scope) setAutoCompactContext(!next);
     } finally {
-      setAutoCompactContextBusy(false);
+      if (autoCompactContextScope.current === scope) setAutoCompactContextBusy(false);
     }
-  }, [autoCompactContext, autoCompactContextBusy, ipolloworkClient, reloadCoordinator, selectedWorkspaceId]);
+  }, [activeEngineId, autoCompactContext, autoCompactContextBusy, autoCompactContextLoaded, ipolloworkClient, reloadCoordinator, selectedWorkspaceId]);
 
   useEffect(() => {
     ipolloworkServerStore.start();
@@ -1935,8 +1941,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onToggleShowThinking={() => {
               local.setPrefs((previous) => ({ ...previous, showThinking: !previous.showThinking }));
             }}
+            autoCompactContextAvailable={activeEngineId === DEFAULT_ENGINE_ID}
             autoCompactContext={autoCompactContext}
-            autoCompactContextBusy={autoCompactContextBusy}
+            autoCompactContextBusy={autoCompactContextBusy || !autoCompactContextLoaded}
             onToggleAutoCompactContext={toggleAutoCompactContext}
             analyticsEnabled={local.prefs.analyticsEnabled}
             onToggleAnalytics={() => {
