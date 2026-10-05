@@ -1981,15 +1981,8 @@ function renderRecipeCard(raw: unknown): string {
   return lines.join("\n") + "\n";
 }
 
-// The business diagram library owns its blocks and intents in its own definitions (business-diagram-catalog.ts).
-async function businessBlocks(): Promise<Array<{ name: string; usage: { intent: string } }>> {
-  return JSON.parse(await readFile(join(repositoryRoot, "scripts", "business-diagrams", "definitions.json"), "utf8")).blocks;
-}
-
 async function recipeCards(write: boolean): Promise<void> {
   if (Object.keys(RECIPE_INTENTS).length !== 81) throw Error("Every executable recipe needs an authored narrative intent.");
-  const business = { blocks: await businessBlocks() };
-  const intents: Record<string, string> = { ...RECIPE_INTENTS, ...Object.fromEntries(business.blocks.map(block => [block.name, block.usage.intent])) };
   let count = 0;
   for (const entry of await readdir(blocksRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -1998,7 +1991,7 @@ async function recipeCards(write: boolean): Promise<void> {
     if (!raw || typeof raw !== "object" || !("motionRecipe" in raw)) continue;
     const recipe = raw.motionRecipe;
     if (!recipe || typeof recipe !== "object" || !("usage" in recipe) || !recipe.usage || typeof recipe.usage !== "object") throw Error("Invalid recipe usage " + entry.name);
-    const intent = intents[entry.name];
+    const intent = RECIPE_INTENTS[entry.name];
     if (!intent) throw Error("Missing narrative intent " + entry.name);
     if (write) Object.assign(recipe.usage, { intent });
     else if (!("intent" in recipe.usage) || recipe.usage.intent !== intent) throw Error("Narrative intent stale: " + entry.name);
@@ -2017,8 +2010,7 @@ async function recipeCards(write: boolean): Promise<void> {
     else if (await readFile(destination, "utf8") !== expected) throw Error("Recipe documentation stale: " + entry.name);
     count++;
   }
-  const expected = Object.keys(intents).length;
-  if (count !== expected) throw Error("Expected " + expected + " executable recipe cards, found " + count);
+  if (count !== 81) throw Error("Expected 81 executable recipe cards, found " + count);
   console.log((write ? "Generated" : "Checked") + " " + count + " recipe cards from their owning manifests.");
 }
 
@@ -2038,7 +2030,7 @@ async function check(): Promise<void> {
   }
   if (!(await updateRegistryIndex(false))) mismatches.push(registryIndexPath);
   const total = (await visualComponentEntries()).length;
-  if (total !== 185 + (await businessBlocks()).length) mismatches.push(`visual-component-count:${total}`);
+  if (total !== 185) mismatches.push(`visual-component-count:${total}`);
   if (mismatches.length > 0) {
     throw new Error(`Visual component catalog is stale:\n${mismatches.join("\n")}`);
   }

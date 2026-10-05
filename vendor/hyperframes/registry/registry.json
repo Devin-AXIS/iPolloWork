@@ -1394,18 +1394,6 @@
     {
       "name": "split-merge-network",
       "type": "hyperframes:block"
-    },
-    {
-      "name": "biz-milestone-rail",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "biz-mindmap",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "biz-system-architecture",
-      "type": "hyperframes:block"
     }
   ]
 }
