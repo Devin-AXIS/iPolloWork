@@ -4,7 +4,7 @@ const vo = await loadVoiceoverParagraphs("video-components-navigation");
 const EXPECTED_ENGLISH_TABS = ["Layers", "Style", "Components", "Animation", "Sound", "Assets"];
 const EXPECTED_CHINESE_TABS = ["图层", "主题", "组件", "动画", "声音", "素材"];
 const EXPECTED_ENGLISH_CATEGORIES = [
-  "All components · 153",
+  "All components · 150",
   "Openers & Endings · 9",
   "Product Showcase · 10",
   "Data & Charts · 22",
@@ -18,10 +18,9 @@ const EXPECTED_ENGLISH_CATEGORIES = [
   "Social Media · 22",
   "Code Demos · 8",
   "Brand & Marketing · 10",
-  "Business Diagrams · 3",
 ];
 const EXPECTED_CHINESE_CATEGORIES = [
-  "全部组件 · 153",
+  "全部组件 · 150",
   "开场与收尾 · 9",
   "产品展示 · 10",
   "数据与图表 · 22",
@@ -35,7 +34,6 @@ const EXPECTED_CHINESE_CATEGORIES = [
   "社交媒体 · 22",
   "代码演示 · 8",
   "品牌与营销 · 10",
-  "商业图库 · 3",
 ];
 
 async function expectCategoryOptions(ctx, expected, ariaLabel) {
