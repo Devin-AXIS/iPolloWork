@@ -64,6 +64,7 @@ export const VISUAL_COMPONENT_CATEGORIES = [
   "social",
   "developer",
   "brand",
+  "business",
 ] as const;
 
 export type RegistryVisualComponentCategory = (typeof VISUAL_COMPONENT_CATEGORIES)[number];
@@ -111,6 +112,8 @@ export interface RegistryVisualComponentAi {
 export interface RegistryVisualComponent {
   version: 1;
   category: RegistryVisualComponentCategory;
+  /** Optional grouping inside the category (e.g. business: essentials, process, systems, narrative, frameworks). */
+  subcategory?: string;
   surfaces: RegistryVisualComponentSurface[];
   themeMode: "inherit";
   /** Optional normalized data contract shared by Studio, renderers, and agents. */

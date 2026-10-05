@@ -143,6 +143,26 @@ describe("Video Studio registry component integration", () => {
     expect(await readFile(join(project, "index.html"), "utf8")).toBe(original);
     expect(await readdir(project)).toEqual(["index.html"]);
   });
+  test("business diagram recipes install, mount, follow the --ipw theme and enforce capacity", async () => {
+    for (const name of ["biz-mindmap", "biz-milestone-rail", "biz-system-architecture"]) {
+      const { root, project, manifest, instance } = await recipeFixture(name);
+      await writeFile(join(project, "index.html"), '<main data-composition-id="main"><section id="evidence"></section></main>');
+      const mounted = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [name], instances: [instance], mount: true });
+      expect(mounted.mounted).toBe(true);
+      const composition = await readFile(join(project, `compositions/${name}.html`), "utf8");
+      expect(composition).toContain("const motionStyle=");
+      expect(composition).toContain("var(--ipw-color-accent");
+      expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(true);
+      const capacity = manifest.motionRecipe.capacity;
+      if (!capacity) throw Error(`${name} must declare a capacity contract`);
+      const items = String(instance.values[capacity.variable]).split(capacity.separator);
+      const overflow = Array.from({ length: capacity.maxItems + 1 }, (_, index) => items[index % items.length]).join(capacity.separator);
+      await writeFile(join(project, "index.html"), '<main data-composition-id="main"><section id="evidence"></section></main>');
+      const rejected = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [name], instances: [{ ...instance, values: { ...instance.values, [capacity.variable]: overflow } }] }).catch((error: unknown) => error);
+      expect(rejected).toMatchObject({ status: 400 });
+      expect(["video_recipe_capacity_exceeded", "invalid_video_recipe_values"]).toContain((rejected as { code: string }).code);
+    }
+  });
   test("imported Shotcraft recipes retain pinned source, rules and installed license", async () => {
     for (const name of ["shotcraft-card-stack", "shotcraft-tracking-expand", "shotcraft-marker-title", "shotcraft-multiplane", "shotcraft-dolly-zoom"]) {
       const { root, project, registry, manifest, instance } = await recipeFixture(name);
@@ -363,7 +383,8 @@ describe("Video Studio registry component integration", () => {
       const raw = JSON.parse(await readFile(join(base.registry, name, "registry-item.json"), "utf8"));
       if (raw.motionRecipe) names.push(name);
     }
-    expect(names).toHaveLength(81);
+    const business = JSON.parse(await readFile(join(base.registry, "../../scripts/business-diagrams/definitions.json"), "utf8")) as { blocks: unknown[] };
+    expect(names).toHaveLength(81 + business.blocks.length);
     await mkdir(join(base.project, "assets"), { recursive: true });
     await writeFile(join(base.project, "assets", "evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="#245b66"/></svg>');
     for (const name of names) {

@@ -27,7 +27,7 @@ function item(name: string, category?: "maps"): CatalogItem {
 }
 
 describe("component catalog contract", () => {
-  it("keeps the thirteen clear component categories in one ordered contract", () => {
+  it("keeps the fourteen clear component categories in one ordered contract", () => {
     expect(COMPONENT_CATALOG_SECTIONS).toEqual([
       "scene",
       "product",
@@ -42,6 +42,7 @@ describe("component catalog contract", () => {
       "social",
       "developer",
       "brand",
+      "business",
     ]);
   });
 
