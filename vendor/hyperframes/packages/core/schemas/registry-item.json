@@ -73,6 +73,7 @@
             "social",
             "developer",
             "brand",
+            "business",
             "intro",
             "flow",
             "compare",
@@ -82,6 +83,11 @@
             "outro"
           ],
           "description": "Canonical component category. Legacy version-1 ids remain accepted and are normalized by consumers."
+        },
+        "subcategory": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Optional grouping inside a category, e.g. the business library's essentials / process / systems / narrative / frameworks."
         },
         "surfaces": {
           "type": "array",

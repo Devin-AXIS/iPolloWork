@@ -44,6 +44,8 @@ const SECTION_SEARCH_TERMS: Record<CatalogSectionId, string> = {
   developer: "developer code terminal diff api demo 代码演示 代码 终端 差异 接口",
   brand:
     "brand marketing commerce logo palette campaign identity pricing offer sale 品牌 营销 商业 标志 色板 活动 定价 报价 促销",
+  business:
+    "business diagram mindmap timeline architecture framework strategy launch keynote 商业图库 商业 图表 思维导图 时间线 架构 框架 战略 发布会",
 };
 
 let catalogCache: CatalogItem[] | null = null;

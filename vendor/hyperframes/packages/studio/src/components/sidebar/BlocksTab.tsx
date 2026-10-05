@@ -54,7 +54,32 @@ const SECTION_TITLES: Record<CatalogSectionId, { en: string; zh: string }> = {
   social: { en: "Social Media", zh: "社交媒体" },
   developer: { en: "Code Demos", zh: "代码演示" },
   brand: { en: "Brand & Marketing", zh: "品牌与营销" },
+  business: { en: "Business Diagrams", zh: "商业图库" },
 };
+
+/** Ordered groups inside a category; items without a subcategory keep the flat grid. */
+const SUBCATEGORY_TITLES: Record<string, { en: string; zh: string }> = {
+  essentials: { en: "Essentials", zh: "基础" },
+  process: { en: "Process & Conversion", zh: "流程与转化" },
+  systems: { en: "Systems & Platforms", zh: "系统与平台" },
+  narrative: { en: "Narrative & Highlights", zh: "叙事与高光" },
+  frameworks: { en: "Frameworks & Models", zh: "框架与模型" },
+};
+const SUBCATEGORY_ORDER = Object.keys(SUBCATEGORY_TITLES);
+
+function groupBySubcategory<T extends { visualComponent?: { subcategory?: string } }>(
+  items: T[],
+): Array<{ id: string | null; items: T[] }> {
+  const groups = new Map<string | null, T[]>();
+  for (const item of items) {
+    const id = item.visualComponent?.subcategory ?? null;
+    groups.set(id, [...(groups.get(id) ?? []), item]);
+  }
+  const rank = (id: string | null) => (id === null ? -1 : SUBCATEGORY_ORDER.indexOf(id) >>> 0);
+  return [...groups.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([id, groupItems]) => ({ id, items: groupItems }));
+}
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const DEFAULT_CATALOG_COLUMN_COUNT: CatalogColumnCount = 2;
@@ -367,26 +392,35 @@ function CatalogSectionGrid({
                   onToggle={() => toggleSection(section.id)}
                 />
               ) : null}
-              {!collapsedSections.has(section.id) ? (
-                <div
-                  className={`grid min-w-0 gap-x-[10px] gap-y-4 overflow-x-hidden px-4 ${CATALOG_GRID_COLUMNS[columnCount]}`}
-                  data-testid={`catalog-grid-${section.id}`}
-                >
-                  {section.items.map((block) => (
-                    <BlockCard
-                      key={block.name}
-                      block={block}
-                      visible={visibleNames.has(block.name)}
-                      reducedMotion={reducedMotion}
-                      registerCard={registerCard}
-                      previewController={previewController}
-                      locale={locale}
-                      onAddBlock={onAddBlock}
-                      insertingBlockName={insertingBlockName}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              {!collapsedSections.has(section.id)
+                ? groupBySubcategory(section.items).map((group) => (
+                    <div key={group.id ?? "all"} data-testid={`catalog-group-${section.id}-${group.id ?? "all"}`}>
+                      {group.id ? (
+                        <div className="px-4 pb-2 pt-1 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+                          {(SUBCATEGORY_TITLES[group.id] ?? { en: group.id, zh: group.id })[locale]}
+                        </div>
+                      ) : null}
+                      <div
+                        className={`grid min-w-0 gap-x-[10px] gap-y-4 overflow-x-hidden px-4 ${CATALOG_GRID_COLUMNS[columnCount]}`}
+                        data-testid={group.id ? `catalog-grid-${section.id}-${group.id}` : `catalog-grid-${section.id}`}
+                      >
+                        {group.items.map((block) => (
+                          <BlockCard
+                            key={block.name}
+                            block={block}
+                            visible={visibleNames.has(block.name)}
+                            reducedMotion={reducedMotion}
+                            registerCard={registerCard}
+                            previewController={previewController}
+                            locale={locale}
+                            onAddBlock={onAddBlock}
+                            insertingBlockName={insertingBlockName}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                : null}
             </section>
           ))}
         </div>

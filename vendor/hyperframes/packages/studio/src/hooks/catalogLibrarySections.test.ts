@@ -12,6 +12,7 @@ const REGISTRY_ROOT = fileURLToPath(new URL("../../../../registry", import.meta.
 const REMOVED_EFFECT_SECTIONS = ["opening-effect", "ending-effect", "transition-effect"];
 const EXPECTED_VISUAL_COMPONENT_COUNTS = {
   brand: 10,
+  business: 3,
   data: 22,
   developer: 8,
   diagrams: 12,
@@ -222,7 +223,7 @@ function contentVariableIds(manifest: MotionManifest): string[] {
 }
 
 describe("component catalog registry", () => {
-  it("publishes 149 native components, 30 Shotcraft imports and 6 reusable personal components", () => {
+  it("publishes 152 native components, 30 Shotcraft imports and 6 reusable personal components", () => {
     const components = visualComponentManifests();
     const imported = components.filter(({ manifest }) =>
       ["video-shotcraft", "hyperframes-video-shotcraft"].includes(manifest.source?.provider ?? ""),
@@ -240,7 +241,7 @@ describe("component catalog registry", () => {
       ]),
     );
 
-    expect(native).toHaveLength(149);
+    expect(native).toHaveLength(152);
     expect(categoryCounts).toEqual(EXPECTED_VISUAL_COMPONENT_COUNTS);
     expect(imported).toHaveLength(30);
     expect(
@@ -252,8 +253,8 @@ describe("component catalog registry", () => {
     expect(personal.map(({ manifest }) => manifest.name).sort()).toEqual(
       Object.keys(PERSONAL_COMPONENT_VARIABLE_COUNTS).sort(),
     );
-    expect(components).toHaveLength(185);
-    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(185);
+    expect(components).toHaveLength(188);
+    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(188);
   });
 
   it("keeps visual components themeable, seekable, and within their authored property contracts", () => {
@@ -269,8 +270,14 @@ describe("component catalog registry", () => {
         themeMode: "inherit",
       });
       const aiIds = contentVariableIds(manifest);
-      const contentIds =
-        manifest.name === "device-carousel" ? aiIds.filter((id) => id !== "carouselMode") : aiIds;
+      // Presentation enums choose a treatment, not content: they stay outside the content budget.
+      const presentation =
+        manifest.name === "device-carousel"
+          ? ["carouselMode"]
+          : manifest.visualComponent?.category === "business"
+            ? ["skin", "camera", "reveal"]
+            : [];
+      const contentIds = aiIds.filter((id) => !presentation.includes(id));
       expect(contentIds.length).toBeGreaterThan(0);
       if (manifest.source?.provider === "ipollowork-local-import") {
         expect(contentIds).toHaveLength(

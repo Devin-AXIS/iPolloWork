@@ -59,9 +59,9 @@ Use the same transition for repeated continuity when that supports the story. Va
 
 | Primary pattern | Default attention path | Recipe | Components |
 | --- | --- | --- | ---: |
-| `progressive-build` | Reveal ordered ideas, layers, or a statement in meaningful beats. | [progressive-build.md](progressive-build.md) | 34 |
+| `progressive-build` | Reveal ordered ideas, layers, or a statement in meaningful beats. | [progressive-build.md](progressive-build.md) | 36 |
 | `focus-transfer` | Move attention among peers while their relationship remains visible. | [focus-transfer.md](focus-transfer.md) | 25 |
-| `path-journey` | Advance a route, workflow, dependency, or chronology. | [path-journey.md](path-journey.md) | 32 |
+| `path-journey` | Advance a route, workflow, dependency, or chronology. | [path-journey.md](path-journey.md) | 33 |
 | `state-transformation` | Make a before/after, correction, resolution, or completion legible. | [state-transformation.md](state-transformation.md) | 8 |
 | `data-accumulation` | Build quantitative evidence, rank, distribution, or signal over time. | [data-accumulation.md](data-accumulation.md) | 33 |
 | `asset-exploration` | Guide attention through media, an interface, a device, or social content. | [asset-exploration.md](asset-exploration.md) | 23 |
@@ -81,6 +81,8 @@ Reveal ordered ideas, layers, or a statement in meaningful beats.
 | `brand-cta` | closing | seekable | A clean ending lockup that turns a completed story into one clear next action. |
 | `brand-headline` | opening | seekable | A theme-linked opening statement with an editorial frame and a decisive brand lockup. |
 | `brand-manifesto` | opening | seekable | Turn a brand belief into a strong editorial statement. |
+| `biz-mindmap` | body | seekable | Business library: a central topic radiating into 2–6 branches revealed one branch at a time. |
+| `biz-system-architecture` | body | seekable | Business library: a layered architecture that folds into isometric depth, builds layer by layer and lights the cross-layer path. |
 | `bullet-stack` | body | seekable | A paced vertical list for arguments, takeaways and step-by-step narration. |
 | `campaign-lockup` | opening | seekable | An editorial campaign frame that combines identity, headline, message and date. |
 | `chapter-countdown` | opening | seekable | Count into a chapter while previewing its key beats. |
@@ -153,6 +155,7 @@ Advance a route, workflow, dependency, or chronology.
 | `agent-tool-trace` | body | seekable | Visualize how an agent selects and invokes tools. |
 | `api-request-flow` | body | seekable | Explain an API request from client through response. |
 | `architecture-hub` | body | seekable | A theme-aware system diagram that connects one core capability to three clear outcomes. |
+| `biz-milestone-rail` | body | seekable | Business library: 3–8 dated milestones landing one by one on a 3D rail with the current point marked. |
 | `automation-hub` | body | seekable | Trace signals from editable capability nodes into a shared hub while preserving their spatial relationships; use the streams to explain connections, not to claim verified automation execution. |
 | `capability-map` | body | seekable | Group related capabilities around a shared platform. |
 | `cause-effect-chain` | body | seekable | Teach how one condition creates a sequence of effects. |
