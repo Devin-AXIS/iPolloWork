@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createProjectWatcher } from "./fileWatcher";
+import { createProjectWatcher, shouldWatchProjectFile } from "./fileWatcher";
 
 const tempDirs: string[] = [];
 
@@ -13,6 +13,12 @@ afterEach(() => {
 });
 
 describe("createProjectWatcher", () => {
+  it("ignores generated thumbnails while watching authored compositions", () => {
+    expect(shouldWatchProjectFile(".thumbnails/scene.png")).toBe(false);
+    expect(shouldWatchProjectFile(".thumbnails/scene.json")).toBe(false);
+    expect(shouldWatchProjectFile("compositions/scene/scene.html")).toBe(true);
+  });
+
   it("reports every changed path in one debounced write burst", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hyperframes-watcher-"));
     tempDirs.push(projectDir);

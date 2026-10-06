@@ -25,6 +25,13 @@ export interface RegistryVisualComponentDataColumn {
   /** Optional native selector for categorical fields such as icons. */
   options?: { value: string; label: string }[];
   format?: "image";
+  /** Layout capacity, measured in Unicode characters. Invalid drafts stay editable. */
+  maxLength?: number;
+  /** Inclusive numeric bounds. Values outside them are reported, never clamped. */
+  min?: number;
+  max?: number;
+  /** A bounded textual list inside a row, using literal separator characters. */
+  list?: { maxItems: number; itemMaxLength: number; separators: string };
 }
 
 export interface RegistryVisualComponentDataBinding {
@@ -97,6 +104,8 @@ function parseCell(
   column: RegistryVisualComponentDataColumn,
 ): VisualComponentDataCell | undefined {
   if (column.type === "number") {
+    if (typeof raw !== "number" && typeof raw !== "string") return undefined;
+    if (typeof raw === "string" && raw.trim() === "") return undefined;
     const numberValue = typeof raw === "number" ? raw : Number(raw);
     return Number.isFinite(numberValue) ? numberValue : undefined;
   }
@@ -113,17 +122,35 @@ function normalizeRows(
   for (const [rowIndex, rawRow] of rawRows.entries()) {
     const row: VisualComponentDataRow = {};
     for (const column of contract.columns) {
-      const cell = parseCell(readObjectValue(rawRow, column.id), column);
+      const raw = readObjectValue(rawRow, column.id);
+      const cell = parseCell(raw, column);
       if (cell === undefined || cell === "") {
         if (column.required) {
           issues.push({
             path: `rows.${rowIndex}.${column.id}`,
             message: `${column.label} is required`,
           });
+        } else if (cell === undefined && raw !== undefined && !(typeof raw === "string" && raw.trim() === "")) {
+          issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} must be a valid ${column.type}` });
         }
         continue;
       }
       row[column.id] = cell;
+      if (typeof cell === "number" && ((column.min !== undefined && cell < column.min) || (column.max !== undefined && cell > column.max))) {
+        issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} must be within ${column.min ?? "−∞"}–${column.max ?? "∞"}` });
+      }
+      if (typeof cell === "string") {
+        if (column.maxLength !== undefined && Array.from(cell).length > column.maxLength) {
+          issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} allows at most ${column.maxLength} characters` });
+        }
+        if (column.list) {
+          const limit = column.list;
+          const list = Array.from(cell, char => limit.separators.includes(char) ? "\n" : char).join("").split("\n").map(item => item.trim()).filter(Boolean);
+          if (list.length > limit.maxItems || list.some(item => Array.from(item).length > limit.itemMaxLength)) {
+            issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} allows at most ${limit.maxItems} items and ${limit.itemMaxLength} characters per item` });
+          }
+        }
+      }
       if (column.options && !column.options.some(option => option.value === cell)) {
         issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} is not an available option` });
       }
@@ -331,6 +358,8 @@ export function formatVisualComponentDataForAi(
       mode: contract.mode,
       rowId: contract.rowId,
       columns: contract.columns,
+      minRows: contract.minRows,
+      maxRows: contract.maxRows,
       valueFormat: contract.valueFormat,
       allowedOperations: [
         "set",

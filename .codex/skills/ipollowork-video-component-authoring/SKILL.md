@@ -12,7 +12,7 @@ description: Develop or update reusable visual components for iPolloWork Video, 
 在 iPolloWork 仓库根目录阅读 `AGENTS.md` 和维护性规范。先找同类组件，再选择扩展还是新增。以下路径均相对仓库根目录：
 
 - `vendor/hyperframes/registry/blocks/world-map/`：地图、主题继承、结构化数据的参考。
-- `vendor/hyperframes/registry/blocks/metric-signal/`：数据展示及可选动画配方的参考。
+- `vendor/hyperframes/registry/blocks/media-hero/`：可编辑内容与动画配方的参考。
 - `vendor/hyperframes/packages/core/src/registry/types.ts`：组件分类及 manifest 契约。
 - `vendor/hyperframes/packages/core/src/registry/componentData.ts`：共用数据结构及解析规则。
 - `vendor/hyperframes/packages/core/schemas/registry-item.json`、`packages/types/src/hyperframes.ts`：注册项和宿主校验契约。

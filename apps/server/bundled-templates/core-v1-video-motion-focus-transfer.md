@@ -11,7 +11,7 @@ Use when several subjects must be examined in turn while their shared context re
 
 ## Registry candidates
 
-Prefer `product-comparison-stage` or `split-screen` when two subjects remain spatially related. Keep both subjects editable and visible enough for context; add a moving focus treatment only when the component's own timeline does not express narration order.
+Prefer `split-screen` when two subjects remain spatially related. Keep both subjects editable and visible enough for context; add a moving focus treatment only when the component's own timeline does not express narration order.
 
 ## Temporal states
 

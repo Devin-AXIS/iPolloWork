@@ -157,6 +157,7 @@ function BrowserControlActions() {
       { name: "mode", type: "string", description: "mixed, interactive, or content." },
       { name: "scopeRef", type: "string", description: "Optional ref from the previous snapshot whose subtree should be read." },
       { name: "delta", type: "boolean", description: "Return only the compact change when useful." },
+      { name: "includeControls", type: "boolean", description: "Include structured controls for the selected decision provider." },
     ],
     disabled: !isElectronRuntime(),
     execute: async (args) => {
@@ -174,6 +175,7 @@ function BrowserControlActions() {
         mode: mode || undefined,
         ...(scopeRef ? { scopeRef } : {}),
         ...(object && Reflect.get(object, "delta") === true ? { delta: true } : {}),
+        ...(object && Reflect.get(object, "includeControls") === true ? { includeControls: true } : {}),
       });
     },
   }), []);

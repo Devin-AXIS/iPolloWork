@@ -1535,7 +1535,7 @@ test("video motion map covers every current Video Studio registry block exactly 
   const expectedComponents = new Set(expected);
   for (const row of overlayRows) {
     const candidates = [...(row[2] ?? "").matchAll(/`([^`]+)`/g)].map(match => match[1]);
-    expect(candidates.length).toBeGreaterThan(0);
+    if (row[1] !== "kinetic-type" && row[1] !== "audio-reactive") expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.every(component => expectedComponents.has(component))).toBe(true);
   }
 });

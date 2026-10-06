@@ -530,7 +530,6 @@ describe("conversation work, runtime metrics and tasks", () => {
       plugins: [], authorizations: {}, runtimeMetrics: metrics, runtimeMetricsLoading: false,
       runtimeMetricsError: false, onOpenTasks: () => {}, onOpenAgent: () => {}, onAddAgent: () => {},
       executionHref: (record) => `#/workspace/workspace/session/${record.sessionId}`,
-      headerControls: createElement("button", {}, "Work method"),
       healthContent: createElement("p", {}, "Current progress summary"),
       footerContent: createElement("details", {}, "Acceptance conditions"),
     } satisfies Parameters<typeof ProjectDashboard>[0];
@@ -571,7 +570,6 @@ describe("conversation work, runtime metrics and tasks", () => {
     expect(countFor(t("project_overview.completed_tasks"))).toBe("1");
     expect(workerRow.textContent).toContain("Native live");
     expect(workerRow.hasAttribute("disabled")).toBe(false);
-    expect(html).toContain("Work method");
     expect(html).toContain("Acceptance conditions");
     const actualOnly = renderToStaticMarkup(createElement(ProjectDashboard, {
       ...dashboardProps,

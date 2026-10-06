@@ -4,17 +4,17 @@ Read the video type rules and `../motion-principles.md` first. This catalog rout
 
 | File | Pattern | Narrative job | Preferred registry implementations | Verification |
 | --- | --- | --- | --- | --- |
-| `progressive-build.md` | progressive-build | Explain how parts form a process, model, or conclusion | `checklist-reveal`, `sequence-diagram`, `process-cycle` | Source recipe checked; project playback required |
-| `focus-transfer.md` | focus-transfer | Discuss several subjects while preserving their relationship | `product-comparison-stage`, `split-screen` | Source recipe checked; project playback required |
-| `path-journey.md` | path-journey | Follow a route, timeline, dependency, or journey | `milestone-timeline`, `us-map-flow`, `process-handoff-map` | Source recipe checked; project playback required |
+| `progressive-build.md` | progressive-build | Explain how parts form a process, model, or conclusion | `shotcraft-card-stack` for eight real images, or an authored scene | Source recipe checked; project playback required |
+| `focus-transfer.md` | focus-transfer | Discuss several subjects while preserving their relationship | `split-screen`, `interface-state-board` | Source recipe checked; project playback required |
+| `path-journey.md` | path-journey | Follow a route, timeline, dependency, or journey | `us-map-flow`, `route-map`, or an authored procedural scene | Source recipe checked; project playback required |
 | `state-transformation.md` | state-transformation | Show an object, system, or situation changing | `media-before-after`, `ui-3d-reveal`, `code-particle-assemble` | Source recipe checked; project playback required |
-| `data-accumulation.md` | data-accumulation | Build evidence from values or measures | `bar-chart-race`, `waterfall-impact`, `chart-story` | Source recipe checked; project playback required |
+| `data-accumulation.md` | data-accumulation | Build evidence from values or measures | `location-pulse-map`, `territory-heat-map`, `us-map-bubble` | Source recipe checked; project playback required |
 | `asset-exploration.md` | asset-exploration | Explain an image, interface, document, or clip | `mobile-walkthrough`, `picture-in-picture`, `device-mockup` | Source recipe checked; project playback required |
-| `montage.md` | montage | Compress several distinct moments, assets, or viewpoints into one cumulative idea | `device-carousel`, `picture-in-picture`, `instagram-carousel` | Source recipe checked; project playback required |
+| `montage.md` | montage | Compress several distinct moments, assets, or viewpoints into one cumulative idea | `device-carousel`, `picture-in-picture` | Source recipe checked; project playback required |
 | `camera-journey.md` | camera-journey | Move through a space, route, interface, or image while preserving orientation | `mobile-walkthrough`, `screenshot-zoom`, `route-map` | Source recipe checked; project playback required |
-| `dialogue.md` | dialogue | Alternate speakers, questions, responses, or perspectives over time | `speaker-intro`, `split-screen`, `comment-thread` | Source recipe checked; project playback required |
-| `kinetic-type.md` | kinetic-type | Make spoken or written language itself carry the temporal story | `kinetic-keyword`, `narrative-hook`, `quote-pullout` | Source recipe checked; project playback required |
-| `audio-reactive.md` | audio-reactive | Bind visual changes to measured speech, music, or media events | `oscilloscope-trace`, `x-space`, `instagram-reel` | Real audio-event binding and project playback required |
+| `dialogue.md` | dialogue | Alternate speakers, questions, responses, or perspectives over time | `split-screen` or an authored conversation scene | Source recipe checked; project playback required |
+| `kinetic-type.md` | kinetic-type | Make spoken or written language itself carry the temporal story | Locally authored text scene | Source recipe checked; project playback required |
+| `audio-reactive.md` | audio-reactive | Bind visual changes to measured speech, music, or media events | Locally authored scene | Real audio-event binding and project playback required |
 
 ## Selection contract
 

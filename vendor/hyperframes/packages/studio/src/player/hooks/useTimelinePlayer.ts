@@ -109,6 +109,7 @@ export function useTimelinePlayer() {
             elements,
             state.duration,
             resolvedDuration,
+            iframeRef.current?.contentDocument,
           ),
         ),
       );
@@ -397,6 +398,9 @@ export function useTimelinePlayer() {
       }
       const duration = Math.max(0, adapter.getDuration());
       const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+      // A user seek during a staged refresh supersedes the position saved by
+      // the edit. The replacement iframe must restore this newer playhead.
+      if (isRefreshingRef.current) pendingSeekRef.current = nextTime;
       const keepPlaying = options?.keepPlaying === true;
       const shouldResumeAfterSeek = shouldResumeForwardPlaybackAfterSeek({
         keepPlaying,

@@ -76,10 +76,14 @@ export const mutateMotionArgsSchema = z.object({
   }
 });
 
+const ENGINE_BROWSER_ACTION_PARAMETERS = 'Use fill.value for replacement text and click.expectedName for the exact accessible name. Action examples (replace refs and content from the latest snapshot): {"type":"fill","ref":"@e1","value":"draft"}; {"type":"click","ref":"@e2","expectedName":"Preview"}.';
+
 export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
 External websites only; never control iPolloWork itself. Open with ipollowork_browser_open_url, read content with ipollowork_browser_read, and obtain actionable refs with ipollowork_browser_snapshot.
-Pages open in the background. Use ipollowork_browser_list_tabs to find this task's pages and control/decision state. When the user has control, stop input until they return control, then take a fresh snapshot. JEV is optional: if selected, call ipollowork_browser_decide with bounded candidate actions before acting; disabled or unavailable means use your normal reasoning. Never require JEV for browsing.
+Pages open in the background. Use ipollowork_browser_list_tabs to find this task's pages and control/decision state. When the user has control, stop input until they return control, then take a fresh snapshot. JEV is optional: if selected, call ipollowork_browser_decide with the entire goal, preferably omitting candidates so it selects an operation and compatible target from fresh observed controls. Optional candidates must be executable browser actions with type and observed ref/target; generic id/description decisions belong to the extension evaluate action. Disabled or unavailable means use your normal reasoning. Never require JEV for browsing.
+Execute a JEV recommendation once using its returned snapshotId through browser_act, then observe the result and include bounded recentActions in the next decision. For needs-text, derive the exact value with your current model from the goal, never invent personal data; re-observe after drafting and reuse text only when the goal/field/page context is unchanged. If the page changed, decide again. On stale, take a fresh snapshot and retry rather than execute an old recommendation. DONE is a suggestion: supply an independent text/URL expect postcondition for runtime verification and separately confirm every goal requirement. verification-required, verification-failed or blocked does not mean completion. Stop or rethink after three unchanged non-wait actions; bound the loop to 60 steps.
 Use ipollowork_browser_act only with latest snapshot refs; never invent refs. A unique exact role/name target is re-observed before each step so a bounded batch can continue across page changes. Use expect (text or URL) for business-result verification; executed alone does not prove success. Refresh after navigation, target changes or snapshotRequired. Prefer a bounded semantic action batch with observe; use structured waits instead of guessed coordinates or timing.
+${ENGINE_BROWSER_ACTION_PARAMETERS}
 Upload generated local files through the upload action with a file-input ref, or an upload-button ref plus exact expectedName. Never click the upload button first: the host handles the chooser without asking the user to select generated files.
 Use screenshots only when semantics are insufficient; bound them to a ref/region, annotate refs and use ifChanged to suppress duplicates.
 Publish/send/submit/pay/buy/confirm/delete or similar consequential controls require user approval for click, key or check; never retry after denial.`;
@@ -217,6 +221,45 @@ for (const action of [...browserActionSchema.oneOf]) {
     ...targetedProperties, target: browserTargetSchema,
   }, [...required.filter(field => field !== "ref" && field !== "expectedName"), "target"]));
 }
+
+const browserDecisionActionSchema = { oneOf: browserActionSchema.oneOf.map(action => ({ ...action,
+  properties: { ...(typeof action.properties === "object" && action.properties !== null ? action.properties : {}),
+    description: { type: "string", maxLength: 500, description: "Optional bounded explanation of why this actual browser action advances the goal." } },
+})) };
+
+// Validate the same bounded action parameter shapes advertised to the engine.
+function matchesBrowserActionParameter(value: unknown, schema: Record<string, unknown>): boolean {
+  if (Array.isArray(schema.oneOf)) return schema.oneOf.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .some(item => matchesBrowserActionParameter(value, item));
+  if (Object.hasOwn(schema, "const") && value !== schema.const) return false;
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return false;
+  if (schema.type === "string") return typeof value === "string" && (typeof schema.minLength !== "number" || value.length >= schema.minLength)
+    && (typeof schema.maxLength !== "number" || value.length <= schema.maxLength);
+  if (schema.type === "boolean") return typeof value === "boolean";
+  if (schema.type === "integer") return typeof value === "number" && Number.isSafeInteger(value)
+    && (typeof schema.minimum !== "number" || value >= schema.minimum) && (typeof schema.maximum !== "number" || value <= schema.maximum);
+  if (schema.type === "array") {
+    const items = schema.items;
+    return Array.isArray(value) && (typeof schema.minItems !== "number" || value.length >= schema.minItems)
+      && (typeof schema.maxItems !== "number" || value.length <= schema.maxItems)
+      && typeof items === "object" && items !== null && value.every(item => matchesBrowserActionParameter(item, Object.fromEntries(Object.entries(items))));
+  }
+  if (schema.type === "object") {
+    if (typeof value !== "object" || value === null || Array.isArray(value) || typeof schema.properties !== "object" || schema.properties === null) return false;
+    const fields = Object.fromEntries(Object.entries(schema.properties));
+    if (Array.isArray(schema.required) && schema.required.some(field => typeof field !== "string" || !Object.hasOwn(value, field))) return false;
+    return Object.entries(value).every(([field, item]) => {
+      const parameter = fields[field];
+      return typeof parameter === "object" && parameter !== null && matchesBrowserActionParameter(item, Object.fromEntries(Object.entries(parameter)));
+    });
+  }
+  return Object.hasOwn(schema, "const") || Array.isArray(schema.enum);
+}
+
+export const browserDecisionCandidatesSchema = z.array(z.custom<Record<string, unknown>>(
+  value => matchesBrowserActionParameter(value, browserDecisionActionSchema),
+  { message: "Candidate must satisfy the executable browser action contract." },
+)).min(2).max(32).optional();
 
 const browserExpectationSchema = objectParameters({
   condition: { type: "string", enum: ["text", "url"] },
@@ -402,11 +445,13 @@ ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.browserDecide,
-    description: "When the user selected JEV, choose among 2–32 proposed semantic actions using the connected JEV extension. Sends a fresh bounded page snapshot. Returns a recommendation for browser_act, never executes it. Disabled/unavailable falls back to normal agent reasoning without blocking browsing.",
+    description: "When the user selected JEV, choose an operation and compatible observed target in one connected JEV request. Omit candidates for dynamic page controls; optional candidates are 2–32 executable semantic browser actions, never generic id/description options. Re-observes and retries once on page changes. Returns snapshotId and an action for browser_act; needs-text delegates value generation to the current agent. DONE requires independent runtime expect verification; no recommended mutation is executed here. Disabled/unavailable falls back to normal agent reasoning.",
     parameters: objectParameters({
       tabId: { type: "string" }, goal: { type: "string", minLength: 1, maxLength: 2_000 },
-      candidates: { type: "array", minItems: 2, maxItems: 32, items: browserActionSchema },
-    }, ["tabId", "goal", "candidates"]),
+      candidates: { type: "array", minItems: 2, maxItems: 32, items: browserDecisionActionSchema },
+      recentActions: { type: "array", maxItems: 10, items: { type: "string", maxLength: 500 }, description: "Recent executed actions and observed outcomes; omit secrets and personal field values." },
+      expect: browserExpectationSchema,
+    }, ["tabId", "goal"]),
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.browserOpenUrl,
@@ -455,7 +500,7 @@ ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.browserAct,
-    description: "Execute one bounded semantic action batch against the latest snapshot: click, fill, scoped key activation, hover, select, check, scroll, upload, or bounded waits. Validates names, state, visibility, obstruction, and stale refs.",
+    description: `Execute one bounded semantic action batch against the latest snapshot: click, fill, scoped key activation, hover, select, check, scroll, upload, or bounded waits. Validates names, state, visibility, obstruction, and stale refs. ${ENGINE_BROWSER_ACTION_PARAMETERS}`,
     parameters: objectParameters({
       tabId: { type: "string", description: "Built-in browser tab ID." },
       snapshotId: { type: "string", description: "Latest snapshot ID returned for this tab." },

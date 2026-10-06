@@ -27,22 +27,8 @@ function item(name: string, category?: "maps"): CatalogItem {
 }
 
 describe("component catalog contract", () => {
-  it("keeps the thirteen clear component categories in one ordered contract", () => {
-    expect(COMPONENT_CATALOG_SECTIONS).toEqual([
-      "scene",
-      "product",
-      "data",
-      "diagrams",
-      "maps",
-      "proof",
-      "knowledge",
-      "people",
-      "typography",
-      "media",
-      "social",
-      "developer",
-      "brand",
-    ]);
+  it("keeps the retained component categories in one ordered contract", () => {
+    expect(COMPONENT_CATALOG_SECTIONS).toEqual(["maps", "media", "business"]);
   });
 
   it("only admits registry items with an explicit visual component category", () => {
@@ -50,13 +36,10 @@ describe("component catalog contract", () => {
     expect(resolveCatalogSection(item("ordinary-block"))).toBeNull();
   });
 
-  it("maps legacy version-one categories into the canonical taxonomy", () => {
-    expect(resolveCatalogSection({ visualComponent: { category: "intro" } })).toBe("scene");
-    expect(resolveCatalogSection({ visualComponent: { category: "outro" } })).toBe("scene");
-    expect(resolveCatalogSection({ visualComponent: { category: "flow" } })).toBe("diagrams");
-    expect(resolveCatalogSection({ visualComponent: { category: "compare" } })).toBe("proof");
+  it("maps the retained legacy interface category and rejects deleted categories", () => {
     expect(resolveCatalogSection({ visualComponent: { category: "interface" } })).toBe("media");
-    expect(resolveCatalogSection({ visualComponent: { category: "structured" } })).toBe("data");
-    expect(resolveCatalogSection({ visualComponent: { category: "commerce" } })).toBe("brand");
+    for (const category of ["intro", "outro", "flow", "compare", "structured", "commerce"]) {
+      expect(resolveCatalogSection({ visualComponent: { category } })).toBeNull();
+    }
   });
 });

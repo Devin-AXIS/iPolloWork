@@ -151,6 +151,7 @@ declare global {
           tabId: string;
           taskId?: string;
           imageSelector?: string;
+          includeControls?: boolean;
           mode?: "content" | "interactive" | "mixed";
           scopeRef?: string;
           delta?: boolean;
@@ -168,6 +169,7 @@ declare global {
           delta?: { fromLine: number; removed: number; added: string[] };
           imageUrl?: string | null;
           elementCount: number;
+          controls?: Array<{ ref: string; role: string; name: string; operations: string[]; value?: string; checked?: boolean | string; disabled?: boolean; expanded?: boolean; selected?: boolean; options?: Array<{ label: string; value: string }> }>;
           truncated: boolean;
           metrics: { elapsedMs: number; characters: number; fullCharacters: number; savedCharacters: number };
         }>;

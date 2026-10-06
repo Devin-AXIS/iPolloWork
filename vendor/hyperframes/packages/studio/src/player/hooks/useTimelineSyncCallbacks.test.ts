@@ -87,18 +87,21 @@ function mountInitializationHarness(input: {
 
 function mountTimelinePlayerHarness() {
   let saveSeekPosition: (() => void) | null = null;
+  let player: ReturnType<typeof useTimelinePlayer> | null = null;
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
 
   function Harness() {
-    saveSeekPosition = useTimelinePlayer().saveSeekPosition;
+    player = useTimelinePlayer();
+    saveSeekPosition = player.saveSeekPosition;
     return null;
   }
 
   flushSync(() => root.render(createElement(Harness)));
-  if (!saveSeekPosition) throw new Error("Timeline player callback missing");
+  if (!saveSeekPosition || !player) throw new Error("Timeline player callback missing");
   return {
+    ...player,
     saveSeekPosition,
     unmount: () => {
       flushSync(() => root.unmount());
@@ -212,6 +215,37 @@ describe("timeline adapter initialization", () => {
 });
 
 describe("playback refresh races", () => {
+  it("restores a seek made while an edited preview is still loading", () => {
+    const visibleFrame = document.createElement("iframe");
+    const replacementFrame = document.createElement("iframe");
+    document.body.append(visibleFrame, replacementFrame);
+    let visibleTime = 17.27;
+    const nextSeek = vi.fn();
+    const adapter: PlaybackAdapter = {
+      play: vi.fn(), pause: vi.fn(),
+      seek: (time) => { visibleTime = time; },
+      getTime: () => visibleTime, getDuration: () => 21.3, isPlaying: () => false,
+    };
+    Object.defineProperty(visibleFrame.contentWindow, "__player", { value: adapter });
+    Object.defineProperty(replacementFrame.contentWindow, "__player", {
+      value: { ...adapter, seek: nextSeek, getTime: () => 0 },
+    });
+    usePlayerStore.setState({ currentTime: visibleTime, duration: 21.3 });
+    const harness = mountTimelinePlayerHarness();
+    harness.iframeRef.current = visibleFrame;
+    harness.saveSeekPosition();
+    expect(harness.seek(3.219)).toBe(true);
+    expect(usePlayerStore.getState().currentTime).toBe(3.219);
+    harness.saveSeekPosition();
+
+    harness.iframeRef.current = replacementFrame;
+    harness.onIframeLoad();
+
+    expect(nextSeek).toHaveBeenLastCalledWith(3.219, undefined);
+    expect(usePlayerStore.getState().currentTime).toBe(3.219);
+    harness.unmount(); visibleFrame.remove(); replacementFrame.remove();
+  });
+
   it("preserves user playback intent while a staged refresh is loading", () => {
     usePlayerStore.setState({ isPlaying: true, currentTime: 1.25, duration: 12 });
     const harness = mountTimelinePlayerHarness();

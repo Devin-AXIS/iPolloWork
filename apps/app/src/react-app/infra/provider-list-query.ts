@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-query";
 import {
   OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
+  isOpenCodeZenPublicModel,
+  openCodeZenPublicModelName,
   openCodeZenPublicModels,
 } from "@ipollowork/types/opencode-zen-public-models";
 import {
@@ -55,6 +57,16 @@ export type ConnectedProviderSnapshotChange = {
 const connectedProviderSnapshots = new Map<string, ConnectedProviderSnapshot>();
 const connectedProviderSnapshotChanges = new Map<string, ConnectedProviderSnapshotChange>();
 const MAX_CONNECTED_PROVIDER_SNAPSHOTS = 100;
+
+function isFreeOpenCodeChatModel(model: ProviderModel): boolean {
+  const cost = model.cost;
+  if (!cost || model.status === "deprecated" || model.capabilities.toolcall !== true
+    || model.capabilities.input?.text === false || model.capabilities.output?.text === false) return false;
+  if (openCodeZenPublicModelName(model.id) && !isOpenCodeZenPublicModel(model.id)) return false;
+  return [cost, ...(cost.tiers ?? []), ...(cost.experimentalOver200K ? [cost.experimentalOver200K] : [])]
+    .every((rate) => rate.input === 0 && rate.output === 0
+      && rate.cache?.read === 0 && rate.cache?.write === 0);
+}
 
 function positiveContextWindow(model: ProviderModel | null | undefined): number | null {
   const value = model?.contextWindow ?? model?.limit?.context;
@@ -198,7 +210,7 @@ export function projectKnownProviderModels(
   value: ProviderListResponse,
 ): ProviderListResponse {
   let changed = false;
-  let foundOpenCode = false;
+  const defaults = { ...value.default };
   const all = value.all.map((provider) => {
     if (provider.id === DEEPSEEK_OFFICIAL_PROVIDER_ID) {
       changed = true;
@@ -221,9 +233,11 @@ export function projectKnownProviderModels(
     }
     if (provider.id !== "opencode") return provider;
     changed = true;
-    foundOpenCode = true;
-    const models = Object.fromEntries(openCodeZenPublicModels().map((profile) => {
-      const discovered = provider.models[profile.id];
+    const profiles = new Map(openCodeZenPublicModels().map((profile) => [profile.id, profile]));
+    const models = Object.fromEntries(Object.entries(provider.models).flatMap(([modelId, discovered]) => {
+      if (!isFreeOpenCodeChatModel(discovered)) return [];
+      const profile = profiles.get(modelId);
+      if (!profile) return [[modelId, discovered]];
       const fallback: ProviderModel = {
         ...profile,
         capabilities: {
@@ -234,22 +248,23 @@ export function projectKnownProviderModels(
           output: { text: true },
         },
       };
-      return [profile.id, discovered
-        ? supplementProviderModel({ ...discovered, name: profile.name }, fallback)
-        : fallback];
+      return [[modelId, supplementProviderModel({ ...discovered, name: profile.name }, fallback)]];
     }));
+    const defaultModel = value.default.opencode;
+    const defaultId = defaultModel && models[defaultModel]
+      ? defaultModel
+      : models[OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID]
+        ? OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID
+        : Object.keys(models)[0];
+    if (defaultId) defaults.opencode = defaultId;
+    else delete defaults.opencode;
     return { ...provider, models };
   });
   return changed
     ? {
         ...value,
         all,
-        default: foundOpenCode
-          ? {
-              ...value.default,
-              opencode: OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
-            }
-          : value.default,
+        default: defaults,
       }
     : value;
 }
@@ -528,7 +543,18 @@ export function getEngineChatModelEntries(input: {
   engineId?: string | null;
 }): RunnableChatModelEntry[] {
   if (!input.runtime) return [];
-  return getChatModelCatalogEntries(input.catalog, input.engineId).flatMap(({ provider, modelId, model }) => {
+  const entries = getChatModelCatalogEntries(input.catalog, input.engineId);
+  // Public OpenCode models need no shared account credentials. Its live free
+  // directory can become usable before the account control plane finishes loading.
+  if ((input.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID) {
+    for (const entry of getChatModelCatalogEntries(input.runtime, input.engineId)) {
+      if (entry.provider.id === "opencode" && isFreeOpenCodeChatModel(entry.model)
+        && !entries.some(({ provider, modelId }) => provider.id === "opencode" && modelId === entry.modelId)) {
+        entries.push(entry);
+      }
+    }
+  }
+  return entries.flatMap(({ provider, modelId, model }) => {
     const runtime = resolveModelRuntime(
       input.runtime,
       { providerID: provider.id, modelID: modelId },
@@ -556,22 +582,27 @@ export function getRunnableChatModelEntries(input: {
 }
 
 /**
- * Group the account-owned model directory after intersecting it with the
- * active engine runtime. Runtime-native catalog entries never enter this
- * snapshot, so saved selection and picker options share the same boundary.
+ * Group account models executable by the active engine, plus that engine's
+ * built-in OpenCode free models that need no account credentials.
  */
 export function getRunnableChatModelSnapshot(input: {
   catalog: ProviderListResponse | null | undefined;
   runtime: ProviderListResponse | null | undefined;
   engineId?: string | null;
 }): SelectableChatModelSnapshot {
-  const modelIdsByProvider = new Map<string, string[]>();
+  const snapshotsByProvider = new Map<string, SelectableChatModelSnapshot[number]>();
+  const runtimeProviders = new Map(input.runtime?.all.map((provider) => [provider.id, provider]));
   for (const { provider, modelId } of getRunnableChatModelEntries(input)) {
-    const modelIds = modelIdsByProvider.get(provider.id) ?? [];
-    modelIds.push(modelId);
-    modelIdsByProvider.set(provider.id, modelIds);
+    const snapshot = snapshotsByProvider.get(provider.id) ?? { providerID: provider.id, modelIDs: [] };
+    snapshot.modelIDs.push(modelId);
+    const runtimeModel = runtimeProviders.get(provider.id)?.models[modelId];
+    if (provider.id === "opencode" && runtimeModel && isFreeOpenCodeChatModel(runtimeModel)) {
+      snapshot.freeModelIDs ??= [];
+      snapshot.freeModelIDs.push(modelId);
+    }
+    snapshotsByProvider.set(provider.id, snapshot);
   }
-  return [...modelIdsByProvider].map(([providerID, modelIDs]) => ({ providerID, modelIDs }));
+  return [...snapshotsByProvider.values()];
 }
 
 /** True once an engine directory has positively advertised this model. */

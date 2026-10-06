@@ -24,26 +24,11 @@ export interface CatalogSection {
 export const COMPONENT_CATALOG_SECTIONS = VISUAL_COMPONENT_CATEGORIES;
 
 const SECTION_SEARCH_TERMS: Record<CatalogSectionId, string> = {
-  scene: "scene intro opening outro ending title cta 开场 片头 收尾 结尾 片尾 行动",
-  product: "product feature spotlight demo showcase 产品 功能 亮点 展示",
-  data:
-    "data chart metrics structured ranking matrix dashboard table 数据 图表 指标 结构 排名 矩阵 仪表盘 表格",
-  diagrams:
-    "diagram architecture framework flow process timeline roadmap cycle 图解 架构 流程 时间线 路线图 循环",
   maps: "map route location geography flow 地图 路径 路线 地理 流向",
-  proof:
-    "proof evidence source testimonial compare before after rating 证据 背书 评价 对比 前后 评分",
-  knowledge: "knowledge education explain 知识 教育 讲解",
-  people: "people profile quote team 人物 团队 观点 引用",
-  typography:
-    "typography text lower third chapter bullet quote label 文字 标注 字幕 章节 列表 引语",
   media:
     "media image video split screen device mockup interface ui browser mobile walkthrough cursor 媒体 图片 视频 分屏 样机 界面 浏览器 手机 演示",
-  social:
-    "social media post comment follow creator instagram x douyin xiaohongshu 社交媒体 帖子 评论 关注 创作者 抖音 小红书",
-  developer: "developer code terminal diff api demo 代码演示 代码 终端 差异 接口",
-  brand:
-    "brand marketing commerce logo palette campaign identity pricing offer sale 品牌 营销 商业 标志 色板 活动 定价 报价 促销",
+  business:
+    "business diagram mindmap timeline architecture framework strategy launch keynote 商业图库 商业 图表 思维导图 时间线 架构 框架 战略 发布会",
 };
 
 let catalogCache: CatalogItem[] | null = null;

@@ -981,7 +981,13 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       tab.controlEpoch += 1;
       browserRuntime.invalidate(tabId);
       tab.activity = { status: controller === "human" ? "paused" : "idle", actionCount: 0 };
-      sendBrowserState();
+      tab.view.webContents.send("ipollowork:browser:cursor", null);
+      if (controller === "human") {
+        focusBrowserWindow();
+        selectBrowserTab(tabId);
+        sendToRenderer("ipollowork:browser:panel-opened", { sessionId: tab.taskId, tabId });
+        tab.view.webContents.focus();
+      } else sendBrowserState();
       return browserTabToPanelTab(tabId, tab);
     });
     ipcMain.handle("ipollowork:browser:setDecisionEngine", (_event, tabId, engine) => {

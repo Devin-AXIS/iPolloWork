@@ -73,6 +73,12 @@ function isManifest(value: unknown): value is BlockItem {
       || !Array.isArray(data.columns) || !data.columns.length || !data.columns.every(column => object(column) && text(column.id) && text(column.label)
         && (column.labelZh === undefined || typeof column.labelZh === "string")
         && (column.format === undefined || column.format === "image")
+        && [column.min, column.max].every(bound => bound === undefined || (typeof bound === "number" && Number.isFinite(bound)))
+        && (column.type === "number" || (column.min === undefined && column.max === undefined))
+        && !(typeof column.min === "number" && typeof column.max === "number" && column.min > column.max)
+        && (column.maxLength === undefined || (Number.isInteger(column.maxLength) && Number(column.maxLength) > 0))
+        && (column.list === undefined || (object(column.list) && Number.isInteger(column.list.maxItems) && Number(column.list.maxItems) > 0
+          && Number.isInteger(column.list.itemMaxLength) && Number(column.list.itemMaxLength) > 0 && text(column.list.separators)))
         && ["string", "number"].includes(String(column.type)) && ["id", "label", "value", "source", "target"].includes(String(column.role))
         && (column.options === undefined || (Array.isArray(column.options) && column.options.every(option => object(option) && text(option.value) && text(option.label)))))) return false;
   }

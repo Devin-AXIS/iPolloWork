@@ -50,6 +50,20 @@ function remoteWorkspace(id: string): WorkspaceInfo {
 }
 
 describe("route workspaces", () => {
+  test("request deadlines and network failures do not claim the engine is unavailable", () => {
+    for (const message of ["Request timed out.", "请求超时，请稍后重试。", "ETIMEDOUT"]) {
+      expect(describeWorkspaceUnavailableTitle({ message, engineId: "opencode" })).toBe("Request timed out");
+    }
+    expect(describeWorkspaceUnavailableTitle({ message: "Failed to fetch", engineId: "opencode" }))
+      .toBe("Connection interrupted");
+    expect(describeWorkspaceUnavailableTitle({ message: "permission denied", engineId: "opencode" }))
+      .toBe("Workspace request failed");
+    expect(describeWorkspaceUnavailableTitle({ message: "OpenCode engine is not reachable", engineId: "opencode" }))
+      .toBe("OpenCode unavailable");
+    expect(describeWorkspaceUnavailableTitle({ message: "model not found", engineId: "opencode" }))
+      .toBe("Model unavailable");
+  });
+
   test("attributes launch failures to the selected workspace engine", () => {
     expect(describeWorkspaceUnavailableTitle({
       message: "spawn EPERM",

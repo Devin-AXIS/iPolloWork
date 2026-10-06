@@ -2,12 +2,17 @@ import { initSandboxRuntimeModular } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { getVariables } from "./getVariables";
+import { onVariablesChange, updateVariables } from "./applyVariableBindings";
+import { parseVisualComponentData } from "../registry/componentData";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
   __hyperframes?: {
     fitTextFontSize: typeof fitTextFontSize;
     getVariables: typeof getVariables;
+    onVariablesChange: typeof onVariablesChange;
+    updateVariables: typeof updateVariables;
+    parseVisualComponentData: typeof parseVisualComponentData;
   };
 };
 
@@ -26,6 +31,9 @@ installAuthoredOpacityCapture();
 (window as HyperframeWindow).__hyperframes = {
   fitTextFontSize,
   getVariables,
+  onVariablesChange,
+  updateVariables,
+  parseVisualComponentData,
 };
 
 function bootstrapHyperframeRuntime(): void {

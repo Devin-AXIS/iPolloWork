@@ -1,7 +1,6 @@
 /**
  * Declarative variable bindings — the no-script consumption channel for
- * composition variables (values are fixed for the page's lifetime, so this is
- * seek-safe and deterministic):
+ * composition variables (including scoped live updates):
  *
  * - `data-var-src="id"` — sets the element's `src` from the variable value
  *   (a URL string or an image value `{url}`). Only allowed on media elements
@@ -27,8 +26,8 @@
  * values.
  */
 
-import { readVariablesForElement } from "./variableScope";
-import { isScalarVariableValue as isScalar } from "@hyperframes/parsers/composition";
+import { findVariableScope, readVariablesForElement } from "./variableScope";
+import { resolveTextVariableBinding, isScalarVariableValue as isScalar } from "@hyperframes/parsers/composition";
 
 // data-var-src only rebinds media `src` on media elements. A user-controlled
 // variable value assigned to a src is an XSS surface on tags whose src executes
@@ -100,7 +99,7 @@ function cssValueFor(value: unknown): string | null {
 type ScopeValuesCache = Map<Element | null, Record<string, unknown>>;
 
 function valuesForElement(el: Element, cache: ScopeValuesCache): Record<string, unknown> {
-  const scope = el.closest("[data-composition-id]");
+  const scope = findVariableScope(el);
   const cached = cache.get(scope);
   if (cached) return cached;
   const values = readVariablesForElement(el);
@@ -215,13 +214,13 @@ function findTopRoot(doc: Document): Element | null {
   );
 }
 
-function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache): void {
+function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache, scope?: Element): void {
   // Top-level root plus every inlined sub-composition root; custom props
   // inherit, so descendants of each root see its scope's values.
   const roots = new Set<Element>();
-  const topRoot = findTopRoot(doc);
+  const topRoot = scope ?? findTopRoot(doc);
   if (topRoot) roots.add(topRoot);
-  for (const el of Array.from(doc.querySelectorAll("[data-composition-id]"))) {
+  for (const el of Array.from((scope ?? doc).querySelectorAll("[data-composition-id]"))) {
     roots.add(el);
   }
   for (const root of roots) {
@@ -235,11 +234,11 @@ function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache): void 
   }
 }
 
-export function applyVariableBindings(doc: Document): void {
+export function applyVariableBindings(doc: Document, scope?: Element): void {
   const cache: ScopeValuesCache = new Map();
-  applyCssCustomProperties(doc, cache);
+  applyCssCustomProperties(doc, cache, scope);
 
-  for (const el of Array.from(doc.querySelectorAll("[data-var-src]"))) {
+  for (const el of Array.from((scope ?? doc).querySelectorAll("[data-var-src]"))) {
     const id = el.getAttribute("data-var-src")?.trim();
     if (!id) continue;
     // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
@@ -259,10 +258,50 @@ export function applyVariableBindings(doc: Document): void {
     el.setAttribute("src", url);
   }
 
-  for (const el of Array.from(doc.querySelectorAll("[data-var-text]"))) {
+  for (const el of Array.from((scope ?? doc).querySelectorAll("[data-var-text]"))) {
     const id = el.getAttribute("data-var-text")?.trim();
     if (!id) continue;
-    const value = valuesForElement(el, cache)[id];
+    const value = resolveTextVariableBinding(id, valuesForElement(el, cache));
     if (isScalar(value)) setVariableBoundText(el, String(value));
   }
+}
+
+// Composition authors subscribe to this shared binding transaction for native
+// geometry updates. Validation runs before DOM bindings or persistence.
+const variableListeners = new WeakMap<Element, Set<(values: Record<string, unknown>) => void>>();
+
+export function onVariablesChange(root: Element, listener: (values: Record<string, unknown>) => void): () => void {
+  const listeners = variableListeners.get(root) ?? new Set();
+  listeners.add(listener);
+  variableListeners.set(root, listeners);
+  return () => listeners.delete(listener);
+}
+
+export function updateVariables(root: Element, patch: Record<string, unknown>): boolean {
+  const scope = findVariableScope(root) ?? root;
+  const bound = [root, ...Array.from(root.querySelectorAll("[data-var-text], [data-var-src]"))];
+  const listeners = variableListeners.get(root);
+  const bindingIds = new Set(bound.flatMap((el) => [el.getAttribute("data-var-text"), el.getAttribute("data-var-src")]).filter((id): id is string => Boolean(id)).map((id) => id.startsWith("/") ? id.split("/")[1]?.replace(/~1/g, "/").replace(/~0/g, "~") : id));
+  if (!listeners?.size && Object.keys(patch).some((id) => !bindingIds.has(id))) return false;
+  const previous = readVariablesForElement(root);
+  const next = { ...previous, ...patch };
+  const win = (root.ownerDocument.defaultView ?? window) as Window & {
+    __hfVariablesByComp?: Record<string, Record<string, unknown>>;
+    __hfVariables?: Record<string, unknown>;
+  };
+  const id = scope.getAttribute("data-composition-id");
+  if (!id) return false;
+  const bank = win.__hfVariablesByComp ??= {};
+  const oldEntry = bank[id];
+  bank[id] = next;
+  try {
+    for (const listener of listeners ?? []) listener(next);
+    applyVariableBindings(root.ownerDocument, root);
+  } catch (error) {
+    if (oldEntry) bank[id] = oldEntry; else delete bank[id];
+    for (const listener of listeners ?? []) listener(previous);
+    applyVariableBindings(root.ownerDocument, root);
+    throw error;
+  }
+  return true;
 }

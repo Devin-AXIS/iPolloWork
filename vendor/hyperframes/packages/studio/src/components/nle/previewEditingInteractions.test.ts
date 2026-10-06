@@ -373,7 +373,7 @@ describe("preview editing interactions", () => {
     expect(selectionSource).toContain('targetElement.closest<HTMLElement>("[data-hf-group]")');
     expect(selectionSource).toContain("activeGroupElement: owningGroup");
     expect(selectionSource).toContain(
-      'const owningGroup = target.closest<HTMLElement>("[data-hf-group]")',
+      'const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]")',
     );
   });
 

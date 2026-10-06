@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { conversationWorkflowSchema, projectSessionExecutionRuntimeSchema, workTemplateSchema } from "@ipollowork/types/work-items";
 
-import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES, ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
+import { browserDecisionCandidatesSchema, consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES, ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { installPluginPackage } from "./plugin-package-lifecycle.js";
 import { startServer } from "./server.js";
@@ -54,6 +54,17 @@ test("browser host scopes shared account tabs to the calling task", () => {
   expect(engineBrowserTaskId({ sessionId: "session-a", workspaceId: "ws_1" })).toBe("session-a");
   expect(engineBrowserTaskId({ workspaceId: "ws_1" })).toBe("ws_1");
   expect(engineBrowserTaskId({ sessionId: "../escape", workspaceId: "ws_1" })).toBe("ws_1");
+});
+
+test("browser decision candidates require complete executable actions before provider transport", () => {
+  const click = { type: "click", ref: "@e1", expectedName: "Preview" };
+  for (const incomplete of [
+    { id: "nextjs", description: "Next.js" }, { type: "fill", ref: "@e1" }, { type: "press" }, { type: "wait" },
+    { type: "select", ref: "@e1", expectedName: "Role" }, { type: "check", ref: "@e1", expectedName: "Option" },
+    { type: "upload", ref: "@e1" }, { type: "scroll", direction: "down" }, { type: "waitFor", condition: "text" },
+  ]) expect(browserDecisionCandidatesSchema.safeParse([click, incomplete]).success).toBe(false);
+  expect(browserDecisionCandidatesSchema.safeParse([click, { type: "fill", ref: "@e1", value: "" }]).success).toBe(true);
+  expect(browserDecisionCandidatesSchema.safeParse(undefined).success).toBe(true);
 });
 
 test("engine MCP calls prefer native task metadata and otherwise use the host prompt context", () => {
@@ -300,23 +311,38 @@ describe("extension and engine host tool gating", () => {
     const root = config.workspaces[0].path;
     const packageRoot = join(root, "jev-package");
     await mkdir(join(packageRoot, "service"), { recursive: true });
+    await copyFile(new URL("../../../examples/plugin-packages/jev-decision-model/service/jev.mjs", import.meta.url), join(packageRoot, "service/jev.mjs"));
     await writeFile(join(packageRoot, "service/decision.mjs"), `
+      import { createJevActions } from './jev.mjs';
       export default async function () {
         Reflect.set(globalThis, 'browser-jev-test-loads', Number(Reflect.get(globalThis, 'browser-jev-test-loads') || 0) + 1);
-        return { actions: { evaluate: async args => {
+        return createJevActions({ getApiKey: () => 'fixture-only-key', fetcher: async (url, options) => {
+          if (url !== 'https://api.typesafe.ai/v1/systemone') throw new Error('Unexpected endpoint');
+          const args = JSON.parse(options.body);
           Reflect.set(globalThis, 'browser-jev-test-input', args);
+          const calls = Reflect.get(globalThis, 'browser-jev-test-inputs') || [];
+          calls.push(args); Reflect.set(globalThis, 'browser-jev-test-inputs', calls);
           const hook = Reflect.get(globalThis, 'browser-jev-test-hook');
           if (typeof hook === 'function') await hook();
           if (args.state.goal.startsWith('fail')) throw new Error('offline');
-          return { answers: { action: { choice: 'a1', confidence: 0.9 } } };
-        } } };
+          const answers = Object.fromEntries(Object.entries(args.questions).map(([id, question]) => {
+            const ids = Object.keys(question.criteria);
+            const operation = args.state.goal.startsWith('text') ? 'TYPE_TEXT' : args.state.goal.startsWith('select') ? 'SELECT'
+              : args.state.goal.startsWith('done') ? 'DONE' : 'CLICK';
+            const choice = id === 'action' ? 'a1' : id === 'operation' ? operation : id === 'click_target' ? '@e1' : ids.at(-1);
+            return [id, { type: 'choice', choice, confidence: 0.9,
+              probabilities: Object.fromEntries([...ids].reverse().map(key => [key, key === choice ? 1 : 0])) }];
+          }));
+          if (args.state.goal === 'contradictory-choice') answers.operation.choice = 'BLOCKED';
+          return Response.json({ model: 'jev-fixture', usage: { input_tokens: 40, output_tokens: 12 }, answers });
+        } });
       }
     `);
     await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
       schemaVersion: 2, id: "jev-decision-model", name: "JEV test adapter", description: "Offline transport fixture, no model request",
       source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
       package: { version: "1.0.0", updateId: "fixture/browser-jev" }, defaultEnabled: true,
-      resources: [{ type: "local-service", id: "decision", path: "service/decision.mjs", provides: ["action:evaluate"],
+      resources: [{ type: "file", id: "jev-client", path: "service/jev.mjs", required: true }, { type: "local-service", id: "decision", path: "service/decision.mjs", provides: ["action:evaluate"],
         actions: [{ id: "evaluate", title: "Choose", description: "Fixture decision", inputSchema: { type: "object", additionalProperties: true } }],
       }],
     }));
@@ -326,6 +352,16 @@ describe("extension and engine host tool gating", () => {
     let closed = false;
     let reportFails = false;
     let listFails = false;
+    let revision = 0;
+    let serial = 0;
+    let verificationFails = false;
+    const controls = [
+      { ref: "@e1", role: "link", name: "Next.js guide", operations: ["click"] },
+      { ref: "@e2", role: "link", name: "Tic Tac Toe", operations: ["click"] },
+      { ref: "@e3", role: "textbox", name: "Title", value: "", operations: ["fill"] },
+      { ref: "@e4", role: "textbox", name: "Summary", value: "", operations: ["fill"] },
+      { ref: "@e5", role: "combobox", name: "Role", value: "Writer", operations: ["select"], options: [{ label: "Writer", value: "writer" }, { label: "Reviewer", value: "reviewer" }] },
+    ];
     const requests: Array<Record<string, unknown>> = [];
     const bridge = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
       const body: unknown = await request.json();
@@ -334,7 +370,10 @@ describe("extension and engine host tool gating", () => {
       if (record.actionId === "browser.list_tabs") return listFails
         ? Response.json({ ok: false, error: "fixture state unavailable" })
         : Response.json({ ok: true, result: { tabs: closed ? [] : [{ id: "tab-1", controller, decisionEngine: engine }] } });
-      if (record.actionId === "browser.snapshot") return Response.json({ ok: true, result: { snapshotId: "s1", tree: '@e1 button "Preview"' } });
+      if (record.actionId === "browser.snapshot") return Response.json({ ok: true, result: { snapshotId: `s${++serial}`, url: "https://example.test/docs", title: "Docs", tree: `Next.js guide; revision ${revision}`,
+        ...(record.args && Reflect.get(record.args, "includeControls") === true ? { controls } : {}) } });
+      if (record.actionId === "browser.act") return Response.json({ ok: true, result: { ok: true, status: verificationFails ? "executed" : "verified", verification: { condition: "text" },
+        observation: { snapshotId: `s${++serial}`, tree: "Next.js guide" } } });
       if (record.actionId === "browser.report_decision" && reportFails) return Response.json({ ok: false, error: "fixture report unavailable" });
       return Response.json({ ok: true, result: {} });
     } });
@@ -347,14 +386,15 @@ describe("extension and engine host tool gating", () => {
       { type: "click", target: { role: "button", name: "Preview" } },
       { type: "fill", target: { role: "textbox", name: "Title" }, value: "draft" },
     ];
-    const call = async (goal: string, proposed = candidates) => {
+    const callArgs = async (args: Record<string, unknown>) => {
       const response = await fetch(`${base}/engine-tools/call`, { method: "POST", headers: clientJsonHeaders(),
-        body: JSON.stringify({ name: ENGINE_HOST_TOOL_NAMES.browserDecide, args: { tabId: "tab-1", goal, candidates: proposed }, context: { workspaceId: "ws_1", sessionId: "task-a" } }),
+        body: JSON.stringify({ name: ENGINE_HOST_TOOL_NAMES.browserDecide, args: { tabId: "tab-1", ...args }, context: { workspaceId: "ws_1", sessionId: "task-a" } }),
       });
       expect(response.status).toBe(200);
       const body: unknown = await response.json();
-      return z.object({ engine: z.string(), status: z.string(), action: z.unknown().optional() }).parse(body);
+      return z.object({ engine: z.string(), status: z.string(), action: z.unknown().optional(), snapshotId: z.string().optional(), operation: z.string().optional(), model: z.string().optional(), usage: z.unknown().optional() }).parse(body);
     };
+    const call = (goal: string, proposed = candidates) => callArgs({ goal, candidates: proposed });
     try {
       const scopedCall = (name: string, context: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
         method: "POST", headers: clientJsonHeaders(), body: JSON.stringify({ name, context,
@@ -379,10 +419,45 @@ describe("extension and engine host tool gating", () => {
       expect(requests.some(request => request.actionId === "browser.snapshot")).toBe(false);
       engine = "jev";
       const selected = await call("preview");
+      expect(Reflect.get(globalThis, "browser-jev-test-loads")).toBe(1);
       expect(selected.engine).toBe("jev");
       expect(selected.action).toEqual(candidates[1]);
       expect(Reflect.get(globalThis, "browser-jev-test-loads")).toBe(1);
       expect(requests.every(request => !request.args || Reflect.get(request.args, "taskId") === "task-a")).toBe(true);
+      const invalid = await fetch(`${base}/engine-tools/call`, { method: "POST", headers: clientJsonHeaders(), body: JSON.stringify({ name: ENGINE_HOST_TOOL_NAMES.browserDecide,
+        args: { tabId: "tab-1", goal: "Open the Next.js guide", candidates: [{ id: "nextjs", description: "Next.js guide" }, { id: "tutorial", description: "Tic Tac Toe" }] },
+        context: { sessionId: "task-a" } }) });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toMatchObject({ code: "invalid_browser_decision" });
+      const described = [{ ...candidates[0], description: "Preview the current draft" }, { ...candidates[1], description: "Set the draft title" }];
+      expect((await call("choose an action", described)).action).toEqual(described[1]);
+      expect(JSON.stringify(Reflect.get(globalThis, "browser-jev-test-input"))).toContain("Set the draft title");
+
+      const dynamic = await callArgs({ goal: "Open the Next.js guide", recentActions: ["Opened the documentation; no result opened yet"] });
+      expect(dynamic).toMatchObject({ engine: "jev", status: "ready", operation: "CLICK", snapshotId: `s${serial}`, model: "jev-fixture", usage: { input_tokens: 40, output_tokens: 12 },
+        action: { type: "click", ref: "@e1", expectedName: "Next.js guide" } });
+      const remote = z.object({ questions: z.record(z.string(), z.unknown()), state: z.object({ recent_actions: z.array(z.string()) }) }).parse(Reflect.get(globalThis, "browser-jev-test-input"));
+      expect(Object.keys(remote.questions)).toEqual(["operation", "click_target", "type_text_target", "select_target"]);
+      expect(remote.state.recent_actions).toEqual(["Opened the documentation; no result opened yet"]);
+      expect(await callArgs({ goal: "text: set a summary from the goal" })).toMatchObject({ status: "needs-text", operation: "TYPE_TEXT", action: { type: "fill", ref: "@e4" } });
+      expect(await callArgs({ goal: "select Reviewer" })).toMatchObject({ status: "ready", operation: "SELECT", action: { type: "select", ref: "@e5", expectedName: "Role", option: "Reviewer" } });
+      expect(await callArgs({ goal: "contradictory-choice" })).toMatchObject({ engine: "agent", status: "unavailable" });
+      const previous = z.array(z.unknown()).parse(Reflect.get(globalThis, "browser-jev-test-inputs")).length;
+      let changedOnce = false;
+      Reflect.set(globalThis, "browser-jev-test-hook", () => { if (!changedOnce) { changedOnce = true; revision += 1; } });
+      expect(await callArgs({ goal: "Open the Next.js guide after a page change" })).toMatchObject({ status: "ready", snapshotId: `s${serial}` });
+      expect(z.array(z.unknown()).parse(Reflect.get(globalThis, "browser-jev-test-inputs"))).toHaveLength(previous + 2);
+      Reflect.set(globalThis, "browser-jev-test-hook", () => { revision += 1; });
+      expect(await callArgs({ goal: "Open the Next.js guide on an unstable page" })).toMatchObject({ status: "stale" });
+      Reflect.deleteProperty(globalThis, "browser-jev-test-hook");
+      const beforeDone = requests.filter(request => request.actionId === "browser.act").length;
+      expect(await callArgs({ goal: "done: Next.js guide is visible" })).toMatchObject({ status: "verification-required" });
+      expect(requests.filter(request => request.actionId === "browser.act")).toHaveLength(beforeDone);
+      expect(await callArgs({ goal: "done: Next.js guide is visible", expect: { condition: "text", value: "Next.js guide" } })).toMatchObject({ status: "verified" });
+      expect(requests.at(-1)).toMatchObject({ actionId: "browser.act", args: { taskId: "task-a", actions: [{ type: "wait", durationMs: 0 }], expect: { condition: "text", value: "Next.js guide" } } });
+      verificationFails = true;
+      expect(await callArgs({ goal: "done: not proven", expect: { condition: "text", value: "Missing proof" } })).toMatchObject({ status: "verification-failed" });
+      verificationFails = false;
       const fallback = await call("fail");
       expect(fallback.engine).toBe("agent");
       expect(fallback.status).toBe("unavailable");
@@ -391,13 +466,13 @@ describe("extension and engine host tool gating", () => {
       const privateCandidates = [
         { type: "upload", target: { role: "button", name: "Upload file" }, filePaths: ["/private/account/secret.csv"], extensionId: "private-account" },
         { type: "fill", target: { role: "textbox", name: "Password" }, value: "fixture-secret-password" },
-        { type: "press", key: "fixture-secret-key-text", ref: "@e1", expectedName: "Preview", text: "fixture-secret-text" },
+        { type: "press", key: "Enter", ref: "@e1", expectedName: "Preview" },
       ];
       const privateSelected = await call("choose target", privateCandidates);
       expect(privateSelected.action).toEqual(privateCandidates[1]);
       const remoteInput = Reflect.get(globalThis, "browser-jev-test-input");
       const remotePayload = JSON.stringify(remoteInput);
-      for (const secret of ["/private/account/secret.csv", "private-account", "fixture-secret-password", "fixture-secret-key-text", "fixture-secret-text"]) expect(remotePayload).not.toContain(secret);
+      for (const secret of ["/private/account/secret.csv", "private-account", "fixture-secret-password"]) expect(remotePayload).not.toContain(secret);
       expect(remotePayload).toContain('"inputLength":23');
       expect(remotePayload).toContain('"fileCount":1');
 
@@ -425,6 +500,7 @@ describe("extension and engine host tool gating", () => {
       restoreEnv("IPOLLOWORK_UI_CONTROL_DISCOVERY", previousDiscovery);
       Reflect.deleteProperty(globalThis, "browser-jev-test-loads");
       Reflect.deleteProperty(globalThis, "browser-jev-test-input");
+      Reflect.deleteProperty(globalThis, "browser-jev-test-inputs");
       Reflect.deleteProperty(globalThis, "browser-jev-test-hook");
     }
   });
@@ -537,6 +613,12 @@ describe("extension and engine host tool gating", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
+      const browserAct = tools.tools.find(tool => tool.name === ENGINE_HOST_TOOL_NAMES.browserAct);
+      expect(engineHostTool(ENGINE_HOST_TOOL_NAMES.browserAct)?.parameters).toEqual(browserAct?.inputSchema);
+      for (const example of ['{"type":"fill","ref":"@e1","value":"draft"}', '{"type":"click","ref":"@e2","expectedName":"Preview"}']) {
+        expect(browserAct?.description).toContain(example);
+        expect(engineHostTool(ENGINE_HOST_TOOL_NAMES.browserOpenUrl)?.description).toContain(example);
+      }
       expect(tools.tools.map((tool) => tool.name)).toEqual([
         "ipollowork_extension_list_actions",
         "ipollowork_extension_call",

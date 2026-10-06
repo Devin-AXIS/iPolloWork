@@ -12,11 +12,11 @@ Use when the viewer must travel through a place, route, interface, image, or lay
 
 ## Registry candidates
 
-Prefer `screenshot-zoom` for a screenshot overview → focal detail → overview (imageUrl, focusX/focusY), `device-carousel` for a three-screen depth/focus journey (screenUrls and labels separated by `|`), or `spatial-camera-suite` for a configurable, layered interface stage with one of five complete camera recipes. Empty image URLs in these compositions display explicitly illustrative content, not product evidence. Extend a component's existing timeline rather than nesting an independently playing camera animation.
+Prefer `screenshot-zoom` for a screenshot overview → focal detail → overview (imageUrl, focusX/focusY), `device-carousel` for a three-screen depth/focus journey or shared-clock `flow-belt` (screenUrls and labels separated by `|`), or `spatial-camera-suite` for a configurable, layered interface stage with one of eight complete camera recipes. Empty image URLs in these compositions display explicitly illustrative content, not product evidence. Extend a component's existing timeline rather than nesting an independently playing camera animation.
 
 ## Spatial camera recipes
 
-`spatial-camera-suite` is one editable stage, not five duplicate components. Set its `shotStyle` variable to the closest named movement below; `title`, optional project-local `imageUrl`, and up to three pipe-separated `label::detail` cards supply the scene content. Prefix one card label with `*` to focus it. The selected value creates one paused, deterministic 9-second timeline that owns the camera and depth planes. Do not apply another camera preset to this component's camera or cards.
+`spatial-camera-suite` is one editable stage, not eight duplicate components. Set its `shotStyle` variable to the closest named movement below; `title`, optional project-local `imageUrl`, and up to three pipe-separated `label::detail` cards supply the scene content. Prefix one card label with `*` to focus it. The selected value creates one paused, deterministic 9-second timeline that owns the camera and depth planes. Do not apply another camera preset to this component's camera or cards.
 
 | `shotStyle` | Observable choreography | Use when |
 | --- | --- | --- |
@@ -25,6 +25,9 @@ Prefer `screenshot-zoom` for a screenshot overview → focal detail → overview
 | `spotlight-hero-card` | Diagonally push toward the marked hero card, lift it into focus, make two restrained outline passes, and return to context. | One item should win attention without losing the surrounding interface. |
 | `runway-ground-skim` | Start near the ground, bring cards down in an overlapping sequence with no bounce, then raise the stage into its final view. | A set of items should arrive with physical weight and resolve as one system. |
 | `steep-tilt-glide` | Glide a strongly tilted page across a fixed view, settle readable labels during travel, use subtle speed ghosting, then ease into the final angle. | A broad interface should feel like a continuous spatial traverse. |
+| `subject-follow-track` | Move the featured card through the stage while the shared camera reframes to keep that same card in focus, then settle at its destination. | A subject's journey should drive attention instead of an unrelated camera drift. |
+| `container-morph` | Expand the original featured card into the measured page bounds; reveal its interior while maintaining object identity. | One object becomes a larger context or working surface. |
+| `gather-lockup` | Move the original cards along staggered arcs into one cluster and growing ring, then land as a unified result. | Separate inputs should visibly contribute to one outcome. |
 
 Keep travel short enough to understand, make each waypoint reveal new information, and reserve a stable end hold. These names describe temporal shot recipes; the component supplies the layered structure, and the existing project timeline remains authoritative for scene timing, captions, audio, and export.
 

@@ -11,7 +11,7 @@ Use when several distinct shots, assets, places, or viewpoints must accumulate i
 
 ## Registry candidates
 
-Prefer `device-carousel`, `instagram-carousel`, `picture-in-picture`, `media-hero`, or `split-screen` when their media structure fits. A montage normally combines at least three shot or focus changes. Install each selected component once and keep one host-owned project timeline.
+Prefer `device-carousel`, `picture-in-picture`, `media-hero`, or `split-screen` when their media structure fits. A montage normally combines at least three shot or focus changes. Install each selected component once and keep one host-owned project timeline.
 
 ## Beat grammar
 

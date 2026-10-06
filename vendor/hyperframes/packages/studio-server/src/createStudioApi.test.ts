@@ -45,43 +45,43 @@ describe("createStudioApi project cache invalidation", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-recipe-mount-"));
     temporaryDirectories.push(projectDir);
     mkdirSync(join(projectDir, "components"));
-    writeFileSync(join(projectDir, "components", "feedback-loop.html"), '<main data-composition-id="feedback-loop"></main><script data-ipw-motion-recipe="1">/* executable recipe */</script>');
-    writeFileSync(join(projectDir, "components", "legacy.html"), '<main data-composition-id="feedback-loop"></main><script data-ipw-motion-recipe="1">/* executable recipe */</script>');
+    writeFileSync(join(projectDir, "components", "sample-loop.html"), '<main data-composition-id="sample-loop"></main><script data-ipw-motion-recipe="1">/* executable recipe */</script>');
+    writeFileSync(join(projectDir, "components", "legacy.html"), '<main data-composition-id="sample-loop"></main><script data-ipw-motion-recipe="1">/* executable recipe */</script>');
     writeFileSync(join(projectDir, "components", "custom.html"), '<main data-composition-id="custom"></main>');
-    const entry = `<section id="real-scene" data-ipw-scene data-ipw-registry-component="feedback-loop" data-ipw-timing-owner="host" data-composition-src="components/feedback-loop.html"></section>
-<section id="missing-source" data-ipw-scene data-ipw-registry-component="feedback-loop" data-ipw-timing-owner="host" data-composition-src="components/missing.html"></section>
+    const entry = `<section id="real-scene" data-ipw-scene data-ipw-registry-component="sample-loop" data-ipw-timing-owner="host" data-composition-src="components/sample-loop.html"></section>
+<section id="missing-source" data-ipw-scene data-ipw-registry-component="sample-loop" data-ipw-timing-owner="host" data-composition-src="components/missing.html"></section>
 <section id="custom-scene" data-ipw-scene data-ipw-registry-component="custom" data-ipw-timing-owner="host" data-composition-src="components/custom.html"></section>
-<section id="wrong-component" data-ipw-scene data-ipw-registry-component="definition-highlight" data-ipw-timing-owner="host" data-composition-src="components/feedback-loop.html"></section>
-<section id="legacy-scene" data-ipw-scene data-ipw-registry-component="feedback-loop" data-ipw-timing-owner="host" data-composition-src="components/legacy.html"></section>`;
+<section id="wrong-component" data-ipw-scene data-ipw-registry-component="sample-definition" data-ipw-timing-owner="host" data-composition-src="components/sample-loop.html"></section>
+<section id="legacy-scene" data-ipw-scene data-ipw-registry-component="sample-loop" data-ipw-timing-owner="host" data-composition-src="components/legacy.html"></section>`;
     writeFileSync(join(projectDir, "index.html"), entry);
     const storyboard = `# Storyboard
 ## Frame 1 — Mounted
-- recipe: feedback-loop
+- recipe: sample-loop
 - scene_id: real-scene
 ## Frame 2 — Missing source
-- recipe: feedback-loop
+- recipe: sample-loop
 - scene_id: missing-source
 - status: mounted
 ## Frame 3 — Component mismatch
-- recipe: feedback-loop
+- recipe: sample-loop
 - scene_id: wrong-component
 ## Frame 4 — Custom source
 - recipe: custom
 - scene_id: custom-scene
 ## Frame 5 — Wrong association
-- recipe: feedback-loop
+- recipe: sample-loop
 - scene_id: absent-scene
-- src: components/feedback-loop.html
+- src: components/sample-loop.html
 ## Frame 6 — Legacy unique source
 - camera: component:custom
 - src: components/custom.html
 ## Frame 7 — No identity
-- recipe: feedback-loop
+- recipe: sample-loop
 ## Frame 8 — Ambiguous source
-- recipe: feedback-loop
-- src: components/feedback-loop.html
+- recipe: sample-loop
+- src: components/sample-loop.html
 ## Frame 9 — Legacy mounted source
-- camera: component:feedback-loop
+- camera: component:sample-loop
 - src: components/legacy.html
 `;
     writeFileSync(join(projectDir, "STORYBOARD.md"), storyboard);
@@ -98,9 +98,9 @@ describe("createStudioApi project cache invalidation", () => {
     expect(response.status).toBe(200);
     const result = await response.json();
     expect(result.frames).toHaveLength(9);
-    expect(result.frames[0].recipeMount).toEqual({ componentId: "feedback-loop", source: "components/feedback-loop.html" });
+    expect(result.frames[0].recipeMount).toEqual({ componentId: "sample-loop", source: "components/sample-loop.html" });
     for (const frame of result.frames.slice(1, 8)) expect(frame.recipeMount).toBeUndefined();
-    expect(result.frames[8].recipeMount).toEqual({ componentId: "feedback-loop", source: "components/legacy.html" });
+    expect(result.frames[8].recipeMount).toEqual({ componentId: "sample-loop", source: "components/legacy.html" });
     expect(readFileSync(join(projectDir, "index.html"), "utf8")).toBe(entry);
     expect(readFileSync(join(projectDir, "STORYBOARD.md"), "utf8")).toBe(storyboard);
   });

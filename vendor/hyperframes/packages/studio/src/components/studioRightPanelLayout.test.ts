@@ -833,7 +833,7 @@ describe("Studio right panel layout", () => {
     expect(source).toContain("const SHOW_VARIABLE_PROMOTION_UI = false");
     expect(source).toContain("SHOW_VARIABLE_PROMOTION_UI && bound");
     expect(source).toContain("SHOW_VARIABLE_PROMOTION_UI && canPromote");
-    expect(source).toContain("onCommit: promote.setDefault");
+    expect(source).toContain('onCommit: channel.kind === "text" ? undefined : promote.setDefault');
   });
 
   it("uses the Figma timeline toolbar as the single editing-control surface", () => {
@@ -1115,21 +1115,14 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain('locale === "zh" ? "组件分类" : "Component category"');
     expect(catalog).toContain('locale === "zh" ? "全部组件" : "All components"');
     for (const [en, zh] of [
-      ["Openers & Endings", "开场与收尾"],
-      ["Product Showcase", "产品展示"],
-      ["Data & Charts", "数据与图表"],
-      ["Flows & Diagrams", "流程与图解"],
       ["Maps & Routes", "地图与路径"],
-      ["Comparison & Proof", "对比与背书"],
-      ["Knowledge", "知识讲解"],
-      ["People & Quotes", "人物与观点"],
-      ["Text & Labels", "文字与标注"],
       ["Media & UI", "媒体与界面"],
-      ["Social Media", "社交媒体"],
-      ["Code Demos", "代码演示"],
-      ["Brand & Marketing", "品牌与营销"],
+      ["Business Diagrams", "商业图库"],
     ]) {
       expect(catalog).toContain(`en: "${en}", zh: "${zh}"`);
+    }
+    for (const title of ["开场与收尾", "产品展示", "流程与图解", "数据与图表", "文字与标注", "对比与背书", "知识讲解", "人物与观点", "社交媒体", "代码演示", "品牌与营销"]) {
+      expect(catalog).not.toContain(title);
     }
     expect(catalog).toContain('const ALL_SECTIONS_FILTER = "all" as const');
     expect(catalog).toContain("<CatalogSectionHeader");
