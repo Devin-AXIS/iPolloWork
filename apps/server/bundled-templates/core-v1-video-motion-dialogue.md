@@ -12,7 +12,7 @@ Use when meaning develops through alternating speakers, questions and answers, o
 
 ## Registry candidates
 
-Prefer `speaker-intro`, `split-screen`, `expert-panel`, `profile-quote`, `comment-thread`, `douyin-comment-stack`, `social-comment-highlight`, `x-space`, or `lt-clean-bar`. Combine an identity component with a conversation component only when both remain editable and share the project timeline.
+Use `split-screen` when two real media sources are available. Otherwise author the conversation in the active scene. Keep each turn editable and on the project timeline.
 
 ## Beat grammar
 

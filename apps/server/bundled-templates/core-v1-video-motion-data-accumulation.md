@@ -12,7 +12,7 @@ Use when values, measures, or evidence build toward a conclusion. Do not reprodu
 
 ## Registry candidates
 
-Prefer `bar-chart-race`, `waterfall-impact`, or `chart-story` according to whether the evidence is ranked, additive, or a short series. Preserve structured data, units, and sources; retime the component's existing value changes rather than layering a second chart animation.
+Prefer `location-pulse-map`, `territory-heat-map`, or `us-map-bubble` when the evidence is geographic. Preserve structured data, units, and sources; for other quantitative stories, author a scene from verified data rather than implying a removed chart component still exists.
 
 ## Temporal states
 

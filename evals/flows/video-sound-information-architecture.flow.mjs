@@ -318,19 +318,19 @@ export default {
       name: "Search within the selected category",
       run: async (ctx) => {
         await ctx.prove("Category selection and search work together, and All components clears the category", {
-          voiceover: "选择开场与收尾后，可以继续搜索 Brand。筛选图标保持高亮，随时能切回全部组件。",
+          voiceover: "选择地图与路径后，可以继续搜索 China。筛选图标保持高亮，随时能切回全部组件。",
           action: async () => {
             await studioEval(ctx, ctx.videoSoundContextId,
-              `[...document.querySelectorAll('[role="option"]')].find(option => option.textContent.includes("开场与收尾")).click()`);
+              `[...document.querySelectorAll('[role="option"]')].find(option => option.textContent.includes("地图与路径")).click()`);
             await waitForStudio(ctx, ctx.videoSoundContextId,
               `!document.querySelector('[role="listbox"]')`, "Closed category menu");
             await studioEval(ctx, ctx.videoSoundContextId, `(() => {
               const input = document.querySelector('[data-testid="block-catalog-search"]');
-              Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Brand');
+              Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'China');
               input.dispatchEvent(new Event('input', {bubbles: true}));
             })()`);
             await waitForStudio(ctx, ctx.videoSoundContextId,
-              `document.querySelector('[data-testid="block-catalog-components"]')?.textContent.includes("Brand CTA")`, "Filtered results");
+              `document.querySelector('[data-testid="block-catalog-components"]')?.textContent.includes("China Map")`, "Filtered results");
           },
           assert: async () => {
             const state = await studioEval(ctx, ctx.videoSoundContextId, `({
@@ -340,8 +340,8 @@ export default {
               search: document.querySelector('[data-testid="block-catalog-search"]').value,
               expandedHeader: Boolean(document.querySelector('[data-testid="component-section-header"][aria-expanded="true"] .absolute')),
             })`);
-            ctx.assert(state.title.includes("开场与收尾") && state.highlighted && state.expandedHeader, "The expanded category should have an accent bar");
-            ctx.assert(state.search === "Brand" && !state.content.includes("Agenda Opener") && state.content.includes("Brand CTA"), "Search must narrow the selected category");
+            ctx.assert(state.title.includes("地图与路径") && state.highlighted && state.expandedHeader, "The expanded category should have an accent bar");
+            ctx.assert(state.search === "China" && !state.content.includes("World Map") && state.content.includes("China Map"), "Search must narrow the selected category");
             await studioEval(ctx, ctx.videoSoundContextId, `document.querySelector('button[aria-label="组件分类"]').click()`);
             await waitForStudio(ctx, ctx.videoSoundContextId, `Boolean(document.querySelector('[role="option"]'))`, "Reset category option");
             await studioEval(ctx, ctx.videoSoundContextId, `document.querySelector('[role="option"]').click()`);

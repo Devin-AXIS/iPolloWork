@@ -12,7 +12,7 @@ Use when meaning follows a route, timeline, dependency chain, spatial journey, o
 
 ## Registry candidates
 
-Prefer `milestone-timeline`, `us-map-flow`, or `process-handoff-map` according to whether the path is temporal, geographic, or procedural. Preserve structured data bindings and extend the component timeline only when the route does not already reveal stops in the required order.
+Prefer `us-map-flow` or `route-map` for a geographic path. For a procedural path, author the steps in the active scene. Preserve structured data bindings and extend the component timeline only when the route does not already reveal stops in the required order.
 
 ## Temporal states
 

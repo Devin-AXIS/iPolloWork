@@ -170,6 +170,13 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   }
   if (mediaStartAttr) entry.playbackStartAttr = mediaStartAttr;
 
+  if (entry.compositionSrc || el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file")) {
+    const sourceDuration = Number(el.getAttribute("data-source-duration"));
+    const playbackRate = Number(el.getAttribute("data-playback-rate"));
+    if (sourceDuration > 0) entry.sourceDuration = sourceDuration;
+    if (playbackRate > 0) entry.playbackRate = playbackRate;
+    return;
+  }
   const mediaEl = resolveMediaElement(el);
   if (!mediaEl) return;
 
@@ -417,6 +424,18 @@ export function findTimelineDomNodeForClip(
   fallbackIndex: number,
   usedNodes = new Set<Element>(),
 ): Element | null {
+  // A sibling template may preserve the authored id before its real mount in
+  // DOM order. Bind composition rows to the compiled host before using that
+  // ambiguous id, so their edit/source identity stays in the host file.
+  if (clip.kind === "composition" && clip.compositionId) {
+    const mounts = doc.querySelectorAll(`[data-composition-id="${CSS.escape(clip.compositionId)}"]`);
+    const mounted = Array.from(mounts).find((node) =>
+      !usedNodes.has(node) && !isTimelineIgnoredElement(node) &&
+      (node.hasAttribute("data-composition-file") || node.hasAttribute("data-composition-src")) &&
+      nodeMatchesManifestClip(node, clip),
+    );
+    if (mounted) return mounted;
+  }
   const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
   if (byIdentity && isTimelineIgnoredElement(byIdentity)) return null;
   // A loaded sub-composition can contain an inner root with the same authored

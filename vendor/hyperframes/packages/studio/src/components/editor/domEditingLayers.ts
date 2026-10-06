@@ -155,6 +155,25 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
   return [];
 }
 
+/** Preview a text edit without replacing authored children or GSAP targets. */
+export function previewDomTextField(
+  selection: DomEditSelection,
+  value: string,
+  fieldKey?: string,
+): void {
+  const field =
+    selection.textFields.find((entry) => entry.key === fieldKey) ?? selection.textFields[0];
+  if (!field) return;
+  if (field.source === "child") {
+    const locator = buildTextFieldChildLocator(selection.textFields, field.key);
+    if (!locator) return;
+    const child = selection.element.querySelectorAll(locator.childSelector)[locator.childIndex];
+    if (child) child.textContent = value;
+  } else if (selection.element.children.length === 0) {
+    selection.element.textContent = value;
+  }
+}
+
 function escapeHtmlText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -344,7 +363,11 @@ export async function resolveDomEditSelection(
   const normalizedStartEl = getStructuredMotionSelectionRoot(startEl) ?? startEl;
   const doc = normalizedStartEl.ownerDocument;
 
-  let capture = resolveGroupCapture(normalizedStartEl, options.activeGroupElement ?? null);
+  // An explicit layer, saved selection, or refresh names the authored node.
+  // Group capture applies only when resolving a canvas hit.
+  let capture = options.exactTarget
+    ? ({ kind: "child" } as const)
+    : resolveGroupCapture(normalizedStartEl, options.activeGroupElement ?? null);
   if (capture.kind === "out-of-scope") {
     // Drill-in is non-sticky: clicking/hovering OUTSIDE the drilled-into group
     // exits it and resolves the target normally, rather than selecting nothing
@@ -451,6 +474,8 @@ export async function refreshDomEditSelection(
     ? resolveDomEditSelection(nextElement, {
         activeCompositionPath,
         isMasterView: !activeCompositionPath || activeCompositionPath === "index.html",
+        exactTarget: true,
+        activeGroupElement: nextElement.closest<HTMLElement>("[data-hf-group]"),
       })
     : null;
 }

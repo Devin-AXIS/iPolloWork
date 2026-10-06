@@ -9,6 +9,8 @@ import {
 import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
+  prepareTimelineComponentResize,
+  componentStretchAttributes,
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
   patchIframeDomTiming,
@@ -89,7 +91,10 @@ function resizeCoalesceKey(changes: readonly TimelineGroupResizeChange[]): strin
 function toSdkTimingChanges<T extends { element: TimelineElement }>(
   changes: readonly T[],
   timingUpdate: (change: T) => { start: number; duration?: number },
-): Array<{ hfId: string; timingUpdate: { start: number; duration?: number } } | null> {
+): Array<{
+  hfId: string;
+  timingUpdate: { start: number; duration?: number };
+} | null> {
   return changes.map((change) =>
     change.element.hfId ? { hfId: change.element.hfId, timingUpdate: timingUpdate(change) } : null,
   );
@@ -358,14 +363,26 @@ export function useTimelineGroupEditing({
   );
 
   const handleTimelineGroupResize = useCallback(
-    (changes: TimelineGroupResizeChange[], options?: TimelineGroupCommitOptions) => {
-      if (changes.length === 0) return Promise.resolve();
+    async (changes: TimelineGroupResizeChange[], options?: TimelineGroupCommitOptions) => {
+      if (changes.length === 0) return;
+      changes = await Promise.all(
+        changes.map(async (change) => ({
+          ...change,
+          element: await prepareTimelineComponentResize(projectIdRef.current ?? "", change.element),
+        })),
+      );
       for (const change of changes) {
         const liveAttrs: Array<[string, string]> = [
           ["data-start", formatTimelineAttributeNumber(change.start)],
           ["data-duration", formatTimelineAttributeNumber(change.duration)],
         ];
-        if (change.playbackStart != null) {
+        if (change.element.compositionSrc && change.element.sourceDuration) {
+          for (const [name, value] of Object.entries(
+            componentStretchAttributes(change.element.sourceDuration, change.duration),
+          )) {
+            liveAttrs.push([`data-${name}`, value ?? ""]);
+          }
+        } else if (change.playbackStart != null) {
           const liveAttr =
             change.element.playbackStartAttr === "playback-start"
               ? "data-playback-start"
@@ -406,6 +423,7 @@ export function useTimelineGroupEditing({
           })),
           eligible: changes.every(
             (change) =>
+              !change.element.compositionSrc &&
               change.element.timingSource !== "implicit" &&
               !resizeHasPlaybackStartAdjustment(change),
           ),
@@ -446,7 +464,7 @@ export function useTimelineGroupEditing({
             const domId = change.element.domId;
             const timingChanged =
               change.start !== change.element.start || change.duration !== change.element.duration;
-            if (!timingChanged || !domId) return null;
+            if (!timingChanged || !domId || change.element.compositionSrc) return null;
             return scaleGsapPositions(
               projectId,
               changePath,

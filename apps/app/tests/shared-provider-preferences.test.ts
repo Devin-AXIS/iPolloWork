@@ -139,7 +139,9 @@ describe("shared AI provider preferences", () => {
     expect(sessionRouteSource).toContain("runtimeSource: activeProviderSource");
     expect(sessionRouteSource).toContain("model: effectiveModel");
     expect(sessionRouteSource).toContain("providerId: effectiveModel.providerID");
-    expect(sessionRouteSource).toContain("setEngineModelSelection({ engineId: activeEngineId, model })");
+    expect(sessionRouteSource).toContain("setEngineModelSelections((previous) => ({ ...previous, [activeEngineId]: model }))");
+    expect(sessionRouteSource).toContain("const engineModelSelection = engineModelSelections[activeEngineId]");
+    expect(sessionRouteSource).toContain("selectedForEngine: effectiveModel");
     expect(sessionRouteSource).toContain("const activeSelectedModel = explicitlySelectedModel ?? (activeProviderList");
   });
 

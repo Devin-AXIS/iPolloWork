@@ -11,7 +11,7 @@ Use when ordered parts create a process, model, argument, or final structure. Do
 
 ## Registry candidates
 
-Prefer `checklist-reveal`, `sequence-diagram`, or `process-cycle` when its structure fits. Preserve its editable variables and inherited theme, retime its existing sequence to narration beats, and use the recipe below only for missing accumulation or resolution behavior.
+Use `shotcraft-card-stack` when exactly eight real images form the sequence. Otherwise author the progressive build in the active scene, with editable content and an inherited theme. Bind each reveal and the final resolution to narration beats.
 
 ## Temporal states
 

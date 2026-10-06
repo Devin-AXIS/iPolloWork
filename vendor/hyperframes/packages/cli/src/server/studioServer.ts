@@ -873,9 +873,22 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           .catch(() => {});
       };
       watcher.addListener(listener);
-      while (true) {
-        await stream.sleep(30000);
-      }
+      await new Promise<void>((resolve) => {
+        const abort = () => stream.abort();
+        const heartbeat = setInterval(() => {
+          void stream.write(": heartbeat\n\n");
+        }, 30_000);
+        stream.onAbort(() => {
+          clearInterval(heartbeat);
+          c.req.raw.signal.removeEventListener("abort", abort);
+          watcher.removeListener(listener);
+          resolve();
+        });
+        c.req.raw.signal.addEventListener("abort", abort, { once: true });
+        if (c.req.raw.signal.aborted) abort();
+        // Flush the response immediately, including when the project is idle.
+        void stream.write(": connected\n\n");
+      });
     });
   });
 

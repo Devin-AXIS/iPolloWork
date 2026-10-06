@@ -27,6 +27,7 @@ import {
   isTimelineIgnoredElement,
   readTimelineClipLabel,
   readTimelineElementZIndex,
+  findTimelineDomNodeForClip,
 } from "./timelineElementHelpers";
 
 // Re-export helpers that were previously public from this module so that
@@ -178,8 +179,7 @@ export function createTimelineElementFromManifestClip(params: {
   if (clip.kind === "composition" && clip.compositionId) {
     let resolvedSrc = clip.compositionSrc;
     if (!resolvedSrc) {
-      hostEl =
-        doc?.querySelector(`[data-composition-id="${CSS.escape(clip.compositionId)}"]`) ?? hostEl;
+      hostEl ??= doc ? findTimelineDomNodeForClip(doc, clip, fallbackIndex) : null;
       resolvedSrc =
         hostEl?.getAttribute("data-composition-src") ??
         hostEl?.getAttribute("data-composition-file") ??
@@ -525,6 +525,7 @@ export function mergeTimelineElementsPreservingDowngrades(
   nextElements: TimelineElement[],
   currentDuration: number,
   nextDuration: number,
+  previewDocument?: Document | null,
 ): TimelineElement[] {
   const safeCurrentDuration = Number.isFinite(currentDuration) ? currentDuration : 0;
   const safeNextDuration = Number.isFinite(nextDuration) ? nextDuration : 0;
@@ -538,16 +539,20 @@ export function mergeTimelineElementsPreservingDowngrades(
   }
 
   const nextIdentities = new Set(nextElements.map(getTimelineElementIdentity));
-  const preserved = currentElements.filter(
-    (element) =>
-      !nextIdentities.has(getTimelineElementIdentity(element)) &&
-      // Only preserve enriched sub-composition children (compositionSrc set),
-      // which a bare DOM re-scan legitimately drops and enrichMissingCompositions
-      // re-adds. A TOP-LEVEL element missing from the fresh scan was genuinely
-      // removed (undo of a split, a delete), so let it go — otherwise undoing a
-      // split leaves a ghost clip in the timeline even though the file is reverted.
-      element.compositionSrc != null,
-  );
+  const preserved = currentElements.filter((element) => {
+    if (nextIdentities.has(getTimelineElementIdentity(element)) || !element.compositionSrc) return false;
+    // A DOM re-scan can omit a real reference-start composition. Preserve
+    // those hosts, but not components removed by history restore: having a
+    // compositionSrc alone also describes top-level clips deleted by Redo.
+    if (!previewDocument) return true;
+    const selector = element.hfId
+      ? `[data-hf-id="${CSS.escape(element.hfId)}"]`
+      : element.domId ? `#${CSS.escape(element.domId)}` : element.selector;
+    if (!selector) return false;
+    return Array.from(previewDocument.querySelectorAll(selector)).some((node) =>
+      !element.sourceFile || getTimelineElementSourceFile(node) === element.sourceFile,
+    );
+  });
   if (preserved.length === 0) return nextElements;
   return [...nextElements, ...preserved];
 }

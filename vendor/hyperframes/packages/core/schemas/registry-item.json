@@ -60,29 +60,12 @@
         "category": {
           "type": "string",
           "enum": [
-            "scene",
-            "product",
-            "data",
-            "diagrams",
             "maps",
-            "proof",
-            "knowledge",
-            "people",
-            "typography",
             "media",
-            "social",
-            "developer",
-            "brand",
             "business",
-            "intro",
-            "flow",
-            "compare",
-            "interface",
-            "structured",
-            "commerce",
-            "outro"
+            "interface"
           ],
-          "description": "Canonical component category. Legacy version-1 ids remain accepted and are normalized by consumers."
+          "description": "Canonical component category. The legacy interface id maps to media."
         },
         "subcategory": {
           "type": "string",

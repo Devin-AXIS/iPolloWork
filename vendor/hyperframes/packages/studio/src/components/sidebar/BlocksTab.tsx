@@ -41,19 +41,8 @@ interface BlocksTabProps {
 }
 
 const SECTION_TITLES: Record<CatalogSectionId, { en: string; zh: string }> = {
-  scene: { en: "Openers & Endings", zh: "开场与收尾" },
-  product: { en: "Product Showcase", zh: "产品展示" },
-  data: { en: "Data & Charts", zh: "数据与图表" },
-  diagrams: { en: "Flows & Diagrams", zh: "流程与图解" },
   maps: { en: "Maps & Routes", zh: "地图与路径" },
-  proof: { en: "Comparison & Proof", zh: "对比与背书" },
-  knowledge: { en: "Knowledge", zh: "知识讲解" },
-  people: { en: "People & Quotes", zh: "人物与观点" },
-  typography: { en: "Text & Labels", zh: "文字与标注" },
   media: { en: "Media & UI", zh: "媒体与界面" },
-  social: { en: "Social Media", zh: "社交媒体" },
-  developer: { en: "Code Demos", zh: "代码演示" },
-  brand: { en: "Brand & Marketing", zh: "品牌与营销" },
   business: { en: "Business Diagrams", zh: "商业图库" },
 };
 

@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import type { ChatModelStatus } from "@/react-app/infra/preferred-chat-model";
 import { resolveInstalledPluginContributions, mediaStudioEngine } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { IMAGE_STUDIO_EDIT_RESULT } from "@/app/types";
 import { loadArtifactThumbnail } from "@/components/chat/artifact-thumbnail";
@@ -177,7 +178,8 @@ export type SessionSurfaceProps = {
   modelLabel: string;
   onModelClick: () => void;
   modelPickerOpen: boolean;
-  modelUnavailable?: boolean;
+  modelStatus?: ChatModelStatus;
+  onRetryModelLoad?: () => void;
   selectedModel: ModelRef;
   modelContextWindow?: number | null;
   onModelPickerOpenChange: (open: boolean) => void;
@@ -1914,14 +1916,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
     label: "Send the composer prompt",
     description: "Send the currently visible composer draft to the active session.",
     sideEffect: "mutation",
-    disabled: props.modelUnavailable || (!draft.trim() && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedImageReference) || model.transitionState !== "idle",
+    disabled: (props.modelStatus ?? "ready") !== "ready" || (!draft.trim() && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedImageReference) || model.transitionState !== "idle",
     targetRef: composerShellRef,
     execute: async () => {
       const liveDraft = getComposerDraft(useComposerStateStore.getState(), props.sessionId);
       await handleSend(liveDraft);
       return true;
     },
-  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable, props.sessionId, selectedAnimations.length, selectedImageReference, selectedVoiceReference]);
+  }), [attachments.length, draft, handleSend, model.transitionState, props.modelStatus, props.sessionId, selectedAnimations.length, selectedImageReference, selectedVoiceReference]);
   useControlAction(composerSendControlAction);
 
   const evalSessionErrorControlAction = useMemo<iPolloWorkControlAction | null>(() => {
@@ -2230,8 +2232,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
           inputDisabled={false}
-          disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable) || compacting}
-          modelUnavailable={Boolean(props.modelUnavailable)}
+          disabled={model.transitionState !== "idle" || (props.modelStatus ?? "ready") !== "ready" || compacting}
+          modelStatus={props.modelStatus}
+          onRetryModelLoad={props.onRetryModelLoad}
           statusLabel={compacting ? t("session.assistant_compacting") : waitingLabel ?? (finalizingRun
             ? t("session.status_finalizing")
             : statusLabel(runSettled ? undefined : snapshot ?? undefined, chatStreaming))}

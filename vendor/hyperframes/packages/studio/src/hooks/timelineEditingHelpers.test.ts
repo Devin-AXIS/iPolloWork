@@ -5,6 +5,7 @@ import { applyPatchByTarget } from "../utils/sourcePatcher";
 import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
+  readComponentSourceDuration,
   findTimelineElementInIframe,
   resolveTimelinePatch,
 } from "./timelineEditingHelpers";
@@ -147,16 +148,16 @@ describe("timeline edit patch resolution", () => {
 
   test("allows an authored component clip to split at the playhead", () => {
     const component: TimelineElement = {
-      id: "feature-grid",
-      key: "index.html::feature-grid",
-      domId: "feature-grid",
-      hfId: "hf-feature-grid",
+      id: "sample-grid",
+      key: "index.html::sample-grid",
+      domId: "sample-grid",
+      hfId: "hf-sample-grid",
       tag: "div",
       start: 6,
       duration: 10,
       track: 3,
       timingSource: "authored",
-      compositionSrc: "compositions/components/feature-grid.html",
+      compositionSrc: "compositions/components/sample-grid.html",
     };
 
     expect(canSplitElementAt(component, 9)).toBe(true);
@@ -165,12 +166,12 @@ describe("timeline edit patch resolution", () => {
         [component],
         component,
         9,
-        "index.html::feature-grid::pending-split-1",
+        "index.html::sample-grid::pending-split-1",
       )?.elements,
     ).toMatchObject([
-      { id: "feature-grid", start: 6, duration: 3, compositionSrc: component.compositionSrc },
+      { id: "sample-grid", start: 6, duration: 3, compositionSrc: component.compositionSrc },
       {
-        id: "index.html::feature-grid::pending-split-1",
+        id: "index.html::sample-grid::pending-split-1",
         start: 9,
         duration: 7,
         compositionSrc: component.compositionSrc,
@@ -294,4 +295,37 @@ describe("timeline edit patch resolution", () => {
     expect(patched).toContain('<img id="logo" src="logo.png" data-start="1" />');
     expect(patched).not.toContain("/ data-start");
   });
+});
+
+describe("component resize source window", () => {
+  test("stretches its full declared animation and resets a legacy trim", () => {
+    const original =
+      '<main data-composition-id="root" data-duration="20"><div id="component" data-composition-src="scene.html" data-start="5" data-duration="5" data-playback-start="-2" data-media-start="4"></div></main>';
+    const element = {
+      id: "component",
+      tag: "div",
+      compositionSrc: "scene.html",
+      start: 5,
+      duration: 5,
+      track: 0,
+      sourceDuration: 10,
+      playbackStart: -2,
+    };
+    const patched = buildTimelineResizeTimingPatch(original, { id: "component" }, element, {
+      start: 0,
+      duration: 20,
+      playbackStart: -7,
+    });
+    expect(patched).toContain('data-playback-rate="0.5"');
+    expect(patched).toContain('data-source-duration="10"');
+    expect(patched).toContain('data-playback-start="0"');
+    expect(patched).not.toContain("data-media-start");
+  });
+});
+
+ test("reads the declared source duration inside a registry template rather than native timeline overrun", async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ content: '<html><body><template><div data-composition-id="stage-stack" data-duration="10"></div><script>tl.to({}, {duration:14})</script></template></body></html>' }) }));
+  vi.stubGlobal("fetch", fetchMock);
+  try { expect(await readComponentSourceDuration("project", "components/stack.html")).toBe(10); }
+  finally { vi.unstubAllGlobals(); vi.stubGlobal("DOMParser", new Window().DOMParser); }
 });

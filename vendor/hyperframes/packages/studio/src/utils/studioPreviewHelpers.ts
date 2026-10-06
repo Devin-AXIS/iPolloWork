@@ -1,6 +1,7 @@
 import type { DomEditViewport } from "../components/editor/domEditing";
 import {
   getDomLayerPatchTarget,
+  getDomEditGroupMembers,
   isElementComputedVisible,
   resolveAllVisualDomEditTargets,
 } from "../components/editor/domEditingElement";
@@ -167,11 +168,13 @@ function findGroupAtPoint(doc: Document, x: number, y: number): HTMLElement | nu
   let best: HTMLElement | null = null;
   let bestArea = Infinity;
   for (const group of Array.from(doc.querySelectorAll<HTMLElement>("[data-hf-group]"))) {
+    if (!isElementComputedVisible(group)) continue;
     let left = Infinity;
     let top = Infinity;
     let right = -Infinity;
     let bottom = -Infinity;
-    for (const member of Array.from(group.children)) {
+    for (const member of getDomEditGroupMembers(group)) {
+      if (!isElementComputedVisible(member)) continue;
       const r = member.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
       left = Math.min(left, r.left);
@@ -232,12 +235,11 @@ export function getPreviewTargetFromPointer(
     // back to the group whose member-union contains the point, so the whole group
     // area is hoverable/selectable, not just where a member currently sits.
     const groupHit = findGroupAtPoint(doc, localPointer.x, localPointer.y);
-    if (
-      groupHit &&
-      !hasAuthorPointerEventsNone(groupHit) &&
-      getDomLayerPatchTarget(groupHit, activeCompositionPath)
-    )
-      return groupHit;
+    if (groupHit && getDomLayerPatchTarget(groupHit, activeCompositionPath)) return groupHit;
+
+    // A native paint-order hit test already ruled out empty SVG viewports and
+    // layout wrappers. Retrying elementFromPoint would select them again.
+    if (typeof doc.elementsFromPoint === "function") return null;
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;

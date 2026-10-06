@@ -1,6 +1,7 @@
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
 import { hugRectForElement } from "./domEditOverlayCrop";
+import { getDomEditGroupMembers } from "./domEditingElement";
 
 export interface OverlayRect {
   left: number;
@@ -490,8 +491,8 @@ export function groupAwareOverlayRect(
   // members once they've been moved/transformed, which would otherwise drag the
   // group's bounds (and its off-canvas marker) off to a stale position.
   const rects: OverlayRect[] = [];
-  for (const child of Array.from(el.children)) {
-    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement);
+  for (const child of getDomEditGroupMembers(el)) {
+    const childRect = toOverlayRect(overlayEl, iframe, child);
     if (childRect) rects.push(childRect);
   }
   const union = rects.length > 0 ? resolveDomEditGroupOverlayRect(rects) : null;

@@ -97,6 +97,8 @@ export async function videoProjectFingerprint(directory: string) {
     if (depth > 12) throw new Error("Video project exceeds dependency depth limit");
     for (const entry of (await readdir(path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       if ([".git", ".DS_Store", "renders", "node_modules"].includes(entry.name)) continue;
+      // Studio owns this project-root cache; nested authored hidden assets count.
+      if (path === root && entry.isDirectory() && entry.name === ".thumbnails") continue;
       const absolute = join(path, entry.name), actual = await realpath(absolute);
       if (!actual.startsWith(root + sep)) throw new Error("Video dependency escapes project");
       if (entry.isSymbolicLink()) throw new Error("Video dependency symlinks require a project-local copy");
@@ -361,13 +363,20 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       await rm(temporaryPath, { force: true });
     }
   };
-  const review = async (output: string, studioPort: number, sourceHash?: string) => {
+  const inspectRuntime = async (studioPort: number) => {
     const base = `http://127.0.0.1:${studioPort}/api`;
+    try {
+      const response = await fetch(`${base}/projects/${project}/thumbnail/index.html?review=runtime`, { signal: AbortSignal.timeout(60000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return pixelReviewSchema.shape.runtimeReview.unwrap().parse(await response.json());
+    } catch (error) {
+      throw new Error(`Video runtime inspection unavailable (runtime-review-unavailable); delivery remains a draft: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  const review = async (output: string, studioPort: number, sourceHash?: string) => {
     const html = await readFile(actual, "utf8");
     if (!sourceHash || await videoProjectFingerprint(directory) !== sourceHash) throw new Error("Video source changed (including dependencies) during rendering; this output cannot pass delivery review.");
-    const response = await fetch(`${base}/projects/${project}/thumbnail/index.html?review=runtime`, { signal: AbortSignal.timeout(60000) }).catch(error => { throw new Error(`Video runtime inspection unavailable; delivery remains a draft: ${error instanceof Error ? error.message : String(error)}`); });
-    if (!response.ok) throw new Error(`Video runtime inspection unavailable (HTTP ${response.status}); delivery remains a draft.`);
-    const runtimeReview = pixelReviewSchema.shape.runtimeReview.unwrap().parse(await response.json());
+    const runtimeReview = await inspectRuntime(studioPort);
     const pixels = await reviewRenderedPixels(output, html);
     const audioReview = await reviewRenderedAudio(output, html);
     const frames = await saveReviewFrames(output, html, root);
@@ -411,6 +420,15 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         const studio = z.object({ ok: z.literal(true), port: z.number().int().min(1).max(65_535).optional() }).parse(ready);
         const studioPort = studio.port ?? hyperframesStudioPort(project);
         const base = `http://127.0.0.1:${studioPort}/api`;
+        if (input.review || input.reviewOnly) {
+          const checking = { ...initial, studioPort, stage: "Checking executed timing and layout" };
+          preparing.set(receiptPath, checking);
+          await save(checking);
+          const runtimeReview = await inspectRuntime(studioPort);
+          if (!runtimeReview.valid) throw new Error(`Video remains a draft: ${runtimeReview.issues.map(issue => `${issue.sceneId}: ${issue.code} (${issue.detail})`).join(", ") || "runtime-review-unavailable"}`);
+        }
+        // First Studio inspection may normalize editable IDs. Snapshot its
+        // normalized source before queuing, so that is not mistaken for an edit.
         const sourceHash = await videoProjectFingerprint(directory);
         const job = z.object({ jobId: z.string().regex(/^[A-Za-z0-9_-]+$/) }).parse(await studioJson(`${base}/projects/${project}/render`, {
           format: "mp4",

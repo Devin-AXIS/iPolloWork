@@ -89,6 +89,9 @@ export function isTransientStartupError(message: string | null | undefined) {
   const value = (message ?? "").toLowerCase();
   return (
     value.includes("timed out") ||
+    value.includes("etimedout") ||
+    value.includes("timeout") ||
+    value.includes("请求超时") ||
     value.includes("failed to fetch") ||
     value.includes("connection") ||
     value.includes("not ready")
@@ -144,8 +147,14 @@ export function describeWorkspaceUnavailableTitle(input: {
 }) {
   if (isModelUnavailableError(input.message)) return "Model unavailable";
   if (isSidecarLaunchBlockedError(input.message)) return `${workspaceEngineName(input.engineId)} launch blocked`;
+  const message = (input.message ?? "").toLowerCase();
+  if (/timed\s*out|timeout|请求超时/.test(message)) return "Request timed out";
+  if (/failed to fetch|fetch failed|econn|network|socket|connection/.test(message)) return "Connection interrupted";
   if (input.workspaceType === "remote") return "Remote workspace unavailable";
-  return `${workspaceEngineName(input.engineId)} unavailable`;
+  if (/engine.*(?:not reachable|unreachable|exited)|server exited/.test(message)) {
+    return `${workspaceEngineName(input.engineId)} unavailable`;
+  }
+  return "Workspace request failed";
 }
 
 export function describeWorkspaceCreateError(error: unknown) {

@@ -353,9 +353,11 @@ export function StudioApp() {
   } = useBlockHandlers({
     projectId,
     compositionLoading,
+    historyState: editHistory.state,
     clearDomSelection,
     blockCtxDeps: {
       activeCompPath,
+      previewIframeRef,
       timelineElements,
       readProjectFile: fileManager.readProjectFile,
       writeProjectFile: fileManager.writeProjectFile,

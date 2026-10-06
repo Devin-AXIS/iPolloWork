@@ -20,10 +20,10 @@ const PROJECT_SOURCE = `<!doctype html>
   <body>
     <main data-composition-id="main" data-duration="14" data-width="1920" data-height="1080" data-fps="30">
       <div
-        id="feature-grid"
-        data-hf-id="hf-feature-grid"
-        data-composition-id="feature-grid"
-        data-composition-src="compositions/components/feature-grid.html"
+        id="sample-grid"
+        data-hf-id="hf-sample-grid"
+        data-composition-id="sample-grid"
+        data-composition-src="compositions/components/sample-grid.html"
         data-start="2"
         data-duration="10"
         data-track-index="1"
@@ -34,12 +34,12 @@ const PROJECT_SOURCE = `<!doctype html>
   </body>
 </html>`;
 
-const COMPONENT_SOURCE = `<template id="feature-grid-template">
+const COMPONENT_SOURCE = `<template id="sample-grid-template">
   <style>
-    #feature-grid { width: 1920px; height: 1080px; display: grid; place-items: center; background: #f5efe4; color: #171816; font: 700 96px Arial, sans-serif; }
+    #sample-grid { width: 1920px; height: 1080px; display: grid; place-items: center; background: #f5efe4; color: #171816; font: 700 96px Arial, sans-serif; }
   </style>
-  <section id="feature-grid" data-composition-id="feature-grid" data-duration="10" data-width="1920" data-height="1080">
-    Feature Grid
+  <section id="sample-grid" data-composition-id="sample-grid" data-duration="10" data-width="1920" data-height="1080">
+    Sample Grid
   </section>
 </template>`;
 
@@ -115,15 +115,15 @@ async function waitForPersistedComponentInstances(projectDir, expectedCount) {
   while (Date.now() < deadline) {
     const source = await readFile(join(projectDir, "index.html"), "utf8");
     const count =
-      source.match(/data-composition-src="compositions\/components\/feature-grid\.html"/g)
+      source.match(/data-composition-src="compositions\/components\/sample-grid\.html"/g)
         ?.length ?? 0;
     if (count === expectedCount) return source;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`Timed out waiting for ${expectedCount} persisted Feature Grid clips.`);
+  throw new Error(`Timed out waiting for ${expectedCount} persisted Sample Grid clips.`);
 }
 
-const componentClipSelector = '[data-clip="true"][data-el-id*="feature-grid"]';
+const componentClipSelector = '[data-clip="true"][data-el-id*="sample-grid"]';
 const enabledSplitButtonSelector =
   'button[aria-label="当前片段时刻分割"]:not(:disabled), button[aria-label="Split clip at playhead"]:not(:disabled)';
 const INSERT_FOCUS_ONLY = process.env.IPOLLOWORK_EVAL_COMPONENT_INSERT_FOCUS === "1";
@@ -153,7 +153,7 @@ export default {
           await mkdir(join(projectDir, "compositions", "components"), { recursive: true });
           await writeFile(join(projectDir, "index.html"), PROJECT_SOURCE);
           await writeFile(
-            join(projectDir, "compositions", "components", "feature-grid.html"),
+            join(projectDir, "compositions", "components", "sample-grid.html"),
             COMPONENT_SOURCE,
           );
           await writeFile(join(projectDir, "hyperframes.json"), PROJECT_CONFIG);
@@ -166,12 +166,12 @@ export default {
           });
           await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(componentClipSelector)}))`, {
             timeoutMs: 60_000,
-            label: "Feature Grid timeline clip",
+            label: "Sample Grid timeline clip",
           });
 
           if (!INSERT_FOCUS_ONLY) {
             await ctx.prove("An inserted component clip splits into two timeline clips", {
-            claim: "Selecting Feature Grid with the playhead inside it enables the scissors button, and clicking it creates two persisted component clips.",
+            claim: "Selecting Sample Grid with the playhead inside it enables the scissors button, and clicking it creates two persisted component clips.",
             voiceover: "选中已插入的组件后，播放头位于片段内部时剪刀会启用，点击即可把组件分成前后两个片段。",
             action: async () => {
               await ctx.trustedClick(componentClipSelector);
@@ -192,37 +192,37 @@ export default {
                     && windows[1][0] === 7 && windows[1][1] === 12
                     && lanes.size === 1 && !lanes.has(null);
                 })()`,
-                { timeoutMs: 30_000, label: "two adjacent Feature Grid timeline clips" },
+                { timeoutMs: 30_000, label: "two adjacent Sample Grid timeline clips" },
               );
               await waitForPersistedComponentInstances(projectDir, 2);
             },
             assert: async () => {
               const source = await readFile(join(projectDir, "index.html"), "utf8");
               const componentInstances =
-                source.match(/data-composition-src="compositions\/components\/feature-grid\.html"/g) ?? [];
+                source.match(/data-composition-src="compositions\/components\/sample-grid\.html"/g) ?? [];
               ctx.assert(
                 componentInstances.length === 2,
-                `Expected two persisted Feature Grid clips, received ${componentInstances.length}.`,
+                `Expected two persisted Sample Grid clips, received ${componentInstances.length}.`,
               );
               ctx.assert(
-                /id="feature-grid"[\s\S]*?data-start="2"[\s\S]*?data-duration="5"/.test(source),
+                /id="sample-grid"[\s\S]*?data-start="2"[\s\S]*?data-duration="5"/.test(source),
                 "The first component half was not persisted with the expected timing.",
               );
               ctx.assert(
-                /id="feature-grid-split"[\s\S]*?data-start="7"[\s\S]*?data-duration="5"/.test(source),
+                /id="sample-grid-split"[\s\S]*?data-start="7"[\s\S]*?data-duration="5"/.test(source),
                 "The second component half was not persisted with the expected timing.",
               );
             },
             screenshot: {
               name: "component-clip-split-at-playhead",
-              requireText: ["Feature Grid"],
+              requireText: ["Sample Grid"],
               rejectText: ["Something went wrong", "Console errors in preview", "Failed to split"],
             },
             });
           }
 
           await ctx.prove("A newly inserted component is selected and revealed in the timeline", {
-            claim: "After insertion, Agenda Opener is the selected clip and is visible inside the timeline viewport.",
+            claim: "After insertion, Interface State Board is the selected clip and is visible inside the timeline viewport.",
             voiceover: "插入组件后，时间轴会自动选中新组件，并把对应片段带到当前可视区域。",
             action: async () => {
               await ctx.eval(`window.postMessage(${JSON.stringify({
@@ -255,15 +255,15 @@ export default {
                 'Boolean(document.querySelector("[data-testid=block-catalog-search]"))',
                 { timeoutMs: 20_000, label: "component catalog" },
               );
-              await ctx.fill('[data-testid="block-catalog-search"]', "Agenda Opener");
-              await ctx.waitFor('Boolean(document.querySelector(\'[data-block-name="agenda-opener"]\'))', {
+              await ctx.fill('[data-testid="block-catalog-search"]', "Interface State Board");
+              await ctx.waitFor('Boolean(document.querySelector(\'[data-block-name="interface-state-board"]\'))', {
                 timeoutMs: 20_000,
-                label: "Agenda Opener component card",
+                label: "Interface State Board component card",
               });
-              await ctx.trustedClick('[data-block-name="agenda-opener"]');
+              await ctx.trustedClick('[data-block-name="interface-state-board"]');
               await ctx.waitFor('Boolean(document.querySelector("[role=dialog]"))', {
                 timeoutMs: 20_000,
-                label: "Agenda Opener preview",
+                label: "Interface State Board preview",
               });
               await ctx.trustedClick('[role="dialog"] button[aria-label="插入组件"]');
               await ctx.waitFor(
@@ -275,12 +275,12 @@ export default {
                   const toast = document.querySelector('[data-testid="studio-toast-surface"][data-tone="success"]');
                   return toast?.textContent?.includes('Component added') === true;
                 })()`,
-                { timeoutMs: 5_000, label: "Agenda Opener success status card" },
+                { timeoutMs: 5_000, label: "Interface State Board success status card" },
               );
               await ctx.waitFor(
                 `(() => {
                   const clip = [...document.querySelectorAll('[data-clip="true"].is-selected')]
-                    .find((candidate) => candidate.dataset.elId?.endsWith('#agenda-opener'));
+                    .find((candidate) => candidate.dataset.elId?.endsWith('#interface-state-board'));
                   if (!clip) return false;
                   const viewport = clip.closest('.hf-timeline-scroll');
                   if (!viewport) return false;
@@ -291,7 +291,7 @@ export default {
                     && clipRect.bottom > viewportRect.top
                     && clipRect.top < viewportRect.bottom;
                 })()`,
-                { timeoutMs: 30_000, label: "selected visible Agenda Opener timeline clip" },
+                { timeoutMs: 30_000, label: "selected visible Interface State Board timeline clip" },
               );
             },
             assert: async () => {
@@ -300,8 +300,8 @@ export default {
                   .map((clip) => clip.dataset.elId)`,
               );
               ctx.assert(
-                selectedIds.length === 1 && selectedIds[0]?.endsWith("#agenda-opener"),
-                `Expected one selected Agenda Opener clip, received ${JSON.stringify(selectedIds)}.`,
+                selectedIds.length === 1 && selectedIds[0]?.endsWith("#interface-state-board"),
+                `Expected one selected Interface State Board clip, received ${JSON.stringify(selectedIds)}.`,
               );
               ctx.assert(
                 !(await ctx.eval(`Boolean(document.querySelector('[role="dialog"]'))`)),
@@ -339,7 +339,7 @@ export default {
               ? undefined
               : {
                   name: "inserted-component-selected-in-timeline",
-                  requireText: ["Agenda Opener"],
+                  requireText: ["Interface State Board"],
                   rejectText: ["Something went wrong", "Failed to install block"],
                 },
           });

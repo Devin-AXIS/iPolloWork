@@ -10,7 +10,7 @@ import {
   TextIndent,
   X,
 } from "../../icons/SystemIcons";
-import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
+import { isTextEditableSelection, previewDomTextField, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import {
   formatNumericValue,
@@ -121,6 +121,7 @@ export function TextIconButton({
 }
 
 function FlatTextFieldEditor({
+  element,
   field,
   styles,
   fontAssets,
@@ -129,6 +130,7 @@ function FlatTextFieldEditor({
   onSetTextFieldStyle,
   autoFocus = false,
 }: {
+  element: DomEditSelection;
   field: DomEditSelection["textFields"][number];
   styles: Record<string, string>;
   fontAssets: ImportedFontAsset[];
@@ -168,6 +170,7 @@ function FlatTextFieldEditor({
             label="Content"
             value={value ?? field.value}
             autoFocus={autoFocus}
+            onPreview={(next) => previewDomTextField(element, next, field.key)}
             onCommit={onCommit ?? ((next) => onSetText(next, field.key))}
           />
         )}
@@ -386,6 +389,7 @@ export function FlatTextSection({
           onRemove={onRemoveTextField}
         />
         <FlatTextFieldEditor
+          element={element}
           key={activeField.key}
           field={activeField}
           styles={styles}
@@ -402,6 +406,7 @@ export function FlatTextSection({
   return (
     <div className="space-y-3" data-flat-text-editor="true">
       <FlatTextFieldEditor
+        element={element}
         field={activeField}
         styles={styles}
         fontAssets={fontAssets}

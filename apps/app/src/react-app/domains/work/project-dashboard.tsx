@@ -8,7 +8,6 @@ import type { ReactNode } from "react";
 import type { WorkBoardConfig, WorkItem } from "@ipollowork/types/work-items";
 import {
   Activity,
-  AlertTriangle,
   ArrowUpRight,
   Bot,
   CalendarClock,
@@ -57,7 +56,6 @@ type ProjectDashboardProps = {
   executionHref?: (record: ProjectRuntimeExecutionRecord) => string;
   onAddAgent?: () => void;
   onOpenTasks: () => void;
-  headerControls?: ReactNode;
   healthContent?: ReactNode;
   footerContent?: ReactNode;
 };
@@ -180,13 +178,13 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
     const item = installedById.get(pluginId);
     return !item || pluginNeedsConfiguration(item, props.authorizations[pluginId]);
   });
-  const health = metrics.failed > 0
-    ? { label: t("project_overview.health_failure"), description: t("project_overview.health_failure_description", { count: metrics.failed }), tone: "rose" }
+  const healthDescription = metrics.failed > 0
+    ? t("project_overview.health_failure_description", { count: metrics.failed })
     : missingConnections.length > 0
-      ? { label: t("project_overview.health_setup"), description: t("project_overview.health_setup_description", { count: missingConnections.length }), tone: "violet" }
+      ? t("project_overview.health_setup_description", { count: missingConnections.length })
       : metrics.overdue > 0
-        ? { label: t("project_overview.health_attention"), description: t("project_overview.health_attention_description", { count: metrics.overdue }), tone: "amber" }
-        : { label: t("project_overview.health_good"), description: null, tone: "green" };
+        ? t("project_overview.health_attention_description", { count: metrics.overdue })
+        : null;
   type TaskActivity = { kind: "work"; item: WorkItem } | { kind: "runtime"; record: ProjectRuntimeExecutionRecord };
   const recentItems = [
     ...props.items.map((item): TaskActivity => ({ kind: "work", item })),
@@ -202,27 +200,6 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_10%_0%,rgba(74,158,178,0.10),transparent_30%),radial-gradient(circle_at_92%_6%,rgba(108,120,163,0.07),transparent_28%),var(--dls-surface)] text-dls-text [--primary:#1FBAC0]" data-testid="project-overview">
-      <header className="shrink-0 border-b border-white/25 bg-dls-surface/68 px-4 py-4 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/[0.06] sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 self-center">
-            <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.45px] text-dls-text" title={props.projectName}>{props.projectName}</h1>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {props.headerControls}
-            <div className={cn(
-              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] leading-[15px]",
-              health.tone === "green" && "border-emerald-6/50 bg-emerald-3/70 text-emerald-11",
-              health.tone === "amber" && "border-amber-6/50 bg-amber-3/70 text-amber-11",
-              health.tone === "violet" && "border-violet-6/50 bg-violet-3/70 text-violet-11",
-              health.tone === "rose" && "border-rose-6/50 bg-rose-3/70 text-rose-11",
-            )}>
-              {health.tone === "green" ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
-              <span className="font-medium">{health.label}</span>
-            </div>
-          </div>
-        </div>
-      </header>
-
       <main className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
         <div className={cn(
           "mx-auto grid w-full max-w-[1320px] grid-cols-1 gap-4",
@@ -237,7 +214,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                   <h2 className="flex items-center gap-2 text-[14px] font-semibold leading-5 text-dls-text">
                     <Activity className="size-4 text-dls-secondary" />{t("project_overview.task_health")}
                   </h2>
-                  {health.description ? <p className="mt-1 text-[13px] leading-5 text-dls-secondary">{health.description}</p> : null}
+                  {healthDescription ? <p className="mt-1 text-[13px] leading-5 text-dls-secondary">{healthDescription}</p> : null}
                 </div>
                 <div className="text-right">
                   <div className="text-[24px] font-semibold tracking-[-0.8px] tabular-nums">{metrics.completion}%</div>

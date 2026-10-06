@@ -22,6 +22,7 @@ function axNode({ nodeId, role, name, backendDOMNodeId = undefined, childIds = [
 function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces = null, fileChooserOnClick = false, platform = process.platform, selectedFileSizes = null, onCommand = null } = {}) {
   const commands = [];
   const inputEvents = [];
+  const cursorEvents = [];
   const focusCalls = [];
   const activities = [];
   const flattenedNodes = [];
@@ -97,6 +98,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
               disabled: false,
               fileInput: backendNodeId === 14,
               nativeSelect: backendNodeId === 16,
+              selectOptions: backendNodeId === 16 ? [{ label: "Writer", value: "writer" }, { label: "Reviewer", value: "reviewer" }] : [],
               unobstructed: true,
               text: backendNodeId === 15 ? "发布图文笔记" : "",
               visible: backendNodeId !== 14,
@@ -133,6 +135,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
     getTitle() { return "Fixture"; },
     getURL() { return url; },
     isDestroyed() { return false; },
+    send(channel, point) { if (channel === "ipollowork:browser:cursor") cursorEvents.push(point); },
     sendInputEvent(event) {
       inputEvents.push(event);
       if (fileChooserOnClick && event.type === "mouseUp") {
@@ -151,7 +154,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
     getUserDataPath: () => userDataPath,
     platform,
   });
-  return { tab, focusCalls, activities, commands, flattenedNodes, frameNodes, inputEvents, nodes, runtime, nativeDialogs: () => nativeDialogs, selectedOption: () => selectedOption, setUrl(value) { url = value; } };
+  return { tab, focusCalls, activities, commands, cursorEvents, flattenedNodes, frameNodes, inputEvents, nodes, runtime, nativeDialogs: () => nativeDialogs, selectedOption: () => selectedOption, setUrl(value) { url = value; } };
 }
 
 function addSemanticControls(fixture) {
@@ -177,6 +180,56 @@ it("creates bounded semantic snapshots with stable refs and protected-value reda
   assert.doesNotMatch(first.tree, /never-return-this/);
   assert.match(second.tree, /\[@e1\] textbox "Title"/);
   assert.notEqual(first.snapshotId, second.snapshotId);
+  assert.equal(first.controls, undefined);
+  const decision = await fixture.runtime.snapshot({ tabId: "tab-1", includeControls: true });
+  assert.deepEqual(decision.controls.find(control => control.ref === "@e1").operations, ["fill"]);
+  assert.deepEqual(decision.controls.find(control => control.ref === "@e2").operations, ["click"]);
+  assert.equal(decision.controls.find(control => control.ref === "@e3").value, undefined);
+  assert.doesNotMatch(JSON.stringify(decision.controls), /never-return-this/);
+});
+
+it("offers only exact supported decision names and observed native options in bounded controls", async () => {
+  const fixture = createFixture();
+  addSemanticControls(fixture);
+  fixture.nodes.push(axNode({ nodeId: "long-name", role: "button", name: "A".repeat(210), backendDOMNodeId: 21 }));
+  fixture.nodes[0].childIds.push("long-name");
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1", includeControls: true });
+  const nativeSelect = snapshot.controls.find(control => control.role === "combobox");
+  assert.deepEqual(nativeSelect.operations, ["select"]);
+  assert.deepEqual(nativeSelect.options, [{ label: "Writer", value: "writer" }, { label: "Reviewer", value: "reviewer" }]);
+  assert.deepEqual(snapshot.controls.find(control => control.role === "option").operations, []);
+  const unsupported = snapshot.controls.find(control => control.name.startsWith("AAAA"));
+  assert.equal(unsupported.name.length, 200);
+  assert.deepEqual(unsupported.operations, []);
+  fixture.nodes.push(axNode({ nodeId: "radio", role: "radio", name: "Already selected", backendDOMNodeId: 22, properties: [{ name: "checked", value: { value: "true" } }] }));
+  for (let index = 0; index < 350; index += 1) fixture.nodes.push(axNode({ nodeId: `many-${index}`, role: "button", name: `Control ${index}`, backendDOMNodeId: index + 30 }));
+  const bounded = await fixture.runtime.snapshot({ tabId: "tab-1", includeControls: true });
+  assert.equal(bounded.truncated, true);
+  assert.ok(bounded.controls.length <= 250);
+  assert.deepEqual(bounded.controls.find(control => control.name === "Already selected").operations, []);
+});
+
+it("preserves inherited AX disabled states and refuses unsafe mixed check recommendations", async () => {
+  const fixture = createFixture();
+  addSemanticControls(fixture);
+  fixture.nodes.find(node => node.nodeId === "title").properties.push({ name: "disabled", value: { value: true } });
+  fixture.nodes.find(node => node.nodeId === "role").properties.push({ name: "disabled", value: { value: true } });
+  fixture.nodes.find(node => node.nodeId === "notifications").properties = [{ name: "checked", value: { value: "mixed" } }];
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1", includeControls: true });
+  for (const name of ["Title", "Role", "Enable notifications"]) assert.deepEqual(snapshot.controls.find(control => control.name === name).operations, []);
+  const mixed = snapshot.controls.find(control => control.name === "Enable notifications");
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId, actions: [{ type: "check", ref: mixed.ref, expectedName: mixed.name, checked: true }] }), /mixed controls/);
+  assert.equal(fixture.inputEvents.some(event => event.type === "mouseDown"), false);
+});
+
+it("rejects missing fill values without clearing existing content and supports an explicit empty value", async () => {
+  const fixture = createFixture();
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId, actions: [{ type: "fill", ref: "@e1" }] }), /explicit string value/);
+  assert.equal(fixture.commands.some(command => command.method === "Input.insertText"), false);
+  const fresh = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await fixture.runtime.act({ tabId: "tab-1", snapshotId: fresh.snapshotId, actions: [{ type: "fill", ref: "@e1", value: "" }] });
+  assert.ok(fixture.commands.some(command => command.method === "Input.insertText" && command.params.text === ""));
 });
 
 it("supports interactive, scoped, and compact unchanged snapshots", async () => {
@@ -308,7 +361,32 @@ it("executes a bounded batch with real text and pointer input", async () => {
     { text: "A modern browser runtime" },
   );
   assert.deepEqual(fixture.inputEvents.map((event) => event.type), ["mouseMove", "mouseDown", "mouseUp"]);
+  assert.deepEqual(fixture.cursorEvents, [{ x: 120, y: 80 }, { x: 120, y: 80 }]);
   assert.equal(result.snapshotRequired, true);
+});
+
+it("shows the background action cursor at real input coordinates without selecting another tab", async () => {
+  const fixture = createFixture();
+  fixture.tab.background = true;
+  addSemanticControls(fixture);
+  let snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  for (const action of [
+    { type: "click", ref: "@e2", expectedName: "Publish" },
+    { type: "hover", target: { role: "button", name: "Open actions" } },
+    { type: "scroll", direction: "down", amount: "small" },
+  ]) {
+    await fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId, actions: [action] });
+    snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  }
+  const pointerPositions = fixture.commands.filter(({ method, params }) => method === "Input.dispatchMouseEvent"
+    && ["mouseReleased", "mouseMoved", "mouseWheel"].includes(params.type))
+    .slice(1).map(({ params }) => ({ x: params.x, y: params.y }));
+  assert.deepEqual(fixture.cursorEvents, pointerPositions);
+  assert.deepEqual(fixture.focusCalls, []);
+  await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "click", ref: "@e2", expectedName: "Wrong button" }],
+  }), /name changed/);
+  assert.equal(fixture.cursorEvents.length, 3, "Rejected input does not fabricate cursor movement");
 });
 
 it("returns a fresh semantic observation in the same action call", async () => {
@@ -432,6 +510,9 @@ it("rejects stale snapshots and changed accessible names before input", async ()
   );
 
   const latest = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  for (const action of [{ type: "click", ref: "@e2" }, { type: "click", ref: "@e2", name: "Publish" }]) {
+    await assert.rejects(fixture.runtime.act({ tabId: "tab-1", snapshotId: latest.snapshotId, actions: [action] }), /requires expectedName/);
+  }
   const publishNode = fixture.nodes.find((node) => node.nodeId === "publish");
   publishNode.name.value = "Published";
   await assert.rejects(
@@ -809,6 +890,7 @@ it("requires a new snapshot after takeover and does not revive an old batch when
     actions: [{ type: "fill", ref: "@e1", value: "old batch" }],
   }), /under user control/);
   assert.ok(!fixture.commands.some(command => command.method === "Input.insertText"));
+  assert.deepEqual(fixture.cursorEvents, [], "An interrupted old batch cannot re-display its cursor");
 });
 
 it("refreshes semantic targets between mutations and rejects ambiguous or conflicting names", async () => {
