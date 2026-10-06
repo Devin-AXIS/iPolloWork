@@ -3,7 +3,12 @@ import { createElement, type MutableRefObject } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
+import {
+  applyTextFieldChildOperations,
+  buildTextFieldChildOperations,
+} from "./domEditTextFieldCommitOps";
 import {
   findDomTextFieldElement,
   textFieldStyleTargetsSelectedElement,
@@ -141,5 +146,114 @@ describe("useDomEditTextCommits", () => {
     flushSync(() => root.unmount());
     container.remove();
     target.remove();
+  });
+});
+
+describe("child text preview identity", () => {
+  it("persists a child text draft even when the live selection already reflects it", () => {
+    const field = textField("title", "Live draft");
+    expect(buildTextFieldChildOperations([field], [field], field.key)).toEqual([
+      {
+        type: "text-content",
+        property: "text",
+        value: "Live draft",
+        childSelector: ":scope > div",
+        childIndex: 0,
+      },
+    ]);
+  });
+
+  it("keeps graphics, sibling text and the GSAP target through edit and rollback", () => {
+    const parent = document.createElement("div");
+    parent.innerHTML = '<svg><path d="M0 0L1 1"></path></svg><span>First</span><span>Second</span>';
+    const graphic = parent.firstElementChild;
+    const target = parent.querySelector("span");
+    const sibling = parent.lastElementChild;
+    const fields = [
+      { ...textField("first", "First"), tagName: "span", sourceChildIndex: 0 },
+      { ...textField("second", "Second"), tagName: "span", sourceChildIndex: 1 },
+    ];
+    const next = fields.map((field) =>
+      field.key === "first" ? { ...field, value: "Edited" } : field,
+    );
+    const operations = buildTextFieldChildOperations(fields, next);
+    if (!operations) throw new Error("Child patch missing");
+    const revert = applyTextFieldChildOperations(parent, operations);
+    expect(parent.firstElementChild).toBe(graphic);
+    expect(parent.querySelector("span")).toBe(target);
+    expect(parent.lastElementChild).toBe(sibling);
+    expect(target?.textContent).toBe("Edited");
+    expect(sibling?.textContent).toBe("Second");
+    revert();
+    expect(parent.querySelector("span")).toBe(target);
+    expect(target?.textContent).toBe("First");
+  });
+});
+
+describe("component Properties timing commits", () => {
+  it("retimes a component's full source atomically with its display slot", async () => {
+    const target = document.createElement("div");
+    target.id = "properties-component";
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ content: '<template><div data-composition-id="scene" data-duration="10"></div></template>' }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    target.setAttribute("data-playback-start", "-2");
+    target.setAttribute("data-duration", "10");
+    document.body.append(target);
+    const selection = {
+      ...editableTextSelection(target),
+      tagName: "div",
+      isCompositionHost: true,
+      compositionSrc: "scene.html",
+    };
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentDocument", { value: document });
+    const persist = vi.fn(async () => {});
+    let result: ReturnType<typeof useDomEditAttributeCommits> | undefined;
+    function Harness() {
+      result = useDomEditTextCommits({
+        projectId: "props-project",
+        applyDomSelection: vi.fn(),
+        buildDomSelectionFromTarget: async () => selection,
+        removeDomTextFieldElement: async () => {},
+        queueDomEditSave: <T,>(save: () => Promise<T>) => save(),
+        resolveImportedFontAsset: () => null,
+        activeCompPath: "index.html",
+        previewIframeRef: { current: iframe },
+        showToast: vi.fn(),
+        domEditSelection: selection,
+        refreshDomEditSelectionFromPreview: vi.fn(),
+        persistDomEditOperations: persist,
+      });
+      return null;
+    }
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    flushSync(() => root.render(createElement(Harness)));
+    await result!.handleDomAttributesCommit(selection, {
+      start: "0",
+      duration: "20",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/props-project/files/scene.html");
+    expect(target.getAttribute("data-playback-rate")).toBe("0.5");
+    expect(target.getAttribute("data-playback-start")).toBe("0");
+    expect(persist).toHaveBeenCalledOnce();
+    expect(persist.mock.calls[0][1]).toEqual(
+      expect.arrayContaining([
+        { type: "attribute", property: "duration", value: "20" },
+        { type: "attribute", property: "playback-rate", value: "0.5" },
+        { type: "attribute", property: "playback-start", value: "0" },
+      ]),
+    );
+    persist.mockImplementationOnce(async () => {
+      throw new Error("Save failed");
+    });
+    await result!.handleDomAttributeCommit("duration", "5");
+    expect(target.getAttribute("data-duration")).toBe("20");
+    expect(target.getAttribute("data-playback-rate")).toBe("0.5");
+    flushSync(() => root.unmount());
+    container.remove();
+    target.remove();
+    vi.unstubAllGlobals();
   });
 });

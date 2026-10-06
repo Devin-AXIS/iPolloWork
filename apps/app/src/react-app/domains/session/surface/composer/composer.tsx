@@ -21,6 +21,7 @@ import {
 } from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
+import type { ChatModelStatus } from "@/react-app/infra/preferred-chat-model";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
 import { ModelBehaviorMenu } from "@/components/model-behavior-menu";
@@ -76,7 +77,8 @@ export type ComposerProps = {
   queuedCount: number;
   disabled: boolean;
   inputDisabled?: boolean;
-  modelUnavailable?: boolean;
+  modelStatus?: ChatModelStatus;
+  onRetryModelLoad?: () => void;
   statusLabel: string;
   modelPickerOpen: boolean;
   selectedModel: ModelRef;
@@ -1584,7 +1586,19 @@ export function ReactSessionComposer(props: ComposerProps) {
                     })}
                   </PopoverContent>
                 </Popover>
-                {props.modelUnavailable ? (
+                {props.modelStatus === "loading" ? (
+                  <span role="status" className="ms-1.5 text-xs text-gray-10">
+                    {t("model_picker.loading.reading_catalog")}
+                  </span>
+                ) : props.modelStatus === "error" ? (
+                  <button
+                    type="button"
+                    className="ms-1.5 text-xs font-medium text-gray-10 underline-offset-2 hover:underline"
+                    onClick={props.onRetryModelLoad}
+                  >
+                    {t("composer.model_load_failed")}
+                  </button>
+                ) : props.modelStatus === "unavailable" ? (
                   <button
                     type="button"
                     className="ms-1.5 text-xs font-medium text-red-10 underline-offset-2 hover:underline"

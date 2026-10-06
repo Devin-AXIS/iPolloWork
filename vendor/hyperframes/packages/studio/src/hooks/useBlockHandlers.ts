@@ -12,7 +12,7 @@ import {
   type BlockVariableValue,
   type InstalledComponentParams,
 } from "../utils/blockInstaller";
-import type { EditHistoryKind } from "../utils/editHistory";
+import type { EditHistoryKind, EditHistoryState } from "../utils/editHistory";
 import {
   resolveTimelineSelectionSeekTime,
   type RightPanelTab,
@@ -25,6 +25,7 @@ import { foldRippleGsapShiftsIntoHistory } from "./timelineTimingSync";
 
 interface BlockCtxDeps {
   activeCompPath: string | null;
+  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -45,6 +46,7 @@ interface UseBlockHandlersParams {
   projectId: string | null;
   blockCtxDeps: BlockCtxDeps;
   compositionLoading: boolean;
+  historyState: EditHistoryState;
   clearDomSelection: () => void;
   setCompositionLoading: (loading: boolean) => void;
   setRightCollapsed: (collapsed: boolean) => void;
@@ -66,6 +68,7 @@ export function useBlockHandlers({
   projectId,
   blockCtxDeps,
   compositionLoading,
+  historyState,
   clearDomSelection,
   setCompositionLoading,
   setRightCollapsed,
@@ -82,6 +85,7 @@ export function useBlockHandlers({
   const blockCtx = useMemo(
     () => ({
       activeCompPath: blockCtxDeps.activeCompPath,
+      previewIframeRef: blockCtxDeps.previewIframeRef,
       timelineElements: blockCtxDeps.timelineElements,
       readProjectFile: blockCtxDeps.readProjectFile,
       writeProjectFile: blockCtxDeps.writeProjectFile,
@@ -95,6 +99,7 @@ export function useBlockHandlers({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       blockCtxDeps.activeCompPath,
+      blockCtxDeps.previewIframeRef,
       blockCtxDeps.timelineElements,
       blockCtxDeps.readProjectFile,
       blockCtxDeps.writeProjectFile,
@@ -109,14 +114,21 @@ export function useBlockHandlers({
 
   // Block installs hit the server and end in a full preview reload; without a
   // guard, repeat drops while one is in flight stack duplicate installs.
-  const installingBlockRef = useRef(false);
+  const installingBlockRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (installingBlockRef.current !== null) window.clearInterval(installingBlockRef.current);
+  }, []);
   const runBlockInstall = useCallback(
     async <T>(blockName: string, install: () => Promise<T | null>): Promise<T | null> => {
-      if (installingBlockRef.current) {
+      if (installingBlockRef.current !== null) {
         blockCtx.showToast("A block is already installing — one moment…", "error");
         return null;
       }
-      installingBlockRef.current = true;
+      // Registry downloads can exceed the watcher's self-write window. Keep
+      // their intermediate files suppressed until the host patch is saved.
+      blockCtx.markStudioWrite();
+      const writeTimer = window.setInterval(blockCtx.markStudioWrite, 1_000);
+      installingBlockRef.current = writeTimer;
       setCompositionLoading(true);
       const loadingToastId = blockCtx.showToast("Adding component…", "loading");
       try {
@@ -130,7 +142,8 @@ export function useBlockHandlers({
         setCompositionLoading(false);
         throw error;
       } finally {
-        installingBlockRef.current = false;
+        window.clearInterval(writeTimer);
+        installingBlockRef.current = null;
       }
     },
     [blockCtx, setCompositionLoading],
@@ -178,27 +191,53 @@ export function useBlockHandlers({
   }, [blockCtx.timelineElements, compositionLoading, selectedElementId]);
 
   useEffect(() => {
-    if (!projectId || !selectedElementId) return;
+    if (compositionLoading) return;
+    if (!projectId || !selectedElementId) {
+      setActiveBlockParams(null);
+      return;
+    }
     const element = blockCtx.timelineElements.find(
       (candidate) => (candidate.key ?? candidate.id) === selectedElementId,
     );
-    if (!element?.compositionSrc) return;
+    if (!element?.compositionSrc) {
+      setActiveBlockParams(null);
+      return;
+    }
+    const compositionSrc = element.compositionSrc;
     const hostCompositionPath = element.sourceFile || blockCtx.activeCompPath || "index.html";
     let active = true;
+    const pendingVariables = variableWriteQueueRef.current;
 
-    void Promise.all([preloadBlockCatalog(), blockCtx.readProjectFile(hostCompositionPath)])
-      .then(([catalog, hostSource]) => {
-        if (!active) return;
+    // History can restore variables in place without changing the timeline.
+    // Read committed source after pending saves, and reject superseded reads.
+    void pendingVariables
+      .then(() => {
+        if (!active) return null;
+        return Promise.all([
+          preloadBlockCatalog(),
+          blockCtx.readProjectFile(hostCompositionPath),
+          blockCtx.readProjectFile(compositionSrc),
+        ]);
+      })
+      .then((sources) => {
+        if (!active || !sources || pendingVariables !== variableWriteQueueRef.current) return;
+        const [catalog, hostSource, compositionSource] = sources;
         const params = resolveInstalledComponentParams({
           catalog,
           element,
           hostCompositionPath,
           hostSource,
+          compositionSource,
         });
         if (!params) return;
+        const current = activeBlockParamsRef.current;
+        const selectionChanged = current?.insertedElementId !== params.insertedElementId ||
+          current.hostCompositionPath !== params.hostCompositionPath;
         setActiveBlockParams(params);
-        setRightCollapsed(false);
-        setRightPanelTab("block-params");
+        if (selectionChanged) {
+          setRightCollapsed(false);
+          setRightPanelTab("block-params");
+        }
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -216,6 +255,8 @@ export function useBlockHandlers({
     blockCtx.readProjectFile,
     blockCtx.showToast,
     blockCtx.timelineElements,
+    compositionLoading,
+    historyState,
     projectId,
     selectedElementId,
     setRightCollapsed,
@@ -287,6 +328,15 @@ export function useBlockHandlers({
         if (normalized === variable.default) delete nextValues[variableId];
         else nextValues[variableId] = normalized;
 
+        const frame = blockCtx.previewIframeRef.current;
+        const host = frame?.contentDocument?.getElementById(active.insertedElementId);
+        const root = host?.matches("[data-var-text]") ? host : host?.querySelector<HTMLElement>("[data-hf-live-variables]") ?? host;
+        const runtime = (frame?.contentWindow as (Window & {
+          __hyperframes?: { updateVariables?: (root: Element, patch: Record<string, unknown>) => boolean };
+        }) | null)?.__hyperframes;
+        const previous = active.variableValues[variableId] ?? variable.default;
+        const live = variable.update === "live" && root && runtime?.updateVariables?.(root, { [variableId]: normalized });
+        try {
         const original = await blockCtx.readProjectFile(active.hostCompositionPath);
         const patched = applyPatchByTarget(
           original,
@@ -315,7 +365,11 @@ export function useBlockHandlers({
         setActiveBlockParams((current) =>
           current?.insertedElementId === active.insertedElementId ? nextActive : current,
         );
-        blockCtx.reloadPreview();
+        if (!live) blockCtx.reloadPreview();
+        } catch (error) {
+          if (live && root) runtime?.updateVariables?.(root, { [variableId]: previous });
+          throw error;
+        }
       };
 
       const queued = variableWriteQueueRef.current.then(save);

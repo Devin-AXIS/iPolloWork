@@ -1167,7 +1167,8 @@ function InitialProjectTaskStarter({
           </div>
         ) : null}
         <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">
-          {(surface.providerConnectedCount ?? 0) === 0 ? (
+          {surface.modelStatus !== "loading" && surface.modelStatus !== "error"
+            && (surface.providerConnectedCount ?? 0) === 0 ? (
             <button
               type="button"
               className="mb-2 flex w-full items-center gap-2 rounded-lg border border-amber-7/40 bg-amber-2/30 px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-amber-3/40"
@@ -1186,9 +1187,10 @@ function InitialProjectTaskStarter({
             onStop={() => {}}
             busy={composerBusy}
             queuedCount={0}
-            disabled={composerBusy || Boolean(surface.modelUnavailable)}
+            disabled={composerBusy || (surface.modelStatus ?? "ready") !== "ready"}
             inputDisabled={composerBusy}
-            modelUnavailable={Boolean(surface.modelUnavailable)}
+            modelStatus={surface.modelStatus}
+            onRetryModelLoad={surface.onRetryModelLoad}
             statusLabel=""
             modelPickerOpen={surface.modelPickerOpen}
             selectedModel={surface.selectedModel}
@@ -2907,11 +2909,15 @@ export function SessionPage(props: SessionPageProps) {
       // An explicit browser open must also select a reused tab. Ordinary
       // background state updates intentionally preserve the active plugin.
       void browser.getState?.().then((state) => {
-        if (stopped || !state?.activeTabId || !state.tabs?.length || !props.selectedSessionId) return;
+        if (stopped || !state?.tabs?.length || !props.selectedSessionId) return;
         const store = usePanelTabStore.getState();
         const scoped = browserTabsForSession(state, props.selectedSessionId);
         store.syncBrowserTabs(props.selectedSessionId, scoped.tabs, scoped.activeTabId);
-        if (scoped.activeTabId) store.selectTab(props.selectedSessionId, scoped.activeTabId);
+        const requestedTabId = payload?.tabId ?? scoped.activeTabId;
+        if (requestedTabId && scoped.tabs.some((tab) => tab.id === requestedTabId)) {
+          store.selectTab(props.selectedSessionId, requestedTabId);
+          if (state.activeTabId !== requestedTabId) void browser.selectTab?.(requestedTabId);
+        }
       }).catch((error: unknown) => console.error("Failed to activate browser tab", error));
     });
     const unsubClose = browser.onPanelClosed?.((payload) => {

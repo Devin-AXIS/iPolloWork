@@ -57,16 +57,13 @@ export function shouldShowRefreshLoadingOverlay({
 export function CompositionRefreshLoadingOverlay() {
   return (
     <div
-      className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
+      className="absolute right-3 top-3 z-30 pointer-events-none select-none"
       data-hyperframes-ignore=""
       data-testid="composition-refresh-loading-overlay"
       draggable={false}
       style={{ transition: "opacity 180ms ease-out" }}
-      onDragStart={(event) => event.preventDefault()}
-      onMouseDown={(event) => event.preventDefault()}
-      onPointerDown={(event) => event.preventDefault()}
     >
-      <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
+      <div className="flex items-center gap-2 rounded-md bg-neutral-900/90 px-3 py-2 shadow-sm" role="status" aria-live="polite">
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
         <p className="text-xs text-neutral-400">Preparing preview…</p>
       </div>

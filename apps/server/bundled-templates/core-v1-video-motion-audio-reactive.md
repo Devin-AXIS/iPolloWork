@@ -12,7 +12,7 @@ Use when measured speech, music, or media events are the authoritative cause of 
 
 ## Registry candidates
 
-`oscilloscope-trace`, `x-space`, `douyin-video`, and `instagram-reel` can provide a visual base. They do not prove audio reactivity by themselves. Use this pattern only when the project has measured cue times from actual narration, music, or media. Otherwise select `kinetic-type`, `dialogue`, or another visual pattern with `estimated-reading` or `visual-cue` timing.
+Author the visual base in the active scene and bind its changes to measured cue times from actual narration, music, or media. Without those measurements, select another visual pattern with `estimated-reading` or `visual-cue` timing.
 
 ## Beat grammar
 

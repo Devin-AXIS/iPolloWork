@@ -20,6 +20,11 @@ async function setup(ctx) {
   const workspaceId = await ctx.eval("location.hash.split('/workspace/')[1]?.split('/')[0]");
   ctx.agentBrowser = { locale: await ctx.eval('document.documentElement.lang'), info, context: { workspaceId: workspaceId || status.activeWorkspaceId, sessionId: decodeURIComponent(route) }, server,
     url: `http://127.0.0.1:${server.address().port}`, task: null, human: null };
+  const connection = await fetch(`${info.baseUrl}/engine-tools/call`, {
+    method: 'POST', headers: { authorization: `Bearer ${info.clientToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'ipollowork_extension_call', args: { extensionId: 'jev-decision-model', action: 'status', args: {} }, context: ctx.agentBrowser.context }),
+  }).then(response => response.json());
+  ctx.agentBrowser.jevConfigured = connection.result?.configured === true;
 }
 
 function uiText(ctx, en, zh) { return ctx.agentBrowser.locale === 'zh' ? zh : en; }
@@ -94,10 +99,21 @@ export default {
           ctx.agentBrowser.first = await act(ctx, state, [
             { type: 'fill', target: titleTarget, value: 'Without JEV' }, { type: 'click', target: previewTarget },
           ], { observe: { settleMs: 100 } });
+          ctx.agentBrowser.cursor = await page(ctx, '/agent', `(() => {
+            const cursor = document.getElementById('__ipollowork_browser_cursor__');
+            const button = [...document.querySelectorAll('button')].find(b => b.textContent === 'Preview');
+            const rect = button.getBoundingClientRect();
+            return cursor && { x: parseFloat(cursor.style.left) + 4, y: parseFloat(cursor.style.top) + 4,
+              expectedX: Math.round(rect.x + rect.width / 2), expectedY: Math.round(rect.y + rect.height / 2),
+              pointerEvents: getComputedStyle(cursor).pointerEvents, hidden: cursor.getAttribute('aria-hidden') };
+          })()`);
         }, assert: async () => {
           const tabs = await host(ctx, 'list_tabs');
           ctx.assert(tabs.tabs.find(t => t.id === ctx.agentBrowser.task.tabId)?.decisionEngine === 'agent', 'Default decision engine must be Agent');
           ctx.assert(ctx.agentBrowser.first.status === 'executed', 'Unverified actions must not claim result verification');
+          const cursor = ctx.agentBrowser.cursor;
+          ctx.assert(cursor && cursor.x === cursor.expectedX && cursor.y === cursor.expectedY
+            && cursor.pointerEvents === 'none' && cursor.hidden === 'true', 'AI arrow must mark the actual input point without intercepting input');
           ctx.assert(await page(ctx, '/agent', "document.querySelector('#result').textContent") === 'Preview ready: Without JEV', 'Real page preview did not update');
         }, screenshot: { name: 'browser-without-jev', fromSurface: false, requireText: [uiText(ctx, 'Action executed', '动作已执行')] },
       });
@@ -132,11 +148,14 @@ export default {
             { type: 'fill', target: titleTarget, value: 'Must never be inserted' },
           ], {}, { allowError: true });
           await ctx.waitFor('document.querySelector("[data-browser-activity=acting]") !== null');
+          ctx.agentBrowser.takeoverMessages = await ctx.eval('document.querySelectorAll("[data-message-role=user]").length');
           await click(ctx, '[data-browser-control="agent"]');
           ctx.agentBrowser.interrupted = await pending;
           await page(ctx, '/agent', 'document.querySelector("#title").value', 'My manual correction');
         }, assert: async () => {
           ctx.assert(ctx.agentBrowser.interrupted.httpStatus >= 400, 'The in-flight batch was not interrupted');
+          ctx.assert(await ctx.eval('document.querySelectorAll("[data-message-role=user]").length') === ctx.agentBrowser.takeoverMessages, 'Taking control sent an AI message');
+          ctx.assert(await page(ctx, '/agent', "document.getElementById('__ipollowork_browser_cursor__') === null"), 'Taking control did not clear the AI arrow');
           ctx.assert(await page(ctx, '/agent', 'document.querySelector("#title").value') === 'My manual correction', 'Agent overwrote manual input');
           await ctx.waitFor('document.querySelector("[data-browser-control=human]") !== null');
           const tabs = await host(ctx, 'list_tabs');
@@ -180,24 +199,45 @@ export default {
     } },
     { name: 'Optional JEV does not block the browser', run: async ctx => {
       try {
-        await ctx.prove('JEV opt-in displays unavailable state and ordinary Agent work remains usable', {
+        await ctx.prove('JEV selects an observed operation and target, or reports unavailable without blocking browsing', {
           voiceover: vo[5], action: async () => {
             await click(ctx, '[data-browser-decision="agent"]');
             await ctx.clickText(uiText(ctx, 'JEV · optional', 'JEV · 可选'), { selector: '[role="menuitemcheckbox"]' });
             await ctx.waitFor('document.querySelector("[data-browser-decision=jev]") !== null');
             await click(ctx, '[data-browser-decision="jev"]');
-            ctx.agentBrowser.decision = await host(ctx, 'decide', { tabId: ctx.agentBrowser.task.tabId, goal: 'Preview the final draft', candidates: [
-              { type: 'click', target: previewTarget }, { type: 'click', target: { role: 'button', name: 'Details' } },
-            ] });
             const state = await snapshot(ctx);
-            await act(ctx, state, [{ type: 'fill', target: titleTarget, value: 'Agent fallback works' }, { type: 'click', target: previewTarget }], {
-              expect: { condition: 'text', value: 'Preview ready: Agent fallback works', timeoutMs: 1000 }, observe: { settleMs: 100 },
-            });
+            await act(ctx, state, [{ type: 'fill', target: titleTarget, value: 'JEV actual decision' }]);
+            const invalid = await host(ctx, 'decide', { tabId: ctx.agentBrowser.task.tabId, goal: 'Preview', candidates: [
+              { id: 'preview', description: 'Click Preview' }, { id: 'details', description: 'Open Details' },
+            ] }, { allowError: true });
+            ctx.assert(invalid.httpStatus === 400, 'Non-executable descriptions were silently turned into empty JEV candidates');
+            const expect = { condition: 'text', value: 'Preview ready: JEV actual decision', timeoutMs: 1000 };
+            ctx.agentBrowser.decisions = [];
+            for (let attempt = 0; attempt < 3; attempt++) {
+              const decision = await host(ctx, 'decide', { tabId: ctx.agentBrowser.task.tabId,
+                goal: 'Title must contain JEV actual decision. Click Preview to display Preview ready: JEV actual decision. Do not open Details.', expect });
+              ctx.agentBrowser.decision = decision;
+              ctx.agentBrowser.decisions.push(decision);
+              if (decision.engine === 'agent') {
+                ctx.assert(decision.status === 'unavailable', `Unexpected JEV fallback: ${decision.status}`);
+                const fresh = await snapshot(ctx);
+                await act(ctx, fresh, [{ type: 'click', target: previewTarget }], { expect });
+                break;
+              }
+              if (decision.status === 'verified') break;
+              ctx.assert(['ready', 'needs-text'].includes(decision.status), `Unexpected JEV decision: ${decision.status}`);
+              const action = decision.status === 'needs-text' ? { ...decision.action, value: 'JEV actual decision' } : decision.action;
+              const result = await act(ctx, { snapshotId: decision.snapshotId }, [action], { observe: { settleMs: 100 } });
+              ctx.assert(result.status === 'executed', 'JEV selected action was not executed');
+              if (await page(ctx, '/agent', 'document.querySelector("#result").textContent') === expect.value) break;
+            }
           }, assert: async () => {
-            ctx.assert(ctx.agentBrowser.decision.engine === 'agent' && ctx.agentBrowser.decision.status === 'unavailable', 'Missing JEV did not fall back honestly');
-            await ctx.waitFor('document.querySelector("[data-browser-decision-status=unavailable]") !== null');
-            ctx.assert(await page(ctx, '/agent', 'document.querySelector("#result").textContent') === 'Preview ready: Agent fallback works', 'Normal browser action failed after optional JEV was unavailable');
-          }, screenshot: { name: 'jev-optional-fallback', fromSurface: false, requireText: [uiText(ctx, 'JEV unavailable · using Agent', 'JEV · 不可用，使用 Agent'), uiText(ctx, 'Result confirmed', '结果已确认')] },
+            const decision = ctx.agentBrowser.decision;
+            ctx.assert(!ctx.agentBrowser.jevConfigured || decision.engine === 'jev', 'Configured JEV failed to return a real decision');
+            ctx.assert(decision.engine === 'jev' || decision.status === 'unavailable', 'Missing JEV did not fall back honestly');
+            ctx.assert(await page(ctx, '/agent', 'document.querySelector("#result").textContent') === 'Preview ready: JEV actual decision', 'The observed JEV goal was not reached');
+            ctx.log(`JEV decision evidence: ${JSON.stringify(ctx.agentBrowser.decisions.map(({engine,status,operation,model,usage,operationProbabilities,targetProbabilities}) => ({engine,status,operation,model,usage,operationProbabilities,targetProbabilities})))}`);
+          }, screenshot: { name: 'jev-observed-browser-result', fromSurface: false, textTargetUrlIncludes: '/agent', requireText: ['Preview ready: JEV actual decision'] },
         });
         await click(ctx, '[data-browser-decision="jev"]');
         await ctx.clickText(uiText(ctx, 'Agent · default', 'Agent · 默认'), { selector: '[role="menuitemcheckbox"]' });

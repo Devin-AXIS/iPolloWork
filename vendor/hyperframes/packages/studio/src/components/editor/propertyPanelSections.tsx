@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Type } from "../../icons/SystemIcons";
-import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
+import { isTextEditableSelection, previewDomTextField, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, Section, SelectField } from "./propertyPanelPrimitives";
@@ -66,6 +66,7 @@ export function TextAreaField({
   disabled,
   autoFocus,
   flat,
+  onPreview,
   onCommit,
 }: {
   label: string;
@@ -73,6 +74,7 @@ export function TextAreaField({
   disabled?: boolean;
   autoFocus?: boolean;
   flat?: boolean;
+  onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -82,7 +84,9 @@ export function TextAreaField({
   const interactionChangedRef = useRef(false);
   const focusedRef = useRef(false);
   const valueRef = useRef(value);
-  valueRef.current = value;
+  // The selection observer can report our live preview as a new prop value.
+  // Keep the focus-time baseline until blur so that preview still gets saved.
+  if (!focusedRef.current) valueRef.current = value;
 
   useEffect(() => {
     if (focusedRef.current) return;
@@ -109,6 +113,7 @@ export function TextAreaField({
     draftRef.current = e.target.value;
     setDraft(e.target.value);
     interactionChangedRef.current = true;
+    onPreview?.(e.target.value);
   };
   const handleBlur = () => {
     focusedRef.current = false;
@@ -274,6 +279,7 @@ function AdvancedTextControls({
 /* ------------------------------------------------------------------ */
 
 function TextFieldEditor({
+  element,
   field,
   styles,
   fontAssets,
@@ -283,6 +289,7 @@ function TextFieldEditor({
   onSetTextFieldStyle,
   onRemoveTextField,
 }: {
+  element: DomEditSelection;
   field: DomEditSelection["textFields"][number];
   styles: Record<string, string>;
   fontAssets: ImportedFontAsset[];
@@ -323,6 +330,7 @@ function TextFieldEditor({
             value={value ?? field.value}
             disabled={false}
             autoFocus={showRemove}
+            onPreview={(next) => previewDomTextField(element, next, field.key)}
             onCommit={onCommit ?? ((next) => onSetText(next, field.key))}
           />
         )}
@@ -427,6 +435,7 @@ export function TextSection({
   if (textFields.length === 1) {
     const content = (
       <TextFieldEditor
+        element={element}
         field={activeField}
         styles={styles}
         fontAssets={fontAssets}
@@ -483,6 +492,7 @@ export function TextSection({
         </div>
       </div>
       <TextFieldEditor
+        element={element}
         field={activeField}
         styles={styles}
         fontAssets={fontAssets}

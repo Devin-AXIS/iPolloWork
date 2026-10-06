@@ -67,12 +67,25 @@ const VIDEO_PROVIDER_REQUEST = /(?:用|使用|通过|调用|利用|让)\s*[^，,
 const VIDEO_COMPOSITION_REQUEST = /html\s*视频|(?:可编辑|时间线|完整成片).{0,12}视频|(?:剪辑|合成|编排|组装|制作).{0,16}(?:成片|完整视频)|\b(?:editable video|html video|complete video|finished video)\b/i;
 const VIDEO_ASSEMBLY_REQUEST = /(?:用|将|把|基于).{0,40}(?:素材|镜头).{0,20}(?:生成|制作|剪辑|合成|编排).{0,16}(?:视频|短片|宣传片|成片)|(?:素材|镜头).{0,20}(?:再|然后).{0,12}(?:制作|剪辑|合成).{0,16}(?:视频|短片|宣传片|成片)|\b(?:assemble|combine|edit)\b.{0,60}\b(?:footage|clips?|assets?)\b.{0,30}\binto\b.{0,20}\bvideo\b/i;
 const VIDEO_INSERT_ASSET_REQUEST = /(?:给|为|在).{0,20}(?:视频|短片|宣传片).{0,20}(?:添加|加入|插入|加上).{0,20}(?:素材|镜头)|(?:素材|镜头).{0,20}(?:加到|加入|插入|放进).{0,20}(?:视频|短片|宣传片)/i;
+const SLIDES_SUBJECT = /\bpptx?\b|幻灯片|演示文稿|路演稿|演示稿|\b(?:slide deck|slides|presentation|pitch deck|deck)\b/i;
+const SLIDES_COMPARISON = new RegExp(`(?:像|如同|类似于)\\s*(?:${SLIDES_SUBJECT.source})(?:\\s*(?:一样|似的))?|(?:跟|和|与)\\s*(?:${SLIDES_SUBJECT.source})\\s*(?:一样|似的)|\\b(?:like|similar to|in the style of)\\s+(?:(?:a|an|the)\\s+)?(?:PowerPoint\\s+)?(?:${SLIDES_SUBJECT.source})`, "gi");
+
+const REJECTED_OPTION = /(?:不要|不用|不使用|别(?:用|做|弄|搞)|无需|不需要|不是|不做|\bdo not\b|\bdon't\b|\bwithout\b|\bnot\b(?!\s+only\b))/i;
+const REJECTED_OPTION_CLAUSE = new RegExp(`${REJECTED_OPTION.source}[^，,。;；\\n]*(?:[，,。;；\\n]|$)`, "gi");
+const REJECTED_SUBJECT_PREFIX = new RegExp(`${REJECTED_OPTION.source}\\s*(?:(?:${CREATIVE_DELIVERABLE_ACTION.source})\\s*)?(?:(?:a|an|the)\\s+)?(?:PowerPoint\\s+)?$`, "i");
+
+function hasRequestedSubject(prompt: string, pattern: RegExp) {
+  // Only an adjacent rejection excludes a deliverable noun. Negative constraints
+  // such as 不用模板的视频 and 不需要旁白的视频 still request a video.
+  return [...prompt.matchAll(new RegExp(pattern.source, "gi"))]
+    .some(match => !REJECTED_SUBJECT_PREFIX.test(prompt.slice(0, match.index)));
+}
 
 /** Classifies the deliverable, not the export format or an incidental model name. */
 export function conversationVideoTarget(prompt: string): "studio" | "media" | null {
   if (!VIDEO_SUBJECT.test(prompt)) return null;
   // A rejected option must not select that option. Keep the original prompt for the model.
-  const affirmative = prompt.replace(/(?:不要|不用|不使用|别用|无需|不需要|不是|不做|\bdo not\b|\bdon't\b|\bwithout\b)[^，,。;；\n]*(?:[，,。;；\n]|$)/gi, " ");
+  const affirmative = prompt.replace(REJECTED_OPTION_CLAUSE, " ");
   if (VIDEO_COMPOSITION_REQUEST.test(affirmative) || VIDEO_ASSEMBLY_REQUEST.test(affirmative) || VIDEO_INSERT_ASSET_REQUEST.test(affirmative)) return "studio";
   if (VIDEO_ASSET_REQUEST.test(affirmative) || VIDEO_PROVIDER_REQUEST.test(affirmative)) return "media";
   return "studio";
@@ -82,7 +95,7 @@ const CATEGORY_INTENT_PATTERNS: ReadonlyArray<{
   category: TemplateCategory;
   pattern: RegExp;
 }> = [
-  { category: "slides", pattern: /\bpptx?\b|幻灯片|演示文稿|路演稿|演示稿|\b(?:slide deck|slides|presentation|pitch deck|deck)\b/i },
+  { category: "slides", pattern: SLIDES_SUBJECT },
   { category: "video", pattern: VIDEO_SUBJECT },
   { category: "cards", pattern: /社交卡片|轮播卡片|小红书卡片|信息卡片|\b(?:social cards?|carousel)\b/i },
   { category: "poster", pattern: /海报|横幅|主视觉|\b(?:poster|banner|key visual)\b/i },
@@ -150,15 +163,16 @@ export function inferConversationTemplateIntent(prompt: string): ConversationTem
 
 export function inferConversationTemplateIntents(prompt: string): ConversationTemplateIntent[] {
   const normalized = prompt.trim();
-  if (!normalized || !CREATIVE_DELIVERABLE_ACTION.test(normalized)) return [];
+  if (!normalized || (!CREATIVE_DELIVERABLE_ACTION.test(normalized) && !/(?:^|[，,。;；\n])\s*(?:只要|只需要)\s*/.test(normalized))) return [];
   if (EXPLANATION_ONLY_REQUEST.test(normalized) || PLAN_ONLY_REQUEST.test(normalized)) return [];
-  const videoTarget = conversationVideoTarget(normalized);
+  const requested = normalized.replace(SLIDES_COMPARISON, " ");
+  const videoTarget = hasRequestedSubject(requested, VIDEO_SUBJECT) ? conversationVideoTarget(requested) : null;
   return CATEGORY_INTENT_PATTERNS
     .filter(({ category, pattern }) => {
       if (category === "video" && videoTarget === "media") return false;
       // HTML describes the video source here; it is not a second website request.
-      const subject = category === "site" && videoTarget ? normalized.replace(/\bhtml\b/gi, "") : normalized;
-      return pattern.test(subject);
+      const subject = category === "site" && videoTarget ? requested.replace(/\bhtml\b/gi, "") : requested;
+      return hasRequestedSubject(subject, pattern);
     })
     .map(({ category }) => ({ category, prompt: normalized }));
 }

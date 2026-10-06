@@ -60,28 +60,17 @@
         "category": {
           "type": "string",
           "enum": [
-            "scene",
-            "product",
-            "data",
-            "diagrams",
             "maps",
-            "proof",
-            "knowledge",
-            "people",
-            "typography",
             "media",
-            "social",
-            "developer",
-            "brand",
-            "intro",
-            "flow",
-            "compare",
-            "interface",
-            "structured",
-            "commerce",
-            "outro"
+            "business",
+            "interface"
           ],
-          "description": "Canonical component category. Legacy version-1 ids remain accepted and are normalized by consumers."
+          "description": "Canonical component category. The legacy interface id maps to media."
+        },
+        "subcategory": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Optional grouping inside a category, e.g. the business library's essentials / process / systems / narrative / frameworks."
         },
         "surfaces": {
           "type": "array",
@@ -126,7 +115,7 @@
                 },
                 "encoding": {
                   "type": "string",
-                  "enum": ["json", "key-value-list", "route-value-list"]
+                  "enum": ["json", "key-value-list", "route-value-list", "label-detail-list"]
                 }
               }
             },
@@ -145,6 +134,8 @@
                   },
                   "label": { "type": "string", "minLength": 1 },
                   "labelZh": { "type": "string", "minLength": 1 },
+                  "options": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["value", "label"], "additionalProperties": false, "properties": { "value": { "type": "string" }, "label": { "type": "string" } } } },
+                  "format": { "const": "image" },
                   "type": { "type": "string", "enum": ["string", "number"] },
                   "role": {
                     "type": "string",

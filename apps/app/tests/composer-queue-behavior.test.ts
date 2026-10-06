@@ -107,7 +107,7 @@ describe("composer queue behavior", () => {
     expect(editorSource).toContain("submitDisabled?: boolean;");
     expect(editorSource).toContain("disabled={props.submitDisabled ?? props.disabled}");
     expect(sessionSurfaceSource).toContain("inputDisabled={false}");
-    expect(sessionSurfaceSource).toContain('disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable) || compacting}');
+    expect(sessionSurfaceSource).toContain('disabled={model.transitionState !== "idle" || (props.modelStatus ?? "ready") !== "ready" || compacting}');
   });
 
   test("treats a turn error as recoverable instead of failing the session route", () => {

@@ -16,6 +16,8 @@ import {
   extendRootDurationIfNeeded,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
+  prepareTimelineComponentResize,
+  componentStretchAttributes,
 } from "./timelineEditingHelpers";
 import {
   captureDurationRollback,
@@ -306,15 +308,22 @@ export function useTimelineEditing({
 
   const handleTimelineElementResize = useCallback(
     // fallow-ignore-next-line complexity
-    (
+    async (
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
     ) => {
+      element = await prepareTimelineComponentResize(projectIdRef.current ?? "", element);
       const liveAttrs: Array<[string, string]> = [
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
       ];
-      if (updates.playbackStart != null) {
+      if (element.compositionSrc && element.sourceDuration) {
+        for (const [name, value] of Object.entries(
+          componentStretchAttributes(element.sourceDuration, updates.duration),
+        )) {
+          liveAttrs.push([`data-${name}`, value ?? ""]);
+        }
+      } else if (updates.playbackStart != null) {
         const liveAttr =
           element.playbackStartAttr === "playback-start"
             ? "data-playback-start"
@@ -355,7 +364,7 @@ export function useTimelineEditing({
             reloadPreview,
             projectId: projectIdRef.current,
             targetPath,
-            domId: element.domId,
+            domId: element.compositionSrc ? undefined : element.domId,
             label: "Resize timeline clip",
             coalesceKey,
             recordEdit,
@@ -368,6 +377,7 @@ export function useTimelineEditing({
         );
       const persistDone =
         sdkSession &&
+        !element.compositionSrc &&
         element.hfId &&
         element.timingSource !== "implicit" &&
         !hasPbsAdjustment &&
@@ -525,7 +535,9 @@ export function useTimelineEditing({
             },
           );
           if (!removeResponse.ok) {
-            const data = (await removeResponse.json().catch(() => ({}))) as { error?: unknown };
+            const data = (await removeResponse.json().catch(() => ({}))) as {
+              error?: unknown;
+            };
             const detail = typeof data.error === "string" ? `: ${data.error}` : "";
             // DOM-only media rows can outlive the source element after another
             // edit or a preview reload. Treat that stale row as already removed

@@ -173,7 +173,6 @@ async function applyHistoryStep(
       : { ...state, redo: state.redo.slice(0, -1), updatedAt: now() };
   const firstEntry = topEntry(currentState);
   if (!firstEntry) return { state: currentState, result: { ok: false, reason: "empty" } };
-  const paths = Object.keys(firstEntry.files);
   const apply = async (): Promise<{ state: EditHistoryState; result: ApplyResult }> => {
     let state = currentState;
     let sawContentMismatch = false;
@@ -218,7 +217,12 @@ async function applyHistoryStep(
       };
     }
   };
-  return callbacks.serialize ? callbacks.serialize(paths, apply) : apply();
+  return apply();
+}
+
+function historyStepPaths(state: EditHistoryState, direction: "undo" | "redo"): string[] {
+  // A stale top entry can advance to earlier files during this same operation.
+  return [...new Set(state[direction].flatMap((entry) => Object.keys(entry.files)))].sort();
 }
 
 export function createPersistentEditHistoryStore({
@@ -230,6 +234,7 @@ export function createPersistentEditHistoryStore({
 }: PersistentEditHistoryStoreOptions) {
   let state = initialState;
   let queue = Promise.resolve();
+  let historyActionQueue = Promise.resolve();
 
   const save = async (nextState: EditHistoryState) => {
     state = nextState;
@@ -254,6 +259,46 @@ export function createPersistentEditHistoryStore({
     return run;
   };
 
+  const applyHistoryStepWithFileLocks = async (
+    direction: "undo" | "redo",
+    callbacks: ApplyCallbacks,
+  ): Promise<ApplyResult> => {
+    const transition = direction === "undo" ? undoEditHistory : redoEditHistory;
+    const apply = (currentState: EditHistoryState) =>
+      applyHistoryStep(currentState, direction, transition, now, callbacks);
+    if (!callbacks.serialize) return mutate(apply);
+
+    // Saves already own their file queue while recording history. Acquire in
+    // that same order here; holding history while waiting for a save's file
+    // would leave each transaction waiting permanently for the other.
+    let paths = historyStepPaths(state, direction);
+    for (;;) {
+      const heldPaths = new Set(paths);
+      const result = await callbacks.serialize(paths, () =>
+        mutate<ApplyResult | { retryPaths: string[] }>(async (currentState) => {
+          const requiredPaths = historyStepPaths(currentState, direction);
+          // A queued save can change the target before this history turn starts.
+          // Release the obsolete file locks before acquiring the current set.
+          if (requiredPaths.some((path) => !heldPaths.has(path))) {
+            return { state: currentState, result: { retryPaths: requiredPaths } };
+          }
+          return apply(currentState);
+        }),
+      );
+      if (!("retryPaths" in result)) return result;
+      paths = result.retryPaths;
+    }
+  };
+
+  const queueHistoryStep = (direction: "undo" | "redo", callbacks: ApplyCallbacks) => {
+    // Preserve Undo/Redo invocation order even when their file sets differ.
+    // Recording a save stays outside this action queue so it can release the
+    // file locks that an earlier history action is waiting to acquire.
+    const run = historyActionQueue.then(() => applyHistoryStepWithFileLocks(direction, callbacks));
+    historyActionQueue = run.then(() => undefined, () => undefined);
+    return run;
+  };
+
   return {
     snapshot: () => snapshotEditHistoryState(state),
     async recordEdit(input: RecordEditInput) {
@@ -272,26 +317,10 @@ export function createPersistentEditHistoryStore({
       });
     },
     async undo(callbacks: ApplyCallbacks): Promise<ApplyResult> {
-      return mutate<ApplyResult>((currentState) =>
-        applyHistoryStep(
-          currentState,
-          "undo",
-          undoEditHistory,
-          now,
-          callbacks,
-        ),
-      );
+      return queueHistoryStep("undo", callbacks);
     },
     async redo(callbacks: ApplyCallbacks): Promise<ApplyResult> {
-      return mutate<ApplyResult>((currentState) =>
-        applyHistoryStep(
-          currentState,
-          "redo",
-          redoEditHistory,
-          now,
-          callbacks,
-        ),
-      );
+      return queueHistoryStep("redo", callbacks);
     },
   };
 }

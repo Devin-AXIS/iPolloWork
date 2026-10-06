@@ -27,7 +27,7 @@ test("project fingerprint invalidates nested media, CSS and composition edits bu
     await mkdir(join(root, "renders"));
     await writeFile(join(root, "index.html"), "<html></html>");
     let previous = await videoProjectFingerprint(root);
-    for (const path of ["compositions/recipe.html", "design-tokens.css", "assets/narration.mp3", "assets/.texture.png", "STORYBOARD.md"]) {
+    for (const path of ["index.html", "compositions/recipe.html", "design-tokens.css", "assets/narration.mp3", "assets/.texture.png", "STORYBOARD.md"]) {
       await writeFile(join(root, path), "first");
       const created = await videoProjectFingerprint(root);
       expect(created).not.toBe(previous);
@@ -37,6 +37,18 @@ test("project fingerprint invalidates nested media, CSS and composition edits bu
     }
     await writeFile(join(root, "renders/proof.png"), "generated evidence");
     expect(await videoProjectFingerprint(root)).toBe(previous);
+    await mkdir(join(root, ".thumbnails"));
+    const thumbnail = join(root, ".thumbnails/v4-index-0-1920x1080.jpg");
+    await writeFile(thumbnail, "generated thumbnail");
+    expect(await videoProjectFingerprint(root)).toBe(previous);
+    await writeFile(thumbnail, "updated thumbnail");
+    expect(await videoProjectFingerprint(root)).toBe(previous);
+    await mkdir(join(root, "assets/.thumbnails"));
+    await writeFile(join(root, "assets/.thumbnails/authored.jpg"), "authored hidden asset");
+    const authored = await videoProjectFingerprint(root);
+    expect(authored).not.toBe(previous);
+    await writeFile(join(root, "assets/.thumbnails/authored.jpg"), "edited hidden asset");
+    expect(await videoProjectFingerprint(root)).not.toBe(authored);
     try {
       await symlink(join(root, "index.html"), join(root, "assets/unsafe.html"), "file");
     } catch (error) {
@@ -338,6 +350,75 @@ test("export reservations reuse partial initial receipts, enforce the preparatio
   }
 });
 
+test("reviewed exports preflight runtime before rendering and fingerprint normalized source", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-runtime-preflight-"));
+  const nativeFetch = globalThis.fetch, previous = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+  const sourcePath = "video/ses_preflight/index.html", directory = join(root, "video/ses_preflight");
+  const workspace = { id: "ws_preflight", path: root };
+  const html = '<section id="proof" class="scene clip" data-start="0" data-duration="3"></section>';
+  let mode = "invalid", starts = 0, inspections = 0, releases = 0;
+  const renderHashes: string[] = [];
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(root, sourcePath), html);
+  const discovery = join(root, "bridge.json");
+  await writeFile(discovery, JSON.stringify({ baseUrl: "http://127.0.0.1:54321", token: "test-token" }));
+  process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
+  globalThis.fetch = Object.assign(async (input: string | URL | Request, options?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/video/ensure-studio")) {
+      if (JSON.parse(String(options?.body)).release) releases++;
+      return Response.json({ ok: true, port: 3456 });
+    }
+    if (url.includes("?review=runtime")) {
+      inspections++;
+      expect(url).toBe("http://127.0.0.1:3456/api/projects/ses_preflight/thumbnail/index.html?review=runtime");
+      if (mode === "unavailable") return new Response("offline", { status: 503 });
+      if (mode === "normalized") await writeFile(join(root, sourcePath), html.replace('<section ', '<section data-hf-id="editable-proof" '));
+      return Response.json({ valid: mode !== "invalid", sampledFrameCount: mode === "malformed" ? 0 : 3, scope: "runtime-timing-and-layout-not-semantic-approval",
+        issues: mode === "invalid" ? [{ sceneId: "proof", code: "executed-event-end-mismatch", time: 2, detail: "custom:enter: declared end 2, executed end 1.5" }] : [] });
+    }
+    if (url.endsWith("/render")) {
+      renderHashes.push(await videoProjectFingerprint(directory));
+      return Response.json({ jobId: `preflight_job${++starts}` });
+    }
+    if (url.endsWith("/progress")) return new Response('data: {"status":"rendering","progress":10}\n\n');
+    throw new Error(`Unexpected URL ${url}`);
+  }, nativeFetch);
+  try {
+    for (mode of ["invalid", "unavailable", "malformed", "normalized", "review-only"]) {
+      const args = { sourcePath, operationKey: mode, review: mode !== "review-only", reviewOnly: mode === "review-only" };
+      const beforeHash = await videoProjectFingerprint(directory), beforeStarts = starts, beforeInspections = inspections;
+      await videoRenderAction(workspace, "video_render_start", args);
+      let result = await videoRenderAction(workspace, "video_render_status", args);
+      for (let attempt = 0; result.status === "preparing" && attempt < 100; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 2));
+        result = await videoRenderAction(workspace, "video_render_status", args);
+      }
+      expect(inspections).toBe(beforeInspections + 1);
+      if (mode === "normalized" || mode === "review-only") {
+        expect(result.status).toBe("rendering");
+        expect(starts).toBe(beforeStarts + 1);
+        expect(result.sourceHash).toBe(await videoProjectFingerprint(directory));
+        expect(result.sourceHash).toBe(renderHashes.at(-1));
+        if (mode === "normalized") expect(result.sourceHash).not.toBe(beforeHash);
+      } else {
+        expect(result.status).toBe("failed");
+        expect(result.jobId).toBeUndefined();
+        expect(result.error).toContain(mode === "invalid" ? "executed-event-end-mismatch" : "runtime-review-unavailable");
+        expect(starts).toBe(beforeStarts);
+      }
+      await videoRenderAction(workspace, "video_render_start", args);
+      expect(inspections).toBe(beforeInspections + 1);
+      expect(starts).toBe(beforeStarts + (mode === "normalized" || mode === "review-only" ? 1 : 0));
+    }
+    expect(releases).toBe(3);
+  } finally {
+    globalThis.fetch = nativeFetch;
+    if (previous === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY; else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runtime acceptance failures and changed source cannot become completed deliveries", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipw-runtime-delivery-"));
   const nativeFetch = globalThis.fetch, previous = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
@@ -361,7 +442,7 @@ test("runtime acceptance failures and changed source cannot become completed del
   try {
     for (const mode of ["failed-runtime", "valid-runtime", "valid-runtime-metadata", "review-only", "changed-dependency", "changed-source"]) {
       const validRuntime = mode.startsWith("valid-runtime");
-      valid = mode !== "failed-runtime";
+      valid = true;
       const args = { sourcePath, operationKey: mode, review: true, reviewOnly: mode === "review-only" };
       await videoRenderAction(workspace, "video_render_start", args);
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -369,6 +450,8 @@ test("runtime acceptance failures and changed source cannot become completed del
         if (receipt.status === "rendering") break;
         await new Promise(resolve => setTimeout(resolve, 2));
       }
+      // A successful preflight cannot substitute for final runtime acceptance.
+      valid = mode !== "failed-runtime";
       await promisify(execFile)(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=192x108:rate=30:duration=3", "-c:v", "libx264", join(directory, "renders", `review_job${starts}.mp4`)]);
       if (mode === "failed-runtime" || mode === "valid-runtime-metadata") await writeFile(join(directory, "renders", `review_job${starts}.meta.json`), '{"status":"complete"}');
       if (mode === "changed-source") await writeFile(join(root, sourcePath), html + "<!-- edited during rendering -->");

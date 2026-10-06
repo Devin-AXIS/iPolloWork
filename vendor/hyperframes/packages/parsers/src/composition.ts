@@ -14,6 +14,8 @@ export {
   parseCompositionVariables,
   isCompositionVariable,
   isScalarVariableValue,
+  resolveTextVariableBinding,
+  updateTextVariableBinding,
 } from "./compositionVariables.js";
 export { scanVariableUsage, type VariableUsageScan } from "./variableUsage.js";
 export * from "./compositionContract.js";

@@ -11,27 +11,8 @@ import {
 const REGISTRY_ROOT = fileURLToPath(new URL("../../../../registry", import.meta.url));
 const REMOVED_EFFECT_SECTIONS = ["opening-effect", "ending-effect", "transition-effect"];
 const EXPECTED_VISUAL_COMPONENT_COUNTS = {
-  brand: 10,
-  data: 22,
-  developer: 8,
-  diagrams: 12,
-  knowledge: 8,
   maps: 12,
   media: 11,
-  people: 6,
-  product: 9,
-  proof: 10,
-  scene: 9,
-  social: 22,
-  typography: 10,
-} as const;
-const PERSONAL_COMPONENT_VARIABLE_COUNTS = {
-  "intelligent-decision-flow": 20,
-  "split-merge-network": 17,
-  "intelligence-network": 14,
-  "automation-hub": 9,
-  "feature-spotlight": 12,
-  "process-steps": 12,
 } as const;
 
 const MIGRATED_CAPTION_COMPONENTS = [
@@ -51,89 +32,22 @@ const MIGRATED_CAPTION_COMPONENTS = [
 ] as const;
 
 const VISUAL_COMPONENTS = [
-  ["brand-headline", "scene"],
-  ["feature-grid", "product"],
-  ["metric-signal", "data"],
-  ["chart-story", "data"],
-  ["architecture-hub", "diagrams"],
-  ["decision-flow", "diagrams"],
-  ["milestone-timeline", "diagrams"],
   ["route-map", "maps"],
   ["map-flow", "maps"],
-  ["before-after-contrast", "proof"],
-  ["learning-pyramid", "knowledge"],
-  ["profile-quote", "people"],
-  ["evidence-stack", "proof"],
-  ["lt-clean-bar", "typography"],
-  ["chapter-divider", "typography"],
-  ["bullet-stack", "typography"],
-  ["pull-quote", "typography"],
   ["media-hero", "media"],
   ["split-screen", "media"],
   ["device-mockup", "media"],
   ["spatial-camera-suite", "media"],
   ["browser-walkthrough", "media"],
   ["mobile-walkthrough", "media"],
-  ["ranking-list", "data"],
-  ["podium-ranking", "data"],
-  ["live-leaderboard", "data"],
-  ["medal-table", "data"],
-  ["comparison-matrix", "data"],
-  ["kpi-dashboard", "data"],
-  ["social-post", "social"],
-  ["comment-thread", "social"],
-  ["follow-card", "social"],
-  ["instagram-post", "social"],
-  ["instagram-story", "social"],
-  ["instagram-reel", "social"],
-  ["instagram-carousel", "social"],
-  ["x-status-post", "social"],
-  ["x-thread", "social"],
-  ["x-poll", "social"],
-  ["x-space", "social"],
-  ["douyin-video", "social"],
-  ["douyin-product-card", "social"],
-  ["douyin-live-room", "social"],
-  ["douyin-comment-stack", "social"],
-  ["xiaohongshu-note", "social"],
-  ["xiaohongshu-cover", "social"],
-  ["xiaohongshu-checklist", "social"],
-  ["xiaohongshu-review", "social"],
-  ["code-walkthrough", "developer"],
-  ["code-diff-card", "developer"],
-  ["terminal-run", "developer"],
-  ["product-spotlight", "product"],
-  ["pricing-plans", "brand"],
-  ["offer-card", "brand"],
-  ["logo-reveal", "brand"],
-  ["brand-palette", "brand"],
-  ["campaign-lockup", "brand"],
-  ["question-opener", "scene"],
-  ["product-steps", "product"],
-  ["process-cycle", "diagrams"],
-  ["project-roadmap", "diagrams"],
-  ["definition-card", "knowledge"],
-  ["team-grid", "people"],
-  ["testimonial-card", "proof"],
-  ["end-screen", "scene"],
-  ["brand-cta", "scene"],
   ["location-pulse-map", "maps"],
   ["metro-network-map", "maps"],
   ["territory-heat-map", "maps"],
   ["china-map", "maps"],
 ] as const;
 
-const OFFICIAL_DATA_COMPONENTS = [
-  ["animated-bar-chart", "data"],
-  ["bar-chart-race", "data"],
-  ["conic-progress-ring", "data"],
-  ["data-chart", "data"],
-  ["decline-chart", "data"],
-  ["logo-wall", "proof"],
-  ["number-wheel", "data"],
-  ["oscilloscope-trace", "data"],
+const OFFICIAL_MAP_COMPONENTS = [
   ["spain-map", "maps"],
-  ["star-rating-fill", "proof"],
   ["us-map", "maps"],
   ["us-map-bubble", "maps"],
   ["us-map-flow", "maps"],
@@ -149,18 +63,9 @@ const STRUCTURED_DATA_COMPONENTS = [
   "us-map-hex",
   "world-map",
   "china-map",
-  "ranking-list",
-  "podium-ranking",
-  "live-leaderboard",
-  "medal-table",
   "location-pulse-map",
   "metro-network-map",
   "territory-heat-map",
-  "kpi-dashboard",
-  "pricing-plans",
-  "instagram-carousel",
-  "x-poll",
-  "xiaohongshu-checklist",
 ] as const;
 
 interface MotionManifest {
@@ -222,7 +127,7 @@ function contentVariableIds(manifest: MotionManifest): string[] {
 }
 
 describe("component catalog registry", () => {
-  it("publishes 149 native components, 30 Shotcraft imports and 6 reusable personal components", () => {
+  it("publishes only the retained visual component categories", () => {
     const components = visualComponentManifests();
     const imported = components.filter(({ manifest }) =>
       ["video-shotcraft", "hyperframes-video-shotcraft"].includes(manifest.source?.provider ?? ""),
@@ -240,20 +145,18 @@ describe("component catalog registry", () => {
       ]),
     );
 
-    expect(native).toHaveLength(149);
+    expect(native).toHaveLength(23);
     expect(categoryCounts).toEqual(EXPECTED_VISUAL_COMPONENT_COUNTS);
-    expect(imported).toHaveLength(30);
+    expect(imported).toHaveLength(3);
     expect(
       imported.filter(({ manifest }) => manifest.visualComponent?.category === "media"),
     ).toHaveLength(3);
-    expect(
-      imported.filter(({ manifest }) => manifest.visualComponent?.category === "typography"),
-    ).toHaveLength(27);
-    expect(personal.map(({ manifest }) => manifest.name).sort()).toEqual(
-      Object.keys(PERSONAL_COMPONENT_VARIABLE_COUNTS).sort(),
+    expect(personal).toHaveLength(0);
+    expect(components).toHaveLength(26);
+    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(26);
+    expect(components.map(({ manifest }) => manifest.visualComponent?.category)).not.toEqual(
+      expect.arrayContaining(["scene", "product", "diagrams", "data", "typography", "proof", "knowledge", "people", "social", "developer", "brand"]),
     );
-    expect(components).toHaveLength(185);
-    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(185);
   });
 
   it("keeps visual components themeable, seekable, and within their authored property contracts", () => {
@@ -272,15 +175,7 @@ describe("component catalog registry", () => {
       const contentIds =
         manifest.name === "device-carousel" ? aiIds.filter((id) => id !== "carouselMode") : aiIds;
       expect(contentIds.length).toBeGreaterThan(0);
-      if (manifest.source?.provider === "ipollowork-local-import") {
-        expect(contentIds).toHaveLength(
-          PERSONAL_COMPONENT_VARIABLE_COUNTS[
-            manifest.name as keyof typeof PERSONAL_COMPONENT_VARIABLE_COUNTS
-          ],
-        );
-      } else {
-        expect(contentIds.length).toBeLessThanOrEqual(4);
-      }
+      expect(contentIds.length).toBeLessThanOrEqual(4);
       expect(new Set(manifest.variables?.map((variable) => variable.id)).size).toBe(
         manifest.variables?.length,
       );
@@ -346,7 +241,7 @@ describe("component catalog registry", () => {
       return html.includes("visual-component-catalog.ts");
     });
 
-    expect(generated).toHaveLength(54);
+    expect(generated).toHaveLength(3);
     for (const { manifestPath, manifest } of generated) {
       const html = readFileSync(
         join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),
@@ -407,7 +302,6 @@ describe("component catalog registry", () => {
       expect.arrayContaining([
         "route-map",
         ...VISUAL_COMPONENTS.map(([name]) => name),
-        ...Object.keys(PERSONAL_COMPONENT_VARIABLE_COUNTS),
         "caption-pill-karaoke",
         "caption-word-pulse",
         "caption-phrase-lift",
@@ -479,8 +373,8 @@ describe("component catalog registry", () => {
     expect(`${chinaMap}${worldMap}`).not.toMatch(/fetch\(|topojson|world-atlas/);
   });
 
-  it("adapts all fifteen official Data catalog entries to the shared component contract", () => {
-    for (const [name, category] of OFFICIAL_DATA_COMPONENTS) {
+  it("adapts the six retained official map entries to the shared component contract", () => {
+    for (const [name, category] of OFFICIAL_MAP_COMPONENTS) {
       const manifestPath = join(REGISTRY_ROOT, "blocks", name, "registry-item.json");
       const manifest = parseManifest(manifestPath);
       const html = readFileSync(

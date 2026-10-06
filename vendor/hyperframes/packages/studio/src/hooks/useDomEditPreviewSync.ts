@@ -9,6 +9,8 @@ import { findElementForSelection, type DomEditSelection } from "../components/ed
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { PatchTarget } from "../utils/sourcePatcher";
+import { domEditSelectionsTargetSame } from "../utils/domEditHelpers";
+import type { ResolveDomSelectionOptions } from "./useDomSelection";
 
 interface UseDomEditPreviewSyncParams {
   previewIframe: HTMLIFrameElement | null;
@@ -20,7 +22,10 @@ interface UseDomEditPreviewSyncParams {
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; preserveGroup?: boolean },
   ) => void;
-  buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
+  buildDomSelectionFromTarget: (
+    element: HTMLElement,
+    options?: ResolveDomSelectionOptions,
+  ) => Promise<DomEditSelection | null>;
   refreshPreviewDocumentVersion: () => void;
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
@@ -77,8 +82,11 @@ export function useDomEditPreviewSync({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(nextElement);
-      if (nextSelection) {
+      const nextSelection = await buildDomSelectionFromTarget(nextElement, { exactTarget: true });
+      if (
+        nextSelection &&
+        domEditSelectionsTargetSame(domEditSelectionRef.current, currentSelection)
+      ) {
         applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }
     };

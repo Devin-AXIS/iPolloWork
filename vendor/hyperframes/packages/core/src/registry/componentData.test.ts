@@ -23,6 +23,76 @@ const REGION_CONTRACT: RegistryVisualComponentDataContract = {
 };
 
 describe("visual component data contract", () => {
+  it("reports inclusive row number bounds without clamping and respects required and optional blanks", () => {
+    const required: RegistryVisualComponentDataContract = { ...REGION_CONTRACT, binding: { variable: "values", encoding: "json" },
+      columns: REGION_CONTRACT.columns.map(column => column.id === "value" ? { ...column, min: 0, max: 1 } : column),
+    };
+    const optional: RegistryVisualComponentDataContract = { ...required, columns: required.columns.map(column => column.id === "value" ? { ...column, required: false } : column) };
+    const value = (cell: unknown) => JSON.stringify({ version: 1, kind: "region-value", rows: [{ region: "CA", value: cell }] });
+    for (const cell of [0, 1, "0", "1", .5, "0.5"]) {
+      const parsed = parseVisualComponentData(required, value(cell));
+      expect(parsed.issues).toEqual([]);
+      expect(parsed.document.rows[0]?.value).toBe(Number(cell));
+    }
+    for (const cell of [-.01, 1.01]) {
+      for (const contract of [required, optional]) {
+        const parsed = parseVisualComponentData(contract, value(cell));
+        expect(parsed.issues.map(issue => issue.path)).toEqual(["rows.0.value"]);
+        expect(parsed.document.rows[0]?.value).toBe(cell);
+      }
+    }
+    for (const cell of [undefined, "", " "]) {
+      expect(parseVisualComponentData(required, value(cell)).issues.map(issue => issue.path)).toEqual(["rows.0.value"]);
+      expect(parseVisualComponentData(optional, value(cell)).issues).toEqual([]);
+    }
+  });
+  it("accepts real numbers and numeric strings while rejecting coerced values and required blanks", () => {
+    const required: RegistryVisualComponentDataContract = { ...REGION_CONTRACT, binding: { variable: "values", encoding: "json" } };
+    const optional: RegistryVisualComponentDataContract = { ...required, columns: required.columns.map(column => column.id === "value" ? { ...column, required: false } : column) };
+    const value = (cell: unknown) => JSON.stringify({ version: 1, kind: "region-value", rows: [{ region: "CA", value: cell }] });
+    for (const cell of [0, "0", .5, " 2.75 ", "-1"]) {
+      const parsed = parseVisualComponentData(required, value(cell));
+      expect(parsed.issues).toEqual([]);
+      expect(parsed.document.rows[0]?.value).toBe(Number(cell));
+    }
+    for (const cell of [null, false, true, [], [1], {}, { value: 1 }, "NaN"]) {
+      for (const contract of [required, optional]) {
+        const parsed = parseVisualComponentData(contract, value(cell));
+        expect(parsed.issues.map(issue => issue.path)).toEqual(["rows.0.value"]);
+        expect(parsed.document.rows[0]?.value).toBeUndefined();
+      }
+    }
+    for (const cell of [undefined, "", "  ", "\n"]) {
+      expect(parseVisualComponentData(required, value(cell)).issues.map(issue => issue.path)).toEqual(["rows.0.value"]);
+      const parsed = parseVisualComponentData(optional, value(cell));
+      expect(parsed.issues).toEqual([]);
+      expect(parsed.document.rows[0]?.value).toBeUndefined();
+    }
+  });
+  it("keeps overflowing branch content intact while reporting declared layout limits", () => {
+    const contract: RegistryVisualComponentDataContract = {
+      version: 1, kind: "category-value", mode: "replace", rowId: "id",
+      binding: { variable: "branches", encoding: "json" }, minRows: 2, maxRows: 6,
+      columns: [
+        { id: "id", label: "ID", type: "string", role: "id", required: true },
+        { id: "label", label: "Branch", type: "string", role: "label", required: true, maxLength: 2 },
+        { id: "leaves", label: "Leaves", type: "string", role: "value", list: { maxItems: 2, itemMaxLength: 2, separators: "、,，\n" } },
+      ],
+    };
+    const rows = [{ id: "one", label: "📈甲", leaves: "甲、乙" }, { id: "two", label: "方向", leaves: "甲\n乙" }];
+    const value = (items: typeof rows) => JSON.stringify({ version: 1, kind: "category-value", rows: items });
+    expect(parseVisualComponentData(contract, value(rows)).issues).toEqual([]);
+    const overflow = [{ ...rows[0]!, label: "甲乙丙", leaves: "甲、乙、丙" }, { ...rows[1]!, leaves: "完整内容" }];
+    const parsed = parseVisualComponentData(contract, value(overflow));
+    expect(parsed.document.rows).toEqual(overflow);
+    expect(parsed.issues.map(issue => issue.path)).toEqual(["rows.0.label", "rows.0.leaves", "rows.1.leaves"]);
+    expect(parseVisualComponentData(contract, JSON.stringify({ version: 1, kind: "category-value", rows: [{ ...rows[0], leaves: {} }, rows[1]] })).issues[0]?.path).toBe("rows.0.leaves");
+    expect(parseVisualComponentData(contract, value(rows.slice(0, 1))).issues[0]?.path).toBe("rows");
+    expect(parseVisualComponentData(contract, value(Array.from({ length: 7 }, (_, i) => ({ ...rows[0]!, id: String(i) })))).issues[0]?.path).toBe("rows");
+    const ai = JSON.parse(formatVisualComponentDataForAi(contract, value(rows)));
+    expect([ai.minRows, ai.maxRows]).toEqual([2, 6]);
+    expect(ai.columns[2].list.maxItems).toBe(2);
+  });
   it("preserves icon choices and embedded images through the native rows contract", () => {
     const contract: RegistryVisualComponentDataContract = {
       version: 1, kind: "category-value", mode: "replace", rowId: "label",

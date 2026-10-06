@@ -79,7 +79,7 @@ export async function ensureEngineWorkspace(ctx, engine) {
   const created = await ctx.eval(`(() => {
     const dialog = document.querySelector('[data-testid=create-project-dialog]');
     const button = [...(dialog?.querySelectorAll('button') ?? [])]
-      .find((entry) => ['创建', 'Create'].includes(entry.textContent?.trim() ?? ''));
+      .find((entry) => ['创建', 'Create', '新建项目', 'New project'].includes(entry.textContent?.trim() ?? ''));
     button?.click();
     return Boolean(button);
   })()`);
@@ -93,7 +93,7 @@ export async function ensureEngineWorkspace(ctx, engine) {
   return workspace;
 }
 
-async function openEngineModelDirectory(ctx, engine) {
+export async function openEngineModelDirectory(ctx, engine) {
   await ctx.eval(`(async () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 80));
@@ -151,22 +151,23 @@ async function assertUnifiedModels(ctx, engine) {
 }
 
 export async function selectAndInvokeFreeModel(ctx, engine, request = {}) {
+  const model = request.model ?? INVOCATION_MODEL;
   const selected = await ctx.eval(`(() => {
     const current = Array.from(document.querySelectorAll('button')).find((button) =>
       /切换模型|Change model/.test(button.getAttribute('aria-label') ?? '')
-      && button.textContent?.includes(${JSON.stringify(INVOCATION_MODEL)}));
+      && button.textContent?.includes(${JSON.stringify(model)}));
     const item = Array.from(document.querySelectorAll('[data-slot="command-item"]'))
-      .find((entry) => entry.textContent?.includes(${JSON.stringify(INVOCATION_MODEL)})
+      .find((entry) => entry.textContent?.includes(${JSON.stringify(model)})
         && !entry.hasAttribute('data-disabled'));
     item?.click();
     return Boolean(item || current);
   })()`);
-  ctx.assert(selected, `${engine.label} could not select ${INVOCATION_MODEL}.`);
+  ctx.assert(selected, `${engine.label} could not select ${model}.`);
   await ctx.waitFor(`Array.from(document.querySelectorAll('button'))
     .some((button) => /切换模型|Change model/.test(button.getAttribute('aria-label') ?? '')
-      && button.textContent?.includes(${JSON.stringify(INVOCATION_MODEL)}))`, {
+      && button.textContent?.includes(${JSON.stringify(model)}))`, {
     timeoutMs: 30_000,
-    label: `${engine.label} selected ${INVOCATION_MODEL}`,
+    label: `${engine.label} selected ${model}`,
   });
 
   const token = request.token ?? `FREE_${engine.project.toUpperCase()}_OK_922`;

@@ -1,35 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { access, copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const repo = resolve(import.meta.dirname, "../..");
-const registryRoot = join(repo, "vendor/hyperframes/registry/blocks");
-const catalogPath = join(repo, "apps/server/bundled-templates/core-v1-video-motion-catalog.md");
-const componentMapPath = join(repo, "apps/server/bundled-templates/core-v1-video-motion-component-map.md");
 const cliPath = join(repo, "vendor/hyperframes/packages/cli/bin/hyperframes.mjs");
 const gsapPath = join(repo, "vendor/hyperframes/node_modules/.bun/gsap@3.15.0/node_modules/gsap/dist/gsap.min.js");
 const MAX_STILL_SECONDS = 4;
-const cases = [
-  { pattern: "progressive-build", component: "checklist-reveal", visibleText: "Checklist Reveal" },
-  { pattern: "focus-transfer", component: "product-comparison-stage", visibleText: "Product Comparison Stage" },
-  { pattern: "path-journey", component: "milestone-timeline", visibleText: "A path from intent to impact" },
-  { pattern: "state-transformation", component: "media-before-after", visibleText: "Media Before / After" },
-  { pattern: "data-accumulation", component: "bar-chart-race", visibleText: "Category leaders" },
-  { pattern: "asset-exploration", component: "mobile-walkthrough", visibleText: "A complete flow in three taps" },
-  { pattern: "montage", component: "device-carousel", visibleText: "One product. Every moment." },
-  { pattern: "camera-journey", component: "mobile-walkthrough", visibleText: "A complete flow in three taps" },
-  { pattern: "dialogue", component: "speaker-intro", visibleText: "Speaker Intro" },
-  { pattern: "kinetic-type", component: "kinetic-keyword", visibleText: "Kinetic Keyword" },
-  { pattern: "audio-reactive", component: "oscilloscope-trace", visibleText: "Signal trace" },
-];
 let temporalState;
-let installedComponentPath;
 let transitionProofPath;
-
-function componentPath(component) {
-  return join(registryRoot, component, `${component}.html`);
-}
 
 function narratedPacingFixture(duration) {
   const beatCount = Math.ceil(duration / 3);
@@ -58,82 +37,10 @@ function narratedPacingFixture(duration) {
 
 export default {
   id: "video-temporal-story-library",
-  title: "Temporal story patterns route to real seekable Video Studio components",
+  title: "Temporal transitions and narrated pacing stay seekable",
   kind: "internal",
   preserveTheme: true,
   steps: [{
-    name: "Catalog mappings resolve to shipped registry components",
-    run: async (ctx) => {
-      const catalog = await readFile(catalogPath, "utf8");
-      const componentMap = await readFile(componentMapPath, "utf8");
-      const mappedComponents = [...componentMap.matchAll(/^\| `([^`]+)` \| (?:opening|body|closing|overlay \/ any) \|/gm)].map((match) => match[1]).sort();
-      const videoComponents = [];
-      for (const component of await readdir(registryRoot)) {
-        try {
-          const manifest = JSON.parse(await readFile(join(registryRoot, component, "registry-item.json"), "utf8"));
-          if (manifest.visualComponent?.surfaces?.includes("video")) videoComponents.push(component);
-        } catch (error) {
-          if (error?.code !== "ENOENT") throw error;
-        }
-      }
-      videoComponents.sort();
-      ctx.assert(JSON.stringify(mappedComponents) === JSON.stringify(videoComponents), "The temporal map covers the exact current Video Studio registry set");
-      for (const item of cases) {
-        ctx.assert(catalog.includes(`\`${item.component}\``), `${item.pattern} does not route to ${item.component}`);
-        await access(componentPath(item.component));
-        const manifest = JSON.parse(await readFile(join(registryRoot, item.component, "registry-item.json"), "utf8"));
-        ctx.assert(manifest.engine?.seekable === true, `${item.component} is not declared seekable`);
-        ctx.assert(manifest.visualComponent?.surfaces?.includes("video"), `${item.component} is not available to Video Studio`);
-      }
-      await ctx.client.send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
-    },
-  }, {
-    name: "Selected components install into and validate against the active project",
-    run: async (ctx) => {
-      const workspace = resolve(ctx.outDir, "workspace");
-      const project = join(workspace, "video", "component-reuse");
-      await mkdir(project, { recursive: true });
-      await writeFile(join(project, "index.html"), `<!doctype html><html><head><meta charset="UTF-8"></head><body>
-        <main data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="9">
-          <section id="roadmap" class="scene clip" data-ipw-scene data-composition-id="milestone-timeline-roadmap" data-composition-src="compositions/milestone-timeline.html" data-ipw-registry-component="milestone-timeline" data-ipw-timing-owner="host" data-motion-pattern="path-journey" data-ipw-timing-source="estimated-reading" data-ipw-beats='[{"start":0,"end":3,"intent":"Frame the route","focus":"Opening milestone","action":"Reveal the first step","result":"The opening step holds","targets":["#roadmap"],"animation":"component:milestone-timeline","motion":{"start":0,"end":3}},{"start":3,"end":6,"intent":"Advance the plan","focus":"Middle milestone","action":"Connect the second step","result":"Two milestones remain visible","targets":["#roadmap"],"animation":"component:milestone-timeline","motion":{"start":3,"end":6}},{"start":6,"end":9,"intent":"Land the plan","focus":"Complete route","action":"Reveal the final step","result":"The complete route holds","targets":["#roadmap"],"animation":"component:milestone-timeline","motion":{"start":6,"end":9}}]' data-variable-values='{"title":"90 days to open","stepOne":"Inspect","stepTwo":"Build","stepThree":"Open"}' data-start="0" data-duration="9" data-track-index="0"></section>
-        </main>
-        <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
-        <script>window.__timelines=window.__timelines||{};window.__timelines.main=gsap.timeline({paused:true});</script>
-      </body></html>`);
-      const moduleUrl = pathToFileURL(join(repo, "apps/server/src/extensions/video-components.ts")).href;
-      const output = execFileSync("bun", ["--eval", `
-        import { installVideoComponents, checkVideoComponents } from ${JSON.stringify(moduleUrl)};
-        const workspace = { id: "fraimz", path: ${JSON.stringify(workspace)} };
-        const sourcePath = "video/component-reuse/index.html";
-        const installed = await installVideoComponents(workspace, { sourcePath, componentIds: ["milestone-timeline"] });
-        const checked = await checkVideoComponents(workspace, { sourcePath });
-        console.log(JSON.stringify({ installed, checked }));
-      `], { cwd: repo, encoding: "utf8", env: { ...process.env, IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT: registryRoot } });
-      const result = JSON.parse(output);
-      ctx.assert(result.installed.components[0]?.componentId === "milestone-timeline", "The selected component was installed from the bundled registry");
-      ctx.assert(result.checked.valid === true && result.checked.reusedComponentCount === 1, "The active project records one valid real component reference");
-      const lint = JSON.parse(execFileSync("node", [join(repo, "vendor/hyperframes/packages/cli/bin/hyperframes.mjs"), "lint", project, "--json"], { cwd: repo, encoding: "utf8" }));
-      ctx.assert(lint.ok === true, "The installed subcomposition and host pass HyperFrames lint");
-      installedComponentPath = join(project, "compositions", "milestone-timeline.html");
-    },
-  }, {
-    name: "Installed component preserves its native visual and timeline",
-    run: async (ctx) => {
-      await ctx.prove("The project-installed component renders its native registry treatment", {
-        action: async () => {
-          await ctx.client.send("Page.navigate", { url: pathToFileURL(installedComponentPath).href });
-          await ctx.waitFor("document.readyState === 'complete' && Boolean(window.__timelines?.['milestone-timeline'])", { timeoutMs: 30_000, label: "installed component timeline" });
-          await ctx.eval("window.__timelines['milestone-timeline'].progress(0.65); true");
-        },
-        assert: async () => {
-          const hasTitle = await ctx.eval("Boolean(document.querySelector('[data-ipw-variable=title]').textContent.trim())");
-          const visibleSteps = await ctx.eval("Array.from(document.querySelectorAll('.step')).filter((element) => Number(getComputedStyle(element).opacity) > 0.05).length");
-          ctx.assert(hasTitle && visibleSteps === 3, "Installed component has visible native content and developed timeline state");
-        },
-        screenshot: { name: "installed-milestone-timeline", requireText: ["A path from intent to impact"] },
-      });
-    },
-  }, {
     name: "Incoming transitions preserve a visible boundary and deterministic seek states",
     run: async (ctx) => {
       transitionProofPath = join(ctx.outDir, "incoming-transition-proof.html");
@@ -159,47 +66,8 @@ export default {
         screenshot: { name: "incoming-transition", requireText: ["The next step is visible"] },
       });
     },
-  }, {
-    name: "Representative components show deterministic temporal development",
-    run: async (ctx) => {
-      for (const item of cases) {
-        await ctx.prove(`${item.pattern} uses a real component with observable seek states`, {
-          action: async () => {
-            await ctx.client.send("Page.navigate", { url: pathToFileURL(componentPath(item.component)).href });
-            await ctx.waitFor(`document.readyState === "complete" && Boolean(window.__timelines?.[${JSON.stringify(item.component)}])`, { timeoutMs: 30_000, label: `${item.component} timeline` });
-            const result = await ctx.eval(`(() => {
-              const root = document.querySelector('[data-composition-id=${JSON.stringify(item.component)}]');
-              const timeline = window.__timelines[${JSON.stringify(item.component)}];
-              const signature = () => [...root.querySelectorAll('*')].map((element) => {
-                const style = getComputedStyle(element);
-                return [style.opacity, style.transform, style.clipPath, style.strokeDashoffset].join('|');
-              }).join('||');
-              const visible = () => [...root.querySelectorAll('*')].filter((element) => {
-                const style = getComputedStyle(element);
-                return style.visibility !== 'hidden' && Number(style.opacity) > 0.05;
-              }).length;
-              timeline.progress(0.08);
-              const establish = { signature: signature(), visible: visible() };
-              timeline.progress(0.52);
-              const develop = { signature: signature(), visible: visible() };
-              timeline.progress(0.94);
-              const land = { signature: signature(), visible: visible() };
-              timeline.progress(0.52);
-              return { establish, develop, land, duration: timeline.duration() };
-            })()`);
-            temporalState = result;
-          },
-          assert: async () => {
-            const state = temporalState;
-            ctx.assert(state.duration > 0, `${item.component} has no timeline duration`);
-            ctx.assert(state.establish.signature !== state.develop.signature, `${item.component} does not change between Establish and Develop`);
-            ctx.assert(state.develop.visible > 0 && state.land.visible > 0, `${item.component} has an empty Develop or Land state`);
-          },
-          screenshot: { name: `${item.pattern}-${item.component}`, requireText: [item.visibleText] },
-        });
-      }
-    },
-  }, {
+  },
+{
     name: "10, 20, and 30 second narration scenes render without long frozen intervals",
     run: async (ctx) => {
       const workspace = resolve(ctx.outDir, "pacing-renders");

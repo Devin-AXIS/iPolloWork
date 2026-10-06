@@ -537,7 +537,7 @@ export function StudioRightPanel({
   };
 
   const exportDrawer = rightPanelTab === "renders";
-  const componentsPanelActive = rightPanelTab === "components";
+  const componentsPanelActive = rightPanelTab === "components" || (rightPanelTab === "block-params" && !activeBlockParams);
 
   return (
     <>

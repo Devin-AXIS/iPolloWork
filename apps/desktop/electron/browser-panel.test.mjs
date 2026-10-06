@@ -105,6 +105,12 @@ window.__videoPanelTest = {
   const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/login`;
   const window = new BrowserWindow({ show: false });
   await window.loadURL("about:blank");
+  const browserOpenedEvents = [];
+  const sendToRenderer = window.webContents.send;
+  window.webContents.send = function(channel, payload) {
+    if (channel === "ipollowork:browser:panel-opened") browserOpenedEvents.push(payload);
+    return sendToRenderer.call(this, channel, payload);
+  };
   const panel = createBrowserPanel({ getWindow: () => window, onDeepLink() {}, listLocalWorkspaces: () => [] });
   const handlers = new Map();
   panel.registerIpc({ handle: (name, fn) => handlers.set(name, fn), on() {} });
@@ -372,6 +378,23 @@ window.__videoPanelTest = {
     assert.equal(completed.results.length, 3);
     assert.equal((await call('state')).activeTabId, user.tabId);
     assert.deepEqual(await userView.executeJavaScript("[document.activeElement.id,document.querySelector('#title').value]"), ['title', 'User draft']);
+    const agentView = webContents.getAllWebContents().find(item => item.getURL() === agentUrl);
+    const cursor = await agentView.executeJavaScript(`(() => {
+      const cursor = document.getElementById('__ipollowork_browser_cursor__');
+      const target = document.querySelector('#qr').getBoundingClientRect();
+      const rect = cursor?.getBoundingClientRect();
+      const x = Math.round(target.left + target.width / 2), y = Math.round(target.top + target.height / 2);
+      return { point: rect ? [rect.left + 4, rect.top + 4] : null, target: [x,y],
+        pointerEvents: cursor && getComputedStyle(cursor).pointerEvents,
+        hitTarget: document.elementFromPoint(x,y)?.id, ariaHidden: cursor?.getAttribute('aria-hidden') };
+    })()`);
+    assert.deepEqual(cursor.point, cursor.target, 'Agent arrow marks the actual click target');
+    assert.equal(cursor.pointerEvents, 'none');
+    assert.equal(cursor.hitTarget, 'qr', 'Visual arrow cannot intercept user or agent input');
+    assert.equal(cursor.ariaHidden, 'true');
+    assert.equal(await userView.executeJavaScript("Boolean(document.getElementById('__ipollowork_browser_cursor__'))"), false, 'Another conversation does not show this action cursor');
+    await call('screenshot', { tabId: agent.tabId });
+    assert.equal(await agentView.executeJavaScript("getComputedStyle(document.getElementById('__ipollowork_browser_cursor__')).visibility"), 'visible', 'Screenshot cleanup restores the visible action cursor');
     const loginProfile = { profileId: 'plugin:foreground-login', taskId: 'agent-login-task' };
     const loginUrl = new URL('/foreground-login', url).href;
     const foregroundLogin = await call('openUrl', loginUrl, loginProfile);
@@ -397,6 +420,10 @@ window.__videoPanelTest = {
     assert.equal((await call('state')).activeTabId, user.tabId, 'Showing an agent page preserves its background execution mode');
     assert.equal(window.isVisible(), false);
     await call('setControl', reusedLogin.tabId, 'human');
+    assert.equal((await call('state')).activeTabId, reusedLogin.tabId, 'Takeover selects the requested conversation browser tab');
+    assert.deepEqual(browserOpenedEvents.at(-1), { sessionId: loginProfile.taskId, tabId: reusedLogin.tabId }, 'Takeover surfaces the exact owning conversation page');
+    assert.equal(window.isVisible(), true, 'Takeover gives the user a visible native page');
+    assert.equal(await loginContents.executeJavaScript("Boolean(document.getElementById('__ipollowork_browser_cursor__'))"), false, 'Takeover immediately clears the agent cursor');
     await assert.rejects(call('openUrl', new URL('/agent-must-not-navigate', url).href, { ...loginProfile, background: true }), /user control/);
     assert.equal(loginContents.getURL(), loginUrl);
     assert.equal(await loginContents.executeJavaScript("document.querySelector('#title').value"), 'Reused account draft');
@@ -454,7 +481,6 @@ window.__videoPanelTest = {
     const humanRecovery = await call('openUrl', recoveryUrl, { ...recoveryProfile, sessionRecovery: recoveryOptions });
     assert.equal(humanRecovery.url, new URL('/platform/', url).href, 'An explicit foreground login may recover under human control');
     assert.equal((await call('state')).tabs.find(tab => tab.id === recoveryTab.tabId).controller, 'human');
-    const agentView = webContents.getAllWebContents().find(item => item.getURL() === agentUrl);
     assert.equal(await agentView.executeJavaScript("document.querySelector('#title').value"), 'Background draft');
     const current = await call('snapshot', { tabId: agent.tabId });
     const pending = call('act', { tabId: agent.tabId, snapshotId: current.snapshotId, actions: [

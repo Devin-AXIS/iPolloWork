@@ -26,6 +26,33 @@ export { hyperframesStudioPort, videoProjectDirectory, videoProjectId } from "./
 
 export const hyperframesEffectVariableUpdateSchema = z.enum(["live", "rebuild", "reload"]);
 
+/** Input boundary for the shared registry row contract used by Studio and the host. */
+export const hyperframesVisualComponentDataSchema = z.object({
+  version: z.literal(1),
+  kind: z.enum(["category-value", "region-value", "point-value", "route-value", "series-value"]),
+  mode: z.enum(["replace", "override"]), rowId: z.string().min(1),
+  binding: z.object({ variable: z.string().min(1), encoding: z.enum(["json", "key-value-list", "route-value-list", "label-detail-list"]) }),
+  columns: z.array(z.object({
+    id: z.string().min(1), label: z.string().min(1), type: z.enum(["string", "number"]),
+    role: z.enum(["id", "label", "value", "source", "target"]), required: z.boolean().optional(),
+    options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
+    min: z.number().finite().optional(), max: z.number().finite().optional(),
+    maxLength: z.number().int().positive().optional(),
+    list: z.object({
+      maxItems: z.number().int().nonnegative(), itemMaxLength: z.number().int().positive(),
+      separators: z.string().min(1),
+    }).optional(),
+  }).passthrough().superRefine((column, context) => {
+    if (column.type !== "number" && (column.min !== undefined || column.max !== undefined)) {
+      context.addIssue({ code: "custom", message: "Numeric bounds require a number column." });
+    }
+    if (column.min !== undefined && column.max !== undefined && column.min > column.max) {
+      context.addIssue({ code: "custom", message: "Column min must not exceed max." });
+    }
+  })).min(1),
+  minRows: z.number().int().nonnegative().optional(), maxRows: z.number().int().nonnegative().optional(),
+}).passthrough();
+
 /** CSS-page geometry for real screenshot crops; pixel ratio describes the image bytes. */
 export const hyperframesPageCaptureSchema = z.object({
   width: z.number().positive().max(8192), height: z.number().positive().max(16384),
@@ -53,7 +80,8 @@ export const hyperframesMotionRecipeSchema = z.object({
   pattern: z.string().min(1),
   minHoldSeconds: z.number().positive(),
   capacity: z.object({
-    variable: z.string(), separator: z.string(), maxItems: z.number().int().positive(),
+    variable: z.string(), encoding: z.enum(["delimited", "json"]).optional(),
+    separator: z.string().optional(), maxItems: z.number().int().positive(),
     minItems: z.number().int().positive().default(1),
     fieldSeparator: z.string().min(1).optional(),
     fieldsPerItem: z.number().int().positive().optional(),
@@ -95,6 +123,9 @@ export const hyperframesMotionRecipeSchema = z.object({
   }
   if (recipe.capacity && recipe.capacity.minItems > recipe.capacity.maxItems) {
     context.addIssue({ code: "custom", message: "Recipe minimum capacity exceeds its maximum." });
+  }
+  if (recipe.capacity && recipe.capacity.encoding !== "json" && recipe.capacity.separator === undefined) {
+    context.addIssue({ code: "custom", path: ["capacity", "separator"], message: "Delimited capacity needs a separator." });
   }
 });
 

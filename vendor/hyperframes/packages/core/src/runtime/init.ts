@@ -32,7 +32,14 @@ import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload } from "./timeline";
-import { createRuntimeStartTimeResolver } from "./startResolver";
+import {
+  createRuntimeStartTimeResolver,
+  resolveCompositionElement,
+  hasCompositionRetime,
+  resolveAncestorCompositionPlaybackRate,
+  resolveCompositionSourceTime,
+  retimeCompositionTimeline,
+} from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { installAspectFitCompositionHosts } from "./compositionAspectFit";
@@ -574,6 +581,7 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const resolveMediaStartSeconds = (element: Element, fallback = 0): number => {
+    if (hasCompositionRetime(element)) return resolveStartForElement(element, fallback);
     if (!element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")) {
       // `data-start` is authored relative to the media element's OWN sub-
       // composition, not the root timeline — `fallback` carries the host
@@ -799,7 +807,12 @@ export function initSandboxRuntimeModular(): void {
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
   ): number => {
-    const timelineDuration = getTimelineDurationSeconds(timeline);
+    const root = resolveRootCompositionElement();
+    const rootDuration = Number(root?.getAttribute("data-duration"));
+    const hasRetimedChild =
+      root && Array.from(root.querySelectorAll("[data-composition-id]")).some(hasCompositionRetime);
+    const timelineDuration =
+      hasRetimedChild && rootDuration > 0 ? rootDuration : getTimelineDurationSeconds(timeline);
     const mediaFloor = resolveMediaDurationFloorSeconds();
     const authoredCompositionFloor = resolveAuthoredCompositionDurationFloorSeconds();
     const adapterFloor = resolveAdapterDurationFloorSeconds();
@@ -861,11 +874,23 @@ export function initSandboxRuntimeModular(): void {
       null;
     const minCandidateDurationSeconds = resolveMinCandidateDurationSeconds(durationFloorSeconds);
     const resolveCompositionStartSeconds = (compositionId: string): number => {
-      const node = document.querySelector(
-        `[data-composition-id="${CSS.escape(compositionId)}"]`,
-      ) as Element | null;
+      const node = resolveCompositionElement(compositionId);
       if (!node) return 0;
       return startResolver.resolveStartForElement(node, 0);
+    };
+    const retimeCandidate = (
+      candidate: { compositionId: string; timeline: RuntimeTimelineLike },
+      parent: RuntimeTimelineLike,
+    ): number => {
+      const element = resolveCompositionElement(candidate.compositionId);
+      if (!element) return resolveCompositionStartSeconds(candidate.compositionId);
+      return retimeCompositionTimeline({
+        element,
+        timeline: candidate.timeline,
+        parent,
+        timelineRegistry: timelines,
+        resolver: startResolver,
+      });
     };
     const createCompositeTimelineFromCandidates = (
       candidates: Array<{
@@ -878,10 +903,7 @@ export function initSandboxRuntimeModular(): void {
       if (!gsapApi || typeof gsapApi.timeline !== "function") return null;
       const compositeTimeline = gsapApi.timeline({ paused: true }) as RuntimeTimelineLike;
       for (const candidate of candidates) {
-        compositeTimeline.add(
-          candidate.timeline,
-          resolveCompositionStartSeconds(candidate.compositionId),
-        );
+        compositeTimeline.add(candidate.timeline, retimeCandidate(candidate, compositeTimeline));
       }
       return compositeTimeline;
     };
@@ -932,9 +954,19 @@ export function initSandboxRuntimeModular(): void {
         const addedIds: string[] = [];
         for (const candidate of candidates) {
           const alreadyIncluded = existingChildren.some((child) => child === candidate.timeline);
-          if (alreadyIncluded) continue;
+          if (alreadyIncluded) {
+            const element = resolveCompositionElement(candidate.compositionId);
+            if (element && hasCompositionRetime(element)) {
+              const nested = candidate.timeline as RuntimeTimelineLike & {
+                parent?: RuntimeTimelineLike;
+                startTime?: (value: number) => unknown;
+              };
+              nested.startTime?.(retimeCandidate(candidate, nested.parent ?? rootTimeline));
+            }
+            continue;
+          }
           try {
-            const startSec = resolveCompositionStartSeconds(candidate.compositionId);
+            const startSec = retimeCandidate(candidate, rootTimeline);
             rootTimeline.add(candidate.timeline, startSec);
             addedIds.push(candidate.compositionId);
           } catch (err) {
@@ -967,6 +999,7 @@ export function initSandboxRuntimeModular(): void {
         durationSeconds: number;
       }> = [];
       for (const childNode of childNodes) {
+        if (childNode.hasAttribute("data-hf-inner-root")) continue;
         const childId = childNode.getAttribute("data-composition-id");
         if (!childId || childId === rootCompositionId) continue;
         if (seen.has(childId)) continue;
@@ -1239,6 +1272,8 @@ export function initSandboxRuntimeModular(): void {
       if (typeof currentTimeline.timeScale === "function") {
         currentTimeline.timeScale(state.playbackRate);
       }
+      const duration = getSafeTimelineDurationSeconds(currentTimeline, 0);
+      if (duration > 0) clock.setDuration(duration);
       return false;
     }
     state.capturedTimeline = resolution.timeline;
@@ -1862,6 +1897,8 @@ export function initSandboxRuntimeModular(): void {
       return { compositionRoot, inheritedStart, inheritedDuration };
     };
     const cache = refreshRuntimeMediaCache({
+      resolvePlaybackRate: (element) =>
+        element.defaultPlaybackRate * resolveAncestorCompositionPlaybackRate(element),
       shouldIncludeElement: (element) =>
         element.hasAttribute("data-start") ||
         Boolean(resolveMediaCompositionContext(element).compositionRoot),
@@ -1885,7 +1922,8 @@ export function initSandboxRuntimeModular(): void {
             : null;
         const sourceDuration =
           Number.isFinite(element.duration) && element.duration > mediaStart
-            ? Math.max(0, element.duration - mediaStart)
+            ? Math.max(0, element.duration - mediaStart) /
+              (element.defaultPlaybackRate * resolveAncestorCompositionPlaybackRate(element))
             : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound
@@ -1894,7 +1932,9 @@ export function initSandboxRuntimeModular(): void {
         // untrimmed clip plays its natural source length).
         const ownDuration = Number.parseFloat(element.dataset.duration ?? "");
         const explicitDuration =
-          Number.isFinite(ownDuration) && ownDuration > 0 ? ownDuration : null;
+          Number.isFinite(ownDuration) && ownDuration > 0
+            ? ownDuration / resolveAncestorCompositionPlaybackRate(element)
+            : null;
         return resolveRuntimeMediaClipDuration({
           isVideo: element.tagName === "VIDEO",
           sourceDuration,
@@ -2659,7 +2699,7 @@ export function initSandboxRuntimeModular(): void {
       resolveRootCompositionElement()?.getAttribute("data-composition-id") ?? null;
     for (const [compositionId, timeline] of Object.entries(timelines)) {
       if (!timeline || compositionId === rootCompositionId) continue;
-      const node = document.querySelector(`[data-composition-id="${CSS.escape(compositionId)}"]`);
+      const node = resolveCompositionElement(compositionId);
       if (!node) continue;
       const start = resolveStartForElement(node, 0);
       if (!Number.isFinite(start)) continue;
@@ -2669,12 +2709,14 @@ export function initSandboxRuntimeModular(): void {
       const timelineDuration = getTimelineDurationSeconds(timeline);
       const duration =
         authoredDuration != null && authoredDuration > 0 ? authoredDuration : timelineDuration;
-      const localTime = Math.max(
-        0,
-        duration != null && duration > 0
-          ? Math.min(duration, timeSeconds - start)
-          : timeSeconds - start,
-      );
+      const localTime = hasCompositionRetime(node)
+        ? resolveCompositionSourceTime(node, timeSeconds, start)
+        : Math.max(
+            0,
+            duration != null && duration > 0
+              ? Math.min(duration, timeSeconds - start)
+              : timeSeconds - start,
+          );
       seekRuntimeTimeline(timeline, localTime, "runtime.init.transport.childTimeline", options);
     }
   };
@@ -2791,7 +2833,9 @@ export function initSandboxRuntimeModular(): void {
       // timeline's full extent so it holds the final computed frame instead.
       // Adapters still receive the raw `t` (their media may run longer).
       // totalDuration() includes repeats; Infinity (infinite repeat) → no clamp.
-      const tlWithTotal = tl as RuntimeTimelineLike & { totalDuration?: () => number };
+      const tlWithTotal = tl as RuntimeTimelineLike & {
+        totalDuration?: () => number;
+      };
       let tlSeekTime = t;
       if (typeof tlWithTotal.totalDuration === "function") {
         try {
@@ -2916,6 +2960,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+            if (hasCompositionRetime(rawEl)) continue;
             const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
             const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
@@ -2993,14 +3038,18 @@ export function initSandboxRuntimeModular(): void {
     for (const el of mediaEls) {
       if (!(el instanceof HTMLMediaElement)) continue;
       if (!el.isConnected) continue;
-      const start = Number.parseFloat(el.dataset.start ?? "");
+      const start = resolveMediaStartSeconds(el, 0);
       if (!Number.isFinite(start)) continue;
-      const durAttr = Number.parseFloat(el.dataset.duration ?? "");
+      const durAttr = resolveDurationForElement(el, { includeAuthoredTimingAttrs: true }) ?? NaN;
       const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
       if (timeSeconds < start || timeSeconds >= end) continue;
       const mediaStart =
         Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
-      const relTime = timeSeconds - start + mediaStart;
+      const relTime =
+        (timeSeconds - start) *
+          el.defaultPlaybackRate *
+          resolveAncestorCompositionPlaybackRate(el) +
+        mediaStart;
       if (relTime >= 0) {
         try {
           el.currentTime = relTime;
@@ -3023,13 +3072,16 @@ export function initSandboxRuntimeModular(): void {
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-      const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
+      const compStart = resolveMediaStartSeconds(rawEl, 0);
       if (!Number.isFinite(compStart)) continue;
       const mediaStart =
         Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
       const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
       const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
-      const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+      const durationAttr =
+        resolveDurationForElement(rawEl, {
+          includeAuthoredTimingAttrs: true,
+        }) ?? NaN;
       let clipDuration =
         Number.isFinite(durationAttr) && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
       const compositionRoot = rawEl.closest("[data-composition-id]");
@@ -3055,7 +3107,9 @@ export function initSandboxRuntimeModular(): void {
           clock.now(),
           vol * state.bridgeVolume,
           gen,
-          state.playbackRate,
+          state.playbackRate *
+            rawEl.defaultPlaybackRate *
+            resolveAncestorCompositionPlaybackRate(rawEl),
           clipDuration,
         );
       });

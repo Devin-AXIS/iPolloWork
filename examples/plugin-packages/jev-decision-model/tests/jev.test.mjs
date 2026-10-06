@@ -61,7 +61,7 @@ test('invalid questions and excessive context never reach the network', async ()
 
 test('rejects invalid or incomplete provider decisions instead of inventing values', async () => {
   for (const mutate of [r => delete r.answers.review, r => r.answers.review.noul = 2,
-    r => r.answers.owner.choice = 'nonexistent', r => r.answers.owner.probabilities.writer = 0.9,
+    r => r.answers.owner.choice = 'nonexistent', r => r.answers.owner.choice = 'writer', r => r.answers.owner.probabilities.writer = 0.9,
     r => r.answers.quality.score = 3, r => r.usage.input_tokens = -1]) {
     const body = structuredClone(result); mutate(body);
     await assert.rejects(service(async () => Response.json(body)).actions.evaluate(input), /无效/);

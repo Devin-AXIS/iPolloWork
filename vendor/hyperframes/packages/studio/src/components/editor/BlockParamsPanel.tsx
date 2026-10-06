@@ -276,6 +276,9 @@ function ComponentDataFormField({
   const submitRows = (nextRows: VisualComponentDataRow[]) => {
     commitTimerRef.current = null;
     const nextValue = serializeRows(nextRows);
+    // Keep incomplete new rows in the shared form until required fields are
+    // filled. A draft must not replace valid preview data or trigger a save.
+    if (parseVisualComponentData(contract, nextValue).issues.length) return;
     if (nextValue === valueRef.current || nextValue === lastSubmittedValueRef.current) return;
     lastSubmittedValueRef.current = nextValue;
     onCommit(nextValue);
@@ -335,6 +338,10 @@ function ComponentDataFormField({
   const displayLabel = tx(label.replace(/\s*\(.+\)\s*$/, ""));
   const richRows = contract.columns.some(column => column.options || column.format === "image");
 
+  const numberRangeHints = contract.columns
+    .filter(column => column.type === "number" && (column.min !== undefined || column.max !== undefined))
+    .map(column => `${locale === "zh" ? (column.labelZh ?? column.label) : column.label}: ${column.min ?? "−∞"}–${column.max ?? "∞"}`);
+
   return (
     <section
       ref={sectionRef}
@@ -350,8 +357,18 @@ function ComponentDataFormField({
         <span className="text-[10px] font-normal text-panel-text-3">{displayLabel}</span>
         <span className="text-[9px] text-panel-text-3">
           {locale === "zh" ? `${rows.length} 项` : `${rows.length} items`}
+          {contract.minRows !== undefined && contract.maxRows !== undefined
+            ? ` · ${contract.minRows}–${contract.maxRows}` : ""}
         </span>
       </div>
+
+      {numberRangeHints.length > 0 ? <p className="text-[10px] text-panel-text-3">{numberRangeHints.join(" · ")}</p> : null}
+
+      {issues.length ? (
+        <p className="text-[10px] leading-4 text-red-500" role="alert">
+          {issues[0]?.message}
+        </p>
+      ) : null}
 
       <div className="space-y-1.5">
         {rows.map((row, rowIndex) => (
@@ -390,9 +407,19 @@ function ComponentDataFormField({
               <input
                 key={column.id}
                 type={column.type === "number" ? "number" : "text"}
+                min={column.type === "number" ? column.min : undefined}
+                max={column.type === "number" ? column.max : undefined}
+                step={column.type === "number" ? "any" : undefined}
                 value={row[column.id] ?? ""}
                 disabled={saving && !liveCommit}
                 aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
+                aria-invalid={issues.some(issue => issue.path === `rows.${rowIndex}.${column.id}`)}
+                title={column.type === "number" && (column.min !== undefined || column.max !== undefined)
+                  ? (locale === "zh" ? `范围：${column.min ?? "−∞"}–${column.max ?? "∞"}` : `Range: ${column.min ?? "−∞"}–${column.max ?? "∞"}`)
+                  : column.list
+                  ? (locale === "zh" ? `最多 ${column.list.maxItems} 项，每项 ${column.list.itemMaxLength} 字` : `Up to ${column.list.maxItems} items, ${column.list.itemMaxLength} characters each`)
+                  : column.maxLength !== undefined
+                    ? (locale === "zh" ? `最多 ${column.maxLength} 字` : `Up to ${column.maxLength} characters`) : undefined}
                 onChange={(event) => updateCell(rowIndex, column, event.target.value)}
                 className={`h-6 min-w-0 bg-transparent px-1 text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-4 disabled:opacity-60 ${
                   richRows ? "w-full flex-auto border-b border-panel-border pb-1" : columnIndex === 0
@@ -443,11 +470,6 @@ function ComponentDataFormField({
         {locale === "zh" ? "添加条目" : "Add item"}
       </button>
 
-      {issues.length ? (
-        <p className="text-[8px] leading-4 text-red-500" role="alert">
-          {issues[0]?.message}
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -553,7 +575,7 @@ function VariableFormField({
             step={variable.step ?? 1}
             tier={custom ? "explicitCustom" : "default"}
             displayValue={`${numberValue}${variable.unit ?? ""}`}
-            commitMode="release"
+            commitMode={variable.update === "live" ? "live" : "release"}
             onCommit={onCommit}
             onReset={reset}
           />

@@ -1496,6 +1496,7 @@ export default {
   "composer.no_plugin_files": "尚未导入插件文件。",
   "composer.plugin_files_unavailable": "插件文件不可用。",
   "composer.model_unavailable": "模型已不可用",
+  "composer.model_load_failed": "模型目录加载失败 · 重试",
   "video.starting_hyperframes": "正在启动 HyperFrames {version}…",
   "video.local_workspaces": "视频工作室仅适用于本地工作区。",
   "video.requires_desktop": "HyperFrames 需要 iPolloWork 桌面应用。",

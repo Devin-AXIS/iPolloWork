@@ -56,10 +56,19 @@ export const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
  * insensitive comparisons.
  */
 export function parseFontFamilyValue(value: string): string[] {
-  return value
-    .split(",")
-    .map((piece) => piece.trim().replace(/^['"]/, "").replace(/['"]$/, "").trim())
-    .filter((piece) => piece.length > 0);
+  const pieces: string[] = [];
+  let start = 0, depth = 0, quote = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote && value[index - 1] !== "\\") quote = "";
+    } else if (char === "'" || char === '\"') quote = char;
+    else if (char === "(") depth += 1;
+    else if (char === ")") depth -= 1;
+    else if (char === "," && depth === 0) { pieces.push(value.slice(start, index)); start = index + 1; }
+  }
+  pieces.push(value.slice(start));
+  return pieces.map((piece) => piece.trim().replace(/^['"]/, "").replace(/['"]$/, "").trim()).filter(Boolean);
 }
 
 function systemPrimaryReplacement(value: string, deterministicPrimary: string): string | null {
@@ -263,14 +272,20 @@ function primaryCssVariableName(value: string): string | null {
 export function resolveFontFamilyDeclarationFamilies(
   declaration: string,
   customProperties: ReadonlyMap<string, string>,
+  visited = new Set<string>(),
 ): string[] {
   const families = parseFontFamilyValue(declaration);
   const variableName = primaryCssVariableName(declaration);
   if (!variableName) return families;
 
-  const resolved = customProperties.get(variableName);
-  if (!resolved) return families;
-  return [...parseFontFamilyValue(resolved), ...families.slice(1)];
+  const expression = families[0] ?? "";
+  const comma = expression.indexOf(",");
+  const fallback = comma >= 0 ? expression.slice(comma + 1, expression.lastIndexOf(")")).trim() : "";
+  if (visited.has(variableName)) return [...parseFontFamilyValue(fallback), ...families.slice(1)];
+  visited.add(variableName);
+  const resolved = customProperties.get(variableName) ?? fallback;
+  if (!resolved) return families.slice(1);
+  return [...resolveFontFamilyDeclarationFamilies(resolved, customProperties, visited), ...families.slice(1)];
 }
 
 /**

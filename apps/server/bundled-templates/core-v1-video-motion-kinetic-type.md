@@ -12,7 +12,7 @@ Use when language itself is the main visual subject and changes in wording, emph
 
 ## Registry candidates
 
-Prefer `kinetic-keyword`, `narrative-hook`, `brand-headline`, `brand-manifesto`, `quote-pullout`, `pull-quote`, `definition-highlight`, `chapter-countdown`, or `section-marker`. Use the component's typography and theme; do not replace it with generic oversized text.
+Author the text motion in the active scene, following the template typography and theme, with beats bound to the actual spoken phrases.
 
 ## Beat grammar
 

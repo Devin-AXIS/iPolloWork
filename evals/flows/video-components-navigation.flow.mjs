@@ -1,88 +1,27 @@
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("video-components-navigation");
-const EXPECTED_ENGLISH_TABS = ["Layers", "Style", "Components", "Animation", "Sound", "Assets"];
-const EXPECTED_CHINESE_TABS = ["图层", "主题", "组件", "动画", "声音", "素材"];
+const EXPECTED_ENGLISH_TABS = ["Layers", "Style", "Components", "Animation", "Narration", "Assets"];
+const EXPECTED_CHINESE_TABS = ["图层", "主题", "组件", "动画", "讲解", "素材"];
 const EXPECTED_ENGLISH_CATEGORIES = [
-  "All components · 150",
-  "Openers & Endings · 9",
-  "Product Showcase · 10",
-  "Data & Charts · 22",
-  "Flows & Diagrams · 12",
-  "Maps & Routes · 12",
-  "Comparison & Proof · 10",
-  "Knowledge · 8",
-  "People & Quotes · 6",
-  "Text & Labels · 10",
-  "Media & UI · 11",
-  "Social Media · 22",
-  "Code Demos · 8",
-  "Brand & Marketing · 10",
+  "All components", "Maps & Routes", "Media & UI", "Business Diagrams",
 ];
 const EXPECTED_CHINESE_CATEGORIES = [
-  "全部组件 · 150",
-  "开场与收尾 · 9",
-  "产品展示 · 10",
-  "数据与图表 · 22",
-  "流程与图解 · 12",
-  "地图与路径 · 12",
-  "对比与背书 · 10",
-  "知识讲解 · 8",
-  "人物与观点 · 6",
-  "文字与标注 · 10",
-  "媒体与界面 · 11",
-  "社交媒体 · 22",
-  "代码演示 · 8",
-  "品牌与营销 · 10",
+  "全部组件", "地图与路径", "媒体与界面", "商业图库",
 ];
 
 async function expectCategoryOptions(ctx, expected, ariaLabel) {
+  if (await ctx.eval("Boolean(document.querySelector('[role=listbox]'))")) {
+    await ctx.trustedClick(`button[aria-label="${ariaLabel}"]`);
+  }
   await ctx.trustedClick(`button[aria-label="${ariaLabel}"]`);
   await ctx.waitFor("Boolean(document.querySelector('[role=listbox]'))");
   const options = await ctx.eval(`[...document.querySelectorAll('[role=listbox] [role=option]')].map(option=>option.textContent.trim())`);
-  await ctx.trustedClick(`button[aria-label="${ariaLabel}"]`);
-  ctx.assert(
-    JSON.stringify(options) === JSON.stringify(expected),
-    `Unexpected ${ariaLabel} options: ${JSON.stringify(options)}`,
-  );
-}
-
-async function studioFrameContext(ctx) {
-  const { frameTree } = await ctx.client.send("Page.getFrameTree");
-  const frames = [];
-  const collect = (node) => {
-    frames.push(node.frame);
-    for (const child of node.childFrames ?? []) collect(child);
-  };
-  collect(frameTree);
-  const studioFrame = frames.find((frame) => frame.url.includes("ipwReload"));
-  if (!studioFrame) throw new Error("Video Studio frame not found");
-  const world = await ctx.client.send("Page.createIsolatedWorld", {
-    frameId: studioFrame.id,
-    worldName: "fraimz-video-component-navigation",
-    grantUniveralAccess: true,
-  });
-  return world.executionContextId;
-}
-
-async function studioFrameEval(ctx, contextId, expression) {
-  const response = await ctx.client.send("Runtime.evaluate", {
-    contextId,
-    expression,
-    returnByValue: true,
-    awaitPromise: true,
-  });
-  if (response.exceptionDetails) throw new Error(response.exceptionDetails.text);
-  return response.result.value;
-}
-
-async function waitForStudioFrame(ctx, contextId, expression, label) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 10_000) {
-    if (await studioFrameEval(ctx, contextId, expression)) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`Timed out waiting for ${label}`);
+  const labels = options.map(option => option.split(" · ")[0]);
+  ctx.assert(JSON.stringify(labels) === JSON.stringify(expected), `Unexpected ${ariaLabel} options: ${JSON.stringify(options)}`);
+  const counts = options.map(option => Number(option.split(" · ")[1]));
+  ctx.assert(counts.every(Number.isInteger) && counts[0] === counts.slice(1).reduce((sum, count) => sum + count, 0) && counts[0] >= 26,
+    `Component category counts are inconsistent: ${JSON.stringify(options)}`);
 }
 
 const flow = {
@@ -125,12 +64,11 @@ const flow = {
               `Unexpected Video Studio tabs: ${JSON.stringify(labels)}`,
             );
             await expectCategoryOptions(ctx, EXPECTED_ENGLISH_CATEGORIES, "Component category");
-            await ctx.expectText("All components · 150");
-            await ctx.expectText("Brand Headline");
+            await ctx.expectText("Maps & Routes · 12");
           },
           screenshot: {
             name: "component-taxonomy-english",
-            requireText: [...EXPECTED_ENGLISH_TABS, "All components · 150", "Brand Headline"],
+            requireText: [...EXPECTED_ENGLISH_TABS, "Maps & Routes · 12"],
           },
         });
       },
@@ -157,12 +95,11 @@ const flow = {
               `Unexpected Video Studio tabs: ${JSON.stringify(labels)}`,
             );
             await expectCategoryOptions(ctx, EXPECTED_CHINESE_CATEGORIES, "组件分类");
-            await ctx.expectText("全部组件 · 150");
-            await ctx.expectText("Brand Headline");
+            await ctx.expectText("地图与路径 · 12");
           },
           screenshot: {
             name: "component-taxonomy-chinese",
-            requireText: [...EXPECTED_CHINESE_TABS, "全部组件 · 150", "Brand Headline"],
+            requireText: [...EXPECTED_CHINESE_TABS, "地图与路径 · 12"],
           },
         });
       },
@@ -186,94 +123,4 @@ if (process.env.IPOLLOWORK_EVAL_COMPONENT_CARDS === "1") flow.steps = [{name:"Co
  screenshot:{name:'component-card-actions'}});
  }finally{await ctx.eval('window.fetch=window.__cardFetch;window.removeEventListener("message",window.__cardListener);delete window.__cardFetch;delete window.__cardListener;');}
 }}];
-if (process.env.IPOLLOWORK_EVAL_COMPONENT_BACK === "1") {
-  flow.id = "video-component-parameters-navigation";
-  flow.title = "Component parameters use Back without closing the inspector";
-  flow.cdpTarget = { urlIncludes: "localhost:5173" };
-  flow.steps = [{
-    name: "Component parameters use hierarchical navigation",
-    run: async (ctx) => {
-      const contextId = await studioFrameContext(ctx);
-      const paramsOpen = await studioFrameEval(
-        ctx,
-        contextId,
-        'Boolean(document.querySelector("[data-testid=\\"block-params-panel\\"]"))',
-      );
-      if (!paramsOpen) {
-        await studioFrameEval(
-          ctx,
-          contextId,
-          `document.querySelector('[aria-label^="选择 Agenda Opener"]')?.click()`,
-        );
-      }
-      await waitForStudioFrame(
-        ctx,
-        contextId,
-        'Boolean(document.querySelector("[data-testid=\\"block-params-panel\\"]"))',
-        "component parameter panel",
-      );
-      await ctx.prove("The component detail view uses Back while the panel keeps its separate Close action", {
-        voiceover: "组件参数属于组件列表的下一层，因此左上角使用返回按钮；面板右上角仍负责关闭整个属性面板。",
-        action: async () => undefined,
-        assert: async () => {
-          const state = await studioFrameEval(ctx, contextId, `(() => ({
-            back: Boolean(document.querySelector('button[aria-label="返回组件列表"]')),
-            oldClose: Boolean(document.querySelector('button[aria-label="关闭参数"]')),
-            panelClose: Boolean(document.querySelector('button[aria-label="关闭右侧面板"]')),
-            autosaved: Boolean(document.querySelector('[data-save-state="saved"]')),
-            aiSummary: document.querySelector('[data-testid="block-params-panel"]')?.textContent.includes('AI 可修改'),
-            hasThemeTag: document.querySelector('[data-testid="block-params-panel"]')?.textContent.includes('跟随主题'),
-            hasVideoTag: document.querySelector('[data-testid="block-params-panel"]')?.textContent.includes('VIDEO'),
-            liveLabels: [...document.querySelectorAll('[data-testid="block-params-panel"] *')].filter((element) => element.textContent.trim() === 'LIVE').length,
-            title: Boolean(document.querySelector('input[aria-label="标题"]')),
-            itemRows: document.querySelectorAll('[data-component-data-row]').length,
-            itemCount: document.querySelector('[data-testid="block-params-panel"]')?.textContent.includes('4 项'),
-            encodedItems: document.querySelector('[data-testid="block-params-panel"]')?.textContent.includes('01::Context'),
-            highlight: Boolean(document.querySelector('[aria-label="高亮条目"]')),
-            note: Boolean(document.querySelector('input[aria-label="补充说明"]')),
-          }))()`);
-          ctx.assert(
-            state.back &&
-              !state.oldClose &&
-              state.panelClose &&
-              state.autosaved &&
-              !state.aiSummary &&
-              !state.hasThemeTag &&
-              !state.hasVideoTag &&
-              state.liveLabels === 0 &&
-              state.title &&
-              state.itemRows === 4 &&
-              state.itemCount &&
-              !state.encodedItems &&
-              state.highlight &&
-              state.note,
-            `Unexpected component detail UI: ${JSON.stringify(state)}`,
-          );
-        },
-        screenshot: { name: "component-parameters-structured-form" },
-      });
-      await ctx.prove("Back returns to the component catalog without closing the right panel", {
-        voiceover: "点击返回后回到组件列表，右侧面板保持打开，用户可以继续选择其他组件。",
-        action: async () => {
-          await studioFrameEval(ctx, contextId, 'document.querySelector("button[aria-label=\\"返回组件列表\\"]")?.click()');
-          await waitForStudioFrame(
-            ctx,
-            contextId,
-            'Boolean(document.querySelector("[data-testid=\\"block-catalog-search\\"]")) && !document.querySelector("[data-testid=\\"block-params-panel\\"]")',
-            "component catalog after Back",
-          );
-        },
-        assert: async () => {
-          const state = await studioFrameEval(ctx, contextId, `(() => ({
-            catalog: Boolean(document.querySelector('[data-testid="block-catalog-search"]')),
-            parameters: Boolean(document.querySelector('[data-testid="block-params-panel"]')),
-            panelClose: Boolean(document.querySelector('button[aria-label="关闭右侧面板"]')),
-          }))()`);
-          ctx.assert(state.catalog && !state.parameters && state.panelClose, `Back navigation failed: ${JSON.stringify(state)}`);
-        },
-        screenshot: { name: "back-to-component-catalog" },
-      });
-    },
-  }];
-}
 export default flow;

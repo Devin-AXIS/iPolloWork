@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 import {
@@ -38,7 +39,9 @@ import {
   sharedProviderProfileEnvKey,
 } from "@ipollowork/types/provider-credentials";
 import { iPolloWorkServerError } from "../src/app/lib/ipollowork-server";
+import { resolveWorkspaceEndpoint } from "../src/app/lib/workspace-endpoint";
 import type { ProviderListItem } from "../src/app/types";
+import { resolveEngineSelectableChatModel } from "../src/react-app/infra/preferred-chat-model";
 
 function createOpenCodeProviderClient() {
   const calls: Array<{ name: string; value?: unknown }> = [];
@@ -51,11 +54,20 @@ function createOpenCodeProviderClient() {
         source: "api" as const,
         env: [],
         models: {
+          ...Object.fromEntries([
+            "big-pickle", "mimo-v2.5-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free",
+          ].map((id) => [id, {
+            id,
+            name: id,
+            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+            capabilities: { toolcall: true, input: { text: true }, output: { text: true } },
+          }])),
           "x-preview-f-free": {
             id: "x-preview-f-free",
             name: "Stale Ox label",
             limit: { context: 0, output: 0 },
-            capabilities: {},
+            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+            capabilities: { toolcall: true, input: { text: true }, output: { text: true } },
           },
         },
       },
@@ -469,6 +481,53 @@ describe("model runtime adapters", () => {
       openCodeProviderEngineAdapter,
       { ...openCodeProviderEngineAdapter },
     ])).toThrow(`Duplicate model runtime adapter: ${DEFAULT_ENGINE_ID}`);
+  });
+
+  test("discovers the selected conversation engine in a project with another default engine", async () => {
+    const source = readFileSync(new URL("../src/react-app/shell/session-route.tsx", import.meta.url), "utf8");
+    const factory = source.match(/const engineProviderClient = useMemo\(([\s\S]*?), \[activeEngineId,/)?.[1];
+    expect(factory).toBeDefined();
+    const workspace = {
+      id: "codex-project",
+      engineId: CODEX_HARNESS_ENGINE_ID,
+      path: "/projects/codex-project",
+      workspaceType: "local",
+    };
+    const endpoint = resolveWorkspaceEndpoint(workspace, { baseUrl: "http://runtime.test", token: "test-token" });
+    expect(endpoint).not.toBeNull();
+    const nativeProviders = (await createOpenCodeProviderClient().client.provider.list()).data;
+    nativeProviders.default.opencode = "big-pickle";
+    const requests: Request[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      requests.push(new Request(input, init));
+      return Response.json(nativeProviders);
+    };
+    try {
+      // Execute the route's actual memo factory: its legacy workspace client
+      // is null here because the project was created with Codex.
+      const client = new Function(
+        "modelRuntimeAdapters", "activeEngineId", "DEFAULT_ENGINE_ID", "opencodeClient",
+        "selectedWorkspaceEndpoint", "selectedWorkspaceServerToken", "selectedWorkspace",
+        `return (${factory})();`,
+      )(modelRuntimeAdapters, DEFAULT_ENGINE_ID, DEFAULT_ENGINE_ID, null, endpoint, "test-token", workspace);
+      expect(client).not.toBeNull();
+      const runtime = await fetchProviderList({
+        client, engineId: DEFAULT_ENGINE_ID,
+        baseUrl: endpoint?.opencodeBaseUrl, directory: workspace.path,
+      });
+      expect(requests).toHaveLength(1);
+      expect(new URL(requests[0].url).pathname).toBe("/workspace/codex-project/opencode/provider");
+      expect(new URL(requests[0].url).searchParams.get("directory")).toBe(workspace.path);
+      expect(resolveEngineSelectableChatModel({
+        engineId: DEFAULT_ENGINE_ID,
+        providers: getRunnableChatModelSnapshot({ catalog: undefined, runtime, engineId: DEFAULT_ENGINE_ID }),
+        defaults: runtime.default,
+        preferred: { providerID: "openai", modelID: "gpt-5.5" },
+      })).toEqual({ providerID: "opencode", modelID: "big-pickle" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("separates provider caches by engine", () => {
@@ -1393,6 +1452,47 @@ describe("model runtime adapters", () => {
       maxTokens: 384_000,
     });
     expect(providers.all[0]?.models["deepseek-v4-pro"]).toBeUndefined();
+  });
+
+  test("uses only live zero-cost agent models without inventing the packaged OpenCode roster", () => {
+    const free = {
+      id: "future-runtime-free", name: "Runtime free",
+      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+      capabilities: { toolcall: true, input: { text: true, image: true }, output: { text: true } },
+    };
+    const runtime = projectKnownProviderModels({
+      all: [{
+        id: "opencode", name: "OpenCode", source: "api", env: [],
+        models: {
+          [free.id]: free,
+          paid: { ...free, id: "paid", cost: { ...free.cost, output: 1 } },
+          cached: { ...free, id: "cached", cost: { ...free.cost, cache: { read: 1, write: 0 } } },
+          tiered: { ...free, id: "tiered", cost: { ...free.cost, tiers: [{ ...free.cost, output: 1, tier: { type: "context", size: 200_000 } }] } },
+          "unknown-price": { id: "unknown-price", name: "Unknown", capabilities: free.capabilities },
+          "tools-unsupported": { ...free, id: "tools-unsupported", capabilities: { ...free.capabilities, toolcall: false } },
+          "x-preview-f-free": { ...free, id: "x-preview-f-free" },
+          "hy3-free": { ...free, id: "hy3-free" },
+          retired: { ...free, id: "retired", status: "deprecated" },
+        },
+      }],
+      connected: ["opencode"],
+      default: { opencode: "paid" },
+    });
+    expect(Object.keys(runtime.all[0]!.models)).toEqual([free.id]);
+    expect(runtime.all[0]!.models[free.id]!.capabilities.input?.image).toBe(true);
+    expect(runtime.default).toEqual({ opencode: free.id });
+    const providers = getRunnableChatModelSnapshot({ catalog: undefined, runtime, engineId: DEFAULT_ENGINE_ID });
+    expect(providers).toEqual([{ providerID: "opencode", modelIDs: [free.id], freeModelIDs: [free.id] }]);
+    expect(resolveEngineSelectableChatModel({ providers, defaults: runtime.default, preferred: null }))
+      .toEqual({ providerID: "opencode", modelID: free.id });
+    expect(getRunnableChatModelSnapshot({ catalog: undefined, runtime: { ...runtime, connected: [] } })).toEqual([]);
+    expect(getRunnableChatModelSnapshot({ catalog: undefined, runtime, engineId: CODEX_HARNESS_ENGINE_ID })).toEqual([]);
+    const unavailable = projectKnownProviderModels({
+      ...runtime,
+      all: [{ ...runtime.all[0]!, models: { paid: { ...free, id: "paid", cost: { ...free.cost, input: 1 } } } }],
+    });
+    expect(unavailable.all[0]!.models).toEqual({});
+    expect(unavailable.default).toEqual({});
   });
 
   test("supplements missing context metadata without replacing the shared model label", () => {

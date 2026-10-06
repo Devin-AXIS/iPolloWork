@@ -204,7 +204,7 @@ import {
   useMergedProviderListQuery,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
-import { resolveEngineSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
+import { resolveChatModelStatus, resolveEngineSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
 import {
   designSelectionContextsForDraft,
   draftToParts,
@@ -401,23 +401,20 @@ export function SessionRoute() {
   }, [conversation, selectedWorkspaceEndpoint?.client, selectedWorkspaceEndpoint?.workspaceId]);
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   const selectedModel = local.prefs.model;
-  const [engineModelSelection, setEngineModelSelection] = useState<{
-    engineId: string;
-    model: ModelRef;
-  } | null>(null);
+  const [engineModelSelections, setEngineModelSelections] = useState<Record<string, ModelRef | undefined>>({});
+  const engineModelSelection = engineModelSelections[activeEngineId];
   const selectedMode = activeEnginePreferences.mode;
   const [modeSelectionLocked, setModeSelectionLocked] = useState(false);
   useEffect(() => {
     setModeSelectionLocked(false);
   }, [activeEngineId, selectedSessionId]);
   const engineProviderClient = useMemo(() => {
-    if (activeEngineId === DEFAULT_ENGINE_ID) return opencodeClient;
     if (!selectedWorkspaceEndpoint || !selectedWorkspaceServerToken) return null;
     return modelRuntimeAdapters.createClient(activeEngineId, {
       endpoint: selectedWorkspaceEndpoint,
       directory: selectedWorkspace?.path,
     });
-  }, [activeEngineId, opencodeClient, selectedWorkspace?.path, selectedWorkspaceEndpoint, selectedWorkspaceServerToken]);
+  }, [activeEngineId, selectedWorkspace?.path, selectedWorkspaceEndpoint, selectedWorkspaceServerToken]);
   const sharedProviderWorkspace = useMemo(
     () => selectSharedProviderWorkspace(workspaces, selectedWorkspace),
     [selectedWorkspace, workspaces],
@@ -897,7 +894,7 @@ export function SessionRoute() {
     disabledProviderIds: hiddenProviderIds,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
-    setEngineModelSelection({ engineId: activeEngineId, model });
+    setEngineModelSelections((previous) => ({ ...previous, [activeEngineId]: model }));
     local.setPrefs((previous) => updateModelPreferences(
       previous,
       (selection) => ({
@@ -933,18 +930,19 @@ export function SessionRoute() {
     )
   ));
   const accountSelectableModels = getSelectableChatModelSnapshot(accountProviderList, activeEngineId);
-  const explicitlySelectedModel = engineModelSelection?.engineId === activeEngineId
-    && selectedModel?.providerID === engineModelSelection.model.providerID
-    && selectedModel.modelID === engineModelSelection.model.modelID
+  const explicitlySelectedModel = engineModelSelection
     && accountSelectableModels.some((provider) => (
-      provider.providerID === engineModelSelection.model.providerID
-      && provider.modelIDs.includes(engineModelSelection.model.modelID)
+      provider.providerID === engineModelSelection.providerID
+      && provider.modelIDs.includes(engineModelSelection.modelID)
     ))
     // Preserve the explicit click while discovery is pending. Once the active
     // engine has answered, do not keep a model that only exists in another
     // engine's account catalog (or in an obsolete packaged whitelist).
-    && (!activeProviderList || providerListExposesModel(activeProviderList, engineModelSelection.model))
-    ? engineModelSelection.model
+    && (!activeProviderList || permittedSelectableModels.some((provider) => (
+      provider.providerID === engineModelSelection.providerID
+      && provider.modelIDs.includes(engineModelSelection.modelID)
+    )))
+    ? engineModelSelection
     : null;
   // A user click is authoritative for the current engine. Runtime discovery
   // can still be catching up during first launch; silently substituting its
@@ -952,6 +950,7 @@ export function SessionRoute() {
   // can send the task with a model the user did not choose.
   const activeSelectedModel = explicitlySelectedModel ?? (activeProviderList
     ? resolveEngineSelectableChatModel({
+        engineId: activeEngineId,
         providers: permittedSelectableModels,
         defaults: activeProviderList.default,
         preferred: selectedModel,
@@ -975,8 +974,16 @@ export function SessionRoute() {
   const selectedModelSupportsAttachments = modelSupportsAttachments(providerCatalog, activeSelectedModel);
   const selectedModelContextWindow = getModelContextWindow(activeProviderList, activeSelectedModel)
     ?? getModelContextWindow(accountProviderList, activeSelectedModel);
-  const selectedModelUnavailable = Boolean(!activeSelectedModel);
-  const hasUsableModel = Boolean(activeSelectedModel && !selectedModelUnavailable);
+  const modelStatus = resolveChatModelStatus({
+    hasModel: Boolean(activeSelectedModel),
+    catalogLoaded: activeProviderList !== undefined,
+    fetching: activeProviderListQuery.isFetching,
+    error: activeProviderListQuery.error,
+  });
+  const hasUsableModel = modelStatus === "ready";
+  const retryModelLoad = useCallback(() => {
+    void activeProviderListQuery.refetch();
+  }, [activeProviderListQuery.refetch]);
   // Creating and opening a conversation does not require a usable model.
   // Keeping this separate from `canCreateTask` prevents a first-run workspace
   // from landing on an empty pane when its model setup is still incomplete or
@@ -985,7 +992,7 @@ export function SessionRoute() {
     conversation && selectedWorkspaceId && !loading && !selectedWorkspaceError,
   );
   const canCreateTask = Boolean(
-    canCreateSession && !selectedModelUnavailable,
+    canCreateSession && hasUsableModel,
   );
 
   const iPolloWorkModelsPromo = useiPolloWorkModelsStartupPromo({
@@ -1215,7 +1222,8 @@ export function SessionRoute() {
         modelPicker.setOpen(true);
       },
       modelPickerOpen: modelPicker.compactOpen,
-      modelUnavailable: selectedModelUnavailable,
+      modelStatus,
+      onRetryModelLoad: retryModelLoad,
       selectedModel: activeSelectedModel ?? { providerID: "", modelID: "" },
       modelContextWindow: selectedModelContextWindow,
       onModelPickerOpenChange: (open: boolean) => {
@@ -1345,16 +1353,18 @@ export function SessionRoute() {
         }
         if (
           effectiveRuntimeProviderList
-          && effectiveModel
           && (
-            !isSupportedChatModelId(effectiveModel.modelID)
+            !effectiveModel
+            || !isSupportedChatModelId(effectiveModel.modelID)
             || !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel)
           )
         ) {
           effectiveModel = resolveEngineSelectableChatModel({
+            engineId: activeEngineId,
             providers: effectiveSelectableModels,
             defaults: effectiveRuntimeProviderList.default,
             preferred: effectiveModel,
+            selectedForEngine: effectiveModel,
           });
           effectiveModelVariant = null;
         }
@@ -2039,7 +2049,8 @@ export function SessionRoute() {
     selectedSessionId,
     selectedModelSupportsAttachments,
     selectedModelContextWindow,
-    selectedModelUnavailable,
+    modelStatus,
+    retryModelLoad,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
     selectedWorkspaceId,
