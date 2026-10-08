@@ -248,7 +248,7 @@ export function collectRuntimeTimelinePayload(params: {
   };
 
   const root = document.querySelector("[data-composition-id]") as Element | null;
-  const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]"));
+  const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]:not([data-hf-inner-root])"));
   const rootCompositionId = root?.getAttribute("data-composition-id") ?? null;
   const rootCompositionStart = root ? startResolver.resolveStartForElement(root, 0) : 0;
   const mediaWindowEnd = resolveMediaWindowEndSeconds();
@@ -347,7 +347,7 @@ export function collectRuntimeTimelinePayload(params: {
   );
   let maxEnd = 0;
   for (const [i, node] of nodes.entries()) {
-    if (node === root) continue;
+    if (node === root || node.hasAttribute("data-hf-inner-root")) continue;
     if (["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(node.tagName))
       continue;
     const compositionContext = resolveNearestCompositionContext(node, root);
@@ -356,7 +356,7 @@ export function collectRuntimeTimelinePayload(params: {
       compositionContext.inheritedStart ?? 0,
     );
     const nodeCompositionId = node.getAttribute("data-composition-id");
-    let duration = parseElementDurationAttr(node);
+    let duration = startResolver.resolveDurationForElement(node);
     if (
       (duration == null || duration <= 0) &&
       nodeCompositionId &&
@@ -601,7 +601,7 @@ export function collectRuntimeTimelinePayload(params: {
     const compositionId = compositionNode.getAttribute("data-composition-id");
     if (!compositionId || !isSceneLikeCompositionId(compositionId)) continue;
     const start = startResolver.resolveStartForElement(compositionNode, 0);
-    let durationFromAttr = parseElementDurationAttr(compositionNode);
+    let durationFromAttr = startResolver.resolveDurationForElement(compositionNode);
     if (
       (durationFromAttr == null || durationFromAttr <= 0) &&
       parseElementEndAttr(compositionNode) != null

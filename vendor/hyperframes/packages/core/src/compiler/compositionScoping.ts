@@ -342,7 +342,12 @@ export function wrapScopedCompositionScript(
   };
   var __hfFindRoot = function() {
     if (!__hfRoot && __hfRootSelector) {
-      __hfRoot = window.document.querySelector(__hfRootSelector);
+      var matches = window.document.querySelectorAll(__hfRootSelector);
+      // An unflattened sibling template may retain the same authored id.
+      // Bind scripts to the compiled mount, not that sibling's inner root.
+      __hfRoot = Array.prototype.find.call(matches, function(node) {
+        return node.hasAttribute("data-composition-file") || node.hasAttribute("data-composition-src");
+      }) || matches[0] || null;
     }
     return __hfRoot;
   };
@@ -411,10 +416,10 @@ export function wrapScopedCompositionScript(
           if (prop !== __hfCompId) {
             return Reflect.get(target, prop, target);
           }
-          var authoredValue = Reflect.get(target, prop, target);
-          return authoredValue === undefined
-            ? Reflect.get(target, __hfTimelineCompId, target)
-            : authoredValue;
+          // Reusing an authored key must only find this mounted instance.
+          // Falling back to its sibling's alias lets .clear() erase that
+          // sibling's animation when the same component is inserted twice.
+          return Reflect.get(target, __hfTimelineCompId, target);
         },
         set: function(target, prop, value, receiver) {
           if (prop !== __hfCompId) {
@@ -422,9 +427,17 @@ export function wrapScopedCompositionScript(
           }
           // The authored node remains in the compiled DOM when its local id
           // differs from the runtime mount id, so readiness legitimately sees
-          // both compositions. Publish the same timeline under both identities
-          // instead of replacing one with the other.
-          var authoredSet = Reflect.set(target, __hfCompId, value, target);
+          // both compositions. Preserve the first alias for readiness while
+          // keeping every mount's own timeline isolated.
+          var root = __hfFindRoot();
+          var authoredMounts = window.document.querySelectorAll(
+            '[data-composition-id="' + __hfEscapeAttr(__hfCompId) + '"][data-composition-file]'
+          );
+          var reserved = Array.prototype.some.call(authoredMounts, function(node) {
+            return node !== root && (!root || !root.contains(node));
+          });
+          var authoredSet = reserved || Reflect.get(target, __hfCompId, target) !== undefined ||
+            Reflect.set(target, __hfCompId, value, target);
           var runtimeSet = Reflect.set(target, __hfTimelineCompId, value, target);
           return authoredSet && runtimeSet;
         },

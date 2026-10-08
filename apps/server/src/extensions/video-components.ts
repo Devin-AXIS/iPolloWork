@@ -4,7 +4,7 @@ import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/
 import { dirname, posix, resolve, sep } from "node:path";
 import { z } from "zod";
 import sharp from "sharp";
-import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
+import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema, hyperframesPageCaptureSchema, hyperframesVisualComponentDataSchema } from "@ipollowork/types/hyperframes";
 
 import { ApiError } from "../errors.js";
 import { importedVideoRegistryRoots, resolveHyperframesRegistryRoot } from "../hyperframes-catalog.js";
@@ -72,7 +72,7 @@ const registryManifestSchema = z.object({
   duration: z.number().positive().optional(),
   files: z.array(registryFileSchema).min(1),
   registryDependencies: z.array(componentIdSchema).optional(),
-  visualComponent: z.object({ surfaces: z.array(z.string()) }).passthrough().optional(),
+  visualComponent: z.object({ surfaces: z.array(z.string()), data: hyperframesVisualComponentDataSchema.optional() }).passthrough().optional(),
   variables: z.array(z.object({ id: z.string().min(1) }).passthrough()).optional(),
   motionRecipe: hyperframesMotionRecipeSchema.optional(),
 }).passthrough();
@@ -150,6 +150,65 @@ function htmlAttribute(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+function validateJsonRecipeData(contract: z.infer<typeof hyperframesVisualComponentDataSchema>, value: string) {
+  let raw: unknown;
+  try { raw = JSON.parse(value); }
+  catch { throw new ApiError(400, "invalid_video_recipe_data", `${contract.binding.variable} must be a shared JSON row document.`); }
+  const parsed = z.object({
+    version: z.literal(1), kind: z.literal(contract.kind), rows: z.array(z.record(z.string(), z.unknown())),
+  }).safeParse(raw);
+  if (!parsed.success) throw new ApiError(400, "invalid_video_recipe_data", `${contract.binding.variable} must declare version 1, kind ${contract.kind} and object rows.`);
+  const rows = parsed.data.rows;
+  if (rows.length < (contract.minRows ?? 0) || (contract.maxRows !== undefined && rows.length > contract.maxRows)) {
+    throw new ApiError(400, "video_recipe_capacity_exceeded", `${contract.binding.variable} supports ${contract.minRows ?? 0}–${contract.maxRows ?? "unbounded"} rows.`);
+  }
+  const ids = new Set<string | number>();
+  for (const [index, row] of rows.entries()) {
+    for (const column of contract.columns) {
+      const cell = row[column.id];
+      const field = `${contract.binding.variable}.rows.${index}.${column.id}`;
+      if (cell === undefined || (typeof cell === "string" && cell.trim() === "")) {
+        if (column.required) throw new ApiError(400, "invalid_video_recipe_data", `${field} is required.`);
+        continue;
+      }
+      const valid = column.type === "string" ? typeof cell === "string" :
+        (typeof cell === "number" || (typeof cell === "string" && cell.trim() !== "")) && Number.isFinite(Number(cell));
+      if (!valid) {
+        throw new ApiError(400, "invalid_video_recipe_data", `${field} must be a valid ${column.type}.`);
+      }
+      const normalized = column.type === "number" ? Number(cell) : typeof cell === "string" ? cell.trim() : cell;
+      if (typeof normalized === "number" && ((column.min !== undefined && normalized < column.min) || (column.max !== undefined && normalized > column.max))) {
+        throw new ApiError(400, "invalid_video_recipe_data", `${field} must be within ${column.min ?? "−∞"}–${column.max ?? "∞"}.`);
+      }
+      if (column.options && !column.options.some(option => option.value === normalized)) {
+        throw new ApiError(400, "invalid_video_recipe_data", `${field} is not an available option.`);
+      }
+      if (typeof normalized === "string") {
+        if (column.maxLength !== undefined && Array.from(normalized).length > column.maxLength) {
+          throw new ApiError(400, "invalid_video_recipe_data", `${field} exceeds ${column.maxLength} characters.`);
+        }
+        if (column.list) {
+          const list = column.list;
+          const items = Array.from(list.separators).reduce((parts, separator) => parts.flatMap(part => part.split(separator)), [normalized]).map(item => item.trim()).filter(Boolean);
+          if (items.length > list.maxItems || items.some(item => Array.from(item).length > list.itemMaxLength)) {
+            throw new ApiError(400, "invalid_video_recipe_data", `${field} supports ${list.maxItems} items of at most ${list.itemMaxLength} characters.`);
+          }
+        }
+      }
+    }
+    const id = row[contract.rowId];
+    if (id !== undefined) {
+      if ((typeof id !== "string" && typeof id !== "number") || (typeof id === "string" && !id.trim()) || (typeof id === "number" && !Number.isFinite(id))) {
+        throw new ApiError(400, "invalid_video_recipe_data", `${contract.binding.variable}.rows.${index}.${contract.rowId} must identify a row.`);
+      }
+      const normalizedId = typeof id === "string" ? id.trim() : id;
+      if (ids.has(normalizedId)) throw new ApiError(400, "invalid_video_recipe_data", `${contract.rowId} must be unique.`);
+      ids.add(normalizedId);
+    }
+  }
+  return rows.length;
+}
+
 /** Resolve all inputs before copying files; never silently truncate user content. */
 async function resolveRecipeInstance(
   workspace: Workspace,
@@ -174,8 +233,8 @@ async function resolveRecipeInstance(
       ? typeof value === "number" && (variable.min === undefined || value >= variable.min) && (variable.max === undefined || value <= variable.max)
       : variable.type === "boolean"
       ? typeof value === "boolean"
-      : typeof value === "string" && value.trim().length > 0
-        && (variable.type !== "string" || variable.maxLength === undefined || value.length <= variable.maxLength)
+      : typeof value === "string" && (value.trim().length > 0 || (variable.type === "string" && variable.default === ""))
+        && (variable.type !== "string" || variable.maxLength === undefined || Array.from(value).length <= variable.maxLength)
         && (variable.type !== "enum" || variable.options.some(option => option.value === value))
         && (variable.type !== "color" || /^#[a-f0-9]{6}$/iu.test(value));
     if (!valid || value === undefined) throw new ApiError(400, "invalid_video_recipe_values", `Supply a valid ${variable.id} for ${instance.componentId}; content is never replaced by demo defaults.`);
@@ -201,16 +260,23 @@ async function resolveRecipeInstance(
   for (const [key, limit] of Object.entries(recipe.textLimits ?? {})) {
     const text = values[key];
     const lines = typeof text === "string" ? text.replaceAll("\\n", "\n").split("\n") : [];
-    if (!lines.length || lines.length > limit.maxLines || lines.some(line => line.length > limit.maxLineLength)) {
+    if (!lines.length || lines.length > limit.maxLines || lines.some(line => Array.from(line).length > limit.maxLineLength)) {
       throw new ApiError(400, "video_recipe_text_overflow", `${key} exceeds ${limit.maxLines} lines or ${limit.maxLineLength} characters per line. ${recipe.usage.fallback.overflow}`);
     }
   }
   let itemCount: number | undefined;
+  const data = manifest.visualComponent?.data;
+  const dataCount = data?.binding.encoding === "json"
+    ? validateJsonRecipeData(data, String(values[data.binding.variable])) : undefined;
   if (recipe.capacity) {
     const capacity = recipe.capacity;
-    const raw = String(values[capacity.variable]).replaceAll("\\n", "\n");
-    const parts = raw.split(capacity.separator.replaceAll("\\n", "\n"));
-    const count = capacity.variable === "code" ? parts.length : parts.filter(part => part.trim()).length;
+    if (capacity.encoding === "json" && (dataCount === undefined || data?.binding.variable !== capacity.variable)) {
+      throw new ApiError(400, "invalid_video_recipe_data", "JSON capacity must bind the shared visualComponent.data variable.");
+    }
+    if (capacity.encoding !== "json" && capacity.separator === undefined) throw new ApiError(400, "invalid_video_recipe_data", "Delimited capacity needs a separator.");
+    const parts = capacity.encoding !== "json" && capacity.separator !== undefined
+      ? String(values[capacity.variable]).replaceAll("\\n", "\n").split(capacity.separator.replaceAll("\\n", "\n")) : [];
+    const count = capacity.encoding === "json" && dataCount !== undefined ? dataCount : capacity.variable === "code" ? parts.length : parts.filter(part => part.trim()).length;
     if (count < recipe.capacity.minItems || count > recipe.capacity.maxItems) throw new ApiError(400, "video_recipe_capacity_exceeded", `${instance.componentId} supports ${recipe.capacity.minItems}–${recipe.capacity.maxItems} items; ${recipe.usage.fallback.overflow}`);
     if (capacity.fieldSeparator) {
       for (const item of parts.filter(part => part.trim())) {

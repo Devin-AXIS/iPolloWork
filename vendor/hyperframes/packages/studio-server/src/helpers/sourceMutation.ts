@@ -1,3 +1,4 @@
+import { parseCompositionVariables, updateTextVariableBinding } from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
@@ -267,6 +268,20 @@ export function patchElementInHtml(
         if (op.value != null) {
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
           const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
+          const binding = textTarget.getAttribute("data-var-text") ?? opTarget.getAttribute("data-var-text");
+          if (binding) {
+            const declaration = document.querySelector("[data-composition-variables]");
+            if (declaration) {
+              const variables = parseCompositionVariables(declaration);
+              const values = Object.fromEntries(variables.map((v) => [v.id, v.default]));
+              const update = updateTextVariableBinding(binding, values, op.value);
+              if (update) {
+                const variable = variables.find((v) => v.id === update.id)!;
+                variable.default = update.value;
+                declaration.setAttribute("data-composition-variables", JSON.stringify(variables));
+              }
+            }
+          }
           textTarget.textContent = op.value;
         }
         break;

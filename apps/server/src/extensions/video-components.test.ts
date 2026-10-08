@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { attribute, checkVideoComponents, installVideoComponents } from "./video-components.js";
 import { listHyperframesCatalog } from "../hyperframes-catalog.js";
 import { z } from "zod";
-import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
+import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesPageCaptureSchema, hyperframesVisualComponentDataSchema } from "@ipollowork/types/hyperframes";
 
 const recipeManifestSchema = z.object({
   name: z.string(), duration: z.number(),
@@ -65,6 +65,48 @@ async function fixture() {
   }));
   process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = registry;
   return { root, project };
+}
+
+async function jsonRecipeFixture(count = 2) {
+  const base = await fixture();
+  const componentId = "milestone-timeline";
+  const document = { version: 1, kind: "category-value", rows: Array.from({ length: count }, (_, index) => ({
+    id: `branch-${index + 1}`, label: `分支${index + 1}`, sub: "业务说明", icon: "circle", highlighted: "no", leaves: "输入、处理,结果，证据", value: index + 1,
+  })) };
+  const { manifest: existing } = await recipeFixture();
+  process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = join(base.root, "registry");
+  const events = [...Array.from({ length: 6 }, (_, index) => ({
+    id: `step-${index + 1}`, target: `.branch-${index + 1}`, time: index + 1, duration: .2, action: "Reveal branch evidence",
+  })), { id: "resolve", target: ".result", time: 7, duration: .2, action: "Resolve the diagram" }];
+  const manifest = {
+    name: componentId, type: "hyperframes:block", duration: 8,
+    files: [{ path: "milestone-timeline.html", target: "compositions/milestone-timeline.html", type: "hyperframes:composition" }],
+    visualComponent: { surfaces: ["video"], data: {
+      version: 1, kind: "category-value", mode: "replace", rowId: "id", binding: { variable: "branches", encoding: "json" }, minRows: 2, maxRows: 6,
+      columns: [
+        { id: "label", label: "Branch", type: "string", role: "label", required: true, maxLength: 10 },
+        { id: "sub", label: "Detail", type: "string", role: "value", maxLength: 18 },
+        { id: "icon", label: "Icon", type: "string", role: "value", options: [{ value: "circle", label: "Circle" }] },
+        { id: "highlighted", label: "Highlight", type: "string", role: "value", options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }] },
+        { id: "leaves", label: "Leaves", type: "string", role: "value", list: { maxItems: 4, itemMaxLength: 12, separators: "、,，\n" } },
+        { id: "value", label: "Value", type: "number", role: "value" },
+      ],
+    } },
+    variables: [
+      { id: "title", label: "Title", type: "string", default: "关系图", maxLength: 14 },
+      { id: "sub", label: "Subtitle", type: "string", default: "", maxLength: 18 },
+      { id: "branches", label: "Branches", type: "string", default: JSON.stringify(document), maxLength: 10000 },
+      { id: "motionCueTimes", label: "Cues", type: "string", default: "{}" },
+    ],
+    motionRecipe: { ...existing.motionRecipe, minHoldSeconds: .5, capacity: { variable: "branches", encoding: "json", minItems: 2, maxItems: 6 }, events,
+      usage: { ...existing.motionRecipe.usage, cueBindings: Object.fromEntries(events.map(event => [event.id, event.action])) },
+    },
+  };
+  const manifestPath = join(base.root, "registry", componentId, "registry-item.json");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await writeFile(join(base.root, "registry", componentId, "milestone-timeline.html"), '<main data-composition-id="milestone-timeline" data-ipw-motion-recipe="1"><script>const motionStyle={};</script></main>');
+  const instance = { sceneId: "diagram", componentId, start: 0, duration: 8, values: { title: "关系图", sub: "", branches: JSON.stringify(document) }, timingSource: "visual-cue" };
+  return { ...base, manifest, manifestPath, document, instance };
 }
 
 describe("Video Studio registry component integration", () => {
@@ -421,11 +463,12 @@ describe("Video Studio registry component integration", () => {
       const raw = JSON.parse(await readFile(join(catalog.registry, name, "registry-item.json"), "utf8"));
       if (!raw.motionRecipe) continue;
       const manifest = recipeManifestSchema.parse(raw), capacity = manifest.motionRecipe.capacity;
-      if (!capacity) continue;
+      if (!capacity || capacity.encoding === "json") continue;
       const base = await recipeFixture(name);
       await mkdir(join(base.project, "assets"), { recursive: true });
       await writeFile(join(base.project, "assets/evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"/>');
       const example = manifest.motionRecipe.usage.example.values;
+      if (capacity.separator === undefined) throw Error("Delimited capacity requires a separator");
       const separator = capacity.separator.replaceAll("\\n", "\n");
       const first = String(example[capacity.variable]).replaceAll("\\n", "\n").split(separator)[0];
       for (const count of new Set([capacity.minItems, capacity.maxItems])) {
@@ -455,6 +498,178 @@ describe("Video Studio registry component integration", () => {
         sourcePath: "video/session-one/index.html", componentIds: [name],
         instances: [{ ...instance, values: { ...instance.values, ...changes } }],
       })).rejects.toThrow();
+    }
+  });
+
+  test("shared JSON row capacity activates only present branches at both endpoints", async () => {
+    for (const count of [2, 6]) {
+      const { root, manifest, instance } = await jsonRecipeFixture(count);
+      expect(hyperframesMotionRecipeSchema.safeParse(manifest.motionRecipe).success).toBe(true);
+      expect(hyperframesMotionRecipeSchema.safeParse({ ...manifest.motionRecipe, capacity: { ...manifest.motionRecipe.capacity, encoding: "delimited" } }).success).toBe(false);
+      const result = await installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [instance],
+      });
+      expect(Object.keys(result.instances[0]!.cueTimes)).toEqual([...Array.from({ length: count }, (_, index) => `step-${index + 1}`), "resolve"]);
+      const mounted = z.object({ branches: z.string() }).parse(JSON.parse(attribute(result.instances[0]!.snippet, "data-variable-values")));
+      expect(mounted.branches).toBe(instance.values.branches);
+    }
+  });
+
+  test("shared JSON rows reject invalid counts, fields and identity before writing any instance", async () => {
+    const { root, project, document, instance } = await jsonRecipeFixture();
+    const row = document.rows[0]!;
+    const invalidValues = [
+      JSON.stringify({ ...document, rows: [row] }),
+      JSON.stringify({ ...document, rows: Array.from({ length: 7 }, (_, index) => ({ ...row, id: `branch-${index}` })) }),
+      "{not-json", JSON.stringify({ ...document, version: 2 }), JSON.stringify({ ...document, kind: "route-value" }),
+      JSON.stringify({ ...document, rows: [null, row] }),
+      JSON.stringify({ ...document, rows: [row, { id: "branch-2", sub: "Missing required label" }] }),
+      ...[
+        { label: "" }, { label: "字".repeat(11) }, { sub: "字".repeat(19) }, { icon: "unlisted" }, { highlighted: true },
+        { leaves: "一,二，三、四\n五" }, { leaves: "字".repeat(13) }, { value: "NaN" }, { value: {} }, { id: row.id },
+      ].map(changes => JSON.stringify({ ...document, rows: [row, { ...document.rows[1], ...changes }] })),
+    ];
+    for (const branches of invalidValues) await expect(installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+      instances: [instance, { ...instance, sceneId: "invalid", values: { ...instance.values, branches } }],
+    })).rejects.toThrow();
+    expect(await readdir(project)).toEqual(["index.html"]);
+    expect(await readFile(join(project, "index.html"), "utf8")).toBe('<!doctype html><main data-composition-id="main"></main>');
+  });
+
+  test("JSON recipe capacity still bounds a more permissive shared data contract", async () => {
+    for (const count of [1, 7]) {
+      const { root, project, manifest, manifestPath, instance } = await jsonRecipeFixture(count);
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, visualComponent: { ...manifest.visualComponent, data: { ...manifest.visualComponent.data, minRows: 0, maxRows: 8 } } }));
+      await expect(installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [instance],
+      })).rejects.toMatchObject({ code: "video_recipe_capacity_exceeded" });
+      expect(await readdir(project)).toEqual(["index.html"]);
+    }
+  });
+
+  test("JSON number fields allow optional blanks and real zero without coercing invalid types", async () => {
+    const { root, manifest, manifestPath, document, instance } = await jsonRecipeFixture();
+    const values = (value: unknown) => ({ ...instance.values, branches: JSON.stringify({ ...document, rows: document.rows.map(row => ({ ...row, value })) }) });
+    for (const value of [0, "0", "", "  ", "\n"]) {
+      const result = await installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(value) }],
+      });
+      const mounted = z.object({ branches: z.string() }).parse(JSON.parse(attribute(result.instances[0]!.snippet, "data-variable-values")));
+      const rows = z.object({ rows: z.array(z.record(z.string(), z.unknown())) }).parse(JSON.parse(mounted.branches)).rows;
+      expect(rows[0]?.value).toBe(value);
+    }
+    for (const value of [null, false, true, [], [1], {}, "NaN"]) await expect(installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(value) }],
+    })).rejects.toMatchObject({ code: "invalid_video_recipe_data" });
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, visualComponent: { ...manifest.visualComponent, data: {
+      ...manifest.visualComponent.data, columns: manifest.visualComponent.data.columns.map(column => column.id === "value" ? { ...column, required: true } : column),
+    } } }));
+    for (const value of ["", "  ", "\n"]) await expect(installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(value) }],
+    })).rejects.toMatchObject({ code: "invalid_video_recipe_data" });
+  });
+
+  test("shared numeric row bounds retain metadata and reject invalid declarations or out-of-range inputs before writing", async () => {
+    const { root, project, manifest, manifestPath, document, instance } = await jsonRecipeFixture();
+    const data = { ...manifest.visualComponent.data, columns: manifest.visualComponent.data.columns.map(column => column.id === "value"
+      ? { ...column, required: true, min: 0, max: 1 } : column) };
+    const values = (value: unknown) => ({ ...instance.values, branches: JSON.stringify({ ...document, rows: document.rows.map(row => ({ ...row, value })) }) });
+    for (const [min, max] of [[2, 1], [null, 1], ["0", 1], [Number.NaN, 1], [0, Infinity], [0, "1"]]) {
+      const invalid = { ...data, columns: data.columns.map(column => column.id === "value" ? { ...column, min, max } : column) };
+      expect(hyperframesVisualComponentDataSchema.safeParse(invalid).success).toBe(false);
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, visualComponent: { ...manifest.visualComponent, data: invalid } }));
+      await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(0) }] })).rejects.toThrow();
+    }
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, visualComponent: { ...manifest.visualComponent, data } }));
+    const parsed = hyperframesVisualComponentDataSchema.parse(data);
+    expect(parsed.columns.find(column => column.id === "value")).toMatchObject({ min: 0, max: 1 });
+    for (const value of [-.01, 1.01, "", " ", undefined]) await expect(installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(value) }],
+    })).rejects.toMatchObject({ code: "invalid_video_recipe_data" });
+    expect(await readdir(project)).toEqual(["index.html"]);
+    for (const value of [0, 1, .5, "0", "1"]) {
+      const result = await installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(value) }],
+      });
+      expect(result.instances).toHaveLength(1);
+    }
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, visualComponent: { ...manifest.visualComponent, data: {
+      ...data, columns: data.columns.map(column => column.id === "value" ? { ...column, required: false } : column),
+    } } }));
+    const optional = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(" ") }],
+    });
+    expect(optional.instances).toHaveLength(1);
+    await expect(installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: values(1.01) }],
+    })).rejects.toMatchObject({ code: "invalid_video_recipe_data" });
+  });
+
+  test("JSON row limits come from the shared manifest and preserve Unicode and literal separator semantics", async () => {
+    const { root, project, manifest, manifestPath, document, instance } = await jsonRecipeFixture();
+    for (const data of [
+      { ...manifest.visualComponent.data, minRows: 3 },
+      { ...manifest.visualComponent.data, maxRows: 1 },
+      { ...manifest.visualComponent.data, binding: { variable: "other", encoding: "json" } },
+    ]) {
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, visualComponent: { ...manifest.visualComponent, data } }));
+      await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [instance] })).rejects.toThrow();
+    }
+    expect(await readdir(project)).toEqual(["index.html"]);
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, visualComponent: { ...manifest.visualComponent, data: {
+      ...manifest.visualComponent.data, columns: manifest.visualComponent.data.columns.map(column => column.id === "leaves"
+        ? { ...column, list: { maxItems: 4, itemMaxLength: 12, separators: "[]" } } : column),
+    } } }));
+    const branches = JSON.stringify({ ...document, rows: document.rows.map(row => ({ ...row, label: "😀".repeat(10), leaves: "输入[处理]结果", extra: "legacy field retained" })) });
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: { ...instance.values, branches } }],
+    });
+    expect(result.instances[0]!.snippet).toContain("legacy field retained");
+  });
+
+  test("bounded scalar inputs allow declared empty defaults and count Unicode characters", async () => {
+    const { root, project, manifest, manifestPath, instance } = await jsonRecipeFixture();
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, motionRecipe: { ...manifest.motionRecipe, textLimits: { title: { maxLines: 2, maxLineLength: 7 } } } }));
+    for (const values of [
+      { ...instance.values, title: "" }, { title: "关系图", branches: instance.values.branches },
+      { ...instance.values, sub: "字".repeat(19) }, { ...instance.values, title: "😀".repeat(8) },
+    ]) await expect(installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values }],
+    })).rejects.toThrow();
+    expect(await readdir(project)).toEqual(["index.html"]);
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+      instances: [{ ...instance, values: { ...instance.values, sub: "😀".repeat(18), title: "😀".repeat(7) } }],
+    });
+    expect(result.instances).toHaveLength(1);
+  });
+
+  test("measured provider narration binds exactly the active JSON branch events", async () => {
+    for (const count of [2, 6]) {
+      const { root, project, instance } = await jsonRecipeFixture(count);
+      const eventIds = [...Array.from({ length: count }, (_, index) => `step-${index + 1}`), "resolve"];
+      let offset = 0;
+      const words = eventIds.map((id, index) => {
+        const text = id === "resolve" ? "最后收束" : `分支${index + 1}`;
+        const word = { text, beginIndex: offset, endIndex: offset + text.length, startSeconds: .237 + index, endSeconds: .437 + index };
+        offset += text.length;
+        return word;
+      });
+      await mkdir(join(project, "assets"));
+      await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "provider", words }));
+      const narration = { timingSourcePath: "video/session-one/assets/voice.timings.json", text: words.map(word => word.text).join(""), bindings: Object.fromEntries(eventIds.map((id, index) => [id, { phrase: words[index]!.text }])) };
+      for (const bindings of [
+        { ...narration.bindings, absent: { phrase: "最后收束" } },
+        Object.fromEntries(Object.entries(narration.bindings).filter(([id]) => id !== "step-2")),
+      ]) await expect(installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, duration: count + 1.5, timingSource: "voiceover", narration: { ...narration, bindings } }],
+      })).rejects.toMatchObject({ code: "invalid_video_recipe_alignment" });
+      expect((await readdir(project)).sort()).toEqual(["assets", "index.html"]);
+      const result = await installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, duration: count + 1.5, timingSource: "voiceover", narration }],
+      });
+      expect(result.instances[0]!.cueTimes).toEqual(Object.fromEntries(eventIds.map((id, index) => [id, Math.round(words[index]!.startSeconds * 30) / 30])));
     }
   });
 

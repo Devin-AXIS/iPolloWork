@@ -7,8 +7,12 @@ import {
   filterEditableTimelineManifestClips,
   findTimelineDomNodeForClip,
   parseTimelineFromDOM,
+  mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
-import { resolveDomEditSelection } from "../../components/editor/domEditing";
+import {
+  resolveDomEditSelection,
+  refreshDomEditSelection,
+} from "../../components/editor/domEditing";
 import {
   buildStableSelector,
   setCompositionSourceMap,
@@ -17,8 +21,10 @@ import {
   findElementForTimelineElement,
   getDomLayerPatchTarget,
   getSelectionCandidate,
+  getDomEditGroupMembers,
   resolveAllVisualDomEditTargets,
 } from "../../components/editor/domEditingElement";
+import { previewGroupScope } from "../../components/editor/domEditingGroups";
 
 const MANIFEST_CLIP: ClipManifestClip = {
   id: "headline",
@@ -39,6 +45,24 @@ const MANIFEST_CLIP: ClipManifestClip = {
 describe("timeline manifest translation", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+  });
+
+  test("removes a deleted component on Redo while retaining a real host omitted by a DOM scan", () => {
+    document.body.innerHTML = `<main data-composition-id="main" data-composition-file="index.html">
+      <div id="first" data-hf-id="hf-first" data-composition-id="first"></div>
+      <div id="second" data-hf-id="hf-second" data-composition-id="second"></div>
+      <div id="reference-start" data-hf-id="hf-reference" data-composition-id="reference-start"></div>
+    </main>`;
+    const element = (id: string, hfId: string) => ({ id, hfId, domId: id,
+      key: `index.html#${id}`, tag: "div", start: 0, duration: 20, track: 1,
+      compositionSrc: `compositions/${id}.html`, sourceFile: "index.html" });
+    const first = element("first", "hf-first");
+    const second = element("second", "hf-second");
+    const referenceStart = element("reference-start", "hf-reference");
+    const restored = [first, second, referenceStart];
+    document.getElementById("second")?.remove();
+    const afterRedo = mergeTimelineElementsPreservingDowngrades(restored, [first], 20, 20, document);
+    expect(afterRedo).toEqual([first, referenceStart]);
   });
 
   test("preserves binding metadata when the host DOM node is unavailable", () => {
@@ -63,7 +87,11 @@ describe("timeline manifest translation", () => {
     expect(hostEl).not.toBeNull();
 
     const element = createTimelineElementFromManifestClip({
-      clip: { ...MANIFEST_CLIP, label: "Tree label", timelineClipLabel: "Manifest clip label" },
+      clip: {
+        ...MANIFEST_CLIP,
+        label: "Tree label",
+        timelineClipLabel: "Manifest clip label",
+      },
       fallbackIndex: 0,
       doc: document,
       hostEl,
@@ -81,7 +109,11 @@ describe("timeline manifest translation", () => {
       </main>
     `;
     const logoClip = { ...MANIFEST_CLIP, id: "hf-logo", tagName: "img" };
-    const sceneClip = { ...MANIFEST_CLIP, id: "scene-intro", tagName: "section" };
+    const sceneClip = {
+      ...MANIFEST_CLIP,
+      id: "scene-intro",
+      tagName: "section",
+    };
     const used = new Set<Element>();
     const logo = findTimelineDomNodeForClip(document, logoClip, 0, used);
     expect(logo?.getAttribute("data-hf-id")).toBe("hf-logo");
@@ -144,6 +176,43 @@ describe("timeline manifest translation", () => {
     };
 
     expect(findTimelineDomNodeForClip(document, unresolvedClip, 1, used)?.id).toBe("second");
+  });
+
+  test("keeps the original mounted clip when a prepended instance preserves its authored inner id", () => {
+    document.body.innerHTML = `<main data-composition-id="main" data-composition-file="index.html">
+      <div id="stage-stack_2" data-composition-id="stage-stack_2" data-composition-file="compositions/stage-stack.html" data-start="5" data-hf-authored-duration="10" data-track-index="2">
+        <div id="stage-stack" data-composition-id="stage-stack" data-start="0" data-hf-authored-duration="10"></div>
+      </div>
+      <div id="stage-stack" data-hf-id="hf-original" data-composition-id="stage-stack" data-composition-file="compositions/stage-stack.html" data-start="0" data-hf-authored-duration="10" data-track-index="1"></div>
+    </main>`;
+    const original = document.querySelector('[data-hf-id="hf-original"]');
+    const clip: ClipManifestClip = { ...MANIFEST_CLIP, id: "stage-stack", start: 0,
+      duration: 10, track: 1, tagName: "div", kind: "composition", compositionId: "stage-stack" };
+    const host = findTimelineDomNodeForClip(document, clip, 1);
+    expect(host).toBe(original);
+    const element = createTimelineElementFromManifestClip({ clip, doc: document, hostEl: host, fallbackIndex: 1 });
+    expect(element.sourceFile).toBe("index.html");
+    expect(element.key).toBe("index.html#stage-stack");
+    expect(element.hfId).toBe("hf-original");
+  });
+
+  test("does not replace an already resolved composition host while recovering its source", () => {
+    document.body.innerHTML = `<main data-composition-id="main" data-composition-file="index.html">
+      <div data-composition-id="stage-stack_2" data-composition-file="compositions/stage-stack.html">
+        <div id="stage-stack" data-composition-id="stage-stack" data-start="0"></div>
+      </div>
+      <div id="stage-stack" data-hf-id="hf-original" data-composition-id="stage-stack" data-composition-file="compositions/stage-stack.html" data-start="0" data-hf-authored-duration="10" data-track-index="1"></div>
+    </main>`;
+    const clip: ClipManifestClip = { ...MANIFEST_CLIP, id: "stage-stack", start: 0,
+      duration: 10, track: 1, tagName: "div", kind: "composition", compositionId: "stage-stack" };
+    const element = createTimelineElementFromManifestClip({ clip, doc: document,
+      hostEl: document.querySelector('[data-hf-id="hf-original"]'), fallbackIndex: 1 });
+    expect(element.sourceFile).toBe("index.html");
+    expect(element.compositionSrc).toBe("compositions/stage-stack.html");
+    expect(element.hfId).toBe("hf-original");
+    const recovered = createTimelineElementFromManifestClip({ clip, doc: document, fallbackIndex: 1 });
+    expect(recovered.sourceFile).toBe("index.html");
+    expect(recovered.hfId).toBe("hf-original");
   });
 
   test("exposes an avatar cutout as one editable timeline element", () => {
@@ -265,7 +334,10 @@ describe("timeline manifest translation", () => {
     const file = hierarchy.children.find((child) => child.selector === ".lfc-file");
     const small = hierarchy.children.find((child) => child.selector === "small");
 
-    expect(file).toMatchObject({ hostId: "lfc-stream", parentId: "lfc-stream" });
+    expect(file).toMatchObject({
+      hostId: "lfc-stream",
+      parentId: "lfc-stream",
+    });
     expect(small).toMatchObject({ hostId: "lfc-stream", parentId: file?.id });
     expect(hierarchy.children.some((child) => child.selector === ".lfc-stream")).toBe(false);
   });
@@ -418,6 +490,109 @@ describe("timeline manifest translation", () => {
     ).toEqual([label]);
   });
 
+  test("does not pick a transparent animation wrapper covering unrelated text", () => {
+    document.body.innerHTML =
+      '<main data-composition-id="main" data-composition-file="index.html"><span id="label">Title</span><div id="wrapper" style="pointer-events:none"><span>Other title</span></div></main>';
+    const wrapper = document.getElementById("wrapper");
+    const label = document.getElementById("label");
+    if (!wrapper || !label) throw new Error("Fixture missing");
+    for (const element of [wrapper, label]) {
+      element.getBoundingClientRect = () => ({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 100,
+        bottom: 30,
+        width: 100,
+        height: 30,
+        toJSON: () => ({}),
+      });
+    }
+    expect(
+      resolveAllVisualDomEditTargets([wrapper, label], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toEqual([label]);
+    wrapper.setAttribute("data-hf-edit-as-unit", "");
+    expect(
+      resolveAllVisualDomEditTargets([wrapper, label], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toEqual([wrapper, label]);
+  });
+
+  test("picks painted vector artwork through an overlapping transparent outline viewport", () => {
+    document.body.innerHTML = `<main data-composition-id="main" data-composition-file="index.html">
+      <div id="card" data-hf-edit-as-unit><svg><rect id="fill" /></svg></div>
+      <div id="corners" data-hf-edit-as-unit><svg><path id="outline" /></svg></div>
+    </main>`;
+    const card = document.getElementById("card")!;
+    const corners = document.getElementById("corners")!;
+    const fill = document.getElementById("fill")!;
+    const outline = document.getElementById("outline")!;
+    for (const element of [card, corners, card.firstElementChild!, corners.firstElementChild!]) {
+      element.getBoundingClientRect = () => new DOMRect(0, 0, 190, 46);
+    }
+    const options = { activeCompositionPath: "index.html" };
+    expect(
+      resolveAllVisualDomEditTargets([corners.firstElementChild, corners, fill, card], options),
+    ).toEqual([card]);
+    expect(resolveAllVisualDomEditTargets([outline, corners, fill, card], options)).toEqual([
+      corners,
+      card,
+    ]);
+  });
+
+  test("measures group content through full-stage animation wrappers", () => {
+    document.body.innerHTML = `<div id="group" data-hf-group>
+      <div style="width:1920px;height:1080px;pointer-events:none"><span id="label">Title</span></div>
+      <div id="icon" data-hf-edit-as-unit><svg><path /></svg></div>
+      <div style="display:none"><span>Hidden decoration</span></div>
+    </div>`;
+    expect(getDomEditGroupMembers(document.getElementById("group")!)).toEqual([
+      document.getElementById("label"),
+      document.getElementById("icon"),
+    ]);
+  });
+
+  test("selects a graphic assembly together while allowing direct text and explicit drill-in", async () => {
+    document.body.innerHTML = `<main data-composition-id="main" data-composition-file="index.html">
+      <div id="card-group" data-hf-group>
+        <div id="art" data-hf-edit-as-unit><svg><rect /></svg></div>
+        <span id="caption">Card title</span>
+      </div>
+    </main>`;
+    const group = document.getElementById("card-group")!;
+    const art = document.getElementById("art")!;
+    const caption = document.getElementById("caption")!;
+    const select = (target: HTMLElement, active: HTMLElement | null) =>
+      resolveDomEditSelection(target, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+        skipSourceProbe: true,
+        activeGroupElement: previewGroupScope(target, active),
+      });
+    await expect(select(art, null)).resolves.toMatchObject({ element: group });
+    await expect(select(caption, null)).resolves.toMatchObject({
+      element: caption,
+    });
+    await expect(select(art, group)).resolves.toMatchObject({ element: art });
+    await expect(
+      resolveDomEditSelection(caption, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+        skipSourceProbe: true,
+        exactTarget: true,
+      }),
+    ).resolves.toMatchObject({ element: caption });
+    const selectedText = await select(caption, null);
+    if (!selectedText) throw new Error("Text selection missing");
+    await expect(refreshDomEditSelection(selectedText, "index.html")).resolves.toMatchObject({
+      element: caption,
+    });
+  });
+
   test("treats structured motion spans as one selectable text layer", async () => {
     document.body.innerHTML = `
       <section id="caption-text" data-ipw-motion-structure="v1">
@@ -449,7 +624,9 @@ describe("timeline manifest translation", () => {
       }),
     ).toBe(root);
     expect(
-      resolveAllVisualDomEditTargets([word, root], { activeCompositionPath: "index.html" }),
+      resolveAllVisualDomEditTargets([word, root], {
+        activeCompositionPath: "index.html",
+      }),
     ).toEqual([root]);
     await expect(
       resolveDomEditSelection(word, {
@@ -493,7 +670,9 @@ describe("timeline manifest translation", () => {
       }),
     ).toBe(root);
     expect(
-      resolveAllVisualDomEditTargets([character, root], { activeCompositionPath: "index.html" }),
+      resolveAllVisualDomEditTargets([character, root], {
+        activeCompositionPath: "index.html",
+      }),
     ).toEqual([root]);
     await expect(
       resolveDomEditSelection(character, {

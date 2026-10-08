@@ -42,7 +42,11 @@ export function getVariables<
   }
   const overrides = readRenderOverrides();
 
-  return { ...declaredDefaults, ...overrides } as Partial<T>;
+  const compositionId = document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id");
+  const liveValues = compositionId && typeof window !== "undefined"
+    ? (window as Window & { __hfVariablesByComp?: Record<string, Record<string, unknown>> }).__hfVariablesByComp?.[compositionId]
+    : undefined;
+  return { ...declaredDefaults, ...overrides, ...liveValues } as Partial<T>;
 }
 
 /**

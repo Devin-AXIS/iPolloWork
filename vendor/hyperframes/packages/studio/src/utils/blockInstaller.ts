@@ -1,3 +1,4 @@
+import { parseCompositionVariables } from "@hyperframes/parsers/composition";
 import type {
   BlockParam,
   RegistryItem,
@@ -245,6 +246,7 @@ export function resolveInstalledComponentParams(input: {
   element: TimelineElement;
   hostCompositionPath: string;
   hostSource: string;
+  compositionSource?: string;
 }): InstalledComponentParams | null {
   if (!input.element.compositionSrc) return null;
   const compositionSrc = normalizeRegistryPath(input.element.compositionSrc);
@@ -256,7 +258,13 @@ export function resolveInstalledComponentParams(input: {
   if (!block) return null;
 
   const params = block.type === "hyperframes:block" ? (block.params ?? []) : [];
-  const variables = block.variables ?? [];
+  const sourceDocument = input.compositionSource ? new DOMParser().parseFromString(input.compositionSource, "text/html") : null;
+  const declaration = sourceDocument?.querySelector("[data-composition-variables]");
+  const defaults = declaration ? parseCompositionVariables(declaration) : [];
+  const variables = (block.variables ?? []).map((variable) => {
+    const authored = defaults.find((candidate) => candidate.id === variable.id && candidate.type === variable.type);
+    return authored ? { ...variable, default: normalizeBlockVariableValue(variable, authored.default) } as RegistryVariable : variable;
+  });
   if (!params.length && !variables.length) return null;
   const insertedElementId = input.element.domId ?? input.element.id;
 

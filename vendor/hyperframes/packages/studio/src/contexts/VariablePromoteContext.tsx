@@ -113,7 +113,8 @@ export function useVariablePromoteChannel(channel: PromoteChannel): ChannelPromo
     const action = matchAction(actions, channel);
     const boundId = readBinding(session, hfId, channel);
     if (!action && !boundId) return null;
-    const declaration = boundId ? (declarations.find((d) => d.id === boundId) ?? null) : null;
+    const variableId = boundId?.startsWith("/") ? boundId.split("/")[1]?.replace(/~1/g, "/").replace(/~0/g, "~") : boundId;
+    const declaration = variableId ? (declarations.find((d) => d.id === variableId) ?? null) : null;
 
     return {
       action,

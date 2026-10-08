@@ -22,6 +22,106 @@ function parseAuthoredEndAttr(element: Element): number | null {
   return parseNumeric(element.getAttribute(AUTHORED_END_ATTR));
 }
 
+/** Prefer instance mounts over an authored id retained by a sibling inner root. */
+export function resolveCompositionElement(compositionId: string): Element | null {
+  const matches = Array.from(document.querySelectorAll(`[data-composition-id="${CSS.escape(compositionId)}"]`));
+  return matches.find(node => !node.hasAttribute("data-hf-inner-root") &&
+    (node.hasAttribute("data-composition-file") || node.hasAttribute("data-composition-src"))) ??
+    matches.find(node => !node.hasAttribute("data-hf-inner-root")) ?? matches[0] ?? null;
+}
+
+/** Composition slots use the parent's clock; their contents use the source clock. */
+export function readCompositionPlaybackRate(element: Element): number {
+  if (
+    !element.hasAttribute("data-composition-id") &&
+    !element.hasAttribute("data-composition-src") &&
+    !element.hasAttribute("data-composition-file")
+  )
+    return 1;
+  const rate = parseNumeric(element.getAttribute("data-playback-rate"));
+  return rate != null && rate > 0 ? rate : 1;
+}
+
+export function readCompositionPlaybackStart(element: Element): number {
+  return element.hasAttribute("data-source-duration")
+    ? Math.max(0, parseNumeric(element.getAttribute("data-playback-start")) ?? 0)
+    : 0;
+}
+
+export function hasCompositionRetime(element: Element): boolean {
+  let node: Element | null = element;
+  while (node) {
+    if (
+      node.hasAttribute("data-source-duration") &&
+      readCompositionPlaybackRate(node) > 0 &&
+      (node.hasAttribute("data-composition-id") ||
+        node.hasAttribute("data-composition-src") ||
+        node.hasAttribute("data-composition-file"))
+    )
+      return true;
+    node = parentComposition(node);
+  }
+  return false;
+}
+
+function parentComposition(element: Element): Element | null {
+  return element.parentElement?.closest("[data-composition-id]:not([data-hf-inner-root])") ?? null;
+}
+
+export function resolveAncestorCompositionPlaybackRate(element: Element): number {
+  let rate = 1;
+  let host = parentComposition(element);
+  while (host) {
+    rate *= readCompositionPlaybackRate(host);
+    host = parentComposition(host);
+  }
+  return rate;
+}
+
+export function resolveCompositionSourceTime(
+  element: Element,
+  time: number,
+  start: number,
+): number {
+  const rate =
+    readCompositionPlaybackRate(element) * resolveAncestorCompositionPlaybackRate(element);
+  const offset = readCompositionPlaybackStart(element);
+  const sourceDuration = parseNumeric(element.getAttribute("data-source-duration"));
+  const localTime = Math.max(0, offset + (time - start) * rate);
+  return sourceDuration != null && sourceDuration > 0
+    ? Math.min(sourceDuration, localTime)
+    : localTime;
+}
+
+/** Reuse GSAP nesting for playback, paused seeking and deterministic export. */
+export function retimeCompositionTimeline(params: {
+  element: Element;
+  timeline: RuntimeTimelineLike;
+  parent: RuntimeTimelineLike;
+  timelineRegistry: Record<string, RuntimeTimelineLike | undefined>;
+  resolver: ReturnType<typeof createRuntimeStartTimeResolver>;
+}): number {
+  const { element, timeline, parent, timelineRegistry, resolver } = params;
+  const rate =
+    readCompositionPlaybackRate(element) * resolveAncestorCompositionPlaybackRate(element);
+  const trim = readCompositionPlaybackStart(element);
+  const start = resolver.resolveStartForElement(element, 0);
+  let parentRate = 1;
+  let parentStart = 0;
+  let parentTrim = 0;
+  for (const node of document.querySelectorAll("[data-composition-id]")) {
+    if (timelineRegistry[node.getAttribute("data-composition-id")!] !== parent) continue;
+    parentRate = readCompositionPlaybackRate(node) * resolveAncestorCompositionPlaybackRate(node);
+    parentStart = resolver.resolveStartForElement(node, 0);
+    parentTrim = readCompositionPlaybackStart(node);
+    break;
+  }
+  if (hasCompositionRetime(element)) {
+    timeline.timeScale?.(rate / parentRate);
+  }
+  return parentTrim + (start - trim / rate - parentStart) * parentRate;
+}
+
 export function createRuntimeStartTimeResolver(params: {
   timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
   includeAuthoredTimingAttrs?: boolean;
@@ -38,10 +138,7 @@ export function createRuntimeStartTimeResolver(params: {
   const findReferenceTarget = (refId: string): Element | null => {
     const byId = document.getElementById(refId);
     if (byId) return byId;
-    return (
-      (document.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`) as Element | null) ??
-      null
-    );
+    return resolveCompositionElement(refId);
   };
 
   const resolveDurationForElement = (element: Element): number | null => {
@@ -52,7 +149,7 @@ export function createRuntimeStartTimeResolver(params: {
       parseDurationAttr(element) ??
       (includeAuthoredTimingAttrs ? parseAuthoredDurationAttr(element) : null);
     if (durationAttr != null && durationAttr > 0) {
-      resolved = durationAttr;
+      resolved = durationAttr / resolveAncestorCompositionPlaybackRate(element);
     }
     if (resolved == null || resolved <= 0) {
       const endAttr =
@@ -60,7 +157,12 @@ export function createRuntimeStartTimeResolver(params: {
         (includeAuthoredTimingAttrs ? parseAuthoredEndAttr(element) : null);
       if (endAttr != null) {
         const start = resolveStartForElementInternal(element, 0);
-        const delta = endAttr - start;
+        const host = parentComposition(element);
+        const hostStart = host ? resolveStartForElementInternal(host, 0) : 0;
+        const trim = host ? readCompositionPlaybackStart(host) : 0;
+        const delta = hasCompositionRetime(element)
+          ? hostStart + (endAttr - trim) / resolveAncestorCompositionPlaybackRate(element) - start
+          : endAttr - start;
         if (Number.isFinite(delta) && delta > 0) {
           resolved = delta;
         }
@@ -72,7 +174,9 @@ export function createRuntimeStartTimeResolver(params: {
         parseNumeric(element.getAttribute("data-media-start")) ??
         0;
       if (Number.isFinite(element.duration) && element.duration > playbackStart) {
-        resolved = (element.duration - playbackStart) / readElementPlaybackRate(element);
+        resolved =
+          (element.duration - playbackStart) /
+          (readElementPlaybackRate(element) * resolveAncestorCompositionPlaybackRate(element));
       }
     }
     if (resolved == null || resolved <= 0) {
@@ -83,7 +187,10 @@ export function createRuntimeStartTimeResolver(params: {
           try {
             const timelineDuration = Number(timeline.duration());
             if (Number.isFinite(timelineDuration) && timelineDuration > 0) {
-              resolved = timelineDuration;
+              resolved =
+                timelineDuration /
+                (readCompositionPlaybackRate(element) *
+                  resolveAncestorCompositionPlaybackRate(element));
             }
           } catch (err) {
             // ignore broken timeline impls
@@ -102,7 +209,7 @@ export function createRuntimeStartTimeResolver(params: {
 
   const resolveHostOffsetForElement = (element: Element, fallback: number): number => {
     if (element.hasAttribute("data-composition-id")) {
-      const parentComposition = element.parentElement?.closest("[data-composition-id]");
+      const parentComposition = element.parentElement?.closest("[data-composition-id]:not([data-hf-inner-root])");
       if (!parentComposition) return 0;
       return resolveStartForElementInternal(parentComposition, fallback);
     }
@@ -151,7 +258,13 @@ export function createRuntimeStartTimeResolver(params: {
       }
       if (expression.kind === "absolute") {
         const absolute = Math.max(0, expression.value);
-        const resolved = Math.max(0, resolveHostOffsetForElement(element, fallback) + absolute);
+        const host = parentComposition(element);
+        const trim = host ? readCompositionPlaybackStart(host) : 0;
+        const resolved = Math.max(
+          0,
+          resolveHostOffsetForElement(element, fallback) +
+            (absolute - trim) / resolveAncestorCompositionPlaybackRate(element),
+        );
         startCache.set(element, resolved);
         return resolved;
       }
@@ -163,11 +276,19 @@ export function createRuntimeStartTimeResolver(params: {
       const targetStart = resolveStartForElementInternal(target, 0);
       const targetDuration = resolveDurationForElement(target);
       if (targetDuration == null || targetDuration <= 0) {
-        const unresolved = Math.max(0, targetStart + expression.offset);
+        const unresolved = Math.max(
+          0,
+          targetStart + expression.offset / resolveAncestorCompositionPlaybackRate(element),
+        );
         startCache.set(element, unresolved);
         return unresolved;
       }
-      const resolved = Math.max(0, targetStart + targetDuration + expression.offset);
+      const resolved = Math.max(
+        0,
+        targetStart +
+          targetDuration +
+          expression.offset / resolveAncestorCompositionPlaybackRate(element),
+      );
       startCache.set(element, resolved);
       return resolved;
     } finally {

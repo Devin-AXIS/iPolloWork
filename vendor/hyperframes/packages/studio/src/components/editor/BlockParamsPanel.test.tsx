@@ -286,6 +286,108 @@ describe("BlockParamsPanel", () => {
     expect(onVariableChange).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps an incomplete added data row in the form without saving invalid preview data", () => {
+    vi.useFakeTimers();
+    const onVariableChange = vi.fn(async (_id: string, _value: string | number | boolean) => undefined);
+    flushSync(() => root.render(
+      <BlockParamsPanel blockTitle="Metrics" params={[]}
+        variables={[{ id: "items", type: "string", label: "Items", default: '{"version":1,"kind":"category-value","rows":[]}', update: "live" }]}
+        variableValues={{}} visualComponent={{ version: 1, category: "data", surfaces: ["video"], themeMode: "inherit", data: {
+          version: 1, kind: "category-value", mode: "replace", rowId: "label", binding: { variable: "items", encoding: "json" }, minRows: 0, maxRows: 3,
+          columns: [{ id: "label", label: "Metric", type: "string", role: "id", required: true }, { id: "value", label: "Value", type: "number", role: "value", required: true }],
+        } }} onVariableChange={onVariableChange} onBack={vi.fn()} />
+    ));
+    const add = Array.from(container.querySelectorAll("button")).find(button => button.textContent?.includes("Add item"))!;
+    flushSync(() => add.click());
+    expect(container.querySelectorAll("[data-component-data-row]")).toHaveLength(1);
+    expect(onVariableChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("required");
+    const metric = container.querySelector('input[aria-label="Metric 1"]') as HTMLInputElement;
+    flushSync(() => {
+      metric.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(metric, "中文指标");
+      metric.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    flushSync(() => vi.advanceTimersByTime(PROPERTY_INPUT_DEBOUNCE_MS));
+    expect(onVariableChange).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(onVariableChange.mock.calls[0]![1])).rows).toEqual([{ label: "中文指标", value: 0 }]);
+  });
+
+  it("keeps out-of-range numeric drafts editable and saves valid inclusive endpoints", () => {
+    vi.useFakeTimers();
+    const onVariableChange = vi.fn(async (_id: string, _value: string | number | boolean) => undefined);
+    flushSync(() => root.render(
+      <BlockParamsPanel blockTitle="Journey" params={[]}
+        variables={[{ id: "rows", type: "string", label: "Rows", default: JSON.stringify({ version: 1, kind: "category-value", rows: [{ id: "one", level: .5 }] }), update: "live" }]}
+        variableValues={{}} visualComponent={{ version: 1, category: "business", surfaces: ["video"], themeMode: "inherit", data: {
+          version: 1, kind: "category-value", mode: "replace", rowId: "id", binding: { variable: "rows", encoding: "json" }, minRows: 1, maxRows: 3,
+          columns: [{ id: "id", label: "ID", type: "string", role: "id", required: true }, { id: "level", label: "Level", type: "number", role: "value", required: true, min: 0, max: 1 }],
+        } }} onVariableChange={onVariableChange} onBack={vi.fn()} />
+    ));
+    const input = container.querySelector('input[aria-label="Level 1"]');
+    if (!(input instanceof HTMLInputElement)) throw Error("Missing numeric row input");
+    expect([input.min, input.max, input.step]).toEqual(["0", "1", "any"]);
+    expect(input.title).toBe("Range: 0–1");
+    expect(container.textContent).toContain("Level: 0–1");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (!setter) throw Error("Missing input setter");
+    const edit = (value: string) => {
+      flushSync(() => { input.focus(); setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+      flushSync(() => vi.advanceTimersByTime(PROPERTY_INPUT_DEBOUNCE_MS));
+    };
+    for (const value of ["1.2", "-0.1"]) {
+      edit(value);
+      expect(input.value).toBe(value);
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain("0–1");
+      expect(onVariableChange).not.toHaveBeenCalled();
+    }
+    for (const [index, value] of ["1", "0"].entries()) {
+      edit(value);
+      expect(input.getAttribute("aria-invalid")).toBe("false");
+      expect(onVariableChange).toHaveBeenCalledTimes(index + 1);
+      expect(JSON.parse(String(onVariableChange.mock.calls[index]![1])).rows[0].level).toBe(Number(value));
+    }
+    edit("");
+    expect(input.value).toBe("");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(onVariableChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects overflowing branch drafts without truncating or saving them", () => {
+    vi.useFakeTimers();
+    const onVariableChange = vi.fn(async () => undefined);
+    flushSync(() => root.render(
+      <BlockParamsPanel blockTitle="Map" params={[]}
+        variables={[{ id: "branches", type: "string", label: "Branches", default: JSON.stringify({ version: 1, kind: "category-value", rows: [{ id: "one", label: "方向", leaves: "甲、乙" }, { id: "two", label: "行动" }] }), update: "live" }]}
+        variableValues={{}} visualComponent={{ version: 1, category: "business", surfaces: ["video"], themeMode: "inherit", data: {
+          version: 1, kind: "category-value", mode: "replace", rowId: "id", binding: { variable: "branches", encoding: "json" }, minRows: 2, maxRows: 6,
+          columns: [{ id: "id", label: "ID", type: "string", role: "id", required: true }, { id: "label", label: "Branch", type: "string", role: "label", required: true, maxLength: 2 }, { id: "leaves", label: "Leaves", type: "string", role: "value", list: { maxItems: 2, itemMaxLength: 2, separators: "、,，\n" } }],
+        } }} onVariableChange={onVariableChange} onBack={vi.fn()} />
+    ));
+    const branch = container.querySelector('input[aria-label="Branch 1"]');
+    expect(branch).toBeInstanceOf(HTMLInputElement);
+    if (!(branch instanceof HTMLInputElement)) throw Error("Missing branch input");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (!setter) throw Error("Missing input setter");
+    flushSync(() => {
+      branch.focus(); setter.call(branch, "完整内容");
+      branch.dispatchEvent(new Event("input", { bubbles: true }));
+      vi.advanceTimersByTime(PROPERTY_INPUT_DEBOUNCE_MS);
+    });
+    expect(branch.value).toBe("完整内容");
+    expect(branch.getAttribute("aria-invalid")).toBe("true");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("2 characters");
+    expect(onVariableChange).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("2–6");
+    expect(container.querySelector('button[aria-label="Remove data row 1"]')).toHaveProperty("disabled", true);
+    flushSync(() => {
+      setter.call(branch, "创作"); branch.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    flushSync(() => vi.advanceTimersByTime(PROPERTY_INPUT_DEBOUNCE_MS));
+    expect(onVariableChange).toHaveBeenCalledTimes(1);
+  });
+
   it("does not replace a focused live text draft when an earlier save is acknowledged", () => {
     vi.useFakeTimers();
     const onVariableChange = vi.fn(async () => undefined);

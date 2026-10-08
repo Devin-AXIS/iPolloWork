@@ -189,28 +189,9 @@ export function readDecodedAttr(tagSource: string, attr: string): string | null 
   return value;
 }
 
-/**
- * Read an attribute that may legitimately contain the opposite quote
- * character. `readAttr` truncates `data-variable-values='{"title":"Hello"}'`
- * at the first internal `"` because its `[^"']+` class excludes both quote
- * types. This variant alternates: a double-quoted value never contains an
- * unescaped `"`, and a single-quoted value never contains an unescaped `'`,
- * so each branch can use a quote-specific class.
- *
- * Use for attributes whose values are JSON or otherwise carry the opposite
- * quote character. Existing single-token attributes (`id`, `class`, etc.)
- * stick with `readAttr` for consistency with the rest of the lint code.
- */
+/** Read JSON-bearing attributes with the same quoting and single entity decode as the DOM. */
 export function readJsonAttr(tagSource: string, attr: string): string | null {
-  if (!tagSource) return null;
-  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // See readAttr: `(?<![\w-])` prevents a short name from matching the tail of a
-  // longer hyphenated attribute (e.g. "id" inside `data-hf-id`).
-  const match = tagSource.match(
-    new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"),
-  );
-  if (!match) return null;
-  return match[1] ?? match[2] ?? null;
+  return readDecodedAttr(tagSource, attr);
 }
 
 export function collectCompositionIds(tags: OpenTag[]): Set<string> {

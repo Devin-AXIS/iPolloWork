@@ -90,6 +90,7 @@ import {
   isCompositionVariable,
   isScalarVariableValue as isScalar,
 } from "@hyperframes/core/variables";
+import { parseCompositionVariables, updateTextVariableBinding } from "@hyperframes/parsers/composition";
 import type { CompositionVariable } from "@hyperframes/core/variables";
 import {
   URI_BEARING_ATTRS,
@@ -403,6 +404,17 @@ function handleSetText(parsed: ParsedDocument, ids: HfId[], value: string): Muta
   for (const id of ids) {
     const el = resolveScoped(parsed.document, id);
     if (!el) continue;
+    const binding = el.getAttribute("data-var-text");
+    if (binding) {
+      const declEl = declarationElement(parsed.document, parsed.wrapped);
+      const values = Object.fromEntries((declEl ? parseCompositionVariables(declEl) : []).map((v) => [v.id, v.default]));
+      const update = updateTextVariableBinding(binding, values, value);
+      if (update) {
+        const change = handleSetVariableValue(parsed, update.id, update.value);
+        result.forward.push(...change.forward);
+        result.inverse.unshift(...change.inverse);
+      }
+    }
     const oldText = getOwnText(el);
     setOwnText(el, value);
     const path = textPath(id);

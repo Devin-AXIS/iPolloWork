@@ -16,6 +16,52 @@ import { readFileContent } from "./timelineTimingSync";
 import { findElementForSelection } from "../components/editor/domEditingElement";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
+export function componentStretchAttributes(
+  sourceDuration: number,
+  duration: number,
+): Record<string, string | null> {
+  if (!(sourceDuration > 0) || !(duration > 0))
+    throw new Error("Component duration must be positive");
+  return {
+    "source-duration": String(sourceDuration),
+    "playback-rate": String(sourceDuration / duration),
+    "playback-start": "0",
+    "media-start": null,
+  };
+}
+
+export async function readComponentSourceDuration(
+  projectId: string,
+  compositionSrc: string,
+  knownDuration?: number,
+): Promise<number> {
+  if (knownDuration != null && Number.isFinite(knownDuration) && knownDuration > 0)
+    return knownDuration;
+  const source = await readFileContent(projectId, compositionSrc);
+  const doc = new DOMParser().parseFromString(source, "text/html");
+  const root = doc.querySelector("[data-composition-id]") ??
+    doc.querySelector("template")?.content.querySelector("[data-composition-id]");
+  const duration = Number(
+    root?.getAttribute("data-duration") ?? root?.getAttribute("data-composition-duration"),
+  );
+  if (!Number.isFinite(duration) || duration <= 0)
+    throw new Error("Component source has no declared duration");
+  return duration;
+}
+
+export async function prepareTimelineComponentResize(
+  projectId: string,
+  element: TimelineElement,
+): Promise<TimelineElement> {
+  if (!element.compositionSrc) return element;
+  const sourceDuration = await readComponentSourceDuration(
+    projectId,
+    element.compositionSrc,
+    element.sourceDuration,
+  );
+  return { ...element, sourceDuration };
+}
+
 function isHTMLElement(element: Element | null): element is HTMLElement {
   if (!element) return false;
   // Use the element's OWN realm's HTMLElement: timeline clips live in the preview
@@ -217,7 +263,10 @@ export function patchIframeDomTiming(
   try {
     const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
     if (!el) return;
-    for (const [name, value] of attrs) el.setAttribute(name, value);
+    for (const [name, value] of attrs) {
+      if (value === "") el.removeAttribute(name);
+      else el.setAttribute(name, value);
+    }
   } catch {
     // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
   }
@@ -301,7 +350,9 @@ export function buildTimelineResizeTimingPatch(
   element: TimelineElement,
   updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
 ): string {
-  const pbs = resolveResizePlaybackStart(original, target, element, updates);
+  const pbs = element.compositionSrc
+    ? null
+    : resolveResizePlaybackStart(original, target, element, updates);
   let patched = applyPatchByTarget(original, target, {
     type: "attribute",
     property: "start",
@@ -324,6 +375,17 @@ export function buildTimelineResizeTimingPatch(
         type: "attribute",
         property: "track-index",
         value: formatTimelineAttributeNumber(track),
+      });
+    }
+  }
+  if (element.compositionSrc && element.sourceDuration) {
+    for (const [property, value] of Object.entries(
+      componentStretchAttributes(element.sourceDuration, updates.duration),
+    )) {
+      patched = applyPatchByTarget(patched, target, {
+        type: "attribute",
+        property,
+        value,
       });
     }
   }

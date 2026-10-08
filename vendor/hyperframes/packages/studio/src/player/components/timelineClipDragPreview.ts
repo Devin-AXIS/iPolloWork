@@ -236,7 +236,7 @@ export function computeResizePreview(
   const effectiveClientX = clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft);
 
   const sourceRemaining =
-    resize.element.sourceDuration != null
+    !resize.element.compositionSrc && resize.element.sourceDuration != null
       ? Math.max(
           0,
           (resize.element.sourceDuration - (resize.element.playbackStart ?? 0)) /
@@ -244,7 +244,8 @@ export function computeResizePreview(
         )
       : Number.POSITIVE_INFINITY;
   const normalizedTag = resize.element.tag.toLowerCase();
-  const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
+  const canSeedPlaybackStart =
+    !resize.element.compositionSrc && (normalizedTag === "audio" || normalizedTag === "video");
   const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
   // Trim limit = available source media only — NOT the composition length.
   // Duration is content-driven (the comp grows/shrinks to fit on commit), so
@@ -261,8 +262,9 @@ export function computeResizePreview(
       pixelsPerSecond: pps,
       minStart: 0,
       maxEnd,
-      playbackStart:
-        resize.edge === "start" && canSeedPlaybackStart
+      playbackStart: resize.element.compositionSrc
+        ? undefined
+        : resize.edge === "start" && canSeedPlaybackStart
           ? (resize.element.playbackStart ?? 0)
           : resize.element.playbackStart,
       playbackRate: resize.element.playbackRate,

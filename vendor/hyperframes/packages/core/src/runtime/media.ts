@@ -163,6 +163,7 @@ export type RuntimeMediaClip = {
 export function refreshRuntimeMediaCache(params?: {
   resolveStartSeconds?: (element: Element) => number;
   resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
+  resolvePlaybackRate?: (element: HTMLVideoElement | HTMLAudioElement) => number;
   shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
 }): {
   timedMediaEls: Array<HTMLVideoElement | HTMLAudioElement>;
@@ -186,7 +187,7 @@ export function refreshRuntimeMediaCache(params?: {
     if (!Number.isFinite(start)) continue;
     const mediaStart =
       Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
-    const playbackRate = readElementPlaybackRate(el);
+    const playbackRate = params?.resolvePlaybackRate?.(el) ?? readElementPlaybackRate(el);
     const loop = el.loop;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
     let duration =

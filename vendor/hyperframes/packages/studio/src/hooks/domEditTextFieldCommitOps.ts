@@ -6,6 +6,36 @@ import {
 } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 
+/** Apply the same child patches as persistence, keeping live animation targets. */
+export function applyTextFieldChildOperations(
+  parent: HTMLElement,
+  operations: PatchOperation[],
+): () => void {
+  const restores: Array<() => void> = [];
+  for (const op of operations) {
+    if (!op.childSelector) continue;
+    const target = parent.querySelectorAll<HTMLElement>(op.childSelector)[op.childIndex ?? 0];
+    if (!target) continue;
+    if (op.type === "text-content" && op.value !== null) {
+      const previous = target.textContent;
+      restores.push(() => {
+        target.textContent = previous;
+      });
+      target.textContent = op.value;
+    } else if (op.type === "inline-style") {
+      const previous = target.style.getPropertyValue(op.property);
+      restores.push(() => {
+        target.style.setProperty(op.property, previous);
+      });
+      if (op.value === null) target.style.removeProperty(op.property);
+      else target.style.setProperty(op.property, op.value);
+    }
+  }
+  return () => {
+    for (const restore of restores.reverse()) restore();
+  };
+}
+
 function hasSameKeysInSamePositions(
   originalFields: DomEditTextField[],
   nextFields: DomEditTextField[],
@@ -28,6 +58,7 @@ function inlineStyleProperties(
 export function buildTextFieldChildOperations(
   originalFields: DomEditTextField[],
   nextFields: DomEditTextField[],
+  editedFieldKey?: string,
 ): PatchOperation[] | null {
   if (originalFields.length !== nextFields.length) return null;
   if (!hasSameKeysInSamePositions(originalFields, nextFields)) return null;
@@ -43,7 +74,7 @@ export function buildTextFieldChildOperations(
     const locator = buildTextFieldChildLocator(originalFields, nextField.key);
     if (!originalField || !locator) return null;
 
-    if (nextField.value !== originalField.value) {
+    if (nextField.value !== originalField.value || nextField.key === editedFieldKey) {
       operations.push(buildDomEditTextPatchOperation(nextField.value, locator));
     }
 
