@@ -1,5 +1,6 @@
 import type {
   Message,
+  Model,
   Part,
   Session,
 } from "@opencode-ai/sdk/v2/client";
@@ -11,6 +12,8 @@ export type Client = ReturnType<typeof createClient>;
 export type ProviderModel = {
   id: string;
   name: string;
+  cost?: Model["cost"];
+  status?: Model["status"];
   contextWindow?: number;
   maxTokens?: number;
   limit?: {
