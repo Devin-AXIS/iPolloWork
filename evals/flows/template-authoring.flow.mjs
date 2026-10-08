@@ -85,7 +85,7 @@ async function clickAria(ctx, label, { timeoutMs = 30_000 } = {}) {
 }
 
 async function resetTransientUi(ctx) {
-  await ctx.eval("location.reload()");
+  await ctx.eval("localStorage.setItem('ipollowork.language', 'zh'); location.reload()");
   await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
     timeoutMs: 60_000,
     label: "app control API after reload",
@@ -97,11 +97,22 @@ async function resetTransientUi(ctx) {
 }
 
 async function openMarket(ctx) {
-  if (await ctx.eval("document.querySelector('[role=dialog]')?.innerText.includes('创建模板')")) return;
+  if (await ctx.eval("document.querySelector('[role=dialog]')?.innerText.includes('探索')")) return;
   await ctx.clickText("模版", { selector: "button", timeoutMs: 30_000 });
-  await ctx.waitFor("document.querySelector('[role=dialog]')?.innerText.includes('创建模板')", {
+  await ctx.waitFor("document.querySelector('[role=dialog]')?.innerText.includes('探索')", {
     timeoutMs: 30_000,
     label: "personal template market",
+  });
+}
+
+async function openMyTemplates(ctx) {
+  await openMarket(ctx);
+  if (!await ctx.eval("document.querySelector('[role=dialog]')?.innerText.includes('创建模板')")) {
+    await clickExactText(ctx, "我的模板");
+  }
+  await ctx.waitFor("document.querySelector('[role=dialog]')?.innerText.includes('创建模板')", {
+    timeoutMs: 30_000,
+    label: "My templates creation entry",
   });
 }
 
@@ -109,7 +120,7 @@ async function createAuthoringSession(ctx, typeLabel, key) {
   const before = await ctx.eval("location.hash");
   const chooserOpen = await ctx.eval("[...document.querySelectorAll('[role=dialog]')].some((dialog) => dialog.innerText.includes('创建哪种模板？'))");
   if (!chooserOpen) {
-    await openMarket(ctx);
+    await openMyTemplates(ctx);
     await clickExactText(ctx, "创建模板");
   }
   await ctx.expectText("创建哪种模板？");
@@ -327,7 +338,7 @@ async function saveSession(ctx, key) {
 }
 
 async function filterMarket(ctx, query) {
-  await openMarket(ctx);
+  await openMyTemplates(ctx);
   await ctx.fill('input[placeholder="搜索模板"]', query);
   await ctx.waitFor(`document.body.innerText.includes(${JSON.stringify(query)})`, {
     timeoutMs: 30_000,
@@ -373,7 +384,7 @@ export default {
           action: async () => {
             await resetTransientUi(ctx);
             state.workspaceId = await ctx.eval("location.hash.match(/\\/workspace\\/([^/]+)/)?.[1] || localStorage.getItem('ipollowork.react.activeWorkspace') || ''");
-            await openMarket(ctx);
+            await openMyTemplates(ctx);
             await clickExactText(ctx, "创建模板");
           },
           assert: async () => {

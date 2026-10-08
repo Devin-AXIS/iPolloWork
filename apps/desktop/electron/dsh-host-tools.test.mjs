@@ -55,6 +55,15 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
             description: "Read the current project",
             parameters: { type: "object", properties: {}, additionalProperties: false },
           },
+          {
+            name: "list_motion_presets",
+            description: "List Video Studio motion presets",
+            parameters: {
+              type: "object",
+              properties: { phase: { type: "string" } },
+              additionalProperties: false,
+            },
+          },
         ],
       });
     }
@@ -100,6 +109,7 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   assert.deepEqual(registered.map((tool) => tool.name), [
     "ipollowork_extension_list_actions",
     "ipollowork_project_read",
+    "list_motion_presets",
   ]);
   const result = await registered[1].execute({}, {
     signal: new AbortController().signal,
@@ -117,6 +127,18 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
     sessionId: "session_1",
   });
   assert.equal(requests[1].init.headers.Authorization, "Bearer secret-token");
+
+  await registered[2].execute({ phase: "enter" }, {
+    signal: new AbortController().signal,
+    agent: {
+      id: "session_video",
+      session: { meta: { cwd: "/tmp/project" } },
+    },
+  });
+  const motion = JSON.parse(String(requests[2].init.body));
+  assert.equal(motion.name, "list_motion_presets");
+  assert.deepEqual(motion.args, { phase: "enter" });
+  assert.equal(motion.context.sessionId, "session_video");
 });
 
 test("maps Fast aliases to the base Codex model with the priority service tier", { skip: !runtimePrepared }, async () => {

@@ -26,12 +26,12 @@ const desktopMain = readFileSync(
 );
 
 describe("template market actions", () => {
-  test("keeps package import but removes create and save-current controls", () => {
+  test("keeps package import and restores creation without adding save-current controls", () => {
     expect(marketDialog).toContain('t("template_market.import")');
     expect(marketDialog).toContain('t("template_market.import_tooltip")');
     expect(marketDialog).toContain("accept={TEMPLATE_PACKAGE_FILE_ACCEPT}");
-    expect(marketDialog).not.toContain('t("template_authoring.create")');
-    expect(marketDialog).not.toContain("onCreate:");
+    expect(marketDialog).toContain('t("template_authoring.create")');
+    expect(marketDialog).toContain("onCreate:");
     expect(marketDialog).not.toContain('t("template_market.save_current")');
     expect(marketDialog).not.toContain("onSaveCurrent");
     expect(marketDialog).not.toContain("canSaveCurrent");

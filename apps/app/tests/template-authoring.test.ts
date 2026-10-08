@@ -77,19 +77,25 @@ describe("template authoring", () => {
     const context = templateAuthoringSystemContext(snapshot(videoManifest));
     expect(context).toContain("one HyperFrames composition");
     expect(context).toContain("data-composition-variables");
+    expect(context).toContain("Skill is mandatory");
+    expect(context).toContain("paused GSAP timeline");
     expect(context).toContain("seek-safe and deterministic");
+    expect(templateAuthoringKickoff("video").text).toBe("创建一个视频模板");
+    expect(templateAuthoringKickoff("video").instruction).toContain("ipollowork-video-template-authoring");
+    expect(templateAuthoringKickoff("video").instruction).toContain("never replace it with a generic static HTML fallback");
+    expect(templateAuthoringKickoff("site").instruction).not.toContain("ipollowork-video-template-authoring");
   });
 
-  test("keeps session authoring and validation while removing creation from the template market", () => {
+  test("keeps template creation, session authoring, and validation connected", () => {
     const market = readFileSync(new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url), "utf8");
     const route = readFileSync(new URL("../src/react-app/shell/session-route.tsx", import.meta.url), "utf8");
     const page = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
     const design = readFileSync(new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url), "utf8");
     const video = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
 
-    expect(market).not.toContain("AUTHORING_TYPES");
-    expect(market).not.toContain("props.canCreate");
-    expect(market).not.toContain("props.onCreate");
+    expect(market).toContain("AUTHORING_TYPES");
+    expect(market).toContain("props.canCreate");
+    expect(market).toContain("props.onCreate");
     expect(route).toContain("createTemplateAuthoringSession");
     expect(route).toContain("templateAuthoringKickoff");
     expect(route).toContain("synthetic: true");

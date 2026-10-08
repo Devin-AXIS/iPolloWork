@@ -2,7 +2,7 @@ import type { PptxCompatibility, TemplateCategory, TemplateSessionSnapshot } fro
 
 const TYPE_LABELS: Record<TemplateCategory, string> = {
   site: "网站",
-  video: "Video",
+  video: "视频",
   app: "应用界面",
   slides: "演示文稿",
   poster: "海报",
@@ -18,18 +18,23 @@ export function templateAuthoringTypeLabel(category: TemplateCategory, pptxCompa
 
 export function templateAuthoringKickoff(category: TemplateCategory, pptxCompatibility?: PptxCompatibility) {
   const label = templateAuthoringTypeLabel(category, pptxCompatibility);
+  const pluginWorkflow = category === "video"
+    ? " The Video plugin-owned `ipollowork-video-template-authoring` Skill is required: load and follow it before editing any file. If that Skill is unavailable, stop and explain that iPollo Video must be installed or enabled; never replace it with a generic static HTML fallback."
+    : "";
   return {
     text: `创建一个${label}模板`,
-    instruction: `This is the first turn of a ${label} template-authoring session. A minimal valid project already exists. Start by acknowledging the goal, then ask exactly one unanswered question about purpose and audience. Do not ask for information the user already supplied.`,
+    instruction: `This is the first turn of a ${label} template-authoring session. A minimal valid project already exists.${pluginWorkflow} Start by acknowledging the goal, then ask exactly one unanswered question about purpose and audience. Do not ask for information the user already supplied.`,
   };
 }
 
 function surfaceRules(snapshot: TemplateSessionSnapshot) {
   const manifest = snapshot.manifest;
   if (manifest.surface === "video") {
-    return `- Edit ${snapshot.state.entry} as one HyperFrames composition.
+    return `- The Video plugin-owned ipollowork-video-template-authoring Skill is mandatory for this session. If it cannot be loaded, stop instead of producing a generic fallback.
+- Edit ${snapshot.state.entry} as one HyperFrames composition.
 - Keep data-composition-id, width, height, duration, tracks, clips, and data-composition-variables valid.
 - Every manifest content variable must match one declared HyperFrames variable, with a deterministic default.
+- Register one paused GSAP timeline in window.__timelines and include at least one visible, motivated timeline motion.
 - Keep animation seek-safe and deterministic. Do not introduce ambient infinite animation or timing hidden outside the composition.`;
   }
   if (manifest.category === "slides") {

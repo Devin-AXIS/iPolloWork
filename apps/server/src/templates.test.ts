@@ -1045,6 +1045,10 @@ describe("template installations", () => {
     expect(videoHtml).toContain("data-composition-variables");
     expect(videoHtml).toContain("data-composition-id");
     expect(videoHtml).toContain("data-track");
+    expect(videoHtml).toContain('<script src="assets/gsap.min.js"></script>');
+    expect(videoHtml).toContain("gsap.timeline({ paused: true })");
+    expect(videoHtml).toContain("window.__timelines.main");
+    expect(existsSync(join(ws.path, "video", "author_video", "assets", "gsap.min.js"))).toBe(true);
     expect(video.manifest.designSystem.variables.map((variable) => variable.id)).toEqual(["title", "accent"]);
     const studioSerializedVideo = videoHtml.replace(
       /data-composition-variables='([^']+)'/,
@@ -1069,6 +1073,25 @@ describe("template installations", () => {
     expect(report.issues[0]).toMatchObject({ code: "invalid_template_manifest", severity: "error" });
     expect(await readFile(join(ws.path, "design", "author_invalid", "manifest.json"), "utf8")).toBe(manifestBefore);
     expect((await readTemplateSession(serverConfig, ws, created.sessionId)).authoring).toBe(true);
+  });
+
+  test("rejects static HTML from Video template-authoring sessions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-authoring-static-video-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "author_static_video", category: "video" });
+    const videoRoot = join(ws.path, "video", "author_static_video");
+    const entry = await readFile(join(videoRoot, "index.html"), "utf8");
+    await writeFile(
+      join(videoRoot, "index.html"),
+      entry.replace(/<script src="assets\/gsap\.min\.js"><\/script>[\s\S]*?<\/body>/, "</body>"),
+    );
+
+    expect(await validateTemplateFromSession(serverConfig, ws, "author_static_video")).toMatchObject({
+      ready: false,
+      issues: [{ code: "invalid_video_template_motion", severity: "error" }],
+    });
   });
 
   test("uses the shared package validator for missing tokens, false PPT markers and invalid Video variables", async () => {

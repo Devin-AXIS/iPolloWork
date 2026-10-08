@@ -299,11 +299,12 @@ describe("project overview", () => {
       attachments: [],
       text: "Improve the editor",
       capability: { id: "another-capability", instruction: "Keep this instruction." },
-    }, "Media Desk");
+    }, "Media Desk", "session_media_builder");
 
     expect(scoped.capability?.id).toBe("another-capability+project-builder");
     expect(scoped.capability?.instruction).toContain("Keep this instruction.");
     expect(scoped.capability?.instruction).toContain("ipollowork_project_read");
+    expect(scoped.capability?.instruction).toContain('Pass sessionId "session_media_builder"');
     expect(scoped.capability?.instruction).toContain("only after the user clearly confirms");
   });
 

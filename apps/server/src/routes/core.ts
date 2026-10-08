@@ -8,6 +8,7 @@ import {
   projectWorkspaceConfigSchema,
   type ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
+import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import { recordAudit } from "../audit.js";
 import {
@@ -27,6 +28,8 @@ import {
   ENGINE_HOST_TOOL_NAMES,
   consequentialBrowserControlNames,
   engineHostTool,
+  listMotionPresetsArgsSchema,
+  mutateMotionArgsSchema,
   type EngineHostToolName,
 } from "../engine-host-tools.js";
 import { ApiError } from "../errors.js";
@@ -222,6 +225,45 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     }
   };
 
+  const engineToolSessionContext = (
+    args: Record<string, unknown>,
+    context: Record<string, unknown>,
+  ): Record<string, unknown> => {
+    const requestedSessionId = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
+    const contextSessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+    if (requestedSessionId && contextSessionId && requestedSessionId !== contextSessionId) {
+      throw new ApiError(403, "engine_tool_session_mismatch", "An engine host tool cannot access another conversation");
+    }
+    const sessionId = contextSessionId || requestedSessionId;
+    return sessionId ? { ...context, sessionId } : context;
+  };
+
+  const callVideoStudioMotion = async (
+    workspace: WorkspaceInfo,
+    sessionId: string | undefined,
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<unknown> => {
+    if (!sessionId) {
+      throw new ApiError(400, "video_session_required", `Video motion tools require an active conversation in ${workspace.name}`);
+    }
+    const response = await fetch(`http://127.0.0.1:${hyperframesStudioPort(sessionId)}/api${path}`, {
+      method: body ? "POST" : "GET",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    }).catch(() => {
+      throw new ApiError(503, "video_studio_unavailable", "The current conversation's Video Studio is not available");
+    });
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = isRecord(payload) && typeof payload.message === "string"
+        ? payload.message
+        : "Video Studio motion request failed";
+      throw new ApiError(502, "video_studio_motion_failed", message);
+    }
+    return payload;
+  };
+
   type EngineHostToolHandler = (
     ctx: RequestContext,
     args: Record<string, unknown>,
@@ -242,9 +284,10 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       args: isRecord(args.args) ? args.args : {},
       context,
     }),
-    [ENGINE_HOST_TOOL_NAMES.projectRead]: async (_ctx, _args, context) => {
-      const workspace = await resolveEngineToolWorkspace(context);
-      requireProjectBuilderSession(workspace, context);
+    [ENGINE_HOST_TOOL_NAMES.projectRead]: async (_ctx, args, context) => {
+      const scopedContext = engineToolSessionContext(args, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      requireProjectBuilderSession(workspace, scopedContext);
       const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
       const parsed = projectWorkspaceConfigSchema.safeParse(stored.project);
       return {
@@ -259,8 +302,9 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         throw new ApiError(403, "forbidden", "Viewer tokens cannot change a project configuration");
       }
       ensureWritable(config);
-      const workspace = await resolveEngineToolWorkspace(context);
-      requireProjectBuilderSession(workspace, context);
+      const scopedContext = engineToolSessionContext(args, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      requireProjectBuilderSession(workspace, scopedContext);
       const parsed = projectWorkspaceConfigSchema.safeParse(args.config);
       if (!parsed.success) {
         throw new ApiError(400, "invalid_project_config", "Project Builder produced an invalid project configuration", {
@@ -311,6 +355,41 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         timestamp: Date.now(),
       });
       return { ok: true, workspaceId: workspace.id, project, updatedAt: Date.now() };
+    },
+    [ENGINE_HOST_TOOL_NAMES.listMotionPresets]: async (_ctx, args, context) => {
+      const parsed = listMotionPresetsArgsSchema.safeParse(args);
+      if (!parsed.success) throw new ApiError(400, "invalid_motion_arguments", "Invalid Video Studio motion preset filters");
+      const scopedContext = engineToolSessionContext(parsed.data, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      const sessionId = typeof scopedContext.sessionId === "string" ? scopedContext.sessionId : undefined;
+      const query = new URLSearchParams({ targetKind: "text" });
+      if (parsed.data.phase) query.set("phase", parsed.data.phase);
+      if (parsed.data.intent) query.set("intent", parsed.data.intent);
+      if (parsed.data.tone) query.set("tone", parsed.data.tone);
+      return callVideoStudioMotion(
+        workspace,
+        sessionId,
+        `/projects/${encodeURIComponent(videoProjectId(sessionId ?? ""))}/motion-presets?${query.toString()}`,
+      );
+    },
+    [ENGINE_HOST_TOOL_NAMES.mutateMotion]: async (_ctx, args, context) => {
+      const parsed = mutateMotionArgsSchema.safeParse(args);
+      if (!parsed.success) throw new ApiError(400, "invalid_motion_arguments", "Invalid Video Studio motion mutation");
+      const scopedContext = engineToolSessionContext(parsed.data, context);
+      const workspace = await resolveEngineToolWorkspace(scopedContext);
+      const { sessionId: requestedSessionId, ...mutation } = parsed.data;
+      const sessionId = typeof scopedContext.sessionId === "string" ? scopedContext.sessionId : requestedSessionId;
+      return callVideoStudioMotion(
+        workspace,
+        sessionId,
+        `/projects/${encodeURIComponent(videoProjectId(sessionId ?? ""))}/gsap-mutations/index.html`,
+        {
+          type: "mutate-motion",
+          ...mutation,
+          targetKind: "text",
+          elementId: mutation.targetSelector.startsWith("#") ? mutation.targetSelector.slice(1) : undefined,
+        },
+      );
     },
     [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: async () => uiControlRequest("/execute", {
       method: "POST",

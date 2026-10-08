@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -428,6 +428,23 @@ function validateVideoTemplateVariables(manifest: TemplateManifestV1, entryHtml:
   return ids;
 }
 
+function validateVideoAuthoringMotion(directory: string, manifest: TemplateManifestV1, entryHtml: string) {
+  if (manifest.surface !== "video") return;
+  const localRuntime = entryHtml.match(/<script\b[^>]*\bsrc\s*=\s*["'](?:\.\/)?(assets\/gsap\.min\.js)(?:\?[^"']*)?["'][^>]*>/i)?.[1];
+  if (!localRuntime || !existsSync(join(directory, ...localRuntime.split("/")))) {
+    throw new ApiError(400, "invalid_video_template_motion", "Video templates must include the local assets/gsap.min.js runtime");
+  }
+  if (!/\bgsap\.timeline\s*\(\s*\{[\s\S]{0,240}?\bpaused\s*:\s*true/i.test(entryHtml)) {
+    throw new ApiError(400, "invalid_video_template_motion", "Video templates must build one paused GSAP timeline");
+  }
+  if (!/\.(?:fromTo|from|to)\s*\(/.test(entryHtml)) {
+    throw new ApiError(400, "invalid_video_template_motion", "Video templates must contain visible timeline motion");
+  }
+  if (!/window\.__timelines(?:\.[A-Za-z_$][\w$]*|\[\s*(?:["'][^"']+["']|[A-Za-z_$][\w$]*)\s*\])\s*=/.test(entryHtml)) {
+    throw new ApiError(400, "invalid_video_template_motion", "Video templates must register their paused timeline in window.__timelines");
+  }
+}
+
 async function readManifest(directory: string): Promise<TemplateManifestV1> {
   let value: unknown;
   try { value = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8")); }
@@ -783,18 +800,42 @@ function sessionScaffoldEntry(
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; }
-    body { overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); line-height: var(--ipw-body-line-height); }
-    .scene { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--ipw-page-padding); background: var(--ipw-color-bg); border-radius: var(--ipw-card-radius); }
-    h1 { max-width: 14ch; margin: 0; color: var(--accent, var(--ipw-color-primary)); font: 700 calc(96px * var(--ipw-type-scale))/1 var(--ipw-font-display); text-align: center; text-shadow: var(--ipw-card-shadow); }
+    body { overflow: hidden; background: #08111f; color: #f6f8fb; font-family: var(--ipw-font-body); line-height: var(--ipw-body-line-height); }
+    .scene { position: absolute; inset: 0; display: grid; align-items: end; padding: 112px 128px; overflow: hidden; background: radial-gradient(circle at 78% 25%, color-mix(in srgb, var(--accent, #4f8cff) 42%, transparent), transparent 36%), linear-gradient(135deg, #08111f 0%, #101a2b 58%, #07101d 100%); }
+    .scene::after { content: ""; position: absolute; inset: 8%; border: 1px solid rgba(255,255,255,.08); border-radius: 42px; }
+    .accent-orbit { position: absolute; right: 8%; top: 4%; width: 620px; height: 620px; border: 1px solid color-mix(in srgb, var(--accent, #4f8cff) 54%, transparent); border-radius: 50%; box-shadow: 0 0 120px color-mix(in srgb, var(--accent, #4f8cff) 22%, transparent); }
+    .eyebrow { margin: 0 0 28px; color: rgba(255,255,255,.62); font-size: 22px; letter-spacing: .18em; text-transform: uppercase; }
+    .title-wrap { position: relative; z-index: 1; width: min(1120px, 72vw); }
+    h1 { max-width: 13ch; margin: 0; color: #fff; font: 720 calc(112px * var(--ipw-type-scale))/0.94 var(--ipw-font-display); letter-spacing: -.055em; text-wrap: balance; }
+    .rule { width: 168px; height: 5px; margin-top: 42px; background: var(--accent, #4f8cff); border-radius: 99px; }
   </style>
   <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
 </head>
 <body>
   <main data-composition-id="main" data-start="0" data-duration="8" data-width="1920" data-height="1080">
     <section class="scene" data-track="visual" data-clip="intro" data-start="0" data-duration="8">
-      <h1 data-var-text="title">${videoTitle}</h1>
+      <div class="accent-orbit" aria-hidden="true"></div>
+      <div class="title-wrap">
+        <p class="eyebrow">Reusable motion system</p>
+        <h1 data-var-text="title">${videoTitle}</h1>
+        <div class="rule" aria-hidden="true"></div>
+      </div>
     </section>
   </main>
+  <script src="assets/gsap.min.js"></script>
+  <script>
+    const timeline = gsap.timeline({ paused: true });
+    timeline
+      .fromTo(".scene", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power2.out" })
+      .fromTo(".title-wrap", { y: 72, opacity: 0 }, { y: 0, opacity: 1, duration: 1.1, ease: "power3.out" }, 0.2)
+      .fromTo(".rule", { scaleX: 0, transformOrigin: "left center" }, { scaleX: 1, duration: 0.8, ease: "power2.out" }, 0.7)
+      .fromTo(".accent-orbit", { scale: 0.84, rotate: -10, opacity: 0 }, { scale: 1, rotate: 0, opacity: 1, duration: 1.5, ease: "power3.out" }, 0.15)
+      .to(".accent-orbit", { scale: 1.06, rotate: 9, duration: 4.2, ease: "sine.inOut" }, 1.45)
+      .to(".title-wrap", { y: -18, duration: 4.2, ease: "sine.inOut" }, 1.45)
+      .to(".scene", { opacity: 0, duration: 0.7, ease: "power2.in" }, 7.3);
+    window.__timelines = window.__timelines || {};
+    window.__timelines.main = timeline;
+  </script>
 </body>
 </html>
 `;
@@ -870,6 +911,13 @@ async function writeSessionScaffoldPackage(
   purpose: NonNullable<TemplateAuthoringInput["purpose"]>,
 ) {
   await mkdir(directory, { recursive: true });
+  if (manifest.surface === "video") {
+    await mkdir(join(directory, "assets"), { recursive: true });
+    await copyFile(
+      join(resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "gsap.min.js"),
+      join(directory, "assets", "gsap.min.js"),
+    );
+  }
   await Promise.all([
     writeFile(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
     writeFile(join(directory, manifest.entry), sessionScaffoldEntry(manifest, purpose), "utf8"),
@@ -991,6 +1039,10 @@ async function prepareSessionPackage(config: ServerConfig, workspace: WorkspaceI
     if (manifest.surface !== snapshot.surface) throw new ApiError(409, "template_surface_changed", "Template surface cannot be changed while authoring");
     if (snapshot.authoring && manifest.category !== snapshot.manifest.category) throw new ApiError(409, "template_category_changed", "Template category cannot be changed while authoring");
     if (snapshot.authoring && manifest.pptxCompatibility !== snapshot.manifest.pptxCompatibility) throw new ApiError(409, "template_pptx_mode_changed", "PPT editability mode cannot be changed while authoring");
+    if (snapshot.authoring && manifest.surface === "video") {
+      const entry = await readFile(join(directory, ...manifest.entry.split("/")), "utf8");
+      validateVideoAuthoringMotion(directory, manifest, entry);
+    }
     return {
       directory,
       manifest,

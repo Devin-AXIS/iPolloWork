@@ -26,6 +26,10 @@
         "composer": { "prompt": "Use iPollo Video to create or edit video in the current session's video project." },
         "resources": {
           "ipollowork-video-studio": { "description": "Safely create and edit HyperFrames video in the current iPolloWork Video Studio session." },
+          "ipollowork-video-template-authoring": {
+            "label": "Video Template Authoring",
+            "description": "Create cinematic, reusable, variable-driven HyperFrames video templates with deterministic motion and a strict quality gate."
+          },
           "ipollowork-video-voiceover": {
             "label": "Video Voiceover",
             "description": "Generate and verify scene-by-scene voiceover using the current Video Studio media capabilities."
@@ -49,7 +53,7 @@
     }
   },
   "package": {
-    "version": "0.3.2",
+    "version": "0.3.4",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -82,6 +86,17 @@
       "path": "skills/ipollowork-video-studio/SKILL.md",
       "provides": [
         "workflow:ipollowork-video-studio"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "ipollowork-video-template-authoring",
+      "label": "视频模板创作",
+      "description": "创建具备高质量视觉、确定性动效、可编辑变量并通过严格校验的 HyperFrames 视频模板。",
+      "path": "skills/ipollowork-video-template-authoring",
+      "provides": [
+        "workflow:ipollowork-video-template-authoring"
       ],
       "required": true
     },

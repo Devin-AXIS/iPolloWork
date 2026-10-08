@@ -15,6 +15,7 @@ import {
   LayoutTemplate,
   Loader2,
   PictureInPicture2,
+  Plus,
   Presentation,
   Search,
   Star,
@@ -26,6 +27,7 @@ import {
   isPptxCompatibleTemplate,
   type TemplateCatalogItem,
   type TemplateCategory,
+  type PptxCompatibility,
   type TemplateStyle,
 } from "@ipollowork/types/templates";
 
@@ -64,6 +66,19 @@ const CATEGORIES: CategoryDefinition[] = [
 
 const PRIMARY_CATEGORIES = CATEGORIES.slice(0, 4);
 const MORE_CATEGORIES = CATEGORIES.slice(4);
+
+type AuthoringType = CategoryDefinition & {
+  key: string;
+  detailKey: string;
+  pptxCompatibility?: PptxCompatibility;
+};
+
+const AUTHORING_TYPES: AuthoringType[] = CATEGORIES.flatMap((category) => category.id === "slides"
+  ? [
+      { ...category, key: "slides", labelKey: "template_authoring.type.slides", detailKey: "template_authoring.type.slides_detail" },
+      { ...category, key: "pptx", labelKey: "template_authoring.type.pptx", detailKey: "template_authoring.type.pptx_detail", pptxCompatibility: "native-editable" as const },
+    ]
+  : [{ ...category, key: category.id, detailKey: `${category.labelKey}_detail` }]);
 
 const STYLE_ORDER = Object.keys(TEMPLATE_STYLE_LABELS) as TemplateStyle[];
 const templateStyleLabel = (style: TemplateStyle) => t(`template_market.style.${style}`);
@@ -194,6 +209,8 @@ export type TemplateMarketDialogProps = {
   onUse: (template: TemplateCatalogItem) => void;
   onInstall: (templateId: string) => void;
   onImport: (file: File) => Promise<boolean>;
+  canCreate: boolean;
+  onCreate: (input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility }) => Promise<string | null> | string | null | void;
 };
 
 export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
@@ -205,6 +222,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   const [favoriteIds, setFavoriteIds] = React.useState(readFavoriteTemplateIds);
   const [pendingImport, setPendingImport] = React.useState<File | null>(null);
   const [previewSelection, setPreviewSelection] = React.useState<TemplatePreviewSelection | null>(null);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [creatingType, setCreatingType] = React.useState<string | null>(null);
   const importRef = React.useRef<HTMLInputElement>(null);
   const enterpriseMode = props.resourceScope !== "personal";
 
@@ -316,6 +335,11 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
               ))}
             </div>
             <input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
+            {view === "my" && !enterpriseMode && props.canCreate ? (
+              <Button size="sm" className="mr-2 h-9 shrink-0 rounded-lg px-3.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium shadow-none" disabled={props.busyId !== null} onClick={() => setCreateOpen(true)}>
+                <Plus className="size-3.5" />{t("template_authoring.create")}
+              </Button>
+            ) : null}
             <Tooltip>
               <TooltipTrigger render={<Button variant="outline" size="sm" className="h-9 w-[90px] shrink-0 rounded-lg px-3.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium shadow-none" disabled={props.busyId !== null || enterpriseMode} onClick={() => importRef.current?.click()} />}>
                 <Download className="size-3.5" />{t("template_market.import")}
@@ -379,6 +403,40 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
             return <EnterpriseTemplateCard key={resource.id} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} sourceLabel={props.enterprise?.shortName ?? resource.enterpriseCategory} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={installedTemplate ? favoriteIds.has(installedTemplate.manifest.id) : false} onToggleFavorite={() => { if (installedTemplate) toggleFavorite(installedTemplate.manifest.id); }} onPreview={(template) => setPreviewSelection({ template, enterpriseResourceId: resource.id })} onInstall={() => props.onInstallEnterprise(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
           })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><Building2 className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("enterprise_connection.enterprise_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><LayoutTemplate className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
         </section>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={createOpen && !enterpriseMode && props.canCreate} onOpenChange={(open) => { if (!creatingType) setCreateOpen(open); }}>
+      <DialogContent showCloseButton className="max-w-2xl gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-6 py-5 pr-14 text-left">
+          <DialogTitle>{t("template_authoring.choose_type")}</DialogTitle>
+          <DialogDescription className="mt-1 text-xs">{t("template_authoring.choose_type_description")}</DialogDescription>
+        </DialogHeader>
+        <div className="grid max-h-[min(560px,70dvh)] gap-2 overflow-y-auto p-4 sm:grid-cols-2">
+          {AUTHORING_TYPES.map(({ key, id, labelKey, detailKey, icon: Icon, pptxCompatibility }) => (
+            <button
+              key={key}
+              type="button"
+              className="flex min-h-20 items-center gap-3 rounded-xl border border-border px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={creatingType !== null}
+              onClick={async () => {
+                setCreatingType(key);
+                try {
+                  const created = await props.onCreate({ category: id, pptxCompatibility });
+                  if (created) {
+                    setCreateOpen(false);
+                    props.onOpenChange(false);
+                  }
+                } finally {
+                  setCreatingType(null);
+                }
+              }}
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-foreground"><Icon className="size-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-foreground">{t(labelKey)}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{t(detailKey)}</span></span>
+              {creatingType === key ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : null}
+            </button>
+          ))}
+        </div>
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewSelection(null); }}>

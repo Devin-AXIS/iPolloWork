@@ -1132,7 +1132,7 @@ export function SessionRoute() {
             selectedWorkspaceEndpoint.workspaceId,
             targetSessionId,
           );
-          draft = scopeProjectBuilderDraft(draft, selectedWorkspace?.name?.trim() || t("project_overview.title"));
+          draft = scopeProjectBuilderDraft(draft, selectedWorkspace?.name?.trim() || t("project_overview.title"), targetSessionId);
         }
         const text = (draft.resolvedText ?? draft.text).trim();
         if (!text && draft.attachments.length === 0) return false;
@@ -1507,13 +1507,6 @@ export function SessionRoute() {
             }
           }
         }
-        const capabilityPromptPart = draft.capability
-          ? [{
-              type: "text" as const,
-              text: draft.capability.instruction,
-              synthetic: true,
-            }]
-          : [];
         const automaticTemplatePromptPart = automaticTemplateInstruction
           ? [{
               type: "text" as const,
@@ -1522,7 +1515,6 @@ export function SessionRoute() {
             }]
           : [];
         const promptParts = [
-          ...capabilityPromptPart,
           ...automaticTemplatePromptPart,
           ...parts,
         ];

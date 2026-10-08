@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
-
 import { iPolloWorkExtensionsPreview } from "./ipollowork-extensions-preview.js";
 
 const originalServerUrl = process.env.IPOLLOWORK_SERVER_URL;
@@ -137,37 +135,6 @@ function startFakeiPolloWorkServer() {
   return { requests };
 }
 
-function startFakeVideoStudio() {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const sessionID = `motion_plugin_${process.pid}_${attempt}`;
-    const projectId = videoProjectId(sessionID);
-    const requests: Array<{ pathname: string; search: string; body: unknown }> = [];
-    try {
-      const server = Bun.serve({
-        hostname: "127.0.0.1",
-        port: hyperframesStudioPort(sessionID),
-        async fetch(request) {
-          const url = new URL(request.url);
-          const body = request.method === "POST" ? await request.json() : null;
-          requests.push({ pathname: url.pathname, search: url.search, body });
-          if (url.pathname === `/api/projects/${projectId}/motion-presets`) {
-            return Response.json({ presets: [{ id: "text.enter.rise" }] });
-          }
-          if (url.pathname === `/api/projects/${projectId}/gsap-mutations/index.html`) {
-            return Response.json({ ok: true, mutation: body });
-          }
-          return Response.json({ message: "Not found" }, { status: 404 });
-        },
-      });
-      stops.push(() => server.stop(true));
-      return { sessionID, projectId, requests };
-    } catch {
-      // Deterministic port was already occupied; try another session id.
-    }
-  }
-  throw new Error("Could not allocate a deterministic Video Studio test port");
-}
-
 describe("iPolloWorkExtensionsPreview session tools", () => {
   test("searches past chat transcript text and prefers the user's matching message", async () => {
     const fake = startFakeiPolloWorkServer();
@@ -245,8 +212,7 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(system).toContain("Never use these cross-session tools to recover the current task");
     expect(plugin.tool.ipollowork_session_search.description).toContain("Never use it to recover or infer the current interrupted task");
     expect(plugin.tool.ipollowork_session_read.description).toContain("never use it to recover or infer the current interrupted task");
-    expect(system).toContain("list_motion_presets");
-    expect(system).toContain("mutate_motion");
+    expect(system).not.toContain("Video motion presets");
     expect(system).toContain("stale refs");
     expect(system).not.toContain("browser_url plus target_id");
   });
@@ -294,15 +260,19 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
 });
 
 describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
-  test("locks preset listing and mutation to the current Video Studio session", async () => {
-    const fake = startFakeVideoStudio();
+  test("forwards preset listing and mutation through the shared session-scoped host", async () => {
+    const fake = startFakeiPolloWorkServer();
     const plugin = await iPolloWorkExtensionsPreview();
 
     const listed = JSON.parse(await plugin.tool.list_motion_presets.execute(
       { phase: "enter", tone: "modern" },
-      { sessionID: fake.sessionID },
+      { sessionID: "session_video", directory: "/tmp/main" },
     ));
-    expect(listed.presets[0].id).toBe("text.enter.rise");
+    expect(listed.received).toMatchObject({
+      name: "list_motion_presets",
+      args: { phase: "enter", tone: "modern" },
+      context: { sessionId: "session_video", directory: "/tmp/main" },
+    });
 
     const mutated = JSON.parse(await plugin.tool.mutate_motion.execute(
       {
@@ -312,22 +282,13 @@ describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
         presetId: "text.enter.rise",
         parameters: { intensity: 0.8 },
       },
-      { sessionID: fake.sessionID },
+      { sessionID: "session_video", directory: "/tmp/main" },
     ));
-    expect(mutated.mutation).toMatchObject({
-      type: "mutate-motion",
-      targetKind: "text",
-      elementId: "headline",
-      presetId: "text.enter.rise",
+    expect(mutated.received).toMatchObject({
+      name: "mutate_motion",
+      args: { targetSelector: "#headline", presetId: "text.enter.rise" },
+      context: { sessionId: "session_video" },
     });
-    expect(fake.requests).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        pathname: `/api/projects/${fake.projectId}/motion-presets`,
-        search: "?targetKind=text&phase=enter&tone=modern",
-      }),
-      expect.objectContaining({
-        pathname: `/api/projects/${fake.projectId}/gsap-mutations/index.html`,
-      }),
-    ]));
+    expect(fake.requests.filter((request) => request.pathname === "/engine-tools/call")).toHaveLength(2);
   });
 });

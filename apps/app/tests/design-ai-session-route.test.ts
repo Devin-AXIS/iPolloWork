@@ -124,6 +124,15 @@ describe("Design AI session lifecycle", () => {
     expect(routeSource.indexOf("languageSystemContext]", systemContextIndex)).toBeGreaterThan(systemContextIndex);
   });
 
+  test("sends a selected capability once through the engine-neutral system context", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+
+    expect(routeSource).toContain("const capabilitySystemContext = draft.capability?.instruction ?? null;");
+    expect(routeSource).not.toContain("capabilityPromptPart");
+    expect(routeSource).toContain("system: systemContext || undefined");
+    expect(routeSource).toContain("...automaticTemplatePromptPart");
+  });
+
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {
     expect(sessionPrompt.draftToParts).toBeFunction();
     if (typeof sessionPrompt.draftToParts !== "function") return;

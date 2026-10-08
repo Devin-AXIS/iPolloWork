@@ -253,7 +253,7 @@ describe("plugin package manifest", () => {
     expect(design.manifest.name).toBe("iPollo Design");
     expect(video.manifest.name).toBe("iPollo Video");
     expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
-    expect(video.manifest.resources).toHaveLength(11);
+    expect(video.manifest.resources).toHaveLength(12);
     expect(video.manifest.resources.every((resource) => resource.type === "skill")).toBe(true);
     expect(video.manifest.relatedSkills).toBeUndefined();
     expect(video.manifest.resources.map((resource) => resource.id)).toEqual(expect.arrayContaining([
@@ -264,6 +264,7 @@ describe("plugin package manifest", () => {
       "hyperframes-creative",
       "hyperframes-keyframes",
       "hyperframes-registry",
+      "ipollowork-video-template-authoring",
       "media-use",
       "product-launch-video",
     ]));

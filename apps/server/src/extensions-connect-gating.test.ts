@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 
 import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
@@ -138,6 +139,37 @@ async function boot(options: { approval?: ServerConfig["approval"] } = {}) {
   const server = await startServer(config);
   stops.push(() => server.stop());
   return { base: `http://127.0.0.1:${server.port}`, config };
+}
+
+function startFakeVideoStudio() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const sessionId = `motion_host_${process.pid}_${attempt}`;
+    const projectId = videoProjectId(sessionId);
+    const requests: Array<{ pathname: string; search: string; body: unknown }> = [];
+    try {
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: hyperframesStudioPort(sessionId),
+        async fetch(request) {
+          const url = new URL(request.url);
+          const body: unknown = request.method === "POST" ? await request.json() : null;
+          requests.push({ pathname: url.pathname, search: url.search, body });
+          if (url.pathname === `/api/projects/${projectId}/motion-presets`) {
+            return Response.json({ presets: [{ id: "text.enter.rise" }] });
+          }
+          if (url.pathname === `/api/projects/${projectId}/gsap-mutations/index.html`) {
+            return Response.json({ ok: true, mutation: body });
+          }
+          return Response.json({ message: "Not found" }, { status: 404 });
+        },
+      });
+      stops.push(() => server.stop(true));
+      return { sessionId, projectId, requests };
+    } catch {
+      // Deterministic port was already occupied; try another session id.
+    }
+  }
+  throw new Error("Could not allocate a deterministic Video Studio test port");
 }
 
 function clientHeaders() {
@@ -289,6 +321,8 @@ describe("extension and engine host tool gating", () => {
       "ipollowork_extension_call",
       "ipollowork_project_read",
       "ipollowork_project_apply",
+      "list_motion_presets",
+      "mutate_motion",
       "ipollowork_workspace_app_list_tools",
       "ipollowork_workspace_app_call_tool",
       "ipollowork_browser_open_url",
@@ -327,6 +361,8 @@ describe("extension and engine host tool gating", () => {
         "ipollowork_extension_call",
         "ipollowork_project_read",
         "ipollowork_project_apply",
+        "list_motion_presets",
+        "mutate_motion",
         "ipollowork_workspace_app_list_tools",
         "ipollowork_workspace_app_call_tool",
         "ipollowork_browser_open_url",
@@ -344,9 +380,104 @@ describe("extension and engine host tool gating", () => {
           expect.objectContaining({ extensionId: "storage" }),
         ]),
       });
+
+      const activateResponse = await fetch(`${base}/workspace/ws_1/project-builder-sessions/session_codex_builder`, {
+        method: "POST",
+        headers: clientJsonHeaders(),
+        body: "{}",
+      });
+      expect(activateResponse.status).toBe(200);
+      const project = await client.callTool({
+        name: "ipollowork_project_read",
+        arguments: { sessionId: "session_codex_builder" },
+      });
+      expect(project.structuredContent).toMatchObject({
+        ok: true,
+        workspaceId: "ws_1",
+        source: "default",
+      });
+      const appliedProject = await client.callTool({
+        name: "ipollowork_project_apply",
+        arguments: {
+          sessionId: "session_codex_builder",
+          config: {
+            schemaVersion: 1,
+            goal: "Build from Codex",
+            agents: [{ id: "editor", name: "Editor", avatarSeed: "editor" }],
+            orchestration: { entryAgentId: "editor", relations: [] },
+          },
+          summary: "Configure the Codex project",
+        },
+      });
+      expect(appliedProject.structuredContent).toMatchObject({
+        ok: true,
+        workspaceId: "ws_1",
+        project: { goal: "Build from Codex", revision: 1 },
+      });
     } finally {
       await client.close();
     }
+  });
+
+  test("routes session-scoped Video Studio motion through the same REST and MCP host tools", async () => {
+    const { base } = await boot();
+    const studio = startFakeVideoStudio();
+    const listResponse = await fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({
+        name: "list_motion_presets",
+        args: { phase: "enter", tone: "modern" },
+        context: { workspaceId: "ws_1", sessionId: studio.sessionId },
+      }),
+    });
+    expect(listResponse.status).toBe(200);
+    expect(await listResponse.json()).toEqual({ presets: [{ id: "text.enter.rise" }] });
+
+    const mismatchResponse = await fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({
+        name: "list_motion_presets",
+        args: { sessionId: "another-session" },
+        context: { workspaceId: "ws_1", sessionId: studio.sessionId },
+      }),
+    });
+    expect(mismatchResponse.status).toBe(403);
+    expect(await mismatchResponse.json()).toMatchObject({ code: "engine_tool_session_mismatch" });
+
+    const client = new McpClient({ name: "ipollowork-motion-test", version: "1.0.0" });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`${base}/engine-tools/mcp?workspaceId=ws_1`),
+      { requestInit: { headers: clientHeaders() } },
+    );
+    try {
+      await client.connect(transport);
+      const mutation = await client.callTool({
+        name: "mutate_motion",
+        arguments: {
+          sessionId: studio.sessionId,
+          operation: "upsert",
+          targetSelector: "#headline",
+          phase: "enter",
+          presetId: "text.enter.rise",
+          parameters: { intensity: 0.8 },
+        },
+      });
+      expect(mutation.structuredContent).toMatchObject({
+        ok: true,
+        mutation: { type: "mutate-motion", targetKind: "text", elementId: "headline" },
+      });
+    } finally {
+      await client.close();
+    }
+    expect(studio.requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pathname: `/api/projects/${studio.projectId}/motion-presets`,
+        search: "?targetKind=text&phase=enter&tone=modern",
+      }),
+      expect.objectContaining({ pathname: `/api/projects/${studio.projectId}/gsap-mutations/index.html` }),
+    ]));
   });
 
   test("reads and applies a validated project through the shared engine host tools", async () => {

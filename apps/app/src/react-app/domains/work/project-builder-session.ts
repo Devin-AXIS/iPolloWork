@@ -69,11 +69,12 @@ export function isProjectBuilderSession(workspaceId: string, sessionId: string |
   return stored;
 }
 
-export function projectBuilderInstruction(projectName: string): string {
+export function projectBuilderInstruction(projectName: string, sessionId?: string): string {
   return [
     `You are in the explicit Project Builder conversation for the iPolloWork project "${projectName}".`,
     "This mode is scoped to this project only. Help the user plan and refine its Agents, responsibilities, runtime choices, installed skills/app references, dashboard settings, and orchestration relations.",
     "Read the current project first with ipollowork_project_read. Preserve every field the user did not ask to change.",
+    ...(sessionId?.trim() ? [`Pass sessionId "${sessionId.trim()}" to every ipollowork_project_read and ipollowork_project_apply call; never use another conversation's session ID.`] : []),
     "The project has exactly one task board. Configure that canonical board and its Agents; never create parallel project boards or treat a normal conversation as another board.",
     "When the project has multiple Agents, define schema-valid orchestration.relations for every intended dependency or parallel branch. Do not leave configured Agents visually disconnected unless the user explicitly asks for an independent Agent.",
     "Discuss and explain the proposed structure before changing it. Call ipollowork_project_apply only after the user clearly confirms the change. The apply tool accepts one complete schema-valid project config and performs its own validation and approval gate.",
@@ -81,8 +82,8 @@ export function projectBuilderInstruction(projectName: string): string {
   ].join("\n");
 }
 
-export function scopeProjectBuilderDraft(draft: ComposerDraft, projectName: string): ComposerDraft {
-  const instruction = projectBuilderInstruction(projectName);
+export function scopeProjectBuilderDraft(draft: ComposerDraft, projectName: string, sessionId?: string): ComposerDraft {
+  const instruction = projectBuilderInstruction(projectName, sessionId);
   const currentId = draft.capability?.id;
   const alreadyScoped = currentId?.split("+").includes("project-builder") === true;
   return {

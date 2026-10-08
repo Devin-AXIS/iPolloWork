@@ -1,8 +1,12 @@
+import { z } from "zod";
+
 export const ENGINE_HOST_TOOL_NAMES = {
   extensionListActions: "ipollowork_extension_list_actions",
   extensionCall: "ipollowork_extension_call",
   projectRead: "ipollowork_project_read",
   projectApply: "ipollowork_project_apply",
+  listMotionPresets: "list_motion_presets",
+  mutateMotion: "mutate_motion",
   workspaceAppListTools: "ipollowork_workspace_app_list_tools",
   workspaceAppCallTool: "ipollowork_workspace_app_call_tool",
   browserOpenUrl: "ipollowork_browser_open_url",
@@ -27,6 +31,37 @@ const objectParameters = (
   properties,
   required,
   additionalProperties: false,
+});
+
+const engineToolSessionParameter = {
+  type: "string",
+  description: "Current iPolloWork conversation ID when the engine does not forward session context automatically.",
+};
+
+export const engineHostSessionIdSchema = z.string().trim().min(1).optional().describe(
+  "Current iPolloWork conversation ID when required by the active engine.",
+);
+
+export const listMotionPresetsArgsSchema = z.object({
+  sessionId: engineHostSessionIdSchema,
+  phase: z.enum(["enter", "emphasis", "exit"]).optional().describe("Optional phase filter."),
+  intent: z.string().trim().min(1).optional().describe("Optional semantic intent, such as title reveal or warning."),
+  tone: z.string().trim().min(1).optional().describe("Optional tone, such as modern, restrained, playful, or technology."),
+});
+
+export const mutateMotionArgsSchema = z.object({
+  sessionId: engineHostSessionIdSchema,
+  operation: z.enum(["upsert", "remove"]).describe("Add/replace one phase, or remove it."),
+  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one leaf text element in the current video."),
+  phase: z.enum(["enter", "emphasis", "exit"]),
+  presetId: z.string().trim().min(1).optional().describe("Stable preset id returned by list_motion_presets. Required for upsert."),
+  start: z.number().finite().nonnegative().optional().describe("Timeline start in seconds. Omit to use the phase-aware default."),
+  duration: z.number().finite().positive().optional().describe("Finite duration in seconds."),
+  parameters: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).optional().describe("Only parameters declared by the selected preset."),
+}).superRefine((value, context) => {
+  if (value.operation === "upsert" && !value.presetId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["presetId"], message: "presetId is required for upsert" });
+  }
 });
 
 export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
@@ -167,12 +202,13 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   {
     name: ENGINE_HOST_TOOL_NAMES.projectRead,
     description: "Read the schema-validated iPolloWork project configuration for the current workspace. Use only in an explicitly opened Project Builder conversation.",
-    parameters: objectParameters({}),
+    parameters: objectParameters({ sessionId: engineToolSessionParameter }),
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.projectApply,
     description: "Apply one complete schema-validated iPolloWork project configuration after the user explicitly confirms the proposal in Project Builder.",
     parameters: objectParameters({
+      sessionId: engineToolSessionParameter,
       config: {
         type: "object",
         additionalProperties: true,
@@ -183,6 +219,33 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
         description: "Short human-readable summary of the confirmed project change.",
       },
     }, ["config", "summary"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.listMotionPresets,
+    description: "List the product-owned semantic motion presets for a leaf text element in the current Video Studio session. Filter by phase, intent, or tone, then use the returned preset id with mutate_motion.",
+    parameters: objectParameters({
+      sessionId: engineToolSessionParameter,
+      phase: { type: "string", enum: ["enter", "emphasis", "exit"] },
+      intent: { type: "string", minLength: 1 },
+      tone: { type: "string", minLength: 1 },
+    }),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.mutateMotion,
+    description: "Add, replace, update, or remove one semantic motion phase on exactly one leaf text element in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
+    parameters: objectParameters({
+      sessionId: engineToolSessionParameter,
+      operation: { type: "string", enum: ["upsert", "remove"] },
+      targetSelector: { type: "string", minLength: 1 },
+      phase: { type: "string", enum: ["enter", "emphasis", "exit"] },
+      presetId: { type: "string", minLength: 1 },
+      start: { type: "number", minimum: 0 },
+      duration: { type: "number", exclusiveMinimum: 0 },
+      parameters: {
+        type: "object",
+        additionalProperties: { type: ["string", "number", "boolean"] },
+      },
+    }, ["operation", "targetSelector", "phase"]),
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.workspaceAppListTools,

@@ -693,6 +693,35 @@ describe("plugin package lifecycle", () => {
     }
   });
 
+  test("keeps Video template authoring plugin-owned across every engine adapter", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/video-agent", import.meta.url));
+    const engines = [
+      { id: "opencode", target: ".opencode/skills" },
+      { id: "deepseek-harness", target: ".dsh/skills" },
+      { id: "codex-harness", target: ".agents/skills" },
+    ];
+
+    for (const engine of engines) {
+      const workspaceRoot = await createRoot(`ipollowork-video-authoring-${engine.id}-`);
+      const config = serverConfig(workspaceRoot);
+      const workspace = config.workspaces[0];
+      if (!workspace) throw new Error("Test workspace is missing");
+      workspace.engineId = engine.id;
+      const skillRoot = join(workspaceRoot, engine.target, "ipollowork-video-template-authoring");
+
+      await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+      expect(await readFile(join(skillRoot, "SKILL.md"), "utf8"))
+        .toContain("# iPolloWork Video Template Authoring");
+      expect(await readFile(join(skillRoot, "references", "shot-planning.md"), "utf8"))
+        .toContain("video-shotcraft");
+
+      await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "video-agent" });
+      await expectMissing(join(skillRoot, "SKILL.md"));
+      await expectMissing(join(skillRoot, "references", "shot-planning.md"));
+    }
+  });
+
   test("shares one installed package inventory across OpenCode and DeepSeek Harness projects", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const openCodeRoot = await createRoot("ipollowork-plugin-shared-opencode-");
@@ -1589,7 +1618,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.4", installedVersion: "0.3.4", updateAvailable: false },
           { pluginId: "image-studio", version: "0.1.8", installedVersion: "0.1.8", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
@@ -1785,7 +1814,7 @@ describe("plugin package lifecycle", () => {
       },
       {
         pluginId: "video-agent",
-        version: "0.3.2",
+        version: "0.3.4",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

@@ -1027,6 +1027,8 @@ describe("HyperFrames Video Studio", () => {
 
   test("gives the agent the same session-scoped project as the Studio", () => {
     const contract = videoTaskSystemContext("ses/current video", "/workspace/current");
+    expect(contract).toContain("This Video Studio conversation is `ses/current video`");
+    expect(contract).toContain("Generated captions use the same compiler");
     expect(contract).toContain("/workspace/current/video/ses_current_video/index.html");
     expect(contract).toContain("prepared blank composition");
     expect(contract).toContain("At the start of every edit turn");
