@@ -276,6 +276,32 @@ describe("template brief", () => {
     expect(conversationArtifactSessionId("x".repeat(256), "video")).toHaveLength(256);
   });
 
+  test.each([
+    "帮我做个gpt6的宣传片 风格要跟openai官方出的一样 动画要炫酷别弄的跟ppt一样",
+    "帮我制作视频，不要像PPT",
+    "不要PPT，只要视频",
+    "Make a video, not a PowerPoint presentation",
+    "Make a video like a PowerPoint presentation",
+    "做一个跟PPT一样的视频",
+    "帮我做一个不用模板的视频",
+    "制作一段不是很长的视频",
+    "生成一个不需要旁白的视频",
+    "Make a video without narration and export it as MP4",
+  ])("keeps rejected/comparison artifact mentions out of delivery routing: %s", (prompt) => {
+    expect(inferConversationTemplateIntents(prompt)).toEqual([{ category: "video", prompt }]);
+    expect(inferConversationWorkKind(prompt)).toBe("video");
+    expect(conversationTemplateBrief(prompt).details).toBe(prompt);
+  });
+
+  test.each([
+    "制作PPT和视频，视频不要像PPT",
+    "Make a slide deck alongside a video; do not make the video like a presentation",
+    "Create not only a deck but also a video",
+    "做一个视频跟PPT",
+  ])("preserves affirmative deck and video requests: %s", (prompt) => {
+    expect(inferConversationTemplateIntents(prompt)).toEqual([{ category: "slides", prompt }, { category: "video", prompt }]);
+  });
+
   test("initial work kind reuses explicit intent recognition without forcing ambiguous or explanatory requests", () => {
     expect(inferConversationWorkKind("帮我做一个30秒中文宣传片")).toBe("video");
     expect(inferConversationWorkKind("帮我制作一个中文计数器网页")).toBe("development");
