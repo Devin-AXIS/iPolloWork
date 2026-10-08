@@ -276,6 +276,15 @@ describe("template brief", () => {
     expect(conversationArtifactSessionId("x".repeat(256), "video")).toHaveLength(256);
   });
 
+  test("initial work kind reuses explicit intent recognition without forcing ambiguous or explanatory requests", () => {
+    expect(inferConversationWorkKind("帮我做一个30秒中文宣传片")).toBe("video");
+    expect(inferConversationWorkKind("帮我制作一个中文计数器网页")).toBe("development");
+    expect(inferConversationWorkKind("帮我生成一张产品海报")).toBe("design");
+    expect(inferConversationWorkKind("帮我生成一份融资路演PPT")).toBe("document");
+    expect(inferConversationWorkKind("做视频需要什么工具？")).toBeUndefined();
+    expect(inferConversationWorkKind("给我做一个PPT和视频")).toBeUndefined();
+  });
+
   test.each([
     "帮我做个gpt6的宣传片 风格要跟openai官方出的一样 动画要炫酷别弄的跟ppt一样",
     "帮我制作视频，不要像PPT",

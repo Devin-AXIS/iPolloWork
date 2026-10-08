@@ -530,6 +530,13 @@ export class WorkspaceSessionRuntime {
           effectiveSessionId = resumedThread.id.trim();
         }
       }
+      if (effectiveSessionId !== sessionId) {
+        await bindConversationSession(this.#config, workspace, effectiveSessionId, {
+          title: "New conversation",
+          engineId: CODEX_HARNESS_ENGINE_ID,
+          parentSessionId: sessionId,
+        });
+      }
       const additionalContext = buildCodexHarnessAdditionalContext(input.system, [], input.model);
       this.#rememberSessionContext(workspace.id, effectiveSessionId);
       await runtime.call("turn/start", {
