@@ -23,6 +23,11 @@ import {
   pluginWorkshopTabId,
 } from "../src/react-app/domains/session/plugin-workshop/plugin-workshop-contract";
 describe("HyperFrames Video Studio", () => {
+  test("delegates audible playback to the embedded Video Studio", () => {
+    const source = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
+    expect(source).toContain('allow="autoplay; fullscreen"');
+  });
+
   test("preserves image launch context across workspace app resize and theme updates", () => {
     const source = readFileSync(new URL("../src/react-app/plugin-ui/workspace-app-frame.tsx", import.meta.url), "utf8");
     expect(source).toContain("hostContextRef.current = { ...hostContextRef.current, ...patch }");

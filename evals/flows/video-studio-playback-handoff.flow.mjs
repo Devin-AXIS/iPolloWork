@@ -8,11 +8,49 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const CLI_ENTRY = join(REPO_ROOT, "vendor/hyperframes/packages/cli/bin/hyperframes.mjs");
 
+// Deliberately not frame-aligned: 181 frames / 30 must not replace 6.014s.
+const DURATION = 6.014;
+
+function audioFixture() {
+  const rate = 8000;
+  const samples = Math.ceil(DURATION * rate);
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write("RIFF", 0); wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write("WAVEfmt ", 8); wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28);
+  wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) {
+    wav.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * 220 / rate) * 1600), 44 + i * 2);
+  }
+  return wav;
+}
+
 const PROJECT_SOURCE = `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
+    <script>
+      // Test-only readback of the signal sent to the real output destination.
+      window.__audioProbes = [];
+      const originalConnect = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function(destination, ...args) {
+        const result = originalConnect.call(this, destination, ...args);
+        if (destination === this.context.destination) {
+          const analyser = this.context.createAnalyser();
+          originalConnect.call(this, analyser);
+          window.__audioProbes.push(analyser);
+        }
+        return result;
+      };
+      window.__audioOutputLevel = () => Math.max(0, ...window.__audioProbes.map(analyser => {
+        const samples = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(samples);
+        return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+      }));
+    </script>
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #f2eee4; }
@@ -26,8 +64,9 @@ const PROJECT_SOURCE = `<!doctype html>
     </style>
   </head>
   <body data-no-timeline>
-    <main id="root" data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080" data-fps="30">
-      <section id="card" class="clip" data-hf-id="handoff-proof" data-start="0" data-duration="6" data-track-index="1">
+    <main id="root" data-composition-id="main" data-start="0" data-duration="${DURATION}" data-width="1920" data-height="1080" data-fps="30">
+      <audio id="vo-proof" src="./tone.wav" data-start="0" data-duration="${DURATION}" data-track-index="2" preload="auto"></audio>
+      <section id="card" class="clip" data-hf-id="handoff-proof" data-start="0" data-duration="${DURATION}" data-track-index="1">
         <h1 id="title">Runtime handoff</h1>
         <div id="track"><div id="probe"></div></div>
         <div id="caption">Continuous playback proof</div>
@@ -151,6 +190,7 @@ export default {
 
         try {
           await writeFile(join(projectDir, "index.html"), PROJECT_SOURCE);
+          await writeFile(join(projectDir, "tone.wav"), audioFixture());
           await writeFile(join(projectDir, "hyperframes.json"), PROJECT_CONFIG);
           preview = await startPreview(projectDir);
           const studioUrl = `http://127.0.0.1:${preview.port}/#project/${encodeURIComponent(basename(projectDir))}?v=1&t=0&locale=zh&ipolloworkTheme=light`;
@@ -183,7 +223,8 @@ export default {
                 const pauseButton = document.querySelector(
                   '[data-testid="figma-player-controls"] button[aria-label="暂停"], [data-testid="figma-player-controls"] button[aria-label="Pause"]'
                 );
-                return Boolean(player && player.getTime() > 1.5 && player.isPlaying() && pauseButton);
+                const audioLevel = ${previewFrameExpression}?.contentWindow?.__audioOutputLevel?.() ?? 0;
+                return Boolean(player && player.getTime() > 1.5 && player.isPlaying() && pauseButton && audioLevel > 0.005);
               })()`, { timeoutMs: 10_000, label: "active playback beyond initialization" });
             },
             screenshot: {
@@ -199,7 +240,8 @@ export default {
             assert: async () => {
               await ctx.waitFor(`(() => {
                 const player = ${previewFrameExpression}?.contentWindow?.__player;
-                return Boolean(player && player.getTime() > ${Number(firstTime) + 0.6} && player.isPlaying());
+                const audioLevel = ${previewFrameExpression}?.contentWindow?.__audioOutputLevel?.() ?? 0;
+                return Boolean(player && player.getTime() > ${Number(firstTime) + 0.6} && player.isPlaying() && audioLevel > 0.005);
               })()`, { timeoutMs: 5_000, label: "continued uninterrupted playback" });
             },
             screenshot: {
