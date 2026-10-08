@@ -122,6 +122,7 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.release-spotlight",
   "ipollowork.hyperframes.research-evidence-wall",
   "ipollowork.hyperframes.vertical-social-story",
+  "ipollowork.hyperframes.ai-assistant-launch",
 ];
 const novelVideoTemplates = [
   { id: "ipollowork.hyperframes.ai-trend-briefing", composition: "ai-trend-briefing", duration: "60", scenes: 10 },
