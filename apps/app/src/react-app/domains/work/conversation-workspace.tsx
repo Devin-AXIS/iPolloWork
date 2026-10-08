@@ -1,29 +1,18 @@
 /** @jsxImportSource react */
-import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createDefaultProjectWorkspaceConfig } from "@ipollowork/types/project-workspace";
 import type {
-  ConversationWorkflowUpdateInput,
   ProjectSessionExecutionRuntime,
   WorkItem,
   WorkTemplate,
 } from "@ipollowork/types/work-items";
-import { Check, Loader2, Pencil, Sparkles } from "lucide-react";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -100,8 +89,6 @@ type ConversationWorkspaceProps = {
 
 export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const queryClient = useQueryClient();
-  const [goalDraft, setGoalDraft] = React.useState<{ text: string; version: number | undefined } | null>(null);
-  const goalInputId = React.useId();
   const workflowQueryKey = ["conversation-workflow", props.client?.baseUrl, props.workspaceId, props.sessionId];
   const workflowQuery = useQuery({
     queryKey: workflowQueryKey,
@@ -172,24 +159,6 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       queryClient.invalidateQueries({ queryKey: ["work-items"] }),
     ]);
   };
-  const saveMutation = useMutation({
-    mutationFn: async (input: Omit<ConversationWorkflowUpdateInput, "runtime">) => {
-      if (!props.client || !props.workspaceId || !props.sessionId) throw new Error(t("work.project_unavailable"));
-      return props.client.setConversationWorkflow(props.workspaceId, props.sessionId, {
-        ...input,
-        expectedVersion: input.expectedVersion ?? item?.version,
-        runtime: item?.execution?.runtime ?? props.runtime,
-      });
-    },
-    onSuccess: async () => {
-      setGoalDraft(null);
-      await invalidateWork();
-    },
-    onError: (error) =>
-      toast.error(t("work.save_failed"), {
-        description: error instanceof Error ? error.message : undefined,
-      }),
-  });
   const acceptMutation = useMutation({
     mutationFn: async () => {
       if (!props.client || !props.workspaceId || !item || item.status !== "review")
@@ -218,7 +187,6 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       void boardQuery.refetch();
     }} />;
   }
-  const busy = saveMutation.isPending || item?.status === "running";
 
   return (
     <div className="h-full min-h-0" data-testid="conversation-workspace">
@@ -236,14 +204,6 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
         runtimeMetricsError={actualDelegationQuery.isError}
         executionHref={(record) => `#/workspace/${props.workspaceId}/session/${record.sessionId}`}
         onOpenTasks={props.onOpenTasks}
-        headerControls={<>
-          {props.sessionId ? <Button variant="ghost" size="icon-xs" data-testid="conversation-edit-goal"
-            aria-label={t("conversation_work.edit_goal")} title={t("conversation_work.edit_goal")}
-            disabled={busy} onClick={() => setGoalDraft({ text: workflow?.goal ?? "", version: item?.version })}><Pencil className="size-3.5" /></Button> : null}
-          <span className="px-1 text-[11px] text-dls-tertiary" title={t("conversation_work.engine")}>
-            {engineLabel(item?.execution?.runtime.engineId ?? props.engineId)}
-          </span>
-        </>}
         healthContent={<>
           {item?.status === "review" ? <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-dls-border/60 pt-3" data-testid="conversation-review">
             <p className="min-w-0 flex-1 text-xs leading-5 text-dls-secondary">{t("conversation_work.review_hint")}</p>
@@ -255,18 +215,6 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
 
         </>}
       />
-      <Dialog open={goalDraft !== null} onOpenChange={(open) => { if (!open && !saveMutation.isPending) setGoalDraft(null); }}>
-        <DialogContent className="max-w-md" data-testid="conversation-goal-dialog">
-          <DialogHeader><DialogTitle id={goalInputId}>{t("conversation_work.goal")}</DialogTitle>
-            <DialogDescription>{t("conversation_work.goal_placeholder")}</DialogDescription></DialogHeader>
-          <form onSubmit={(event) => { event.preventDefault(); saveMutation.mutate({ goal: goalDraft?.text.trim() ?? "", expectedVersion: goalDraft?.version, source: workflow?.source ?? "custom" }); }}>
-            <Textarea value={goalDraft?.text ?? ""} onChange={(event) => { const text = event.target.value; setGoalDraft((current) => current ? { ...current, text } : current); }} aria-labelledby={goalInputId}
-              maxLength={2_000} autoFocus disabled={saveMutation.isPending} className="min-h-24 text-sm" />
-            <DialogFooter className="mt-6"><Button type="button" variant="ghost" disabled={saveMutation.isPending} onClick={() => setGoalDraft(null)}>{t("common.cancel")}</Button>
-              <Button type="submit" disabled={saveMutation.isPending}>{saveMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : null}{t("common.save")}</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
