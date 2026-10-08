@@ -42,8 +42,9 @@ describe("TimelineLayerHeader", () => {
     container.remove();
   });
 
-  it("selects the layer without entering rename mode", async () => {
+  it("selects without expanding and expands only when the caret is clicked", async () => {
     const onSelect = vi.fn();
+    const onToggleExpanded = vi.fn();
     await act(async () => {
       root.render(
         <TimelineLayerHeader
@@ -53,14 +54,14 @@ describe("TimelineLayerHeader", () => {
           locked={false}
           selected={false}
           expanded={false}
-          expandable={false}
+          expandable
           theme={defaultTimelineTheme}
           visualStyle={visualStyle}
           gutterWidth={255}
           onToggleHidden={vi.fn()}
           onToggleLocked={vi.fn()}
           onSelect={onSelect}
-          onToggleExpanded={vi.fn()}
+          onToggleExpanded={onToggleExpanded}
         />,
       );
     });
@@ -69,6 +70,12 @@ describe("TimelineLayerHeader", () => {
     await act(async () => select?.click());
 
     expect(onSelect).toHaveBeenCalledWith(element);
+    expect(onToggleExpanded).not.toHaveBeenCalled();
+    const caret = container.querySelector<HTMLButtonElement>(".hf-timeline-layer-header__caret");
+    await act(async () => caret?.click());
+    expect(onToggleExpanded).toHaveBeenCalledOnce();
+    expect(onToggleExpanded).toHaveBeenCalledWith(element);
+    expect(onSelect).toHaveBeenCalledOnce();
     expect(container.querySelector(".hf-timeline-layer-header__rename-input")).toBeNull();
     expect(container.querySelector(".hf-timeline-layer-header__label")?.textContent).toBe(
       "Opening title",

@@ -23,6 +23,7 @@ import {
   loadRegistryPreviewFromRoot,
 } from "@hyperframes/studio-server";
 import { resolveGsapRegistryItemEngine, type RegistryItem } from "@hyperframes/core/registry";
+import { SYSTEM_FONT_SIZE_LIMIT } from "@hyperframes/core/fonts/system-locator";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
@@ -198,7 +199,9 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
 
     async transformPreviewHtml({ html }) {
       const producer = await import("../producer/src/services/deterministicFonts.js");
-      return producer.injectDeterministicFontFaces(html);
+      return producer.injectDeterministicFontFaces(html, {
+        maxSystemFontBytes: SYSTEM_FONT_SIZE_LIMIT,
+      });
     },
 
     getProjectSignature(projectDir: string): string {

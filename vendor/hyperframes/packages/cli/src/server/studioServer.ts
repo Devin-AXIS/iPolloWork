@@ -6,6 +6,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import { SYSTEM_FONT_SIZE_LIMIT } from "@hyperframes/core/fonts/system-locator";
 import { streamSSE } from "hono/streaming";
 import {
   copyFileSync,
@@ -516,7 +517,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         cacheDir: gifOutputDir,
         sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, downloadToTemp),
       });
-      return injectDeterministicFontFaces(prepared.html);
+      return injectDeterministicFontFaces(prepared.html, {
+        maxSystemFontBytes: SYSTEM_FONT_SIZE_LIMIT,
+      });
     },
 
     getProjectSignature(dir: string): string {

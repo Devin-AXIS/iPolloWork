@@ -262,7 +262,6 @@ interface PlayerState {
   setElements: (elements: TimelineElement[]) => void;
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
   toggleExpandedTimelineElementId: (id: string) => void;
-  expandTimelineElementIds: (ids: Iterable<string>) => void;
   /** Move the selection anchor within an active multi-selection without collapsing it. */
   setSelectionAnchor: (id: string | null) => void;
   updateElement: (
@@ -682,17 +681,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (expandedTimelineElementIds.has(id)) expandedTimelineElementIds.delete(id);
       else expandedTimelineElementIds.add(id);
       return { expandedTimelineElementIds };
-    }),
-  expandTimelineElementIds: (ids) =>
-    set((state) => {
-      const expandedTimelineElementIds = new Set(state.expandedTimelineElementIds);
-      let changed = false;
-      for (const id of ids) {
-        if (expandedTimelineElementIds.has(id)) continue;
-        expandedTimelineElementIds.add(id);
-        changed = true;
-      }
-      return changed ? { expandedTimelineElementIds } : state;
     }),
   // A genuine single selection: always collapse the set to just this element. User
   // intent (timeline click, preview click via applyDomSelection) flows here; DOM sync

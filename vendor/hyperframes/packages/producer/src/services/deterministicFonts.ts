@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultLogger } from "../logger.js";
@@ -7,7 +7,6 @@ import { defaultLogger } from "../logger.js";
 import { FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
 import {
   locateSystemFontVariants,
-  SYSTEM_FONT_SIZE_LIMIT,
 } from "@hyperframes/core/fonts/system-locator";
 import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
@@ -543,17 +542,18 @@ async function buildFontFaceCss(
     if (options.allowSystemFontCapture) {
       const variants = locateSystemFontVariants(originalCaseFamily);
       if (variants.length > 0) {
-        let totalBytes = 0;
+        const totalBytes = variants.reduce((total, variant) => total + statSync(variant.path).size, 0);
+        if (options.maxSystemFontBytes !== undefined && totalBytes > options.maxSystemFontBytes) {
+          defaultLogger.warn(
+            `[Compiler] Skipping system font "${originalCaseFamily}" (${(totalBytes / 1024 / 1024).toFixed(1)} MB); embedding it would make the preview too large.`,
+          );
+          unresolved.push(originalCaseFamily);
+          continue;
+        }
         for (const variant of variants) {
           const fontBuffer = readFileSync(variant.path);
-          totalBytes += fontBuffer.length;
           const dataUri = await fontToDataUri(fontBuffer, variant.format);
           rules.push(buildFontFaceRule(originalCaseFamily, dataUri, variant.weight, variant.style));
-        }
-        if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
-          defaultLogger.warn(
-            `[Compiler] System font "${originalCaseFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${variants.length} variant(s)) — embedding anyway. Consider font subsetting for production.`,
-          );
         }
         defaultLogger.info(
           `[Compiler] Embedded system font "${originalCaseFamily}" — ${variants.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,
@@ -683,6 +683,7 @@ interface InternalFontFetchOptions {
   failClosedFontFetch: boolean;
   fetchImpl: typeof fetch;
   allowSystemFontCapture: boolean;
+  maxSystemFontBytes?: number;
 }
 
 /**
@@ -864,6 +865,8 @@ export interface InjectDeterministicFontFacesOptions {
    * to contain the same fonts as the authoring machine.
    */
   allowSystemFontCapture?: boolean;
+  /** Preview-only cap for embedded system fonts; renders omit it. */
+  maxSystemFontBytes?: number;
 }
 
 // Keep the complete CSS request under the broadly supported ~2 KB URL limit.
@@ -893,6 +896,7 @@ export async function injectDeterministicFontFaces(
     failClosedFontFetch,
     fetchImpl,
     allowSystemFontCapture,
+    maxSystemFontBytes: options.maxSystemFontBytes,
   };
 
   const existingFaces = extractExistingFontFaces(html);
