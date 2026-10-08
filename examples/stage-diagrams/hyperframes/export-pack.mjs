@@ -3,6 +3,7 @@ import {readFileSync,writeFileSync,readdirSync,mkdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Script} from 'node:vm';
+import {componentFilePath} from './component-path.mjs';
 
 const lib=fileURLToPath(new URL('../',import.meta.url));
 const out=resolve(process.argv[2]||join(lib,'dist/hyperframes'));
@@ -13,8 +14,7 @@ for(const name of readdirSync(join(lib,'src')).sort()){
  if(!manifest.motionRecipe?.usage?.example?.narration?.trim())throw Error('Missing motion narration example: '+name);
  const files={};
  for(const file of manifest.files){
-  const path=resolve(dir,file.path);
-  if(!path.startsWith(dir+'/'))throw Error('File escapes component: '+file.path);
+  const path=componentFilePath(dir,file.path);
   const content=readFileSync(path,'utf8');
   if(file.type==='hyperframes:composition'){
    // Native markup only: HTML text and SVG shapes. The shared engine runtime may re-lay them out from data.

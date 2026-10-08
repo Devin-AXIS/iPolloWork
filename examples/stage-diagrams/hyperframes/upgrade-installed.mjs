@@ -4,6 +4,7 @@ import {readFileSync,writeFileSync,readdirSync,mkdirSync,renameSync,rmSync,exist
 import {join,resolve,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {homedir} from 'node:os';
+import {componentFilePath} from './component-path.mjs';
 const root=resolve(process.env.HYPERFRAMES_COMPONENT_LIBRARY||join(homedir(),'.hyperframes/component-library'));
 const dist=new URL('../dist/hyperframes/',import.meta.url);
 const packs=readdirSync(dist).filter(n=>n.endsWith('.hfcomponent.json')).map(n=>JSON.parse(readFileSync(new URL(n,dist),'utf8')));
@@ -17,21 +18,19 @@ for(const hash of readdirSync(root).filter(n=>/^[a-f0-9]{64}$/.test(n))){
  if(names.some(n=>!items.has(n)))throw Error('Mixed component pack: '+hash);
  oldRoots.push(hash);
 }
-const pending=[];
-for(const pack of packs){
- const payload=JSON.stringify(pack),hash=createHash('sha256').update(payload).digest('hex'),stage=join(root,'.native-'+hash),dest=join(root,hash);
- if(existsSync(stage))throw Error('Unfinished migration: '+stage);
- mkdirSync(stage,{recursive:true});
- for(const item of pack.items){const dir=join(stage,'blocks',item.manifest.name);mkdirSync(dir,{recursive:true});
- for(const [name,content]of Object.entries(item.files)){const file=resolve(dir,name);if(!file.startsWith(dir+'/'))throw Error('Unsafe file');mkdirSync(dirname(file),{recursive:true});writeFileSync(file,content);}
- writeFileSync(join(dir,'registry-item.json'),JSON.stringify(item.manifest));}
- pending.push({stage,dest,hash});
-}
-// Publish only after every pack has been written successfully.
-const retired=[];
+const pending=[],retired=[],published=[];
 try{
- for(const hash of oldRoots){const original=join(root,hash),temp=join(root,'.retired-'+hash);renameSync(original,temp);retired.push({original,temp});}
- for(const p of pending){if(existsSync(p.dest))rmSync(p.dest,{recursive:true});renameSync(p.stage,p.dest);}
-}catch(error){for(const p of pending)if(existsSync(p.dest))rmSync(p.dest,{recursive:true});for(const p of retired)renameSync(p.temp,p.original);throw error;}
+ for(const pack of packs){
+  const payload=JSON.stringify(pack),hash=createHash('sha256').update(payload).digest('hex'),stage=join(root,'.native-'+hash),dest=join(root,hash);
+  if(existsSync(stage))throw Error('Unfinished migration: '+stage);
+  mkdirSync(stage,{recursive:true});pending.push({stage,dest,hash});
+  for(const item of pack.items){const dir=join(stage,'blocks',item.manifest.name);mkdirSync(dir,{recursive:true});
+   for(const [name,content]of Object.entries(item.files)){const file=componentFilePath(dir,name);mkdirSync(dirname(file),{recursive:true});writeFileSync(file,content);}
+   writeFileSync(join(dir,'registry-item.json'),JSON.stringify(item.manifest));}
+ }
+ // Publish only after every pack has been written successfully.
+ for(const hash of oldRoots){const original=join(root,hash),temp=join(root,'.retired-'+hash);if(existsSync(temp))throw Error('Unfinished migration: '+temp);renameSync(original,temp);retired.push({original,temp});}
+ for(const p of pending){if(existsSync(p.dest))throw Error('Existing component pack is not owned by this migration: '+p.hash);renameSync(p.stage,p.dest);published.push(p.dest);}
+}catch(error){for(const dest of published)rmSync(dest,{recursive:true});for(const p of retired.reverse())renameSync(p.temp,p.original);for(const p of pending)if(existsSync(p.stage))rmSync(p.stage,{recursive:true});throw error;}
 for(const p of retired)rmSync(p.temp,{recursive:true});
 console.log(JSON.stringify({nativeComponents:items.size,replacedPacks:oldRoots.length},null,2));
