@@ -7,7 +7,6 @@ import { defaultLogger } from "../logger.js";
 import { FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
 import {
   locateSystemFontVariants,
-  SYSTEM_FONT_SIZE_LIMIT,
 } from "@hyperframes/core/fonts/system-locator";
 import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
@@ -544,7 +543,7 @@ async function buildFontFaceCss(
       const variants = locateSystemFontVariants(originalCaseFamily);
       if (variants.length > 0) {
         const totalBytes = variants.reduce((total, variant) => total + statSync(variant.path).size, 0);
-        if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
+        if (options.maxSystemFontBytes !== undefined && totalBytes > options.maxSystemFontBytes) {
           defaultLogger.warn(
             `[Compiler] Skipping system font "${originalCaseFamily}" (${(totalBytes / 1024 / 1024).toFixed(1)} MB); embedding it would make the preview too large.`,
           );
@@ -684,6 +683,7 @@ interface InternalFontFetchOptions {
   failClosedFontFetch: boolean;
   fetchImpl: typeof fetch;
   allowSystemFontCapture: boolean;
+  maxSystemFontBytes?: number;
 }
 
 /**
@@ -865,6 +865,8 @@ export interface InjectDeterministicFontFacesOptions {
    * to contain the same fonts as the authoring machine.
    */
   allowSystemFontCapture?: boolean;
+  /** Preview-only cap for embedded system fonts; renders omit it. */
+  maxSystemFontBytes?: number;
 }
 
 // Keep the complete CSS request under the broadly supported ~2 KB URL limit.
@@ -894,6 +896,7 @@ export async function injectDeterministicFontFaces(
     failClosedFontFetch,
     fetchImpl,
     allowSystemFontCapture,
+    maxSystemFontBytes: options.maxSystemFontBytes,
   };
 
   const existingFaces = extractExistingFontFaces(html);
