@@ -45,6 +45,7 @@ describe("buildRegistryPreviewHtml", () => {
     expect(html).toContain("motionDuration + 0.45");
     expect(html).toContain("% previewDuration");
     expect(html).toContain("requestAnimationFrame(tick)");
+    expect(html).toContain('document.addEventListener("DOMContentLoaded", start');
   });
 
   it("zooms the card preview around a caption focus point", () => {
@@ -104,5 +105,40 @@ describe("buildRegistryPreviewHtml", () => {
     expect(html).not.toContain('<template id="demo">');
     expect(html).toContain('<div data-composition-id="demo">Visible</div>');
     expect(html).toContain("window.demoLoaded = true");
+  });
+
+  it("loads GSAP before a standalone component's timeline script", () => {
+    const html = buildRegistryPreviewHtml(
+      '<html><head></head><body><template><div data-composition-id="example"></div><script>window.gsap.timeline({ paused: true }); window.__hyperframes.parseVisualComponentData()</script></template></body></html>',
+      {
+        assetBaseUrl: "/api/registry/blocks/example/assets/",
+        autoplay: true,
+        duration: 6,
+        runtimeUrl: "/api/runtime.js",
+        seekTime: 2,
+        width: 1920,
+        height: 1080,
+      },
+    );
+
+    expect(html.indexOf("gsap.min.js")).toBeLessThan(html.indexOf("window.gsap.timeline"));
+    expect(html.indexOf('/api/runtime.js')).toBeLessThan(html.indexOf("window.__hyperframes.parseVisualComponentData"));
+    expect(html).not.toContain("<template>");
+  });
+
+  it("keeps a component's existing GSAP script", () => {
+    const html = buildRegistryPreviewHtml(
+      '<html><head><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script></head><body><script>gsap.timeline()</script></body></html>',
+      {
+        assetBaseUrl: "/api/registry/blocks/example/assets/",
+        autoplay: true,
+        duration: 6,
+        seekTime: 2,
+        width: 1920,
+        height: 1080,
+      },
+    );
+
+    expect(html.match(/gsap\.min\.js/g)).toHaveLength(1);
   });
 });

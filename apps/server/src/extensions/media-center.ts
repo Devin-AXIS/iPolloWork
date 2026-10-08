@@ -11,7 +11,7 @@ import { basename, dirname, extname, posix } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
 import { resolveWithinRoot } from "../paths.js";
-import { checkVideoComponents, installVideoComponents } from "./video-components.js";
+import { checkVideoComponents, installVideoComponents, videoComponentContent, videoComponentReadInput, videoComponentWriteInput } from "./video-components.js";
 import { z } from "zod";
 import { analyzeVideoMusic, prepareVideoSoundtrack, prepareVideoLanguageTiming, videoSoundtrackInput, videoLanguageTimingInput } from "./video-audio-analysis.js";
 import { videoRenderAction, analyzeVideoReference, videoRenderInput, videoReferenceInput } from "./video-render.js";
@@ -966,6 +966,8 @@ export const MEDIA_EXTENSION_ACTIONS = [
     },
   },
   ...[
+    { action: "video_component_read", title: "Read editable video component JSON", description: "Read an installed component's current {content,copy,timing,look}, revision, schema and guide. elementId is the exact data-composition-src host id in the video source. Read before editing; retain stable ids.", schema: videoComponentReadInput },
+    { action: "video_component_write", title: "Apply video component JSON", description: "Apply one natural JSON data object using the revision from video_component_read. Omitted fields remain; arrays replace completely. Shared count, reference, timing and actual font/layout checks run before one atomic save. 422 returns exact correction paths; 409 means read current data and rebase. Invalid requests leave source and preview intact.", schema: videoComponentWriteInput },
     { action: "video_reference_analyze", title: "Measure reference video rhythm", description: "Decode a local reference in this video's assets. Return bounded motion/stillness curves and audio health; measurements support creative choices and do not judge meaning.", schema: videoReferenceInput },
     { action: "video_soundtrack_prepare", title: "Prepare event-synchronized sound", description: "Create editable local sound clips from locked film events and a shared room; return native GSAP music ducking envelopes for matching preview and export.", schema: videoSoundtrackInput },
     { action: "video_language_timing_prepare", title: "Map measured narration across languages", description: "Use exact provider word timing and explicit phrase pairs to map one authored composition into a second language. Return reversible anchors and root/child timeline integration; do not invent speech durations.", schema: videoLanguageTimingInput },
@@ -2265,6 +2267,10 @@ export async function callMediaExtensionAction(
 ) {
   if (action === "video_recipe_catalog") {
     const output = await queryVideoRecipeCatalog(args);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
+  if (action === "video_component_read" || action === "video_component_write") {
+    const output = await videoComponentContent(workspaceForContext(config, context), action, args);
     return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
   }
   if (action === "video_audio_analyze" || action === "video_component_install" || action === "video_component_check") {

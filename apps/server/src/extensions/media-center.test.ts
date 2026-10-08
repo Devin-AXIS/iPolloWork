@@ -65,6 +65,14 @@ test("exposes measured audio cues as a built-in Video Studio action", () => {
   });
 });
 
+test("exposes one revision-aware read/write contract for component JSON", () => {
+  const read = MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_component_read");
+  const write = MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_component_write");
+  expect(read?.inputSchema).toMatchObject({ additionalProperties: false, required: ["sourcePath", "elementId"] });
+  expect(write?.inputSchema).toMatchObject({ additionalProperties: false, required: ["sourcePath", "elementId", "revision", "data"] });
+  expect(read?.inputSchema).toMatchObject({ properties: { sourceFile: { type: "string" } } });
+});
+
 test("discovers and calls the executable offline recipe catalog without workspace or provider access", async () => {
   expect(MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_recipe_catalog")?.inputSchema).toMatchObject({ additionalProperties: false });
   const result = await callMediaExtensionAction(config, env({}), "video_recipe_catalog", { cardIds: ["card-stack"] }, {});

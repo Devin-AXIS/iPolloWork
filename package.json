@@ -62,7 +62,9 @@
     "release:prepare": "node scripts/release/prepare.mjs",
     "release:prepare:dry": "node scripts/release/prepare.mjs --dry-run",
     "release:ship": "node scripts/release/ship.mjs",
-    "release:ship:watch": "node scripts/release/ship.mjs --watch"
+    "release:ship:watch": "node scripts/release/ship.mjs --watch",
+    "video:components:build": "node examples/stage-diagrams/build.mjs",
+    "video:components:install": "node examples/stage-diagrams/hyperframes/upgrade-installed.mjs"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
