@@ -205,6 +205,7 @@ export interface StudioApiAdapter {
     format?: "jpeg" | "png";
     selectorIndex?: number;
     runtimeReview?: boolean;
+    componentVariables?: { elementId: string; values: Record<string, string | number | boolean> };
   }) => Promise<Buffer | import("./helpers/screenshotClip.js").VideoRuntimeReview | null>;
 
   /** Optional: resolve session ID to project (multi-project mode). */

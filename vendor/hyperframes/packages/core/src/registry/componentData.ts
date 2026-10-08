@@ -1,3 +1,5 @@
+import { parseComponentTextList } from "./componentContent";
+
 export type RegistryVisualComponentDataKind =
   | "category-value"
   | "region-value"
@@ -30,6 +32,7 @@ export interface RegistryVisualComponentDataColumn {
   /** Inclusive numeric bounds. Values outside them are reported, never clamped. */
   min?: number;
   max?: number;
+  integer?: boolean;
   /** A bounded textual list inside a row, using literal separator characters. */
   list?: { maxItems: number; itemMaxLength: number; separators: string };
 }
@@ -139,14 +142,19 @@ function normalizeRows(
       if (typeof cell === "number" && ((column.min !== undefined && cell < column.min) || (column.max !== undefined && cell > column.max))) {
         issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} must be within ${column.min ?? "−∞"}–${column.max ?? "∞"}` });
       }
+      if (typeof cell === "number" && column.integer && !Number.isInteger(cell)) {
+        issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} must be an integer` });
+      }
       if (typeof cell === "string") {
         if (column.maxLength !== undefined && Array.from(cell).length > column.maxLength) {
           issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} allows at most ${column.maxLength} characters` });
         }
         if (column.list) {
           const limit = column.list;
-          const list = Array.from(cell, char => limit.separators.includes(char) ? "\n" : char).join("").split("\n").map(item => item.trim()).filter(Boolean);
-          if (list.length > limit.maxItems || list.some(item => Array.from(item).length > limit.itemMaxLength)) {
+          let list: string[] = [];
+          try { list = parseComponentTextList(cell, limit.separators); }
+          catch { issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} must be a list of texts` }); }
+          if (list.length > limit.maxItems || list.some(item => Array.from(item).length > limit.itemMaxLength || !item.trim())) {
             issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} allows at most ${limit.maxItems} items and ${limit.itemMaxLength} characters per item` });
           }
         }

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Stage Diagrams Player</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ipw-color-bg); cursor: pointer; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+</style>
+<script src="vendor/gsap.min.js"></script>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+/* Plays one real video component from src/ exactly as Video Studio does: the authored native nodes, the
+ * component runtime, its paused GSAP timeline and its variables. The gallery drives it with postMessage:
+ * { set: { lang, camera, skin, layout, palette, theme } } and { motion: 'loop' | 'intro' | 'none' } and { cmd: 'replay' }.
+ * Palette is a gallery-only theme preset; native video components have no palette variable. */
+(async () => {
+  const query = new URLSearchParams(location.search), type = query.get('type');
+  const THEMES = {
+    light: { '--ipw-color-bg': '#F3F2EE', '--ipw-color-text': '#111113', '--ipw-color-primary': '#7C8CFF' },
+    dark: { '--ipw-color-bg': '#050507', '--ipw-color-text': '#EDEDF0', '--ipw-color-primary': '#7C8CFF' },
+  };
+  const PALETTES = {
+    mono: {
+      light: { '--ipw-color-bg': '#F0EFEB', '--ipw-color-text': '#1C1C1A', '--ipw-color-primary': '#1C1C1A' },
+      dark: { '--ipw-color-bg': '#1C1C1A', '--ipw-color-text': '#F0EFEB', '--ipw-color-primary': '#F0EFEB' },
+    },
+    porcelain: {
+      light: { '--ipw-color-bg': '#F7F2EB', '--ipw-color-text': '#081F5C', '--ipw-color-primary': '#334EAC' },
+      dark: { '--ipw-color-bg': '#081F5C', '--ipw-color-text': '#EDEFF1', '--ipw-color-primary': '#7096D1' },
+    },
+    palm: {
+      light: { '--ipw-color-bg': '#F0EFEB', '--ipw-color-text': '#58402E', '--ipw-color-primary': '#D4A017' },
+      dark: { '--ipw-color-bg': '#28311F', '--ipw-color-text': '#F0EFE9', '--ipw-color-primary': '#F2D17E' },
+    },
+    wire: {
+      light: { '--ipw-color-bg': '#F0F0EE', '--ipw-color-text': '#1F1E1C', '--ipw-color-primary': '#F5572F' },
+      dark: { '--ipw-color-bg': '#1C1C1A', '--ipw-color-text': '#F0F0EE', '--ipw-color-primary': '#F5572F' },
+    },
+  };
+  // Always revalidate: after a rebuild the gallery must show the regenerated component, never a cached copy.
+  const source = await (await fetch(`src/stage-${type}/stage-${type}.html`, { cache: 'no-cache' })).text();
+  const doc = new DOMParser().parseFromString(source, 'text/html');
+  for (const link of doc.head.querySelectorAll('link[rel=stylesheet]')) document.head.append(link.cloneNode());
+  const declared = JSON.parse(doc.documentElement.getAttribute('data-composition-variables'));
+  const defaults = Object.fromEntries(declared.map(variable => [variable.id, variable.default]));
+  const values = { ...defaults };
+  // English: the gallery's static translations, applied to every text field and every row cell.
+  // Translations are revalidated like the component itself, so a local rebuild is always picked up.
+  try { new Function(await (await fetch('gallery-i18n.js', { cache: 'no-cache' })).text())(); } catch {}
+  const english = (window.StageGalleryI18n || { text: {} }).text;
+  const stableKeys = new Set(['id', 'key', 'icon', 'from', 'to', 'lane']);
+  function translateTree(value) {
+    if (typeof value === 'string') return translate(value);
+    if (Array.isArray(value)) return value.map(translateTree);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, cell]) => [key, stableKeys.has(key) ? cell : translateTree(cell)]));
+    return value;
+  }
+  function translate(text) {
+    // Lists and relations also contain visible text; preserve their JSON shape and stable IDs.
+    if (/^\s*[\[{]/.test(text)) {
+      try { return JSON.stringify(translateTree(JSON.parse(text))); } catch {}
+    }
+    return english[text] ?? (text.includes('\n') ? text.split('\n').map(translate).join('\n')
+      : text.includes('、') ? text.split('、').map(translate).join(', ') : text);
+  }
+  let language = 'zh', copy = {};
+  function localize(lang) {
+    language = lang;
+    for (const variable of declared) {
+      const original = defaults[variable.id];
+      if (variable.type !== 'string' || typeof original !== 'string') continue;
+      if (lang !== 'en') { values[variable.id] = original; continue; }
+      let rows = null;
+      try { rows = JSON.parse(original); } catch {}
+      if (rows && Array.isArray(rows.rows)) {
+        values[variable.id] = JSON.stringify({ ...rows, rows: rows.rows.map(row => Object.fromEntries(Object.entries(row).map(([key, cell]) => [key, !stableKeys.has(key) && typeof cell === 'string' ? translate(cell) : cell]))) });
+      } else {
+        const text = translate(original);
+        values[variable.id] = variable.maxLength && Array.from(text).length > variable.maxLength ? original : text;
+      }
+    }
+    // Compact sample captions are shared by all gallery layouts.
+    if (lang === 'en') {
+      values.copyTitle = window.StageGalleryI18n?.titles?.[type] || values.copyTitle;
+      values.copySubtitle = window.StageGalleryI18n?.desc?.[type] || values.copySubtitle;
+    }
+    // Card and poster copy: the gallery sends this diagram's English title and description.
+    const limits = Object.fromEntries(declared.map(variable => [variable.id, variable.maxLength]));
+    if (lang === 'en') for (const [id, text] of Object.entries(copy)) if (id in values && text && !(limits[id] && Array.from(text).length > limits[id])) values[id] = text;
+  }
+  const listeners = [];
+  let motion = query.get('motion') || 'loop';
+  let theme = 'light', palette = 'accent';
+
+  function applyDemoTheme() {
+    const tokens = PALETTES[palette]?.[theme] || THEMES[theme];
+    for (const [key, value] of Object.entries(tokens)) document.documentElement.style.setProperty(key, value);
+  }
+  function set(patch) {
+    if (patch.theme) theme = patch.theme === 'dark' ? 'dark' : 'light';
+    if (patch.palette) palette = PALETTES[patch.palette] ? patch.palette : 'accent';
+    if (patch.theme || patch.palette) applyDemoTheme();
+    if (patch.copy) copy = patch.copy;
+    if (patch.lang || patch.copy) localize(patch.lang || language);
+    if (patch.camera) values.camera = patch.camera;
+    if (patch.skin) values.skin = patch.skin;
+    if (patch.layout) values.layout = patch.layout;
+    // Raw variable values (tests and tools): applied after localisation, exactly as a host would set them.
+    if (patch.values) Object.assign(values, patch.values);
+    listeners.forEach(listener => listener({ ...values }));
+  }
+  try { copy = JSON.parse(query.get('copy') || '{}'); } catch {}
+  set({ lang: query.get('lang') || 'zh', theme: query.get('theme') || 'light', camera: query.get('camera') || 'auto', skin: query.get('skin') || 'keynote', layout: query.get('layout') || 'full', palette: query.get('palette') || 'accent' });
+
+  // The host runtime surface a component uses inside Video Studio.
+  window.__hyperframes = {
+    getVariables: () => ({ ...values }),
+    onVariablesChange: (root, listener) => listeners.push(listener),
+    parseVisualComponentData: (contract, value) => ({ issues: [], document: JSON.parse(value) }),
+  };
+
+  // Template scripts never run on their own: rebuild them so the component mounts like an inlined composition.
+  const stage = document.getElementById('stage');
+  stage.append(document.importNode(doc.querySelector('template').content, true));
+  for (const old of stage.querySelectorAll('script')) {
+    const script = document.createElement('script');
+    script.textContent = old.textContent;
+    old.replaceWith(script);
+  }
+  const id = stage.querySelector('[data-composition-id]').getAttribute('data-composition-id');
+  const timeline = window.__timelines[id];
+  const duration = Number(stage.querySelector('[data-composition-id]').getAttribute('data-duration'));
+  // Held frame for "intro" and "none": the full diagram after the reveal, before the closing move.
+  const held = Math.max(0, duration - 1.1);
+
+  const fit = () => { stage.style.transform = `scale(${innerWidth / 1920})`; };
+  addEventListener('resize', fit); fit();
+
+  const demoLabels = new WeakMap();
+  let start = performance.now(), playing = true;
+  function frame(now) {
+    if (playing) {
+      const elapsed = (now - start) / 1000;
+      timeline.seek(motion === 'none' ? held : motion === 'intro' ? Math.min(elapsed, held) : elapsed % duration);
+    }
+    // Fixed diagram annotations have no project variable. Localize them only in the demo.
+    for (const text of stage.querySelectorAll('.sd-text')) {
+      if (language === 'en') {
+        const translated = english[text.textContent];
+        if (translated) { demoLabels.set(text, { zh: text.textContent, en: translated }); text.textContent = translated; }
+      } else {
+        const saved = demoLabels.get(text);
+        if (saved && text.textContent === saved.en) text.textContent = saved.zh;
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  const replay = () => { start = performance.now(); playing = true; };
+
+  addEventListener('click', replay);
+  addEventListener('message', ({ data }) => {
+    if (!data || typeof data !== 'object') return;
+    if (data.set) set(data.set);
+    if (data.motion) { motion = data.motion; replay(); }
+    if (data.cmd === 'replay') replay();
+    if (data.cmd === 'pause') playing = false;
+    if (data.cmd === 'play') playing = true;
+  });
+})();
+</script>
+</body>
+</html>

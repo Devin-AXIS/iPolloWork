@@ -18,7 +18,8 @@ import {
   type RightPanelTab,
   type ToastToneInput,
 } from "../utils/studioHelpers";
-import { applyPatchByTarget } from "../utils/sourcePatcher";
+import { applyPatchByTarget, readAttributeByTarget } from "../utils/sourcePatcher";
+import { validateComponentVariables, type ComponentVariableValues } from "@hyperframes/core/registry";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { preloadBlockCatalog } from "./useBlockCatalog";
 import { foldRippleGsapShiftsIntoHistory } from "./timelineTimingSync";
@@ -60,6 +61,7 @@ export interface UseBlockHandlersResult {
   >;
   handleAddBlock: (blockName: string) => Promise<boolean>;
   handleBlockVariableChange: (variableId: string, value: BlockVariableValue) => Promise<void>;
+  handleBlockVariablesChange: (values: ComponentVariableValues, expected?: ComponentVariableValues) => Promise<void>;
   handleTimelineBlockDrop: (blockName: string, placement: { start: number; track: number }) => void;
   handlePreviewBlockDrop: (blockName: string, position: { left: number; top: number }) => void;
 }
@@ -315,74 +317,88 @@ export function useBlockHandlers({
     [projectId, blockCtx, runBlockInstall, activateInstalledBlock, clearDomSelection],
   );
 
-  const handleBlockVariableChange = useCallback(
-    (variableId: string, value: BlockVariableValue): Promise<void> => {
+  const handleBlockVariablesChange = useCallback(
+    (patch: ComponentVariableValues, expected?: ComponentVariableValues): Promise<void> => {
+      const active = activeBlockParamsRef.current;
       const save = async () => {
-        const active = activeBlockParamsRef.current;
-        if (!active || !projectId) return;
-        const variable = active.variables.find((candidate) => candidate.id === variableId);
-        if (!variable) return;
-
-        const normalized = normalizeBlockVariableValue(variable, value);
-        const nextValues = { ...active.variableValues };
-        if (normalized === variable.default) delete nextValues[variableId];
-        else nextValues[variableId] = normalized;
-
+        if (!active || !projectId) throw Error("Select a component before editing");
+        const original = await blockCtx.readProjectFile(active.hostCompositionPath);
+        const raw = readAttributeByTarget(original, { id: active.insertedElementId }, "variable-values");
+        const parsed: unknown = raw ? JSON.parse(raw) : {};
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw Error("Invalid component variables");
+        const previous: ComponentVariableValues = {};
+        for (const variable of active.variables) {
+          const current: unknown = Reflect.get(parsed, variable.id);
+          previous[variable.id] = typeof current === "string" || typeof current === "number" || typeof current === "boolean" ? current : variable.default;
+          if (expected && previous[variable.id] !== (expected[variable.id] ?? variable.default)) throw Error("The component changed. Reload current JSON before applying.");
+        }
+        const model = active.visualComponent?.ai?.model;
+        const next = { ...previous };
+        for (const [id, value] of Object.entries(patch)) {
+          const variable = active.variables.find(candidate => candidate.id === id);
+          if (!variable) throw Error(`Unknown component variable: ${id}`);
+          next[id] = model ? value : normalizeBlockVariableValue(variable, value);
+        }
+        if (model) {
+          const result = validateComponentVariables(model, next);
+          if (result.errors.length) throw Error(result.errors.map(issue => `${issue.path}: ${issue.message}`).join("\n"));
+        }
+        const nextValues = Object.fromEntries(active.variables.filter(v => next[v.id] !== v.default).map(v => [v.id, next[v.id] ?? v.default]));
         const frame = blockCtx.previewIframeRef.current;
         const host = frame?.contentDocument?.getElementById(active.insertedElementId);
         const root = host?.matches("[data-var-text]") ? host : host?.querySelector<HTMLElement>("[data-hf-live-variables]") ?? host;
         const runtime = (frame?.contentWindow as (Window & {
           __hyperframes?: { updateVariables?: (root: Element, patch: Record<string, unknown>) => boolean };
         }) | null)?.__hyperframes;
-        const previous = active.variableValues[variableId] ?? variable.default;
-        const live = variable.update === "live" && root && runtime?.updateVariables?.(root, { [variableId]: normalized });
+        const livePatch = Object.fromEntries(Object.keys(patch).map(id => [id, next[id]]));
+        const canUpdateLive = !!model || Object.keys(patch).every(id => active.variables.find(variable => variable.id === id)?.update === "live");
+        if (model && (!root || !runtime?.updateVariables)) throw Error("The component preview is not ready. Wait for it to load before applying.");
+        const fonts = frame?.contentDocument?.fonts;
+        const waitForFonts = async () => {
+          if (fonts && !(await Promise.race([fonts.ready.then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 5000))]))) throw Error("The project fonts are still loading. Try applying again when they are ready.");
+          if (frame !== blockCtx.previewIframeRef.current || !root?.isConnected) throw Error("The component preview changed. Wait for it to load before applying.");
+        };
+        let live = false;
         try {
-        const original = await blockCtx.readProjectFile(active.hostCompositionPath);
-        const patched = applyPatchByTarget(
-          original,
-          { id: active.insertedElementId },
-          {
-            type: "attribute",
-            property: "variable-values",
+          if (model) await waitForFonts();
+          live = !!(canUpdateLive && root && runtime?.updateVariables?.(root, livePatch));
+          if (model && !live) throw Error("The component preview did not accept this update. Reload it before applying.");
+          if (model) {
+            // A new skin can request fonts that the previous preview never used.
+            await waitForFonts();
+            if (!runtime?.updateVariables?.(root!, livePatch)) throw Error("The component preview did not accept this update.");
+          }
+          const patched = applyPatchByTarget(original, { id: active.insertedElementId }, {
+            type: "attribute", property: "variable-values",
             value: Object.keys(nextValues).length ? JSON.stringify(nextValues) : null,
-          },
-        );
-        if (patched === original) return;
-
-        blockCtx.markStudioWrite();
-        await saveProjectFilesWithHistory({
-          projectId,
-          label: `Configure component: ${active.blockTitle}`,
-          kind: "source",
-          coalesceKey: `component-variables:${active.insertedElementId}`,
-          files: { [active.hostCompositionPath]: patched },
-          readFile: async () => original,
-          writeFile: blockCtx.writeProjectFile,
-          recordEdit: blockCtx.recordEdit,
-        });
-        const nextActive = { ...active, variableValues: nextValues };
-        activeBlockParamsRef.current = nextActive;
-        setActiveBlockParams((current) =>
-          current?.insertedElementId === active.insertedElementId ? nextActive : current,
-        );
-        if (!live) blockCtx.reloadPreview();
+          });
+          if (patched === original) return;
+          blockCtx.markStudioWrite();
+          await saveProjectFilesWithHistory({
+            projectId, label: `Configure component: ${active.blockTitle}`, kind: "source",
+            ...(expected ? {} : { coalesceKey: `component-variables:${active.insertedElementId}` }),
+            files: { [active.hostCompositionPath]: patched }, readFile: async () => original,
+            writeFile: blockCtx.writeProjectFile, recordEdit: blockCtx.recordEdit,
+          });
+          const nextActive = { ...active, variableValues: nextValues };
+          const sameTarget = (current: InstalledComponentParams | null) => current?.insertedElementId === active.insertedElementId && current.hostCompositionPath === active.hostCompositionPath;
+          if (sameTarget(activeBlockParamsRef.current)) activeBlockParamsRef.current = nextActive;
+          setActiveBlockParams(current => sameTarget(current) ? nextActive : current);
+          if (!live) blockCtx.reloadPreview();
         } catch (error) {
-          if (live && root) runtime?.updateVariables?.(root, { [variableId]: previous });
+          if (live && root) runtime?.updateVariables?.(root, previous);
           throw error;
         }
       };
-
       const queued = variableWriteQueueRef.current.then(save);
       variableWriteQueueRef.current = queued.catch((error: unknown) => {
-        blockCtx.showToast(
-          error instanceof Error ? error.message : "Failed to update component variables",
-          "error",
-        );
+        blockCtx.showToast(error instanceof Error ? error.message : "Failed to update component variables", "error");
       });
-      return variableWriteQueueRef.current;
-    },
-    [blockCtx, projectId],
+      return queued;
+    }, [blockCtx, projectId],
   );
+  const handleBlockVariableChange = useCallback((id: string, value: BlockVariableValue) =>
+    handleBlockVariablesChange({ [id]: value }), [handleBlockVariablesChange]);
 
   const handleTimelineBlockDrop = useCallback(
     (blockName: string, placement: { start: number; track: number }) => {
@@ -421,6 +437,7 @@ export function useBlockHandlers({
     setActiveBlockParams,
     handleAddBlock,
     handleBlockVariableChange,
+    handleBlockVariablesChange,
     handleTimelineBlockDrop,
     handlePreviewBlockDrop,
   };
