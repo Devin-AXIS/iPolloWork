@@ -13,6 +13,10 @@ import {
   createVisualComponentDataRow,
   parseVisualComponentData,
   serializeVisualComponentData,
+  fromJSON,
+  toJSON,
+  validateComponentVariables,
+  parseComponentTextList,
 } from "@hyperframes/core/registry";
 import type {
   BlockParam,
@@ -22,6 +26,8 @@ import type {
   VisualComponentDataRow,
   RegistryVariable,
   RegistryVisualComponent,
+  ComponentContentModel,
+  ComponentVariableValues,
 } from "@hyperframes/core/registry";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
@@ -41,6 +47,7 @@ interface BlockParamsPanelProps {
   variableValues: Record<string, BlockVariableValue>;
   visualComponent?: RegistryVisualComponent;
   onVariableChange: (variableId: string, value: BlockVariableValue) => Promise<void>;
+  onVariablesChange?: (values: ComponentVariableValues, expected: ComponentVariableValues) => Promise<void>;
   onBack: () => void;
 }
 
@@ -51,6 +58,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   variableValues,
   visualComponent,
   onVariableChange,
+  onVariablesChange,
   onBack,
 }: BlockParamsPanelProps) {
   const { locale } = useStudioI18n();
@@ -60,28 +68,42 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   const [savingVariable, setSavingVariable] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const saveRequestIdRef = useRef(0);
+  const [tab, setTab] = useState<"content" | "json">("content");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const model = visualComponent?.ai?.model;
 
   const handleVariableCommit = useCallback(
     (variableId: string, value: unknown) => {
       if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
-        return;
+        return Promise.resolve(false);
       }
       const requestId = saveRequestIdRef.current + 1;
       saveRequestIdRef.current = requestId;
       setSavingVariable(variableId);
       setSaveState("saving");
-      void onVariableChange(variableId, value)
+      setSaveError(null);
+      if (model) {
+        const result = validateComponentVariables(model, { ...model.defaults, ...variableValues, [variableId]: value });
+        if (result.errors.length) {
+          setSaveState("error"); setSavingVariable(null);
+          setSaveError(result.errors.map(issue => `${issue.path}: ${issue.message}`).join("\n"));
+          return Promise.resolve(false);
+        }
+      }
+      return onVariableChange(variableId, value)
         .then(() => {
           if (saveRequestIdRef.current === requestId) setSaveState("saved");
+          return true;
         })
-        .catch(() => {
-          if (saveRequestIdRef.current === requestId) setSaveState("error");
+        .catch((error: unknown) => {
+          if (saveRequestIdRef.current === requestId) { setSaveState("error"); setSaveError(error instanceof Error ? error.message : "Save failed"); }
+          return false;
         })
         .finally(() => {
           if (saveRequestIdRef.current === requestId) setSavingVariable(null);
         });
     },
-    [onVariableChange],
+    [onVariableChange, model, variableValues],
   );
 
   return (
@@ -104,7 +126,24 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      {model && onVariablesChange ? (
+        <div className="flex gap-1 border-b border-panel-border px-4 py-2" role="tablist" aria-label={locale === "zh" ? "组件编辑方式" : "Component editor"}>
+          {(["content", "json"] as const).map(mode => (
+            <button key={mode} data-testid={`component-${mode}-tab`} type="button" role="tab" aria-selected={tab === mode} onClick={() => setTab(mode)}
+              className={`rounded-md px-3 py-1 text-[11px] ${tab === mode ? "bg-panel-input text-panel-text-1" : "text-panel-text-3"}`}>
+              {mode === "json" ? "JSON" : locale === "zh" ? "内容" : "Content"}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {saveError ? <pre role="alert" className="max-h-28 overflow-auto whitespace-pre-wrap border-b border-panel-border px-4 py-2 text-[10px] text-red-500">{saveError}</pre> : null}
+
+      {model && onVariablesChange ? (
+        <div className={tab === "json" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          <ComponentJsonField model={model} values={variableValues} locale={locale} onApply={onVariablesChange} />
+        </div>
+      ) : null}
+      <div className={`${tab === "json" && model && onVariablesChange ? "hidden" : ""} min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3`}>
         <DesignPanelInputProvider ui="flat" section="component-variables">
           <div className="space-y-3">
             {variables.map((variable) => {
@@ -119,6 +158,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
                     liveCommit={variable.update === "live"}
                     saving={savingVariable === variable.id}
                     locale={locale}
+                    jsonLists={!!model}
                     onCommit={(value) => handleVariableCommit(variable.id, value)}
                   />
                 );
@@ -179,6 +219,52 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   );
 });
 
+function ComponentJsonField({ model, values, locale, onApply }: {
+  model: ComponentContentModel; values: ComponentVariableValues; locale: "en" | "zh";
+  onApply: (values: ComponentVariableValues, expected: ComponentVariableValues) => Promise<void>;
+}) {
+  const serialized = useMemo(() => {
+    try { return JSON.stringify(toJSON(model, values), null, 2); }
+    catch { return "{}"; }
+  }, [model, values]);
+  const [draft, setDraft] = useState(serialized);
+  const [base, setBase] = useState({ serialized, values });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const dirty = draft !== base.serialized;
+  const stale = dirty && serialized !== base.serialized;
+  useEffect(() => {
+    if (!dirty) { setDraft(serialized); setBase({ serialized, values }); }
+  }, [dirty, serialized, values]);
+  const result = useMemo(() => {
+    try { return fromJSON(model, JSON.parse(draft), { ...model.defaults, ...base.values }); }
+    catch (e) { return { values: base.values, errors: [{ path: "", message: e instanceof Error ? e.message : "Invalid JSON" }], warnings: [] }; }
+  }, [model, draft, base.values]);
+  const apply = async () => {
+    if (stale || result.errors.length || saving || !dirty) return;
+    setSaving(true); setError(null);
+    try {
+      await onApply(result.values, base.values);
+      const next = JSON.stringify(toJSON(model, result.values), null, 2);
+      setDraft(next); setBase({ serialized: next, values: result.values });
+    } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
+    finally { setSaving(false); }
+  };
+  return <div className="flex min-h-0 flex-1 flex-col gap-2 px-4 py-3">
+    <p className="text-[10px] text-panel-text-3">{locale === "zh" ? "与内容表单共用数据。省略字段保留原值，数组整组替换。应用前检查数量、引用、时间和排版。" : "Shared with the content form. Omitted fields retain their values; arrays replace the group. Apply checks capacity, references, timing and layout."}</p>
+    <textarea aria-label={locale === "zh" ? "组件 JSON" : "Component JSON"} data-testid="component-json-editor" spellCheck={false} maxLength={65536}
+      className="min-h-48 flex-1 resize-none rounded-md border border-panel-border bg-panel-input p-3 font-mono text-[11px] text-panel-text-1 focus:outline-none focus:ring-1 focus:ring-panel-accent"
+      value={draft} onChange={event => { setDraft(event.target.value); setError(null); }} />
+    {stale ? <p role="alert" className="text-[10px] text-red-500">{locale === "zh" ? "组件已被其他修改更新，请重新载入当前 JSON 后再编辑。" : "The component changed. Reload current JSON before editing."}</p> : null}
+    {result.errors.length || error ? <pre role="alert" className="max-h-32 overflow-auto whitespace-pre-wrap text-[10px] text-red-500">{error ?? result.errors.map(issue => `${issue.path}: ${issue.message}`).join("\n")}</pre> : null}
+    <div className="flex gap-2">
+      <button type="button" data-testid="component-json-apply" disabled={!dirty || stale || saving || !!result.errors.length} onClick={() => void apply()}
+        className="rounded-md bg-panel-accent px-3 py-1.5 text-[11px] text-white disabled:opacity-40">{saving ? locale === "zh" ? "应用中" : "Applying" : locale === "zh" ? "应用 JSON" : "Apply JSON"}</button>
+      <button type="button" data-testid="component-json-reload" disabled={saving} onClick={() => { setDraft(serialized); setBase({ serialized, values }); setError(null); }} className="rounded-md border border-panel-border px-3 py-1.5 text-[11px] text-panel-text-2">{locale === "zh" ? "重新载入" : "Reload current"}</button>
+    </div>
+  </div>;
+}
+
 function SaveStatus({ state, locale }: { state: SaveState; locale: "en" | "zh" }) {
   const label =
     state === "saving"
@@ -215,6 +301,11 @@ function SaveStatus({ state, locale }: { state: SaveState; locale: "en" | "zh" }
   );
 }
 
+function displayComponentTextList(value: string, separators: string): string {
+  try { return parseComponentTextList(value, separators).join("\n"); }
+  catch { return value; }
+}
+
 function ComponentDataFormField({
   label,
   contract,
@@ -223,6 +314,7 @@ function ComponentDataFormField({
   saving,
   locale,
   onCommit,
+  jsonLists = false,
 }: {
   label: string;
   contract: RegistryVisualComponentDataContract;
@@ -230,7 +322,8 @@ function ComponentDataFormField({
   liveCommit: boolean;
   saving: boolean;
   locale: "en" | "zh";
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => void | Promise<boolean>;
+  jsonLists?: boolean;
 }) {
   const { tx } = useStudioI18n();
   const parsed = useMemo(() => parseVisualComponentData(contract, value), [contract, value]);
@@ -281,7 +374,9 @@ function ComponentDataFormField({
     if (parseVisualComponentData(contract, nextValue).issues.length) return;
     if (nextValue === valueRef.current || nextValue === lastSubmittedValueRef.current) return;
     lastSubmittedValueRef.current = nextValue;
-    onCommit(nextValue);
+    void Promise.resolve(onCommit(nextValue)).then(saved => {
+      if (saved === false && lastSubmittedValueRef.current === nextValue) lastSubmittedValueRef.current = valueRef.current;
+    });
   };
 
   const commitRows = (nextRows: VisualComponentDataRow[]) => {
@@ -312,7 +407,7 @@ function ComponentDataFormField({
         index === rowIndex
           ? {
               ...row,
-              [column.id]:
+              [column.id]: column.list && jsonLists ? JSON.stringify(rawValue.split("\n").map(item => item.trim()).filter(Boolean)) :
                 column.type === "number" && rawValue !== "" && Number.isFinite(Number(rawValue))
                   ? Number(rawValue)
                   : rawValue,
@@ -403,6 +498,14 @@ function ComponentDataFormField({
                 className="h-7 min-w-0 flex-1 rounded bg-panel-bg px-2 text-[11px] text-panel-text-1 outline-none focus:ring-1 focus:ring-panel-accent/40">
                 {column.options.map(option => <option key={option.value} value={option.value}>{tx(option.label)}</option>)}
               </select>
+            ) : column.list && jsonLists ? (
+              <textarea key={column.id} rows={Math.min(4, column.list.maxItems)}
+                aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
+                aria-invalid={issues.some(issue => issue.path === `rows.${rowIndex}.${column.id}`)}
+                value={displayComponentTextList(String(row[column.id] ?? ""), column.list.separators)}
+                placeholder={locale === "zh" ? "每行一个要点，标点会保留" : "One item per line; punctuation is preserved"}
+                onChange={event => updateCell(rowIndex, column, event.target.value)}
+                className="min-w-0 w-full resize-y rounded border border-panel-border bg-transparent p-1 text-[11px] text-panel-text-1 outline-none" />
             ) : (
               <input
                 key={column.id}

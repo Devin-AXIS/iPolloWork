@@ -122,7 +122,7 @@
             "columns": {
               "type": "array",
               "minItems": 1,
-              "maxItems": 8,
+              "maxItems": 128,
               "items": {
                 "type": "object",
                 "required": ["id", "label", "type", "role"],
@@ -141,7 +141,12 @@
                     "type": "string",
                     "enum": ["id", "label", "value", "source", "target"]
                   },
-                  "required": { "type": "boolean" }
+                  "required": { "type": "boolean" },
+                  "min": {"type": "number"},
+                  "max": {"type": "number"},
+                  "integer": {"type": "boolean"},
+                  "maxLength": {"type": "integer", "minimum": 1},
+                  "list": {"type": "object", "required": ["maxItems", "itemMaxLength", "separators"], "additionalProperties": false, "properties": {"maxItems": {"type": "integer", "minimum": 0}, "itemMaxLength": {"type": "integer", "minimum": 1}, "separators": {"type": "string", "minLength": 1}}}
                 }
               }
             },
@@ -180,7 +185,11 @@
                 "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
               }
             },
-            "instructions": { "type": "string", "minLength": 1 }
+            "instructions": { "type": "string", "minLength": 1 },
+            "model": {"type": "object", "required": ["type", "title", "duration", "kind", "rows", "vars", "defaults", "lookDefaults"], "description": "Installed component content contract shared by visual forms, JSON, and agents."},
+            "schema": {"type": "object"},
+            "guide": {"type": "string"},
+            "example": {"type": "object"}
           }
         }
       }

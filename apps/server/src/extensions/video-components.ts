@@ -9,9 +9,37 @@ import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperfr
 import { ApiError } from "../errors.js";
 import { importedVideoRegistryRoots, resolveHyperframesRegistryRoot } from "../hyperframes-catalog.js";
 import { resolveWorkspaceFile } from "./storage.js";
+import { uiControlRequest } from "../ui-control-client.js";
+import { hyperframesStudioPort } from "@ipollowork/types/hyperframes";
 
 const componentIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 const videoSourcePathSchema = z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/u);
+export const videoComponentReadInput = z.object({ sourcePath: videoSourcePathSchema, elementId: z.string().min(1).max(160),
+  sourceFile: z.string().min(1).max(512).refine(value => /\.html?$/i.test(value) && !value.startsWith("/") && !value.includes("\\") && !value.split("/").some(part => part === ".." || part === "."), "sourceFile must be a relative HTML path").optional(),
+}).strict();
+export const videoComponentWriteInput = videoComponentReadInput.extend({ revision: z.string().min(1).max(160), data: z.record(z.string(), z.unknown()) }).strict();
+
+/** Native AI entry point: use the same atomic, font-checked write as the component editor. */
+export async function videoComponentContent(workspace: { id: string; path: string }, action: "video_component_read" | "video_component_write", raw: unknown) {
+  const update = action === "video_component_write" ? videoComponentWriteInput.parse(raw) : null;
+  const input = update ?? videoComponentReadInput.parse(raw);
+  resolveWorkspaceFile(workspace.path, input.sourcePath);
+  const project = input.sourcePath.split("/")[1];
+  if (!project) throw new ApiError(400, "invalid_video_project", "Invalid video source path");
+  const ready = await uiControlRequest("/video/ensure-studio", { method: "POST", timeoutMs: 100000,
+    body: { workspaceId: workspace.id, projectId: project } });
+  const studio = z.object({ ok: z.literal(true), port: z.number().int().min(1).max(65_535).optional() }).parse(ready);
+  const port = studio.port ?? hyperframesStudioPort(project);
+  const componentUrl = new URL(`http://127.0.0.1:${port}/api/projects/${encodeURIComponent(project)}/components/${encodeURIComponent(input.elementId)}`);
+  if (input.sourceFile) componentUrl.searchParams.set("sourceFile", input.sourceFile);
+  const response = await fetch(componentUrl, {
+    method: action === "video_component_read" ? "GET" : "PATCH", signal: AbortSignal.timeout(30000),
+    ...(update ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: update.revision, data: update.data }) } : {}),
+  });
+  const output: unknown = await response.json();
+  // Preserve structured paths and 409 conflicts so an agent can correct its request without guessing.
+  return { ok: response.ok, status: response.status, output };
+}
 const videoMotionWindowSchema = z.object({
   start: z.number().nonnegative(),
   end: z.number().positive(),
