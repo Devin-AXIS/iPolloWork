@@ -2,6 +2,7 @@ import {
   ensureEngineWorkspace,
   selectAndInvokeFreeModel,
   assertFreeModelInvocation,
+  openEngineModelDirectory,
 } from "./opencode-zen-models-unified.flow.mjs";
 
 const engines = [
@@ -14,7 +15,40 @@ export default {
   id: "opencode-free-inference",
   title: "Selected free model returns a real reply, not an authentication or quota error",
   kind: "user-facing",
-  steps: engines.map((engine) => ({
+  steps: [
+    ...(engines.some(engine => engine.engineId === 'opencode') ? [{
+      name: 'Switching from Codex defaults to a live free OpenCode model without selecting one',
+      run: async ctx => {
+        await ctx.waitFor('Boolean(window.__ipolloworkControl)');
+        const { id: workspaceId } = await ensureEngineWorkspace(ctx, {
+          project: 'codex', engineId: 'codex-harness', label: 'Codex Harness', name: '免费默认模型切换验证',
+        });
+        await ctx.prove('OpenCode chooses its real free default and returns a reply without a model click', {
+          voiceover: '在 Codex 项目中新建任务，切换 OpenCode 后不手动选择模型，免费默认模型直接回复。',
+          action: async () => {
+            await ctx.navigateHash(`/workspace/${workspaceId}/session`);
+            await ctx.trustedClick('[data-testid="conversation-engine-picker"]');
+            await ctx.clickText('OpenCode', { selector: '[role="option"]' });
+            await ctx.waitFor(`Array.from(document.querySelectorAll('button')).some(b => /切换模型|Change model/.test(b.getAttribute('aria-label') || '') && b.textContent.includes('Big Pickle'))`, { timeoutMs: 70_000 });
+            await selectAndInvokeFreeModel(ctx, { project: 'open', engineId: 'opencode', label: 'OpenCode' }, { model: 'Big Pickle', token: 'OPENCODE_DEFAULT_FREE_OK' });
+          },
+          assert: async () => {
+            await assertFreeModelInvocation(ctx, { label: 'OpenCode' }, 'OPENCODE_DEFAULT_FREE_OK');
+            const execution = await ctx.eval(`(async () => {
+              const parts = location.hash.slice(2).split('/');
+              const info = await window.__IPOLLOWORK_ELECTRON__.invokeDesktop('ipolloworkServerInfo');
+              const response = await fetch(info.baseUrl + '/workspace/' + parts[1] + '/sessions/' + parts[3] + '/snapshot', { headers: { authorization: 'Bearer ' + (info.ownerToken || info.clientToken) } });
+              const body = await response.json();
+              const assistant = body.item?.messages?.find(m => m.info.role === 'assistant')?.info;
+              return { engine: body.item?.session?.engineId, provider: assistant?.providerID, model: assistant?.modelID };
+            })()`, { awaitPromise: true });
+            ctx.assert(execution.engine === 'opencode' && execution.provider === 'opencode' && execution.model === 'big-pickle', `The reply used the wrong engine/model: ${JSON.stringify(execution)}`);
+          },
+          screenshot: { name: 'opencode-default-free-reply', requireText: ['Big Pickle', 'OPENCODE_DEFAULT_FREE_OK'] },
+        });
+      },
+    }] : []),
+    ...engines.map((engine) => ({
     name: `${engine.label} returns a real free-model reply`,
     run: async (ctx) => {
       await ctx.waitFor("Boolean(window.__ipolloworkControl)");
@@ -23,6 +57,10 @@ export default {
       await ctx.navigateHash(`/workspace/${workspace.id}/session`);
       // Route changes replace the composer after its first render.
       await ctx.eval("new Promise((resolve) => setTimeout(resolve, 1200))", { awaitPromise: true });
+      if (engine.engineId === 'opencode') {
+        await openEngineModelDirectory(ctx, engine);
+        await ctx.clickText('MiMo-V2.5 Free', { selector: '[data-slot="command-item"]' });
+      }
       await ctx.waitFor(`Array.from(document.querySelectorAll('button')).some((button) =>
         /切换模型|Change model/.test(button.getAttribute('aria-label') ?? '')
         && button.textContent?.includes('MiMo-V2.5 Free'))`, {
@@ -80,4 +118,5 @@ export default {
       });
     },
   })),
+  ],
 };

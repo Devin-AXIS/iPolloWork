@@ -2907,11 +2907,15 @@ export function SessionPage(props: SessionPageProps) {
       // An explicit browser open must also select a reused tab. Ordinary
       // background state updates intentionally preserve the active plugin.
       void browser.getState?.().then((state) => {
-        if (stopped || !state?.activeTabId || !state.tabs?.length || !props.selectedSessionId) return;
+        if (stopped || !state?.tabs?.length || !props.selectedSessionId) return;
         const store = usePanelTabStore.getState();
         const scoped = browserTabsForSession(state, props.selectedSessionId);
         store.syncBrowserTabs(props.selectedSessionId, scoped.tabs, scoped.activeTabId);
-        if (scoped.activeTabId) store.selectTab(props.selectedSessionId, scoped.activeTabId);
+        const requestedTabId = payload?.tabId ?? scoped.activeTabId;
+        if (requestedTabId && scoped.tabs.some((tab) => tab.id === requestedTabId)) {
+          store.selectTab(props.selectedSessionId, requestedTabId);
+          if (state.activeTabId !== requestedTabId) void browser.selectTab?.(requestedTabId);
+        }
       }).catch((error: unknown) => console.error("Failed to activate browser tab", error));
     });
     const unsubClose = browser.onPanelClosed?.((payload) => {

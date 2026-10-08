@@ -65,6 +65,7 @@ function responseValue(value, questions) {
     const shared = { type: answer.type, confidence: answer.confidence, probabilities: answer.probabilities };
     if (answer.type === 'choice') {
       requireValue(typeof answer.choice === 'string' && levels.includes(answer.choice), invalid);
+      requireValue(answer.probabilities[answer.choice] >= Math.max(...Object.values(answer.probabilities)) - 1e-6, invalid);
       return [id, { ...shared, choice: answer.choice }];
     }
     requireValue(Number.isFinite(answer.score) && answer.score >= 0 && answer.score <= levels.length - 1, invalid);

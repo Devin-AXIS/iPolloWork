@@ -81,7 +81,8 @@ function axValue(value) {
 }
 
 function axProperty(node, name) {
-  return (node?.properties ?? []).find((property) => property?.name === name)?.value?.value;
+  const value = (node?.properties ?? []).find((property) => property?.name === name)?.value?.value;
+  return name === "checked" && ["true", "false"].includes(value) ? value === "true" : value;
 }
 
 function accessibleName(node) {
@@ -235,6 +236,12 @@ function automationMetadataFunction() {
     if (scrollIntoView) this.scrollIntoView?.({ block: "center", inline: "center", behavior: "instant" });
     const tag = this.tagName?.toUpperCase?.() || "";
     const type = this.getAttribute?.("type")?.toLowerCase?.() || "";
+    const selectEntries = tag === "SELECT" ? Array.from(this.options || []).map(option => ({
+      label: String(option.label || option.textContent || "").replace(/\\s+/g, " ").trim(), value: String(option.value || ""),
+      enabled: !option.disabled && !option.parentElement?.disabled,
+    })) : [];
+    const selectLabelCounts = new Map();
+    for (const option of selectEntries) selectLabelCounts.set(option.label, (selectLabelCounts.get(option.label) || 0) + 1);
     const role = this.getAttribute?.("role")?.toLowerCase?.() || "";
     const rect = this.getBoundingClientRect();
     const style = getComputedStyle(this);
@@ -298,6 +305,9 @@ function automationMetadataFunction() {
       disabled: Boolean(this.disabled || this.readOnly || this.getAttribute?.("aria-disabled") === "true"),
       fileInput: tag === "INPUT" && type === "file",
       nativeSelect: tag === "SELECT",
+      selectOptions: selectEntries.filter(option => option.enabled && option.label && option.label.length <= 200 && option.value.length <= 500
+        && selectLabelCounts.get(option.label) === 1).slice(0, 100).map(option => ({ label: option.label, value: option.value })),
+      protectedValue: type === "password",
       imageSrc: tag === "IMG" ? String(this.currentSrc || this.src || "").slice(0, 2048) : null,
       rendered: rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden"
         && style.pointerEvents !== "none",
@@ -428,7 +438,7 @@ function annotationOverlayExpression(annotations) {
     overlay.setAttribute("aria-hidden", "true");
     overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:hidden";
     const stablePixels = document.createElement("style");
-    stablePixels.textContent = "*,*::before,*::after{animation-play-state:paused!important;caret-color:transparent!important;transition:none!important}";
+    stablePixels.textContent = "*,*::before,*::after{animation-play-state:paused!important;caret-color:transparent!important;transition:none!important}#__ipollowork_browser_cursor__{visibility:hidden!important}";
     overlay.appendChild(stablePixels);
     for (const item of ${JSON.stringify(annotations)}) {
       const box = document.createElement("div");
@@ -558,7 +568,12 @@ export function createBrowserRuntime({
       backendNodeId,
       inferred,
       name: boundedText(accessibleName(node), MAX_EXPECTED_NAME),
+      decisionSupportedName: normalizeText(accessibleName(node)).length <= MAX_EXPECTED_NAME,
       role: String(axValue(node.role) ?? "unknown"),
+      ...(axProperty(node, "protected") === true ? {} : { value: boundedText(axValue(node.value), 300) }),
+      ...Object.fromEntries(["checked", "disabled", "expanded", "selected"].flatMap(property => (
+        axProperty(node, property) === undefined ? [] : [[property, axProperty(node, property)]]
+      ))),
     });
     return ref;
   }
@@ -675,7 +690,24 @@ export function createBrowserRuntime({
         if (metadata && !(metadata.rendered ?? metadata.visible)) {
           if (index >= 0) lines.splice(index, 1);
           state.refs.delete(ref);
-        } else if (index >= 0 && metadata?.context) lines[index] += ` context=${quote(metadata.context)}`;
+        } else {
+          if (metadata) {
+            Object.assign(entry, { buttonLike: metadata.buttonLike, writable: metadata.writable, nativeSelect: metadata.nativeSelect, options: metadata.selectOptions,
+              disabled: entry.disabled === true || metadata.disabled, rendered: metadata.rendered ?? metadata.visible });
+            if (metadata.protectedValue) delete entry.value;
+          }
+          if (index >= 0 && metadata?.context) lines[index] += ` context=${quote(metadata.context)}`;
+        }
+      }
+
+      if (payload.includeControls === true) {
+        for (const entry of state.refs.values()) {
+          if (WRITABLE_ROLES.has(entry.role)) continue;
+          const objectId = await resolvedNode(debuggerApi, entry).catch(() => null);
+          const metadata = objectId ? await inspectElement(debuggerApi, objectId).catch(() => null) : null;
+          Object.assign(entry, { buttonLike: Boolean(metadata?.buttonLike), checkable: Boolean(metadata?.checkable), nativeSelect: Boolean(metadata?.nativeSelect), options: metadata?.selectOptions,
+            disabled: entry.disabled === true || Boolean(metadata?.disabled), rendered: Boolean(metadata?.rendered ?? metadata?.visible) });
+        }
       }
 
       // Supplement file inputs, rich editors and explicit click controls omitted
@@ -717,6 +749,8 @@ export function createBrowserRuntime({
           role: { value: editor ? "textbox" : clickControl ? "button" : "fileinput" },
         };
         const ref = referenceFor(state, pseudoNode, { inferred: editor || clickControl });
+        if (metadata && ref) Object.assign(state.refs.get(ref), { buttonLike: metadata.buttonLike, writable: metadata.writable,
+          rendered: metadata.rendered ?? metadata.visible, disabled: metadata.disabled });
         controlLines.push(snapshotLine(pseudoNode, ref, 1)
           + (clickControl && metadata.context && metadata.context !== metadata.text ? ` context=${quote(metadata.context)}` : ""));
         supplementalControls += 1;
@@ -766,6 +800,17 @@ export function createBrowserRuntime({
         ...(rendered.delta ? { delta: rendered.delta } : {}),
         ...(imageSelector ? { imageUrl } : {}),
         elementCount: state.refs.size,
+        ...(payload.includeControls === true ? { controls: [...state.refs].map(([ref, entry]) => ({
+          ref, role: entry.role, name: entry.name,
+          ...Object.fromEntries(["value", "checked", "disabled", "expanded", "selected"].flatMap(key => (
+            entry[key] === undefined ? [] : [[key, entry[key]]]
+          ))),
+          operations: entry.disabled || entry.rendered === false || !entry.decisionSupportedName ? [] : entry.nativeSelect && entry.name ? ["select"]
+            : entry.writable || (entry.inferred && entry.role === "textbox") ? ["fill"]
+            : CHECKABLE_ROLES.has(entry.role) && entry.name && entry.checkable && typeof entry.checked === "boolean" ? (RADIO_ROLES.has(entry.role) && entry.checked === true ? [] : ["check"])
+            : entry.buttonLike && entry.name && !CHECKABLE_ROLES.has(entry.role) ? ["click"] : [],
+          ...(entry.nativeSelect ? { options: entry.options ?? [] } : {}),
+        })) } : {}),
         truncated,
         metrics: {
           elapsedMs,
@@ -999,7 +1044,7 @@ export function createBrowserRuntime({
   function requireExpectedName(action, current, actionName) {
     const rawExpectedName = typeof action.expectedName === "string" ? action.expectedName.trim() : "";
     if (!rawExpectedName || rawExpectedName.length > MAX_EXPECTED_NAME) {
-      throw new Error(`Browser ${actionName} requires the short exact accessible name from the latest snapshot.`);
+      throw new Error(`Browser ${actionName} requires expectedName: the short exact accessible name from the latest snapshot.`);
     }
     const expectedName = boundedText(rawExpectedName, MAX_EXPECTED_NAME);
     if (normalizeText(current.name) !== normalizeText(expectedName)) {
@@ -1015,6 +1060,11 @@ export function createBrowserRuntime({
     tab.view.webContents.focus();
   }
 
+  function showActionCursor(tab, point) {
+    assertAgentControl(tab);
+    tab.view.webContents.send?.("ipollowork:browser:cursor", { x: Math.round(point.x), y: Math.round(point.y) });
+  }
+
   async function sendPointerClick(tab, metadata, debuggerApi) {
     focusBrowserTarget(tab);
     const point = { x: Math.round(metadata.x), y: Math.round(metadata.y) };
@@ -1022,11 +1072,13 @@ export function createBrowserRuntime({
       await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
       await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
       await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
+      showActionCursor(tab, point);
       return;
     }
     tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
     tab.view.webContents.sendInputEvent({ type: "mouseDown", ...point, button: "left", clickCount: 1 });
     tab.view.webContents.sendInputEvent({ type: "mouseUp", ...point, button: "left", clickCount: 1 });
+    showActionCursor(tab, point);
   }
 
   async function interceptFileChooser(debuggerApi, trigger, cleanupDebuggerApi) {
@@ -1261,6 +1313,7 @@ export function createBrowserRuntime({
       }
       focusBrowserTarget(tab);
       await debuggerCommand(debuggerApi, "DOM.focus", { backendNodeId: entry.backendNodeId });
+      showActionCursor(tab, metadata);
       const eventKey = key === "Space" ? " " : key;
       const code = key === "Space" ? "Space" : "Enter";
       const windowsVirtualKeyCode = key === "Space" ? 32 : 13;
@@ -1308,6 +1361,7 @@ export function createBrowserRuntime({
         tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
         tab.view.webContents.sendInputEvent({ type: "mouseWheel", ...wheel });
       }
+      showActionCursor(tab, point);
       state.latestSnapshotId = null;
       return { type: "scroll", direction, amount };
     }
@@ -1382,14 +1436,15 @@ export function createBrowserRuntime({
     }
 
     if (action.type === "fill") {
+      if (typeof action.value !== "string") throw new Error("Browser fill requires an explicit string value; omit no field value.");
       if (!WRITABLE_ROLES.has(current.role) || !metadata.writable) {
         throw new Error("Browser fill target is not a writable field.");
       }
-      const value = typeof action.value === "string" ? action.value : "";
+      const value = action.value;
       if (value.length > MAX_FILL_TEXT) throw new Error("Browser fill text is too long.");
       focusBrowserTarget(tab);
       await debuggerCommand(debuggerApi, "DOM.focus", { backendNodeId: entry.backendNodeId });
-      assertAgentControl(tab);
+      showActionCursor(tab, metadata);
       if (tab.background) {
         await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: platform === "darwin" ? 4 : 2, commands: ["selectAll"] });
         await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA" });
@@ -1407,6 +1462,7 @@ export function createBrowserRuntime({
       const point = { x: Math.round(metadata.x), y: Math.round(metadata.y) };
       if (tab.background) await debuggerCommand(debuggerApi, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
       else tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
+      showActionCursor(tab, point);
       state.latestSnapshotId = null;
       return { type: "hover", ref, name: current.name };
     }
@@ -1430,6 +1486,7 @@ export function createBrowserRuntime({
         const reason = selected?.reason === "ambiguous" ? "is ambiguous" : "was not found";
         throw new Error(`Browser select option ${reason}. Take a new snapshot and use an exact option label or value.`);
       }
+      showActionCursor(tab, metadata);
       if (selected.changed) state.latestSnapshotId = null;
       return {
         type: "select",
@@ -1442,6 +1499,7 @@ export function createBrowserRuntime({
     }
 
     if (action.type === "check") {
+      if (typeof current.checked !== "boolean") throw new Error("Browser check requires an observed true/false state; mixed controls cannot be toggled safely.");
       requireExpectedName(action, current, "check");
       if (!CHECKABLE_ROLES.has(current.role) || !metadata.checkable) {
         throw new Error("Browser check target is not a checkbox, radio, or switch.");
