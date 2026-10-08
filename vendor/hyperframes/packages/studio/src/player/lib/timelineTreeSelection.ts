@@ -2,23 +2,6 @@ import type { ClipManifestClip } from "./playbackTypes";
 import type { DomClipChild, TimelineElement } from "../store/playerStore";
 import { buildTimelineElementKey } from "./timelineElementHelpers";
 
-export function collectTimelineAncestorIds(
-  elementId: string,
-  parentMap: ReadonlyMap<string, string>,
-): string[] {
-  const ancestors: string[] = [];
-  const visited = new Set([elementId]);
-  let current = elementId;
-  while (true) {
-    const parent = parentMap.get(current);
-    if (!parent || visited.has(parent)) break;
-    ancestors.unshift(parent);
-    visited.add(parent);
-    current = parent;
-  }
-  return ancestors;
-}
-
 export function resolveTimelineTreeSelectionKey(input: {
   elementId?: string;
   hfId?: string;

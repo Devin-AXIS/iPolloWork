@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultLogger } from "../logger.js";
@@ -543,17 +543,18 @@ async function buildFontFaceCss(
     if (options.allowSystemFontCapture) {
       const variants = locateSystemFontVariants(originalCaseFamily);
       if (variants.length > 0) {
-        let totalBytes = 0;
-        for (const variant of variants) {
-          const fontBuffer = readFileSync(variant.path);
-          totalBytes += fontBuffer.length;
-          const dataUri = await fontToDataUri(fontBuffer, variant.format);
-          rules.push(buildFontFaceRule(originalCaseFamily, dataUri, variant.weight, variant.style));
-        }
+        const totalBytes = variants.reduce((total, variant) => total + statSync(variant.path).size, 0);
         if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
           defaultLogger.warn(
-            `[Compiler] System font "${originalCaseFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${variants.length} variant(s)) — embedding anyway. Consider font subsetting for production.`,
+            `[Compiler] Skipping system font "${originalCaseFamily}" (${(totalBytes / 1024 / 1024).toFixed(1)} MB); embedding it would make the preview too large.`,
           );
+          unresolved.push(originalCaseFamily);
+          continue;
+        }
+        for (const variant of variants) {
+          const fontBuffer = readFileSync(variant.path);
+          const dataUri = await fontToDataUri(fontBuffer, variant.format);
+          rules.push(buildFontFaceRule(originalCaseFamily, dataUri, variant.weight, variant.style));
         }
         defaultLogger.info(
           `[Compiler] Embedded system font "${originalCaseFamily}" — ${variants.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,

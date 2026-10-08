@@ -86,6 +86,39 @@ async function mountHandlers(options: { readHost?: () => Promise<string>; writeG
 }
 
 describe("selected component variables after source history restore", () => {
+  it.each(["timeline", "canvas"] as const)(
+    "selects and seeks to a component inserted by %s drop",
+    async (surface) => {
+      const installed = {
+        block: catalog[0],
+        compositionPath: "compositions/stage-radial.html",
+        hostCompositionPath: "index.html",
+        insertedStart: 2.37,
+        insertedElementId: "stage-radial",
+        insertedElement: elements[0],
+      };
+      vi.spyOn(blockInstaller, "addBlockToProject").mockResolvedValue(installed);
+      const harness = await mountHandlers();
+      await act(async () => usePlayerStore.getState().clearSelection());
+
+      await act(async () => {
+        if (surface === "timeline") {
+          harness.result().handleTimelineBlockDrop("stage-radial", { start: 2.37, track: 4 });
+        } else {
+          harness.result().handlePreviewBlockDrop("stage-radial", { left: 100, top: 80 });
+        }
+        await Promise.resolve();
+      });
+
+      const state = usePlayerStore.getState();
+      expect(state.selectedElementId).toBe("radial-runtime");
+      expect(state.requestedSeekTime).toBe(7.37);
+      expect(state.clipRevealRequest?.elementId).toBe("radial-runtime");
+      expect(harness.clearDomSelection).toHaveBeenCalledOnce();
+      expect(state.expandedTimelineElementIds.size).toBe(0);
+    },
+  );
+
   it("clears variables when Redo removes the selected component from the timeline", async () => {
     const harness = await mountHandlers();
     expect(harness.result().activeBlockParams?.variableValues).toEqual({ title: "Saved title" });

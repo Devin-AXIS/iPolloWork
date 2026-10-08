@@ -173,6 +173,34 @@ export function useBlockHandlers({
     [setRightCollapsed, setRightPanelTab],
   );
 
+  const selectInstalledBlock = useCallback(
+    (result: Awaited<ReturnType<typeof addBlockToProject>>) => {
+      if (!result) return;
+      const insertedDuration =
+        "duration" in result.block && typeof result.block.duration === "number"
+          ? result.block.duration
+          : 0;
+      const previewTime = resolveTimelineSelectionSeekTime(result.insertedStart, {
+        id: result.insertedElementId,
+        start: result.insertedStart,
+        duration: insertedDuration,
+        compositionSrc: result.compositionPath,
+      });
+      const playerState = usePlayerStore.getState();
+      const insertedSelectionId = result.insertedElement.key ?? result.insertedElement.id;
+      if (!playerState.elements.some((element) => (element.key ?? element.id) === insertedSelectionId)) {
+        playerState.setElements([...playerState.elements, result.insertedElement]);
+      }
+      clearDomSelection();
+      pendingInsertedSelectionRef.current = result.insertedElementId;
+      playerState.setSelectedElementId(insertedSelectionId);
+      playerState.requestClipReveal(insertedSelectionId);
+      playerState.requestSeek(previewTime ?? result.insertedStart);
+      activateInstalledBlock(result);
+    },
+    [activateInstalledBlock, clearDomSelection],
+  );
+
   useEffect(() => {
     const insertedElementId = pendingInsertedSelectionRef.current;
     if (!insertedElementId) return;
@@ -287,34 +315,10 @@ export function useBlockHandlers({
         }),
       );
       if (result === null) return false;
-      const insertedDuration =
-        "duration" in result.block && typeof result.block.duration === "number"
-          ? result.block.duration
-          : 0;
-      const previewTime = resolveTimelineSelectionSeekTime(result.insertedStart, {
-        id: result.insertedElementId,
-        start: result.insertedStart,
-        duration: insertedDuration,
-        compositionSrc: result.compositionPath,
-      });
-      const playerState = usePlayerStore.getState();
-      const insertedSelectionId = result.insertedElement.key ?? result.insertedElement.id;
-      if (
-        !playerState.elements.some(
-          (element) => (element.key ?? element.id) === insertedSelectionId,
-        )
-      ) {
-        playerState.setElements([...playerState.elements, result.insertedElement]);
-      }
-      clearDomSelection();
-      pendingInsertedSelectionRef.current = result.insertedElementId;
-      playerState.setSelectedElementId(insertedSelectionId);
-      playerState.requestClipReveal(insertedSelectionId);
-      playerState.requestSeek(previewTime ?? result.insertedStart);
-      activateInstalledBlock(result);
+      selectInstalledBlock(result);
       return true;
     },
-    [projectId, blockCtx, runBlockInstall, activateInstalledBlock, clearDomSelection],
+    [projectId, blockCtx, runBlockInstall, selectInstalledBlock],
   );
 
   const handleBlockVariablesChange = useCallback(
@@ -411,9 +415,11 @@ export function useBlockHandlers({
           ...blockCtx,
           currentTime: usePlayerStore.getState().currentTime,
         }),
-      ).then(activateInstalledBlock);
+      ).then(selectInstalledBlock).catch((error: unknown) => {
+        blockCtx.showToast(error instanceof Error ? error.message : "Failed to add component", "error");
+      });
     },
-    [projectId, blockCtx, runBlockInstall, activateInstalledBlock],
+    [projectId, blockCtx, runBlockInstall, selectInstalledBlock],
   );
 
   const handlePreviewBlockDrop = useCallback(
@@ -427,9 +433,11 @@ export function useBlockHandlers({
           ...blockCtx,
           currentTime: usePlayerStore.getState().currentTime,
         }),
-      ).then(activateInstalledBlock);
+      ).then(selectInstalledBlock).catch((error: unknown) => {
+        blockCtx.showToast(error instanceof Error ? error.message : "Failed to add component", "error");
+      });
     },
-    [projectId, blockCtx, runBlockInstall, activateInstalledBlock],
+    [projectId, blockCtx, runBlockInstall, selectInstalledBlock],
   );
 
   return {

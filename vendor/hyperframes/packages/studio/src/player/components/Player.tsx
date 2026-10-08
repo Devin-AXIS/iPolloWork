@@ -237,10 +237,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const playerRef = useRef<HyperframesPlayerElement | null>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [compositionLoading, setCompositionLoading] = useState(true);
-    const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
+    const [compositionError, setCompositionError] = useState(false);
+    const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(false);
     const previousRefreshTokenRef = useRef(refreshToken);
 
     // eslint-disable-next-line no-restricted-syntax
@@ -280,6 +282,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
+        playerRef.current = player;
         const srcUrl = new URL(
           directUrl || `/api/projects/${projectId}/preview`,
           window.location.origin,
@@ -338,6 +341,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         let deferredReadyHandled = false;
         const handleReady = () => {
           setCompositionLoading(false);
+          setCompositionError(false);
           if (!deferReveal) return;
           if (deferredReadyHandled) return;
           deferredReadyHandled = true;
@@ -378,6 +382,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         };
         const handleError = () => {
           setCompositionLoading(false);
+          setCompositionError(true);
           onError?.();
         };
         player.addEventListener("ready", handleReady);
@@ -450,6 +455,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       return () => {
         canceled = true;
         cleanup?.();
+        playerRef.current = null;
       };
     });
 
@@ -490,6 +496,32 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           </div>
         )}
         {showRefreshOverlay && <CompositionRefreshLoadingOverlay />}
+        {compositionError && (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-neutral-950 text-center text-sm text-neutral-200"
+            role="alert"
+            data-testid="composition-error-overlay"
+          >
+            <p>Preview could not load.</p>
+            <button
+              type="button"
+              className="rounded border border-neutral-600 px-3 py-1.5 hover:border-neutral-400"
+              onClick={() => {
+                const player = playerRef.current;
+                const src = player?.getAttribute("src");
+                if (!player || !src) return;
+                const url = new URL(src, window.location.origin);
+                url.searchParams.set("_hfRetry", String(Date.now()));
+                setCompositionError(false);
+                setCompositionLoading(true);
+                setCompositionOverlayDeferred(false);
+                player.setAttribute("src", `${url.pathname}${url.search}`);
+              }}
+            >
+              Retry preview
+            </button>
+          </div>
+        )}
       </div>
     );
   },
