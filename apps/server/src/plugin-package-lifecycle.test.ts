@@ -1033,7 +1033,7 @@ describe("plugin package lifecycle", () => {
     const removedSkills = previousVersion === "0.3.10"
       ? ["hyperframes", "hyperframes-animation", "hyperframes-cli", "hyperframes-core", "hyperframes-creative", "hyperframes-keyframes", "hyperframes-registry", "media-use", "product-launch-video"]
       : [];
-    const specialistSkills = ["ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack"];
+    const specialistSkills = ["ipollowork-video-template-authoring", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack"];
     await cp(videoRoot, legacyRoot, { recursive: true });
     const manifestPath = join(legacyRoot, "ipollowork.plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -1110,7 +1110,7 @@ describe("plugin package lifecycle", () => {
       ]));
       if (!customizedSkill) {
         expect(result.items.find((item: { pluginId: string }) => item.pluginId === "video-agent")
-          .manifest.resources.filter((resource: { type: string }) => resource.type === "skill")).toHaveLength(5);
+          .manifest.resources.filter((resource: { type: string }) => resource.type === "skill")).toHaveLength(6);
       }
       expect(await readFile(videoEntry, "utf8")).toBe(existingVideo);
       expect(await readFile(accountPath, "utf8")).toBe(accountState);

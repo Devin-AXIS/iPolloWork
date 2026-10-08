@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isComponentContentModel } from "@hyperframes/core/registry";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -62,7 +63,8 @@ function isManifest(value: unknown): value is BlockItem {
   const visual = value.visualComponent;
   if (!object(visual) || visual.version !== 1 || visual.themeMode !== "inherit"
     || !resolveVisualComponentCategory(visual.category) || !Array.isArray(visual.surfaces) || !visual.surfaces.includes("video")) return false;
-  if (visual.ai !== undefined && (!object(visual.ai) || !Array.isArray(visual.ai.slots) || !visual.ai.slots.every(text))) return false;
+  if (visual.ai !== undefined && (!object(visual.ai) || !Array.isArray(visual.ai.slots) || !visual.ai.slots.every(text)
+    || (visual.ai.model !== undefined && !isComponentContentModel(visual.ai.model)))) return false;
   if (visual.data !== undefined) {
     const data = visual.data;
     if (!object(data) || data.version !== 1 || !text(data.rowId) || !["replace", "override"].includes(String(data.mode))
@@ -73,6 +75,7 @@ function isManifest(value: unknown): value is BlockItem {
       || !Array.isArray(data.columns) || !data.columns.length || !data.columns.every(column => object(column) && text(column.id) && text(column.label)
         && (column.labelZh === undefined || typeof column.labelZh === "string")
         && (column.format === undefined || column.format === "image")
+        && (column.integer === undefined || typeof column.integer === "boolean" && column.type === "number")
         && [column.min, column.max].every(bound => bound === undefined || (typeof bound === "number" && Number.isFinite(bound)))
         && (column.type === "number" || (column.min === undefined && column.max === undefined))
         && !(typeof column.min === "number" && typeof column.max === "number" && column.min > column.max)

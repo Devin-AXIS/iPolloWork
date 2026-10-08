@@ -168,3 +168,28 @@ jobs:
 
       - name: Run e2e tests
         run: pnpm --filter @ipollowork/app test:e2e
+
+  business-components:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install HyperFrames dependencies
+        working-directory: vendor/hyperframes
+        run: bun install --frozen-lockfile
+      - name: Build and validate all 35 business components
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node examples/stage-diagrams/build.mjs
+      - name: Upload the five current component packs and AI adapter
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage-diagrams-4.0.0
+          path: examples/stage-diagrams/dist/hyperframes/
+          if-no-files-found: error

@@ -43,7 +43,7 @@ import {
   type BackgroundRemovalRender,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
-import { getElementScreenshotClip, reviewVideoRuntime } from "@hyperframes/studio-server/screenshot-clip";
+import { getElementScreenshotClip, reviewVideoRuntime, reviewComponentVariables } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import type { RegistryItem } from "@hyperframes/core";
@@ -721,6 +721,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         });
         await new Promise((r) => setTimeout(r, 200));
         await reapplyStudioManualEditsToThumbnailPage(page);
+        if (opts.componentVariables) return await withThumbnailTimeout(page.evaluate(reviewComponentVariables, opts.componentVariables), 15_000, "Timed out validating component content");
         if (opts.runtimeReview) return await withThumbnailTimeout(page.evaluate(reviewVideoRuntime), 30_000, "Timed out inspecting executed video timing and layout");
         let clip: ScreenshotClip | undefined;
         if (opts.selector) {

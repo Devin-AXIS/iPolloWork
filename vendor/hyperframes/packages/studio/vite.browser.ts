@@ -9,6 +9,7 @@ import {
   readStudioDevMotionManifestContent,
 } from "./vite.studioMotion";
 import { seekThumbnailPreview } from "./vite.thumbnail";
+import { reviewComponentVariables, type VideoRuntimeReview } from "@hyperframes/studio-server/screenshot-clip";
 
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
 
@@ -109,12 +110,25 @@ export interface GenerateThumbnailOptions {
   previewUrl: string;
   width: number;
   height: number;
-  format: "jpeg" | "png";
+  format?: "jpeg" | "png";
   selector?: string;
   selectorIndex?: number;
+  componentVariables?: { elementId: string; values: Record<string, string | number | boolean> };
 }
 
-export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise<Buffer | null> {
+export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise<Buffer | VideoRuntimeReview | null> {
+  if (opts.componentVariables) {
+    const browser = await getSharedBrowser();
+    if (!browser) return null;
+    const page = await browser.newPage();
+    try {
+      await page.setViewport({ width: opts.width, height: opts.height });
+      await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+      await page.waitForFunction(() => !!Reflect.get(window, "__timelines"), { timeout: 5000 });
+      await applyStudioRenderBodyScriptsToThumbnailPage(page, opts.project.dir, opts.compPath);
+      return await page.evaluate(reviewComponentVariables, opts.componentVariables);
+    } finally { await page.close(); }
+  }
   const selectorKey = opts.selector
     ? `_${opts.selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}_${opts.selectorIndex ?? 0}`
     : "";

@@ -2,7 +2,7 @@
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RegistryVariable } from "@hyperframes/core/registry";
+import type { ComponentContentModel, ComponentVariableValues, RegistryVariable } from "@hyperframes/core/registry";
 import { BlockParamsPanel } from "./BlockParamsPanel";
 import { PROPERTY_INPUT_DEBOUNCE_MS } from "./propertyPanelPrimitives";
 
@@ -53,6 +53,42 @@ describe("BlockParamsPanel", () => {
     vi.useRealTimers();
     flushSync(() => root.unmount());
     container.remove();
+  });
+
+  it("validates JSON drafts, batches a valid edit, and blocks a stale draft", async () => {
+    const model: ComponentContentModel = {
+      type: "mindmap", title: "Map", kind: "category-value", duration: 10,
+      rows: { variable: "rows", field: "branches", label: "Branches", min: 2, max: 3, columns: [{ id: "label", required: true, maxLength: 12 }] },
+      vars: [], defaults: { rows: JSON.stringify({ version: 1, kind: "category-value", rows: [{ id: "a", label: "Alpha" }, { id: "b", label: "Beta" }] }),
+        layout: "full", skin: "keynote", camera: "auto", motionCueTimes: "{}" }, lookDefaults: { layout: "full", skin: "keynote", camera: "auto" },
+    };
+    const onApply = vi.fn(async (_values: ComponentVariableValues, _expected: ComponentVariableValues) => undefined), onSingle = vi.fn(async () => undefined);
+    const render = (values: ComponentVariableValues = {}) => root.render(<BlockParamsPanel blockTitle="Map" params={[]}
+      variables={[]} variableValues={values} visualComponent={{ version: 1, category: "business", surfaces: ["video"], themeMode: "inherit", ai: { slots: ["content"], model } }}
+      onVariablesChange={onApply} onVariableChange={onSingle} onBack={vi.fn()} />);
+    flushSync(() => render());
+    const jsonTab = [...container.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find(button => button.textContent === "JSON");
+    flushSync(() => jsonTab?.click());
+    const editor = container.querySelector<HTMLTextAreaElement>('[data-testid="component-json-editor"]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    if (!editor || !setter) throw Error("JSON editor missing");
+    const original = editor.value;
+    const edit = (value: string) => flushSync(() => { setter.call(editor, value); editor.dispatchEvent(new Event("input", { bubbles: true })); });
+    edit('{"content":{"unknown":true}}');
+    const apply = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Apply JSON");
+    expect(apply?.disabled).toBe(true); expect(container.querySelector('[role="alert"]')?.textContent).toContain("unknown");
+    expect(onApply).not.toHaveBeenCalled(); expect(onSingle).not.toHaveBeenCalled();
+    edit(original.replace("Alpha", "Changed")); flushSync(() => apply?.click());
+    await vi.waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(onApply.mock.calls[0]?.[0].rows)).rows[0].label).toBe("Changed");
+    expect(onSingle).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(apply?.textContent).toBe("Apply JSON"));
+    flushSync(() => render(onApply.mock.calls[0]?.[0]));
+    await vi.waitFor(() => expect(editor.value).toContain("Changed"));
+    edit(editor.value.replace("Changed", "Draft"));
+    flushSync(() => render({ rows: String(model.defaults.rows).replace("Alpha", "External") }));
+    expect(apply?.disabled).toBe(true); expect(container.textContent).toContain("component changed");
+    expect(editor.value).toContain("Draft");
   });
 
   it("renders component variables with the shared flat Design form controls", () => {

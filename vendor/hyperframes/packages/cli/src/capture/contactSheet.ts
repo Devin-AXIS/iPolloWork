@@ -5,7 +5,7 @@
  * Saves 50-65% tokens vs. AI agents reading images individually.
  */
 
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import { readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { join, extname, basename, dirname } from "node:path";
 
@@ -57,7 +57,7 @@ export async function createContactSheet(
   const totalW = cols * cellW + (cols + 1) * padding;
   const totalH = rows * (cellH + labelH) + (rows + 1) * padding;
 
-  const overlays: sharp.OverlayOptions[] = [];
+  const overlays: OverlayOptions[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const col = i % cols;

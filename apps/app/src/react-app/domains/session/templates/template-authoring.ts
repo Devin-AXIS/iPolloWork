@@ -18,9 +18,12 @@ export function templateAuthoringTypeLabel(category: TemplateCategory, pptxCompa
 
 export function templateAuthoringKickoff(category: TemplateCategory, pptxCompatibility?: PptxCompatibility) {
   const label = templateAuthoringTypeLabel(category, pptxCompatibility);
+  const pluginWorkflow = category === "video"
+    ? " The Video plugin-owned `ipollowork-video-template-authoring` Skill is required: load and follow it before editing any file. If that Skill is unavailable, stop and explain that iPollo Video must be installed or enabled; never replace it with a generic static HTML fallback."
+    : "";
   return {
     text: `创建一个${label}模板`,
-    instruction: `This is the first turn of a ${label} reusable-template authoring session. A minimal valid project already exists. Follow the injected authoring contract and its owning Skill.`,
+    instruction: `This is the first turn of a ${label} reusable-template authoring session. A minimal valid project already exists. Follow the injected authoring contract and its owning Skill.${pluginWorkflow}`,
   };
 }
 
@@ -37,7 +40,8 @@ export function templateTypeRulesInstruction(category: TemplateCategory): string
 function surfaceRules(snapshot: TemplateSessionSnapshot) {
   const manifest = snapshot.manifest;
   if (manifest.surface === "video") {
-    return `- Edit ${snapshot.state.entry} as one HyperFrames composition.
+    return `- The Video plugin-owned ipollowork-video-template-authoring Skill is mandatory for this session. If it cannot be loaded, stop instead of producing a generic fallback.
+- Edit ${snapshot.state.entry} as one HyperFrames composition.
 - Keep data-composition-id, width, height, duration, tracks, clips, and data-composition-variables valid.
 - Every manifest content variable must match one declared HyperFrames variable, with a deterministic default.
 - Include the local GSAP runtime and register one paused GSAP timeline in window.__timelines, with visible motivated timeline motion.

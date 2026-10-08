@@ -1,5 +1,6 @@
 import type { CompositionVariable } from "../core.types";
 import type { RegistryVisualComponentDataContract } from "./componentData";
+import type { ComponentContentModel, ComponentContentSchema } from "./componentContent";
 
 // The `enum` arrays in `packages/core/schemas/registry*.json` must match
 // `ITEM_TYPES` / `FILE_TYPES` below — `types.test.ts` is the drift guard.
@@ -81,6 +82,11 @@ export interface RegistryVisualComponentAi {
   slots: string[];
   /** Guardrails supplied to an Agent together with the selected component. */
   instructions?: string;
+  /** One lossless projection of persisted variables for UI and agent editing. */
+  model?: ComponentContentModel;
+  schema?: ComponentContentSchema;
+  guide?: string;
+  example?: Record<string, unknown>;
 }
 
 /** Optional metadata that promotes a normal registry item into Studio's component library. */

@@ -12,6 +12,9 @@ import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import {
   formatVisualComponentDataForAi,
+  toJSON,
+  componentContentSchema,
+  componentContentGuide,
   type BlockParam,
   type RegistryVariable,
   type RegistryVisualComponent,
@@ -87,9 +90,11 @@ export interface StudioRightPanelProps {
     variableValues: Record<string, string | number | boolean>;
     visualComponent?: RegistryVisualComponent;
     insertedElementId: string;
+    hostCompositionPath: string;
   } | null;
   onBackFromBlockParams?: () => void;
   onBlockVariableChange?: (variableId: string, value: string | number | boolean) => Promise<void>;
+  onBlockVariablesChange?: (values: Record<string, string | number | boolean>, expected: Record<string, string | number | boolean>) => Promise<void>;
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
@@ -128,6 +133,7 @@ export function StudioRightPanel({
   activeBlockParams,
   onBackFromBlockParams,
   onBlockVariableChange,
+  onBlockVariablesChange,
   recordingState,
   recordingDuration,
   onToggleRecording,
@@ -650,13 +656,14 @@ export function StudioRightPanel({
               >
                 <div key={rightPanelTab} className="h-full min-h-0 min-w-0 overflow-hidden">
                   {rightPanelTab === "block-params" && activeBlockParams ? (
-                    <BlockParamsPanel
+                    <BlockParamsPanel key={activeBlockParams.insertedElementId}
                       blockTitle={activeBlockParams.blockTitle}
                       params={activeBlockParams.params}
                       variables={activeBlockParams.variables}
                       variableValues={activeBlockParams.variableValues}
                       visualComponent={activeBlockParams.visualComponent}
                       onVariableChange={onBlockVariableChange ?? (async () => {})}
+                      onVariablesChange={onBlockVariablesChange}
                       onBack={onBackFromBlockParams ?? (() => {})}
                     />
                   ) : componentsPanelActive ? (
@@ -710,6 +717,14 @@ function componentSemanticContext(
     return undefined;
   }
   const contract = activeBlockParams.visualComponent?.data;
+  const model = activeBlockParams.visualComponent?.ai?.model;
+  if (model) {
+    const values = { ...model.defaults, ...Object.fromEntries(activeBlockParams.variables.map(variable => [variable.id, variable.default])), ...activeBlockParams.variableValues };
+    try { return JSON.stringify({ elementId: activeBlockParams.insertedElementId, sourceFile: activeBlockParams.hostCompositionPath,
+      data: toJSON(model, values), schema: componentContentSchema(model), guide: componentContentGuide(model),
+      editing: "Use media.video_component_read with this sourceFile and elementId, then media.video_component_write with the same target, returned revision and data object." }, null, 2); }
+    catch { return undefined; }
+  }
   if (!contract) return undefined;
   const variable = activeBlockParams.variables.find(
     (candidate) => candidate.id === contract.binding.variable,
