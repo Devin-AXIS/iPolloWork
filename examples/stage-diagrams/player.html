@@ -107,9 +107,12 @@
     if (patch.theme || patch.palette) applyDemoTheme();
     if (patch.copy) copy = patch.copy;
     if (patch.lang || patch.copy) localize(patch.lang || language);
-    if (patch.camera) values.camera = patch.camera;
-    if (patch.skin) values.skin = patch.skin;
-    if (patch.layout) values.layout = patch.layout;
+    // Gallery-wide choices reach every diagram; one a diagram does not offer (聚焦 on a diagram without a path)
+    // falls back to that diagram's default instead of failing its validation.
+    const option = (id, v) => { const d = declared.find(x => x.id === id); return !d || !d.options || d.options.some(o => o.value === v) ? v : defaults[id]; };
+    if (patch.camera) values.camera = option('camera', patch.camera);
+    if (patch.skin) values.skin = option('skin', patch.skin);
+    if (patch.layout) values.layout = option('layout', patch.layout);
     // Raw variable values (tests and tools): applied after localisation, exactly as a host would set them.
     if (patch.values) Object.assign(values, patch.values);
     listeners.forEach(listener => listener({ ...values }));

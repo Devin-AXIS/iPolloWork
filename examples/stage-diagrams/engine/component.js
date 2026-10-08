@@ -35,7 +35,13 @@
     const texts = r.columns.filter(c => (c.type || 'string') === 'string' && !c.icon && !c.bool && !c.level && !c.options && !String(c.field || '').includes('.') && (c.role === 'label' || !c.required));
     const label = texts.find(c => c.role === 'label') || texts[0], room = c => c.list ? c.list.maxItems * c.list.itemMaxLength : c.maxLength || 0;
     const desc = texts.filter(c => c !== label).sort((a, b) => room(b) - room(a))[0];
-    const say = (c, row) => (c && row[c.id] != null ? String(row[c.id]).split('\n').map(x => x.trim()).filter(Boolean).join(' · ') : '');
+    // List cells are JSON arrays of text (older values: one item per line); either reads as "a · b · c".
+    const items = v => { if (Array.isArray(v)) return v; const t = String(v).trim(); if (t.startsWith('[')) { try { const j = JSON.parse(t); if (Array.isArray(j)) return j; } catch {} } return t.split('\n'); };
+    const say = (c, row) => {
+      if (!c || row[c.id] == null) return '';
+      if (!c.list) return String(row[c.id]);
+      return items(row[c.id]).map(x => String(x).trim()).filter(Boolean).join(' · ');
+    };
     return label ? rows.map(row => ({ label: say(label, row), desc: say(desc, row) })) : [];
   }
   function toData(spec, values, parse) {

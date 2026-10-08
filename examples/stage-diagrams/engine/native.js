@@ -290,6 +290,12 @@
       }
       for (let i = 0; i < texts.length; i++) for (let j = i + 1; j < texts.length; j++) {
         const a = texts[i], b = texts[j];
+        // The poster's current item and its closing summary share one place and take turns (never shown together).
+        const turn = n => n.node.closest('[data-u="poster-item"], [data-u="poster-desc"], [data-u="poster-sum"]')?.getAttribute('data-u');
+        const ta = turn(a), tb = turn(b);
+        if (ta && tb && ta !== tb && (ta === 'poster-sum' || tb === 'poster-sum')) continue;
+        // Lines of one display title are set with tight leading on purpose; their glyph boxes touch, the text does not.
+        if (a.node.classList.contains('disp') && b.node.classList.contains('disp')) continue;
         if (Math.min(a.r, b.r) - Math.max(a.x, b.x) > 3 && Math.min(a.b, b.b) - Math.max(a.y, b.y) > 2) {
           issues.push({ path: a.path, code: 'text_collision', message: `“${a.raw}” overlaps “${b.raw}”; shorten labels or separate positions.` });
         }

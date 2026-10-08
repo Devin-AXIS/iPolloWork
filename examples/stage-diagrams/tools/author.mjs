@@ -207,7 +207,25 @@ function aiSurface(type, spec, a, data, duration, variables) {
     icons: a.icons, defaults, lookDefaults: { layout: 'full', skin: 'keynote', camera: 'auto' },
     copyDefaults: pick(defaults, ['copyEyebrow', 'copyTitle', 'copySubtitle', 'copyNote']),
   });
+  coverDemoLanguages(model);
   return { guide: guide(model), example: toJSON(model, defaults), schema: schema(model), model };
+}
+
+// Budgets come from the Chinese sample; the gallery also shows each diagram in English, and those translations
+// render correctly. Each budget therefore covers the widest demo text in either language.
+function coverDemoLanguages(model) {
+  const width = s => Array.from(String(s)).reduce((n, ch) => n + (ch.codePointAt(0) > 0x2e80 ? 1 : 0.55), 0);
+  const parts = v => String(v).split(/\n|、/).map(x => x.trim()).filter(Boolean);
+  const en = v => [english[v] ?? '', ...parts(v).map(x => english[x] ?? '')].filter(Boolean);
+  const cover = (f, raw) => {
+    if (!f.budget) return;
+    const widest = Math.max(0, ...raw.filter(x => typeof x === 'string' && x).flatMap(x => (f.list ? parts(x).flatMap(en) : en(x))).map(width));
+    if (widest > f.budget) f.budget = Math.ceil(widest);
+  };
+  let rows = [];
+  try { rows = JSON.parse(model.defaults[model.rows.variable]).rows || []; } catch {}
+  for (const c of model.rows.columns) cover(c, rows.map(r => r[c.id]));
+  for (const v of model.vars) cover(v, [model.defaults[v.id]]);
 }
 
 function writeComponent(type, a) {
