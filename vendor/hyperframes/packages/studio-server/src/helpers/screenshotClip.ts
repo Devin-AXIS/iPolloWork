@@ -32,14 +32,39 @@ export async function reviewVideoRuntime(): Promise<VideoRuntimeReview> {
   };
   const timelines = Reflect.get(window, "__timelines");
   const registered = timelines && typeof timelines === "object" ? Object.values(timelines) : [];
-  const tweens = registered.flatMap(timeline => {
+  const real = (timeline: unknown) => timeline && typeof timeline === "object" && Reflect.get(timeline, "__hfReal") || timeline;
+  const entries = registered.map(timeline => {
     const children = invoke(timeline, "getChildren", [true, true, false]);
-    return Array.isArray(children) ? children : [];
+    const nested = invoke(timeline, "getChildren", [true, false, true]);
+    return { timeline, tweens: Array.isArray(children) ? children : [], nested: Array.isArray(nested) ? nested : [] };
   });
+  const roots = entries.filter(entry => !entries.some(other => real(other.timeline) !== real(entry.timeline) && other.nested.includes(real(entry.timeline))));
+  const clocks = new Map<unknown, unknown>();
+  for (const root of roots) for (const tween of root.tweens) clocks.set(tween, root.timeline);
+  const tweens = [...clocks.keys()].filter((tween): tween is object => tween !== null && typeof tween === "object");
+  const tweenTime = (tween: unknown, time: number) => {
+    const clock = real(clocks.get(tween));
+    let node = tween, localTime = time;
+    // Public timeScale retains paused children's authored rate; GSAP globalTime
+    // uses 1 for those children. Stop at the registered composition's clock.
+    for (let depth = 0; depth < 64 && node && typeof node === "object"; depth++) {
+      if (real(node) === clock) return localTime;
+      const offset = invoke(node, "startTime"), scale = invoke(node, "timeScale");
+      if (typeof offset !== "number" || !Number.isFinite(offset) || typeof scale !== "number" || !Number.isFinite(scale) || scale === 0) break;
+      localTime = offset + localTime / Math.abs(scale);
+      node = Reflect.get(node, "parent");
+    }
+    const value = invoke(tween, "globalTime", [time]);
+    const origin = invoke(clock, "globalTime", [0]), unitEnd = invoke(clock, "globalTime", [1]);
+    // Composition transport seeks the registered root's local clock, not its
+    // GSAP wall-clock placement. Nested registered children share that clock.
+    return typeof value === "number" && typeof origin === "number" && typeof unitEnd === "number" && Number.isFinite(origin) && Number.isFinite(unitEnd) && unitEnd !== origin
+      ? (value - origin) / (unitEnd - origin) : value;
+  };
   const seek = async (time: number) => {
     const player = Reflect.get(window, "__player");
     if (player && typeof player.seek === "function") invoke(player, "seek", [time]);
-    else for (const timeline of registered) invoke(timeline, "pause", [time]);
+    else for (const root of roots) invoke(root.timeline, "pause", [time]);
     // Capture pages may be backgrounded; rAF alone can suspend indefinitely.
     await new Promise<void>(resolve => { const timeout = setTimeout(resolve, 50); requestAnimationFrame(() => { clearTimeout(timeout); resolve(); }); });
   };
@@ -87,8 +112,8 @@ export async function reviewVideoRuntime(): Promise<VideoRuntimeReview> {
       const from = start + Number(beat?.motion?.end) - 3, to = start + Number(beat?.motion?.end);
       if (beat?.intent !== "Develop" || !beat?.animation?.startsWith("custom:") || !Number.isFinite(Number(beat?.motion?.start)) || Number(beat.motion.end) - Number(beat.motion.start) < 4 || !Number.isFinite(from) || to > start + duration) continue;
       const active = tweens.filter(tween => {
-        const targets = invoke(tween, "targets"), begin = invoke(tween, "globalTime", [0]);
-        const length = invoke(tween, "totalDuration"), end = typeof length === "number" ? invoke(tween, "globalTime", [length]) : undefined;
+        const targets = invoke(tween, "targets"), begin = tweenTime(tween, 0);
+        const length = invoke(tween, "totalDuration"), end = typeof length === "number" ? tweenTime(tween, length) : undefined;
         const vars = Reflect.get(tween, "vars");
         // Object-state adapters can move DOM/Canvas through callbacks; their effect is unknown here.
         return (Array.isArray(targets) && targets.some(target => target instanceof Element && (scene.contains(target) || target.contains(scene)))
@@ -129,8 +154,20 @@ export async function reviewVideoRuntime(): Promise<VideoRuntimeReview> {
       });
       const expected = start + Number(beat.motion?.start);
       if (!matches.length) add(id, "semantic-event-not-executed", expected, beat.animation);
-      else if (!matches.some(tween => {
-        const actual = invoke(tween, "globalTime", [0]);
+      else if (beat.animation.startsWith("custom:")) {
+        const expectedEnd = start + Number(beat.motion?.end), tolerance = 1 / 30 + .001;
+        // Composition time includes nested offsets, timeScale and stagger/repeat duration.
+        // Reused action tags outside this window do not extend its declaration;
+        // pauses inside a correctly declared action remain valid reading time.
+        const windows = matches.flatMap(tween => {
+          const from = tweenTime(tween, 0), length = invoke(tween, "totalDuration");
+          const to = typeof length === "number" ? tweenTime(tween, length) : undefined;
+          return typeof from === "number" && Number.isFinite(from) && typeof to === "number" && Number.isFinite(to) && to > expected && from < expectedEnd ? [{ from, to }] : [];
+        });
+        if (!windows.length || Math.abs(Math.min(...windows.map(window => window.from)) - expected) > tolerance) add(id, "executed-event-time-mismatch", expected, beat.animation);
+        else if (Math.abs(Math.max(...windows.map(window => window.to)) - expectedEnd) > tolerance) add(id, "executed-event-end-mismatch", expectedEnd, `${beat.animation}: declared end ${expectedEnd}, executed end ${Math.max(...windows.map(window => window.to))}`);
+      } else if (!matches.some(tween => {
+        const actual = tweenTime(tween, 0);
         return typeof actual === "number" && (Math.abs(actual - expected) <= 1 / 30 + .001 || (beat.animation.startsWith("component:") && Math.abs(actual + start - expected) <= 1 / 30 + .001));
       })) add(id, "executed-event-time-mismatch", expected, beat.animation);
     }

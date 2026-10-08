@@ -16,6 +16,14 @@ Install selected IDs in one bounded `ipollowork_extension_call` (`extensionId=me
 
 ## Visual production and media
 
+### Motion audition
+
+Before expanding initial generation or a substantial motion redesign, build a representative continuous passage in the same project: a real Develop action, its result and the next focus/handoff. Use an existing built passage when revising; a title entrance or isolated component demo cannot establish the film's motion language. Usually 8–15 seconds is enough; choose the passage from the content rather than a duration quota. Preserve the current transcript/assets/audio and use the existing draft review/render tools. This is an autonomous production check, not another approval step, project, service or sidecar.
+
+Read and adapt the selected implementation's actual mechanism: a card becoming a page uses the original card's changing bounds; separate items becoming one result move those items into the result; a device handoff transfers the visible subject/focus; a follow shot reframes the moving subject. Reuse `spatial-camera-suite`'s `container-morph`, `gather-lockup` or `subject-follow-track`, or `device-carousel`'s `flow-belt` when their inputs and geometry fit. A custom exception names the specific missing capability of the relevant candidate; repeating generic brand/style objections for every scene does not establish no-fit.
+
+Inspect ordinary-speed playback across action → consequence → next event, including the late window and seam. Write the observed event/time and repair any entrance-only development, replaced-object "morph", missing follow/handoff, stretched movement or unexplained tail in the existing storyboard's frame notes. Move/transform the real subject and retime dependent windows; relabelling a slide as `organize`/`synthesize` is not a repair. Expand only after this passage expresses the intended change and lands readably; retain its working motion in the rest of the film. Unavailable playback remains unverified and must be disclosed.
+
 After the storyboard is saved and production is in scope, read only selected recipe parameters/pitfalls, confirm obtainable inputs and revise affected fit before installation. For substantial visual work establish 2–3 inexpensive representative opening/densest/landing styleframes after saving the storyboard; use existing assets/editable elements, final dimensions and shared type/palette/safe margins. Save paths or a justified skip in first-frame notes. This is direction evidence, not another composition or approval step; script-only work describes it.
 
 ### Acquire and mount visual assets
