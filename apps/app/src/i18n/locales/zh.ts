@@ -795,7 +795,7 @@ export default {
   "templates.brief.continue": "继续",
   "templates.brief.reference_upload": "上传",
   "templates.brief.reference_remove": "移除 {name}",
-  "templates.brief.reference_supported_formats": "支持的文件类型：PDF、DOCX、Markdown、TXT、PNG、JPG、JPEG、WebP、CSV、JSON。",
+  "templates.brief.reference_supported_formats": "支持的文件类型：PDF、PPTX、DOCX、Markdown、TXT、PNG、JPG、WebP、MP4、MOV、CSV、JSON。",
   "templates.brief.reference_unsupported_one": "{name} 不是支持的参考文档格式。",
   "templates.brief.reference_unsupported_many": "{count} 个文件不是支持的参考文档格式。",
   "templates.brief.reference_prepare_failed": "无法准备这个参考文档。",

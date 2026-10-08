@@ -32,7 +32,7 @@ export function packReferenceContext(files: ReferenceIngestionResult[], options:
       `File ${index + 1}: ${file.fileName}`,
       `Type: ${file.mimeType}`,
       `Quality: ${file.quality}`,
-      "Use policy: extracted context only; original file not attached by default.",
+      "Use policy: use the indexed context first; inspect the local workspacePath when one is supplied.",
       "",
       "Summary:",
       truncate(file.summary, maxSummaryChars),

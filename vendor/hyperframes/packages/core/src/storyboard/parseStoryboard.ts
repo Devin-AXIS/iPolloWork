@@ -1,7 +1,9 @@
 import {
   DEFAULT_FRAME_STATUS,
   FRAME_STATUSES,
+  STORYBOARD_MEDIA_MODES,
   type FrameStatus,
+  type StoryboardMediaMode,
   type StoryboardFrame,
   type StoryboardGlobals,
   type StoryboardManifest,
@@ -58,9 +60,19 @@ const LEADING_INT_RE = /^(\d+)/;
 /** First numeric token in a duration string, e.g. `6` in `6s`, `6.5` in `6.5 sec`. */
 const DURATION_NUM_RE = /(\d+(?:\.\d+)?)/;
 /** Metadata keys that all map to the transition-in field. */
-const TRANSITION_KEYS = new Set(["transition_in", "transitionin", "transition"]);
+export const TRANSITION_ALIASES = ["transition_in", "transitionin", "transition"] as const;
+const TRANSITION_KEYS = new Set<string>(TRANSITION_ALIASES);
 /** Metadata keys that all map to the one-line scene description. */
-const SCENE_KEYS = new Set(["scene", "description", "summary", "caption"]);
+export const CONTENT_ALIASES = ["content", "scene", "description", "summary", "caption"] as const;
+export const VISUAL_ALIASES = ["visual", "visual_direction", "visualdirection", "shot"] as const;
+export const MEDIA_ALIASES = ["media", "medium", "media_mode", "mediamode", "render_mode"] as const;
+export const ASSET_ALIASES = ["assets", "asset", "sources"] as const;
+export const ASSET_TASK_ALIASES = ["asset_task", "assettask", "media_task", "mediatask"] as const;
+const SCENE_KEYS = new Set<string>(CONTENT_ALIASES);
+const VISUAL_KEYS = new Set<string>(VISUAL_ALIASES);
+const MEDIA_KEYS = new Set<string>(MEDIA_ALIASES);
+const ASSET_KEYS = new Set<string>(ASSET_ALIASES);
+const ASSET_TASK_KEYS = new Set<string>(ASSET_TASK_ALIASES);
 /**
  * Aliases that all map to the voiceover/narration line. The single source of
  * truth — `editStoryboard.ts` imports this so the read and write sides can't
@@ -82,6 +94,10 @@ function emptyGlobals(): StoryboardGlobals {
 
 function isFrameStatus(value: string): value is FrameStatus {
   return (FRAME_STATUSES as readonly string[]).includes(value);
+}
+
+function isStoryboardMediaMode(value: string): value is StoryboardMediaMode {
+  return (STORYBOARD_MEDIA_MODES as readonly string[]).includes(value);
 }
 
 // ── Frontmatter ───────────────────────────────────────────────────────────────
@@ -278,10 +294,20 @@ const META_SETTERS = new Map<string, MetaSetter>([
     frame.transitionIn = value;
   }),
   ...keyedSetters(SCENE_KEYS, (frame, value) => {
-    frame.scene = value;
+    frame.scene = stripQuotes(value);
   }),
   ...keyedSetters(VOICEOVER_KEYS, (frame, value) => {
     frame.voiceover = stripQuotes(value);
+  }),
+  ...keyedSetters(VISUAL_KEYS, (frame, value) => {
+    frame.visual = stripQuotes(value);
+  }),
+  ...keyedSetters(MEDIA_KEYS, applyMediaMode),
+  ...keyedSetters(ASSET_KEYS, (frame, value) => {
+    frame.assets = stripQuotes(value);
+  }),
+  ...keyedSetters(ASSET_TASK_KEYS, (frame, value) => {
+    frame.assetTask = stripQuotes(value);
   }),
 ]);
 
@@ -339,6 +365,25 @@ function applyStatus(
   frame.extra.status = value;
   warnings.push({
     message: `Frame ${frame.index}: unknown status "${value}"; defaulting to "${DEFAULT_FRAME_STATUS}".`,
+    line: headingLine,
+    frameIndex: frame.index,
+  });
+}
+
+function applyMediaMode(
+  frame: StoryboardFrame,
+  value: string,
+  headingLine: number,
+  warnings: StoryboardWarning[],
+): void {
+  const normalized = stripQuotes(value).toLowerCase().replace(/[ _]+/g, "-");
+  if (isStoryboardMediaMode(normalized)) {
+    frame.mediaMode = normalized;
+    return;
+  }
+  frame.extra.media = value;
+  warnings.push({
+    message: `Frame ${frame.index}: unknown media mode "${value}".`,
     line: headingLine,
     frameIndex: frame.index,
   });

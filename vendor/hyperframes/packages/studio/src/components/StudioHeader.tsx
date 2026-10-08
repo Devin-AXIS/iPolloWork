@@ -6,6 +6,7 @@ import {
 } from "./editor/manualEditingAvailability";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
+import { useViewMode } from "../contexts/ViewModeContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
@@ -43,6 +44,7 @@ export function StudioHeader({
   const { renderQueue, projectId, previewIframeRef } = useStudioShellContext();
   const { compositionLoading, refreshKey } = useStudioPlaybackContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
+  const { viewMode, setViewMode } = useViewMode();
   const { t } = useStudioI18n();
   const isRendering = renderQueue.isRendering;
   const [compositionTitle, setCompositionTitle] = useState(projectId);
@@ -119,7 +121,8 @@ export function StudioHeader({
     setRightCollapsed(false);
   };
 
-  const setPreviewMode = (nextPreviewMode: boolean) => {
+  const selectTimelineView = (nextPreviewMode: boolean) => {
+    if (!setViewMode("timeline")) return;
     if (nextPreviewMode && window.parent !== window) {
       window.parent.postMessage(
         { type: "ipollowork:video-studio-panel", projectId, panel: null },
@@ -127,6 +130,11 @@ export function StudioHeader({
       );
     }
     onPreviewModeChange(nextPreviewMode);
+  };
+
+  const selectScriptView = () => {
+    if (!setViewMode("storyboard")) return;
+    onPreviewModeChange(false);
   };
 
   return (
@@ -162,10 +170,23 @@ export function StudioHeader({
         <button
           type="button"
           role="tab"
-          aria-selected={!previewMode}
-          onClick={() => setPreviewMode(false)}
+          aria-selected={viewMode === "storyboard"}
+          onClick={selectScriptView}
           className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
-            !previewMode
+            viewMode === "storyboard"
+              ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
+              : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
+          }`}
+        >
+          {t("header.storyboard")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === "timeline" && !previewMode}
+          onClick={() => selectTimelineView(false)}
+          className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
+            viewMode === "timeline" && !previewMode
               ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
               : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
           }`}
@@ -175,10 +196,10 @@ export function StudioHeader({
         <button
           type="button"
           role="tab"
-          aria-selected={previewMode}
-          onClick={() => setPreviewMode(true)}
+          aria-selected={viewMode === "timeline" && previewMode}
+          onClick={() => selectTimelineView(true)}
           className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
-            previewMode
+            viewMode === "timeline" && previewMode
               ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
               : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
           }`}
@@ -228,7 +249,7 @@ export function StudioHeader({
                 ) : null}
               </div>
             ) : null}
-            <Tooltip
+            {viewMode === "timeline" ? <Tooltip
               label={
                 STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
               }
@@ -253,8 +274,8 @@ export function StudioHeader({
                 <SlidersHorizontal className="hf-studio-properties-icon h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
                 <span className="hf-studio-header-action-label">{t("header.inspector")}</span>
               </button>
-            </Tooltip>
-            <Tooltip label={isRendering ? t("header.renderInProgress") : t("header.renderExport")} side="bottom">
+            </Tooltip> : null}
+            {viewMode === "timeline" ? <Tooltip label={isRendering ? t("header.renderInProgress") : t("header.renderExport")} side="bottom">
               <button
                 type="button"
                 onClick={openExport}
@@ -264,7 +285,7 @@ export function StudioHeader({
                 <DownloadSimple className="h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
                 <span className="hf-studio-header-action-label">{isRendering ? t("header.rendering") : t("header.export")}</span>
               </button>
-            </Tooltip>
+            </Tooltip> : null}
           </>
         ) : null}
       </div>

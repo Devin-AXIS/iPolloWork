@@ -9,12 +9,13 @@ import { assessReferenceQuality } from "./quality";
 import type { ExtractedReferenceContent, ReferenceIngestionResult } from "./types";
 
 export const REFERENCE_MAX_BYTES = 25 * 1024 * 1024;
+export const REFERENCE_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-const REFERENCE_FILE_EXTENSIONS = ["pdf", "docx", "pptx", "md", "txt", "png", "jpg", "jpeg", "webp", "csv", "json"];
+const REFERENCE_FILE_EXTENSIONS = ["pdf", "docx", "pptx", "md", "txt", "png", "jpg", "jpeg", "webp", "mp4", "mov", "csv", "json"];
 const EXTENSIONS = new Set(REFERENCE_FILE_EXTENSIONS);
 export const REFERENCE_FILE_ACCEPT = REFERENCE_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(",");
 const MIMES = new Set([
@@ -29,6 +30,8 @@ const MIMES = new Set([
   "image/png",
   "image/jpeg",
   "image/webp",
+  "video/mp4",
+  "video/quicktime",
 ]);
 
 const MIME_BY_EXTENSION: Record<string, string> = {
@@ -41,6 +44,8 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   webp: "image/webp",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
   csv: "text/csv",
   json: "application/json",
 };
@@ -63,7 +68,16 @@ export function isReferenceFile(file: Pick<File, "name" | "type">): boolean {
 }
 
 export function canSendOriginalReference(file: Pick<File, "name" | "type" | "size">): boolean {
-  return file.size <= REFERENCE_MAX_BYTES && isReferenceFile(file);
+  return file.size <= referenceMaxBytes(file) && isReferenceFile(file);
+}
+
+export function isVisualReference(file: Pick<File, "name" | "type">): boolean {
+  const mime = referenceMime(file);
+  return mime.startsWith("image/") || mime.startsWith("video/");
+}
+
+function referenceMaxBytes(file: Pick<File, "name" | "type">): number {
+  return referenceMime(file).startsWith("video/") ? REFERENCE_VIDEO_MAX_BYTES : REFERENCE_MAX_BYTES;
 }
 
 async function extractReference(file: File): Promise<ExtractedReferenceContent> {
@@ -80,6 +94,9 @@ async function extractReference(file: File): Promise<ExtractedReferenceContent> 
   if (mime.startsWith("image/")) {
     return { text: "", chunks: [], warnings: ["Images are kept as optional visual attachments; OCR is not available."] };
   }
+  if (mime.startsWith("video/")) {
+    return { text: "", chunks: [], warnings: ["Video is indexed as a visual source; scene and transcript analysis is completed by the active AI media tools."] };
+  }
   return { text: "", chunks: [], warnings: ["No extractor is available for this file type."] };
 }
 
@@ -87,7 +104,8 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
   const fileId = `${file.name}-${file.lastModified}`;
   const mimeType = referenceMime(file);
 
-  if (file.size > REFERENCE_MAX_BYTES) {
+  const maxBytes = referenceMaxBytes(file);
+  if (file.size > maxBytes) {
     return {
       id: fileId,
       fileName: file.name,
@@ -98,7 +116,7 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
       summary: "",
       chunks: [],
       quality: "failed",
-      warnings: [`${file.name} is larger than 25 MB.`],
+      warnings: [`${file.name} is larger than ${maxBytes === REFERENCE_VIDEO_MAX_BYTES ? 100 : 25} MB.`],
     };
   }
 
@@ -107,7 +125,10 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
     chunks: [],
     warnings: [`Reference parsing failed: ${error instanceof Error ? error.message : String(error)}`],
   }));
-  const quality = assessReferenceQuality({ text: extracted.text, chunks: extracted.chunks, warnings: extracted.warnings });
+  const visualOnly = mimeType.startsWith("image/") || mimeType.startsWith("video/");
+  const quality = visualOnly
+    ? { quality: "medium" as const, warnings: extracted.warnings ?? [] }
+    : assessReferenceQuality({ text: extracted.text, chunks: extracted.chunks, warnings: extracted.warnings });
   const draft: ReferenceIngestionResult = {
     id: fileId,
     fileName: file.name,
@@ -125,7 +146,8 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
 }
 
 export async function prepareOriginalReferenceAttachment(file: File): Promise<ComposerAttachment> {
-  if (file.size > REFERENCE_MAX_BYTES) throw new Error(`${file.name} is larger than 25 MB.`);
+  const maxBytes = referenceMaxBytes(file);
+  if (file.size > maxBytes) throw new Error(`${file.name} is larger than ${maxBytes === REFERENCE_VIDEO_MAX_BYTES ? 100 : 25} MB.`);
   if (!isReferenceFile(file)) throw new Error(`${file.name} is not a supported reference document.`);
 
   const mimeType = referenceMime(file);

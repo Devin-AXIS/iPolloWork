@@ -32,6 +32,24 @@ export const FRAME_STATUSES: readonly FrameStatus[] = ["outline", "built", "anim
 /** Default status when a frame omits one (it is still just an outline). */
 export const DEFAULT_FRAME_STATUS: FrameStatus = "outline";
 
+/** How a planned scene should be produced once the user confirms the script. */
+export type StoryboardMediaMode =
+  | "html"
+  | "existing-image"
+  | "existing-video"
+  | "generated-image"
+  | "generated-video"
+  | "hybrid";
+
+export const STORYBOARD_MEDIA_MODES: readonly StoryboardMediaMode[] = [
+  "html",
+  "existing-image",
+  "existing-video",
+  "generated-image",
+  "generated-video",
+  "hybrid",
+];
+
 /** Global direction for the whole video, parsed from the frontmatter. */
 export interface StoryboardGlobals {
   /** Canvas format as authored, e.g. `"1920x1080"`. */
@@ -68,6 +86,14 @@ export interface StoryboardFrame {
   scene?: string;
   /** Voiceover / narration line spoken over this frame. */
   voiceover?: string;
+  /** Visual composition, motion, and shot direction. */
+  visual?: string;
+  /** Production medium selected for this scene. */
+  mediaMode?: StoryboardMediaMode;
+  /** Source IDs or project-local assets used by this scene. */
+  assets?: string;
+  /** Concise acquisition/generation instruction resolved after confirmation. */
+  assetTask?: string;
   /**
    * Representative time (seconds) to show this frame at in the contact sheet —
    * a "poster" frame past the intro animation. Falls back to a heuristic.

@@ -411,22 +411,33 @@ export function templateBriefPrompt(input: {
   briefPath: string;
 }): string {
   const checklist = input.template.applyChecklist.join("; ");
+  const projectDirectory = input.briefPath.split("/").slice(0, -1).join("/");
+  const storyboardPath = projectDirectory ? `${projectDirectory}/STORYBOARD.md` : "STORYBOARD.md";
+  const contextContract = `Read \`${input.briefPath}\` first. Enrich its engine-neutral \`context\` with summary, objectives, audience, source-linked facts/sections, constraints, and unknowns. Keep source IDs, excerpts, and workspacePaths; invent nothing. Write \`context.analysis\` back and set \`context.status\` to \`analyzed\`.`;
+  if (input.template.category === "video") {
+    return [
+      contextContract,
+      "When a supplied workspace path belongs to a weak or failed source, inspect the original with available file or media tools before scripting; extraction failure does not mean the source is empty.",
+      `Then create or replace \`${storyboardPath}\` as the editable production script for this video.`,
+      "Choose the scene count and order from the content rather than the seed template. Use frontmatter keys `format`, `message`, `arc`, and `audience`.",
+      `Use the selected \`${input.template.title}\` project and its design tokens as the visual-language reference, but keep its HTML and theme files unchanged during this planning turn.`,
+      "For every `## Scene N — title`, write exactly these editable metadata fields: `content` (what this scene communicates), `voiceover` (the final narration or `none`), `duration`, `visual` (plain-language description of what appears and how it moves), `media` (one of `html`, `existing-image`, `existing-video`, `generated-image`, `generated-video`, `hybrid`), `assets` (source IDs or workspace paths and how they appear, or `none`), `asset_task` (a concise find/generate instruction, or `none`), and `status: outline`.",
+      "Use HTML motion graphics when they communicate the idea clearly; select real or generated image/video only when it materially improves evidence, emotion, place, people, or realism. Keep durations credible for the narration and make every asset decision traceable to the structured context.",
+      `This is a planning turn: do not edit \`${input.entryPath}\`, generate media, synthesize voice, render, or validate the composition yet. Stop after saving the analyzed context and complete script, and ask the user to review the Script tab. The confirmed script will drive asset resolution and video generation in a later turn. Quality guidance: ${checklist}.`,
+    ].join(" ");
+  }
   if (input.template.id && isArtifactDeliveryManifest({ id: input.template.id })) {
     const categoryContract = input.template.category === "slides" && input.template.pptxCompatibility === "native-editable"
       ? "Preserve the fixed 16:9 stage and native editable PPTX contract: every visible object must use supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation; do not add scripts, custom keyboard handlers, slide counters, navigation buttons, speaker notes, responsive slide reflow, or breakpoint-specific slide layouts."
-      : input.template.category === "video"
-        ? "Build a complete deterministic HyperFrames composition with the duration, scenes, motion, and editable variables required by the brief."
-        : "Keep the result responsive, semantic, complete, and editable through the existing artifact runtime hooks.";
-    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}.`;
+      : "Keep the result responsive, semantic, complete, and editable through the existing artifact runtime hooks.";
+    return `${contextContract} Then use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}.`;
   }
-  const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Apply it now in this turn: edit/save target file(s), then report generated files. Do not reply only with confirmation, options, or next-step questions. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. Checklist items guide quality/export, not sample count, order, subject, copy, or assets.`;
+  const base = `${contextContract} Apply it to \`${input.entryPath}\` with \`${input.template.title}\`. Apply it now in this turn: edit/save the target and report it. Do not reply only with confirmation, options, or questions. Derive structure from context, replace samples, preserve visual language, and satisfy: ${checklist}. Treat the checklist as quality/export guidance, not inherited sample structure or assets.`;
   if (input.template.id === "ipollowork.wechat-article") {
     return `${base} Fixed-brand exception: preserve every data-ipw-fixed="true" node, fixed-hero.jpg, fixed-footer-cta.jpg, locked brand colors, and fixed brand images. Update only article copy, non-fixed middle images, and the CTA href when provided.`;
   }
-  const visualSystemInstruction = "Keep design-tokens.css and preserve its current theme as the visual source of truth; do not change the managed theme block, --ipw-* tokens, palette, fonts, radii, shadows, or background treatment. Reuse typography hierarchy, component patterns, artwork language, and motion vocabulary. Preserve editor/export/runtime hooks.";
+  const visualSystemInstruction = "Keep design-tokens.css, its managed theme, and --ipw-* tokens as the visual source of truth. Reuse typography, components, artwork, and motion; preserve editor/export/runtime hooks.";
   switch (input.template.category) {
-    case "video":
-      return `${base} ${visualSystemInstruction} Use the copied HyperFrames project as an editable seed. Build a content-led storyboard from the brief, then add, remove, reorder, or retime scenes as needed while inheriting composition, motion, typography, and transitions. Preserve the root composition contract, editable variables, editor hooks, and deterministic timeline. Decide whether narration materially helps; do not ask a separate narration question.`;
     case "slides":
       const compositionInstruction = "Use existing HTML/CSS, slide patterns, artwork, and components as a reusable layout system rather than a finished deck. First plan a coherent narrative and page count from the brief, then select, repeat, recombine, adapt, remove, or reorder patterns. Do not inherit the sample slide count, section order, copy, or assets unless they fit. Keep it recognizable through distinctive typography hierarchy, colored blocks, artwork, component geometry, and rhythm; avoid a generic deck.";
       if (input.template.pptxCompatibility === "native-editable") {

@@ -163,6 +163,15 @@ export function videoCompositionHasVoiceover(content?: string | null) {
   return /<audio\b[^>]*(?:data-ipw-voiceover\s*=\s*["']true["']|id\s*=\s*["'](?:voiceover|vo-|narration-)|src\s*=\s*["'][^"']*(?:voiceover[-_]|\/audio\/(?:voice|narration)))/i.test(content);
 }
 
+export function videoStoryboardHasVoiceover(content?: string | null) {
+  if (!content) return false;
+  for (const match of content.matchAll(/^\s*[-*]\s+(?:voiceover|voice_over|vo|narration)\s*:\s*(.*?)\s*$/gim)) {
+    const value = (match[1] ?? "").trim().replace(/^(["'])(.*)\1$/, "$2").trim().toLowerCase();
+    if (value && !["none", "n/a", "无", "不需要", "无需", "无旁白"].includes(value)) return true;
+  }
+  return false;
+}
+
 /**
  * The agent's task workspace can be nested below the visible workspace root.
  * Give it the resolved Studio path instead of relying on its current directory
@@ -176,6 +185,14 @@ export function videoProjectPath(sessionId: string, workspaceRoot?: string) {
   const root = rawRoot.replace(/[\\/]+$/, "") || separator;
   const suffix = projectDirectory.replace(/\//g, separator);
   return root === separator ? `${separator}${suffix}` : `${root}${separator}${suffix}`;
+}
+
+export function videoProjectBriefPath(sessionId: string) {
+  return `${videoProjectDirectory(sessionId)}/brief.json`;
+}
+
+export function videoProjectStoryboardPath(sessionId: string) {
+  return `${videoProjectDirectory(sessionId)}/STORYBOARD.md`;
 }
 
 /**
@@ -192,25 +209,33 @@ export function videoTaskSystemContext(
 ) {
   const projectDirectory = videoProjectDirectory(sessionId);
   const projectPath = videoProjectPath(sessionId, workspaceRoot);
+  const briefPath = `${projectPath}/brief.json`;
+  const storyboardPath = `${projectPath}/STORYBOARD.md`;
   const studioPort = hyperframesStudioPort(sessionId);
   const baseContract = [
     "Video task contract:",
     `- Own only \`${projectPath}\`; Video Studio displays \`${projectPath}/index.html\` at \`http://localhost:${studioPort}\` and hot-reloads saves.`,
     ...(template ? [
       `- The copied source is template \`${template.title}\` (\`${template.id}\`), entry \`${projectPath}/${template.entry}\`; use it as the editable visual and runtime seed rather than discarding it for a blank or unrelated project.`,
-      `- Read \`${projectPath}/brief.json\`; on the initial brief application, let the content determine scene count, order, and timing while reusing the template's visual and motion language. Treat its checklist as quality and export guidance, not a requirement to retain sample structure: ${template.applyChecklist.join("; ")}.`,
+      `- Read \`${briefPath}\`; its structured context determines scene count, order, evidence, assets, and timing while the template supplies reusable visual and motion language. Treat its checklist as quality and export guidance, not a requirement to retain sample structure: ${template.applyChecklist.join("; ")}.`,
       `- At the start of every edit turn, re-read the current entry from disk and preserve the root composition contract, variables, design-token link, stable editor hooks, and deterministic timeline.`,
     ] : [
       `- At the start of every edit turn, re-read the current \`${projectPath}/index.html\` from disk. It is the prepared blank composition unless the user explicitly requests a template.`,
     ]),
-    `- Write only \`${projectPath}/index.html\` and assets below \`${projectPath}\`. Never create or inspect another \`video/\`/\`videos/\` project, demo media, or another session's timeline.`,
+    `- Write only \`${projectPath}/index.html\`, \`${briefPath}\`, \`${storyboardPath}\`, and assets below \`${projectPath}\`. Never create or inspect another \`video/\`/\`videos/\` project, demo media, or another session's timeline.`,
     `- Keep \`${projectPath}/design-tokens.css\` as the final stylesheet when present and use its \`--ipw-*\` tokens without breaking layout, motion, or timing.`,
+    "Context and script contract:",
+    `- \`${briefPath}\` is the engine-neutral request context. Preserve its source IDs and excerpts; when status is \`indexed\`, analyze all sources into summary, objectives, audience, source-linked facts and sections, constraints, and unknowns before planning the video.`,
+    `- \`${storyboardPath}\` is the canonical editable production script. Each scene must contain content, voiceover, duration, visual direction, one media mode (html, existing-image, existing-video, generated-image, generated-video, or hybrid), assets, asset_task, and lifecycle status.`,
+    `- On the initial creation turn, or whenever the user explicitly asks only to plan/rewrite the script, update the structured context and \`${storyboardPath}\` but do not change \`${projectPath}/index.html\`, acquire media, synthesize speech, render, or run the final composition validator. A complete saved script is the result of that planning turn; ask the user to review the Script tab.`,
+    `- Only after the user explicitly confirms or requests generation from the script, read the latest \`${storyboardPath}\`, resolve its asset tasks into local project assets, then build or update \`${projectPath}/index.html\` through the existing HyperFrames composition path. Do not create a second HTML editor or an alternate render pipeline.`,
+    "- After a video has been built, ordinary element-level edits remain direct. When an edit changes scene structure, narration, duration, media choice, or asset ownership, update the matching storyboard field in the same turn so the script does not silently drift from the composition.",
     "Adaptive execution contract:",
     "- Interpret each request independently. Choose only the needed operations from update-element, add/remove/reorder-scene, apply-animation, add-voiceover, add-asset, restyle, or freeform-patch; this is an extensible planning vocabulary, not a fixed workflow.",
-    "- For a small local edit, patch only that element. For a structural, multi-scene, or narrated edit, first form one complete internal operation plan from the current composition, then execute it without narrating the plan or creating a plan file.",
+    `- For a small local edit, patch only that element. For a structural, multi-scene, or narrated edit after confirmation, use \`${storyboardPath}\` as the plan and execute it without creating another plan file.`,
     "- Keep internal planning terse and action-oriented. Do not spend the response comparing alternative scene counts, repeatedly estimating duration, drafting multiple narration versions, or explaining what you might do.",
     "- For a concrete make/edit request, use at most two read-only inspection calls before the first mutation or media action unless a returned error identifies a real blocker. Prefer a smaller complete valid result over an ambitious plan that is never applied.",
-    "- A plan, outline, proposed scene list, or sentence such as 'let me structure' is never task completion. After inspecting, perform the requested edits in the same run; never end the run until the saved composition passes the required final validator or you report a concrete blocking error.",
+    "- Outside the explicit script-planning turn above, a plan or proposed scene list is not completion. After confirmation, perform the requested video edits in the same run and do not finish until the saved composition passes the required final validator or you report a concrete blocking error.",
     "- After the initial content-led adaptation, preserve unrelated scenes, media, timing, interactions, and user edits. Use freeform-patch only when the typed operations cannot express the request, and still obey the composition and validation contracts.",
     "- Studio manual edits are user-owned source state. Preserve `data-hf-id`, `data-hf-studio-*`, `--hf-studio-*`, inline width/height/transform values, and existing GSAP position/scale/rotation writes unless the current request explicitly changes that exact element and property. Immediately before any whole-file write, re-read and merge the current disk bytes; never regenerate from an earlier response or cached HTML snapshot.",
     "Semantic motion contract:",
@@ -237,7 +262,7 @@ export function videoTaskSystemContext(
     "- Caption/subtitle requests require timed visible `.clip` elements marked `data-ipw-caption=\"true\"`. BGM requests require a real local audio file and one timeline-owned `<audio data-ipw-bgm=\"true\">` with src, data-start, data-duration, and data-track-index. Selected animations require the implemented owner to carry `data-ipw-animation-reference=\"<registry-name>\"`.",
     "- Default captions are transparent text overlays in the bottom safe area. Global `.clip { inset: 0 }` rules can stretch captions into full-height panels, so every default caption must override layout inline: `data-ipw-caption-style=\"transparent-bottom\" style=\"position:absolute;inset:auto 5% 5%;height:auto;display:flex;align-items:flex-end;justify-content:center;overflow:visible;background:transparent;pointer-events:none\"`. Put the visible text in a child marked `data-ipw-caption-text=\"true\"` with inline `max-width`, `background:transparent`, centered text, visible color, and text shadow or stroke. Preserve one or two readable lines; do not add padding-backed color, a pill, card, band, or backdrop unless the user explicitly asks for that treatment.",
     `- Final gate: after all edits, call \`ipollowork_extension_call\` once with extensionId \`media\`, action \`voiceover_timeline_validate\`, sourcePath \`${projectDirectory}/index.html\`, and \`requirements\` describing all requested deliverables: booleans \`voiceover\`, \`captions\`, \`bgm\`, the user's \`targetDurationSeconds\` when specified, \`captionStyle: "transparent-bottom"\` whenever captions use the default, plus every selected registry name in \`animationReferences\`. Set \`captionStyle: "custom"\` only when the user explicitly requested a different caption position or background treatment. ${options.deliveryRequirements && hasVideoDeliveryRequirements(options.deliveryRequirements) ? `For this turn the app parsed these minimum requirements; preserve them exactly in the validator call: \`${JSON.stringify(options.deliveryRequirements)}\`.` : ""} The requirements must reflect the current request and unresolved earlier requests, even when an implementation is still missing. If invalid, fix all reported issues together and run it once more. If valid, stop using tools and answer immediately: do not follow it with browser/screenshot/eval calls, manual tag counting, parser scripts, file rereads, or extra shell validation. Never start either auxiliary operation after validation, and never wait for or retry one that is still pending. The successful validator result is the authoritative completion gate; never run \`npx hyperframes check\`.`,
-    "- If the user only asks for a script, concept, or storyboard, answer in chat and leave the video project unchanged until they ask to make or edit the video.",
+    `- If the user asks for a script, concept, or storyboard, save the result to \`${storyboardPath}\` and leave the composition unchanged until they confirm generation.`,
   ];
   const voiceoverContract = options.includeVoiceover ? [
     "Video voiceover contract:",

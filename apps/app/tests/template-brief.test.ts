@@ -141,11 +141,16 @@ describe("template brief", () => {
       briefPath: "design/ses_b/brief.json",
     });
 
-    expect(video).toContain("Decide whether narration materially helps");
-    expect(video).toContain("content-led storyboard");
-    expect(video).toContain("add, remove, reorder, or retime scenes");
-    expect(video).toContain("preserve its current theme as the visual source of truth");
-    expect(video).toContain("do not change the managed theme block");
+    expect(video).toContain("engine-neutral `context`");
+    expect(video).toContain("video/ses_a/STORYBOARD.md");
+    expect(video).toContain("context.analysis");
+    expect(video).toContain("context.status");
+    expect(video).toContain("analyzed");
+    expect(video).toContain("extraction failure does not mean the source is empty");
+    expect(video).toContain("`content`");
+    expect(video).toContain("`asset_task`");
+    expect(video).toContain("do not edit `video/ses_a/index.html`");
+    expect(video).toContain("review the Script tab");
     expect(video).not.toContain("colorPalette");
     expect(app).toContain("build the complete prototype");
     expect(app).toContain("or turn it into a marketing website");
@@ -315,6 +320,8 @@ describe("template brief", () => {
     expect(routeSource).not.toContain('sessionTypeBeforeRouting === "work"');
     expect(routeSource).toContain("Multi-artifact delivery contract");
     expect(routeSource).toContain("conversationTemplateBrief(text)");
+    expect(routeSource).toContain("const attachedReferences = await Promise.all(draft.attachments");
+    expect(routeSource).toContain("workspacePathsByReferenceId");
     expect(routeSource).toContain('purpose: "artifact-delivery"');
     expect(routeSource).not.toContain("No installed ${automaticTemplateIntent.category} template");
     expect(routeSource).toContain("templateInstructions.push(templateBriefPrompt");
@@ -322,7 +329,7 @@ describe("template brief", () => {
     expect(pageSource).toContain("currentTemplateSessionData?.hasBrief === true");
   });
 
-  test("arms the shared artifact completion gate before starting a video template task", () => {
+  test("arms the shared artifact completion gate only when the confirmed script starts generation", () => {
     const pageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
@@ -333,6 +340,8 @@ describe("template brief", () => {
     );
 
     expect(pageSource).toContain("createVideoArtifactCompletionRequirement(");
+    expect(pageSource).toContain('activePanelTab?.type !== "video"');
+    expect(pageSource).toContain("isVideoScriptBuild");
     expect(pageSource).toContain("pendingProgrammaticDraft={pendingTemplateDispatch");
     expect(pageSource).toContain("artifactCompletionRequirement={pendingVideoArtifactCompletion");
     expect(surfaceSource).toContain("sendDraft(pending.draft, pending.draft.attachments)");

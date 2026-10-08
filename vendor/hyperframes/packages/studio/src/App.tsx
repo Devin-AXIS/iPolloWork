@@ -58,7 +58,6 @@ import {
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
 const HIDE_LEFT_SIDEBAR = true;
-const HIDE_STORYBOARD_VIEW = true;
 const StudioLeftSidebar = lazy(() =>
   import("./components/StudioLeftSidebar").then((module) => ({
     default: module.StudioLeftSidebar,
@@ -547,7 +546,7 @@ export function StudioApp() {
         <StudioSplash waiting={waitingForServer} />
       </StudioI18nProvider>
     );
-  const activeViewMode = HIDE_STORYBOARD_VIEW ? "timeline" : viewModeValue.viewMode;
+  const activeViewMode = viewModeValue.viewMode;
   return (
     <StudioI18nProvider>
       <StudioShellProvider value={studioCtxValue}>

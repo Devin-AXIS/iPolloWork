@@ -130,6 +130,16 @@ export function videoStudioDocumentPrompt(projectDirectory: string) {
   ].join("\n");
 }
 
+export function videoStudioBuildFromScriptPrompt(projectDirectory: string) {
+  return [
+    "I have reviewed and confirmed the current video script.",
+    `Read ${projectDirectory}/brief.json and ${projectDirectory}/STORYBOARD.md from disk now.`,
+    "Treat the confirmed scene copy, timing, production mode, sources, and asset tasks as the production source of truth.",
+    "Resolve required assets into this project, then build or update the existing HyperFrames index.html without creating another editor or render pipeline.",
+    "Preserve the project theme and deterministic timeline. Validate the completed video with the required iPolloWork video validator before finishing.",
+  ].join("\n");
+}
+
 export function videoStudioSelectionPrompt(projectDirectory: string, selection: VideoStudioSelection) {
   const details = [
     selection.text ? `Text: ${selection.text.slice(0, 240)}` : "",

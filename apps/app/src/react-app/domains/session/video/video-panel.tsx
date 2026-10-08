@@ -53,6 +53,7 @@ type VideoPanelProps = {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onBuildFromScript?: () => boolean | Promise<boolean>;
   onSaveAsTemplate?: () => void;
 };
 
@@ -95,7 +96,7 @@ function isIPolloWorkServerClient(client: VideoStudioClient | null): client is i
   return Boolean(client && "createVoiceRealtimeSession" in client);
 }
 
-export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceId, runtime, features = IPOLLOWORK_VIDEO_STUDIO_FEATURES, branding, isRemoteWorkspace = false, aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate }: VideoPanelProps) {
+export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceId, runtime, features = IPOLLOWORK_VIDEO_STUDIO_FEATURES, branding, isRemoteWorkspace = false, aiEditing = false, expanded = false, onExpandedChange, onAskAi, onBuildFromScript, onSaveAsTemplate }: VideoPanelProps) {
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const studioChromeReadyRef = React.useRef(false);
   const studioReadyFallbackRef = React.useRef<number | null>(null);
@@ -794,10 +795,27 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
       if (event.data.action === "save-as-template") onSaveAsTemplate?.();
       if (event.data.action === "open-templates" && templatesAvailable) setTemplateDialogOpen(true);
       if (event.data.action === "ask-ai") branding?.onAskAi();
+      if (event.data.action === "build-from-script") {
+        void Promise.resolve(onBuildFromScript?.() ?? false).then((accepted) => {
+          studioFrameRef.current?.contentWindow?.postMessage({
+            type: "ipollowork:studio-host-action-result",
+            projectId: videoProjectId(sessionId),
+            action: "build-from-script",
+            accepted,
+          }, new URL(studioUrl).origin);
+        }, () => {
+          studioFrameRef.current?.contentWindow?.postMessage({
+            type: "ipollowork:studio-host-action-result",
+            projectId: videoProjectId(sessionId),
+            action: "build-from-script",
+            accepted: false,
+          }, new URL(studioUrl).origin);
+        });
+      }
     };
     window.addEventListener("message", handleStudioHostAction);
     return () => window.removeEventListener("message", handleStudioHostAction);
-  }, [branding, onSaveAsTemplate, reloadStudio, sessionId, studioUrl, templatesAvailable]);
+  }, [branding, onBuildFromScript, onSaveAsTemplate, reloadStudio, sessionId, studioUrl, templatesAvailable]);
 
   React.useEffect(() => {
     setStudioHostPanel(null);

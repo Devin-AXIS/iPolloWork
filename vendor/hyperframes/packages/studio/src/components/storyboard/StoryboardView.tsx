@@ -1,10 +1,10 @@
-import { useState, type ReactNode } from "react";
-import { Copy, Check } from "@phosphor-icons/react";
+import { FileText, Sparkle } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
 import { useStoryboard } from "../../hooks/useStoryboard";
 import { useProjectSignaturePoll } from "../../hooks/useProjectSignaturePoll";
-import { copyTextToClipboard } from "../../utils/clipboard";
 import { Button } from "../ui/Button";
 import { StoryboardLoaded } from "./StoryboardLoaded";
+import { useStudioI18n } from "../../i18n";
 
 export interface StoryboardViewProps {
   projectId: string;
@@ -59,7 +59,7 @@ export function StoryboardView({ projectId, onSelectComposition }: StoryboardVie
 
 function StoryboardFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="flex-1 min-h-0 overflow-auto bg-neutral-950 text-neutral-200">
+    <div className="min-h-0 flex-1 overflow-auto bg-studio-bg text-studio-text">
       <div className="mx-auto max-w-[1400px] px-8 py-8">{children}</div>
     </div>
   );
@@ -69,7 +69,7 @@ function Message({ children, tone = "muted" }: { children: ReactNode; tone?: "mu
   return (
     <div
       className={`px-6 py-12 text-center text-sm ${
-        tone === "error" ? "text-red-400" : "text-neutral-500"
+        tone === "error" ? "text-red-400" : "text-studio-muted"
       }`}
     >
       {children}
@@ -77,93 +77,20 @@ function Message({ children, tone = "muted" }: { children: ReactNode; tone?: "mu
   );
 }
 
-function handoffPrompt(path: string): string {
-  return `Create a \`${path}\` at the project root to plan this video frame by frame.
-
-Use this format:
-
----
-format: 1920x1080 or 1080x1920 (match the composition; use 1080x1920 for portrait 9:16)
-message: <the one-line takeaway of the video>
-arc: <the narrative shape, e.g. Problem → Solution>
-audience: <who it's for>
----
-
-## Frame 1 — <title>
-- duration: 5s
-- transition_in: crossfade
-- status: outline
-- src: compositions/frames/01-<slug>.html
-
-<A sentence or two: what's on screen and what the narration says.>
-
-Add one \`## Frame N\` section per beat. Keep the arc tight.
-
-Then run the review loop from the hyperframes-core skill (references/review-loop.md): present the plan as a proposal, offer wireframe sketches on this board, and build on the confirmed layouts.`;
-}
-
 function EmptyState({ path }: { path: string }) {
-  const [copied, setCopied] = useState(false);
-  const prompt = handoffPrompt(path);
-
-  const onCopy = async () => {
-    if (await copyTextToClipboard(prompt)) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    }
-  };
+  const { tx } = useStudioI18n();
 
   return (
-    <div>
-      <div className="rounded-lg border border-dashed border-neutral-800 px-6 py-10 text-center">
-        <h2 className="text-base font-semibold text-neutral-300">No storyboard yet</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-neutral-500">
-          Add a <code className="rounded bg-neutral-900 px-1 py-0.5 text-neutral-400">{path}</code>{" "}
-          at the project root to plan this video frame by frame. Hand this prompt to your coding
-          agent to scaffold it.
-        </p>
-
-        <div className="mx-auto mt-6 max-w-2xl overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 text-left">
-          <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-            <span className="font-mono text-xs text-neutral-500">Prompt for your agent</span>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={onCopy}
-              icon={copied ? <Check size={14} /> : <Copy size={14} />}
-            >
-              {copied ? "Copied" : "Copy prompt"}
-            </Button>
-          </div>
-          <pre className="max-h-64 overflow-auto px-4 py-3 font-mono text-xs leading-relaxed text-neutral-400 whitespace-pre-wrap">
-            {prompt}
-          </pre>
-        </div>
+    <div className="mx-auto flex min-h-[420px] max-w-lg flex-col items-center justify-center text-center">
+      <div className="relative grid size-14 place-items-center rounded-2xl border border-studio-border bg-studio-surface text-studio-muted shadow-lg">
+        <FileText size={24} weight="duotone" />
+        <Sparkle className="absolute -right-1 -top-1 text-studio-text" size={15} weight="fill" />
       </div>
-
-      <SkeletonPreview />
-    </div>
-  );
-}
-
-/** Faded placeholder of a filled board so landing here isn't a dead end —
- *  it previews the contact-sheet layout {@link StoryboardGrid} renders. */
-function SkeletonPreview() {
-  return (
-    <div aria-hidden="true" className="mt-10 select-none opacity-40">
-      <div className="mb-4 text-center text-xs uppercase tracking-wide text-neutral-600">
-        Preview
-      </div>
-      <div className="grid gap-x-6 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3">
-            <div className="aspect-video w-full rounded bg-neutral-800/60" />
-            <div className="mt-3 h-3 w-2/3 rounded bg-neutral-800/60" />
-            <div className="mt-2 h-2.5 w-full rounded bg-neutral-800/40" />
-            <div className="mt-1.5 h-2.5 w-4/5 rounded bg-neutral-800/40" />
-          </div>
-        ))}
-      </div>
+      <h2 className="mt-5 text-base font-semibold tracking-[-0.01em] text-studio-text">{tx("Script is not ready yet")}</h2>
+      <p className="mt-2 max-w-md text-sm leading-6 text-studio-muted">
+        {tx("AI first structures the brief and references, then writes the editable scene table here. Video generation starts only after you confirm it.")}
+      </p>
+      <code className="mt-4 rounded-md border border-studio-border bg-studio-surface px-2 py-1 text-[11px] text-studio-muted">{path}</code>
     </div>
   );
 }

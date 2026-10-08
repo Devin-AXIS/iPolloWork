@@ -7,7 +7,10 @@ import {
 } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
-import { attachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
+import {
+  attachmentRequiresNativeModelSupport,
+  isModelReadableAttachment,
+} from "@/react-app/domains/session/sync/attachment-support";
 import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
 
 type DesignSelectionScope = {
@@ -286,9 +289,12 @@ export async function draftToParts(
   }
 
   parts.push(...firstLineLocalFileParts(draft.resolvedText ?? draft.text, root));
-  parts.push(
-    ...(await Promise.all(
-      draft.attachments.map(async (attachment) => {
+  const attachmentParts = await Promise.all(
+    draft.attachments.map(async (attachment) => {
+        // Unsupported binary files are persisted to the workspace inbox above
+        // and referenced by path. Sending them as fake text file parts corrupts
+        // provider history and gives the model unreadable bytes.
+        if (!isModelReadableAttachment(attachment.mimeType)) return null;
         if (options.supportsNativeAttachments === false) {
           if (attachmentRequiresNativeModelSupport(attachment.mimeType)) {
             throw new Error("The selected model cannot read image or PDF attachments.");
@@ -306,9 +312,9 @@ export async function draftToParts(
           filename: attachment.name,
           mime,
         };
-      }),
-    )),
+    }),
   );
+  parts.push(...attachmentParts.filter((item): item is NonNullable<typeof item> => item !== null));
 
   return parts;
 }

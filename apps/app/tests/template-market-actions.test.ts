@@ -20,6 +20,10 @@ const sessionPage = readFileSync(
   new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
   "utf8",
 );
+const structuredContext = readFileSync(
+  new URL("../src/react-app/domains/session/references/structured-context.ts", import.meta.url),
+  "utf8",
+);
 const desktopMain = readFileSync(
   new URL("../../desktop/electron/main.mjs", import.meta.url),
   "utf8",
@@ -233,7 +237,9 @@ describe("template market actions", () => {
   test("surfaces reference warnings and template brief submission failures", () => {
     expect(sessionPage).toContain("reference.ingestion?.warnings[0]");
     expect(sessionPage).toContain('t("templates.brief.submit_failed")');
-    expect(sessionPage).toContain("sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file)");
+    expect(sessionPage).toContain("sendOriginal: canSendOriginalReference(file)");
+    expect(sessionPage).toContain("templateReferenceRecords(references)");
+    expect(structuredContext).toContain("sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file)");
   });
 
   test("applies a template to the current conversation when opened from the composer", () => {

@@ -173,6 +173,27 @@ describe("Composer model and reasoning menu", () => {
     ]);
   });
 
+  test("keeps unsupported binary media out of provider history", async () => {
+    const attachment = new File(["binary-video"], "reference.mp4", { type: "video/mp4" });
+    const draft: ComposerDraft = {
+      mode: "prompt",
+      text: "Use this reference",
+      parts: [{ type: "text", text: "Use this reference" }],
+      attachments: [{
+        id: "attachment-video",
+        name: attachment.name,
+        mimeType: attachment.type,
+        size: attachment.size,
+        kind: "file",
+        file: attachment,
+      }],
+    };
+
+    expect(await draftToParts(draft, "", undefined, undefined, { supportsNativeAttachments: true })).toEqual([
+      { type: "text", text: "Use this reference" },
+    ]);
+  });
+
   test("requires native model support only for images and PDFs", () => {
     expect(attachmentRequiresNativeModelSupport("image/png")).toBe(true);
     expect(attachmentRequiresNativeModelSupport("application/pdf")).toBe(true);

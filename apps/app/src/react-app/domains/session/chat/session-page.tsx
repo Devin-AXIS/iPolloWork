@@ -140,6 +140,8 @@ import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } fro
 import {
   createVideoArtifactCompletionRequirement,
   videoProjectEntryPath,
+  videoProjectStoryboardPath,
+  videoStoryboardHasVoiceover,
   videoProjectSessionIdFromEntryPath,
   type VideoArtifactCompletionRequirement,
 } from "../video/video-project";
@@ -164,6 +166,7 @@ import {
   revokeTemplateReferenceAttachmentPreviews,
 } from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
+import { structuredWorkContext, templateReferenceRecords } from "../references/structured-context";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
 import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
@@ -1515,7 +1518,7 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       mimeType: file.type || "application/octet-stream",
       size: file.size,
       status: "parsing" as const,
-      sendOriginal: false,
+      sendOriginal: canSendOriginalReference(file),
     }));
     updateReferences((current) => [...current, ...pending]);
 
@@ -2446,30 +2449,12 @@ export function SessionPage(props: SessionPageProps) {
           pptxCompatibility: template.pptxCompatibility,
           sourcePath: state.entry,
           applyChecklist: template.applyChecklist,
-          referenceFiles: references.map((reference) => ({
-            name: reference.fileName,
-            mimeType: reference.mimeType,
-            size: reference.size,
-            quality: reference.ingestion?.quality ?? "failed",
-            sourceMode: reference.ingestion?.sourceMode ?? "memory",
-            sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
-          })),
+          referenceFiles: templateReferenceRecords(references),
           ...brief,
+          context: structuredWorkContext(brief, references),
         }, null, 2),
         baseUpdatedAt: null,
       });
-      if (template.surface === "video") {
-        const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, state.entry);
-        setPendingVideoArtifactCompletion({
-          sessionId: props.selectedSessionId,
-          requirement: createVideoArtifactCompletionRequirement(
-            state.entry,
-            source.content,
-            conversationMessages.length,
-            conversationRequestCount,
-          ),
-        });
-      }
       const referencePrompt = referencePayload.contextPack.promptText.trim();
       const visibleTemplateMessage = templateBriefUserMessage({ template, brief });
       setTemplateAssistantWait(references.length > 0 ? {
@@ -2530,21 +2515,6 @@ export function SessionPage(props: SessionPageProps) {
           sessionId: dispatch.sessionId,
           label: t("templates.brief.reference_agent_processing_label", { count: dispatch.attachments.length }),
         } : null);
-        if (templateSession.manifest.surface === "video") {
-          const source = await client.readWorkspaceFile(
-            workspaceId,
-            templateSession.state.entry,
-          );
-          setPendingVideoArtifactCompletion({
-            sessionId: dispatch.sessionId,
-            requirement: createVideoArtifactCompletionRequirement(
-              templateSession.state.entry,
-              source.content,
-              conversationMessages.length,
-              conversationRequestCount,
-            ),
-          });
-        }
         setPendingTemplateDispatch((current) => current?.requestId === dispatch.requestId
           ? { ...current, draft: createTemplateDispatchDraft(templateSession.manifest, templateSession.state, current) }
           : current);
@@ -2733,15 +2703,9 @@ export function SessionPage(props: SessionPageProps) {
         category: application.category,
         surface: application.category === "video" ? "video" : "design",
         pptxCompatibility,
-        referenceFiles: references.map((reference) => ({
-          name: reference.fileName,
-          mimeType: reference.mimeType,
-          size: reference.size,
-          quality: reference.ingestion?.quality ?? "failed",
-          sourceMode: reference.ingestion?.sourceMode ?? "memory",
-          sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
-        })),
+        referenceFiles: templateReferenceRecords(references),
         ...brief,
+        context: structuredWorkContext(brief, references),
       };
       let createdSessionId: string | null = null;
       if (application.target === "new-task") {
@@ -2824,15 +2788,9 @@ export function SessionPage(props: SessionPageProps) {
           surface: template.surface,
           pptxCompatibility: template.pptxCompatibility,
           applyChecklist: template.applyChecklist,
-          referenceFiles: references.map((reference) => ({
-            name: reference.fileName,
-            mimeType: reference.mimeType,
-            size: reference.size,
-            quality: reference.ingestion?.quality ?? "failed",
-            sourceMode: reference.ingestion?.sourceMode ?? "memory",
-            sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
-          })),
+          referenceFiles: templateReferenceRecords(references),
           ...brief,
+          context: structuredWorkContext(brief, references),
         },
       });
       if (!createdSessionId) return;
@@ -3992,28 +3950,68 @@ export function SessionPage(props: SessionPageProps) {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
   }) => {
-    if (!props.selectedSessionId || (activePanelTab?.type !== "workspace-app" && activePanelTab?.type !== "plugin-studio")) return false;
+    if (
+      !props.selectedSessionId
+      || (
+        activePanelTab?.type !== "workspace-app"
+        && activePanelTab?.type !== "plugin-studio"
+        && activePanelTab?.type !== "video"
+      )
+    ) return false;
+    const isVideoScriptBuild = activePanelTab.type === "video";
     const context = activePanelTab.type === "workspace-app"
       ? [
           workspaceAppCapabilityInstruction(activePanelTab.label),
           input.modelContext ? `Current workbench context:\n${JSON.stringify(input.modelContext, null, 2)}` : null,
         ].filter(Boolean).join("\n\n")
-      : pluginWorkshopSystemInstruction(activePanelTab.pluginId);
+      : activePanelTab.type === "plugin-studio"
+        ? pluginWorkshopSystemInstruction(activePanelTab.pluginId)
+        : null;
+    let videoCapability: { id: string; instruction: string } | null = null;
+    if (isVideoScriptBuild && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
+      const sourcePath = videoProjectEntryPath(activePanelTab.sessionId);
+      const [source, storyboard] = await Promise.all([
+        props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, sourcePath),
+        props.ipolloworkServerClient.readWorkspaceFile(
+          props.runtimeWorkspaceId,
+          videoProjectStoryboardPath(activePanelTab.sessionId),
+        ).catch(() => null),
+      ]);
+      if (videoStoryboardHasVoiceover(storyboard?.content)) {
+        videoCapability = {
+          id: "video-voice-reference",
+          instruction: "The confirmed storyboard contains spoken copy. Produce it through the existing iPolloWork video voiceover contract while building the composition.",
+        };
+      }
+      setPendingVideoArtifactCompletion({
+        sessionId: props.selectedSessionId,
+        requirement: createVideoArtifactCompletionRequirement(
+          sourcePath,
+          source.content,
+          conversationMessages.length,
+          conversationRequestCount,
+        ),
+      });
+    }
     const outcome = await sendSessionDraft({
       mode: "prompt",
       parts: [{ type: "text", text: input.text }],
       attachments: [],
       text: input.text,
       resolvedText: input.text,
-      capability: {
+      ...(context ? { capability: {
         id: activePanelTab.type === "workspace-app"
           ? `workspace-app:${activePanelTab.surface.pluginId}:${activePanelTab.surface.resource.id}`
           : "plugin-workshop",
         instruction: context,
-      },
+      } } : videoCapability ? { capability: videoCapability } : {}),
     }, props.selectedSessionId);
-    return { accepted: outcome ? promptWasDispatched(outcome) : false, sessionId: typeof outcome === "object" ? outcome.sessionId ?? props.selectedSessionId : props.selectedSessionId };
-  }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
+    const accepted = outcome ? promptWasDispatched(outcome) : false;
+    if (isVideoScriptBuild && !accepted) {
+      setPendingVideoArtifactCompletion((current) => current?.sessionId === props.selectedSessionId ? null : current);
+    }
+    return { accepted, sessionId: typeof outcome === "object" ? outcome.sessionId ?? props.selectedSessionId : props.selectedSessionId };
+  }, [activePanelTab, conversationMessages.length, conversationRequestCount, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, sendSessionDraft]);
   const launcherDesignPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
   const launcherDesignTabId = launcherDesignPath && props.selectedSessionId
     ? `design:${props.selectedSessionId}:${encodeURIComponent(launcherDesignPath)}`

@@ -30,10 +30,15 @@ import { ensurePdfTypedArrayHexSupport, extractPdfReference } from "../src/react
 import {
   ingestReferenceFile,
   isReferenceFile,
+  isVisualReference,
   prepareOriginalReferenceAttachment,
 } from "../src/react-app/domains/session/references/ingestion";
 import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
 import type { TemplateReferenceItem } from "../src/react-app/domains/session/references/types";
+import {
+  structuredWorkContext,
+  templateReferenceRecords,
+} from "../src/react-app/domains/session/references/structured-context";
 import {
   inferTemplateBriefFromIngestions,
 } from "../src/react-app/domains/session/references/brief-autofill";
@@ -540,7 +545,42 @@ describe("reference ingestion router", () => {
     expect(isReferenceFile(new File(["x"], "brief.md", { type: "text/markdown" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.csv", { type: "text/csv" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.json", { type: "application/json" }))).toBe(true);
+    expect(isReferenceFile(new File(["x"], "reference.mp4", { type: "video/mp4" }))).toBe(true);
+    expect(isVisualReference(new File(["x"], "reference.mov", { type: "video/quicktime" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.svg", { type: "image/svg+xml" }))).toBe(false);
+  });
+
+  test("indexes visual references and persists one shared structured context", async () => {
+    const file = new File(["video-bytes"], "interview.mp4", { type: "video/mp4" });
+    const ingestion = await ingestReferenceFile(file);
+    const reference: TemplateReferenceItem = {
+      id: ingestion.id,
+      file,
+      fileName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      status: "ready",
+      sendOriginal: true,
+      ingestion,
+    };
+    const context = structuredWorkContext({
+      title: "AI careers",
+      audience: "Students",
+      details: "Create an educational video from the interview.",
+    }, [reference], {
+      workspacePathsByReferenceId: new Map([[reference.id, ".opencode/ipollowork/inbox/interview.mp4"]]),
+    });
+
+    expect(ingestion.quality).toBe("medium");
+    expect(context.status).toBe("indexed");
+    expect(context.sources.map((source) => source.id)).toEqual(["brief", "source-1"]);
+    expect(context.sources[1]).toMatchObject({
+      kind: "video",
+      name: "interview.mp4",
+      sourceFileAvailable: true,
+      workspacePath: ".opencode/ipollowork/inbox/interview.mp4",
+    });
+    expect(templateReferenceRecords([reference])[0]).toMatchObject({ id: "source-1", sentOriginal: true });
   });
 
   test("ingests high quality text references with deterministic summary", async () => {

@@ -62,6 +62,7 @@ import { MediaWorkbench } from "@/react-app/plugin-ui/media-workbench";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
+import { videoProjectDirectory, videoStudioBuildFromScriptPrompt } from "@ipollowork/video-studio";
 import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceAppMessageResult } from "@/react-app/plugin-ui/workspace-app-frame";
 import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
@@ -959,6 +960,13 @@ export function SidePanel({
             expanded={expanded}
             onExpandedChange={onExpandedChange}
             onAskAi={onAskAi}
+            onBuildFromScript={onSendWorkspaceAppMessage ? async () => {
+              const result = await onSendWorkspaceAppMessage({
+                text: videoStudioBuildFromScriptPrompt(videoProjectDirectory(activeTab.sessionId)),
+                modelContext: null,
+              });
+              return typeof result === "boolean" ? result : result.accepted;
+            } : undefined}
             onSaveAsTemplate={onSaveAsTemplate}
           />
         ) : activeTab?.type === "browser" ? (

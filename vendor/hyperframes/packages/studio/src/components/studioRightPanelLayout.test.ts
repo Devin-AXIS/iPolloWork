@@ -650,7 +650,8 @@ describe("Studio right panel layout", () => {
     expect(tabButton).toContain("text-current");
     expect(header).not.toContain('aria-disabled="true"');
     expect(header).toContain("onPreviewModeChange");
-    expect(header).toContain("aria-selected={previewMode}");
+    expect(header).toContain('aria-selected={viewMode === "storyboard"}');
+    expect(header).toContain('aria-selected={viewMode === "timeline" && previewMode}');
     expect(app).toContain("previewOnly={previewMode}");
     expect(app).toContain("onToggleRecording: undefined");
     expect(app).toContain("const recordingToggle = undefined");

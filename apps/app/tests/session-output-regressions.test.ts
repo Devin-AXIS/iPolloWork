@@ -417,6 +417,10 @@ describe("session output issue regressions", () => {
       new URL("../src/react-app/shell/session-prompt.ts", import.meta.url),
       "utf8",
     );
+    const structuredContextSource = readFileSync(
+      new URL("../src/react-app/domains/session/references/structured-context.ts", import.meta.url),
+      "utf8",
+    );
     const messageListSource = readFileSync(
       new URL("../src/components/chat/message-list.tsx", import.meta.url),
       "utf8",
@@ -445,7 +449,8 @@ describe("session output issue regressions", () => {
     expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references)");
     expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
     expect(sessionPromptSource).toContain("Use these workspace-relative paths");
-    expect(initialProjectSource).toContain("referenceFiles: references.map");
+    expect(initialProjectSource).toContain("referenceFiles: templateReferenceRecords(references)");
+    expect(structuredContextSource).toContain("return references.map((reference, index)");
     expect(composerSource).toContain('import { flushSync } from "react-dom";');
     expect(composerSource).toContain("maxAttachmentBytes?: number;");
     expect(composerSource).toContain("const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;");

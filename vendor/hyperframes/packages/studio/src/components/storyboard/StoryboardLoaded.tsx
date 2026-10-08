@@ -1,318 +1,321 @@
-import { useEffect, useMemo, useState } from "react";
-import type { StoryboardResponse } from "../../hooks/useStoryboard";
-import { Button } from "../ui/Button";
-import { StoryboardDirection } from "./StoryboardDirection";
-import { StoryboardGrid } from "./StoryboardGrid";
-import { StoryboardScriptPanel } from "./StoryboardScriptPanel";
-import { StoryboardSourceEditor, type SourceFile } from "./StoryboardSourceEditor";
-import { StoryboardFrameFocus } from "./StoryboardFrameFocus";
-import { StoryboardReviewGuide } from "./StoryboardReviewGuide";
+import { CheckCircle, FloppyDisk, Sparkle } from "@phosphor-icons/react";
 import {
-  AgentChatMessageButton,
-  APPLY_STORYBOARD_FEEDBACK_MESSAGE,
-} from "./AgentChatMessageButton";
-import { useFrameComments, type CommentsSubmitState } from "./useFrameComments";
-
-type SubView = "board" | "source";
+  ASSET_ALIASES,
+  ASSET_TASK_ALIASES,
+  CONTENT_ALIASES,
+  MEDIA_ALIASES,
+  parseStoryboard,
+  setFrameField,
+  VISUAL_ALIASES,
+  VOICEOVER_ALIASES,
+  type StoryboardFrame,
+  type StoryboardMediaMode,
+} from "@hyperframes/core/storyboard";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useFileManagerContext } from "../../contexts/FileManagerContext";
+import { useViewMode } from "../../contexts/ViewModeContext";
+import type { StoryboardResponse } from "../../hooks/useStoryboard";
+import { useStudioI18n } from "../../i18n";
+import { Button } from "../ui/Button";
 
 export interface StoryboardLoadedProps {
   projectId: string;
   data: StoryboardResponse;
-  /** Re-fetch the manifest after a source edit is saved. */
   reload: () => void;
-  /** Select a composition in the timeline (used by "Open in Preview"). */
   onSelectComposition: (path: string) => void;
 }
 
-function clampIndex(index: number, count: number): number {
-  return Math.max(1, Math.min(count, index));
+type ScriptRow = {
+  index: number;
+  title: string;
+  content: string;
+  voiceover: string;
+  duration: string;
+  visual: string;
+  mediaMode: StoryboardMediaMode;
+  assets: string;
+  assetTask: string;
+};
+
+function rowFromFrame(frame: StoryboardFrame): ScriptRow {
+  return {
+    index: frame.index,
+    title: frame.title || `Scene ${frame.index}`,
+    content: frame.scene || frame.narrative,
+    voiceover: frame.voiceover || "",
+    duration: frame.duration || (frame.durationSeconds ? `${frame.durationSeconds}s` : ""),
+    visual: frame.visual || "",
+    mediaMode: frame.mediaMode || "html",
+    assets: frame.assets || "",
+    assetTask: frame.assetTask || "",
+  };
 }
 
-export function storyboardAspectRatio(format?: string): number {
-  const match = format?.match(/(\d+)\s*[x×]\s*(\d+)/i);
-  if (!match) return 16 / 9;
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  return width > 0 && height > 0 ? width / height : 16 / 9;
+function rowsFromData(data: StoryboardResponse) {
+  return data.frames.map(rowFromFrame);
 }
 
-/** A storyboard that exists on disk: Board (contact sheet) ↔ Source ↔ frame focus. */
-// fallow-ignore-next-line complexity
-export function StoryboardLoaded({
-  projectId,
-  data,
-  reload,
-  onSelectComposition,
-}: StoryboardLoadedProps) {
-  const [subView, setSubView] = useState<SubView>("board");
-  const [sourceDirty, setSourceDirty] = useState(false);
-  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
-  const [feedbackMessageCopied, setFeedbackMessageCopied] = useState(false);
-  const aspectRatio = storyboardAspectRatio(data.globals.format);
-  const comments = useFrameComments(data.frames);
-  // When the board refreshes off a project change (agent revised frames), the
-  // agent has likely consumed the comments file too — re-check so the pending
-  // banner clears the moment revisions land, not on the next window focus.
-  const { refreshPending } = comments;
-  useEffect(() => {
-    void refreshPending();
-  }, [data.signature, refreshPending]);
-  useEffect(() => {
-    if (comments.draftCount > 0) setFeedbackMessageCopied(false);
-  }, [comments.draftCount]);
+function rowsFingerprint(rows: ScriptRow[]) {
+  return JSON.stringify(rows);
+}
 
-  const saveFeedbackAndCopyMessage = async () => {
-    const saved = await comments.submit();
-    if (!saved) return;
+function durationSeconds(value: string) {
+  const match = value.match(/\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+function updateStoryboardSource(source: string, rows: ScriptRow[]) {
+  const latest = parseStoryboard(source);
+  if (latest.frames.length !== rows.length) {
+    throw new Error("The script changed in the background. Reload it before saving your edits.");
+  }
+  return rows.reduce((next, row) => {
+    const fields: Array<[string, string, readonly string[], boolean?]> = [
+      ["content", row.content, CONTENT_ALIASES, true],
+      ["voiceover", row.voiceover || "none", VOICEOVER_ALIASES, true],
+      ["duration", row.duration, ["duration"]],
+      ["visual", row.visual, VISUAL_ALIASES, true],
+      ["media", row.mediaMode, MEDIA_ALIASES],
+      ["assets", row.assets || "none", ASSET_ALIASES, true],
+      ["asset_task", row.assetTask || "none", ASSET_TASK_ALIASES, true],
+    ];
+    return fields.reduce(
+      (current, [key, value, aliases, quote]) => setFrameField(current, row.index, key, value, { aliases, quote }),
+      next,
+    );
+  }, source);
+}
+
+const inputClass = "w-full resize-none rounded-md border border-transparent bg-transparent px-2 py-1.5 text-xs leading-5 text-panel-text-1 outline-none transition-colors placeholder:text-panel-text-4 hover:border-panel-border-input hover:bg-panel-input focus:border-panel-accent/50 focus:bg-panel-input";
+const fieldLabelClass = "px-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-panel-text-4";
+
+/** One canonical, editable script table. The existing timeline remains the only media/HTML editor. */
+export function StoryboardLoaded({ projectId, data, reload }: StoryboardLoadedProps) {
+  const { readProjectFile, writeProjectFile } = useFileManagerContext();
+  const { registerViewModeGuard } = useViewMode();
+  const { tx } = useStudioI18n();
+  const initialRows = useMemo(() => rowsFromData(data), [data]);
+  const [rows, setRows] = useState(initialRows);
+  const [savedFingerprint, setSavedFingerprint] = useState(() => rowsFingerprint(initialRows));
+  const [saving, setSaving] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = rowsFingerprint(rows) !== savedFingerprint;
+  const dirtyRef = useRef(dirty);
+
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
+  useEffect(() => {
+    if (dirtyRef.current) return;
+    const nextRows = rowsFromData(data);
+    setRows(nextRows);
+    setSavedFingerprint(rowsFingerprint(nextRows));
+    setBuilding(false);
+  }, [data.signature]);
+
+  useEffect(() => registerViewModeGuard((nextMode) => (
+    nextMode === "storyboard"
+    || !dirtyRef.current
+    || window.confirm(tx("Discard unsaved script changes?"))
+  )), [registerViewModeGuard, tx]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
+
+  useEffect(() => {
+    const handleBuildResult = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      if (event.data?.type !== "ipollowork:studio-host-action-result") return;
+      if (event.data.projectId !== projectId || event.data.action !== "build-from-script") return;
+      if (event.data.accepted === true) return;
+      setBuilding(false);
+      setError(tx("The AI request could not be started."));
+    };
+    window.addEventListener("message", handleBuildResult);
+    return () => window.removeEventListener("message", handleBuildResult);
+  }, [projectId, tx]);
+
+  const updateRow = <K extends keyof ScriptRow>(index: number, key: K, value: ScriptRow[K]) => {
+    setRows((current) => current.map((row) => row.index === index ? { ...row, [key]: value } : row));
+    setBuilding(false);
+    setError(null);
+  };
+
+  const save = async () => {
+    if (!dirty) return true;
+    setSaving(true);
+    setError(null);
     try {
-      await navigator.clipboard.writeText(APPLY_STORYBOARD_FEEDBACK_MESSAGE);
-      setFeedbackMessageCopied(true);
-    } catch {
-      setFeedbackMessageCopied(false);
+      const currentSource = await readProjectFile(data.path);
+      const nextSource = updateStoryboardSource(currentSource, rows);
+      await writeProjectFile(data.path, nextSource);
+      const fingerprint = rowsFingerprint(rows);
+      dirtyRef.current = false;
+      setSavedFingerprint(fingerprint);
+      reload();
+      return true;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : tx("The script could not be saved."));
+      return false;
+    } finally {
+      setSaving(false);
     }
   };
-  const sourceFiles = useMemo<SourceFile[]>(() => {
-    const files: SourceFile[] = [{ path: data.path, label: data.path }];
-    if (data.script?.exists) files.push({ path: data.script.path, label: data.script.path });
-    return files;
-    // Depend on the stable fields, not the `data.script` object — every reload()
-    // produces a fresh object and would needlessly re-create this array.
-  }, [data.path, data.script?.path, data.script?.exists]);
 
-  // Leaving the source editor drops its in-memory buffer; confirm when it's dirty.
-  // fallow-ignore-next-line complexity
-  const changeSubView = (next: SubView) => {
-    if (next === subView) return;
-    if (
-      subView === "source" &&
-      sourceDirty &&
-      !window.confirm("Discard unsaved markdown changes?")
-    ) {
+  const confirmAndBuild = async () => {
+    if (!(await save())) return;
+    if (window.parent === window) {
+      setError(tx("Open this Studio inside iPolloWork to generate the video."));
       return;
     }
-    setSubView(next);
+    setBuilding(true);
+    window.parent.postMessage({
+      type: "ipollowork:studio-host-action",
+      projectId,
+      action: "build-from-script",
+    }, "*");
   };
 
-  const focusedFrame =
-    focusedIndex != null ? (data.frames.find((f) => f.index === focusedIndex) ?? null) : null;
-
-  if (focusedFrame) {
-    return (
-      <StoryboardFrameFocus
-        key={focusedFrame.index}
-        projectId={projectId}
-        storyboardPath={data.path}
-        frame={focusedFrame}
-        frameCount={data.frames.length}
-        onBack={() => setFocusedIndex(null)}
-        onNavigate={(delta) =>
-          setFocusedIndex(clampIndex(focusedFrame.index + delta, data.frames.length))
-        }
-        onSaved={reload}
-        onSelectComposition={onSelectComposition}
-        scriptExists={Boolean(data.script?.exists)}
-        commentDraft={comments.drafts[focusedFrame.index] ?? ""}
-        onCommentDraftChange={(text) => comments.setDraft(focusedFrame.index, text)}
-        pendingComment={
-          comments.pending?.find((entry) => entry.frame === focusedFrame.index)?.text ?? null
-        }
-        pendingCommentCount={comments.pending?.length ?? 0}
-        commentDraftCount={comments.draftCount}
-        commentsSubmitState={comments.submitState}
-        commentsSubmitError={comments.submitError}
-        feedbackMessageCopied={feedbackMessageCopied}
-        onFeedbackMessageCopied={() => setFeedbackMessageCopied(true)}
-        onSaveFeedback={() => void saveFeedbackAndCopyMessage()}
-        posterVersion={data.signature}
-        aspectRatio={aspectRatio}
-      />
-    );
-  }
+  const totalDuration = rows.reduce((total, row) => total + durationSeconds(row.duration), 0);
 
   return (
-    <div className="flex w-full max-w-[100vw] flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-neutral-950 text-neutral-200">
-      <div className="flex flex-wrap items-center gap-3 border-b border-neutral-800 px-4 py-2">
-        <SubViewToggle value={subView} onChange={changeSubView} />
-        {subView === "board" && (
-          <CommentsSubmitBar
-            draftCount={comments.draftCount}
-            pendingCount={comments.pending?.length ?? 0}
-            submitState={comments.submitState}
-            submitError={comments.submitError}
-            messageCopied={feedbackMessageCopied}
-            onSave={() => void saveFeedbackAndCopyMessage()}
-            onMessageCopied={() => setFeedbackMessageCopied(true)}
-          />
-        )}
-      </div>
-      {subView === "board" ? (
-        <div className="flex-1 min-h-0 overflow-auto">
-          <div className="mx-auto max-w-[1400px] px-4 py-5 sm:px-8 sm:py-8">
-            <StoryboardDirection globals={data.globals} frameCount={data.frames.length} />
-            <StoryboardReviewGuide
-              frames={data.frames}
-              draftCount={comments.draftCount}
-              pendingCount={comments.pending?.length ?? 0}
-              onFeedbackMessageCopied={() => setFeedbackMessageCopied(true)}
-            />
-            <StoryboardWarnings
-              warnings={data.warnings}
-              onOpenSource={() => changeSubView("source")}
-            />
-            <StoryboardGrid
-              projectId={projectId}
-              frames={data.frames}
-              onOpenFrame={setFocusedIndex}
-              commentDrafts={comments.drafts}
-              onCommentDraftChange={comments.setDraft}
-              pendingComments={comments.pending}
-              posterVersion={data.signature}
-              aspectRatio={aspectRatio}
-            />
-            {data.script && <StoryboardScriptPanel script={data.script} />}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-studio-bg text-studio-text">
+      <div className="flex shrink-0 items-center gap-4 border-b border-studio-border bg-studio-surface/95 px-5 py-3 backdrop-blur-xl">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h1 className="truncate text-sm font-semibold tracking-[-0.01em] text-studio-text">
+              {data.globals.message || tx("Video script")}
+            </h1>
+            <span className="rounded-full border border-studio-border bg-panel-input px-2 py-0.5 text-[10px] font-medium text-studio-muted">
+              {rows.length} {tx("scenes")}
+            </span>
+            <span className="text-[11px] text-studio-muted">{totalDuration || 0}s</span>
           </div>
+          <p className="mt-0.5 truncate text-[11px] text-studio-muted">
+            {data.globals.audience || tx("Review content, narration, timing, and media choices before generation.")}
+          </p>
         </div>
-      ) : (
-        <StoryboardSourceEditor
-          files={sourceFiles}
-          onSaved={reload}
-          onDirtyChange={setSourceDirty}
-        />
-      )}
-    </div>
-  );
-}
-
-/** Batch-submit the per-frame comment drafts to `.hyperframes/frame-comments.json`. */
-function CommentsSubmitBar({
-  draftCount,
-  pendingCount,
-  submitState,
-  submitError,
-  messageCopied,
-  onSave,
-  onMessageCopied,
-}: {
-  draftCount: number;
-  pendingCount: number;
-  submitState: CommentsSubmitState;
-  submitError: string | null;
-  messageCopied: boolean;
-  onSave: () => void;
-  onMessageCopied: () => void;
-}) {
-  return (
-    <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-none">
-      {pendingCount > 0 && (
-        <>
-          <span className="text-xs text-sky-300">
-            {messageCopied
-              ? "Feedback saved · Message copied — paste it in your terminal or IDE agent chat."
-              : "Feedback saved · Agent not notified."}
-          </span>
-          <AgentChatMessageButton
-            message={APPLY_STORYBOARD_FEEDBACK_MESSAGE}
-            label={messageCopied ? "Copy again" : "Copy prompt for agent"}
-            onCopied={onMessageCopied}
-          />
-        </>
-      )}
-      {pendingCount === 0 && draftCount === 0 && (
-        <span className="text-xs text-neutral-500">Add frame comments to request changes.</span>
-      )}
-      {submitError && (
-        <span className="max-w-64 truncate text-xs text-red-400" title={submitError}>
-          Couldn’t submit: {submitError}
-        </span>
-      )}
-      {draftCount > 0 && (
+        {error ? <p className="max-w-72 truncate text-[11px] text-red-400" title={error}>{tx(error)}</p> : null}
         <Button
-          variant="primary"
           size="sm"
-          loading={submitState === "saving"}
-          disabled={submitState === "saving"}
-          onClick={onSave}
+          variant="secondary"
+          icon={<FloppyDisk size={14} />}
+          disabled={!dirty || saving}
+          loading={saving}
+          onClick={() => void save()}
         >
-          Save &amp; copy message ({draftCount})
+          {dirty ? tx("Save script") : tx("Saved")}
         </Button>
-      )}
-    </div>
-  );
-}
-
-function StoryboardWarnings({
-  warnings,
-  onOpenSource,
-}: {
-  warnings: StoryboardResponse["warnings"];
-  onOpenSource: () => void;
-}) {
-  if (warnings.length === 0) return null;
-  return (
-    <details className="mt-3 rounded-lg border border-amber-900/60 bg-amber-950/20 px-4 py-2 text-xs text-amber-200">
-      <summary className="cursor-pointer font-medium">
-        {warnings.length} storyboard warning{warnings.length === 1 ? "" : "s"}
-      </summary>
-      <ul className="mt-2 space-y-1 text-amber-200/80">
-        {warnings.map((warning, index) => (
-          <li key={`${warning.line ?? "unknown"}-${index}`}>
-            {warning.line ? `Line ${warning.line}: ` : ""}
-            {warning.message}
-          </li>
-        ))}
-      </ul>
-      <button
-        type="button"
-        onClick={onOpenSource}
-        className="mt-2 rounded text-amber-100 underline underline-offset-2 hover:text-white"
-      >
-        Open source to fix
-      </button>
-    </details>
-  );
-}
-
-const SUB_VIEWS: Array<{ value: SubView; label: string }> = [
-  { value: "board", label: "Board" },
-  { value: "source", label: "Source" },
-];
-
-function SubViewToggle({ value, onChange }: { value: SubView; onChange: (next: SubView) => void }) {
-  // Complete tabs contract: roving tabIndex + arrow-key navigation (the roles
-  // alone promised keyboard behavior the buttons didn't have).
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    const currentIndex = SUB_VIEWS.findIndex((v) => v.value === value);
-    const delta = e.key === "ArrowRight" ? 1 : -1;
-    const next = SUB_VIEWS[(currentIndex + delta + SUB_VIEWS.length) % SUB_VIEWS.length];
-    if (next) onChange(next.value);
-  };
-
-  return (
-    <div
-      className="flex items-center gap-0.5 rounded-md bg-neutral-900 p-0.5"
-      role="tablist"
-      aria-label="Storyboard view"
-      onKeyDown={handleKeyDown}
-    >
-      {SUB_VIEWS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="tab"
-          aria-selected={value === option.value}
-          tabIndex={value === option.value ? 0 : -1}
-          onClick={() => onChange(option.value)}
-          className={`rounded px-3 py-1 text-xs font-medium transition-colors active:scale-[0.98] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
-            value === option.value
-              ? "bg-neutral-700 text-neutral-100"
-              : "text-neutral-400 hover:text-neutral-200"
-          }`}
+        <Button
+          size="sm"
+          variant="primary"
+          icon={building ? <CheckCircle size={14} weight="fill" /> : <Sparkle size={14} weight="fill" />}
+          disabled={rows.length === 0 || saving || building}
+          onClick={() => void confirmAndBuild()}
         >
-          {option.label}
-        </button>
-      ))}
+          {building ? tx("Sent to AI") : tx("Confirm & generate")}
+        </Button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="w-full min-w-[1040px] table-fixed border-separate border-spacing-0">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-[25%]" />
+            <col className="w-[23%]" />
+            <col className="w-24" />
+            <col />
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-studio-surface/95 text-left backdrop-blur-xl">
+            <tr className="text-[10px] font-semibold uppercase tracking-[0.08em] text-studio-muted">
+              <th className="border-b border-r border-studio-border px-3 py-2.5">#</th>
+              <th className="border-b border-r border-studio-border px-3 py-2.5">{tx("Content")}</th>
+              <th className="border-b border-r border-studio-border px-3 py-2.5">{tx("Narration")}</th>
+              <th className="border-b border-r border-studio-border px-3 py-2.5">{tx("Duration")}</th>
+              <th className="border-b border-studio-border px-3 py-2.5">{tx("Scene plan")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.index} className="group align-top transition-colors hover:bg-panel-hover/30">
+                <td className="border-b border-r border-studio-border px-3 py-3 text-center text-[11px] font-semibold tabular-nums text-studio-muted">
+                  {String(row.index).padStart(2, "0")}
+                </td>
+                <td className="border-b border-r border-studio-border p-2">
+                  <div className="truncate px-2 pt-1 text-[11px] font-semibold text-panel-text-2">{row.title}</div>
+                  <textarea
+                    rows={4}
+                    className={inputClass}
+                    value={row.content}
+                    placeholder={tx("What this scene communicates")}
+                    onChange={(event) => updateRow(row.index, "content", event.currentTarget.value)}
+                  />
+                </td>
+                <td className="border-b border-r border-studio-border p-2">
+                  <textarea
+                    rows={5}
+                    className={inputClass}
+                    value={row.voiceover}
+                    placeholder={tx("Final narration, or none")}
+                    onChange={(event) => updateRow(row.index, "voiceover", event.currentTarget.value)}
+                  />
+                </td>
+                <td className="border-b border-r border-studio-border p-2">
+                  <input
+                    className={`${inputClass} h-8 text-center tabular-nums`}
+                    value={row.duration}
+                    placeholder="5s"
+                    onChange={(event) => updateRow(row.index, "duration", event.currentTarget.value)}
+                  />
+                </td>
+                <td className="border-b border-studio-border p-2">
+                  <label className="block">
+                    <span className={fieldLabelClass}>{tx("What appears")}</span>
+                    <textarea
+                      rows={2}
+                      className={inputClass}
+                      value={row.visual}
+                      placeholder={tx("Describe the picture, layout, and movement")}
+                      onChange={(event) => updateRow(row.index, "visual", event.currentTarget.value)}
+                    />
+                  </label>
+                  <div className="mt-1 grid grid-cols-2 gap-1 border-t border-studio-border pt-1">
+                    <label className="block pt-1">
+                      <span className={fieldLabelClass}>{tx("Use these materials")}</span>
+                      <textarea
+                        rows={2}
+                        className={inputClass}
+                        value={row.assets}
+                        placeholder={tx("Images, video, screenshots, or source files to show")}
+                        onChange={(event) => updateRow(row.index, "assets", event.currentTarget.value)}
+                      />
+                    </label>
+                    <label className="block pt-1">
+                      <span className={fieldLabelClass}>{tx("Prepare materials")}</span>
+                      <textarea
+                        rows={2}
+                        className={inputClass}
+                        value={row.assetTask}
+                        placeholder={tx("What AI should find or generate, if anything")}
+                        onChange={(event) => updateRow(row.index, "assetTask", event.currentTarget.value)}
+                      />
+                    </label>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

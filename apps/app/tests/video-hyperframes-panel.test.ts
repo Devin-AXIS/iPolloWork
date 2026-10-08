@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import {
+  CONTENT_ALIASES,
+  parseStoryboard,
+  setFrameField,
+} from "../../../vendor/hyperframes/packages/core/src/storyboard/index";
 
 import {
   hyperframesStudioPort,
@@ -10,8 +15,10 @@ import {
   videoProjectDirectory,
   videoProjectId,
   videoProjectPath,
+  videoProjectStoryboardPath,
   videoPromptRequestsVoiceoverContext,
   requestedVideoDurationSeconds,
+  videoStoryboardHasVoiceover,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
 import {
@@ -1006,6 +1013,13 @@ describe("HyperFrames Video Studio", () => {
     expect(videoProjectPath("ses/current video", "/workspace/current/")).toBe("/workspace/current/video/ses_current_video");
     expect(videoProjectPath("ses/current video", "/")).toBe("/video/ses_current_video");
     expect(videoProjectPath("ses/current video", "C:\\workspace\\current\\")).toBe("C:\\workspace\\current\\video\\ses_current_video");
+    expect(videoProjectStoryboardPath("ses/current video")).toBe("video/ses_current_video/STORYBOARD.md");
+  });
+
+  test("loads voice production only when the confirmed script contains spoken copy", () => {
+    expect(videoStoryboardHasVoiceover("## Scene 1\n- voiceover: none")).toBe(false);
+    expect(videoStoryboardHasVoiceover("## Scene 1\n- voiceover: \"欢迎来到新世界。\"")).toBe(true);
+    expect(videoStoryboardHasVoiceover("## Scene 1\n- narration: 无需")).toBe(false);
   });
 
   test("assigns a stable session-specific Studio port", () => {
@@ -1046,8 +1060,10 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never run npm/pnpm/yarn install");
     expect(contract).toContain("Batch compatible HTML/CSS/JS changes into one complete edit or write");
     expect(contract).toContain("use at most two read-only inspection calls before the first mutation or media action");
-    expect(contract).toContain("A plan, outline, proposed scene list, or sentence such as 'let me structure' is never task completion");
-    expect(contract).toContain("perform the requested edits in the same run");
+    expect(contract).toContain("canonical editable production script");
+    expect(contract).toContain("do not change `/workspace/current/video/ses_current_video/index.html`");
+    expect(contract).toContain("Only after the user explicitly confirms");
+    expect(contract).toContain("perform the requested video edits in the same run");
     expect(contract).toContain("Prefer a smaller complete valid result over an ambitious plan that is never applied");
     expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
     expect(contract).toContain("Never stop all Node processes");
@@ -1193,10 +1209,86 @@ describe("HyperFrames Video Studio", () => {
     });
     expect(contract).toContain("source is template `Launch Film`");
     expect(contract).toContain("editable visual and runtime seed");
-    expect(contract).toContain("let the content determine scene count, order, and timing");
+    expect(contract).toContain("structured context determines scene count, order, evidence, assets, and timing");
     expect(contract).toContain("quality and export guidance, not a requirement to retain sample structure");
     expect(contract).toContain("preserve the root composition contract");
     expect(contract).toContain("At the start of every edit turn, re-read the current entry from disk");
     expect(contract).toContain("Replace inherited copy; Keep the visual language");
+  });
+
+  test("uses one editable Script table before the existing timeline", () => {
+    const appSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
+    const headerSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      "utf8",
+    );
+    const scriptSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/storyboard/StoryboardLoaded.tsx", import.meta.url),
+      "utf8",
+    );
+    const scriptViewSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/storyboard/StoryboardView.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(appSource).not.toContain("HIDE_STORYBOARD_VIEW");
+    expect(headerSource).toContain('t("header.storyboard")');
+    expect(headerSource).toContain('setViewMode("storyboard")');
+    expect(scriptSource).toContain("<table");
+    expect(scriptSource).toContain('updateRow(row.index, "content"');
+    expect(scriptSource).toContain('updateRow(row.index, "voiceover"');
+    expect(scriptSource).toContain("bg-studio-bg text-studio-text");
+    expect(scriptSource).toContain('tx("Scene plan")');
+    expect(scriptSource).not.toContain('updateRow(row.index, "mediaMode"');
+    expect(scriptSource).not.toContain("<select");
+    expect(scriptSource).toContain('action: "build-from-script"');
+    expect(scriptViewSource).toContain("bg-studio-bg text-studio-text");
+    expect(scriptViewSource).not.toContain("bg-neutral-950");
+    expect(sidePanelSource).toContain("videoStudioBuildFromScriptPrompt");
+  });
+
+  test("round-trips AI-friendly scene production fields through the canonical storyboard", () => {
+    const source = [
+      "---",
+      "message: Explain the launch",
+      "---",
+      "## Scene 1 — Opening",
+      "- content: Establish the problem",
+      "- voiceover: \"Teams lose time every week.\"",
+      "- duration: 5s",
+      "- visual: Product UI over a quiet grid",
+      "- media: hybrid",
+      "- assets: source-1",
+      "- asset_task: Generate a subtle background plate",
+      "- status: outline",
+    ].join("\n");
+    const parsed = parseStoryboard(source);
+
+    expect(parsed.frames[0]).toMatchObject({
+      scene: "Establish the problem",
+      voiceover: "Teams lose time every week.",
+      durationSeconds: 5,
+      visual: "Product UI over a quiet grid",
+      mediaMode: "hybrid",
+      assets: "source-1",
+      assetTask: "Generate a subtle background plate",
+    });
+    expect(parseStoryboard(setFrameField(source, 1, "media", "generated-video")).frames[0]?.mediaMode).toBe("generated-video");
+
+    const legacySource = source.replace("- content: Establish the problem", "- scene: Establish the problem");
+    const updatedLegacy = setFrameField(legacySource, 1, "content", "Lead with the new fact", {
+      aliases: CONTENT_ALIASES,
+      quote: true,
+    });
+    expect(updatedLegacy).toContain('- scene: "Lead with the new fact"');
+    expect(updatedLegacy).not.toContain("- content:");
+    expect(parseStoryboard(updatedLegacy).frames[0]?.scene).toBe("Lead with the new fact");
   });
 });

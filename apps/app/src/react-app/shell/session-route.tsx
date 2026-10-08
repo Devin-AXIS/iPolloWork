@@ -105,6 +105,12 @@ import {
 } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { readAppliedDesignSystemId } from "@/react-app/domains/session/design/design-system-theme-contract";
+import {
+  structuredWorkContext,
+  templateReferenceRecords,
+} from "@/react-app/domains/session/references/structured-context";
+import { ingestReferenceFile, isReferenceFile } from "@/react-app/domains/session/references/ingestion";
+import type { TemplateReferenceItem } from "@/react-app/domains/session/references/types";
 import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/react-app/domains/session/templates/template-authoring";
 import {
   conversationTemplateBrief,
@@ -137,6 +143,8 @@ import {
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
   videoProjectEntryPath,
+  videoProjectStoryboardPath,
+  videoStoryboardHasVoiceover,
   videoTaskSystemContext,
 } from "@/react-app/domains/session/video/video-project";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -1544,6 +1552,26 @@ export function SessionRoute() {
               selectedWorkspaceEndpoint.workspaceId,
               templateScope,
             );
+            const attachedReferences = await Promise.all(draft.attachments
+              .filter((attachment) => isReferenceFile(attachment.file))
+              .map(async (attachment): Promise<TemplateReferenceItem> => {
+                const ingestion = await ingestReferenceFile(attachment.file);
+                return {
+                  id: attachment.id,
+                  file: attachment.file,
+                  fileName: attachment.name,
+                  mimeType: ingestion.mimeType,
+                  size: attachment.size,
+                  status: ingestion.quality === "high" || ingestion.quality === "medium"
+                    ? "ready"
+                    : ingestion.quality === "low" ? "weak" : "failed",
+                  sendOriginal: true,
+                  ingestion,
+                };
+              }));
+            const workspacePathsByReferenceId = new Map(
+              persistedAttachments.map((attachment) => [attachment.attachmentId, attachment.workspacePath]),
+            );
             const occupiedTemplateSessionIds = conversationTemplates.map((template) => template.sessionId);
             for (const intent of automaticTemplateIntents) {
               if (await stopDispatchIfRequested()) return false;
@@ -1554,13 +1582,21 @@ export function SessionRoute() {
               );
               occupiedTemplateSessionIds.push(artifactSessionId);
               const selectedTemplate = selectConversationTemplate(text, catalog.items, intent.category);
+              const conversationBrief = conversationTemplateBrief(text);
+              const structuredBrief = {
+                ...conversationBrief,
+                referenceFiles: templateReferenceRecords(attachedReferences),
+                context: structuredWorkContext(conversationBrief, attachedReferences, {
+                  workspacePathsByReferenceId,
+                }),
+              };
               let artifactTemplate: TemplateSessionSnapshot;
               if (selectedTemplate) {
                 const materialized = await selectedWorkspaceEndpoint.client.materializeTemplate(
                   selectedWorkspaceEndpoint.workspaceId,
                   selectedTemplate.manifest.id,
                   artifactSessionId,
-                  conversationTemplateBrief(text),
+                  structuredBrief,
                   templateScope,
                 );
                 artifactTemplate = {
@@ -1580,6 +1616,7 @@ export function SessionRoute() {
                       ? "native-editable"
                       : undefined,
                     purpose: "artifact-delivery",
+                    brief: structuredBrief,
                   },
                 );
               }
@@ -1594,7 +1631,7 @@ export function SessionRoute() {
             automaticTemplateInstruction = [
               ...templateInstructions,
               ...(templateInstructions.length > 1 ? [
-                `Multi-artifact delivery contract: this request requires all ${templateInstructions.length} prepared artifacts. Complete every entry above in this turn; do not replace one artifact with a description, outline, export, or link to another. In the final answer, mention every exact entry path so iPolloWork renders one separate clickable output card for each artifact.`,
+                `Multi-artifact delivery contract: this request requires all ${templateInstructions.length} prepared artifacts. Complete the instructed stage for every artifact in this turn; for Video, the complete editable STORYBOARD.md is the required first stage, while other artifacts must be fully produced. In the final answer, mention every generated path so iPolloWork renders the separate outputs.`,
               ] : []),
             ].join("\n\n");
             // A conversation can own independent Design and Video children;
@@ -1643,10 +1680,16 @@ export function SessionRoute() {
           let includeVoiceoverContext = videoDeliveryRequirements.voiceover;
           if (!includeVoiceoverContext && selectedWorkspaceEndpoint) {
             const entryPath = template?.state.entry ?? videoProjectEntryPath(sessionId);
-            const entry = await selectedWorkspaceEndpoint.client
-              .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, entryPath)
-              .catch(() => null);
-            includeVoiceoverContext = videoCompositionHasVoiceover(entry?.content);
+            const [entry, storyboard] = await Promise.all([
+              selectedWorkspaceEndpoint.client
+                .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, entryPath)
+                .catch(() => null),
+              selectedWorkspaceEndpoint.client
+                .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, videoProjectStoryboardPath(sessionId))
+                .catch(() => null),
+            ]);
+            includeVoiceoverContext = videoCompositionHasVoiceover(entry?.content)
+              || videoStoryboardHasVoiceover(storyboard?.content);
           }
           return videoTaskSystemContext(
             sessionId,
@@ -1723,7 +1766,7 @@ export function SessionRoute() {
           }
         }
         const completionTemplates = automaticTemplateInstruction
-          ? sessionTemplates
+          ? sessionTemplates.filter((template) => template.manifest.surface !== "video")
           : sessionTemplates.filter((template) => (
               template.manifest.surface !== "video"
               && explicitlyTargetedTemplateSessionIds.has(template.sessionId)
