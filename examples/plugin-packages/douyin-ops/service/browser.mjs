@@ -9,10 +9,12 @@ const fail = message => { throw Object.assign(new Error(message), { code: 'brows
 const hash = value => createHash('sha256').update(value).digest('hex');
 const writes = new Set(['publish-draft', 'reply-comment', 'comment-video']);
 export const routedActions = new Set([...writes, 'list-videos', 'video-data', 'list-comments', 'search-videos']);
+export const isBrowserReadJob = job => job?.transport === 'browser' && routedActions.has(job.browserAction) && !writes.has(job.browserAction);
+export const canCancelReadJob = job => isBrowserReadJob(job) && ['pending', 'running', 'uncertain'].includes(job.status);
 export function canUseBrowser(error) {
   return ['configuration_required', 'scope_required', 'reauthorization_required', 10008, 10010, 10013, 2190002, 2190004, 28001003, 28001008, 28001014, 28001018].includes(error?.code);
 }
-function douyinUrl(value, type) {
+export function douyinUrl(value, type) {
   const url = new URL(required(value, '抖音页面地址'));
   if (url.origin !== 'https://www.douyin.com' || url.username || url.password || url.hash
     || (type === 'video' && !/^\/video\/\d+$/.test(url.pathname))
@@ -34,7 +36,30 @@ export class BrowserOperations {
         account = this.store.put('account', { id: randomUUID(), browserProfileId: randomUUID(), connection: 'browser', nickname: '等待登录', scopes: [] });
       }
     }
-    return { account, url: 'https://www.douyin.com/', browserProfileId: account.browserProfileId };
+    return { account, url: 'https://www.douyin.com/user/self', browserProfileId: account.browserProfileId };
+  }
+  observe(input) {
+    const account = this.store.list('account', null, 50).find(item => item.browserProfileId === input.browserProfileId);
+    if (!account) return { connected: false, reason: 'profile_required' };
+    const url = new URL(required(input.url, '当前页面地址'));
+    if (url.origin !== 'https://www.douyin.com' || url.pathname !== '/user/self' || url.username || url.password) return { connected: false, reason: 'own_page_required' };
+    const tree = required(input.tree, '可见页面', 100000);
+    const entries = tree.split('\n').flatMap(line => {
+      const match = line.match(/^\s*(?:\[@[^\]]+\]\s*)?(heading|StaticText|tab|button) ("(?:[^"\\]|\\.)*")(.*)$/);
+      if (!match) return [];
+      try { return [{ role: match[1], text: JSON.parse(match[2]), detail: match[3] }]; } catch { return []; }
+    });
+    const nickname = entries.find(item => item.role === 'heading' && /\blevel=1\b/.test(item.detail))?.text;
+    const identityIndex = entries.findIndex(item => item.role === 'StaticText' && /^抖音号[：:]/.test(item.text));
+    const identityLabel = entries[identityIndex]?.text.replace(/^抖音号[：:]\s*/, '');
+    const webIdentity = identityLabel || (entries[identityIndex + 1]?.role === 'StaticText' ? entries[identityIndex + 1].text : '');
+    const ownsPage = entries.some(item => item.role === 'button' && ['编辑资料', '批量管理'].includes(item.text))
+      && entries.some(item => item.role === 'tab' && ['私密作品', '观看历史'].includes(item.text));
+    if (identityIndex < 0 || !nickname || !/^[\w.-]{1,200}$/.test(webIdentity) || !ownsPage) return { connected: false, reason: 'identity_not_visible' };
+    if (account.webIdentity && account.webIdentity !== webIdentity) return { connected: false, reason: 'account_mismatch' };
+    return this.verify({ accountId: account.id, actualProfileId: `douyin-ops:${account.browserProfileId}`,
+      actualAccount: webIdentity, nickname, profileUrl: account.profileUrl || url.href,
+      evidence: `宿主可见的本人主页 /user/self 显示昵称 ${nickname}、抖音号 ${webIdentity}，并存在个人管理与私密作品或观看历史入口。` });
   }
   verify(input) {
     const account = this.ops.account(input.accountId);
@@ -99,20 +124,46 @@ export class BrowserOperations {
     }
     return this.response(job);
   }
-  response(job) { return { job, ...(job?.transport === 'browser' ? { browserTask: { jobId: job.id, action: job.browserAction, status: job.status } } : {}) }; }
+  response(job) {
+    if (job?.transport !== 'browser') return { job };
+    const account = this.ops.account(job.accountId);
+    return { job: { ...job, canCancelRead: canCancelReadJob(job) }, browserTask: { jobId: job.id, action: job.browserAction, status: job.status,
+      accountId: account.id, profileId: `douyin-ops:${account.browserProfileId}`, targetUrl: job.targetUrl,
+      nextAction: job.status === 'pending' ? 'claim-browser-job' : 'get-job',
+      instruction: '先用 profileId 打开 targetUrl，使用本轮返回的 tabId snapshot 核对身份，不复用历史 tabId；pending 才可领取。领取后按锁定内容执行并 finish-browser-job 回写。提交前页面关闭可同环境重新打开继续原任务；可能已提交用 uncertain，禁止重复发布。' } };
+  }
   claim(input) {
     const job = this.store.get('job', required(input.jobId, '任务 ID', 100));
     if (!job || job.transport !== 'browser' || job.status !== 'pending') fail('任务已领取或已完成，请查看记录，不要重复执行');
     const account = this.ops.account(job.accountId);
-    if (this.store.list('job', account.id, 1000).some(other => other.id !== job.id && other.status === 'running')) fail('该账号的浏览器正在执行上一项任务，本任务保留排队，完成后再领取');
+    const blocker = this.store.list('job', account.id, 1000).find(other => other.id !== job.id && other.status === 'running');
+    if (blocker) fail(`该账号的浏览器正在执行上一项任务 ${blocker.id}（${blocker.browserAction || blocker.kind}），本任务保留排队。${canCancelReadJob(blocker) ? '如果该读取已经中断或停止，可用 cancel-read-job 结束原任务后领取本任务；不要新建重复任务。' : '请先完成原任务并核对结果，不能强制解除写操作锁。'}`);
     if (writes.has(job.browserAction) && this.store.list('job', account.id, 1000).some(other => other.id !== job.id && other.status === 'uncertain')) fail('该账号有待核对的操作，本任务保留排队，请先核对');
     if (input.actualProfileId !== `douyin-ops:${account.browserProfileId}`) fail('浏览器环境与任务账号不一致');
     if (writes.has(job.browserAction) && (!account.webIdentity || input.actualAccount !== account.webIdentity)) fail('请先从当前登录账号页面核对抖音号');
     const executionToken = randomBytes(32).toString('hex');
     this.store.setSecret(`browser-job:${job.id}`, { tokenHash: hash(executionToken) });
-    this.store.put('job', { ...job, status: 'running', message: 'AI 正在读取或操作网页', claimedAt: Date.now() });
-    return { job: { ...job, status: 'running' }, account, executionToken, profileId: input.actualProfileId,
+    const claimed = this.store.put('job', { ...job, status: 'running', message: 'AI 正在读取或操作网页', claimedAt: Date.now() });
+    return { job: { ...claimed, canCancelRead: canCancelReadJob(claimed) }, account, executionToken, profileId: input.actualProfileId,
+      nextAction: 'finish-browser-job',
+      instruction: isBrowserReadJob(job)
+        ? '按 job.payload 读取，不执行发布或评论。结束本轮前必须 finish-browser-job：成功返回实际 items，页面关闭或工具失败用 failed 及具体原因；不能遗留 running。凭证遗失且读取已停止时用 cancel-read-job。随后 get-job 核实。'
+        : '先用返回的 profileId 和 job.targetUrl 打开页面、snapshot 核对当前账号，不得复用历史 tabId。按 job.payload 执行一次。提交前 Unknown or closed built-in browser tab 可重新 open_url 同一环境并用新 tabId 继续原任务（最多2次），不要直接判失败或重新领取。可能已点击发布/发送时只核对，不重发。结束前 finish-browser-job 回写：成功附真实作品链接；提交后验证码或无法确认用 uncertain。随后 get-job 核实。',
       ...(job.browserAction === 'publish-draft' ? { mediaPath: resolve(this.ops.dataDir, 'assets', `${job.payload.assetId}.mp4`), extensionId: 'douyin-ops' } : {}) };
+  }
+  cancelRead(input) {
+    return this.store.transaction(() => {
+      const job = this.store.get('job', required(input.jobId, '任务 ID', 100));
+      if (!isBrowserReadJob(job)) fail('只能结束网页读取任务；发布、评论和 API 任务必须核对结果，不能用此操作解除锁');
+      if (job.accountId !== required(input.accountId, '账号 ID', 100)) fail('读取任务不属于当前账号');
+      const evidence = required(input.evidence, '结束读取的原因', 4000);
+      if (job.status === 'failed' && job.errorCode === 'read_cancelled') return { job };
+      if (!canCancelReadJob(job)) fail('读取任务已经结束，请查看已有结果');
+      // Revoke the old executor before releasing the account; late receipts cannot overwrite this record.
+      this.store.setSecret(`browser-job:${job.id}`, null);
+      return { job: this.store.put('job', { ...job, status: 'failed', errorCode: 'read_cancelled',
+        message: `读取任务已结束：${evidence}`, result: { ...job.result, evidence }, finishedAt: Date.now() }) };
+    });
   }
   finish(input) {
     const job = this.store.get('job', required(input.jobId, '任务 ID', 100));

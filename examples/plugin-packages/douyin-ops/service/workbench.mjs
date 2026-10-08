@@ -38,17 +38,21 @@ export default function createWorkbench(runtime) {
   }
   const names = ['studio-state', 'list-accounts', 'start-authorization', 'import-media', 'save-draft', 'publish-draft',
     'list-videos', 'video-data', 'list-comments', 'reply-comment', 'search-videos', 'browser-target', 'get-job', 'resolve-job',
-    'connect-browser', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job', 'comment-video'];
+    'connect-browser', 'verify-browser-account', 'observe-browser-session', 'claim-browser-job', 'finish-browser-job', 'cancel-read-job', 'comment-video'];
   return {
     actions: { 'open-workbench': ensureStarted, ...Object.fromEntries(names.map(name => [name, async (input, context) => {
-      if (['publish-draft', 'reply-comment', 'comment-video', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');
+      if (['publish-draft', 'reply-comment', 'comment-video', 'verify-browser-account', 'observe-browser-session', 'claim-browser-job', 'finish-browser-job'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');
       await ensureStarted();
       const response = await fetch(`${origin}/api/actions/${name}`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(input ?? {}), signal: AbortSignal.timeout(name === 'publish-draft' ? 180_000 : 60_000),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || '抖音操作失败');
+      // Preserve the local service's sanitized, actionable error across the host
+      // boundary. Plain Error would be replaced by a generic internal error.
+      if (!response.ok) throw Object.assign(new Error(result.error || '抖音操作失败'), {
+        status: response.status, code: `douyin_${result.code || 'operation_failed'}`,
+      });
       return result;
     }])) },
     async dispose() {

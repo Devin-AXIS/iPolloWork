@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.2.9",
+    "version": "0.2.13",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -73,7 +73,7 @@
         {
           "id": "list-accounts",
           "title": "列出抖音账号",
-          "description": "按用户指定账号选择；返回真实 OAuth 身份和已授予权限。",
+          "description": "发布抖音前先调用。返回插件已有账号、网页登录身份、独立浏览器环境及实际可用路线；scopes 为空不代表不能网页发布。复用用户指定账号，未指定且只有一个账号时复用它，多账号先确认，不要新建账号或索要 API 密钥。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -117,7 +117,7 @@
         {
           "id": "save-draft",
           "title": "保存抖音视频草稿",
-          "description": "保存文案和素材，不发布。日程runKey使用原始运行标识加稳定操作后缀；重试复用。",
+          "description": "保存文案和素材，不发布。新建必须省略 id，返回 draft.id；id 只用于修改真实已有草稿，不能自编。runKey 是幂等标识，重试保持不变。失败先修正参数，不得跳过草稿和发布任务直接上传。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -125,7 +125,8 @@
               "id": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 100
+                "maxLength": 100,
+                "description": "仅修改已有草稿时传入之前返回的 draft.id。新建草稿必须省略，不能自行命名；幂等标识请用 runKey。"
               },
               "accountId": {
                 "type": "string",
@@ -161,7 +162,7 @@
         {
           "id": "publish-draft",
           "title": "发布抖音视频",
-          "description": "仅在用户授权发布已保存内容后执行；要求video.create.bind。operationKey重试不可改变。超时返回待核对，禁止重发。 API 不可用时返回 browserTask，必须读取 douyin-ops-worker 并通过宿主浏览器完成、回写结果；pending 不是成功。",
+          "description": "所有抖音发布的统一入口，先保存草稿再用返回的 draft.id 调用，创建可追踪记录。仅用户授权后执行；有 API 权限走 API，否则用已有账号的 browserTask，无需开放平台配置。operationKey 重试不变。网页发布必须 claim-browser-job → 浏览器操作 → finish-browser-job → get-job；验证码或不确定结果也必须记录，禁止跳过插件直接发布。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -423,7 +424,7 @@
         {
           "id": "browser-target",
           "title": "打开抖音网页入口",
-          "description": "返回创作者中心或搜索页面地址及账号独立浏览器环境。网页打开不代表登录验证或发布成功。",
+          "description": "仅导航，返回页面地址及账号浏览器环境，不会创建执行记录。不能用此操作代替 publish-draft；上传发布前必须保存草稿、创建并领取发布任务。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -475,7 +476,7 @@
         {
           "id": "resolve-job",
           "title": "回写人工核对结果",
-          "description": "只在用户或实际浏览器证据确认待核对操作是否成功后调用；记录依据，不重新发送。",
+          "description": "只核对现有 uncertain 任务并保存结果，不重新发送。网页写入确认成功必须提供实际 resultUrl 作品链接；验证码完成后先核对原任务。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -496,6 +497,12 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 2000
+              },
+              "resultUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000,
+                "description": "网页发布或评论确认成功时必填：实际 https://www.douyin.com/video/<数字ID> 作品链接。"
               }
             },
             "required": [
@@ -521,6 +528,22 @@
               }
             },
             "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "observe-browser-session",
+          "title": "自动识别当前网页登录",
+          "description": "宿主提供插件独立浏览器中 /user/self 的可见页面，核对本人管理入口、昵称、抖音号后连接对应账号。不读取 Cookie，不识别他人主页，不覆盖已绑定的其他抖音号。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "browserProfileId": { "type": "string", "format": "uuid" },
+              "url": { "type": "string", "maxLength": 2000 },
+              "tree": { "type": "string", "maxLength": 100000 }
+            },
+            "required": ["browserProfileId", "url", "tree"],
             "additionalProperties": false
           }
         },
@@ -577,7 +600,7 @@
         {
           "id": "claim-browser-job",
           "title": "领取网页任务",
-          "description": "独占领取后按 douyin-ops-worker 使用宿主浏览器执行；素材路径在领取结果中返回。",
+          "description": "先在任务账号 profileId 中打开页面、用本轮返回的 tabId snapshot 核对身份，再独占领取并执行。不要复用历史对话里的 tabId。上传前标签失效可同环境重新打开继续原任务，可能已提交时只核对不重发。若被已中断读取阻塞，可 cancel-read-job 后领取原排队任务；写操作不能强制解锁。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -602,6 +625,22 @@
               "jobId",
               "actualProfileId"
             ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "cancel-read-job",
+          "title": "结束读取任务",
+          "description": "仅结束已停止或中断的网页搜索、作品/评论/数据读取，释放账号占用并保留失败原因、废弃旧执行凭证。不停止其他会话，须先确认原读取已停止。不能结束发布、评论发送或 API 任务，不会提交或重建排队发布。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "accountId": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "evidence": { "type": "string", "minLength": 1, "maxLength": 4000 }
+            },
+            "required": ["jobId", "accountId", "evidence"],
             "additionalProperties": false
           }
         },
@@ -814,7 +853,7 @@
       "browserSession": {
         "origin": "https://www.douyin.com",
         "paths": [
-          "/"
+          "/user/self"
         ],
         "observeAction": "observe-browser-session"
       }
