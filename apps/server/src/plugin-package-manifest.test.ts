@@ -419,13 +419,13 @@ describe("plugin package manifest", () => {
       }
     }
     expect(video.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id))
-      .toEqual(["ipollowork-video-studio", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack"]);
+      .toEqual(["ipollowork-video-studio", "ipollowork-video-template-authoring", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack"]);
     expect(video.manifest.resources).toContainEqual(expect.objectContaining({ type: "file", path: "skills/ipollowork-video-studio/references" }));
     expect(video.manifest.relatedSkills).toBeUndefined();
     expect(video.manifest.resources.map((resource) => resource.id)).toEqual([
-      "video-authoring-references", "ipollowork-video-studio", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack",
+      "video-authoring-references", "ipollowork-video-studio", "ipollowork-video-template-authoring", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack",
     ]);
-    expect(video.manifest.package?.version).toBe("0.3.24");
+    expect(video.manifest.package?.version).toBe("0.3.25");
     expect(design.manifest.defaultEnabled).toBe(true);
     expect(video.manifest.defaultEnabled).toBe(true);
     expect(design.manifest.contributions).toBeUndefined();
