@@ -102,8 +102,10 @@ export default {
           ctx.assert(service.operations.state().accounts.length === 1, 'Existing logged-in account is reused');
           ctx.assert(service.operations.state().accounts[0].capabilities.publish.transport === 'browser', 'AI and UI share browser route without API scopes');
           ctx.assert((await originalEval('window.sent')).some(m => m.content[0].text.includes('本轮返回的新 tabId') && m.content[0].text.includes('最多2次')), 'Dispatched task requires fresh browser identity and bounded pre-submit recovery');
-          const blocked = await service.operations.action('claim-browser-job', { ...identity, jobId: job.id });
-          ctx.assert(blocked.queued && blocked.blockedByJobId === interruptedRead.id && blocked.canCancelRead, 'Interrupted read blocks publish with an actionable task ID');
+          let blocked = false;
+          try { await service.operations.action('claim-browser-job', { ...identity, jobId: job.id }); }
+          catch (error) { blocked = error.message.includes(interruptedRead.id) && error.message.includes('cancel-read-job'); }
+          ctx.assert(blocked, 'Interrupted read blocks publish with an actionable task ID');
           await click('[data-view="jobs"]');
           await ctx.waitFor(`[...document.querySelectorAll('#jobs-list button')].some(b=>b.textContent==='结束读取任务')`, { timeoutMs: 8000 });
           await ctx.eval(`[...document.querySelectorAll('#jobs-list button')].find(b=>b.textContent==='结束读取任务').click()`); await settled();
