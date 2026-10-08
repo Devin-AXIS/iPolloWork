@@ -27,6 +27,7 @@ const recordMessage = {
 describe("iPolloWork host history bridge", () => {
   test("accepts only the actual HTTP or Electron file parent origin", () => {
     expect(acceptsIPolloWorkHostHistoryOrigin("http://localhost:5173", "http://localhost:5173")).toBe(true);
+    expect(acceptsIPolloWorkHostHistoryOrigin("http://localhost:5180", "http://localhost:5180")).toBe(true);
     expect(acceptsIPolloWorkHostHistoryOrigin("https://example.com", "http://localhost:5173")).toBe(false);
     expect(acceptsIPolloWorkHostHistoryOrigin("http://localhost:9999", "http://localhost:9999")).toBe(false);
     expect(acceptsIPolloWorkHostHistoryOrigin("null", "file://")).toBe(true);
