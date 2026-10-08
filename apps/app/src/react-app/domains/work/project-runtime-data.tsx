@@ -1,14 +1,14 @@
 /** @jsxImportSource react */
-import type { ProjectAgent, ProjectUsageMetric } from "@ipollowork/types/project-workspace";
+import type { ProjectUsageMetric } from "@ipollowork/types/project-workspace";
 import { BarChart3, CircleGauge, MessageCircle, Sigma } from "lucide-react";
 
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 
+import { AgentAvatar } from "./project-overview-shared";
 import type { ProjectRuntimeMetrics } from "./project-runtime-metrics";
 
 type ProjectRuntimeDataProps = {
-  agents: ProjectAgent[];
   displayMetrics: ProjectUsageMetric[];
   metrics: ProjectRuntimeMetrics | null;
   loading: boolean;
@@ -69,24 +69,13 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
   const showAgentUsage = props.displayMetrics.includes("agentUsage");
   const unavailable = props.error || metrics?.status === "unavailable";
   const totalTokens = metrics?.totalTokens ?? null;
-  const usageByAgent = new Map(metrics?.agents.map((agent) => [agent.agentId, agent]) ?? []);
-  const usageSegments = props.agents.map((agent, index) => {
-    const usage = usageByAgent.get(agent.id);
-    return {
-      id: agent.id,
-      label: agent.name,
-      tokens: usage?.attributed ? usage.tokens : 0,
-      color: usageColor(index),
-    };
-  });
-  if (metrics?.unattributedTokens !== null && metrics?.unattributedTokens !== undefined && metrics.unattributedTokens > 0) {
-    usageSegments.push({
-      id: "unattributed",
-      label: t("project_overview.not_attributed"),
-      tokens: metrics.unattributedTokens,
-      color: "bg-dls-tertiary/45",
-    });
-  }
+  const usageSegments = (metrics?.sessionUsage ?? []).map((usage, index) => ({
+    id: usage.sessionId,
+    label: usage.isMain ? t("project_overview.primary") : usage.title,
+    title: usage.title,
+    tokens: usage.tokens,
+    color: usageColor(index),
+  }));
   const statusLabel = props.loading
     ? t("project_overview.runtime_data_loading")
     : props.error
@@ -101,6 +90,8 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
     <section
       className="overflow-hidden rounded-2xl border border-dls-border/70 bg-white dark:bg-dls-surface"
       data-testid="project-runtime-data"
+      data-total-tokens={totalTokens ?? undefined}
+      data-conversation-count={metrics?.conversationCount}
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-dls-border/70 px-4 py-3">
         <div className="flex items-center gap-2">
@@ -123,7 +114,7 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
                   icon={Sigma}
                   label={t("project_overview.total_token_usage")}
                   value={props.loading ? "···" : formatTokens(totalTokens)}
-                  detail={metrics?.status === "partial" ? t("project_overview.metered_conversations", { count: metrics.meteredConversationCount }) : t("project_overview.all_project_conversations")}
+                  detail={metrics?.status === "partial" ? t("project_overview.metered_conversations", { count: metrics.meteredConversationCount }) : t("conversation_work.runtime_scope")}
                 />;
               }
               if (metric === "conversations") {
@@ -132,7 +123,7 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
                   icon={MessageCircle}
                   label={t("project_overview.total_conversations")}
                   value={props.loading ? "···" : (metrics?.conversationCount ?? 0).toLocaleString()}
-                  detail={t("project_overview.workspace_conversations")}
+                  detail={t("conversation_work.runtime_scope")}
                 />;
               }
               return <DataMetric
@@ -160,8 +151,8 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
             className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-dls-hover"
             role="img"
           >
-            {usageSegments.filter((segment) => segment.tokens > 0).map((segment) => {
-              const percentage = usagePercentage(segment.tokens, totalTokens ?? 0);
+            {usageSegments.filter((segment) => segment.tokens !== null && segment.tokens > 0).map((segment) => {
+              const percentage = usagePercentage(segment.tokens ?? 0, totalTokens ?? 0);
               return (
                 <span
                   key={segment.id}
@@ -175,13 +166,16 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
 
           <div className="mt-2.5 grid grid-cols-1 gap-x-5 gap-y-1.5 sm:grid-cols-2">
             {usageSegments.map((segment) => {
-              const percentage = usagePercentage(segment.tokens, totalTokens ?? 0);
+              const percentage = usagePercentage(segment.tokens ?? 0, totalTokens ?? 0);
               return (
-                <div key={segment.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 text-[11px] leading-[15px]">
-                  <span className={cn("size-2 rounded-sm", segment.color)} />
+                <div key={segment.id} data-testid="project-agent-usage-row" data-session-id={segment.id} data-token-count={segment.tokens ?? undefined} data-metered={segment.tokens !== null} title={segment.title} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 text-[11px] leading-[15px]">
+                  <span className="relative">
+                    <AgentAvatar agent={{ avatarSeed: segment.id }} className="size-7" />
+                    <span className={cn("absolute bottom-0 right-0 size-2 rounded-sm ring-2 ring-dls-surface", segment.color)} />
+                  </span>
                   <span className="truncate font-medium">{segment.label}</span>
-                  <span className="tabular-nums text-dls-secondary">{formatTokens(segment.tokens)}</span>
-                  <span className="w-9 text-right tabular-nums text-dls-text/45">{formatPercentage(percentage)}</span>
+                  <span className="tabular-nums text-dls-secondary">{segment.tokens === null ? t("project_overview.token_unmetered") : formatTokens(segment.tokens)}</span>
+                  <span className="w-9 text-right tabular-nums text-dls-text/45">{segment.tokens === null ? "--" : formatPercentage(percentage)}</span>
                 </div>
               );
             })}

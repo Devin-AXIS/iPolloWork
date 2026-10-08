@@ -32,6 +32,7 @@ import {
 import { parsePluginWorkshopDraftManifest, preparePluginWorkshopSourceBundle } from "./plugin-workshop-package.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
+import { listBoundSessionEngines } from "./work-items.js";
 import serverPackage from "../package.json" with { type: "json" };
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
@@ -617,8 +618,9 @@ function workspaceActivationFiles(
   workspaceId: string,
   pluginId: string,
   version: InstalledVersion,
+  adapter: PluginEngineAdapter,
 ): PluginWorkspaceFile[] {
-  return workspaceEngineAdapter(config, workspaceId).workspaceFiles(engineVersion(config, workspaceId, pluginId, version));
+  return adapter.workspaceFiles(engineVersion(config, workspaceId, pluginId, version));
 }
 
 async function matchesHistoricalActivationFile(
@@ -628,7 +630,7 @@ async function matchesHistoricalActivationFile(
   next: PackageProjection,
   targetPath: string,
 ): Promise<boolean> {
-  const adapter = workspaceEngineAdapter(config, workspaceId);
+  const adapter = next.adapter;
   const target = resolveWithin(workspaceRoot, targetPath);
   for (const version of Object.values(next.installed.versions)) {
     if (version.version === next.version.version) continue;
@@ -639,7 +641,7 @@ async function matchesHistoricalActivationFile(
       continue;
     }
     if (!pluginEngineCanActivate(adapter, manifest)) continue;
-    const historicalFile = workspaceActivationFiles(config, workspaceId, next.installed.pluginId, version)
+    const historicalFile = workspaceActivationFiles(config, workspaceId, next.installed.pluginId, version, adapter)
       .find((file) => file.targetPath === targetPath);
     if (historicalFile && await activationTargetStatus(target, historicalFile.sha256) === "matching") return true;
   }
@@ -651,8 +653,9 @@ function workspaceActivationPaths(
   workspaceId: string,
   pluginId: string,
   version: InstalledVersion,
+  adapter: PluginEngineAdapter,
 ): Set<string> {
-  return new Set(workspaceActivationFiles(config, workspaceId, pluginId, version).map((file) => file.targetPath));
+  return new Set(workspaceActivationFiles(config, workspaceId, pluginId, version, adapter).map((file) => file.targetPath));
 }
 
 function skillActivationPaths(
@@ -661,9 +664,9 @@ function skillActivationPaths(
   pluginId: string,
   version: InstalledVersion,
   resourceIds: ReadonlySet<string>,
+  engineAdapter: PluginEngineAdapter,
 ): Set<string> {
   const projected = engineVersion(config, workspaceId, pluginId, version);
-  const engineAdapter = workspaceEngineAdapter(config, workspaceId);
   return new Set([...resourceIds].flatMap((resourceId) => {
     const targetPath = engineAdapter.skillTargetPath(projected, resourceId);
     return targetPath ? [targetPath] : [];
@@ -675,9 +678,10 @@ function inactiveActivationPaths(
   workspaceId: string,
   installed: InstalledPackage,
   version: InstalledVersion,
+  adapter: PluginEngineAdapter,
 ): Set<string> {
-  if (!installed.enabled) return workspaceActivationPaths(config, workspaceId, installed.pluginId, version);
-  return skillActivationPaths(config, workspaceId, installed.pluginId, version, new Set(installed.disabledResourceIds));
+  if (!installed.enabled) return workspaceActivationPaths(config, workspaceId, installed.pluginId, version, adapter);
+  return skillActivationPaths(config, workspaceId, installed.pluginId, version, new Set(installed.disabledResourceIds), adapter);
 }
 
 async function assertOwnedFilesUnchanged(
@@ -686,10 +690,11 @@ async function assertOwnedFilesUnchanged(
   pluginId: string,
   workspaceRoot: string,
   version: InstalledVersion,
+  adapter: PluginEngineAdapter,
   expectedMissing = new Set<string>(),
 ): Promise<void> {
   const conflicts: string[] = [];
-  for (const file of workspaceActivationFiles(config, workspaceId, pluginId, version)) {
+  for (const file of workspaceActivationFiles(config, workspaceId, pluginId, version, adapter)) {
     const target = resolveWithin(workspaceRoot, file.targetPath);
     const exists = await fileExists(target);
     if (expectedMissing.has(file.targetPath)) {
@@ -743,17 +748,20 @@ async function snapshotPackage(
 type PackageProjection = {
   installed: InstalledPackage;
   version: InstalledVersion;
+  adapter: PluginEngineAdapter;
 };
 
 type WorkspaceProjectionTarget = {
   workspaceId: string;
   workspaceRoot: string;
+  engineId: string;
 };
 
 function packageProjection(
   config: ServerConfig,
   workspaceId: string,
   installed: InstalledPackage | null,
+  engineId: string,
 ): PackageProjection | null {
   if (!installed) return null;
   const version = installed.versions[installed.currentVersion];
@@ -761,19 +769,31 @@ function packageProjection(
     throw new ApiError(500, "plugin_package_state_invalid", `Missing current version for ${installed.pluginId}`);
   }
   const manifest = manifestFromVersion(version);
-  const engineAdapter = workspaceEngineAdapter(config, workspaceId);
+  const engineAdapter = pluginEngineAdapters.get(engineId);
   const engines = manifest.package?.engines;
   if (engines && !engines.includes(engineAdapter.id) && !pluginEngineCanActivate(engineAdapter, manifest)) return null;
   assertRuntimeCompatibility(manifest, engineAdapter);
-  return { installed, version };
+  return { installed, version, adapter: engineAdapter };
 }
 
-function localProjectionTargets(config: ServerConfig): WorkspaceProjectionTarget[] {
-  return config.workspaces.flatMap((workspace) =>
-    workspace.workspaceType === "local" && workspace.path
-      ? [{ workspaceId: workspace.id, workspaceRoot: workspace.path }]
-      : []
-  );
+async function localProjectionTargets(config: ServerConfig, workspaceId?: string): Promise<WorkspaceProjectionTarget[]> {
+  const targets: WorkspaceProjectionTarget[] = [];
+  for (const workspace of config.workspaces) {
+    if (workspace.workspaceType !== "local" || !workspace.path || (workspaceId && workspace.id !== workspaceId)) continue;
+    const engines = new Set([workspace.engineId?.trim() || DEFAULT_ENGINE_ID, ...await listBoundSessionEngines(config, workspace.id)]);
+    // Keep existing projections managed after their last conversation is deleted.
+    for (const engineId of pluginEngineAdapters.ids()) {
+      for (const root of pluginEngineAdapters.get(engineId).projectionRoots) {
+        try {
+          if ((await stat(resolveWithin(workspace.path, root))).isDirectory()) engines.add(engineId);
+        } catch (error) {
+          if (errorCode(error) !== "ENOENT") throw error;
+        }
+      }
+    }
+    for (const engineId of engines) targets.push({ workspaceId: workspace.id, workspaceRoot: workspace.path, engineId });
+  }
+  return targets;
 }
 
 async function preflightProjection(
@@ -785,7 +805,7 @@ async function preflightProjection(
   next: PackageProjection | null,
 ): Promise<void> {
   const currentInactivePaths = current
-    ? inactiveActivationPaths(config, workspaceId, current.installed, current.version)
+    ? inactiveActivationPaths(config, workspaceId, current.installed, current.version, current.adapter)
     : new Set<string>();
   if (current) {
     await assertOwnedFilesUnchanged(
@@ -794,14 +814,15 @@ async function preflightProjection(
       pluginId,
       workspaceRoot,
       current.version,
+      current.adapter,
       currentInactivePaths,
     );
   }
   const currentActivationFiles = current
-    ? workspaceActivationFiles(config, workspaceId, pluginId, current.version)
+    ? workspaceActivationFiles(config, workspaceId, pluginId, current.version, current.adapter)
     : [];
   const nextActivationFiles = next
-    ? workspaceActivationFiles(config, workspaceId, pluginId, next.version)
+    ? workspaceActivationFiles(config, workspaceId, pluginId, next.version, next.adapter)
     : [];
   const currentPaths = new Set(currentActivationFiles.map((file) => file.targetPath));
   const conflicts: string[] = [];
@@ -836,20 +857,22 @@ async function applyProjection(
   current: PackageProjection | null,
   next: PackageProjection | null,
 ): Promise<void> {
+  const engineAdapter = next?.adapter ?? current?.adapter;
+  if (!engineAdapter) return;
   await preflightProjection(config, workspaceId, workspaceRoot, pluginId, current, next);
   const currentInactivePaths = current
-    ? inactiveActivationPaths(config, workspaceId, current.installed, current.version)
+    ? inactiveActivationPaths(config, workspaceId, current.installed, current.version, current.adapter)
     : new Set<string>();
   const nextInactivePaths = next
-    ? inactiveActivationPaths(config, workspaceId, next.installed, next.version)
+    ? inactiveActivationPaths(config, workspaceId, next.installed, next.version, next.adapter)
     : new Set<string>();
   const currentEngineVersion = current ? engineVersion(config, workspaceId, pluginId, current.version) : null;
   const nextEngineVersion = next ? engineVersion(config, workspaceId, pluginId, next.version) : null;
   const currentActivationFiles = current
-    ? workspaceActivationFiles(config, workspaceId, pluginId, current.version)
+    ? workspaceActivationFiles(config, workspaceId, pluginId, current.version, current.adapter)
     : [];
   const nextActivationFiles = next
-    ? workspaceActivationFiles(config, workspaceId, pluginId, next.version)
+    ? workspaceActivationFiles(config, workspaceId, pluginId, next.version, next.adapter)
     : [];
   const currentPaths = new Set(currentActivationFiles.map((file) => file.targetPath));
   const nextPaths = new Set(nextActivationFiles.map((file) => file.targetPath));
@@ -862,7 +885,6 @@ async function applyProjection(
   }
 
   const enabled = next?.installed.enabled === true;
-  const engineAdapter = workspaceEngineAdapter(config, workspaceId);
   try {
     for (const file of nextActivationFiles) {
       if (!nextEngineVersion) {
@@ -927,11 +949,18 @@ async function applyPackageTransition(
   currentInstalled: InstalledPackage | null,
   nextInstalled: InstalledPackage | null,
 ): Promise<void> {
-  const transitions = localProjectionTargets(config).map((workspace) => ({
-    ...workspace,
-    current: packageProjection(config, workspace.workspaceId, currentInstalled),
-    next: packageProjection(config, workspace.workspaceId, nextInstalled),
-  }));
+  const transitions = [];
+  for (const workspace of await localProjectionTargets(config)) {
+    let current = packageProjection(config, workspace.workspaceId, currentInstalled, workspace.engineId);
+    // Sessions created before engine-aware preparation can have no native files.
+    // Any existing file still goes through the full ownership/conflict checks.
+    if (current && workspace.engineId !== workspaceEngineAdapter(config, workspace.workspaceId).id) {
+      const files = workspaceActivationFiles(config, workspace.workspaceId, pluginId, current.version, current.adapter);
+      const present = await Promise.all(files.map((file) => fileExists(resolveWithin(workspace.workspaceRoot, file.targetPath))));
+      if (files.length && !present.some(Boolean)) current = null;
+    }
+    transitions.push({ ...workspace, current, next: packageProjection(config, workspace.workspaceId, nextInstalled, workspace.engineId) });
+  }
   for (const transition of transitions) {
     await preflightProjection(
       config,
@@ -1549,19 +1578,20 @@ async function reconcilePackageProjection(
   workspaceId: string,
   workspaceRoot: string,
   installed: InstalledPackage,
+  engineId: string,
 ): Promise<void> {
-  const adapter = workspaceEngineAdapter(config, workspaceId);
-  const next = packageProjection(config, workspaceId, installed);
+  const adapter = pluginEngineAdapters.get(engineId);
+  const next = packageProjection(config, workspaceId, installed, engineId);
   const nextPaths = new Set(
     next
-      ? workspaceActivationFiles(config, workspaceId, installed.pluginId, next.version).map((file) => file.targetPath)
+      ? workspaceActivationFiles(config, workspaceId, installed.pluginId, next.version, adapter).map((file) => file.targetPath)
       : [],
   );
   for (const version of Object.values(installed.versions)) {
     if (next?.version.version === version.version) continue;
     const historicalManifest = historicalManifestFromVersion(version);
     if (!historicalManifest || !pluginEngineCanActivate(adapter, historicalManifest)) continue;
-    for (const file of workspaceActivationFiles(config, workspaceId, installed.pluginId, version)) {
+    for (const file of workspaceActivationFiles(config, workspaceId, installed.pluginId, version, adapter)) {
       if (nextPaths.has(file.targetPath)) continue;
       const target = resolveWithin(workspaceRoot, file.targetPath);
       if (await activationTargetStatus(target, file.sha256) === "matching") await rm(target, { force: true });
@@ -1582,21 +1612,25 @@ async function reconcilePluginPackagesForWorkspaceUnlocked(input: {
   serverConfig: ServerConfig;
   workspaceId: string;
   workspaceRoot: string;
+  engineId?: string;
 }): Promise<void> {
   const state = await readState(input.serverConfig);
   const installedPackages = Object.values(state.packages);
-  for (const installed of installedPackages) {
+  const targets = input.engineId
+    ? [{ workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, engineId: input.engineId }]
+    : await localProjectionTargets(input.serverConfig, input.workspaceId);
+  for (const target of targets) for (const installed of installedPackages) {
     await preflightProjection(
       input.serverConfig,
-      input.workspaceId,
-      input.workspaceRoot,
+      target.workspaceId,
+      target.workspaceRoot,
       installed.pluginId,
       null,
-      packageProjection(input.serverConfig, input.workspaceId, installed),
+      packageProjection(input.serverConfig, target.workspaceId, installed, target.engineId),
     );
   }
-  for (const installed of installedPackages) {
-    await reconcilePackageProjection(input.serverConfig, input.workspaceId, input.workspaceRoot, installed);
+  for (const target of targets) for (const installed of installedPackages) {
+    await reconcilePackageProjection(input.serverConfig, target.workspaceId, target.workspaceRoot, installed, target.engineId);
   }
 }
 
@@ -1604,13 +1638,14 @@ export function reconcilePluginPackagesForWorkspace(input: {
   serverConfig: ServerConfig;
   workspaceId: string;
   workspaceRoot: string;
+  engineId?: string;
 }): Promise<void> {
   return enqueueLifecycleMutation(input.serverConfig, () => reconcilePluginPackagesForWorkspaceUnlocked(input));
 }
 
 async function reconcilePluginPackagesGlobally(config: ServerConfig): Promise<void> {
   const state = await readState(config);
-  const tasks = localProjectionTargets(config).flatMap((workspace) =>
+  const tasks = (await localProjectionTargets(config)).flatMap((workspace) =>
     Object.values(state.packages).map((installed) => ({ ...workspace, installed })),
   );
   for (const task of tasks) {
@@ -1620,7 +1655,7 @@ async function reconcilePluginPackagesGlobally(config: ServerConfig): Promise<vo
       task.workspaceRoot,
       task.installed.pluginId,
       null,
-      packageProjection(config, task.workspaceId, task.installed),
+      packageProjection(config, task.workspaceId, task.installed, task.engineId),
     );
   }
   for (const task of tasks) {
@@ -1629,6 +1664,7 @@ async function reconcilePluginPackagesGlobally(config: ServerConfig): Promise<vo
       task.workspaceId,
       task.workspaceRoot,
       task.installed,
+      task.engineId,
     );
   }
 }
@@ -1891,15 +1927,15 @@ async function uninstallPluginPackageUnlocked(input: {
     versions: InstalledVersion[];
     filesByPath: Map<string, Set<string>>;
   }> = [];
-  for (const workspace of localProjectionTargets(input.serverConfig)) {
-    const adapter = workspaceEngineAdapter(input.serverConfig, workspace.workspaceId);
+  for (const workspace of await localProjectionTargets(input.serverConfig)) {
+    const adapter = pluginEngineAdapters.get(workspace.engineId);
     const filesByPath = new Map<string, Set<string>>();
     const versions = Object.values(installed.versions).filter((version) => {
       const historicalManifest = historicalManifestFromVersion(version);
       return historicalManifest && pluginEngineCanActivate(adapter, historicalManifest);
     });
     for (const version of versions) {
-      for (const file of workspaceActivationFiles(input.serverConfig, workspace.workspaceId, installed.pluginId, version)) {
+      for (const file of workspaceActivationFiles(input.serverConfig, workspace.workspaceId, installed.pluginId, version, adapter)) {
         const hashes = filesByPath.get(file.targetPath) ?? new Set<string>();
         hashes.add(file.sha256);
         filesByPath.set(file.targetPath, hashes);

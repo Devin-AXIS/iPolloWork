@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { renderedSceneWindows, reviewRenderedPixels, reviewRenderedAudio, videoProjectFingerprint, videoRenderAction } from "./video-render.js";
+import { analyzeVideoReference, renderedSceneWindows, reviewRenderedPixels, reviewRenderedAudio, videoProjectFingerprint, videoRenderAction, videoRenderInput } from "./video-render.js";
 
 test("render review reads standard timed HTML attributes and skips incomplete or invalid scene windows", () => {
   for (const timing of ['data-start="0" data-duration="3"', "data-start = 0 data-duration=3", 'data-start="&#48;" data-duration="&#x33;"']) {
@@ -62,10 +62,42 @@ test("output mix review decodes actual audio and distinguishes silence from unve
     const result = await reviewRenderedAudio(audible, html);
     expect(result.valid).toBe(true);
     expect(result.peakDb).toBeLessThan(0);
+    expect(result.rmsDb).toBeLessThan(result.peakDb!);
+    expect(result.peakSampleCount).toBeGreaterThan(0);
     expect(result.scope).toBe("decoded-mix-health-not-audible-sync-approval");
     expect((await reviewRenderedAudio(missing, "<html></html>")).required).toBe(false);
     expect((await reviewRenderedAudio(missing, `<!-- ${html} --><script>const demo=${JSON.stringify(html)};</script><template>${html}</template>`)).required).toBe(false);
     expect((await reviewRenderedAudio(missing, html.replace('data-volume="1"', 'data-volume="0"'))).valid).toBe(false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+}, 20000);
+
+test("reference analysis measures real frame rate, energy and stillness within the project and sampling budget", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-reference-review-")), exec = promisify(execFile);
+  const sourcePath = "video/ref/index.html", assets = join(root, "video/ref/assets");
+  const workspace = { id: "ref", path: root };
+  const ffmpeg = process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg";
+  try {
+    await mkdir(assets, { recursive: true });
+    await writeFile(join(root, sourcePath), "<main></main>");
+    await exec(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=192x108:rate=60:duration=3", "-f", "lavfi", "-i", "sine=frequency=400:sample_rate=24000:duration=3", "-c:v", "libx264", "-c:a", "aac", join(assets, "moving.mp4")]);
+    await exec(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "color=gray:size=192x108:rate=60:duration=3", "-c:v", "libx264", join(assets, "still.mp4")]);
+    const moving = await analyzeVideoReference(workspace, { sourcePath, referencePath: "video/ref/assets/moving.mp4", sampling: "frames" });
+    const still = await analyzeVideoReference(workspace, { sourcePath, referencePath: "video/ref/assets/still.mp4" });
+    expect(moving.temporalReview.sourceFps).toBe(60);
+    expect(moving.temporalReview.sampledFrameCount).toBe(180);
+    expect(moving.temporalReview.stillFraction).toBeLessThan(.2);
+    expect(moving.audioReview.rmsDb).toBeLessThan(0);
+    expect(still.temporalReview.sampledFrameCount).toBe(24);
+    expect(still.temporalReview.stillFraction).toBe(1);
+    expect(still.temporalReview.longestStillSeconds).toBeGreaterThan(2.8);
+    expect(still.temporalReview.scope).toContain("not-semantic");
+    await exec(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "color=gray:size=16x16:rate=60:duration=31", "-c:v", "libx264", join(assets, "long.mp4")]);
+    await expect(analyzeVideoReference(workspace, { sourcePath, referencePath: "video/ref/assets/long.mp4", sampling: "frames" })).rejects.toThrow("limited to 30 seconds");
+    await expect(analyzeVideoReference(workspace, { sourcePath, referencePath: "../moving.mp4" })).rejects.toThrow();
+    await writeFile(join(root, "outside.mp4"), await readFile(join(assets, "moving.mp4")));
+    await expect(analyzeVideoReference(workspace, { sourcePath, referencePath: "outside.mp4" })).rejects.toThrow("active project's assets");
+    expect(videoRenderInput.safeParse({ sourcePath, operationKey: "render", fps: 60, resolution: "4k", motionBlur: true }).success).toBe(true);
+    expect(videoRenderInput.safeParse({ sourcePath, operationKey: "render", fps: 121 }).success).toBe(false);
   } finally { await rm(root, { recursive: true, force: true }); }
 }, 20000);
 
@@ -99,20 +131,21 @@ test("built-in export starts Studio once, resumes progress, verifies output and 
   let starts = 0;
   let readyCalls = 0;
   const renderUrls: string[] = [];
+  const renderBodies: unknown[] = [];
   let status = "rendering";
   const discovery = join(root, "bridge.json");
   await mkdir(join(root, "video/ses_export/renders"), { recursive: true });
   await writeFile(join(root, sourcePath), "<html></html>");
   await writeFile(discovery, JSON.stringify({ baseUrl: "http://127.0.0.1:54321", token: "test-token" }));
   process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
-  globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+  globalThis.fetch = Object.assign(async (input: string | URL | Request, options?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/video/ensure-studio")) { readyCalls++; return Response.json({ ok: true, port: 3456 }); }
-    if (url.endsWith("/render")) { renderUrls.push(url); starts++; return Response.json({ jobId: `ses_export_job${starts}` }); }
+    if (url.endsWith("/render")) { renderUrls.push(url); renderBodies.push(JSON.parse(String(options?.body))); starts++; return Response.json({ jobId: `ses_export_job${starts}` }); }
     if (url.endsWith("/progress")) return new Response(`event: progress\ndata: ${JSON.stringify({ status, progress: status === "complete" ? 100 : 35, stage: "rendering", ...(status === "failed" ? { error: "encoder failed" } : {}) })}\n\n`);
     throw new Error(`Unexpected URL ${url}`);
   }, nativeFetch);
-  const args = { sourcePath, operationKey: "publish-1" };
+  const args = { sourcePath, operationKey: "publish-1", fps: 60, resolution: "4k", motionBlur: true };
   async function settle(input = args) {
     for (let attempt = 0; attempt < 100; attempt++) {
       const result = await videoRenderAction(workspace, "video_render_status", input);
@@ -125,6 +158,7 @@ test("built-in export starts Studio once, resumes progress, verifies output and 
     expect((await videoRenderAction(workspace, "video_render_start", args)).status).toBe("preparing");
     expect((await settle()).status).toBe("rendering");
     expect(renderUrls[0]).toBe("http://127.0.0.1:3456/api/projects/ses_export/render");
+    expect(renderBodies[0]).toEqual({ format: "mp4", quality: "high", fps: 60, resolution: "4k", motionBlur: true });
     await videoRenderAction(workspace, "video_render_start", args);
     expect(starts).toBe(1);
     expect(readyCalls).toBe(1);
@@ -136,7 +170,7 @@ test("built-in export starts Studio once, resumes progress, verifies output and 
     await videoRenderAction(workspace, "video_render_start", args);
     expect(starts).toBe(1);
     status = "failed";
-    const failedArgs = { sourcePath, operationKey: "publish-2" };
+    const failedArgs = { ...args, operationKey: "publish-2" };
     await videoRenderAction(workspace, "video_render_start", failedArgs);
     const failed = await settle(failedArgs);
     expect(failed.status).toBe("failed");

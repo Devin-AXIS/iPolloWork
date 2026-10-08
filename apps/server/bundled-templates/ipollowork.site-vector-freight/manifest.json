@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-vector-freight",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "logistics",
@@ -10,7 +10,8 @@
     "logistics",
     "data",
     "responsive",
-    "themeable"
+    "themeable",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Vector Freight",

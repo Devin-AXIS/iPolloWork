@@ -34,6 +34,7 @@ import { readEngineRuntimeMcpConfig } from "./mcp.js";
 import { engineHostMcp } from "./engine-host-mcp.js";
 import { ipolloworkSessionHostPluginPath } from "./ipollowork-session-host-plugin-path.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
+import { nativeWorkTemplateAgents } from "./work-items.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -141,11 +142,13 @@ export async function buildiPolloWorkRuntimeConfigObject(
     : null;
   const providerChannels = config ? await readRuntimeProviderChannels(config) : {};
   const disabledProviders = runtimeDisabledProviderList(runtimeConfig);
+  const presetAgents = config ? nativeWorkTemplateAgents() : [];
   return {
     ...runtimeConfig,
     provider: runtimeProviderMap(runtimeConfig.provider, providerChannels),
     default_agent: runtimeConfig.default_agent ?? "ipollowork",
     agent: {
+      ...Object.fromEntries(presetAgents.map(({ name, description, prompt }) => [name, { description, prompt, mode: "subagent" }])),
       ipollowork: {
         description: "iPolloWork default agent",
         mode: "primary",

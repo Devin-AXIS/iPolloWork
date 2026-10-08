@@ -94,6 +94,13 @@ describe("ipollowork runtime config file", () => {
     const mcp = parsed.mcp as Record<string, Record<string, unknown>>;
     expect(mcp.posthog?.enabled).toBe(true);
     expect(parsed.default_agent).toBe("ipollowork");
+    expect(parsed.agent).toMatchObject({
+      "ipw-video.plan": { mode: "subagent", prompt: expect.stringContaining("ipollowork-video-storyboard") },
+      "ipw-video.produce": { mode: "subagent", prompt: expect.stringContaining("ipollowork-video-compose") },
+      "ipw-video.verify": { mode: "subagent", prompt: expect.stringContaining("video-acceptance.md") },
+    });
+    expect(Object.keys(parsed.agent as Record<string, unknown>)).not.toContain("plan");
+    expect(Object.keys(parsed.agent as Record<string, unknown>)).not.toContain("explore");
     expect(Array.isArray(parsed.plugin)).toBe(true);
     expect((parsed.plugin as string[]).join("\n")).not.toContain("chrome-devtools");
     expect(parsed.plugin).toEqual([expect.stringContaining("ipollowork-session-host.ts")]);

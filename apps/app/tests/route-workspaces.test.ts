@@ -162,6 +162,7 @@ describe("route workspaces", () => {
       ws: [
         routeSession("delegated-executor", { parentID: "parent", agent: "executor" }),
         routeSession("delegated-general", { parentID: "parent", agent: "general" }),
+        routeSession("codex-worker", { parentID: "parent", codex: { subagent: true } }),
         routeSession("root-agent", { agent: "executor" }),
         routeSession("user-branch", { parentID: "parent", agent: "orchestrator" }),
         routeSession("legacy-branch", { parentID: "parent" }),

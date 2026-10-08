@@ -2,11 +2,13 @@
 import * as React from "react";
 import { Bot, CheckCircle2, Clock3, LoaderCircle, LockKeyhole, Plus, UserRound, XCircle } from "lucide-react";
 import type { WorkBoardColumn, WorkBoardConfig } from "@ipollowork/types/work-items";
+import type { ProjectAgent } from "@ipollowork/types/project-workspace";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
 
+import { AgentAvatar } from "./project-overview-shared";
 import type { WorkCalendarItem } from "./work-calendar";
 import type { ProjectRuntimeExecutionRecord } from "./project-runtime-metrics";
 
@@ -70,6 +72,7 @@ function executionStatus(record: ProjectRuntimeExecutionRecord) {
 function BoardCard({
   entry,
   board,
+  agents,
   dragging,
   onDragStart,
   onDragEnd,
@@ -77,6 +80,7 @@ function BoardCard({
 }: {
   entry: ProjectBoardItem;
   board: WorkBoardConfig;
+  agents: Pick<ProjectAgent, "id" | "name">[];
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -90,6 +94,13 @@ function BoardCard({
   const runtimeStatus = entry.executionRecord ? executionStatus(entry.executionRecord) : null;
   const runtimeTokens = entry.executionRecord ? formatTokens(entry.executionRecord.tokens) : null;
   const RuntimeStatusIcon = runtimeStatus?.icon;
+  const executorSessionId = entry.executionRecord?.sessionId ?? entry.item.execution?.sessionId;
+  const executorName = entry.executionRecord
+    ? entry.executionRecord.title
+    : entry.item.execution?.agent.name;
+  const assigneeName = agents.find((agent) => agent.id === entry.item.assignee)?.name
+    ?? (entry.item.execution?.agent.id === entry.item.assignee ? entry.item.execution.agent.name : null)
+    ?? entry.item.assignee;
   return (
     <article
       draggable={!executionBound}
@@ -136,11 +147,22 @@ function BoardCard({
             ))}
           </div>
         ) : null}
-        <div className="mt-3 flex items-center gap-2 text-[11px] leading-[15px] text-dls-text/45">
-          {executionBound ? <span className="flex shrink-0 items-center gap-1" title={t("work.execution.immutable")}><LockKeyhole className="size-3" />{t("work.execution.bound")}</span> : null}
-          {entry.item.assignee ? <span className="flex min-w-0 items-center gap-1">{entry.executionRecord ? <Bot className="size-3" /> : <UserRound className="size-3" />}<span className="truncate">{entry.item.assignee}</span></span> : null}
-          {runtimeTokens ? <span className="ml-auto shrink-0 tabular-nums">{runtimeTokens} Token</span> : null}
-          {due ? <span className="ml-auto flex shrink-0 items-center gap-1"><Clock3 className="size-3" />{due}</span> : null}
+        <div className="mt-3 flex items-center gap-2.5 text-[11px] leading-[15px] text-dls-text/45">
+          {executorSessionId ? (
+            <span data-testid="project-task-executor" data-session-id={executorSessionId} className="flex min-w-0 flex-1 items-center gap-2.5">
+              <AgentAvatar agent={{ avatarSeed: executorSessionId }} className="size-9" />
+              <span className="min-w-0">
+                <span className="block truncate text-[12px] font-medium text-dls-text" title={executorName}>{executorName}</span>
+                <span className="mt-0.5 flex items-center gap-1" title={t("work.execution.immutable")}>
+                  <LockKeyhole className="size-3" />{entry.executionRecord ? t("conversation_work.engine_created_agent") : t("project_overview.primary")}
+                </span>
+              </span>
+            </span>
+          ) : assigneeName ? <span className="flex min-w-0 items-center gap-1"><UserRound className="size-3" /><span className="truncate">{assigneeName}</span></span> : null}
+          <span className="ml-auto flex shrink-0 flex-col items-end gap-1">
+            {runtimeTokens ? <span className="tabular-nums">{runtimeTokens} Token</span> : null}
+            {due ? <span className="flex items-center gap-1"><Clock3 className="size-3" />{due}</span> : null}
+          </span>
         </div>
       </button>
     </article>
@@ -150,6 +172,7 @@ function BoardCard({
 export function ProjectBoard({
   items,
   board,
+  agents = [],
   panEnabled,
   moving,
   onMove,
@@ -158,6 +181,7 @@ export function ProjectBoard({
 }: {
   items: ProjectBoardItem[];
   board: WorkBoardConfig;
+  agents?: Pick<ProjectAgent, "id" | "name">[];
   panEnabled: boolean;
   moving: boolean;
   onMove: (entryKey: string, status: string, position: number) => void;
@@ -244,10 +268,11 @@ export function ProjectBoard({
                   key={entry.key}
                   entry={entry}
                   board={board}
+                  agents={agents}
                   dragging={draggingKey === entry.key}
                   onDragStart={() => setDraggingKey(entry.key)}
                   onDragEnd={() => setDraggingKey(null)}
-                  onOpen={entry.executionRecord ? null : () => onOpen(entry.key)}
+                  onOpen={() => onOpen(entry.key)}
                 />
               ))}
               {!columnItems.length ? (

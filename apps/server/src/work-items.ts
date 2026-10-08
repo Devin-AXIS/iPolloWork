@@ -1,6 +1,12 @@
 import { dirname } from "node:path";
 import {
   DEFAULT_WORK_BOARD_CONFIG,
+  WORK_ITEM_TITLE_MAX_LENGTH,
+  nativeWorkAgentType,
+  conversationWorkflowSchema,
+  conversationWorkflowUpdateSchema,
+  workTemplateSaveSchema,
+  workTemplateSchema,
   projectSessionExecutionSchema,
   workBoardConfigValueSchema,
   workItemAutomationSchema,
@@ -17,16 +23,21 @@ import {
   type ProjectSessionExecutionFinishInput,
   type ProjectSessionExecutionRuntime,
   type ProjectSessionExecutionStartInput,
+  type ConversationWorkflow,
+  type ConversationWorkflowUpdateInput,
+  type WorkTemplate,
+  type WorkTemplateListResponse,
+  type WorkTemplateSaveInput,
 } from "@ipollowork/types/work-items";
 import {
   createDefaultProjectWorkspaceConfig,
   projectWorkspaceConfigSchema,
   type ProjectAgent,
 } from "@ipollowork/types/project-workspace";
-import { DEFAULT_ENGINE_ID, isHarnessWorkspaceEngineId } from "@ipollowork/types/workspace";
+import { isHarnessWorkspaceEngineId } from "@ipollowork/types/workspace";
 
 import { ApiError } from "./errors.js";
-import { readiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
+import { readiPolloWorkWorkspaceConfig, writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import { importNodeSqlite } from "./node-sqlite.js";
 import { runtimeDbPath } from "./runtime-storage.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
@@ -83,6 +94,7 @@ export type WorkItemListInput = {
   from?: number;
   to?: number;
   status?: string;
+  sessionId?: string;
   cursor?: string;
   limit?: number;
 };
@@ -393,6 +405,10 @@ export async function listWorkItems(config: ServerConfig, input: WorkItemListInp
     conditions.push("status = ?");
     values.push(input.status);
   }
+  if (input.sessionId) {
+    conditions.push("(session_id = ? OR automation_last_session_id = ? OR json_extract(custom_fields_json, '$.conversationId') = ?)");
+    values.push(input.sessionId, input.sessionId, input.sessionId);
+  }
   if (input.from !== undefined) {
     conditions.push("COALESCE(due_at, start_at) IS NOT NULL AND COALESCE(due_at, start_at) >= ?");
     values.push(input.from);
@@ -441,6 +457,285 @@ export async function readProjectSessionWorkItem(
     [workspaceId, sessionId],
   ));
   return row ? publicWorkItem(row) : null;
+}
+
+const builtinWorkTemplates: WorkTemplate[] = [
+  { id: "general", name: "自由对话", description: "直接开始，随需求形成工作方式", workKind: "general", stages: [], acceptance: ["回答或交付物解决用户明确提出的问题"] },
+  { id: "video", name: "视频制作", description: "从创意、素材到可播放的成片", workKind: "video", stages: [
+    { id: "plan", title: "策划与分镜", instructions: "在当前已准备的视频项目中读取需求与已有素材，使用 ipollowork-video-storyboard 保存原生 STORYBOARD.md；交接准确路径、场景、暂定时长、素材与声音需求。仅分镜或要求先审稿时在这里停止。", acceptance: ["保存的原生分镜覆盖需求、素材与声音决策，暂定时长不冒充实测时长"] },
+    { id: "produce", title: "素材与制作", instructions: "参考已批准分镜制作素材、画面与动效；需要声音时加载相应 Skill，使用真实音频和时长完成时间线。", acceptance: ["实际素材与所需音频接入同一可编辑项目", "保留设计变量、编辑钩子与实测时间绑定"] },
+    { id: "verify", title: "播放与检查", instructions: "参考 video-acceptance.md，用现有工具检查真实文件和播放；发现问题由原生 Agent 返修，按用户要求交付成片或源文件。", acceptance: ["问题关联具体场景、时间与证据", "没有观测到的画面、声音、导出和独立检查不标记通过"] },
+  ], acceptance: ["交付可播放成片及需要的可编辑源文件", "验证实际画面和音频"] },
+  { id: "design", name: "设计", description: "探索方向，制作并检查设计成果", workKind: "design", stages: [
+    { id: "brief", title: "明确方向", instructions: "理解受众、应用场景、视觉约束和现有品牌资料。", acceptance: ["方向与交付范围明确"] },
+    { id: "create", title: "设计制作", instructions: "复用现有设计系统，制作用户需要的设计成果。", acceptance: ["产出可查看的实际设计"] },
+    { id: "verify", title: "检查与交付", instructions: "检查视觉、内容、尺寸及可用性并交付。", acceptance: ["成果满足实际使用场景"] },
+  ], acceptance: ["交付实际设计及所需导出文件", "检查实际展示效果"] },
+  { id: "development", name: "开发", description: "理解问题，实施并验证运行行为", workKind: "development", stages: [
+    { id: "inspect", title: "理解问题", instructions: "读取实际代码与约定，定位现有实现并确定最小改动。", acceptance: ["实现基于真实代码与需求"] },
+    { id: "build", title: "实现", instructions: "复用已有模块，完成范围内的实现。", acceptance: ["改动连通实际运行路径"] },
+    { id: "verify", title: "验证", instructions: "执行相关检查并验证真实使用流程。", acceptance: ["相关检查及用户流程得到验证"] },
+  ], acceptance: ["实现解决目标问题", "记录验证结果与未验证边界"] },
+  { id: "research", name: "研究分析", description: "收集证据，形成有依据的判断", workKind: "research", stages: [
+    { id: "scope", title: "明确问题", instructions: "确定待回答的问题、范围和需要的证据。", acceptance: ["研究范围明确"] },
+    { id: "evidence", title: "研究与分析", instructions: "查阅可信来源，区分事实、推断及不确定性。", acceptance: ["结论有可追溯来源"] },
+    { id: "deliver", title: "形成结论", instructions: "回答原问题，说明决策依据与关键局限。", acceptance: ["结论对用户决策有用"] },
+  ], acceptance: ["结论可追溯到证据", "区分已验证事实与推断"] },
+  { id: "document", name: "文档创作", description: "整理材料，撰写可复用的成稿", workKind: "document", stages: [
+    { id: "outline", title: "材料与结构", instructions: "确定读者、用途和材料，组织清晰结构。", acceptance: ["结构覆盖交付要求"] },
+    { id: "write", title: "撰写", instructions: "撰写完整、可复用的文档，保留必要来源。", acceptance: ["文档内容完整"] },
+    { id: "review", title: "审阅与交付", instructions: "检查事实、表达和格式，交付可使用的成稿。", acceptance: ["成稿符合读者与使用场景"] },
+  ], acceptance: ["交付完整成稿", "事实、内容与格式得到检查"] },
+].map((definition) => {
+  const config = createDefaultProjectWorkspaceConfig({ agentName: definition.name === "自由对话" ? "工作助手" : definition.name, agentRole: "负责本次对话的目标、协作、产出与检查" });
+  const coordinator = config.agents[0];
+  coordinator.prompt = "明确本次目标与交付范围，按任务需要使用原生工具、计划和子 Agent。预设角色按需调用，也可使用临时分工或自行完成。收集子 Agent 的真实结果，整合、检查后向用户交付。";
+  // Specialists are reusable jobs, not a worker for every workflow step.
+  const specialists: Record<string, Array<{ id: string; name: string; role: string; prompt: string; skills?: string[] }>> = {
+    video: [
+      { id: "plan", name: "脚本与分镜", role: "需要新建或修改脚本、内容顺序、场景与素材声音计划时调用", skills: ["ipollowork-video-storyboard"],
+        prompt: "使用 ipollowork-video-storyboard。读取已批准需求、资料及当前分镜，保存同一视频项目的原生 STORYBOARD.md。保留必需事实、用户修改与明确约束；按内容安排场景，不强设场景数量。时长标明暂定或实测。仅脚本任务不生成素材、不修改合成、不渲染。交回准确路径、修改的场景及待确认输入。" },
+      { id: "produce", name: "画面与合成", role: "需要制作或修改视觉素材、组件动效及可编辑时间线时调用", skills: ["ipollowork-video-compose", "ipollowork-video-voiceover", "ipollowork-video-soundtrack"],
+        prompt: "使用 ipollowork-video-compose，延续已批准分镜和当前项目。读取所选组件的真实实现，保留设计变量、编辑钩子与统一时间线；现有音频不要求重新合成，仅新需求加载旁白或配乐 Skill，并以实测时长绑定画面。遵守本次分派的文件范围，使用现有工具检查和修复。交回可编辑源文件、素材和检查证据；由原生主 Agent 整合、渲染和交付。" },
+      { id: "verify", name: "成片审查", role: "需要独立核对当前产物的内容、动效、音画与导出结果时调用", skills: ["ipollowork-video-studio"],
+        prompt: "只审查主 Agent 指定的当前视频产物，按适用范围读取 video-acceptance.md。使用现有工具获取证据，检查真实文件、时间线、场景采样和普通速度播放；需要声音或导出时核对真实混音及导出文件。技术检查与实际表达分别报告；未观看、未听到或无证据的项目保持未验证。交回具体场景、时间、问题与证据，不以制作者结论代替独立判断。" },
+    ],
+    design: [
+      { id: "create", name: "设计制作", role: "需要把已明确的方向制作成实际设计或局部修改时调用",
+        prompt: "读取用户目标、品牌资料、现有设计系统及指定文件，制作任务范围内的实际设计。复用可编辑组件、样式与资源；视觉取舍服务受众和使用场景。交回成果路径、预览及必要决策，不擅自扩大交付范围。" },
+      { id: "verify", name: "设计审查", role: "需要独立检查实际展示、可读性及使用体验时调用",
+        prompt: "查看实际设计和目标使用场景，审查信息层级、内容、排版、尺寸、交互与可访问性。只读审查，不直接修改制作者文件。每个问题附具体位置和可观察证据，区分必须修复、建议及尚未验证。" },
+    ],
+    development: [
+      { id: "inspect", name: "代码调查", role: "需要定位陌生代码、运行链路或故障原因时调用",
+        prompt: "读取仓库约定、实际入口和相关代码，沿调用链定位问题。以只读调查为主，不实施无关修改。交回准确文件位置、证据、根因或待验证假设，以及最小实现建议。原生 explorer 足够时无需额外调用此角色。" },
+      { id: "verify", name: "代码审查", role: "需要独立审查实现、回归风险及测试覆盖时调用",
+        prompt: "审查指定改动及真实调用路径，优先发现行为错误、边界条件、数据或安全风险。必要时运行相关检查；不改写作者实现。交回可复现问题、准确代码位置及检查结果，区分确认缺陷与待验证风险。" },
+    ],
+    research: [
+      { id: "evidence", name: "来源研究", role: "需要围绕明确问题收集和整理可信来源时调用",
+        prompt: "围绕主 Agent 指定的问题和范围查阅原始或权威来源。核对时间、对象和证据适用范围；保留可追溯链接及必要数据。交回有依据的发现、来源和缺口，不用缺失证据填补结论。" },
+      { id: "deliver", name: "证据审查", role: "需要核对研究结论、来源支持及推理漏洞时调用",
+        prompt: "独立核对指定结论及其来源，区分事实、推断与不确定性。检查反例、遗漏前提、过期资料和不支持结论的引用。交回需要修正的具体论点、证据与局限，避免重新扩展整个研究范围。" },
+    ],
+    document: [
+      { id: "write", name: "文稿撰写", role: "需要基于明确读者、材料和结构完成指定文稿时调用",
+        prompt: "读取已确认的读者、用途、材料及结构，完成分派范围内的可使用文稿。保留必要来源与限定，表达清楚、信息完整。交回实际稿件或文件及待确认内容；多人撰写时遵守指定章节和文件边界。" },
+      { id: "review", name: "文稿审阅", role: "需要独立检查文稿事实、逻辑、表达和格式时调用",
+        prompt: "基于实际稿件和用途审查事实、来源、论证、术语与格式。默认提出具体修改建议，不同时改写作者文件。交回关键问题、对应段落与修改建议，区分事实修正和表达偏好。" },
+    ],
+  };
+  config.agents.push(...(specialists[definition.id] ?? []).map((role) => ({
+    ...coordinator, id: role.id, name: role.name, avatarSeed: `${definition.id}-${role.id}`,
+    role: role.role, prompt: role.prompt,
+    skillIds: (role.skills ?? []).map((skill) => `video-agent:${skill}`),
+    pluginIds: role.skills ? ["video-agent"] : [],
+  })));
+  if (definition.id === "video") {
+    coordinator.role = "统筹视频目标、原生分工与当前项目的实际交付";
+    coordinator.skillIds = ["video-agent:ipollowork-video-studio"];
+    coordinator.pluginIds = ["video-agent"];
+    coordinator.prompt += " 按需加载 ipollowork-video-studio，沿用现有视频制作工具和项目。仅讨论、脚本或局部修改时遵守该范围；负责收回实际文件，完成所需检查、渲染与交付。";
+    config.orchestration.relations = [
+      { sourceAgentId: "plan", targetAgentId: "produce", type: "dependency", label: "分镜输入" },
+      { sourceAgentId: "produce", targetAgentId: "verify", type: "dependency", label: "当前产物" },
+    ];
+  }
+  return workTemplateSchema.parse({
+    ...definition, version: definition.id === "video" ? 6 : 2, origin: "builtin", config,
+    stages: definition.stages.map((stage) => ({ ...stage, agentId: config.agents.some((agent) => agent.id === stage.id) ? stage.id : coordinator.id })),
+  });
+});
+
+function savedWorkTemplates(stored: Record<string, unknown>): WorkTemplate[] {
+  if (!Array.isArray(stored.workTemplates)) return [];
+  return stored.workTemplates.slice(0, 100).flatMap((value) => {
+    const parsed = workTemplateSchema.safeParse(value);
+    return parsed.success && parsed.data.origin === "saved" ? [parsed.data] : [];
+  });
+}
+
+// Templates are a reusable library; projects only own the shared execution background.
+const WORK_TEMPLATE_LIBRARY_SCOPE = "__work_template_library__";
+
+/** Built-in native roles are stable; saved/edited roles travel with their conversation's task. */
+export function nativeWorkTemplateAgents(): Array<{ name: string; description: string; prompt: string }> {
+  return builtinWorkTemplates.flatMap((template) =>
+    template.config.agents.filter((agent) => agent.id !== template.config.orchestration.entryAgentId).map((agent) => ({
+      name: nativeWorkAgentType(template.id, agent.id),
+      description: `${template.name}: ${agent.name}. ${agent.role}`,
+      prompt: [
+        `You are ${agent.name}. [project-agent:${agent.id}]`,
+        agent.prompt,
+        agent.skillIds.length ? `Available Skills: ${agent.skillIds.map((id) => id.split(":").at(-1)).join(", ")}. Load only the Skills needed for the assigned task using the native Skill loader.` : null,
+        "Follow the parent's task scope and exact project paths. Return actual deliverables, evidence and unfinished work to the native parent Agent.",
+      ].filter(Boolean).join("\n\n"),
+    })),
+  );
+}
+
+async function projectWorkContext(config: ServerConfig, workspace: WorkspaceInfo) {
+  const [stored, library] = await Promise.all([
+    readiPolloWorkWorkspaceConfig(config, workspace.id),
+    readiPolloWorkWorkspaceConfig(config, WORK_TEMPLATE_LIBRARY_SCOPE),
+  ]);
+  const parsed = projectWorkspaceConfigSchema.safeParse(stored.project);
+  const project = parsed.success ? parsed.data : createDefaultProjectWorkspaceConfig();
+  return { project, templates: [...builtinWorkTemplates, ...savedWorkTemplates(library)] };
+}
+
+export async function listWorkTemplates(config: ServerConfig, workspace: WorkspaceInfo): Promise<WorkTemplateListResponse> {
+  const { templates } = await projectWorkContext(config, workspace);
+  const db = await workItemDb(config);
+  const groupedStats = (field: "templateId" | "workKind", limit: number) => db.all(`SELECT
+    COALESCE(json_extract(execution_json, '$.workflow.${field}'), 'general') AS group_id,
+    COUNT(*) AS runs,
+    SUM(CASE WHEN status = 'done' AND json_extract(custom_fields_json, '$.reviewedAt') IS NOT NULL THEN 1 ELSE 0 END) AS completions
+    FROM work_items WHERE execution_json IS NOT NULL AND run_started_at IS NOT NULL
+    GROUP BY group_id LIMIT ?`, [limit]).flatMap((row) => isRecord(row) ? [{
+      id: readString(row, "group_id"), runs: readNumber(row, "runs"), reviewedCompletions: readNumber(row, "completions"),
+    }] : []);
+  return { templates, stats: {
+    byTemplate: groupedStats("templateId", 200).map(({ id, ...stats }) => ({ templateId: id, ...stats })),
+    byWorkKind: groupedStats("workKind", 6).flatMap(({ id, ...stats }) => {
+      const kind = conversationWorkflowSchema.shape.workKind.safeParse(id);
+      return kind.success ? [{ workKind: kind.data, ...stats }] : [];
+    }),
+  } };
+}
+
+function workflowFromTemplate(template: WorkTemplate, input: { source: ConversationWorkflow["source"]; goal?: string }): ConversationWorkflow {
+  return conversationWorkflowSchema.parse({
+    templateId: template.id, templateVersion: template.version, templateName: template.name,
+    source: input.source, workKind: template.workKind, goal: input.goal ?? "",
+    config: template.config, stages: template.stages, acceptance: template.acceptance, updatedAt: Date.now(),
+  });
+}
+
+export async function writeConversationWorkflow(
+  config: ServerConfig,
+  workspace: WorkspaceInfo,
+  sessionId: string,
+  value: ConversationWorkflowUpdateInput,
+  options: { allowRunning?: boolean } = {},
+): Promise<WorkItem> {
+  const input = conversationWorkflowUpdateSchema.parse(value);
+  const current = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+  if (current?.status === "running" && !options.allowRunning) throw new WorkItemConflictError("Finish the current run before changing its work settings");
+  if (options.allowRunning && input.expectedVersion === undefined) throw new WorkItemConflictError("A runtime workflow update requires the current work item version");
+  if (input.expectedVersion !== undefined && input.expectedVersion !== (current?.version ?? 0)) throw new WorkItemConflictError();
+  if (current?.execution && current.execution.runtime.engineId !== input.runtime.engineId) {
+    throw new ApiError(409, "project_session_engine_changed", "This conversation keeps its original execution engine");
+  }
+  if (options.allowRunning && current?.execution && JSON.stringify(current.execution.runtime) !== JSON.stringify(input.runtime)) {
+    throw new WorkItemConflictError("Runtime refinement cannot change the conversation's execution settings");
+  }
+  const currentWorkflow = current?.execution?.workflow;
+  if (options.allowRunning && currentWorkflow && currentWorkflow.source !== "auto" && input.source === "auto"
+    && input.templateId && input.templateId !== currentWorkflow.templateId) {
+    throw new WorkItemConflictError("Keep the selected work template when automatically refining this conversation");
+  }
+  const { project, templates } = await projectWorkContext(config, workspace);
+  const selected = templates.find((template) => template.id === (input.templateId ?? "general"));
+  if (!selected) throw new ApiError(404, "work_template_not_found", "The selected work template was not found");
+  const base = !input.templateId && current?.execution?.workflow
+    ? current.execution.workflow
+    : workflowFromTemplate(selected, { source: input.source });
+  const selectedSource = input.config !== undefined || (!input.templateId && base.source === "custom")
+    || (input.templateId && selected.origin === "saved") ? "custom" : input.source;
+  const source = options.allowRunning && currentWorkflow && (
+    (input.source === "auto" && currentWorkflow.source !== "auto")
+    || (currentWorkflow.source === "manual" && (!input.templateId || input.templateId === currentWorkflow.templateId))
+  ) && input.config === undefined ? currentWorkflow.source : selectedSource;
+  const previousProgress = currentWorkflow?.progress ?? base.progress;
+  const progress = input.progress === undefined ? previousProgress : {
+    summary: input.progress.summary ?? previousProgress?.summary ?? "",
+    decisions: input.progress.decisions ?? previousProgress?.decisions ?? [],
+    outputs: input.progress.outputs ?? previousProgress?.outputs ?? [],
+    blockers: input.progress.blockers ?? previousProgress?.blockers ?? [],
+  };
+  const workflow = conversationWorkflowSchema.parse({
+    ...base, source,
+    goal: input.goal ?? currentWorkflow?.goal ?? base.goal,
+    workKind: input.workKind ?? base.workKind, config: input.config ? {
+      ...input.config, agents: input.config.agents.map((agent) => ({
+        ...agent, runtime: { engineId: null, model: null, mode: "auto", modelVariant: null },
+      })),
+    } : base.config,
+    stages: input.stages ?? base.stages, acceptance: input.acceptance ?? base.acceptance, updatedAt: Date.now(),
+    progress,
+  });
+  const agent = workflow.config.agents.find((candidate) => candidate.id === workflow.config.orchestration.entryAgentId);
+  if (!agent) throw new ApiError(409, "conversation_agent_missing", "The conversation entry Agent is missing");
+  return writeSessionExecution(config, workspace.id, input.title ?? current?.title ?? "新工作", {
+    sessionId, projectRevision: current?.execution?.projectRevision ?? project.revision,
+    projectGoal: current?.execution?.projectGoal ?? project.goal,
+    agent, runtime: input.runtime, boundAt: current?.execution?.boundAt ?? Date.now(), workflow,
+  }, current?.status ?? "ready", current?.version ?? 0);
+}
+
+export async function saveWorkTemplate(config: ServerConfig, workspace: WorkspaceInfo, value: WorkTemplateSaveInput): Promise<WorkTemplate> {
+  const input = workTemplateSaveSchema.parse(value);
+  const item = await readProjectSessionWorkItem(config, workspace.id, input.sessionId);
+  const workflow = item?.execution?.workflow;
+  if (!workflow) throw new ApiError(404, "conversation_workflow_not_found", "Set up conversation work before saving a template");
+  let saved: WorkTemplate | undefined;
+  await writeiPolloWorkWorkspaceConfig(config, WORK_TEMPLATE_LIBRARY_SCOPE, (stored) => {
+    const templates = savedWorkTemplates(stored);
+    const current = input.templateId ? templates.find((template) => template.id === input.templateId) : undefined;
+    if (input.templateId && !current) throw new ApiError(404, "work_template_not_found", "The saved template was not found");
+    if (input.expectedVersion !== undefined && input.expectedVersion !== (current?.version ?? 0)) throw new WorkItemConflictError("The work template changed before this update was saved");
+    if (!current && templates.length >= 100) throw new ApiError(409, "work_template_limit", "At most 100 saved work templates are allowed in the library");
+    saved = workTemplateSchema.parse({
+      id: current?.id ?? `template_${shortId()}`, version: (current?.version ?? 0) + 1,
+      name: input.name, description: input.description ?? current?.description ?? "",
+      origin: "saved", workKind: workflow.workKind, config: workflow.config,
+      stages: workflow.stages, acceptance: workflow.acceptance,
+    });
+    return { ...stored, workTemplates: [...templates.filter((template) => template.id !== saved?.id), saved] };
+  });
+  if (!saved) throw new Error("Saved work template could not be read");
+  return saved;
+}
+
+export async function resolveSessionWorkspace(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string): Promise<WorkspaceInfo> {
+  const item = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+  return item?.execution ? { ...workspace, engineId: item.execution.runtime.engineId } : workspace;
+}
+
+export async function listConversationSessionBindings(config: ServerConfig, workspaceId: string): Promise<Array<{ sessionId: string; title: string; status: string; engineId: string; createdAt: number; updatedAt: number }>> {
+  const db = await workItemDb(config);
+  return db.all("SELECT session_id, title, status, execution_json, created_at, updated_at FROM work_items WHERE workspace_id = ? AND session_id IS NOT NULL AND execution_json IS NOT NULL ORDER BY updated_at DESC, id DESC LIMIT 500", [workspaceId]).flatMap((row) => {
+    if (!isRecord(row)) return [];
+    const execution = parseExecution(readNullableString(row, "execution_json"));
+    return execution ? [{ sessionId: execution.sessionId, title: readString(row, "title"), status: readString(row, "status"), engineId: execution.runtime.engineId, createdAt: readNumber(row, "created_at"), updatedAt: readNumber(row, "updated_at") }] : [];
+  });
+}
+
+export async function listBoundSessionEngines(config: ServerConfig, workspaceId: string): Promise<string[]> {
+  const db = await workItemDb(config);
+  return db.all("SELECT DISTINCT json_extract(execution_json, '$.runtime.engineId') AS engine_id FROM work_items WHERE workspace_id = ? AND execution_json IS NOT NULL ORDER BY engine_id LIMIT 32", [workspaceId])
+    .flatMap((row) => isRecord(row) && typeof row.engine_id === "string" && row.engine_id ? [row.engine_id] : []);
+}
+
+export async function bindConversationSession(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string, input: { title: string; engineId: string; parentSessionId?: string }): Promise<WorkItem> {
+  const current = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+  if (current) return current;
+  const title = input.title.trim().slice(0, WORK_ITEM_TITLE_MAX_LENGTH) || "新对话";
+  if (input.parentSessionId) {
+    const parent = await readProjectSessionWorkItem(config, workspace.id, input.parentSessionId);
+    if (parent?.execution) {
+      return writeSessionExecution(config, workspace.id, title, {
+        ...parent.execution, sessionId, boundAt: Date.now(),
+        runtime: parent.execution.runtime.engineId === input.engineId ? parent.execution.runtime : {
+          engineId: input.engineId, model: null, mode: null, modelVariant: null,
+        },
+      }, "ready");
+    }
+  }
+  return writeConversationWorkflow(config, workspace, sessionId, {
+    title, source: "auto", runtime: { engineId: input.engineId, model: null, mode: null, modelVariant: null },
+  });
 }
 
 export async function createWorkItem(
@@ -518,43 +813,62 @@ export async function createWorkItems(
   }
 }
 
-export async function startProjectSessionExecution(
+async function writeSessionExecution(
   config: ServerConfig,
   workspaceId: string,
   title: string,
   value: ProjectSessionExecution,
+  status: string,
+  expectedVersion?: number,
+  beginRun = false,
 ): Promise<WorkItem> {
+  title = title.trim().slice(0, WORK_ITEM_TITLE_MAX_LENGTH) || "新对话";
   const execution = projectSessionExecutionSchema.parse(value);
   const db = await workItemDb(config);
   const now = Date.now();
   const resume = async (): Promise<WorkItem> => {
-    db.run(
+    const changes = db.run(
       `UPDATE work_items SET
-        title = ?, status = 'running', assignee = ?, execution_json = ?, last_error = NULL,
-        run_started_at = ?, run_completed_at = NULL,
+        title = ?, status = ?, assignee = ?, execution_json = ?,
+        last_error = CASE WHEN ? = 1 THEN NULL ELSE last_error END,
+        run_started_at = CASE WHEN ? = 1 THEN ? ELSE run_started_at END,
+        run_completed_at = CASE WHEN ? = 1 THEN NULL ELSE run_completed_at END,
         version = version + 1, updated_at = ?
-       WHERE workspace_id = ? AND session_id = ?`,
+       WHERE workspace_id = ? AND session_id = ? AND (? IS NULL OR version = ?)`,
       [
         title,
+        status,
         execution.agent.id,
         JSON.stringify(execution),
+        beginRun ? 1 : 0,
+        beginRun ? 1 : 0,
         now,
+        beginRun ? 1 : 0,
         now,
         workspaceId,
         execution.sessionId,
+        expectedVersion ?? null,
+        expectedVersion ?? null,
       ],
     );
+    if (!changes) throw new WorkItemConflictError();
     const updated = await readProjectSessionWorkItem(config, workspaceId, execution.sessionId);
     if (!updated) throw new Error("Project session work item could not be read");
     return updated;
   };
   const existing = await readProjectSessionWorkItem(config, workspaceId, execution.sessionId);
-  if (existing) return resume();
+  if (existing) {
+    if (expectedVersion !== undefined && existing.version !== expectedVersion) throw new WorkItemConflictError();
+    if (existing.execution && existing.execution.runtime.engineId !== execution.runtime.engineId) {
+      throw new ApiError(409, "project_session_engine_changed", "This conversation keeps its original execution engine");
+    }
+    return resume();
+  }
 
   const id = `work_${shortId()}`;
   const nextPositionRow = db.get(
-    "SELECT COALESCE(MAX(position), 0) + 1024 AS position FROM work_items WHERE workspace_id = ? AND status = 'running'",
-    [workspaceId],
+    "SELECT COALESCE(MAX(position), 0) + 1024 AS position FROM work_items WHERE workspace_id = ? AND status = ?",
+    [workspaceId, status],
   );
   const position = isRecord(nextPositionRow) ? readNumber(nextPositionRow, "position") : 1024;
   const changes = db.run(
@@ -563,16 +877,17 @@ export async function startProjectSessionExecution(
       start_at, due_at, position, custom_fields_json,
       session_id, execution_json, last_error, run_started_at, run_completed_at,
       version, created_at, updated_at
-    ) VALUES (?, ?, ?, NULL, 'running', ?, 'normal', NULL, NULL, ?, '{}', ?, ?, NULL, ?, NULL, 1, ?, ?)`,
+    ) VALUES (?, ?, ?, NULL, ?, ?, 'normal', NULL, NULL, ?, '{}', ?, ?, NULL, ?, NULL, 1, ?, ?)`,
     [
       id,
       workspaceId,
       title,
+      status,
       execution.agent.id,
       Number.isFinite(position) ? position : 1024,
       execution.sessionId,
       JSON.stringify(execution),
-      now,
+      beginRun ? now : null,
       now,
       now,
     ],
@@ -580,6 +895,8 @@ export async function startProjectSessionExecution(
   if (changes === 0) {
     const concurrent = await readProjectSessionWorkItem(config, workspaceId, execution.sessionId);
     if (!concurrent) throw new Error("Project session work item could not be read after insert conflict");
+    if (expectedVersion === 0) throw new WorkItemConflictError();
+    if (concurrent.execution?.runtime.engineId !== execution.runtime.engineId) throw new ApiError(409, "project_session_engine_changed", "This conversation keeps its original execution engine");
     return resume();
   }
   const created = await readWorkItem(config, workspaceId, id);
@@ -587,26 +904,25 @@ export async function startProjectSessionExecution(
   return created;
 }
 
+export async function startProjectSessionExecution(config: ServerConfig, workspaceId: string, title: string, value: ProjectSessionExecution): Promise<WorkItem> {
+  return writeSessionExecution(config, workspaceId, title, value, "running", undefined, true);
+}
+
 function resolveProjectExecutionRuntime(input: {
   engineId: string;
   agent: ProjectAgent;
   requested: ProjectSessionExecutionRuntime;
 }): ProjectSessionExecutionRuntime {
-  const selectedModel = input.requested.model ?? input.agent.runtime.model;
-  const mode = input.agent.runtime.mode === "auto" || isHarnessWorkspaceEngineId(input.engineId)
-    ? input.requested.mode
-    : input.agent.runtime.mode === "plan"
-      ? "plan"
-      : "build";
+  const compatibleDefault = !input.agent.runtime.engineId || input.agent.runtime.engineId === input.engineId;
+  const defaultModel = compatibleDefault ? input.agent.runtime.model : null;
+  const defaultMode = compatibleDefault && !isHarnessWorkspaceEngineId(input.engineId) && input.agent.runtime.mode !== "auto"
+    ? input.agent.runtime.mode === "plan" ? "plan" : "build"
+    : null;
   return {
     engineId: input.engineId,
-    model: selectedModel,
-    mode,
-    modelVariant: input.requested.model
-      ? input.requested.modelVariant
-      : input.agent.runtime.model
-        ? input.agent.runtime.modelVariant
-        : input.requested.modelVariant,
+    model: input.requested.model ?? defaultModel,
+    mode: input.requested.mode ?? defaultMode,
+    modelVariant: input.requested.model || !defaultModel ? input.requested.modelVariant : input.agent.runtime.modelVariant,
   };
 }
 
@@ -615,33 +931,19 @@ export async function resolveProjectExecutionPlan(
   workspace: WorkspaceInfo,
   input: Pick<ProjectSessionExecutionStartInput, "agentId" | "runtime">,
 ): Promise<Omit<ProjectSessionExecution, "sessionId" | "boundAt">> {
-  const projectEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
-  const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
-  const configured = projectWorkspaceConfigSchema.safeParse(stored.project);
-  const project = configured.success
-    ? configured.data
-    : createDefaultProjectWorkspaceConfig({ engineId: workspace.engineId });
-  const agentId = input.agentId ?? project.orchestration.entryAgentId;
-  const agent = project.agents.find((candidate) => candidate.id === agentId);
-  if (!agent) throw new ApiError(409, "project_agent_missing", "The selected project Agent no longer exists");
-
-  const agentEngineId = agent.runtime.engineId?.trim() || projectEngineId;
-  if (agentEngineId !== projectEngineId || input.runtime.engineId !== projectEngineId) {
-    throw new ApiError(
-      409,
-      "project_agent_engine_mismatch",
-      "Project tasks must use the project's engine. Change the project engine before starting a new task.",
-    );
-  }
+  const { project, templates } = await projectWorkContext(config, workspace);
+  const template = templates.find((candidate) => candidate.id === "general");
+  if (!template) throw new Error("Default conversation template is missing");
+  const workflow = workflowFromTemplate(template, { source: "auto" });
+  const agentId = workflow.config.orchestration.entryAgentId;
+  const agent = workflow.config.agents.find((candidate) => candidate.id === agentId);
+  if (!agent) throw new ApiError(409, "project_agent_missing", "The selected conversation Agent no longer exists");
   return {
     projectRevision: project.revision,
     projectGoal: project.goal,
     agent,
-    runtime: resolveProjectExecutionRuntime({
-      engineId: projectEngineId,
-      agent,
-      requested: input.runtime,
-    }),
+    workflow,
+    runtime: resolveProjectExecutionRuntime({ engineId: input.runtime.engineId, agent, requested: input.runtime }),
   };
 }
 
@@ -651,36 +953,36 @@ export async function bindProjectSessionExecution(
   sessionId: string,
   input: ProjectSessionExecutionStartInput,
 ): Promise<WorkItem> {
-  const projectEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
   const existing = await readProjectSessionWorkItem(config, workspace.id, sessionId);
-  if (existing?.execution) {
-    if (
-      existing.execution.runtime.engineId !== projectEngineId
-      || input.runtime.engineId !== existing.execution.runtime.engineId
-    ) {
-      throw new ApiError(
-        409,
-        "project_session_engine_changed",
-        "This task is bound to its original engine. Start a new conversation to use the project's current engine.",
-      );
-    }
-    return startProjectSessionExecution(config, workspace.id, input.title, {
-      ...existing.execution,
-      runtime: resolveProjectExecutionRuntime({
-        engineId: projectEngineId,
-        agent: existing.execution.agent,
-        requested: input.runtime,
-      }),
-      boundAt: Date.now(),
-    });
+  if (existing?.execution && input.runtime.engineId !== existing.execution.runtime.engineId) {
+    throw new ApiError(
+      409,
+      "project_session_engine_changed",
+      "This conversation is bound to its original engine. Start a new conversation to use another engine.",
+    );
   }
-
-  const plan = await resolveProjectExecutionPlan(config, workspace, input);
-  const now = Date.now();
-  return startProjectSessionExecution(config, workspace.id, input.title, {
+  const execution = existing?.execution ?? {
     sessionId,
-    ...plan,
-    boundAt: now,
+    ...await resolveProjectExecutionPlan(config, workspace, input),
+    boundAt: Date.now(),
+  };
+  let workflow = execution.workflow;
+  if (workflow && (!existing || (existing.status === "ready" && existing.runStartedAt === null))) {
+    const goal = workflow.goal || input.goal?.trim().slice(0, 2_000) || "";
+    if (workflow.source === "auto" && workflow.templateId === "general" && input.workKind && input.workKind !== "general") {
+      const { templates } = await projectWorkContext(config, workspace);
+      const template = templates.find((candidate) => candidate.id === input.workKind);
+      if (!template) throw new ApiError(404, "work_template_not_found", "The initial work template was not found");
+      workflow = { ...workflowFromTemplate(template, { source: "auto", goal }), progress: workflow.progress };
+    } else if (goal !== workflow.goal) {
+      workflow = { ...workflow, goal, updatedAt: Date.now() };
+    }
+  }
+  const agent = workflow?.config.agents.find((candidate) => candidate.id === workflow.config.orchestration.entryAgentId) ?? execution.agent;
+  return startProjectSessionExecution(config, workspace.id, input.title, {
+    ...execution, workflow, agent,
+    runtime: resolveProjectExecutionRuntime({ engineId: execution.runtime.engineId, agent, requested: input.runtime }),
+    boundAt: Date.now(),
   });
 }
 
@@ -689,29 +991,43 @@ export async function finishProjectSessionExecution(
   workspaceId: string,
   sessionId: string,
   input: ProjectSessionExecutionFinishInput,
+  options: { expectedRunStartedAt?: number } = {},
 ): Promise<WorkItem | null> {
   const current = await readProjectSessionWorkItem(config, workspaceId, sessionId);
   if (!current) return null;
+  if (options.expectedRunStartedAt !== undefined && current.runStartedAt !== options.expectedRunStartedAt) return current;
   const db = await workItemDb(config);
   const now = Date.now();
   let transactionOpen = false;
   try {
     db.exec("BEGIN IMMEDIATE");
     transactionOpen = true;
+    if (options.expectedRunStartedAt !== undefined) {
+      const locked = normalizeWorkItemRow(db.get(
+        "SELECT * FROM work_items WHERE workspace_id = ? AND session_id = ?",
+        [workspaceId, sessionId],
+      ));
+      if (locked?.run_started_at !== options.expectedRunStartedAt) {
+        db.exec("COMMIT");
+        transactionOpen = false;
+        return readProjectSessionWorkItem(config, workspaceId, sessionId);
+      }
+    }
     if (current.status === "running") {
       db.run(
         `UPDATE work_items SET
           title = ?, status = ?, last_error = ?, run_completed_at = ?,
           version = version + 1, updated_at = ?
-         WHERE workspace_id = ? AND session_id = ? AND status = 'running'`,
+         WHERE workspace_id = ? AND session_id = ? AND status = 'running' AND run_started_at = ?`,
         [
-          input.title ?? current.title,
-          input.status,
+          input.title?.trim().slice(0, WORK_ITEM_TITLE_MAX_LENGTH) || current.title,
+          input.status === "done" ? "review" : "failed",
           input.status === "failed" ? input.error ?? "Task failed" : null,
           now,
           now,
           workspaceId,
           sessionId,
+          current.runStartedAt,
         ],
       );
     }
@@ -756,7 +1072,7 @@ export async function updateWorkItem(
   if (!current) return null;
   if (current.version !== input.expectedVersion) throw new WorkItemConflictError();
   if (current.execution && (
-    (input.status !== undefined && input.status !== current.status)
+    (input.status !== undefined && input.status !== current.status && !(input.status === "done" && current.status === "review"))
     || (input.assignee !== undefined && input.assignee !== current.assignee)
     || input.automation !== undefined
   )) {
@@ -772,7 +1088,9 @@ export async function updateWorkItem(
     dueAt: input.dueAt === undefined ? current.dueAt : input.dueAt,
     automation: input.automation === undefined ? current.automation : input.automation,
     position: input.position ?? current.position,
-    customFields: input.customFields ?? current.customFields,
+    customFields: input.status === "done" && current.execution
+      ? { ...(input.customFields ?? current.customFields), reviewedAt: Date.now() }
+      : input.customFields ?? current.customFields,
   });
   const wasAutomationEnabled = current.automation?.enabled === true;
   const willAutomationBeEnabled = next.automation?.enabled === true;

@@ -168,7 +168,9 @@ const getVariantLabel = (providerID: string, key: string, providerName?: string 
   if (key === "low") return t("model_behavior.label_light");
   if (key === "medium") return t("model_behavior.label_balanced");
   if (key === "high") return family === "anthropic" ? t("model_behavior.label_extended") : t("model_behavior.label_deep");
-  if (key === "xhigh" || key === "max") return t("model_behavior.label_maximum");
+  if (key === "xhigh") return t("model_behavior.label_extra_deep");
+  if (key === "max") return t("model_behavior.label_maximum");
+  if (key === "ultra") return t("model_behavior.label_ultra");
   return humanize(key);
 };
 

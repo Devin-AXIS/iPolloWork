@@ -270,6 +270,8 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             format: opts.format,
             ...(renderBodyScripts.length > 0 ? { renderBodyScripts } : {}),
             outputResolution: opts.outputResolution,
+            outputResolutionAspectAgnostic: opts.outputResolutionAspectAgnostic,
+            motionBlur: opts.motionBlur,
             outputSize: opts.outputSize,
             captureSize: opts.captureSize,
             ...(opts.composition ? { entryFile: opts.composition } : {}),

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.frame-flowchart-sticky",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "video",
   "subcategory": "operations",
@@ -12,7 +12,8 @@
     "diagram",
     "sticky",
     "whiteboard",
-    "frame"
+    "frame",
+    "topic:business"
   ],
   "surface": "video",
   "title": "Sticky Flowchart Frame",

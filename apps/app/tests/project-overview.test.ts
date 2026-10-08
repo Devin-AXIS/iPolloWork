@@ -1,12 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { DOMParser } from "@xmldom/xmldom";
 import { projectWorkspaceConfigSchema } from "@ipollowork/types/project-workspace";
-import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
-import type { iPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
+import { DEFAULT_WORK_BOARD_CONFIG, projectExecutionSystemContext, type WorkItem } from "@ipollowork/types/work-items";
+import { createiPolloWorkServerClient, type iPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import en from "../src/i18n/locales/en";
 import zh from "../src/i18n/locales/zh";
+import { t } from "../src/i18n";
 import { loadProjectRuntimeMetrics } from "../src/react-app/domains/work/project-runtime-metrics";
+import { ProjectBoard } from "../src/react-app/domains/work/project-board";
+import { ProjectOrchestrationGraph } from "../src/react-app/domains/work/project-orchestration-graph";
+import { ProjectDashboard } from "../src/react-app/domains/work/project-dashboard";
+import { ProjectRuntimeData } from "../src/react-app/domains/work/project-runtime-data";
+import type { ProjectRuntimeMetrics } from "../src/react-app/domains/work/project-runtime-metrics";
 import { scopeProjectBuilderDraft } from "../src/react-app/domains/work/project-builder-session";
+import { listEndpointWorkItems } from "../src/react-app/domains/work/work-endpoints";
 import {
   formatWorkCalendarTime,
   formatWorkCalendarRange,
@@ -16,28 +26,8 @@ import {
   workCalendarScheduleRange,
 } from "../src/react-app/domains/work/work-calendar";
 
-const overviewSource = readFileSync(
-  new URL("../src/react-app/domains/work/project-overview.tsx", import.meta.url),
-  "utf8",
-).replaceAll("\r\n", "\n");
-const inspectorSource = readFileSync(
-  new URL("../src/react-app/domains/work/project-agent-inspector.tsx", import.meta.url),
-  "utf8",
-).replaceAll("\r\n", "\n");
-const dashboardSource = readFileSync(
-  new URL("../src/react-app/domains/work/project-dashboard.tsx", import.meta.url),
-  "utf8",
-).replaceAll("\r\n", "\n");
-const runtimeDataSource = readFileSync(
-  new URL("../src/react-app/domains/work/project-runtime-data.tsx", import.meta.url),
-  "utf8",
-).replaceAll("\r\n", "\n");
 const runtimeMetricsSource = readFileSync(
   new URL("../src/react-app/domains/work/project-runtime-metrics.ts", import.meta.url),
-  "utf8",
-).replaceAll("\r\n", "\n");
-const orchestrationSource = readFileSync(
-  new URL("../src/react-app/domains/work/project-orchestration-graph.tsx", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
 const workCenterSource = readFileSync(
@@ -64,10 +54,6 @@ const modelBehaviorMenuSource = readFileSync(
   new URL("../src/components/model-behavior-menu.tsx", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
-const resourcePickerSource = readFileSync(
-  new URL("../src/react-app/domains/work/project-resource-picker.tsx", import.meta.url),
-  "utf8",
-).replaceAll("\r\n", "\n");
 const pluginAuthorizationDialogSource = readFileSync(
   new URL("../src/components/plugin-authorization-dialog.tsx", import.meta.url),
   "utf8",
@@ -77,7 +63,7 @@ const pluginPackagesPanelSource = readFileSync(
   "utf8",
 ).replaceAll("\r\n", "\n");
 
-describe("project overview", () => {
+describe("conversation work, runtime metrics and tasks", () => {
   test("keeps the portable project manifest free of plugin credentials", () => {
     const parsed = projectWorkspaceConfigSchema.parse({
       schemaVersion: 1,
@@ -271,6 +257,10 @@ describe("project overview", () => {
     expect(metrics.conversationCount).toBe(2);
     expect(metrics.totalTokens).toBe(300);
     expect(metrics.averageTokensPerConversation).toBe(150);
+    expect(metrics.sessionUsage).toEqual([
+      { sessionId: "one", title: "Edit the report", tokens: 100, isMain: true },
+      { sessionId: "child-data", title: "阶段二：指标与趋势分析", tokens: 200, isMain: false },
+    ]);
     expect(metrics.agents[0]).toMatchObject({ tokens: 100, conversationCount: 1, attributed: true });
     expect(metrics.agents[1]).toMatchObject({
       tokens: 200,
@@ -294,6 +284,403 @@ describe("project overview", () => {
       status: "completed",
       tokens: 200,
     })]);
+  });
+
+  test("discovers native collaboration children from real spawn history and preserves their actual outcomes", async () => {
+    const config = projectWorkspaceConfigSchema.parse({
+      schemaVersion: 1,
+      agents: [
+        { id: "editor", name: "Editor", avatarSeed: "editor" },
+        { id: "researcher", name: "Researcher", avatarSeed: "researcher" },
+      ],
+      orchestration: { entryAgentId: "editor" },
+    });
+    const session = (id: string, updated: number) => ({
+      id, title: id, engineId: "codex-harness", time: { created: 1, updated },
+    });
+    const nativePart = (id: string, tool: string, status: string, prompt: string | null = null, parentSessionId = "root") => ({
+      type: "tool", tool: "task",
+      state: {
+        status: "completed",
+        input: { prompt },
+        output: `<task id="${id}">`,
+        metadata: {
+          sessionId: id, nativeTool: tool, delegationStatus: status,
+          ...(tool === "spawnAgent" ? { parentSessionId } : {}),
+        },
+      },
+    });
+    const requested: string[] = [];
+    const client = {
+      listSessions: async () => ({ items: [
+        session("root", 1), session("nested", 2), session("complete", 3), session("failed", 4), session("running", 5), session("unrelated", 6),
+      ] }),
+      getSessionMessages: async (_workspaceId: string, sessionId: string) => {
+        requested.push(sessionId);
+        return { items: sessionId === "root" ? [{ parts: [
+          nativePart("complete", "spawnAgent", "running", "[project-agent:researcher] Verify sources."),
+          nativePart("failed", "spawnAgent", "running", "[project-agent:researcher] Verify numbers."),
+          nativePart("running", "spawnAgent", "running", "[project-agent:researcher] Keep researching."),
+          nativePart("complete", "wait", "completed"),
+          nativePart("failed", "wait", "failed"),
+          nativePart("complete", "closeAgent", "unknown"),
+          nativePart("unrelated", "sendMessage", "completed", "[project-agent:researcher] Another root owns this agent."),
+          nativePart("not-listed", "spawnAgent", "completed", "[project-agent:researcher] No session metadata exists."),
+        ] }] : sessionId === "running" ? [{ parts: [
+          nativePart("nested", "spawnAgent", "completed", "[project-agent:researcher] Check a supporting source.", "running"),
+        ] }] : [] };
+      },
+    } as unknown as iPolloWorkServerClient;
+    const metrics = await loadProjectRuntimeMetrics({
+      client, workspaceId: "workspace", agents: config.agents,
+      items: [{
+        id: "bound-root", title: "Verified report",
+        execution: {
+          sessionId: "root", projectRevision: 1, projectGoal: "Report", agent: config.agents[0],
+          runtime: { engineId: "codex-harness", model: null, mode: null, modelVariant: null }, boundAt: 1,
+        },
+      }] as Parameters<typeof loadProjectRuntimeMetrics>[0]["items"],
+    });
+    expect(metrics.conversationCount).toBe(5);
+    expect(metrics.agents[1]?.executions).toEqual({ running: 1, completed: 2, failed: 1 });
+    expect(metrics.executionRecords).toEqual([
+      expect.objectContaining({ sessionId: "running", rootSessionId: "root", agentId: "researcher", status: "running" }),
+      expect.objectContaining({ sessionId: "failed", rootTaskId: "bound-root", status: "failed" }),
+      expect.objectContaining({ sessionId: "complete", status: "completed" }),
+      expect.objectContaining({ sessionId: "nested", rootSessionId: "root", status: "completed" }),
+    ]);
+    expect(requested.sort()).toEqual(["complete", "failed", "nested", "root", "running"]);
+    expect(metrics.totalTokens).toBeNull();
+    expect(metrics.sessionUsage).toHaveLength(5);
+    expect(metrics.sessionUsage.every(usage => usage.tokens === null)).toBe(true);
+  });
+
+  test("retains native activity without role markers and leaves its usage unattributed", async () => {
+    const config = projectWorkspaceConfigSchema.parse({
+      schemaVersion: 1,
+      agents: [
+        { id: "editor", name: "Editor", avatarSeed: "editor" },
+        { id: "implementation", name: "Implementation", avatarSeed: "implementation" },
+        { id: "acceptance", name: "Acceptance", avatarSeed: "acceptance" },
+      ],
+      orchestration: {
+        entryAgentId: "editor",
+        relations: [
+          { sourceAgentId: "editor", targetAgentId: "implementation", type: "dependency" },
+          { sourceAgentId: "implementation", targetAgentId: "acceptance", type: "dependency" },
+        ],
+      },
+    });
+    const editor = config.agents[0];
+    if (!editor) throw new Error("Editor agent fixture is missing");
+    const session = (id: string, title: string, tokens: number, parentID?: string) => ({
+      id, title, engineId: "codex-harness", directory: "/project", parentID,
+      time: { created: 1, updated: 2 }, totalTokens: tokens,
+    });
+    // These are the canonical parts produced by real SubAgentActivity events:
+    // their input contains a native path, with no prompt or project-role marker.
+    const nativePart = (id: string, path: string, kind: string) => ({
+      type: "tool", tool: "task",
+      state: {
+        status: kind === "completed" ? "completed" : "running",
+        input: { description: path, task_id: id },
+        output: `<task id="${id}" state="${kind === "completed" ? "completed" : "running"}"></task>`,
+        metadata: { sessionId: id, parentSessionId: "root", nativeTool: "subAgentActivity", nativeKind: kind, delegationStatus: kind === "completed" ? "completed" : "running" },
+      },
+    });
+    const originalFetch = globalThis.fetch;
+    let namedWorkers = false;
+    let markedWorkers = false;
+    const fetchMock: typeof fetch = async (input) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname.endsWith("/sessions")) return Response.json({ items: [
+        // A native total takes precedence over overlapping input/cache/reasoning counters.
+        { ...session("root", "Work", 100), tokens: { input: 80, output: 20, reasoning: 10, cache: { read: 70, write: 0 } } },
+        { ...session("advice", "Implementation", 50, "root"), codex: { status: "idle", subagent: true, agentRole: "worker" } },
+        session("check", "Acceptance", 30),
+        session("check", "Acceptance", 30),
+        session("unproven", "Unrelated", 70),
+        { ...session("user-fork", "A user-created fork", 90, "root"), codex: { status: "idle", subagent: false } },
+      ] });
+      return Response.json({ items: pathname.endsWith("/root/messages") ? [{ parts: [
+        nativePart("advice", namedWorkers ? "/root/ipw-development.implementation__scene_02" : "/root/implementation_advice", "started"),
+        nativePart("check", namedWorkers ? "/root/ipw-development.implementation/scene_04" : "/root/independent_acceptance", "started"),
+        nativePart("advice", namedWorkers ? "/root/ipw-development.implementation__scene_02" : "/root/implementation_advice", "completed"),
+        nativePart("check", namedWorkers ? "/root/ipw-development.implementation/scene_04" : "/root/independent_acceptance", "completed"),
+        nativePart("unproven", "/root/unrelated", "interacted"),
+      ] }] : markedWorkers && pathname.endsWith("/advice/messages") ? [{
+        info: { role: "assistant" }, parts: [{ type: "text", text: "[project-agent:implementation] Current preset review result." }],
+      }] : [] });
+    };
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: fetchMock });
+    try {
+      const items: WorkItem[] = [{
+          id: "bound-root", workspaceId: "workspace", title: "Native work", description: null,
+          status: "review", assignee: "editor", priority: "normal", startAt: null, dueAt: null,
+          automation: null, automationLastRunAt: null, automationLastSessionId: null, automationLastError: null,
+          position: 1, customFields: {}, lastError: null, runStartedAt: 1, runCompletedAt: 2,
+          version: 1, createdAt: 1, updatedAt: 2,
+          execution: { sessionId: "root", projectRevision: 1, projectGoal: "Verify native work", agent: editor, runtime: { engineId: "codex-harness", model: null, mode: null, modelVariant: null }, boundAt: 1 },
+        }];
+      const metrics = await loadProjectRuntimeMetrics({
+        client: createiPolloWorkServerClient({ baseUrl: "https://ipollowork.test" }),
+        workspaceId: "workspace", agents: config.agents,
+        items,
+      });
+      expect(metrics.executionRecords).toEqual([
+        expect.objectContaining({ sessionId: "advice", rootSessionId: "root", agentId: null, agentName: null, title: "/root/implementation_advice", status: "completed", tokens: 50 }),
+        expect.objectContaining({ sessionId: "check", rootSessionId: "root", agentId: null, agentName: null, title: "/root/independent_acceptance", status: "completed", tokens: 30 }),
+      ]);
+      expect(metrics.conversationCount).toBe(3);
+      expect(metrics.totalTokens).toBe(180);
+      expect(metrics.attributedTokens).toBe(100);
+      expect(metrics.unattributedTokens).toBe(80);
+      expect(metrics.status).toBe("complete");
+      expect(metrics.sessionUsage).toEqual([
+        { sessionId: "root", title: "Work", tokens: 100, isMain: true },
+        { sessionId: "advice", title: "/root/implementation_advice", tokens: 50, isMain: false },
+        { sessionId: "check", title: "/root/independent_acceptance", tokens: 30, isMain: false },
+      ]);
+      expect(metrics.agents.slice(1).every((agent) => agent.conversationCount === 0 && agent.tokens === 0)).toBe(true);
+      namedWorkers = true;
+      const attributed = await loadProjectRuntimeMetrics({
+        client: createiPolloWorkServerClient({ baseUrl: "https://ipollowork.test" }),
+        workspaceId: "workspace", agents: config.agents, items,
+      });
+      expect(attributed.agents.find((agent) => agent.agentId === "implementation"))
+        .toMatchObject({ conversationCount: 2, tokens: 80, executions: { running: 0, completed: 2, failed: 0 } });
+      namedWorkers = false;
+      markedWorkers = true;
+      const customized = await loadProjectRuntimeMetrics({
+        client: createiPolloWorkServerClient({ baseUrl: "https://ipollowork.test" }),
+        workspaceId: "workspace", agents: config.agents, items,
+      });
+      expect(customized.executionRecords).toEqual([
+        expect.objectContaining({ sessionId: "advice", agentId: "implementation", status: "completed" }),
+        expect.objectContaining({ sessionId: "check", agentId: null, status: "completed" }),
+      ]);
+      const graphHtml = renderToStaticMarkup(createElement(ProjectOrchestrationGraph, {
+        config, items, runtimeMetrics: metrics,
+      }));
+      const graphDocument = new DOMParser().parseFromString(graphHtml, "text/html");
+      const nodes = Array.from(graphDocument.getElementsByTagName("button"))
+        .filter((node) => node.getAttribute("data-testid") === "project-orchestration-agent");
+      expect(nodes).toHaveLength(3);
+      const editorNode = nodes.find((node) => node.getAttribute("data-agent-id") === "editor");
+      expect(editorNode?.textContent).toContain("Editor");
+      expect(editorNode?.textContent).toContain("1");
+      const specialistNodes = nodes.filter((node) => node.getAttribute("data-agent-id") !== "editor");
+      expect(specialistNodes.every((node) => node.textContent?.includes("0"))).toBe(true);
+      expect(nodes.every((node) => node.getElementsByTagName("svg").length > 0)).toBe(true);
+      const edges = Array.from(graphDocument.getElementsByTagName("path"))
+        .filter((edge) => edge.hasAttribute("data-edge-source"));
+      expect(edges.map((edge) => [edge.getAttribute("data-edge-source"), edge.getAttribute("data-edge-target")]))
+        .toEqual([["editor", "implementation"], ["implementation", "acceptance"]]);
+      expect(nodes.every((node) => node.hasAttribute("disabled"))).toBe(true);
+      expect(graphHtml).not.toContain("/root/implementation_advice");
+    } finally {
+      Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
+    }
+  });
+
+  test("restored dashboard uses distinct native sessions for health, activity and role summaries", () => {
+    const config = projectWorkspaceConfigSchema.parse({
+      schemaVersion: 1, goal: "Ship the current conversation result",
+      agents: [
+        { id: "lead", name: "Coordinator", avatarSeed: "lead", role: "Coordinate the result" },
+        { id: "worker", name: "Worker", avatarSeed: "worker", role: "Implement the result", pluginIds: [], skillIds: ["verify"] },
+      ],
+      orchestration: { entryAgentId: "lead" },
+    });
+    const [lead, worker] = config.agents;
+    if (!lead || !worker) throw new Error("Missing conversation team");
+    const item = (id: string, status: string, agent: typeof lead): WorkItem => ({
+      id, workspaceId: "workspace", title: id, description: null, status, assignee: agent.id,
+      priority: "normal", startAt: null, dueAt: null, automation: null,
+      automationLastRunAt: null, automationLastSessionId: null, automationLastError: null,
+      position: 1, customFields: {}, lastError: null, runStartedAt: 1, runCompletedAt: 2,
+      version: 1, createdAt: 1, updatedAt: 2,
+      execution: { sessionId: id, projectRevision: 1, projectGoal: config.goal, agent, runtime: { engineId: "codex-harness", model: null, mode: null, modelVariant: null }, boundAt: 1 },
+    });
+    const child = { sessionId: "Bound child", rootSessionId: "Root", rootTaskId: "Root", rootTaskTitle: "Root", agentId: "worker", agentName: "Worker", title: "Bound child", status: "completed", tokens: 100, startedAt: 1, updatedAt: 2 } satisfies ProjectRuntimeMetrics["executionRecords"][number];
+    const metrics: ProjectRuntimeMetrics = {
+      conversationCount: 4, meteredConversationCount: 4, totalTokens: 400,
+      averageTokensPerConversation: 100, attributedTokens: 300, unattributedTokens: 100,
+      status: "partial", unmeteredConversationCount: 0,
+      agents: [
+        { agentId: "lead", conversationCount: 1, tokens: 100, attributed: true, executions: { running: 0, completed: 0, failed: 0 }, recentConversation: null },
+        { agentId: "worker", conversationCount: 2, tokens: 200, attributed: true, executions: { running: 1, completed: 1, failed: 0 }, recentConversation: { sessionId: "Native live", title: "Native live", updatedAt: 3, status: "running" } },
+      ],
+      sessionUsage: [
+        { sessionId: "Root", title: "Root", tokens: 100, isMain: true },
+        { sessionId: "Bound child", title: "Bound child", tokens: 100, isMain: false },
+        { sessionId: "Native finished", title: "Native finished", tokens: 100, isMain: false },
+        { sessionId: "Native live", title: "Native live", tokens: 100, isMain: false },
+      ],
+      executionRecords: [
+        child, child,
+        { ...child, sessionId: "Native finished", agentId: null, agentName: null, title: "Native finished", updatedAt: 4 },
+        { ...child, sessionId: "Native live", title: "Native live", status: "running", updatedAt: 3 },
+      ],
+    };
+    const dashboardProps = {
+      projectName: "Conversation result", config, showPresets: true,
+      items: [item("Root", "review", lead), item("Bound child", "done", worker)],
+      board: { workspaceId: "workspace", columns: DEFAULT_WORK_BOARD_CONFIG.columns.map((column) => ({ ...column, label: t(`work.status.${column.id}`) })), fields: DEFAULT_WORK_BOARD_CONFIG.fields, version: 0, updatedAt: null },
+      plugins: [], authorizations: {}, runtimeMetrics: metrics, runtimeMetricsLoading: false,
+      runtimeMetricsError: false, onOpenTasks: () => {}, onOpenAgent: () => {}, onAddAgent: () => {},
+      executionHref: (record) => `#/workspace/workspace/session/${record.sessionId}`,
+      headerControls: createElement("button", {}, "Work method"),
+      healthContent: createElement("p", {}, "Current progress summary"),
+      footerContent: createElement("details", {}, "Acceptance conditions"),
+    } satisfies Parameters<typeof ProjectDashboard>[0];
+    const html = renderToStaticMarkup(createElement(ProjectDashboard, dashboardProps));
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const health = Array.from(document.getElementsByTagName("section"))
+      .find((section) => section.getAttribute("data-testid") === "project-task-health");
+    if (!health) throw new Error("Missing restored task health card");
+    const valueFor = (label: string) => Array.from(health.getElementsByTagName("div"))
+      .find((element) => element.textContent === label)?.parentNode?.firstChild?.textContent;
+    expect(valueFor(t("project_overview.total_tasks"))).toBe("4");
+    expect(valueFor(t("project_overview.completed_tasks"))).toBe("2");
+    expect(health.textContent).toContain("50%");
+    expect(health.textContent).toContain("Current progress summary");
+    const nativeRows = Array.from(document.getElementsByTagName("div"))
+      .filter((row) => row.getAttribute("data-testid") === "conversation-delegation");
+    expect(nativeRows).toHaveLength(2);
+    const finished = nativeRows.find((row) => row.textContent?.includes("Native finished"));
+    expect(finished?.textContent).toContain(t("work.status.done"));
+    expect(finished?.textContent).toContain(t("conversation_work.engine_created_agent"));
+    const nativeAgents = Array.from(document.getElementsByTagName("a"))
+      .filter((row) => row.getAttribute("data-testid") === "project-native-agent");
+    expect(nativeAgents).toHaveLength(1);
+    expect(nativeAgents[0]?.getAttribute("href")).toBe("#/workspace/workspace/session/Native finished");
+    expect(nativeAgents[0]?.textContent).toContain("Native finished");
+    expect(nativeAgents[0]?.textContent).toContain(t("work.status.done"));
+    expect(nativeAgents[0]?.textContent).toContain(t("conversation_work.engine_created_agent"));
+    expect(config.agents.map((agent) => agent.id)).toEqual(["lead", "worker"]);
+    const workerRow = Array.from(document.getElementsByTagName("button"))
+      .find((button) => button.getAttribute("data-testid") === "project-agent-tab" && button.textContent?.includes("Worker"));
+    if (!workerRow) throw new Error("Missing worker activity panel");
+    const taskSummary = Array.from(workerRow.getElementsByTagName("span"))
+      .find((span) => span.getAttribute("data-testid") === "project-agent-task-summary");
+    if (!taskSummary) throw new Error("Missing worker task distribution");
+    const countFor = (label: string) => Array.from(taskSummary.getElementsByTagName("span"))
+      .find((span) => span.getAttribute("title") === label)?.lastChild?.textContent;
+    expect(countFor(t("project_overview.active_tasks"))).toBe("1");
+    expect(countFor(t("project_overview.completed_tasks"))).toBe("1");
+    expect(workerRow.textContent).toContain("Native live");
+    expect(workerRow.hasAttribute("disabled")).toBe(false);
+    expect(html).toContain("Work method");
+    expect(html).toContain("Acceptance conditions");
+    const actualOnly = renderToStaticMarkup(createElement(ProjectDashboard, {
+      ...dashboardProps,
+      config: { ...config, agents: [...config.agents, { ...worker, id: "unused", name: "Unused preset", pluginIds: ["missing-plugin"] }] },
+      showPresets: undefined, mainSessionId: "Root", mainEngineName: "Codex",
+    }));
+    const actualDocument = new DOMParser().parseFromString(actualOnly, "text/html");
+    const actualRows = Array.from(actualDocument.getElementsByTagName("a"))
+      .filter((row) => row.getAttribute("data-testid") === "project-native-agent");
+    expect(actualRows.map((row) => row.getAttribute("data-session-id"))).toEqual(["Bound child", "Native finished", "Native live"]);
+    expect(actualRows.every((row) => row.getAttribute("href")?.endsWith(row.getAttribute("data-session-id")))).toBe(true);
+    expect(actualRows.every((row) => Array.from(row.getElementsByTagName("span")).some((span) => span.getAttribute("data-avatar-seed") === row.getAttribute("data-session-id")))).toBe(true);
+    expect(actualOnly).toContain('data-testid="project-primary-agent"');
+    expect(actualOnly).toContain("Codex");
+    expect(actualOnly).not.toContain("Unused preset");
+    expect(actualOnly).not.toContain('data-testid="project-agent-tab"');
+    expect(actualOnly).not.toContain('data-testid="project-orchestration-graph"');
+    expect(actualOnly).not.toContain(t("project_overview.add_agent"));
+    expect(actualOnly).not.toContain(t("project_overview.health_setup"));
+  });
+
+  test("runtime data meters actual main and temporary children without collapsing unknown roles", () => {
+    const metrics: ProjectRuntimeMetrics = {
+      conversationCount: 3, meteredConversationCount: 3, totalTokens: 300,
+      averageTokensPerConversation: 100, attributedTokens: 200, unattributedTokens: 100,
+      status: "complete", unmeteredConversationCount: 0, agents: [], executionRecords: [],
+      sessionUsage: [
+        { sessionId: "main", title: "Make the film", tokens: 100, isMain: true },
+        { sessionId: "named", title: "Content review", tokens: 100, isMain: false },
+        { sessionId: "temporary", title: "Independent timing review", tokens: 100, isMain: false },
+      ],
+    };
+    const render = (usage: ProjectRuntimeMetrics) => renderToStaticMarkup(createElement(ProjectRuntimeData, {
+      displayMetrics: ["totalTokens", "conversations", "agentUsage"],
+      metrics: usage, loading: false, error: false,
+    }));
+    const html = render(metrics);
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const rows = Array.from(document.getElementsByTagName("div")).filter(row => row.getAttribute("data-testid") === "project-agent-usage-row");
+    expect(rows).toHaveLength(3);
+    for (const usage of metrics.sessionUsage) {
+      const row = rows.find(row => row.getAttribute("data-session-id") === usage.sessionId);
+      expect(row?.getAttribute("data-token-count")).toBe("100");
+      expect(row?.textContent).toContain("33%");
+      expect(row?.getElementsByTagName("span")[1]?.getAttribute("data-avatar-seed")).toBe(usage.sessionId);
+    }
+    expect(html).toContain(t("conversation_work.runtime_scope"));
+    expect(html).toContain("Independent timing review");
+    expect(html).not.toContain(t("project_overview.not_attributed"));
+    const unmetered = render({ ...metrics, totalTokens: 200, meteredConversationCount: 2, unmeteredConversationCount: 1, status: "partial",
+      sessionUsage: metrics.sessionUsage.map(usage => usage.sessionId === "temporary" ? { ...usage, tokens: null } : usage),
+    });
+    const unmeteredDocument = new DOMParser().parseFromString(unmetered, "text/html");
+    const missing = Array.from(unmeteredDocument.getElementsByTagName("div")).find(row => row.getAttribute("data-session-id") === "temporary");
+    expect(unmetered).toContain(t("project_overview.runtime_data_partial", { count: 1 }));
+    expect(missing?.getAttribute("data-metered")).toBe("false");
+    expect(missing?.hasAttribute("data-token-count")).toBe(false);
+    expect(missing?.textContent).toContain(t("project_overview.token_unmetered"));
+    expect(missing?.textContent).not.toContain("0%");
+  });
+
+  test("renders native task cards as openable and resolves only known owner IDs", () => {
+    const item = (id: string, assignee: string): WorkItem => ({
+      id, workspaceId: "workspace", title: id, description: null, status: "done", assignee,
+      priority: "normal", startAt: null, dueAt: null, automation: null,
+      automationLastRunAt: null, automationLastSessionId: null, automationLastError: null,
+      position: 1, customFields: {}, execution: null, lastError: null,
+      runStartedAt: 1, runCompletedAt: 2, version: 1, createdAt: 1, updatedAt: 2,
+    });
+    const coordinator = projectWorkspaceConfigSchema.parse({
+      schemaVersion: 1, agents: [{ id: "project-lead", name: "Native coordinator", avatarSeed: "preset-avatar" }],
+      orchestration: { entryAgentId: "project-lead" },
+    }).agents[0];
+    if (!coordinator) throw new Error("Missing task executor fixture");
+    const html = renderToStaticMarkup(createElement(ProjectBoard, {
+      items: [
+        { key: "root", projectName: "Project", item: item("Root", "project-lead") },
+        { key: "unknown", projectName: "Project", item: item("External", "custom-owner") },
+        { key: "bound-main", projectName: "Project", item: { ...item("Bound main task", "project-lead"), execution: {
+          sessionId: "actual-main-session", projectRevision: 1, projectGoal: "Film", agent: coordinator,
+          runtime: { engineId: "codex-harness", model: null, mode: null, modelVariant: null }, boundAt: 1,
+        } } },
+        { key: "child", projectName: "Project", item: item("Native child", "Role not linked"), executionRecord: {
+          sessionId: "child", rootSessionId: "root", rootTaskId: "Root", rootTaskTitle: "Root",
+          agentId: null, agentName: null, title: "Native child", status: "completed",
+          tokens: null, startedAt: 1, updatedAt: 2,
+        } },
+      ],
+      board: { workspaceId: "workspace", columns: DEFAULT_WORK_BOARD_CONFIG.columns, fields: DEFAULT_WORK_BOARD_CONFIG.fields, version: 0, updatedAt: null },
+      agents: [{ id: "project-lead", name: "Development" }],
+      panEnabled: false, moving: false, onMove: () => {}, onOpen: () => {}, onCreate: () => {},
+    }));
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const card = Array.from(document.getElementsByTagName("article")).find((entry) => entry.getAttribute("data-testid") === "project-runtime-task");
+    expect(card?.getElementsByTagName("button")[0]?.hasAttribute("disabled")).toBe(false);
+    expect(card?.textContent).toContain("Native child");
+    expect(card?.textContent).not.toContain("Role not linked");
+    const avatar = Array.from(card?.getElementsByTagName("span") ?? []).find(span => span.hasAttribute("data-avatar-seed"));
+    expect(avatar?.getAttribute("data-avatar-seed")).toBe("child");
+    expect(avatar?.getAttribute("class")).toContain("size-9");
+    const unboundCard = Array.from(document.getElementsByTagName("article")).find(entry => entry.textContent?.includes("External"));
+    expect(Array.from(unboundCard?.getElementsByTagName("span") ?? []).some(span => span.hasAttribute("data-avatar-seed"))).toBe(false);
+    const mainCard = Array.from(document.getElementsByTagName("article")).find(entry => entry.textContent?.includes("Bound main task"));
+    expect(Array.from(mainCard?.getElementsByTagName("span") ?? []).find(span => span.hasAttribute("data-avatar-seed"))?.getAttribute("data-avatar-seed")).toBe("actual-main-session");
+    expect(mainCard?.textContent).toContain("Native coordinator");
+    expect(html).not.toContain("preset-avatar");
+    expect(html).toContain("Development");
+    expect(html).not.toContain("project-lead");
+    expect(html).toContain("custom-owner");
   });
 
   test("keeps Project Builder capability scoped while preserving another selected capability", () => {
@@ -343,88 +730,11 @@ describe("project overview", () => {
     expect(context).toContain("Assigned skills: writing:review");
   });
 
-  test("reuses workspace config, work items, plugin authorization, and the shared Sheet", () => {
-    expect(overviewSource).toContain("client.getConfig(props.workspaceId)");
-    expect(overviewSource).toContain("listEndpointWorkItems(props.client");
-    expect(overviewSource).toContain("getPluginAuthorization");
-    expect(overviewSource).toContain("response.items.filter((item) => item.enabled)");
-    expect(overviewSource).toContain("patchConfig(props.workspaceId, { ipollowork: { project: parsed } })");
-    expect(overviewSource).toContain("isNew={Boolean(draftAgent");
-    expect(inspectorSource).toContain('data-testid="project-agent-inspector"');
-    expect(inspectorSource).toContain("<Sheet open={props.open}");
-    expect(inspectorSource).toContain("const [editing, setEditing]");
-    expect(inspectorSource).toContain('data-testid="project-agent-edit"');
-    expect(inspectorSource).toContain("setEditing(props.isNew)");
-    expect(inspectorSource).toContain("{editing ? (");
-    expect(inspectorSource).toContain('data-testid="project-agent-inspector-content"');
-    expect(inspectorSource).toContain('appearance="field"');
-    expect(inspectorSource).toContain("<Select");
-    expect(inspectorSource).toContain('data-testid="project-agent-engine-select"');
-    expect(inspectorSource).toContain('data-testid="project-agent-mode-select"');
-    expect(inspectorSource).toContain("<SelectValue>{engineLabel}</SelectValue>");
-    expect(inspectorSource).toContain("<SelectValue>{modeLabel}</SelectValue>");
-    expect(inspectorSource).not.toContain("<select");
-    expect(resourcePickerSource).toContain('data-testid={testId}');
-    expect(inspectorSource).toContain('testId="project-agent-add-plugin"');
-    expect(inspectorSource).toContain('testId="project-agent-add-skill"');
-    expect(inspectorSource.match(/<ProjectResourcePicker/g)).toHaveLength(2);
-    expect(resourcePickerSource).toContain("onAdd: (ids: string[]) => void");
-    expect(resourcePickerSource).toContain("onAdd(selectedIds)");
-    expect(resourcePickerSource).toContain("aria-selected={selectedIds.includes(item.id)}");
-    expect(resourcePickerSource).toContain('t("project_overview.selected_count"');
-    expect(resourcePickerSource).not.toContain("onAdd(item.id)");
-    expect(inspectorSource).toContain('data-testid="project-agent-plugin-row"');
-    expect(inspectorSource).toContain('data-testid="project-agent-skill-row"');
-    expect(inspectorSource).toContain("selectedPlugins.map");
-    expect(inspectorSource).toContain("selectedSkills.map");
-    expect(inspectorSource).not.toContain('id="project-agent-reasoning"');
-    expect(inspectorSource).toContain("<Switch");
-    expect(inspectorSource).toContain('data-testid="project-agent-avatar"');
-    expect(inspectorSource).not.toContain("project-agent-knowledge");
-    expect(inspectorSource).not.toContain("<Checkbox");
-    expect(dashboardSource).toContain('data-testid="project-agent-list"');
-    expect(dashboardSource).toContain('data-testid="project-agent-activity-panel"');
-    expect(dashboardSource).toContain('data-testid="project-agent-task-summary"');
-    expect(dashboardSource).toContain('grid-cols-3');
-    expect(dashboardSource).not.toContain('{ id: "waiting", count: agentMetrics.waiting');
-    expect(dashboardSource).toContain("const agentMetrics = taskMetrics(assignedItems, props.config)");
-    expect(dashboardSource).toContain("taskSegments.map");
-    expect(dashboardSource).toContain("<Package");
-    expect(dashboardSource).toContain('data-testid="project-upcoming"');
-    expect(dashboardSource.match(/data-testid="project-agent-tab"/g)).toHaveLength(1);
-    expect(dashboardSource).toContain("tasksForAgent(agent, props.items)");
-    expect(dashboardSource).toContain("recentRuntimeConversation?.title");
-    expect(dashboardSource).toContain('t("project_overview.failure_rate")');
-    expect(dashboardSource).toContain("<ProjectRuntimeData");
-    expect(dashboardSource).toContain("<ProjectOrchestrationGraph");
-    expect(dashboardSource).toContain('data-testid="project-task-health"');
-    expect(dashboardSource).toContain('sections.has("health")');
-    expect(dashboardSource).toContain('sections.has("usage")');
-    expect(dashboardSource).toContain("props.config.dashboard.taskHealth.metrics.map");
-    expect(dashboardSource).toContain("props.runtimeMetrics?.executionRecords ?? []");
-    expect(dashboardSource).toContain("xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]");
-    expect(dashboardSource).toContain("xl:sticky xl:top-0 xl:self-start");
-    expect(runtimeDataSource).toContain('data-testid="project-runtime-data"');
-    expect(runtimeDataSource).toContain('t("project_overview.total_token_usage")');
-    expect(runtimeDataSource).toContain('t("project_overview.total_conversations")');
-    expect(runtimeDataSource).toContain("props.displayMetrics");
-    expect(runtimeDataSource).toContain('data-testid="project-agent-usage-chart"');
-    expect(runtimeDataSource).toContain("usagePercentage");
-    expect(runtimeDataSource).toContain("metrics.unattributedTokens");
-    expect(runtimeDataSource).not.toContain("<AgentAvatar");
+  test("reuses the existing task board, schedule controls and shared Sheet", () => {
     expect(runtimeMetricsSource).toContain("client.listSessions");
     expect(runtimeMetricsSource).toContain("getSessionMessages");
     expect(runtimeMetricsSource).toContain("session.parentID");
     expect(runtimeMetricsSource).toContain("unattributedTokens");
-    expect(overviewSource).toContain('data?.config.dashboard.sections.includes("usage")');
-    expect(orchestrationSource).toContain('data-testid="project-orchestration-graph"');
-    expect(orchestrationSource).toContain("config.orchestration.relations");
-    expect(orchestrationSource).toContain('strokeDasharray={parallel ? "4 5" : undefined}');
-    expect(orchestrationSource).toContain('data-testid="project-orchestration-port"');
-    expect(orchestrationSource).toContain('data-testid="project-orchestration-stage"');
-    expect(orchestrationSource).toContain('data-stage-type={stage.parallel ? "parallel" : "sequential"}');
-    expect(orchestrationSource).toContain('data-testid="project-orchestration-parallel-group"');
-    expect(orchestrationSource).toContain("item.execution.agent.id === agent.id");
     expect(workCenterSource).toContain('"project-task-runtime"');
     expect(workCenterSource).toContain("metrics.executionRecords");
     expect(workCenterSource).toContain('data-testid="global-work-summary"');
@@ -437,7 +747,7 @@ describe("project overview", () => {
     expect(projectBoardSource).toContain('data-testid="project-board"');
     expect(projectBoardSource).toContain("runtimeStatus.label");
     expect(workItemSheetSource).toContain('data-testid="work-item-sheet"');
-    expect(workItemSheetSource).toContain("!props.item?.execution ? <div");
+    expect(workItemSheetSource).toContain("!props.item?.execution && props.agents.length > 0");
     expect(workItemSheetSource).toContain("<Collapsible");
     expect(workItemSheetSource).toContain("maxLength={WORK_ITEM_TITLE_MAX_LENGTH}");
     expect(workItemSheetSource).toContain("scheduleRequired = props.scheduleMode");
@@ -471,9 +781,7 @@ describe("project overview", () => {
     expect(workItemSheetSource).toContain("<ConfirmModal");
     expect(workItemSheetSource).toContain("editorValuesEqual(value, initialValueRef.current)");
     expect(workCenterSource).toContain('scheduleMode={props.mode === "global" || projectView === "schedule"}');
-    expect(dashboardSource).not.toContain('t("project_overview.token_usage_unavailable")');
     expect(modelBehaviorMenuSource).toContain("<ModelListContent");
-    expect(`${overviewSource}\n${inspectorSource}`).not.toContain("apiKey:");
   });
 
   test("snaps empty calendar positions to 30-minute one-hour schedules", () => {
@@ -566,45 +874,15 @@ describe("project overview", () => {
   });
 
   test("uses the same semantic typography hierarchy across overview and tasks", () => {
-    expect(dashboardSource).toContain('text-[24px] font-semibold leading-8 tracking-[-0.45px] text-dls-text');
-    expect(dashboardSource).not.toContain('shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]');
     expect(workCenterSource).toContain('text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text');
     expect(workCenterSource).not.toContain('<LayoutDashboard className="size-4 text-dls-secondary" />');
-    expect(dashboardSource).toContain('props.config.goal || t("project_overview.default_goal")');
-    expect(dashboardSource).toContain('[--primary:#1FBAC0]');
-    expect(runtimeDataSource).toContain('case 0: return "bg-primary";');
-    expect(dashboardSource).not.toContain('<Sparkles className="size-4 text-dls-secondary" />');
-    expect(dashboardSource).toContain('<ListTodo className="size-4 text-dls-secondary" />{t("project_overview.task_activity")}');
-    expect(dashboardSource).toContain('group block w-full bg-white');
-    expect(dashboardSource).not.toContain('selected ? "bg-dls-hover/52"');
-    expect(appStylesSource).toContain('html:lang(zh) [data-testid="project-overview"] :where(');
     expect(appStylesSource).toContain('html:lang(zh) [data-testid="work-center"] :where(');
     expect(appStylesSource).toContain('[class~="text-dls-text/45"]');
-    expect(dashboardSource).not.toContain('project_overview.title');
-    expect(dashboardSource).not.toContain('project_overview.task_activity_description');
-    expect(runtimeDataSource).not.toContain('project_overview.runtime_data_description');
-    expect(runtimeDataSource).not.toContain('project_overview.runtime_data_current');
-    expect(runtimeDataSource).not.toContain('project_overview.agent_usage_description');
-    expect(orchestrationSource).not.toContain('project_overview.orchestration_description');
-    expect(dashboardSource).toContain('description: null, tone: "green"');
-    expect(overviewSource).toContain('role: ""');
-    expect(dashboardSource).toContain('LEGACY_GENERIC_AGENT_ROLES.has(agent.role)');
-    expect(dashboardSource).toContain('agentNeedsSetup || showAgentTaskState');
-    expect(dashboardSource).toContain('text-[13px] leading-5 text-dls-secondary');
     expect(workCenterSource).toContain('text-[13px] leading-5 text-dls-secondary');
-    expect(dashboardSource).toContain('text-[14px] font-semibold leading-5');
-    expect(runtimeDataSource).toContain('text-[14px] font-semibold leading-5');
-    expect(orchestrationSource).toContain('text-[14px] font-semibold leading-5');
     expect(projectBoardSource).toContain('text-[14px] font-semibold leading-5');
-    expect(dashboardSource).toContain('text-[11px] leading-[15px] text-dls-text/45');
     expect(projectBoardSource).toContain('text-[11px] leading-[15px] text-dls-text/45');
-    expect(`${dashboardSource}\n${runtimeDataSource}\n${orchestrationSource}\n${projectBoardSource}\n${workCenterSource}`).not.toContain('text-dls-tertiary');
-    expect(dashboardSource).toContain('border border-dls-border/70 bg-white');
-    expect(runtimeDataSource).toContain('border border-dls-border/70 bg-white');
-    expect(orchestrationSource).toContain('border border-dls-border/70 bg-white');
     expect(projectBoardSource).toContain('border border-dls-border/70 bg-white');
     expect(projectBoardSource).not.toContain('hover:shadow-');
-    expect(runtimeDataSource).not.toContain('shadow-[');
   });
 
   test("restores the main sidebar from the global schedule header", () => {
@@ -614,15 +892,7 @@ describe("project overview", () => {
   });
 
   test("opens the same plugin authorization dialog in place instead of navigating to settings", () => {
-    expect(inspectorSource).toContain("onAuthorizePlugin: (pluginId: string) => void");
-    expect(inspectorSource).toContain("props.onAuthorizePlugin(id)");
-    expect(inspectorSource).not.toContain("onOpenPluginSettings");
-    expect(overviewSource).toContain("<PluginAuthorizationDialog");
-    expect(overviewSource).toContain("setAuthorizationPluginId");
-    expect(overviewSource).toContain("queryClient.invalidateQueries({ queryKey: pluginQueryKey })");
-    expect(overviewSource).not.toContain("/settings/extensions/plugin/");
     expect(pluginPackagesPanelSource).toContain("<PluginAuthorizationDialog");
-    expect(`${overviewSource}\n${pluginPackagesPanelSource}`.match(/<PluginAuthorizationDialog/g)).toHaveLength(2);
     expect(pluginAuthorizationDialogSource).toContain("<AuthorizationFormDialog");
     expect(pluginAuthorizationDialogSource).toContain("client.savePluginAuthorization");
     expect(pluginAuthorizationDialogSource).toContain("client.startPluginAuthorization");
@@ -695,10 +965,8 @@ describe("project overview", () => {
     expect(workItemSheetSource).toContain("work.automation.runtime_notice");
   });
 
-  test("selects task owners from the current project's Agent configuration", () => {
-    expect(workCenterSource).toContain('["work-item-project-agents", editorEndpoint?.key, editorEndpoint?.workspaceId]');
-    expect(workCenterSource).toContain("readProjectWorkspaceConfig(response.ipollowork, editorEndpoint.workspace.engineId).agents");
-    expect(workCenterSource).toContain("agents={editorAgentsQuery.data ?? []}");
+  test("retains the optional owner control without loading preset configuration by default", () => {
+    expect(workCenterSource).not.toContain("work-item-project-agents");
     expect(workItemSheetSource).toContain('SelectTrigger id="work-item-assignee"');
     expect(workItemSheetSource).toContain('<SelectItem value={UNASSIGNED_ASSIGNEE_VALUE}>');
     expect(workItemSheetSource).toContain("props.agents.map((agent)");
@@ -707,5 +975,29 @@ describe("project overview", () => {
     expect(workItemSheetSource).not.toContain("<select");
     expect(workItemSheetSource).not.toContain("<SelectValue />");
     expect(workItemSheetSource).not.toContain('placeholder={t("work.field.assignee_placeholder")}');
+  });
+
+  test("keeps conversation and project filters on every task-list page", async () => {
+    const originalFetch = globalThis.fetch;
+    const queries: URLSearchParams[] = [];
+    const fetchMock: typeof fetch = async (input) => {
+      const query = new URL(String(input)).searchParams;
+      queries.push(query);
+      return Response.json(query.has("cursor")
+        ? { items: [{ id: "second-task" }], nextCursor: null }
+        : { items: [{ id: "first-task" }], nextCursor: "page-two" });
+    };
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: fetchMock });
+    try {
+      const client = createiPolloWorkServerClient({ baseUrl: "https://ipollowork.test" });
+      const items = await listEndpointWorkItems(client, { workspaceIds: ["workspace one"], sessionId: "conversation/one" });
+      expect(items.map((item) => item.id)).toEqual(["first-task", "second-task"]);
+      expect(queries).toHaveLength(2);
+      expect(queries.every((query) => query.get("sessionId") === "conversation/one")).toBe(true);
+      expect(queries.every((query) => query.getAll("workspaceId").join() === "workspace one")).toBe(true);
+      expect(queries[1]?.get("cursor")).toBe("page-two");
+    } finally {
+      Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
+    }
   });
 });

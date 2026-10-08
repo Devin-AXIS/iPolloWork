@@ -350,7 +350,8 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
 
   if (!canActivate && !(client && workspaceId && sessionId && artifact.target.kind === "file")) {
     return (
-      <div data-testid="artifact-file-card" className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", "chat-output-card")}>
+      <div data-testid="artifact-file-card"
+        data-artifact-path={artifact.path} className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", "chat-output-card")}>
         {content}
       </div>
     );
@@ -361,6 +362,7 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
       <DescriptiveButton
         disabled={!canActivate}
         data-testid="artifact-file-card"
+        data-artifact-path={artifact.path}
         className={cn("max-w-full items-center whitespace-nowrap", "chat-output-card pr-20")}
         onClick={() => {
           if (opensCurrentVideoStudio) {

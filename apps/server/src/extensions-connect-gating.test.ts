@@ -1,19 +1,29 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { conversationWorkflowSchema, projectSessionExecutionRuntimeSchema, workTemplateSchema } from "@ipollowork/types/work-items";
 
 import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES, ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 import { engineBrowserTaskId, engineCallContext, engineMcpSessionId } from "./routes/core.js";
+import { bindConversationSession, readProjectSessionWorkItem, writeConversationWorkflow } from "./work-items.js";
+import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 
 const CLIENT_TOKEN = "owt_connect_client_token";
 const HOST_TOKEN = "owt_connect_host_token";
+const conversationResultSchema = z.object({
+  ok: z.literal(true),
+  item: z.object({
+    version: z.number(),
+    execution: z.object({ workflow: conversationWorkflowSchema, runtime: projectSessionExecutionRuntimeSchema }),
+  }),
+});
 
 test("browser host policy identifies only consequential verified activations", () => {
   expect(consequentialBrowserControlNames([
@@ -330,6 +340,9 @@ describe("extension and engine host tool gating", () => {
     expect(catalog.tools?.map((tool) => tool.name)).toEqual([
       "ipollowork_extension_list_actions",
       "ipollowork_extension_call",
+      "ipollowork_conversation_read",
+      "ipollowork_conversation_apply",
+      "ipollowork_work_template_save",
       "ipollowork_project_read",
       "ipollowork_project_apply",
       "ipollowork_schedule_preview",
@@ -386,6 +399,9 @@ describe("extension and engine host tool gating", () => {
       expect(tools.tools.map((tool) => tool.name)).toEqual([
         "ipollowork_extension_list_actions",
         "ipollowork_extension_call",
+        "ipollowork_conversation_read",
+        "ipollowork_conversation_apply",
+        "ipollowork_work_template_save",
       "ipollowork_project_read",
       "ipollowork_project_apply",
       "ipollowork_schedule_preview",
@@ -424,6 +440,89 @@ describe("extension and engine host tool gating", () => {
         expect(withoutThread.structuredContent).toMatchObject({ context: { workspaceId: "ws_1" } });
         expect(withoutThread.structuredContent).not.toHaveProperty("context.sessionId");
       }
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("conversation host tools isolate work, preserve progress and save reusable methods", async () => {
+    const { base, config } = await boot();
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Expected workspace");
+    const first = await bindConversationSession(config, workspace, "session_a", { title: "Video work", engineId: "deepseek-harness" });
+    await bindConversationSession(config, workspace, "session_b", { title: "Design work", engineId: "codex-harness" });
+    const call = (name: string, args: Record<string, unknown>, sessionId: string | null = "session_a", headers = clientJsonHeaders()) => fetch(`${base}/engine-tools/call`, {
+      method: "POST", headers,
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", ...(sessionId ? { sessionId } : {}) } }),
+    });
+    const progress = { summary: "Storyboard approved", decisions: ["Use existing product footage"], outputs: ["video/session_a/STORYBOARD.md"], blockers: [] };
+    const applied = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, {
+      expectedVersion: first.version, templateId: "video", source: "auto", goal: "Create a launch video", progress,
+    });
+    expect(applied.status).toBe(200);
+    const updated = await readSchema(applied, conversationResultSchema);
+    expect(updated.item.execution.workflow).toMatchObject({ workKind: "video", source: "auto", goal: "Create a launch video", progress });
+    expect((await readProjectSessionWorkItem(config, workspace.id, "session_b"))?.execution?.workflow?.workKind).toBe("general");
+    const reread = await call(ENGINE_HOST_TOOL_NAMES.conversationRead, {});
+    expect((await readSchema(reread, conversationResultSchema)).item.execution.workflow.progress).toEqual(progress);
+    const refined = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: updated.item.version, goal: "Create a 30-second launch video" });
+    expect(refined.status).toBe(200);
+    const refinedResult = await readSchema(refined, conversationResultSchema);
+    expect(refinedResult.item.execution.workflow.progress).toEqual(progress);
+    expect(refinedResult.item.execution.workflow.source).toBe("auto");
+    const stale = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: first.version, goal: "Stale edit" });
+    expect(stale.status).toBe(409);
+    const runtime = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: refinedResult.item.version, runtime: { engineId: "codex-harness" } });
+    expect(runtime.status).toBe(400);
+    const invalid = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: refinedResult.item.version, goal: 123 });
+    expect(invalid.status).toBe(400);
+    const saved = await call(ENGINE_HOST_TOOL_NAMES.workTemplateSave, { name: "Launch video method", sessionId: "session_b" });
+    expect(saved.status).toBe(200);
+    const savedBody: unknown = await saved.json();
+    expect(savedBody).not.toHaveProperty("template.progress");
+    const template = z.object({ template: workTemplateSchema }).parse(savedBody).template;
+    expect(template.workKind).toBe("video");
+    const reused = await writeConversationWorkflow(config, workspace, "session_c", {
+      templateId: template.id, source: "manual", runtime: refinedResult.item.execution.runtime,
+    });
+    expect(reused.execution?.workflow?.templateId).toBe(template.id);
+    expect(reused.execution?.workflow?.progress).toBeUndefined();
+    const issued = await fetch(`${base}/tokens`, { method: "POST", headers: hostJsonHeaders(), body: JSON.stringify({ scope: "viewer", label: "viewer" }) });
+    expect(issued.status).toBe(201);
+    const viewer = z.object({ token: z.string() }).parse(await issued.json());
+    for (const name of [ENGINE_HOST_TOOL_NAMES.conversationApply, ENGINE_HOST_TOOL_NAMES.workTemplateSave]) {
+      const denied = await call(name, { expectedVersion: refinedResult.item.version, name: "Forbidden method" }, "session_a", { authorization: `Bearer ${viewer.token}`, "content-type": "application/json" });
+      expect(denied.status).toBe(403);
+    }
+    const nativeCall = spyOn(DeepSeekHarnessRuntime.prototype, "call").mockResolvedValue({});
+    try {
+      const active = await fetch(`${base}/workspace/ws_1/engine/deepseek-harness/prompt`, {
+        method: "POST", headers: clientJsonHeaders(), body: JSON.stringify({ payload: { sessionId: "session_a", content: [{ type: "text", text: "Continue" }] } }),
+      });
+      expect(active.status).toBe(200);
+      for (const name of [ENGINE_HOST_TOOL_NAMES.conversationRead, ENGINE_HOST_TOOL_NAMES.conversationApply, ENGINE_HOST_TOOL_NAMES.workTemplateSave]) {
+        const missing = await call(name, { expectedVersion: refinedResult.item.version, name: "Missing identity" }, null);
+        expect(missing.status).toBe(400);
+        expect(await missing.json()).toMatchObject({ code: "conversation_context_missing" });
+      }
+    } finally {
+      nativeCall.mockRestore();
+    }
+  });
+
+  test("conversation MCP tools use the native calling thread instead of model arguments", async () => {
+    const { base, config } = await boot();
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Expected workspace");
+    const first = await bindConversationSession(config, workspace, "session_a", { title: "Video work", engineId: "codex-harness" });
+    await bindConversationSession(config, workspace, "session_b", { title: "Design work", engineId: "codex-harness" });
+    const client = new McpClient({ name: "conversation-work-test", version: "1.0.0" });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/engine-tools/mcp?workspaceId=ws_1`), { requestInit: { headers: clientHeaders() } }));
+      const applied = await client.callTool({ name: ENGINE_HOST_TOOL_NAMES.conversationApply, arguments: { expectedVersion: first.version, templateId: "video", source: "auto", sessionId: "session_b" }, _meta: { threadId: "session_a" } });
+      expect(conversationResultSchema.parse(applied.structuredContent).item.execution.workflow.workKind).toBe("video");
+      const other = await client.callTool({ name: ENGINE_HOST_TOOL_NAMES.conversationRead, arguments: { sessionId: "session_a" }, _meta: { threadId: "session_b" } });
+      expect(conversationResultSchema.parse(other.structuredContent).item.execution.workflow.workKind).toBe("general");
     } finally {
       await client.close();
     }

@@ -255,6 +255,8 @@ export interface RenderConfig {
    */
   fps: Fps;
   quality: "draft" | "standard" | "high";
+  /** Opt-in 180° temporal shutter. Existing compositions stay unchanged. SDR only. */
+  motionBlur?: boolean;
   /**
    * Output container format. Defaults to `"mp4"`; existing renders are
    * unaffected unless this field is set explicitly.
@@ -1874,6 +1876,11 @@ async function executeRenderPipeline(input: {
     const captureSize = job.config.captureSize;
     const captureWidth = captureSize?.width ?? outputWidth;
     const captureHeight = captureSize?.height ?? outputHeight;
+    // Probe sessions can be reused for capture. Both paths must use CSS pixels
+    // and apply output scaling through DPR exactly once.
+    const captureViewportWidth = captureSize ? captureWidth : width;
+    const captureViewportHeight = captureSize ? captureHeight : height;
+    const capturePixelRatio = captureSize ? 1 : deviceScaleFactor;
     const encodedOutputWidth = job.config.outputSize?.width ?? captureWidth;
     const encodedOutputHeight = job.config.outputSize?.height ?? captureHeight;
     // Capture the *output* (device-scaled) dimensions for the OOM error path —
@@ -1985,6 +1992,15 @@ async function executeRenderPipeline(input: {
         { totalMemMb: getSystemTotalMb(), thresholdMb: LOW_MEMORY_TOTAL_MB_THRESHOLD },
       );
     }
+    if (job.config.motionBlur) {
+      captureForceScreenshot = true;
+      cfg.useDrawElement = false;
+      cfg.enablePageSideCompositing = true;
+      if (compiled.hasShaderTransitions && needsAlpha) {
+        throw new Error("Temporal motion blur with shader transitions requires an opaque SDR output; render alpha output without motionBlur.");
+      }
+      updateCaptureObservability({ forceScreenshot: true });
+    }
     if (captureSize && cfg.useDrawElement) {
       cfg.useDrawElement = false;
       log.info(
@@ -2032,10 +2048,10 @@ async function executeRenderPipeline(input: {
           assertNotAborted,
           compiled,
           composition,
-          width: captureWidth,
-          height: captureHeight,
+          width: captureViewportWidth,
+          height: captureViewportHeight,
           needsAlpha,
-          deviceScaleFactor,
+          deviceScaleFactor: capturePixelRatio,
           renderBodyScripts: extraRenderBodyScripts,
         }),
       // Browser probe is pre-capture; report `browser calibrating` so a
@@ -2163,6 +2179,9 @@ async function executeRenderPipeline(input: {
       imageColorSpaces,
       log,
     });
+    if (job.config.motionBlur && effectiveHdr) {
+      throw new Error("Temporal motion blur currently supports SDR capture; HDR output must render without motionBlur.");
+    }
     observability.checkpoint("hdr_detection", "resolved", {
       requestedHdrMode: job.config.hdrMode ?? "auto",
       effectiveHdr: effectiveHdr ? effectiveHdr.transfer : "sdr",
@@ -2270,13 +2289,15 @@ async function executeRenderPipeline(input: {
     const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(composition.videos.length);
 
     const captureOptions: CaptureOptions = {
-      width: captureWidth,
-      height: captureHeight,
+      width: captureViewportWidth,
+      height: captureViewportHeight,
       fps: job.config.fps,
-      format: needsAlpha ? "png" : "jpeg",
-      quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
+      format: needsAlpha || job.config.motionBlur ? "png" : "jpeg",
+      motionBlur: job.config.motionBlur,
+      transparentBackground: needsAlpha,
+      quality: needsAlpha || job.config.motionBlur ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,
-      deviceScaleFactor,
+      deviceScaleFactor: capturePixelRatio,
       ...(videoCaptureBeyondViewport !== undefined
         ? { captureBeyondViewport: videoCaptureBeyondViewport }
         : {}),
@@ -2750,6 +2771,12 @@ async function executeRenderPipeline(input: {
     // for this opt-in). GIF also uses this path for shader transitions
     // because its two-pass palette encoder needs disk frames, not the
     // layered path's streaming raw-video encoder.
+    if (job.config.motionBlur && probeSession) {
+      // Probe uses JPEG and no shutter; capture must initialize its real PNG/alpha policy.
+      lastBrowserConsole = probeSession.browserConsoleBuffer;
+      await closeCaptureSession(probeSession);
+      probeSession = null;
+    }
     const usePageSideCompositingForTransitions =
       (cfg.enablePageSideCompositing || isGif) &&
       compiled.hasShaderTransitions &&

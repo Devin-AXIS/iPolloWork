@@ -37,6 +37,22 @@ export function parseDynamicToolUIPart(part: ToolPart): DynamicToolUIPart | null
     return null;
   }
 
+  const metadata = "metadata" in part.state ? part.state.metadata : undefined;
+  const childSessionId = part.tool === "task"
+    ? metadata?.sessionId ?? part.state.input.task_id
+    : undefined;
+  const callProviderMetadata = { ipollowork: {
+    partId: part.id,
+    ...(typeof childSessionId === "string" && childSessionId ? {
+      sessionId: childSessionId,
+      parentSessionId: part.sessionID,
+      nativeTool: typeof metadata?.nativeTool === "string" ? metadata.nativeTool : "task",
+      ...(typeof metadata?.nativeKind === "string" ? { nativeKind: metadata.nativeKind } : {}),
+      delegationStatus: part.state.status === "completed" ? "completed"
+        : part.state.status === "error" ? "failed" : "running",
+    } : {}),
+  } };
+
   if (part.state.status === "error") {
     return {
       type: "dynamic-tool",
@@ -45,7 +61,7 @@ export function parseDynamicToolUIPart(part: ToolPart): DynamicToolUIPart | null
       state: "output-error",
       input: part.state.input,
       errorText: part.state.error,
-      callProviderMetadata: { ipollowork: { partId: part.id } },
+      callProviderMetadata,
     };
   }
 
@@ -57,7 +73,7 @@ export function parseDynamicToolUIPart(part: ToolPart): DynamicToolUIPart | null
       state: "output-available",
       input: part.state.input,
       output: part.state.output,
-      callProviderMetadata: { ipollowork: { partId: part.id } },
+      callProviderMetadata,
     };
   }
 
@@ -73,6 +89,6 @@ export function parseDynamicToolUIPart(part: ToolPart): DynamicToolUIPart | null
     toolCallId: part.callID,
     state: "input-streaming",
     input: part.state.input,
-    callProviderMetadata: { ipollowork: { partId: part.id } },
+    callProviderMetadata,
   };
 }

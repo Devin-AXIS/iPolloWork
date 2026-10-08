@@ -156,6 +156,9 @@ export interface StudioApiAdapter {
      * the producer for the integer-scale + aspect + HDR constraints.
      */
     outputResolution?: CanvasResolution;
+    outputResolutionAspectAgnostic?: boolean;
+    /** Opt-in four-sample, 180° temporal shutter for SDR motion. */
+    motionBlur?: boolean;
     /** Optional final encoded dimensions. Captured frames remain at composition resolution unless captureSize is also set. */
     outputSize?: { width: number; height: number };
     /** Optional capture viewport dimensions for draft/preview renders. */

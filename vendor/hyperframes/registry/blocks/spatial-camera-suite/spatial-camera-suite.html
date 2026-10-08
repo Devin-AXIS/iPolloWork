@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-composition-variables='[{"id":"title","label":"Scene title","type":"string","default":"A clearer view, from every angle.","maxLength":72},{"id":"shotStyle","label":"Spatial shot recipe","type":"enum","default":"depth-layer-moves","options":[{"value":"graze-face-tour","label":"Graze Face Tour · 贴面掠游"},{"value":"depth-layer-moves","label":"Depth Layer Moves · 景深层移"},{"value":"spotlight-hero-card","label":"Spotlight Hero Card · 聚光主卡"},{"value":"runway-ground-skim","label":"Runway Ground Skim · 跑道低掠"},{"value":"steep-tilt-glide","label":"Steep Tilt Glide · 大倾角滑行"}]},{"id":"imageUrl","label":"Optional hero image URL","type":"string","default":"","maxLength":2000},{"id":"items","label":"Cards (label::detail | ...)","type":"string","default":"*Signal::See the pattern|Decision::Choose the next move|Action::Move with confidence","maxLength":300}]'>
+<html lang="en" data-composition-variables='[{"id":"title","label":"Scene title","type":"string","default":"A clearer view, from every angle.","maxLength":72},{"id":"shotStyle","label":"Spatial shot recipe","type":"enum","default":"depth-layer-moves","options":[{"value":"graze-face-tour","label":"Graze Face Tour · 贴面掠游"},{"value":"depth-layer-moves","label":"Depth Layer Moves · 景深层移"},{"value":"spotlight-hero-card","label":"Spotlight Hero Card · 聚光主卡"},{"value":"runway-ground-skim","label":"Runway Ground Skim · 跑道低掠"},{"value":"steep-tilt-glide","label":"Steep Tilt Glide · 大倾角滑行"},{"value":"subject-follow-track","label":"Subject Follow Track · 主体跟拍"},{"value":"container-morph","label":"Container Morph · 卡片展开"},{"value":"gather-lockup","label":"Gather Lockup · 聚合收束"}]},{"id":"imageUrl","label":"Optional hero image URL","type":"string","default":"","maxLength":2000},{"id":"items","label":"Cards (label::detail | ...)","type":"string","default":"*Signal::See the pattern|Decision::Choose the next move|Action::Move with confidence","maxLength":300}]'>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=1920,height=1080" />
@@ -47,11 +47,12 @@
       const root=document.getElementById("spatial-camera-suite"),id=root.dataset.compositionId;
       const defaults={title:"A clearer view, from every angle.",shotStyle:"depth-layer-moves",imageUrl:"",items:"*Signal::See the pattern|Decision::Choose the next move|Action::Move with confidence"};
       const values={...defaults,...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
-      const styleIds=["graze-face-tour","depth-layer-moves","spotlight-hero-card","runway-ground-skim","steep-tilt-glide"];
-      const shotStyle=styleIds.includes(String(values.shotStyle))?String(values.shotStyle):defaults.shotStyle;
+      const styleIds=["graze-face-tour","depth-layer-moves","spotlight-hero-card","runway-ground-skim","steep-tilt-glide","subject-follow-track","container-morph","gather-lockup"];
+      const shotStyle=String(values.shotStyle);
+      if(!styleIds.includes(shotStyle))throw new Error("Unsupported spatial shot recipe: "+shotStyle);
       root.dataset.shotStyle=shotStyle;
       root.querySelectorAll("[data-ipw-variable]").forEach(function(element){element.textContent=String(values[element.dataset.ipwVariable]??"")});
-      const shotLabels={"graze-face-tour":"GRAZE / FACE TOUR","depth-layer-moves":"DEPTH / LAYER MOVES","spotlight-hero-card":"SPOTLIGHT / HERO CARD","runway-ground-skim":"RUNWAY / GROUND SKIM","steep-tilt-glide":"STEEP TILT / GLIDE"};
+      const shotLabels={"graze-face-tour":"GRAZE / FACE TOUR","depth-layer-moves":"DEPTH / LAYER MOVES","spotlight-hero-card":"SPOTLIGHT / HERO CARD","runway-ground-skim":"RUNWAY / GROUND SKIM","steep-tilt-glide":"STEEP TILT / GLIDE","subject-follow-track":"SUBJECT / FOLLOW TRACK","container-morph":"CONTAINER / MORPH","gather-lockup":"GATHER / LOCKUP"};
       root.querySelector('[data-ipw-variable="shotStyle"]').textContent=shotLabels[shotStyle];
       root.querySelector(".sc-page-title").textContent=String(values.title);
       root.querySelector(".sc-toolbar span").textContent="iPolloWork";
@@ -78,7 +79,20 @@
       });
       const camera=root.querySelector(".sc-camera"),backplane=root.querySelector(".sc-backplane"),stageCards=[...root.querySelectorAll(".sc-card")],featured=stageCards.find(function(card){return card.dataset.featured==="true"})||stageCards[0],tags=[...root.querySelectorAll(".sc-float-tag")],light=root.querySelector(".sc-light"),tl=gsap.timeline({paused:true});
       if(imageUrl){const image=document.createElement("img");image.className="sc-source-image";image.src=imageUrl;image.alt=String(values.title);backplane.append(image);root.dataset.hasImage="true"}
-      const focusIndex=stageCards.indexOf(featured),focusX=Math.round((220+40+(focusIndex*414)+196)/1740*100),focusCameraX=Math.max(-250,Math.min(250,(1-focusIndex)*414));
+      // Layout coordinates remain stable while the shared camera and card depth animate.
+      function layoutBox(element){
+        let x=0,y=0,node=element;
+        while(node&&node!==camera){x+=node.offsetLeft;y+=node.offsetTop;node=node.offsetParent;}
+        return{x,y,width:element.offsetWidth,height:element.offsetHeight};
+      }
+      const cardBoxes=stageCards.map(layoutBox),focusBox=layoutBox(featured),focusX=(focusBox.x+focusBox.width/2)/camera.clientWidth*100;
+      function focusPose(scale,subjectY=0){
+        const axis=(size,position,length,starts,ends)=>{
+          const origin=size/2,min=16-origin-(Math.min(...starts)-origin)*scale,max=size-16-origin-(Math.max(...ends)-origin)*scale;
+          return Math.max(min,Math.min(max,(origin-position-length/2)*scale));
+        };
+        return{x:axis(camera.clientWidth,focusBox.x,focusBox.width,cardBoxes.map(box=>box.x),cardBoxes.map(box=>box.x+box.width)),y:axis(camera.clientHeight,focusBox.y+subjectY,focusBox.height,cardBoxes.map(box=>box.y),cardBoxes.map(box=>box.y+box.height)),scale};
+      }
       light.style.background="radial-gradient(circle at "+focusX+"% 51%, transparent 0 125px, color-mix(in srgb, var(--bg) 68%, transparent) 260px)";
       tl.fromTo(root.querySelector(".sc-header"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0)
         .fromTo(root.querySelector(".sc-footer"),{y:12,opacity:0},{y:0,opacity:1,duration:.5,ease:"power2.out"},.25)
@@ -94,9 +108,9 @@
         tl.fromTo(camera,{scale:.9,x:0,y:20,rotationY:-5},{scale:1.12,x:0,y:-2,rotationY:1,duration:2.25,ease:"power3.inOut"},.48)
           .to(backplane,{scale:1.28,x:-52,y:22,duration:2.2,ease:"power2.inOut"},.55)
           .to(stageCards,{x:function(index){return(index-1)*-24},z:function(index){return index===0?105:index===1?34:-55},duration:1.15,stagger:.12,ease:"power2.inOut"},1.15)
-          .to(camera,{x:focusCameraX,scale:1.1,rotationY:0,duration:1.1,ease:"power3.inOut"},3.05)
+          .to(camera,{...focusPose(1.1),rotationY:0,duration:1.1,ease:"power3.inOut"},3.05)
           .to(featured,{x:0,z:138,scale:1.07,duration:1.1,ease:"power3.inOut"},3.05)
-          .to(camera,{scale:1.02,x:0,rotationY:0,duration:1.05,ease:"power2.out"},5.6);
+          .to(camera,{scale:1.02,x:0,y:0,rotationY:0,duration:1.05,ease:"power2.out"},5.6);
       }else if(shotStyle==="spotlight-hero-card"){
         tl.fromTo(camera,{x:-100,y:22,scale:.96,rotationZ:-2},{x:0,y:0,scale:1.05,rotationZ:0,duration:2.5,ease:"power3.inOut"},.48)
           .fromTo(light,{opacity:0},{opacity:.92,duration:.75,ease:"power2.out"},1.15)
@@ -105,7 +119,7 @@
           .to(featured.querySelector(".sc-card-outline"),{opacity:0,scale:1.24,duration:.34,ease:"power1.out"},2.12)
           .fromTo(featured.querySelector(".sc-card-ghost"),{opacity:0,scale:1.01},{opacity:.75,scale:1.08,duration:.42,ease:"power2.out"},2.36)
           .to(featured.querySelector(".sc-card-ghost"),{opacity:0,scale:1.16,duration:.36,ease:"power1.out"},2.78)
-          .to(camera,{x:46,y:-12,rotationZ:2,duration:1.2,ease:"power2.inOut"},3.1)
+          .to(camera,{...focusPose(1.05,-26),rotationZ:0,duration:1.2,ease:"power2.inOut"},3.1)
           .to([camera,featured,light],{x:0,y:0,rotationZ:0,scale:1,opacity:1,duration:.95,ease:"power2.out"},5.35)
           .to(light,{opacity:.35,duration:.55,ease:"power1.out"},5.35);
       }else if(shotStyle==="runway-ground-skim"){
@@ -121,6 +135,40 @@
           .fromTo(stageCards.map(function(card){return card.querySelector(".sc-card-ghost")}),{x:-34,y:-14,opacity:0},{x:-8,y:-6,opacity:.26,duration:.28,stagger:.04,ease:"power1.out"},.9)
           .to(stageCards.map(function(card){return card.querySelector(".sc-card-ghost")}),{opacity:0,duration:.45,ease:"power1.out"},4.3)
           .to(camera,{x:0,y:0,scale:1,rotationX:24,rotationY:0,duration:1.15,ease:"power3.out"},5.15);
+      }else if(shotStyle==="subject-follow-track"){
+        featured.dataset.ipwCarrier="subject";
+        const centerX=focusBox.x+focusBox.width/2,centerY=focusBox.y+focusBox.height/2;
+        const span=Math.min(620,camera.clientWidth-focusBox.width-100),frames={},cameraFrames={};
+        for(let index=0;index<=48;index++){
+          const p=index/48,phase=p<.5?p*2:(1-p)*2,eased=(1-Math.cos(Math.PI*phase))/2;
+          const x=span*eased,y=-90*Math.sin(Math.PI*phase),scale=Math.exp(Math.log(1.06)+Math.log(1.1/1.06)*eased);
+          frames[(p*100)+"%"]={x,y,rotation:Math.sin(p*Math.PI*2)*-4,ease:"none"};
+          cameraFrames[(p*100)+"%"]={x:(camera.clientWidth/2-centerX-x)*scale,y:(camera.clientHeight/2-centerY-y)*scale,scale,ease:"none"};
+        }
+        tl.to(featured,{keyframes:frames,duration:5.6,ease:"none"},.8)
+          .to(camera,{keyframes:cameraFrames,duration:5.6,ease:"none"},.8);
+      }else if(shotStyle==="container-morph"){
+        featured.dataset.ipwCarrier="container";
+        const pageBox=layoutBox(root.querySelector(".sc-page"));
+        tl.to(stageCards.filter(card=>card!==featured),{opacity:0,duration:.35,ease:"power2.in"},2.1)
+          .to(featured,{x:pageBox.x-focusBox.x,y:pageBox.y-focusBox.y,width:pageBox.width,height:pageBox.height,borderRadius:30,boxShadow:"none",duration:1.35,ease:"power3.inOut"},2.2)
+          .to(featured.querySelector("h2"),{fontSize:40,duration:1.35,ease:"power3.inOut"},2.2)
+          .to(featured.querySelector("p"),{fontSize:24,maxWidth:900,duration:1.35,ease:"power3.inOut"},2.2)
+          .to(featured.querySelector(".sc-card-art"),{width:190,height:160,duration:1.35,ease:"power3.inOut"},2.2)
+          .to(featured.querySelector(".sc-card-art"),{width:pageBox.width-44,height:210,duration:.8,ease:"power3.inOut"},5.1);
+      }else if(shotStyle==="gather-lockup"){
+        const seal=document.createElement("i");seal.className="sc-seal";seal.style.cssText="position:absolute;left:calc(50% - 190px);top:130px;width:380px;height:380px;border-radius:50%;background:transparent;border:8px solid var(--primary);transform:scale(0);opacity:0";camera.append(seal);
+        stageCards.forEach(function(card,index){
+          card.dataset.ipwCarrier="member-"+index;
+          const box=cardBoxes[index],angle=(index-(stageCards.length-1)/2)*.22,targetX=camera.clientWidth/2+Math.sin(angle)*100,targetY=325+Math.abs(angle)*50,frames={};
+          for(let step=0;step<=24;step++){
+            const p=step/24,eased=(1-Math.cos(Math.PI*p))/2;
+            frames[(p*100)+"%"]={x:(targetX-box.x-box.width/2)*eased,y:(targetY-box.y-box.height/2)*eased-100*Math.sin(Math.PI*p),scale:1-.55*eased,rotation:angle*180/Math.PI*eased,ease:"none"};
+          }
+          tl.to(card,{keyframes:frames,duration:1.5,ease:"none"},2.1+index*.12);
+        });
+        tl.to(seal,{scale:1,opacity:1,rotation:110,duration:1.1,ease:"power3.out"},3.15)
+          .to(seal,{scale:1.2,borderRadius:32,rotation:0,duration:1.2,ease:"power3.inOut"},5.05);
       }else{throw new Error("Unsupported spatial shot recipe: "+shotStyle)}
       tl.fromTo(root.querySelector(".sc-footer i b"),{scaleX:.12},{scaleX:1,duration:9,ease:"none"},0);
       window.__timelines[id]=tl;tl.seek(0);

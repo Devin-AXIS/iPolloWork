@@ -4,11 +4,9 @@ import { readFileSync } from "node:fs";
 import {
   hyperframesStudioPort,
   hyperframesStudioUrl,
-  publicationUserInterventionRequired,
   shouldInjectVideoTaskContext,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
-  videoHostExportOperationKey,
   videoProjectDirectory,
   videoProjectId,
   videoProjectPath,
@@ -1296,24 +1294,18 @@ describe("HyperFrames Video Studio", () => {
     expect(videoDeliveryIntentForPrompt("只修改这个视频的标题，不要发布到抖音")).toBeNull();
     expect(videoDeliveryIntentForPrompt("只生成视频，不要发布到视频号")).toBeNull();
     expect(videoDeliveryIntentForPrompt("只做一个可编辑视频")).toBeNull();
-    const contract = videoTaskSystemContext("ses_video", "/workspace", null, { hostExportOperationKey: "test-export-once" });
-    expect(contract).toContain("The iPolloWork app owns the MP4 export");
+    expect(videoDeliveryIntentForPrompt("只保存供内置播放的源文件，不需要MP4导出或发布。")).toBeNull();
+    expect(videoDeliveryIntentForPrompt("不需要MP4导出或发布到抖音，只保存源文件。")).toBeNull();
+    expect(videoDeliveryIntentForPrompt("Save editable source only, no need to export MP4 or publish to WeChat Channels.")).toBeNull();
+    expect(videoDeliveryIntentForPrompt("不要发布到抖音，改为发布到视频号。")).toBe("publish-wechat-channels");
+    expect(videoDeliveryIntentForPrompt("导出MP4，不要发布到抖音。")).toBe("export");
+    const contract = videoTaskSystemContext("ses_video", "/workspace");
+    expect(contract).toContain("your native plan, tools and subagents");
     expect(contract).not.toContain("The iPolloWork host");
-    expect(contract).toContain("operationKey test-export-once");
     expect(contract).toContain("installed iPolloWork tools");
     expect(contract).not.toContain("Export directly with ipollowork_extension_call");
-    expect(videoHostExportOperationKey("ses_video", "client:request-1")).toBe("ipw:ses_video:client-request-1:export");
   });
 
-  test("pauses publication only for a confirmed user login boundary", () => {
-    expect(publicationUserInterventionRequired(
-      "我已经打开官方平台页。现在读取页面快照，判断是否已登录或需要用户扫码。",
-    )).toBe(false);
-    expect(publicationUserInterventionRequired(
-      "当前页面仍然停留在登录页，请你扫码登录后继续。",
-    )).toBe(true);
-    expect(publicationUserInterventionRequired("Login required before publication can continue.")).toBe(true);
-  });
 
   test("arms finished-video delivery for a plain conversation request", () => {
     expect(videoPromptRequestsFinishedVideo("请用 Video Studio 生成一条完整可编辑的中文概念讲解视频")).toBe(true);
@@ -1322,7 +1314,9 @@ describe("HyperFrames Video Studio", () => {
     expect(videoPromptRequestsFinishedVideo("只写分镜，暂时不要制作视频")).toBe(false);
     expect(videoPromptRequestsFinishedVideo("为什么视频效果不够好？")).toBe(false);
     const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
-    expect(surfaceSource).toContain("videoTask && !recoveryDraft && !videoPromptRequiresStoryboardReview({ promptText })");
+    expect(surfaceSource).not.toContain("validatePendingVideoDelivery");
+    const routeSource = readFileSync(new URL("../src/react-app/shell/session-route.tsx", import.meta.url), "utf8");
+    expect(routeSource).toContain("requireStoryboardReview: requiresStoryboardReview");
   });
 
   test("injects the Video Studio contract before animation guidance", () => {
@@ -1333,9 +1327,10 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
-    expect(sessionRouteSource).toContain("draft.capability?.instruction");
+    expect(sessionRouteSource).toContain("text: draft.capability.instruction");
+    expect(sessionRouteSource).not.toContain("capabilitySystemContext");
     expect(sessionRouteSource).toContain(
-      "[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]",
+      "[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, languageSystemContext]",
     );
   });
 
@@ -1350,8 +1345,8 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never create or inspect another session's project");
     expect(contract).toContain("do not install runtimes");
     expect(contract).toContain("stop Node processes");
-    expect(contract).toContain("single aggregate delivery validator");
-    expect(contract).toContain("one bounded repair continuation");
+    expect(contract).toContain("Use your native plan, tools and subagents");
+    expect(contract).toContain("does not continue or repair the task after you stop");
     expect(contract).toContain("requirements");
     expect(contract.length).toBeLessThan(4800);
     for (const field of ["data-hf-studio", ".scene.clip", "data-ipw-beats", "data-ipw-caption", "data-ipw-bgm", "data-timeline-role"])
@@ -1360,19 +1355,15 @@ describe("HyperFrames Video Studio", () => {
 
   test("continues explicit publication through the session-owned render API without manual export", () => {
     const contract = videoTaskSystemContext("ses_auto_publish", "C:/workspace");
-    expect(contract).toContain("action=video_render_start");
-    expect(contract).toContain("media.video_render_status");
+    expect(contract).toContain("media/video_render_start");
+    expect(contract).toContain("video_render_status");
     expect(contract).toContain('sourcePath:"video/ses_auto_publish/index.html"');
-    expect(contract).toContain('operationKey:"ses_auto_publish:export-1"');
-    expect(contract).toContain("Never repeat a start because a wait timed out");
+    expect(contract).toContain("never start a duplicate after a wait timeout");
     expect(contract).toContain("Export-only requests do not authorize publication");
     expect(contract).toContain("Never re-submit an uncertain publication");
     expect(contract).toContain("failed/cancelled render");
     expect(contract).toContain("account-specific browser job");
     const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
-    expect(surfaceSource).toContain("publicationStatus=under_review");
-    expect(surfaceSource).toContain("审核中 means the platform accepted the publication");
-    expect(surfaceSource).toContain("Add resultUrl only when the page provides a real");
   });
 
   test("surfaces a silent provider stall without automatically replaying tools", () => {
@@ -1410,6 +1401,9 @@ describe("HyperFrames Video Studio", () => {
       includeVoiceover: true,
     });
     expect(visualContract).toContain("No voiceover Skill preload or new synthesis is needed for the current stage");
+    expect(visualContract).toContain("Read ipollowork-video-studio once");
+    expect(visualContract).not.toContain("ipollowork-video-compose");
+    expect(visualContract).not.toContain("ipollowork-video-soundtrack");
     expect(visualContract).toContain("Video Studio's voice panel");
     expect(visualContract).not.toContain("speech_synthesize_workspace_batch");
     expect(voiceContract).toContain("speech_synthesize_workspace_batch");
@@ -1530,7 +1524,7 @@ describe("HyperFrames Video Studio", () => {
 
   test("uses an adaptive operation plan without forcing one video workflow", () => {
     const contract = videoTaskSystemContext("ses_video_a", "/workspace/current");
-    expect(contract).toContain("The Skill owns creative planning");
+    expect(contract).toContain("it owns creative planning");
     expect(contract).toContain("targeted edits keep their requested scope");
     expect(contract).not.toContain("Adaptive execution contract");
   });
@@ -1572,10 +1566,68 @@ describe("HyperFrames Video Studio", () => {
     expect(videoPromptRequiresStoryboardReview({ promptText: "继续修改技术讲解视频的第三幕", hasReferenceAttachments: true })).toBe(false);
     expect(videoPromptRequiresStoryboardReview({ promptText: "先给我看脚本，再生成视频", hasReferenceAttachments: true })).toBe(true);
     expect(videoPromptRequiresStoryboardReview({ promptText: "只写分镜，暂时不要制作视频" })).toBe(true);
+    const detailedStoryboard = "请先只制作一个6秒、16:9的工作助手宣传片分镜：一个想法变成清晰的下一步行动。三个场景，延续同一组原创可编辑图形。不要外部图片或视频，不要旁白、字幕、音乐和音效。先把原生分镜保存给我查看，不开始制作、不渲染、不导出。";
+    expect(videoPromptRequiresStoryboardReview({ promptText: detailedStoryboard })).toBe(true);
+    expect(videoPromptRequestsFinishedVideo(detailedStoryboard)).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "Save a detailed six-second storyboard for my review; do not start production." })).toBe(true);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "按已保存的分镜制作6秒可编辑视频，不渲染、不导出。" })).toBe(false);
     const reviewContract = videoTaskSystemContext("ses_review", "/workspace/current", null, { requireStoryboardReview: true });
     expect(reviewContract).toContain("Script review requested");
     expect(reviewContract).toContain("create or update only `/workspace/current/video/ses_review/STORYBOARD.md`");
     expect(reviewContract).toContain("Do not source or generate media");
+  });
+
+  test("music-only edits preserve script and narration without becoming storyboard review", () => {
+    for (const promptText of [
+      "只补现有音乐不重做脚本/旁白",
+      "只补现有音乐，不重做脚本和旁白",
+      "只补现有音乐，保持原有脚本和旁白不变",
+      "只补现有音乐，保留原有旁白和脚本",
+      "Please add music only; do not redo the script or narration.",
+      "Add background music; preserve the script and existing narration.",
+    ]) {
+      const requirements = videoDeliveryRequirementsForPrompt({
+        promptText, voiceoverAvailable: true, voiceoverEnabled: true,
+      });
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(false);
+      expect(requirements).toMatchObject({ voiceover: true, bgm: true });
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(false);
+      const contract = videoTaskSystemContext("ses_music_edit", "/workspace/current", null, {
+        deliveryRequirements: requirements,
+        includeVoiceover: videoPromptRequestsVoiceoverContext(undefined, promptText, requirements),
+        requireStoryboardReview: videoPromptRequiresStoryboardReview({ promptText }),
+      });
+      expect(contract).not.toContain("Script review requested");
+      expect(contract).not.toContain("speech_synthesize_workspace_batch");
+    }
+  });
+
+  test("preserved content does not suppress later script, speech or finished-video requests", () => {
+    for (const promptText of [
+      "不重做旁白，只写分镜，暂时不要制作视频",
+      "保留原有旁白，先给我看脚本，确认后再制作视频",
+      "Do not redo the narration; only write the script first",
+    ]) {
+      const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(true);
+      expect(requirements.bgm).toBe(false);
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(false);
+    }
+    for (const promptText of [
+      "保留脚本，只修改旁白声音",
+      "不重做脚本/旁白，只补BGM，再给第三幕新增旁白",
+      "Do not redo the script; add narration",
+    ]) {
+      const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(false);
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(true);
+    }
+    const promptText = "保留现有脚本，制作完整视频";
+    const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+    expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(false);
+    expect(videoPromptRequestsFinishedVideo(promptText)).toBe(true);
+    expect(requirements).toMatchObject({ voiceover: true, bgm: true });
+    expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(true);
   });
 
   test("negating planning-only work keeps production and its audio requirements active", () => {
@@ -1647,6 +1699,26 @@ describe("HyperFrames Video Studio", () => {
     expect(videoDeliveryRequirementsForPrompt({ promptText: "不要 BGM，还是加 BGM" }).bgm).toBe(
       true,
     );
+  });
+
+  test("preserves grouped media exclusions through the authoritative delivery requirements", () => {
+    for (const promptText of [
+      "不要旁白、字幕、音乐和音效",
+      "保留原来确定的无旁白、无字幕、无音乐音效",
+      "不要字幕、旁白、配乐和音效",
+      "No narration, captions, music or sound effects",
+    ]) expect(videoDeliveryRequirementsForPrompt({ promptText })).toMatchObject({
+      voiceover: false, captions: false, bgm: false, sfx: false,
+    });
+    expect(videoDeliveryRequirementsForPrompt({
+      promptText: "不要旁白、字幕、音乐和音效；改为添加字幕和音效",
+    })).toMatchObject({ voiceover: false, captions: true, bgm: false, sfx: true });
+    expect(videoDeliveryRequirementsForPrompt({
+      promptText: "不要字幕和音效，但加旁白和配乐",
+    })).toMatchObject({ voiceover: true, captions: false, bgm: true, sfx: false });
+    expect(videoDeliveryRequirementsForPrompt({
+      promptText: "No narration, captions, music or sound effects; add music later",
+    })).toMatchObject({ voiceover: false, captions: false, bgm: true, sfx: false });
   });
 
   test("requires music for new finished videos without adding it to planning or local edits", () => {

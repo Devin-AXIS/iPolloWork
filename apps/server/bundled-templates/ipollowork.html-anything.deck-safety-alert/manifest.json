@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.deck-safety-alert",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "slides",
   "subcategory": "engineering",
@@ -11,7 +11,8 @@
     "safety",
     "security",
     "policy",
-    "incident"
+    "incident",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Testing / Safety Alert Deck",

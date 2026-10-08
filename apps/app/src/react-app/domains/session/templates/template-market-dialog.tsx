@@ -22,17 +22,19 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
-  TEMPLATE_STYLE_LABELS,
+  matchesTemplateFilters,
   TEMPLATE_PACKAGE_FILE_ACCEPT,
   isPptxCompatibleTemplate,
   type TemplateCatalogItem,
   type TemplateCategory,
   type TemplateStyle,
+  type TemplateTopicFilter,
 } from "@ipollowork/types/templates";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TemplateIcon } from "@/components/template-icon";
+import { TemplateCatalogFilters } from "@/components/template-catalog-filters";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -65,7 +67,6 @@ const CATEGORIES: CategoryDefinition[] = [
 const PRIMARY_CATEGORIES = CATEGORIES.slice(0, 4);
 const MORE_CATEGORIES = CATEGORIES.slice(4);
 
-const STYLE_ORDER = Object.keys(TEMPLATE_STYLE_LABELS) as TemplateStyle[];
 const templateStyleLabel = (style: TemplateStyle) => t(translationKey("template_market.style.", style));
 const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
 const TEMPLATE_COVER_ROOT_MARGIN = "480px 0px";
@@ -99,20 +100,25 @@ function templateFormatLabel(template: TemplateCatalogItem) {
   return template.manifest.surface === "video" ? "Video" : "HTML";
 }
 
-function templateMatches(input: { template: TemplateCatalogItem; category: TemplateCategory | "all"; style: TemplateStyle | "all"; query: string }) {
-  const { template, category, style, query } = input;
-  if (category !== "all" && template.manifest.category !== category) return false;
-  if (style !== "all" && template.manifest.style !== style) return false;
-  if (!query) return true;
-  return [template.manifest.title, template.manifest.description, template.manifest.subcategory, template.manifest.style, ...template.manifest.tags]
-    .join(" ").toLowerCase().includes(query);
-}
-
-function cloudResourceMatches(input: { resource: EnterpriseResource; category: TemplateCategory | "all"; query: string }) {
-  const { resource, category, query } = input;
+export function cloudResourceMatches(input: {
+  resource: EnterpriseResource;
+  installed?: TemplateCatalogItem;
+  category: TemplateCategory | "all";
+  style: TemplateStyle | "all";
+  topic: TemplateTopicFilter;
+  query: string;
+}) {
+  const { resource, installed, category, style, topic, query } = input;
+  const normalized = query.trim().toLowerCase();
+  const metadataMatches = !normalized || [resource.name, resource.description, resource.category, resource.enterpriseCategory]
+    .join(" ").toLowerCase().includes(normalized);
+  if (installed) {
+    return matchesTemplateFilters(installed.manifest, { category, style, topic })
+      && (metadataMatches || matchesTemplateFilters(installed.manifest, { query: normalized }));
+  }
+  if (style !== "all" || (topic !== "all" && topic !== "unclassified")) return false;
   if (category !== "all" && resource.category !== category) return false;
-  return !query || [resource.name, resource.description, resource.category, resource.enterpriseCategory]
-    .join(" ").toLowerCase().includes(query);
+  return metadataMatches;
 }
 
 function TemplateCover({ template, getCover, className, alt = "", eager = false }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; className?: string; alt?: string; eager?: boolean }) {
@@ -202,6 +208,7 @@ export type TemplateMarketDialogProps = {
 export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   const [category, setCategory] = React.useState<TemplateCategory | "all">("all");
   const [style, setStyle] = React.useState<TemplateStyle | "all">("all");
+  const [topic, setTopic] = React.useState<TemplateTopicFilter>("all");
   const [view, setView] = React.useState<TemplateMarketView>("explore");
   const [myCollection, setMyCollection] = React.useState<MyTemplateCollection>("all");
   const [query, setQuery] = React.useState("");
@@ -215,32 +222,23 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     : t("enterprise_connection.cloud");
 
   React.useEffect(() => { if (props.open) props.onRefresh(); }, [props.open, props.onRefresh]);
-  const styleOptions = React.useMemo(() => {
-    const available = new Set(props.templates.map((item) => item.manifest.style));
-    return STYLE_ORDER.filter((id) => available.has(id)).map((id) => ({ id, label: templateStyleLabel(id) }));
-  }, [props.templates]);
-
   React.useEffect(() => {
-    if (style !== "all" && !styleOptions.some((option) => option.id === style)) setStyle("all");
-  }, [style, styleOptions]);
+    if (!props.open) setTopic("all");
+  }, [props.open]);
 
   const visible = React.useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return props.templates.filter((template) => {
-      if (!templateMatches({ template, category, style, query: normalized })) return false;
+      if (!matchesTemplateFilters(template.manifest, { category, style, topic, query: normalized })) return false;
       if (view === "explore") return template.sourceType !== "local";
       if (myCollection === "favorites") return favoriteIds.has(template.manifest.id);
       if (myCollection === "mine") return template.sourceType === "local";
       return template.sourceType === "local" || favoriteIds.has(template.manifest.id);
     });
-  }, [category, favoriteIds, myCollection, props.templates, query, style, view]);
+  }, [category, favoriteIds, myCollection, props.templates, query, style, topic, view]);
   const myTemplatesEmpty = !props.templates.some(
     (template) => template.sourceType === "local" || favoriteIds.has(template.manifest.id),
   );
-  const visibleRemoteResources = React.useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return props.remoteResources.filter((resource) => cloudResourceMatches({ resource, category, query: normalized }));
-  }, [category, props.remoteResources, query]);
   const remoteTemplateInstallations = React.useMemo(() => {
     const templatesById = new Map(props.templates.map((template) => [template.manifest.id, template]));
     const installations = new Map<string, TemplateCatalogItem>();
@@ -251,6 +249,16 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     }
     return installations;
   }, [props.remoteResources, props.templates]);
+  const visibleRemoteResources = React.useMemo(() => {
+    return props.remoteResources.filter((resource) => cloudResourceMatches({
+      resource,
+      installed: remoteTemplateInstallations.get(resource.id),
+      category,
+      style,
+      topic,
+      query,
+    }));
+  }, [category, props.remoteResources, query, remoteTemplateInstallations, style, topic]);
   const previewTemplate = previewSelection?.template ?? null;
   const previewRemoteResource = previewSelection?.remoteResourceId
     ? props.remoteResources.find((resource) => resource.id === previewSelection.remoteResourceId)
@@ -289,6 +297,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   }, []);
   const selectView = (nextView: TemplateMarketView) => {
     setView(nextView);
+    setTopic("all");
     if (nextView === "my") {
       setCategory("all");
       setStyle("all");
@@ -297,6 +306,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   };
   const exploreTemplates = () => {
     setView("explore");
+    setTopic("all");
     setCategory("all");
     setStyle("all");
     setQuery("");
@@ -397,18 +407,16 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
               </DropdownMenuContent>
             </DropdownMenu>
             </>}
-            <DropdownMenu>
-              <div className={cn("flex shrink-0 items-center gap-2", view === "explore" && "ml-auto")}>
-                <span className="font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[18px] text-foreground">{t("template_market.style_label")}</span>
-                <DropdownMenuTrigger render={<button type="button" className="flex h-[34px] w-[132px] shrink-0 items-center justify-between rounded-lg bg-muted/50 py-2 pl-2 pr-4 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[18px] text-foreground transition-colors hover:bg-muted" />}>
-                  {style === "all" ? t("template_market.all") : templateStyleLabel(style)}<ChevronDown className="size-4" />
-                </DropdownMenuTrigger>
-              </div>
-              <DropdownMenuContent align="end" positionerClassName="z-[90]" className="min-w-52">
-                <DropdownMenuItem onClick={() => setStyle("all")}>{style === "all" ? <Check className="size-3.5" /> : <span className="size-3.5" />}{t("template_market.all")}</DropdownMenuItem>
-                {styleOptions.map((option) => <DropdownMenuItem key={option.id} onClick={() => setStyle(option.id)}>{style === option.id ? <Check className="size-3.5" /> : <span className="size-3.5" />}{option.label}</DropdownMenuItem>)}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className={cn("flex shrink-0 items-center gap-4", view === "explore" && "ml-auto")}>
+              <TemplateCatalogFilters
+                templates={props.templates}
+                category={category}
+                style={style}
+                topic={topic}
+                onStyleChange={setStyle}
+                onTopicChange={setTopic}
+              />
+            </div>
           </div>
         </div>
 

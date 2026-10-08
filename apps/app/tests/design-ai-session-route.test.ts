@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
 import * as sessionPrompt from "../src/react-app/shell/session-prompt";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
+import { newTaskComposerScope, useComposerStateStore, type ComposerSessionState } from "../src/react-app/domains/session/surface/composer-state-store";
 
 const routeUrl = new URL("../src/react-app/shell/session-route.tsx", import.meta.url);
 const promptUrl = new URL("../src/react-app/shell/session-prompt.ts", import.meta.url);
@@ -37,6 +38,108 @@ const lifecycleContext: DesignAiSelectionContext = {
     styles: { color: "black" },
   },
 };
+
+type InitialDraftSource = { sourceScope: string; sourceComposerState: ComposerSessionState };
+type InitialDraftHelpers = {
+  captureInitialProjectDraftSource: (workspaceId: string | null, draft: ComposerDraft) => InitialDraftSource;
+  clearInitialProjectDraftSource: (source: InitialDraftSource, releasePreviews: boolean) => void;
+  restoreInitialProjectDraft: (pending: InitialDraftSource & { sessionId: string | null }) => void;
+};
+
+async function loadInitialDraftHelpers(): Promise<InitialDraftHelpers> {
+  const source = await Bun.file(routeUrl).text();
+  const start = source.indexOf("function captureInitialProjectDraftSource(");
+  const end = source.indexOf("export function SessionRoute()", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  const compiled = new Bun.Transpiler({ loader: "ts" }).transformSync(source.slice(start, end));
+  return new Function("useComposerStateStore", "newTaskComposerScope", `${compiled}\nreturn { captureInitialProjectDraftSource, clearInitialProjectDraftSource, restoreInitialProjectDraft };`)(useComposerStateStore, newTaskComposerScope);
+}
+
+describe("initial task draft handoff", () => {
+  const revokePreview = spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const draft: ComposerDraft = {
+    text: "Use [pasted text 1]",
+    resolvedText: "Use the complete pasted requirement",
+    parts: [{ type: "text", text: "Use the complete pasted requirement" }],
+    attachments: [{ id: "image", kind: "image", name: "image.png", mimeType: "image/png", size: 3, file: new File(["png"], "image.png"), previewUrl: "blob:initial-image" }],
+  };
+
+  beforeEach(() => {
+    useComposerStateStore.setState({ sessions: {}, queuedDrafts: {}, pausedQueues: {} });
+    revokePreview.mockClear();
+  });
+  afterAll(() => revokePreview.mockRestore());
+
+  test("preserves the full original draft until dispatch and transfers it after failure", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const scope = newTaskComposerScope("ws");
+    const store = useComposerStateStore.getState();
+    store.setDraft(scope, draft.text);
+    store.setAttachments(scope, draft.attachments);
+    store.setPasteParts(scope, [{ id: "paste", label: "1", text: "the complete pasted requirement", lines: 1 }]);
+    store.setInitialTaskOptions(scope, { workTemplateId: "development" });
+    const original = useComposerStateStore.getState().sessions[scope];
+    const source = helpers.captureInitialProjectDraftSource("ws", draft);
+    expect(useComposerStateStore.getState().sessions[scope]).toBe(original);
+    expect(revokePreview).not.toHaveBeenCalled();
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: "ses_retry" });
+    expect(useComposerStateStore.getState().sessions[scope]).toBeUndefined();
+    expect(useComposerStateStore.getState().sessions.ses_retry).toBe(original);
+    expect(revokePreview).not.toHaveBeenCalled();
+  });
+
+  test("keeps both drafts when the destination already has user input", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const source = helpers.captureInitialProjectDraftSource("ws", draft);
+    useComposerStateStore.getState().setDraft("ses_retry", "My newer request");
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: "ses_retry" });
+    expect(useComposerStateStore.getState().sessions[source.sourceScope]).toBe(source.sourceComposerState);
+    expect(useComposerStateStore.getState().sessions.ses_retry.draft).toBe("My newer request");
+    expect(revokePreview).not.toHaveBeenCalled();
+    useComposerStateStore.getState().clearSession("ses_retry");
+    useComposerStateStore.getState().setDraft(source.sourceScope, "My next task");
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: "ses_retry" });
+    expect(useComposerStateStore.getState().sessions.ses_retry).toBe(source.sourceComposerState);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope].draft).toBe("My next task");
+    expect(revokePreview).not.toHaveBeenCalled();
+  });
+
+  test("cleans up a delivered draft while preserving any replacement input", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const source = helpers.captureInitialProjectDraftSource("ws", draft);
+    useComposerStateStore.getState().setDraft(source.sourceScope, "A newer task");
+    helpers.clearInitialProjectDraftSource(source, true);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope].draft).toBe("A newer task");
+    expect(revokePreview).not.toHaveBeenCalled();
+    const latest = helpers.captureInitialProjectDraftSource("ws", draft);
+    helpers.clearInitialProjectDraftSource(latest, true);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope]).toBeUndefined();
+    expect(revokePreview).toHaveBeenCalledTimes(1);
+    expect(revokePreview).toHaveBeenCalledWith("blob:initial-image");
+  });
+
+  test("retains a new-project draft when creation fails and uses its original scope after navigation", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const source = helpers.captureInitialProjectDraftSource(null, draft);
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: null });
+    expect(useComposerStateStore.getState().sessions[source.sourceScope].draft).toBe(draft.resolvedText);
+    useComposerStateStore.getState().setDraft(newTaskComposerScope("created_ws"), "Different workspace draft");
+    helpers.clearInitialProjectDraftSource(source, true);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope]).toBeUndefined();
+    expect(useComposerStateStore.getState().sessions[newTaskComposerScope("created_ws")].draft).toBe("Different workspace draft");
+  });
+
+  test("captures before asynchronous project creation and only cleans up after dispatch succeeds", async () => {
+    const source = await Bun.file(routeUrl).text();
+    const initialStart = source.indexOf("const handleCreateInitialProjectTask = useCallback");
+    const capture = source.indexOf("captureInitialProjectDraftSource(selectedWorkspaceId, draft)", initialStart);
+    expect(capture).toBeGreaterThan(initialStart);
+    expect(capture).toBeLessThan(source.indexOf("await createProject(", initialStart));
+    expect(source).toContain("restoreInitialProjectDraft(pending);");
+    expect(source).toContain("if (!dispatched) {\n          rollbackFailedInitialProjectPrompt(pending);\n        } else {\n          clearInitialProjectDraftSource(pending, true);");
+  });
+});
 
 describe("Design AI session lifecycle", () => {
   beforeEach(() => {

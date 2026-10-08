@@ -22,7 +22,9 @@ export default {
         action: async () => {
           const response = await fetch(`${api}/projects/${encodeURIComponent(project)}/render`, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ format: "mp4", quality: "high", fps: 30 }),
+            body: JSON.stringify({ format: "mp4", quality: "high", fps: 30,
+              ...(process.env.IPOLLOWORK_EVAL_RENDER_OPTIONS ? JSON.parse(process.env.IPOLLOWORK_EVAL_RENDER_OPTIONS) : {}),
+            }),
             signal: AbortSignal.timeout(15000),
           });
           ctx.assert(response.ok, `Render start failed: ${response.status}`);
@@ -55,9 +57,39 @@ export default {
           ctx.assert((await stat(outputPath)).size === entry.size, "Local export does not match Studio's receipt.");
           const decoded = spawnSync(ffmpeg, ["-v", "error", "-i", outputPath, "-f", "null", "-"], { encoding: "utf8", timeout: 30000 });
           ctx.assert(decoded.status === 0, `MP4 decode failed: ${decoded.stderr}`);
+          if (process.env.IPOLLOWORK_EVAL_EXPECT_VIDEO) {
+            const expected = JSON.parse(process.env.IPOLLOWORK_EVAL_EXPECT_VIDEO);
+            const probe = spawnSync(process.env.IPOLLOWORK_EVAL_FFPROBE || "ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate,nb_frames", "-of", "json", outputPath], { encoding: "utf8", timeout: 30000 });
+            ctx.assert(probe.status === 0, `Metadata probe failed: ${probe.stderr}`);
+            const stream = JSON.parse(probe.stdout).streams[0];
+            for (const [key, value] of Object.entries(expected)) ctx.assert(stream[key] === value, `Actual ${key} ${stream[key]} does not match ${value}.`);
+            ctx.output("Actual encoded dimensions and fps", JSON.stringify(stream));
+          }
           ctx.output("Verified local MP4", `${outputPath}\n${entry.size} bytes; full decode passed; no publication submitted.`);
         },
       });
+      if (process.env.IPOLLOWORK_EVAL_SHUTTER_PROOF) {
+        await ctx.prove("Temporal shutter preserves crisp reading holds and cuts and follows seek-safe callbacks", {
+          voiceover: "The fast moving subject gains a temporal trail. Reading holds and cuts retain the same lossless pixels, and the callback-driven subject restores exactly when seeking backwards.",
+          action: async () => {
+            const { readFile } = await import("node:fs/promises");
+            const root = process.env.IPOLLOWORK_EVAL_SHUTTER_PROOF;
+            const measurement = JSON.parse(await readFile(join(root, "shutter-measurements.json"), "utf8"));
+            const lossless = JSON.parse(await readFile(join(root, "lossless-shutter-proof.json"), "utf8"));
+            ctx.assert(measurement.passed && lossless.passed, "Production-capture shutter evidence must pass.");
+            ctx.assert(measurement.fast.shutter.width >= measurement.fast.crisp.width + 6, "Fast motion gained no visible temporal integration.");
+            ctx.assert(lossless.holdPixelsIdentical && lossless.cutPixelsIdentical, "Static typography or cut frames changed.");
+            ctx.assert(lossless.exactSubframes.second - lossless.exactSubframes.first > 10 && lossless.exactSubframes.first === lossless.exactSubframes.reversed, "Subframes collapsed or callback state failed to restore.");
+            ctx.output("Measured production render and lossless control", JSON.stringify({ measurement, lossless }, null, 2));
+          },
+          assert: async () => {
+            for (const name of ["crisp.mp4", "shutter.mp4"]) {
+              const decode = spawnSync(ffmpeg, ["-v", "error", "-i", join(process.env.IPOLLOWORK_EVAL_SHUTTER_PROOF, name), "-f", "null", "-"], { encoding: "utf8", timeout: 30000 });
+              ctx.assert(decode.status === 0, `Shutter comparison decode failed: ${decode.stderr}`);
+            }
+          },
+        });
+      }
     },
   }],
 };

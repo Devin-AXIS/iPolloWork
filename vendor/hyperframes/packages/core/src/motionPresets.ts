@@ -390,6 +390,7 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
       // wrapper), giving Studio a stable, direct replacement handle.
       id: instance.id,
       data: encodeMotionData({ ...instance, parameters: validated.parameters }),
+      ...(["element.enter.bounce-card", "motion.emphasis.magnetic-snap"].includes(preset.id) ? { immediateRender: true } : {}),
       ...(instance.loop && instance.repeat > 0 ? { repeat: instance.repeat } : {}),
       ...(stagger > 0 ? { stagger } : {}),
     },

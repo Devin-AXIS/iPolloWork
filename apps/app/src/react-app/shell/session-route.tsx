@@ -50,7 +50,6 @@ import {
   type iPolloWorkServerInfo,
 } from "@/app/lib/desktop";
 import type {
-  ArtifactCompletionTarget,
   ComposerDraft,
   ModelRef,
   PromptDispatchOptions,
@@ -60,7 +59,6 @@ import type {
   ProviderListItem,
   ProviderListResponse,
 } from "@/app/types";
-import { artifactContentFingerprint } from "@/react-app/domains/session/artifacts/artifact-completion";
 import {
   getWorkspaceTaskLoadErrorDisplay,
   isDesktopRuntime,
@@ -111,6 +109,7 @@ import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/reac
 import {
   conversationTemplateBrief,
   inferConversationTemplateIntents,
+  inferConversationWorkKind,
   conversationVideoTarget,
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
@@ -144,13 +143,9 @@ import {
   videoPromptRequiresStoryboardReview,
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
-  videoHostExportOperationKey,
   type VideoDeliveryRequirements,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
-import { currentHostVideoDelivery, publishHostVideoDelivery, subscribeHostVideoDeliverySettled } from "@/react-app/domains/session/video/video-delivery-coordination";
-import { douyinPublicationCopyForPrompt } from "@/react-app/domains/session/video/douyin-publication";
-import { wechatChannelsPublicationCopyForPrompt } from "@/react-app/domains/session/video/wechat-channels-publication";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -169,7 +164,7 @@ import {
   writeActiveWorkspaceId,
   writeLastSessionFor,
 } from "./session-memory";
-import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
+import { newTaskComposerScope, useComposerStateStore, type ComposerSessionState } from "@/react-app/domains/session/surface/composer-state-store";
 import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
 import { reviewDesignPreview, type DesignPreviewReviewKind } from "@/react-app/domains/session/design/design-preview-review";
@@ -269,13 +264,51 @@ function controlStringValue(input: unknown, key: string) {
 // app relaunch, matching BOOT_STARTED in desktop-runtime-boot.ts.
 let firstRunLoaderPhase: "unarmed" | "armed" | "done" = "unarmed";
 
-type PendingInitialProjectTask = {
+type InitialProjectDraftSource = {
+  sourceScope: string;
+  sourceComposerState: ComposerSessionState;
+};
+
+type PendingInitialProjectTask = InitialProjectDraftSource & {
   workspaceId: string;
+  engineId: string;
   sessionId: string | null;
   runtimeWorkspaceId: string | null;
   clientUserMessageId: string | null;
   draft: ComposerDraft;
 };
+
+function captureInitialProjectDraftSource(workspaceId: string | null | undefined, draft: ComposerDraft): InitialProjectDraftSource {
+  const sourceScope = newTaskComposerScope(workspaceId);
+  const store = useComposerStateStore.getState();
+  const sourceComposerState = store.sessions[sourceScope] ?? {
+    draft: draft.resolvedText ?? draft.text,
+    attachments: draft.attachments,
+    mentions: {},
+    pasteParts: [],
+  };
+  if (!store.sessions[sourceScope]) store.restoreSessionIfEmpty(sourceScope, sourceComposerState);
+  return { sourceScope, sourceComposerState };
+}
+
+function clearInitialProjectDraftSource(source: InitialProjectDraftSource, releasePreviews: boolean) {
+  const store = useComposerStateStore.getState();
+  if (store.sessions[source.sourceScope] !== source.sourceComposerState) return;
+  store.clearSession(source.sourceScope);
+  if (releasePreviews) {
+    source.sourceComposerState.attachments.forEach((attachment) => {
+      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    });
+  }
+}
+
+function restoreInitialProjectDraft(pending: PendingInitialProjectTask) {
+  if (!pending.sessionId) return;
+  const store = useComposerStateStore.getState();
+  if (store.restoreSessionIfEmpty(pending.sessionId, pending.sourceComposerState)) {
+    clearInitialProjectDraftSource(pending, false);
+  }
+}
 
 export function SessionRoute() {
   const navigate = useNavigate();
@@ -336,9 +369,15 @@ export function SessionRoute() {
     onServerSettingsChanged: () => setiPolloWorkServerSettingsVersion((value) => value + 1),
     onHostInfo: setiPolloWorkServerHostInfoState,
   });
+  const [newConversationEngineId, setNewConversationEngineId] = useState<string | null>(null);
+  const selectedConversation = sessionsByWorkspaceId[selectedWorkspaceId]?.find((item) => item.id === selectedSessionId);
+  const activeEngineId = selectedSessionId
+    ? selectedConversation?.engineId || selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID
+    : newConversationEngineId || selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
+  useEffect(() => setNewConversationEngineId(null), [selectedWorkspaceId]);
   const conversation = useMemo(
-    () => opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError
-      ? conversationEngineAdapters.get(selectedWorkspace?.engineId).connect({
+    () => opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError && (!selectedSessionId || selectedConversation)
+      ? conversationEngineAdapters.get(activeEngineId).connect({
           baseUrl: opencodeBaseUrl,
           token: selectedWorkspaceServerToken,
           directory: selectedWorkspaceRoot || undefined,
@@ -346,9 +385,9 @@ export function SessionRoute() {
           workspaceId: selectedWorkspaceEndpoint?.workspaceId,
         })
       : null,
-    [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
+    [opencodeBaseUrl, activeEngineId, selectedSessionId, selectedConversation?.id, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
   );
-  const conversationConnectionKey = `${selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
+  const conversationConnectionKey = `${activeEngineId}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
   const readConversationSnapshot = useCallback(async (sessionId: string) => {
     if (!conversation || !selectedWorkspaceEndpoint) {
       throw new Error("Conversation runtime is unavailable");
@@ -360,7 +399,6 @@ export function SessionRoute() {
     );
     return conversation.mapSnapshot(response.item);
   }, [conversation, selectedWorkspaceEndpoint?.client, selectedWorkspaceEndpoint?.workspaceId]);
-  const activeEngineId = selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   const selectedModel = local.prefs.model;
   const [engineModelSelection, setEngineModelSelection] = useState<{
@@ -1098,31 +1136,15 @@ export function SessionRoute() {
     const queryClient = getReactQueryClient();
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ["work-items"] }),
-      queryClient.invalidateQueries({ queryKey: ["project-overview"] }),
+      queryClient.invalidateQueries({ queryKey: ["conversation-workflow"] }),
+      queryClient.invalidateQueries({ queryKey: ["work-templates"] }),
       queryClient.invalidateQueries({ queryKey: ["project-runtime-metrics"] }),
     ]);
   }, []);
 
-  const finishProjectExecution = useCallback((input: {
-    sessionId: string;
-    status: "done" | "failed";
-    error?: string | null;
-  }) => {
-    if (!selectedWorkspaceEndpoint || isProjectBuilderSession(selectedWorkspaceId, input.sessionId)) return;
-    const session = sessionsByWorkspaceIdRef.current[selectedWorkspaceId]?.find((item) => item.id === input.sessionId);
-    const title = session?.title?.trim() || t("session.untitled");
-    void selectedWorkspaceEndpoint.client.finishProjectSessionExecution(
-      selectedWorkspaceEndpoint.workspaceId,
-      input.sessionId,
-      { status: input.status, title, error: input.error ?? null },
-    ).then(invalidateProjectExecutionQueries).catch(() => undefined);
-  }, [invalidateProjectExecutionQueries, selectedWorkspaceEndpoint, selectedWorkspaceId, sessionsByWorkspaceIdRef]);
-
   const handleSessionStatus = useCallback((update: { sessionId: string; status: ConversationStatus }) => {
     if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
-    if (!currentHostVideoDelivery(selectedWorkspaceEndpoint.workspaceId, update.sessionId)) {
-      finishProjectExecution({ sessionId: update.sessionId, status: "done" });
-    }
+    invalidateProjectExecutionQueries();
     const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
     const runningContexts = Object.values(contexts).filter((context) => (
       context.sessionId === update.sessionId
@@ -1148,18 +1170,11 @@ export function SessionRoute() {
         }
       })();
     }
-  }, [finishProjectExecution, selectedWorkspaceEndpoint]);
+  }, [invalidateProjectExecutionQueries, selectedWorkspaceEndpoint]);
 
-  const handleSessionError = useCallback((update: { sessionId: string; errorText: string }) => {
-    if (!selectedWorkspaceEndpoint || !currentHostVideoDelivery(selectedWorkspaceEndpoint.workspaceId, update.sessionId)) {
-      finishProjectExecution({ sessionId: update.sessionId, status: "failed", error: update.errorText });
-    }
-  }, [finishProjectExecution, selectedWorkspaceEndpoint]);
-
-  useEffect(() => subscribeHostVideoDeliverySettled((result) => {
-    if (result.workspaceId !== selectedWorkspaceEndpoint?.workspaceId) return;
-    finishProjectExecution({ sessionId: result.sessionId, status: result.status, error: result.error });
-  }), [finishProjectExecution, selectedWorkspaceEndpoint]);
+  const handleSessionError = useCallback(() => {
+    invalidateProjectExecutionQueries();
+  }, [invalidateProjectExecutionQueries]);
 
   const surfaceProps = useMemo(() => {
     if (!client || !selectedWorkspaceId || !opencodeBaseUrl || !token || !conversation) {
@@ -1370,6 +1385,8 @@ export function SessionRoute() {
             targetSessionId,
             {
               title: session?.title?.trim() || t("session.untitled"),
+              goal: text.trim().slice(0, 2_000),
+              workKind: inferConversationWorkKind(text),
               runtime: {
                 engineId: activeEngineId,
                 model: effectiveModel
@@ -1552,7 +1569,6 @@ export function SessionRoute() {
         if (attachmentInstruction) {
           parts.push({ type: "text", text: attachmentInstruction, synthetic: true });
         }
-        const capabilitySystemContext = draft.capability?.instruction ?? null;
         // A workbench owns its request; template inference must not add a second task.
         const workspaceAppRequest = draft.capability?.id.split("+").some((id) => id.startsWith("workspace-app:")) === true;
         const videoTarget = conversationVideoTarget(text);
@@ -1714,7 +1730,6 @@ export function SessionRoute() {
           && videoTarget !== "media"
           && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
-        const videoDeliveryIntent = videoDeliveryIntentForPrompt(videoPromptText);
         const videoTasks = videoSessionTemplates.length > 0
           ? videoSessionTemplates.map((template) => ({ sessionId: template.sessionId, template }))
           : isLegacyVideoTask
@@ -1724,10 +1739,6 @@ export function SessionRoute() {
           promptText: videoPromptText,
           hasReferenceAttachments: draft.attachments.length > 0,
         });
-        const hostVideoOperationKey = videoDeliveryIntent && videoTasks.length > 0 && !requiresStoryboardReview
-          ? videoHostExportOperationKey(targetSessionId, dispatchOptions?.clientUserMessageId ?? crypto.randomUUID())
-          : null;
-        const videoRequirementsBySession = new Map<string, VideoDeliveryRequirements>();
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
           const voiceover = selectedWorkspaceEndpoint
             ? await readVideoVoiceoverAvailability(
@@ -1746,7 +1757,6 @@ export function SessionRoute() {
             voiceoverAvailable: voiceover.configured,
             voiceoverEnabled: voiceover.enabled,
           });
-          videoRequirementsBySession.set(sessionId, videoDeliveryRequirements);
           const includeVoiceoverContext = !requiresStoryboardReview && videoPromptRequestsVoiceoverContext(
             draft.capability?.id, videoPromptText, videoDeliveryRequirements,
           );
@@ -1757,8 +1767,6 @@ export function SessionRoute() {
             {
               includeVoiceover: includeVoiceoverContext,
               deliveryRequirements: videoDeliveryRequirements,
-              hostManagedExport: draft.capability?.id === "video-publish-continuation" || draft.capability?.id === "video-delivery-recovery",
-              hostExportOperationKey: hostVideoOperationKey ?? undefined,
               requireStoryboardReview: requiresStoryboardReview,
             },
           );
@@ -1789,7 +1797,7 @@ export function SessionRoute() {
           return templateAuthoringSystemContext(template, selectedDesignSystemGuide);
         }));
         const languageSystemContext = responseLanguageSystemContext(currentLocale());
-        const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]
+        const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, languageSystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
         // Version history is a site-only workflow. Slides and every other
@@ -1830,50 +1838,6 @@ export function SessionRoute() {
             }
           }
         }
-        const hostVideoTask = videoDeliveryIntent && !requiresStoryboardReview
-          ? videoTasks.at(-1) ?? null
-          : null;
-        const hostVideoSourcePath = hostVideoTask?.template?.state.entry ?? (hostVideoTask ? videoProjectEntryPath(hostVideoTask.sessionId) : null);
-        const hostVideoBaseline = hostVideoSourcePath && automaticTemplateInstruction && selectedWorkspaceEndpoint
-          ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, hostVideoSourcePath)).content)
-          : null;
-        const videoDeliveryTask = videoTasks.at(-1) ?? null;
-        const videoDeliverySourcePath = videoDeliveryTask?.template?.state.entry
-          ?? (videoDeliveryTask ? videoProjectEntryPath(videoDeliveryTask.sessionId) : null);
-        const videoDeliveryBaseline = videoDeliverySourcePath && selectedWorkspaceEndpoint
-          ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(
-              selectedWorkspaceEndpoint.workspaceId,
-              videoDeliverySourcePath,
-            )).content)
-          : null;
-        const requiresMediaReview = (entry: string) => Boolean(automaticTemplateInstruction)
-          || parts.some(part => part.type === "text" && part.synthetic
-            && part.text.includes("media/artifact_media_review phase=plan") && part.text.includes(entry));
-        const completionTemplates = automaticTemplateInstruction
-          ? sessionTemplates.filter((template) => (
-              template.sessionId !== hostVideoTask?.template?.sessionId
-              && (!requiresStoryboardReview || template.manifest.surface !== "video")
-            ))
-          : sessionTemplates.filter((template) => (
-              (template.manifest.surface !== "video" || requiresMediaReview(template.state.entry))
-              && explicitlyTargetedTemplateSessionIds.has(template.sessionId)
-            ));
-        const artifactCompletionTargets: ArtifactCompletionTarget[] = selectedWorkspaceEndpoint
-          ? await Promise.all(completionTemplates.map(async (template) => {
-              const source = await selectedWorkspaceEndpoint.client.readWorkspaceFile(
-                selectedWorkspaceEndpoint.workspaceId,
-                template.state.entry,
-              );
-              return {
-                sourcePath: template.state.entry,
-                baselineFingerprint: artifactContentFingerprint(source.content),
-                mediaReview: requiresMediaReview(template.state.entry),
-                previewReviewKind: template.manifest.category === "site" || template.manifest.category === "slides"
-                  ? template.manifest.category
-                  : undefined,
-              };
-            }))
-          : [];
         const capabilityPromptPart = draft.capability
           ? [{
               type: "text" as const,
@@ -1974,38 +1938,7 @@ export function SessionRoute() {
           void conversation.rename(targetSessionId, pendingTitlePersist, selectedWorkspaceRoot || undefined)
             .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
         }
-        if (hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey) {
-          publishHostVideoDelivery({
-            workspaceId: selectedWorkspaceEndpoint?.workspaceId ?? selectedWorkspaceId,
-            sessionId: effectiveSessionId,
-            sourcePath: hostVideoSourcePath,
-            baselineFingerprint: hostVideoBaseline,
-            operationKey: hostVideoOperationKey,
-            intent: videoDeliveryIntent,
-            promptText: videoPromptText,
-            ...(videoDeliveryIntent === "publish-douyin"
-              ? { publicationCopy: douyinPublicationCopyForPrompt(videoPromptText) }
-              : videoDeliveryIntent === "publish-wechat-channels"
-                ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(videoPromptText) }
-              : {}),
-          });
-        }
-        return {
-          dispatched: true,
-          sessionId: effectiveSessionId,
-          ...(artifactCompletionTargets.length > 0 ? { artifactCompletionTargets } : {}),
-          ...(videoDeliverySourcePath && videoDeliveryTask
-            ? { videoDeliveryTarget: {
-                sourcePath: videoDeliverySourcePath,
-                requirements: videoRequirementsBySession.get(videoDeliveryTask.sessionId)
-                  ?? videoDeliveryRequirementsForPrompt({ promptText: videoPromptText }),
-                baselineFingerprint: videoDeliveryBaseline,
-                ...(hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey
-                  ? { intent: videoDeliveryIntent, operationKey: hostVideoOperationKey }
-                  : {}),
-              } }
-            : {}),
-        };
+        return { dispatched: true, sessionId: effectiveSessionId };
         } catch (error) {
           await finishStartedExecution("failed", describeRouteError(error));
           throw error;
@@ -2174,6 +2107,7 @@ export function SessionRoute() {
     templateScope?: WorkContextId,
     authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility; purpose?: "template-authoring" | "artifact-delivery"; brief?: unknown },
     templateApplication?: SessionTemplateTaskApplication,
+    conversationOptions?: { engineId?: string; workTemplateId?: string },
   ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (
@@ -2201,8 +2135,20 @@ export function SessionRoute() {
         endpoint.workspaceId,
         undefined,
         activeSelectedModel,
+        conversationOptions?.engineId || (workspaceId === selectedWorkspaceId ? activeEngineId : workspace.engineId || undefined),
       );
       createdSessionId = session.id;
+      const workTemplateId = conversationOptions?.workTemplateId
+        ?? (type === "video" ? "video" : type === "design" ? "design" : undefined);
+      if (workTemplateId && workTemplateId !== "auto") {
+        projectInitializationFailed = true;
+        await endpoint.client.setConversationWorkflow(endpoint.workspaceId, session.id, {
+          templateId: workTemplateId,
+          source: "manual",
+          runtime: { engineId: session.engineId || activeEngineId, model: null, mode: null, modelVariant: null },
+        });
+        projectInitializationFailed = false;
+      }
       let sessionType = type;
       if (templateId) {
         try {
@@ -2294,7 +2240,7 @@ export function SessionRoute() {
       return session.id;
     } catch (error) {
       const message = describeTaskCreateError(error, workspace.engineId);
-      if ((templateId || authoring) && projectInitializationFailed) {
+      if (projectInitializationFailed) {
         if (createdSessionId) {
           await endpoint.client.deleteSession(endpoint.workspaceId, createdSessionId).catch(() => undefined);
         }
@@ -2342,6 +2288,7 @@ export function SessionRoute() {
     }
   }, [
     baseUrl,
+    activeEngineId,
     activeSelectedModel,
     ipolloworkServerHostInfoState?.hostToken,
     loading,
@@ -2350,11 +2297,13 @@ export function SessionRoute() {
     refreshRouteState,
     rememberPendingCreatedSession,
     token,
+    selectedWorkspaceId,
     workspaces,
   ]);
 
   const handleCreateInitialProjectTask = useCallback(async (draft: ComposerDraft, workspaceId?: string) => {
     if (pendingInitialProjectTask) return false;
+    const source = captureInitialProjectDraftSource(selectedWorkspaceId, draft);
     try {
       let targetWorkspaceId = workspaceId?.trim() || "";
       if (targetWorkspaceId) {
@@ -2368,7 +2317,9 @@ export function SessionRoute() {
       }
       if (!targetWorkspaceId) return false;
       setPendingInitialProjectTask({
+        ...source,
         workspaceId: targetWorkspaceId,
+        engineId: activeEngineId,
         sessionId: null,
         runtimeWorkspaceId: null,
         clientUserMessageId: null,
@@ -2381,7 +2332,7 @@ export function SessionRoute() {
       });
       return false;
     }
-  }, [createProject, pendingInitialProjectTask, workspaces]);
+  }, [activeEngineId, createProject, pendingInitialProjectTask, selectedWorkspaceId, workspaces]);
 
   const handleCreateProjectBuilder = useCallback(async (workspaceId: string) => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
@@ -2408,7 +2359,9 @@ export function SessionRoute() {
       forgetProjectBuilderSession(workspaceId, existingSessionId);
     }
 
-    const sessionId = await handleCreateTaskInWorkspace(workspaceId, "work");
+    const sessionId = await handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, undefined, undefined, {
+      engineId: workspace.engineId || DEFAULT_ENGINE_ID,
+    });
     if (!sessionId) return;
     markProjectBuilderSession(workspaceId, sessionId);
     const starterPrompt = t("project_builder.starter_prompt");
@@ -2439,14 +2392,16 @@ export function SessionRoute() {
   const handleCreateTaskFromDraft = useCallback(async (workspaceId: string, draft: ComposerDraft) => {
     if (pendingInitialProjectTask || !workspaces.some((workspace) => workspace.id === workspaceId)) return false;
     setPendingInitialProjectTask({
+      ...captureInitialProjectDraftSource(workspaceId, draft),
       workspaceId,
+      engineId: activeEngineId,
       sessionId: null,
       runtimeWorkspaceId: null,
       clientUserMessageId: null,
       draft,
     });
     return true;
-  }, [pendingInitialProjectTask, workspaces]);
+  }, [activeEngineId, pendingInitialProjectTask, workspaces]);
 
   const rollbackFailedInitialProjectPrompt = useCallback((pending: PendingInitialProjectTask) => {
     const sessionId = pending.sessionId;
@@ -2460,6 +2415,7 @@ export function SessionRoute() {
     }
     // Keep the created session visible in the sidebar after a transient
     // first-send failure so the user can retry their task.
+    restoreInitialProjectDraft(pending);
   }, []);
 
   useEffect(() => {
@@ -2467,7 +2423,9 @@ export function SessionRoute() {
     if (!pending || pending.sessionId || initialProjectSessionCreatingRef.current) return;
     if (!workspaces.some((workspace) => workspace.id === pending.workspaceId)) return;
     initialProjectSessionCreatingRef.current = true;
-    void handleCreateTaskInWorkspace(pending.workspaceId).then((sessionId) => {
+    void handleCreateTaskInWorkspace(pending.workspaceId, "work", undefined, undefined, undefined, undefined, {
+      engineId: pending.engineId, workTemplateId: pending.draft.workTemplateId,
+    }).then((sessionId) => {
       if (!sessionId) {
         setPendingInitialProjectTask(null);
       }
@@ -2475,6 +2433,7 @@ export function SessionRoute() {
       initialProjectSessionCreatingRef.current = false;
     });
   }, [
+    activeEngineId,
     handleCreateTaskInWorkspace,
     pendingInitialProjectTask,
     workspaces,
@@ -2508,6 +2467,8 @@ export function SessionRoute() {
       .then((dispatched) => {
         if (!dispatched) {
           rollbackFailedInitialProjectPrompt(pending);
+        } else {
+          clearInitialProjectDraftSource(pending, true);
         }
       })
       .catch((error) => {
@@ -3033,6 +2994,7 @@ export function SessionRoute() {
         onSelectProject: selectProject,
         onCreateProject: createProject,
         onCreateInitialProjectTask: handleCreateInitialProjectTask,
+        onSelectConversationEngine: setNewConversationEngineId,
         onCreateTaskFromDraft: handleCreateTaskFromDraft,
         onRenameProject: renameProject,
         onRevealProject: revealProject,

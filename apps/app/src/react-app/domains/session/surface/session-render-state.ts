@@ -6,34 +6,6 @@ import { applyRevertCursor } from "../sync/transcript-reconcile";
 import type { ConversationSnapshot } from "../engine/conversation-engine";
 
 const COMPOSER_INPUT_HISTORY_LIMIT = 50;
-export const INTERNAL_CONTINUATION_MESSAGE_ID_PREFIX = "msg_ipollowork_internal_continuation_";
-const LEGACY_INTERNAL_CONTINUATION_MESSAGE_ID_PREFIX = "ipollowork-internal-continuation-";
-
-const LEGACY_INTERNAL_CONTINUATION_TEXTS = new Set([
-  "Continue the unfinished artifact delivery.",
-  "Continue the unfinished video delivery.",
-  "Continue the current iPolloWork task now. Apply every application instruction before completing this turn.",
-]);
-
-function messageText(message: UIMessage): string {
-  return message.parts
-    .flatMap((part) => part.type === "text" ? [part.text] : [])
-    .join("\n")
-    .trim();
-}
-
-export function createInternalContinuationMessageId(): string {
-  return `${INTERNAL_CONTINUATION_MESSAGE_ID_PREFIX}${crypto.randomUUID()}`;
-}
-
-export function isInternalContinuationUserMessage(message: UIMessage): boolean {
-  return message.role === "user" && (
-    message.id.startsWith(INTERNAL_CONTINUATION_MESSAGE_ID_PREFIX)
-    || message.id.startsWith(LEGACY_INTERNAL_CONTINUATION_MESSAGE_ID_PREFIX)
-    || LEGACY_INTERNAL_CONTINUATION_TEXTS.has(messageText(message))
-  );
-}
-
 export function resolveRenderedSessionSnapshot(input: {
   sessionId: string;
   currentSnapshot: ConversationSnapshot | null | undefined;
@@ -80,8 +52,7 @@ export function deriveRenderedSessionMessages(input: {
     && message.parts[0].type === "text"
     && /^Reconnecting(?:\.{3}|…)\s*waiting for network\s*$/i.test(message.parts[0].text.trim())
   )) : messages;
-  return applyRevertCursor(repaired, revertMessageId, { preserveOptimisticUserMessages: true })
-    .filter((message) => !isInternalContinuationUserMessage(message));
+  return applyRevertCursor(repaired, revertMessageId, { preserveOptimisticUserMessages: true });
 }
 
 export function deriveComposerInputHistory(messages: UIMessage[]): string[] {

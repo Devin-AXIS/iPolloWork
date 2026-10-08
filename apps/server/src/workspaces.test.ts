@@ -97,7 +97,7 @@ describe("findManagedEngineWorkspace", () => {
     expect(findManagedEngineWorkspace(workspaces)).toBeUndefined();
   });
 
-  test("does not boot OpenCode inside a DeepSeek Harness project", () => {
+  test("provides managed OpenCode for native-default projects without changing their defaults", () => {
     const workspaces = [
       ws({
         id: "ws_dsh",
@@ -106,7 +106,17 @@ describe("findManagedEngineWorkspace", () => {
         engineId: "deepseek-harness",
       }),
     ];
-    expect(findManagedEngineWorkspace(workspaces)).toBeUndefined();
+    expect(findManagedEngineWorkspace(workspaces)).toMatchObject({ id: "ws_dsh", engineId: DEFAULT_ENGINE_ID });
+    expect(workspaces[0]?.engineId).toBe("deepseek-harness");
+  });
+
+  test("prefers an OpenCode default while retaining native projects", () => {
+    const workspaces = [
+      ws({ id: "ws_codex", path: "/home/user/codex", workspaceType: "local", engineId: "codex-harness" }),
+      ws({ id: "ws_opencode", path: "/home/user/work", workspaceType: "local", engineId: DEFAULT_ENGINE_ID }),
+    ];
+    expect(findManagedEngineWorkspace(workspaces)?.id).toBe("ws_opencode");
+    expect(workspaces[0]?.engineId).toBe("codex-harness");
   });
 
   test("ignores a remote workspace that carries a non-empty directory path", () => {

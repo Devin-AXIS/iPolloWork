@@ -1,5 +1,3 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
-
 # Poster and Banner Rules
 
 Use for `poster`: a single promotional canvas, poster or banner. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change.

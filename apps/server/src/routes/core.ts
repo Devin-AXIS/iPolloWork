@@ -9,6 +9,8 @@ import {
   type ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
 import {
+  conversationWorkflowUpdateSchema,
+  workTemplateSaveSchema,
   workItemAutomationRecurrenceSchema,
   workItemPrioritySchema,
   type WorkItemAutomation,
@@ -38,6 +40,7 @@ import {
   type EngineHostToolName,
 } from "../engine-host-tools.js";
 import { ApiError } from "../errors.js";
+import { readProjectSessionWorkItem, listWorkTemplates, writeConversationWorkflow, saveWorkTemplate, WorkItemConflictError } from "../work-items.js";
 import {
   createGoogleWorkspaceConnectFlowManager,
   googleWorkspaceDisconnect,
@@ -96,6 +99,7 @@ interface RegisterCoreRoutesOptions {
   resolveDevLogPath: () => string | null;
   createOpenAiRealtimeVoiceSession: (env: EnvService, input: unknown) => Promise<unknown>;
   resolveEngineSessionContext?: (workspaceId: string) => string | null;
+  resolveEngineArtifactSessionId?: (workspace: WorkspaceInfo, sessionId: string) => Promise<string>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -208,6 +212,21 @@ export function engineCallContext(
   return { ...context, sessionId: fallbackValue };
 }
 
+function requiresConversationIdentity(name: string): boolean {
+  return name === ENGINE_HOST_TOOL_NAMES.conversationRead
+    || name === ENGINE_HOST_TOOL_NAMES.conversationApply
+    || name === ENGINE_HOST_TOOL_NAMES.workTemplateSave;
+}
+
+async function conversationToolMutation<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof WorkItemConflictError) throw new ApiError(409, "work_item_conflict", error.message);
+    throw error;
+  }
+}
+
 async function executeUiControlAction(actionId: string, args: Record<string, unknown>): Promise<unknown> {
   const response = await uiControlRequest("/execute", {
     method: "POST",
@@ -253,6 +272,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     resolveDevLogPath,
     createOpenAiRealtimeVoiceSession,
     resolveEngineSessionContext,
+    resolveEngineArtifactSessionId,
   } = options;
   const googleWorkspaceConnectFlows = createGoogleWorkspaceConnectFlowManager(config);
   const envPendingChangesByRuntime = new Map<string, boolean>();
@@ -265,7 +285,16 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     }
     const extensionId = typeof body.extensionId === "string" ? body.extensionId.trim() : "";
     const actionId = typeof body.action === "string" ? body.action.trim() : "";
-    const context = isRecord(body.context) ? body.context : {};
+    let context = isRecord(body.context) ? body.context : {};
+    if (resolveEngineArtifactSessionId && ["media", "openai-image-generation", "video-generation"].includes(extensionId)
+      && typeof context.sessionId === "string" && context.sessionId) {
+      const workspace = findWorkspaceForContext(config.workspaces, context);
+      if (workspace) {
+        const sessionId = await resolveEngineArtifactSessionId(workspace, context.sessionId);
+        context = { ...context, sessionId };
+        body = { ...body, context };
+      }
+    }
     const connectSnapshot = await getConnectSnapshot(config);
     const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
       .find((action) => action.extensionId === extensionId && action.action === actionId);
@@ -340,6 +369,44 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       args: isRecord(args.args) ? args.args : {},
       context,
     }),
+    [ENGINE_HOST_TOOL_NAMES.conversationRead]: async (_ctx, _args, context) => {
+      const workspace = await resolveEngineToolWorkspace(context);
+      const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+      if (!sessionId) throw new ApiError(400, "conversation_context_missing", "This tool requires the current conversation identity");
+      const item = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+      if (!item?.execution) throw new ApiError(404, "conversation_binding_missing", "The current conversation has no execution binding");
+      const { templates } = await listWorkTemplates(config, workspace);
+      return { ok: true, item, templates: templates.map(({ id, name, description, workKind, version }) => ({ id, name, description, workKind, version })) };
+    },
+    [ENGINE_HOST_TOOL_NAMES.conversationApply]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") throw new ApiError(403, "forbidden", "Viewer tokens cannot update conversation work");
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+      if (!sessionId) throw new ApiError(400, "conversation_context_missing", "This tool requires the current conversation identity");
+      const current = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+      if (!current?.execution) throw new ApiError(404, "conversation_binding_missing", "The current conversation has no execution binding");
+      if (args.runtime !== undefined) throw new ApiError(400, "conversation_runtime_fixed", "This tool cannot change the bound execution runtime");
+      const workflow = current.execution.workflow;
+      if (workflow && workflow.source !== "auto" && args.templateId !== undefined && args.templateId !== workflow.templateId) {
+        throw new ApiError(409, "conversation_template_selected", "The user selected this work template. Refine its goals and stages, or ask the user to change the method in the conversation overview.");
+      }
+      const input = conversationWorkflowUpdateSchema.safeParse({ ...args, runtime: current.execution.runtime, source: args.source ?? current.execution.workflow?.source ?? "custom" });
+      if (!input.success) throw new ApiError(400, "invalid_conversation_workflow", input.error.message);
+      const item = await conversationToolMutation(() => writeConversationWorkflow(config, workspace, sessionId, input.data, { allowRunning: true }));
+      return { ok: true, item };
+    },
+    [ENGINE_HOST_TOOL_NAMES.workTemplateSave]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") throw new ApiError(403, "forbidden", "Viewer tokens cannot save work templates");
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+      if (!sessionId) throw new ApiError(400, "conversation_context_missing", "This tool requires the current conversation identity");
+      const input = workTemplateSaveSchema.safeParse({ ...args, sessionId });
+      if (!input.success) throw new ApiError(400, "invalid_work_template", input.error.message);
+      const template = await conversationToolMutation(() => saveWorkTemplate(config, workspace, input.data));
+      return { ok: true, template };
+    },
     [ENGINE_HOST_TOOL_NAMES.projectRead]: async (_ctx, _args, context) => {
       const workspace = await resolveEngineToolWorkspace(context);
       requireProjectBuilderSession(workspace, context);
@@ -657,7 +724,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       // Keep it request-scoped so concurrent manual and scheduled sessions cannot share a lease.
       const sessionId = engineMcpSessionId(
         request.params._meta ?? extra._meta,
-        resolveEngineSessionContext?.(workspaceId) ?? null,
+        requiresConversationIdentity(descriptor.name) ? null : resolveEngineSessionContext?.(workspaceId) ?? null,
       );
       const value = await engineHostToolHandlers[descriptor.name](ctx, args, {
         workspaceId,
@@ -941,7 +1008,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     const workspace = findWorkspaceForContext(config.workspaces, inputContext);
     const context = engineCallContext(
       inputContext,
-      workspace ? resolveEngineSessionContext?.(workspace.id) ?? null : null,
+      workspace && !requiresConversationIdentity(name) ? resolveEngineSessionContext?.(workspace.id) ?? null : null,
     );
     const descriptor = engineHostTool(name);
     if (!descriptor) {

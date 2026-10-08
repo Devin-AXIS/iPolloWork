@@ -113,28 +113,28 @@ Pattern: progressive-build. Native default duration: 8s. Minimum final readable 
 
 ### step-1
 
-- Target: .vc-item:nth-child(1)
+- Target: .vc-item:nth-child(1), .vc-carrier
 - Visible action: Explain supplied item 1 in narration order
 - Authored start: 1.2s; action duration: 0.5s.
 - Narration cue: Bind to the exact measured phrase introducing this item, never its text-length estimate.
 
 ### step-2
 
-- Target: .vc-item:nth-child(2)
+- Target: .vc-item:nth-child(2), .vc-carrier
 - Visible action: Explain supplied item 2 in narration order
 - Authored start: 2.6s; action duration: 0.5s.
 - Narration cue: Bind to the exact measured phrase introducing this item, never its text-length estimate.
 
 ### step-3
 
-- Target: .vc-item:nth-child(3)
+- Target: .vc-item:nth-child(3), .vc-carrier
 - Visible action: Explain supplied item 3 in narration order
 - Authored start: 4.1s; action duration: 0.5s.
 - Narration cue: Bind to the exact measured phrase introducing this item, never its text-length estimate.
 
 ### step-4
 
-- Target: .vc-item:nth-child(4)
+- Target: .vc-item:nth-child(4), .vc-carrier
 - Visible action: Explain supplied item 4 in narration order
 - Authored start: 5.5s; action duration: 0.5s.
 - Narration cue: Bind to the exact measured phrase introducing this item, never its text-length estimate.

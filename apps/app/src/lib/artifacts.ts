@@ -196,6 +196,7 @@ export function selectConversationArtifactCards(
   context?: ArtifactInteractionContext,
 ) {
   return selectArtifactContextOutputs(artifacts, context).filter((artifact) => {
+    if (!isConversationOutputArtifact(artifact)) return false;
     if (context) return canOpenArtifactInContext(artifact, context);
     // Studio entries remain actionable even while their workspace-catalog
     // existence check is catching up with the assistant's final response.
@@ -237,8 +238,8 @@ function getArtifactName(path: string) {
   return segments[segments.length - 1] ?? path;
 }
 
-const INTERNAL_OUTPUT_PATH_PATTERN = /(?:^|\/)(?:\.opencode|\.claude|node_modules|skills|references?|sources?|citations?|plans?|sub[-_]?agents?)(?:\/|$)/i;
-const INTERNAL_OUTPUT_NAME_PATTERN = /^(?:SKILL|AGENTS|CLAUDE|brief|template|manifest|plan|todo|source|references?|citations?)\.(?:md|mdx|json)$/i;
+const INTERNAL_OUTPUT_PATH_PATTERN = /(?:^|\/)(?:\.opencode|\.codex|\.claude|\.thumbnails|node_modules|skills|references?|sources?|citations?|plans?|sub[-_]?agents?|core-v\d+-(?:video|design|slides))(?:\/|$)/i;
+const INTERNAL_OUTPUT_NAME_PATTERN = /^(?:SKILL|AGENTS|CLAUDE|brief|template|manifest|plan|todo|source|references?|citations?|core-v\d+-index)\.(?:md|mdx|json)$/i;
 
 /** Only user-facing files belong in the conversation output list. */
 export function isConversationOutputArtifact(artifact: ArtifactItem) {

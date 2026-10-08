@@ -144,7 +144,7 @@ const AUTHENTICATED_CONFIG = {
 };
 
 describe("runtime MCP engine sync", () => {
-  test.skipIf(!process.env.IPOLLOWORK_ROUTING_PROOF_OPENCODE_BIN)("real OpenCode directory instances keep distinct built-in host bridges", async () => {
+  test.skipIf(!process.env.IPOLLOWORK_ROUTING_PROOF_OPENCODE_BIN)("real OpenCode directory instances serve native-default projects with distinct host bridges", async () => {
     const rootA = await createWorkspaceRoot();
     const rootB = await createWorkspaceRoot();
     const engineRoot = await createWorkspaceRoot();
@@ -159,9 +159,10 @@ describe("runtime MCP engine sync", () => {
     });
     try {
       const app = await startiPolloWorkServer(rootA, engine.url);
+      app.config.workspaces[0]!.engineId = "codex-harness";
       app.config.workspaces[0]!.opencodeUsername = engine.username;
       app.config.workspaces[0]!.opencodePassword = engine.password;
-      app.config.workspaces.push({ ...app.config.workspaces[0]!, id: "ws_2", name: "B", path: rootB });
+      app.config.workspaces.push({ ...app.config.workspaces[0]!, id: "ws_2", name: "B", path: rootB, engineId: "deepseek-harness" });
       app.config.authorizedRoots.push(rootB);
       await syncAllWorkspacesRuntimeMcpToEngine(app.config);
       const headers = { Authorization: `Basic ${Buffer.from(`${engine.username}:${engine.password}`).toString("base64")}` };
@@ -389,7 +390,7 @@ describe("runtime MCP engine sync", () => {
     }
   });
 
-  test("startup sync pushes runtime MCPs for every workspace", async () => {
+  test("startup sync pushes scoped OpenCode MCPs for every local project's default engine", async () => {
     const rootA = await createWorkspaceRoot();
     const rootB = await createWorkspaceRoot();
     const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
@@ -405,8 +406,9 @@ describe("runtime MCP engine sync", () => {
         approval: { mode: "auto", timeoutMs: 1000 },
         corsOrigins: ["*"],
         workspaces: [
-          { id: "ws_1", name: "A", path: rootA, preset: "starter", workspaceType: "local", baseUrl },
-          { id: "ws_2", name: "B", path: rootB, preset: "starter", workspaceType: "local", baseUrl },
+          { id: "ws_1", name: "A", path: rootA, preset: "starter", workspaceType: "local", engineId: "codex-harness", baseUrl },
+          { id: "ws_2", name: "B", path: rootB, preset: "starter", workspaceType: "local", engineId: "deepseek-harness", baseUrl },
+          { id: "ws_remote", name: "Remote", path: "/remote/project", preset: "remote", workspaceType: "remote", baseUrl },
         ],
         authorizedRoots: [rootA, rootB],
         readOnly: false,

@@ -261,7 +261,8 @@ export function partitionInitialWorkspaceLoads<T extends { id: string }>(
 export function isInternalSubtaskSession(session: RouteSession) {
   const parentID = session.parentID?.trim() ?? "";
   const agent = session.agent ?? "";
-  return Boolean(parentID && agent.trim() && agent !== "orchestrator");
+  return Boolean(parentID && ((agent.trim() && agent !== "orchestrator")
+    || (isRecord(session.codex) && session.codex.subagent === true)));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

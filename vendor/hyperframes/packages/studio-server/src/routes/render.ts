@@ -3,12 +3,10 @@ import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
-import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
+import { resolveResolutionFlagPair } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
-
-const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
@@ -67,6 +65,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality?: string;
       format?: string;
       resolution?: string;
+      motionBlur?: boolean;
       outputSize?: { width?: unknown; height?: unknown };
       captureSize?: { width?: unknown; height?: unknown };
       composition?: string;
@@ -90,9 +89,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const quality = ["draft", "standard", "high"].includes(body.quality ?? "")
       ? (body.quality as string)
       : "standard";
-    const outputResolution = VALID_RESOLUTIONS.has(body.resolution ?? "")
-      ? (body.resolution as CanvasResolution)
-      : undefined;
+    const { outputResolution, outputResolutionAspectAgnostic } = resolveResolutionFlagPair(typeof body.resolution === "string" ? body.resolution : undefined);
+    if (body.motionBlur !== undefined && typeof body.motionBlur !== "boolean") {
+      return c.json({ error: "motionBlur must be a boolean" }, 400);
+    }
     const parseSize = (size?: { width?: unknown; height?: unknown }) =>
       typeof size?.width === "number" &&
       typeof size?.height === "number" &&
@@ -140,6 +140,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality,
       jobId,
       outputResolution,
+      outputResolutionAspectAgnostic,
+      motionBlur: body.motionBlur,
       outputSize,
       captureSize,
       composition,

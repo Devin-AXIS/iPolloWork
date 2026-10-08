@@ -5,7 +5,6 @@
  */
 
 import type { RouteSession } from "./route-workspaces";
-import { isBackgroundVideoDeliveryRenderer } from "@/app/lib/background-video-delivery-renderer";
 
 const ACTIVE_WORKSPACE_KEY = "ipollowork.react.activeWorkspace";
 const SESSION_BY_WORKSPACE_KEY = "ipollowork.react.sessionByWorkspace";
@@ -23,7 +22,7 @@ function safeGet(key: string): string | null {
 }
 
 function safeSet(key: string, value: string | null): void {
-  if (typeof window === "undefined" || isBackgroundVideoDeliveryRenderer()) return;
+  if (typeof window === "undefined") return;
   try {
     if (value === null || value === "") {
       window.localStorage.removeItem(key);

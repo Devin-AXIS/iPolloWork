@@ -63,6 +63,8 @@ type WorkCenterProps = {
   providers: ProviderListItem[];
   connectedProviderIds: string[];
   initialAnchorAt?: number;
+  sessionId?: string | null;
+  onOpenSession: (workspaceId: string, sessionId: string) => void;
 };
 
 type ResolvedWorkItem = ProjectBoardItem & {
@@ -132,7 +134,7 @@ function runtimeTaskItems(endpoint: WorkEndpoint, snapshot: RuntimeTaskSnapshot)
         title: record.title,
         description: record.rootTaskTitle ? t("work.execution.part_of", { task: record.rootTaskTitle }) : null,
         status,
-        assignee: record.agentName,
+        assignee: record.agentName ?? t("conversation_work.unattributed_role"),
         priority: "normal",
         startAt: null,
         dueAt: null,
@@ -236,6 +238,8 @@ export function WorkCenter(props: WorkCenterProps) {
     queryKey: [
       "work-items",
       props.mode,
+      props.sessionId,
+      props.mode === "project" ? selectedEndpoint?.workspaceId : null,
       props.mode === "project" ? selectedEndpoint?.key : endpointGroups.map((group) => `${group.key}:${group.endpoints.map((endpoint) => endpoint.workspaceId).join(",")}`).join("|"),
     ],
     enabled: props.mode === "project" ? Boolean(selectedEndpoint) : endpointGroups.length > 0,
@@ -254,6 +258,7 @@ export function WorkCenter(props: WorkCenterProps) {
       const responses = await Promise.all(groups.map(async (group) => {
         const groupItems = await listEndpointWorkItems(group.client, {
           workspaceIds: group.endpoints.map((endpoint) => endpoint.workspaceId),
+          sessionId: props.mode === "project" ? props.sessionId ?? undefined : undefined,
         });
         const endpointByWorkspaceId = new Map(group.endpoints.map((endpoint) => [endpoint.workspaceId, endpoint]));
         return groupItems.flatMap((item) => {
@@ -284,6 +289,7 @@ export function WorkCenter(props: WorkCenterProps) {
       "project-task-runtime",
       selectedEndpoint?.key,
       selectedEndpoint?.workspaceId,
+      props.sessionId,
       itemsQuery.data?.map((entry) => `${entry.item.id}:${entry.item.version}`).join("|") ?? "loading",
     ],
     enabled: props.mode === "project" && Boolean(selectedEndpoint && itemsQuery.data),
@@ -292,8 +298,13 @@ export function WorkCenter(props: WorkCenterProps) {
     queryFn: async (): Promise<RuntimeTaskSnapshot> => {
       if (!selectedEndpoint) throw new Error(t("work.project_unavailable"));
       const workItems = (itemsQuery.data ?? []).map((entry) => entry.item);
-      const response = await selectedEndpoint.client.getConfig(selectedEndpoint.workspaceId);
-      const config = readProjectWorkspaceConfig(response.ipollowork, selectedEndpoint.workspace.engineId);
+      const workflow = props.sessionId
+        ? await selectedEndpoint.client.getConversationWorkflow(selectedEndpoint.workspaceId, props.sessionId)
+        : null;
+      const config = workflow?.item?.execution?.workflow?.config ?? readProjectWorkspaceConfig(
+        (await selectedEndpoint.client.getConfig(selectedEndpoint.workspaceId)).ipollowork,
+        selectedEndpoint.workspace.engineId,
+      );
       const metrics = await loadProjectRuntimeMetrics({
         client: selectedEndpoint.client,
         workspaceId: selectedEndpoint.workspaceId,
@@ -387,17 +398,6 @@ export function WorkCenter(props: WorkCenterProps) {
       return editorEndpoint.client.getWorkBoard(editorEndpoint.workspaceId);
     },
   });
-  const editorAgentsQuery = useQuery({
-    queryKey: ["work-item-project-agents", editorEndpoint?.key, editorEndpoint?.workspaceId],
-    enabled: editorOpen && Boolean(editorEndpoint),
-    staleTime: 30_000,
-    queryFn: async () => {
-      if (!editorEndpoint) throw new Error("Project endpoint is unavailable");
-      const response = await editorEndpoint.client.getConfig(editorEndpoint.workspaceId);
-      return readProjectWorkspaceConfig(response.ipollowork, editorEndpoint.workspace.engineId).agents;
-    },
-  });
-
   const board = localizedBoard(projectBoardQuery.data ?? defaultBoard(selectedEndpoint?.workspaceId ?? ""));
   const editorBoard = localizedBoard(editorBoardQuery.data ?? (editorEndpoint?.workspaceId === selectedEndpoint?.workspaceId ? board : defaultBoard(editorEndpoint?.workspaceId ?? "")));
 
@@ -408,7 +408,12 @@ export function WorkCenter(props: WorkCenterProps) {
   const createMutation = useMutation({
     mutationFn: async (value: WorkItemEditorValue) => {
       if (!editorEndpoint) throw new Error(t("work.project_unavailable"));
-      return editorEndpoint.client.createWorkItem(editorEndpoint.workspaceId, value);
+      return editorEndpoint.client.createWorkItem(editorEndpoint.workspaceId, {
+        ...value,
+        customFields: props.sessionId
+          ? { ...value.customFields, conversationId: props.sessionId }
+          : value.customFields,
+      });
     },
     onSuccess: async () => {
       setPendingDelete(null);
@@ -485,13 +490,26 @@ export function WorkCenter(props: WorkCenterProps) {
     return runtimeTaskItems(selectedEndpoint, projectRuntimeQuery.data);
   }, [globalRuntimeQuery.data?.items, projectRuntimeQuery.data, props.mode, selectedEndpoint]);
   const boardItems = [...items, ...runtimeItems];
+  const openEntry = (entryKey: string) => {
+    const entry = boardItems.find((candidate) => candidate.key === entryKey);
+    if (!entry) return;
+    if (entry.executionRecord) {
+      props.onOpenSession(entry.endpoint.workspace.id, entry.executionRecord.sessionId);
+      return;
+    }
+    setEditingEntry(entry);
+    setCreateEndpoint(null);
+    setEditorOpen(true);
+  };
   const calendarItems = props.mode === "global"
     ? boardItems
     : items.filter((entry) => entry.item.startAt !== null || entry.item.dueAt !== null);
-  const title = props.mode === "global" ? t("work.global_title") : t("work.project_title");
+  const title = props.mode === "global"
+    ? t("work.global_title")
+    : props.sessionId ? t("conversation_work.tasks") : t("work.project_title");
   const subtitle = props.mode === "global"
     ? t("work.global_description")
-    : t("work.project_description", { project: selectedEndpoint?.projectName ?? t("work.project_title") });
+    : props.sessionId ? t("conversation_work.description") : t("work.project_description", { project: selectedEndpoint?.projectName ?? t("work.project_title") });
   const showBoard = props.mode === "project" && projectView === "board";
 
   return (
@@ -558,19 +576,14 @@ export function WorkCenter(props: WorkCenterProps) {
           <ProjectBoard
             items={boardItems}
             board={board}
+            agents={[]}
             panEnabled={boardPanEnabled}
             moving={updateMutation.isPending}
             onMove={(entryKey, status, position) => {
               const entry = items.find((candidate) => candidate.key === entryKey);
               if (entry) updateMutation.mutate({ entry, value: { status, position } });
             }}
-            onOpen={(entryKey) => {
-              const entry = items.find((candidate) => candidate.key === entryKey);
-              if (!entry) return;
-              setEditingEntry(entry);
-              setCreateEndpoint(null);
-              setEditorOpen(true);
-            }}
+            onOpen={openEntry}
             onCreate={(status) => {
               if (selectedEndpoint) openCreate(selectedEndpoint, status);
             }}
@@ -592,13 +605,7 @@ export function WorkCenter(props: WorkCenterProps) {
               onAnchorDateChange={setAnchorDate}
               onViewChange={setCalendarView}
               onCreateSchedule={requestCreate}
-              onSelectItem={(entry) => {
-                const resolved = items.find((candidate) => candidate.key === entry.key);
-                if (!resolved) return;
-                setEditingEntry(resolved);
-                setCreateEndpoint(null);
-                setEditorOpen(true);
-              }}
+              onSelectItem={(entry) => openEntry(entry.key)}
             />
           </>
         )}
@@ -610,10 +617,11 @@ export function WorkCenter(props: WorkCenterProps) {
         board={editorBoard}
         defaultStatus={createStatus || editorBoard.columns[0]?.id || "planned"}
         scheduleMode={props.mode === "global" || projectView === "schedule"}
+        allowAutomation={!props.sessionId || Boolean(editingEntry?.item.automation)}
         initialSchedule={createSchedule}
         saving={createMutation.isPending || updateMutation.isPending}
         deleting={deleteMutation.isPending}
-        agents={editorAgentsQuery.data ?? []}
+        agents={[]}
         providers={props.providers}
         connectedProviderIds={props.connectedProviderIds}
         onOpenChange={(open) => {

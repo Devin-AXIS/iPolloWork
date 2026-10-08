@@ -5,11 +5,18 @@ import {
   LEGACY_TEMPLATE_PACKAGE_MEDIA_TYPE,
   TEMPLATE_PACKAGE_FILE_ACCEPT,
   templatePackageMediaTypeForFilename,
+  templateManifestV1Schema,
+  type TemplateCatalogItem,
 } from "@ipollowork/types/templates";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
+import { cloudResourceMatches } from "../src/react-app/domains/session/templates/template-market-dialog";
 
 const marketDialog = readFileSync(
   new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
+  "utf8",
+);
+const catalogFilters = readFileSync(
+  new URL("../src/components/template-catalog-filters.tsx", import.meta.url),
   "utf8",
 );
 const saveDialog = readFileSync(
@@ -26,6 +33,73 @@ const desktopMain = readFileSync(
 );
 
 describe("template market actions", () => {
+  test("remote metadata stays available without pretending to match specific facets", () => {
+    const filters: Parameters<typeof cloudResourceMatches>[0] = {
+      resource: {
+        id: "remote-site", type: "template", slug: "test.remote-site", manifestId: null,
+        name: "Technology site", description: "A technology landing page", category: "site",
+        enterpriseCategory: "Marketing", iconPath: null, featured: false,
+        updatedAt: "2026-10-03T00:00:00Z", latestVersion: null,
+      },
+      category: "site", style: "all", topic: "all", query: "technology",
+    };
+    expect(cloudResourceMatches(filters)).toBe(true);
+    expect(cloudResourceMatches({ ...filters, topic: "unclassified" })).toBe(true);
+    expect(cloudResourceMatches({ ...filters, topic: "product" })).toBe(false);
+    expect(cloudResourceMatches({ ...filters, style: "minimal" })).toBe(false);
+    expect(cloudResourceMatches({ ...filters, category: "slides" })).toBe(false);
+    expect(cloudResourceMatches({ ...filters, query: "finance" })).toBe(false);
+
+    const installed: TemplateCatalogItem = {
+      manifest: templateManifestV1Schema.parse({
+        schemaVersion: 1, id: "test.remote-site", version: "1.0.0", kind: "design",
+        category: "site", subcategory: "landing", style: "minimal", tags: ["topic:product"],
+        title: "Technology site", description: "A technology landing page", cover: "cover.svg",
+        entry: "entry.html", source: { name: "Test", license: "MIT" },
+        designSystem: { tokenVersion: 1, editableGroups: ["theme"] },
+        applyChecklist: ["Keep the design"], minimumAppVersion: "0.1.0",
+      }),
+      sourceType: "market", installed: true, installedVersion: "1.0.0",
+      updateAvailable: false, verified: true,
+    };
+    const known = { ...filters, installed };
+    expect(cloudResourceMatches({ ...known, style: "minimal", topic: "product" })).toBe(true);
+    expect(cloudResourceMatches({ ...known, topic: "unclassified" })).toBe(false);
+    expect(cloudResourceMatches({ ...known, style: "bold" })).toBe(false);
+    expect(cloudResourceMatches({ ...known, topic: "brand" })).toBe(false);
+    expect(cloudResourceMatches({ ...known, category: "video" })).toBe(false);
+    expect(cloudResourceMatches({ ...known, query: "finance" })).toBe(false);
+
+    const cloudDisplay: Parameters<typeof cloudResourceMatches>[0] = {
+      ...known, style: "minimal", topic: "product",
+      resource: {
+        ...known.resource, name: "Cloud Brand Kit", description: "Featured for partners",
+        enterpriseCategory: "Regional Marketing",
+      },
+    };
+    for (const query of ["  CLOUD BRAND KIT  ", "Partners", "marketing", "Technology", "  "]) {
+      expect(cloudResourceMatches({ ...cloudDisplay, query })).toBe(true);
+    }
+    expect(cloudResourceMatches({ ...cloudDisplay, query: "Cloud Brand Kit", style: "bold" })).toBe(false);
+    expect(cloudResourceMatches({ ...cloudDisplay, query: "marketing", topic: "brand" })).toBe(false);
+    expect(cloudResourceMatches({ ...cloudDisplay, query: "partners", category: "video" })).toBe(false);
+    expect(cloudResourceMatches({ ...filters, query: "  TECHNOLOGY  " })).toBe(true);
+    for (const category of ["site", "video", "slides"]) {
+      const crossFormat: TemplateCatalogItem = {
+        ...installed,
+        manifest: templateManifestV1Schema.parse({ ...installed.manifest, category, surface: category === "video" ? "video" : "design", entry: category === "video" ? "index.html" : "entry.html" }),
+      };
+      expect(cloudResourceMatches({ ...cloudDisplay, installed: crossFormat, category: "all", query: "marketing" })).toBe(true);
+      expect(cloudResourceMatches({ ...cloudDisplay, installed: crossFormat, query: "marketing" })).toBe(category === "site");
+    }
+    const unknown: TemplateCatalogItem = {
+      ...installed, manifest: { ...installed.manifest, tags: ["topic:unknown-purpose"] },
+    };
+    expect(cloudResourceMatches({ ...known, installed: unknown, topic: "all" })).toBe(true);
+    expect(cloudResourceMatches({ ...known, installed: unknown, topic: "unclassified" })).toBe(true);
+    expect(cloudResourceMatches({ ...known, installed: unknown, topic: "product" })).toBe(false);
+  });
+
   test("keeps package import but removes create and save-current controls", () => {
     expect(marketDialog).toContain('t("template_market.import")');
     expect(marketDialog).toContain('t("template_market.import_tooltip")');
@@ -135,7 +209,11 @@ describe("template market actions", () => {
     expect(marketDialog).toContain('className="mt-2 flex h-9 items-center gap-4 overflow-x-auto"');
     expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6"');
     expect(marketDialog).not.toContain("showCloseButton={false}");
-    expect(marketDialog.match(/positionerClassName="z-\[90\]"/g)).toHaveLength(6);
+    for (const source of [marketDialog, catalogFilters]) {
+      const popups = source.match(/<DropdownMenu(?:Sub)?Content\b[^>]*>/g) ?? [];
+      expect(popups.length).toBeGreaterThan(0);
+      for (const popup of popups) expect(popup).toContain('positionerClassName="z-[90]"');
+    }
   });
 
   test("matches the Figma three-column template card layout", () => {

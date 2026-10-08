@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.wechat-article",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "kind": "design",
   "category": "other",
   "subcategory": "wechat",
@@ -10,7 +10,8 @@
     "wechat",
     "article",
     "公众号",
-    "editorial"
+    "editorial",
+    "topic:social"
   ],
   "surface": "design",
   "title": "iPollo 公众号长图",

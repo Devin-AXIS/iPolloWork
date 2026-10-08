@@ -262,7 +262,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       log.warn("[Render] GIF output does not support audio; audio tracks will be ignored.");
     }
     mkdirSync(dirname(outputPath), { recursive: true });
-    const framePattern = "frame_%06d.jpg";
+    const framePattern = job.config.motionBlur ? "frame_%06d.png" : "frame_%06d.jpg";
     const loop = resolveGifLoop(job.config.gifLoop);
     const encodeResult = await encodeGifFromDir(framesDir, framePattern, outputPath, {
       fps: job.config.fps,
@@ -291,7 +291,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       ? { ...engineCfg, ffmpegEncodeTimeout: scaledEncodeTimeout }
       : engineCfg;
 
-  const frameExt = needsAlpha ? "png" : "jpg";
+  const frameExt = needsAlpha || job.config.motionBlur ? "png" : "jpg";
   const framePattern = `frame_%06d.${frameExt}`;
   const encoderOpts = {
     fps: job.config.fps,

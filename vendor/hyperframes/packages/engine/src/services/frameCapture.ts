@@ -8,6 +8,7 @@
  * via Chrome's BeginFrame API or Page.captureScreenshot fallback.
  */
 
+import { averagePngFrames, SHUTTER_PIXEL_BUDGET } from "../utils/alphaBlit.js";
 import { type Browser, type Page, type Viewport, type ConsoleMessage } from "puppeteer-core";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -702,7 +703,7 @@ async function initDrawElementOrTransparentBackground(
   }
   if (useDrawElement) {
     session.isSwiftShader = await detectSwiftShader(page);
-    const transparent = session.options.format === "png";
+    const transparent = session.options.transparentBackground ?? session.options.format === "png";
     async function routeToFallback(): Promise<void> {
       session.captureMode = session.launchCaptureMode;
       if (transparent) {
@@ -881,7 +882,7 @@ async function initDrawElementOrTransparentBackground(
       }
       await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
-  } else if (session.options.format === "png") {
+  } else if (session.options.transparentBackground ?? session.options.format === "png") {
     await initTransparentBackground(session.page);
   }
 }
@@ -952,7 +953,7 @@ export async function completeDeferredDrawElementInit(session: CaptureSession): 
   const logInitPhase = (phase: string) =>
     console.log(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
   await finalizeDrawElementInit(session, page, logInitPhase, {
-    transparent: session.options.format === "png",
+    transparent: session.options.transparentBackground ?? session.options.format === "png",
     forceDE: process.env.HF_FORCE_DRAWELEMENT === "1",
   });
   session.deInitDeferred = false;
@@ -966,6 +967,9 @@ export async function createCaptureSession(
   onBeforeCapture: BeforeCaptureHook | null = null,
   config?: Partial<EngineConfig>,
 ): Promise<CaptureSession> {
+  if (options.motionBlur && options.width * options.height * (options.deviceScaleFactor ?? 1) ** 2 > SHUTTER_PIXEL_BUDGET) {
+    throw new Error("Shutter capture exceeds the 4K pixel budget");
+  }
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
   // Determine capture mode before building args — BeginFrame flags only apply on Linux.
@@ -2252,6 +2256,7 @@ async function prepareFrameForCapture(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  subframe = false,
 ): Promise<{
   quantizedTime: number;
   seekMs: number;
@@ -2263,19 +2268,19 @@ async function prepareFrameForCapture(
     throw new Error("[FrameCapture] Session not initialized");
   }
 
-  const quantizedTime = quantizeTimeToFrame(time, fpsToNumber(options.fps));
+  const quantizedTime = subframe ? time : quantizeTimeToFrame(time, fpsToNumber(options.fps));
 
   const seekStart = Date.now();
   // Seek via the __hf protocol. The page's seek() implementation handles
   // all framework-specific logic (GSAP stepping, CSS animation sync, etc.)
   // Seek + check page-side composite pending flag in one round-trip.
-  const hasPendingComposite = await page.evaluate((t: number) => {
+  const hasPendingComposite = await page.evaluate((t: number, exact: boolean) => {
     if (window.__hf && typeof window.__hf.seek === "function") {
-      window.__hf.seek(t);
+      window.__hf.seek(t, exact ? { subframe: true } : undefined);
     }
     return !!(window as unknown as { __hf_page_composite_pending?: boolean })
       .__hf_page_composite_pending;
-  }, quantizedTime);
+  }, quantizedTime, subframe);
 
   await decodeDynamicCssBackgroundImages(page);
 
@@ -2878,6 +2883,7 @@ async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  subframe = false,
 ): Promise<{ buffer: Buffer; quantizedTime: number; captureTimeMs: number }> {
   const { page, options } = session;
   const startTime = Date.now();
@@ -2897,7 +2903,8 @@ async function captureFrameCore(
   // Use the SAME floor+epsilon idiom as quantizeTimeToFrame so the dedup lookup agrees
   // with the frame the seek actually lands on, even if `time` ever isn't exactly i/fps.
   const absFrameIndex = Math.floor(time * fpsToNumber(options.fps) + 1e-9);
-  if (session.staticFrames?.has(absFrameIndex) && session.lastFrameBuffer) {
+  if (!subframe && session.staticFrames?.has(absFrameIndex) && session.lastFrameBuffer &&
+      (!options.motionBlur || session.staticFrames.has(absFrameIndex - 1))) {
     session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
     return {
       buffer: session.lastFrameBuffer,
@@ -2907,10 +2914,31 @@ async function captureFrameCore(
   }
 
   try {
+    if (options.motionBlur && !subframe) {
+      if (options.format !== "png" || session.captureMode !== "screenshot") {
+        throw new Error("Motion blur requires PNG screenshot capture");
+      }
+      session.clipBoundaryFrames ??= await computeClipBoundaryFrames(page, fpsToNumber(options.fps));
+      // Cuts keep one crisp frame; do not blend two distinct authored shots.
+      if (!session.clipBoundaryFrames.has(absFrameIndex) && !session.clipBoundaryFrames.has(absFrameIndex + 1)) {
+        const frameTime = quantizeTimeToFrame(time, fpsToNumber(options.fps));
+        const exposure = 0.5 / fpsToNumber(options.fps);
+        const buffers: Buffer[] = [];
+        for (let sample = 0; sample < 4; sample++) {
+          const t = Math.min(frameTime + exposure * (sample + 0.5) / 4,
+            options.compositionDurationSeconds ?? Infinity);
+          buffers.push((await captureFrameCore(session, frameIndex, t, true)).buffer);
+        }
+        const buffer = averagePngFrames(buffers);
+        if (session.staticFrames) session.lastFrameBuffer = buffer;
+        return { buffer, quantizedTime: frameTime, captureTimeMs: Date.now() - startTime };
+      }
+    }
     const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
       session,
       frameIndex,
       time,
+      subframe,
     );
 
     const screenshotStart = Date.now();
@@ -3111,6 +3139,10 @@ export async function captureFrameToBufferPipelined(
   time: number,
 ): Promise<{ encodeResult: Promise<Buffer>; captureTimeMs: number }> {
   const { page, options } = session;
+  if (options.motionBlur) {
+    const result = await captureFrameCore(session, frameIndex, time);
+    return { encodeResult: Promise.resolve(result.buffer), captureTimeMs: result.captureTimeMs };
+  }
   const startTime = Date.now();
 
   // Task B: static-frame dedup (worker path). Reuse the prior frame's encode result
@@ -3147,7 +3179,6 @@ export async function captureFrameToBufferPipelined(
       frameIndex,
       time,
     );
-    void quantizedTime;
 
     // Lim 6: clip-cut boundary frame — screenshot ONLY when opt-in, matching the serial
     // path (captureFrameCore). Proactive boundary screenshots in drawElement mode are

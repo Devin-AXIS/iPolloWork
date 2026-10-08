@@ -19,7 +19,7 @@ import { ensureLocalWorkspaceFiles } from "./workspace-init.js";
 import { findManagedEngineWorkspace } from "./workspaces.js";
 import { keepiPolloWorkRuntimeConfigFileFresh, writeiPolloWorkRuntimeConfigFile } from "./ipollowork-runtime-config.js";
 import { opencodeAuthPathFromEnvironment } from "./opencode-db.js";
-import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
+import type { ServerConfig } from "./types.js";
 
 export type EmbeddedServerOptions = CliArgs & {
   /** When true, spawn a managed OpenCode child process. */
@@ -94,14 +94,7 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
       config.opencodeUsername = managedOpencode.username;
       config.opencodePassword = managedOpencode.password;
       for (const entry of config.workspaces) {
-        if ((entry.engineId?.trim() || DEFAULT_ENGINE_ID) !== DEFAULT_ENGINE_ID) continue;
-        if (entry.workspaceType === "remote") {
-          entry.baseUrl ??= managedOpencode.url;
-          entry.opencodeUsername ??= managedOpencode.username;
-          entry.opencodePassword ??= managedOpencode.password;
-          entry.directory ??= entry.path;
-          continue;
-        }
+        if (entry.workspaceType === "remote") continue;
         entry.baseUrl = managedOpencode.url;
         entry.opencodeUsername = managedOpencode.username;
         entry.opencodePassword = managedOpencode.password;

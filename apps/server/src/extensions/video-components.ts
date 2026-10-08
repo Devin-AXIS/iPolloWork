@@ -78,14 +78,6 @@ const registryManifestSchema = z.object({
 }).passthrough();
 
 const MAX_STILL_SECONDS = 4;
-const SPATIAL_CAMERA_RECIPES = new Set([
-  "graze-face-tour",
-  "depth-layer-moves",
-  "spotlight-hero-card",
-  "runway-ground-skim",
-  "steep-tilt-glide",
-]);
-
 export const videoComponentInstallInput = z.object({
   sourcePath: videoSourcePathSchema,
   componentIds: z.array(componentIdSchema).min(1).max(12),
@@ -308,7 +300,7 @@ type Repair = {
   sceneId: string;
   code: string;
   interval?: { start: number; end: number; duration: number };
-  action: "apply-motion-preset" | "split-scene" | "shorten-scene" | "repair-metadata";
+  action: "develop-beat" | "split-scene" | "shorten-scene" | "repair-metadata";
   message: string;
   suggestedSplitSeconds?: number[];
 };
@@ -612,7 +604,7 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
     components: [...installed.values()],
     instances,
     mounted: input.mount,
-    instruction: "Mount the returned host-timed snippets in index.html using real content, durations and data-variable-values. Preserve data-ipw-timing-owner=host, data-ipw-selected-components and data-ipw-recipe-policy; existing edited project copies are retained. motionContract reports declared duration and authored targets, not measured beat timing. Follow the Video Studio skill workflow for measured narration, scene beats, custom-scene evidence and transitions. Save the source and let the client run its single aggregate delivery validator after the turn.",
+    instruction: "Mount the returned host-timed snippets in index.html using real content, durations and data-variable-values. Preserve data-ipw-timing-owner=host, data-ipw-selected-components and data-ipw-recipe-policy; existing edited project copies are retained. motionContract reports declared duration and authored targets, not measured beat timing. Follow the Video Studio skill workflow for measured narration, scene beats, custom-scene evidence and transitions. Save the source, run the applicable media checks, repair actual issues and complete the requested delivery through the native main Agent. Return actual source and output paths.",
   };
 }
 
@@ -726,10 +718,13 @@ function patternEvidenceIssues(
 function unplannedStillIntervals(
   beats: z.infer<typeof videoBeatMapSchema>,
   duration: number,
+  maxStillSeconds = MAX_STILL_SECONDS,
+  start = 0,
 ): Array<{ start: number; end: number; duration: number }> {
   const active = beats
     .filter(beat => !beat.animation.startsWith("hold:"))
-    .map(beat => beat.motion)
+    .map(beat => ({ start: Math.max(start, beat.motion.start), end: Math.min(duration, beat.motion.end) }))
+    .filter(window => window.end > window.start)
     .sort((left, right) => left.start - right.start);
   const merged: Array<{ start: number; end: number }> = [];
   for (const window of active) {
@@ -738,12 +733,12 @@ function unplannedStillIntervals(
     else merged.push({ ...window });
   }
   const gaps: Array<{ start: number; end: number; duration: number }> = [];
-  let cursor = 0;
+  let cursor = start;
   for (const window of merged) {
-    if (window.start - cursor > MAX_STILL_SECONDS) gaps.push({ start: cursor, end: window.start, duration: window.start - cursor });
+    if (window.start - cursor > maxStillSeconds) gaps.push({ start: cursor, end: window.start, duration: window.start - cursor });
     cursor = Math.max(cursor, window.end);
   }
-  if (duration - cursor > MAX_STILL_SECONDS) gaps.push({ start: cursor, end: duration, duration: duration - cursor });
+  if (duration - cursor > maxStillSeconds) gaps.push({ start: cursor, end: duration, duration: duration - cursor });
   return gaps;
 }
 
@@ -753,10 +748,10 @@ function repairForStillInterval(sceneId: string, interval: { start: number; end:
     sceneId,
     code: "scene_still_interval_too_long",
     interval,
-    action: shouldSplit ? "split-scene" : "apply-motion-preset",
+    action: shouldSplit ? "split-scene" : "develop-beat",
     message: shouldSplit
       ? `Split ${sceneId} at the nearest real narration or content beat around ${interval.start}-${interval.end}s; do not use the mathematical midpoint unless it is also a semantic boundary.`
-      : `Call list_motion_presets for the focus at ${interval.start}-${interval.end}s, then call mutate_motion with an explicit start and end inside that interval.`,
+      : `At ${interval.start}-${interval.end}s, develop the explanation through a visible content reveal, focus transfer, comparison, or state change tied to the narration or visual intent, or shorten the scene. Use an existing recipe or preset only to implement that action; do not fill the interval with letter-spacing changes, micro-scale, or drift and call it development. Keep reading holds explicit.`,
   };
 }
 
@@ -792,6 +787,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const timedScenes: Array<{ sceneId: string; start: number; end: number; transition: string; transitionDuration: number | null; transitionIntent: string }> = [];
   const sceneBeats = new Map<string, z.infer<typeof videoBeatMapSchema>>();
   let hasSpatialCameraRecipe = false;
+  let spatialCameraRecipes: string[] | null = null;
 
   for (const tag of tags) {
     const classes = classTokens(tag);
@@ -822,6 +818,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
     const duration = numberAttribute(tag, "data-duration");
     const track = numberAttribute(tag, "data-track-index");
     let componentInstalled = false;
+    let installedCameraChoices: string[] = [];
 
     if (sceneId === "unnamed-scene") issues.push({ code: "missing_scene_id", sceneId, message: "Every video scene must have a stable id." });
     if (start === null || start < 0) issues.push({ code: "invalid_scene_start", sceneId, message: `${sceneId} must have a non-negative numeric data-start.` });
@@ -887,6 +884,16 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
         } else {
           componentInstalled = true;
           const componentHtml = await readFile(installed.absolutePath, "utf8");
+          if (componentId === "spatial-camera-suite") {
+            const htmlTag = openingTags(componentHtml).find(tag => /^<html\b/iu.test(tag));
+            try {
+              const declared = z.array(hyperframesEffectVariableSchema).safeParse(JSON.parse(attribute(htmlTag ?? "", "data-composition-variables") || "[]"));
+              const variable = declared.success ? declared.data.find(variable => variable.id === "shotStyle") : undefined;
+              installedCameraChoices = variable?.type === "enum" ? variable.options.map(option => option.value) : [];
+            } catch {
+              issues.push({ code: "invalid_spatial_camera_variables", sceneId, message: `${sceneId}'s installed camera variables must be valid literal JSON.` });
+            }
+          }
           const rootTag = openingTags(componentHtml).find(tag => attribute(tag, "data-composition-id")) ?? "";
           let nativeDuration = numberAttribute(rootTag, "data-ipw-native-duration");
           let semanticRecipeValidated = false;
@@ -908,6 +915,20 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
                 if (values.motionStyle !== undefined && values.motionStyle !== resolved.values.motionStyle) throw new Error("Mounted motion parameters differ from the declared whole-video style.");
                 nativeDuration = resolved.beats.at(-1)!.motion.end;
                 semanticRecipeValidated = true;
+                // Component labels cannot extend motion beyond the recipe's resolved event windows.
+                for (const beat of beatMap.beats.filter(beat => beat.animation === `component:${componentId}`)) {
+                  const uncovered = unplannedStillIntervals(resolved.beats, beat.motion.end, 0.05, beat.motion.start);
+                  if (uncovered.length === 0) continue;
+                  issues.push({
+                    code: "component_beat_motion_mismatch", sceneId,
+                    message: `${sceneId} declares component motion at ${beat.motion.start}-${beat.motion.end}s beyond ${componentId}'s resolved events. The declaration includes intervals without recipe motion: ${uncovered.map(window => `${window.start.toFixed(2)}-${window.end.toFixed(2)}s`).join(", ")}.`,
+                  });
+                  repairPlan.push({
+                    sceneId, code: "component_beat_motion_mismatch", action: "repair-metadata",
+                    interval: { start: beat.motion.start, end: beat.motion.end, duration: beat.motion.end - beat.motion.start },
+                    message: `Align the beat motion with ${componentId}'s actual event and cue windows. If the story needs further development, retime a real recipe event or add a supported content, focus, or state change; do not extend the motion declaration to conceal a hold.`,
+                  });
+                }
               }
             } catch (error) {
               issues.push({ code: "invalid_semantic_recipe_instance", sceneId, message: error instanceof Error ? error.message : "Invalid semantic recipe values or cues" });
@@ -923,13 +944,13 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
           if (!semanticRecipeValidated && nativeDuration !== null && duration !== null && duration - nativeDuration > 2) {
             const laterMotion = beatMap.beats.some(beat => beat.start >= nativeDuration - 0.05 && !beat.animation.startsWith("hold:") && !beat.animation.startsWith("component:"));
             if (!laterMotion) {
-              issues.push({ code: "component_motion_ends_too_early", sceneId, message: `${sceneId} lasts ${duration}s but ${componentId} resolves at ${nativeDuration}s. Add a later preset/custom beat or shorten the scene; a long implicit hold is not accepted.` });
+              issues.push({ code: "component_motion_ends_too_early", sceneId, message: `${sceneId} lasts ${duration}s but ${componentId} resolves at ${nativeDuration}s. Develop the later content, focus, or state with an executable follow-up action, or shorten the scene; a long implicit hold is not accepted.` });
               repairPlan.push({
                 sceneId,
                 code: "component_motion_ends_too_early",
                 interval: { start: nativeDuration, end: duration, duration: duration - nativeDuration },
-                action: duration - nativeDuration > MAX_STILL_SECONDS * 2 ? "split-scene" : "apply-motion-preset",
-                message: `Keep ${componentId} at its native ${nativeDuration}s duration. Split the narration after the component lands or animate a specific follow-up target through list_motion_presets and mutate_motion.`,
+                action: duration - nativeDuration > MAX_STILL_SECONDS * 2 ? "split-scene" : "develop-beat",
+                message: `Keep ${componentId} at its native ${nativeDuration}s duration. Split at a real narration boundary, shorten the scene, or make a specific follow-up target reveal evidence, transfer focus, compare, or change state. Use an existing recipe or preset for that action; repeated micro-scale, letter-spacing changes, or drift alone do not develop the explanation.`,
                 ...(duration - nativeDuration > MAX_STILL_SECONDS * 2 ? { suggestedSplitSeconds: [nativeDuration] } : {}),
               });
             }
@@ -951,12 +972,19 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
           const values: unknown = JSON.parse(variableValues);
           const parsedValues = z.record(z.string(), z.unknown()).safeParse(values);
           if (!parsedValues.success) throw new Error("invalid values");
-          if (componentId === "spatial-camera-suite") {
+          if (componentId === "spatial-camera-suite" && componentInstalled) {
+            // The plugin's editable enum owns the contract; the host keeps no second list.
+            if (spatialCameraRecipes === null) {
+              const { manifest } = await readRegistryComponent(registryRoot(), componentId);
+              const variable = hyperframesEffectVariableSchema.parse(manifest.variables?.find(variable => variable.id === "shotStyle"));
+              spatialCameraRecipes = variable.type === "enum" ? variable.options.map(option => option.value) : [];
+            }
             const shotStyle = parsedValues.data.shotStyle;
-            if (componentInstalled && typeof shotStyle === "string" && SPATIAL_CAMERA_RECIPES.has(shotStyle)) {
-              hasSpatialCameraRecipe = true;
-            } else if (typeof shotStyle !== "string" || !SPATIAL_CAMERA_RECIPES.has(shotStyle)) {
-              issues.push({ code: "invalid_spatial_camera_recipe", sceneId, message: `${sceneId} must choose one real spatial-camera-suite shotStyle: ${Array.from(SPATIAL_CAMERA_RECIPES).join(", ")}.` });
+            if (typeof shotStyle === "string" && spatialCameraRecipes.includes(shotStyle)) {
+              if (installedCameraChoices.includes(shotStyle)) hasSpatialCameraRecipe = true;
+              else issues.push({ code: "installed_spatial_camera_recipe_outdated", sceneId, message: `${sceneId}'s preserved component copy does not declare ${shotStyle}. Explicitly update that project component while retaining its edited content; do not silently run an older default shot.` });
+            } else {
+              issues.push({ code: "invalid_spatial_camera_recipe", sceneId, message: `${sceneId} must choose one real spatial-camera-suite shotStyle: ${spatialCameraRecipes.join(", ")}.` });
             }
           }
         } catch {
@@ -999,7 +1027,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   if (/data-ipw-registry-component\s*=\s*["']spatial-camera-suite["']/iu.test(html) && !hasSpatialCameraRecipe) {
     issues.push({
       code: "missing_spatial_camera_component",
-      message: "This video declares spatial-camera-suite but has no valid installed camera recipe. Install the component and select one of its five shotStyle values before delivery.",
+      message: "This video declares spatial-camera-suite but has no valid installed camera recipe. Install the component and select a shotStyle declared by its installed registry manifest before delivery.",
     });
   }
   timedScenes.sort((left, right) => left.start - right.start);

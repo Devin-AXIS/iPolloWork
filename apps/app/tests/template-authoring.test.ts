@@ -70,14 +70,20 @@ describe("template authoring", () => {
     }
   });
 
-  test("keeps the application-selected type and asks one ordered question at a time", () => {
+  test("keeps the application-selected type while delegating reusable authoring to its plugin", () => {
     const pptManifest = { ...manifest, id: "ipollowork.authoring.pptx", pptxCompatibility: "native-editable" as const };
     const context = templateAuthoringSystemContext(snapshot(pptManifest), "Selected system rules");
     expect(templateAuthoringKickoff("slides", "native-editable").text).toBe("创建一个原生可编辑 PPT模板");
     expect(context).toContain("Do not guess or convert its category or surface");
-    expect(context).toContain("one critical question at a time");
-    expect(context).toContain("1. purpose and audience");
-    expect(context).toContain("3. reusable variables");
+    expect(context).toContain("reusable-template authoring section of shared-guidelines.md");
+    expect(context).toContain("installed ipollowork-presentations Skill");
+    expect(context).not.toContain("1. purpose and audience");
+    const guide = readFileSync(new URL("../../../examples/plugin-packages/design-agent/skills/ipollowork-presentations/references/shared-guidelines.md", import.meta.url), "utf8");
+    expect(guide).toContain("Reusable-template authoring only");
+    expect(guide).toContain("Ordinary artifact creation, applying a template, script-only work and targeted edits keep their requested scope");
+    expect(guide).toContain("one critical question at a time");
+    expect(guide).toContain('`authoringGuide: "authoring.md"`');
+    expect(context).toContain("--ipw-color-primary (color)");
     expect(context).toContain("data-pptx-text");
     expect(context).toContain("Selected system rules");
     expect(templateAuthoringSystemContext(snapshot(pptManifest, false))).toBeNull();

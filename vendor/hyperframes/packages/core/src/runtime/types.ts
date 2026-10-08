@@ -231,6 +231,8 @@ export type RuntimePlayer = {
 
 export type RuntimeSeekOptions = {
   suppressEvents?: boolean;
+  /** Render-only shutter samples; ordinary editing seeks stay frame-quantized. */
+  subframe?: boolean;
 };
 
 export type RuntimeTimelineChildLike = {

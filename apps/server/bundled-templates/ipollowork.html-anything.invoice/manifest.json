@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.invoice",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "other",
   "subcategory": "document",
@@ -9,7 +9,8 @@
   "tags": [
     "finance",
     "invoice",
-    "bill"
+    "bill",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Printable Invoice",

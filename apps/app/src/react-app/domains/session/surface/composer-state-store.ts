@@ -1,7 +1,25 @@
 import { create } from "zustand";
 
 import type { ComposerAttachment, ComposerDraft } from "../../../../app/types";
+import type { NewConversationMode, StarterCapability } from "../../../../components/chat/new-conversation-starter";
 import type { ComposerMentionKind } from "./composer/mention-encoding";
+
+type StateUpdate<T> = T | ((current: T) => T);
+
+export type InitialTaskOptions = {
+  workTemplateId: string;
+  accessMode: string | null;
+  mode: NewConversationMode;
+  capability: StarterCapability | null;
+};
+
+const EMPTY_INITIAL_TASK_OPTIONS: InitialTaskOptions = {
+  workTemplateId: "auto", accessMode: null, mode: "work", capability: null,
+};
+
+export function newTaskComposerScope(workspaceId: string | null | undefined) {
+  return `new-task:${workspaceId ?? "new-project"}`;
+}
 
 export type ComposerPastePart = {
   id: string;
@@ -15,16 +33,18 @@ export type ComposerSessionState = {
   attachments: ComposerAttachment[];
   mentions: Record<string, ComposerMentionKind>;
   pasteParts: ComposerPastePart[];
+  initialTask?: InitialTaskOptions;
 };
 
 export type ComposerStateStore = {
   sessions: Record<string, ComposerSessionState>;
   queuedDrafts: Record<string, ComposerDraft[]>;
   pausedQueues: Record<string, boolean>;
-  setDraft: (sessionId: string, draft: string) => void;
-  setAttachments: (sessionId: string, attachments: ComposerAttachment[]) => void;
+  setDraft: (sessionId: string, draft: StateUpdate<string>) => void;
+  setAttachments: (sessionId: string, attachments: StateUpdate<ComposerAttachment[]>) => void;
   setMentions: (sessionId: string, mentions: Record<string, ComposerMentionKind>) => void;
-  setPasteParts: (sessionId: string, pasteParts: ComposerPastePart[]) => void;
+  setPasteParts: (sessionId: string, pasteParts: StateUpdate<ComposerPastePart[]>) => void;
+  setInitialTaskOptions: (sessionId: string, options: Partial<InitialTaskOptions> | ((current: InitialTaskOptions) => Partial<InitialTaskOptions>)) => void;
   appendQueuedDraft: (sessionId: string, draft: ComposerDraft) => void;
   removeQueuedDraft: (sessionId: string, index: number) => void;
   removeQueuedDrafts: (sessionId: string, indices: number[]) => void;
@@ -32,7 +52,7 @@ export type ComposerStateStore = {
   setQueuePaused: (sessionId: string, paused: boolean) => void;
   moveQueuedDraftToComposer: (sessionId: string, index: number) => boolean;
   clearSession: (sessionId: string) => void;
-  restoreSessionIfEmpty: (sessionId: string, session: ComposerSessionState) => void;
+  restoreSessionIfEmpty: (sessionId: string, session: ComposerSessionState) => boolean;
 };
 
 const EMPTY_ATTACHMENTS: ComposerAttachment[] = [];
@@ -67,11 +87,13 @@ export const useComposerStateStore = create<ComposerStateStore>((set) => ({
   pausedQueues: {},
   setDraft: (sessionId, draft) => set((state) => {
     const current = getWritableSession(state, sessionId);
+    draft = typeof draft === "function" ? draft(current.draft) : draft;
     if (current.draft === draft) return state;
     return { sessions: { ...state.sessions, [sessionId]: { ...current, draft } } };
   }),
   setAttachments: (sessionId, attachments) => set((state) => {
     const current = getWritableSession(state, sessionId);
+    attachments = typeof attachments === "function" ? attachments(current.attachments) : attachments;
     if (current.attachments === attachments) return state;
     return { sessions: { ...state.sessions, [sessionId]: { ...current, attachments } } };
   }),
@@ -82,8 +104,16 @@ export const useComposerStateStore = create<ComposerStateStore>((set) => ({
   }),
   setPasteParts: (sessionId, pasteParts) => set((state) => {
     const current = getWritableSession(state, sessionId);
+    pasteParts = typeof pasteParts === "function" ? pasteParts(current.pasteParts) : pasteParts;
     if (current.pasteParts === pasteParts) return state;
     return { sessions: { ...state.sessions, [sessionId]: { ...current, pasteParts } } };
+  }),
+  setInitialTaskOptions: (sessionId, options) => set((state) => {
+    const current = getWritableSession(state, sessionId);
+    const previous = current.initialTask ?? EMPTY_INITIAL_TASK_OPTIONS;
+    const patch = typeof options === "function" ? options(previous) : options;
+    if (Object.entries(patch).every(([key, value]) => Object.is(previous[key as keyof InitialTaskOptions], value))) return state;
+    return { sessions: { ...state.sessions, [sessionId]: { ...current, initialTask: { ...previous, ...patch } } } };
   }),
   appendQueuedDraft: (sessionId, draft) => set((state) => {
     const current = state.queuedDrafts[sessionId] ?? EMPTY_QUEUED_DRAFTS;
@@ -156,10 +186,15 @@ export const useComposerStateStore = create<ComposerStateStore>((set) => ({
     delete sessions[sessionId];
     return { sessions };
   }),
-  restoreSessionIfEmpty: (sessionId, session) => set((state) => {
-    if (!isEmptyComposerSession(state.sessions[sessionId])) return state;
-    return { sessions: { ...state.sessions, [sessionId]: session } };
-  }),
+  restoreSessionIfEmpty: (sessionId, session) => {
+    let restored = false;
+    set((state) => {
+      if (!isEmptyComposerSession(state.sessions[sessionId])) return state;
+      restored = true;
+      return { sessions: { ...state.sessions, [sessionId]: session } };
+    });
+    return restored;
+  },
 }));
 
 export function getComposerDraft(state: ComposerStateStore, sessionId: string): string {
@@ -176,6 +211,10 @@ export function getComposerMentions(state: ComposerStateStore, sessionId: string
 
 export function getComposerPasteParts(state: ComposerStateStore, sessionId: string): ComposerPastePart[] {
   return state.sessions[sessionId]?.pasteParts ?? EMPTY_PASTE_PARTS;
+}
+
+export function getInitialTaskOptions(state: ComposerStateStore, sessionId: string): InitialTaskOptions {
+  return state.sessions[sessionId]?.initialTask ?? EMPTY_INITIAL_TASK_OPTIONS;
 }
 
 export function getComposerQueuedDrafts(state: ComposerStateStore, sessionId: string): ComposerDraft[] {

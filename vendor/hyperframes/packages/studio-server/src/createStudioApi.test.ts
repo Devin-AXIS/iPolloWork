@@ -15,6 +15,32 @@ describe("createStudioApi project cache invalidation", () => {
     }
   });
 
+  it("forwards temporal capture and resolution aliases without changing existing default exports", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-render-options-"));
+    temporaryDirectories.push(dir);
+    const received: Parameters<StudioApiAdapter["startRender"]>[0][] = [];
+    const adapter = {
+      listProjects: () => [{ id: "proof", dir }], resolveProject: () => ({ id: "proof", dir }),
+      bundle: async () => "", lint: () => ({ findings: [] }), runtimeUrl: "/runtime.js", rendersDir: () => dir,
+      startRender: (opts: Parameters<StudioApiAdapter["startRender"]>[0]) => {
+        received.push(opts);
+        return { id: opts.jobId, status: "complete" as const, progress: 100, outputPath: opts.outputPath };
+      },
+    } satisfies StudioApiAdapter;
+    const api = createStudioApi(adapter);
+    const request = (body: object) => api.request("/projects/proof/render", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    expect((await request({ motionBlur: true, resolution: "4k", fps: 60, captureSize: { width: 640, height: 360 }, outputSize: { width: 3840, height: 2160 } })).status).toBe(200);
+    expect(received[0]).toMatchObject({ motionBlur: true, outputResolution: "landscape-4k", outputResolutionAspectAgnostic: true, fps: { num: 60, den: 1 }, captureSize: { width: 640, height: 360 }, outputSize: { width: 3840, height: 2160 } });
+    expect((await request({ resolution: 15 })).status).toBe(200);
+    expect(received[1]?.motionBlur).toBeUndefined();
+    expect(received[1]?.outputResolution).toBeUndefined();
+    expect(received[1]?.fps).toEqual({ num: 30, den: 1 });
+    expect((await request({ motionBlur: "yes" })).status).toBe(400);
+    expect(received).toHaveLength(2);
+  });
+
   it("derives recipe mount evidence from exact scene hosts and existing recipe sources, not Markdown claims", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-recipe-mount-"));
     temporaryDirectories.push(projectDir);

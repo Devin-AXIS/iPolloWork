@@ -122,8 +122,8 @@ describe("composer queue behavior", () => {
 
     expect(renderModel).toContain("isError: snapshotQuery.isError");
     expect(renderModel).not.toContain("Boolean(error)");
-    expect(errorBoundary).toContain("pendingVideoDeliveryRef.current = null");
-    expect(errorBoundary).toContain("pendingArtifactCompletionRef.current = null");
+    expect(errorBoundary).not.toContain("pendingVideoDeliveryRef.current = null");
+    expect(errorBoundary).not.toContain("pendingArtifactCompletionRef.current = null");
     expect(errorBoundary).toContain("setAwaitingAssistantBaseline(null)");
     expect(errorBoundary).toContain("setSending(false)");
   });
@@ -150,9 +150,9 @@ describe("composer queue behavior", () => {
     expect(idleCompletion.indexOf("pendingArtifactCompletionRef.current")).toBeLessThan(
       idleCompletion.indexOf("assistantOutputAfterAwaitStart && !latestAssistantCompleted"),
     );
-    expect(idleCompletion).toContain("void validatePendingArtifactCompletion()");
-    expect(idleCompletion).toContain("void validatePendingVideoDelivery()");
-    expect(queueDrain).toContain("if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;");
+    expect(idleCompletion).not.toContain("void validatePendingArtifactCompletion()");
+    expect(idleCompletion).not.toContain("void validatePendingVideoDelivery()");
+    expect(queueDrain).not.toContain("if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;");
     expect(queueDrain.indexOf("pendingArtifactCompletionRef.current")).toBeLessThan(
       queueDrain.indexOf("removeQueuedDraftFromStore(props.sessionId, 0)"),
     );
@@ -168,8 +168,8 @@ describe("composer queue behavior", () => {
     expect(abortHandler).not.toContain("promptDispatchInFlightRef");
     expect(abortHandler).toContain("promptDispatchAbortRef.current?.abort()");
     expect(abortHandler).toContain("await props.conversation.abort(");
-    expect(abortHandler).toContain("pendingVideoDeliveryRef.current = null");
-    expect(abortHandler).toContain("pendingArtifactCompletionRef.current = null");
+    expect(abortHandler).not.toContain("pendingVideoDeliveryRef.current = null");
+    expect(abortHandler).not.toContain("pendingArtifactCompletionRef.current = null");
     expect(abortHandler).toContain("settleInterruptedSessionRun(");
     expect(abortHandler).toContain("activeClientUserMessageIdRef.current");
     expect(abortHandler.indexOf("settleInterruptedSessionRun(")).toBeLessThan(
@@ -212,7 +212,7 @@ describe("composer queue behavior", () => {
     expect(successfulSend.replaceAll("\r\n", "\n")).not.toContain("\n      setSending(false);\n");
     expect(sender.slice(sender.indexOf("} catch (nextError)"))).toContain("setSending(false)");
     expect(sessionSurfaceSource).toContain("runActivityObservedRef.current = true");
-    expect(sessionSurfaceSource).toContain("if (!hostDeliveryReady && !runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;");
+    expect(sessionSurfaceSource).toContain("if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;");
     expect(sessionSurfaceSource).not.toContain('if (liveStatus.type === "idle") {\n      setSending(false);');
   });
 

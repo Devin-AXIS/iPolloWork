@@ -1,8 +1,11 @@
+import { CODEX_HARNESS_ENGINE_ID, codexNativePlanTodos, type SessionTokenMetering } from "@ipollowork/types/workspace";
+
 import {
   isCodexUnmaterializedThreadError,
   type CodexHarnessRuntime,
 } from "./codex-harness-runtime.js";
 import { ApiError } from "./errors.js";
+import { workspacePathMatches } from "./deepseek-harness-session-read-model.js";
 import type { WorkspaceInfo } from "./types.js";
 
 type CodexThreadItem = {
@@ -23,26 +26,38 @@ type CodexThreadItem = {
   result?: unknown;
   error?: unknown;
   changes?: unknown;
+  senderThreadId?: string;
+  receiverThreadIds?: string[];
+  prompt?: string | null;
+  agentsStates?: Record<string, { status: string; message?: string | null } | undefined>;
+  kind?: "started" | "interacted" | "interrupted" | "completed";
+  agentThreadId?: string;
+  agentPath?: string;
 };
 
 type CodexTurn = {
   id: string;
   status: string;
+  itemsView?: "notLoaded" | "summary" | "full";
   startedAt?: number | null;
   completedAt?: number | null;
   error?: { message?: string } | null;
   items: CodexThreadItem[];
 };
 
-export type CodexThread = {
+export type CodexThread = SessionTokenMetering & {
   id: string;
   parentThreadId?: string | null;
   preview?: string;
   name?: string | null;
+  source?: unknown;
+  agentNickname?: string | null;
   cwd?: string;
   createdAt?: number;
   updatedAt?: number;
   status?: { type?: string; activeFlags?: string[] };
+  nativePlan?: { turnId: string; plan: unknown[] };
+  historyMode?: "legacy" | "paginated";
   turns?: CodexTurn[];
 };
 
@@ -72,13 +87,18 @@ function nonEmptyString(value: unknown): string | undefined {
 }
 
 function threadTitle(thread: CodexThread): string {
-  return thread.name?.trim() || thread.preview?.trim().split(/\r?\n/u)[0]?.slice(0, 120) || "New conversation";
+  const source = isRecord(thread.source) ? thread.source : {};
+  const agent = isRecord(source.subAgent) ? source.subAgent : {};
+  const spawn = isRecord(agent.thread_spawn) ? agent.thread_spawn : {};
+  return thread.name?.trim() || thread.preview?.trim().split(/\r?\n/u)[0]?.slice(0, 120)
+    || nonEmptyString(spawn.agent_path)?.trim() || thread.agentNickname?.trim() || "New conversation";
 }
 
 function codexThreadRunStatus(thread: CodexThread) {
   if (thread.status?.type === "active") return { type: "busy" } as const;
   const latestTurn = thread.turns?.at(-1);
-  if (latestTurn && !TERMINAL_CODEX_TURN_STATUSES.has(latestTurn.status)) {
+  if (latestTurn && (!TERMINAL_CODEX_TURN_STATUSES.has(latestTurn.status)
+    || (latestTurn.completedAt === null && thread.status?.type !== "notLoaded"))) {
     return { type: "busy" } as const;
   }
   return { type: "idle" } as const;
@@ -87,15 +107,19 @@ function codexThreadRunStatus(thread: CodexThread) {
 export function mapCodexThread(thread: CodexThread, archived = false) {
   const created = timestamp(thread.createdAt);
   const updated = timestamp(thread.updatedAt ?? thread.createdAt);
+  const source = isRecord(thread.source) && isRecord(thread.source.subAgent) ? thread.source.subAgent : null;
+  const nativeRole = source && isRecord(source.thread_spawn) ? nonEmptyString(source.thread_spawn.agent_role) : undefined;
   return {
     id: thread.id,
+    engineId: CODEX_HARNESS_ENGINE_ID,
+    ...(thread.totalTokens !== undefined ? { totalTokens: thread.totalTokens } : {}),
     title: threadTitle(thread),
     status: codexThreadRunStatus(thread),
     slug: thread.id,
     ...(thread.parentThreadId ? { parentID: thread.parentThreadId } : {}),
     ...(thread.cwd ? { directory: thread.cwd } : {}),
     time: { created, updated, ...(archived ? { archived: updated } : {}) },
-    codex: { status: thread.status?.type ?? "notLoaded", activeFlags: thread.status?.activeFlags ?? [] },
+    codex: { status: thread.status?.type ?? "notLoaded", activeFlags: thread.status?.activeFlags ?? [], ...(thread.parentThreadId && source ? { subagent: true, ...(nativeRole ? { agentRole: nativeRole } : {}) } : {}) },
   };
 }
 
@@ -193,7 +217,7 @@ function imageFileParts(content: CodexThreadItem["content"]) {
   });
 }
 
-function messagePart(item: CodexThreadItem) {
+function messagePart(item: CodexThreadItem, parentSessionId: string) {
   if (item.type === "userMessage" || item.type === "agentMessage" || item.type === "plan") {
     const text = item.text ?? contentText(item.content);
     const textParts = text ? [{ type: "text", text }] : [];
@@ -229,6 +253,52 @@ function messagePart(item: CodexThreadItem) {
           : { status: "running", input: item.arguments ?? {} },
     }];
   }
+  if (item.type === "subAgentActivity" && item.agentThreadId) {
+    const delegationStatus = item.kind === "completed" ? "completed" : item.kind === "interrupted" ? "failed" : "running";
+    return [{
+      type: "tool",
+      tool: "task",
+      callID: item.id,
+      state: {
+        status: item.kind === "completed" ? "completed" : item.kind === "interrupted" ? "error" : "running",
+        input: { description: item.agentPath ?? "", task_id: item.agentThreadId },
+        output: `<task id="${item.agentThreadId}" state="${delegationStatus}"></task>`,
+        metadata: { sessionId: item.agentThreadId, parentSessionId, nativeTool: "subAgentActivity", nativeKind: item.kind, delegationStatus },
+        ...(item.kind === "interrupted" ? { error: "Codex interrupted this agent" } : {}),
+      },
+    }];
+  }
+  if (item.type === "collabAgentToolCall") {
+    return (item.receiverThreadIds ?? []).map((childSessionId) => {
+      const agent = item.agentsStates?.[childSessionId];
+      const delegationStatus = agent?.status === "completed"
+        ? "completed"
+        : agent?.status === "running"
+          ? "running"
+          : agent?.status === "errored" || agent?.status === "interrupted"
+            ? "failed"
+            : "unknown";
+      return {
+        type: "tool",
+        tool: "task",
+        callID: `${item.id}:${childSessionId}`,
+        state: {
+          status: item.status === "completed" ? "completed" : item.status === "failed" || item.status === "interrupted" ? "error" : "running",
+          input: { prompt: item.prompt ?? "" },
+          output: `<task id="${childSessionId}" state="${delegationStatus}">${agent?.message ?? ""}</task>`,
+          metadata: {
+            sessionId: childSessionId,
+            nativeTool: item.tool,
+            delegationStatus,
+            ...(item.tool === "spawnAgent" && item.senderThreadId
+              ? { parentSessionId: item.senderThreadId }
+              : {}),
+          },
+          ...(item.status === "failed" || item.status === "interrupted" ? { error: "Codex collaboration call did not complete" } : {}),
+        },
+      };
+    });
+  }
   if (item.type === "fileChange") {
     return [{
       type: "tool",
@@ -250,14 +320,15 @@ export function mapCodexMessages(thread: CodexThread) {
       (item.type === "plan" || (item.type === "agentMessage" && item.phase !== "commentary"))
       && Boolean((item.text ?? contentText(item.content)).trim())
     ));
-    const outcomeError = turn.status === "failed"
+    const settled = TERMINAL_CODEX_TURN_STATUSES.has(turn.status) && turn.completedAt !== null;
+    const outcomeError = settled && turn.status === "failed"
       ? turn.error?.message || "Codex turn failed"
-      : turn.status === "completed" && !hasVisibleResult
+      : settled && turn.status === "completed" && turn.itemsView !== "notLoaded" && turn.itemsView !== "summary" && !hasVisibleResult
         ? CODEX_NO_OUTPUT_ERROR
         : null;
     const mapped = turn.items.flatMap((item) => {
       const role = item.type === "userMessage" ? "user" : "assistant";
-      const parts = messagePart(item);
+      const parts = messagePart(item, thread.id);
       if (!parts.length) return [];
       const messageId = item.type === "userMessage" && item.clientId?.trim()
         ? item.clientId.trim()
@@ -271,14 +342,17 @@ export function mapCodexMessages(thread: CodexThread) {
           role,
           ...(item.type === "agentMessage" && item.phase ? { codexPhase: item.phase } : {}),
           ...(role === "assistant" && parentUserMessageId ? { parentID: parentUserMessageId } : {}),
-          time: { created, completed },
+          time: { created, ...(settled ? { completed } : {}) },
           ...(role === "assistant" && outcomeError
             ? { error: { name: "CodexError", data: { message: outcomeError } } }
             : {}),
         },
         parts: parts.map((part, index) => ({
           ...part,
-          id: `${messageId}:${index}`,
+          // Snapshots and live Codex deltas describe the same assistant part.
+          id: role === "assistant" && (part.type === "text" || part.type === "reasoning")
+            ? `${messageId}:${part.type}`
+            : `${messageId}:${index}`,
           messageID: messageId,
           sessionID: thread.id,
         })),
@@ -313,13 +387,72 @@ async function listPages(
       limit: 100,
       archived,
       modelProviders: [],
-      sourceKinds: ["cli", "vscode"],
+      sourceKinds: ["cli", "vscode", "appServer", "subAgent", "subAgentThreadSpawn"],
       ...(search?.trim() ? { searchTerm: search.trim() } : {}),
     });
     items.push(...(response.data ?? []));
     cursor = response.nextCursor ?? null;
   } while (cursor && items.length < 500);
   return items;
+}
+
+type CodexThreadEntry = { thread: CodexThread; archived: boolean };
+
+function uniqueThreads(entries: CodexThreadEntry[]): CodexThreadEntry[] {
+  const unique = new Map<string, CodexThreadEntry>();
+  for (const entry of entries) if (!unique.has(entry.thread.id)) unique.set(entry.thread.id, entry);
+  return Array.from(unique.values());
+}
+
+async function listNativeDescendants(
+  runtime: CodexHarnessRuntime,
+  workspace: WorkspaceInfo,
+  roots: CodexThreadEntry[],
+): Promise<CodexThreadEntry[]> {
+  // Current native listings require an ancestor filter to include spawned
+  // threads. Keep broad overview discovery bounded; direct child reads use
+  // their verified native parent chain independently of this recent window.
+  const queue = roots.filter(({ thread }) => !thread.parentThreadId && workspacePathMatches(thread.cwd, workspace.path))
+    .slice(0, 32).flatMap(({ thread }) => [false, true].map((archived) => ({ rootId: thread.id, archived, cursor: null as string | null, cursors: new Set<string>() })));
+  const candidates: Array<CodexThreadEntry & { rootId: string }> = [];
+  let remaining = 500;
+  await Promise.all(Array.from({ length: 2 }, async () => {
+    while (queue.length && remaining > 0) {
+      const query = queue.shift();
+      if (!query) return;
+      const limit = Math.min(100, remaining);
+      remaining -= limit;
+      try {
+        const response = await runtime.call<CodexThreadList>("thread/list", {
+          ancestorThreadId: query.rootId, archived: query.archived, cursor: query.cursor, limit,
+          modelProviders: [], sourceKinds: ["subAgent", "subAgentThreadSpawn"],
+        });
+        const page = (response.data ?? []).slice(0, limit);
+        remaining += limit - page.length;
+        candidates.push(...page.map((thread) => ({ thread, archived: query.archived, rootId: query.rootId })));
+        if (response.nextCursor && !query.cursors.has(response.nextCursor)) {
+          query.cursors.add(response.nextCursor);
+          queue.unshift({ ...query, cursor: response.nextCursor });
+        }
+      } catch {
+        remaining += limit;
+        // A root can disappear while listing; keep healthy roots available.
+      }
+    }
+  }));
+  const threads = new Map([...roots, ...candidates].map(({ thread }) => [thread.id, thread]));
+  return candidates.filter(({ thread, rootId }) => {
+    const visited = new Set<string>();
+    let current = thread;
+    while (current && visited.size < 16 && !visited.has(current.id)) {
+      if (!workspacePathMatches(current.cwd, workspace.path)) return false;
+      if (current.id === rootId) return thread.id !== rootId;
+      visited.add(current.id);
+      if (!current.parentThreadId) return false;
+      current = threads.get(current.parentThreadId)!;
+    }
+    return false;
+  }).map(({ thread, archived }) => ({ thread, archived }));
 }
 
 export async function listCodexHarnessSessions(
@@ -331,12 +464,16 @@ export async function listCodexHarnessSessions(
     listPages(runtime, false, input.search),
     listPages(runtime, true, input.search),
   ]);
-  let entries = [
+  let entries: CodexThreadEntry[] = uniqueThreads([
     ...active.map((thread) => ({ thread, archived: false })),
     ...archived.map((thread) => ({ thread, archived: true })),
-  ];
-  if (input.roots) entries = entries.filter(({ thread }) => !thread.parentThreadId);
+  ]);
   entries.sort((left, right) => timestamp(right.thread.updatedAt) - timestamp(left.thread.updatedAt));
+  if (input.roots) entries = entries.filter(({ thread }) => !thread.parentThreadId);
+  else entries.push(...await listNativeDescendants(runtime, workspace, entries));
+  entries = uniqueThreads(entries);
+  entries.sort((left, right) => timestamp(right.thread.updatedAt) - timestamp(left.thread.updatedAt));
+  entries = entries.slice(0, 500);
   const start = input.start ?? 0;
   const end = input.limit ? start + input.limit : undefined;
   return entries.slice(start, end).map(({ thread, archived: isArchived }) => mapCodexThread({
@@ -345,30 +482,66 @@ export async function listCodexHarnessSessions(
   }, isArchived));
 }
 
-export async function readCodexHarnessThread(runtime: CodexHarnessRuntime, threadId: string): Promise<CodexThread> {
-  let response: { thread?: CodexThread };
-  // A thread just created for the template brief has no turns to list. Some
-  // supported runtimes reject that read with `list_turns is not supported yet`.
-  // Only our positively known, unstarted threads qualify; never infer emptiness
-  // from a blank preview, title, error text, or missing metadata turns array.
-  const metadataOnly = runtime.isAwaitingFirstTurn(threadId);
-  try {
-    response = await runtime.call<{ thread?: CodexThread }>("thread/read", {
-      threadId,
-      includeTurns: !metadataOnly,
+async function readPaginatedCodexTurns(runtime: CodexHarnessRuntime, threadId: string): Promise<CodexTurn[]> {
+  const turns = new Map<string, CodexTurn>();
+  let cursor: string | null = null;
+  for (let page = 0; page < 2; page++) {
+    const response: { data: CodexTurn[]; nextCursor?: string | null } = await runtime.call("thread/turns/list", {
+      threadId, cursor, limit: 50, sortDirection: "desc", itemsView: "notLoaded",
     });
-    // A user can send while the metadata read is in flight.
-    if (metadataOnly && !runtime.isAwaitingFirstTurn(threadId))
-      return readCodexHarnessThread(runtime, threadId);
-  } catch (error) {
-    if (!isCodexUnmaterializedThreadError(error)) throw error;
-    response = await runtime.call<{ thread?: CodexThread }>("thread/read", {
-      threadId,
-      includeTurns: false,
-    });
+    if (!Array.isArray(response.data)) throw new ApiError(502, "codex_harness_invalid_response", "Codex returned invalid turn history");
+    for (const turn of response.data) turns.set(turn.id, { ...turn, items: [], itemsView: "notLoaded" });
+    if (!response.nextCursor) break;
+    if (response.nextCursor === cursor) throw new ApiError(502, "codex_harness_invalid_response", "Codex repeated a history cursor");
+    cursor = response.nextCursor;
   }
-  if (!response.thread?.id) throw new ApiError(404, "session_not_found", "Session not found");
-  return response.thread;
+  if (!turns.size) return [];
+  cursor = null;
+  let oldestLoadedTurn: string | null = null;
+  let complete = false;
+  for (let page = 0; page < 10; page++) {
+    const response: { data: Array<{ turnId: string; item: CodexThreadItem }>; nextCursor?: string | null } = await runtime.call("thread/items/list", {
+      threadId, cursor, limit: 200, sortDirection: "desc",
+    });
+    if (!Array.isArray(response.data)) throw new ApiError(502, "codex_harness_invalid_response", "Codex returned invalid item history");
+    for (const entry of response.data) {
+      const turn = turns.get(entry.turnId);
+      if (!turn) continue;
+      turn.items.push(entry.item);
+      turn.itemsView = "full";
+      oldestLoadedTurn = turn.id;
+    }
+    if (!response.nextCursor) { complete = true; break; }
+    if (response.nextCursor === cursor) throw new ApiError(502, "codex_harness_invalid_response", "Codex repeated a history cursor");
+    cursor = response.nextCursor;
+  }
+  for (const turn of turns.values()) {
+    turn.items.reverse();
+    if (complete) turn.itemsView = "full";
+    else if (turn.id === oldestLoadedTurn) turn.itemsView = "summary";
+  }
+  return [...turns.values()].reverse();
+}
+
+export async function readCodexHarnessThread(runtime: CodexHarnessRuntime, threadId: string): Promise<CodexThread> {
+  const knownUnstarted = runtime.isAwaitingFirstTurn(threadId);
+  const metadata = await runtime.call<{ thread?: CodexThread }>("thread/read", { threadId, includeTurns: false });
+  if (!metadata.thread?.id) throw new ApiError(404, "session_not_found", "Session not found");
+  // First input can arrive while this metadata read is in flight.
+  if (knownUnstarted && runtime.isAwaitingFirstTurn(threadId)) return metadata.thread;
+  try {
+    if (metadata.thread.historyMode === "paginated") {
+      return { ...metadata.thread, turns: await readPaginatedCodexTurns(runtime, threadId) };
+    }
+    const response = await runtime.call<{ thread?: CodexThread }>("thread/read", { threadId, includeTurns: true });
+    if (!response.thread?.id) throw new ApiError(404, "session_not_found", "Session not found");
+    return response.thread;
+  } catch (error) {
+    // The native missing-rollout response is authoritative for an unmaterialized
+    // thread. Other history failures must never erase existing output.
+    if (!isCodexUnmaterializedThreadError(error)) throw error;
+    return metadata.thread;
+  }
 }
 
 export async function readCodexHarnessSession(runtime: CodexHarnessRuntime, threadId: string) {
@@ -386,7 +559,8 @@ export async function readCodexHarnessSnapshot(runtime: CodexHarnessRuntime, thr
   return {
     session: mapCodexThread(thread),
     messages: typeof limit === "number" ? messages.slice(-limit) : messages,
-    todos: [],
+    todos: thread.nativePlan && thread.nativePlan.turnId === thread.turns?.at(-1)?.id
+      ? codexNativePlanTodos(threadId, thread.nativePlan.turnId, thread.nativePlan.plan) : [],
     status: codexThreadRunStatus(thread),
   };
 }
