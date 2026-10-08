@@ -8,6 +8,7 @@ import sharp from "sharp";
 import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
 
 import { ApiError } from "../errors.js";
+import { importedVideoRegistryRoots } from "../hyperframes-catalog.js";
 import { resolveWorkspaceFile } from "./storage.js";
 
 const componentIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
@@ -313,7 +314,7 @@ type Repair = {
   suggestedSplitSeconds?: number[];
 };
 
-function registryRoot(): string {
+function registryRoot(componentId?: string): string {
   const configured = process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT?.trim();
   const cli = process.env.HYPERFRAMES_CLI_PATH?.trim();
   const current = dirname(fileURLToPath(import.meta.url));
@@ -321,8 +322,10 @@ function registryRoot(): string {
     configured,
     cli ? resolve(dirname(cli), "../../../registry/blocks") : undefined,
     resolve(current, "../../../../vendor/hyperframes/registry/blocks"),
+    ...importedVideoRegistryRoots().map(root => resolve(root, "blocks")),
   ].filter((candidate): candidate is string => Boolean(candidate));
-  const available = candidates.find(candidate => existsSync(candidate));
+  const available = candidates.find(candidate => existsSync(componentId ? resolve(candidate, componentId, "registry-item.json") : candidate))
+    ?? candidates.find(candidate => existsSync(candidate));
   if (!available) {
     throw new ApiError(503, "video_component_registry_unavailable", "The bundled HyperFrames component registry is unavailable. Restart the complete iPolloWork client before retrying.");
   }
@@ -470,19 +473,18 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
       throw new ApiError(409, "video_mount_slot_conflict", `Prepare one empty section with id=${instance.sceneId}; authored content is preserved.`);
     }
   }
-  const root = registryRoot();
   const manifests = new Map<string, Awaited<ReturnType<typeof readRegistryComponent>>>();
   const readComponent = async (componentId: string) => {
     const cached = manifests.get(componentId);
     if (cached) return cached;
-    const component = await readRegistryComponent(root, componentId);
+    const component = await readRegistryComponent(registryRoot(componentId), componentId);
     manifests.set(componentId, component);
     return component;
   };
   const installed = new Map<string, InstalledComponent>();
   // Resolve every requested ID before writing any component.
   for (const componentId of input.componentIds) {
-    if (existsSync(resolve(root, componentId, "registry-item.json"))) continue;
+    if (existsSync(resolve(registryRoot(componentId), componentId, "registry-item.json"))) continue;
     throw new ApiError(404, "video_component_not_found", `Video component ${componentId} is not available in the bundled registry`);
   }
   const instanceIds = new Set<string>();
@@ -898,7 +900,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
           let semanticRecipeValidated = false;
           if (componentHtml.includes('data-ipw-motion-recipe="1"') && start !== null && duration !== null) {
             try {
-              const { manifest } = await readRegistryComponent(registryRoot(), componentId);
+              const { manifest } = await readRegistryComponent(registryRoot(componentId), componentId);
               if (manifest.motionRecipe) {
                 if (attribute(tag, "data-ipw-motion-style") && timingSource === "voiceover" && !attribute(tag, "data-ipw-narration-binding")) throw new Error("Narrated recipe is missing measured phrase bindings.");
                 const values = z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).parse(JSON.parse(variableValues));
@@ -980,7 +982,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
             throw new Error("A phrase-alignment or installation failure is not a structural recipe gap; repair the cue, split the scene, or choose another recipe.");
           }
           for (const candidate of evidence.candidates) {
-            const manifest = await stat(resolve(registryRoot(), candidate.componentId, "registry-item.json")).catch(() => null);
+            const manifest = await stat(resolve(registryRoot(candidate.componentId), candidate.componentId, "registry-item.json")).catch(() => null);
             if (!manifest?.isFile()) throw new Error(`${candidate.componentId} is not an available executable recipe candidate.`);
           }
         } catch (error) {

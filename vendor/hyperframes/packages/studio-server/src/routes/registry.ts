@@ -1,5 +1,8 @@
 import type { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { StudioApiAdapter } from "../types.js";
+import { COMPONENT_PACK_MAX_BYTES, importComponentPack, installLibraryComponent, listLibraryComponents, parseComponentPack } from "../helpers/componentLibrary.js";
+import { loadRegistryPreviewAssetFromRoot, loadRegistryPreviewFromRoot } from "../helpers/registryPreview.js";
 
 interface RegistryPreviewOptions {
   assetBaseUrl: string;
@@ -129,19 +132,40 @@ export function buildRegistryPreviewHtml(
 }
 
 export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): void {
+  api.use("/registry/import", bodyLimit({ maxSize: COMPONENT_PACK_MAX_BYTES }));
+  api.post("/registry/import", async (c) => {
+    const origin = c.req.header("Origin");
+    if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: "Cross-origin component import is not allowed" }, 403);
+    if (!c.req.header("Content-Type")?.startsWith("application/json")) return c.json({ error: "JSON component pack required" }, 415);
+    try {
+      const body: unknown = await c.req.json();
+      if (!body || typeof body !== "object") throw new Error("Invalid component pack request");
+      const pack = parseComponentPack(Reflect.get(body, "package"));
+      if (Reflect.get(body, "confirmed") !== true) return c.json({ items: pack.items.map(item => ({ name: item.manifest.name, title: item.manifest.title })) });
+      const builtIns = await adapter.listRegistryCatalog?.() ?? [];
+      const items = importComponentPack(pack, builtIns.map(item => item.name));
+      return c.json({ items });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Unable to import component pack" }, 400);
+    }
+  });
   api.get("/registry/blocks", async (c) => {
     if (!adapter.listRegistryCatalog) {
       return c.json({ error: "Registry not available" }, 501);
     }
     const items = await adapter.listRegistryCatalog();
-    return c.json(items);
+    const names = new Set(items.map(item => item.name));
+    return c.json([...items, ...listLibraryComponents().filter(item => !names.has(item.manifest.name)).map(item => item.manifest)]);
   });
 
   api.get("/registry/blocks/:name/preview", async (c) => {
     if (!adapter.loadRegistryPreview) {
       return c.text("Registry preview not available", 501);
     }
-    const preview = await adapter.loadRegistryPreview({ blockName: c.req.param("name") });
+    const name = c.req.param("name");
+    const imported = listLibraryComponents().find(item => item.manifest.name === name);
+    const preview = await adapter.loadRegistryPreview({ blockName: name })
+      ?? (imported ? loadRegistryPreviewFromRoot(imported.registryRoot, name) : null);
     if (!preview) return c.text("Registry block not found", 404);
 
     const duration = Math.max(0.1, preview.duration);
@@ -175,10 +199,11 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
     const assetPath = decodeURIComponent(
       assetMarkerIndex >= 0 ? c.req.path.slice(assetMarkerIndex + assetMarker.length) : "",
     );
+    const imported = listLibraryComponents().find(item => item.manifest.name === c.req.param("name"));
     const asset = await adapter.loadRegistryPreviewAsset({
       blockName: c.req.param("name"),
       assetPath,
-    });
+    }) ?? (imported ? loadRegistryPreviewAssetFromRoot(imported.registryRoot, c.req.param("name"), assetPath) : null);
     if (!asset) return c.text("Registry asset not found", 404);
     const responseBody = Uint8Array.from(asset.body).buffer;
     return new Response(responseBody, {
@@ -205,6 +230,8 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
     }
 
     try {
+      const imported = listLibraryComponents().find(item => item.manifest.name === body.blockName);
+      if (imported) return c.json({ written: installLibraryComponent(imported, project.dir), block: imported.manifest });
       const result = await adapter.installRegistryBlock({ project, blockName: body.blockName });
       return c.json(result);
     } catch (err) {

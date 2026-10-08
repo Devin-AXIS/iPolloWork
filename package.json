@@ -59,6 +59,7 @@
     "bump:major": "pnpm --filter @ipollowork/app bump:major",
     "bump:set": "pnpm --filter @ipollowork/app bump:set",
     "release:review": "node scripts/release/review.mjs",
+    "release:verify-desktop-resources": "node scripts/release/verify-desktop-resources.mjs",
     "release:prepare": "node scripts/release/prepare.mjs",
     "release:prepare:dry": "node scripts/release/prepare.mjs --dry-run",
     "release:ship": "node scripts/release/ship.mjs",

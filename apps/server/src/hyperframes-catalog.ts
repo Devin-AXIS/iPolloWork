@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -271,6 +272,16 @@ function registryRoot(): string | null {
   return candidates.find((candidate) => existsSync(resolve(candidate, "registry.json"))) ?? null;
 }
 
+// Shared on-disk contract with Studio's component importer: immutable packs,
+// published by atomic rename. Read on demand so AI sees imports immediately.
+export function importedVideoRegistryRoots(): string[] {
+  const library = resolve(process.env.HYPERFRAMES_COMPONENT_LIBRARY || resolve(homedir(), ".hyperframes/component-library"));
+  if (!existsSync(library)) return [];
+  return readdirSync(library, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && /^[a-f0-9]{64}$/.test(entry.name))
+    .map(entry => resolve(library, entry.name));
+}
+
 const shotcraftStyleSchema = z.object({
   key: z.string(), label: z.string(), description: z.string(), use: z.string(),
   previewUrl: z.string().nullable(), previewStatus: z.number().nullable(), previewRevision: z.string(),
@@ -361,10 +372,11 @@ export async function queryVideoRecipeCatalog(raw: unknown) {
 
 export async function listHyperframesCatalog(): Promise<HyperframesCatalogItem[]> {
   const root = registryRoot();
-  if (!root) return [];
   const items: HyperframesCatalogItem[] = [];
+  const names = new Set<string>();
+  for (const catalogRoot of [...(root ? [root] : []), ...importedVideoRegistryRoots()]) {
   for (const group of ["blocks", "components"] as const) {
-    const groupRoot = resolve(root, group);
+    const groupRoot = resolve(catalogRoot, group);
     if (!existsSync(groupRoot)) continue;
     for (const entry of await readdir(groupRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
@@ -372,11 +384,12 @@ export async function listHyperframesCatalog(): Promise<HyperframesCatalogItem[]
         const directory = resolve(groupRoot, entry.name);
         const raw = JSON.parse(await readFile(resolve(directory, "registry-item.json"), "utf8"));
         const item = normalizeHyperframesCatalogItem(raw, await inferRuntimeEngine(raw, directory));
-        if (item) items.push(item);
+        if (item && !names.has(item.name)) { items.push(item); names.add(item.name); }
       } catch {
         // A malformed optional registry item must not hide the remaining catalog.
       }
     }
+  }
   }
   return items.sort((left, right) => {
     const category = CATEGORY_ORDER.indexOf(left.category) - CATEGORY_ORDER.indexOf(right.category);

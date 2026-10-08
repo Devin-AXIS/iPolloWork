@@ -27,6 +27,7 @@ import {
   type DenOrgLlmProviderConnection,
 } from "../../../../app/lib/den";
 import {
+  desktopFetchViaMain,
   engineRestart,
   workspaceiPolloWorkRead,
   workspaceiPolloWorkWrite,
@@ -86,6 +87,7 @@ import {
   isDesktopProviderBlocked,
   type DesktopAppRestrictionChecker,
 } from "../../../../app/cloud/desktop-app-restrictions";
+import { IPOLLOOS_PROVIDER, ipolloOSRuntimeModels } from "./ipolloos-provider";
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
 import { ORCAROUTER_PROVIDER, orcarouterRuntimeModels } from "./orcarouter-provider";
 import {
@@ -316,6 +318,7 @@ type CompatibleProviderPreset = {
 };
 
 const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
+  { ...IPOLLOOS_PROVIDER, models: () => ({}) },
   {
     ...DEEPSEEK_OFFICIAL_PROVIDER,
     models: () => DEEPSEEK_OFFICIAL_PROVIDER.models,
@@ -353,6 +356,15 @@ const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
     ]),
   },
 ];
+
+async function discoveriPolloOSModels(apiKey: string, allowEmpty = false) {
+  let response: Response;
+  try {
+    response = await desktopFetchViaMain(`${IPOLLOOS_PROVIDER.baseURL}/models`, { headers: { Authorization: `Bearer ${apiKey}` } }, 20000);
+  } catch { throw new Error("无法连接 iPolloOS，请先打开 iPolloOS 并启动本地模型。"); }
+  if (!response.ok) throw new Error(response.status === 401 ? "iPolloOS Key 无效或已停用。" : `iPolloOS 返回 HTTP ${response.status}。`);
+  return ipolloOSRuntimeModels(await response.json(), allowEmpty);
+}
 
 function compatibleProviderProfile(
   providerId: string,
@@ -1457,7 +1469,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         return { changed: false, requiresReload: false };
       }
       const keySet = new Set(keys);
-      const providerIds = sharedProviderIdsFromEnvKeys(keys);
+      const providerIds = sharedProviderIdsFromEnvKeys(keys).filter((id) =>
+        id !== IPOLLOOS_PROVIDER.providerId || options.selectedWorkspaceDisplay().workspaceType === "local",
+      );
       const connections = await Promise.all(providerIds.map(async (providerId) => {
         const credentialKey = sharedProviderCredentialEnvKey(providerId);
         const profileKey = sharedProviderProfileEnvKey(providerId);
@@ -1466,9 +1480,15 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           keySet.has(profileKey) ? ipolloworkClient.getUserEnv(profileKey) : null,
         ]);
         const persistedProfile = profile ? parseSharedProviderProfile(profile.item.value) : null;
-        const resolvedProfile = providerSharedProfile(options.providers(), providerId, persistedProfile);
+        const runtimeModels = providerId === IPOLLOOS_PROVIDER.providerId && isDesktopRuntime()
+          ? await discoveriPolloOSModels(credential.item.value.trim(), true)
+          : null;
+        const resolvedProfile = runtimeModels
+          ? buildSharedProviderProfile({ providerId, displayName: IPOLLOOS_PROVIDER.name, baseURL: IPOLLOOS_PROVIDER.baseURL, models: runtimeModels })
+          : providerSharedProfile(options.providers(), providerId, persistedProfile);
         return {
           providerId,
+          runtimeModels,
           apiKey: credential.item.value.trim(),
           profile: resolvedProfile,
           profileMetadataChanged: serializeSharedProviderProfile(resolvedProfile)
@@ -1521,7 +1541,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
                   id: entry.providerId,
                   name: profile.displayName,
                   baseURL: profile.baseURL,
-                  models: Object.fromEntries(
+                  models: entry.runtimeModels ?? Object.fromEntries(
                     profile.models.map((model) => [model.id, {
                       name: model.name ?? model.id,
                       ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
@@ -1560,7 +1580,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           credentialsChanged = true;
         }
         if (runtimeConfigChanged) {
-          await reloadProviderEngine(options.client() ?? engineClient);
+          if (connections.every((entry) => entry.providerId === IPOLLOOS_PROVIDER.providerId)) {
+            await connection.dispose();
+            await connection.waitUntilHealthy();
+          } else await reloadProviderEngine(options.client() ?? engineClient);
         }
         return {
           changed: runtimeConfigChanged || credentialsChanged || enrichedProfiles.length > 0,
@@ -1711,6 +1734,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           { type: "api", label: t("providers.api_key_label") },
         ];
       }
+    }
+
+    if (getProviderEngineAdapter().capabilities.customProviders && options.selectedWorkspaceDisplay().workspaceType === "local") {
+      merged[IPOLLOOS_PROVIDER.providerId] = [{ type: "api", label: t("providers.api_key_label"), description: "填入 iPolloOS 的访问 Key，自动发现本机已启用模型。" }];
     }
 
     if (
@@ -2183,7 +2210,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
     assertProviderAllowedByDesktopPolicy(providerId);
     const resolvedProviderId = providerId.trim().toLowerCase();
+    try {
     const portableProfile = compatibleProviderProfile(resolvedProviderId, modelIds);
+    if (resolvedProviderId === IPOLLOOS_PROVIDER.providerId && portableProfile) {
+      if (options.selectedWorkspaceDisplay().workspaceType !== "local" || !isDesktopRuntime()) throw new Error("iPolloOS 渠道仅用于本机开发客户端。");
+      portableProfile.models = await discoveriPolloOSModels(trimmed);
+    }
     const compatibleProfile = getProviderEngineAdapter().capabilities.customProviders
       ? portableProfile
       : null;
@@ -2198,7 +2230,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         })
       : providerSharedProfile(options.providers(), resolvedProviderId);
 
-    try {
       // Save the account-level credential and model profile first. Engine
       // reloads can remount this store, so persisting it last can leave a
       // provider configured in one workspace but unavailable everywhere else.
@@ -2223,9 +2254,16 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         [...new Set([...state.accountConnectedProviderIds, resolvedProviderId])].sort(),
       );
       await ensureProjectProviderDisabledState(resolvedProviderId, false);
+      if (resolvedProviderId === IPOLLOOS_PROVIDER.providerId) {
+        // Rebuild the configured directory immediately. The broader engine
+        // reload also resynchronizes MCPs and can time out before discovery.
+        await getProviderEngineConnection().dispose();
+        await getProviderEngineConnection().waitUntilHealthy();
+      }
       await refreshProviders({
         dispose: Boolean(
           compatibleProfile
+          && resolvedProviderId !== IPOLLOOS_PROVIDER.providerId
           && getProviderEngineAdapter().capabilities.authChangesRequireReload
         ),
         force: true,

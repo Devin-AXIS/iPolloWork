@@ -126,3 +126,122 @@ test("installs signed FFmpeg and FFprobe resources after a real HTTP download an
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("uses verified development binaries without contacting the resource service", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-video-resource-dev-test-"));
+  try {
+    const ffmpeg = path.join(root, "ffmpeg");
+    const ffprobe = path.join(root, "ffprobe");
+    await Promise.all([writeFile(ffmpeg, "fixture"), writeFile(ffprobe, "fixture")]);
+    /** @type {NodeJS.ProcessEnv} */
+    const env = {};
+    const probed = [];
+    const manager = createVideoResourceManager({
+      app: { getPath: () => root },
+      fetch: async () => { throw new Error("resource service must not be called"); },
+      env,
+      developmentFallbackPaths: { ffmpeg, ffprobe },
+      probeBinary: async (binaryPath, id) => { probed.push({ binaryPath, id }); },
+    });
+
+    assert.deepEqual(await manager.applyEnvironment(), { ffmpeg, ffprobe });
+    assert.deepEqual(probed.map((item) => item.id).sort(), ["ffmpeg", "ffprobe"]);
+    assert.equal(env.HYPERFRAMES_FFMPEG_PATH, ffmpeg);
+    assert.equal(env.HYPERFRAMES_FFPROBE_PATH, ffprobe);
+    assert.deepEqual(await manager.info(), {
+      id: "video-codecs",
+      name: "FFmpeg / FFprobe 视频编解码组件",
+      version: "0.50.13",
+      status: "ready",
+      source: "bundled",
+      installed: true,
+      builtIn: true,
+      canInstall: false,
+      canUninstall: false,
+      installedBytes: null,
+      downloadedBytes: null,
+      totalBytes: null,
+      error: null,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fails closed when development binaries do not pass verification", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-video-resource-invalid-dev-test-"));
+  try {
+    const ffmpeg = path.join(root, "ffmpeg");
+    const ffprobe = path.join(root, "ffprobe");
+    await Promise.all([writeFile(ffmpeg, "fixture"), writeFile(ffprobe, "fixture")]);
+    /** @type {NodeJS.ProcessEnv} */
+    const env = {};
+    const manager = createVideoResourceManager({
+      app: { getPath: () => root },
+      fetch,
+      env,
+      developmentFallbackPaths: { ffmpeg, ffprobe },
+      probeBinary: async (_binaryPath, id) => {
+        if (id === "ffprobe") throw new Error("invalid ffprobe");
+      },
+    });
+
+    assert.equal(await manager.applyEnvironment(), null);
+    assert.equal((await manager.info()).installed, false);
+    assert.equal(env.HYPERFRAMES_FFMPEG_PATH, undefined);
+    assert.equal(env.HYPERFRAMES_FFPROBE_PATH, undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("skips an invalid development pair and uses the next verified candidate", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-video-resource-dev-candidates-test-"));
+  try {
+    const invalidFfmpeg = path.join(root, "invalid-ffmpeg");
+    const invalidFfprobe = path.join(root, "invalid-ffprobe");
+    const ffmpeg = path.join(root, "ffmpeg");
+    const ffprobe = path.join(root, "ffprobe");
+    await Promise.all([invalidFfmpeg, invalidFfprobe, ffmpeg, ffprobe].map((file) => writeFile(file, "fixture")));
+    const manager = createVideoResourceManager({
+      app: { getPath: () => root },
+      fetch,
+      developmentFallbackPaths: [
+        { ffmpeg: invalidFfmpeg, ffprobe: invalidFfprobe, source: "bundled" },
+        { ffmpeg, ffprobe, source: "system" },
+      ],
+      probeBinary: async (binaryPath) => {
+        if (binaryPath.includes("invalid-")) throw new Error("not executable");
+      },
+    });
+
+    assert.deepEqual(await manager.currentPaths(), { ffmpeg, ffprobe });
+    const info = await manager.info();
+    assert.equal(info.source, "system");
+    assert.equal(info.builtIn, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("turns an unreachable resource service into an actionable video error", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-video-resource-error-test-"));
+  try {
+    const manager = createVideoResourceManager({
+      app: { getPath: () => root },
+      fetch: async () => { throw new Error("net::ERR_CONNECTION_REFUSED"); },
+      platform: "darwin",
+      arch: "arm64",
+    });
+
+    await assert.rejects(
+      manager.install("http://localhost:3100"),
+      /无法连接视频资源服务 http:\/\/localhost:3100.*0\.50\.13\/macos\/arm64/,
+    );
+    const info = await manager.info();
+    assert.equal(info.status, "failed");
+    assert.match(info.error, /请检查服务地址/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -22,6 +22,9 @@ export interface RegistryVisualComponentDataColumn {
   type: RegistryVisualComponentDataColumnType;
   role: RegistryVisualComponentDataColumnRole;
   required?: boolean;
+  /** Optional native selector for categorical fields such as icons. */
+  options?: { value: string; label: string }[];
+  format?: "image";
 }
 
 export interface RegistryVisualComponentDataBinding {
@@ -121,6 +124,9 @@ function normalizeRows(
         continue;
       }
       row[column.id] = cell;
+      if (column.options && !column.options.some(option => option.value === cell)) {
+        issues.push({ path: `rows.${rowIndex}.${column.id}`, message: `${column.label} is not an available option` });
+      }
     }
     const hiddenRowId = readObjectValue(rawRow, contract.rowId);
     if (
@@ -309,7 +315,7 @@ export function createVisualComponentDataRow(
   contract: RegistryVisualComponentDataContract,
 ): VisualComponentDataRow {
   const row: VisualComponentDataRow = {};
-  for (const column of contract.columns) row[column.id] = column.type === "number" ? 0 : "";
+  for (const column of contract.columns) row[column.id] = column.options?.[0]?.value ?? (column.type === "number" ? 0 : "");
   return row;
 }
 

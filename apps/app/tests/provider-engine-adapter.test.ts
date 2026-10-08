@@ -2627,3 +2627,17 @@ describe("model runtime adapters", () => {
     expect(connectedIds).not.toContain("minimax");
   });
 });
+
+import { ipolloOSRuntimeModels } from "../src/react-app/domains/connections/provider-auth/ipolloos-provider";
+test("iPolloOS discovers only actual models and retains runtime limits and tools", () => {
+  expect(ipolloOSRuntimeModels({ data: [{ id: "qwen3:8b", name: "Qwen3 8B", context_length: 8192, capabilities: ["tools"] }] })).toEqual({
+    "qwen3:8b": { name: "Qwen3 8B", tool_call: true, limit: { context: 8192, output: 1024 } },
+  });
+  expect(() => ipolloOSRuntimeModels({ data: [] })).toThrow("启动一个模型");
+  expect(() => ipolloOSRuntimeModels(null)).toThrow("无效");
+});
+test("iPolloOS language channel excludes embedding-only models", () => {
+  expect(ipolloOSRuntimeModels({ data: [{ id: "vectors:latest", capabilities: ["embedding"] }, { id: "chat:latest", capabilities: ["completion", "tools"] }] })).toEqual({
+    "chat:latest": { name: "chat:latest", tool_call: true, limit: { context: 4096, output: 512 } },
+  });
+});

@@ -266,6 +266,37 @@ function findFirstRunnablePath(candidates) {
   return null;
 }
 
+function resolveCommandOnPath(command) {
+  const extensions = process.platform === "win32"
+    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)
+    : [""];
+  const directories = [
+    ...(process.env.PATH ?? "").split(path.delimiter).filter(Boolean),
+    ...(process.platform === "darwin" ? ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] : []),
+  ];
+  return findFirstRunnablePath(directories.flatMap((directory) => (
+    extensions.map((extension) => path.join(directory, process.platform === "win32" ? `${command}${extension}` : command))
+  )));
+}
+
+function developmentVideoFallbackCandidates() {
+  if (!isDevMode) return null;
+  const candidates = [];
+  const ffmpeg = resolveCommandOnPath("ffmpeg");
+  const ffprobe = resolveCommandOnPath("ffprobe");
+  if (ffmpeg && ffprobe) candidates.push({ ffmpeg, ffprobe, source: "system" });
+  try {
+    candidates.push({
+      ffmpeg: require("@ffmpeg-installer/ffmpeg").path,
+      ffprobe: require("@ffprobe-installer/ffprobe").path,
+      source: "bundled",
+    });
+  } catch (error) {
+    console.warn(`[video-resource] Development binaries are unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return candidates;
+}
+
 function resolveSystemChromiumBinary() {
   if (resolvedSystemChromiumBinary !== undefined) return resolvedSystemChromiumBinary;
   if (process.platform === "win32") {
@@ -1674,6 +1705,7 @@ const enginePackageManager = createEnginePackageManager({
 const videoResourceManager = createVideoResourceManager({
   app,
   fetch: electronNet.fetch.bind(electronNet),
+  developmentFallbackPaths: developmentVideoFallbackCandidates(),
 });
 
 let runtimeDisposedForQuit = false;

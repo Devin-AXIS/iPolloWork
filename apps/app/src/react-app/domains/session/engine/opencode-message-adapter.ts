@@ -280,6 +280,7 @@ function mapSnapshotToolParts(part: ToolPart): UIMessage["parts"] {
 
 export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMessage[] {
   return snapshot.messages.flatMap((message) => {
+    if (message.info.role === "assistant" && message.info.summary === true) return [];
     const created = message.info.time?.created;
     const completed = message.info.time && "completed" in message.info.time
       ? message.info.time.completed

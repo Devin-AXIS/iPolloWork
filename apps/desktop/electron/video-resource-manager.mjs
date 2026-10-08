@@ -17,6 +17,23 @@ const DOWNLOAD_ATTEMPTS = 8;
 const DOWNLOAD_PARTS = 4;
 const DOWNLOAD_CONCURRENCY = 3;
 
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function installError(error, { baseUrl, appVersion, platform, arch }) {
+  const message = errorMessage(error);
+  const targetPlatform = platform === "darwin" ? "macos" : platform === "win32" ? "windows" : platform;
+  const target = `${appVersion}/${targetPlatform}/${arch}`;
+  if (/ERR_CONNECTION_REFUSED|ECONNREFUSED|fetch failed/i.test(message)) {
+    return new Error(`无法连接视频资源服务 ${baseUrl}。请检查服务地址，或由管理员发布 ${target} 的完整桌面资源。`, { cause: error });
+  }
+  if (/HTTP 404|RESOURCE_RELEASE_NOT_FOUND/i.test(message)) {
+    return new Error(`视频资源版本 ${target} 尚未发布。请先发布包含 FFmpeg 和 FFprobe 的完整桌面资源，再重试。`, { cause: error });
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
 function runTar(args) {
   return new Promise((resolve, reject) => {
     const child = spawn("tar", args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
@@ -206,6 +223,7 @@ export function createVideoResourceManager({
   env = process.env,
   platform = process.platform,
   arch = process.arch,
+  developmentFallbackPaths = null,
   trustedKeys = undefined,
   probeBinary: verifyBinary = probeBinary,
 }) {
@@ -214,8 +232,9 @@ export function createVideoResourceManager({
   const marker = path.join(root, "current.json");
   let operation = null;
   let inFlight = null;
+  let fallbackRuntimePromise = null;
 
-  async function currentPaths() {
+  async function downloadedPaths() {
     let record;
     try { record = JSON.parse(await readFile(marker, "utf8")); } catch { return null; }
     if (!/^[a-f0-9]{64}$/.test(record?.mediaSha256 ?? "")) return null;
@@ -229,39 +248,83 @@ export function createVideoResourceManager({
     return paths;
   }
 
+  async function fallbackRuntime() {
+    if (!developmentFallbackPaths) return null;
+    if (!fallbackRuntimePromise) {
+      fallbackRuntimePromise = (async () => {
+        const candidates = Array.isArray(developmentFallbackPaths)
+          ? developmentFallbackPaths
+          : [developmentFallbackPaths];
+        for (const candidate of candidates) {
+          const ffmpeg = String(candidate?.ffmpeg ?? "").trim();
+          const ffprobe = String(candidate?.ffprobe ?? "").trim();
+          if (!ffmpeg || !ffprobe) continue;
+          const paths = { ffmpeg: path.resolve(ffmpeg), ffprobe: path.resolve(ffprobe) };
+          if (!Object.values(paths).every(existsSync)) continue;
+          try {
+            await Promise.all(VIDEO_IDS.map((id) => verifyBinary(paths[id], id)));
+            return { paths, source: candidate.source === "system" ? "system" : "bundled" };
+          } catch {
+            // Development candidates are optional. Continue to the next
+            // verified pair instead of trusting a partial or non-executable install.
+          }
+        }
+        return null;
+      })().then((runtime) => {
+        if (!runtime) fallbackRuntimePromise = null;
+        return runtime;
+      });
+    }
+    return fallbackRuntimePromise;
+  }
+
+  async function currentRuntime() {
+    const downloaded = await downloadedPaths();
+    if (downloaded) return { paths: downloaded, source: "downloaded" };
+    return fallbackRuntime();
+  }
+
+  async function currentPaths() {
+    return (await currentRuntime())?.paths ?? null;
+  }
+
   async function applyEnvironment() {
-    const paths = await currentPaths();
-    if (!paths) {
-      delete env.HYPERFRAMES_FFMPEG_PATH;
-      delete env.HYPERFRAMES_FFPROBE_PATH;
-      return null;
+    const downloaded = await downloadedPaths();
+    if (downloaded) {
+      try {
+        await Promise.all(VIDEO_IDS.map((id) => verifyBinary(downloaded[id], id)));
+        env.HYPERFRAMES_FFMPEG_PATH = downloaded.ffmpeg;
+        env.HYPERFRAMES_FFPROBE_PATH = downloaded.ffprobe;
+        return downloaded;
+      } catch (error) {
+        await rm(marker, { force: true });
+        operation = { status: "failed", error: errorMessage(error) };
+      }
     }
-    try {
-      await Promise.all(VIDEO_IDS.map((id) => verifyBinary(paths[id], id)));
-    } catch (error) {
-      await rm(marker, { force: true });
-      delete env.HYPERFRAMES_FFMPEG_PATH;
-      delete env.HYPERFRAMES_FFPROBE_PATH;
-      operation = { status: "failed", error: error instanceof Error ? error.message : String(error) };
-      return null;
+    const fallback = await fallbackRuntime();
+    if (fallback) {
+      operation = null;
+      env.HYPERFRAMES_FFMPEG_PATH = fallback.paths.ffmpeg;
+      env.HYPERFRAMES_FFPROBE_PATH = fallback.paths.ffprobe;
+      return fallback.paths;
     }
-    env.HYPERFRAMES_FFMPEG_PATH = paths.ffmpeg;
-    env.HYPERFRAMES_FFPROBE_PATH = paths.ffprobe;
-    return paths;
+    delete env.HYPERFRAMES_FFMPEG_PATH;
+    delete env.HYPERFRAMES_FFPROBE_PATH;
+    return null;
   }
 
   /** @returns {Promise<import("@ipollowork/types/desktop-ipc").EnginePackageInfo>} */
   async function info() {
-    const paths = await currentPaths();
+    const runtime = await currentRuntime();
     return {
       id: VIDEO_ID,
       name: "FFmpeg / FFprobe 视频编解码组件",
       version: appVersion,
-      status: operation?.status ?? (paths ? "ready" : "not-installed"),
-      source: paths ? "downloaded" : "none",
-      installed: Boolean(paths),
-      builtIn: false,
-      canInstall: !paths && (!operation || operation.status === "failed"),
+      status: operation?.status ?? (runtime ? "ready" : "not-installed"),
+      source: runtime?.source ?? "none",
+      installed: Boolean(runtime),
+      builtIn: runtime?.source === "bundled",
+      canInstall: !runtime && (!operation || operation.status === "failed"),
       canUninstall: false,
       installedBytes: null,
       downloadedBytes: operation?.downloadedBytes ?? null,
@@ -330,8 +393,9 @@ export function createVideoResourceManager({
       env.HYPERFRAMES_FFPROBE_PATH = path.join(destination, "ffprobe", `ffprobe${executable}`);
       return info();
     } catch (error) {
-      operation = { status: "failed", error: error instanceof Error ? error.message : String(error) };
-      throw error;
+      const failure = installError(error, { baseUrl, appVersion, platform, arch });
+      operation = { status: "failed", error: failure.message };
+      throw failure;
     } finally {
       await rm(temporary, { recursive: true, force: true });
     }

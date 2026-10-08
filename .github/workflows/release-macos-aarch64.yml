@@ -280,6 +280,10 @@ jobs:
       - name: Release review (strict)
         run: node scripts/release/review.mjs --strict
 
+      - name: Verify signed desktop resources are published
+        if: needs.resolve-release.outputs.build_electron == 'true'
+        run: node scripts/release/verify-desktop-resources.mjs
+
   publish-electron:
     name: Build + publish Electron (${{ matrix.artifact }})
     needs: [resolve-release, verify-release]

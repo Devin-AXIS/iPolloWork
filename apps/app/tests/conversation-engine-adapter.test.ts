@@ -1,6 +1,22 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { WorkspaceEngineRpcClient } from "../src/app/lib/workspace-engine-rpc-client";
 
+test("OpenCode compaction summaries stay internal in history and streaming", () => {
+  const info = {id: "internal", sessionID: "ses", role: "assistant", parentID: "user", summary: true};
+  const part = {id: "internal-text", sessionID: "ses", messageID: "internal", type: "text", text: "## Objective"};
+  const snapshot = mapOpenCodeConversationSnapshot({
+    session: {id: "ses", title: "Title", time: {created: 1, updated: 2}},
+    messages: [{info, parts: [part]}, {info: {...info, id: "answer", summary: false}, parts: [{...part, messageID: "answer", text: "正常回复"}]}],
+    todos: [], status: {type: "idle"},
+  });
+  expect(snapshot.messages.map(message => message.id)).toEqual(["answer"]);
+  const state = createOpenCodeConversationLiveState();
+  expect(mapOpenCodeConversationEvent({type: "message.updated", properties: {info}}, state)).toEqual({type: "message.removed", sessionId: "ses", messageId: "internal"});
+  expect(mapOpenCodeConversationEvent({type: "message.part.updated", properties: {part}}, state)).toBeNull();
+  expect(mapOpenCodeConversationEvent({type: "message.part.delta", properties: {sessionID: "ses", messageID: "internal", partID: "internal-text", delta: " hidden"}}, state)).toBeNull();
+  expect(mapOpenCodeConversationEvent({type: "message.updated", properties: {info: {...info, id: "answer", summary: false}}}, state)?.type).toBe("message.upsert");
+});
+
 test("longer RPC deadlines apply only to bootstrap, not cancel or ordinary reads", async () => {
   const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
   const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ value: {} }));
