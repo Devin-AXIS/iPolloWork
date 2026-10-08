@@ -741,6 +741,7 @@ describe("plugin package lifecycle", () => {
     workspace.engineId = engineId;
     const skillDirectory = engineId === "opencode" ? ".opencode" : engineId === "deepseek-harness" ? ".dsh" : ".agents";
     const designRoot = fileURLToPath(new URL("../../../examples/plugin-packages/design-agent", import.meta.url));
+    const designVersion = JSON.parse(await readFile(join(designRoot, "ipollowork.plugin.json"), "utf8")).package.version;
     const catalogRoot = await createRoot("ipollowork-design-capabilities-catalog-");
     const legacyDesignRoot = join(catalogRoot, "design-agent");
     const addedSkills = ["ipollowork-design-web", "ipollowork-design-graphics", "ipollowork-design-editorial"];
@@ -840,7 +841,7 @@ describe("plugin package lifecycle", () => {
       const installed = (await lifecycle.listInstalledPluginPackages({ serverConfig: config })).find((item) => item.pluginId === "design-agent");
       if (!installed) throw new Error("Design package is missing after refresh");
       expect(installed).toMatchObject({
-        version: customized ? "0.3.18" : "0.3.19", enabled,
+        version: customized ? "0.3.18" : designVersion, enabled,
         disabledResourceIds: disabledSkill ? [disabledSkill] : [],
       });
       expect(installed.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(customized ? 2 : 5);
@@ -896,6 +897,7 @@ describe("plugin package lifecycle", () => {
     const config = serverConfig(workspaceRoot);
     const legacyRoot = await createRoot("ipollowork-legacy-video-reference-");
     const videoRoot = fileURLToPath(new URL("../../../examples/plugin-packages/video-agent", import.meta.url));
+    const videoVersion = JSON.parse(await readFile(join(videoRoot, "ipollowork.plugin.json"), "utf8")).package.version;
     const sharedRoot = fileURLToPath(new URL("../../../examples/plugin-packages/reference-context", import.meta.url));
     const skillText = await readFile(join(sharedRoot, "skills", "ipollowork-reference-analyzer", "SKILL.md"), "utf8");
     await cp(videoRoot, legacyRoot, { recursive: true });
@@ -924,7 +926,7 @@ describe("plugin package lifecycle", () => {
       await expectMissing(join(workspaceRoot, ".opencode", "skills", "reference-analyzer", "SKILL.md"));
       const installed = await lifecycle.listInstalledPluginPackages({ serverConfig: config });
       expect(installed).toEqual(expect.arrayContaining([
-        expect.objectContaining({ pluginId: "video-agent", version: "0.3.13", enabled }),
+        expect.objectContaining({ pluginId: "video-agent", version: videoVersion, enabled }),
         expect.objectContaining({ pluginId: "reference-context", enabled: true }),
       ]));
       await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "video-agent" });
@@ -954,6 +956,7 @@ describe("plugin package lifecycle", () => {
     workspace.engineId = engineId;
     const skillDirectory = engineId === "opencode" ? ".opencode" : engineId === "deepseek-harness" ? ".dsh" : ".agents";
     const videoRoot = fileURLToPath(new URL("../../../examples/plugin-packages/video-agent", import.meta.url));
+    const videoVersion = JSON.parse(await readFile(join(videoRoot, "ipollowork.plugin.json"), "utf8")).package.version;
     const skillRelative = "skills/ipollowork-video-studio/SKILL.md";
     const currentRules = await readFile(join(videoRoot, skillRelative), "utf8");
     const legacyRules = "---\nname: ipollowork-video-studio\ndescription: Legacy video rules\n---\n# Legacy video rules\n";
@@ -1031,7 +1034,7 @@ describe("plugin package lifecycle", () => {
       if (customizedSkill) expect(result).toMatchObject({ code: "plugin_package_conflict" });
       expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          pluginId: "video-agent", version: customizedSkill ? previousVersion : "0.3.13", enabled,
+          pluginId: "video-agent", version: customizedSkill ? previousVersion : videoVersion, enabled,
           disabledResourceIds: disabledSkill ? ["ipollowork-video-voiceover"] : [],
         }),
       ]));
@@ -1078,7 +1081,7 @@ describe("plugin package lifecycle", () => {
         const olderBundle = await fetch(base, { headers });
         expect(olderBundle.status).toBe(200);
         expect((await olderBundle.json()).items).toEqual(expect.arrayContaining([
-          expect.objectContaining({ pluginId: "video-agent", version: "0.3.13" }),
+          expect.objectContaining({ pluginId: "video-agent", version: videoVersion }),
         ]));
       }
     } finally { await server.stop(); }
@@ -1090,6 +1093,10 @@ describe("plugin package lifecycle", () => {
     const videoRoot = fileURLToPath(new URL("../../../examples/plugin-packages/video-agent", import.meta.url));
     const bundledVideoRoot = join(catalogRoot, "video-agent");
     await cp(videoRoot, bundledVideoRoot, { recursive: true });
+    const manifestPath = join(bundledVideoRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const currentVersion = manifest.package.version;
+    const nextVersion = currentVersion.replace(/\d+$/, (patch: string) => String(Number(patch) + 1));
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = catalogRoot;
     const server = await startServer(serverConfig(workspaceRoot));
@@ -1104,19 +1111,17 @@ describe("plugin package lifecycle", () => {
       return (await response.json()).items.find((item: { pluginId: string }) => item.pluginId === "video-agent").version;
     };
     try {
-      expect(await videoVersion()).toBe("0.3.13");
-      const manifestPath = join(bundledVideoRoot, "ipollowork.plugin.json");
-      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-      manifest.package.version = "0.3.14";
+      expect(await videoVersion()).toBe(currentVersion);
+      manifest.package.version = nextVersion;
       await writeFile(manifestPath, JSON.stringify(manifest), "utf8");
       const compositionSkill = join(bundledVideoRoot, "skills", "ipollowork-video-compose", "SKILL.md");
       const compositionRules = await readFile(compositionSkill, "utf8");
       await rm(compositionSkill);
-      expect(await videoVersion()).toBe("0.3.13");
+      expect(await videoVersion()).toBe(currentVersion);
       await writeFile(compositionSkill, compositionRules, "utf8");
-      expect(await videoVersion()).toBe("0.3.13");
+      expect(await videoVersion()).toBe(currentVersion);
       elapsed = 6_000;
-      expect(await videoVersion()).toBe("0.3.14");
+      expect(await videoVersion()).toBe(nextVersion);
       expect(await readFile(join(workspaceRoot, ".opencode", "skills", "ipollowork-video-compose", "SKILL.md"), "utf8"))
         .toBe(compositionRules);
     } finally {
@@ -2006,6 +2011,7 @@ describe("plugin package lifecycle", () => {
 
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
     const designVersion = JSON.parse(await readFile(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url), "utf8")).package.version;
+    const videoVersion = JSON.parse(await readFile(new URL("../../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url), "utf8")).package.version;
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const figmaPackageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
     const existingFigmaAgent = ".opencode/agents/design-parity-review-agent.md";
@@ -2033,7 +2039,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "douyin-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/douyin-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-channels-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/wechat-channels-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: designVersion, installedVersion: designVersion, updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.13", installedVersion: "0.3.13", updateAvailable: false },
+          { pluginId: "video-agent", version: videoVersion, installedVersion: videoVersion, updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
@@ -2257,7 +2263,7 @@ describe("plugin package lifecycle", () => {
       },
       {
         pluginId: "video-agent",
-        version: "0.3.13",
+        version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url), "utf8")).package.version,
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

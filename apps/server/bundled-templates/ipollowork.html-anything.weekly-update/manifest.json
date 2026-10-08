@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.weekly-update",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "slides",
   "subcategory": "operations",
@@ -9,7 +9,8 @@
   "tags": [
     "operations",
     "weekly",
-    "status"
+    "status",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Weekly Update Deck",

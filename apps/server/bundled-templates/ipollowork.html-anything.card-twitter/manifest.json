@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.card-twitter",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "cards",
   "subcategory": "marketing",
@@ -10,7 +10,8 @@
     "marketing",
     "twitter",
     "x",
-    "quote"
+    "quote",
+    "topic:social"
   ],
   "surface": "design",
   "title": "Twitter Share Card",

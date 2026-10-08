@@ -1,7 +1,7 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "device-carousel",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "hyperframes:block",
   "title": "Device Carousel",
   "description": "Travel across three product screens with perspective, depth separation and a moving focus.",
@@ -26,9 +26,10 @@
         "title",
         "screenUrls",
         "labels",
-        "note"
+        "note",
+        "carouselMode"
       ],
-      "instructions": "Use up to three real project-local screen URLs separated by |, and three short labels separated by |. Screens use a 332:562 portrait crop. Empty URLs show clearly marked illustrative screens, not product evidence. This 8s scene visits three independent depth planes and returns to an overview. Captions remain outside the camera. Do not stack a second transform animation on its camera or depth planes."
+      "instructions": "Use up to three real project-local screen URLs separated by |, and three short labels separated by |. Screens use a 332:562 portrait crop. Empty URLs show clearly marked illustrative screens, not product evidence. This 8s scene visits three independent depth planes and returns to an overview. Captions remain outside the camera. Do not stack a second transform animation on its camera or depth planes. Optional carouselMode=flow-belt moves three persistent screens on a smoothly accelerating and stopping belt; the sample screen ornaments share the belt clock. depth-tour remains the default."
     }
   },
   "dimensions": {
@@ -80,6 +81,23 @@
       "default": "A continuous journey through your product",
       "maxLength": 100,
       "update": "live"
+    },
+    {
+      "id": "carouselMode",
+      "label": "Carousel motion",
+      "type": "enum",
+      "default": "depth-tour",
+      "options": [
+        {
+          "value": "depth-tour",
+          "label": "Depth Tour · 景深切换"
+        },
+        {
+          "value": "flow-belt",
+          "label": "Flow Belt · 连续流动"
+        }
+      ],
+      "update": "rebuild"
     }
   ]
 }

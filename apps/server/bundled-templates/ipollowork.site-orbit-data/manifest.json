@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-orbit-data",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "kind": "design",
   "category": "site",
   "subcategory": "saas-data",
@@ -10,7 +10,8 @@
     "data",
     "ai",
     "saas",
-    "dashboard"
+    "dashboard",
+    "topic:product"
   ],
   "surface": "design",
   "title": "Orbit Data Cloud",

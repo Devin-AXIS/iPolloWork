@@ -12,8 +12,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
 import { resolveWithinRoot } from "../paths.js";
 import { checkVideoComponents, installVideoComponents } from "./video-components.js";
-import { analyzeVideoMusic } from "./video-audio-analysis.js";
-import { videoRenderAction } from "./video-render.js";
+import { z } from "zod";
+import { analyzeVideoMusic, prepareVideoSoundtrack, prepareVideoLanguageTiming, videoSoundtrackInput, videoLanguageTimingInput } from "./video-audio-analysis.js";
+import { videoRenderAction, analyzeVideoReference, videoRenderInput, videoReferenceInput } from "./video-render.js";
 import { queryVideoRecipeCatalog } from "../hyperframes-catalog.js";
 
 // The Alibaba adapter stays internal to this module. The public action
@@ -964,6 +965,13 @@ export const MEDIA_EXTENSION_ACTIONS = [
       additionalProperties: false,
     },
   },
+  ...[
+    { action: "video_reference_analyze", title: "Measure reference video rhythm", description: "Decode a local reference in this video's assets. Return bounded motion/stillness curves and audio health; measurements support creative choices and do not judge meaning.", schema: videoReferenceInput },
+    { action: "video_soundtrack_prepare", title: "Prepare event-synchronized sound", description: "Create editable local sound clips from locked film events and a shared room; return native GSAP music ducking envelopes for matching preview and export.", schema: videoSoundtrackInput },
+    { action: "video_language_timing_prepare", title: "Map measured narration across languages", description: "Use exact provider word timing and explicit phrase pairs to map one authored composition into a second language. Return reversible anchors and root/child timeline integration; do not invent speech durations.", schema: videoLanguageTimingInput },
+  ].map(({ action, title, description, schema }) => ({
+    extensionId: MEDIA_EXTENSION_ID, action, title, description, inputSchema: z.toJSONSchema(schema, { io: "input" }),
+  })),
   {
     extensionId: MEDIA_EXTENSION_ID,
     action: "video_component_install",
@@ -1018,16 +1026,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID, action,
     title: action === "video_render_start" ? "Export video to MP4" : "Read MP4 export progress",
     description: "Built-in local Video Studio MP4 export. No external CLI, npm package, manual Export click, or provider key. Start returns immediately with preparing/rendering; poll status using the SAME sourcePath and operationKey every 2 seconds. The app starts bundled Studio automatically. Complete returns outputPath for douyin-ops import-media. Failed returns the actual error; never publish a failed export or change operationKey to blindly retry.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
-        operationKey: { type: "string", description: "Stable key for this export attempt, reused for start/status/continuation. Use a new key only for a new explicitly requested export or after resolving an error." },
-        review: { type: "boolean", description: "When true, sample real rendered pixels at establish, develop, and land positions for every timed scene." },
-        reviewOnly: { type: "boolean", description: "Render a smaller draft for pixel review and remove its temporary MP4 after sampling." },
-      },
-      required: ["sourcePath", "operationKey"], additionalProperties: false,
-    },
+    inputSchema: z.toJSONSchema(videoRenderInput, { io: "input" }),
   })),
   {
     extensionId: MEDIA_EXTENSION_ID,
@@ -2275,6 +2274,15 @@ export async function callMediaExtensionAction(
       : action === "video_component_install"
         ? await installVideoComponents(workspace, args)
         : await checkVideoComponents(workspace, args);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
+  if (action === "video_reference_analyze" || action === "video_soundtrack_prepare" || action === "video_language_timing_prepare") {
+    const workspace = workspaceForContext(config, context);
+    const output = action === "video_reference_analyze"
+      ? await analyzeVideoReference(workspace, args)
+      : action === "video_soundtrack_prepare"
+        ? await prepareVideoSoundtrack(workspace, args)
+        : await prepareVideoLanguageTiming(workspace, args);
     return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
   }
   if (action === "video_render_start" || action === "video_render_status") {

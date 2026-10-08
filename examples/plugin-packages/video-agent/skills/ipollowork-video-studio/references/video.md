@@ -1,5 +1,3 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
-
 # iPolloWork Video Session Contract
 
 This is shared session guidance and an index, not a full-production prerequisite. Read it once when a video phase starts without known boundaries; load only that phase's guide. The runtime's exact project, requirements, authorization, voice settings, review flag and render ownership take precedence. Discussion stays in chat.

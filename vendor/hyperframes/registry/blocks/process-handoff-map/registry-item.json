@@ -122,28 +122,28 @@
     "events": [
       {
         "id": "step-1",
-        "target": ".vc-item:nth-child(1)",
+        "target": ".vc-item:nth-child(1), .vc-carrier",
         "time": 1.2,
         "duration": 0.5,
         "action": "Explain supplied item 1 in narration order"
       },
       {
         "id": "step-2",
-        "target": ".vc-item:nth-child(2)",
+        "target": ".vc-item:nth-child(2), .vc-carrier",
         "time": 2.6,
         "duration": 0.5,
         "action": "Explain supplied item 2 in narration order"
       },
       {
         "id": "step-3",
-        "target": ".vc-item:nth-child(3)",
+        "target": ".vc-item:nth-child(3), .vc-carrier",
         "time": 4.1,
         "duration": 0.5,
         "action": "Explain supplied item 3 in narration order"
       },
       {
         "id": "step-4",
-        "target": ".vc-item:nth-child(4)",
+        "target": ".vc-item:nth-child(4), .vc-carrier",
         "time": 5.5,
         "duration": 0.5,
         "action": "Explain supplied item 4 in narration order"

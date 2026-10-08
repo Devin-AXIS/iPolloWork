@@ -541,18 +541,17 @@ test("template quantities remain examples for design and video, including blank 
 });
 
 
-test("template adaptation covers content roles and preserves explicit layout constraints", () => {
+test("template application delegates adaptation to plugin guidance without repeating it in the host", () => {
+  const guide = readFileSync(new URL("../../../examples/plugin-packages/design-agent/skills/ipollowork-design-studio/references/shared-guidelines.md", import.meta.url), "utf8");
+  for (const rule of ["Exact-layout mode applies only when explicitly requested", "Targeted edits protect unrelated pages and objects", "Keep fixed brand areas", "Extend with the current template's visual elements", "density visually"]) expect(guide).toContain(rule);
   for (const category of ["slides", "site", "video", "article"] satisfies TemplateCategory[]) {
     const prompt = templateBriefPrompt({
       template: { category, title: "Three-card sample", applyChecklist: ["Keep the three-card layout."] },
       entryPath: "index.html", briefPath: "brief.json",
     });
-    expect(prompt).toContain("Template/checklist layout examples are not mandatory structures");
-    expect(prompt).toContain("create a new composition from the same visual primitives");
-    expect(prompt).toContain("If the user explicitly requests exact template layout, honor it");
-    expect(prompt).toContain("For targeted follow-up edits, apply adaptation only within the requested scope");
-    expect(prompt).toContain("Keep explicit fixed-brand regions");
-    expect(prompt).toContain("inspect rendered pages/scenes");
+    expect(prompt).toContain("Follow the owning Skill's template adaptation guidance within the requested scope");
+    expect(prompt).toContain("keep the template's visual language");
+    expect(prompt).not.toContain("Template layout adaptation:");
     expect(prompt).not.toContain("Preserve fixed-brand assets, layout and timing.");
   }
 });
@@ -573,8 +572,8 @@ test("shared layouts provide structure while the selected template owns visual r
   expect(prompt).toContain("core-v1-site/catalog.md");
   expect(prompt).toContain("core-v1-site/shared-contract.md");
   expect(prompt).toContain("retain active tokens");
-  expect(prompt).toContain("content topic is not permission to change theme");
-  expect(prompt).toContain("isolated final characters");
+  expect(prompt).toContain("keep the template's visual language");
+  expect(prompt).toContain("Follow the owning Skill's template adaptation guidance");
 });
 
 test("artifact delivery reads the shared slide layout library", () => {

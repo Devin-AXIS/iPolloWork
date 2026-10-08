@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.article-magazine",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "article",
   "subcategory": "marketing",
@@ -10,7 +10,8 @@
     "marketing",
     "blog",
     "essay",
-    "newsletter"
+    "newsletter",
+    "topic:culture"
   ],
   "surface": "design",
   "title": "Magazine Article",

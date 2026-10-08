@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.automation-day-planner",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "automation",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "automation"
+    "automation",
+    "topic:business"
   ],
   "surface": "video",
   "title": "Automation Day Planner",

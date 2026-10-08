@@ -1552,7 +1552,6 @@ export function SessionRoute() {
         if (attachmentInstruction) {
           parts.push({ type: "text", text: attachmentInstruction, synthetic: true });
         }
-        const capabilitySystemContext = draft.capability?.instruction ?? null;
         // A workbench owns its request; template inference must not add a second task.
         const workspaceAppRequest = draft.capability?.id.split("+").some((id) => id.startsWith("workspace-app:")) === true;
         const videoTarget = conversationVideoTarget(text);
@@ -1789,7 +1788,7 @@ export function SessionRoute() {
           return templateAuthoringSystemContext(template, selectedDesignSystemGuide);
         }));
         const languageSystemContext = responseLanguageSystemContext(currentLocale());
-        const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]
+        const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, languageSystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
         // Version history is a site-only workflow. Slides and every other

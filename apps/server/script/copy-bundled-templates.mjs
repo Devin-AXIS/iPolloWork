@@ -36,6 +36,19 @@ await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 
 await mkdir(dirname(target), { recursive: true });
 await cp(source, target, { recursive: true });
 
+// Professional guidance is owned by its plugin; these are runtime copies.
+const pluginGuides = [
+  ["design-agent/skills/ipollowork-presentations/references", "layout.md", "core-v1-slides-layout.md"],
+  ["video-agent/skills/ipollowork-video-studio/references", "video-motion-principles.md", "core-v1-video-motion-principles.md"],
+  ["video-agent/skills/ipollowork-video-studio/references", "video-acceptance.md", "core-v1-video-acceptance.md"],
+];
+for (const [directory, name, output] of pluginGuides) {
+  const owner = `examples/plugin-packages/${directory}/`;
+  const body = await readFile(join(serverRoot, "../..", owner, name), "utf8");
+  const header = `<!-- Distribution reference: maintained in ${owner}; checked against the source by plugin-package-manifest.test.ts. -->\n\n`;
+  await writeFile(join(target, output), header + body);
+}
+
 const crcTable = Array.from({ length: 256 }, (_, value) => {
   let crc = value;
   for (let bit = 0; bit < 8; bit += 1) crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);

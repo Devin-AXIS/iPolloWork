@@ -214,7 +214,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       totalFrames,
       initialWorkerCount: workerCount,
       allowRetry: shouldAllowAdaptiveCaptureRetry(workerCount, job.config.workers !== undefined),
-      frameExt: needsAlpha ? "png" : "jpg",
+      frameExt: needsAlpha || job.config.motionBlur ? "png" : "jpg",
       captureOptions: buildCaptureOptions(),
       createBeforeCaptureHook: createRenderVideoFrameInjector,
       abortSignal,

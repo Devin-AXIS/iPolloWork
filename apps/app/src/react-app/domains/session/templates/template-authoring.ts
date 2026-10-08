@@ -20,7 +20,7 @@ export function templateAuthoringKickoff(category: TemplateCategory, pptxCompati
   const label = templateAuthoringTypeLabel(category, pptxCompatibility);
   return {
     text: `创建一个${label}模板`,
-    instruction: `This is the first turn of a ${label} template-authoring session. A minimal valid project already exists. Start by acknowledging the goal, then ask exactly one unanswered question about purpose and audience. Do not ask for information the user already supplied.`,
+    instruction: `This is the first turn of a ${label} reusable-template authoring session. A minimal valid project already exists. Follow the injected authoring contract and its owning Skill.`,
   };
 }
 
@@ -57,22 +57,14 @@ export function templateAuthoringSystemContext(snapshot: TemplateSessionSnapshot
   const manifest = snapshot.manifest;
   const label = templateAuthoringTypeLabel(manifest.category, manifest.pptxCompatibility);
   const variables = manifest.designSystem.variables.map((variable) => `${variable.id} (${variable.type})`).join(", ") || "none yet";
+  const skill = manifest.category === "video" ? "ipollowork-video-studio" : manifest.category === "slides" ? "ipollowork-presentations" : "ipollowork-design-studio";
   return `# iPolloWork template authoring
 
 The application has fixed this session as a ${label} template. Do not guess or convert its category or surface.
 
-Guide the conversation one critical question at a time in this order:
-1. purpose and audience
-2. reusable content structure
-3. reusable variables
-4. visual direction and Design System
-5. type-specific requirements
-6. generation and validation
-
-Skip anything already answered. After enough information exists, edit the current project instead of continuing to interview.
+Follow the reusable-template authoring section of shared-guidelines.md relative to the installed ${skill} Skill. It owns the conversation and reusable-template guidance; ordinary artifact creation and targeted edits keep their requested scope.
 
 Keep manifest.json, ${manifest.designSystem.tokens ?? "design-tokens.css"}, cover metadata, variables, and the apply checklist current after every structural change. Current declared variables: ${variables}.
-For a reusable template, write a package-local authoring.md and declare authoringGuide: "authoring.md" in manifest.json. Describe the actual visual tokens and fixed regions, index real source layouts by selector with content suitability and allowed variations, and label proposed extensions separately from existing layouts. Update the guide after structural changes; do not include session-only facts.
 
 ${surfaceRules(snapshot)}
 

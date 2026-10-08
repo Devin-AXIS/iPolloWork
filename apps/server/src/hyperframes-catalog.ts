@@ -270,9 +270,10 @@ export function resolveHyperframesRegistryRoot(surface: "catalog" | "blocks" = "
     resolve(here, "..", "..", "..", "..", "vendor", "hyperframes", "registry"),
     resourcesPath ? resolve(resourcesPath, "hyperframes", "registry") : "",
   ].filter(Boolean);
-  return candidates
-    .map(candidate => surface === "blocks" ? resolve(candidate, "blocks") : candidate)
-    .find(candidate => existsSync(surface === "catalog" ? resolve(candidate, "registry.json") : candidate)) ?? null;
+  const catalog = candidates.find(candidate => existsSync(resolve(candidate, "registry.json")));
+  if (!catalog || surface === "catalog") return catalog ?? null;
+  const registryBlocks = resolve(catalog, "blocks");
+  return existsSync(registryBlocks) ? registryBlocks : null;
 }
 
 const shotcraftStyleSchema = z.object({

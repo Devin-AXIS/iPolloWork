@@ -1,14 +1,15 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.app-finance-dashboard",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "app",
   "subcategory": "dashboard",
   "style": "editorial",
   "tags": [
     "finance",
-    "dashboard"
+    "dashboard",
+    "topic:data"
   ],
   "surface": "design",
   "title": "Finance Dashboard",

@@ -2285,10 +2285,9 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     renderSeek: (timeSeconds, options) => {
-      const quantized = quantizeTimeToFrame(
-        Math.max(0, Number(timeSeconds) || 0),
-        state.canonicalFps,
-      );
+      const quantized = options?.subframe
+        ? Math.max(0, Number(timeSeconds) || 0)
+        : quantizeTimeToFrame(Math.max(0, Number(timeSeconds) || 0), state.canonicalFps);
       webAudio.stopAll();
       clock.detachAudioSource();
       if (clock.isPlaying()) clock.pause();

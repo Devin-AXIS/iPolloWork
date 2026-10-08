@@ -5,7 +5,7 @@
  * Uses only Node.js built-ins (zlib) — no additional dependencies.
  */
 
-import { inflateSync } from "zlib";
+import { deflateSync, inflateSync } from "zlib";
 
 // ── PNG decoder ───────────────────────────────────────────────────────────────
 
@@ -1012,4 +1012,70 @@ function warnIfZSignificant(parts: number[]): void {
         `This warning is emitted once per process.`,
     );
   }
+}
+
+const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
+  let crc = n;
+  for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  return crc;
+});
+export function crc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buf) crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 255]!;
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** Encode captured RGBA pixels without adding another image-codec dependency. */
+export const SHUTTER_PIXEL_BUDGET = 8_388_608;
+
+export function encodeRgbaPng(width: number, height: number, data: Uint8Array): Buffer {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 ||
+      width * height > SHUTTER_PIXEL_BUDGET || data.length !== width * height * 4) {
+    throw new Error("PNG dimensions/pixel length exceed the 4K capture budget");
+  }
+  const chunk = (name: string, bytes: Buffer): Buffer => {
+    const out = Buffer.alloc(bytes.length + 12);
+    out.writeUInt32BE(bytes.length); out.write(name, 4, 4, "ascii"); bytes.copy(out, 8);
+    out.writeUInt32BE(crc32(out.subarray(4, bytes.length + 8)), bytes.length + 8);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = 6;
+  const rows = Buffer.alloc(height * (width * 4 + 1));
+  for (let y = 0; y < height; y++) rows.set(data.subarray(y * width * 4, (y + 1) * width * 4), y * (width * 4 + 1) + 1);
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk("IHDR", header),
+    chunk("IDAT", deflateSync(rows, { level: 1 })), chunk("IEND", Buffer.alloc(0))]);
+}
+
+const SRGB_TO_LINEAR = Float32Array.from({ length: 256 }, (_, n) => {
+  const c = n / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+});
+
+/** Premultiplied-alpha temporal integration, not a CSS blur or sRGB average. */
+export function averagePngFrames(frames: readonly Buffer[]): Buffer {
+  if (frames.length < 1 || frames.length > 8) throw new Error("Shutter sample count must be 1..8");
+  const first = decodePng(frames[0]!);
+  const { width, height } = first;
+  if (width * height > SHUTTER_PIXEL_BUDGET) throw new Error("Shutter capture exceeds the 4K pixel budget");
+  const sums = new Float32Array(first.data.length);
+  for (let sample = 0; sample < frames.length; sample++) {
+    const image = sample === 0 ? first : decodePng(frames[sample]!);
+    if (image.width !== width || image.height !== height) throw new Error("Shutter sample dimensions differ");
+    for (let i = 0; i < image.data.length; i += 4) {
+      const a = image.data[i + 3]! / 255;
+      for (let c = 0; c < 3; c++) sums[i + c] = sums[i + c]! + SRGB_TO_LINEAR[image.data[i + c]!]! * a;
+      sums[i + 3] = sums[i + 3]! + a;
+    }
+  }
+  const pixels = new Uint8Array(sums.length);
+  for (let i = 0; i < pixels.length; i += 4) {
+    const a = sums[i + 3]!;
+    for (let c = 0; c < 3; c++) {
+      const linear = a ? sums[i + c]! / a : 0;
+      pixels[i + c] = Math.round(255 * (linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055));
+    }
+    pixels[i + 3] = Math.round(255 * a / frames.length);
+  }
+  return encodeRgbaPng(width, height, pixels);
 }

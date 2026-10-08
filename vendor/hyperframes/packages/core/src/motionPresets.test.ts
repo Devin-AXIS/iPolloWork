@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { generateSpringEaseData, sampleSpringEase } from "@hyperframes/parsers/spring-ease";
 import {
   MOTION_PRESETS,
   compileMotionInstance,
@@ -917,6 +918,47 @@ describe("motion presets", () => {
       expect(compiled.keyframes[0]?.percentage).toBe(0);
       expect(compiled.keyframes.at(-1)?.percentage).toBe(100);
       expect(compiled.keyframes.at(-1)?.properties.opacity ?? 1).toBe(1);
+    }
+  });
+});
+
+
+describe("shared physical spring motion", () => {
+  it("uses one oscillator for CustomEase paths and sampled preset motion", () => {
+    for (const damping of [8, 20, 40]) {
+      const values = Array.from({ length: 121 }, (_, index) => sampleSpringEase(1, 100, damping, index / 120));
+      expect(values.every(Number.isFinite)).toBe(true);
+      expect(values[0]).toBe(0);
+      expect(values.at(-1)).toBe(1);
+      const path = generateSpringEaseData(1, 100, damping).match(/[-\d.]+,[-\d.]+/g)!;
+      expect(path).toHaveLength(121);
+      for (let i = 0; i < 121; i++) expect(Number(path[i]!.split(",")[1])).toBeCloseTo(values[i]!, 4);
+      if (damping < 20) expect(Math.max(...values)).toBeGreaterThan(1.1);
+      else expect(values.every((value, index) => index === 0 || value >= values[index - 1]!)).toBe(true);
+    }
+    expect(() => sampleSpringEase(0, 100, 10, 0.5)).toThrow(RangeError);
+    expect(() => generateSpringEaseData(1, 100, 10, Infinity)).toThrow(RangeError);
+  });
+
+  it("lands bounce cards using coupled rotation, position and spring scale without repeated segment easing", () => {
+    const motion = compileMotionInstance(createMotionInstance({presetId: "element.enter.bounce-card", target: {selector: "#card"}, targetKind: "element", start: 0, parameters: {intensity: 1.5, rotation: 12}}));
+    expect(motion.keyframes).toHaveLength(33);
+    expect(motion.keyframes.slice(1).every((keyframe) => keyframe.ease === "none")).toBe(true);
+    expect(motion.keyframes[0]?.properties).toMatchObject({y: 51, rotation: -18, opacity: 0});
+    expect(Number(motion.keyframes[0]?.properties.scale)).toBeCloseTo(0.69, 8);
+    expect(motion.keyframes.at(-1)?.properties).toMatchObject({x: 0, y: 0, rotation: 0, scale: 1, opacity: 1});
+    expect(Math.min(...motion.keyframes.map((keyframe) => Number(keyframe.properties.y)))).toBeLessThan(-5);
+  });
+
+  it("honors magnetic damping: zero overshoot never crosses the anchor, lively motion rings out and returns", () => {
+    const compiled = (overshoot: number) => compileMotionInstance(createMotionInstance({presetId: "motion.emphasis.magnetic-snap", target: {selector: "#card"}, targetKind: "element", start: 0, parameters: {distance: 40, intensity: 1, direction: "right", overshoot}}));
+    const quiet = compiled(0), lively = compiled(0.35);
+    expect(quiet.keyframes.every((keyframe) => Number(keyframe.properties.x) >= 0)).toBe(true);
+    expect(Math.min(...lively.keyframes.map((keyframe) => Number(keyframe.properties.x)))).toBeLessThan(-10);
+    for (const motion of [quiet, lively]) {
+      expect(motion.keyframes.at(-1)?.properties).toEqual({x: 0, y: 0, scale: 1});
+      expect(motion.keyframes[1]?.properties.x).toBe(40);
+      expect(motion.keyframes.slice(2).every((keyframe) => keyframe.ease === "none")).toBe(true);
     }
   });
 });

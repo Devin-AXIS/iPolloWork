@@ -41,8 +41,9 @@ describe("video script contract", () => {
   });
   test("routes specialist stages while preserving content-led reuse and the direct editability contract", () => {
     const context = videoTaskSystemContext("ses_example");
-    expect(context).toContain("load only the specialist needed by the current task or production stage");
-    for (const stage of ["storyboard", "compose", "voiceover", "soundtrack"]) expect(context).toContain(`ipollowork-video-${stage}`);
+    expect(context).toContain("Read ipollowork-video-studio once");
+    const router = readFileSync(new URL("../../../examples/plugin-packages/video-agent/skills/ipollowork-video-studio/SKILL.md", import.meta.url), "utf8");
+    for (const stage of ["storyboard", "compose", "voiceover", "soundtrack"]) expect(router).toContain(`ipollowork-video-${stage}`);
     expect(context).toContain("Do not preload unrelated stages");
     expect(context).not.toContain("Creation/full regeneration must read");
     expect(context).not.toContain("video.md sections");

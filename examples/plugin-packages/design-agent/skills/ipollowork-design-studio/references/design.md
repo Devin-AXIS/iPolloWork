@@ -1,5 +1,3 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
-
 # Design Type Routing
 
 Use only the active type reference below and applicable sections of the [shared guidelines](shared-guidelines.md). The session contract, manifest category, editable path and actual export capabilities are authoritative. Do not ask the user to choose an internal category when the task is clear.

@@ -1,5 +1,3 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
-
 # PPT Layout Guide · core-v1
 
 This guide describes the ten reusable structures currently in the iPolloWork PPT library. It explains when to choose each structure, how to map content into it and when to adapt or replace it. The library is a preferred reuse source, not a mandatory whitelist or a complete inventory of template-local layouts. Use a better-fitting local pattern or write a new one when necessary, retaining the active visual and editable contracts.
@@ -14,7 +12,7 @@ For a session that declares `layoutLibrary: "core-v1"`, the server materializes 
 
 If the directory is absent in an older session, inspect available local patterns and the active contract. Do not invent file paths, assume missing layouts exist or overwrite the user's project merely to obtain a library. Read only the relevant candidate HTML and styles.
 
-Repository ownership: this document is maintained in `.codex/skills/ipollowork-template-generation/references/layout.md`. The server bundle and both presentation Skill distributions carry checked copies. Source HTML/CSS lives under `apps/server/bundled-templates/core-v1-slides-*`; the server assembles those flat resources into the session directory above.
+Repository ownership: this document is maintained in `examples/plugin-packages/design-agent/skills/ipollowork-presentations/references/layout.md`. The server bundle and repository Skill mirror carry checked copies. Source HTML/CSS lives under `apps/server/bundled-templates/core-v1-slides-*`; the server assembles those flat resources into the session directory above.
 
 ## Selection map
 

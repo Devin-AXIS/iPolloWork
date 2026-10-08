@@ -1,5 +1,3 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
-
 # Slides and Native PPT Rules
 
 Applies to iPolloWork presentations and native editable PPT. Consult applicable sections of the [shared guidelines](shared-guidelines.md) when the task needs creative, media or verification policy. This reference adds PPT authoring and acceptance requirements; the selected mode, injected session contract and actual export capabilities remain implementation boundaries. Read the [layout guide](layout.md) only when selecting or recomposing structures, then open only relevant source layouts.

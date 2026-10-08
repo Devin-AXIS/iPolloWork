@@ -1333,9 +1333,10 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
-    expect(sessionRouteSource).toContain("draft.capability?.instruction");
+    expect(sessionRouteSource).toContain("text: draft.capability.instruction");
+    expect(sessionRouteSource).not.toContain("capabilitySystemContext");
     expect(sessionRouteSource).toContain(
-      "[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]",
+      "[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, languageSystemContext]",
     );
   });
 
@@ -1410,6 +1411,9 @@ describe("HyperFrames Video Studio", () => {
       includeVoiceover: true,
     });
     expect(visualContract).toContain("No voiceover Skill preload or new synthesis is needed for the current stage");
+    expect(visualContract).toContain("Read ipollowork-video-studio once");
+    expect(visualContract).not.toContain("ipollowork-video-compose");
+    expect(visualContract).not.toContain("ipollowork-video-soundtrack");
     expect(visualContract).toContain("Video Studio's voice panel");
     expect(visualContract).not.toContain("speech_synthesize_workspace_batch");
     expect(voiceContract).toContain("speech_synthesize_workspace_batch");
@@ -1530,7 +1534,7 @@ describe("HyperFrames Video Studio", () => {
 
   test("uses an adaptive operation plan without forcing one video workflow", () => {
     const contract = videoTaskSystemContext("ses_video_a", "/workspace/current");
-    expect(contract).toContain("The Skill owns creative planning");
+    expect(contract).toContain("it owns creative planning");
     expect(contract).toContain("targeted edits keep their requested scope");
     expect(contract).not.toContain("Adaptive execution contract");
   });
@@ -1576,6 +1580,59 @@ describe("HyperFrames Video Studio", () => {
     expect(reviewContract).toContain("Script review requested");
     expect(reviewContract).toContain("create or update only `/workspace/current/video/ses_review/STORYBOARD.md`");
     expect(reviewContract).toContain("Do not source or generate media");
+  });
+
+  test("music-only edits preserve script and narration without becoming storyboard review", () => {
+    for (const promptText of [
+      "只补现有音乐不重做脚本/旁白",
+      "只补现有音乐，不重做脚本和旁白",
+      "只补现有音乐，保持原有脚本和旁白不变",
+      "只补现有音乐，保留原有旁白和脚本",
+      "Please add music only; do not redo the script or narration.",
+      "Add background music; preserve the script and existing narration.",
+    ]) {
+      const requirements = videoDeliveryRequirementsForPrompt({
+        promptText, voiceoverAvailable: true, voiceoverEnabled: true,
+      });
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(false);
+      expect(requirements).toMatchObject({ voiceover: true, bgm: true });
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(false);
+      const contract = videoTaskSystemContext("ses_music_edit", "/workspace/current", null, {
+        deliveryRequirements: requirements,
+        includeVoiceover: videoPromptRequestsVoiceoverContext(undefined, promptText, requirements),
+        requireStoryboardReview: videoPromptRequiresStoryboardReview({ promptText }),
+      });
+      expect(contract).not.toContain("Script review requested");
+      expect(contract).not.toContain("speech_synthesize_workspace_batch");
+    }
+  });
+
+  test("preserved content does not suppress later script, speech or finished-video requests", () => {
+    for (const promptText of [
+      "不重做旁白，只写分镜，暂时不要制作视频",
+      "保留原有旁白，先给我看脚本，确认后再制作视频",
+      "Do not redo the narration; only write the script first",
+    ]) {
+      const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(true);
+      expect(requirements.bgm).toBe(false);
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(false);
+    }
+    for (const promptText of [
+      "保留脚本，只修改旁白声音",
+      "不重做脚本/旁白，只补BGM，再给第三幕新增旁白",
+      "Do not redo the script; add narration",
+    ]) {
+      const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(false);
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(true);
+    }
+    const promptText = "保留现有脚本，制作完整视频";
+    const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+    expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(false);
+    expect(videoPromptRequestsFinishedVideo(promptText)).toBe(true);
+    expect(requirements).toMatchObject({ voiceover: true, bgm: true });
+    expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(true);
   });
 
   test("negating planning-only work keeps production and its audio requirements active", () => {

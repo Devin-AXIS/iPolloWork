@@ -1,4 +1,4 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
+<!-- Distribution reference: maintained in examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/; checked against the source by plugin-package-manifest.test.ts. -->
 
 # iPolloWork Video Soundtrack
 
@@ -11,6 +11,10 @@ A finished video needs an explicit full-video music decision before assembly. Pr
 Reuse supplied/local tracks first, otherwise discover actual authorized music/SFX sourcing or generation. TTS authorization/timeline support is not a music generator. Compare a bounded suitable shortlist, record title/source/license and concrete fit, save actual `music_asset` and mount that same file. Listen/inspect when supported, without inventing an audition. Missing suitable licensed/authorized decodable audio is partial delivery. Preserve pinned music/effects during speech edits. Bed uses `data-timeline-role="music"` and `data-ipw-bgm="true"`; effects use `data-timeline-role="sfx"`. Use separate framework-owned editable clips with explicit source/start/duration/track/volume, matching trim/source length and real coverage. No assumed looping or stretching a short effect across the film.
 
 Choose scene timing from measured speech, measured music cues, source footage or silent reading. Set restrained supported levels/fades/ducking, audition intelligibility and verify trim/loop coverage. Plan sound early; place final effects against locked visual events and retime them after edits, not every word/cut. Music-led cues use actual analysis; a quiet narration bed needs no beat detector. Missing/muted/wrong-path requested BGM/SFX fails its audio requirement; explicit disabled/unavailable sound is disclosed.
+
+## Locked event score
+
+After visual events are locked, `media/video_soundtrack_prepare` accepts the exact `sourcePath`, `durationSeconds`, `events:[{eventId,time,kind:"air"|"contact"|"resolve",strength:0..1,pan:-1..1,assetPath?}]`, actual `speechWindows:[{start,end}]` and optional `musicVolume`. Events express a real carry/contact/landing; no effect per word or decorative cut. Supplied licensed local `assetPath` stays within this project assets; otherwise the host independently synthesizes bounded air/contact/resolve sounds. It returns separate editable WAV clips, shared modest room tails and a single `musicTimelineScript` for the paused root GSAP timeline (`tl`). Mount the clips and retain provenance; existing runtime probing drives the same envelope in preview/export. This prepares effects/ducking, not a music bed or speech. Rebind after timing changes and verify the actual mix; a non-silent bed cannot certify event audio.
 
 ## Measured cues
 

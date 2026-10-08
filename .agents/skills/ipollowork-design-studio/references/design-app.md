@@ -1,4 +1,4 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
+<!-- Distribution reference: maintained in examples/plugin-packages/design-agent/skills/ipollowork-design-studio/references/; checked against the source by plugin-package-manifest.test.ts. -->
 
 # Application Interface Rules
 

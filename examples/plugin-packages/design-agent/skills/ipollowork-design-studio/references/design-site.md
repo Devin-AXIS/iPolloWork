@@ -1,5 +1,3 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
-
 # Website Rules
 
 Use for `site`: websites, landing pages and portfolios. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change.

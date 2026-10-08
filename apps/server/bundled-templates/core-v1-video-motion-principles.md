@@ -1,41 +1,47 @@
-<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->
+<!-- Distribution reference: maintained in examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/; checked against the source by plugin-package-manifest.test.ts. -->
 
 # iPolloWork Video Motion Principles
 
-Read for initial generation or substantial scene redesign; targeted work reads only its affected pattern/schema. Spatial layouts place content; motion gives it a sequence of meaning. Source coverage belongs to `ipollowork-video-storyboard`; assembly/assets to `ipollowork-video-compose`. These names identify owners, not prerequisites to reload. Verdicts use the acceptance guide supplied by the active Skill or actual materialized library.
+Read before initial generation or substantial motion redesign; small edits read only affected rules/schema. Storyboard owns source coverage, Compose owns implementation, and the active acceptance guide owns verdicts.
 
 ## Meaning, rhythm and attention
 
-Give each substantive scene one narrative job and a primary change from its content verb: reveal, compare, connect, accumulate, transform, navigate, focus or conclude. Define observable Establish, Develop, and Land states: orient → change understanding/focus/state/evidence → resolve the takeaway. They are semantic states, not fixed percentages. A title/outro may be simpler; calm pacing and deliberate reading holds remain valid.
+Choose energy from genre, audience and the content driver: a promo can build momentum; teaching needs dependency order and reading; dialogue follows responses; factual footage preserves context. Define observable Establish, Develop, and Land states: orient → visible cause/change → useful result. Plan 2–4 compatible actions for a substantial scene, with fewer for a simple title or deliberate hold; use one primary action with support, not a quota or fixed percentages.
 
-Use one dominant motion with few supporting changes. Reveal related elements together, preserve readable context, and transfer attention only when the story advances. Transform/mask/crop/camera/path/state changes preserve spatial continuity. Avoid every label moving independently, identical fade-rise-stagger across scenes, dense dashboards revealed at once, decorative loops and entrances that leave a long explanation unchanged. Media should lead when it carries identity, evidence or emotion rather than remain a thumbnail; unavailable media can use meaningful editable graphics without pretending illustration is factual evidence.
+Match actions to the subject: reveal/mask a fact, trace its connection, transform a state, accumulate comparable data, transfer focus or follow an actual journey. Read selected recipe implementation; metadata/effect names are not choreography. Make actions resolve promptly, then advance on the next content event. Tracking/opacity/tiny-scale easing is an accent, not a 6–8s substitute for development. Avoid repeated fade-rise-stagger, moving every label, decorative loops and stretched entrances. Important media leads the frame; labelled editable illustration remains valid when evidence is unavailable.
+
+Use anticipation, acceleration/deceleration, contact and settling when the action needs them. A supported spring/overshoot expresses weight or response, not compulsory bounce. Focus transfers to the next relevant subject; sound accents use actual saved cues/tracks through Soundtrack rather than invented timings.
+
+Fast moves may use a selected seek-safe blur/trail or defocus treatment when it clarifies motion. Clear it at landing and retain sharp reading states; global blur cannot replace motivated action. Reuse the current renderer and selected implementation.
+
+Keep context readable while development proceeds; teaching, subtitles and a final result may hold still for a reason. Do not append the same three-second tail to every scene. Camera follows a meaningful subject/action to a visible destination, preserving screen direction, scale and shared anchors; it settles for reading. Use mapped camera recipes or supported 2D framing, never compulsory 3D or perpetual travel.
 
 ## Semantic beat map
 
-Split at changes in meaning/focus/action, not sentence punctuation or every breath. Adjacent phrases sharing one visual action may merge; one sentence may span several events. Narrated beats bind exact spoken intent; silent beats bind reading order, media events or measured music cues. First Establish, middle Develop, final Land enclose any number of necessary beats; purposeful pauses hold the state without unrelated animation.
+Split when meaning/focus/action changes, not at every sentence/breath. Bind subject → action/cause → result → next focus to exact speech, reading, media or measured music events. Adjacent phrases may share an action; one sentence may span events. Purposeful pauses preserve the result.
 
 | Beat | Spoken intent | Time range | Visual focus | Visual action | Result or hold |
 | --- | --- | --- | --- | --- | --- |
-| Establish | Orient the audience | Rough draft, then measured audio frames | Subject/context/evidence | Establish state | Readable starting point |
-| Develop | Explain a distinct change | Actual measured boundary | Current subject/relationship | Transfer focus, advance, accumulate or transform | Context needed next |
-| Land | Resolve/handoff | Measured boundary + deliberate hold | Conclusion/decision | Finish pattern | Stable useful final state |
+| Establish | Orient | Draft, then measured frames | Subject/context | Reveal state | Readable start |
+| Develop | Explain change | Measured event boundary | Subject/relationship | Advance/transform/focus | Next context |
+| Land | Resolve/handoff | Measured boundary | Result/decision | Finish action | Useful result |
 
-Plan timing approximately; once audio exists replace it with boundaries derived from the returned audio, quantized to project FPS, and retime visuals/captions/transitions together. No fabricated proportional word alignment. Without narration use the genuine silent driver rather than leaving a pending model; later narration preserves meaning/component choices while retiming.
+Estimate once; with speech replace it with boundaries derived from the returned audio, quantized to project FPS. Retime dependent visuals/captions/transitions together; never invent proportional word alignment. Silent work uses its genuine driver and preserves meaning/component choices if narration is later added.
 
 ## Executable beats
 
-Every full `.scene.clip` has `data-ipw-scene`, stable `id`, frame-aligned `data-start`, `data-duration`, `data-track-index`, `data-motion-pattern`, `data-ipw-timing-source`, and literal JSON `data-ipw-beats`. Scene-relative second ranges begin at zero, meet without gaps/overlaps and end at scene duration. Each beat contains `start`, `end`, `intent`, `focus`, `action`, `result`, non-empty CSS `targets`, one executable `animation`, and truthful `motion: {start,end}` for actual rendered change.
+Every full `.scene.clip` keeps stable `id`, `data-ipw-scene`, frame-aligned `data-start`/`data-duration`/`data-track-index`, `data-motion-pattern`, `data-ipw-timing-source`, and literal JSON `data-ipw-beats`. Relative second ranges cover zero to scene end without gaps/overlaps. Beats contain `start`, `end`, `intent`, `focus`, `action`, `result`, non-empty CSS `targets`, executable `animation`, and truthful `motion: {start,end}`.
 
-- `component:<registry-id>` covers only its installed native animation interval. `motionContract` supplies declared duration/targets, not invented Establish/Develop/Land timestamps; inspect those in the saved render. Parent host owns the actual clip window through `data-ipw-timing-owner="host"`; inner root carries no competing start/end/duration/track. Give hosts unique composition IDs/literal variables; reinstall stale copied roots with their own clip windows. Native motion may finish earlier while its Land remains visible until host end.
+- `component:<registry-id>` covers installed native motion only. `motionContract` supplies declared duration/targets, not measured beat states. Host `data-ipw-timing-owner="host"` owns the window; inner roots have no competing clip timing. Keep unique composition IDs/literal variables and repair stale copies. Land remains visible to host end.
 - `preset:<preset-id>` requires actual `list_motion_presets` for the text/element target and `mutate_motion` with explicit start/end; preserve returned `data-ipw-animation-reference` on the real element.
-- `custom:<specific timeline label>` is a narrowly authored seek-safe treatment when no preset expresses the required motion, with an actual matching reference. Custom scene recipe exceptions still follow the active Compose recipe policy; labels alone are not reuse.
-- `hold:<reading|emphasis|handoff|outro|media>` declares purposeful stillness of at most four seconds. Split longer static intervals at genuine semantic boundaries, never arbitrary midpoints to satisfy validation. A short native animation cannot claim the remainder of a long scene: add a later meaningful preset/custom beat, split or shorten. If more than two seconds remain after native completion, a later active beat is required rather than stretching entrance motion.
+- `custom:<specific timeline label>` is seek-safe unsupported motion with a real matching reference; retain Compose's custom recipe evidence/policy.
+- `hold:<reading|emphasis|handoff|outro|media>` declares purposeful stillness within the host's four-second bound, not a default tail target. Split longer stillness at genuine semantic boundaries. Native motion ends at its resolved event; a verified readable final result may hold within the same bound. Keep that hold explicit, never extend the motion declaration, stretch an entrance or add decorative filler to pass.
 
-Timing source is `voiceover` for actual speech, `estimated-reading` when a narration script has no usable synthesis, or `visual-cue`, `music`, `media` for genuine drivers. Missing speech does not stop visual work; disclose silent/partial scope. Source beat checks run in the client's aggregate delivery gate, never another model-owned validation loop.
+Timing source is `voiceover` for real speech, `estimated-reading` for unsynthesized narration, or genuine `visual-cue`/`music`/`media`. Missing speech allows disclosed silent/partial work. The client owns source beat checks.
 
 ## Pattern selection
 
-Choose one primary pattern from the narrative verb; combine only when legible. Read current `core-v1-video/motion/catalog.md` metadata once and only the selected recipe. The component map's many-to-many overlays allow compatible secondary patterns; the routing table is not a whitelist and before/after is a state-transformation variant.
+Choose the content verb's primary pattern. Read `core-v1-video/motion/catalog.md` once and selected recipe only; mapped overlays allow legible combinations, not a whitelist. Before/after is state transformation.
 
 | Pattern | Required progression |
 | --- | --- |
@@ -53,8 +59,8 @@ Choose one primary pattern from the narrative verb; combine only when legible. R
 
 ## Continuity, determinism and editing
 
-Connect developed scenes with continuation or a clear topic/time/location change; strongest transitions serve a real reveal, and the outro settles rather than adds new ideas. Every later scene declares `data-ipw-transition-in`, `data-ipw-transition-duration`, `data-ipw-transition-intent`. Use cut/0, actual supported incoming preset/reference, or the active Compose handoff schema. Full windows meet without overlap; transition runs inside incoming Establish from a non-empty base state. Preserve outgoing final meaning, fixed captions/chrome and shared anchors; a transition cannot repair static interiors.
+Carry outgoing result → next subject/action through a shared anchor, direction or truthful reset. Continuing action should not settle, disappear and repeat its entrance at each seam; a cut is valid and a continuous handoff need not make the whole film one take. Every later scene retains `data-ipw-transition-in`/duration/intent using cut/0, supported preset/reference or Compose's custom handoff. Full windows meet; incoming Establish starts non-empty. Preserve fixed captions/chrome; transitions cannot repair static interiors.
 
-One registered paused project timeline owns motion, explicit intervals and integer-frame boundaries. Define stable before/during/after values for direct/reverse seek, replay and export; no timers, uncontrolled CSS loops, randomness or prior-frame state. Scope selectors to each actual scene. Preserve theme tokens, host timing and stable editable nodes/labels/connectors/measures/groups; repair overflow, duplicate labels and unreadable scale instead of flattening a native explanation into an image.
+One paused timeline owns explicit integer-frame intervals and stable states for direct/reverse seek, replay/export; no timers, uncontrolled loops, randomness or history dependence. Scope selectors to scene instances; preserve tokens, host timing, editable nodes/labels/connectors/data/groups. Repair readability rather than flattening explanations.
 
-Record beat map/pattern/states in the existing storyboard and inspect action/Land/seams under the single acceptance batch. Motion quantity is not quality: every seek position should be understandable and ordinary-speed playback should develop meaning.
+Record choreography in the existing storyboard. Judge actual ordinary-speed action, Land and seams under the single host acceptance continuation; pixel change or a moving playhead cannot certify rhythm or meaning.
