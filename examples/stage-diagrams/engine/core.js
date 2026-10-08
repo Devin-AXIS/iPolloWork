@@ -599,7 +599,10 @@ ${o.sub ? T(cx, cy + (o.icon ? 10 : 0) + 14, o.sub, { mono: true, size: 9.5, anc
       s += `<path d="M${x0} ${ty - 16}h24" class="pmark"${A('growx', 650)} data-o="left center"/>`;
       s += `<g data-u="poster-item">${T(x0, ty, first.label, { size: 21, weight: 700, max: x1 - x0, lines: 1, ls: -0.2 })}</g>`;
       if (said && ty + 72 <= 548) s += `<g data-u="poster-desc">${T(x0, ty + 32, first.desc || said.desc, { size: 12.5, cls: 'mu psub', max: x1 - x0 - 16, lines: 2, lh: 1.55, valign: 'top' })}</g>`;
-      s += `<g data-u="poster-sum">${T(x0, ty, items.map(x => x.label.replace(/ /g, '\u00a0')).join('  ·  '), { size: 14.5, weight: 600, cls: 'psum', max: x1 - x0, lines: 3, lh: 1.6, valign: 'top' })}</g>`;
+      // A long run of items (many rows, or long English names) sets smaller and takes a fourth line, still above the graphic.
+      const sum = items.map(x => x.label.replace(/ /g, '\u00a0')).join('  ·  '), n = Array.from(sum).length;
+      const fit = n > 120 ? { size: 11.5, lines: 5 } : n > 70 ? { size: 12.5, lines: 4 } : { size: 14.5, lines: 3 };
+      s += `<g data-u="poster-sum">${T(x0, ty, sum, { ...fit, weight: 600, cls: 'psum', max: x1 - x0, lh: 1.5, valign: 'top' })}</g>`;
     }
     // Progress graphic, drawn in the skin's own language; each mark is one unit the runtime lights in order.
     const g = [];
