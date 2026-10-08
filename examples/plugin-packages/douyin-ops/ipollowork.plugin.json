@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.2.13",
+    "version": "0.2.20",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -22,7 +22,7 @@
     "updateId": "local/douyin-ops"
   },
   "composer": {
-    "prompt": "打开运营台使用 open-workbench。先阅读 douyin-ops-worker。普通用户用 connect-browser 登录并验证真实抖音号，无需开发者配置。有权限优先 API，返回 browserTask 必须用宿主浏览器完成并回写；pending 不是成功。搜索后评论用 comment-video。操作标识保持稳定。"
+    "prompt": "打开运营台使用 open-workbench。先阅读 douyin-ops-worker。制作并发布视频必须继续到后台自动导出 MP4、导入和发布，不能要求用户手动导出。普通用户用 connect-browser 登录并验证真实抖音号，无需开发者配置。有权限优先 API，返回 browserTask 必须用宿主浏览器完成并回写；pending 不是成功。搜索后评论用 comment-video。操作标识保持稳定。"
   },
   "resources": [
     {
@@ -117,16 +117,16 @@
         {
           "id": "save-draft",
           "title": "保存抖音视频草稿",
-          "description": "保存文案和素材，不发布。新建必须省略 id，返回 draft.id；id 只用于修改真实已有草稿，不能自编。runKey 是幂等标识，重试保持不变。失败先修正参数，不得跳过草稿和发布任务直接上传。",
+          "description": "保存文案和素材，不发布。创建新草稿必须省略 id，由服务生成；runKey 是创建去重标识（即时发布也可用），重试复用。只有更新已有草稿才传返回的真实 id，不得自造 id。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
             "properties": {
               "id": {
                 "type": "string",
+                "description": "仅修改已有草稿时传入之前返回的 draft.id。新建草稿必须省略，不能自行命名；幂等标识请用 runKey。",
                 "minLength": 1,
-                "maxLength": 100,
-                "description": "仅修改已有草稿时传入之前返回的 draft.id。新建草稿必须省略，不能自行命名；幂等标识请用 runKey。"
+                "maxLength": 100
               },
               "accountId": {
                 "type": "string",
@@ -147,6 +147,7 @@
               },
               "runKey": {
                 "type": "string",
+                "description": "本次草稿创建的稳定去重标识，即时发布与日程都适用；重试保持不变。不是草稿 id。",
                 "minLength": 1,
                 "maxLength": 700
               }
@@ -474,6 +475,38 @@
           }
         },
         {
+          "id": "reconcile-publish-link",
+          "title": "标记不可访问的公开链接",
+          "description": "仅在官方页面证实已保存的公开链接不可访问时，移除可点击链接并保留发布成功及管理页回执；不会重发作品。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "expectedUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "jobId",
+              "expectedUrl",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
           "id": "resolve-job",
           "title": "回写人工核对结果",
           "description": "只核对现有 uncertain 任务并保存结果，不重新发送。网页写入确认成功必须提供实际 resultUrl 作品链接；验证码完成后先核对原任务。",
@@ -539,11 +572,24 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "browserProfileId": { "type": "string", "format": "uuid" },
-              "url": { "type": "string", "maxLength": 2000 },
-              "tree": { "type": "string", "maxLength": 100000 }
+              "browserProfileId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "url": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "tree": {
+                "type": "string",
+                "maxLength": 100000
+              }
             },
-            "required": ["browserProfileId", "url", "tree"],
+            "required": [
+              "browserProfileId",
+              "url",
+              "tree"
+            ],
             "additionalProperties": false
           }
         },
@@ -600,7 +646,7 @@
         {
           "id": "claim-browser-job",
           "title": "领取网页任务",
-          "description": "先在任务账号 profileId 中打开页面、用本轮返回的 tabId snapshot 核对身份，再独占领取并执行。不要复用历史对话里的 tabId。上传前标签失效可同环境重新打开继续原任务，可能已提交时只核对不重发。若被已中断读取阻塞，可 cancel-read-job 后领取原排队任务；写操作不能强制解锁。",
+          "description": "独占领取后按 douyin-ops-worker 使用宿主浏览器执行；同账号忙时返回 queued，领取成功后返回素材路径。先在任务账号 profileId 打开入口，用本轮返回的新 tabId snapshot 核对身份；标签失效可同环境重开继续原任务，最多2次。已中断读取可 cancel-read-job 后领取原排队任务，写操作不能强制解锁。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -636,18 +682,34 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "jobId": { "type": "string", "minLength": 1, "maxLength": 100 },
-              "accountId": { "type": "string", "minLength": 1, "maxLength": 100 },
-              "evidence": { "type": "string", "minLength": 1, "maxLength": 4000 }
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
             },
-            "required": ["jobId", "accountId", "evidence"],
+            "required": [
+              "jobId",
+              "accountId",
+              "evidence"
+            ],
             "additionalProperties": false
           }
         },
         {
           "id": "finish-browser-job",
           "title": "保存网页操作结果",
-          "description": "只记录实际页面证据；提交后不确定必须 outcome=uncertain，不可重发。",
+          "description": "只记录实际页面证据；内容管理出现匹配作品即为平台受理。公开链接尚不可访问时不要从作品 ID 猜测 URL，省略 resultUrl；提交后无法核对才用 outcome=uncertain，不可重发。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -689,6 +751,13 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 2000
+              },
+              "publicationStatus": {
+                "type": "string",
+                "enum": [
+                  "published",
+                  "under_review"
+                ]
               },
               "items": {
                 "type": "array",

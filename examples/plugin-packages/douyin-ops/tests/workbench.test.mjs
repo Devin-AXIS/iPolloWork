@@ -60,7 +60,7 @@ test('native plugin entry launches once without installation, exposes matching a
   await assert.rejects(bridge.actions['observe-browser-session']({}, {}), /会话或日程/);
   const draftInput = { accountId: account.id, id: 'invented-id', title: '标题', text: '文案', runKey: 'regression:draft' };
   await assert.rejects(bridge.actions['save-draft'](draftInput), error =>
-    error.status === 400 && error.code === 'douyin_draft_not_found' && /新建请省略 id/.test(error.message));
+    error.status === 400 && error.code === 'douyin_draft_not_found' && /(?:新建|创建新草稿)请省略 id/.test(error.message));
   const { id: _invalidId, ...createInput } = draftInput;
   const { draft } = await bridge.actions['save-draft'](createInput);
   assert.ok(draft.id);
@@ -71,6 +71,11 @@ test('native plugin entry launches once without installation, exposes matching a
   assert.equal(ended.errorCode, 'read_cancelled');
   assert.equal((await bridge.actions['get-job']({ jobId: read.id })).job.status, 'failed');
   await assert.rejects(bridge.actions['publish-draft']({}, {}), /会话或日程/);
+  await assert.rejects(bridge.actions['finish-browser-job']({}, {}), error => {
+    assert.doesNotMatch(error.message, /会话或日程/);
+    assert.equal(error.code, 'douyin_invalid_input');
+    return true;
+  });
   await bridge.dispose();
   await assert.rejects(bridge.actions['open-workbench'](), /已关闭/);
 });

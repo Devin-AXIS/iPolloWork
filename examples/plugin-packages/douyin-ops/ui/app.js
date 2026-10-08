@@ -84,8 +84,7 @@
     });
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.2.13' }, appCapabilities: {} }).then(host => {
-      parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); return host;
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.2.20' }, appCapabilities: {} }).then(host => {      parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); return host;
     }).catch(error => { hostPromise = undefined; throw error; });
     return hostPromise;
   }
@@ -342,7 +341,7 @@
     }
     if (allowActions ? id || item.link : item.link) {
       const buttons = node('div', 'actions');
-      if (allowActions) buttons.append(actionButton('读取数据', async () => {
+      if (allowActions && (item.link || state.settings.secretConfigured)) buttons.append(actionButton('读取数据', async () => {
         requireCapability('videoData');
         const result = await action('video-data', { accountId: requireAccount(), itemIds: [id || item.link] });
         if (result.browserTask) return;
@@ -445,6 +444,9 @@
   $('#search-form').addEventListener('submit', event => { event.preventDefault(); run(() => search(false)); }); $('#more-search').addEventListener('click', () => run(() => search(true)));
   window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
   window.setInterval(syncBackgroundState, 2000);
+  // Host-managed publishing may create a job after this workbench opens.
+  // Keep its receipt and any later platform readback visible without a manual refresh.
+  window.setInterval(() => { if (!busy && !document.hidden) refresh().catch(() => {}); }, 5000);
   document.addEventListener('visibilitychange', syncBackgroundState);
   run(refresh);
 })();

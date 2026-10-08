@@ -125,21 +125,32 @@ export class BrowserOperations {
     return this.response(job);
   }
   response(job) {
-    if (job?.transport !== 'browser') return { job };
-    const account = this.ops.account(job.accountId);
-    return { job: { ...job, canCancelRead: canCancelReadJob(job) }, browserTask: { jobId: job.id, action: job.browserAction, status: job.status,
-      accountId: account.id, profileId: `douyin-ops:${account.browserProfileId}`, targetUrl: job.targetUrl,
-      nextAction: job.status === 'pending' ? 'claim-browser-job' : 'get-job',
-      instruction: '先用 profileId 打开 targetUrl，使用本轮返回的 tabId snapshot 核对身份，不复用历史 tabId；pending 才可领取。领取后按锁定内容执行并 finish-browser-job 回写。提交前页面关闭可同环境重新打开继续原任务；可能已提交用 uncertain，禁止重复发布。' } };
-  }
+    return {
+      job: { ...job, canCancelRead: canCancelReadJob(job) },
+      ...(job?.transport === 'browser' ? {
+        browserTask: {
+          jobId: job.id,
+          action: job.browserAction,
+          status: job.status,
+          accountId: job.accountId,
+          profileId: `douyin-ops:${this.ops.account(job.accountId).browserProfileId}`,
+          targetUrl: job.targetUrl,
+          nextAction: job.status === 'pending' ? 'claim-browser-job' : 'get-job',
+          manualUploadRequired: false,
+          instruction: '先在返回的 profileId 中打开 targetUrl，使用本轮返回的新 tabId snapshot 核对账号，不复用历史 tabId。请在当前会话领取网页任务；发布时自动使用领取结果中的 mediaPath 和 extensionId 上传生成的 MP4，不要要求用户手动上传。',
+        },
+      } : {}),
+    };  }
   claim(input) {
     const job = this.store.get('job', required(input.jobId, '任务 ID', 100));
     if (!job || job.transport !== 'browser' || job.status !== 'pending') fail('任务已领取或已完成，请查看记录，不要重复执行');
     const account = this.ops.account(job.accountId);
-    const blocker = this.store.list('job', account.id, 1000).find(other => other.id !== job.id && other.status === 'running');
-    if (blocker) fail(`该账号的浏览器正在执行上一项任务 ${blocker.id}（${blocker.browserAction || blocker.kind}），本任务保留排队。${canCancelReadJob(blocker) ? '如果该读取已经中断或停止，可用 cancel-read-job 结束原任务后领取本任务；不要新建重复任务。' : '请先完成原任务并核对结果，不能强制解除写操作锁。'}`);
-    if (writes.has(job.browserAction) && this.store.list('job', account.id, 1000).some(other => other.id !== job.id && other.status === 'uncertain')) fail('该账号有待核对的操作，本任务保留排队，请先核对');
-    if (input.actualProfileId !== `douyin-ops:${account.browserProfileId}`) fail('浏览器环境与任务账号不一致');
+    const blocker = this.store.list('job', account.id, 1000).find(other => other.id !== job.id
+      && (other.status === 'running' || (writes.has(job.browserAction) && other.status === 'uncertain')));
+    if (blocker) return { job, queued: true, retryAfterMs: 2000, blockedByJobId: blocker.id,
+      blockedByStatus: blocker.status, requiresReconciliation: blocker.status === 'uncertain', blockedByAction: blocker.browserAction,
+      canCancelRead: canCancelReadJob(blocker),
+      instruction: canCancelReadJob(blocker) ? `若读取 ${blocker.id} 已中断，先 cancel-read-job 释放占用，再领取原排队任务；不能新建重复任务。` : '请先完成或核对原任务；写操作不能强制解锁。' };    if (input.actualProfileId !== `douyin-ops:${account.browserProfileId}`) fail('浏览器环境与任务账号不一致');
     if (writes.has(job.browserAction) && (!account.webIdentity || input.actualAccount !== account.webIdentity)) fail('请先从当前登录账号页面核对抖音号');
     const executionToken = randomBytes(32).toString('hex');
     this.store.setSecret(`browser-job:${job.id}`, { tokenHash: hash(executionToken) });
@@ -148,7 +159,7 @@ export class BrowserOperations {
       nextAction: 'finish-browser-job',
       instruction: isBrowserReadJob(job)
         ? '按 job.payload 读取，不执行发布或评论。结束本轮前必须 finish-browser-job：成功返回实际 items，页面关闭或工具失败用 failed 及具体原因；不能遗留 running。凭证遗失且读取已停止时用 cancel-read-job。随后 get-job 核实。'
-        : '先用返回的 profileId 和 job.targetUrl 打开页面、snapshot 核对当前账号，不得复用历史 tabId。按 job.payload 执行一次。提交前 Unknown or closed built-in browser tab 可重新 open_url 同一环境并用新 tabId 继续原任务（最多2次），不要直接判失败或重新领取。可能已点击发布/发送时只核对，不重发。结束前 finish-browser-job 回写：成功附真实作品链接；提交后验证码或无法确认用 uncertain。随后 get-job 核实。',
+        : '先用返回的 profileId 和 job.targetUrl 打开页面、snapshot 核对当前账号，不得复用历史 tabId。按 job.payload 执行一次。提交前 Unknown or closed built-in browser tab 可重新 open_url 同一环境并用新 tabId 继续原任务（最多2次），不要直接判失败或重新领取。可能已点击发布/发送时只核对，不重发。结束前 finish-browser-job 回写：成功保留实际管理页回执和原生 publicationStatus，公开链接仅在已验证时传入；提交后验证码或无法确认用 uncertain。随后 get-job 核实。',
       ...(job.browserAction === 'publish-draft' ? { mediaPath: resolve(this.ops.dataDir, 'assets', `${job.payload.assetId}.mp4`), extensionId: 'douyin-ops' } : {}) };
   }
   cancelRead(input) {
@@ -177,8 +188,16 @@ export class BrowserOperations {
     let result = { evidence };
     if (input.outcome === 'succeeded') {
       if (writes.has(job.browserAction)) {
-        result.url = douyinUrl(input.resultUrl, 'video');
-        if (job.browserAction !== 'publish-draft' && job.targetUrl.startsWith('https://www.douyin.com/video/') && result.url !== job.targetUrl) fail('评论回执不属于任务目标作品');
+        if (job.browserAction === 'publish-draft') {
+          if (!['published', 'under_review'].includes(input.publicationStatus)) fail('请记录作品是已发布还是审核中');
+          result.publicationStatus = input.publicationStatus;
+          if (input.resultUrl) result.url = douyinUrl(input.resultUrl, 'video');
+          // A matching row in the official creator console is a valid publish
+          // receipt even when Douyin has not exposed a working public URL yet.
+        } else {
+          result.url = douyinUrl(input.resultUrl, 'video');
+          if (job.targetUrl.startsWith('https://www.douyin.com/video/') && result.url !== job.targetUrl) fail('评论回执不属于任务目标作品');
+        }
       }
       else {
         if (!Array.isArray(input.items) || input.items.length > (job.payload.count ?? 20)) fail('网页读取结果不能超过任务要求的数量（最多 20 条）');
