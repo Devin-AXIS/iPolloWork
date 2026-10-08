@@ -868,7 +868,7 @@ export function VideoPanel({ title, sessionId, conversationId = sessionId, works
             </div>
           ) : null}
           {status === "failed" ? <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6"><div className="max-w-md text-center"><p className="text-sm font-medium">{t("video.failed_to_start")}</p><p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p><Button className="mt-4" variant="secondary" size="sm" onClick={() => { setStatus("starting"); setStartupStage("starting-service"); setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL })); setStudioFrameLoaded(false); studioChromeReadyRef.current = false; setStudioChromeReady(false); setStartAttempt((value) => value + 1); }}>{t("common.retry")}</Button></div></div> : null}
-          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title={t("video.iframe_title")} allow="fullscreen" allowFullScreen className="h-full w-full border-0" data-loading-covered={showStudioStartupOverlay ? "true" : "false"} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
+          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title={t("video.iframe_title")} allow="autoplay; fullscreen" allowFullScreen className="h-full w-full border-0" data-loading-covered={showStudioStartupOverlay ? "true" : "false"} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
             setStudioFrameLoaded(true);
             if (studioChromeReadyRef.current) return;
             if (studioReadyFallbackRef.current != null) window.clearTimeout(studioReadyFallbackRef.current);

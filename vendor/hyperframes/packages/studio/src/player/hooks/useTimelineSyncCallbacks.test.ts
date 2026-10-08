@@ -7,7 +7,38 @@ import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { usePlayerStore } from "../store/playerStore";
 import { resolveForwardPlaybackWindow, useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { useTimelinePlayer } from "./useTimelinePlayer";
-import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { resolveTimelineTotalDuration, useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { shouldUseDirectRuntimeAdapter } from "../lib/playbackAdapter";
+
+describe("precise audio playback duration", () => {
+  it.each([23.934, 61.32, 62.99, 4.032])("preserves native playback at %s seconds", (duration) => {
+    const total = resolveTimelineTotalDuration({
+      manifestDurationSeconds: Math.ceil(duration * 30) / 30,
+      declaredDurationSeconds: duration,
+      authoredRootDurationSeconds: duration,
+    });
+    expect(total).toBe(duration);
+    expect(shouldUseDirectRuntimeAdapter(duration, total)).toBe(true);
+  });
+
+  it.each([undefined, 0, -1, NaN, Infinity])("uses frame timing for invalid precise duration %s", (duration) => {
+    expect(resolveTimelineTotalDuration({
+      manifestDurationSeconds: 12,
+      declaredDurationSeconds: duration,
+      authoredRootDurationSeconds: 6,
+    })).toBe(12);
+  });
+
+  it("retains the authored duration floor and rejects a genuinely partial runtime", () => {
+    const total = resolveTimelineTotalDuration({
+      manifestDurationSeconds: 6,
+      declaredDurationSeconds: 6,
+      authoredRootDurationSeconds: 12,
+    });
+    expect(total).toBe(12);
+    expect(shouldUseDirectRuntimeAdapter(6, total)).toBe(false);
+  });
+});
 
 function mountInitializationHarness(input: {
   adapter: PlaybackAdapter;

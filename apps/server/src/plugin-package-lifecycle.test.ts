@@ -112,7 +112,7 @@ async function writeDeclarativePackage(packageRoot: string, version = "1.0.0") {
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 }
 
-async function writeSignedExecutablePackage(packageRoot: string) {
+async function writeSignedExecutablePackage(packageRoot: string, official = false) {
   const skillPath = "skills/signed-research/SKILL.md";
   const servicePath = "service/signed-research.mjs";
   await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
@@ -127,13 +127,17 @@ async function writeSignedExecutablePackage(packageRoot: string) {
     source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
     package: {
       version: "1.0.0",
-      publisher: { id: "smart-future-school", name: "智慧未来学校" },
-      updateId: "smart-future-school/signed-research",
-      checksum: { algorithm: "sha256", value: "96043f0fff207f9cb89dc07efe09ddb66f40a0f37f78138d37852e7263cf98aa" },
+      publisher: official ? { id: "ipollowork", name: "iPolloWork" } : { id: "smart-future-school", name: "智慧未来学校" },
+      updateId: `${official ? "ipollowork" : "smart-future-school"}/signed-research`,
+      checksum: { algorithm: "sha256", value: official
+        ? "0f8cb5a5b5f89a70b21e5c05572b04e814df11ee14dfc7e87ecca7f35f196052"
+        : "96043f0fff207f9cb89dc07efe09ddb66f40a0f37f78138d37852e7263cf98aa" },
       signature: {
         algorithm: "ed25519",
-        keyId: "smart-future-school-2026",
-        value: "8ovn8bYOQwHeLdo/lrx/rIYZnw7fJCxVQ4IKKA6WDCFsnsX8mvQ9XMtjnYydnSlML+5dalES/p0iqDV9jGyOCQ==",
+        keyId: official ? "ipollowork-2026" : "smart-future-school-2026",
+        value: official
+          ? "sQ63UAyKWVrGju5KO72qelY9yYDq58q3X+Vv5cVOra0oZNBwmppG4vYhaXePlq8WG2jel4hMIEeYruh8a3c/Aw=="
+          : "8ovn8bYOQwHeLdo/lrx/rIYZnw7fJCxVQ4IKKA6WDCFsnsX8mvQ9XMtjnYydnSlML+5dalES/p0iqDV9jGyOCQ==",
       },
     },
     permissions: [{ id: "network", reason: "Run the signed local service." }],
@@ -1598,11 +1602,11 @@ describe("plugin package lifecycle", () => {
   });
 
 
-  test("imports, runs, and uninstalls a trusted publisher-signed executable archive", async () => {
+  test.each([false, true])("imports, runs, and uninstalls a trusted publisher-signed executable archive (official: %s)", async (official) => {
     const workspaceRoot = await createRoot("ipollowork-signed-plugin-workspace-");
     const packageRoot = await createRoot("ipollowork-signed-plugin-package-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
-    await writeSignedExecutablePackage(packageRoot);
+    await writeSignedExecutablePackage(packageRoot, official);
     const upload = {
       archiveName: "signed-research.ipollowork-plugin",
       files: await Promise.all([
@@ -1629,8 +1633,8 @@ describe("plugin package lifecycle", () => {
           safety: {
             level: "signed",
             localCode: true,
-            publisher: { id: "smart-future-school", name: "智慧未来学校" },
-            signature: { algorithm: "ed25519", keyId: "smart-future-school-2026", status: "verified" },
+            publisher: official ? { id: "ipollowork", name: "iPolloWork" } : { id: "smart-future-school", name: "智慧未来学校" },
+            signature: { algorithm: "ed25519", keyId: official ? "ipollowork-2026" : "smart-future-school-2026", status: "verified" },
           },
         },
       });

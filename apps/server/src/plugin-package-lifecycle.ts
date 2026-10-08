@@ -62,6 +62,7 @@ const LEGACY_RESOURCE_KEYS = [
   "ui",
 ] as const;
 const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
+  ["ipollowork/ipollowork-2026", ["MCowBQYDK2VwAyEAoHA9xxXNZPQ7y+AKpDBIXruNvwVasq7axjilzIY6RDE="]],
   ["zjy-web222/social-plugins-2026", ["MCowBQYDK2VwAyEALRoUrXZv4MA0yQNSErqW6OZlXxLgchbfZF8eZyqhU5s="]],
   [
     "smart-future-school/smart-future-school-2026",

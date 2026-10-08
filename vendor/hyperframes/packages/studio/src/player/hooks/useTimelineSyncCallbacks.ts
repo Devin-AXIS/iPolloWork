@@ -108,10 +108,14 @@ function sanitizeDurationSeconds(value: number): number {
  */
 export function resolveTimelineTotalDuration(input: {
   manifestDurationSeconds: number;
+  declaredDurationSeconds?: number;
   authoredRootDurationSeconds: number;
 }): number {
+  // Frame counts round up; use the runtime's precise seconds so rounding does
+  // not reject its audio-capable transport in favour of silent seek playback.
+  const declared = sanitizeDurationSeconds(input.declaredDurationSeconds ?? 0);
   return Math.max(
-    sanitizeDurationSeconds(input.manifestDurationSeconds),
+    declared > 0 ? declared : sanitizeDurationSeconds(input.manifestDurationSeconds),
     sanitizeDurationSeconds(input.authoredRootDurationSeconds),
   );
 }
@@ -137,6 +141,7 @@ export function useTimelineSyncCallbacks({
     (data: {
       clips: ClipManifestClip[];
       durationInFrames: number;
+      durationSeconds?: number;
       scenes?: Array<{ id: string; label: string; start: number; duration: number }>;
       protocolVersion?: unknown;
       capabilities?: unknown;
@@ -218,6 +223,7 @@ export function useTimelineSyncCallbacks({
       // too-short total in the transport (the "0:44/0:40" bug).
       const newDuration = resolveTimelineTotalDuration({
         manifestDurationSeconds: rawDuration,
+        declaredDurationSeconds: data.durationSeconds,
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
       });
       const effectiveDuration = newDuration > 0 ? newDuration : usePlayerStore.getState().duration;
