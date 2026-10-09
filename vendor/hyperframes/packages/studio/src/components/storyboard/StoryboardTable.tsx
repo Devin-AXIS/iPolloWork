@@ -1,3 +1,9 @@
+import { usePlayerStore, type TimelineElement } from "../../player";
+import { buildExpandedElementTree } from "../../player/hooks/useExpandedTimelineElements";
+import { collectTimelineAncestorIds, resolveStoryboardTimelineTarget } from "../../player/lib/timelineTreeSelection";
+import { STUDIO_PREVIEW_FPS } from "../../player/lib/time";
+import { resolveTimelineClipLabel, resolveTimelineKind } from "../../player/components/timelineLayerPresentation";
+import { useDockLayoutStore } from "../dock/dockLayoutStore";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines,
@@ -64,7 +70,7 @@ export function StoryboardTable({
       return { value: option.value, label: locale === "zh" ? labels.at(-1)! : labels[0]! };
     });
   }, [componentSections, locale]);
-  const { registerViewModeGuard } = useViewMode();
+  const { registerViewModeGuard, setViewMode } = useViewMode();
   const format = data.globals.format?.match(/(\d+)\s*[x×]\s*(\d+)/i);
   const aspectRatio =
     format && Number(format[1]) > 0 && Number(format[2]) > 0
@@ -128,6 +134,27 @@ export function StoryboardTable({
   const changedOnDisk = data.source !== draft.base;
   const manifest = useMemo(() => parseStoryboard(draft.text), [draft.text]);
   const total = manifest.frames.reduce((sum, frame) => sum + (frame.durationSeconds ?? 0), 0);
+  const elements = usePlayerStore(state => state.elements);
+  const clipManifest = usePlayerStore(state => state.clipManifest);
+  const parentMap = usePlayerStore(state => state.clipParentMap);
+  const domChildren = usePlayerStore(state => state.domClipChildren);
+  // Expand for lookup only. Rendering still obeys the user's actual collapsed tree.
+  const timelineElements = useMemo(() => buildExpandedElementTree(
+    elements, clipManifest ?? [], parentMap, new Set(parentMap.values()), domChildren,
+  ), [elements, clipManifest, parentMap, domChildren]);
+
+  function locateClip(clip: TimelineElement) {
+    if (dirty || saving || !setViewMode("timeline")) return;
+    const state = usePlayerStore.getState();
+    state.setIsPlaying(false);
+    state.expandTimelineElementIds(collectTimelineAncestorIds(clip.domId ?? clip.id, state.clipParentMap));
+    state.setSelectedElementId(clip.key ?? clip.id);
+    state.requestClipReveal(clip.key ?? clip.id);
+    state.requestSeek(clip.start);
+    const dock = useDockLayoutStore.getState();
+    dock.activatePanel("timeline");
+    dock.activatePanel("preview");
+  }
 
   function projectAssets(paths: string[]): StoryboardSettingsAsset[] {
     return paths.flatMap(path => {
@@ -475,6 +502,11 @@ export function StoryboardTable({
       >
         <tbody className="bg-[var(--hf-panel-bg)]">
           {manifest.frames.map((frame) => {
+            const clip = resolveStoryboardTimelineTarget(frame, manifest.frames, timelineElements, STUDIO_PREVIEW_FPS);
+            const related = clip ? timelineElements.filter(item =>
+              item.start < clip.start + clip.duration - 0.001 && item.start + item.duration > clip.start + 0.001 &&
+              (item.timingSource !== "implicit" || ["image", "video", "audio", "voiceover", "music"].includes(resolveTimelineKind(item))),
+            ) : [];
             const diskFrame = data.frames.find((item) => item.src === frame.src && item.srcExists);
             const recipeId = frame.extra.recipe?.trim() || frame.camera?.match(/(?:^|\s)component:([a-z0-9-]+)/)?.[1] || "";
             const recipeIntent = frame.extra.recipe_intent?.trim() || "";
@@ -538,6 +570,16 @@ export function StoryboardTable({
                       <GripVertical size={12} />
                       <span className="tabular-nums">{String(frame.index).padStart(2, "0")}</span>
                     </button>
+                        <button
+                          type="button"
+                          aria-label={`定位镜头 ${frame.index}`}
+                          disabled={!clip || dirty || saving}
+                          title={tx(dirty ? "Save script before locating clips" : clip ? resolveTimelineClipLabel(clip) : "This shot has no corresponding timeline clip yet.")}
+                          className="mt-1 w-full rounded bg-panel-input px-1 py-1 text-[10px] text-panel-text-2 disabled:cursor-not-allowed disabled:opacity-40"
+                          onClick={() => { if (clip) locateClip(clip); }}
+                        >
+                          {tx("Locate clip")}
+                        </button>
                   </td>
                   <td className="px-1 py-3">
                     <label
@@ -549,6 +591,20 @@ export function StoryboardTable({
                     <div className="[&_input]:font-semibold [&_input]:text-sm">
                       <PlanField label={`${tx("Shot title")} ${frame.index}`} value={frame.title ?? ""}
                         onChange={(value) => edit((source) => setFrameTitle(source, frame.index, value))} />
+                      {clip && <details className="my-2 text-[11px] text-panel-text-2" data-testid={`storyboard-timeline-links-${frame.index}`}>
+                        <summary className="cursor-pointer">{tx("Picture and audio tracks")} · {related.length}</summary>
+                        <div className="mt-1 max-h-48 space-y-1 overflow-auto">
+                          {related.map(item => <button key={item.key ?? item.id} type="button"
+                            aria-label={`${tx("Locate clip")} ${frame.index} · ${resolveTimelineClipLabel(item)}`}
+                            disabled={dirty || saving} onClick={() => locateClip(item)}
+                            className="flex w-full items-center gap-2 rounded bg-panel-input px-2 py-1 text-left hover:bg-panel-hover disabled:opacity-40">
+                            <span>{tx(resolveTimelineKind(item))}</span>
+                            <span className="min-w-0 flex-1 truncate">{resolveTimelineClipLabel(item)}</span>
+                            {item.start < clip.start - 0.001 || item.start + item.duration > clip.start + clip.duration + 0.001
+                              ? <span className="shrink-0">{tx("Shared across shots")}</span> : null}
+                          </button>)}
+                        </div>
+                      </details>}
                     </div>
                     <PlanField
                       id={`storyboard-shot-content-${frame.index}`}

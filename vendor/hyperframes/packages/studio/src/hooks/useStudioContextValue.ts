@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import type { StudioContextValue } from "../contexts/StudioContext";
-import type { RightInspectorPanes, ToastToneInput } from "../utils/studioHelpers";
+import type { ToastToneInput } from "../utils/studioHelpers";
 
 interface StudioContextInput {
   projectId: string;
@@ -16,7 +16,7 @@ interface StudioContextInput {
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   timelineElements: StudioContextValue["timelineElements"];
   isPlaying: boolean;
-  editHistory: { canUndo: boolean; canRedo: boolean; undoLabel: string; redoLabel: string };
+  editHistory: { canUndo: boolean; canRedo: boolean; undoLabel: string | undefined; redoLabel: string | undefined };
   handleUndo: StudioContextValue["handleUndo"];
   handleRedo: StudioContextValue["handleRedo"];
   renderQueue: {
@@ -65,7 +65,6 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
 }
 
 export interface InspectorState {
-  layersPanelActive: boolean;
   designPanelActive: boolean;
   inspectorPanelActive: boolean;
   inspectorButtonActive: boolean;
@@ -74,7 +73,6 @@ export interface InspectorState {
 
 export function useInspectorState(
   rightPanelTab: string,
-  rightInspectorPanes: RightInspectorPanes,
   rightCollapsed: boolean,
   isPlaying: boolean,
   isGestureRecording?: boolean,
@@ -82,13 +80,9 @@ export function useInspectorState(
   // fallow-ignore-next-line complexity
   return useMemo(() => {
     const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
-    const layersPanelActive =
-      STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.layers;
-    const designPanelActive =
-      STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.design;
-    const inspectorPanelActive = layersPanelActive || designPanelActive;
+    const designPanelActive = STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive;
+    const inspectorPanelActive = designPanelActive;
     return {
-      layersPanelActive,
       designPanelActive,
       inspectorPanelActive,
       inspectorButtonActive:
@@ -97,5 +91,5 @@ export function useInspectorState(
       // green chrome visible across every editing tab and collapsed Inspector.
       shouldShowSelectedDomBounds: !isPlaying && !isGestureRecording,
     };
-  }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
+  }, [rightPanelTab, rightCollapsed, isPlaying, isGestureRecording]);
 }

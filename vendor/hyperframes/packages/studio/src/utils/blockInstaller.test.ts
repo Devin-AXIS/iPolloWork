@@ -49,7 +49,7 @@ describe("addBlockToProject", () => {
     },
   ];
 
-  it("makes installed component document backgrounds transparent without removing inner backgrounds", async () => {
+  it("normalizes Windows registry paths and preserves themed component backgrounds", async () => {
     const files: Record<string, string> = {
       "index.html": [
         '<div id="root" data-composition-id="root" data-width="1920" data-height="1080" data-duration="6">',
@@ -74,7 +74,7 @@ describe("addBlockToProject", () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        written: ["compositions/components/morph-text.html"],
+        written: ["compositions\\components\\morph-text.html"],
         block: {
           name: "morph-text",
           title: "Morph Text",
@@ -129,6 +129,7 @@ describe("addBlockToProject", () => {
       'data-composition-src="compositions/components/morph-text.html"',
     );
     expect(writtenIndex).toContain('data-ipw-theme-mode="inherit"');
+    expect(writtenIndex).toContain('data-hf-content-fit="contain"');
     expect(writtenIndex).not.toContain("data-hf-edit-as-unit");
   });
 
@@ -307,11 +308,18 @@ describe("addBlockToProject", () => {
           title: "Route Map",
           type: "hyperframes:block",
           duration: 3,
+          visualComponent: {
+            version: 1,
+            category: "scene",
+            surfaces: ["video"],
+            themeMode: "inherit",
+          },
         },
       }),
     } as Response);
 
     const files: Record<string, string> = {
+      "compositions/components/route-map.html": '<main data-composition-id="route-map" data-width="1920" data-height="1080"></main>',
       "index.html": [
         '<main data-composition-id="root" data-width="1920" data-height="1080" data-duration="12">',
         '  <div id="background" data-start="0" data-duration="12" data-track-index="0"></div>',
@@ -367,6 +375,10 @@ describe("addBlockToProject", () => {
     expect(files["index.html"]).toMatch(
       /id="route-map_2"[\s\S]*?data-track-index="2"/,
     );
+    const secondHost = new DOMParser().parseFromString(files["index.html"], "text/html")
+      .getElementById("route-map_2");
+    expect(secondHost?.getAttribute("data-hf-original-composition-id")).toBe("route-map");
+    expect(secondHost?.getAttribute("data-hf-content-fit")).toBe("contain");
   });
 
   it("starts the preview reload before refreshing the file tree", async () => {

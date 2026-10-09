@@ -1,3 +1,5 @@
+import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { formatTime } from "../lib/time";
 import type { ZoomMode } from "../store/playerStore";
 
@@ -100,7 +102,7 @@ export function getTimelineVisibleWindow(input: {
     };
   }
 
-  const verticalOverscanRows = Math.max(0, Math.floor(input.verticalOverscanRows ?? 4));
+  const verticalOverscanRows = Math.max(0, Math.floor(input.verticalOverscanRows ?? TIMELINE_VIEWPORT_BUDGETS.rowOverscanPerSide));
   const rowViewportStart = input.scrollTop - RULER_H - TRACKS_TOP_PAD;
   const rowViewportEnd = input.scrollTop + input.viewportHeight - RULER_H - TRACKS_TOP_PAD;
   const firstTrackIndex = Math.min(
@@ -112,20 +114,11 @@ export function getTimelineVisibleWindow(input: {
     Math.max(firstTrackIndex, Math.ceil(rowViewportEnd / TRACK_H) + verticalOverscanRows),
   );
 
-  const horizontalOverscanViewports = Math.max(0, input.horizontalOverscanViewports ?? 1);
-  const overscanPx = input.viewportWidth * horizontalOverscanViewports;
-  const timelineViewportStart = input.scrollLeft - input.gutterWidth - TRACKS_LEFT_PAD;
-  const timelineViewportEnd =
-    input.scrollLeft + input.viewportWidth - input.gutterWidth - TRACKS_LEFT_PAD;
-  const startTime = Math.min(
-    displayDuration,
-    Math.max(0, (timelineViewportStart - overscanPx) / input.pps),
+  const range = getTimelineRenderTimeRange(
+    { scrollLeft: input.scrollLeft, clientWidth: input.viewportWidth },
+    input.pps, input.gutterWidth + TRACKS_LEFT_PAD, displayDuration,
   );
-  const endTime = Math.min(
-    displayDuration,
-    Math.max(startTime, (timelineViewportEnd + overscanPx) / input.pps),
-  );
-
+  const startTime = range.start, endTime = range.end;
   return { firstTrackIndex, lastTrackIndexExclusive, startTime, endTime };
 }
 
@@ -297,10 +290,8 @@ export function formatTimelineTickLabel(time: number, duration: number, majorInt
 /**
  * Fit-mode pixels-per-second: fill the viewport with the composition plus
  * FIT_ZOOM_HEADROOM trailing headroom (CapCut-style — the comp never slams
- * into the right edge), and never map fewer than MIN_TIMELINE_EXTENT_S
- * seconds onto it — a short comp takes a fraction of the width and the
- * remaining ruler runs to 1:00.
- * Manual zoom multiplies this base, so the floor only anchors the default.
+ * into the right edge). Only an empty composition uses the default empty extent.
+ * Manual zoom multiplies this base; rendered empty space can still extend during dragging.
  */
 export function getTimelineFitPps(
   viewportWidth: number,
@@ -308,9 +299,16 @@ export function getTimelineFitPps(
   gutterWidth: number,
 ): number {
   const safeDuration =
-    Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
-  const span = Math.max(safeDuration * FIT_ZOOM_HEADROOM, MIN_TIMELINE_EXTENT_S);
-  if (!Number.isFinite(viewportWidth) || viewportWidth <= gutterWidth + TRACKS_LEFT_PAD) return 100;
+    Number.isFinite(effectiveDuration) && effectiveDuration > 0
+      ? effectiveDuration
+      : 0;
+  const span =
+    safeDuration > 0 ? safeDuration * FIT_ZOOM_HEADROOM : MIN_TIMELINE_EXTENT_S;
+  if (
+    !Number.isFinite(viewportWidth) ||
+    viewportWidth <= gutterWidth + TRACKS_LEFT_PAD
+  )
+    return 100;
   return (viewportWidth - gutterWidth - TRACKS_LEFT_PAD - 2) / span;
 }
 

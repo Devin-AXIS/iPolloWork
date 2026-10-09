@@ -95,7 +95,7 @@ function commitMarqueeSelection(
 export function useTimelineRangeSelection({
   scrollRef,
   ppsRef,
-  effectiveDuration: _effectiveDuration,
+  effectiveDuration,
   pps,
   onSeek: _onSeek,
   seekFromX,
@@ -230,6 +230,7 @@ export function useTimelineRangeSelection({
   const beginRangeSelection = useCallback(
     (e: React.PointerEvent) => {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      usePlayerStore.getState().setIsPlaying(false);
       isRangeSelecting.current = true;
       setShowPopover(false);
       const rect = scrollRef.current?.getBoundingClientRect();
@@ -240,18 +241,19 @@ export function useTimelineRangeSelection({
           (scrollRef.current?.scrollLeft ?? 0) -
           gutterWidth -
           TRACKS_LEFT_PAD;
-        const time = Math.max(0, x / pps);
+        const time = Math.max(0, Math.min(effectiveDuration, x / pps));
         rangeAnchorTime.current = time;
         setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY });
       }
     },
-    [scrollRef, pps, setShowPopover, gutterWidth],
+    [scrollRef, pps, effectiveDuration, setShowPopover, gutterWidth],
   );
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
-      if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
+      if (e.shiftKey || usePlayerStore.getState().activeTool === "annotate") {
+        if (!e.shiftKey) shiftClickClipRef.current = null;
         beginRangeSelection(e);
         return;
       }
@@ -341,7 +343,12 @@ export function useTimelineRangeSelection({
             TRACKS_LEFT_PAD;
           setRangeSelection((prev) =>
             prev
-              ? { ...prev, end: Math.max(0, x / pps), anchorX: e.clientX, anchorY: e.clientY }
+              ? {
+                  ...prev,
+                  end: Math.max(0, Math.min(effectiveDuration, x / pps)),
+                  anchorX: e.clientX,
+                  anchorY: e.clientY,
+                }
               : null,
           );
         }
@@ -360,6 +367,7 @@ export function useTimelineRangeSelection({
     },
     [
       pps,
+      effectiveDuration,
       scrollRef,
       isDragging,
       applyMarqueeAtClient,
@@ -373,6 +381,8 @@ export function useTimelineRangeSelection({
   // clip range), otherwise clear it.
   const finishRangeSelection = useCallback(() => {
     isRangeSelecting.current = false;
+    if (usePlayerStore.getState().activeTool === "annotate")
+      usePlayerStore.getState().setActiveTool("select");
     const pendingShiftClick = shiftClickClipRef.current;
     shiftClickClipRef.current = null;
     setRangeSelection((prev) => {
@@ -386,6 +396,15 @@ export function useTimelineRangeSelection({
       }
       return null;
     });
+  }, [setShowPopover]);
+
+  const cancelRangeSelection = useCallback(() => {
+    isRangeSelecting.current = false;
+    shiftClickClipRef.current = null;
+    setRangeSelection(null);
+    setShowPopover(false);
+    if (usePlayerStore.getState().activeTool === "annotate")
+      usePlayerStore.getState().setActiveTool("select");
   }, [setShowPopover]);
 
   // Release of a marquee gesture: a plain empty-lane click clears selection;
@@ -434,8 +453,12 @@ export function useTimelineRangeSelection({
   // otherwise clear any lingering multi-selection.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || (e.target instanceof Element && e.target.closest('[role="dialog"]'))) return;
       const store = usePlayerStore.getState();
+      if (isRangeSelecting.current || store.activeTool === "annotate") {
+        cancelRangeSelection();
+        return;
+      }
       const marquee = marqueeRef.current;
       if (marquee) {
         marqueeRef.current = null;
@@ -457,7 +480,7 @@ export function useTimelineRangeSelection({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [stopMarqueeAutoScroll]);
+  }, [stopMarqueeAutoScroll, cancelRangeSelection]);
 
   return {
     rangeSelection,
@@ -468,5 +491,6 @@ export function useTimelineRangeSelection({
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    cancelRangeSelection,
   };
 }

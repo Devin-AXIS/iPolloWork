@@ -172,15 +172,20 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
     const seekTime = finitePreviewNumber(c.req.query("time"), duration / 2);
     const autoplay = c.req.query("autoplay") === "1";
     return c.html(
-      buildRegistryPreviewHtml(preview.html, {
-        assetBaseUrl: `/api/registry/blocks/${encodeURIComponent(c.req.param("name"))}/assets/`,
-        autoplay,
-        duration,
-        seekTime,
-        focus: preview.focus,
-        width: preview.dimensions.width,
-        height: preview.dimensions.height,
-      }),
+      buildRegistryPreviewHtml(
+        c.req.query("overlay") === "1"
+          ? `${preview.html}<style>html,body{background:transparent!important}</style>`
+          : preview.html,
+        {
+          assetBaseUrl: `/api/registry/blocks/${encodeURIComponent(c.req.param("name"))}/assets/`,
+          autoplay,
+          duration,
+          seekTime,
+          focus: preview.focus,
+          width: preview.dimensions.width,
+          height: preview.dimensions.height,
+        },
+      ),
       200,
       {
         "Cache-Control": "private, max-age=300",

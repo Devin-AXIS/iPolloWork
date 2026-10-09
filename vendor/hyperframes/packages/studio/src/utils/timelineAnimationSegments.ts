@@ -1,4 +1,5 @@
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
+import { MANUAL_KEYFRAME_MARKER } from "../hooks/gsapShared";
 import { editabilityForProvenance } from "@hyperframes/core/gsap-parser-acorn";
 import { resolveTweenDuration, resolveTweenStart } from "./globalTimeCompiler";
 import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
@@ -13,6 +14,7 @@ export interface TimelineAnimationOwnerRange {
 export interface TimelineAnimationSegment {
   animationId: string;
   phase: TimelineAnimationPhase;
+  origin?: "manual" | "preset" | "authored";
   startPercentage: number;
   endPercentage: number;
 }
@@ -39,21 +41,27 @@ export function isAnimationSharedForOwner(
   ownerId: string | null | undefined,
   ownerLocator: TimelineAnimationOwnerLocator = {},
 ): boolean {
-  if (!ownerId) return true;
+  if (!ownerId && !ownerLocator.hfId) return true;
   const motion = readMotionInstanceFromExtras(animation.extras);
   if (motion) {
     const targetsOwner =
-      motion.target.elementId === ownerId ||
+      (Boolean(ownerId) && motion.target.elementId === ownerId) ||
       (ownerLocator.hfId !== undefined && motion.target.hfId === ownerLocator.hfId) ||
       (ownerLocator.selector !== undefined && motion.target.selector === ownerLocator.selector) ||
-      motion.target.selector === `#${ownerId}`;
+      (Boolean(ownerId) && motion.target.selector === `#${ownerId}`);
     return !targetsOwner;
   }
   const selectorParts = animation.targetSelector
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
-  return selectorParts.length !== 1 || selectorParts[0] !== `#${ownerId}`;
+  if (selectorParts.length !== 1) return true;
+  const selector = selectorParts[0];
+  return !(
+    (Boolean(ownerId) && selector === `#${ownerId}`) ||
+    (ownerLocator.hfId !== undefined &&
+      selector === `[data-hf-id=${JSON.stringify(ownerLocator.hfId)}]`)
+  );
 }
 
 export function isTimelineAnimationDirectlyMovable(
@@ -180,6 +188,9 @@ export function buildTimelineAnimationSegment(
 
   return {
     animationId: animation.id,
+    ...(animationOrigin(animation) === "authored"
+      ? {}
+      : { origin: animationOrigin(animation) }),
     phase: resolveTimelineAnimationPhase(animation, ownerRange),
     startPercentage: ((boundedStart - ownerRange.start) / ownerRange.duration) * 100,
     endPercentage: ((boundedEnd - ownerRange.start) / ownerRange.duration) * 100,
@@ -267,4 +278,29 @@ export function resolveTimelineAnimationMoveUpdate(
     },
     ownerRange,
   );
+}
+
+export function animationOrigin(
+  animation: GsapAnimation,
+): "manual" | "preset" | "authored" {
+  const data = animation.extras?.data;
+  if (
+    typeof data === "string" &&
+    data.replace(/^__raw:/, "").replace(/^['"]|['"]$/g, "") ===
+      "hf-manual-keyframes"
+  )
+    return "manual";
+  return readMotionInstanceFromExtras(animation.extras) ? "preset" : "authored";
+}
+
+export function timelineKeyframe(
+  animation: GsapAnimation,
+  keyframe: GsapPercentageKeyframe,
+): GsapPercentageKeyframe & { origin: ReturnType<typeof animationOrigin> } {
+  const { data, ...properties } = keyframe.properties;
+  return {
+    ...keyframe,
+    properties,
+    origin: data === MANUAL_KEYFRAME_MARKER ? "manual" : animationOrigin(animation),
+  };
 }

@@ -17,7 +17,7 @@ import { PluginPackageListItem } from "@/react-app/domains/settings/plugin-packa
 import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
 import { formatPluginPlatformError } from "@/react-app/domains/settings/plugin-platform-state";
 import { SettingsListEmptyState, SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
-import { SettingsNotice, SettingsPill } from "@/react-app/domains/settings/settings-section";
+import { SettingsPill } from "@/react-app/domains/settings/settings-section";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { settingsPageTitleClass } from "@/react-app/domains/settings/shell/panel";
 
@@ -134,15 +134,18 @@ export function CloudMarketplacesView({
   const [installed, setInstalled] = React.useState<Record<string, iPolloWorkPluginPackageItem>>({});
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [localSearch, setLocalSearch] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const refreshGeneration = React.useRef(0);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const search = controlledSearch ?? localSearch;
 
   const refresh = React.useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     if (!cloud.isSignedIn) {
       setItems([]);
       setInstalled({});
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -156,6 +159,7 @@ export function CloudMarketplacesView({
             ? client.listPluginPackages(workspaceId)
             : Promise.resolve({ items: [] }),
       ]);
+      if (generation !== refreshGeneration.current) return;
       if (marketplaceResult.status === "rejected") throw marketplaceResult.reason;
       setItems(marketplaceResult.value);
       if (localPackagesResult.status === "fulfilled") {
@@ -165,14 +169,15 @@ export function CloudMarketplacesView({
         setError(formatPluginPlatformError(localPackagesResult.reason, t("plugin_platform.error.load")));
       }
     } catch (cause) {
-      setError(formatPluginPlatformError(cause, t("settings.marketplace.load_failed")));
+      if (generation === refreshGeneration.current) setError(formatPluginPlatformError(cause, t("settings.marketplace.load_failed")));
     } finally {
-      setLoading(false);
+      if (generation === refreshGeneration.current) setLoading(false);
     }
   }, [client, cloud.isSignedIn, installedPackages, workspaceId]);
 
   React.useEffect(() => {
     void refresh();
+    return () => { refreshGeneration.current++; };
   }, [refresh]);
 
   const install = React.useCallback(async (resource: EnterpriseResource) => {
@@ -287,7 +292,7 @@ export function CloudMarketplacesView({
         </>
       ) : null}
 
-      {loading && items.length === 0 ? <SettingsNotice>{t("settings.marketplace.loading")}</SettingsNotice> : null}
+      {loading ? <div role="status" aria-live="polite" data-testid="plugin-marketplace-loading" className="flex items-center gap-2 text-ui-control text-dls-secondary"><Loader2 size={16} className="animate-spin" aria-hidden="true" />{t("settings.marketplace.loading")}</div> : null}
       {!loading && filteredItems.length === 0 ? <SettingsListEmptyState>{search ? t("settings.marketplace.no_match") : t("settings.marketplace.empty")}</SettingsListEmptyState> : null}
 
       {embedded && filteredItems.length > 0 ? (
@@ -378,7 +383,7 @@ function MarketplaceRows(props: Omit<MarketplaceSectionProps, "title">) {
             status={localPackage ? (localPackage.version === version ? t("settings.marketplace.installed") : t("extensions.update_available")) : item.enterpriseCategory}
             actionBusy={props.busyId === item.id}
             actionDisabled={!props.client || !props.workspaceId || !version || props.busyId !== null || localPackage?.version === version}
-            actionLabel={<>{props.busyId === item.id ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel(item, localPackage)}</>}
+            actionLabel={actionLabel(item, localPackage)}
             onOpen={() => localPackage && props.onOpenInstalled
               ? props.onOpenInstalled(pluginId)
               : props.onOpen(item.id)}

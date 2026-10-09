@@ -36,7 +36,7 @@
     <script>
       window.__timelines=window.__timelines||{};
       (function(){
-        const root=document.getElementById("media-before-after"),id=root.dataset.compositionId;
+        const root=document.getElementById("media-before-after"),id=root.dataset.compositionId||"media-before-after";
         const defaults={"title":"Media Before / After","items":"RAW::Unfocused frame|TREATED::Clear hierarchy|BEFORE::Default state|AFTER::Theme applied","highlight":1,"note":"A visual comparison with room for real media"};
         const values={...defaults,...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
         root.querySelectorAll("[data-ipw-variable]").forEach(element=>{const key=element.getAttribute("data-ipw-variable");if(key)element.textContent=String(values[key]??"")});

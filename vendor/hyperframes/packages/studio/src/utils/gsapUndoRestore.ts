@@ -267,3 +267,5 @@ export function applyUndoRestoreToPreview(
   }
   return "soft";
 }
+
+export type RestoreFiles = Record<string, UndoRestoreFile>;

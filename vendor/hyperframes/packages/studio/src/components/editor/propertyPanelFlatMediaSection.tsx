@@ -1,3 +1,8 @@
+import {
+  readElementFades,
+  clampFadesToDuration,
+  formatFadeSeconds,
+} from "@hyperframes/core/audio-fade";
 import { useEffect, useState } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
@@ -61,6 +66,10 @@ export function FlatMediaSection({
   const mediaStartMax = Math.max(30, Math.ceil(sourceDuration || mediaStart + 10));
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
+  const fades = clampFadesToDuration(
+    readElementFades(el),
+    Number(element.dataAttributes.duration) || sourceDuration || 30,
+  );
   const hasAudio = element.dataAttributes["has-audio"] === "true";
   const objectFit = styles["object-fit"] || "contain";
   const objectPosition = styles["object-position"] || "center";
@@ -270,6 +279,32 @@ export function FlatMediaSection({
           )}
         </>
       )}
+      {(isAudio || (isVideo && hasAudio)) &&
+        (["in", "out"] as const).map((edge) => {
+          const value = edge === "in" ? fades.fadeIn : fades.fadeOut;
+          return (
+            <FlatSlider
+              key={edge}
+              label={edge === "in" ? "Fade in" : "Fade out"}
+              value={Math.round(value * 100)}
+              min={0}
+              max={Math.round(
+                (Number(element.dataAttributes.duration) ||
+                  sourceDuration ||
+                  30) * 100,
+              )}
+              displayValue={`${formatFadeSeconds(value)}s`}
+              tier={value === 0 ? "default" : "explicitCustom"}
+              commitMode="release"
+              onCommit={(next) =>
+                void onSetAttribute(
+                  `fade-${edge}`,
+                  formatFadeSeconds(next / 100),
+                )
+              }
+            />
+          );
+        })}
       {isVisualMedia && (
         <>
           <FlatSelectRow

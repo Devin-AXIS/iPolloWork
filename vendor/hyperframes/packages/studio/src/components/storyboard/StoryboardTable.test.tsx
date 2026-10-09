@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   writeProjectFile: vi.fn(async (_path: string, _content: string, _base?: string): Promise<void> => undefined),
   assets: [] as string[],
   uploadProjectFiles: vi.fn(async (_files: File[]): Promise<string[]> => ["media/imported.png"]),
+  setViewMode: vi.fn((_mode: string) => true),
 }));
 
 vi.mock("../../contexts/FileManagerContext", () => ({
@@ -22,7 +23,7 @@ vi.mock("../../contexts/FileManagerContext", () => ({
 }));
 
 vi.mock("../../contexts/ViewModeContext", () => ({
-  useViewMode: () => ({ registerViewModeGuard: () => () => undefined }),
+  useViewMode: () => ({ registerViewModeGuard: () => () => undefined, setViewMode: mocks.setViewMode }),
 }));
 vi.mock("../../hooks/useBlockCatalog", () => ({
   useBlockCatalog: () => ({ sections: [{ items: [{
@@ -32,6 +33,7 @@ vi.mock("../../hooks/useBlockCatalog", () => ({
 }));
 
 import { StoryboardTable } from "./StoryboardTable";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 const source = `---
 message: Demo
@@ -100,6 +102,9 @@ describe("StoryboardTable interactions", () => {
   });
 
   beforeEach(() => {
+    usePlayerStore.getState().reset();
+    usePlayerStore.getState().clearSeekRequest();
+    mocks.setViewMode.mockReset().mockReturnValue(true);
     mocks.writeProjectFile.mockReset().mockResolvedValue(undefined);
     mocks.uploadProjectFiles.mockReset().mockResolvedValue(["media/imported.png"]);
     mocks.assets = ["media/cover.png", "media/music-bed.mp3", "media/hit.wav"];
@@ -139,6 +144,42 @@ describe("StoryboardTable interactions", () => {
     flushSync(() => root.unmount());
     container.remove();
     vi.restoreAllMocks();
+  });
+
+  it("locates legacy shots and their nested narration using the official selection, expansion and seek requests", async () => {
+    click("Cancel");
+    const shot = { id: "opening", domId: "opening", key: "index.html#opening", tag: "section", start: 0, duration: 5, track: 0, timingSource: "authored" as const };
+    await act(async () => usePlayerStore.setState({
+      isPlaying: true,
+      elements: [shot],
+      clipParentMap: new Map([["voice", "opening"]]),
+      clipManifest: [{ id: "voice", label: "Opening narration", tagName: "audio", kind: "audio", start: 1, duration: 3, track: 1, sourceFile: "index.html", timelineRole: "voiceover", assetUrl: "media/voice.mp3", compositionId: null, parentCompositionId: null, compositionSrc: null }],
+    }));
+    const locate = container.querySelector<HTMLButtonElement>('[aria-label="定位镜头 1"]');
+    expect(locate?.disabled).toBe(false);
+    await act(async () => locate?.click());
+    expect(mocks.setViewMode).toHaveBeenCalledWith("timeline");
+    expect(usePlayerStore.getState()).toMatchObject({ isPlaying: false, selectedElementId: shot.key, requestedSeekTime: 0 });
+    const narration = container.querySelector<HTMLButtonElement>('[aria-label="Locate clip 1 · Opening narration"]');
+    expect(narration).not.toBeNull();
+    await act(async () => narration?.click());
+    expect(usePlayerStore.getState()).toMatchObject({ selectedElementId: "index.html#voice", requestedSeekTime: 1, clipRevealRequest: { elementId: "index.html#voice" } });
+    expect(usePlayerStore.getState().expandedTimelineElementIds.has("opening")).toBe(true);
+    expect(mocks.writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps unmatched or unsaved scripts from navigating to a stale clip", async () => {
+    click("Cancel");
+    const locate = () => container.querySelector<HTMLButtonElement>('[aria-label="定位镜头 1"]');
+    expect(locate()?.disabled).toBe(true);
+    await act(async () => usePlayerStore.setState({ elements: [{ id: "opening", tag: "section", start: 0, duration: 5, track: 0 }] }));
+    expect(locate()?.disabled).toBe(false);
+    const narration = container.querySelector<HTMLTextAreaElement>("#storyboard-narration-1");
+    expect(narration).not.toBeNull();
+    setControlValue(narration!, "Revised narration");
+    expect(locate()?.disabled).toBe(true);
+    expect(mocks.setViewMode).not.toHaveBeenCalled();
+    expect(mocks.writeProjectFile).not.toHaveBeenCalled();
   });
 
   it("opens independent picture and sound dialogs without hidden tabs or extra rows", () => {

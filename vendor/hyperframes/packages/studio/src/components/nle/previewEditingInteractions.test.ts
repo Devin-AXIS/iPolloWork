@@ -1,8 +1,58 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { deliverStudioAgentPrompt } from "../editor/domEditingAgentPrompt";
 import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
 import { buildTimelineAssetInsertHtml, getTimelineAssetKind, resolveGeneratedAvatarCompositePaths } from "../../utils/timelineAssetDrop";
 import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
+
+describe("video AI handoff acknowledgement", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+  const hostBridge = () => {
+    const events = new EventTarget();
+    const postMessage = vi.fn();
+    const parent = { postMessage };
+    vi.stubGlobal("window", { parent, addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) });
+    const acknowledge = (source: unknown, data: unknown) => {
+      const event = new Event("message");
+      Object.defineProperties(event, { source: { value: source }, data: { value: data } });
+      events.dispatchEvent(event);
+    };
+    return { postMessage, parent, acknowledge };
+  };
+
+  it("sends visible instructions separately from bounded selection context and waits for its own host acknowledgement", async () => {
+    const bridge = hostBridge();
+    let accepted = false;
+    const pending = deliverStudioAgentPrompt("x".repeat(25_000), "scenes/a.html", { instruction: "把标题改成蓝色" }).then(value => { accepted = value; return value; });
+    const request = bridge.postMessage.mock.calls[0]?.[0];
+    expect(request.target.file).toBe("scenes/a.html");
+    expect(request.instruction).toBe("把标题改成蓝色");
+    expect(request.semanticContext).toHaveLength(20_000);
+    bridge.acknowledge({}, { type: "ipollowork:hyperframes:ai-request-result", requestId: request.requestId, accepted: true });
+    bridge.acknowledge(bridge.parent, { type: "ipollowork:hyperframes:ai-request-result", requestId: "another-request", accepted: true });
+    await Promise.resolve();
+    expect(accepted).toBe(false);
+    bridge.acknowledge(bridge.parent, { type: "ipollowork:hyperframes:ai-request-result", requestId: request.requestId, accepted: true });
+    await expect(pending).resolves.toBe(true);
+  });
+
+  it("keeps host rejection visible instead of claiming that the request was sent", async () => {
+    const bridge = hostBridge();
+    const pending = deliverStudioAgentPrompt("context", "index.html");
+    const request = bridge.postMessage.mock.calls[0]?.[0];
+    bridge.acknowledge(bridge.parent, { type: "ipollowork:hyperframes:ai-request-result", requestId: request.requestId, accepted: false, error: "当前对话已切换" });
+    await expect(pending).rejects.toThrow("当前对话已切换");
+  });
+
+  it("times out without reporting acceptance when the host is unavailable", async () => {
+    vi.useFakeTimers();
+    hostBridge();
+    const pending = deliverStudioAgentPrompt("context", "index.html");
+    const assertion = expect(pending).rejects.toThrow("未确认接收");
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+  });
+});
 
 describe("preview editing interactions", () => {
   it("selects canvas elements on one click without opening their inspector", () => {
@@ -192,20 +242,15 @@ describe("preview editing interactions", () => {
     expect(source).toContain("setSelectedElementId(elementKey)");
     expect(source).toContain("onSelectElement?.(el)");
     expect(source).toContain("resolveTimelineSelectionSeekTime(");
-    expect(source).toContain("selectionTime,\n                                previewElement,");
+    expect(source).toMatch(/selectionTime,\s+previewElement,/);
     expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
     expect(source).not.toContain("onSelectElement?.(nextElement)");
   });
 
-  it("keeps composition clips in the master timeline when they are double-clicked", () => {
+  it("opens nested compositions through the official timeline navigation callback", () => {
     const paneSource = readFileSync(new URL("./TimelinePane.tsx", import.meta.url), "utf8");
-    const clipSource = readFileSync(
-      new URL("../../player/components/TimelineClip.tsx", import.meta.url),
-      "utf8",
-    );
-
-    expect(paneSource).not.toContain("onDrillDown={handleDrillDown}");
-    expect(clipSource).not.toContain("Double-click to open");
+    expect(paneSource).toContain("onDrillDown={handleDrillDown}");
+    expect(paneSource).toContain("handleNavigateComposition(compositionStack.length - 2)");
   });
 
   it("updates a hierarchy-row selection atomically before syncing the inspector", () => {

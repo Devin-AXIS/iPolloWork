@@ -26,7 +26,7 @@ describe("video script contract", () => {
       const context = videoTaskSystemContext("ses_example", undefined, undefined, { requireStoryboardReview, includeVoiceover });
       expect(context).toContain(VIDEO_STORYBOARD_FORMAT_CONTRACT);
       expect(context).toContain("never a Markdown pipe table");
-      const example = /```markdown\n([\s\S]+?)\n```/.exec(context)?.[1];
+      const example = /```markdown\r?\n([\s\S]+?)\r?\n```/.exec(context)?.[1];
       expect(example).toBeDefined();
       const storyboard = parseStoryboard(example ?? "");
       expect(storyboard.warnings).toEqual([]);
@@ -75,7 +75,7 @@ describe("video script contract", () => {
       assetSource: "code",
       status: "outline",
     });
-    const savedSkillExample = /```markdown\n([\s\S]+?)\n```/.exec(videoSkill)?.[1];
+    const savedSkillExample = /```markdown\r?\n([\s\S]+?)\r?\n```/.exec(videoSkill)?.[1];
     expect(savedSkillExample).toBeDefined();
     const skillStoryboard = parseStoryboard(savedSkillExample ?? "");
     expect(skillStoryboard.warnings).toEqual([]);

@@ -9,6 +9,7 @@ import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { shouldCommitAnimationKeyframe, usePlayerStore } from "../player/store/playerStore";
 import { selectorFromSelection } from "./gsapShared";
 import { isolateSharedAnimationTargets, tryGsapDragIntercept } from "./gsapRuntimeBridge";
+import { buildExtendedKeyframes, keyframeAtPlayhead } from "./useEnableKeyframes";
 
 function createSelection(
   element: HTMLElement,
@@ -41,6 +42,23 @@ function createSelection(
     ...overrides,
   };
 }
+
+test("conversion without the requested point cannot report a successful manual capture", () => {
+  const selection = createSelection(document.createElement("div"));
+  const converted: GsapAnimation = {
+    id: "title-position", targetSelector: "#title", method: "to", position: 2,
+    duration: 3, properties: {}, keyframes: {
+      format: "percentage", keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 120 } },
+      ],
+    },
+  };
+  expect(keyframeAtPlayhead(converted, selection, 3.5)).toBeUndefined();
+  const point = { percentage: 50, properties: { x: 105, data: "hf-manual-keyframe" } };
+  converted.keyframes?.keyframes.push(point);
+  expect(keyframeAtPlayhead(converted, selection, 3.5)).toBe(point);
+});
 
 describe("ensureElementAddressable", () => {
   test("prefers a stable hf id over a selector shared by siblings", () => {
@@ -114,13 +132,13 @@ describe("ensureElementAddressable", () => {
 
 describe("manual animation edit policy", () => {
   test("does not create implicit playhead keyframes by default", () => {
-    expect(usePlayerStore.getInitialState().autoKeyframeEnabled).toBe(false);
-    expect(shouldCommitAnimationKeyframe(false, null)).toBe(false);
+    expect(shouldCommitAnimationKeyframe(null)).toBe(false);
   });
 
   test("still edits an explicitly selected keyframe", () => {
-    expect(shouldCommitAnimationKeyframe(false, 50)).toBe(true);
-    expect(shouldCommitAnimationKeyframe(true, null)).toBe(true);
+    expect(shouldCommitAnimationKeyframe(0)).toBe(true);
+    expect(shouldCommitAnimationKeyframe(50)).toBe(true);
+    expect(shouldCommitAnimationKeyframe(100)).toBe(true);
   });
 
   test("plain drag shifts every position keyframe instead of writing one transient frame", async () => {
@@ -149,7 +167,6 @@ describe("manual animation edit policy", () => {
       },
     };
     const mutations: Record<string, unknown>[] = [];
-    usePlayerStore.getState().setAutoKeyframeEnabled(false);
     usePlayerStore.getState().setActiveKeyframePct(null);
 
     const handled = await tryGsapDragIntercept(
@@ -170,6 +187,19 @@ describe("manual animation edit policy", () => {
       deltaX: 40,
       deltaY: 20,
     });
+
+    // An explicitly selected point remains editable, without arming future edits.
+    usePlayerStore.getState().setActiveKeyframePct(50);
+    const commit = async (_selection: DomEditSelection, mutation: Record<string, unknown>) => {
+      mutations.push(mutation);
+    };
+    await tryGsapDragIntercept(selection, { x: 40, y: 20 }, [animation], null, commit);
+    expect(mutations[1]).toMatchObject({
+      type: "add-keyframe", animationId: "card-position", percentage: 50,
+    });
+    expect(usePlayerStore.getState().activeKeyframePct).toBeNull();
+    await tryGsapDragIntercept(selection, { x: 40, y: 20 }, [animation], null, commit);
+    expect(mutations[2]).toMatchObject({ type: "offset-position-paths" });
   });
 });
 
@@ -338,4 +368,24 @@ describe("GSAP drag position commits", () => {
       animationId: convertedAnimation.id,
     });
   });
+});
+
+test("extending a converted tween preserves its existing segment time, properties and easing", () => {
+  const anim: GsapAnimation = {
+    id: "card", targetSelector: "#card", method: "to", position: 0.16,
+    duration: 0.55, ease: "none", properties: {},
+    keyframes: {
+      format: "percentage", easeEach: "power3.out",
+      keyframes: [
+        { percentage: 0, properties: { scale: 0.985, opacity: 0 } },
+        { percentage: 100, properties: { scale: 1, opacity: 1 }, ease: "power2.out" },
+      ],
+    },
+  };
+  const result = buildExtendedKeyframes(anim, 4, { scale: 1, opacity: 1 });
+  expect(result.position).toBe(0.16);
+  expect(result.duration).toBe(3.84);
+  const endpoint = result.keyframes[1];
+  expect(result.position + endpoint.percentage / 100 * result.duration).toBeCloseTo(0.71, 7);
+  expect(endpoint).toMatchObject({ properties: { scale: 1, opacity: 1 }, ease: "power2.out" });
 });

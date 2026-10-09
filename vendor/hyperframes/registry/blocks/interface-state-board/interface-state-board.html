@@ -36,7 +36,7 @@
     <script>
       window.__timelines=window.__timelines||{};
       (function(){
-        const root=document.getElementById("interface-state-board"),id=root.dataset.compositionId;
+        const root=document.getElementById("interface-state-board"),id=root.dataset.compositionId||"interface-state-board";
         const defaults={"title":"Interface State Board","items":"EMPTY::Invite first action|LOADING::Confirm progress|SUCCESS::Show the result|ERROR::Offer recovery","highlight":1,"note":"A state model for product storytelling"};
         const values={...defaults,...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
         root.querySelectorAll("[data-ipw-variable]").forEach(element=>{const key=element.getAttribute("data-ipw-variable");if(key)element.textContent=String(values[key]??"")});

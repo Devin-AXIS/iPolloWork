@@ -1,0 +1,27 @@
+# Data Attributes
+
+Core attributes for controlling element timing and behavior.
+
+## Timing
+
+- `data-start="0"` — Start time in seconds
+- `data-duration="5"` — Duration in seconds
+- `data-track-index="0"` — Studio timeline lane, display only. The render never reads it, and it does not control paint order (use CSS `z-index`) or prevent overlap. Optional.
+
+## Media
+
+- `data-media-start="2"` — Media playback offset / trim point (seconds)
+- `data-volume="0.8"` — Audio/video gain. `1` is 0 dB, `0` is silence, and values above `1` boost up to `3.98` (+12 dB). For ducking and shaped envelopes use the `data-automation` volume lane (`hyperframes-core` skill, `creator-editing-recipes.md`)
+- `data-fade-in="0.5"` / `data-fade-out="1"` — Clip-edge fades (seconds): linear gain ramps anchored to the clip's start and end, multiplied on top of `data-volume` and any volume lane
+- `data-has-audio="true"` — Keeps the file's sound on this clip (the default for footage with sound). Silent footage uses `muted` instead.
+
+## Composition
+
+- `data-composition-id="root"` — Unique ID for composition wrapper (required)
+- `data-width="1920"` — Composition width in pixels
+- `data-height="1080"` — Composition height in pixels
+- `data-composition-src="./intro.html"` — Nested composition source
+
+## Element Visibility
+
+Add `class="clip"` to timed elements. The runtime keys visibility off `data-start`, not this class, but the shared `.clip` rule is what gives a scene its full-frame box and Studio treats it as an edit hint.

@@ -25,7 +25,7 @@ type Props = {
   previewAssetUrl?: (path: string) => string;
 };
 
-const defaultPrompt = "人物面向镜头自然交流，神态放松，自然眨眼和轻微呼吸，表情随语气柔和变化。避免持续露齿笑、夸张张嘴和机械点头，保持人物身份与镜头稳定。";
+const defaultPrompt = "人物面向镜头说出所选配音，嘴唇和下颌随每个音节自然变化，停顿时放松闭口，表情随语气变化。头部保持稳定，自然眨眼和轻微呼吸，避免反复点头和晃动，保持人物身份与镜头稳定。";
 const menuClassName = "video-settings-typography max-h-(--available-height) max-w-(--available-width) rounded-lg bg-popover p-1.5 text-xs [&_[role=option]]:min-h-[34px] [&_[role=option]]:px-2 [&_[role=option]]:py-1.5 [&_[role=option]]:text-xs";
 const fieldClassName = "h-[34px] data-[size=default]:h-[34px] w-full rounded-lg border-0 bg-muted/60 px-3 text-xs font-normal shadow-none";
 

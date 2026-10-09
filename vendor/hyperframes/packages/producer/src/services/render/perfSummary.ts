@@ -3,8 +3,14 @@
  * the `perf-summary.json` debug artifact.
  */
 
-import { fpsToNumber } from "@hyperframes/core";
-import type { CapturePerfSummary, SubTimelineWaitOutcome } from "@hyperframes/engine";
+import { arch, cpus, platform, totalmem } from "node:os";
+import { fpsToNumber, type HfVfxCapture } from "@hyperframes/core";
+import type {
+  CapturePerfSummary,
+  StaticVerificationOutcome,
+  SubTimelineWaitOutcome,
+  WorkerSizing,
+} from "@hyperframes/engine";
 import type { CaptureCalibrationSample, CaptureCostEstimate } from "./captureCost.js";
 import type {
   CaptureAttemptSummary,
@@ -80,6 +86,36 @@ export interface DrawElementPerfInput {
   workerInversion?: "inverted" | "reverted";
   /** Auto-resolved worker count before the inversion pinned it to 1 (set only when the inversion fired). */
   preInversionWorkers?: number;
+  /** Rough compiled-composition element count — gate variable for the short-comp inversion band. */
+  compositionElementCount?: number;
+  /** Provenance of the element count: "live" (probe DOM, trusted to gate) | "static" (source scan, not). */
+  compositionElementCountSource?: "live" | "static";
+  /** Per-tag breakdown of the same static scan behind compositionElementCount; only set when the source above is "static". */
+  compositionElementTags?: Readonly<Record<string, number>>;
+  /** `<video data-aroll="true">` count from the same static scan; only set when compositionElementCountSource is "static". */
+  arollVideoCount?: number;
+  /** `<video data-media-source="heygen">` count from the same static scan; only set when compositionElementCountSource is "static". */
+  heygenVideoCount?: number;
+  /** Runtime adapters exercised (live+static union); always set (possibly empty). */
+  adaptersUsed?: readonly string[];
+  /** Audio/image/sub-comp/color-grading counts, same static scan; only set when the source above is "static". */
+  audioCount?: number;
+  imageCount?: number;
+  subCompositionCount?: number;
+  audioGroupCount?: number;
+  colorGradingCount?: number;
+  hasLut?: boolean;
+  /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
+  /** `data-vfx-chain` host count from the same static scan. Only set when the source above is "static". */
+  vfxHostCount?: number;
+  /** Strongest enabled node's capture across every host (`chainCapture`, max: backdrop > self > none). Undefined when vfxHostCount is 0. */
+  vfxCapture?: HfVfxCapture;
+  /** Sorted unique def ids across every enabled node in every chain, comma-joined ("" when vfxHostCount is 0). */
+  vfxTypes?: string;
+  /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
+  shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
   /** Auto-resolved worker count before the router pinned it to 3 (set only when the router fired). */
   preRouterWorkers?: number;
@@ -111,6 +147,9 @@ function aggregateDrawElement(
   const gateReasons = [
     ...new Set(perfs.map((p) => p.deGateReason).filter((r): r is string => !!r)),
   ].sort();
+  const gpuRenderers = [
+    ...new Set(perfs.map((p) => p.gpuRenderer).filter((r): r is string => !!r)),
+  ].sort();
   const drain = de.drainStats;
   return {
     mode: modes.join("|") || "unknown",
@@ -118,9 +157,28 @@ function aggregateDrawElement(
     clampReason: de.clampReason,
     workerInversion: de.workerInversion ?? "none",
     preInversionWorkers: de.preInversionWorkers,
+    compositionElementCount: de.compositionElementCount,
+    compositionElementCountSource: de.compositionElementCountSource,
+    compositionElementTags: de.compositionElementTags,
+    arollVideoCount: de.arollVideoCount,
+    heygenVideoCount: de.heygenVideoCount,
+    adaptersUsed: de.adaptersUsed,
+    audioCount: de.audioCount,
+    imageCount: de.imageCount,
+    subCompositionCount: de.subCompositionCount,
+    audioGroupCount: de.audioGroupCount,
+    colorGradingCount: de.colorGradingCount,
+    hasLut: de.hasLut,
+    rootBodyMismatch: de.rootBodyMismatch,
+    rootBodyDeltaPxBucket: de.rootBodyDeltaPxBucket,
+    vfxHostCount: de.vfxHostCount,
+    vfxCapture: de.vfxCapture,
+    vfxTypes: de.vfxTypes,
+    shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,
     gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
+    gpuRenderer: gpuRenderers.length > 0 ? gpuRenderers.join("|") : undefined,
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
     verifyChecked: drain?.verifyChecked ?? 0,
@@ -136,6 +194,31 @@ function aggregateDrawElement(
     blankRecaptures: drain?.blankRecaptures ?? 0,
     boundaryFrames: perfs.reduce((sum, p) => sum + (p.deBoundaryFrames ?? 0), 0),
     ncprFallbacks: perfs.reduce((sum, p) => sum + (p.deNcprFallbacks ?? 0), 0),
+    frameTimeouts: perfs.reduce((sum, p) => sum + (p.deFrameTimeouts ?? 0), 0),
+  };
+}
+
+function maxDefined(values: Array<number | undefined>): number | undefined {
+  const present = values.filter((v): v is number => typeof v === "number");
+  return present.length > 0 ? Math.max(...present) : undefined;
+}
+
+/**
+ * Chrome memory across capture sessions: max of per-session peaks, sum of the
+ * last samples. Sessions that never produced a reading are excluded so
+ * `samples: 0` cannot be published alongside another worker's real peaks.
+ */
+function aggregateChromeMemory(perfs: CapturePerfSummary[]): RenderPerfSummary["chromeMemory"] {
+  const sampled = perfs.filter((p) => (p.chromeMemorySamples ?? 0) > 0);
+  if (sampled.length === 0) return undefined;
+  return {
+    browserRssPeakMb: maxDefined(sampled.map((p) => p.chromeBrowserRssPeakMb)),
+    rendererRssPeakMb: maxDefined(sampled.map((p) => p.chromeRendererRssPeakMb)),
+    // Last samples are per session; summing approximates the whole fleet's
+    // footprint at the end of capture (workers run concurrently).
+    rssLastMb: sampled.reduce((sum, p) => sum + (p.chromeRssLastMb ?? 0), 0),
+    gpuProcessSeenLastSample: sampled.some((p) => p.chromeGpuProcessSeenLastSample === true),
+    samples: sampled.reduce((sum, p) => sum + (p.chromeMemorySamples ?? 0), 0),
   };
 }
 
@@ -151,12 +234,53 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
     : [
         ...new Set(perfs.map((p) => p.staticDedupSkipReason).filter((r): r is string => !!r)),
       ].sort();
+  const verificationPerfs = perfs.filter((perf) => perf.staticDedupVerificationOutcome);
+  const verificationOutcomes = [
+    ...new Set(
+      verificationPerfs
+        .map((perf) => perf.staticDedupVerificationOutcome)
+        .filter((outcome): outcome is StaticVerificationOutcome => outcome != null),
+    ),
+  ].sort();
   return {
     enabled: perfs.some((p) => p.staticDedupEnabled),
     armed,
     predictedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupPredicted ?? 0), 0),
     reusedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupReused ?? 0), 0),
     skipReason: skipReasons.length > 0 ? skipReasons.join("|") : undefined,
+    ...(verificationPerfs.length === 0
+      ? {}
+      : {
+          verifiedFrames: verificationPerfs.reduce(
+            (sum, perf) => sum + (perf.staticDedupVerified ?? 0),
+            0,
+          ),
+          verificationOutcomes,
+          plannedRuns: verificationPerfs.reduce(
+            (sum, perf) => sum + (perf.staticDedupVerificationPlannedRuns ?? 0),
+            0,
+          ),
+          completedRuns: verificationPerfs.reduce(
+            (sum, perf) => sum + (perf.staticDedupVerificationCompletedRuns ?? 0),
+            0,
+          ),
+          screenshots: verificationPerfs.reduce(
+            (sum, perf) => sum + (perf.staticDedupVerificationScreenshots ?? 0),
+            0,
+          ),
+          seeks: verificationPerfs.reduce(
+            (sum, perf) => sum + (perf.staticDedupVerificationSeeks ?? 0),
+            0,
+          ),
+          comparisons: verificationPerfs.reduce(
+            (sum, perf) => sum + (perf.staticDedupVerificationComparisons ?? 0),
+            0,
+          ),
+          verificationElapsedMs: verificationPerfs.reduce(
+            (sum, perf) => sum + (perf.staticDedupVerificationElapsedMs ?? 0),
+            0,
+          ),
+        }),
   };
 }
 
@@ -181,6 +305,8 @@ function aggregateBeginFrameReuse(
 export function buildRenderPerfSummary(input: {
   job: RenderJob;
   workerCount: number;
+  /** Auto-sizing provenance; undefined when a pin (htmlInCanvas / low-memory) short-circuited sizing. */
+  workerSizing?: WorkerSizing;
   enableChunkedEncode: boolean;
   chunkedEncodeSize: number;
   compositionDurationSeconds: number;
@@ -206,6 +332,8 @@ export function buildRenderPerfSummary(input: {
   /** Per-session/per-worker static-dedup perf; aggregated into `staticDedup`. */
   dedupPerfs: CapturePerfSummary[];
   drawElement?: DrawElementPerfInput;
+  /** `cfg.disableGpu` — the hard `--disable-gpu` flag, for the `host` GPU picture. */
+  gpuDisabled: boolean;
 }): RenderPerfSummary {
   return {
     renderId: input.job.id,
@@ -217,6 +345,7 @@ export function buildRenderPerfSummary(input: {
     fps: fpsToNumber(input.job.config.fps),
     quality: input.job.config.quality,
     workers: input.workerCount,
+    workerSizing: input.workerSizing,
     chunkedEncode: input.enableChunkedEncode,
     chunkSizeFrames: input.enableChunkedEncode ? input.chunkedEncodeSize : null,
     compositionDurationSeconds: input.compositionDurationSeconds,
@@ -261,10 +390,19 @@ export function buildRenderPerfSummary(input: {
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
+    chromeMemory: aggregateChromeMemory(input.dedupPerfs),
     beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,
       input.drawElement ?? { selfVerifyFallback: false },
     ),
+    host: {
+      platform: platform(),
+      arch: arch(),
+      cpuCount: cpus().length,
+      totalMemMb: Math.round(totalmem() / (1024 * 1024)),
+      nodeVersion: process.version,
+      gpuDisabled: input.gpuDisabled,
+    },
   };
 }

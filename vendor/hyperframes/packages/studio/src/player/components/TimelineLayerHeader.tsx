@@ -8,6 +8,7 @@ import {
   resolveTimelineBindingId,
   resolveTimelineLayerDepth,
   resolveTimelineLayerLabel,
+  resolveTimelineClipLabel,
 } from "./timelineLayerPresentation";
 import timelineChevronDownSrc from "../../icons/timelineChevronDown.svg?url";
 import timelineContainerSrc from "../../icons/figmaTimelineContainer.svg?url";
@@ -31,6 +32,7 @@ function resolveFigmaKindIcon(kind: TimelineKind, selected: boolean): string {
 interface TimelineLayerHeaderProps {
   track: number;
   elements: TimelineElement[];
+  primaryElement?: TimelineElement | null;
   hidden: boolean;
   locked: boolean;
   selected: boolean;
@@ -52,6 +54,7 @@ interface TimelineLayerHeaderProps {
 export function TimelineLayerHeader({
   track,
   elements,
+  primaryElement,
   hidden,
   locked,
   selected,
@@ -67,11 +70,12 @@ export function TimelineLayerHeader({
   onReorderPointerDown,
 }: TimelineLayerHeaderProps) {
   const { tx } = useStudioI18n();
-  const first = elements[0] ?? null;
+  const first = primaryElement ?? elements[0] ?? null;
+  const primaryElements = first ? [first] : elements;
   const kind = first ? resolveTimelineKind(first) : "element";
-  const label = resolveTimelineLayerLabel(elements, track);
-  const bindingId = resolveTimelineBindingId(elements);
-  const depth = resolveTimelineLayerDepth(elements);
+  const label = resolveTimelineLayerLabel(primaryElements, track);
+  const bindingId = resolveTimelineBindingId(primaryElements);
+  const depth = resolveTimelineLayerDepth(primaryElements);
   const capabilities = first ? getTimelineEditCapabilities(first) : null;
   const status = capabilities?.status ?? "missing-target";
   const statusTitle =
@@ -178,6 +182,11 @@ export function TimelineLayerHeader({
           <img src={resolveFigmaKindIcon(kind, selected)} alt="" aria-hidden="true" />
         </span>
         <span className="hf-timeline-layer-header__label">{label}</span>
+        {elements.length > 1 && (
+          <span className="shrink-0 text-[10px] opacity-70" title={elements.map(resolveTimelineClipLabel).join("\n")}>
+            {elements.length} {tx("clips")}
+          </span>
+        )}
         {bindingId && (
           <span
             className="hf-timeline-layer-header__binding"

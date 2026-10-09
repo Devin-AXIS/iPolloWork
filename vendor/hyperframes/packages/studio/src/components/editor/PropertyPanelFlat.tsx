@@ -16,8 +16,15 @@ import {
   FlatStrokeSection,
 } from "./propertyPanelFlatStyleSections";
 import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
-import { FlatLayoutSection, LayoutTransform3DBlock } from "./propertyPanelFlatLayoutSection";
-import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
+import {
+  FlatLayoutSection,
+  LayoutTransform3DBlock,
+} from "./propertyPanelFlatLayoutSection";
+import { GsapAnimationSection } from "./GsapAnimationSection";
+import {
+  FlatMotionSection,
+  FlatTimingRow,
+} from "./propertyPanelFlatMotionSection";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
@@ -133,7 +140,7 @@ export function resolveInspectorGroupOrder({
  *
  * Extracted from PropertyPanel so that file stays under the 600-LOC gate
  * (same one-directional-import precedent as FlatTextSection). Rendered only
- * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the inspector group state.
+ * for the supported inspector; owns the inspector group state.
  *
  * Every available group with parameters opens by default; users can close or
  * reopen groups independently.
@@ -200,6 +207,20 @@ export function PropertyPanelFlat({
   onConvertToKeyframes,
   gsapMultipleTimelines,
   gsapUnsupportedTimelinePattern,
+  onUpdateGsapProperty,
+  onUpdateGsapMeta,
+  onDeleteGsapAnimation,
+  onAddGsapProperty,
+  onRemoveGsapProperty,
+  onUpdateGsapFromProperty,
+  onAddGsapFromProperty,
+  onRemoveGsapFromProperty,
+  onAddGsapAnimation,
+  onSetArcPath,
+  onUpdateArcSegment,
+  onUpdateKeyframeEase,
+  onSetAllKeyframeEases,
+  onUnroll,
   onMutateMotion,
 }: Pick<
   PropertyPanelProps,
@@ -536,19 +557,50 @@ export function PropertyPanelFlat({
       title: "Animation",
       summary: "出现 · 动作 · 消失",
       content: (
-        <FlatMotionSection
-          element={element}
-          animations={gsapAnimations}
-          showTiming={false}
-          showEffects={showMotionEffects}
-          currentTime={currentTime}
-          multipleTimelines={gsapMultipleTimelines}
-          unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-          onSetAttribute={onSetAttribute}
-          onSetAttributes={onSetAttributes}
-          onSeekToTime={onSeekToTime}
-          {...gsapEffectHandlers}
-        />
+        <div className="space-y-3">
+          {onUpdateGsapProperty &&
+            onUpdateGsapMeta &&
+            onDeleteGsapAnimation &&
+            onAddGsapProperty &&
+            onRemoveGsapProperty &&
+            onAddGsapAnimation && (
+              <GsapAnimationSection
+                animations={gsapAnimations}
+                ownerId={element.id}
+                ownerLocator={{ hfId: element.hfId }}
+                ownerRange={deriveElementTiming(element, gsapAnimations)}
+                multipleTimelines={gsapMultipleTimelines}
+                unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+                onUpdateProperty={onUpdateGsapProperty}
+                onUpdateMeta={onUpdateGsapMeta}
+                onDeleteAnimation={onDeleteGsapAnimation}
+                onAddProperty={onAddGsapProperty}
+                onRemoveProperty={onRemoveGsapProperty}
+                onAddAnimation={onAddGsapAnimation}
+                onUpdateFromProperty={onUpdateGsapFromProperty}
+                onAddFromProperty={onAddGsapFromProperty}
+                onRemoveFromProperty={onRemoveGsapFromProperty}
+                onSetArcPath={onSetArcPath}
+                onUpdateArcSegment={onUpdateArcSegment}
+                onUpdateKeyframeEase={onUpdateKeyframeEase}
+                onSetAllKeyframeEases={onSetAllKeyframeEases}
+                onUnroll={onUnroll}
+              />
+            )}
+          <FlatMotionSection
+            element={element}
+            animations={gsapAnimations}
+            showTiming={false}
+            showEffects={showMotionEffects}
+            currentTime={currentTime}
+            multipleTimelines={gsapMultipleTimelines}
+            unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+            onSetAttribute={onSetAttribute}
+            onSetAttributes={onSetAttributes}
+            onSeekToTime={onSeekToTime}
+            {...gsapEffectHandlers}
+          />
+        </div>
       ),
     });
   }

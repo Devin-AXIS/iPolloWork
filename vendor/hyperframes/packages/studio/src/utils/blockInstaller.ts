@@ -55,7 +55,7 @@ interface AddBlockOptions {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
+    kind?: EditHistoryKind;
     coalesceKey?: string;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
@@ -352,14 +352,18 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       block: RegistryItem;
     };
 
-    const compositionFile = written.find((f) => f.endsWith(".html")) ?? written[0];
+    const compositionFile = normalizeRegistryPath(
+      written.find((f) => f.endsWith(".html")) ?? written[0] ?? "",
+    );
     if (!compositionFile) {
       showToast("Installed but no composition file was written");
       return null;
     }
 
+    let authoredCompositionId = block.name;
     if (block.visualComponent) {
       const compContent = await readProjectFile(compositionFile);
+      authoredCompositionId = readRootCompositionId(compContent) ?? block.name;
       const declaredContent = injectRegistryVariableDeclarations(
         compContent,
         block.variables ?? [],
@@ -456,7 +460,11 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `  id="${compId}"`,
         `  data-hf-id="${insertedHfId}"`,
         `  data-composition-id="${compId}"`,
+        block.visualComponent && compId !== authoredCompositionId
+          ? `  data-hf-original-composition-id="${authoredCompositionId}"`
+          : "",
         `  data-composition-src="${compositionFile}"`,
+        block.visualComponent ? '  data-hf-content-fit="contain"' : "",
         block.visualComponent
           ? `  data-ipw-theme-mode="${block.visualComponent.themeMode}"`
           : "",

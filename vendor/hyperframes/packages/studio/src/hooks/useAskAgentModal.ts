@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { copyTextToClipboard } from "../utils/clipboard";
+import { deliverStudioAgentPrompt } from "../components/editor/domEditingAgentPrompt";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath, type AgentModalAnchorPoint } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
@@ -84,7 +84,7 @@ export function useAskAgentModal({
 
   const handleAgentModalSubmit = useCallback(
     async (userInstruction: string) => {
-      if (!domEditSelection) return;
+      if (!domEditSelection) throw new Error("所选元素已变化，请重新选择后重试");
 
       const targetPath = domEditSelection.sourceFile || activeCompPath || "index.html";
       const tagSnippet = agentPromptTagSnippet ?? domEditSelection.element.outerHTML;
@@ -97,12 +97,14 @@ export function useAskAgentModal({
         sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
 
-      const copied = await copyTextToClipboard(prompt);
-      if (!copied) {
-        showToast("Could not copy prompt to clipboard.", "error");
-        return;
-      }
+      const copied = await deliverStudioAgentPrompt(
+        prompt,
+        targetPath,
+        { selection: domEditSelection, instruction: userInstruction },
+      );
+      if (!copied) throw new Error("无法复制提示词，请重试");
 
+      showToast(window.parent === window ? "已复制提示词" : "已交给左侧 AI 对话", "info");
       setAgentModalOpen(false);
       setAgentPromptSelectionContext(undefined);
       setAgentModalAnchorPoint(null);

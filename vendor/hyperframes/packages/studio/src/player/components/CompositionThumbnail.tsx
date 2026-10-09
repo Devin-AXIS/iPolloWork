@@ -1,6 +1,15 @@
-import { memo, useCallback, useEffect, useState, useRef } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
-import { computeThumbnailStrip, scheduleTimelineThumbnailTask } from "./thumbnailUtils";
+import { memo, useMemo, type CSSProperties } from "react";
+import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
+import {
+  createThumbnailKey,
+  type ThumbnailPriority,
+  type ThumbnailRequest,
+} from "../lib/thumbnailScheduler";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
+import { ThumbnailTiles } from "./ThumbnailTiles";
+import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 
 interface CompositionThumbnailProps {
   previewUrl: string;
@@ -12,12 +21,30 @@ interface CompositionThumbnailProps {
   duration?: number;
   width?: number;
   height?: number;
+  projectId?: string;
+  sessionEpoch?: number;
+  contentRevision?: number;
+  priority?: ThumbnailPriority;
+  rich?: boolean;
   loading?: "eager" | "lazy";
   minLoadWidth?: number;
 }
 
-const CLIP_HEIGHT = 66;
 const THUMBNAIL_URL_VERSION = "v3";
+export const THUMBNAIL_SEEK_TIME_SECONDS = 3;
+
+export function resolveThumbnailSeekTime(durationSeconds: number | null | undefined): number {
+  if (
+    Number.isFinite(durationSeconds) &&
+    durationSeconds != null &&
+    durationSeconds > 0 &&
+    durationSeconds <= THUMBNAIL_SEEK_TIME_SECONDS
+  ) {
+    return durationSeconds / 2;
+  }
+
+  return THUMBNAIL_SEEK_TIME_SECONDS;
+}
 
 export function buildCompositionThumbnailUrl({
   previewUrl,
@@ -26,6 +53,8 @@ export function buildCompositionThumbnailUrl({
   selector,
   selectorIndex,
   origin,
+  output,
+  contentRevision = 0,
 }: {
   previewUrl: string;
   seekTime?: number;
@@ -33,14 +62,22 @@ export function buildCompositionThumbnailUrl({
   selector?: string;
   selectorIndex?: number;
   origin: string;
+  /**
+   * Capture density. Omitted, the route bounds the image to its preview cap —
+   * right for the timeline, where thumbnails are small and numerous and their
+   * decoded bytes are budgeted. `"source"` uses the composition's own dimensions.
+   */
+  output?: "source";
+  contentRevision?: number;
 }): string {
   const thumbnailBase = previewUrl
     .replace("/preview/comp/", "/thumbnail/")
     .replace(/\/preview$/, "/thumbnail/index.html");
-  const midTime = seekTime + duration / 2;
   const thumbnailUrl = new URL(thumbnailBase, origin);
-  thumbnailUrl.searchParams.set("t", midTime.toFixed(2));
+  thumbnailUrl.searchParams.set("t", (seekTime + duration / 2).toFixed(2));
   thumbnailUrl.searchParams.set("v", THUMBNAIL_URL_VERSION);
+  thumbnailUrl.searchParams.set("revision", String(contentRevision));
+  if (output) thumbnailUrl.searchParams.set("output", output);
   if (selector) {
     thumbnailUrl.searchParams.set("selector", selector);
     if (selectorIndex != null && selectorIndex > 0) {
@@ -50,6 +87,51 @@ export function buildCompositionThumbnailUrl({
   return thumbnailUrl.toString();
 }
 
+/** The composition a preview URL renders: `/preview/comp/<path>`, or the root for `/preview`. */
+export function compositionPathOfPreviewUrl(previewUrl: string): string {
+  const match = /\/preview\/comp\/([^?#]+)/.exec(previewUrl);
+  return match?.[1] ? decodeURIComponent(match[1]) : "index.html";
+}
+
+export function compositionThumbnailRequest(
+  url: string,
+  projectId: string,
+  { sessionEpoch = 0, priority = "visible", rich = false }: Partial<ThumbnailRequest> = {},
+): ThumbnailRequest {
+  return {
+    key: createThumbnailKey({ kind: "composition", url }),
+    projectId,
+    sessionEpoch,
+    kind: "composition",
+    priority,
+    rich,
+    load: (signal: AbortSignal) => loadCompositionImage(url, signal),
+  };
+}
+
+async function loadCompositionImage(url: string, signal: AbortSignal) {
+  const response = await studioApiFetch(url, { signal });
+  if (!response.ok) throw new Error(`Composition thumbnail failed (${response.status})`);
+  const blob = await response.blob();
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const aspect = await probeImageAspect(objectUrl, signal);
+    return {
+      value: { kind: "image" as const, url: objectUrl, aspect },
+      weight:
+        TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalWidth *
+        TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalHeight *
+        4,
+      dispose: () => URL.revokeObjectURL(objectUrl),
+    };
+  } catch (error) {
+    URL.revokeObjectURL(objectUrl);
+    throw error;
+  }
+}
+
+/** Server-rendered composition poster, deduplicated and budgeted by project/session. */
 export const CompositionThumbnail = memo(function CompositionThumbnail({
   previewUrl,
   label,
@@ -58,64 +140,13 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   selectorIndex,
   seekTime = 2,
   duration = 5,
-  loading = "eager",
+  projectId = previewUrl,
+  sessionEpoch = 0,
+  contentRevision = 0,
+  priority = "visible",
   minLoadWidth = 0,
 }: CompositionThumbnailProps) {
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [visible, setVisible] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [aspect, setAspect] = useState(16 / 9);
-  const ioRef = useRef<IntersectionObserver | null>(null);
-  const roRef = useRef<ResizeObserver | null>(null);
-  const resizeRafRef = useRef(0);
-  const pendingWidthRef = useRef(0);
-  const idleCallbackRef = useRef<number | null>(null);
-  const releaseTaskRef = useRef<(() => void) | null>(null);
-
-  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
-    ioRef.current?.disconnect();
-    roRef.current?.disconnect();
-    if (!el) return;
-
-    const scheduleWidth = (width: number) => {
-      pendingWidthRef.current = Math.max(0, Math.round(width));
-      if (resizeRafRef.current !== 0) return;
-      resizeRafRef.current = requestAnimationFrame(() => {
-        resizeRafRef.current = 0;
-        setContainerWidth((current) =>
-          current === pendingWidthRef.current ? current : pendingWidthRef.current,
-        );
-      });
-    };
-
-    scheduleWidth(el.parentElement?.clientWidth || el.clientWidth);
-
-    ioRef.current = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) return;
-        setVisible(true);
-        ioRef.current?.disconnect();
-      },
-      { rootMargin: "80px" },
-    );
-    ioRef.current.observe(el);
-
-    const target = el.parentElement || el;
-    roRef.current = new ResizeObserver(([entry]) => {
-      if (entry) scheduleWidth(entry.contentRect.width);
-    });
-    roRef.current.observe(target);
-  }, []);
-
-  useMountEffect(() => () => {
-    ioRef.current?.disconnect();
-    roRef.current?.disconnect();
-    if (resizeRafRef.current !== 0) cancelAnimationFrame(resizeRafRef.current);
-    if (idleCallbackRef.current != null) window.cancelIdleCallback(idleCallbackRef.current);
-    releaseTaskRef.current?.();
-  });
-
+  const [container, setContainerRef, watchGap] = useThumbnailStripSize();
   const url = buildCompositionThumbnailUrl({
     previewUrl,
     seekTime,
@@ -123,84 +154,62 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     selector,
     selectorIndex,
     origin: window.location.origin,
+    contentRevision,
   });
-  const eligible = visible && containerWidth >= minLoadWidth;
-  const { frameW } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
-
-  useEffect(() => {
-    setLoaded(false);
-    setReady(false);
-    if (!eligible) return;
-
-    let cancelled = false;
-    idleCallbackRef.current = window.requestIdleCallback(
-      () => {
-        idleCallbackRef.current = null;
-        if (cancelled) return;
-        releaseTaskRef.current = scheduleTimelineThumbnailTask(() => {
-          if (!cancelled) setReady(true);
-        });
-      },
-      { timeout: 1200 },
-    );
-
-    return () => {
-      cancelled = true;
-      if (idleCallbackRef.current != null) {
-        window.cancelIdleCallback(idleCallbackRef.current);
-        idleCallbackRef.current = null;
-      }
-      releaseTaskRef.current?.();
-      releaseTaskRef.current = null;
-    };
-  }, [eligible, url]);
-
-  const finishTask = () => {
-    releaseTaskRef.current?.();
-    releaseTaskRef.current = null;
-  };
+  const request = useMemo(
+    () => compositionThumbnailRequest(url, projectId, { sessionEpoch, priority, rich: true }),
+    [priority, projectId, sessionEpoch, url],
+  );
+  const snapshot = useThumbnailLease(container.width >= minLoadWidth ? request : null);
+  const value =
+    snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value : null;
+  const { frameW, frameCount } = computeThumbnailStrip(
+    container.width,
+    value?.aspect ?? 16 / 9,
+    container.height,
+  );
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
-      {ready && (
-        <img
-          src={url}
-          alt=""
-          draggable={false}
-          loading={loading}
-          onLoad={(e) => {
-            const img = e.currentTarget;
-            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-              setAspect(img.naturalWidth / img.naturalHeight);
-            }
-            setLoaded(true);
-            finishTask();
-          }}
-          onError={finishTask}
-          className="pointer-events-none absolute h-px w-px opacity-0"
-        />
-      )}
-
-      {loaded && (
-        <div
-          className="absolute inset-0"
+      {value && (
+        <ThumbnailTiles
+          strip={container}
+          frameW={frameW}
+          frameCount={frameCount}
+          watchGap={watchGap}
           style={{
             animation: "hf-thumb-fade 200ms ease-out",
-            backgroundImage: `url(${JSON.stringify(url)})`,
-            backgroundPosition: "left center",
-            backgroundRepeat: "repeat-x",
-            backgroundSize: `${frameW}px 100%`,
+            mixBlendMode:
+              "var(--timeline-composition-thumbnail-blend)" as CSSProperties["mixBlendMode"],
           }}
-        />
+        >
+          {(index) => (
+            <div
+              key={index}
+              className="relative h-full shrink-0 overflow-hidden"
+              style={{ width: frameW }}
+            >
+              <img
+                src={value.url}
+                alt=""
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-contain"
+                style={{ opacity: "var(--timeline-composition-thumbnail-opacity)" }}
+              />
+            </div>
+          )}
+        </ThumbnailTiles>
       )}
-
+      {snapshot.status === "loading" && (
+        <div className="absolute inset-0 animate-pulse bg-text-0/[0.035]" />
+      )}
       {label && (
-        <div className="absolute left-3 top-0 bottom-0 flex items-center" style={{ zIndex: 10 }}>
+        <div className="absolute inset-y-0 left-3 z-10 flex items-center">
           <span
             className="block max-w-full truncate text-[10px] font-semibold leading-none"
             style={{
               color: labelColor,
-              textShadow: loaded ? "0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6)" : "none",
+              textShadow: value ? "0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6)" : "none",
             }}
           >
             {label}

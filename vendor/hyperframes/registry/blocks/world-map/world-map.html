@@ -193,7 +193,7 @@
       window.__timelines = window.__timelines || {};
       (function () {
         const root = document.getElementById("wm-root"),
-          id = root.dataset.compositionId,
+          id = root.dataset.compositionId||"world-map",
           values = {
             title: "Global market momentum",
             values: "United States:92,Brazil:68,United Kingdom:74,Germany:81,Nigeria:56,India:88,China:96,Japan:77,Australia:63",

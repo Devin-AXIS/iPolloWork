@@ -10,6 +10,8 @@ export interface TimelineTrackStyle {
   dragging?: string;
 }
 
+export const CLIP_TRIM_HIT_PX = 8;
+
 export interface TimelineTheme {
   shellBackground: string;
   shellBorder: string;

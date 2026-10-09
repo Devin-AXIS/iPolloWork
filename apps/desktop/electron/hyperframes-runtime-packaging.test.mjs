@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -160,6 +161,131 @@ test("keeps a recently closed Studio process warm for a bounded same-session reo
   assert.match(electronMainSource, /scheduleHyperframesStopForKey/);
   assert.match(electronMainSource, /current\.projectPath === projectPath/);
   assert.match(electronMainSource, /clearTimeout\(current\.idleTimeout\)/);
+});
+
+async function waitForPreview(predicate) {
+  for (let attempt = 0; attempt < 100 && !predicate(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.ok(predicate(), "preview lifecycle did not reach the expected state");
+}
+
+function previewLifecycleFixture(init = async () => {}) {
+  const spawned = [];
+  const processes = new Map();
+  const starts = new Map();
+  const readiness = new Map();
+  let nextPort = 3659;
+  const dependencies = {
+    hyperframesProcesses: processes, hyperframesStarts: starts, hyperframesExportLeases: new Map(),
+    videoResourceManager: { applyEnvironment: async () => true }, path,
+    hyperframesKey: (sender, session) => `${sender}:${session}`,
+    resolveWorkspaceChild: (root, project) => ({ workspaceRoot: root, projectPath: path.resolve(root, project), projectDirectory: project }),
+    ensureProcessCleanupForWebContents() {}, runHyperframesInit: init,
+    reserveHyperframesPort: async () => nextPort++, releaseHyperframesPortReservation() {},
+    HYPERFRAMES_START_TIMEOUT_MS: 1000,
+    spawnLocalHyperframes(args) {
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new EventEmitter(), stderr: new EventEmitter(), exitCode: null,
+      });
+      const port = Number(args[args.indexOf("--port") + 1]);
+      let ready;
+      const promise = new Promise(resolve => { ready = resolve; });
+      readiness.set(port, promise);
+      spawned.push({ child, args, port, ready });
+      return child;
+    },
+    waitForHyperframesServer: port => readiness.get(port),
+    killProcessTree(child) {
+      if (child.exitCode !== null) return;
+      child.exitCode = 0;
+      queueMicrotask(() => child.emit("exit", 0));
+    },
+  };
+  const stop = electronMainSource.slice(electronMainSource.indexOf("function stopHyperframesForKey("), electronMainSource.indexOf("function scheduleHyperframesStopForKey("));
+  const start = electronMainSource.slice(electronMainSource.indexOf("async function startHyperframesPreview("), electronMainSource.indexOf("// Production Electron shares"));
+  const lifecycle = new Function(...Object.keys(dependencies), `${stop}\n${start}\nreturn { start: startHyperframesPreview, stop: stopHyperframesForKey };`)(...Object.values(dependencies));
+  const options = { workspaceRoot: os.tmpdir(), sessionId: "reopen", projectDirectory: "video/reopen", port: 3659 };
+  const event = { sender: { id: 7 } };
+  return { ...lifecycle, spawned, processes, starts, open: changes => lifecycle.start(event, { ...options, ...changes }), close: () => lifecycle.stop("7:reopen") };
+}
+
+test("owns an official foreground preview across readiness, reuse, close and reopen", async () => {
+  const fixture = previewLifecycleFixture();
+  const first = fixture.open();
+  const concurrent = fixture.open();
+  await waitForPreview(() => fixture.spawned.length > 0);
+  const initial = fixture.spawned[0];
+  initial.ready({ isHyperframes: true });
+  try {
+    assert.equal((await first).port, 3659);
+    assert.equal((await concurrent).port, 3659);
+    assert.ok(initial.args.includes("--foreground"), "a non-interactive preview must remain attached to the owned child");
+    assert.ok(initial.args.includes("--force-new"), "the reserved port must not silently reuse a detached preview on a different port");
+    assert.equal((await fixture.open()).reused, true);
+    assert.equal(fixture.spawned.length, 1);
+    fixture.close();
+    assert.equal(initial.child.exitCode, 0);
+    const reopened = fixture.open();
+    await waitForPreview(() => fixture.spawned.length === 2);
+    fixture.spawned[1].ready({ isHyperframes: true });
+    assert.equal((await reopened).port, 3660);
+    assert.equal(fixture.processes.get("7:reopen").process, fixture.spawned[1].child);
+  } finally { fixture.close(); }
+});
+
+test("replacing the same session's project stops the previous child without cancelling its own start", async () => {
+  const fixture = previewLifecycleFixture();
+  const first = fixture.open();
+  await waitForPreview(() => fixture.spawned.length > 0);
+  fixture.spawned[0].ready({ isHyperframes: true });
+  await first;
+  const replaced = fixture.open({ projectDirectory: "video/recovered-project" });
+  await waitForPreview(() => fixture.spawned.length === 2);
+  fixture.spawned[1].ready({ isHyperframes: true });
+  try {
+    assert.equal((await replaced).port, 3660);
+    assert.equal(fixture.spawned[0].child.exitCode, 0);
+    assert.equal(fixture.processes.get("7:reopen").process, fixture.spawned[1].child);
+  } finally { fixture.close(); }
+});
+
+test("closing during init cancels the old start without blocking or spawning after reopen", async () => {
+  let releaseInit = () => {};
+  let calls = 0;
+  const blocked = new Promise(resolve => { releaseInit = () => resolve(undefined); });
+  const fixture = previewLifecycleFixture(() => ++calls === 1 ? blocked : Promise.resolve());
+  const cancelled = fixture.open().then(() => { throw new Error("cancelled start resolved"); }, error => error);
+  await waitForPreview(() => calls > 0);
+  fixture.close();
+  const reopened = fixture.open();
+  releaseInit();
+  await waitForPreview(() => fixture.spawned.length > 0);
+  fixture.spawned[0].ready({ isHyperframes: true });
+  try {
+    assert.match((await cancelled).message, /cancelled/i);
+    assert.equal((await reopened).port, 3660);
+    assert.equal(fixture.spawned.length, 1, "the closed init must never launch a server");
+    assert.equal(fixture.starts.size, 0);
+  } finally { fixture.close(); }
+});
+
+test("closing during readiness rejects promptly and stale completion cannot replace the reopened child", async () => {
+  const fixture = previewLifecycleFixture();
+  const cancelled = fixture.open().then(() => { throw new Error("cancelled start resolved"); }, error => error);
+  await waitForPreview(() => fixture.spawned.length > 0);
+  const old = fixture.spawned[0];
+  fixture.close();
+  const reopened = fixture.open();
+  await waitForPreview(() => fixture.spawned.length === 2);
+  const next = fixture.spawned[1];
+  old.ready({ isHyperframes: true });
+  next.ready({ isHyperframes: true });
+  try {
+    assert.match((await cancelled).message, /cancelled|stopped/i);
+    assert.equal((await reopened).port, 3660);
+    assert.equal(old.child.exitCode, 0);
+    assert.equal(next.child.exitCode, null);
+    assert.equal(fixture.processes.get("7:reopen").process, next.child);
+  } finally { fixture.close(); }
 });
 
 test("recovers a missing Studio entry without overwriting a non-empty project", () => {

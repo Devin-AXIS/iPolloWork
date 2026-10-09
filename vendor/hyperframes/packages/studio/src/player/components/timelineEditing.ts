@@ -250,6 +250,9 @@ export interface TimelinePromptElement {
   start: number;
   duration: number;
   track: number;
+  sourceFile?: string;
+  domId?: string;
+  selector?: string;
 }
 
 export type BlockedTimelineEditIntent = "move" | "resize-start" | "resize-end";
@@ -402,24 +405,28 @@ export function buildTimelineAgentPrompt({
   rangeEnd,
   elements,
   prompt,
+  sourceFile = "index.html",
 }: {
   rangeStart: number;
   rangeEnd: number;
   elements: TimelinePromptElement[];
   prompt: string;
+  sourceFile?: string;
 }): string {
   const start = Math.min(rangeStart, rangeEnd);
   const end = Math.max(rangeStart, rangeEnd);
   const elementLines = elements
     .map(
       (el) =>
-        `- #${el.id} (${el.tag}) - ${formatTime(el.start)} to ${formatTime(el.start + el.duration)}, track ${el.track}`,
+        `- ${el.selector || `#${el.domId || el.id}`} (${el.tag}) - ${formatTime(el.start)} to ${formatTime(el.start + el.duration)}, track ${el.track}; source: ${el.sourceFile || sourceFile}`,
     )
     .join("\n");
 
   return `Edit the following HyperFrames composition:
 
+Source file: ${sourceFile}
 Time range: ${formatTime(start)} - ${formatTime(end)}
+Exact range (seconds): ${start.toFixed(3)} - ${end.toFixed(3)}
 
 Elements in range:
 ${elementLines || "(none)"}

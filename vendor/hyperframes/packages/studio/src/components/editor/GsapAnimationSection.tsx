@@ -9,7 +9,7 @@ import {
   type GsapAnimationEditCallbacks,
 } from "./gsapAnimationCallbacks";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
-import type { TimelineAnimationOwnerRange } from "../../utils/timelineAnimationSegments";
+import type { TimelineAnimationOwnerRange, TimelineAnimationOwnerLocator } from "../../utils/timelineAnimationSegments";
 import { useStudioI18n } from "../../i18n";
 
 interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
@@ -17,6 +17,7 @@ interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
   multipleTimelines?: boolean;
   unsupportedTimelinePattern?: boolean;
   ownerId?: string | null;
+  ownerLocator?: TimelineAnimationOwnerLocator;
   ownerRange?: TimelineAnimationOwnerRange;
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
 }
@@ -26,6 +27,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   multipleTimelines,
   unsupportedTimelinePattern,
   ownerId,
+  ownerLocator,
   ownerRange,
   onUpdateProperty,
   onUpdateMeta,
@@ -88,6 +90,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
               animation={anim}
               defaultExpanded={index === 0}
               ownerId={ownerId}
+              ownerLocator={ownerLocator}
               ownerRange={ownerRange}
               onUpdateProperty={(animationId, property, value) => {
                 trackProperty(property);

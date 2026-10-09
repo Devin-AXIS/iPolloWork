@@ -269,6 +269,7 @@ export function useDomSelection({
           // flow there; yanking to Design would lose the context.
           if (
             rightPanelTabRef.current !== "variables" &&
+            rightPanelTabRef.current !== "code" &&
             rightPanelTabRef.current !== "animation" &&
             rightPanelTabRef.current !== "animation-properties"
           ) {

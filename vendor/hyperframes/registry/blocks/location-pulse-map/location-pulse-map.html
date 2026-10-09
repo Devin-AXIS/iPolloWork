@@ -188,7 +188,7 @@
       window.__timelines = window.__timelines || {};
       (function () {
         const root = document.getElementById("lp-root"),
-          id = root.dataset.compositionId,
+          id = root.dataset.compositionId||"location-pulse-map",
           values = {
             title: "Activity across key locations",
             locations: "Central:98,Harbor:74,Airport:61,North:52,West:43",

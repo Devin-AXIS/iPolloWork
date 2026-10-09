@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "./createStudioApi";
 import { fileContentVersion } from "./helpers/fileVersion";
 import type { StudioApiAdapter } from "./types";
@@ -139,6 +139,8 @@ describe("createStudioApi project cache invalidation", () => {
 
     const initialPreview = await api.request("/projects/proof/preview");
     expect(initialPreview.headers.get("etag")).toBe('"preview:old"');
+    // Upstream only tags files after their change time has settled for 3s.
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 4000);
     const media = await api.request("/projects/proof/preview/avatar.webm");
     expect(media.headers.get("cache-control")).toBe("private, no-cache");
     const mediaEtag = media.headers.get("etag");
@@ -147,6 +149,7 @@ describe("createStudioApi project cache invalidation", () => {
       headers: { "If-None-Match": mediaEtag! },
     });
     expect(cachedMedia.status).toBe(304);
+    vi.restoreAllMocks();
 
     const writeResponse = await api.request("/projects/proof/files/index.html", {
       method: "PUT",

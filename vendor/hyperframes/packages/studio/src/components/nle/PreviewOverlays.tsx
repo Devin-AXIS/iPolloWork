@@ -1,3 +1,5 @@
+import { CanvasAnnotation } from "./CanvasAnnotation";
+import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { useCallback, useState } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
@@ -186,6 +188,7 @@ export function PreviewOverlays({
 }: PreviewOverlaysProps) {
   const { activeCompPath, previewIframeRef } = useStudioShellContext();
   const { captionEditMode, compositionLoading, isPlaying } = useStudioPlaybackContext();
+  const previewBlock = useAssetPreviewStore((state) => state.previewBlock);
   const compositionDimensions = useCompositionDimensions();
 
   const { domEditHoverSelection, domEditSelection, domEditGroupSelections } =
@@ -269,6 +272,27 @@ export function PreviewOverlays({
           compositionSize={compositionDimensions}
           isPlaying={isPlaying}
         />
+      )}
+      <CanvasAnnotation />
+      {previewBlock && (
+        <div
+          className="pointer-events-none absolute inset-0 z-30"
+          data-testid="canvas-component-preview"
+        >
+          <iframe
+            title={`${previewBlock.title} · 临时预览`}
+            src={`/api/registry/blocks/${encodeURIComponent(previewBlock.name)}/preview?autoplay=1&overlay=1`}
+            sandbox="allow-scripts"
+            className="h-full w-full border-0"
+          />
+          <span
+            role="status"
+            className="absolute bottom-2 left-2 rounded px-2 py-1 text-xs"
+            style={{ background: "rgba(15, 23, 42, 0.9)", color: "#fff" }}
+          >
+            预览中 · {previewBlock.title} · 点击卡片插入
+          </span>
+        </div>
       )}
       {gestureOverlay}
     </>

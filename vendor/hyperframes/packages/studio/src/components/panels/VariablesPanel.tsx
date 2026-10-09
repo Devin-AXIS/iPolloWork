@@ -38,7 +38,7 @@ interface VariablesPanelProps {
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
+    kind?: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
 }

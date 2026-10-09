@@ -25,9 +25,8 @@
  *     because `captureAlphaPng` hangs under `--enable-begin-frame-control`.
  *     Previously the stage mutated `cfg.forceScreenshot = true` directly;
  *     the value is now derived into a local `hdrCfg` so the caller-owned
- *     `cfg` survives the stage unchanged. The sequencer is expected to
- *     pass `forceScreenshot: true` for the layered branch as a contract
- *     check.
+ *     `cfg` survives the stage unchanged. The sequencer passes an immutable
+ *     `hdr_layered` plan whose construction guarantees screenshot mode.
  *
  * Resource setup (HDR video extraction, image decode, dim probing) lives
  * in `captureHdrResources.ts`; per-frame work lives in
@@ -44,8 +43,8 @@ import {
   type EngineConfig,
   type HdrTransfer,
   type StreamingEncoder,
-  calculateOptimalWorkers,
   closeCaptureSession,
+  cloneCaptureWarnings,
   createCaptureSession,
   getEncoderPreset,
   initTransparentBackground,
@@ -61,14 +60,14 @@ import {
   type HdrTransitionMeta,
   type HdrVideoFrameSource,
   type TransitionRange,
-  closeHdrVideoFrameSource,
   resolveCompositeTransfer,
 } from "../../hdrCompositor.js";
 import { type HdrPerfCollector, createHdrPerfCollector } from "../hdrPerf.js";
 import type { HdrDiagnostics, ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
-import type { CompositionMetadata } from "../shared.js";
+import { reportEncodeProgress, type CompositionMetadata } from "../shared.js";
 import {
   decodeHdrImageBuffers,
+  cleanupHdrVideoFrameSource,
   extractHdrVideoFrames,
   planHdrResources,
   probeHdrExtractionDims,
@@ -77,18 +76,14 @@ import { partitionTransitionFrames, shouldUseHybridLayeredPath } from "./capture
 import { runSequentialLayeredFrameLoop } from "./captureHdrSequentialLoop.js";
 import { runHybridLayeredFrameLoop } from "./captureHdrHybridLoop.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
+import { encoderFailureError } from "../encoderInterruption.js";
+import type { HdrLayeredCapturePlan } from "../capturePlan.js";
 
 export interface CaptureHdrStageInput {
   job: RenderJob;
   cfg: EngineConfig;
-  /**
-   * Capture-mode flag threaded from `compileStage`. The HDR layered
-   * branch requires `true` (see file header for the
-   * `captureAlphaPng` / `--enable-begin-frame-control` constraint);
-   * the stage throws if called with `false`. Stored locally as
-   * `hdrCfg.forceScreenshot` so the caller-owned `cfg` is not mutated.
-   */
-  forceScreenshot: boolean;
+  /** Immutable layered route selected by the sequencer. */
+  plan: HdrLayeredCapturePlan;
   log: ProducerLogger;
 
   projectDir: string;
@@ -98,7 +93,6 @@ export interface CaptureHdrStageInput {
 
   width: number;
   height: number;
-  outputSize?: { width: number; height: number };
   totalFrames: number;
 
   composition: CompositionMetadata;
@@ -121,13 +115,6 @@ export interface CaptureHdrStageInput {
   /** Mutated in place (counters incremented). */
   hdrDiagnostics: HdrDiagnostics;
 
-  /**
-   * Worker budget for the hybrid layered path. Only consulted when the
-   * gating predicate (`shouldUseHybridLayeredPath`) returns true. The
-   * sequential loop always runs on a single DOM session.
-   */
-  workerCount?: number;
-
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -143,25 +130,14 @@ export interface CaptureHdrStageResult {
   warnings: CaptureWarning[];
 }
 
-function cloneCaptureWarnings(warnings: readonly CaptureWarning[]): CaptureWarning[] {
-  return warnings.map((warning) => ({
-    ...warning,
-    details: warning.details
-      ? {
-          ...warning.details,
-          sources: warning.details.sources ? [...warning.details.sources] : undefined,
-        }
-      : undefined,
-  }));
-}
-
+// fallow-ignore-next-line complexity
 export async function runCaptureHdrStage(
   input: CaptureHdrStageInput,
 ): Promise<CaptureHdrStageResult> {
   const {
     job,
     cfg,
-    forceScreenshot,
+    plan,
     log,
     projectDir,
     compiledDir,
@@ -169,7 +145,6 @@ export async function runCaptureHdrStage(
     videoOnlyPath,
     width,
     height,
-    outputSize,
     totalFrames,
     composition,
     hasHdrContent,
@@ -186,17 +161,11 @@ export async function runCaptureHdrStage(
     buildCaptureOptions,
     createRenderVideoFrameInjector,
     hdrDiagnostics,
-    workerCount,
     abortSignal,
     assertNotAborted,
     onProgress,
   } = input;
-
-  if (!forceScreenshot) {
-    throw new Error(
-      "captureHdrStage requires forceScreenshot=true; the layered composite path uses captureAlphaPng which hangs under --enable-begin-frame-control.",
-    );
-  }
+  const { workerCount } = plan;
 
   const stageStart = Date.now();
   let lastBrowserConsole: string[] = [];
@@ -234,7 +203,6 @@ export async function runCaptureHdrStage(
     nativeHdrImageIds,
     projectDir,
     compiledDir,
-    existsSync,
   });
 
   const domSession = await createCaptureSession(
@@ -248,12 +216,13 @@ export async function runCaptureHdrStage(
   let hdrEncoder: StreamingEncoder | null = null;
   let hdrEncoderClosed = false;
   let domSessionClosed = false;
+  let releaseHdrExtractionReservation: (() => void) | null = null;
   const hdrVideoFrameSources = new Map<string, HdrVideoFrameSource>();
   try {
     await initializeSession(domSession);
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
-    await initTransparentBackground(domSession.page);
+    await initTransparentBackground(domSession.page, { clearCompositionRoot: true });
 
     // ── Scene detection for shader transitions ──────────────────────────
     const transitionMeta: HdrTransitionMeta[] = await domSession.page.evaluate(() => {
@@ -297,8 +266,6 @@ export async function runCaptureHdrStage(
         fps: job.config.fps,
         width,
         height,
-        outputWidth: outputSize?.width,
-        outputHeight: outputSize?.height,
         codec: preset.codec,
         preset: preset.preset,
         quality: effectiveQuality,
@@ -331,7 +298,8 @@ export async function runCaptureHdrStage(
       abortSignal,
       hdrDiagnostics,
     });
-    for (const [id, source] of extracted) hdrVideoFrameSources.set(id, source);
+    releaseHdrExtractionReservation = extracted.releaseReservation;
+    for (const [id, source] of extracted.sources) hdrVideoFrameSources.set(id, source);
     const hdrImageBuffers = decodeHdrImageBuffers({
       log,
       hdrImageSrcPaths,
@@ -382,16 +350,7 @@ export async function runCaptureHdrStage(
       };
 
       // ── Dispatch to sequential or hybrid frame loop ────────────────────
-      // Resolve the worker budget here rather than threading it through the
-      // renderOrchestrator call: keeps the renderOrchestrator diff zero
-      // (hf#732 PR 4 is intentionally a producer-stage-local change), at the
-      // cost of recomputing the same number the orchestrator already knows.
-      // The cost is negligible (one cpus() call) and the two values stay in
-      // lockstep because `calculateOptimalWorkers` is pure.
-      const effectiveWorkerCount =
-        workerCount !== undefined
-          ? Math.max(1, workerCount)
-          : calculateOptimalWorkers(totalFrames, job.config.workers, hdrCfg);
+      const effectiveWorkerCount = Math.max(1, workerCount);
       const transitionFrameCount = partitionTransitionFrames(transitionRanges, totalFrames).size;
       const useHybrid = shouldUseHybridLayeredPath({
         hasHdrContent,
@@ -469,12 +428,16 @@ export async function runCaptureHdrStage(
       domSessionClosed = true;
     }
 
-    const hdrEncodeResult = await hdrEncoder.close();
+    const encodeFrom = job.progress;
+    const hdrEncodeResult = await hdrEncoder.close((frames) =>
+      reportEncodeProgress(job, frames, totalFrames, onProgress, encodeFrom),
+    );
     hdrEncoderClosed = true;
     assertNotAborted();
     if (!hdrEncodeResult.success) {
-      throw new Error(`HDR encode failed: ${hdrEncodeResult.error}`);
+      throw encoderFailureError("HDR encode failed", hdrEncodeResult);
     }
+    reportEncodeProgress(job, totalFrames, totalFrames, onProgress, encodeFrom);
     captureDurationMs = Date.now() - stageStart;
     encodeMs = hdrEncodeResult.durationMs;
   } catch (error) {
@@ -498,9 +461,11 @@ export async function runCaptureHdrStage(
       });
     }
     for (const frameSource of hdrVideoFrameSources.values()) {
-      closeHdrVideoFrameSource(frameSource, log);
+      cleanupHdrVideoFrameSource(frameSource, log);
     }
     hdrVideoFrameSources.clear();
+    releaseHdrExtractionReservation?.();
+    releaseHdrExtractionReservation = null;
   }
 
   return {

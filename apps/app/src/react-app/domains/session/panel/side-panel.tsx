@@ -84,7 +84,7 @@ type SidePanelProps = {
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
-  onAskAi?: (context: DesignAiSelectionContext) => void;
+  onAskAi?: (context: DesignAiSelectionContext, instruction?: string) => void | Promise<void>;
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null; sourceTabId?: string }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   onEditImage?: (target: OpenTarget) => void;
   onGenerateVideo?: (path:string, sourceSessionId:string) => void;

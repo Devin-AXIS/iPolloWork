@@ -49,7 +49,7 @@ describe("BlocksTab lazy preview media", () => {
     expect(source).toContain('block.type === "hyperframes:component"');
     expect(source).toContain('block.librarySection === "caption-animation"');
     expect(source).toContain("const prefersCompositionPreview");
-    expect(source).toContain("!prefersCompositionPreview && Boolean(posterUrl)");
+    expect(source).toMatch(/!prefersCompositionPreview\s+&&\s+Boolean\(posterUrl\)/);
     expect(source).toMatch(/!prefersCompositionPreview\s+&&\s+Boolean\(videoUrl\)/);
     expect(source).toContain("prefersCompositionPreview ||");
   });

@@ -65,6 +65,7 @@ describe("Studio right panel layout", () => {
 
   it("places the Figma AI editing status directly below the video canvas", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+    expect(header).toContain('<Dock.WindowMenu label="Control tools" visibilityOnly />');
     const shell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");
     const preview = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
 
@@ -503,17 +504,6 @@ describe("Studio right panel layout", () => {
     );
   });
 
-  it("applies selected background images as full-element cover fills", () => {
-    const commits = readFileSync(
-      new URL("../hooks/useDomEditTextCommits.ts", import.meta.url),
-      "utf8",
-    );
-
-    expect(commits).toContain('buildDomEditStylePatchOperation("background-size", "cover")');
-    expect(commits).toContain('editedElement.style.setProperty("background-size", "cover")');
-    expect(commits).not.toContain('"background-size", "contain"');
-  });
-
   it("uses two-way geometry steppers without an inline keyframe button", () => {
     const layout = readFileSync(
       new URL("./editor/propertyPanelFlatLayoutSection.tsx", import.meta.url),
@@ -541,11 +531,11 @@ describe("Studio right panel layout", () => {
     expect(source).toContain('label={t("right.animation")}');
     expect(source).not.toContain('label={t("right.catalog")}');
     expect(source).toContain('selectStudioPanel("animation");');
-    expect(source).toContain('inspectorMode="properties"');
+    expect(source).toContain('inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}');
     expect(source).toContain("showInspectorChrome");
     expect(source).not.toContain('role="tablist"');
     expect(source).not.toContain('t("right.animationTemplates")');
-    expect(source).not.toContain('t("right.animationProperties")');
+    expect(source).toContain('rightPanelTab === "animation-properties"');
     expect(source).toContain("<AnimationTemplatesTab");
     expect(source).toContain("onMutate={handleMotionMutation}");
     expect(source).toContain("onStatus={(status) =>");
@@ -633,6 +623,15 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('label={t("right.animation")}');
     expect(panel).not.toContain('label={t("right.catalog")}');
     expect(panel).toContain('label={t("right.assets")}');
+    expect(panel).not.toContain('label={t("sidebar.code")}');
+    expect(panel).not.toContain('rightPanelTab === "code"');
+    expect(app).not.toContain("StudioSourcePanel");
+    expect(app).not.toContain('setRightPanelTab("code")');
+    expect(shell).not.toContain('<Dock.Panel id="assets"');
+    expect(shell).not.toContain('<Dock.Panel id="code"');
+    expect(shell).not.toContain('<Dock.Panel id="compositions"');
+    expect(shell).toContain('panels={WORKBENCH_PANELS}');
+    expect(shell).toContain('requiredPanels={REQUIRED_WORKBENCH_PANELS} fullHeightRight hideHeaders');
     expect(panel).not.toContain('selectStudioPanel("catalog")');
     expect(featureFlags).not.toContain("STUDIO_BLOCKS_PANEL_ENABLED");
     expect(panel).not.toContain('label={t("right.renders")}');
@@ -640,7 +639,8 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
     expect(panel).toContain('rightPanelTab === "voice" || rightPanelTab === "style"');
     expect(panel).toContain("width: rightWidth");
-    expect(panel).toContain("minWidth: MIN_RIGHT_PANEL_WIDTH");
+    expect(panel).toContain("minWidth: 0");
+    expect(panel).not.toContain("handlePanelResizeStart");
     expect(panel).toContain('postHostPanel(rightPanelTab === "voice" ? roleTab : "style")');
     expect(panel).toContain("useEffect(() => () => closeHostPanel(), [closeHostPanel])");
     expect(tabButton).toContain('style={active ? { color: "#ffffff" } : undefined}');
@@ -847,10 +847,13 @@ describe("Studio right panel layout", () => {
 
     expect(toolbar).toContain('data-testid="figma-timeline-toolbar"');
     expect(toolbar).toContain('data-preserve-studio-selection="true"');
-    expect(toolbar).toContain('aria-busy={pendingAction === "split"}');
+    expect(toolbar).not.toContain('aria-label={tx("Split clip at playhead")}');
+    expect(toolbar).not.toContain("Auto keyframes");
+    expect(toolbar).toContain('aria-label={tx("Razor tool")}');
     expect(toolbar).toContain('aria-busy={pendingAction === "keyframe"}');
     expect(toolbar).toContain('aria-busy={pendingAction === "delete"}');
-    expect(toolbar).toContain('canSplit ? "Split clip at playhead"');
+    expect(toolbar).toContain('aria-pressed={zoomMode === "fit"}');
+    expect(toolbar).toContain("Show the entire timeline from 00:00 without changing clip durations");
     expect(toolbar).toContain("isSplitTimeWithinBounds(currentTime");
     expect(toolbar).toContain("enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe");
     expect(toolbar).toContain("!canToggleKeyframe");
@@ -867,7 +870,7 @@ describe("Studio right panel layout", () => {
     expect(snapToolbar).toContain("createPortal(snapControls, toolbarSlots.snap)");
     expect(snapToolbar).toContain("createPortal(gridControl, toolbarSlots.grid)");
     expect(snapToolbar).not.toContain("Set motion destination");
-    expect(shortcuts).toContain("createPortal(panel, toolbarSlot)");
+    expect(shortcuts).toContain("createPortal(panel, activeToolbarSlot)");
     expect(preview).toContain('data-preview-zoom-controller="true"');
     expect(preview).toContain("PREVIEW_ZOOM_RESET_EVENT");
     expect(preview).not.toContain('data-testid="preview-reset-zoom"');
@@ -911,7 +914,7 @@ describe("Studio right panel layout", () => {
       "utf8",
     );
 
-    expect(toolbar).toContain("width = 16,\n  height = width,");
+    expect(toolbar).toMatch(/width = 16,\s+height = width,/);
     expect(toolbar).toContain("<ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />");
     expect(toolbar).toContain("<ToolbarIcon src={diamondIconSrc} width={24} />");
     expect(toolbar).toContain("<ToolbarIcon src={trashIconSrc} width={24} />");
@@ -946,7 +949,7 @@ describe("Studio right panel layout", () => {
       toolbarDelete.indexOf("selectedElement && onDeleteElement"),
     );
     expect(toolbar).toContain("findMatchingTimelineElementId(domEditSelection, elements)");
-    expect(toolbar).toContain("useKeyframeToggle(\n    domEditSession,\n    matchingDomSelection,");
+    expect(toolbar).toMatch(/useKeyframeToggle\(\s+domEditSession,\s+matchingDomSelection,/);
     expect(toolbar).toContain("{ ...session, domEditSelection: selection }");
     expect(editorShell).not.toContain(
       "handleDomEditElementDelete(timelineClipContextMenu.selection)",
@@ -1026,7 +1029,7 @@ describe("Studio right panel layout", () => {
     expect(player).toContain("const REFRESH_LOADING_OVERLAY_DELAY_MS = 220");
     expect(player).toContain("function shouldShowRefreshLoadingOverlay");
     expect(player).toContain("setCompositionLoading(true)");
-    expect(player).toContain("if (!deferredReadyHandled) setCompositionLoading(true)");
+    expect(player).toContain("setCompositionLoading(!player.ready && !deferredReadyHandled)");
     expect(player).toContain('data-testid="composition-refresh-loading-overlay"');
     expect(player).toContain("export function CompositionRefreshLoadingOverlay()");
     expect(player).toContain(

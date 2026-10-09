@@ -68,6 +68,7 @@ type VideoVoicePanelProps = {
   }) => void;
   embedded?: boolean;
   embeddedWidth?: number;
+  embeddedStyle?: React.CSSProperties;
   inDialog?: boolean;
 };
 
@@ -166,7 +167,7 @@ async function readAudioDuration(file: File): Promise<number> {
   }
 }
 
-export function VideoVoicePanel({ sessionId, conversationId = sessionId, generating = false, workspaceRoot, client, workspaceId, previewRequest, onClose, selectionTarget = null, onVoiceSelected, embedded = false, embeddedWidth = 400, inDialog = false }: VideoVoicePanelProps) {
+export function VideoVoicePanel({ sessionId, conversationId = sessionId, generating = false, workspaceRoot, client, workspaceId, previewRequest, onClose, selectionTarget = null, onVoiceSelected, embedded = false, embeddedWidth = 400, embeddedStyle, inDialog = false }: VideoVoicePanelProps) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const voicePickerAnchorRef = React.useRef<HTMLDivElement>(null);
   const previewGenerationRef = React.useRef(0);
@@ -664,6 +665,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
         ? "absolute bottom-0 right-0 top-[148px] z-20 h-auto min-w-0 max-w-full bg-popover"
         : "absolute inset-y-0 right-0 z-20 h-auto w-[22rem] max-w-[calc(100%-2rem)] bg-popover/95 shadow-2xl backdrop-blur-xl"}
       width={inDialog ? undefined : embedded ? embeddedWidth : undefined}
+      style={inDialog ? undefined : embedded ? embeddedStyle : undefined}
       embedded={embedded}
       testId="video-voice-panel"
       bodyClassName="video-settings-typography p-5 text-xs font-normal text-foreground"

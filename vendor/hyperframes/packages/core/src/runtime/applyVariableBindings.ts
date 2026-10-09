@@ -27,7 +27,13 @@
  */
 
 import { findVariableScope, readVariablesForElement } from "./variableScope";
-import { resolveTextVariableBinding, isScalarVariableValue as isScalar } from "@hyperframes/parsers/composition";
+import {
+  isScalarVariableValue as isScalar,
+  isSafeMediaUrl,
+  resolveTextVariableBinding,
+} from "@hyperframes/parsers/composition";
+import { isHtmlElement } from "./domRealm";
+import { unproxiedSrc } from "./proxySrc";
 
 // data-var-src only rebinds media `src` on media elements. A user-controlled
 // variable value assigned to a src is an XSS surface on tags whose src executes
@@ -45,28 +51,6 @@ function resolveUrl(value: unknown): string | null {
 }
 
 /**
- * Protocol allowlist for a resolved media URL. Relative URLs (no scheme) resolve
- * against the page origin and are always safe. Absolute URLs are restricted to
- * http(s)/blob and image data: URIs — defense-in-depth alongside VAR_SRC_TAGS,
- * blocking `javascript:`, `data:text/html`, `file:`, etc. even if a future tag
- * slips past the element guard. Control chars are stripped before the scheme
- * test because browsers ignore them when parsing the URL (`java\tscript:`).
- */
-function isSafeMediaUrl(url: string): boolean {
-  // Browsers ignore ASCII control chars/whitespace when parsing a URL, so strip
-  // them before reading the scheme (defeats `java\tscript:` style bypasses).
-  // oxlint-disable-next-line no-control-regex -- control chars are the target here
-  const normalized = url.replace(/[\u0000-\u0020]/g, "");
-  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(normalized);
-  if (!scheme) return true;
-  const proto = scheme[1]?.toLowerCase();
-  if (!proto) return false;
-  if (proto === "https" || proto === "http" || proto === "blob") return true;
-  if (proto === "data") return /^data:image\//i.test(normalized);
-  return false;
-}
-
-/**
  * Strip characters that could smuggle additional declarations or markup out of
  * a var() substitution site. A scalar value folded into `background: var(--x)`
  * or `background-image: url(var(--x))` must not be able to close the declaration
@@ -74,8 +58,13 @@ function isSafeMediaUrl(url: string): boolean {
  * characters is legal in a scalar variable value (string, number, color, font
  * family), so removing them is lossless for real inputs and neutralizes the
  * declaration/URL-exfiltration channel.
+ *
+ * Exported because the static compiler bakes the same scalars into a stylesheet
+ * at build time and has to reach the same result: a value that the runtime
+ * strips but a compile-time emit passes through would make the rendered MP4
+ * differ from the preview, which is the more dangerous of the two directions.
  */
-function sanitizeCssValue(value: string): string {
+export function sanitizeCssValue(value: string): string {
   return value.replace(/[;{}<>\r\n]/g, "");
 }
 
@@ -214,51 +203,61 @@ function findTopRoot(doc: Document): Element | null {
   );
 }
 
-function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache, scope?: Element): void {
-  // Top-level root plus every inlined sub-composition root; custom props
-  // inherit, so descendants of each root see its scope's values.
-  const roots = new Set<Element>();
-  const topRoot = scope ?? findTopRoot(doc);
-  if (topRoot) roots.add(topRoot);
-  for (const el of Array.from((scope ?? doc).querySelectorAll("[data-composition-id]"))) {
-    roots.add(el);
-  }
-  for (const root of roots) {
+// Custom props inherit, so each composition root carries its own scope's values.
+function applyCssCustomProperties(roots: Iterable<Element>, cache: ScopeValuesCache): void {
+  for (const root of new Set(roots)) {
     const values = valuesForElement(root, cache);
     for (const [id, value] of Object.entries(values)) {
       const css = cssValueFor(value);
-      if (css !== null && root instanceof HTMLElement) {
+      if (css !== null && isHtmlElement(root)) {
         root.style.setProperty(`--${id}`, sanitizeCssValue(css));
       }
     }
   }
 }
 
-export function applyVariableBindings(doc: Document, scope?: Element): void {
-  const cache: ScopeValuesCache = new Map();
-  applyCssCustomProperties(doc, cache, scope);
-
-  for (const el of Array.from((scope ?? doc).querySelectorAll("[data-var-src]"))) {
-    const id = el.getAttribute("data-var-src")?.trim();
-    if (!id) continue;
-    // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
-    // src on <iframe>/<script>/<embed> is a code-execution sink, not a media ref.
-    if (!VAR_SRC_TAGS.has(el.tagName.toLowerCase())) {
+function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): string | null {
+  const id = el.getAttribute("data-var-src")?.trim();
+  if (!id) return null;
+  // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
+  // src on <iframe>/<script>/<embed> is a code-execution sink, not a media ref.
+  if (!VAR_SRC_TAGS.has(el.tagName.toLowerCase())) {
+    if (warn)
       console.warn(
         `[hyperframes] Ignoring data-var-src on <${el.tagName.toLowerCase()}>: variable-bound src is only allowed on ${Array.from(VAR_SRC_TAGS).join("/")}.`,
       );
-      continue;
-    }
-    const url = resolveUrl(valuesForElement(el, cache)[id]);
-    if (url === null) continue;
-    if (!isSafeMediaUrl(url)) {
-      console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
-      continue;
-    }
-    el.setAttribute("src", url);
+    return null;
+  }
+  const url = resolveUrl(valuesForElement(el, cache)[id]);
+  if (url === null) return null;
+  if (!isSafeMediaUrl(url)) {
+    if (warn) console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
+    return null;
+  }
+  return url;
+}
+
+/** The src an element loads, preview proxy aside: its bound variable's value, else its attribute. */
+export function unproxiedMediaSrc(el: Element): string | null {
+  return variableSrcFor(el, new Map(), false) ?? unproxiedSrc(el);
+}
+
+/** Applies the bindings in `doc`, or only those inside `within` and `within` itself. */
+export function applyVariableBindings(doc: Document, within?: Element): void {
+  const cache: ScopeValuesCache = new Map();
+  const all = (selector: string): Element[] =>
+    within
+      ? [...(within.matches(selector) ? [within] : []), ...within.querySelectorAll(selector)]
+      : Array.from(doc.querySelectorAll(selector));
+  const topRoot = within ? null : findTopRoot(doc);
+  applyCssCustomProperties([...(topRoot ? [topRoot] : []), ...all("[data-composition-id]")], cache);
+
+  for (const el of all("[data-var-src]")) {
+    const url = variableSrcFor(el, cache);
+    if (url !== null && unproxiedSrc(el) !== url) el.setAttribute("src", url);
   }
 
-  for (const el of Array.from((scope ?? doc).querySelectorAll("[data-var-text]"))) {
+  for (const el of all("[data-var-text]")) {
     const id = el.getAttribute("data-var-text")?.trim();
     if (!id) continue;
     const value = resolveTextVariableBinding(id, valuesForElement(el, cache));

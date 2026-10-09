@@ -30,19 +30,13 @@ export type RightPanelTab =
   | "style"
   | "components"
   | "assets"
+  | "code"
   | "animation"
   | "animation-properties"
   | "renders"
   | "block-params"
   | "slideshow"
   | "variables";
-export type RightInspectorPane = "layers" | "design";
-
-export interface RightInspectorPanes {
-  layers: boolean;
-  design: boolean;
-}
-
 export interface AgentModalAnchorPoint {
   x: number;
   y: number;
@@ -456,4 +450,11 @@ export async function resolveDroppedAssetDimensions(
     video.addEventListener("error", () => finalize(null), { once: true });
     video.src = src;
   });
+}
+
+/** Normalize CSS names at the official style-commit boundary. */
+export function cssPropertyName(property: string): string {
+  if (property.startsWith("--")) return property;
+  const css = property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+  return css.startsWith("ms-") ? `-${css}` : css;
 }

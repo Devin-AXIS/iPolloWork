@@ -14,8 +14,7 @@ interface UseCompositionStackResult {
   compositionStack: CompositionLevel[];
   updateCompositionStack: React.Dispatch<React.SetStateAction<CompositionLevel[]>>;
   handleNavigateComposition: (index: number) => void;
-  handleDrillDown: (element: { id: string; compositionSrc?: string }) => void;
-  masterSeekRef: React.MutableRefObject<number>;
+  handleDrillDown: (element: { id: string; compositionSrc?: string; start?: number }) => void;
   compIdToSrc: Map<string, string>;
   setCompIdToSrc: React.Dispatch<React.SetStateAction<Map<string, string>>>;
 }
@@ -45,7 +44,8 @@ export function useCompositionStack({
     });
   }, []);
 
-  const masterSeekRef = useRef(0);
+  const compositionStackRef = useRef(compositionStack);
+  compositionStackRef.current = compositionStack;
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
 
   const compIdToSrcRef = useRef(compIdToSrc);
@@ -53,49 +53,42 @@ export function useCompositionStack({
 
   const handleNavigateComposition = useCallback(
     (index: number) => {
-      if (index === 0 && masterSeekRef.current > 0) {
-        usePlayerStore.getState().setCurrentTime(masterSeekRef.current);
-      }
-      usePlayerStore.getState().setElements([]);
+      const level = compositionStackRef.current[index];
+      if (!level) return;
+      const store = usePlayerStore.getState();
+      if (level.seekTime !== undefined) store.setCurrentTime(level.seekTime);
+      store.setElements([]);
       updateCompositionStack((prev) => prev.slice(0, index + 1));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [updateCompositionStack],
   );
 
   const handleDrillDown = useCallback(
-    (element: { id: string; compositionSrc?: string }) => {
+    (element: { id: string; compositionSrc?: string; start?: number }) => {
       if (!element.compositionSrc) return;
-      masterSeekRef.current = usePlayerStore.getState().currentTime;
-
-      const compId = element.id;
-      let resolvedPath = compIdToSrcRef.current.get(compId);
-
-      if (!resolvedPath) {
-        const src = element.compositionSrc;
-        const compMatch = src.match(/compositions\/.*\.html/);
-        resolvedPath = compMatch ? compMatch[0] : src;
+      const src = (compIdToSrcRef.current.get(element.id) ?? element.compositionSrc)
+        .replace(/\\/g, "/");
+      const resolvedPath = src.match(/compositions\/.*\.html/)?.[0] ?? src;
+      const stack = compositionStackRef.current;
+      if (stack[stack.length - 1].id === resolvedPath && stack.length > 1) {
+        handleNavigateComposition(stack.length - 2);
+        return;
       }
-
-      usePlayerStore.getState().setElements([]);
-
+      const store = usePlayerStore.getState();
+      const parentTime = store.currentTime;
+      store.setElements([]);
+      store.setCurrentTime(Math.max(0, parentTime - (element.start ?? 0)));
       updateCompositionStack((prev) => {
-        const currentId = prev[prev.length - 1].id;
-        if (currentId === resolvedPath && prev.length > 1) {
-          return prev.slice(0, -1);
-        }
-        const label =
-          resolvedPath
-            .split("/")
-            .pop()
-            ?.replace(/\.html$/, "") || resolvedPath;
+        const parent = { ...prev[prev.length - 1], seekTime: parentTime };
+        const label = resolvedPath.split("/").pop()?.replace(/\.html$/, "") || resolvedPath;
         const previewUrl = `/api/projects/${projectId}/preview/comp/${encodePreviewPath(resolvedPath)}`;
-        return [...prev, { id: resolvedPath, label, previewUrl }];
+        return [...prev.slice(0, -1), parent, { id: resolvedPath, label, previewUrl }];
       });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId],
+    [projectId, handleNavigateComposition, updateCompositionStack],
   );
+
+  const normalizedActivePath = activeCompositionPath?.replace(/\\/g, "/");
 
   // Navigate to a composition when activeCompositionPath changes.
   // eslint-disable-next-line no-restricted-syntax
@@ -105,29 +98,28 @@ export function useCompositionStack({
       label: "Master",
       previewUrl: `/api/projects/${projectId}/preview`,
     };
-    if (activeCompositionPath === "index.html") {
+    if (normalizedActivePath === "index.html") {
       usePlayerStore.getState().setElements([]);
       updateCompositionStack([master]);
-    } else if (activeCompositionPath && activeCompositionPath.startsWith("compositions/")) {
-      const label = activeCompositionPath.replace(/^compositions\//, "").replace(/\.html$/, "");
-      const previewUrl = `/api/projects/${projectId}/preview/comp/${encodePreviewPath(activeCompositionPath)}`;
+    } else if (normalizedActivePath && normalizedActivePath.startsWith("compositions/")) {
+      const label = normalizedActivePath.replace(/^compositions\//, "").replace(/\.html$/, "");
+      const previewUrl = `/api/projects/${projectId}/preview/comp/${encodePreviewPath(normalizedActivePath)}`;
       usePlayerStore.getState().setElements([]);
       updateCompositionStack((prev) => {
-        if (prev[prev.length - 1]?.id === activeCompositionPath) return prev;
-        return [master, { id: activeCompositionPath, label, previewUrl }];
+        if (prev[prev.length - 1]?.id === normalizedActivePath) return prev;
+        return [master, { id: normalizedActivePath, label, previewUrl }];
       });
-    } else if (!activeCompositionPath) {
+    } else if (!normalizedActivePath) {
       usePlayerStore.getState().setElements([]);
       updateCompositionStack([master]);
     }
-  }, [activeCompositionPath, projectId, updateCompositionStack]);
+  }, [normalizedActivePath, projectId, updateCompositionStack]);
 
   return {
     compositionStack,
     updateCompositionStack,
     handleNavigateComposition,
     handleDrillDown,
-    masterSeekRef,
     compIdToSrc,
     setCompIdToSrc,
   };

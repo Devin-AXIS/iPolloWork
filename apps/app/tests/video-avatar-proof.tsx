@@ -6,6 +6,9 @@ import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import { VideoAvatarPanel } from "../src/react-app/domains/session/video/video-avatar-panel";
 import { VIDEO_VOICEOVER_REQUEST, type VideoVoiceoverRequest } from "../src/react-app/domains/session/video/video-voice";
 import { VideoVoicePanel } from "../src/react-app/domains/session/video/video-voice-panel";
+import { VideoPanel } from "../src/react-app/domains/session/video/video-panel";
+import type { VideoStudioRuntime } from "@ipollowork/video-studio";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { DesignSystemDrawer } from "../src/react-app/domains/session/design/design-system-drawer";
 import "../src/app/index.css";
 import { setLocale } from "../src/i18n";
@@ -136,6 +139,7 @@ client.downloadWorkspaceFile = async (_workspaceId, path) => ({ data: path.endsW
   : new Uint8Array(await (await originalFetch("/default-brand-avatar.jpg")).arrayBuffer()), path });
 client.readWorkspaceFile = async (_workspaceId, path) => {
   if (path.endsWith("index.html")) return { content: appliedHtml, updatedAt: 1 };
+  if (path.endsWith("design-tokens.css")) return { content: ":root { --ipw-type-scale: 1; }", updatedAt: 1 };
   if (!savedVoice) throw new Error("Voice settings not found");
   const response = await window.fetch("https://avatar-proof.invalid/files/content");
   return response.json();
@@ -193,7 +197,70 @@ function RoleProofPanel() {
     {panel === "voice" ? <VideoVoicePanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} previewRequest={0} onClose={() => undefined} embedded embeddedWidth={width} /> : null}
   </div>;
 }
-createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParams.get("panel") === "role" ? <RoleProofPanel /> : <div style={{ height: "100vh", padding: 32 }}>
+// Real host + real Studio server. Only provider/workspace client calls use the fixture above.
+const dockProofRuntime: VideoStudioRuntime = {
+  start: async (options) => {
+    if (!voiceProofParams.has("lifecyclePort")) return { ok: true, port: Number(voiceProofParams.get("studioPort") || 5199) };
+    const response = await originalFetch(`http://127.0.0.1:${Number(voiceProofParams.get("lifecyclePort"))}/start`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(options),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    return { ok: result.ok === true, port: Number(result.port), reused: result.reused === true };
+  },
+  stop: async (sessionId, options) => {
+    if (voiceProofParams.has("lifecyclePort")) {
+      const response = await originalFetch(`http://127.0.0.1:${Number(voiceProofParams.get("lifecyclePort"))}/stop`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, ...options }),
+      });
+      if (!response.ok) throw new Error("Preview lifecycle stop failed");
+    }
+    return { ok: true };
+  },
+};
+function DockProofPanel() {
+  const lifecycle = voiceProofParams.has("lifecyclePort");
+  const aiProof = voiceProofParams.has("ai");
+  const [open, setOpen] = React.useState(!lifecycle);
+  const [rejectAi, setRejectAi] = React.useState(false);
+  const [aiMessages, setAiMessages] = React.useState<{ instruction: string; context: DesignAiSelectionContext }[]>([]);
+  const [animationReferences, setAnimationReferences] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    if (!aiProof) return;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; item?: { title?: string } }>).detail;
+      const title = detail?.item?.title;
+      if (detail?.sessionId !== "conversation-proof" || typeof title !== "string") return;
+      setAnimationReferences(current => [...current, title]);
+    };
+    window.addEventListener("ipollowork:add-animation-reference", receive);
+    return () => window.removeEventListener("ipollowork:add-animation-reference", receive);
+  }, [aiProof]);
+  return <div className="flex h-screen w-full flex-col" data-testid="dock-host-proof">
+    {lifecycle ? <div className="flex shrink-0 items-center gap-4 border-b p-2">
+      <span>视频标签启动与重开验证</span>
+      <button onClick={() => setOpen(value => !value)}>{open ? "关闭视频标签" : "打开视频标签"}</button>
+    </div> : null}
+    <div className="flex min-h-0 flex-1">
+      {aiProof ? <aside className="w-[300px] shrink-0 overflow-auto border-r p-4" data-testid="video-ai-proof-conversation">
+        <h2>左侧 AI 对话 · 测试接收端</h2><p className="mt-2 text-xs">实际视频桥接，模型调用为模拟，不产生费用。</p>
+        <button className="my-3 border p-2 text-xs" aria-pressed={rejectAi} onClick={() => setRejectAi(value => !value)}>模拟发送失败</button>
+        {animationReferences.map((title, index) => <p key={index} role="status" className="my-3 rounded border p-3 text-sm">左侧动画参考 · {title}</p>)}
+        {aiMessages.map((message, index) => <article key={index} className="my-3 rounded border p-3 text-sm">
+          <p>{message.instruction || "已同步所选元素到左侧输入区"}</p>
+          <p className="mt-2 text-xs" role="status">左侧已接收 · {message.context.sessionId}</p>
+          <details><summary className="text-xs">视频上下文</summary><pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify({ filePath: message.context.filePath, target: message.context.target }, null, 2)}</pre></details>
+        </article>)}
+      </aside> : null}
+      {open ? <div className="min-h-0 min-w-0 flex-1"><VideoPanel title="官方 Dock 与原有视频功能验证" sessionId="conflict-proof" conversationId={aiProof ? "conversation-proof" : undefined} workspaceRoot="proof"
+        workspaceId="proof" client={client} runtime={dockProofRuntime} onAskAi={aiProof ? async (context, instruction) => {
+          if (rejectAi) throw new Error("模拟发送失败：需求仍保留，请重试");
+          setAiMessages(current => [...current, { instruction: instruction ?? "", context }]);
+        } : undefined} /></div> : null}
+    </div>
+  </div>;
+}
+createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParams.get("panel") === "dock" ? <DockProofPanel /> : voiceProofParams.get("panel") === "role" ? <RoleProofPanel /> : <div style={{ height: "100vh", padding: 32 }}>
   <h1>VideoStudio · 数字人视频</h1><p>组件集成验证：模拟云端结果，不产生费用。</p>
   <div className="flex gap-2"><button onClick={()=>{configured=!configured;window.dispatchEvent(new Event("focus"));}}>切换 Key 配置</button><button onClick={()=>{hasNarration=!hasNarration;window.dispatchEvent(new Event("focus"));}}>切换视频配音</button><button onClick={()=>{audioVersion++;window.dispatchEvent(new Event("focus"));}}>更新配音片段</button></div>
   <button onClick={() => { failUpload = !failUpload; }}>切换上传失败</button>

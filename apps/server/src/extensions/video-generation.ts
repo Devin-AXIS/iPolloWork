@@ -354,6 +354,11 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
   const imageKey = Object.keys(reference).find(name => name === "ref_image_0" || name === "ref_images.ref_image_0");
   const imageNode = linkedNode(imageKey ? reference[imageKey] : undefined, "LoadImage");
   const audioInputNode = linkedNode(crop.audio, "LoadAudio");
+  const audioVaeNode = linkedNode(drive.audio_vae, "VAELoader");
+  if (typeof audioVaeNode.inputs.vae_name !== "string"
+    || !/(^|\/)minimax_h3_audio_vae_[^/]+\.safetensors$/i.test(audioVaeNode.inputs.vae_name)) {
+    throw new ApiError(400, "video_workflow_changed", "数字人音频编码器已变化，尚未提交生成。");
+  }
   linkedNode(output.images, "VAEDecode");
   if (JSON.stringify(samplerNode.inputs.latent_image) !== JSON.stringify([driveNode.id, 0])
     || JSON.stringify(guiderNode.inputs.conditioning) !== JSON.stringify([referenceNode.id, 0])
@@ -365,32 +370,30 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
   graph[imageNode.id] = { class_type: image.startsWith("https://") ? "LoadImageFromUrl" : "LoadImage", inputs: { image } };
   audioInputNode.inputs.audio = audio;
   crop.audio = [audioInputNode.id, 0]; crop.start_index = 0; crop.duration = Number(args.duration);
-  drive.source_audio = [cropNode.id, 0];
   const standard = args.resolution === AVATAR_STANDARD_VIDEO.resolution;
   const shortEdge = standard ? AVATAR_STANDARD_VIDEO.shortEdge : 576, longEdge = standard ? AVATAR_STANDARD_VIDEO.longEdge : 1024;
   const width = args.ratio === "9:16" ? shortEdge : longEdge, height = args.ratio === "9:16" ? longEdge : shortEdge;
   if (graph["avatar_frame"]) fail("数字人工作流节点编号已变化，尚未提交。");
   graph["avatar_frame"] = { class_type: "ImageScale", inputs: { image: [imageNode.id, 0], width, height, upscale_method: "lanczos", crop: "center" } };
   // H3's FL2VA checkpoint binds actual endpoint frames; REF2VA only provides appearance references.
-  // Keep the existing audio-drive latent, VAE, lightx2v LoRA and output workflow.
+  // Preserve the published model/VAE bindings, but anchor speech in official
+  // time-aligned conditioning instead of only replacing the sampler's audio latent.
   unetNode.inputs.unet_name = "minimax_h3_fl2va_int8_convrot.safetensors";
   const target: Record<string, unknown> = { clip: reference.clip, vae: reference.vae, width, height,
     first_frame: ["avatar_frame", 0], last_frame: ["avatar_frame", 0],
-    prompt: `One continuous fixed-camera shot of a calm, candid everyday conversation. Preserve the first frame's identity, visual style, facial texture, natural asymmetry, clothing, body size, framing and background. The person has a warm, attentive resting expression, relaxed cheeks and eyebrows, and relaxed lips between spoken phrases. Follow the supplied speech with comfortable, proportionate lip and jaw articulation. A gentle smile appears briefly when the voice calls for it, then settles back into a relaxed expression. Allow brief natural blinks at irregular moments, a soft gaze toward the camera, subtle breathing and occasional tiny, nonrepeating head adjustments. The expression feels spontaneous and understated, with the person remaining in the same position. No camera movement, zoom, cuts, extra people, props or scene changes. ${args.prompt}` };
+    prompt: `One uninterrupted locked-off shot matching the reference image's exact framing throughout the entire take. Keep the person at the same size and position with the same visible body area and background from beginning to end. Never switch from a wider view to a face close-up. Preserve identity, clothing and visual style. The person speaks the supplied soundtrack: lip shapes and jaw articulation follow its actual phonemes, syllables, pauses and rhythm, not a generic talking loop. Lips relax during silence; expression follows the tone of the speech. Allow irregular natural blinks and subtle breathing with the head mostly steady, without repetitive nodding or swaying. Keep facial articulation free to move. The camera stays completely still: no zoom, pan, reframing, cuts, extra people or scene changes. ${args.prompt}` };
   graph[referenceNode.id] = { class_type: "MiniMaxH3ImageToVideo", inputs: target };
   const frames = Math.max(120, Math.ceil(Number(args.duration) * 24));
   target.length = frames + (5 - frames % 17 + 17) % 17;
-  // Endpoint frames alone can still produce a zoom/cut in the middle of a long shot.
-  // H3 image guides keep the original composition anchored every three seconds.
-  let conditioning: [string, number] = [referenceNode.id, 0];
-  for (let frame = 72; frame < frames - 24; frame += 72) {
-    const id = `avatar_guide_${frame}`;
-    if (graph[id]) fail("数字人工作流节点编号已变化，尚未提交。");
-    graph[id] = { class_type: "MiniMaxH3AddGuide", inputs: { positive: conditioning, latent: [referenceNode.id, 1],
-      image: ["avatar_frame", 0], vae: reference.vae, frame_idx: frame } };
-    conditioning = [id, 0];
-  }
-  guiderNode.inputs.conditioning = conditioning;
+  // Repeated still-image guides pin the mouth/expression back to the photo.
+  // Native H3 audio guidance shares the video's clock from frame zero instead.
+  if (graph["avatar_speech"]) fail("数字人工作流节点编号已变化，尚未提交。");
+  graph["avatar_speech"] = { class_type: "MiniMaxH3AddGuide", inputs: {
+    positive: [referenceNode.id, 0], latent: [referenceNode.id, 1],
+    audio: [cropNode.id, 0], audio_vae: [audioVaeNode.id, 0], frame_idx: 0,
+  } };
+  guiderNode.inputs.conditioning = ["avatar_speech", 0];
+  samplerNode.inputs.latent_image = [referenceNode.id, 1];
   scheduler.steps = 6;
   noiseNode.inputs.noise_seed = Number.parseInt(args.requestId.replaceAll("-", "").slice(0, 12), 16);
   output.audio = [cropNode.id, 0]; output.frame_rate = 24; output.trim_to_audio = true;
@@ -663,8 +666,9 @@ async function advanceAvatarSequence(config: ServerConfig, workspace: WorkspaceI
       if (audioPath) await sliceAvatarAudio(workspace, sequence.audioPath, segment, audioPath, signal);
       const args = validateVideoSubmission({ requestId: job.id, model: job.model, operation: "reference", prompt: `${job.prompt}\n固定镜头与构图，保持人物大小、位置、光线稳定。允许自然眨眼、轻微呼吸和小幅头部调整；表情随语气柔和变化，避免持续露齿笑、机械点头、转身或大幅挥手。`,
         resolution: AVATAR_STANDARD_VIDEO.resolution, duration: String(segment.end - segment.start), ratio: sequence.ratio, imageRefs: sequence.imagePath, audioRefs: audioPath, avatarSource: audioPath ? "video-audio" : "video-content" });
-      // Keep one identity seed across segments; an explicit retry gets a new seed.
-      if (segment.attempt) args.requestId = createHash("sha256").update(`${job.id}:${index}:${segment.attempt}`).digest("hex").slice(0, 32).replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
+      // The reference image owns identity. Distinct deterministic segment seeds
+      // avoid repeating the same motion; retries get a fresh seed without resubmission.
+      args.requestId = createHash("sha256").update(`${job.id}:${index}:${segment.attempt}`).digest("hex").slice(0, 32).replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
       const request = await videoRequest(workspace, args, key, config, authorization, signal);
       await persist({ status: "running", nextPoll: Date.now() + 300_000, message: `${label}正在提交…` }, { status: "submitting", startedAt: Date.now() });
       submitted = true;

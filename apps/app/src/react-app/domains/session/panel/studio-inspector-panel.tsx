@@ -12,6 +12,7 @@ type StudioInspectorPanelProps = {
   className?: string;
   bodyClassName?: string;
   width?: number;
+  style?: React.CSSProperties;
   testId?: string;
   embedded?: boolean;
 };
@@ -32,6 +33,7 @@ export function StudioInspectorPanel({
   className,
   bodyClassName,
   width,
+  style,
   testId,
   embedded,
 }: StudioInspectorPanelProps) {
@@ -41,7 +43,7 @@ export function StudioInspectorPanel({
         "flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-border bg-background text-foreground",
         className,
       )}
-      style={width === undefined ? undefined : { width }}
+      style={width === undefined ? style : { width, ...style }}
       aria-label={ariaLabel}
       data-testid={testId}
       data-embedded={embedded === undefined ? undefined : embedded ? "true" : "false"}

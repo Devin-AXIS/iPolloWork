@@ -166,7 +166,6 @@ function FlatTextFieldEditor({
       <PromotableControl channel={{ kind: "text" }} enabled={field.source === "self"}>
         {({ value, onCommit }) => (
           <TextAreaField
-            flat
             label="Content"
             value={value ?? field.value}
             autoFocus={autoFocus}

@@ -648,6 +648,81 @@ describe("plugin package lifecycle", () => {
     expect(await readFile(target, "utf8")).toBe("# User customization\n");
   });
 
+  for (const outcome of ["success", "projection-failure", "state-failure"]) {
+    test(`recovers unrecorded reference snapshots while preserving files on ${outcome}`, async () => {
+      const lifecycle = await import("./plugin-package-lifecycle.js");
+      const workspaceRoot = await createRoot("ipollowork-plugin-reference-workspace-");
+      const secondRoot = await createRoot("ipollowork-plugin-reference-second-");
+      process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+      const config = serverConfig(workspaceRoot);
+      config.workspaces.push({ ...config.workspaces[0], id: "ws_second", path: secondRoot });
+      const packages = [];
+      for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
+        const root = await createRoot("ipollowork-plugin-reference-package-");
+        await writePackage(root, version, `export const version = '${version}'\n`, `# ${version}\n`);
+        if (version !== "1.0.0") {
+          const referenceRoot = join(root, "skills/acme-research/references");
+          await mkdir(referenceRoot, { recursive: true });
+          await writeFile(join(referenceRoot, "video.md"), `Reference ${version}\n`);
+          const manifestPath = join(root, "ipollowork.plugin.json");
+          const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+          manifest.resources.push({ type: "file", id: "references", path: "skills/acme-research/references", required: true });
+          await writeFile(manifestPath, JSON.stringify(manifest));
+        }
+        packages.push(root);
+      }
+      await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: packages[0] });
+      await cp(packages[1], join(workspaceRoot, "plugin-packages/artifacts/acme-research/1.1.0"), { recursive: true });
+      const targets = [workspaceRoot, secondRoot].map(root => join(root, ".opencode/skills/acme-research/references/video.md"));
+      for (const target of targets) {
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, "Reference 1.1.0\n");
+      }
+      await writeFile(targets[0], "User customization\n");
+      await expect(lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packages[2] })).rejects.toMatchObject({ code: "plugin_package_conflict" });
+      expect(await readFile(targets[0], "utf8")).toBe("User customization\n");
+      expect(await readFile(targets[1], "utf8")).toBe("Reference 1.1.0\n");
+      await writeFile(targets[0], "Reference 1.1.0\n");
+
+      const statePath = join(workspaceRoot, "plugin-packages/state.json");
+      const originalState = await readFile(statePath, "utf8");
+      const originalSync = openCodePluginEngineAdapter.syncRuntime;
+      openCodePluginEngineAdapter.syncRuntime = async (input) => {
+        if (input.next?.manifest.package?.version === "1.2.0" && input.workspaceId === "ws_second") {
+          if (outcome === "projection-failure") throw new Error("Projection failed");
+          if (outcome === "state-failure") {
+            await rm(statePath);
+            await mkdir(statePath);
+          }
+        }
+        await originalSync(input);
+      };
+      try {
+        const operation = lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packages[2] });
+        if (outcome === "success") {
+          await expect(operation).resolves.toMatchObject({ status: "updated", version: "1.2.0" });
+        } else {
+          await expect(operation).rejects.toThrow();
+        }
+        for (const target of targets) {
+          expect(await readFile(target, "utf8")).toBe(outcome === "success" ? "Reference 1.2.0\n" : "Reference 1.1.0\n");
+          expect(await readFile(join(dirname(dirname(target)), "SKILL.md"), "utf8")).toBe(outcome === "success" ? "# 1.2.0\n" : "# 1.0.0\n");
+        }
+        if (outcome !== "state-failure") {
+          const state = JSON.parse(await readFile(statePath, "utf8"));
+          expect(state.packages["acme-research"].currentVersion).toBe(outcome === "success" ? "1.2.0" : "1.0.0");
+          if (outcome === "success") expect(state.packages["acme-research"].versions["1.1.0"]).toBeDefined();
+        }
+      } finally {
+        openCodePluginEngineAdapter.syncRuntime = originalSync;
+        if (outcome === "state-failure") {
+          await rm(statePath, { recursive: true, force: true });
+          await writeFile(statePath, originalState);
+        }
+      }
+    });
+  }
+
   test("stops an update when an owned file was modified by the user", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-workspace-");

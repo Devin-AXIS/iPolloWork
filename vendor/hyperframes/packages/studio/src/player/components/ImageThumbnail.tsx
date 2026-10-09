@@ -1,4 +1,6 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { decodeImageThumbnail } from "../lib/thumbnailImageDecoder";
+import { memo, useCallback, useRef, useState, useMemo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 
 interface ImageThumbnailProps {
@@ -11,7 +13,7 @@ interface ImageThumbnailProps {
  */
 export const ImageThumbnail = memo(function ImageThumbnail({ imageSrc }: ImageThumbnailProps) {
   const [visible, setVisible] = useState(false);
-  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
+
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   const setContainerRef = useCallback((element: HTMLDivElement | null) => {
@@ -31,33 +33,19 @@ export const ImageThumbnail = memo(function ImageThumbnail({ imageSrc }: ImageTh
 
   useMountEffect(() => () => observerRef.current?.disconnect());
 
-  useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    setStatus("loading");
-
-    const image = new Image();
-    image.onload = () => {
-      if (!cancelled) setStatus("loaded");
-    };
-    image.onerror = () => {
-      if (cancelled) return;
-      setStatus(/\.svg($|\?)/i.test(imageSrc) ? "loaded" : "error");
-    };
-    image.src = imageSrc;
-
-    return () => {
-      cancelled = true;
-      image.onload = null;
-      image.onerror = null;
-      image.src = "";
-    };
-  }, [visible, imageSrc]);
+  const request = useMemo(() => visible ? {
+    key: imageSrc, projectId: new URL(imageSrc, window.location.href).pathname.split("/")[3] ?? "studio",
+    sessionEpoch: 0, kind: "image" as const, priority: "visible" as const,
+    load: (signal: AbortSignal) => decodeImageThumbnail(imageSrc, signal),
+  } : null, [visible, imageSrc]);
+  const snapshot = useThumbnailLease(request);
+  const status = snapshot.status === "ready" ? "loaded" : snapshot.status === "error" ? "error" : "loading";
+  const source = snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value.url : imageSrc;
 
   return (
     <div ref={setContainerRef} className="hf-timeline-image-thumbnail">
       {visible && status === "loaded" && (
-        <img src={imageSrc} alt="" draggable={false} loading="lazy" />
+        <img src={source} alt="" draggable={false} loading="lazy" />
       )}
       {visible && status === "loading" && (
         <span className="hf-timeline-thumbnail-shimmer" aria-hidden="true" />

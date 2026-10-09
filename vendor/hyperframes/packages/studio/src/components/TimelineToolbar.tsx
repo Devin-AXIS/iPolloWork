@@ -1,10 +1,16 @@
+import { MousePointer2, Image, Scissors, LassoSelect, Sparkles } from "lucide-react";
+import { EditPopover } from "../player/components/EditModal";
+import { ArrowsOutLineHorizontal } from "@phosphor-icons/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Ellipsis, ZoomIn, type LucideIcon } from "lucide-react";
 import {
+  animatedProps,
   useEnableKeyframes,
   isPlayheadWithinTween,
+  keyframeAtPlayhead,
   type EnableKeyframesSession,
 } from "../hooks/useEnableKeyframes";
+import { getAnimationsForElement, fetchParsedAnimations } from "../hooks/useGsapTweenCache";
 import { computeElementPercentage } from "../hooks/gsapShared";
 import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import { useFrameCapture } from "../hooks/useFrameCapture";
@@ -21,7 +27,7 @@ import { STUDIO_KEYFRAMES_ENABLED } from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
-import { canSplitElementAt, isSplitTimeWithinBounds } from "../utils/timelineElementSplit";
+import { isSplitTimeWithinBounds } from "../utils/timelineElementSplit";
 import {
   findSelectedTimelineElement,
   rebaseExpandedTimelineEdit,
@@ -34,7 +40,6 @@ import { resolveFloatingPanelPosition } from "./editor/floatingPanel";
 import undoIconSrc from "../icons/figmaToolbarUndo.svg?url";
 import redoIconSrc from "../icons/figmaToolbarRedo.svg?url";
 import dividerIconSrc from "../icons/figmaToolbarDivider.svg?url";
-import scissorsIconSrc from "../icons/figmaToolbarScissors.svg?url";
 import diamondIconSrc from "../icons/figmaToolbarDiamond.svg?url";
 import trashIconSrc from "../icons/figmaToolbarTrash.svg?url";
 import zoomOutIconSrc from "../icons/figmaToolbarZoomOut.svg?url";
@@ -53,7 +58,6 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
 
 interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
-  onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
   onDeleteDomElement?: (selection: DomEditSelection) => Promise<void> | void;
 }
@@ -132,7 +136,8 @@ function ToolbarGroup({ collapsed, label, icon: Icon, toolbarWidth, children, va
   useEffect(() => setOpen(false), [collapsed]);
   useEffect(() => {
     const dismiss = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !panelRef.current?.matches(":popover-open")) return;
+      if (event.key !== "Escape" || !panelRef.current?.matches(":popover-open") ||
+        (event.target instanceof Element && event.target.closest('[aria-modal="true"]'))) return;
       event.preventDefault();
       event.stopPropagation();
       panelRef.current.hidePopover();
@@ -193,13 +198,13 @@ function ToolbarGroup({ collapsed, label, icon: Icon, toolbarWidth, children, va
 // fallow-ignore-next-line complexity
 export function TimelineToolbar({
   domEditSession,
-  onSplitElement,
   onDeleteElement,
   onDeleteDomElement,
 }: TimelineToolbarProps) {
   const { tx } = useStudioI18n();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarWidth, setToolbarWidth] = useState(0);
+  const [annotationSelection, setAnnotationSelection] = useState<TimelineElement[] | null>(null);
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
     if (!toolbar) return;
@@ -209,10 +214,14 @@ export function TimelineToolbar({
     observer.observe(toolbar);
     return () => observer.disconnect();
   }, []);
-  const layout = toolbarWidth >= 560 ? "full" : toolbarWidth >= 420 ? "compact" : "narrow";
-  const [pendingAction, setPendingAction] = useState<"split" | "keyframe" | "delete" | null>(
+  const layout = toolbarWidth >= 660 ? "full" : toolbarWidth >= 520 ? "compact" : "narrow";
+  const [pendingAction, setPendingAction] = useState<"keyframe" | "delete" | null>(
     null,
   );
+  const activeTool = usePlayerStore((state) => state.activeTool);
+  const setActiveTool = usePlayerStore((state) => state.setActiveTool);
+  const thumbnailMode = usePlayerStore((state) => state.thumbnailMode);
+  const setThumbnailMode = usePlayerStore((state) => state.setThumbnailMode);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
@@ -246,6 +255,7 @@ export function TimelineToolbar({
     handleUndo,
     handleRedo,
   } = useStudioShellContext();
+  useEffect(() => setAnnotationSelection(null), [projectId, activeCompPath]);
   const {
     captureFrameHref,
     captureFrameFilename,
@@ -264,9 +274,6 @@ export function TimelineToolbar({
     selectedElement &&
       isSplitTimeWithinBounds(currentTime, selectedElement.start, selectedElement.duration),
   );
-  const canSplit = Boolean(
-    onSplitElement && selectedElement && canSplitElementAt(selectedElement, currentTime),
-  );
   const canToggleKeyframe = Boolean(onToggleKeyframe && playheadIsInsideSelectedElement);
   const canDelete = Boolean(
     (matchingDomSelection && onDeleteDomElement) || (selectedElement && onDeleteElement),
@@ -274,10 +281,45 @@ export function TimelineToolbar({
 
   useKeyframeKeyboard({
     enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe,
-    onAddKeyframe: onToggleKeyframe,
+    onAddKeyframe: () => {
+      void runSelectionAction("keyframe", recordKeyframe);
+    },
   });
+  const recordKeyframe = async () => {
+    if (!projectId || !matchingDomSelection || !onToggleKeyframe) return;
+    const source =
+      matchingDomSelection.sourceFile || activeCompPath || "index.html";
+    const before = await fetchParsedAnimations(projectId, source);
+    const recordedAt = usePlayerStore.getState().currentTime;
+    await onToggleKeyframe();
+    await waitForPendingDomEditSaves();
+    const after = await fetchParsedAnimations(projectId, source);
+    if (
+      !before ||
+      !after ||
+      JSON.stringify(before.animations) === JSON.stringify(after.animations)
+    )
+      return;
+    const animations = getAnimationsForElement(
+      after.animations, matchingDomSelection, matchingDomSelection.element,
+    );
+    const recordedAnimation = animations.find(
+      (animation) => keyframeAtPlayhead(animation, matchingDomSelection, recordedAt),
+    );
+    if (keyframeState !== "active" && !recordedAnimation) return;
+    const props = animatedProps(recordedAnimation ?? null).join(", ");
+    const guidance = recordedAnimation?.keyframes?.keyframes.length === 1
+      ? ` ${tx("The first point records the current state; add a second point to create motion.")}`
+      : "";
+    showToast(
+      keyframeState === "active"
+        ? tx("Keyframe removed")
+        : `${tx("Keyframe recorded")} · ${matchingDomSelection.label ?? selectedElement?.id} · ${props} · ${recordedAt.toFixed(3)}s.${guidance}`,
+      "info",
+    );
+  };
   const runSelectionAction = async (
-    action: "split" | "keyframe" | "delete",
+    action: "keyframe" | "delete",
     execute: () => Promise<void> | void,
   ) => {
     if (pendingAction) return;
@@ -300,6 +342,68 @@ export function TimelineToolbar({
       data-preserve-studio-selection="true"
     >
       <div className="hf-timeline-toolbar-edit flex min-w-0 items-center gap-2">
+        <ToolbarGroup
+          collapsed={layout === "narrow"}
+          label={tx("Editing and AI annotations")}
+          icon={MousePointer2}
+          toolbarWidth={toolbarWidth}
+        >
+        <Tooltip label={tx("Selection tool (V)")}>
+          <button
+            type="button"
+            className={`${iconButton} ${activeTool === "select" ? "bg-panel-input" : ""}`}
+            aria-label={tx("Selection tool")}
+            aria-pressed={activeTool === "select"}
+            onClick={() => setActiveTool("select")}
+          >
+            <MousePointer2 size={16} />
+          </button>
+        </Tooltip>
+        <Tooltip label={tx("Razor tool (B)")}>
+          <button
+            type="button"
+            className={`${iconButton} ${activeTool === "razor" ? "bg-panel-input" : ""}`}
+            aria-label={tx("Razor tool")}
+            aria-pressed={activeTool === "razor"}
+            onClick={() => setActiveTool("razor")}
+          >
+            <Scissors size={16} />
+          </button>
+        </Tooltip>
+        <Tooltip label={tx("Drag across the timeline to annotate a time range")}>
+          <button
+            type="button"
+            className={`${iconButton} ${activeTool === "annotate" ? "bg-panel-input text-studio-accent" : ""}`}
+            aria-label={tx("Annotate time range")}
+            aria-pressed={activeTool === "annotate"}
+            onClick={(event) => {
+              setActiveTool(activeTool === "annotate" ? "select" : "annotate");
+              event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+            }}
+          >
+            <LassoSelect size={16} />
+          </button>
+        </Tooltip>
+        <Tooltip label={tx("Send selected clips to AI")}>
+          <button
+            type="button"
+            className={iconButton}
+            aria-label={tx("Send selected clips to AI")}
+            disabled={!selectedElement}
+            onClick={(event) => {
+              const keys = new Set(selectedElementIds);
+              if (selectedElementId) keys.add(selectedElementId);
+              const selection = elements.filter((element) => keys.has(element.key ?? element.id));
+              if (!selection.length) return;
+              event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
+              usePlayerStore.getState().setIsPlaying(false);
+              setActiveTool("select");
+              setAnnotationSelection(selection);
+            }}
+          >
+            <Sparkles size={16} />
+          </button>
+        </Tooltip>
         <Tooltip label={tx(editHistory.undoLabel ? `Undo ${editHistory.undoLabel}` : "Undo")}>
           <button
             type="button"
@@ -323,23 +427,6 @@ export function TimelineToolbar({
           </button>
         </Tooltip>
         <ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />
-        <Tooltip label={tx(canSplit ? "Split clip at playhead" : "Select a clip and place the playhead inside it")}>
-          <button
-            type="button"
-            className={iconButton}
-            disabled={!canSplit || pendingAction !== null}
-            aria-label={tx("Split clip at playhead")}
-            aria-busy={pendingAction === "split"}
-            onClick={() => {
-              if (canSplit && selectedElement && onSplitElement) {
-                const edit = rebaseExpandedTimelineEdit(selectedElement, currentTime);
-                void runSelectionAction("split", () => onSplitElement(edit.element, edit.time));
-              }
-            }}
-          >
-            <ToolbarIcon src={scissorsIconSrc} />
-          </button>
-        </Tooltip>
         <div id={CANVAS_SNAP_TOOLBAR_SLOT_ID} className="flex shrink-0 items-center" />
         {STUDIO_KEYFRAMES_ENABLED && (
           <Tooltip
@@ -357,7 +444,9 @@ export function TimelineToolbar({
               disabled={!canToggleKeyframe || pendingAction !== null}
               onClick={() => {
                 if (canToggleKeyframe && onToggleKeyframe) {
-                  void runSelectionAction("keyframe", onToggleKeyframe);
+                  void runSelectionAction("keyframe", async () => {
+                    await recordKeyframe();
+                  });
                 }
               }}
               aria-label={tx(
@@ -394,9 +483,38 @@ export function TimelineToolbar({
             <ToolbarIcon src={trashIconSrc} width={24} />
           </button>
         </Tooltip>
+        </ToolbarGroup>
       </div>
 
       <div className="hf-timeline-toolbar-view flex shrink-0 items-center gap-2">
+        <Tooltip label={tx("Show thumbnails")}>
+          <button
+            type="button"
+            className={iconButton}
+            aria-label={tx("Show thumbnails")}
+            aria-pressed={thumbnailMode !== "hidden"}
+            onClick={() =>
+              setThumbnailMode(
+                thumbnailMode === "hidden" ? "adaptive" : "hidden",
+              )
+            }
+          >
+            <Image size={16} />
+          </button>
+        </Tooltip>
+        <Tooltip label={tx(zoomMode === "fit"
+          ? "Timeline is fitted; clip durations are unchanged. Zoom in to inspect details."
+          : "Show the entire timeline from 00:00 without changing clip durations")}>
+          <button
+            type="button"
+            className={`${iconButton} ${zoomMode === "fit" ? "bg-panel-input" : ""}`}
+            aria-label={tx("Fit timeline")}
+            aria-pressed={zoomMode === "fit"}
+            onClick={() => setZoomMode("fit")}
+          >
+            <ArrowsOutLineHorizontal size={16} aria-hidden="true" />
+          </button>
+        </Tooltip>
         <ToolbarGroup
           collapsed={layout !== "full"}
           label={tx("Timeline zoom")}
@@ -485,6 +603,14 @@ export function TimelineToolbar({
           <div id={SHORTCUTS_TOOLBAR_SLOT_ID} className="flex items-center" />
         </ToolbarGroup>
       </div>
+      {annotationSelection && (
+        <EditPopover
+          rangeStart={Math.min(...annotationSelection.map((element) => element.start))}
+          rangeEnd={Math.max(...annotationSelection.map((element) => element.start + element.duration))}
+          selectedElements={annotationSelection}
+          onClose={() => setAnnotationSelection(null)}
+        />
+      )}
     </div>
   );
 }

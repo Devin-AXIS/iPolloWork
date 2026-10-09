@@ -1,4 +1,4 @@
-import { durationToFrameCount, frameAlignedDurationSeconds, lastVideoFrameTime } from "@hyperframes/core/runtime/protocol";
+import { durationToFrameCount, frameAlignedDurationSeconds, lastVideoFrameTime, runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 // @vitest-environment happy-dom
 import { createElement } from "react";
 import { flushSync } from "react-dom";
@@ -137,6 +137,59 @@ function mountForwardPlaybackLoopHarness(getAdapter: () => PlaybackAdapter | nul
     },
   };
 }
+
+describe("authored audio metadata refresh", () => {
+  it.each([
+    ["fade-in", "fadeIn", "0.45", 0.45],
+    ["fade-out", "fadeOut", "0.7", 0.7],
+    ["volume", "volume", "0.45", 0.45],
+    ["playback-rate", "playbackRate", "1.2", 1.2],
+    ["media-start", "playbackStart", "0.4", 0.4],
+  ] as const)("refreshes %s without requiring a clip timing change and restores it on undo", (attribute, property, value, expected) => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML = `<main data-composition-id="main" data-duration="6"><audio id="music" data-start="0" data-duration="6" data-track-index="1" data-volume="0.6" data-fade-in="0.35" data-fade-out="0.4"></audio></main>`;
+    const adapter: PlaybackAdapter = {
+      play: vi.fn(), pause: vi.fn(), seek: vi.fn(), getTime: () => 0,
+      getDuration: () => 6, isPlaying: () => false,
+    };
+    Object.defineProperty(frame.contentWindow, "__player", { value: adapter });
+    const manifest = {
+      ...runtimeProtocolMetadata(30),
+      clips: [{ id: "music", label: "Music", start: 0, duration: 6, track: 1,
+        kind: "element", tagName: "audio", compositionId: null,
+        parentCompositionId: null, compositionSrc: null, assetUrl: null }],
+      durationInFrames: 180, fps: 30,
+    };
+    Object.defineProperty(frame.contentWindow, "__clipManifest", { value: manifest });
+    usePlayerStore.setState({ elements: [], duration: 6, currentTime: 0, projectId: null });
+    const harness = mountTimelinePlayerHarness();
+    harness.iframeRef.current = frame;
+    try {
+      harness.onIframeLoad();
+      const music = () => usePlayerStore.getState().elements.find((el) => el.id === "music");
+      expect(music()).toBeDefined();
+      const original = music()![property];
+      const media = doc.getElementById("music")! as HTMLMediaElement;
+      const previousAttribute = media.getAttribute(`data-${attribute}`);
+      const previousRate = media.defaultPlaybackRate;
+      media.setAttribute(`data-${attribute}`, value);
+      if (attribute === "playback-rate") media.defaultPlaybackRate = Number(value);
+      harness.onIframeLoad();
+      expect(music()![property]).toBe(expected);
+      expect(music()!.duration).toBe(6);
+      if (previousAttribute === null) media.removeAttribute(`data-${attribute}`);
+      else media.setAttribute(`data-${attribute}`, previousAttribute);
+      media.defaultPlaybackRate = previousRate;
+      harness.onIframeLoad();
+      expect(music()![property]).toBe(original);
+    } finally {
+      harness.unmount();
+      frame.remove();
+    }
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

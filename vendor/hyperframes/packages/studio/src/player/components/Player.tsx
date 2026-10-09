@@ -26,6 +26,7 @@ interface PlayerProps {
 
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
+  readonly ready: boolean;
 }
 
 const MEDIA_HAVE_CURRENT_DATA = 2;
@@ -390,7 +391,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // load event reaches this listener. Once the replacement has already
           // handed off, that late load must not reopen a redundant overlay over
           // the freshly revealed preview.
-          if (!deferredReadyHandled) setCompositionLoading(true);
+          setCompositionLoading(!player.ready && !deferredReadyHandled);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");

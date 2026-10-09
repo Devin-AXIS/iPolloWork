@@ -34,7 +34,7 @@
 
 ## 安装并启动
 
-要求 Node.js 22 或更高版本。发布包内置从 iPolloWork 主仓库构建的定制 HyperFrames 运行时，当前源版本为 `0.7.60`；不会在安装时另外下载同名公共 npm 版本。
+要求 Node.js 22 或更高版本。发布包内置从 iPolloWork 主仓库构建的定制 HyperFrames 运行时，当前源版本为 `0.8.140`；不会在安装时另外下载同名公共 npm 版本。
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add deepseek-ivideo
@@ -109,7 +109,7 @@ The first release intentionally excludes voice cloning, voice settings, and the 
 
 ## Install and run
 
-Node.js 22 or newer is required. The release artifact embeds the customized HyperFrames runtime built from the iPolloWork source repository, currently at source version `0.7.60`; installation does not fetch the public npm package with the same name.
+Node.js 22 or newer is required. The release artifact embeds the customized HyperFrames runtime built from the iPolloWork source repository, currently at source version `0.8.140`; installation does not fetch the public npm package with the same name.
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add deepseek-ivideo

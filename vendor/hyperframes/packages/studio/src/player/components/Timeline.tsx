@@ -1,4 +1,5 @@
 import { useRef, useMemo, useCallback, useState, useEffect, memo } from "react";
+import { roundTo3 } from "../../utils/rounding";
 import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
@@ -403,6 +404,7 @@ export const Timeline = memo(function Timeline({
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    cancelRangeSelection,
   } = useTimelineRangeSelection({
     scrollRef,
     ppsRef,
@@ -475,7 +477,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className={`hf-timeline-root relative border-t select-none h-full overflow-hidden ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`hf-timeline-root relative border-t select-none h-full overflow-hidden ${activeTool === "razor" || activeTool === "annotate" || shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={(e) => {
         if (activeTool === "razor" && scrollRef.current) {
           const rect = scrollRef.current.getBoundingClientRect();
@@ -500,6 +502,13 @@ export const Timeline = memo(function Timeline({
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}
         onDrop={handleAssetDrop}
+        onPointerDownCapture={(event) => {
+          // Own the gesture before clip trim, animation, or drag handlers can run.
+          if (activeTool !== "annotate" || event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          handlePointerDown(event);
+        }}
         onPointerDown={(e) => {
           if (activeTool === "razor" && e.shiftKey && e.button === 0 && scrollRef.current) {
             const rect = scrollRef.current.getBoundingClientRect();
@@ -517,6 +526,7 @@ export const Timeline = memo(function Timeline({
         }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={cancelRangeSelection}
         onLostPointerCapture={handlePointerUp}
       >
         <TimelineCanvas
@@ -576,7 +586,7 @@ export const Timeline = memo(function Timeline({
             onSelectElement?.(el);
             // Select the clicked diamond (matches shift-click); cleared above so this single-selects.
             toggleSelectedKeyframe(`${elKey}:${pct}`);
-            const absTime = el.start + (pct / 100) * el.duration;
+            const absTime = roundTo3(el.start + (pct / 100) * el.duration);
             onSeek?.(absTime);
             const kfData = keyframeCache?.get(elKey);
             const kf = kfData?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.5);
@@ -629,6 +639,11 @@ export const Timeline = memo(function Timeline({
         onWidthChange={setPreferredGutterWidth}
         onCommit={(width) => writeStudioUiPreferences({ timelineLayerWidth: width })}
       />
+      {activeTool === "annotate" && !rangeSelection && (
+        <div role="status" className="pointer-events-none absolute left-1/2 top-10 z-30 -translate-x-1/2 whitespace-nowrap rounded-xl border border-panel-border bg-panel-bg px-3 py-2 text-xs text-panel-text-2 shadow-lg">
+          拖选时间范围，松开后交给 AI · Esc 取消
+        </div>
+      )}
       <TimelineOverlays
         theme={theme}
         showShortcutHint={showShortcutHint}

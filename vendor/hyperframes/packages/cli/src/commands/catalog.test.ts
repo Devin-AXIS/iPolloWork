@@ -1,0 +1,914 @@
+// fallow-ignore-file code-duplication
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { RegistryItem } from "@hyperframes/core";
+import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+
+/** The whole registry, which is what "in this registry" has to be measured against. */
+const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
+const item = (name: string): { name: string } => ({ name });
+
+describe("pickByName", () => {
+  it("counts only the ranked names this registry has no item for", () => {
+    const { ranked, missing } = pickByName(
+      [item("fade-through"), item("whip-pan"), item("count-up")],
+      ["whip-pan", "fade-through", "accordion", "alert-dialog"],
+      registryNames,
+    );
+
+    expect(ranked.map((entry) => entry.name)).toEqual(["whip-pan", "fade-through"]);
+    // accordion and alert-dialog are in the ranking artifact and nowhere in the
+    // registry: a real skew between two separately published generations.
+    expect(missing).toBe(2);
+  });
+
+  it("does not count moves the user's own filter removed", () => {
+    // `items` is what survived --type/--tag; the registry still has the rest.
+    const { ranked, missing } = pickByName(
+      [item("fade-through")],
+      ["whip-pan", "fade-through", "count-up", "accordion"],
+      registryNames,
+    );
+
+    expect(ranked.map((entry) => entry.name)).toEqual(["fade-through"]);
+    // whip-pan and count-up are installable, just filtered out. Only accordion
+    // is genuinely absent, and filtering must not inflate that number.
+    expect(missing).toBe(1);
+  });
+
+  it("reports nothing missing when the whole ranking is installable", () => {
+    const { missing } = pickByName(
+      [item("fade-through")],
+      ["fade-through", "whip-pan"],
+      registryNames,
+    );
+
+    expect(missing).toBe(0);
+  });
+});
+
+describe("countUnindexed", () => {
+  it("counts the registry moves the on-device index holds no vector for", () => {
+    // The move published after the artifact was fetched. Meaning search cannot
+    // rank it at all, which is the failure this number exists to expose.
+    expect(countUnindexed(registryNames, ["fade-through"])).toBe(2);
+  });
+
+  it("reports nothing when the index covers the registry", () => {
+    expect(countUnindexed(registryNames, ["count-up", "whip-pan", "fade-through"])).toBe(0);
+  });
+
+  it("does not let names the registry dropped paper over a gap", () => {
+    // The artifact holds two names this registry cannot install and is missing
+    // two it can. Comparing sizes rather than membership would call that even.
+    expect(countUnindexed(registryNames, ["fade-through", "accordion", "alert-dialog"])).toBe(2);
+  });
+});
+
+// ── The command envelope ────────────────────────────────────────────────────
+// The JSON envelope is the surface an agent reads, so under-coverage and the
+// score are pinned where they are actually published rather than only at the
+// helper that computes them.
+
+const state = vi.hoisted(() => ({
+  registry: [] as Array<{ name: string; type: string; tags?: string[] }>,
+  artifactRevision: "revision-current",
+  cachedVectorRevision: "revision-current",
+  vectorFetches: 0,
+  vectorFetchSucceeds: true,
+  ranking: null as Array<{ name: string; score: number }> | null,
+  rankingError: null as Error | null,
+  indexed: [] as string[],
+  // The consent path. Static stubs could not reach it: with the status pinned
+  // to "ready" the prompt never fires, so the answer was never a variable and
+  // the decline branch was never executed by any test.
+  modelStatus: "ready" as "ready" | "not-asked" | "declined" | "unavailable",
+  confirmAnswer: true as boolean,
+  consentRecorded: [] as boolean[],
+  consentSavedMeanwhile: undefined as boolean | undefined,
+  consentWriteFails: false,
+  downloads: 0,
+  runtimeInstalls: 0,
+  runtimeAvailable: true,
+  noSavedDuringRuntime: false,
+  vectorsOnDisk: true,
+  runtimeOnDisk: true,
+}));
+
+vi.mock("../registry/resolver.js", () => ({
+  loadAllItems: async (entries: Array<{ name: string; type: string; tags?: string[] }>) =>
+    entries.map((entry) => ({
+      name: entry.name,
+      type: entry.type,
+      title: entry.name,
+      description: `${entry.name} description`,
+      tags: entry.tags ?? [],
+    })),
+}));
+
+vi.mock("../registry/remote.js", () => ({
+  fetchRegistryManifest: async () => ({
+    items: state.registry,
+    catalogArtifact: { revision: state.artifactRevision },
+  }),
+}));
+
+vi.mock("@clack/prompts", () => ({
+  confirm: async () => state.confirmAnswer,
+  isCancel: (value: unknown) => value === null,
+}));
+
+vi.mock("../registry/localModel.js", () => ({
+  // "ready" is a user who opted into the on-device tier at some point. Every
+  // later search takes that tier with no flag, which is how a frozen artifact
+  // goes on answering forever. "not-asked" is the first run, the one that asks.
+  // Recording an answer is what stops the CLI asking again, so the stub has to
+  // move with it. Pinned to "not-asked" the second offer later in the run also
+  // fires, and the double prompt looks like a product bug rather than a stub
+  // that does not model the contract.
+  localModelStatus: () => {
+    const answer = state.consentRecorded.at(-1);
+    return {
+      status: answer === false ? "declined" : answer === true ? "ready" : state.modelStatus,
+    };
+  },
+  ensureLocalModel: async () => {
+    state.downloads += 1;
+    if (state.modelStatus === "unavailable") state.modelStatus = "ready";
+    return true;
+  },
+  recordLocalModelConsent: (enabled: boolean) => {
+    if (state.consentWriteFails) return state.consentRecorded.at(-1);
+    state.consentRecorded.push(enabled);
+    return enabled;
+  },
+  assumeLocalModelConsent: () => {
+    if (state.consentWriteFails) return undefined;
+    const onDisk = state.consentSavedMeanwhile ?? state.consentRecorded.at(-1);
+    if (onDisk !== undefined) return onDisk;
+    state.consentRecorded.push(true);
+    return true;
+  },
+  // "unavailable" and "ready" both mean a yes is saved; only a later save changes that.
+  savedLocalModelConsent: () =>
+    state.consentSavedMeanwhile ??
+    state.consentRecorded.at(-1) ??
+    (state.modelStatus === "ready" || state.modelStatus === "unavailable" ? true : undefined),
+  downloadOfferMessage: () => "offer",
+  nonInteractiveConsentMessage: () => "consent",
+}));
+
+vi.mock("../registry/localEmbedder.js", () => ({
+  hasLocalRuntime: () => state.runtimeOnDisk,
+  // Left unmocked this would run a real npm install under vitest.
+  ensureLocalRuntime: async () => {
+    state.runtimeInstalls += 1;
+    if (state.noSavedDuringRuntime) state.consentSavedMeanwhile = false;
+    return state.runtimeAvailable ? { ok: true } : { ok: false, reason: "installing it failed" };
+  },
+}));
+
+vi.mock("../registry/localSemantic.js", () => ({
+  mediaSemanticRanking: async () => null,
+  localSemanticRanking: async () => {
+    if (state.rankingError) throw state.rankingError;
+    return state.ranking;
+  },
+  localVectorNames: () => state.indexed,
+  cachedLocalVectorRevision: () => state.cachedVectorRevision,
+  hasLocalVectors: () => state.vectorsOnDisk,
+  fetchLocalVectors: async (_registry: string, options: { expectedRevision?: string } = {}) => {
+    state.vectorFetches += 1;
+    if (state.vectorFetchSucceeds && options.expectedRevision !== undefined) {
+      state.cachedVectorRevision = options.expectedRevision;
+    }
+    return state.vectorFetchSucceeds;
+  },
+}));
+
+const block = (name: string, tags?: string[]): { name: string; type: string; tags?: string[] } => ({
+  name,
+  type: "hyperframes:block",
+  tags,
+});
+const component = (name: string): { name: string; type: string } => ({
+  name,
+  type: "hyperframes:component",
+});
+
+interface Envelope {
+  tier: string;
+  dropped: number;
+  unindexed: number;
+  top_score?: number;
+  shown: number;
+  warnings?: string[];
+  // Not optional: both envelope-shaped emit sites are inside `if (query)`
+  // branches and both set it, so a search envelope without it is a bug rather
+  // than a shape the caller has to handle.
+  report_gap: string;
+}
+
+async function runCatalog(args: Record<string, unknown>): Promise<string> {
+  const command = (await import("./catalog.js")).default as unknown as {
+    run: (context: { args: Record<string, unknown> }) => Promise<void>;
+  };
+  const lines: string[] = [];
+  const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+    lines.push(parts.map(String).join(" "));
+  });
+  try {
+    await command.run({ args });
+  } finally {
+    log.mockRestore();
+  }
+  // Colour is decoration; assertions are about the words. The escape byte is
+  // built rather than written: as a literal or as \u001B it is a control
+  // character in the source, which the lint rules reject either way.
+  const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+  return lines.join("\n").replace(ansi, "");
+}
+
+async function runEnvelope(args: Record<string, unknown>): Promise<Envelope> {
+  return JSON.parse(await runCatalog({ json: true, ...args })) as Envelope;
+}
+
+/**
+ * Both streams in call order, plus the exit code the CLI would have used.
+ *
+ * `runCatalog` captures stdout only, and every warning in this command goes to
+ * stderr, so anything asserting on a warning -- or on where one sits relative
+ * to a printed line -- has to read both. finishCommand throws a signal rather
+ * than calling process.exit.
+ */
+async function runForExit(
+  args: Record<string, unknown>,
+): Promise<{ exitCode: number; err: string }> {
+  const command = (await import("./catalog.js")).default as unknown as {
+    run: (context: { args: Record<string, unknown> }) => Promise<void>;
+  };
+  const lines: string[] = [];
+  const capture = (...parts: unknown[]): void => {
+    lines.push(parts.map(String).join(" "));
+  };
+  const log = vi.spyOn(console, "log").mockImplementation(capture);
+  const error = vi.spyOn(console, "error").mockImplementation(capture);
+  let exitCode = 0;
+  try {
+    await command.run({ args });
+  } catch (thrown) {
+    const signal = thrown as { result?: { exitCode?: number }; exitCode?: number };
+    exitCode = signal.result?.exitCode ?? signal.exitCode ?? -1;
+  } finally {
+    log.mockRestore();
+    error.mockRestore();
+  }
+  // eslint-disable-next-line no-control-regex
+  const esc = String.fromCharCode(27);
+  return { exitCode, err: lines.join("\n").split(`${esc}[`).join("").replace(/\d+m/g, "") };
+}
+
+beforeEach(() => {
+  state.modelStatus = "ready";
+  state.artifactRevision = "revision-current";
+  state.cachedVectorRevision = "revision-current";
+  state.vectorFetches = 0;
+  state.vectorFetchSucceeds = true;
+  state.rankingError = null;
+  state.confirmAnswer = true;
+  state.consentRecorded = [];
+  state.consentSavedMeanwhile = undefined;
+  state.consentWriteFails = false;
+  state.downloads = 0;
+  state.runtimeInstalls = 0;
+  state.runtimeAvailable = true;
+  state.noSavedDuringRuntime = false;
+  state.vectorsOnDisk = true;
+  state.runtimeOnDisk = true;
+  state.registry = [block("count-up"), block("fade-through"), component("whip-pan")];
+  state.indexed = ["count-up", "fade-through", "whip-pan"];
+  state.ranking = [
+    { name: "count-up", score: 0.71 },
+    { name: "whip-pan", score: 0.42 },
+    { name: "fade-through", score: 0.31 },
+  ];
+});
+
+describe("catalog --json meaning search", () => {
+  it("reports the registry moves meaning search cannot see", async () => {
+    // Published after the user's artifact was fetched: in the registry, absent
+    // from the index, and therefore unreturnable by any query.
+    state.registry.push(block("split-screen"));
+
+    const envelope = await runEnvelope({ query: "make a number count up" });
+
+    expect(envelope.tier).toBe("on-device");
+    expect(envelope.unindexed).toBe(1);
+  });
+
+  it("reports nothing unindexed when the artifact matches the registry", async () => {
+    const envelope = await runEnvelope({ query: "make a number count up" });
+
+    expect(envelope.unindexed).toBe(0);
+  });
+
+  it("measures unindexed against the unfiltered registry under --type", async () => {
+    // The missing move is a component; the user asked for blocks. Their filter
+    // is not the index being stale, and it must not hide a stale index either.
+    state.registry.push(component("push-in"));
+
+    const envelope = await runEnvelope({ query: "make a number count up", type: "block" });
+
+    expect(envelope.shown).toBe(2);
+    expect(envelope.unindexed).toBe(1);
+  });
+
+  it("keeps dropped counted against the unfiltered registry under --type", async () => {
+    // accordion is the only name the registry genuinely lacks. whip-pan is
+    // installable and merely filtered out, so it is not a drop.
+    state.ranking = [
+      { name: "count-up", score: 0.71 },
+      { name: "whip-pan", score: 0.62 },
+      { name: "accordion", score: 0.55 },
+      { name: "fade-through", score: 0.31 },
+    ];
+
+    const envelope = await runEnvelope({ query: "make a number count up", type: "block" });
+
+    expect(envelope.dropped).toBe(1);
+    expect(envelope.shown).toBe(2);
+  });
+
+  it("carries the score of the best result it actually showed", async () => {
+    // The top-ranked name is not installable here, so reporting the ranking's
+    // own head would describe a row the caller never received.
+    state.ranking = [
+      { name: "accordion", score: 0.93 },
+      { name: "count-up", score: 0.71 },
+      { name: "whip-pan", score: 0.42 },
+      { name: "fade-through", score: 0.31 },
+    ];
+
+    const envelope = await runEnvelope({ query: "make a number count up" });
+
+    expect(envelope.top_score).toBeCloseTo(0.71);
+  });
+
+  it("omits the score on the word tier, whose scale is not the same one", async () => {
+    state.ranking = null;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.top_score).toBeUndefined();
+    // Word matching ranks the live registry listing, so it is never stale.
+    expect(envelope.unindexed).toBe(0);
+  });
+
+  it("finds registry tags on the word tier", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+    state.registry = [block("fade-through", ["transition"]), block("count-up", ["number"])];
+
+    const envelope = await runEnvelope({ query: "transition" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.shown).toBe(1);
+  });
+
+  it("treats a stray positional the same as --query, rather than dropping it", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+    state.registry = [block("fade-through", ["transition"]), block("count-up", ["number"])];
+
+    const envelope = await runEnvelope({ words: "transition" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.shown).toBe(1);
+  });
+
+  it("prefers an explicit --query over a positional", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+    state.registry = [block("fade-through", ["transition"]), block("count-up", ["number"])];
+
+    const envelope = await runEnvelope({ query: "number", words: "transition" });
+
+    expect(envelope.shown).toBe(1);
+    expect(envelope.report_gap).toContain("number");
+  });
+
+  it("carries an on-device runtime failure into the JSON envelope", async () => {
+    state.rankingError = new Error("model could not load");
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.warnings).toEqual(["on-device search did not run: model could not load"]);
+  });
+
+  it("downloads nothing and says why when the runtime cannot be installed", async () => {
+    state.modelStatus = "unavailable";
+    state.runtimeAvailable = false;
+
+    const envelope = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect(state.downloads).toBe(0);
+    expect(envelope.warnings).toEqual(["on-device search skipped: installing it failed"]);
+  });
+
+  it("refreshes a changed vector revision under existing consent", async () => {
+    state.cachedVectorRevision = "revision-previous";
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("on-device");
+    expect(state.vectorFetches).toBe(1);
+    expect(state.cachedVectorRevision).toBe("revision-current");
+    expect(state.consentRecorded).toEqual([]);
+  });
+
+  it("replaces a changed model revision under existing consent", async () => {
+    state.modelStatus = "unavailable";
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("on-device");
+    expect(state.downloads).toBe(1);
+    expect(state.consentRecorded).toEqual([]);
+  });
+
+  it("keeps the previous vectors and reports a failed routine refresh", async () => {
+    state.cachedVectorRevision = "revision-previous";
+    state.vectorFetchSucceeds = false;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("on-device");
+    expect(state.cachedVectorRevision).toBe("revision-previous");
+    expect(envelope.warnings).toEqual([
+      "on-device search is using the previous catalog vectors because the update failed",
+    ]);
+  });
+
+  it("hands back the gap-report command even when the search found things", async () => {
+    // The reports we actually want come from searches that returned plausible
+    // items where none of them did the job. If the command only appeared on
+    // zero results it would be absent from every case worth reporting.
+    const envelope = await runEnvelope({ query: "make a number count up" });
+
+    expect(envelope.shown).toBeGreaterThan(0);
+    expect(envelope.report_gap).toBe(
+      'npx hyperframes feedback --search-miss "make a number count up" ' +
+        '--wanted "<the move you needed>" --tier on-device',
+    );
+  });
+
+  it("names the tier that actually answered in the gap-report command", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const envelope = await runEnvelope({ query: "count up" });
+
+    expect(envelope.tier).toBe("words");
+    expect(envelope.report_gap).toContain("--tier words");
+  });
+});
+
+describe("a query with no searchable words", () => {
+  it("exits non-zero, because it is bad input rather than an empty shelf", async () => {
+    // The flag is word-tier only, so the stubbed on-device ranker has to be off
+    // or it answers with hits and the branch never runs.
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { exitCode } = await runForExit({ query: "実写写真のみ 9:16 生活ハック" });
+
+    // An agent that only reads the exit code would otherwise take "success, no
+    // results" at face value and hand-author a move already in the registry.
+    expect(exitCode).toBe(1);
+  });
+
+  it("says to search in English and does not blame the catalog", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { err } = await runForExit({ query: "実写写真のみ 9:16 生活ハック" });
+
+    expect(err).toContain("No searchable words in query");
+    expect(err).toContain("Search in English");
+    expect(err).toContain("not a gap in");
+    // The gap channel must not be offered: nothing was searched, so a report
+    // here is noise in the one signal that tells us what to build.
+    expect(err).not.toContain("--search-miss");
+  });
+
+  it("leaves a genuine empty result exiting zero", async () => {
+    state.ranking = [];
+    state.modelStatus = "declined";
+
+    const { exitCode, err } = await runForExit({ query: "quantum entanglement reactor" });
+
+    expect(exitCode).toBe(0);
+    expect(err).toContain("No items match");
+  });
+});
+
+describe("a zero-result search", () => {
+  // Nothing here passes --on-device on purpose: the question is what an
+  // untouched run is told, and an untouched run is on word matching, because
+  // the better tier is behind a download nobody has consented to yet.
+  const missing = "quantum entanglement reactor";
+
+  it("names the better tier, ahead of the gap report", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: missing });
+
+    expect(err).toContain("No items match");
+    expect(err).toContain("consent");
+    // An agent that could still find the move must not be sent to file a gap
+    // first. A missing needle indexes at -1 and would satisfy a bare ordering
+    // check on its own, so both lines are pinned present above it.
+    expect(err.indexOf("consent")).toBeLessThan(err.indexOf("--search-miss"));
+  });
+
+  it("carries the same guidance in the --json envelope", async () => {
+    // The half a printed line cannot reach. --json is every agent run, and the
+    // envelope is the only thing that run reads.
+    state.modelStatus = "not-asked";
+
+    const envelope = await runEnvelope({ query: missing });
+
+    expect(envelope.shown).toBe(0);
+    expect(envelope.warnings).toContain("consent");
+  });
+
+  it("says nothing once the download has been declined", async () => {
+    // The caller already answered. Re-offering a download they refused is the
+    // nagging the consent gate exists to prevent.
+    state.modelStatus = "declined";
+
+    const { err } = await runForExit({ query: missing });
+
+    expect(err).toContain("No items match");
+    expect(err).not.toContain("consent");
+  });
+
+  it("says nothing when the better tier is already on", async () => {
+    // Ranked by meaning and still empty: there is no better tier left to name,
+    // and the gap report is the only honest next step.
+    state.modelStatus = "ready";
+    state.ranking = [];
+
+    const { err } = await runForExit({ query: missing });
+
+    expect(err).toContain("No items match");
+    expect(err).not.toContain("consent");
+  });
+
+  // The two guards below the status check are load-bearing but were invisible
+  // to the suite: every other "no hint" case pins a status that already makes
+  // the helper return null, so deleting either guard passed all of them.
+
+  it("says nothing when the query never parsed, even with consent unanswered", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: "\u91cf\u5b50" });
+
+    // Told to search in English; a second tier does not change that advice.
+    expect(err).not.toContain("consent");
+  });
+
+  it("names the tier once when the tier already explained why it cannot run", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: missing, "on-device": true });
+
+    // prepareOnDeviceTier already warned with this exact sentence. Without the
+    // guard it lands twice, in the one array this change exists to make
+    // trustworthy.
+    expect(err.split("consent").length - 1).toBe(1);
+  });
+
+  it("leaves a search that found something alone", async () => {
+    state.modelStatus = "not-asked";
+
+    const { err } = await runForExit({ query: "count up" });
+
+    expect(err).not.toContain("No items match");
+    // The hit path already named the tier and has to keep doing it: the
+    // zero-result path was accidentally the inverse of this one.
+    expect(err).toContain("consent");
+    expect(err).toContain("None of these do it?");
+  });
+});
+
+describe("searchMissCommand", () => {
+  it("keeps a non-ASCII query intact", () => {
+    // Half of the gap reports received so far were CJK. A query mangled on the
+    // way into the command is a report nobody can act on.
+    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
+      '--search-miss "実写写真のみ 9:16 生活ハック"',
+    );
+  });
+
+  it("escapes shell metacharacters so the printed line is safe to paste", () => {
+    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
+
+    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
+  });
+});
+
+describe("catalog meaning search, on a terminal", () => {
+  it("says how much is missing and what to run about it", async () => {
+    state.registry.push(block("split-screen"));
+
+    const output = await runCatalog({ query: "make a number count up" });
+
+    expect(output).toContain("1 of 4 moves are missing from the on-device index");
+    expect(output).toContain("Re-run with --on-device to refresh it.");
+  });
+
+  it("says nothing when the index covers the registry", async () => {
+    const output = await runCatalog({ query: "make a number count up" });
+
+    expect(output).not.toContain("missing from the on-device index");
+  });
+
+  it("offers the gap report on the word tier, not just on-device", async () => {
+    // The tier that answers almost every real search, because on-device needs
+    // a consented download. Gating the nudge on on-device left it unprinted in
+    // the only case that occurs, which is how the gap channel stayed silent.
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const output = await runCatalog({ query: "count up" });
+
+    expect(output).toContain("None of these do it?");
+    expect(output).toContain("--tier words");
+  });
+
+  it("offers the gap report on the on-device tier too", async () => {
+    const output = await runCatalog({ query: "make a number count up" });
+
+    expect(output).toContain("None of these do it?");
+    expect(output).toContain("--tier on-device");
+  });
+});
+
+describe("the on-device download offer", () => {
+  // The offer only exists for someone who can answer it. Off a terminal the
+  // caller must add --yes explicitly, so a test that forgets the terminal
+  // never reaches the prompt and passes for the wrong reason.
+  const asATerminal = async <T>(
+    run: () => Promise<T>,
+    { stdin = true, ci }: { stdin?: boolean; ci?: string } = {},
+  ): Promise<T> => {
+    const streams = [process.stdin, process.stdout];
+    const descriptors = streams.map((stream) => Object.getOwnPropertyDescriptor(stream, "isTTY"));
+    const savedCi = process.env["CI"];
+    Object.defineProperty(process.stdin, "isTTY", { value: stdin, configurable: true });
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    if (ci === undefined) delete process.env["CI"];
+    else process.env["CI"] = ci;
+    try {
+      return await run();
+    } finally {
+      streams.forEach((stream, i) => {
+        const descriptor = descriptors[i];
+        if (descriptor) Object.defineProperty(stream, "isTTY", descriptor);
+        else delete (stream as unknown as { isTTY?: boolean }).isTTY;
+      });
+      if (savedCi === undefined) delete process.env["CI"];
+      else process.env["CI"] = savedCi;
+    }
+  };
+
+  it("downloads nothing and records no consent when the offer is declined", async () => {
+    // The whole point of asking. Nothing below this line may fetch 32 MB.
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+
+    const output = await asATerminal(() =>
+      runCatalog({ query: "make a number count up", "on-device": true }),
+    );
+
+    expect(state.downloads).toBe(0);
+    expect(state.consentRecorded).toEqual([false]);
+    expect(output).not.toContain("offer");
+  });
+
+  it("downloads once when the offer is accepted", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+
+    await asATerminal(() => runCatalog({ query: "make a number count up", "on-device": true }));
+
+    expect(state.downloads).toBe(1);
+    expect(state.consentRecorded).toEqual([true]);
+  });
+
+  it("keeps a decline sticky until explicit --yes consent", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+
+    await asATerminal(() => runCatalog({ query: "count up", "on-device": true }));
+    state.confirmAnswer = true;
+    await asATerminal(() => runCatalog({ query: "count up", "on-device": true }));
+
+    expect(state.downloads).toBe(0);
+    expect(state.consentRecorded).toEqual([false]);
+
+    await asATerminal(() => runCatalog({ query: "count up", "on-device": true, yes: true }));
+    expect(state.downloads).toBe(1);
+    expect(state.consentRecorded).toEqual([false, true]);
+  });
+
+  it("says a no that could not be saved was not saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() => runForExit({ query: "count up", "on-device": true }));
+
+    expect([state.downloads, state.consentRecorded]).toEqual([0, []]);
+    expect(err).toContain("declined, but could not save the answer in settings");
+  });
+
+  it("says so when a no given to the thin-results offer could not be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() => runForExit({ query: "count up" }));
+
+    expect(err).toContain("Could not save the answer in settings; `hyperframes doctor` says why.");
+  });
+
+  it.each([
+    ["piped stdin", { stdin: false }],
+    ["CI", { ci: "true" }],
+  ])("treats a terminal with %s as unwatched, so its --yes keeps a saved no", async (_, env) => {
+    state.consentRecorded = [false];
+
+    const { err } = await asATerminal(
+      () => runForExit({ query: "count up", "on-device": true, yes: true }),
+      env,
+    );
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([
+      0,
+      0,
+      [false],
+    ]);
+    expect(err).toContain("previously declined");
+  });
+
+  it.each([
+    ["piped stdin", { stdin: false }],
+    ["CI", { ci: "true" }],
+  ])("does not offer the download after thin results in a terminal with %s", async (_, env) => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+
+    await asATerminal(() => runForExit({ query: "count up" }), env);
+
+    expect([state.downloads, state.consentRecorded]).toEqual([0, []]);
+  });
+
+  it("does not treat non-interactive output as download consent", async () => {
+    state.modelStatus = "not-asked";
+
+    await runEnvelope({ query: "count up", "on-device": true });
+
+    expect(state.downloads).toBe(0);
+    expect(state.consentRecorded).toEqual([]);
+  });
+
+  it("lets --yes in a run nobody watches answer a question never asked", async () => {
+    state.modelStatus = "not-asked";
+
+    await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.downloads, state.consentRecorded]).toEqual([1, [true]]);
+  });
+
+  it("keeps a recorded no against --yes in a run nobody watches, installing nothing", async () => {
+    state.consentRecorded = [false];
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([
+      0,
+      0,
+      [false],
+    ]);
+    expect(warnings?.join(" ")).toContain("previously declined");
+  });
+
+  it("installs nothing, and does not claim a no, when the answer cannot be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.consentWriteFails = true;
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([0, 0]);
+    expect(warnings?.join(" ")).toContain("could not save the answer");
+    expect(warnings?.join(" ")).not.toContain("previously declined");
+  });
+
+  it("keeps a no saved by someone else while the run was starting", async () => {
+    state.modelStatus = "not-asked";
+    state.consentSavedMeanwhile = false;
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([0, 0, []]);
+    expect(warnings?.join(" ")).toContain("previously declined");
+  });
+
+  it("installs nothing on the routine update when a no was saved after the yes", async () => {
+    state.modelStatus = "unavailable";
+    state.consentSavedMeanwhile = false;
+
+    const { warnings } = await runEnvelope({ query: "count up" });
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([0, 0]);
+    expect(warnings?.join(" ")).toContain("previously declined");
+  });
+
+  it("skips the model download when a no is saved while the runtime installs", async () => {
+    state.modelStatus = "unavailable";
+    state.noSavedDuringRuntime = true;
+
+    await runEnvelope({ query: "count up", "on-device": true });
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([1, 0]);
+  });
+
+  it("fetches nothing after a thin-results yes that cannot be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+    state.consentWriteFails = true;
+    state.vectorsOnDisk = false;
+
+    await asATerminal(() => runForExit({ query: "count up" }));
+
+    expect([state.vectorFetches, state.downloads]).toEqual([0, 0]);
+  });
+
+  it.each([
+    [true, 1],
+    [false, 0],
+  ])(
+    "installs a runtime missing beside a ready model only through the consent check (saved yes: %s)",
+    async (savedYes, installs) => {
+      state.runtimeOnDisk = false;
+      if (!savedYes) state.consentSavedMeanwhile = false;
+
+      await runEnvelope({ query: "count up" });
+
+      expect(state.runtimeInstalls).toBe(installs);
+    },
+  );
+
+  it("installs nothing when a person's yes cannot be saved", async () => {
+    state.consentRecorded = [false];
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() =>
+      runForExit({ query: "count up", "on-device": true, yes: true }),
+    );
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([0, 0]);
+    expect(err).toContain("could not save the answer in settings");
+  });
+});
+
+describe("catalogRow", () => {
+  const block = {
+    name: "app-showcase",
+    type: "hyperframes:block",
+    title: "App Showcase",
+    description: "Three phones",
+    tags: ["showcase"],
+    dimensions: { width: 1920, height: 1080 },
+    duration: 5,
+    files: [],
+  } as unknown as RegistryItem;
+
+  it("carries the preview so an app can show the item before add downloads it", () => {
+    const preview = { video: "https://example.test/a.mp4", poster: "https://example.test/a.png" };
+    expect(catalogRow({ ...block, preview } as RegistryItem)).toEqual({
+      name: "app-showcase",
+      type: "block",
+      title: "App Showcase",
+      description: "Three phones",
+      tags: ["showcase"],
+      dimensions: { width: 1920, height: 1080 },
+      duration: 5,
+      preview,
+    });
+  });
+});

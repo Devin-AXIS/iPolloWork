@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -19,6 +20,7 @@ export const examples: Example[] = [
 ];
 import { resolve } from "node:path";
 import type { Hono } from "hono";
+import { requestSubPath } from "@hyperframes/studio-server";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
@@ -35,6 +37,7 @@ import {
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
+  revalidatedResponse,
   assetContentType,
 } from "../utils/compositionServer.js";
 import {
@@ -44,7 +47,11 @@ import {
 } from "@hyperframes/studio-server/proxy-transcoder";
 import {
   decideMediaProxyEligibility,
+  isProxyVariantRequest,
   probeAssetCodec,
+  recordProxyRequest,
+  resolveProxyVariantRequest,
+  PROXY_VARIANT_CONFIG,
 } from "@hyperframes/studio-server/media-codec-map";
 
 export default defineCommand({
@@ -72,7 +79,7 @@ export default defineCommand({
     proxy: {
       type: "boolean",
       description:
-        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached H.264 proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
+        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached authoring proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
       negativeDescription: "Disable auto-proxying of browser-hostile video codecs",
     },
   },
@@ -83,7 +90,7 @@ export default defineCommand({
     // Validation: --user-data-dir requires --browser-path
     if (args["user-data-dir"] && !args["browser-path"]) {
       clack.log.error("--user-data-dir requires --browser-path");
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     // Validation: --remote-debugging-port deps
@@ -94,7 +101,7 @@ export default defineCommand({
     });
     if (depsError) {
       clack.log.error(depsError);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     // Parse --remote-debugging-port before any server setup so an invalid value
@@ -106,7 +113,7 @@ export default defineCommand({
       );
     } catch (err) {
       clack.log.error((err as Error).message);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -114,7 +121,7 @@ export default defineCommand({
     const runtimePath = resolveRuntimePath();
     if (!runtimePath) {
       clack.log.error("HyperFrames runtime not found. Run `bun run build` first.");
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -124,7 +131,7 @@ export default defineCommand({
       clack.log.error(
         "@hyperframes/player not found. Run `bun run --cwd packages/player build` first.",
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -134,20 +141,22 @@ export default defineCommand({
     const app = new Hono();
 
     // Serve the player JS
-    app.get("/player.js", (ctx) => {
-      return ctx.body(readFileSync(playerPath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      });
-    });
+    app.get("/player.js", (ctx) =>
+      revalidatedResponse(
+        readFileSync(playerPath, "utf-8"),
+        "application/javascript",
+        ctx.req.header("If-None-Match"),
+      ),
+    );
 
     // Serve the runtime JS
-    app.get("/runtime.js", (ctx) => {
-      return ctx.body(readFileSync(runtimePath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      });
-    });
+    app.get("/runtime.js", (ctx) =>
+      revalidatedResponse(
+        readFileSync(runtimePath, "utf-8"),
+        "application/javascript",
+        ctx.req.header("If-None-Match"),
+      ),
+    );
 
     const autoProxy = resolveAutoProxy(project.dir, args.proxy as boolean | undefined);
     await registerCompositionRoute(app, project, autoProxy);
@@ -192,8 +201,8 @@ export default defineCommand({
  * Registers the `/composition/*` route: serves composition HTML (runtime +
  * `__HF_MEDIA_CODEC_MAP__` injected) and asset files, with byte-Range support
  * (`play` previously did a whole-file `readFileSync`, so seeking/duration
- * probing on media elements never worked) and a `?hf-proxy=h264` branch that
- * serves the cached H.264 authoring proxy for a browser-hostile video asset
+ * probing on media elements never worked) and a `?hf-proxy=` branch that
+ * serves the alpha-aware authoring proxy for a browser-hostile video asset
  * (per docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md,
  * unit U4). Exported standalone (rather than inlined in `run()`) so tests can
  * exercise it via `app.request(...)` without booting a real HTTP listener,
@@ -208,7 +217,7 @@ export async function registerCompositionRoute(
 
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
-    const reqPath = ctx.req.path.replace("/composition/", "");
+    const reqPath = requestSubPath(ctx.req.url, "composition");
     const filePath = resolve(project.dir, reqPath);
 
     // Security: don't allow path traversal outside project dir. isSafePath
@@ -224,23 +233,46 @@ export async function registerCompositionRoute(
       if (autoProxy) {
         html = await injectMediaCodecMap(html, project.dir, [{ html, compSrcPath: reqPath }]);
       }
-      return ctx.html(html);
+      return revalidatedResponse(html, "text/html; charset=UTF-8", ctx.req.header("If-None-Match"));
     }
 
     const contentType = assetContentType(filePath);
-    if (ctx.req.query("hf-proxy") === "h264") {
+    // Edited text is caught by a content hash; an mtime tag can repeat for a same-size rewrite.
+    const isText =
+      contentType.startsWith("text/") ||
+      contentType === "application/json" ||
+      contentType === "image/svg+xml";
+    if (isText && !ctx.req.header("Range")) {
+      return revalidatedResponse(
+        readFileSync(filePath, "utf-8"),
+        contentType,
+        ctx.req.header("If-None-Match"),
+      );
+    }
+    const proxyParam = ctx.req.query("hf-proxy");
+    if (proxyParam !== undefined && isProxyVariantRequest(proxyParam)) {
       // Opt-out (or a non-video asset) 404s the param without attempting a
       // transcode; a missing asset already 404'd above.
       if (!autoProxy || !contentType.startsWith("video/")) return ctx.text("Not found", 404);
       try {
-        const eligibility = decideMediaProxyEligibility(await probeAssetCodec(filePath));
+        const facts = await probeAssetCodec(filePath);
+        const eligibility = decideMediaProxyEligibility(facts);
         if (!eligibility.eligible) {
           return ctx.text(`Media proxy unavailable: ${eligibility.reason}`, 422);
         }
-        const proxyPath = await resolveProxy(project.dir, filePath);
-        // The proxy IS an mp4 regardless of the source's extension (.mov,
-        // .mkv, ...) — serve its real type, matching the preview route.
-        return buildRangeResponse(proxyPath, "video/mp4", ctx.req.header("Range"));
+        if (!facts) return ctx.text("Media proxy unavailable: unknown_codec", 422);
+        const proxyVariant = resolveProxyVariantRequest(proxyParam, facts);
+        if (!proxyVariant) {
+          return ctx.text("Media proxy variant does not match asset", 422);
+        }
+        recordProxyRequest();
+        const proxyPath = await resolveProxy(project.dir, filePath, proxyVariant);
+        return buildRangeResponse(
+          proxyPath,
+          PROXY_VARIANT_CONFIG[proxyVariant].contentType,
+          ctx.req.header("Range"),
+          ctx.req.header("If-None-Match"),
+        );
       } catch (err) {
         if (err instanceof ProxyCapacityError) {
           return ctx.text(`Proxy transcode deferred: ${err.message}`, 503, {
@@ -254,7 +286,12 @@ export async function registerCompositionRoute(
       }
     }
 
-    return buildRangeResponse(filePath, contentType, ctx.req.header("Range"));
+    return buildRangeResponse(
+      filePath,
+      contentType,
+      ctx.req.header("Range"),
+      ctx.req.header("If-None-Match"),
+    );
   });
 }
 

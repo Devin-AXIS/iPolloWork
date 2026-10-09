@@ -190,9 +190,13 @@ export async function prepareVideoSoundtrack(workspace: { id: string; path: stri
     ...input.speechWindows.map(window => ({ ...window, factor: .3 })),
     ...clips.map(clip => ({ start: clip.start, end: clip.start + clip.duration, factor: .55 })),
   ]);
-  return { sourcePath: input.sourcePath, clips, room: { delaysMs: [25, 43], decays: [.08, .04] }, musicEnvelope: envelope,
+  const musicAutomation = { version: 1 as const, lanes: [{ target: "volume", points: envelope.map(point => ({ t: point.time, v: point.volume })) }] };
+  const serializedAutomation = JSON.stringify(musicAutomation);
+  return { musicAutomation, musicAutomationAttribute: serializedAutomation, sourcePath: input.sourcePath, clips, room: { delaysMs: [25, 43], decays: [.08, .04] }, musicEnvelope: envelope,
+    // Existing authored consumers insert this field into their paused GSAP root.
+    // Retain that export-readable contract; new compositions use the native attribute instead.
     musicTimelineScript: `{const music=document.querySelector('audio[data-timeline-role="music"]');\nif(music){tl.set(music,{volume:${input.musicVolume}},0);\n${envelope.slice(1).map((point, index) => `tl.to(music,{volume:${point.volume},duration:${point.time - envelope[index]!.time},ease:"none"},${envelope[index]!.time});`).join("\n")}\n}}`,
-    instruction: "Mount the separate returned clips under the composition root; preserve their source, time and duration. Add musicTimelineScript to the same paused root timeline (tl). Record local sound provenance/license in the storyboard. Retiming a visual event requires regenerating or moving its exact sound clip and re-probing the envelope.",
+    instruction: "Mount the separate returned clips under the composition root; preserve their source, time and duration. Set the music element data-automation attribute in the authored HTML to musicAutomationAttribute before preview/render; HyperFrames owns interpolation and mixing. musicTimelineScript is retained only for existing GSAP consumers; do not use it alongside native automation. Record local sound provenance/license in the storyboard. Retiming a visual event requires regenerating or moving its exact sound clip and re-probing the envelope.",
   };
 }
 

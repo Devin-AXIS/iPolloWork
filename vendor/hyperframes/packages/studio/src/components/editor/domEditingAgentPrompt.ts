@@ -1,6 +1,7 @@
 /**
  * Agent prompt builder for HyperFrames element edit requests.
  */
+import { copyTextToClipboard } from "../../utils/clipboard";
 import { formatTime } from "../../player/lib/time";
 import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
 
@@ -48,6 +49,7 @@ export function buildElementAgentPrompt({
     "",
     `Composition: ${selection.compositionPath}`,
     `Playback time: ${formatTime(currentTime)}`,
+    `Exact playback time (seconds): ${currentTime.toFixed(3)}`,
     `Source file: ${displayedSourceFile}`,
     `DOM id: ${selection.id ?? "(none)"}`,
     `Selector: ${selection.selector ?? "(none)"}`,
@@ -110,9 +112,20 @@ export function buildAgentContextPreview(
     .join("\n");
 }
 
-export function postVideoAiSelectionToHost(selection: DomEditSelection, semanticContext?: string): void {
+export function postVideoAiSelectionToHost(
+  selection: Partial<
+    Pick<
+      DomEditSelection,
+      "sourceFile" | "hfId" | "id" | "selector" | "selectorIndex"
+    >
+  > & { element?: Element },
+  semanticContext?: string,
+  instruction?: string,
+  requestId?: string,
+): void {
   const element = selection.element;
-  const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
+  const computed =
+    element?.ownerDocument.defaultView?.getComputedStyle(element);
   window.parent?.postMessage({
     type: "ipollowork:hyperframes:ask-ai-selection",
     target: {
@@ -122,11 +135,13 @@ export function postVideoAiSelectionToHost(selection: DomEditSelection, semantic
       selector: selection.selector,
       selectorIndex: selection.selectorIndex,
     },
-    tag: element.tagName.toLowerCase(),
-    text: element.textContent || "",
-    src: element.getAttribute("src") || "",
-    alt: element.getAttribute("alt") || "",
+      tag: element?.tagName.toLowerCase() ?? "composition",
+      text: element?.textContent || "",
+      src: element?.getAttribute("src") || "",
+      alt: element?.getAttribute("alt") || "",
     semanticContext,
+    instruction,
+    requestId,
     styles: {
       color: computed?.color ?? "",
       backgroundColor: computed?.backgroundColor ?? "",
@@ -135,4 +150,39 @@ export function postVideoAiSelectionToHost(selection: DomEditSelection, semantic
       opacity: computed?.opacity ?? "",
     },
   }, "*");
+}
+
+/** Reuses the host's validated selection bridge; standalone Studio keeps official prompt copying. */
+export async function deliverStudioAgentPrompt(
+  prompt: string,
+  sourceFile = "index.html",
+  options: { selector?: string; selection?: DomEditSelection; instruction?: string } = {},
+): Promise<boolean> {
+  if (window.parent === window) return copyTextToClipboard(prompt);
+  const requestId = crypto.randomUUID();
+  return new Promise<boolean>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timeout);
+      window.removeEventListener("message", acknowledge);
+    };
+    const acknowledge = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      if (event.data?.type !== "ipollowork:hyperframes:ai-request-result") return;
+      if (event.data.requestId !== requestId) return;
+      cleanup();
+      if (event.data.accepted === true) resolve(true);
+      else reject(new Error(typeof event.data.error === "string" ? event.data.error : "无法发送到左侧 AI 对话"));
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("左侧 AI 对话未确认接收，请检查对话状态后重试"));
+    }, 15_000);
+    window.addEventListener("message", acknowledge);
+    postVideoAiSelectionToHost(
+      options.selection ?? { sourceFile, selector: options.selector ?? "[data-composition-id]" },
+      prompt.slice(0, 20_000),
+      (options.instruction?.trim() || "按提供的视频编辑需求修改当前内容").slice(0, 4_000),
+      requestId,
+    );
+  });
 }

@@ -13,7 +13,7 @@ import { readFileContent } from "./timelineEditingHelpers";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }

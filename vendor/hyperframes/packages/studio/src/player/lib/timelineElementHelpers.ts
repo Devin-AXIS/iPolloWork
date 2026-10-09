@@ -7,6 +7,7 @@
  * both the React hook and test environments.
  */
 
+import { readElementFades } from "@hyperframes/core/audio-fade";
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
@@ -181,6 +182,10 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   if (!mediaEl) return;
 
   entry.tag = mediaEl.tagName.toLowerCase();
+  Object.assign(entry, readElementFades(el));
+  entry.hasAudio = el.hasAttribute("data-has-audio");
+  const volume = Number(el.getAttribute("data-volume") ?? "1");
+  if (Number.isFinite(volume)) entry.volume = volume;
   const src = mediaEl.getAttribute("src");
   if (src) entry.src = src;
 

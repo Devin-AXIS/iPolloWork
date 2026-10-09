@@ -25,6 +25,21 @@ export interface TimelineDropCallbacks {
 }
 
 export interface TimelineEditCallbacks {
+  onSetElementAttributeLive?: (
+    element: TimelineElement,
+    attr: string,
+    value: string | null,
+  ) => void;
+  onSetElementAttributeQuiet?: (
+    element: TimelineElement,
+    attr: string,
+    value: string | null,
+    label: string,
+  ) => Promise<void>;
+  onRevertElementAttributeLive?: (
+    element: TimelineElement,
+    attr: string,
+  ) => void;
   onMoveElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
@@ -68,6 +83,7 @@ export interface TimelineEditCallbacks {
     fromClipPercentage: number,
     toClipPercentage: number,
   ) => void;
+  onInspectAnimation?: (element: TimelineElement) => void;
   canMoveAnimationSegment?: (element: TimelineElement, animationId: string) => boolean;
   onMoveAnimationSegment?: (
     element: TimelineElement,

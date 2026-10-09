@@ -32,7 +32,7 @@
   <script>
     window.__timelines=window.__timelines||{};
     (function(){
-      const root=document.getElementById("device-carousel"),id=root.dataset.compositionId;
+      const root=document.getElementById("device-carousel"),id=root.dataset.compositionId||"device-carousel";
       const values={title:"One product. Every moment.",screenUrls:"",labels:"Discover|Create|Review",note:"A continuous journey through your product",carouselMode:"depth-tour",...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
       if(!["depth-tour","flow-belt"].includes(String(values.carouselMode)))throw new Error("Unsupported carousel mode: "+values.carouselMode);
       root.querySelectorAll("[data-ipw-variable]").forEach(el=>{el.textContent=String(values[el.dataset.ipwVariable]??"");});

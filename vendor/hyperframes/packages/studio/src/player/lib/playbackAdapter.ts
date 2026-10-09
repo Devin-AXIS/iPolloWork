@@ -5,6 +5,7 @@
  * objects to the `PlaybackAdapter` interface.
  */
 
+import { frameAlignedDurationSeconds } from "@hyperframes/core/runtime/protocol";
 import type {
   PlaybackAdapter,
   RuntimePlaybackAdapter,
@@ -73,11 +74,14 @@ export function shouldUseDirectTimelineAdapter(
 export function shouldUseDirectRuntimeAdapter(
   runtimeDuration: number,
   requiredDuration: number,
+  fps = 30,
 ): boolean {
   if (!isFinitePositive(runtimeDuration)) return false;
-  // Summing decimal clip boundaries can exceed the same authored duration by
-  // floating-point noise. Do not downgrade audible playback for that difference.
-  return !isFinitePositive(requiredDuration) || runtimeDuration >= requiredDuration - 1e-6;
+  // Studio rounds the document up to a video frame; runtime audio retains its
+  // exact seconds. Compare in that same frame domain or 37.22s at 30fps is
+  // incorrectly downgraded to silent seek playback against 37.233333s.
+  return !isFinitePositive(requiredDuration) ||
+    frameAlignedDurationSeconds(runtimeDuration, fps) >= frameAlignedDurationSeconds(requiredDuration, fps) - 1e-6;
 }
 
 const durationLimitAdapterCache = new WeakMap<PlaybackAdapter, Map<number, PlaybackAdapter>>();

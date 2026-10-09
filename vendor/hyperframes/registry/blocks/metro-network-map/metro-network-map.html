@@ -157,7 +157,7 @@
       window.__timelines = window.__timelines || {};
       (function () {
         const root = document.getElementById("mn-root"),
-          id = root.dataset.compositionId,
+          id = root.dataset.compositionId||"metro-network-map",
           values = {
             title: "How the network connects",
             routes:

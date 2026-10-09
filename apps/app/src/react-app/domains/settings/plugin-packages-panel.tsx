@@ -183,6 +183,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const [authorizationEditor, setAuthorizationEditor] = useState<PluginAuthorizationEditor | null>(null);
   const [mcpConnectionFeedbacks, setMcpConnectionFeedbacks] = useState<Record<string, McpConnectionFeedback>>({});
   const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const refreshGeneration = useRef(0);
   const [source, setSource] = useState<"marketplace" | "personal">("personal");
   const [search, setSearch] = useState("");
   const [marketplaceCategory, setMarketplaceCategory] = useState<MarketplaceCategoryFilter>("all");
@@ -192,6 +194,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const installedPreviewRowRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     const client = props.client;
     const workspaceId = props.workspaceId;
     if (!client || !workspaceId) {
@@ -199,14 +202,18 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
       setCatalogItems([]);
       setAuthorizations({});
       setLoaded(true);
+      setLoading(false);
       return;
     }
     setError(null);
+    setLoading(true);
     try {
       const [packagesResult, catalogResult] = await Promise.allSettled([
         loadPluginPackageData(() => client.listPluginPackages(workspaceId)),
         loadPluginPackageData(() => client.listBundledPluginPackages(workspaceId)),
       ]);
+
+      if (generation !== refreshGeneration.current) return;
 
       if (packagesResult.status === "fulfilled") {
         const response = packagesResult.value;
@@ -216,6 +223,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           pluginId: item.pluginId,
           state: await client.getPluginAuthorization(workspaceId, item.pluginId),
         })));
+        if (generation !== refreshGeneration.current) return;
         setAuthorizations((current) => Object.fromEntries(response.items.flatMap((item, index) => {
           const result = stateResults[index];
           if (result?.status === "fulfilled" && result.value.state) {
@@ -235,9 +243,12 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         setError(formatPluginPlatformError(failedResult.reason, t("plugin_platform.error.load")));
       }
     } catch (cause) {
-      setError(formatPluginPlatformError(cause, t("plugin_platform.error.load")));
+      if (generation === refreshGeneration.current) setError(formatPluginPlatformError(cause, t("plugin_platform.error.load")));
     } finally {
-      setLoaded(true);
+      if (generation === refreshGeneration.current) {
+        setLoaded(true);
+        setLoading(false);
+      }
     }
   }, [props.client, props.workspaceId]);
 
@@ -248,6 +259,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
 
   useEffect(() => {
     void refresh();
+    return () => { refreshGeneration.current++; };
   }, [refresh]);
 
   const availableCatalogItems = useMemo(
@@ -937,12 +949,12 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
               </Button>
             ) : null}
           </div>
-        ) : (
+        ) : !loading ? (
           <p className="text-ui-control leading-5 text-dls-secondary">{t("plugin_platform.empty_title")}</p>
-        )}
+        ) : null}
       </section>
 
-      <section data-testid="plugin-library-source" className="mt-8 space-y-3">
+      <section data-testid="plugin-library-source" aria-busy={source === "personal" && loading} className="mt-8 space-y-3">
         <div className="border-b border-dls-border pb-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <SettingsSegmentedTabs
@@ -995,6 +1007,13 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           </p>
         </div>
 
+        {source === "personal" && loading ? (
+          <div role="status" aria-live="polite" data-testid="plugin-library-loading" className="flex items-center gap-2 text-ui-control text-dls-secondary">
+            <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+            {t("settings.marketplace.loading")}
+          </div>
+        ) : null}
+
         {source === "marketplace" ? (
           props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items)
         ) : (filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
@@ -1007,8 +1026,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                 compact
                 featured
                 badge={pluginPackageBadges(item)}
-                actionBusy={busyKey !== null}
-                actionLabel={<>{busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}{item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}</>}
+                actionBusy={busyKey === `catalog:${item.pluginId}`}
+                actionDisabled={loading || busyKey !== null}
+                actionLabel={item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}
                 onAction={() => void installBundledPackage(item)}
               />
             ))}
@@ -1031,7 +1051,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                   compact
                   badge={pluginPackageBadges(item, !item.enabled)}
                   status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
-                  actionBusy={busyKey !== null}
+                  actionBusy={busyKey === `${item.pluginId}:enable`}
+                  actionDisabled={loading || busyKey !== null}
                   actionLabel={t(primaryAction.labelKey)}
                   onOpen={() => props.onSelectPlugin(item.pluginId)}
                   onAction={() => {
@@ -1048,11 +1069,11 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
               );
             })}
           </div>
-        ) : (
+        ) : !loading ? (
           <div className="rounded-2xl border border-dashed border-dls-border px-6 py-10 text-center text-ui-control leading-5 text-dls-secondary">
             {search ? t("settings.marketplace.no_match") : t("plugin_library.personal_empty")}
           </div>
-        )}
+        ) : null}
       </section>
 
       {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}

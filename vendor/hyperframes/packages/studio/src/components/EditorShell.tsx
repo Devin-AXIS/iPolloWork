@@ -1,4 +1,11 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { PreviewPane } from "./nle/PreviewPane";
 import { TimelinePane } from "./nle/TimelinePane";
 import { PreviewOverlays, useCommitDomZOrder } from "./nle/PreviewOverlays";
@@ -21,8 +28,18 @@ import {
   resolveTimelineLayerSourceTarget,
 } from "../player/components/timelineLayerPresentation";
 import { rebaseExpandedTimelineEdit } from "../utils/timelineToolbarSelection";
+import { Dock } from "./dock/Dock";
+import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
+import { findTimelineElementInIframe } from "../hooks/timelineEditingHelpers";
 import { CanvasContextMenu } from "./editor/CanvasContextMenu";
 import type { DomEditSelection } from "./editor/domEditing";
+
+const WORKBENCH_PANELS = [
+  "preview",
+  "timeline",
+  "design",
+] as const;
+const REQUIRED_WORKBENCH_PANELS = ["preview", "timeline"] as const;
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -40,8 +57,6 @@ interface TimelineClipContextMenuState {
 // The seven move/resize/split/razor handlers come from TimelineEditCallbackDeps
 // (shared with useTimelineEditCallbacks); the rest are drop + wiring props.
 export interface EditorShellProps extends TimelineEditCallbackDeps {
-  /** Left sidebar (media/library), rendered in the top row. */
-  left: ReactNode;
   /** Right panel (inspector/design) or null when collapsed, in the top row. */
   right: ReactNode;
   /** Hide the whole shell (e.g. while the storyboard view is active). */
@@ -76,11 +91,9 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   gestureOverlay?: ReactNode;
 }
 
-// The CapCut-style shell: [left | preview | right] in a top row, with a
-// full-width timeline spanning the bottom. Owns the shared player +
+// Official dock workspace with a full-width timeline. Owns the shared player +
 // composition-stack state via NLEProvider so both rows share one player.
 export function EditorShell({
-  left,
   right,
   hidden,
   previewOnly = false,
@@ -109,11 +122,82 @@ export function EditorShell({
   onToggleRecording,
   gestureOverlay,
 }: EditorShellProps) {
-  const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef } =
-    useStudioShellContext();
-  const { refreshKey, captionEditMode, refreshPreviewDocumentVersion } = useStudioPlaybackContext();
+  const {
+    projectId,
+    activeCompPath,
+    setActiveCompPath,
+    handlePreviewIframeRef,
+    previewIframeRef,
+  } = useStudioShellContext();
+  const { refreshKey, captionEditMode, refreshPreviewDocumentVersion } =
+    useStudioPlaybackContext();
   const { handleTimelineElementSelect } = useDomEditActionsContext();
 
+  const { buildDomSelectionForTimelineElement, handleDomAttributesCommit } =
+    useDomEditActionsContext();
+  const liveAudioOriginals = useRef(new Map<string, string | null>());
+  useEffect(() => {
+    liveAudioOriginals.current.clear();
+  }, [projectId, activeCompPath]);
+  const liveAudioAttribute = useCallback(
+    (element: TimelineElement, attr: string, value: string | null) => {
+      const target = findTimelineElementInIframe(
+        previewIframeRef.current,
+        element,
+        activeCompPath,
+      );
+      if (!target) return;
+      const key = `${element.key ?? element.id}:${attr}`;
+      if (!liveAudioOriginals.current.has(key))
+        liveAudioOriginals.current.set(key, target.getAttribute(attr));
+      if (value === null) target.removeAttribute(attr);
+      else target.setAttribute(attr, value);
+    },
+    [previewIframeRef, activeCompPath],
+  );
+  const saveAudioAttribute = useCallback(
+    async (
+      element: TimelineElement,
+      attr: string,
+      value: string | null,
+      label: string,
+    ) => {
+      let saved = false;
+      try {
+        const selection = await buildDomSelectionForTimelineElement(element);
+        if (!selection) throw new Error("Audio clip source was not found");
+        await handleDomAttributesCommit(
+          selection,
+          { [attr.replace(/^data-/, "")]: value ?? "" },
+          label,
+          {
+            onSettled: (ok) => {
+              saved = ok;
+            },
+          },
+        );
+        if (!saved) throw new Error("Couldn't save audio edit");
+      } catch (error) {
+        liveAudioAttribute(
+          element,
+          attr,
+          liveAudioOriginals.current.get(
+            `${element.key ?? element.id}:${attr}`,
+          ) ?? null,
+        );
+        throw error;
+      } finally {
+        liveAudioOriginals.current.delete(
+          `${element.key ?? element.id}:${attr}`,
+        );
+      }
+    },
+    [
+      buildDomSelectionForTimelineElement,
+      handleDomAttributesCommit,
+      liveAudioAttribute,
+    ],
+  );
   const timelineEditCallbacks = useTimelineEditCallbacks({
     handleTimelineElementMove,
     handleTimelineElementsMove,
@@ -127,9 +211,39 @@ export function EditorShell({
     handleRazorSplitAll,
   });
 
+  const { setRightPanelTab, setRightCollapsed } = usePanelLayoutContext();
+  const inspectAnimation = useCallback((element: TimelineElement) => {
+    const key = element.key ?? element.id;
+    usePlayerStore.getState().setSelection([key], key);
+    handleTimelineElementSelect(element);
+    setRightPanelTab("animation-properties");
+    setRightCollapsed(false);
+  }, [handleTimelineElementSelect, setRightPanelTab, setRightCollapsed]);
+  const audioEditCallbacks = useMemo(
+    () => ({
+      ...timelineEditCallbacks,
+      onInspectAnimation: inspectAnimation,
+      onSetElementAttributeLive: liveAudioAttribute,
+      onSetElementAttributeQuiet: saveAudioAttribute,
+      onRevertElementAttributeLive: (
+        element: TimelineElement,
+        attr: string,
+      ) => {
+        const key = `${element.key ?? element.id}:${attr}`;
+        if (liveAudioOriginals.current.has(key))
+          liveAudioAttribute(
+            element,
+            attr,
+            liveAudioOriginals.current.get(key) ?? null,
+          );
+        liveAudioOriginals.current.delete(key);
+      },
+    }),
+    [timelineEditCallbacks, inspectAnimation, liveAudioAttribute, saveAudioAttribute],
+  );
   return (
     <div className={`flex flex-col flex-1 min-h-0${hidden ? " hidden" : ""}`}>
-      <TimelineEditProvider value={timelineEditCallbacks}>
+      <TimelineEditProvider value={audioEditCallbacks}>
         <NLEProvider
           projectId={projectId}
           refreshKey={refreshKey}
@@ -148,7 +262,6 @@ export function EditorShell({
           }}
         >
           <EditorShellBody
-            left={left}
             right={right}
             previewOnly={previewOnly}
             captionEditMode={captionEditMode}
@@ -180,7 +293,6 @@ export function EditorShell({
 }
 
 interface EditorShellBodyProps {
-  left: ReactNode;
   right: ReactNode;
   previewOnly: boolean;
   captionEditMode: boolean;
@@ -199,7 +311,6 @@ interface EditorShellBodyProps {
 }
 
 function EditorShellBody({
-  left,
   right,
   previewOnly,
   captionEditMode,
@@ -213,8 +324,8 @@ function EditorShellBody({
   onBlockDrop,
   onDeleteElement,
 }: EditorShellBodyProps) {
-  const { tx } = useStudioI18n();
-  const { activeCompPath, showToast } = useStudioShellContext();
+  const { tx, t } = useStudioI18n();
+  const { projectId, activeCompPath, showToast } = useStudioShellContext();
   const { refreshPreviewDocumentVersion } = useStudioPlaybackContext();
   const {
     applyDomSelection,
@@ -336,27 +447,25 @@ function EditorShellBody({
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      {/* Top row: [left | preview | right] — outer padding + the 8px resize
-          seams give the panels CapCut-style separation on the dark canvas. */}
+      {/* Native dock owns placement, resizing, panel visibility and persistence. */}
       {previewOnly ? (
         <div className="flex min-h-0 flex-1 p-px">
           <PreviewPane editingEnabled={false} />
         </div>
       ) : (
-        <div className="flex flex-row flex-1 min-h-0">
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex min-h-0 min-w-0 flex-1">
-              {left}
-              <div className="flex-1 min-w-0 flex flex-col relative">
-                <PreviewPane
-                  previewOverlay={previewOverlay}
-                  onPreviewBlockDrop={onPreviewBlockDrop}
-                  onPreviewAssetDrop={handlePreviewAssetDrop}
-                />
-              </div>
+        <Dock.Root projectId={projectId} panels={WORKBENCH_PANELS} requiredPanels={REQUIRED_WORKBENCH_PANELS} fullHeightRight hideHeaders>
+          <Dock.Panel id="preview" title={tx("Preview")}>
+            <div className="flex h-full min-h-0 flex-col">
+              <PreviewPane
+                previewOverlay={previewOverlay}
+                onPreviewBlockDrop={onPreviewBlockDrop}
+                onPreviewAssetDrop={handlePreviewAssetDrop}
+              />
             </div>
-
+          </Dock.Panel>
+          <Dock.Panel id="timeline" title={tx("Timeline")}>
             <TimelinePane
+              docked
               timelineToolbar={timelineToolbar}
               renderClipContent={renderClipContent}
               onFileDrop={onFileDrop}
@@ -381,8 +490,12 @@ function EditorShellBody({
                 ) : undefined
               }
             />
-          </div>
-          {right}
+          </Dock.Panel>
+          <Dock.Panel id="design" title={tx("Properties")}>
+            <div className="hf-docked-inspector flex h-full min-h-0">
+              {right}
+            </div>
+          </Dock.Panel>
           {timelineClipContextMenu && (
             <CanvasContextMenu
               x={timelineClipContextMenu.x}
@@ -411,7 +524,7 @@ function EditorShellBody({
               onClose={closeTimelineClipContextMenu}
             />
           )}
-        </div>
+        </Dock.Root>
       )}
     </div>
   );

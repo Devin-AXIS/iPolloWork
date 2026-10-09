@@ -1,12 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { chmod, lstat, mkdir, open, readFile, realpath, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { gunzip } from "node:zlib";
 import { createArchive } from "./archive.ts";
 import { compileSkill, defaultRecordingTitle, importChromeFlow, isRecord, MAX_STEPS, newSession, normalizeSession, normalizeStep, normalizeSteps, redact, text, type Session } from "./model.ts";
 
@@ -15,7 +13,7 @@ export type ServiceRuntime = {
   workspace: Readonly<{ root: string }>;
   plugin: Readonly<{ id: string; version: string }>;
 };
-type Options = { nativePath?: string; uiDir?: string; platform?: NodeJS.Platform; architecture?: string };
+type Options = { collectorPath?: string; uiDir?: string; platform?: NodeJS.Platform; architecture?: string };
 type DesktopCapabilities = {
   supported: boolean; accessibility: boolean; inputMonitoring: boolean;
   backend?: string; sessionType?: string; reason?: string; permissionHelp?: string;
@@ -24,9 +22,16 @@ type Arguments = Record<string, unknown>;
 type ActionHandler = (input: Arguments) => Promise<unknown>;
 type SessionSummary = { id: string; title: string; createdAt: string; status: Session["status"]; stepCount: number };
 const BODY_LIMIT = 1_048_576;
-const NATIVE_LIMIT = 20_000_000;
-const decompressNative = promisify(gunzip);
 const moduleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function nodeExecutable(): string {
+  return process.env.IPOLLOWORK_NODE_BIN?.trim() || process.env.IPOLLOWORK_DSH_NODE_BIN?.trim()
+    || (process.release.name === "node" && !Object.hasOwn(process.versions, "bun") ? process.execPath : process.platform === "win32" ? "node.exe" : "node");
+}
+
+function collectorEnvironment(): NodeJS.ProcessEnv {
+  return { ...process.env, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}) };
+}
 
 function inside(root: string, candidate: string): boolean {
   return candidate === root || candidate.startsWith(root + sep);
@@ -83,20 +88,20 @@ async function atomicWrite(root: string, relativePath: string, value: string | B
   return path;
 }
 
-async function nativeResult(path: string, argument: string): Promise<unknown> {
+async function collectorResult(path: string, argument: string): Promise<unknown> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(path, [argument], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(nodeExecutable(), [path, argument], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: collectorEnvironment() });
     let output = "";
-    const timer = setTimeout(() => { child.kill(); reject(new Error("Native permission check timed out")); }, 10_000);
+    const timer = setTimeout(() => { child.kill(); reject(new Error("Node.js collector permission check timed out")); }, 10_000);
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");
-      if (output.length > BODY_LIMIT) { child.kill(); reject(new Error("Native output exceeded its limit")); }
+      if (output.length > BODY_LIMIT) { child.kill(); reject(new Error("Collector output exceeded its limit")); }
     });
-    child.on("error", reject);
+    child.on("error", error => { clearTimeout(timer); reject(error); });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0) { reject(new Error("Native permission check failed")); return; }
-      try { resolveResult(JSON.parse(output)); } catch { reject(new Error("Native permission check returned invalid JSON")); }
+      if (code !== 0) { reject(new Error("Node.js collector permission check failed")); return; }
+      try { resolveResult(JSON.parse(output)); } catch { reject(new Error("Collector permission check returned invalid JSON")); }
     });
   });
 }
@@ -116,8 +121,7 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
   const storage = await safeDirectory(join(dataRoot, "workspaces", workspaceKey));
   const sessionsRoot = await safeDirectory(join(storage, "sessions"));
   const architecture = options.architecture ?? process.arch;
-  const nativeSource = options.nativePath ?? (platform === "darwin" ? join(moduleRoot, "native", "recorder")
-    : join(moduleRoot, "native", `${platform}-${architecture}`, platform === "win32" ? "recorder.exe.gz" : "recorder.gz"));
+  const collectorSource = options.collectorPath ?? join(moduleRoot, "native", "recorder.mjs");
   const uiDir = options.uiDir ?? join(moduleRoot, "ui");
   const lockPath = join(dataRoot, "recording.lock");
   let current: Session | null = null;
@@ -219,23 +223,10 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
   }
 
   async function helper(): Promise<string> {
-    const packaged = await regularFile(nativeSource, NATIVE_LIMIT);
-    // Compressed helpers fit the host package limit. Validate the bounded
-    // decompressed bytes before writing or reusing our executable cache.
-    const content = nativeSource.endsWith(".gz") ? await decompressNative(packaged, { maxOutputLength: NATIVE_LIMIT }) : packaged;
-    const hash = createHash("sha256").update(content).digest("hex");
-    const binaryRoot = await safeDirectory(join(dataRoot, "binaries"));
-    const name = `recorder-${hash}${platform === "win32" && !options.nativePath ? ".exe" : ""}`;
-    const path = join(binaryRoot, name);
-    try {
-      const existing = await regularFile(path, NATIVE_LIMIT);
-      if (!existing.equals(content)) throw new Error("Cached recorder binary failed integrity validation");
-    } catch (error) {
-      if (!isRecord(error) || error.code !== "ENOENT") throw error;
-      await atomicWrite(binaryRoot, name, content, 0o700);
-    }
-    await chmod(path, 0o700);
-    return path;
+    // Execute from the immutable installed package so relative modules and
+    // bundled N-API dependencies resolve without a download or executable cache.
+    await regularFile(collectorSource, BODY_LIMIT);
+    return collectorSource;
   }
 
   async function permissions(): Promise<DesktopCapabilities> {
@@ -243,8 +234,8 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
       return { supported: false, accessibility: false, inputMonitoring: false, reason: `No desktop recorder for ${platform}/${architecture}.` };
     }
     try {
-      const result = await nativeResult(await helper(), "--check");
-      if (!isRecord(result) || typeof result.supported !== "boolean" || typeof result.accessibility !== "boolean" || typeof result.inputMonitoring !== "boolean") throw new Error("Invalid native capabilities");
+      const result = await collectorResult(await helper(), "--check");
+      if (!isRecord(result) || typeof result.supported !== "boolean" || typeof result.accessibility !== "boolean" || typeof result.inputMonitoring !== "boolean") throw new Error("Invalid collector capabilities");
       const capabilities: DesktopCapabilities = { supported: result.supported, accessibility: result.accessibility, inputMonitoring: result.inputMonitoring };
       for (const field of ["backend", "sessionType", "reason", "permissionHelp"]) {
         const value = typeof result[field] === "string" ? redact(result[field].slice(0, 2_000)) : undefined;
@@ -310,7 +301,7 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
   }
 
   async function startCapture(path: string): Promise<void> {
-    const processHandle = spawn(path, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const processHandle = spawn(nodeExecutable(), [path], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: collectorEnvironment() });
     child = processHandle;
     processHandle.stdin.on("error", (error: Error) => { lastError = message(error); processHandle.kill(); });
     let pendingBytes = 0;
@@ -321,6 +312,10 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
       }
     });
     const lines = createInterface({ input: processHandle.stdout });
+    // stderr carries runtime warnings as well as failures. Keep bounded
+    // diagnostics for an exit; only protocol errors or failed capture set error.
+    let diagnostics = "";
+    processHandle.stderr.on("data", (data: Buffer) => { diagnostics = (diagnostics + data.toString("utf8")).slice(-2_000); });
     await new Promise<void>((ready, reject) => {
       let settled = false;
       const timer = setTimeout(() => { settled = true; reject(new Error("Desktop recorder did not become ready")); }, 10_000);
@@ -328,20 +323,20 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
       processHandle.once("close", (code) => {
         lines.close();
         clearTimeout(timer);
-        if (!settled) { settled = true; reject(new Error(`Desktop recorder exited before ready (${code})`)); }
+        const detail = diagnostics ? `: ${redact(diagnostics).slice(0, 500).trim()}` : "";
+        if (!settled) { settled = true; reject(new Error(`Desktop recorder exited before ready (${code})${detail}`)); }
         if (child === processHandle) {
           child = null;
           void serialize(async () => {
             if (current?.status === "recording" || current?.status === "paused") {
               current.status = "draft";
-              lastError = "Desktop recording stopped unexpectedly. Review the captured steps.";
+              lastError = `Desktop recording stopped unexpectedly (${code})${detail}. Review the captured steps.`;
               await persist(current);
             }
             await releaseLock();
           });
         }
       });
-      processHandle.stderr.on("data", (data: Buffer) => { lastError = redact(data.toString("utf8").slice(0, 500)); });
       lines.on("line", (line) => {
         if (line.length > BODY_LIMIT) { processHandle.kill(); lastError = "Native event exceeded its limit"; return; }
         try {
@@ -385,7 +380,7 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
   const actions: Record<string, ActionHandler> = {
     capabilities: async () => ({ platform, desktop: await permissions(), chromeImport: true, portableEngines: ["opencode", "codex-harness", "deepseek-harness"], maxSteps: MAX_STEPS }),
     "request-permissions": async () => {
-      if (platform === "darwin") await nativeResult(await helper(), "--request-permissions");
+      if (platform === "darwin") await collectorResult(await helper(), "--request-permissions");
       return { desktop: await permissions() };
     },
     status: async (input) => {

@@ -36,7 +36,7 @@
     <script>
       window.__timelines=window.__timelines||{};
       (function(){
-        const root=document.getElementById("picture-in-picture"),id=root.dataset.compositionId;
+        const root=document.getElementById("picture-in-picture"),id=root.dataset.compositionId||"picture-in-picture";
         const defaults={"title":"Picture in Picture","items":"Main::Product walkthrough|Inset::Presenter context|Label::Live review|Moment::Approval","highlight":1,"note":"Keep the supporting view secondary"};
         const values={...defaults,...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
         root.querySelectorAll("[data-ipw-variable]").forEach(element=>{const key=element.getAttribute("data-ipw-variable");if(key)element.textContent=String(values[key]??"")});

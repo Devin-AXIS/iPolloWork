@@ -63,7 +63,8 @@ function avatarFixture() {
     "128": node("CLIPLoader", { clip_name: "qwen3vl_32b_minimax_h3_int8_convrot.safetensors", type: "minimax" }),
     "137": node("LoadImage", { image: "demo.png" }), "171": node("LoadAudio", { audio: "demo.mp3" }),
     "199": node("TrimAudioDuration", { audio: ["171", 0], start_index: 40, duration: 10 }),
-    "172": node("VRGDG_MiniMaxH3AudioDrive", { av_latent: ["136", 1], source_audio: ["199", 0] }),
+    "172": node("VRGDG_MiniMaxH3AudioDrive", { av_latent: ["136", 1], source_audio: ["199", 0], audio_vae: ["173", 0] }),
+    "173": node("VAELoader", { vae_name: "minimax_h3_audio_vae_fp32.safetensors" }),
     "125": node("SamplerCustomAdvanced", { latent_image: ["172", 0], guider: ["126", 0], sigmas: ["124", 0], noise: ["129", 0] }),
     "126": node("BasicGuider", { conditioning: ["136", 0], model: ["196", 0] }),
     "124": node("BasicScheduler", { steps: 6 }), "129": node("RandomNoise", { noise_seed: 999 }),
@@ -113,13 +114,14 @@ test("avatar replaces demo media, starts at zero and preserves six steps in both
     expect(graph["136"]).toMatchObject({ class_type: "MiniMaxH3ImageToVideo", inputs: { width: ratio === "9:16" ? 384 : 672, height: ratio === "9:16" ? 672 : 384, length: 243, first_frame: ["avatar_frame", 0], last_frame: ["avatar_frame", 0] } });
     expect(graph["174"].inputs.unet_name).toBe("minimax_h3_fl2va_int8_convrot.safetensors");
     expect(graph.avatar_frame.inputs).toMatchObject({ crop: "center", image: ["137", 0] });
-    expect(graph.avatar_guide_72).toMatchObject({ class_type: "MiniMaxH3AddGuide", inputs: { positive: ["136", 0], latent: ["136", 1], image: ["avatar_frame", 0], frame_idx: 72 } });
-    expect(graph.avatar_guide_144.inputs.positive).toEqual(["avatar_guide_72", 0]);
-    expect(graph["126"].inputs.conditioning).toEqual(["avatar_guide_144", 0]);
-    expect(graph.avatar_guide_216).toBeUndefined();
+    expect(graph.avatar_speech).toEqual({ class_type: "MiniMaxH3AddGuide", inputs: { positive: ["136", 0], latent: ["136", 1], audio: ["199", 0], audio_vae: ["173", 0], frame_idx: 0 } });
+    expect(graph["126"].inputs.conditioning).toEqual(["avatar_speech", 0]);
+    expect(graph["125"].inputs.latent_image).toEqual(["136", 1]);
+    expect(Object.keys(graph).some(id => id.startsWith("avatar_guide_"))).toBe(false);
     expect(graph["199"].inputs).toMatchObject({ start_index: 0, duration: 10 });
     expect(graph["171"].inputs.audio).toBe("input/voice.wav");
-    expect(graph["172"].inputs.source_audio).toEqual(["199", 0]);
+    expect(graph["172"]).toBeUndefined();
+    expect(graph["173"].inputs.vae_name).toBe("minimax_h3_audio_vae_fp32.safetensors");
     expect(graph["142"].inputs).toMatchObject({ audio: ["199", 0], trim_to_audio: true });
     expect(graph["124"].inputs.steps).toBe(6);
     expect(graph["999"]).toBeUndefined();
@@ -139,19 +141,22 @@ test("avatar follows validated node types and wiring when RunningHub renumbers p
   expect(graph[ids["136"]!]).toMatchObject({ class_type: "MiniMaxH3ImageToVideo", inputs: { first_frame: ["avatar_frame", 0] } });
   expect(graph.avatar_frame.inputs.image).toEqual([ids["137"], 0]);
   expect(graph[ids["171"]!].inputs.audio).toBe("input/voice.wav");
-  expect(graph[ids["172"]!].inputs.source_audio).toEqual([ids["199"], 0]);
+  expect(graph.avatar_speech.inputs.audio).toEqual([ids["199"], 0]);
+  expect(graph.avatar_speech.inputs.audio_vae).toEqual([ids["173"], 0]);
+  expect(graph[ids["172"]!]).toBeUndefined();
   expect(graph[ids["142"]!].inputs.audio).toEqual([ids["199"], 0]);
 });
 
 test("avatar rejects changed audio wiring before creating a billable task", async () => {
   const { root, config } = await setup(); await writeFile(join(root, "voice.wav"), "test-audio");
-  for (const change of ["wiring", "dependency"]) {
+  for (const change of ["wiring", "audio-vae", "dependency"]) {
     const fixture = avatarFixture(), graph = JSON.parse(fixture.data.prompt);
     if (change === "wiring") graph["172"].inputs.av_latent = ["wrong", 0];
+    else if (change === "audio-vae") graph["172"].inputs.audio_vae = ["119", 0];
     else delete graph["128"];
     fixture.data.prompt = JSON.stringify(graph);
     Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : fixture));
-    await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow(change === "wiring" ? "尚未提交" : "数字人缺少生成节点");
+    await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow(change === "dependency" ? "数字人缺少生成节点" : "尚未提交");
   }
 });
 afterEach(async () => {
@@ -1051,6 +1056,7 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
     videos.push(await readFile(path));
   }
   let creates=0;
+  const seeds: number[] = [];
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL,init?:RequestInit)=>{
     const address=String(url);
     if(address.endsWith("/media/upload/binary")) {const file=init?.body instanceof FormData?init.body.get("file"):null;return Response.json({code:0,data:{fileName:file instanceof File&&file.type.startsWith("image/")?"input/person.png":"input/audio.wav"}});}
@@ -1060,6 +1066,12 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
       expect(body).not.toHaveProperty("instanceType");
       expect(body.workflowId).toBe(useAudio ? "2099368776771919873" : "2097511747551842305");
       if(!useAudio) expect(body.workflow).not.toContain("LoadAudio");
+      else {
+        const graph = JSON.parse(body.workflow);
+        expect(graph.avatar_speech.inputs.audio).toEqual(["199", 0]);
+        expect(graph["199"].inputs.start_index).toBe(0);
+        seeds.push(graph["129"].inputs.noise_seed);
+      }
       return Response.json({code:0,data:{taskId:`segment-${creates++}`}});
     }
     if(address.endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
@@ -1082,6 +1094,7 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
   }
   expect(job.status).toBe("succeeded");
   expect(creates).toBe(2);
+  if (useAudio) expect(new Set(seeds).size).toBe(2);
   expect(job.avatarSequence?.seams).toHaveLength(1);
   expect(job.message).toContain("26.0 秒数字人");
   expect(job.path).toMatch(/^video\/session-one\/assets\/avatar-long-/);

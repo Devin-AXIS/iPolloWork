@@ -15,19 +15,24 @@
  * the caller can fall back to the expression path rather than corrupting audio.
  */
 
-import { readFileSync, renameSync, writeFileSync } from "fs";
-import { randomBytes } from "crypto";
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";
+import { riffChunks, wavFormatTag } from "./wavChunks.js";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
-const SUPPORTED_BITS = 16;
+const FLOAT_FORMAT = 3; // WAVE_FORMAT_IEEE_FLOAT
 
 interface WavLayout {
   numChannels: number;
   sampleRate: number;
   dataOffset: number;
   dataSize: number;
+  /** 16-bit integer, or 32-bit float — the group sub-mix writes float so an
+   *  over-unity member sum is not hard-clipped before the group's own FX and
+   *  fader get to act on it. */
+  float: boolean;
 }
 
 /**
@@ -38,47 +43,119 @@ interface WavLayout {
  * and trailing chunks (LIST/fact/etc.) are skipped harmlessly. Returns null on
  * anything unexpected so the caller falls back to the expression path.
  */
-function parseWavLayout(buffer: Buffer): WavLayout | null {
-  if (buffer.length < 12 || buffer.toString("ascii", 0, 4) !== "RIFF") return null;
-  if (buffer.toString("ascii", 8, 12) !== "WAVE") return null;
+interface WavFmt {
+  numChannels: number;
+  sampleRate: number;
+  /** 16-bit integer PCM, or 32-bit IEEE float. Anything else is unreadable. */
+  float: boolean;
+}
 
-  let offset = 12;
-  let fmt: { numChannels: number; sampleRate: number; bitsPerSample: number } | null = null;
+/** The `fmt ` chunk, or null for a format this cannot safely edit in place. */
+function readFmtChunk(buffer: Buffer, body: number, size: number): WavFmt | null {
+  const format = wavFormatTag(buffer, body, size);
+  const bits = buffer.readUInt16LE(body + 14);
+  const float = format === FLOAT_FORMAT;
+  if (!float && format !== PCM_FORMAT) return null;
+  if (bits !== (float ? 32 : 16)) return null;
+  const numChannels = buffer.readUInt16LE(body + 2);
+  if (numChannels < 1) return null;
+  return { numChannels, sampleRate: buffer.readUInt32LE(body + 4), float };
+}
+
+function isRiffWave(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WAVE"
+  );
+}
+
+function parseWavLayout(buffer: Buffer): WavLayout | null {
+  if (!isRiffWave(buffer)) return null;
+
+  let fmt: WavFmt | null = null;
   let data: { offset: number; size: number } | null = null;
 
-  while (offset + 8 <= buffer.length) {
-    const chunkId = buffer.toString("ascii", offset, offset + 4);
-    const chunkSize = buffer.readUInt32LE(offset + 4);
-    const body = offset + 8;
-    if (chunkId === "fmt " && body + 16 <= buffer.length) {
-      if (buffer.readUInt16LE(body) !== PCM_FORMAT) return null;
-      fmt = {
-        numChannels: buffer.readUInt16LE(body + 2),
-        sampleRate: buffer.readUInt32LE(body + 4),
-        bitsPerSample: buffer.readUInt16LE(body + 14),
-      };
-    } else if (chunkId === "data") {
-      data = { offset: body, size: Math.min(chunkSize, buffer.length - body) };
+  for (const { id, body, size } of riffChunks(buffer)) {
+    if (id === "fmt " && body + 16 <= buffer.length) {
+      fmt = readFmtChunk(buffer, body, size);
+    } else if (id === "data") {
+      data = { offset: body, size: Math.min(size, buffer.length - body) };
     }
-    // Chunks are word-aligned: an odd size carries a trailing pad byte.
-    offset = body + chunkSize + (chunkSize % 2);
   }
 
   if (!fmt || !data) return null;
-  if (fmt.bitsPerSample !== SUPPORTED_BITS || fmt.numChannels < 1) return null;
-  return {
-    numChannels: fmt.numChannels,
-    sampleRate: fmt.sampleRate,
-    dataOffset: data.offset,
-    dataSize: data.size,
+  return { ...fmt, dataOffset: data.offset, dataSize: data.size };
+}
+
+/**
+ * A gain lookup that walks forward through the envelope with a segment cursor,
+ * so a whole track costs O(N+M) rather than O(N×M). `interpolateVolumeGain`
+ * restarts from segment 0 on every call — fine for the preview path (once per
+ * RAF tick), not for a per-sample walk over 48k×duration frames.
+ *
+ * The cursor only ever advances, so callers must pass non-decreasing times.
+ * Returns null when the keyframes normalise to nothing, which the callers read
+ * as "no automation here".
+ */
+export function createEnvelopeWalker(
+  keyframes: AudioVolumeKeyframe[],
+  trackStart: number,
+  baseVolume: number,
+): ((time: number) => number) | null {
+  const envelope = normaliseEnvelope(keyframes, trackStart, baseVolume);
+  const first = envelope[0];
+  if (!first) return null;
+
+  let segment = 0;
+  return (time: number): number => {
+    for (;;) {
+      const next = envelope[segment + 1];
+      if (segment >= envelope.length - 2 || !next || time < next.time) break;
+      segment += 1;
+    }
+    const a = envelope[segment] ?? first;
+    const b = envelope[segment + 1] ?? a;
+    const span = b.time - a.time;
+    const progress = span <= 0 ? 0 : Math.min(1, Math.max(0, (time - a.time) / span));
+    return a.volume + (b.volume - a.volume) * progress;
   };
+}
+
+/** Every sample scaled by the envelope, in place, in whichever of the two
+ *  formats the layout reports. Float is NOT clamped: it is the format the group
+ *  sub-mix writes precisely so an over-unity sum keeps its headroom until
+ *  something downstream chooses to reduce it. */
+function scaleSamples(
+  buffer: Buffer,
+  layout: WavLayout,
+  gainAt: (seconds: number) => number,
+): void {
+  const { numChannels, sampleRate, dataOffset, dataSize, float } = layout;
+  const bytesPerSample = float ? 4 : 2;
+  const frameBytes = numChannels * bytesPerSample;
+  const frameCount = Math.floor(dataSize / frameBytes);
+  const scaleOne = float
+    ? (at: number, gain: number) => buffer.writeFloatLE(buffer.readFloatLE(at) * gain, at)
+    : (at: number, gain: number) => {
+        const scaled = Math.round(buffer.readInt16LE(at) * gain);
+        buffer.writeInt16LE(scaled < -32768 ? -32768 : scaled > 32767 ? 32767 : scaled, at);
+      };
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const gain = gainAt(frame / sampleRate);
+    const base = dataOffset + frame * frameBytes;
+    for (let channel = 0; channel < numChannels; channel += 1) {
+      scaleOne(base + channel * bytesPerSample, gain);
+    }
+  }
 }
 
 /**
  * Multiply a prepared WAV's samples by a time-varying gain envelope in place.
  *
- * @returns `true` if the envelope was applied; `false` if the file isn't the
- *   expected 16-bit PCM (caller should fall back to the expression path).
+ * @returns `true` if the envelope was applied; `false` if the file is neither
+ *   16-bit PCM nor 32-bit float (caller should fall back to the expression path).
  */
 export function applyVolumeEnvelopeToWav(
   wavPath: string,
@@ -86,53 +163,35 @@ export function applyVolumeEnvelopeToWav(
   trackStart: number,
   baseVolume: number,
 ): boolean {
-  const envelope = normaliseEnvelope(keyframes, trackStart, baseVolume);
-  if (envelope.length === 0) return false;
+  const gainAt = createEnvelopeWalker(keyframes, trackStart, baseVolume);
+  if (!gainAt) return false;
 
+  let stagingDir: string | undefined;
   try {
     const buffer = readFileSync(wavPath);
     const layout = parseWavLayout(buffer);
     if (!layout) return false;
 
-    const { numChannels, sampleRate, dataOffset, dataSize } = layout;
-    const bytesPerSample = SUPPORTED_BITS / 8;
-    const frameBytes = numChannels * bytesPerSample;
-    const frameCount = Math.floor(dataSize / frameBytes);
+    scaleSamples(buffer, layout, gainAt);
 
-    // Maintain an incremental segment cursor so the per-frame envelope lookup
-    // is O(N+M) overall, not O(N×M). interpolateVolumeGain restarts from 0 on
-    // each call — fine for the preview path (one call per RAF tick) but not for
-    // the PCM path (one call per sample, 48k×duration frames total).
-    let segment = 0;
-    for (let frame = 0; frame < frameCount; frame += 1) {
-      const time = frame / sampleRate;
-      while (segment < envelope.length - 2 && time >= envelope[segment + 1]!.time) segment += 1;
-
-      const a = envelope[segment]!;
-      const b = envelope[segment + 1] ?? a;
-      const span = b.time - a.time;
-      const progress = span <= 0 ? 0 : Math.min(1, Math.max(0, (time - a.time) / span));
-      const gain = a.volume + (b.volume - a.volume) * progress;
-
-      const base = dataOffset + frame * frameBytes;
-      for (let channel = 0; channel < numChannels; channel += 1) {
-        const at = base + channel * bytesPerSample;
-        const scaled = Math.round(buffer.readInt16LE(at) * gain);
-        buffer.writeInt16LE(scaled < -32768 ? -32768 : scaled > 32767 ? 32767 : scaled, at);
-      }
-    }
-
-    // Write to a uniquely-named sibling then atomically rename over the
-    // original. The random name avoids following a pre-planted symlink at a
-    // predictable path, and the rename means a crash mid-write can't leave a
-    // truncated WAV for the downstream mix.
-    const tempPath = `${wavPath}.${randomBytes(6).toString("hex")}.tmp`;
-    writeFileSync(tempPath, buffer);
+    // A private sibling directory owns the staging file; the same-filesystem
+    // rename keeps a failed write from truncating the original WAV.
+    stagingDir = mkdtempSync(join(dirname(wavPath), ".hf-volume-"));
+    const tempPath = join(stagingDir, "audio.wav");
+    writeFileSync(tempPath, buffer, { flag: "wx" });
     renameSync(tempPath, wavPath);
     return true;
   } catch {
     // Any read/parse/write failure → leave the file untouched and let the
     // caller fall back to the ffmpeg expression path rather than losing audio.
     return false;
+  } finally {
+    if (stagingDir) {
+      try {
+        rmSync(stagingDir, { recursive: true, force: true });
+      } catch {
+        // Cleanup must not turn a successfully baked envelope into a fallback.
+      }
+    }
   }
 }

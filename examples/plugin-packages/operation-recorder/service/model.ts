@@ -10,7 +10,10 @@ export type Step = {
   bundleId?: string;
   window?: string;
   url?: string;
-  target?: { role?: string; name?: string; selectors?: string[] };
+  page?: { title?: string };
+  target?: { role?: string; name?: string; selectors?: string[]; automationId?: string; ancestors?: { role?: string; name?: string }[]; position?: string };
+  direction?: "up" | "down" | "left" | "right";
+  description?: string;
   text?: string;
   key?: string;
   variable?: string;
@@ -89,6 +92,15 @@ export function normalizeStep(value: unknown, index: number): Step {
     }
   }
   if (value.url !== undefined) step.url = safeUrl(text(value.url, "URL", 8_192));
+  if (value.page !== undefined) {
+    if (!isRecord(value.page)) throw new Error("Page must be an object");
+    const title = optionalString(value.page.title, "Page title", 500);
+    if (title) step.page = { title };
+  }
+  if (value.direction !== undefined) {
+    if (value.direction !== "up" && value.direction !== "down" && value.direction !== "left" && value.direction !== "right") throw new Error("Invalid scroll direction");
+    step.direction = value.direction;
+  }
   if (value.target !== undefined) {
     if (!isRecord(value.target)) throw new Error("Target must be an object");
     const role = optionalString(value.target.role, "Target role", 100);
@@ -96,6 +108,20 @@ export function normalizeStep(value: unknown, index: number): Step {
     const target: NonNullable<Step["target"]> = {};
     if (role) target.role = role;
     if (name) target.name = name;
+    const automationId = optionalString(value.target.automationId, "Automation ID", 200);
+    if (automationId) target.automationId = automationId;
+    if (value.target.position !== undefined) {
+      const position = text(value.target.position, "Target position", 20);
+      if (!["左上方", "上方", "右上方", "左侧", "中央", "右侧", "左下方", "下方", "右下方"].includes(position)) throw new Error("Invalid relative target position");
+      target.position = position;
+    }
+    if (value.target.ancestors !== undefined) {
+      if (!Array.isArray(value.target.ancestors) || value.target.ancestors.length > 8) throw new Error("At most 8 target ancestors are supported");
+      target.ancestors = value.target.ancestors.map(parent => {
+        if (!isRecord(parent)) throw new Error("Target ancestor must be an object");
+        return { role: optionalString(parent.role, "Ancestor role", 100), name: optionalString(parent.name, "Ancestor name", 200) };
+      });
+    }
     if (value.target.selectors !== undefined) {
       if (!Array.isArray(value.target.selectors) || value.target.selectors.length > 20) throw new Error("At most 20 selectors are supported");
       // Attribute values frequently contain user data. Keep only structural and semantic selectors.
@@ -116,6 +142,7 @@ export function normalizeStep(value: unknown, index: number): Step {
   if (kind === "navigate" && !step.url) throw new Error("Navigation requires a URL");
   if (kind === "key" && !step.key) throw new Error("Key operation requires a key");
   if (kind === "assert" && !step.expected) throw new Error("Success checks require expected text");
+  step.description = describeStep(step);
   return step;
 }
 
@@ -213,9 +240,11 @@ export function importChromeFlow(value: unknown): Session {
   const pressed = new Set<string>();
   let focusedTarget: NonNullable<Step["target"]> | undefined;
   let lastTypedTarget: string | undefined;
+  let currentUrl: string | undefined;
   session.steps = value.steps.flatMap((entry, index) => {
     if (!isRecord(entry)) throw new Error("Chrome step must be an object");
-    const base = { id: randomUUID(), at: session.createdAt, target: chromeTarget(chromeSelectors(entry.selectors)) };
+    if (entry.type === "navigate") currentUrl = safeUrl(text(entry.url, "URL", 8_192));
+    const base = { id: randomUUID(), at: session.createdAt, app: "Browser", ...(currentUrl ? { url: currentUrl } : {}), target: chromeTarget(chromeSelectors(entry.selectors)) };
     if (entry.type !== "keyDown" && entry.type !== "keyUp") lastTypedTarget = undefined;
     if (entry.type === "navigate") {
       focusedTarget = undefined;
@@ -252,27 +281,32 @@ export function importChromeFlow(value: unknown): Session {
   return session;
 }
 
-function targetLabel(step: Step): string {
-  const labels = [step.target?.name, step.target?.role, step.app, step.window].filter((entry) => typeof entry === "string");
-  return labels.length ? JSON.stringify(labels.join(" / ")) : "the target described in workflow.json";
-}
-
-function operationInstruction(step: Step): string {
-  if (step.action === "navigate") return `Open ${step.url} and verify the expected page.`;
-  if (step.action === "input" || step.action === "select") return `${step.action === "select" ? "Select" : "Enter"} the user-provided \`${step.variable}\` ${step.secret ? "secret " : ""}value in ${targetLabel(step)}. Never expose it in logs or saved files.`;
-  if (step.action === "assert") return `Verify the recorded condition: ${JSON.stringify(step.expected)}. Stop and report the observed difference if this check fails.`;
-  if (step.action === "key") return `${step.note === "keyUp" ? "Release" : "Press"} the key \`${step.key}\` on ${targetLabel(step)}.`;
-  if (step.action === "focus") return `Focus ${targetLabel(step)} and inspect the current controls.`;
-  if (step.action === "scroll") return `Scroll ${targetLabel(step)} until the next target is visible.`;
-  const verb = step.key === "RIGHT_CLICK" ? "Right-click" : step.key === "MIDDLE_CLICK" ? "Middle-click" : step.key === "DOUBLE_CLICK" || step.note?.startsWith("Double click") ? "Double-click" : "Click";
-  const missingTarget = step.target?.role === "unknown" && !step.target.name ? " The recording could not identify this control. Ask for its visible identity or a reviewed note before proceeding." : "";
-  return `${verb} ${targetLabel(step)} after resolving its current accessible target.${missingTarget}`;
+export function describeStep(step: Step): string {
+  const quote = (value?: string) => `「${value}」`;
+  const roles: Record<string, string> = { button: "按钮", splitbutton: "按钮", hyperlink: "链接", link: "链接", textfield: "输入框", securetextfield: "密码输入框", textbox: "输入框", textarea: "文本框", combobox: "下拉框", checkbox: "复选框", radiobutton: "单选按钮", tabitem: "选项卡", tab: "选项卡", menuitem: "菜单项", menu: "菜单", menubar: "菜单栏", toolbar: "工具栏", pane: "区域", group: "区域", grouping: "区域", list: "列表", table: "表格", datagrid: "表格", document: "页面", webarea: "页面", window: "窗口", dialog: "对话框" };
+  const role = (value?: string) => value && value !== "unknown" ? roles[value.replace(/^AX/, "").replace(/[ -]/g, "").toLowerCase()] || value : "控件";
+  const pageTitle = step.page?.title || (step.window && !/^(?:Window|AXWindow)$/.test(step.window) ? step.window : undefined);
+  const page = pageTitle ? `${quote(pageTitle)}页面` : step.url ? `${quote(step.url)}页面` : "页面未识别";
+  const context = [step.app ? `${quote(step.app)}应用` : "应用未识别", page, step.target?.position ? `窗口${step.target.position}` : ""].filter(Boolean).join("，");
+  const path = step.target?.ancestors?.filter(parent => parent.name).map(parent => `${quote(parent.name)}${role(parent.role)}`).join(" → ");
+  const name = step.target?.name;
+  const target = name ? `${quote(name)}${role(step.target?.role)}` : step.target?.automationId ? `标识为${quote(step.target.automationId)}的${role(step.target.role)}` : `未命名的${role(step.target?.role)}`;
+  const location = `${context}${path ? `，${path}内` : ""}的${target}`;
+  if (step.action === "navigate") return `打开${quote(step.url)}页面，确认地址和页面内容与任务一致。`;
+  if (step.action === "focus") return `切换到${context}，确认当前窗口及待操作的控件。`;
+  if (step.action === "assert") return `在${context}检查：${quote(step.expected)}；不符合时停止并说明实际结果。`;
+  if (step.action === "input" || step.action === "select") return `在${location}${step.action === "select" ? "选择" : "输入"}本次任务提供的变量 \`${step.variable}\`${step.secret ? "（敏感值）" : ""}，确认目标控件已接收输入；不保存输入原文。`;
+  if (step.action === "key") return `在${location}按下 \`${step.key}\`，检查当前焦点和按键后的界面。`;
+  if (step.action === "scroll") return `在${location}${step.direction ? `向${{ up: "上", down: "下", left: "左", right: "右" }[step.direction]}` : "按当前任务所需方向"}滚动，直到下一步的目标控件可见。`;
+  const verb = step.key === "RIGHT_CLICK" ? "右键点击" : step.key === "MIDDLE_CLICK" ? "中键点击" : step.key === "DOUBLE_CLICK" || step.note?.startsWith("Double click") ? "双击" : "左键点击";
+  const unresolved = !name && !step.target?.automationId ? " 控件身份未完整识别，执行前需通过当前界面或补充说明确认目标。" : "";
+  return `${verb}${location}，点击前核对控件名称及所属页面，点击后检查界面变化。${unresolved}`;
 }
 
 function instruction(step: Step): string {
   const note = step.note ? ` Recorded note: ${JSON.stringify(step.note)}.` : "";
   const check = step.expected && step.action !== "assert" ? ` Then verify the recorded condition: ${JSON.stringify(step.expected)}. Stop and report the observed difference if this check fails.` : "";
-  return operationInstruction(step) + note + check;
+  return describeStep(step) + note + check;
 }
 
 export function compileSkill(sessionValue: Session, options: { skillName?: string; description?: string; skillContent?: string } = {}) {

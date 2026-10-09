@@ -4,14 +4,6 @@ import {
   acceptsIPolloWorkHostHistoryOrigin,
   parseIPolloWorkHostHistoryMessage,
 } from "./useIPolloWorkHostHistoryBridge";
-import {
-  buildEditHistoryEntry,
-  createEmptyEditHistory,
-  hashEditHistoryContent,
-  pushEditHistoryEntry,
-  redoEditHistory,
-  undoEditHistory,
-} from "../utils/editHistory";
 
 const recordMessage = {
   type: "ipollowork:studio-record-host-edit",
@@ -70,7 +62,7 @@ describe("iPolloWork host history bridge", () => {
     }, "video-session")).toBeNull();
   });
 
-  test("keeps a token-only theme edit undoable and redoable", () => {
+  test("forwards token-only snapshots to the shared project history owner", () => {
     const command = parseIPolloWorkHostHistoryMessage({
       ...recordMessage,
       files: {
@@ -79,27 +71,6 @@ describe("iPolloWork host history bridge", () => {
       },
     }, "video-session");
     if (command?.type !== "record") throw new Error("Expected a record command");
-    const entry = buildEditHistoryEntry({
-      ...command.input,
-      id: "theme-edit",
-      projectId: "video-session",
-      now: 1,
-    });
-    const state = pushEditHistoryEntry(createEmptyEditHistory(), entry);
-
-    expect(Object.keys(entry.files)).toEqual(["design-tokens.css"]);
-    const undone = undoEditHistory(state, {
-      "design-tokens.css": hashEditHistoryContent("theme-b"),
-    }, 2);
-    expect(undone.ok).toBe(true);
-    if (!undone.ok) return;
-    expect(undone.filesToWrite).toEqual({ "design-tokens.css": "theme-a" });
-
-    const redone = redoEditHistory(undone.state, {
-      "design-tokens.css": hashEditHistoryContent("theme-a"),
-    }, 3);
-    expect(redone.ok).toBe(true);
-    if (!redone.ok) return;
-    expect(redone.filesToWrite).toEqual({ "design-tokens.css": "theme-b" });
+    expect(command.input.files["design-tokens.css"]).toEqual({ before: "theme-a", after: "theme-b" });
   });
 });

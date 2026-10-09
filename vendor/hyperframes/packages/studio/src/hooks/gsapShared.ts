@@ -21,6 +21,22 @@ export interface IframeGsap {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// GSAP reserves `data` for metadata; native keyframe writers round-trip it.
+export const MANUAL_KEYFRAME_MARKER = "hf-manual-keyframe";
+
+export function markManualKeyframe(
+  mutation: Record<string, unknown>,
+): Record<string, unknown> {
+  const properties = mutation.properties;
+  if (
+    mutation.type !== "add-keyframe" ||
+    !properties ||
+    typeof properties !== "object" ||
+    Array.isArray(properties)
+  ) return mutation;
+  return { ...mutation, properties: { ...properties, data: MANUAL_KEYFRAME_MARKER } };
+}
+
 export const PROPERTY_DEFAULTS: Record<string, number> = {
   opacity: 1,
   x: 0,

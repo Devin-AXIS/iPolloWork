@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { videoStudioPanelBoundsSchema } from "../../../packages/types/src/hyperframes";
 
 import {
   hyperframesStudioPort,
@@ -32,6 +33,24 @@ const videoAuthoringGuidance = [
 ].map(path => readFileSync(new URL(`../../../examples/plugin-packages/video-agent/skills/${path}`, import.meta.url), "utf8")).join("\n");
 
 describe("HyperFrames Video Studio", () => {
+  test("submits video edit instructions through the current conversation with selection context and acceptance feedback", () => {
+    const panel = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
+    const page = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
+    const submit = page.slice(page.indexOf("const handleDesignAskAi ="), page.indexOf("const browserUrlForTarget ="));
+    expect(panel).toContain('event.source !== studioFrameRef.current?.contentWindow');
+    expect(panel).toContain('event.origin !== new URL(studioUrl).origin');
+    expect(panel).toContain('sessionId: conversationId ?? sessionId');
+    expect(panel).toContain('await onAskAi({');
+    expect(panel).toContain('reply(true)');
+    expect(panel).toContain('if (!active) throw');
+    expect(submit).toContain('context.sessionId !== props.selectedSessionId');
+    expect(submit).toContain('context.workspaceId !== props.runtimeWorkspaceId');
+    expect(submit).toContain('await sendSessionDraft({');
+    expect(submit).toContain('{ type: "text", text: request }');
+    expect(submit).toContain('{ type: "design-selection", contextId: context.id, label: context.target.label }');
+    expect(submit).toContain('!result.dispatched');
+  });
+
   test("delegates audible playback to the embedded Video Studio", () => {
     const source = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
     expect(source).toContain('allow="autoplay; fullscreen"');
@@ -377,13 +396,36 @@ describe("HyperFrames Video Studio", () => {
       /setStudioPanelWidth\([\s\S]*?MIN_STUDIO_PANEL_WIDTH[\s\S]*?MAX_STUDIO_PANEL_WIDTH[\s\S]*?event\.data\.width[\s\S]*?\);/,
     );
     expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
-    expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
+    expect(panelSource).toContain("embeddedStyle={studioPanelStyle}");
+    expect(panelSource).toContain("style={studioPanelStyle}");
+    expect(panelSource).toContain("videoStudioPanelBoundsSchema.safeParse(event.data.bounds)");
+    expect(panelSource).toContain('right: "auto"');
+    expect(voiceSource).toContain("style={inDialog ? undefined : embedded ? embeddedStyle : undefined}");
     expect(voiceSource).toContain("width={inDialog ? undefined : embedded ? embeddedWidth : undefined}");
     expect(panelSource).toContain("top-[90px]");
     expect(voiceSource).toContain("top-[148px]");
     expect(panelSource).not.toContain("top-[82px]");
     expect(voiceSource).not.toContain("top-[82px]");
     expect(voiceSource).not.toContain("flex w-[400px]");
+  });
+
+  test("accepts moved, resized and maximized dock content bounds", () => {
+    for (const bounds of [
+      { left: 0, top: 0.2, width: 0.35, height: 0.8 },
+      { left: 0.3, top: 0.15, width: 0.7, height: 0.65 },
+      { left: 0, top: 0, width: 1, height: 1 },
+    ]) expect(videoStudioPanelBoundsSchema.safeParse(bounds).success).toBe(true);
+  });
+
+  test("rejects invalid bounds before they can cover unrelated host controls", () => {
+    for (const bounds of [
+      { left: -0.1, top: 0, width: 0.3, height: 0.8 },
+      { left: 0.8, top: 0, width: 0.3, height: 0.8 },
+      { left: 0, top: 0.8, width: 1, height: 0.3 },
+      { left: 0, top: 0, width: 0, height: 0.8 },
+      { left: 0, top: 0, width: 0.3, height: Infinity },
+      { left: NaN, top: 0, width: 0.3, height: 0.8 },
+    ]) expect(videoStudioPanelBoundsSchema.safeParse(bounds).success).toBe(false);
   });
 
   test("keeps fullscreen control in the unified right-panel header", () => {
@@ -453,7 +495,7 @@ describe("HyperFrames Video Studio", () => {
     );
   });
 
-  test("debounces source saves and lazy-loads optional Studio panels", () => {
+  test("coalesces source saves through the official scheduler and lazy-loads optional Studio panels", () => {
     const saveSource = readFileSync(
       new URL(
         "../../../vendor/hyperframes/packages/studio/src/hooks/useEditorSave.ts",
@@ -466,9 +508,10 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(saveSource).toContain("}, 350)");
-    expect(saveSource).toContain("saveChainRef.current.catch");
-    expect(saveSource).toContain("addStudioPendingEditFlushListener");
+    expect(saveSource).toContain("cancelAnimationFrame(saveRafRef.current)");
+    expect(saveSource).toContain("saveRafRef.current = requestAnimationFrame");
+    expect(saveSource).toContain("saveProjectFilesWithHistory");
+    expect(saveSource).toContain("flushPendingSave");
     expect(studioSource).toContain("const StudioRightPanel = lazy");
     expect(studioSource).not.toContain("await renderQueue.startRender(undefined)");
     expect(studioSource).not.toContain("revealOnError: true");
@@ -780,7 +823,7 @@ describe("HyperFrames Video Studio", () => {
     expect(electronSource).toContain(
       "const hfId = element.getAttribute('data-hf-id') || undefined",
     );
-    expect(panelSource).toContain("onAskAi?: (context: DesignAiSelectionContext) => void");
+    expect(panelSource).toContain("onAskAi?: (context: DesignAiSelectionContext, instruction?: string) => void | Promise<void>");
     expect(panelSource).toContain("event.source !== studioFrameRef.current?.contentWindow");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:hyperframes:ask-ai-selection"');
     expect(panelSource).toContain("resolveVideoAiSelectionTarget(event.data.target)");
@@ -789,7 +832,8 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("video-ai-${crypto.randomUUID()}");
     expect(sessionPageSource).toContain("onAskAi={handleDesignAskAi}");
     expect(nativeToolbarSource).toContain("handleDomEditElementDelete");
-    expect(nativeToolbarSource).toContain("postVideoAiSelectionToHost(activeSelection)");
+    expect(nativeToolbarSource).toContain("handleAskAgent()");
+    expect(nativeToolbarSource).not.toContain("postVideoAiSelectionToHost(activeSelection)");
     expect(nativeAiPromptSource).toContain("window.parent?.postMessage");
     expect(nativeAiPromptSource).toContain("ipollowork:hyperframes:ask-ai-selection");
     expect(nativeAiPromptSource).toContain("hfId: selection.hfId");
@@ -860,7 +904,7 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(electronSource).toContain(
-      'spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--no-open"], projectPath)',
+      'spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--foreground", "--force-new", "--no-open"], projectPath)',
     );
     expect(electronSource).toContain("reserveHyperframesPort(port, key)");
     expect(electronSource).not.toContain("stopStaleHyperframesPort(port, projectPath)");
