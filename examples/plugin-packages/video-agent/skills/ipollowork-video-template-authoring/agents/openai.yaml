@@ -1,0 +1,6 @@
+interface:
+  display_name: "Video Template Authoring"
+  short_description: "Create cinematic, reusable HyperFrames video templates"
+  default_prompt: "Use $ipollowork-video-template-authoring to create a brand-ready, cinematic, reusable video template from this brief and pass every visual, motion, and validation gate."
+policy:
+  allow_implicit_invocation: true

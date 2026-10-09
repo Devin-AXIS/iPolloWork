@@ -607,6 +607,11 @@ function buildAgentPrompt(
       `Keep its theme mode as ${block.visualComponent.themeMode}. Prefer its declared variables for routine changes. AI-editable slots: ${slots}.`,
       block.visualComponent.ai?.instructions ??
         "Preserve its registered timeline and only make bounded layout or content adjustments.",
+      ...(block.visualComponent.ai?.model ? [
+        "After installing, use media.video_component_read with sourcePath and the installed host elementId, then media.video_component_write with the returned revision and one {content,copy,timing,look} data object. Keep stable ids; omitted fields remain, arrays replace. Correct 422 issue paths; on 409 read and rebase.",
+        block.visualComponent.ai.guide ?? "",
+        `Example:\n\`\`\`json\n${JSON.stringify(block.visualComponent.ai.example, null, 2)}\n\`\`\``,
+      ] : []),
       ...(aiReadableData
         ? [
             "## AI-readable component data",

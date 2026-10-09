@@ -17,6 +17,26 @@ export interface VideoRuntimeReview {
   deterministicSeek: { checkedSceneCount: number; valid: boolean };
 }
 
+/** Runs inside the existing capture page. Candidate values never reach project files. */
+export async function reviewComponentVariables(input: { elementId: string; values: Record<string, string | number | boolean> }): Promise<VideoRuntimeReview> {
+  const issues: VideoRuntimeReview["issues"] = [];
+  try {
+    const ready = await Promise.race([document.fonts.ready.then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 5000))]);
+    if (!ready) throw Error("Actual project fonts are not ready");
+    const host = document.getElementById(input.elementId);
+    const root = host?.querySelector("[data-hf-live-variables]") ?? host;
+    const runtime = Reflect.get(window, "__hyperframes");
+    if (!root || !runtime || typeof runtime.updateVariables !== "function" || !runtime.updateVariables(root, input.values)) throw Error("The component preview cannot validate these values");
+    const candidateFonts = await Promise.race([document.fonts.ready.then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 5000))]);
+    if (!candidateFonts) throw Error("The candidate component fonts are not ready");
+    if (!runtime.updateVariables(root, input.values)) throw Error("The component preview cannot validate these values with the actual fonts");
+  } catch (error) {
+    issues.push({ sceneId: input.elementId, code: "component-layout", time: 0, detail: error instanceof Error ? error.message : "Component validation failed" });
+  }
+  return { valid: !issues.length, scope: "runtime-timing-and-layout-not-semantic-approval", sampledFrameCount: 1, issues,
+    carrierReview: { scope: "tracked-dom-not-semantic-continuity-approval", boundaries: [] }, deterministicSeek: { checkedSceneCount: 0, valid: true } };
+}
+
 /** Serialized into the existing capture page; inspect the executed timeline, not source labels. */
 export async function reviewVideoRuntime(): Promise<VideoRuntimeReview> {
   const fontsReady = await Promise.race([document.fonts.ready.then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 2000))]);

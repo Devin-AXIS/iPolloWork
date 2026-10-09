@@ -7,7 +7,6 @@ import {
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {
-  collectTimelineAncestorIds,
   resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
 } from "../player/lib/timelineTreeSelection";
@@ -174,11 +173,6 @@ export function useDomSelection({
         };
         const treeId = resolveTimelineTreeSelectionId(treeSelection);
         const treeKey = treeId ? resolveTimelineTreeSelectionKey(treeSelection) : "";
-        if (treeId) {
-          playerState.expandTimelineElementIds(
-            collectTimelineAncestorIds(treeId, playerState.clipParentMap),
-          );
-        }
         const key =
           treeKey ||
           findMatchingTimelineElementId(selection, timelineElements) ||

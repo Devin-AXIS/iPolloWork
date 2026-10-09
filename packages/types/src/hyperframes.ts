@@ -46,7 +46,7 @@ export const hyperframesVisualComponentDataSchema = z.object({
     id: z.string().min(1), label: z.string().min(1), type: z.enum(["string", "number"]),
     role: z.enum(["id", "label", "value", "source", "target"]), required: z.boolean().optional(),
     options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
-    min: z.number().finite().optional(), max: z.number().finite().optional(),
+    min: z.number().finite().optional(), max: z.number().finite().optional(), integer: z.boolean().optional(),
     maxLength: z.number().int().positive().optional(),
     list: z.object({
       maxItems: z.number().int().nonnegative(), itemMaxLength: z.number().int().positive(),

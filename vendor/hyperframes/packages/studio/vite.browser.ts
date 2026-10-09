@@ -14,6 +14,7 @@ import {
 } from "@hyperframes/studio-server";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { seekThumbnailPreview } from "./vite.thumbnail";
+import { reviewComponentVariables } from "@hyperframes/studio-server/screenshot-clip";
 import { resolveHeadlessShellPath } from "../engine/src/index";
 
 let browser: import("puppeteer-core").Browser | null = null;
@@ -211,6 +212,7 @@ async function reapplyStudioRenderBodyScriptsToThumbnailPage(
 
 export interface GenerateThumbnailOptions {
   runtimeReview?: boolean;
+  componentVariables?: { elementId: string; values: Record<string, string | number | boolean> };
   project: { dir: string };
   compPath: string;
   seekTime: number;
@@ -279,6 +281,7 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
     page = await sharedBrowser.newPage();
     if (opts.signal.aborted) return null;
     await prepareThumbnailPage(page, opts);
+    if (opts.componentVariables) return await page.evaluate(reviewComponentVariables, opts.componentVariables);
     if (opts.runtimeReview) return await page.evaluate(reviewVideoRuntime);
     const clip = opts.selector
       ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex)

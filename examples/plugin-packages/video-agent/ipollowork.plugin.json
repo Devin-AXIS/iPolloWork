@@ -33,6 +33,10 @@
           "ipollowork-video-studio": {
             "description": "Route the current video task to the needed specialist and continue host-managed delivery."
           },
+          "ipollowork-video-template-authoring": {
+            "label": "Video Template Authoring",
+            "description": "Create reusable HyperFrames video templates with editable variables, seek-safe motion, and validation."
+          },
           "ipollowork-video-voiceover": {
             "label": "Video Voiceover",
             "description": "Edit scene-bound narration and captions with measured speech timing."
@@ -105,6 +109,17 @@
       "path": "skills/ipollowork-video-studio/SKILL.md",
       "provides": [
         "workflow:ipollowork-video-studio"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "ipollowork-video-template-authoring",
+      "label": "视频模板创作",
+      "description": "创建具备高质量视觉、确定性动效、可编辑变量并通过严格校验的 HyperFrames 视频模板。",
+      "path": "skills/ipollowork-video-template-authoring",
+      "provides": [
+        "workflow:ipollowork-video-template-authoring"
       ],
       "required": true
     },

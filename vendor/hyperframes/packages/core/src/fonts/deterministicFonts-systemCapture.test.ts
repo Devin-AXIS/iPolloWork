@@ -11,9 +11,13 @@
  * not served) so the resolver falls through to the system font path.
  */
 
-import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fontFormatHint, injectDeterministicFontFaces } from "./deterministicFonts.js";
+import * as systemFonts from "./systemFontLocator.js";
+import * as compression from "./fontCompression.js";
 
 // A font family that is NOT in FONT_ALIASES but exists on macOS as
 // /System/Library/Fonts/Supplemental/Impact.ttf. When Google Fonts
@@ -37,6 +41,33 @@ function makeHttp400Fetch(): typeof fetch {
 }
 
 describe("system font capture — allowSystemFontCapture option", () => {
+  it("caps preview font embedding before compression while leaving renders uncapped", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-font-preview-cap-"));
+    const fontPath = join(dir, "preview.woff2");
+    writeFileSync(fontPath, Buffer.alloc(16));
+    const locate = vi.spyOn(systemFonts, "locateSystemFontVariants").mockReturnValue([
+      { path: fontPath, format: "woff2", weight: "400", style: "normal" },
+    ]);
+    const compress = vi.spyOn(compression, "fontToDataUri").mockResolvedValue("data:font/woff2;base64,cHJvb2Y=");
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    try {
+      const html = makeHtml("PreviewCapTestFont");
+      const preview = await injectDeterministicFontFaces(html, {
+        fetchImpl: makeHttp400Fetch(), maxSystemFontBytes: 8, logger,
+      });
+      expect(preview).not.toContain("data-hyperframes-deterministic-fonts");
+      expect(compress).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("embedding it would make the preview too large"));
+      const render = await injectDeterministicFontFaces(html, { fetchImpl: makeHttp400Fetch(), logger });
+      expect(render).toContain("data:font/woff2;base64,cHJvb2Y=");
+      expect(compress).toHaveBeenCalledOnce();
+    } finally {
+      locate.mockRestore();
+      compress.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("uses the CSS collection hint for raw TTC data URIs", () => {
     expect(fontFormatHint("data:font/collection;base64,AA==")).toBe("collection");
     expect(fontFormatHint("data:font/woff2;base64,AA==")).toBe("woff2");

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  collectTimelineAncestorIds,
   resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
   resolveStoryboardTimelineTarget,
@@ -45,18 +44,6 @@ describe("script to official timeline correspondence", () => {
 });
 
 describe("timeline tree selection", () => {
-  test("collects every ancestor from root to the selected node's parent", () => {
-    expect(
-      collectTimelineAncestorIds(
-        "title",
-        new Map([
-          ["title", "hero"],
-          ["hero", "scene"],
-        ]),
-      ),
-    ).toEqual(["scene", "hero"]);
-  });
-
   test("uses the nested source file key for a DOM-only child", () => {
     expect(
       resolveTimelineTreeSelectionKey({
@@ -94,7 +81,7 @@ describe("timeline tree selection", () => {
     ).toBe("compositions/second.html#title");
   });
 
-  test("resolves an id-less preview selection through its hf id and expands its parents", () => {
+  test("resolves an id-less preview selection through its hf id", () => {
     const domClipChildren = [
       {
         id: "hf-title",
@@ -120,9 +107,6 @@ describe("timeline tree selection", () => {
     expect(resolveTimelineTreeSelectionKey(input)).toBe(
       "scene::compositions/scene.html:.title:0",
     );
-    expect(collectTimelineAncestorIds("hf-title", new Map([["hf-title", "hero"]]))).toEqual([
-      "hero",
-    ]);
   });
 
   test("resolves a selector-only preview element to its timeline tree identity", () => {

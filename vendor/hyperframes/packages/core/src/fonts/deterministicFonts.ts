@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -750,14 +750,20 @@ async function systemFamilyFaceRules(
   lookupFamily: string,
   emitFamily: string,
   log: FontLogger,
+  maxSystemFontBytes: number | undefined,
 ): Promise<string[] | null> {
   const variants = locateSystemFontVariants(lookupFamily);
   if (variants.length === 0) return null;
   const rules: string[] = [];
-  let totalBytes = 0;
+  const totalBytes = variants.reduce((total, variant) => total + statSync(variant.path).size, 0);
+  if (maxSystemFontBytes !== undefined && totalBytes > maxSystemFontBytes) {
+    log.warn(
+      `[Compiler] Skipping system font "${lookupFamily}" (${(totalBytes / 1024 / 1024).toFixed(1)} MB); embedding it would make the preview too large.`,
+    );
+    return null;
+  }
   for (const variant of variants) {
     const fontBuffer = readFileSync(variant.path);
-    totalBytes += fontBuffer.length;
     const dataUri = await fontToDataUri(fontBuffer, variant.format);
     rules.push(buildFontFaceRule(emitFamily, dataUri, variant.weight, variant.style));
   }
@@ -797,7 +803,7 @@ async function resolveFamilyFaceRules(
   return (
     (await googleFamilyFaceRules(lookupFamily, emitFamily, optional, options, fontText)) ??
     (options.allowSystemFontCapture && !pageNamedThisFile(lookupFamily, options)
-      ? await systemFamilyFaceRules(lookupFamily, emitFamily, options.log)
+      ? await systemFamilyFaceRules(lookupFamily, emitFamily, options.log, options.maxSystemFontBytes)
       : null)
   );
 }
@@ -1215,6 +1221,7 @@ interface InternalFontFetchOptions {
   failClosedFontFetch: boolean;
   fetchImpl: typeof fetch;
   allowSystemFontCapture: boolean;
+  maxSystemFontBytes?: number;
   abortSignal?: AbortSignal;
   retryPolicy: FontFetchRetryPolicy;
   retryDeadlineMs: number;
@@ -1695,6 +1702,8 @@ export interface InjectDeterministicFontFacesOptions {
    * to contain the same fonts as the authoring machine.
    */
   allowSystemFontCapture?: boolean;
+  /** Preview-only cap for embedded system fonts; renders omit it. */
+  maxSystemFontBytes?: number;
 }
 
 // Keep the complete CSS request under the broadly supported ~2 KB URL limit.
@@ -1877,6 +1886,7 @@ export async function injectDeterministicFontFaces(
     failClosedFontFetch,
     fetchImpl,
     allowSystemFontCapture,
+    maxSystemFontBytes: options.maxSystemFontBytes,
     abortSignal: options.abortSignal,
     retryPolicy,
     retryDeadlineMs: Date.now() + retryPolicy.maxElapsedMs,

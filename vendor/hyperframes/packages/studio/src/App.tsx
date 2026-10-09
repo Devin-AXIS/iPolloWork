@@ -348,6 +348,7 @@ export function StudioApp() {
     setActiveBlockParams,
     handleAddBlock,
     handleBlockVariableChange,
+    handleBlockVariablesChange,
     handleTimelineBlockDrop,
     handlePreviewBlockDrop,
   } = useBlockHandlers({
@@ -663,6 +664,7 @@ export function StudioApp() {
                                 panelLayout.setRightPanelTab(returnTab);
                               }}
                               onBlockVariableChange={handleBlockVariableChange}
+                              onBlockVariablesChange={handleBlockVariablesChange}
                               recordingState={gestureState}
                               recordingDuration={gestureRecording.recordingDuration}
                               onToggleRecording={recordingToggle}

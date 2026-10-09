@@ -6,7 +6,8 @@ import {
   injectRegistryVariableDeclarations,
   resolveInstalledComponentParams,
 } from "./blockInstaller";
-import type { RegistryItem, RegistryVariable } from "@hyperframes/core/registry";
+import { fromJSON } from "@hyperframes/core/registry";
+import type { ComponentContentModel, RegistryItem, RegistryVariable } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import { applyPatchByTarget } from "./sourcePatcher";
 
@@ -422,6 +423,33 @@ describe("addBlockToProject", () => {
 });
 
 describe("component instance variables", () => {
+  it("validates narration cues against the instance source duration after a clip is trimmed", () => {
+    const model: ComponentContentModel = {
+      type: "mindmap", title: "Map", kind: "category-value", duration: 10,
+      rows: { variable: "rows", field: "branches", label: "Branches", min: 2, max: 3, columns: [{ id: "label", required: true, maxLength: 12 }] },
+      vars: [], defaults: { rows: JSON.stringify({ version: 1, kind: "category-value", rows: [{ id: "a", label: "Alpha" }, { id: "b", label: "Beta" }] }), motionCueTimes: "{}" },
+      lookDefaults: { layout: "full", skin: "keynote", camera: "auto" },
+    };
+    const catalog: RegistryItem[] = [{
+      name: "map", title: "Map", description: "Mind map", type: "hyperframes:block", duration: 10,
+      files: [{ path: "map.html", target: "compositions/map.html", type: "hyperframes:composition" }],
+      variables: [{ id: "rows", type: "string", label: "Rows", default: String(model.defaults.rows) }],
+      visualComponent: { version: 1, category: "diagrams", surfaces: ["video"], themeMode: "inherit", ai: { slots: ["content"], model } },
+    }];
+    const resolve = (sourceDuration?: number) => resolveInstalledComponentParams({
+      catalog, element: { id: "map", domId: "map", tag: "div", start: 26, duration: 13, sourceDuration, track: 0, compositionSrc: "compositions/map.html" },
+      hostCompositionPath: "index.html", hostSource: '<div id="map"></div>',
+      compositionSource: `<main data-component-content-model='${JSON.stringify(model)}'></main>`,
+    })?.visualComponent?.ai?.model;
+    const data = { timing: { a: 3, b: 9 } };
+    expect(fromJSON(model, data).errors.length).toBeGreaterThan(0);
+    const instanceModel = resolve();
+    if (!instanceModel) throw Error("Installed model missing");
+    expect(fromJSON(instanceModel, data).errors).toEqual([]);
+    expect(resolve(15)?.duration).toBe(15);
+    expect(model.duration).toBe(10);
+  });
+
   it("rehydrates an existing component's catalog contract and instance values", () => {
     const variables: RegistryVariable[] = [
       { id: "title", label: "Title", type: "string", default: "Route", maxLength: 12 },

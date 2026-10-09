@@ -20,7 +20,6 @@ import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 import {
-  collectTimelineAncestorIds,
   resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
 } from "../player/lib/timelineTreeSelection";
@@ -167,7 +166,6 @@ export function useDomEditWiring({
 }: UseDomEditWiringParams) {
   const timelineElements = usePlayerStore((state) => state.elements);
   const clipManifest = usePlayerStore((state) => state.clipManifest);
-  const clipParentMap = usePlayerStore((state) => state.clipParentMap);
   const domClipChildren = usePlayerStore((state) => state.domClipChildren);
   // ── Click-to-source navigation ──
 
@@ -202,11 +200,9 @@ export function useDomEditWiring({
     const treeId = resolveTimelineTreeSelectionId(selectionIdentity);
     if (!treeId) return;
     const key = resolveTimelineTreeSelectionKey(selectionIdentity);
-    store.expandTimelineElementIds(collectTimelineAncestorIds(treeId, clipParentMap));
     if (key !== store.selectedElementId) store.setSelectedElementId(key);
   }, [
     clipManifest,
-    clipParentMap,
     domClipChildren,
     domEditSelection?.hfId,
     domEditSelection?.id,

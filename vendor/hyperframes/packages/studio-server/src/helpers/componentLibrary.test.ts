@@ -10,7 +10,7 @@ afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, for
 function fixture(name = "sample") {
   return { format: "hyperframes:components", version: 1, items: [{
     manifest: { name, type: "hyperframes:block", title: "Sample", description: "Sample component", duration: 10, dimensions: { width: 1920, height: 1080 },
-      visualComponent: { version: 1, category: "maps", surfaces: ["video"], themeMode: "inherit" },
+      visualComponent: { version: 1, category: "business", surfaces: ["video"], themeMode: "inherit" },
       variables: [{ id: "speed", label: "Speed", type: "number", default: 1, min: .3, max: 2 }],
       files: [{ path: "sample.html", target: `compositions/${name}/sample.html`, type: "hyperframes:composition" }] },
     files: { "sample.html": `<html><div data-composition-id="${name}">Sample</div></html>` },
@@ -85,7 +85,7 @@ describe("component library import", () => {
     expect(() => parseComponentPack({ items: [] })).toThrow("component pack");
   });
   it("rejects writes through a project symlink", () => {
-    const root = temp(), outside = temp(); symlinkSync(outside, join(root, "compositions"));
+    const root = temp(), outside = temp(); symlinkSync(outside, join(root, "compositions"), process.platform === "win32" ? "junction" : "dir");
     expect(() => safeComponentPath(root, "compositions/sample/a.html")).toThrow("Symbolic");
   });
 });

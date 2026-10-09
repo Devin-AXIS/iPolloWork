@@ -1,4 +1,5 @@
 import { parseCompositionVariables } from "@hyperframes/parsers/composition";
+import { isComponentContentModel } from "@hyperframes/core/registry";
 import type {
   BlockParam,
   RegistryItem,
@@ -261,6 +262,14 @@ export function resolveInstalledComponentParams(input: {
   const sourceDocument = input.compositionSource ? new DOMParser().parseFromString(input.compositionSource, "text/html") : null;
   const declaration = sourceDocument?.querySelector("[data-composition-variables]");
   const defaults = declaration ? parseCompositionVariables(declaration) : [];
+  const installedContent = sourceDocument?.querySelector("template")?.content ?? sourceDocument;
+  let installedModel: unknown;
+  try { installedModel = JSON.parse(installedContent?.querySelector("[data-component-content-model]")?.getAttribute("data-component-content-model") ?? "null"); }
+  catch { installedModel = null; }
+  const visualComponent = block.visualComponent?.ai?.model ? {
+    ...block.visualComponent, ai: { ...block.visualComponent.ai, model: isComponentContentModel(installedModel)
+      ? { ...installedModel, duration: input.element.sourceDuration ?? input.element.duration } : undefined },
+  } : block.visualComponent;
   const variables = (block.variables ?? []).map((variable) => {
     const authored = defaults.find((candidate) => candidate.id === variable.id && candidate.type === variable.type);
     return authored ? { ...variable, default: normalizeBlockVariableValue(variable, authored.default) } as RegistryVariable : variable;
@@ -273,7 +282,7 @@ export function resolveInstalledComponentParams(input: {
     params,
     variables,
     variableValues: readComponentVariableValues(input.hostSource, insertedElementId, variables),
-    visualComponent: block.visualComponent,
+    visualComponent,
     hostCompositionPath: input.hostCompositionPath,
     insertedElementId,
     returnTab: "components",

@@ -22,7 +22,7 @@ type HostHistoryCommand =
     };
 
 const HOST_HISTORY_PATHS = ["index.html", "design-tokens.css"] as const;
-const TRUSTED_DEV_PARENT_PORTS = new Set(["5173", "5273", "5274"]);
+const TRUSTED_DEV_PARENT_PORTS = new Set(["5173", "5180", "5273", "5274"]);
 const TRUSTED_DEV_PARENT_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -76,3 +76,6 @@ export type {
 
 export { GSAP_OFFICIAL_CAPABILITIES, GSAP_OFFICIAL_VERSION } from "./gsapCapabilities.js";
 export { resolveGsapRegistryItemEngine } from "./gsapRuntime.js";
+
+export type { ComponentContentModel, ComponentContentField, ComponentContentIssue, ComponentContentSchema, ComponentContentResult, ComponentVariableValues } from "./componentContent.js";
+export { toJSON, fromJSON, schema as componentContentSchema, guide as componentContentGuide, validateComponentVariables, parseComponentTextList, isComponentContentModel } from "./componentContent.js";

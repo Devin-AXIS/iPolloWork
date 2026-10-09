@@ -7,6 +7,7 @@
 
 import { Hono, type Context } from "hono";
 import { createHash } from "node:crypto";
+import { SYSTEM_FONT_SIZE_LIMIT } from "@hyperframes/core/fonts/system-locator";
 import { streamSSE } from "hono/streaming";
 import {
   existsSync,
@@ -45,7 +46,7 @@ import {
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy, loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { DEFAULT_REGISTRY_URL } from "../registry/remote.js";
-import { getElementScreenshotClip, reviewVideoRuntime } from "@hyperframes/studio-server/screenshot-clip";
+import { getElementScreenshotClip, reviewVideoRuntime, reviewComponentVariables } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import type { RegistryItem } from "@hyperframes/core";
@@ -518,6 +519,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // caching across composition edits.
         let html = await bundleToSingleHtml(dir, {
           runtime: "placeholder",
+          inlineAssets: false,
           inlineColorGradingLuts: false,
         });
         html = html.replace(
@@ -547,7 +549,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         cacheDir: gifOutputDir,
         sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, downloadToTemp),
       });
-      return injectDeterministicFontFaces(prepared.html);
+      return injectDeterministicFontFaces(prepared.html, {
+        maxSystemFontBytes: SYSTEM_FONT_SIZE_LIMIT,
+      });
     },
 
     getProjectSignature(dir: string): string {
@@ -752,6 +756,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         });
         await new Promise((r) => setTimeout(r, 200));
         await reapplyStudioManualEditsToThumbnailPage(page);
+        if (opts.componentVariables) return await withThumbnailTimeout(page.evaluate(reviewComponentVariables, opts.componentVariables), 15_000, "Timed out validating component content");
         if (opts.runtimeReview) return await withThumbnailTimeout(page.evaluate(reviewVideoRuntime), 30_000, "Timed out inspecting executed video timing and layout");
         let clip: ScreenshotClip | undefined;
         if (opts.selector) {

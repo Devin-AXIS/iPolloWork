@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
+import { reviewComponentVariables, type VideoRuntimeReview } from "@hyperframes/studio-server/screenshot-clip";
 
 const browserMocks = vi.hoisted(() => {
   const page = {
     setViewport: vi.fn(async () => {}),
     goto: vi.fn(async () => {}),
-    evaluate: vi.fn(async () => undefined),
+    evaluate: vi.fn(async (_fn: unknown, ..._args: unknown[]): Promise<unknown> => undefined),
     waitForFunction: vi.fn(async () => undefined),
     addScriptTag: vi.fn(async () => undefined),
     screenshot: vi.fn(async () => Buffer.from("thumbnail")),
@@ -100,6 +101,24 @@ describe("generateThumbnail", () => {
     expect(browserMocks.sharedBrowser.version).toHaveBeenCalledOnce();
     expect(browserMocks.sharedBrowser.close).toHaveBeenCalledOnce();
     expect(browserMocks.newPage).not.toHaveBeenCalled();
+  });
+
+  it("validates component edits in the shared capture page and still closes it", async () => {
+    const review: VideoRuntimeReview = {
+      valid: true, scope: "runtime-timing-and-layout-not-semantic-approval", sampledFrameCount: 1,
+      issues: [], carrierReview: { scope: "tracked-dom-not-semantic-continuity-approval", boundaries: [] },
+      deterministicSeek: { checkedSceneCount: 0, valid: true },
+    };
+    browserMocks.page.evaluate.mockImplementation(async (fn) => fn === reviewComponentVariables ? review : undefined);
+    try {
+      const componentVariables = { elementId: "selected-component", values: { title: "Updated" } };
+      await expect(generateThumbnail({ ...options(), componentVariables })).resolves.toEqual(review);
+      expect(browserMocks.page.evaluate).toHaveBeenCalledWith(reviewComponentVariables, componentVariables);
+      expect(browserMocks.page.screenshot).not.toHaveBeenCalled();
+      expect(browserMocks.page.close).toHaveBeenCalledOnce();
+    } finally {
+      browserMocks.page.evaluate.mockImplementation(async () => undefined);
+    }
   });
 
   it("contains a canceled screenshot without crashing the dev server", async () => {

@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Player } from "./Player";
 
+vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+
 vi.mock("@hyperframes/player", () => {
   class TestPlayer extends HTMLElement {
     ready = false;
@@ -22,6 +24,7 @@ vi.mock("@hyperframes/player", () => {
 
 let root: Root;
 let container: HTMLDivElement;
+let onError = vi.fn<() => void>();
 let player: HTMLElement & { ready: boolean; iframeElement: HTMLIFrameElement };
 
 beforeEach(async () => {
@@ -29,8 +32,9 @@ beforeEach(async () => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
+  onError = vi.fn();
   await act(async () => {
-    root.render(<Player ref={createRef()} projectId="proof" onLoad={vi.fn()} suppressLoadingOverlay />);
+    root.render(<Player ref={createRef()} projectId="proof" onLoad={vi.fn()} onError={onError} suppressLoadingOverlay />);
   });
   player = container.querySelector("hyperframes-player")! as typeof player;
   expect(player).toBeTruthy();
@@ -82,5 +86,27 @@ describe("official player readiness and iframe load ordering", () => {
       player.dispatchEvent(new Event("ready"));
     });
     expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).toBeNull();
+  });
+
+  it("shows loading immediately and offers a retry after player failure", async () => {
+
+    await act(async () => {
+      root.render(<Player projectId="preview-proof" onLoad={vi.fn()} onError={onError} />);
+      await Promise.resolve();
+    });
+    player = container.querySelector("hyperframes-player")! as typeof player;
+
+    expect(container.querySelector('[data-testid="composition-loading-overlay"]')).not.toBeNull();
+
+    await act(async () => player?.dispatchEvent(new Event("error")));
+    expect(onError).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-testid="composition-error-overlay"]')).not.toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button")?.click();
+    });
+    expect(player?.getAttribute("src")).toContain("_hfRetry=");
+    expect(container.querySelector('[data-testid="composition-loading-overlay"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="composition-error-overlay"]')).toBeNull();
   });
 });

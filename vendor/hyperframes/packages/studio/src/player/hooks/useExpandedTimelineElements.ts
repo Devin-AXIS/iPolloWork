@@ -401,8 +401,7 @@ export function useExpandedTimelineElements(): TimelineElement[] {
   const domClipChildren = usePlayerStore((s) => s.domClipChildren);
   const expandedTimelineElementIds = usePlayerStore((s) => s.expandedTimelineElementIds);
 
-  // Store explicit expanded ids. Manual caret clicks toggle one id, while a
-  // canvas selection may add its ancestor chain so the selected row is visible.
+  // Only explicit caret clicks change which timeline rows are expanded.
   const expandedRawIds = useMemo(() => {
     const rawIds = new Set<string>();
     if (clipParentMap.size === 0) return rawIds;
