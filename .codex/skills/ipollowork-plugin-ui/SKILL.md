@@ -11,7 +11,18 @@ description: 为 iPolloWork 新插件或插件工作区选择可复用 UI 组件
 
 - **宿主 React 页面**：从 `apps/app/src/components/ui` 导入基础控件；`@/` 是主应用别名。业务组合参考现有调用，不把领域内部组件作为插件公开 API。
 - **独立 HTML / iframe / 独立构建的 React 插件**：读取 [插件接入契约](references/plugin-contract.md)。主应用别名和 CSS 不会自动进入 iframe；采用现有插件的桥接方式与相同交互语义。独立 React 构建也不能假定能导入宿主组件。
-- 本 Skill 提供规范和选择规则，没有发布新的 UI 包。先确认项目实际提供的依赖和主题接口。
+- 共享实现位于已有 `@ipollowork/ui` 包，首批公开控件为 Button、Input、Textarea。其余组件不可据此推断已进入插件运行时。
+
+## 固定接入规则 · v1
+
+实施插件前必须读取 [插件接入契约](references/plugin-contract.md) 的公共入口、构建/注入和版本章节，按以下边界选择：
+
+- 宿主 React 使用原有 `@/components/ui/*` 入口；共享包控件入口为 `@ipollowork/ui/controls`。
+- iframe 插件只从 `@ipollowork/ui/runtime-contract` 导入 `requireRuntime(1)`；实际 React/控件从返回的运行时对象取得。不要从 `plugin-runtime` 或宿主私有路径导入实现，也不要给生产插件再打包 React。
+- 开发构建显式选择 `buildPluginRuntime('bundled')`，将运行时放在业务脚本之前；生产包不包含运行时，保留契约中的固定 meta 标记，由宿主注入。不能仅凭 `NODE_ENV` 推断加载方式。
+- 当前运行时版本为 `1.0.0`，只核对主版本；缺失或主版本不匹配时停止初始化并提示更新客户端，不自动切换到另一份组件库。最低 minor、semver 范围和 manifest 中的 UI 版本协商尚未实现。
+
+本契约固定的是源码层接法，不表示已经合入客户端或完成正式安装/升级验收。推荐目录的 62 个条目也不等于运行时已提供 62 个组件。
 
 ## 选择顺序与证据
 
@@ -23,6 +34,8 @@ description: 为 iPolloWork 新插件或插件工作区选择可复用 UI 组件
 4. **历史**：使用替代入口；兼容封装的迁移范围由实际调用决定。
 
 Figma 状态页展示现有组件实例副本；主组件留在完整目录。查看设计时按需读取链接，避免把未确认的最新编辑自动升级为强制规范。源码与设计发生差异时记录双方依据，并解决影响本次任务的差异。
+
+首批共享控件身份读取 [组件映射](references/component-mapping.json)：主组件 ID、源码、包导出与原生 HTML 标记一一对应。此清单是 Code Connect 不可用时的仓库契约，不是假冒 Code Connect 发布记录。
 
 ## 交互约束
 

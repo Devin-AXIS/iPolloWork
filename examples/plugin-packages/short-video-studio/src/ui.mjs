@@ -2,6 +2,7 @@ import { createBridge } from './bridge.mjs';
 import { addNode, uuid } from './project.mjs';
 import './ui.css';
 import './responsive.css';
+import { requireRuntime } from '@ipollowork/ui/runtime-contract';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -54,12 +55,31 @@ const bridge = createBridge(context => { state.context = { ...state.context, ...
   if (result.project) { state.project = result.project; render(); }
   return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
 });
-async function dialog(title, description, initial) {
+async function dialog(title, description, initial, submit) {
   const box = $('#dialog');
-  box.innerHTML = `<div><h2>${esc(title)}</h2><p class="muted" style="margin:12px 0">${esc(description)}</p>${initial !== undefined ? `<input name="value" aria-label="${esc(title)}" value="${esc(initial)}" maxlength="96" required>` : ''}<div class="toolbar"><button type="button" data-dialog="cancel">取消</button><button type="button" data-dialog="ok" class="primary">确定</button></div></div>`;
-  box.onclick = event => { const decision=event.target.closest('[data-dialog]')?.dataset.dialog; if (!decision) return; if (decision==='ok' && box.querySelector('input') && !box.querySelector('input').reportValidity()) return; box.close(decision); };
+  const trigger = document.activeElement;
+  let busy = false, result;
+  box.innerHTML = `<div><h2>${esc(title)}</h2><p class="muted" style="margin:12px 0">${esc(description)}</p>${initial !== undefined ? `<input data-ipw-control="input" name="value" aria-label="${esc(title)}" value="${esc(initial)}" maxlength="96" required>` : ''}<p id="dialog-error" role="alert" hidden></p><div class="toolbar"><button data-ipw-control="button" data-ipw-variant="outline" type="button" data-dialog="cancel">取消</button><button data-ipw-control="button" type="button" data-dialog="ok">确定</button></div></div>`;
+  const error = box.querySelector('#dialog-error'), input = box.querySelector('input');
+  const clearError = () => { error.hidden = true; input?.removeAttribute('aria-invalid'); input?.removeAttribute('aria-describedby'); };
+  box.oninput = clearError;
+  box.oncancel = event => { if (busy) event.preventDefault(); };
+  box.onclick = async event => {
+    const decision=event.target.closest('[data-dialog]')?.dataset.dialog;
+    if (!decision || busy) return;
+    if (decision === 'cancel') { box.close('cancel'); return; }
+    if (input && !input.reportValidity()) return;
+    if (!submit) { box.close('ok'); return; }
+    busy = true; clearError(); box.setAttribute('aria-busy', 'true');
+    for (const button of box.querySelectorAll('button')) button.disabled = true;
+    box.querySelector('[data-dialog="ok"]').textContent = '提交中…';
+    try { result = await submit(input?.value); box.close('ok'); }
+    catch (reason) { error.textContent = reason.message || '保存失败，请重试'; error.hidden = false; input?.setAttribute('aria-invalid', 'true'); input?.setAttribute('aria-describedby', 'dialog-error'); input?.focus(); }
+    finally { busy = false; box.removeAttribute('aria-busy'); for (const button of box.querySelectorAll('button')) button.disabled = false; box.querySelector('[data-dialog="ok"]').textContent = '确定'; }
+  };
+  requireRuntime().enhance(box);
   box.showModal();
-  return new Promise(resolve => box.addEventListener('close', () => resolve(box.returnValue === 'ok' ? initial !== undefined ? box.querySelector('input').value : true : false), { once: true }));
+  return new Promise(resolve => box.addEventListener('close', () => { trigger?.focus(); resolve(box.returnValue === 'ok' ? submit ? result : initial !== undefined ? input.value : true : false); }, { once: true }));
 }
 async function mutate(fn, history = true) {
   queue = queue.catch(() => {}).then(async () => {
@@ -191,7 +211,7 @@ async function action(name, target) {
   const [key,value]=name.split(':'), p=state.project, node=p.nodes.find(n=>n.id===state.selection), shotId=target.closest('[data-shot]')?.dataset.shot, roleId=target.closest('[data-role]')?.dataset.role;
   if(key==='tab'){state.tab=value;state.selection=null;render();return;}
   if(key==='add'){await mutate(p=>{state.selection=addNode(p,value).id});return;}
-  if(key==='new-project'){const title=await dialog('新建短片','每个项目独立保存。','未命名短片');if(!title)return;releasePreviews();state.project=(await bridge.call('project-create',{title})).project;state.projects=(await bridge.call('project-list')).projects;state.selection=null;state.undo=[];state.redo=[];state.tab='canvas';render();return;}
+  if(key==='new-project'){const created=await dialog('新建短片','每个项目独立保存。','未命名短片',title=>bridge.call('project-create',{title}));if(!created)return;releasePreviews();state.project=created.project;state.projects=(await bridge.call('project-list')).projects;state.selection=null;state.undo=[];state.redo=[];state.tab='canvas';render();document.querySelector('[aria-label="新建项目"]')?.focus();return;}
   if(key==='rename-project'){const title=await dialog('项目名称','',p.title);if(title)await mutate(p=>p.title=title);return;}
   if(['zoom-in','zoom-out','fit'].includes(key)){if(key==='fit'){state.zoom=1;state.pan={x:0,y:0}}else state.zoom=Math.max(.25,Math.min(2,state.zoom+(key==='zoom-in'?.1:-.1)));render();return;}
   if(key==='close-inspector'){state.selection=null;render();return;}
@@ -241,7 +261,7 @@ async function action(name, target) {
 
 document.body.innerHTML='<div id="app"><div class="loading">正在连接 Work 短片工作台…</div></div><div id="toast" role="status" hidden></div><dialog id="dialog"></dialog><input id="upload" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.webm,.mp3,.wav,.m4a,.ogg" hidden>';
 document.addEventListener('click',e=>{if(e.target.closest('video,audio'))return;const target=e.target.closest('[data-action]');if(target)void action(target.dataset.action,target).catch(fail);else{const node=e.target.closest('[data-node]');if(node&&!drag){void flushDrafts().then(()=>{state.selection=node.dataset.node;render()}).catch(fail)}}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){state.selection=null;render()}if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-node]')){e.preventDefault();state.selection=e.target.dataset.node;render()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#dialog').open){state.selection=null;render()}if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-node]')){e.preventDefault();state.selection=e.target.dataset.node;render()}});
 async function handleField(e) {
   const target=e.target, value=target.type==='number'?Number(target.value):target.value;
   if(e.type==='input'&&target.id==='project-picker')return;
@@ -278,7 +298,7 @@ document.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-d
 document.addEventListener('pointerup',e=>{if(!drag)return;const d=drag;drag=null;if(d.node&&d.moved){const x=Math.max(-10000,Math.min(10000,d.x+(e.clientX-d.startX)/state.zoom)),y=Math.max(-10000,Math.min(10000,d.y+(e.clientY-d.startY)/state.zoom));void mutate(p=>Object.assign(p.nodes.find(n=>n.id===d.node.id),{x,y})).catch(fail)}});
 document.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()});
 document.addEventListener('drop',e=>{if(e.dataTransfer.files.length){e.preventDefault();void importFiles([...e.dataTransfer.files]).catch(fail)}});
-await bridge.start().then(async()=>{state.capabilities=await bridge.call('capabilities');state.projects=(await bridge.call('project-list')).projects;state.project=state.projects.length?(await bridge.call('project-read',{projectId:state.projects[0].id})).project:(await bridge.call('project-create',{title:'我的第一部短片'})).project;render();}).catch(e=>{$('#app').innerHTML=`<div class="empty"><h2>暂未连接</h2><p>${esc(e.message)}</p></div>`});
+await Promise.resolve().then(()=>{requireRuntime();return bridge.start();}).then(async()=>{state.capabilities=await bridge.call('capabilities');state.projects=(await bridge.call('project-list')).projects;state.project=state.projects.length?(await bridge.call('project-read',{projectId:state.projects[0].id})).project:(await bridge.call('project-create',{title:'我的第一部短片'})).project;render();}).catch(e=>{$('#app').innerHTML=`<div class="empty"><h2>暂未连接</h2><p role="alert">${esc(e.message)}</p></div>`});
 async function pollJobs() {
   try {
     if(state.project && !document.hidden && !state.busy && !drafts.size && !document.activeElement?.matches('input,textarea,select') && state.project.jobs.some(j=>['submitting','running','saving'].includes(j.status))) {

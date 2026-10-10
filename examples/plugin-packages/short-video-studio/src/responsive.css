@@ -2,3 +2,5 @@
 .row > label { white-space: nowrap; flex-shrink: 0; }
 .row > select { flex: 1; }
 dialog p { white-space: pre-line; }
+dialog { max-width: calc(100vw - 32px); }
+dialog [role="alert"] { margin-block: 12px; color: var(--sv-danger); overflow-wrap: anywhere; }

@@ -12,6 +12,7 @@
     "test:api": "bun test test/package-api.test.ts"
   },
   "devDependencies": {
+    "@ipollowork/ui": "workspace:*",
     "esbuild": "0.25.9",
     "jszip": "3.10.1"
   }

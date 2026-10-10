@@ -1,0 +1,10 @@
+{
+  "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
+  "runtimeVersion": "1.0.0",
+  "tokenSource": "packages/ui/src/common/tokens.css",
+  "components": [
+    { "export": "Button", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:120", "figmaCatalogId": "6:711", "htmlMarker": "button" },
+    { "export": "Input", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:20", "figmaCatalogId": "6:549", "htmlMarker": "input" },
+    { "export": "Textarea", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:37", "figmaCatalogId": "6:583", "htmlMarker": "textarea" }
+  ]
+}

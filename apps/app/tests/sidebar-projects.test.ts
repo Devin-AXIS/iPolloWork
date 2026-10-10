@@ -70,7 +70,7 @@ const composerEditorSource = readFileSync(
 const appStyleSource = readFileSync(
   new URL("../src/app/index.css", import.meta.url),
   "utf8",
-);
+) + readFileSync(new URL("../../../packages/ui/src/common/tokens.css", import.meta.url), "utf8");
 const englishLocaleSource = readFileSync(
   new URL("../src/i18n/locales/en.ts", import.meta.url),
   "utf8",

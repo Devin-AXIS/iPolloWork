@@ -1,0 +1,11 @@
+@layer plugin, theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "../common/palette.css";
+@import "../common/tokens.css";
+@import "../common/theme.css";
+@custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
+@source "../common/control-styles.ts";
+@source "../react/controls.tsx";
+/* No global reset: isolated plugin layouts and exported artwork stay untouched. */
+[data-ipw-control], [data-slot="button"], [data-slot="input"], [data-slot="textarea"] { box-sizing: border-box; font-family: var(--ipollowork-font-sans); }

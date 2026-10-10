@@ -4,6 +4,12 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import createService from '../src/service.mjs';
+import { execFileSync } from 'node:child_process';
+import { buildPluginRuntime } from '@ipollowork/ui/build-plugin-runtime';
+const bundledUi = process.env.SHORT_VIDEO_UI_MODE !== 'host';
+execFileSync(process.execPath, [new URL('./build.mjs', import.meta.url).pathname, ...(bundledUi ? ['--bundled-ui'] : [])], { stdio: 'inherit' });
+const hostRuntime = bundledUi ? '' : (await buildPluginRuntime('host')).script;
+const uiFile = new URL(bundledUi ? '../dist/development/ui/studio.html' : '../dist/package/ui/studio.html', import.meta.url);
 const root = resolve(process.env.SHORT_VIDEO_DEV_ROOT || '.dev-data/workspace');
 const dataDir = resolve('.dev-data/private');
 await mkdir(root, { recursive: true }); await mkdir(dataDir, { recursive: true });
@@ -28,7 +34,7 @@ document.getElementById('narrow').onclick=()=>{frame.style.width=frame.style.wid
 </script></html>`;
 const server = createServer(async (req, res) => {
   res.setHeader('cache-control', 'no-store');
-  if (req.method === 'GET' && req.url === '/') { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(page(await readFile(new URL('../dist/package/ui/studio.html', import.meta.url), 'utf8'))); return; }
+  if (req.method === 'GET' && req.url === '/') { res.setHeader('content-type', 'text/html; charset=utf-8'); const html = await readFile(uiFile, 'utf8'); res.end(page(hostRuntime ? html.replace('<head>', `<head><script>${hostRuntime.replaceAll('</script', '<\\/script')}</script>`) : html)); return; }
   if (req.method !== 'POST' || req.url !== '/rpc' || req.headers['x-dev-token'] !== token || req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403); res.end(); return; }
   try {
     const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>4*1024*1024)throw new Error('请求过大');chunks.push(chunk)}

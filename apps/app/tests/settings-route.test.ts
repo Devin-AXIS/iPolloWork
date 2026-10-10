@@ -1,8 +1,13 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, mock } from "bun:test";
+import { buildPluginRuntime } from "@ipollowork/ui/build-plugin-runtime";
 
-import { getCloudSettingsTabs, getGlobalSettingsTabs } from "../src/react-app/domains/settings/shell/settings-page";
-import { parseSettingsPath } from "../src/react-app/shell/settings-route";
+// Bun has no Vite virtual modules. Supply the real host bundle before loading UI.
+const hostRuntime = await buildPluginRuntime("host");
+mock.module("virtual:ipollowork-plugin-ui-runtime", () => ({ default: hostRuntime.script }));
+const { getCloudSettingsTabs, getGlobalSettingsTabs } = await import("../src/react-app/domains/settings/shell/settings-page");
+const { parseSettingsPath } = await import("../src/react-app/shell/settings-route");
+const controlStylesSource = readFileSync(new URL("../../../packages/ui/src/common/control-styles.ts", import.meta.url), "utf8");
 
 const settingsRouteSource = readFileSync(
   new URL("../src/react-app/shell/settings-route.tsx", import.meta.url),
@@ -79,7 +84,7 @@ const chineseLocaleSource = readFileSync(
 const buttonSource = readFileSync(
   new URL("../src/components/ui/button.tsx", import.meta.url),
   "utf8",
-);
+) + controlStylesSource;
 const selectSource = readFileSync(
   new URL("../src/components/ui/select.tsx", import.meta.url),
   "utf8",
@@ -87,11 +92,11 @@ const selectSource = readFileSync(
 const inputSource = readFileSync(
   new URL("../src/components/ui/input.tsx", import.meta.url),
   "utf8",
-);
+) + controlStylesSource.split("export const inputClassName =")[1];
 const textareaSource = readFileSync(
   new URL("../src/components/ui/textarea.tsx", import.meta.url),
   "utf8",
-);
+) + controlStylesSource.split("export const textareaClassName =")[1];
 const legacyTextInputSource = readFileSync(
   new URL("../src/react-app/design-system/text-input.tsx", import.meta.url),
   "utf8",
