@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../apps/app/src/com
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "../../apps/app/src/components/ui/dialog";
 import { Toaster, toast } from "../../apps/app/src/components/ui/sonner";
 import { ConfirmModal } from "../../apps/app/src/react-app/design-system/modals/confirm-modal";
+import { SettingsNotice } from "../../apps/app/src/react-app/domains/settings/settings-section";
 import { ReactSessionComposer } from "../../apps/app/src/react-app/domains/session/surface/composer/composer";
 import { DesignPanel } from "../../apps/app/src/react-app/domains/session/design/design-panel";
 import { TemplateCatalogDialog } from "../../apps/app/src/components/template-catalog-dialog";
@@ -114,6 +115,7 @@ function Fixture() {
         {!closedAlerts.includes("success") ? <Alert variant="success" onDismiss={() => setClosedAlerts([...closedAlerts, "success"])}><CircleCheck /><AlertDescription>连接成功，任务已连接，可以继续操作。</AlertDescription></Alert> : null}
         {!closedAlerts.includes("warning") ? <Alert variant="warning" onDismiss={() => setClosedAlerts([...closedAlerts, "warning"])}><TriangleAlert /><AlertTitle>即将达到用量限制</AlertTitle><AlertDescription>请检查当前剩余用量。</AlertDescription></Alert> : null}
         {!closedAlerts.includes("error") ? <Alert variant="destructive" onDismiss={() => setClosedAlerts([...closedAlerts, "error"])}><OctagonX /><AlertTitle>连接失败</AlertTitle><AlertDescription>检查网络后可以重试。</AlertDescription></Alert> : null}
+        <div data-business-notice><SettingsNotice tone="error">设置提醒保留原有正文。</SettingsNotice></div>
       </div>
       <Card size="sm"><CardHeader><CardTitle>紧凑内容卡片</CardTitle><CardDescription>小卡片 12px 内边距；常规卡片 16px。</CardDescription></CardHeader><CardContent><Empty variant="ghost"><EmptyHeader><EmptyTitle>暂无内容</EmptyTitle><EmptyDescription>空状态保留说明和后续操作空间。</EmptyDescription></EmptyHeader></Empty></CardContent></Card>
       <Tabs defaultValue="table"><TabsList><TabsTrigger value="table">数据表格</TabsTrigger><TabsTrigger value="empty">空状态</TabsTrigger></TabsList><TabsContent value="table"><Table><TableHeader><TableRow><TableHead>名称</TableHead><TableHead>状态</TableHead><TableHead>操作</TableHead></TableRow></TableHeader><TableBody><TableRow><TableCell>组件规范</TableCell><TableCell><Badge variant="secondary">待确认</Badge></TableCell><TableCell><Button variant="ghost" size="sm" onClick={() => setReceipt("已查看组件规范")}><Info />查看</Button></TableCell></TableRow></TableBody></Table></TabsContent><TabsContent value="empty">暂无匹配结果，请调整搜索条件。</TabsContent></Tabs>

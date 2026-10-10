@@ -265,7 +265,7 @@ export function CloudMarketplacesView({
             {selected.latestVersion ? <div className="break-all font-mono text-[10px]">{selected.latestVersion.digest}</div> : null}
           </div>
         </div>
-        {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
+        {error ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{error}</div> : null}
       </PluginPackageDetail>
     );
   }
@@ -332,7 +332,7 @@ export function CloudMarketplacesView({
         />
       )) : null}
 
-      {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
+      {error ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{error}</div> : null}
     </section>
   );
 }

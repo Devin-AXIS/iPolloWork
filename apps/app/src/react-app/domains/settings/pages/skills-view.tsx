@@ -853,7 +853,7 @@ export const SkillsView = forwardRef<SkillsViewHandle, SkillsViewProps>(function
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col gap-1">
                       <span className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-ui-body font-semibold leading-5 tracking-[0.1px] text-dls-text">{skill.name}</span>
+                        <span className="truncate text-ui-section-title font-semibold leading-5 tracking-[0.1px] text-dls-text">{skill.name}</span>
                         {isiPolloWorkInjectedSkill(skill) ? <span className={tagClass}>iPolloWork</span> : null}
                       </span>
                       <span className="line-clamp-1 text-[11px] leading-[15px] text-dls-secondary">

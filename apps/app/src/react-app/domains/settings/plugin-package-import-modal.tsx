@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useMemo, useRef, useState } from "react";
-import { Archive, Bot, FileText, Github, Loader2, Package, Search, ShieldCheck, Upload, X } from "lucide-react";
+import { Archive, Bot, FileText, Github, Loader2, Package, Search, ShieldCheck, Upload } from "lucide-react";
 import { PLUGIN_INSTALL_PACKAGE_EXTENSION } from "@ipollowork/types/plugins";
 
 import { Button } from "@/components/ui/button";
@@ -162,20 +162,9 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
       <Dialog open={props.open} onOpenChange={(open) => { if (!open) close(); }}>
         <DialogContent
           data-testid="plugin-package-import-dialog"
-          showCloseButton={false}
+          closeLabel={t("common.close")}
           className="flex max-h-[calc(100dvh-32px)] min-h-0 max-w-[640px] flex-col gap-0 overflow-hidden ring-0 dark:ring-1 dark:ring-border sm:max-w-[640px]"
         >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="absolute end-3 top-3"
-          aria-label={t("common.close")}
-          onClick={close}
-        >
-          <X className="size-4" />
-        </Button>
-
         <DialogHeader className="shrink-0 gap-1.5 pb-4 pe-8 text-left">
           <DialogTitle>{t("plugin_platform.import_title")}</DialogTitle>
           <DialogDescription>{t("plugin_platform.import_description")}</DialogDescription>
@@ -277,7 +266,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
             </div>
           ) : null}
 
-          {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-3 py-2 text-xs leading-5 text-red-11">{error}</div> : null}
+          {error ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-3 py-2 text-xs leading-5 text-red-11">{error}</div> : null}
           {sourceWarnings.length > 0 ? (
             <div className="rounded-xl border border-amber-6 bg-amber-2 px-3 py-2 text-xs leading-5 text-amber-11">
               {sourceWarnings.map((warning) => <div key={warning}>{warning}</div>)}

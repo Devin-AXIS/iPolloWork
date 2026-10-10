@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 
 const sectionHeaderClass = "flex flex-col gap-1 pb-2";
-const sectionTitleClass = "text-ui-body font-semibold tracking-[-0.2px] text-dls-text";
+const sectionTitleClass = "text-ui-section-title font-semibold tracking-[-0.2px] text-dls-text";
 const sectionDescClass = "text-ui-compact text-dls-secondary";
 const cardClass =
   "rounded-2xl border border-dls-border bg-dls-surface/95 p-5 space-y-4";
@@ -901,7 +901,7 @@ export function DebugView(props: DebugViewProps) {
       {isDesktop ? (
         <div className="space-y-3 rounded-2xl border border-red-7/30 bg-red-3/10 p-5">
           <div className={sectionHeaderClass}>
-            <div className="text-ui-body font-semibold tracking-[-0.2px] text-red-11">
+            <div className="text-ui-section-title font-semibold tracking-[-0.2px] text-red-11">
               {t("settings.danger_section_title")}
             </div>
             <div className={sectionDescClass}>{t("settings.danger_section_desc")}</div>

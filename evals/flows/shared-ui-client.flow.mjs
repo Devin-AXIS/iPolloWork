@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { evaluate } from '../runner/cdp.mjs';
 import { loadVoiceoverParagraphs } from '../runner/voiceover.mjs';
+import { manifest } from '../../examples/plugin-packages/short-video-studio/src/contracts.mjs';
 
 const vo = await loadVoiceoverParagraphs('shared-ui-client');
 
@@ -29,11 +30,16 @@ async function frameClient(parent) {
 }
 
 async function activate(parent, frame, selector) {
-  await evaluate(frame, `document.querySelector(${JSON.stringify(selector)}).focus()`);
-  for (const type of ['keyDown', 'keyUp']) await parent.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+  await parent.send('Page.bringToFront');
+  const inner = await evaluate(frame, `(()=>{const e=document.querySelector(${JSON.stringify(selector)});e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+  const outer = await evaluate(parent, `(()=>{const e=document.querySelector('iframe'),r=e.getBoundingClientRect();return {x:r.x+e.clientLeft,y:r.y+e.clientTop}})()`);
+  for (const type of ['mousePressed', 'mouseReleased']) await parent.send('Input.dispatchMouseEvent', { type, button: 'left', clickCount: 1, x: outer.x + inner.x, y: outer.y + inner.y });
 }
 
 async function openInstalledWorkspace(parent) {
+  if (!await evaluate(parent, `Boolean(document.querySelector('iframe, [aria-label="Add side panel entry"]'))`)) {
+    await evaluate(parent, `document.querySelector('[aria-label="Open right panel"]')?.click()`);
+  }
   if (!(await parent.send('Page.getFrameTree')).frameTree.childFrames?.length) {
     if (!await evaluate(parent, `Boolean(document.querySelector('[role="menuitem"]'))`)) {
       await evaluate(parent, `document.querySelector('[aria-label="Add side panel entry"]').click()`);
@@ -59,11 +65,11 @@ export default {
     const parent = ctx.client;
     const root = ctx.env.IPOLLOWORK_UI_CLIENT_ROOT;
     if (!root.startsWith('/tmp/ipollowork-shared-ui-client-')) throw new Error('Use a dedicated temporary Electron profile');
-    const installed = join(root, 'plugin-packages/artifacts/short-video-studio/0.1.0/ui/studio.html');
+    const installed = join(root, `userdata/ipollowork-dev-data/xdg/config/ipollowork/plugin-packages/artifacts/short-video-studio/${manifest.package.version}/ui/studio.html`);
     const html = await readFile(installed, 'utf8');
     const originalHash = createHash('sha256').update(html).digest('hex');
     ctx.assert(html.includes('<meta name="ipollowork-ui-runtime" content="1">') && !html.includes('data-ipw-runtime="bundled"'), 'installed production package opts in without bundled runtime');
-    await ctx.waitFor(`Boolean(document.querySelector('[aria-label="Add side panel entry"]'))`);
+    await ctx.waitFor(`Boolean(document.querySelector('[aria-label="Open right panel"], [aria-label="Add side panel entry"]'))`);
     const frame = await openInstalledWorkspace(parent);
     ctx.assert(Boolean(frame), 'installed plugin frame exists');
     ctx.client = frame;
@@ -73,11 +79,13 @@ export default {
         voiceover: vo[0], action: () => activate(parent, frame, '[aria-label="新建项目"]'),
         assert: async () => {
           await ctx.waitFor('Boolean(document.querySelector("#dialog"))');
-          ctx.assert(await ctx.eval('window.ipolloworkUi.mode === "host" && window.ipolloworkUi.version === "1.1.0"'), 'patched host runtime is installed inside iframe');
-          await ctx.waitFor('[...document.querySelectorAll("#dialog button, #dialog input")].every(e => e.dataset.slot && e.getBoundingClientRect().height === 32)');
+          ctx.assert(await ctx.eval('window.ipolloworkUi.mode === "host" && window.ipolloworkUi.version === "1.3.0"'), 'patched host runtime is installed inside iframe');
+          ctx.assert(await ctx.eval('getComputedStyle(document.body).fontSize === "13px" && getComputedStyle(document.body).lineHeight === "20px"'), 'production workbench uses public body typography');
+          await ctx.waitFor('[...document.querySelectorAll("#dialog button:not([data-slot=dialog-close]), #dialog input")].every(e => e.dataset.slot && e.getBoundingClientRect().height === 32)');
         }, screenshot: { name: 'installed-host-controls', requireText: ['新建短片'] },
       });
       await ctx.fill('#dialog input', title);
+      await evaluate(parent, 'delete window.__uiReject');
       await evaluate(parent, `(()=>{window.__uiOriginalFetch=fetch;window.__uiSaves=0;window.fetch=async(...args)=>{const request=args[0],url=request instanceof Request?request.url:String(request);if(url.includes('/experimental/extensions/call')){const body=JSON.parse(args[1]?.body??await request.clone().text());if(body.extensionId==='short-video-studio'&&body.action==='project-create'){window.__uiSaves++;if(window.__uiSaves===1)return new Promise(resolve=>window.__uiReject=()=>resolve(new Response(JSON.stringify({message:'验证：保存暂不可用，请重试'}),{status:503,headers:{'content-type':'application/json'}})));}}return window.__uiOriginalFetch(...args);};})()`);
       await activate(parent, frame, '[data-dialog="ok"]');
       await ctx.waitFor('document.querySelector("#dialog").getAttribute("aria-busy") === "true"');
@@ -112,11 +120,16 @@ export default {
           await parent.send('Page.reload');
         },
         assert: async () => {
-          await ctx.waitFor(`window.__uiReloadMarker === undefined && document.readyState === "complete" && Boolean(document.querySelector('[aria-label="Add side panel entry"]'))`);
+          await ctx.waitFor(`window.__uiReloadMarker === undefined && document.readyState === "complete" && Boolean(document.querySelector('[aria-label="Open right panel"], [aria-label="Add side panel entry"]'))`);
           const reopened = await openInstalledWorkspace(parent);
-          ctx.assert(await evaluate(reopened, `window.ipolloworkUi?.mode === 'host' && window.ipolloworkUi.version === '1.1.0' && document.body.textContent.includes(${JSON.stringify(title)})`), 'installed plugin reloads patched host runtime and saved project remains available');
+          ctx.assert(await evaluate(reopened, `window.ipolloworkUi?.mode === 'host' && window.ipolloworkUi.version === '1.3.0' && document.body.textContent.includes(${JSON.stringify(title)})`), 'installed plugin reloads patched host runtime and saved project remains available');
           ctx.assert(createHash('sha256').update(await readFile(installed)).digest('hex') === originalHash, 'production plugin artifact unchanged by host runtime update');
           ctx.client = reopened;
+          for (const tab of ['shots', 'script', 'roles', 'assets', 'tracks', 'jobs', 'canvas']) {
+            await activate(parent, reopened, `[data-action="tab:${tab}"]`);
+            await ctx.waitFor(`document.querySelector('[data-action="tab:${tab}"]')?.getAttribute('aria-selected')==='true' && Boolean(document.querySelector('[role=tabpanel] main'))`);
+            await ctx.waitFor(`!document.querySelector('#app select') && [...document.querySelectorAll('#app button,#app input:not([type=file]):not([aria-hidden=true]),#app textarea')].every(e=>e.dataset.slot||e.dataset.ipwReady)`);
+          }
         }, screenshot: { name: 'same-version-reopen', requireText: [title] },
       });
       const reopened = ctx.client;
@@ -162,15 +175,15 @@ export default {
       await ctx.prove('真实客户端共享 Select 使用键盘并持久化风格', {
         voiceover: vo[6], action: async () => {
           await activate(parent, restored, '[data-action="add:image"]');
-          await ctx.waitFor('Boolean(document.querySelector("[data-slot=select-trigger]"))');
-          await activate(parent, restored, '[data-slot="select-trigger"]');
+          await ctx.waitFor('Boolean(document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]"))');
+          await activate(parent, restored, '[data-shared-select=preset] [data-slot="select-trigger"]');
           await ctx.waitFor('document.activeElement.getAttribute("role")==="option"');
           for (const [key, code] of [['Home', 36], ['ArrowDown', 40], ['Enter', 13]]) {
             for (const type of ['keyDown', 'keyUp']) await parent.send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code, ...(key === 'Enter' && type === 'keyDown' ? { text: '\r' } : {}) });
           }
         }, assert: async () => {
-          await ctx.waitFor('document.querySelector("[data-slot=select-trigger]").textContent.includes("电影分镜四宫格") && document.activeElement.dataset.slot==="select-trigger"');
-          ctx.assert(await ctx.eval('document.querySelector("[data-slot=select-trigger]").getBoundingClientRect().height===32'), 'shared select geometry at actual host root font');
+          await ctx.waitFor('document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]").textContent.includes("电影分镜四宫格") && document.activeElement.dataset.slot==="select-trigger"');
+          ctx.assert(await ctx.eval('document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]").getBoundingClientRect().height===32'), 'shared select geometry at actual host root font');
           const folder = join(root, 'userdata/ipollowork-dev-data/home/iPolloWork/short-video');
           const projects = await Promise.all((await readdir(folder)).map(id => readFile(join(folder, id, 'project.json'), 'utf8').then(JSON.parse)));
           ctx.assert(projects.some(p => p.title === title && p.nodes.some(n => n.settings?.preset === '电影分镜四宫格' && n.prompt.includes('2×2'))), 'actual service persists preset and prompt');
@@ -179,8 +192,8 @@ export default {
       const missingShot = { name: 'missing-new-components', requireText: ['缺少所需 UI 组件', '请更新'] };
       ctx.client = parent;
       try {
-        await ctx.prove('真实生产插件拒绝旧1.x缺少组件的运行时', {
-          voiceover: vo[7], action: () => evaluate(parent, `(()=>{const frame=document.querySelector('iframe');frame.srcdoc=frame.srcdoc.replace(/<script data-ipw-runtime="host">[\\s\\S]*?<\\/script>/,'<script data-ipw-runtime="host">window.ipolloworkUi={version:"1.0.1"};<\\/script>');})()`),
+        await ctx.prove('真实生产插件拒绝版本匹配但缺少组件的运行时', {
+          voiceover: vo[7], action: () => evaluate(parent, `(()=>{const frame=document.querySelector('iframe');frame.srcdoc=frame.srcdoc.replace(/<script data-ipw-runtime="host">[\\s\\S]*?<\\/script>/,'<script data-ipw-runtime="host">window.ipolloworkUi={version:"1.3.0"};<\\/script>');})()`),
           assert: async () => {
             let rejected;
             for (let attempt = 0; attempt < 80; attempt++) {
@@ -188,13 +201,13 @@ export default {
               if (rejected && await evaluate(rejected, 'Boolean(document.querySelector("[role=alert]")?.textContent.includes("缺少"))').catch(() => false)) break;
               rejected = null; await new Promise(resolve => setTimeout(resolve, 250));
             }
-            ctx.assert(Boolean(rejected), 'old-major-compatible runtime still rejects missing capabilities'); ctx.client = rejected;
+            ctx.assert(Boolean(rejected), 'version-compatible runtime still rejects missing capabilities'); ctx.client = rejected;
             ctx.assert(await ctx.eval('!document.querySelector("[aria-label=新建项目]")'), 'business initialization stops');
           }, screenshot: missingShot,
         });
       } finally { await evaluate(parent, `document.querySelector('iframe').srcdoc=${JSON.stringify(originalSrcdoc)}`); }
     } finally {
-      await evaluate(parent, 'if(window.__uiOriginalFetch){window.fetch=window.__uiOriginalFetch;delete window.__uiOriginalFetch;}').catch(() => undefined);
+      await evaluate(parent, 'if(window.__uiOriginalFetch){window.fetch=window.__uiOriginalFetch;delete window.__uiOriginalFetch;}delete window.__uiReject;delete window.__uiSaves;').catch(() => undefined);
       ctx.client = parent;
     }
   } }],

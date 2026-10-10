@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Cpu } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";
 import type { ModelRef } from "@/app/types";
@@ -86,13 +86,12 @@ export function ModelBehaviorMenu({
         className={cn(
           "inline-flex items-center gap-1.5 transition-colors disabled:pointer-events-none disabled:opacity-60",
           appearance === "composer"
-            ? "me-1 h-8 min-w-0 max-w-72 flex-[0_1_auto] rounded-full bg-transparent px-2 text-xs leading-[18px] text-gray-10 hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:w-8 @max-[560px]/composer:justify-center @max-[560px]/composer:px-0"
+            ? "me-1 h-8 min-w-0 max-w-72 flex-[0_1_auto] rounded-full bg-transparent px-2 text-xs leading-[18px] text-gray-10 hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:max-w-32"
             : "h-8 w-full justify-between rounded-lg border border-border bg-background px-3 text-[13px] text-foreground shadow-xs hover:bg-gray-2 data-[state=open]:border-ring data-[state=open]:ring-3 data-[state=open]:ring-ring/30",
         )}
       />}>
-        {appearance === "composer" ? <Cpu className="size-4 shrink-0 [stroke-width:1.75]" aria-hidden="true" /> : null}
-        <span className="truncate @max-[560px]/composer:hidden">{summary}</span>
-        <ChevronDown className={cn("shrink-0", appearance === "composer" ? "size-3.5 [stroke-width:1.75] @max-[560px]/composer:hidden" : "size-4")} />
+        <span className="min-w-0 truncate">{summary}</span>
+        <ChevronDown className={cn("shrink-0", appearance === "composer" ? "size-3.5 [stroke-width:1.75]" : "size-4")} />
       </TooltipTrigger>
       <TooltipContent>{summary}</TooltipContent>
       <PopoverContent
