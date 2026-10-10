@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { createRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +8,7 @@ import { GeometryStepper } from "./propertyPanelFlatLayoutSection";
 import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
 import { FlatRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatDropdown } from "./propertyPanelFlatSelectRow";
+import { SearchInput } from "../ui/SearchInput";
 
 describe("FlatDropdown", () => {
   let container: HTMLDivElement;
@@ -21,6 +23,16 @@ describe("FlatDropdown", () => {
   afterEach(() => {
     flushSync(() => root.unmount());
     container.remove();
+  });
+
+  it("reuses an accessible controlled search field with a Lucide icon", () => {
+    const ref = createRef<HTMLInputElement>();
+    flushSync(() => root.render(<SearchInput ref={ref} aria-label="Search components" value="Map" onChange={() => {}} />));
+    expect(ref.current?.type).toBe("search");
+    expect(ref.current?.value).toBe("Map");
+    expect(ref.current?.getAttribute("aria-label")).toBe("Search components");
+    expect(container.querySelector("svg.lucide-search")).not.toBeNull();
+    expect(container.querySelector('[data-slot="studio-search"]')).not.toBeNull();
   });
 
   it("opens a Design System-styled listbox and commits the selected option", () => {

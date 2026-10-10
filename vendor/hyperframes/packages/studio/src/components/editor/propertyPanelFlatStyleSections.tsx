@@ -102,7 +102,7 @@ export function FillModeSelector({
             className={`flex h-[34px] items-center justify-center rounded-[6px] transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-not-allowed disabled:opacity-40 ${
               active
                 ? "bg-black hover:bg-[#1f1f1f] active:bg-[#333333]"
-                : "bg-[#f5f6f9] hover:bg-[#eceef2] active:bg-[#e2e5ea] dark:bg-panel-input dark:hover:bg-panel-input/80 dark:active:bg-panel-input/60"
+                : "bg-panel-input hover:bg-panel-hover active:bg-panel-hover"
             }`}
           >
             <img

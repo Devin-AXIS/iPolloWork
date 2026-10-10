@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import type { ComponentProps } from "react";
+import { Input } from "@/components/ui/input";
 
 export type TextInputProps = ComponentProps<"input"> & {
   label?: string;
@@ -14,9 +15,9 @@ export function TextInput({ label, hint, className, ref, ...rest }: TextInputPro
           {label}
         </div>
       ) : null}
-      <input
+      <Input
         ref={ref}
-        className={`w-full rounded-lg bg-dls-surface px-3 py-2 text-sm text-dls-text placeholder:text-dls-secondary border border-dls-border focus:outline-none focus:ring-2 focus:ring-[rgba(var(--dls-accent-rgb),0.2)] ${
+        className={`bg-dls-surface text-dls-text placeholder:text-dls-secondary border-dls-border ${
           className ?? ""
         }`.trim()}
         {...rest}

@@ -32,6 +32,20 @@ const videoAuthoringGuidance = [
 ].map(path => readFileSync(new URL(`../../../examples/plugin-packages/video-agent/skills/${path}`, import.meta.url), "utf8")).join("\n");
 
 describe("HyperFrames Video Studio", () => {
+  test("uses the same compact task-progress density across host, Studio and video plugin", () => {
+    const videoPanel = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
+    const renderQueue = readFileSync(new URL("../../../vendor/hyperframes/packages/studio/src/components/renders/RenderQueueItem.tsx", import.meta.url), "utf8");
+    const studioStyles = readFileSync(new URL("../../../vendor/hyperframes/packages/studio/src/styles/studio.css", import.meta.url), "utf8");
+    const videoPlugin = readFileSync(new URL("../../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url), "utf8");
+    expect(renderQueue).toContain("w-full h-1.5 bg-panel-border");
+    expect(studioStyles).toContain(".hf-loader-progress {\n  width: min(18rem, 72vw);\n  height: 0.375rem");
+    expect(studioStyles).toContain("--hf-panel-accent: #1FBAC0");
+    expect(videoPlugin).toContain("#generationProgress { appearance:none; width:100%; height:6px");
+    expect(videoPlugin).toContain("#generationProgress::-webkit-progress-value { background:#1FBAC0");
+    expect(videoPlugin).toContain('"预计进度"');
+    expect(videoPanel).toContain('animate-spin text-[#1FBAC0]');
+    expect(videoPanel).not.toContain('"1 / 3"');
+  });
   test("delegates audible playback to the embedded Video Studio", () => {
     const source = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
     expect(source).toContain('allow="autoplay; fullscreen"');
@@ -377,7 +391,7 @@ describe("HyperFrames Video Studio", () => {
       /setStudioPanelWidth\([\s\S]*?MIN_STUDIO_PANEL_WIDTH[\s\S]*?MAX_STUDIO_PANEL_WIDTH[\s\S]*?event\.data\.width[\s\S]*?\);/,
     );
     expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
-    expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
+    expect(panelSource).toContain('style={{ width: studioPanelWidth, display: studioHostPanel === "style" ? undefined : "none" }}');
     expect(voiceSource).toContain("width={inDialog ? undefined : embedded ? embeddedWidth : undefined}");
     expect(panelSource).toContain("top-[90px]");
     expect(voiceSource).toContain("top-[148px]");

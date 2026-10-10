@@ -397,6 +397,68 @@ html:lang(zh) .chat-process-heading {
 /* Match the existing macOS Chinese readability correction in settings/chat.
    PingFang's 400 fallback can render as ExtraLight in Electron; keep captions
    readable and express inspector hierarchy through size and semantic color. */
+[data-testid="video-panel"] [data-slot="design-panel-select"],
+[data-testid="video-panel"] [data-slot="select-trigger"],
+[data-testid="video-panel"] [data-testid="voice-selection-trigger"],
+[data-testid="video-panel"] input[data-slot="input"] {
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  box-shadow: none;
+  outline: none;
+}
+
+[data-testid="video-panel"] [data-slot="design-panel-select"]:focus-within,
+[data-testid="video-panel"] [data-slot="select-trigger"]:focus-visible,
+[data-testid="video-panel"] [data-testid="voice-selection-trigger"]:focus-visible,
+[data-testid="video-panel"] input[data-slot="input"]:focus {
+  border-color: var(--dls-accent);
+  box-shadow: none;
+  outline: none;
+}
+
+[data-testid="video-panel"] [data-slot="design-panel-select"] > button,
+[data-testid="video-panel"] [data-slot="design-panel-select"] > button:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+/* Select triggers use a filled surface, never a filled surface plus a border.
+   Search/text inputs retain their separate, single-border treatment. */
+[data-testid="video-panel"] [data-slot="design-panel-select"],
+[data-testid="video-panel"] [data-slot="select-trigger"],
+[data-testid="video-panel"] [data-testid="voice-selection-trigger"] {
+  border: 0;
+  background-color: var(--muted);
+}
+
+[data-testid="video-panel"] input[data-slot="input"][type="search"] {
+  background-color: var(--background);
+}
+
+[data-testid="video-panel"] {
+  --muted: #f4f4f5;
+}
+
+.dark [data-testid="video-panel"],
+[data-theme="dark"] [data-testid="video-panel"] {
+  --muted: #161618;
+}
+
+[data-testid="video-panel"] [data-slot="design-color-field"] input[data-slot="input"],
+[data-testid="video-panel"] [data-slot="design-color-field"] [data-slot="select-trigger"],
+[data-testid="video-panel"] [data-slot="design-color-field"] [data-slot="design-panel-select"] {
+  height: 28px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-testid="video-style-tab-content"] section {
+  padding: 8px 12px 12px;
+}
+
 html:lang(zh).ipollowork-electron.ipollowork-platform-mac .video-settings-typography,
 html:lang(zh).ipollowork-electron.ipollowork-platform-mac .video-settings-typography :where(p, span, label, button, input, textarea, legend, [role="option"]):not(.font-semibold) {
   font-weight: 500;

@@ -416,7 +416,7 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).not.toContain('engineInstallBusy || selectedEnginePackage.status === "not-installed"');
     expect(sessionPageSource).toContain('t("projects.engine_download_action")');
     expect(sessionPageSource).toContain('data-testid="engine-download-progress"');
-    expect(sessionPageSource).toContain('aria-valuenow={percent ?? undefined}');
+    expect(sessionPageSource).toContain('value={percent}');
     expect(sessionPageSource).not.toContain("autoEngineInstallAttemptRef");
     expect(sessionPageSource).toContain("props.sidebar.onSelectProject(props.selectedWorkspaceId)");
     expect(sessionPageSource).toContain("ENGINE_STARTUP_TRANSITION_MS = 900");

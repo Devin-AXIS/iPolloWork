@@ -60,20 +60,19 @@ describe("composer plus entry menu", () => {
 
   test("routes files, templates, plugins, MCP settings, and agents from one list", () => {
     const templateLabelIndex = composerSource.indexOf('t("composer.plus_use_template")');
-    const templateButtonStart = composerSource.lastIndexOf("<button", templateLabelIndex);
-    const templateButtonEnd = composerSource.indexOf("</button>", templateButtonStart);
+    const templateButtonStart = composerSource.lastIndexOf("<Button", templateLabelIndex);
+    const templateButtonEnd = composerSource.indexOf("</Button>", templateButtonStart);
     expect(templateButtonStart).toBeGreaterThan(-1);
     expect(templateButtonEnd).toBeGreaterThan(templateButtonStart);
     const templateButton = composerSource.slice(templateButtonStart, templateButtonEnd);
 
     expect(composerSource).toContain("plusMenuOpen");
     expect(composerSource).not.toContain("plusMenuSection");
-    expect(composerSource).toContain('title={t("composer.plus_menu_label")}');
+    expect(composerSource).toContain('aria-label={t("composer.plus_menu_label")}');
     expect(composerSource).toContain('t("composer.plus_attach_files")');
     expect(composerSource).toContain('t("composer.plus_use_template")');
-    expect(templateButton).toContain('min-h-8 w-full');
-    expect(templateButton).toContain('text-[12px]');
-    expect(templateButton).toContain('font-medium text-gray-12 transition-colors hover:bg-gray-3');
+    expect(templateButton).toContain('variant="ghost"');
+    expect(templateButton).toContain('className="w-full justify-start"');
     expect(templateButton).toContain('<TemplateIcon className="size-3 opacity-60" />');
     expect(templateButton).toContain("setPlusMenuOpen(false)");
     expect(composerSource).toContain('t("composer.extensions_label")');
@@ -94,8 +93,11 @@ describe("composer plus entry menu", () => {
     expect(actionRow).toContain('<Paperclip className="size-3.5 text-gray-9"');
     expect(actionRow).toContain('className="flex min-w-0 flex-1 flex-nowrap items-center gap-0 overflow-visible"');
     expect(actionRow).not.toContain("flex-wrap");
-    expect(actionRow).toContain('className="relative me-2 shrink-0"');
-    expect(actionRow).toContain("inline-flex size-8 shrink-0 items-center justify-center rounded-full");
+    expect(actionRow).toContain('className="relative me-1 shrink-0"');
+    expect(actionRow).toContain('variant="ghost"');
+    expect(actionRow).toContain('size="icon"');
+    expect(actionRow).toContain('<TooltipContent>{t("composer.plus_menu_label")}</TooltipContent>');
+    expect(actionRow).not.toContain('t("common.add")');
     expect(actionRow).not.toContain('props.layout === "inline" ? "h-8 px-2"');
     expect(actionRow).not.toContain('title={t("composer.tools_label")}');
     expect(actionRow).not.toContain('title={t("composer.agent_label")}');

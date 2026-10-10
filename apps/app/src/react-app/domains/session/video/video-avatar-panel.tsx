@@ -26,8 +26,8 @@ type Props = {
 };
 
 const defaultPrompt = "人物面向镜头自然交流，神态放松，自然眨眼和轻微呼吸，表情随语气柔和变化。避免持续露齿笑、夸张张嘴和机械点头，保持人物身份与镜头稳定。";
-const menuClassName = "video-settings-typography max-h-(--available-height) max-w-(--available-width) rounded-lg bg-popover p-1.5 text-xs [&_[role=option]]:min-h-[34px] [&_[role=option]]:px-2 [&_[role=option]]:py-1.5 [&_[role=option]]:text-xs";
-const fieldClassName = "h-[34px] data-[size=default]:h-[34px] w-full rounded-lg border-0 bg-muted/60 px-3 text-xs font-normal shadow-none";
+const menuClassName = "video-settings-typography max-h-(--available-height) max-w-(--available-width) p-1 [&_[role=option]]:min-h-7 [&_[role=option]]:px-2 [&_[role=option]]:py-1 [&_[role=option]]:text-xs";
+const fieldClassName = "w-full min-w-0 text-xs font-normal";
 
 function sameConfiguration(left: AvatarProfile, right: AvatarProfile) {
   return left.name === right.name && left.imagePath === right.imagePath && left.imageName === right.imageName
@@ -375,8 +375,8 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
       <DialogHeader className="gap-1 pr-8"><DialogTitle className="text-ui-title-sm font-semibold">数字人片段 · {job ? jobLabel(job) : "准备中"}</DialogTitle><DialogDescription className="text-ui-caption">关闭窗口后任务仍会继续，可从生成记录重新打开。</DialogDescription></DialogHeader>
       {job ? <div className="space-y-4">
         <div className="space-y-2 rounded-lg bg-muted/50 p-4" role={showProgress ? "status" : "alert"}>
-          <div className="flex items-center justify-between gap-3"><span className={showProgress ? "font-medium" : "font-medium text-destructive"}>{job.status === "saving" ? "正在拼接与保存" : currentIndex >= 0 && isActive ? `第 ${currentIndex + 1}/${progress?.total} 段正在生成` : jobLabel(job)}</span>{showProgress ? <span className="tabular-nums">{progress?.percent}%</span> : null}</div>
-          {showProgress ? <Progress value={progress?.percent ?? 0} aria-label="数字人生成进度" className="[&_[data-slot=progress-track]]:h-2" /> : null}
+          <div className="flex items-center justify-between gap-3"><span className={showProgress ? "font-medium" : "font-medium text-destructive"}>{job.status === "saving" ? "正在拼接与保存" : currentIndex >= 0 && isActive ? `第 ${currentIndex + 1}/${progress?.total} 段正在生成` : jobLabel(job)}</span>{sequence ? <span className="tabular-nums">{progress?.percent}%</span> : null}</div>
+          {showProgress ? <Progress value={sequence ? progress?.percent ?? 0 : null} aria-label="数字人片段进度" getAriaValueText={() => sequence ? `已完成 ${progress?.completed}/${progress?.total} 段` : avatarJobStatusDetail(job)} /> : null}
           <div className={`flex flex-wrap justify-between gap-1 text-[11px] ${showProgress ? "text-muted-foreground" : "text-destructive"}`}><span>{sequence ? `已完成 ${progress?.completed}/${progress?.total} 段 · 视频 ${sequence.duration.toFixed(1)} 秒` : avatarJobStatusDetail(job)}</span><span>{progress?.eta || (job.status === "saving" ? "正在完成最后处理" : "")}</span></div>
         </div>
         {job.message && sequence ? <p className="break-words text-[11px] leading-5 text-muted-foreground">{job.message}</p> : null}

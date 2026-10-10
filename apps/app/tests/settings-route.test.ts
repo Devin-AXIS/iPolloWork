@@ -84,10 +84,6 @@ const selectSource = readFileSync(
   new URL("../src/components/ui/select.tsx", import.meta.url),
   "utf8",
 );
-const selectMenuSource = readFileSync(
-  new URL("../src/react-app/design-system/select-menu.tsx", import.meta.url),
-  "utf8",
-);
 const inputSource = readFileSync(
   new URL("../src/components/ui/input.tsx", import.meta.url),
   "utf8",
@@ -152,6 +148,9 @@ describe("settings route parsing", () => {
     expect(getGlobalSettingsTabs(false)).toContain("engines");
     expect(settingsRouteSource).toContain("<EngineManagementView anyActiveRuns=");
     expect(engineManagementSource).toContain('data-testid="engine-package-row"');
+    expect(engineManagementSource).toContain('<Progress value={percent}');
+    expect(engineManagementSource).toContain('engine.status === "downloading"');
+    expect(engineManagementSource).not.toContain('"h-full rounded-full bg-foreground transition-[width] duration-300"');
     expect(engineManagementSource).toContain('t("settings.engine_manager.data_retained")');
     expect(engineManagementSource).toContain('case "official"');
     expect(engineManagementSource).toContain('t("settings.engine_manager.external_official_notice"');
@@ -274,9 +273,9 @@ describe("settings route parsing", () => {
   test("keeps settings forms on the compact divider-free dialog style", () => {
     for (const source of [pluginImportSource, environmentViewSource]) {
       expect(source).toContain('showCloseButton={false}');
-      expect(source).toContain('rounded-[16px]');
-      expect(source).toContain('className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"');
-      expect(source).toContain('rounded-none border-0 bg-transparent p-0 pt-6');
+      expect(source).not.toContain('rounded-[16px] p-6');
+      expect(source).toContain('className="absolute end-3 top-3"');
+      expect(source).toContain('rounded-none border-0 bg-transparent p-0 pt-4');
     }
     expect(pluginImportSource).toContain('data-testid="plugin-package-import-dialog"');
     expect(environmentViewSource).toContain('data-testid="environment-editor-dialog"');
@@ -313,17 +312,15 @@ describe("settings route parsing", () => {
   test("uses the design-panel select states throughout settings", () => {
     expect(settingsShellSource).toContain('<SelectStyleScopeProvider value="settings">');
     expect(selectSource).toContain('type SelectStyleScope = "default" | "settings"');
-    expect(selectSource).toContain('h-[34px] w-fit items-center justify-between');
+    expect(selectSource).toContain('h-8 w-fit items-center justify-between');
     expect(selectSource).toContain('w-max min-w-(--anchor-width) max-w-[min(320px,var(--available-width))]');
     expect(selectSource).toContain('menuDensityClassNames.compact.content');
     expect(selectSource).toContain('menuDensityClassNames.compact.item');
     expect(selectSource).toContain('menuSurfaceClassName');
     expect(selectSource).toContain('styleScope === "settings" && "text-[#1FBAC0]"');
-    expect(selectMenuSource).toContain('h-[34px] w-full items-center justify-between');
-    expect(selectMenuSource).toContain('menuDensityClassNames.compact.content');
-    expect(selectMenuSource).toContain('menuDensityClassNames.compact.item');
-    expect(selectMenuSource).toContain('menuSurfaceClassName');
-    expect(selectMenuSource).toContain('text-[#1FBAC0]');
+    expect(skillsViewSource).not.toContain('SelectMenu');
+    expect(skillsViewSource).toContain('<SelectTrigger className="w-full" aria-labelledby="skills-share-hub-label">');
+    expect(skillsViewSource).toContain('disabled={shareTeamBusy || Boolean(shareTeamSuccess?.trim())}');
     expect(skillsViewSource).toContain('data-testid="skills-status-filter"');
     expect(skillsViewSource).not.toContain('<select\n              data-testid="skills-status-filter"');
   });
@@ -405,7 +402,8 @@ describe("settings route parsing", () => {
     expect(appStylesSource.match(/\.ow-input(?:\s|:focus)[^{]*\{[^}]*\}/g)?.join("\n")).not.toContain("box-shadow");
     expect(inputSource).toContain("focus-visible:ring-3");
     expect(textareaSource).toContain("focus-visible:ring-3");
-    expect(legacyTextInputSource).toContain("focus:ring-2");
+    expect(legacyTextInputSource).toContain('import { Input } from "@/components/ui/input"');
+    expect(legacyTextInputSource).toContain("<Input");
     expect(appStylesSource).toContain("outline: 3px solid rgba(var(--dls-accent-rgb), 0.08);");
   });
 });

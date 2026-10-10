@@ -669,7 +669,7 @@ export function StudioApp() {
                         )
                       }
                       right={
-                        panelLayout.rightCollapsed ? null : (
+                        <div style={{ display: panelLayout.rightCollapsed ? "none" : "contents" }}>
                           <Suspense
                             fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}
                           >
@@ -698,7 +698,7 @@ export function StudioApp() {
                               focusedHostAsset={focusedHostAsset}
                             />
                           </Suspense>
-                        )
+                        </div>
                       }
                       timelineToolbar={timelineToolbar}
                       renderClipContent={renderClipContent}

@@ -64,7 +64,7 @@ export function FlatDropdown({
   useEffect(() => {
     if (!open) return;
     const updatePosition = () => {
-      const rect = buttonRef.current?.getBoundingClientRect();
+      const rect = (buttonRef.current?.closest('[data-slot="studio-select-field"]') ?? buttonRef.current)?.getBoundingClientRect();
       if (rect) setAnchorRect(rect);
     };
     const handlePointerDown = (event: PointerEvent) => {
@@ -97,7 +97,7 @@ export function FlatDropdown({
         disabled={disabled}
         onClick={() => {
           if (!open) {
-            const rect = buttonRef.current?.getBoundingClientRect();
+            const rect = (buttonRef.current?.closest('[data-slot="studio-select-field"]') ?? buttonRef.current)?.getBoundingClientRect();
             if (rect) setAnchorRect(rect);
           }
           setOpen((current) => !current);
@@ -118,7 +118,7 @@ export function FlatDropdown({
             }
           }
         }}
-        className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+        className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none focus-visible:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
         {icon ?? <>
           <span className={`min-w-0 truncate ${valueClassName}`}>{selectedLabel}</span>
@@ -136,7 +136,7 @@ export function FlatDropdown({
             id={listboxId}
             role="listbox"
             aria-label={tx(ariaLabel)}
-            className="fixed z-[220] max-h-[min(280px,calc(100vh-24px))] overflow-y-auto rounded-[6px] border border-[var(--hf-studio-divider)] bg-panel-bg p-1 shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
+            className="hf-studio-select-surface fixed z-[220] max-h-[min(280px,calc(100vh-24px))] overflow-y-auto rounded-[8px] border border-[var(--hf-studio-divider)] p-1 shadow-lg backdrop-blur-2xl backdrop-saturate-150"
             style={{
               left: Math.min(
                 anchorRect.left,
@@ -156,10 +156,10 @@ export function FlatDropdown({
                   aria-selected={selected}
                   disabled={option.disabled}
                   onClick={() => selectIndex(index)}
-                  className={`flex h-[32px] w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50 disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`flex min-h-7 w-full items-center justify-between gap-2 rounded-[4px] px-2 py-1 text-left text-[12px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50 disabled:cursor-not-allowed disabled:opacity-40 ${
                     selected
-                      ? "bg-[#f5f6f9] text-[#24262b] dark:bg-panel-accent/15 dark:text-panel-text-1 dark:ring-1 dark:ring-inset dark:ring-panel-accent/35"
-                      : "text-[#50535a] hover:bg-[#f5f6f9] active:bg-[#eceef2] dark:text-panel-text-3 dark:hover:bg-panel-input dark:active:bg-panel-hover"
+                      ? "bg-panel-input text-panel-text-1"
+                      : "text-panel-text-3 hover:bg-panel-input hover:text-panel-text-1 active:bg-panel-hover"
                   }`}
                 >
                   <span className="min-w-0 truncate">{tx(option.label)}</span>
@@ -226,8 +226,9 @@ export function FlatSelectRow({
       : normalizedOptions;
   return (
     <div
+      data-slot="studio-select-field"
       className={`group flex min-w-0 items-center justify-between gap-1.5 bg-panel-input ${
-        large ? "h-[34px] rounded-[6px] pl-2 pr-4" : "h-6 rounded-[4px] px-2"
+        large ? "h-8 rounded-[8px] px-2.5" : "h-7 rounded-[8px] px-2"
       }`}
     >
       {!valueOnly && (

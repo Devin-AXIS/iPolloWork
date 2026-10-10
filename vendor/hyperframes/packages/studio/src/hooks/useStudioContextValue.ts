@@ -86,7 +86,7 @@ export function useInspectorState(
       STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.layers;
     const designPanelActive =
       STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.design;
-    const inspectorPanelActive = layersPanelActive || designPanelActive;
+    const inspectorPanelActive = rightPanelTab !== "renders";
     return {
       layersPanelActive,
       designPanelActive,

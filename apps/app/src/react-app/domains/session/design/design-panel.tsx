@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GripVertical, Trash2, ArrowLeft, Image as ImageIcon, Video, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
+import { GripVertical, Trash2, ArrowLeft, Image as ImageIcon, Video, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Type, Undo2 } from "lucide-react";
 
 import {
   IPOLLOWORK_DESIGN_STUDIO_FEATURES,
@@ -67,8 +67,6 @@ import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSaveMenu } from "./design-save-menu";
 import { DesignSystemDrawer } from "./design-system-drawer";
 import { DesignTemplateDialog } from "./design-template-dialog";
-import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
-import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg";
 import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
 import {
   buildTemplateTokenCss,
@@ -159,7 +157,7 @@ const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
 const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground [&_svg]:!size-[18px] [&_svg]:stroke-[1.5]";
-const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-7 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
 
 function FloatingToolbarTooltip({ label, children }: { label: string; children: React.ReactElement }) {
   return <Tooltip><TooltipTrigger aria-label={label} render={children} /><TooltipContent positionerClassName="z-[140]">{label}</TooltipContent></Tooltip>;
@@ -2340,7 +2338,7 @@ export function DesignPanel({
                 {editing && selection && selectionSummary ? (
                   <div
                     ref={floatingToolbarRef}
-                    className="absolute z-20 flex w-max items-center gap-4 rounded-lg border border-border bg-popover px-4 py-2 text-popover-foreground shadow-[0_4px_4.2px_rgba(0,0,0,0.09)]"
+                    className="absolute z-20 flex w-max items-center gap-2 rounded-lg border border-border bg-popover px-2 py-1 text-popover-foreground shadow-[0_4px_4.2px_rgba(0,0,0,0.09)]"
                     style={floatingStyle}
                     role="toolbar"
                     aria-label="Design floating toolbar"
@@ -2429,15 +2427,16 @@ export function DesignPanel({
                         </Button></FloatingToolbarTooltip>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
                         {!isMultiSelection && selection.canEditText ? (
                           <>
                             <FloatingToolbarTooltip label={t("design.toolbar.edit_text")}><button
                               type="button"
-                              className="flex h-6 shrink-0 items-center rounded px-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="flex h-7 shrink-0 items-center gap-1.5 rounded px-1.5 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => beginQuickEdit("text")}
                             >
-                              <img src={floatingToolbarEditText} alt="" className="h-4 w-auto select-none" draggable={false} />
+                              <Type className="size-3.5" aria-hidden="true" />
+                              <span>{t("design.toolbar.edit_text")}</span>
                             </button></FloatingToolbarTooltip>
                             <FloatingToolbarTooltip label={t("design.toolbar.font_size")}><button
                               type="button"
@@ -2472,7 +2471,7 @@ export function DesignPanel({
                           onClick={() => void askAiAboutSelection()}
                           disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
                         >
-                          <img src={floatingToolbarAiIcon} alt="" className="size-[18px] select-none" draggable={false} />
+                          <Sparkles className="size-4" aria-hidden="true" />
                         </button></FloatingToolbarTooltip> : null}
                         {mediaWorkbench.canOpen ? <>
                           <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />

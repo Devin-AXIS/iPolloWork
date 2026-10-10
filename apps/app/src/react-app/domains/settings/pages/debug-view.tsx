@@ -34,8 +34,6 @@ const monoPreClass =
   "max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dls-border bg-dls-sidebar/40 p-3 text-[11px] font-mono text-dls-text";
 const miniPreClass =
   "max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dls-border bg-dls-sidebar/30 p-2 text-[11px] font-mono text-dls-text";
-const compactDangerActionClass =
-  "inline-flex h-9 items-center gap-2 rounded-xl border border-red-7/40 bg-red-9 px-4 text-xs font-medium text-white transition-colors hover:bg-red-10 disabled:cursor-not-allowed disabled:opacity-60";
 
 type RuntimeSummary = {
   appVersionLabel: string;
@@ -936,9 +934,9 @@ export function DebugView(props: DebugViewProps) {
           <div className="text-[11px] text-dls-secondary">{t("settings.quit_hint")}</div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <Button
               type="button"
-              className={compactDangerActionClass}
+              variant="destructive"
               onClick={() => void props.onNukeiPolloWorkAndOpencodeConfig()}
               disabled={props.busy || props.nukeConfigBusy}
             >
@@ -946,7 +944,7 @@ export function DebugView(props: DebugViewProps) {
               {props.nukeConfigBusy
                 ? t("settings.removing_local_state")
                 : t("settings.delete_local_config")}
-            </button>
+            </Button>
             <div className="text-[12px] text-dls-secondary">{t("settings.nuke_hint")}</div>
           </div>
 

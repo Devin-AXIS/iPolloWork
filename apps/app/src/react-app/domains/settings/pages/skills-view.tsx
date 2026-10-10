@@ -64,10 +64,6 @@ import {
   settingsStandardContentClass,
 } from "@/react-app/domains/settings/shell/panel";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
-import {
-  SelectMenu,
-  type SelectMenuOption,
-} from "@/react-app/design-system/select-menu";
 
 type InstallResult = { ok: boolean; message: string };
 type SkillsFilter = "all" | "cloud" | "hub";
@@ -443,7 +439,7 @@ export const SkillsView = forwardRef<SkillsViewHandle, SkillsViewProps>(function
     return !readDenSettings().authToken?.trim();
   }, [denUiTick]);
 
-  const sharePermissionOptions = useMemo<SelectMenuOption[]>(
+  const sharePermissionOptions = useMemo(
     () => [
       { value: "private", label: t("skills.share_team_permission_private") },
       { value: "org", label: t("skills.share_team_permission_org") },
@@ -463,7 +459,7 @@ export const SkillsView = forwardRef<SkillsViewHandle, SkillsViewProps>(function
     [hubRepos],
   );
 
-  const statusFilterOptions = useMemo<SelectMenuOption[]>(
+  const statusFilterOptions = useMemo(
     () => [
       { value: "all", label: t("skills.filter_status_all") },
       { value: "installed", label: t("skills.filter_installed") },
@@ -1247,13 +1243,20 @@ export const SkillsView = forwardRef<SkillsViewHandle, SkillsViewProps>(function
                     <span id="skills-share-hub-label" className="mb-1.5 block text-[13px] font-medium text-dls-text">
                       {t("skills.share_team_permissions_label")}
                     </span>
-                    <SelectMenu
-                      ariaLabelledBy="skills-share-hub-label"
-                      options={sharePermissionOptions}
+                    <Select
                       value={sharePermissionChoice}
-                      onChange={setSharePermissionChoice}
+                      onValueChange={(value) => { if (value !== null) setSharePermissionChoice(value); }}
                       disabled={shareTeamBusy || Boolean(shareTeamSuccess?.trim())}
-                    />
+                    >
+                      <SelectTrigger className="w-full" aria-labelledby="skills-share-hub-label">
+                        <SelectValue>{sharePermissionOptions.find((option) => option.value === sharePermissionChoice)?.label}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {sharePermissionOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 ) : null}
                 <button

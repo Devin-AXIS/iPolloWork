@@ -1,8 +1,7 @@
-// fallow-ignore-file unused-file
-// (consumers land in the sidebar/panels PR later in this stack)
-import { type InputHTMLAttributes } from "react";
+import { type ComponentPropsWithRef } from "react";
+import { Search } from "lucide-react";
 
-interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
+interface SearchInputProps extends Omit<ComponentPropsWithRef<"input">, "type"> {
   /** Accessible name — placeholder alone is not one. */
   "aria-label": string;
 }
@@ -14,38 +13,13 @@ interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "
 export function SearchInput({ className = "", ...props }: SearchInputProps) {
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] ${className}`}
+      data-slot="studio-search"
+      className={`flex h-8 min-w-0 items-center gap-2 rounded-[8px] border border-panel-border-input bg-panel-bg px-2.5 text-panel-text-3 transition-colors ${className}`}
     >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 256 256"
-        fill="none"
-        className="flex-shrink-0"
-        aria-hidden="true"
-      >
-        <circle
-          cx="116"
-          cy="116"
-          r="76"
-          stroke="currentColor"
-          strokeWidth="22"
-          className="text-panel-text-5"
-        />
-        <line
-          x1="170"
-          y1="170"
-          x2="232"
-          y2="232"
-          stroke="currentColor"
-          strokeWidth="22"
-          strokeLinecap="round"
-          className="text-panel-text-5"
-        />
-      </svg>
+      <Search size={16} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
       <input
-        type="text"
-        className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-5"
+        type="search"
+        className="h-full min-w-0 w-full bg-transparent text-[12px] leading-4 text-panel-text-1 outline-none placeholder:text-panel-text-4"
         {...props}
       />
     </div>

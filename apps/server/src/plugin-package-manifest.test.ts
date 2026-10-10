@@ -629,6 +629,36 @@ describe("plugin package manifest", () => {
     expect(inspect('update({selectionBlend: "strict"})')).toMatchObject({ selectionBlend: "strict" });
   });
 
+  test("Image Studio tooltips clamp to the viewport and preserve accessible descriptions", async () => {
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
+    const start = ui.indexOf("    let tooltipTrigger = null;");
+    const end = ui.indexOf("    function pointForEvent", start);
+    expect(start).toBeGreaterThan(0);
+    const attributes = new Map([["aria-describedby", "existing-help"]]);
+    const tooltip = { hidden: true, textContent: "", offsetWidth: 180, offsetHeight: 40, dataset: {}, style: { left: "", top: "", setProperty: () => {} } };
+    const button = {
+      dataset: { tooltip: "长提示完整显示" }, disabled: false,
+      getBoundingClientRect: () => ({ left: 290, right: 318, top: 5, bottom: 33, width: 28, height: 28 }),
+      closest: (selector: string) => selector === "#zoomControls",
+      getAttribute: (name: string) => attributes.get(name),
+      setAttribute: (name: string, value: string) => attributes.set(name, value),
+      removeAttribute: (name: string) => attributes.delete(name),
+    };
+    const context = { $: () => tooltip, button, innerWidth: 320, innerHeight: 240, matchMedia: () => ({ matches: false }) };
+    runInNewContext(`${ui.slice(start, end)}; showTooltip(button);`, context);
+    expect(tooltip.hidden).toBe(false);
+    expect(tooltip.dataset).toEqual({ side: "bottom" });
+    expect(tooltip.style.left).toBe("132px");
+    expect(tooltip.style.top).toBe("41px");
+    expect(attributes.get("aria-describedby")).toBe("existing-help instantTooltip");
+    runInNewContext("hideTooltip()", context);
+    expect(tooltip.hidden).toBe(true);
+    expect(attributes.get("aria-describedby")).toBe("existing-help");
+    button.disabled = true;
+    runInNewContext("showTooltip(button)", context);
+    expect(tooltip.hidden).toBe(true);
+  });
+
   test("Image Studio confirms overwrite before sending and preserves the saved copy on failure", async () => {
     const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
     const source = ui.match(/    async function saveEditedResult\(mode\) \{[\s\S]*?\n    \}/)?.[0];

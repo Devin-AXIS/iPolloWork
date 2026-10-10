@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type {
   RightInspectorPane,
   RightInspectorPanes,
@@ -13,7 +13,7 @@ export interface InitialPanelLayoutState {
   rightPanelTab?: RightPanelTab | null;
 }
 
-export const MIN_RIGHT_PANEL_WIDTH = 360;
+export const MIN_RIGHT_PANEL_WIDTH = 260;
 
 function getInitialRightInspectorPanes(tab?: RightPanelTab | null): RightInspectorPanes {
   if (tab === "layers") return { layers: true, design: false };
@@ -22,7 +22,14 @@ function getInitialRightInspectorPanes(tab?: RightPanelTab | null): RightInspect
 
 export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   const [leftWidth, setLeftWidth] = useState(240);
-  const [rightWidth, setRightWidth] = useState(400);
+  const [preferredRightWidth, setRightWidth] = useState(300);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const resize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+  const rightWidth = Math.min(preferredRightWidth, Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(viewportWidth * 0.3)));
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => readStudioUiPreferences().leftCollapsed ?? false,
   );
@@ -69,7 +76,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     const newW = Math.max(
       minWidth,
       Math.min(
-        drag.side === "left" ? maxLeft : 600,
+        drag.side === "left" ? maxLeft : 360,
         drag.startW + (drag.side === "left" ? delta : -delta),
       ),
     );

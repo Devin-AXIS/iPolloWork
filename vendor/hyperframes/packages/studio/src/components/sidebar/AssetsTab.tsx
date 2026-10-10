@@ -15,7 +15,7 @@ import { AudioRow } from "./AudioRow";
 import { AssetCard, FontRow } from "./AssetCard";
 import { useStudioI18n } from "../../i18n";
 import importIconSrc from "../../icons/figmaAssetsImport.svg?url";
-import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import { SearchInput } from "../ui/SearchInput";
 import { resolveGeneratedAvatarMaterialPath } from "../../utils/timelineAssetDrop";
 
 const ASSET_VIRTUAL_OVERSCAN_PX = 480;
@@ -393,25 +393,21 @@ export const AssetsTab = memo(function AssetsTab({
       )}
       {/* Search and import share the same compact row. */}
       <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[15px] pt-3">
-        <div className="flex h-[34px] items-center gap-2">
-          <label className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md bg-panel-input px-[11px]">
-            <img src={searchIconSrc} alt="" className="h-4 w-4 flex-none" />
-            <input
-              type="search"
+        <div className="flex h-8 items-center gap-2">
+            <SearchInput
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={tx("Search assets…")}
               aria-label={tx("Search assets…")}
-              className="min-w-0 w-full bg-transparent text-xs text-panel-text-1 outline-none placeholder:text-panel-text-4"
+              className="flex-1"
             />
-          </label>
           {/* Import */}
           {onImport && (
             <>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-[34px] w-auto flex-none items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-[#858a94] bg-panel-bg px-3 text-xs font-medium text-panel-text-1 transition-colors hover:bg-panel-input"
+                className="flex h-8 w-auto flex-none items-center justify-center gap-1 whitespace-nowrap rounded-[8px] border border-panel-border-input bg-panel-bg px-2 text-xs font-medium text-panel-text-1 transition-colors hover:bg-panel-input"
               >
                 <img src={importIconSrc} alt="" className="h-4 w-4" />
                 {tx("Import")}
