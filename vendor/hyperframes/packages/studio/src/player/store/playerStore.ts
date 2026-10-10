@@ -139,7 +139,7 @@ export type TimelineKind =
   | "element";
 
 export type ZoomMode = "fit" | "manual";
-type TimelineTool = "select" | "razor" | "annotate";
+type TimelineTool = "select" | "razor" | "annotate" | "annotate-lasso";
 
 export interface SelectElementOptions {
   preserveSet?: boolean;

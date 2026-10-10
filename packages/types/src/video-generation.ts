@@ -3,6 +3,7 @@ import { z } from "zod";
 // Bound persisted job metadata separately from the model's per-call duration.
 export const MAX_AVATAR_SEGMENTS = 10_000;
 export const AVATAR_STANDARD_VIDEO = { resolution: "0.258048MP", shortEdge: 384, longEdge: 672 };
+export const AVATAR_CAMERA_PROMPT = "全程保持单一固定机位，严格沿用参考图的景别、人物比例、位置与可见身体范围。摄像机固定在三脚架上，背景和构图保持一致；禁止推拉、缩放、摇移、切镜头，以及从全身或半身画面变成脸部特写。只生成参考人物的连续表演，不新增字幕、标题、文字、标志、产品画面、软件界面或演示幻灯片，不根据配音内容改变背景。嘴唇、下颌、眨眼和自然表情可以活动，人物身体与头部保持基本稳定。";
 export const MAX_AVATAR_PROFILES = 50;
 export const avatarProfileSchema = z.object({
   id: z.uuid(), name: z.string().trim().min(1).max(80),
@@ -22,6 +23,7 @@ export const avatarSegmentSchema = z.object({
   status: z.enum(["pending", "submitting", "running", "succeeded", "failed", "uncertain", "save_failed"]),
   upstreamId: z.string(), path: z.string(), attempt: z.number().int().nonnegative(),
   startedAt: z.number().int().nonnegative().optional(), completedAt: z.number().int().nonnegative().optional(),
+  quality: z.object({ difference: z.number().nonnegative(), jump: z.number().nonnegative() }).optional(),
 });
 export type AvatarSegment = z.infer<typeof avatarSegmentSchema>;
 export const avatarSequenceSchema = z.object({

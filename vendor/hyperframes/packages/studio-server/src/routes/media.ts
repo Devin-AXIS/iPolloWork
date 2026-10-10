@@ -29,12 +29,13 @@ type BackgroundRemovalDevice = "auto" | "cpu" | "coreml" | "cuda";
 interface BackgroundRemovalBody {
   inputPath?: string;
   outputPath?: string;
+  foregroundPath?: string;
   createBackgroundPlate?: boolean;
   quality?: string;
   device?: string;
 }
 
-type JobWithCreatedAt = MediaProcessingJobState & { createdAt: number };
+type JobWithCreatedAt = MediaProcessingJobState & { createdAt: number; requestKey: string };
 type ProbeMediaMetadata = typeof probeMediaMetadata;
 
 function isVideoPath(path: string): boolean {
@@ -226,6 +227,32 @@ export function registerMediaRoutes(
       if (requestedOutput && !resolveWithinProject(project.dir, requestedOutput)) {
         return c.json({ error: "forbidden" }, 403);
       }
+      let foregroundPath: string | undefined;
+      if (body.foregroundPath) {
+        if (!inputIsVideo || body.createBackgroundPlate) {
+          return c.json({ error: "foreground reuse requires a video without a background plate" }, 400);
+        }
+        const foregroundAssetPath = normalizeProjectAssetPath(body.foregroundPath);
+        if (/^(?:https?:|data:|blob:)/i.test(foregroundAssetPath)) {
+          return c.json({ error: "foreground requires a project-local video" }, 400);
+        }
+        if (containsNullByte(foregroundAssetPath)) return c.json({ error: "forbidden" }, 403);
+        foregroundPath = resolveWithinProject(project.dir, foregroundAssetPath) ?? undefined;
+        if (!foregroundPath) return c.json({ error: "forbidden" }, 403);
+        if (!isVideoPath(foregroundPath)) return c.json({ error: "foreground must be a video" }, 400);
+        if (!existsSync(foregroundPath)) return c.json({ error: "foreground not found" }, 404);
+      }
+      const requestKey = JSON.stringify([
+        project.dir, inputPath, requestedOutput, foregroundPath,
+        body.createBackgroundPlate === true, normalizeQuality(body.quality), normalizeDevice(body.device),
+      ]);
+      const existing = [...mediaJobs.values()].find(
+        (job) => job.status === "processing" && job.requestKey === requestKey,
+      );
+      if (existing) return c.json({
+        jobId: existing.id, status: existing.status, outputPath: existing.outputAssetPath,
+        backgroundOutputPath: existing.backgroundOutputAssetPath,
+      });
       const taken = outputsInFlight(mediaJobs);
       const outputAssetPath = requestedOutput
         ? uniqueAssetPath(project.dir, requestedOutput, taken)
@@ -264,6 +291,7 @@ export function registerMediaRoutes(
         inputAssetPath,
         outputPath,
         outputAssetPath,
+        foregroundPath,
         backgroundOutputPath,
         backgroundOutputAssetPath,
         quality: normalizeQuality(body.quality),
@@ -271,6 +299,7 @@ export function registerMediaRoutes(
         jobId,
       }) as JobWithCreatedAt;
       state.createdAt = Date.now();
+      state.requestKey = requestKey;
       mediaJobs.set(jobId, state);
       ensureCleanupTimer();
 

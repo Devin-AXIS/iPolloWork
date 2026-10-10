@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { avatarBackgroundForPrompt, AVATAR_STANDARD_VIDEO, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoJobsResultSchema, videoSubmitResultSchema, videoModelStatusSchema, type AvatarProfile, type VideoAvatarContext, type VideoJob } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, AVATAR_CAMERA_PROMPT, AVATAR_STANDARD_VIDEO, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoJobsResultSchema, videoSubmitResultSchema, videoModelStatusSchema, type AvatarProfile, type VideoAvatarContext, type VideoJob } from "@ipollowork/types/video-generation";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, ImagePlus, Info, Loader2, Pause, Play, Plus, RefreshCw, Trash2, RectangleVertical, RectangleHorizontal } from "lucide-react";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -25,7 +25,7 @@ type Props = {
   previewAssetUrl?: (path: string) => string;
 };
 
-const defaultPrompt = "人物面向镜头说出所选配音，嘴唇和下颌随每个音节自然变化，停顿时放松闭口，表情随语气变化。头部保持稳定，自然眨眼和轻微呼吸，避免反复点头和晃动，保持人物身份与镜头稳定。";
+const defaultPrompt = `${AVATAR_CAMERA_PROMPT}人物面向镜头说出所选配音，嘴唇和下颌随每个音节自然变化，停顿时放松闭口，表情随语气变化，避免反复点头和晃动。`;
 const menuClassName = "video-settings-typography max-h-(--available-height) max-w-(--available-width) rounded-lg bg-popover p-1.5 text-xs [&_[role=option]]:min-h-[34px] [&_[role=option]]:px-2 [&_[role=option]]:py-1.5 [&_[role=option]]:text-xs";
 const fieldClassName = "h-[34px] data-[size=default]:h-[34px] w-full rounded-lg border-0 bg-muted/60 px-3 text-xs font-normal shadow-none";
 
@@ -320,6 +320,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
         <section className="space-y-1.5" aria-label="动作描述">
           <div className="flex items-center justify-between gap-2"><label htmlFor={promptId} className="text-ui-control font-semibold">动作描述</label><Tooltip><TooltipTrigger render={<button type="button" aria-label="动作与背景说明" className="flex items-center gap-1 text-[11px] text-muted-foreground" />}>{avatarBackgroundForPrompt(draft.prompt) === "transparent" ? "透明背景" : "保留背景"}<Info aria-hidden="true" className="size-3" /></TooltipTrigger><TooltipContent className="text-[11px]">默认保留背景，生成后可手动智能抠图。明确要求去除背景时才自动抠图。</TooltipContent></Tooltip></div>
           <Textarea id={promptId} value={draft.prompt} rows={3} maxLength={3000} disabled={busy} onChange={event => setDraft(current => current ? { ...current, prompt: event.target.value } : current)} className="min-h-20 resize-none border-0 bg-muted/60 text-xs leading-5 shadow-none" />
+          <p className="text-[11px] leading-5 text-muted-foreground">系统会自动要求固定镜头，并保持参考图的人物比例与构图；嘴唇、眨眼和自然表情仍可变化。</p>
         </section>
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="h-[34px] w-full rounded-lg text-ui-control shadow-none before:shadow-none" disabled={busy} onClick={() => void act(save)}>保存设置</Button><Button type="button" className="h-[34px] w-full rounded-lg text-[13px] disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" disabled={busy || !canSubmit} onClick={() => void beginGeneration()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}生成数字人片段</Button></div>
@@ -386,8 +387,20 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
         {job.pauseRequested && job.status === "running" ? <p className="text-[11px] text-muted-foreground">暂停请求已收到，当前片段保存后会暂停。</p> : null}
         {["running", "submitting", "paused", "uncertain"].includes(job.status) ? <Button type="button" variant="ghost" className="h-[30px] text-xs text-destructive" disabled={busy} onClick={() => setStopOpen(true)}>停止生成</Button> : null}
         {["uncertain", "save_failed"].includes(job.status) || job.status === "failed" && preparationFailed ? <div className="space-y-2">{job.status === "uncertain" && !job.upstreamId && !sequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input className="text-xs" aria-label="已有服务商任务 ID" placeholder="填写已有 RunningHub 任务 ID" value={recoveryId} onChange={event => onRecoveryId(event.target.value)} /> : null}<Button type="button" variant="outline" className="h-[34px] text-xs" disabled={busy} onClick={onRecover}>{preparationFailed ? "恢复准备并继续生成" : "恢复查询或拼接"}</Button></div> : null}
-        {["succeeded", "failed", "stopped"].includes(job.status) && canRegenerate ? <Button type="button" variant="ghost" className="h-[30px] text-xs" disabled={busy} onClick={onRegenerate}>按当前设置重新生成（计费）</Button> : null}
-        {sequence ? <Collapsible className="rounded-lg border border-border/70"><CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left text-[11px] font-medium">片段详情 <ChevronDown className="size-4" /></CollapsibleTrigger><CollapsibleContent data-testid="avatar-job-details" className="max-h-48 space-y-2 overflow-y-auto border-t border-border/70 p-3 text-[11px]">{sequence.segments.map((segment, index) => <div key={index} className="flex items-center justify-between gap-2"><span>第 {index + 1} 段 · {segment.start.toFixed(1)}–{segment.end.toFixed(1)} 秒 · {segment.status === "succeeded" ? "已生成" : segment.status === "pending" ? "待生成" : segment.status === "running" ? "生成中" : "需处理"}</span>{segment.status === "failed" && segment.path ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" onClick={() => onShow(segment.path)}>预览</Button> : null}{["failed", "save_failed"].includes(job.status) && (segment.status === "failed" && Boolean(segment.upstreamId || segment.path) || job.status === "save_failed" && sequence.segments.every(item => item.status === "succeeded")) ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" disabled={busy} onClick={() => onRetry(index)}>重试</Button> : null}</div>)}</CollapsibleContent></Collapsible> : null}
+        {sequence ? <Collapsible key={`${job.id}:${job.status === "failed"}`} defaultOpen={job.status === "failed"} className="rounded-lg border border-border/70">
+          <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left text-[11px] font-medium">片段详情 <ChevronDown className="size-4" /></CollapsibleTrigger>
+          <CollapsibleContent data-testid="avatar-job-details" className="max-h-48 space-y-3 overflow-y-auto border-t border-border/70 p-3 text-[11px]">
+            {sequence.segments.map((segment, index) => <div key={index} className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="mr-auto">第 {index + 1} 段 · {segment.start.toFixed(1)}–{segment.end.toFixed(1)} 秒 · {segment.status === "succeeded" ? "已生成" : segment.status === "pending" ? "待生成" : segment.status === "running" ? "生成中" : "需处理"}</span>
+                {segment.status === "failed" && segment.path ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" disabled={busy} onClick={() => onShow(segment.path)}>预览异常片段</Button> : null}
+                {["failed", "save_failed"].includes(job.status) && (segment.status === "failed" && Boolean(segment.upstreamId || segment.path) || job.status === "save_failed" && sequence.segments.every(item => item.status === "succeeded")) ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" disabled={busy} onClick={() => onRetry(index)}>重试本段（计费）</Button> : null}
+              </div>
+              {segment.status === "failed" && segment.quality ? <p className="leading-5 text-destructive">构图变化过大或画面突变，已暂停后续生成。</p> : null}
+            </div>)}
+          </CollapsibleContent>
+        </Collapsible> : null}
+        {["succeeded", "failed", "stopped"].includes(job.status) && canRegenerate ? <Button type="button" variant="ghost" className="h-[30px] text-xs" disabled={busy} onClick={onRegenerate}>{sequence ? "重新生成全部（计费）" : "按当前设置重新生成（计费）"}</Button> : null}
         {preview && job.status !== "succeeded" ? <video controls src={preview} className="max-h-48 w-full rounded-lg bg-black" /> : null}
       </div> : <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground"><Loader2 className="size-4 animate-spin" />{starting ? "正在准备数字人任务…" : error || "正在读取任务…"}</div>}
       {error && job ? <p role="alert" className="text-[11px] text-destructive">{error}</p> : null}

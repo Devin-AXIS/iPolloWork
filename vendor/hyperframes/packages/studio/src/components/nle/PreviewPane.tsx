@@ -248,7 +248,11 @@ export function PreviewPane({
                 aria-hidden="true"
               />
               <span className="whitespace-nowrap text-[12px] font-normal leading-normal">
-                {t("preview.aiEditingWarning")}
+                {avatarCutoutProgress === null
+                  ? t("preview.aiEditingWarning")
+                  : avatarCutoutProgress === 0
+                    ? t("preview.avatarCutoutPreparing")
+                    : t("preview.avatarCutoutProgress").replace("{progress}", String(avatarCutoutProgress))}
               </span>
             </span>
           </div>

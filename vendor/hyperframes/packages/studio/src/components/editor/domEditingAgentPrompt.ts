@@ -156,8 +156,10 @@ export function postVideoAiSelectionToHost(
 export async function deliverStudioAgentPrompt(
   prompt: string,
   sourceFile = "index.html",
-  options: { selector?: string; selection?: DomEditSelection; instruction?: string } = {},
+  options: { selector?: string; selection?: DomEditSelection; instruction?: string; requireCompleteContext?: boolean } = {},
 ): Promise<boolean> {
+  if (options.requireCompleteContext && prompt.length > 20_000)
+    throw new Error("选中内容过多，请缩小批注范围后重试，避免遗漏定位信息");
   if (window.parent === window) return copyTextToClipboard(prompt);
   const requestId = crypto.randomUUID();
   return new Promise<boolean>((resolve, reject) => {

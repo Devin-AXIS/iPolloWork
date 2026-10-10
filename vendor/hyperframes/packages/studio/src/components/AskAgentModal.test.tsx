@@ -145,7 +145,7 @@ it("uses the same dialog for a timeline range and carries only its overlapping c
   expect(prompt).toContain("inside");
   expect(prompt).not.toContain("#outside");
   expect(file).toBe("scenes/current.html");
-  expect(options).toEqual({ instruction: "这段画面提亮" });
+  expect(options).toEqual({ instruction: "这段画面提亮", requireCompleteContext: true });
   expect(close).toHaveBeenCalledOnce();
   expect(bridge.showToast).toHaveBeenCalledExactlyOnceWith("已复制提示词", "info");
 });
@@ -153,7 +153,7 @@ it("uses the same dialog for a timeline range and carries only its overlapping c
 it("preserves the existing default range instruction for an empty request", async () => {
   await act(async () => root.render(<EditPopover rangeStart={1} rangeEnd={3} anchorX={20} anchorY={20} onClose={() => {}} />));
   await act(async () => button("Copy prompt").click());
-  expect(bridge.deliver.mock.calls[0]?.[2]).toEqual({ instruction: "修改选定时间范围内的视频内容" });
+  expect(bridge.deliver.mock.calls[0]?.[2]).toEqual({ instruction: "修改选定时间范围内的视频内容", requireCompleteContext: true });
 });
 
 it("sends only selected clips, excluding simultaneous unselected tracks, without changing their timing", async () => {
@@ -170,8 +170,25 @@ it("sends only selected clips, excluding simultaneous unselected tracks, without
   expect(prompt).not.toContain("unselected-audio");
   expect(prompt).toContain("Exact range (seconds): 1.250 - 3.750");
   expect(file).toBe("scenes/current.html");
-  expect(options).toEqual({ instruction: "只放大选中的标题" });
+  expect(options).toEqual({ instruction: "只放大选中的标题", requireCompleteContext: true });
   expect(JSON.stringify(usePlayerStore.getState().elements)).toBe(before);
+});
+
+it.each<["clip-range" | "timeline-lasso"]>([["clip-range"], ["timeline-lasso"]])("sends exact %s context with nested source timing and no simultaneous unrelated clip", async (selectionKind) => {
+  const selected = { id: "nested-title", key: "host/title", hfId: "title-stable", selector: "#title", sourceFile: "scenes/intro.html",
+    tag: "div", start: 11, duration: 4, track: 8, expandedParentStart: 10 };
+  usePlayerStore.setState({ elements: [selected, { id: "other", tag: "audio", start: 0, duration: 30, track: 2 }] });
+  await act(async () => root.render(<EditPopover rangeStart={12} rangeEnd={13.5} selectedElements={[selected]} selectionKind={selectionKind} onClose={() => {}} />));
+  await fill("调整这部分");
+  await act(async () => button("Copy prompt").click());
+  const prompt = bridge.deliver.mock.calls[0]?.[0];
+  expect(prompt).toContain(`"kind":"${selectionKind}"`);
+  expect(prompt).toContain('"selectedStart":12,"selectedEnd":13.5');
+  expect(prompt).toContain('"clipLocalStart":1,"clipLocalEnd":2.5');
+  expect(prompt).toContain('"sourceStart":2,"sourceEnd":3.5');
+  expect(prompt).toContain('"sourceFile":"scenes/intro.html"');
+  expect(prompt).toContain('"hfId":"title-stable"');
+  expect(prompt).not.toContain('"id":"other"');
 });
 
 it("uses the same instruction and retry flow for catalog references while keeping direct insert separate", async () => {

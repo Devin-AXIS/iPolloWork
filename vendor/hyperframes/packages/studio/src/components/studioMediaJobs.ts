@@ -12,6 +12,7 @@ export async function startBackgroundRemoval(
   options: {
     createBackgroundPlate?: boolean;
     outputPath?: string;
+    foregroundPath?: string;
     quality?: "fast" | "balanced" | "best";
   } = {},
   signal?: AbortSignal,
@@ -25,6 +26,7 @@ export async function startBackgroundRemoval(
       body: JSON.stringify({
         inputPath,
         ...(options.outputPath ? { outputPath: options.outputPath } : {}),
+        ...(options.foregroundPath ? { foregroundPath: options.foregroundPath } : {}),
         createBackgroundPlate: options.createBackgroundPlate === true,
         quality: options.quality ?? "balanced",
       }),

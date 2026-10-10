@@ -1,5 +1,4 @@
-import { MousePointer2, Image, Scissors, LassoSelect, Sparkles } from "lucide-react";
-import { EditPopover } from "../player/components/EditModal";
+import { MousePointer2, Image, Scissors, Pencil, TextSelect } from "lucide-react";
 import { ArrowsOutLineHorizontal } from "@phosphor-icons/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Ellipsis, ZoomIn, type LucideIcon } from "lucide-react";
@@ -204,7 +203,6 @@ export function TimelineToolbar({
   const { tx } = useStudioI18n();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarWidth, setToolbarWidth] = useState(0);
-  const [annotationSelection, setAnnotationSelection] = useState<TimelineElement[] | null>(null);
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
     if (!toolbar) return;
@@ -255,7 +253,6 @@ export function TimelineToolbar({
     handleUndo,
     handleRedo,
   } = useStudioShellContext();
-  useEffect(() => setAnnotationSelection(null), [projectId, activeCompPath]);
   const {
     captureFrameHref,
     captureFrameFilename,
@@ -381,27 +378,19 @@ export function TimelineToolbar({
               event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
             }}
           >
-            <LassoSelect size={16} />
+            <TextSelect size={16} />
           </button>
         </Tooltip>
-        <Tooltip label={tx("Send selected clips to AI")}>
-          <button
-            type="button"
-            className={iconButton}
-            aria-label={tx("Send selected clips to AI")}
-            disabled={!selectedElement}
+        <Tooltip label={tx("Draw around timeline clips to annotate them")}>
+          <button type="button"
+            className={`${iconButton} ${activeTool === "annotate-lasso" ? "bg-panel-input text-studio-accent" : ""}`}
+            aria-label={tx("Lasso clips for AI")}
+            aria-pressed={activeTool === "annotate-lasso"}
             onClick={(event) => {
-              const keys = new Set(selectedElementIds);
-              if (selectedElementId) keys.add(selectedElementId);
-              const selection = elements.filter((element) => keys.has(element.key ?? element.id));
-              if (!selection.length) return;
+              setActiveTool(activeTool === "annotate-lasso" ? "select" : "annotate-lasso");
               event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
-              usePlayerStore.getState().setIsPlaying(false);
-              setActiveTool("select");
-              setAnnotationSelection(selection);
-            }}
-          >
-            <Sparkles size={16} />
+            }}>
+            <Pencil size={16} />
           </button>
         </Tooltip>
         <Tooltip label={tx(editHistory.undoLabel ? `Undo ${editHistory.undoLabel}` : "Undo")}>
@@ -603,14 +592,6 @@ export function TimelineToolbar({
           <div id={SHORTCUTS_TOOLBAR_SLOT_ID} className="flex items-center" />
         </ToolbarGroup>
       </div>
-      {annotationSelection && (
-        <EditPopover
-          rangeStart={Math.min(...annotationSelection.map((element) => element.start))}
-          rangeEnd={Math.max(...annotationSelection.map((element) => element.start + element.duration))}
-          selectedElements={annotationSelection}
-          onClose={() => setAnnotationSelection(null)}
-        />
-      )}
     </div>
   );
 }

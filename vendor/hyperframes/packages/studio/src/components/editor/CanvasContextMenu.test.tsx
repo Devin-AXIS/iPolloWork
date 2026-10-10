@@ -5,11 +5,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import type { DomEditSelection } from "./domEditingTypes";
 
-const cutout = vi.hoisted(() => ({ avatarCutoutProgress: null, handleAvatarCutout: vi.fn() }));
+const cutout = vi.hoisted(() => ({ avatarCutoutProgress: null as number | null, handleAvatarCutout: vi.fn() }));
 vi.mock("../../contexts/DomEditContext", () => ({ useDomEditActionsContextOptional: () => cutout }));
 let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => {
+  cutout.avatarCutoutProgress = null;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   host = document.createElement("div");
@@ -105,6 +106,25 @@ it("keeps cutout and both video layer presets actionable without duplicate calls
   await render({ selection, onApplyZIndex: apply });
   await act(async () => button("Smart cutout").click());
   expect(cutout.handleAvatarCutout).toHaveBeenCalledExactlyOnceWith(selection);
+  await act(async () => {
+    button("Remove avatar background").dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true, cancelable: true }));
+    button("Remove avatar background").dispatchEvent(new MouseEvent("click", { button: 0, detail: 1, bubbles: true }));
+  });
+  expect(cutout.handleAvatarCutout).toHaveBeenCalledTimes(2);
+  expect(cutout.handleAvatarCutout).toHaveBeenLastCalledWith(selection, "remove-background");
+
+  element.setAttribute("data-avatar-original-src", "assets/person.mp4");
+  await render({ selection, onApplyZIndex: apply });
+  expect(document.body.textContent).not.toContain("Smart cutout");
+  await act(async () => button("Restore background").click());
+  expect(cutout.handleAvatarCutout).toHaveBeenCalledTimes(3);
+  expect(cutout.handleAvatarCutout).toHaveBeenLastCalledWith(selection, "remove-background");
+
+  cutout.avatarCutoutProgress = 50;
+  await render({ selection, onApplyZIndex: apply });
+  expect(button("AI cutout in progress…").disabled).toBe(true);
+  await act(async () => button("AI cutout in progress…").click());
+  expect(cutout.handleAvatarCutout).toHaveBeenCalledTimes(3);
   await act(async () => button("Low layer · above background").click());
   expect(apply).toHaveBeenCalledTimes(1);
   expect(apply.mock.calls[0][1]).toBe("send-to-back");

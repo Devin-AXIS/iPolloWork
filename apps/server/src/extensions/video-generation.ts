@@ -2,8 +2,9 @@ import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "../engine-host-tools.j
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, posix } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import { avatarBackgroundForPrompt, avatarProfileSchema, avatarProfilesResultSchema, AVATAR_STANDARD_VIDEO, MAX_AVATAR_PROFILES, MAX_AVATAR_SEGMENTS, type AvatarProfile, type AvatarSegment } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, avatarProfileSchema, avatarProfilesResultSchema, AVATAR_CAMERA_PROMPT, AVATAR_STANDARD_VIDEO, MAX_AVATAR_PROFILES, MAX_AVATAR_SEGMENTS, type AvatarProfile, type AvatarSegment } from "@ipollowork/types/video-generation";
 import { prepareAvatarSegments, sliceAvatarAudio, joinAvatarSegments, inspectAvatarStability } from "./video-avatar-segments.js";
 import { avatarCutoutCli, avatarCutoutTimeout, removeAvatarBackground } from "./video-local-edit.js";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
@@ -185,6 +186,18 @@ async function jsonRequest(url: string, key: string, body?: unknown, signal?: Ab
   return data;
 }
 
+// Only result reads are idempotent. Never wrap task creation or uploads here.
+async function readVideoResult<T>(read: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await read(); }
+    catch (error) {
+      const failure = classifyProviderFailure(error);
+      if (signal.aborted || attempt >= 2 || !failure || !["provider_unavailable", "provider_timeout", "provider_network_error", "provider_rate_limited"].includes(failure.code)) throw error;
+      await delay(500 * 2 ** attempt, undefined, { signal });
+    }
+  }
+}
+
 const mimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".wav": "audio/wav" };
 async function mediaFile(workspace: WorkspaceInfo, path: string) {
   if (!path || path.includes(":") || path.startsWith("/") || path.includes("\\") || path.split("/").some(part => !part || part === "." || part === "..")) fail("素材路径必须是当前工作区内的相对路径。");
@@ -323,6 +336,22 @@ function workflowDependencyIds(graph: Awaited<ReturnType<typeof runningHubWorkfl
   return reachable;
 }
 
+const avatarIdentityPrompt = "严格保持参考图片中的人物身份、服装颜色、材质、背景、光线及原有视觉风格。";
+const avatarAudioPromptPrefix = `${avatarIdentityPrompt}严格跟随视频配音对口型。\n`;
+const legacyAvatarAudioPromptPrefix = "保持参考人物图片的视觉风格、身份、服装、色彩和光线；插画保持插画风格，写实照片保持写实风格。严格跟随视频配音对口型。\n";
+
+function cleanAvatarAudioPrompt(prompt: string) {
+  // Persisted audio jobs created before this fix contain automatically appended
+  // composition text. Remove only that known envelope when resuming/retrying.
+  if (!prompt.startsWith(legacyAvatarAudioPromptPrefix)) return prompt;
+  const contentStart = prompt.lastIndexOf("\n视频内容：");
+  return prompt.slice(legacyAvatarAudioPromptPrefix.length, contentStart >= legacyAvatarAudioPromptPrefix.length ? contentStart : undefined);
+}
+
+function avatarPrompt(prompt: string) {
+  return `${AVATAR_CAMERA_PROMPT}\n表演与内容参考（沿用上述固定构图）：\n${prompt}\n${AVATAR_CAMERA_PROMPT}`;
+}
+
 async function avatarWorkflow(args: Submission, key: string, image: string, audio: string, signal: AbortSignal) {
   const graph = await runningHubWorkflow(key, AVATAR_WORKFLOW, signal);
   const nodeByType = (type: string) => {
@@ -381,18 +410,27 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
   unetNode.inputs.unet_name = "minimax_h3_fl2va_int8_convrot.safetensors";
   const target: Record<string, unknown> = { clip: reference.clip, vae: reference.vae, width, height,
     first_frame: ["avatar_frame", 0], last_frame: ["avatar_frame", 0],
-    prompt: `One uninterrupted locked-off shot matching the reference image's exact framing throughout the entire take. Keep the person at the same size and position with the same visible body area and background from beginning to end. Never switch from a wider view to a face close-up. Preserve identity, clothing and visual style. The person speaks the supplied soundtrack: lip shapes and jaw articulation follow its actual phonemes, syllables, pauses and rhythm, not a generic talking loop. Lips relax during silence; expression follows the tone of the speech. Allow irregular natural blinks and subtle breathing with the head mostly steady, without repetitive nodding or swaying. Keep facial articulation free to move. The camera stays completely still: no zoom, pan, reframing, cuts, extra people or scene changes. ${args.prompt}` };
+    prompt: `One continuous locked-off shot with the exact same framing as the reference image for the entire take. Preserve identity, clothing and visual style. The person speaks the supplied soundtrack: lip shapes and jaw articulation follow its actual phonemes, syllables, pauses and rhythm, not a generic talking loop. Lips relax during silence; expression follows the tone of the speech. Allow irregular natural blinks and subtle breathing with the head mostly steady, without repetitive nodding or swaying. Keep facial articulation free to move. Do not add text, captions, logos, slides, product shots or user interfaces. Do not visualize the speech or change the scene. ${avatarPrompt(cleanAvatarAudioPrompt(args.prompt))}` };
   graph[referenceNode.id] = { class_type: "MiniMaxH3ImageToVideo", inputs: target };
   const frames = Math.max(120, Math.ceil(Number(args.duration) * 24));
   target.length = frames + (5 - frames % 17 + 17) % 17;
   // Repeated still-image guides pin the mouth/expression back to the photo.
   // Native H3 audio guidance shares the video's clock from frame zero instead.
-  if (graph["avatar_speech"]) fail("数字人工作流节点编号已变化，尚未提交。");
+  if (graph["avatar_speech"] || graph["avatar_framing"]) fail("数字人工作流节点编号已变化，尚未提交。");
   graph["avatar_speech"] = { class_type: "MiniMaxH3AddGuide", inputs: {
     positive: [referenceNode.id, 0], latent: [referenceNode.id, 1],
+    // Carry both the reference appearance and soundtrack in the frame-zero guide.
+    image: ["avatar_frame", 0], vae: reference.vae,
     audio: [cropNode.id, 0], audio_vae: [audioVaeNode.id, 0], frame_idx: 0,
   } };
-  guiderNode.inputs.conditioning = ["avatar_speech", 0];
+  // The 17k+5 padded tail can be trimmed away with the soundtrack. Anchor the
+  // last retained frame as well; one endpoint guide leaves speech free to move.
+  graph["avatar_framing"] = { class_type: "MiniMaxH3AddGuide", inputs: {
+    positive: ["avatar_speech", 0], latent: [referenceNode.id, 1],
+    image: ["avatar_frame", 0], vae: reference.vae,
+    frame_idx: Math.ceil(Number(args.duration) * 24) - 1,
+  } };
+  guiderNode.inputs.conditioning = ["avatar_framing", 0];
   samplerNode.inputs.latent_image = [referenceNode.id, 1];
   scheduler.steps = 6;
   noiseNode.inputs.noise_seed = Number.parseInt(args.requestId.replaceAll("-", "").slice(0, 12), 16);
@@ -425,7 +463,7 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
   }
   // This published text-to-video graph has no image loaders. Add them only for frame modes.
   if (["24", "25", "300", "301"].some(id => graph[id])) throw new ApiError(400, "video_workflow_changed", "H3 工作流节点编号已变化，请更新软件后重试。");
-  target.prompt = args.prompt;
+  target.prompt = args.model === "minimax-h3-avatar" ? avatarPrompt(args.prompt) : args.prompt;
   // Explicit conditioning: never retain the author's prompt, duration or reference images.
   const frames = Math.max(5, Math.round(Number(args.duration) * 24));
   target.length = frames + (5 - frames % 17 + 17) % 17;
@@ -508,32 +546,34 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
   const destination = await resolveWithinRoot(workspace.path, path);
   const existing = await stat(destination).catch(() => null);
   if (!existing) {
-    const response = await providerFetch(parsed, { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
-    if (!response.ok || !response.body) throw new Error(`视频下载失败（HTTP ${response.status}），可以重试保存，无需重新生成。`);
-    const declared = Number(response.headers.get("content-length"));
-    if (declared > MAX_OUTPUT) { await response.body.cancel(); throw new Error("视频超过 256 MB，请从服务商控制台下载。"); }
-    const partial = `${destination}.${randomUUID()}.partial`;
-    const file = await open(partial, "wx");
-    let size = 0;
-    let header = Buffer.alloc(0);
-    try {
-      const reader = response.body.getReader();
+    await readVideoResult(async () => {
+      const response = await providerFetch(parsed, { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
+      if (!response.ok || !response.body) throw new Error(`视频下载失败（HTTP ${response.status}），可以重试保存，无需重新生成。`);
+      const declared = Number(response.headers.get("content-length"));
+      if (declared > MAX_OUTPUT) { await response.body.cancel(); throw new Error("视频超过 256 MB，请从服务商控制台下载。"); }
+      const partial = `${destination}.${randomUUID()}.partial`;
+      const file = await open(partial, "wx");
+      let size = 0;
+      let header = Buffer.alloc(0);
       try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          size += value.byteLength;
-          if (size > MAX_OUTPUT) throw new Error("视频超过 256 MB，请从服务商控制台下载。");
-          if (header.length < 12) header = Buffer.concat([header, value.subarray(0, 12 - header.length)]);
-          await file.writeFile(value);
-        }
-      } finally { await reader.cancel().catch(() => undefined); }
-      if (!size) throw new Error("服务商返回了空视频。");
-      if (header.length < 12 || header.subarray(4, 8).toString() !== "ftyp") throw new Error("服务商未返回有效 MP4 视频。");
-      await file.sync();
-      await file.close();
-      await rename(partial, destination);
-    } finally { await file.close().catch(() => undefined); await rm(partial, { force: true }); }
+        const reader = response.body.getReader();
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > MAX_OUTPUT) throw new Error("视频超过 256 MB，请从服务商控制台下载。");
+            if (header.length < 12) header = Buffer.concat([header, value.subarray(0, 12 - header.length)]);
+            await file.writeFile(value);
+          }
+        } finally { await reader.cancel().catch(() => undefined); }
+        if (!size) throw new Error("服务商返回了空视频。");
+        if (header.length < 12 || header.subarray(4, 8).toString() !== "ftyp") throw new Error("服务商未返回有效 MP4 视频。");
+        await file.sync();
+        await file.close();
+        await rename(partial, destination);
+      } finally { await file.close().catch(() => undefined); await rm(partial, { force: true }); }
+    }, signal);
   } else if (!existing.isFile() || existing.size === 0) throw new Error("产出路径已存在异常文件，不能覆盖。");
   if (segmentId) return path;
   if (cutout) {
@@ -553,9 +593,9 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
 
 async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
   const request = { apiKey: key, taskId: job.upstreamId };
-  const status = z.string().parse(workflowData(await jsonRequest(`${RH}/task/openapi/status`, key, request, signal))).toLowerCase();
+  const status = z.string().parse(workflowData(await readVideoResult(() => jsonRequest(`${RH}/task/openapi/status`, key, request, signal), signal))).toLowerCase();
   if (!["success", "failed"].includes(status)) return { status };
-  const result = await jsonRequest(`${RH}/task/openapi/outputs`, key, request, signal);
+  const result = await readVideoResult(() => jsonRequest(`${RH}/task/openapi/outputs`, key, request, signal), signal);
   if (status === "failed") return { status, errorCode: result.code, errorMessage: result.msg || "H3 工作流生成失败，请在 RunningHub 查看任务详情。" };
   let outputs: Array<{ fileUrl: string; fileType: string; nodeId: string }>;
   try { outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result)); }
@@ -611,7 +651,8 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
       const expired = Date.now() - job.createdAt > 24 * 60 * 60 * 1000;
       const completedOutputFailure = isApiError(error) && error.code === "video_output_unavailable";
       await updateVideoJob(config, job, { status: saving || completedOutputFailure ? "save_failed" : expired ? "uncertain" : "running",
-        message: completedOutputFailure ? error.message : safeError(error, key), nextPoll: Date.now() + 60_000 });
+        message: completedOutputFailure ? error.message : saving ? `视频已生成，但下载或本地保存未完成：${safeError(error, key)} 可恢复取回已有结果，无需重新生成。`
+          : job.avatarSequence ? `已有数字人任务的结果查询暂未完成：${safeError(error, key)} ${expired ? "可恢复查询" : "系统会继续查询"}，不会重复提交生成。` : safeError(error, key), nextPoll: Date.now() + 60_000 });
     } finally {
       if (activeVideoJobControllers.get(job.id) === controller) activeVideoJobControllers.delete(job.id);
     }
@@ -664,7 +705,7 @@ async function advanceAvatarSequence(config: ServerConfig, workspace: WorkspaceI
       const audioPath = sequence.audioPath ? `video/${job.sessionId}/renders/avatar-${job.id}-${index}.wav` : "";
       await sessionDirectory(workspace, job.sessionId, "renders");
       if (audioPath) await sliceAvatarAudio(workspace, sequence.audioPath, segment, audioPath, signal);
-      const args = validateVideoSubmission({ requestId: job.id, model: job.model, operation: "reference", prompt: `${job.prompt}\n固定镜头与构图，保持人物大小、位置、光线稳定。允许自然眨眼、轻微呼吸和小幅头部调整；表情随语气柔和变化，避免持续露齿笑、机械点头、转身或大幅挥手。`,
+      const args = validateVideoSubmission({ requestId: job.id, model: job.model, operation: "reference", prompt: audioPath ? cleanAvatarAudioPrompt(job.prompt) : job.prompt,
         resolution: AVATAR_STANDARD_VIDEO.resolution, duration: String(segment.end - segment.start), ratio: sequence.ratio, imageRefs: sequence.imagePath, audioRefs: audioPath, avatarSource: audioPath ? "video-audio" : "video-content" });
       // The reference image owns identity. Distinct deterministic segment seeds
       // avoid repeating the same motion; retries get a fresh seed without resubmission.
@@ -691,6 +732,8 @@ async function advanceAvatarSequence(config: ServerConfig, workspace: WorkspaceI
     await persist({ status: "failed", message: `${label}生成失败，可只重试这一段。` }, { status: "failed" });
   } else if (result.status === "success" && result.results) {
     try {
+      // Keep pause/stop available while retrieving this already billed segment.
+      await persist({ status: "running", nextPoll: Date.now() + 10 * 60_000, message: `${label}已生成，正在下载并检查片段…` });
       const path = await saveOutput(config, workspace, job, result.results[0].url, signal, `avatar-${job.id}-${index}-${segment.attempt}`);
       const media = await inspectLocalVideo(workspace, path);
       if (media.duration + .08 < segment.end - segment.start) {
@@ -699,13 +742,14 @@ async function advanceAvatarSequence(config: ServerConfig, workspace: WorkspaceI
       }
       const stability = await inspectAvatarStability(workspace, path, signal);
       if (stability.difference > .1 || stability.jump > .08) {
-        await persist({ status: "failed", message: `${label}画面连续性检查未通过，已暂停后续生成。请预览并重试此片段；长片段重复失败时会拆短重试，其余结果保留。` }, { status: "failed", path });
+        await persist({ status: "failed", message: `${label}画面连续性检查未通过：构图变化过大或画面突变。异常片段已保留供预览，后续生成已暂停；点击重试只重新生成本段，超过 10 秒的失败片段会直接拆短，其余结果保留。` }, { status: "failed", path, quality: stability });
         return;
       }
-      const updated = await persist({ status: "running", nextPoll: 0, message: `${label}已保存。` }, { status: "succeeded", path, completedAt: Date.now() });
+      const updated = await persist({ status: "running", nextPoll: 0, message: `${label}已保存。` }, { status: "succeeded", path, quality: stability, completedAt: Date.now() });
       if (updated.pauseRequested) await finishVideoJobPause(config, job.id);
     } catch (error) {
-      await persist({ status: "save_failed", message: `${label}：${safeError(error, key)}` }, { status: "save_failed" });
+      if (signal.aborted) return;
+      await persist({ status: "save_failed", message: `${label}已生成，但下载或本地保存未完成：${safeError(error, key)} 可恢复取回已有结果，无需重新生成。` }, { status: "save_failed" });
     }
   } else await persist({ status: "running", message: `${label}正在生成，已完成 ${index} 段。` });
 }
@@ -872,7 +916,9 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
       if (!source.content.trim()) fail("当前视频没有可参考的内容，请先完善视频。 ");
       draft.audioRefs = "";
     }
-    if (source) draft.prompt = `保持参考人物图片的视觉风格、身份、服装、色彩和光线；插画保持插画风格，写实照片保持写实风格。${draft.avatarSource === "video-content" ? "参考以下视频内容设计自然动作，不使用视频配音，不要求对口型。" : "严格跟随视频配音对口型。"}\n${draft.prompt}\n视频内容：${source.content}`.slice(0, 8000);
+    if (source) draft.prompt = (draft.avatarSource === "video-content"
+      ? `${avatarIdentityPrompt}参考以下视频内容设计自然动作，不使用视频配音，不要求对口型。\n${draft.prompt}\n视频内容：${source.content}`
+      : `${avatarAudioPromptPrefix}${draft.prompt}`).slice(0, 8000);
     const args = validateVideoSubmission(draft);
     if (avatarBackground === "transparent") await avatarCutoutCli();
     const key = await credential(authorization, args.model);
@@ -951,15 +997,15 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     if (segment?.status === "failed" && !segment.upstreamId && !segment.path) fail("这一段尚未提交生成，请使用恢复准备并继续生成，无需增加重试次数。");
     const seamRetry = job.status === "save_failed" && sequence?.segments.every(item => item.status === "succeeded");
     if (!sequence || !segment || !["failed", "save_failed"].includes(job.status) || !(segment.status === "failed" || seamRetry)) fail("只能重试已确认失败的片段，或拼接检查未通过的已完成片段。");
-    const retry: AvatarSegment = { ...segment, status: "pending", path: "", upstreamId: "", attempt: segment.attempt + 1 };
-    const split = segment.status === "failed" && Boolean(segment.path) && segment.attempt > 0 && segment.end - segment.start > 10 && sequence.segments.length < MAX_AVATAR_SEGMENTS;
+    const retry: AvatarSegment = { ...segment, status: "pending", path: "", upstreamId: "", attempt: segment.attempt + 1, quality: undefined, startedAt: undefined, completedAt: undefined };
+    const split = segment.status === "failed" && Boolean(segment.path) && segment.end - segment.start > 10 && sequence.segments.length < MAX_AVATAR_SEGMENTS;
     if (split) {
       const middle = Math.round((segment.start + segment.end) / 2 * 24) / 24;
       // Preserve both outer boundaries and the original audio clock; only this failed window is replaced.
       sequence.segments.splice(args.index, 1, { ...retry, end: middle + .5 }, { ...retry, start: middle - .5 });
     } else sequence.segments[args.index] = retry;
     sequence.seams = undefined;
-    return { ok: true, result: { job: await updateVideoJob(config, job, { avatarSequence: sequence, status: "running", pauseRequested: false, nextPoll: 0, message: split ? `第 ${args.index + 1} 段已拆成两个较短片段重试，按各段实际用量计费；其余片段保留。` : `仅重新生成第 ${args.index + 1} 段，其余片段保留。` }) } };
+    return { ok: true, result: { job: await updateVideoJob(config, job, { avatarSequence: sequence, ...(sequence.audioPath ? { prompt: cleanAvatarAudioPrompt(job.prompt) } : {}), status: "running", pauseRequested: false, nextPoll: 0, message: split ? `第 ${args.index + 1} 段已拆成两个较短片段重试，按各段实际用量计费；其余片段保留。` : `仅重新生成第 ${args.index + 1} 段，按实际用量计费；其余片段保留。` }) } };
   }
   if (action === "read") {
     const args = z.object({ path: z.string().max(1000), offset: z.number().int().nonnegative().default(0) }).parse(input);

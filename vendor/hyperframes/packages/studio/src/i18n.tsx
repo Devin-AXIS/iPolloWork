@@ -19,6 +19,8 @@ type TranslationKey =
   | "header.preview"
   | "header.previewComingSoon"
   | "preview.aiEditingWarning"
+  | "preview.avatarCutoutPreparing"
+  | "preview.avatarCutoutProgress"
   | "header.undo"
   | "header.redo"
   | "header.capture"
@@ -142,6 +144,8 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.preview": "Preview",
     "header.previewComingSoon": "Preview is coming soon",
     "preview.aiEditingWarning": "AI is editing the video · Avoid manual edits",
+    "preview.avatarCutoutPreparing": "Updating avatar background…",
+    "preview.avatarCutoutProgress": "Avatar background {progress}% · Processing transparent video",
     "header.undo": "Undo",
     "header.redo": "Redo",
     "header.capture": "Capture",
@@ -266,6 +270,8 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.preview": "预览",
     "header.previewComingSoon": "预览功能即将开放",
     "preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
+    "preview.avatarCutoutPreparing": "正在更新人物背景…",
+    "preview.avatarCutoutProgress": "人物背景 {progress}% · 正在处理透明视频",
     "header.undo": "撤销",
     "header.redo": "重做",
     "header.capture": "截图",
@@ -810,9 +816,10 @@ const studioLiteralZh: Record<string, string> = {
   best: "最佳",
   "Ask AI": "交给 AI",
   "Annotation target": "批注范围",
-  "Annotate time range": "圈选时间段交给 AI",
-  "Drag across the timeline to annotate a time range": "在时间轴上拖出一段范围，松开后填写 AI 批注",
-  "Send selected clips to AI": "选中片段交给 AI",
+  "Annotate time range": "选择片段内时段交给 AI",
+  "Drag across the timeline to annotate a time range": "在片段内拖选部分时段；在空白处拖选整段时间范围，松开后填写 AI 批注",
+  "Lasso clips for AI": "圈选片段交给 AI",
+  "Draw around timeline clips to annotate them": "在剪辑区用画笔圈住片段，松开后填写 AI 批注",
   "Editing and AI annotations": "剪辑与 AI 批注",
   "Ask AI about selected element": "交给 AI",
   "Sending…": "发送中…",
@@ -854,6 +861,8 @@ const studioLiteralZh: Record<string, string> = {
   "Bring forward": "上移一层",
   "Bring to front": "置于顶层",
   "Smart cutout": "智能抠图",
+  "Remove avatar background": "去背景",
+  "Restore background": "恢复背景",
   "Remove smart cutout": "取消智能抠图",
   "AI cutout in progress…": "AI 抠图中…",
   "Bulleted list": "项目符号列表",

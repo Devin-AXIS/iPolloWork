@@ -5,6 +5,38 @@ import {
   type PatchTarget,
 } from "./sourcePatcher";
 
+export type AvatarCutoutMode = "smart" | "remove-background";
+
+/** Replace only the media source; timing, audio controls and animations stay on the same clip. */
+export function applyAvatarBackgroundRemoval(
+  html: string, target: PatchTarget, source: string, output: string,
+): string {
+  const match = findTagByTarget(html, target);
+  if (!match || !/^<video\b/i.test(match.tag)) throw new Error("找不到原视频，请重新选择后重试。");
+  if (readAttributeByTarget(html, target, "data-avatar-original-src")) return html;
+  const video = new DOMParser().parseFromString(`${match.tag}></video>`, "text/html").querySelector("video");
+  if (video?.getAttribute("src") !== source)
+    throw new Error("视频素材已变化，请重新选择后去背景。");
+  const restored = removeAvatarCutout(html, target);
+  const withOriginal = applyPatchByTarget(restored, target, {
+    type: "html-attribute", property: "data-avatar-original-src", value: source,
+  });
+  return applyPatchByTarget(withOriginal, target, {
+    type: "html-attribute", property: "src", value: output,
+  });
+}
+
+export function restoreAvatarBackground(html: string, target: PatchTarget): string {
+  const source = readAttributeByTarget(html, target, "data-avatar-original-src");
+  if (!source) return html;
+  const restored = applyPatchByTarget(html, target, {
+    type: "html-attribute", property: "src", value: source,
+  });
+  return applyPatchByTarget(restored, target, {
+    type: "html-attribute", property: "data-avatar-original-src", value: null,
+  });
+}
+
 /** Keep the original clip (and its audio/animation) as the editable source. */
 export function applyAvatarCutout(
   html: string,
@@ -114,11 +146,11 @@ export function relativeMediaPath(sourceFile: string, output: string): string {
 }
 
 /** Store the transparent foreground as an internal layer, not a second material. */
-export function avatarCutoutOutputPath(inputPath: string): string {
+export function avatarCutoutOutputPath(inputPath: string, mode: AvatarCutoutMode = "smart"): string {
   const filename = inputPath.split("/").pop() ?? "avatar";
   const stem = filename.replace(/\.[^.]+$/, "");
   const slug = stem
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "") || "avatar";
-  return `renders/avatar-cutouts/${slug}-cutout.webm`;
+  return `renders/avatar-cutouts/${slug}-${mode === "smart" ? "cutout" : "transparent"}.webm`;
 }

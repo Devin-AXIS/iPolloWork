@@ -44,6 +44,13 @@ describe("video AI handoff acknowledgement", () => {
     await expect(pending).rejects.toThrow("当前对话已切换");
   });
 
+  it("never silently truncates precise annotation targets before handing them to the host", async () => {
+    const bridge = hostBridge();
+    await expect(deliverStudioAgentPrompt("x".repeat(20_001), "index.html", { requireCompleteContext: true }))
+      .rejects.toThrow("缩小批注范围");
+    expect(bridge.postMessage).not.toHaveBeenCalled();
+  });
+
   it("times out without reporting acceptance when the host is unavailable", async () => {
     vi.useFakeTimers();
     hostBridge();

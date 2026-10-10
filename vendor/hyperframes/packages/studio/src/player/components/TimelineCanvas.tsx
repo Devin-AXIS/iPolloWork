@@ -18,7 +18,7 @@ import { usePlayerStore } from "../store/playerStore";
 import type { ResizingClipState, TimelineDragPreviewStore } from "./useTimelineClipDrag";
 import { type MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import type { Rect } from "../../utils/marqueeGeometry";
+import type { Point, Rect } from "../../utils/marqueeGeometry";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineLanes, type TimelineLaneBaseProps } from "./TimelineLanes";
 import { renderClipChildren } from "./timelineClipChildren";
@@ -35,6 +35,7 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
   rangeSelection: TimelineRangeSelection | null;
   /** Live rubber-band multi-select rectangle (canvas coordinates), or null. */
   marqueeRect: Rect | null;
+  annotationOutline: Point[];
   resizingClip: ResizingClipState | null;
   /** Playhead is being actively scrubbed — fills the grab-handle head. */
   isScrubbing: boolean;
@@ -350,8 +351,21 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         />
       )}
 
-      {/* Range highlight */}
-      {props.rangeSelection && (
+      {props.annotationOutline.length > 0 && (
+        <svg aria-hidden="true" className="absolute inset-0 pointer-events-none h-full w-full" style={{ zIndex: 70 }}>
+          <polyline className="text-studio-accent" points={props.annotationOutline.map((point) => `${point.x},${point.y}`).join(" ")}
+            fill="none" stroke="currentColor" strokeWidth={2.5}
+            strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+      {/* A clip-local range stays in its lane; a lasso marks only its captured clips. */}
+      {props.rangeSelection?.kind === "timeline-lasso" && props.rangeSelection.selectedElements?.map((element) => (
+        <div key={element.key ?? element.id} className="absolute pointer-events-none rounded border border-studio-accent bg-studio-accent/15"
+          style={{ left: props.gutterWidth + TRACKS_LEFT_PAD + element.start * props.pps,
+            top: getTimelineRowTop(displayTrackOrder.indexOf(element.track)) + CLIP_Y,
+            width: element.duration * props.pps, height: TRACK_H - CLIP_Y * 2, zIndex: 70 }} />
+      ))}
+      {props.rangeSelection && props.rangeSelection.kind !== "timeline-lasso" && (
         <div
           className="absolute pointer-events-none"
           style={{
@@ -360,8 +374,9 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
               TRACKS_LEFT_PAD +
               Math.min(props.rangeSelection.start, props.rangeSelection.end) * props.pps,
             width: Math.abs(props.rangeSelection.end - props.rangeSelection.start) * props.pps,
-            top: RULER_H,
-            bottom: 0,
+            top: props.rangeSelection.row?.top ?? RULER_H,
+            height: props.rangeSelection.row?.height,
+            bottom: props.rangeSelection.row ? undefined : 0,
             backgroundColor: "rgba(59, 130, 246, 0.12)",
             borderLeft: "1px solid rgba(59, 130, 246, 0.4)",
             borderRight: "1px solid rgba(59, 130, 246, 0.4)",

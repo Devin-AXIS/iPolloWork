@@ -400,6 +400,7 @@ export const Timeline = memo(function Timeline({
     setRangeSelection,
     shiftClickClipRef,
     marqueeRect,
+    annotationOutline,
     isScrubbing,
     handlePointerDown,
     handlePointerMove,
@@ -477,7 +478,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className={`hf-timeline-root relative border-t select-none h-full overflow-hidden ${activeTool === "razor" || activeTool === "annotate" || shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`hf-timeline-root relative border-t select-none h-full overflow-hidden ${activeTool === "razor" || activeTool === "annotate" || activeTool === "annotate-lasso" || shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={(e) => {
         if (activeTool === "razor" && scrollRef.current) {
           const rect = scrollRef.current.getBoundingClientRect();
@@ -494,7 +495,8 @@ export const Timeline = memo(function Timeline({
       <div
         ref={setScrollRef}
         tabIndex={-1}
-        className={`hf-timeline-scroll ${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
+        className={`hf-timeline-scroll ${activeTool === "annotate-lasso" ? "hf-annotation-drawing" : ""} ${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
+        style={{ touchAction: activeTool === "annotate" || activeTool === "annotate-lasso" ? "none" : undefined }}
         onScroll={(e) => {
           lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
           syncScrollViewport(e.currentTarget);
@@ -504,7 +506,7 @@ export const Timeline = memo(function Timeline({
         onDrop={handleAssetDrop}
         onPointerDownCapture={(event) => {
           // Own the gesture before clip trim, animation, or drag handlers can run.
-          if (activeTool !== "annotate" || event.button !== 0) return;
+          if ((activeTool !== "annotate" && activeTool !== "annotate-lasso") || event.button !== 0) return;
           event.preventDefault();
           event.stopPropagation();
           handlePointerDown(event);
@@ -540,6 +542,7 @@ export const Timeline = memo(function Timeline({
           majorTickInterval={majorTickInterval}
           rangeSelection={rangeSelection}
           marqueeRect={marqueeRect}
+          annotationOutline={annotationOutline}
           laneGapStrips={laneGapStrips}
           visibleWindow={visibleWindow}
           theme={theme}
@@ -639,9 +642,9 @@ export const Timeline = memo(function Timeline({
         onWidthChange={setPreferredGutterWidth}
         onCommit={(width) => writeStudioUiPreferences({ timelineLayerWidth: width })}
       />
-      {activeTool === "annotate" && !rangeSelection && (
+      {(activeTool === "annotate" || activeTool === "annotate-lasso") && !rangeSelection && (
         <div role="status" className="pointer-events-none absolute left-1/2 top-10 z-30 -translate-x-1/2 whitespace-nowrap rounded-xl border border-panel-border bg-panel-bg px-3 py-2 text-xs text-panel-text-2 shadow-lg">
-          拖选时间范围，松开后交给 AI · Esc 取消
+          {activeTool === "annotate-lasso" ? "用画笔圈住片段，松开后填写 AI 批注" : "在片段内拖选部分时段；空白处拖选时间范围"} · Esc 取消
         </div>
       )}
       <TimelineOverlays
@@ -649,8 +652,7 @@ export const Timeline = memo(function Timeline({
         showShortcutHint={showShortcutHint}
         showPopover={showPopover}
         rangeSelection={rangeSelection}
-        setShowPopover={setShowPopover}
-        setRangeSelection={setRangeSelection}
+        onCloseRangeSelection={cancelRangeSelection}
         kfContextMenu={kfContextMenu}
         setKfContextMenu={setKfContextMenu}
         onDeleteKeyframe={onDeleteKeyframe}

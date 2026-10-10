@@ -220,6 +220,7 @@ export interface StudioApiAdapter {
     inputAssetPath: string;
     outputPath: string;
     outputAssetPath: string;
+    foregroundPath?: string;
     backgroundOutputPath?: string;
     backgroundOutputAssetPath?: string;
     quality: "fast" | "balanced" | "best";

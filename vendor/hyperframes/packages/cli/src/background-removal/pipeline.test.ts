@@ -41,6 +41,15 @@ describe("background-removal/pipeline — inferInputKind", () => {
 });
 
 describe("background-removal/pipeline — buildEncoderArgs", () => {
+  it("retains optional source audio in transparent video replacements without affecting silent overlays", () => {
+    const args = buildEncoderArgs("webm", 384, 672, 24, "/tmp/out.webm", "balanced", "/tmp/voice.mp4");
+    expect(args.slice(args.lastIndexOf("-i"), args.lastIndexOf("-i") + 2)).toEqual(["-i", "/tmp/voice.mp4"]);
+    expect(args).toContain("1:a:0?");
+    expect(args).toContain("libopus");
+    expect(args).not.toContain("-an");
+    expect(buildEncoderArgs("webm", 384, 672, 24, "/tmp/fg.webm")).toContain("-an");
+    expect(buildEncoderArgs("mov", 384, 672, 24, "/tmp/out.mov", "balanced", "/tmp/voice.mp4")).toContain("pcm_s16le");
+  });
   it("webm preset emits VP9 + alpha_mode metadata", () => {
     const args = buildEncoderArgs("webm", 1920, 1080, 30, "/tmp/out.webm");
     expect(args).toContain("libvpx-vp9");

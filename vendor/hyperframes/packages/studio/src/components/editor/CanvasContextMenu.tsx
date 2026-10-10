@@ -24,7 +24,8 @@
  */
 
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Pencil, Scissors, Trash2 } from "lucide-react";
+import { Eraser, Pencil, Scissors, Trash2 } from "lucide-react";
+import type { AvatarCutoutMode } from "../../utils/avatarCutout";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
@@ -238,9 +239,10 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     onClose();
   }
 
-  function handleCutout() {
+  function handleCutout(mode: AvatarCutoutMode) {
     if (!selection || !cutout || cutout.avatarCutoutProgress !== null) return;
-    void cutout.handleAvatarCutout(selection);
+    if (mode === "smart") void cutout.handleAvatarCutout(selection);
+    else void cutout.handleAvatarCutout(selection, mode);
     onClose();
   }
 
@@ -318,30 +320,37 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
         e.stopPropagation();
       }}
     >
-      {canCutout && selection && cutout && (
+      {canCutout && selection && cutout &&
+        (selection.element.hasAttribute("data-avatar-original-src")
+          ? ["remove-background"] as const
+          : ["smart", "remove-background"] as const).map((mode) => (
         <button
+          key={mode}
           type="button"
           role="menuitem"
           disabled={cutout.avatarCutoutProgress !== null}
           className={itemClass}
-          onClick={(event) => { if (event.detail === 0) handleCutout(); }}
+          onClick={(event) => { if (event.detail === 0) handleCutout(mode); }}
           onPointerDown={(event) => {
             if (event.button !== 0 || cutout.avatarCutoutProgress !== null) return;
             event.preventDefault();
             event.stopPropagation();
-            handleCutout();
+            handleCutout(mode);
           }}
         >
-          <Scissors size={16} className="shrink-0" aria-hidden="true" />
+          {mode === "smart" ? <Scissors size={16} className="shrink-0" aria-hidden="true" />
+            : <Eraser size={16} className="shrink-0" aria-hidden="true" />}
           <span>{tx(
             cutout.avatarCutoutProgress !== null
               ? "AI cutout in progress…"
-              : selection.element.hasAttribute("data-avatar-cutout")
+              : mode === "remove-background"
+                ? selection.element.hasAttribute("data-avatar-original-src") ? "Restore background" : "Remove avatar background"
+                : selection.element.hasAttribute("data-avatar-cutout")
                 ? "Remove smart cutout"
                 : "Smart cutout",
           )}</span>
         </button>
-      )}
+      ))}
       {canCutout && hasZActions && <div role="separator" className="my-1 border-t border-[var(--hf-panel-hairline)]" />}
       {hasZActions &&
         el &&

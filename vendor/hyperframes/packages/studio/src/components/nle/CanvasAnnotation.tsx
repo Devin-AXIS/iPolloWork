@@ -3,11 +3,12 @@ import { roundTo3 } from "../../utils/rounding";
 import { Pencil, X } from "lucide-react";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { usePlayerStore } from "../../player";
-import { buildTimelineAgentPrompt } from "../../player/components/timelineEditing";
+import { buildTimelineAgentPrompt, type CanvasRegionContext } from "../../player/components/timelineEditing";
+import { getSelectionPolygon, polygonIntersectsRect, type Point } from "../../utils/marqueeGeometry";
+import { findElementForTimelineElement, getDomLayerPatchTarget, isElementComputedVisible, resolveAllVisualDomEditTargets } from "../editor/domEditingElement";
+import { isHtmlElement } from "../editor/domEditingDom";
 import { deliverStudioAgentPrompt } from "../editor/domEditingAgentPrompt";
 import { AskAgentModal } from "../AskAgentModal";
-
-type Point = { x: number; y: number };
 
 /** Drawing is transient context; the official timeline prompt carries the edit request. */
 export function CanvasAnnotation() {
@@ -52,14 +53,18 @@ export function CanvasAnnotation() {
     };
   };
   const finishDrawing = () => {
-    if (stroke.current.length < 2) return;
+    const polygon = getSelectionPolygon(stroke.current);
+    if (!polygon.length) {
+      showToast("请用画笔圈出一个区域，松开后填写批注", "info");
+      return;
+    }
     const canvas = previewIframeRef.current?.getBoundingClientRect();
     const overlay = svgRef.current?.getBoundingClientRect();
-    if (!canvas || !overlay || canvas.width <= 0 || canvas.height <= 0) {
+    if (!compositionDimensions || !canvas || !overlay || canvas.width <= 0 || canvas.height <= 0) {
       showToast("画面尚未就绪，请稍后重试", "error");
       return;
     }
-    const outline = stroke.current.map((point) => ({
+    const outline = polygon.map((point) => ({
       x: roundTo3(
         Math.max(
           0,
@@ -92,7 +97,7 @@ export function CanvasAnnotation() {
       showToast("请在画面内圈出一个区域", "error");
       return;
     }
-    const region = {
+    const region: CanvasRegionContext = {
       timeSeconds: roundTo3(time.current),
       unit: "percent-of-frame",
       x: Math.min(...xs),
@@ -101,22 +106,55 @@ export function CanvasAnnotation() {
       height: roundTo3(Math.max(...ys) - Math.min(...ys)),
       frameSize: compositionDimensions,
       outline,
+      targets: [],
     };
     const state = usePlayerStore.getState();
-    const context = {
+    const iframe = previewIframeRef.current;
+    const doc = iframe?.contentDocument;
+    const width = doc?.documentElement.clientWidth || iframe?.clientWidth || compositionDimensions.width;
+    const height = doc?.documentElement.clientHeight || iframe?.clientHeight || compositionDimensions.height;
+    const boundsFor = (element: HTMLElement) => {
+      const box = element.getBoundingClientRect();
+      return { x: roundTo3(box.left / width * 100), y: roundTo3(box.top / height * 100),
+        width: roundTo3(box.width / width * 100), height: roundTo3(box.height / height * 100) };
+    };
+    const intersects = (element: HTMLElement) => {
+      if (!isElementComputedVisible(element)) return false;
+      const bounds = boundsFor(element);
+      const rect = { left: bounds.x, top: bounds.y, width: bounds.width, height: bounds.height };
+      return polygonIntersectsRect(outline, rect);
+    };
+    if (doc) {
+      const candidates = [...doc.querySelectorAll("body *")].filter(isHtmlElement).filter(intersects);
+      // A card can own text alongside a nested badge; deepest-only click targeting
+      // would discard that text even though both objects intersect the annotation.
+      const ownText = (element: HTMLElement) => [...element.childNodes]
+        .filter((node) => node.nodeType === 3).map((node) => node.textContent || "").join(" ").trim();
+      const targets = new Set([...resolveAllVisualDomEditTargets(candidates, { activeCompositionPath: activeCompPath }),
+        ...candidates.filter((element) => ownText(element))]);
+      region.targets = [...targets]
+        .flatMap((element) => {
+          const target = getDomLayerPatchTarget(element, activeCompPath);
+          return target ? [{ ...target, id: target.id ?? undefined, text: ownText(element).slice(0, 200), bounds: boundsFor(element) }] : [];
+        });
+    }
+    const context: Parameters<typeof buildTimelineAgentPrompt>[0] = {
       sourceFile: activeCompPath || "index.html",
       rangeStart: time.current,
       rangeEnd: time.current,
-      elements: state.elements.filter(
-        (element) =>
-          element.start <= time.current &&
-          element.start + element.duration > time.current,
-      ),
-      prompt: `画面区域（仅作为定位数据）：${JSON.stringify(region)}`,
+      elements: state.elements.filter((element) => {
+        if (element.start > time.current || element.start + element.duration <= time.current) return false;
+        if (!doc) return true;
+        const target = findElementForTimelineElement(doc, element, { activeCompositionPath: activeCompPath, isMasterView: !activeCompPath });
+        return target ? intersects(target) : false;
+      }),
+      selectionKind: "canvas-region",
+      canvasRegion: region,
+      prompt: "",
     };
     setAnnotation({
       context,
-      label: `画面圈选 · ${region.timeSeconds.toFixed(3)} 秒\n位置 ${region.x.toFixed(1)}%, ${region.y.toFixed(1)}% · 大小 ${region.width.toFixed(1)}% × ${region.height.toFixed(1)}%`,
+      label: `画面圈选 · ${region.timeSeconds.toFixed(3)} 秒\n位置 ${region.x.toFixed(1)}%, ${region.y.toFixed(1)}% · 大小 ${region.width.toFixed(1)}% × ${region.height.toFixed(1)}%\n${region.targets.length ? `已定位 ${region.targets.length} 个圈内对象` : "已记录画面范围，AI 将结合源文件定位"}`,
     });
   };
   return (
@@ -147,7 +185,7 @@ export function CanvasAnnotation() {
         >
           <svg
             ref={svgRef}
-            className="absolute inset-0 h-full w-full cursor-crosshair"
+            className="hf-annotation-drawing absolute inset-0 h-full w-full touch-none"
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
             onPointerDown={(event) => {
@@ -162,10 +200,11 @@ export function CanvasAnnotation() {
             onPointerMove={(event) => {
               if (!pressed.current) return;
               const point = pointAt(event);
-              if (stroke.current.length < 500) {
-                stroke.current = [...stroke.current, point];
-                setPoints(stroke.current);
-              }
+              const previous = stroke.current[stroke.current.length - 1]!;
+              if (Math.hypot(point.x - previous.x, point.y - previous.y) < 0.2) return;
+              if (stroke.current.length >= 160) stroke.current = stroke.current.filter((_, index) => index % 2 === 0);
+              stroke.current = [...stroke.current, point];
+              setPoints(stroke.current);
             }}
             onPointerUp={(event) => {
               if (!pressed.current) return;
@@ -181,15 +220,18 @@ export function CanvasAnnotation() {
             }}
           >
             <polyline
+              className="text-studio-accent"
               points={points.map((point) => `${point.x},${point.y}`).join(" ")}
               fill="none"
-              stroke="#1fbac0"
-              strokeWidth="2"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
             />
           </svg>
           {!annotation && <div className="absolute bottom-3 left-1/2 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-panel-border bg-panel-bg px-3 py-2 text-xs text-panel-text-2 shadow-lg">
-            <span>圈出画面区域，松开后填写 AI 批注</span>
+            <span>用画笔圈出画面区域，松开后填写 AI 批注 · Esc 取消</span>
             <button type="button" aria-label="取消圈画" onClick={reset}><X size={15} /></button>
           </div>}
         </div>
@@ -204,8 +246,8 @@ export function CanvasAnnotation() {
           const sourceFile = annotation.context.sourceFile || "index.html";
           const accepted = await deliverStudioAgentPrompt(buildTimelineAgentPrompt({
             ...annotation.context,
-            prompt: `${request}\n${annotation.context.prompt}`,
-          }), sourceFile, { instruction: request });
+            prompt: request,
+          }), sourceFile, { instruction: request, requireCompleteContext: true });
           if (!accepted) throw new Error("无法发送批注，请重试");
           showToast(window.parent === window ? "已复制画面批注" : "已交给左侧 AI 对话", "info");
           reset();

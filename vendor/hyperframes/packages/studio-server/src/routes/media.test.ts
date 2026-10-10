@@ -71,6 +71,44 @@ function completeJob(opts: Parameters<NonNullable<StudioApiAdapter["startBackgro
 }
 
 describe("registerMediaRoutes", () => {
+  it("joins identical in-flight requests across clients without starting another render", async () => {
+    const { app, startBackgroundRemoval } = createAdapter((opts) => ({ ...completeJob(opts), status: "processing" }));
+    const request = (quality = "balanced") => app.request("http://localhost/projects/demo/media/remove-background", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inputPath: "assets/clip.mp4", outputPath: "assets/transparent.webm", quality }),
+    });
+    const first = await (await request()).json();
+    const second = await (await request()).json();
+    expect(first).toEqual(second);
+    expect(startBackgroundRemoval).toHaveBeenCalledTimes(1);
+    await request("best");
+    expect(startBackgroundRemoval).toHaveBeenCalledTimes(2);
+  });
+
+  it("pins a reusable foreground to the project before passing it to the renderer", async () => {
+    const { app, projectDir, startBackgroundRemoval } = createAdapter(completeJob);
+    writeFileSync(join(projectDir, "assets", "foreground.webm"), "foreground");
+    const response = await app.request("http://localhost/projects/demo/media/remove-background", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inputPath: "assets/clip.mp4", foregroundPath: "assets/foreground.webm" }),
+    });
+    expect(response.status).toBe(200);
+    expect(startBackgroundRemoval.mock.calls[0]![0].foregroundPath).toBe(join(projectDir, "assets", "foreground.webm"));
+  });
+
+  it.each([
+    ["../escape.webm", 403], ["assets/missing.webm", 404],
+    ["assets/photo.jpg", 400], ["https://example.com/fg.webm", 400], ["assets/bad\0.webm", 403],
+  ])("rejects invalid foreground %s", async (foregroundPath, status) => {
+    const { app, startBackgroundRemoval } = createAdapter(completeJob);
+    const response = await app.request("http://localhost/projects/demo/media/remove-background", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inputPath: "assets/clip.mp4", foregroundPath }),
+    });
+    expect(response.status).toBe(status);
+    expect(startBackgroundRemoval).not.toHaveBeenCalled();
+  });
+
   it("returns metadata for a project-local media asset", async () => {
     const probe = vi.fn(async () => ({
       kind: "video" as const,
@@ -221,22 +259,22 @@ describe("registerMediaRoutes", () => {
     );
   });
 
-  it("gives a second removal of the same clip its own output names while the first still runs", async () => {
+  it("gives differently configured removals their own output names while the first still runs", async () => {
     const { app } = createAdapter((opts) => ({
       ...completeJob(opts),
       status: "processing" as const,
       backgroundOutputAssetPath: opts.backgroundOutputAssetPath,
     }));
-    const start = async () =>
+    const start = async (quality = "balanced") =>
       (await (
         await app.request("http://localhost/projects/demo/media/remove-background", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ inputPath: "assets/clip.mp4", createBackgroundPlate: true }),
+          body: JSON.stringify({ inputPath: "assets/clip.mp4", createBackgroundPlate: true, quality }),
         })
       ).json()) as { outputPath: string; backgroundOutputPath: string };
 
-    const [first, second] = [await start(), await start()];
+    const [first, second] = [await start(), await start("best")];
     expect([first.outputPath, second.outputPath]).toEqual([
       "assets/cutouts/clip-cutout.webm",
       "assets/cutouts/clip-cutout-2.webm",

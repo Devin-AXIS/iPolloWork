@@ -8,10 +8,13 @@ import { resolveAvatarLowLayer } from "../components/editor/canvasContextMenuZOr
 import { startBackgroundRemoval, waitForMediaJob } from "../components/studioMediaJobs";
 import {
   applyAvatarCutout,
+  applyAvatarBackgroundRemoval,
   avatarCutoutOutputPath,
   removeAvatarCutout,
+  restoreAvatarBackground,
   projectMediaPath,
   relativeMediaPath,
+  type AvatarCutoutMode,
 } from "../utils/avatarCutout";
 import {
   readProjectFileContent,
@@ -45,12 +48,14 @@ function isRefreshedAvatarPreviewReady({
   selection,
   activeCompPath,
   removing,
+  mode = "smart",
 }: {
   iframe: HTMLIFrameElement | null;
   previousIframe: HTMLIFrameElement | null;
   selection: AvatarSelectionLocator;
   activeCompPath: string | null;
   removing: boolean;
+  mode?: AvatarCutoutMode;
 }): boolean {
   if (!iframe || iframe === previousIframe) return false;
   try {
@@ -58,6 +63,9 @@ function isRefreshedAvatarPreviewReady({
     if (!doc || doc.readyState !== "complete") return false;
     const source = findElementForSelection(doc, selection, activeCompPath);
     if (!source) return false;
+    if (mode === "remove-background")
+      return source.hasAttribute("data-avatar-original-src") !== removing &&
+        isVideoElement(source) && !source.error && source.readyState >= MEDIA_HAVE_CURRENT_DATA;
     const foregroundId = source.getAttribute("data-avatar-cutout");
     if (removing) return !foregroundId;
     if (!foregroundId) return false;
@@ -78,6 +86,7 @@ export function waitForAvatarPreviewReady({
   selection,
   activeCompPath,
   removing,
+  mode = "smart",
   signal,
   timeoutMs = AVATAR_PREVIEW_READY_TIMEOUT_MS,
 }: {
@@ -86,6 +95,7 @@ export function waitForAvatarPreviewReady({
   selection: AvatarSelectionLocator;
   activeCompPath: string | null;
   removing: boolean;
+  mode?: AvatarCutoutMode;
   signal: AbortSignal;
   timeoutMs?: number;
 }): Promise<void> {
@@ -111,6 +121,7 @@ export function waitForAvatarPreviewReady({
           selection,
           activeCompPath,
           removing,
+          mode,
         })
       ) {
         finish();
@@ -139,7 +150,7 @@ export function useAvatarCutout(params: Params) {
   }, [params.projectId]);
 
   const handleAvatarCutout = useCallback(
-    async (selection: DomEditSelection) => {
+    async (selection: DomEditSelection, mode: AvatarCutoutMode = "smart") => {
       const pid = params.projectIdRef.current;
       if (!pid || running.current || selection.tagName !== "video") return;
       const controller = new AbortController();
@@ -147,17 +158,26 @@ export function useAvatarCutout(params: Params) {
       const target = buildDomEditPatchTarget(selection);
       const file = selection.sourceFile || params.activeCompPath || "index.html";
       const src = selection.element.getAttribute("src") || "";
-      const removing = selection.element.hasAttribute("data-avatar-cutout");
+      const removing = selection.element.hasAttribute(
+        mode === "smart" ? "data-avatar-cutout" : "data-avatar-original-src",
+      );
       const previousIframe = params.previewIframeRef.current;
       setProgress(0);
       try {
         let output = "";
         if (!removing) {
           const inputPath = projectMediaPath(file, src);
+          const foregroundId = selection.element.getAttribute("data-avatar-cutout");
+          const foregroundSrc = mode === "remove-background" && foregroundId
+            ? selection.element.ownerDocument.getElementById(foregroundId)?.getAttribute("src")
+            : null;
           const jobId = await startBackgroundRemoval(
             pid,
             inputPath,
-            { outputPath: avatarCutoutOutputPath(inputPath) },
+            {
+              outputPath: avatarCutoutOutputPath(inputPath, mode),
+              ...(foregroundSrc ? { foregroundPath: projectMediaPath(file, foregroundSrc) } : {}),
+            },
             controller.signal,
           );
           const result = await waitForMediaJob(
@@ -173,8 +193,8 @@ export function useAvatarCutout(params: Params) {
           const before = await readProjectFileContent(pid, file);
           const doc = params.previewIframeRef.current?.contentDocument;
           const element =
-            !removing && doc && findElementForSelection(doc, selection, params.activeCompPath);
-          if (!removing && !element) throw new Error("数字人已移除或预览已切换，请重新选择后重试");
+            !removing && mode === "smart" && doc && findElementForSelection(doc, selection, params.activeCompPath);
+          if (!removing && mode === "smart" && !element) throw new Error("数字人已移除或预览已切换，请重新选择后重试");
           const layers = element
             ? resolveAvatarLowLayer(element).map((patch) => ({
                 target:
@@ -187,13 +207,16 @@ export function useAvatarCutout(params: Params) {
                 zIndex: patch.zIndex,
               }))
             : [];
-          const after = removing
-            ? removeAvatarCutout(before, target)
-            : applyAvatarCutout(before, target, src, output, layers);
+          const after = mode === "remove-background"
+            ? removing ? restoreAvatarBackground(before, target)
+              : applyAvatarBackgroundRemoval(before, target, src, output)
+            : removing ? removeAvatarCutout(before, target)
+              : applyAvatarCutout(before, target, src, output, layers);
           params.domEditSaveTimestampRef.current = Date.now();
           await saveProjectFilesWithHistory({
             projectId: pid,
-            label: removing ? "取消智能抠图" : "智能抠图",
+            label: mode === "remove-background" ? removing ? "恢复背景" : "去背景"
+              : removing ? "取消智能抠图" : "智能抠图",
             kind: "timeline",
             files: { [file]: after },
             readFile: async () => before,
@@ -209,11 +232,13 @@ export function useAvatarCutout(params: Params) {
           selection,
           activeCompPath: params.activeCompPath,
           removing,
+          mode,
           signal: controller.signal,
         });
         if (controller.signal.aborted || params.projectIdRef.current !== pid) return;
         await params.refreshDomEditSelectionFromPreview(selection);
-        params.showToast(removing ? "已恢复原视频" : "智能抠图完成，人物主体已保护", "info");
+        params.showToast(removing ? "已恢复原视频" : mode === "remove-background"
+          ? "去背景完成，已保留原有配音和时间位置" : "智能抠图完成，人物主体已保护", "info");
       } catch (error) {
         if (!controller.signal.aborted)
           params.showToast(
