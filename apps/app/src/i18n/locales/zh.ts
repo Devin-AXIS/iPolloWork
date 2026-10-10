@@ -2802,6 +2802,8 @@ export default {
   "settings.authorization.apply_confirm": "iPolloWork 会重启本地智能体以使用最新授权，正在运行的本地任务可能会停止。",
   "settings.authorization.apply": "应用变更",
   "settings.authorization.applying": "应用中…",
+  "settings.authorization.service.minimax_images.title": "MiniMax Images",
+  "settings.authorization.service.minimax_images.description": "Generate new images from character portraits. Masks and selections are unsupported.",
   "settings.authorization.service.openai_images.title": "OpenAI",
   "settings.authorization.service.fal_images.title": "fal · 图片分层",
   "settings.authorization.service.fal_images.description": "统一配置文字提取与元素分层的 API 授权。配置成功不代表分层功能或效果已验证。",

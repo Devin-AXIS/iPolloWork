@@ -276,7 +276,7 @@ async function expectLegacyCallPassesThrough(base: string) {
 
 function expectAllActions(actions: ActionItem[]) {
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
-  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(6);
+  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(7);
   expect(actionKeys(actions)).toContain("media/artifact_media_review");
   expect(actionKeys(actions)).toContain("media/artifact_preview_review");
   expect(actionKeys(actions)).toContain("media/video_render_start");

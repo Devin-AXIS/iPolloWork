@@ -11,6 +11,7 @@ import { resolveOpenAiBrowserSession, type OpenAiCodexOAuthSession } from "./ope
 import type { ServerConfig } from "./types.js";
 
 export const AUTHORIZATION_SERVICE_IDS = [
+  "minimax-images",
   "openai-images",
   "fal-images",
   "aliyun-bailian",
@@ -67,6 +68,16 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
       capability: "Image text and element layer extraction",
       useWhen: "Use when converting a flat image into editable text or independent image layers.",
       instruction: "Use only available iPolloWork image actions. Keep the user's generation model unchanged. Never expose the fal API key to engines or generated content.",
+    },
+  },
+  {
+    id: "minimax-images",
+    keys: ["MINIMAX_API_KEY"],
+    category: "media",
+    agent: {
+      capability: "MiniMax character reference images",
+      useWhen: "Use when the user requests a new image based on a character portrait.",
+      instruction: "Use the minimax_image_reference image extension action with a workspace PNG or JPEG portrait. Masks and selected-region edits are unsupported; the source image is preserved.",
     },
   },
   {
@@ -284,6 +295,8 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
         ? "fal 账户连接已验证；模型权限、额度及分层效果仍需实际任务验证。本次未生成图片。"
         : `${result.detail} 此测试需要账户查询权限；失败不一定表示模型调用权限无效。` };
     }
+    case "minimax-images":
+      return { ok: true, detail: "API key saved. MiniMax permissions and balance are checked when an image is requested." };
     case "openai-images":
       return fetchAuthorizationTest("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${resolved.values.OPENAI_API_KEY}` } });
     case "aliyun-bailian":
