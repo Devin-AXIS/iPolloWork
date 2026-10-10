@@ -29,6 +29,7 @@
     "coverage": "node --test --experimental-test-coverage electron/app-version.test.mjs electron/brand-icon-windows.test.mjs electron/browser-runtime.test.mjs electron/browser-panel.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/desktop-resource-manifest.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/video-resource-manager.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opencode-ai/sdk": "1.18.34",
     "better-sqlite3": "^11.10.0",

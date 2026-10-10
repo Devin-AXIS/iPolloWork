@@ -64,6 +64,7 @@ import {
 import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
 import { VideoImageWorkbench } from "./video-image-workbench";
+import { VideoEnhancementPanel } from "./video-enhancement-panel";
 
 type VideoPanelProps = {
   title: string;
@@ -1418,6 +1419,10 @@ export function VideoPanel({
       data-testid="video-panel"
       data-expanded={expanded ? "true" : "false"}
     >
+      {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) && (
+        <VideoEnhancementPanel key={`${workspaceId}:${sessionId}`} client={client} workspaceId={workspaceId}
+          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio} />
+      )}
       {!isRemoteWorkspace &&
       status === "ready" &&
       workspaceId &&

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "Xenova/whisper-tiny",
+    "revision": "5332fcc35e32a33b86612b9a57a89be7906102b1",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/Xenova/whisper-tiny",
+    "files": [
+      { "path": "config.json" }, { "path": "generation_config.json" },
+      { "path": "preprocessor_config.json" }, { "path": "tokenizer.json" },
+      { "path": "tokenizer_config.json" }, { "path": "special_tokens_map.json" },
+      { "path": "vocab.json" }, { "path": "merges.txt" },
+      { "path": "onnx/encoder_model_quantized.onnx", "sha256": "fd9d995b9dcb0520f0dbf6cf68651af639fc385f594d9d876e69ca2802dc438e" },
+      { "path": "onnx/decoder_model_merged_quantized.onnx", "sha256": "6c0c125986b007d2e3734bec84c18bda0152071b90b87fadac6d7764499927a0" }
+    ]
+  },
+  {
+    "id": "Xenova/yolos-tiny",
+    "revision": "e2f9c7673f0fa61849efe2b56a0d7774779ebb9d",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/hustvl/yolos-tiny",
+    "files": [
+      { "path": "config.json" }, { "path": "preprocessor_config.json" },
+      { "path": "onnx/model_quantized.onnx", "sha256": "82b5c1de8aaaffd763c67d67b09b742a1c53628acfee3077af3fa59233e86b6b" }
+    ]
+  }
+]

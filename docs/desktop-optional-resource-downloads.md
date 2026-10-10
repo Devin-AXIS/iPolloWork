@@ -7,11 +7,24 @@
 | HyperFrames runtime | `prepare-hyperframes-runtime.mjs` → `resources/hyperframes` | 随桌面版本升级 |
 | HyperFrames registry | `vendor/hyperframes/registry` → `resources/hyperframes/registry` | 与 runtime 同次发布 |
 | FFmpeg、FFprobe | 固定 installer 依赖，经 `package-video-resources.mjs --bundled` → `resources/video-codecs/<id>/<executable>` | 随桌面版本升级；包含许可证和二进制包元数据 |
+| 视频智能增强模型 | `apps/server/script/prepare-video-models.mjs` → `resources/video-models` | 构建时准备固定 revision 的 Whisper Tiny 和 YOLOS Tiny q8 权重；附许可证和来源记录 |
 | Codex、DeepSeek Harness | `engine-package-manager.mjs` 校验签名清单并安装至用户数据目录 | 用户按需安装；已安装版本可离线复用 |
 
 `video-resource-manager.mjs` 是媒体二进制的唯一桌面端读取入口。发布模式只读取安装包目录，开发模式读取同一 installer 依赖。启动时执行版本检查，成功后设置 `HYPERFRAMES_FFMPEG_PATH` 和 `HYPERFRAMES_FFPROBE_PATH`；组件缺失或不可执行时清空这些变量并明确报告安装包不完整。没有视频云下载、旧缓存回退、跨版本回退或系统 PATH 替代分支。
 
 `prepare-hyperframes-runtime.mjs` 移除第三方依赖树里的重复 static 媒体二进制，只保留单份 `video-codecs`。桌面构建必须执行打包脚本并验证两个可执行文件，不能发布缺少编解码组件的安装包。
+
+## 本地视频智能增强
+
+第一步在视频工作台的“视频智能增强”中上传 MP4、MOV 或 WebM，支持 3 分钟、100 MB 以内且含讲话音轨的视频。后台转写、提取原文中的短句/数字/列表，并按人物检测框与相邻帧保护区域安排元素；空白不足时跳过。用户检查文字、时间和预览后才替换当前时间轴，原上传文件与增强前时间轴保留。若时间轴已被继续编辑，应用或恢复会拒绝覆盖。首版分析副本最长边缩放至 1280，包含原音轨；手势识别与精细人物分割属于后续阶段。
+
+开发环境先执行 `pnpm --filter ipollowork-server prepare:video-models`；完全断网的开发机器可复制已准备的模型目录并设置 `IPOLLOWORK_VIDEO_MODELS_PATH`。桌面构建自动准备模型，完整安装包运行时只读取本地目录；缺少模型会禁用分析，不自动下载。权重约 50 MB，另含 tokenizer、ONNX Runtime 原生库等依赖。量化小模型可能转写错误或漏检人物，必须预览校对，不提供逐像素不遮挡保证。
+
+新增 `@huggingface/transformers@3.8.1`（Apache-2.0）复用成熟的本地语音、视觉管线；已有音量/节拍分析和 HyperFrames 不能完成语音识别或人物检测。该依赖只在独立分析子进程加载，不进入前端包，CPU 并发限制为一个任务、推理线程为两个。桌面端声明同一依赖以满足内嵌 server 的运行时依赖检查，并解包 ONNX 原生模块。模型来源与 revision 见 `video-enhancement-models.json`，生成的 `THIRD_PARTY_NOTICES.json` 和 Apache 许可证随模型目录打包。模型升级须重新固定 revision、权重校验值并用实际讲话视频验证。
+
+分析调用现有 `video-enhancement` 扩展动作，不经过 OpenCode、Codex 或任何云模型。工作进程禁用远程模型、缓存回源与 `fetch`，解码仅允许本地文件协议。转写文字只作为经过转义的元素内容处理。上传路径、会话所有权、时长、大小和最终布局在 server 验证；客户端不能提交任意布局或 HTML。
+
+验证入口：`bun test apps/server/src/extensions/video-enhancement.test.ts`；UI 使用 `evals/support/video-enhancement-fixture.ts` 启动真实 server，与 app 开发服务器的 `tests/video-enhancement-proof.html` 配合。设置 `IPOLLOWORK_ENHANCEMENT_PROOF_VIDEO` 为本地讲话测试片，再运行 `node evals/runner/run.mjs --flow video-local-enhancement --cdp-url <验证浏览器端点>`。此隔离页面复用生产组件和真实 API/推理，不替代完整桌面安装包验收。
 
 ## 引擎云资源协议
 

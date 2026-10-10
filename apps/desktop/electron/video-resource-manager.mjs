@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { chmod, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveDesktopAppVersion } from "./app-version.mjs";
 
 const require = createRequire(import.meta.url);
@@ -58,6 +59,9 @@ export function createVideoResourceManager({
   }
 
   async function applyEnvironment() {
+    env.IPOLLOWORK_VIDEO_MODELS_PATH ??= app.isPackaged
+      ? path.join(resourcesPath, "video-models")
+      : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../server/models");
     const paths = await currentPaths();
     delete env.HYPERFRAMES_FFMPEG_PATH;
     delete env.HYPERFRAMES_FFPROBE_PATH;

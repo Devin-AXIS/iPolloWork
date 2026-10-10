@@ -1,5 +1,6 @@
 .turbo/
 node_modules/
+apps/server/models/
 apps/desktop/dist-electron/
 apps/desktop/dist-engine-packs/
 apps/desktop/dist-video-packs/
