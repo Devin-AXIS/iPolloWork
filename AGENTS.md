@@ -97,6 +97,7 @@ Maintain Xiaohongshu and Douyin in `examples/plugin-packages/xiaohongshu-ops` an
 
 ### UI and UX
 
+- For plugin UI work, load `.codex/skills/ipollowork-plugin-ui/SKILL.md` before implementation. Use its component identity mapping, runtime compatibility, theme, and interaction rules; validate the bundled development path and host-owned production path separately.
 - Use components from @/components when possible.
 - When creating new components, we prefer using shadcn/ui with (Base UI).
 - Assume most end users of iPolloWork are non-technical.

@@ -69,7 +69,7 @@ export function FlatTimingRow({
   };
 
   const cell = (label: string, value: string, onCommit: (next: string) => void) => (
-    <div className="flex h-[34px] min-w-0 items-center justify-between gap-1.5 rounded-[6px] border border-[#f5f6f9] bg-[#f5f6f9] px-[10px] py-px dark:border-panel-input dark:bg-panel-input">
+    <div className="flex h-[34px] min-w-0 items-center justify-between gap-1.5 rounded-[6px] bg-panel-input px-[10px] py-px">
       <span className="flex-shrink-0 text-xs font-normal text-panel-text-3">
         {tx(label)}
       </span>

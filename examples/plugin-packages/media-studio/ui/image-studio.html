@@ -22,6 +22,8 @@
       --selection-soft: rgba(99, 102, 241, .28);
       --success: #059669;
       --danger: #dc2626;
+      --tooltip-bg: light-dark(#1c2024, #edeef0);
+      --tooltip-text: light-dark(#fcfcfd, #111113);
       --shadow: 0 18px 50px rgba(24, 24, 27, .08);
       --radius: 14px;
     }
@@ -71,10 +73,10 @@
     .gallery-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; overflow: auto; min-height: 0; padding: 0; align-content: start; grid-auto-rows: max-content; flex: 1; }
     .image-card { min-width: 0; height: 190px; position: relative; border: 0; border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: none; overflow: hidden; }
     .generation-pending { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; font-size: 12px; line-height: 1.5; }
-    .generation-progress { appearance: none; width: 100%; max-width: 140px; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: #eeeeef; }
-    .generation-progress::-webkit-progress-bar { background: #eeeeef; border-radius: 999px; }
-    .generation-progress::-webkit-progress-value { background: var(--accent); border-radius: 999px; transition: width 1s linear; }
-    .generation-progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
+    .generation-progress { appearance: none; width: 100%; max-width: 140px; height: 6px; border: 0; border-radius: 999px; overflow: hidden; background: var(--surface-muted); accent-color: #1FBAC0; }
+    .generation-progress::-webkit-progress-bar { background: var(--surface-muted); }
+    .generation-progress::-webkit-progress-value { background: #1FBAC0; border-radius: 999px; transition: width 1s linear; }
+    .generation-progress::-moz-progress-bar { background: #1FBAC0; border-radius: 999px; }
     @media (prefers-reduced-motion: reduce) { .generation-progress::-webkit-progress-value { transition: none; } }
     .image-card.selected::after { content: "✓"; position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 8px; background: var(--accent); color: #fff; pointer-events: none; }
     .image-card > button:first-child { width: 100%; height: 146px; border: 0; background: transparent; padding: 8px; display: grid; place-items: center; }
@@ -116,18 +118,19 @@
     #selectionCanvas[data-tool="hand"].dragging { cursor: grabbing; }
     #selectionCanvas[data-annotation="true"] { cursor: crosshair; }
     .selection-actions {
-      position: absolute; z-index: 4; display: flex; height: 36px; align-items: center; gap: 2px; padding: 3px;
-      transform: translate(-50%, 8px); border: 1px solid var(--line); border-radius: 9px;
+      position: absolute; z-index: 4; display: flex; min-height: 38px; align-items: center; gap: 8px; padding: 4px 8px;
+      transform: translate(-50%, 8px); border: 1px solid var(--line); border-radius: 8px;
       background: var(--surface-solid); box-shadow: 0 6px 18px rgba(24,24,27,.12);
     }
-    .selection-action { display: flex; height: 28px; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; padding: 0 8px; color: var(--text); font-size: 12px; white-space: nowrap; }
+    .selection-action { display: flex; height: 28px; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 8px; background: transparent; padding: 0 8px; color: var(--text); font-size: 13px; white-space: nowrap; }
+    .selection-action:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px; }
     .selection-action:hover { background: rgba(127,127,127,.09); }
     .selection-action:disabled, .expand-run:disabled { cursor: not-allowed; opacity: .45; }
-    .selection-action .tool-icon { width: 14px; height: 14px; stroke-width: 1.7; }
+    .selection-action .tool-icon { width: 16px; height: 16px; stroke-width: 2; }
     .toolbar {
       position: absolute; z-index: 5; top: 14px; left: 50%; transform: translateX(-50%);
-      display: none; align-items: center; gap: 3px; max-width: calc(100% - 28px); padding: 5px; overflow-x: auto;
-      border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+      display: none; align-items: center; gap: 8px; max-width: calc(100% - 28px); padding: 4px 8px; overflow-x: auto;
+      border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
       box-shadow: 0 10px 30px rgba(0,0,0,.09); backdrop-filter: blur(20px);
       scrollbar-width: none;
     }
@@ -135,13 +138,14 @@
     .toolbar.visible { display: flex; }
     .toolbar-row { display: contents; }
     .tool { display: flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; background: transparent; padding: 7px 9px; color: var(--muted); }
-    .tool.compact { justify-content: center; width: 32px; height: 32px; padding: 0; flex: 0 0 auto; }
+    .tool.compact { justify-content: center; width: 28px; height: 28px; padding: 0; flex: 0 0 auto; }
+    .tool:focus-visible { outline: 2px solid var(--selection); outline-offset: -2px; }
     .tool:hover { color: var(--text); background: rgba(127,127,127,.08); }
     .tool.active { color: var(--accent-text); background: var(--accent); }
-    .tool-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .tool-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
     .separator { width: 1px; height: 22px; margin: 0 2px; background: var(--line); }
-    .operation-switch { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: rgba(127,127,127,.06); }
-    .operation-switch .tool { width: 32px; height: 32px; border-radius: 7px; }
+    .operation-switch { display: flex; gap: 2px; padding: 0; border: 0; border-radius: 8px; background: transparent; }
+    .operation-switch .tool { width: 28px; height: 28px; border-radius: 8px; }
     .capability-switch { display: contents; }
     .zoom-controls {
       position: fixed; z-index: 5; bottom: 16px; left: 16px; display: none; align-items: center; gap: 3px;
@@ -185,14 +189,19 @@
     .expand-choices button.active { color: var(--accent-text); background: var(--accent); }
     .expand-run { height: 30px; border: 0; border-radius: 7px; background: var(--accent); color: var(--accent-text); font-size: 12px; }
     .instant-tooltip {
-      position: fixed; z-index: 30; max-width: 220px; transform: translateX(-50%); border-radius: 6px;
-      background: rgba(24,24,27,.94); padding: 4px 7px; color: #fff; font-size: 11px; line-height: 1.35;
-      pointer-events: none; white-space: nowrap;
+      position: fixed; z-index: 30; width: max-content; max-width: min(320px, calc(100vw - 16px)); border-radius: 8px;
+      background: var(--tooltip-bg); padding: 4px 8px; color: var(--tooltip-text); font-size: 12px; line-height: 16px;
+      pointer-events: none; overflow-wrap: anywhere;
     }
+    .instant-tooltip::after { content: ""; position: absolute; width: 8px; height: 8px; border-radius: 2px; background: inherit; transform: rotate(45deg); }
+    .instant-tooltip[data-side="bottom"]::after { top: -4px; left: var(--arrow-offset); }
+    .instant-tooltip[data-side="top"]::after { bottom: -4px; left: var(--arrow-offset); }
+    .instant-tooltip[data-side="right"]::after { left: -4px; top: var(--arrow-offset); }
+    .instant-tooltip[data-side="left"]::after { right: -4px; top: var(--arrow-offset); }
     .annotation-hint {
       position: fixed; z-index: 6; transform: translateX(-50%); border: 1px solid var(--line); border-radius: 8px;
-      background: var(--surface-solid); box-shadow: 0 6px 18px rgba(24,24,27,.1); padding: 6px 9px;
-      color: var(--muted); font-size: 11px; line-height: 1.35; pointer-events: none; white-space: nowrap;
+      background: var(--surface-solid); box-shadow: 0 6px 18px rgba(24,24,27,.1); padding: 8px 12px;
+      color: var(--text); font-size: 12px; line-height: 16px; pointer-events: none; max-width: calc(100vw - 16px); overflow-wrap: anywhere;
     }
     .busy-layer { position: absolute; z-index: 8; inset: 0; display: none; place-items: center; background: rgba(244,244,242,.65); backdrop-filter: blur(9px); }
     .busy-layer.visible { display: grid; }
@@ -203,6 +212,9 @@
     .spinner { width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--text); border-radius: 50%; animation: spin .8s linear infinite; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @media (pointer: coarse) {
+      .tool.compact, .operation-switch .tool, .selection-action { min-width: 44px; min-height: 44px; }
+    }
     @media (max-width: 760px) {
       .provider { position: relative; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--surface-muted); color: var(--text); }
     .provider #modelMenu { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
@@ -635,6 +647,7 @@
         const progress = pending.querySelector("progress");
         progress.value = imageProgressPercent();
         progress.setAttribute("aria-valuetext", label);
+        progress.hidden = Date.now() - state.generationStartedAt >= 120000;
       }
       publishContext();
     }
@@ -909,6 +922,7 @@
     function setAnnotationMode(active) {
       state.annotationMode = active;
       $("#askAi").classList.toggle("active", active);
+      $("#askAi").setAttribute("aria-pressed", String(active));
       selectionCanvas.dataset.annotation = String(active);
       $("#annotationHint").hidden = !active;
       positionToolOptions();
@@ -1005,24 +1019,40 @@
       $("#zoomValue").textContent = `${Math.round(scale * 100)}%`;
       renderSelectionVisual(selectionBounds());
     }
+    let tooltipTrigger = null;
     function showTooltip(button) {
       const label = button.dataset.tooltip;
-      if (!label) return;
+      if (!label || button.disabled) return;
+      hideTooltip();
+      tooltipTrigger = button;
+      const descriptions = (button.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+      button.setAttribute("aria-describedby", [...descriptions, "instantTooltip"].join(" "));
       const tooltip = $("#instantTooltip");
       const rect = button.getBoundingClientRect();
       tooltip.textContent = label;
       tooltip.hidden = false;
       const besideToolbar = matchMedia("(max-width: 760px)").matches && button.closest("#toolbar");
-      tooltip.style.transform = besideToolbar ? "none" : "translateX(-50%)";
-      tooltip.style.left = besideToolbar
-        ? `${Math.min(innerWidth - tooltip.offsetWidth - 8, rect.right + 7)}px`
-        : `${Math.max(36, Math.min(innerWidth - 36, rect.left + rect.width / 2))}px`;
-      tooltip.style.top = besideToolbar
-        ? `${Math.max(8, rect.top + rect.height / 2 - tooltip.offsetHeight / 2)}px`
-        : button.closest("#zoomControls") ? `${rect.top - tooltip.offsetHeight - 7}px` : `${rect.bottom + 7}px`;
+      const width = tooltip.offsetWidth, height = tooltip.offsetHeight, gap = 8;
+      let side = besideToolbar ? "right" : button.closest("#zoomControls") ? "top" : "bottom";
+      if (side === "right" && rect.right + gap + width > innerWidth - 8) side = "left";
+      if (side === "top" && rect.top - gap - height < 8) side = "bottom";
+      if (side === "bottom" && rect.bottom + gap + height > innerHeight - 8) side = "top";
+      const horizontal = side === "top" || side === "bottom";
+      const left = Math.max(8, Math.min(innerWidth - width - 8, horizontal ? rect.left + rect.width / 2 - width / 2 : side === "right" ? rect.right + gap : rect.left - width - gap));
+      const top = Math.max(8, Math.min(innerHeight - height - 8, horizontal ? side === "top" ? rect.top - height - gap : rect.bottom + gap : rect.top + rect.height / 2 - height / 2));
+      tooltip.dataset.side = side;
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+      tooltip.style.setProperty("--arrow-offset", `${Math.max(8, Math.min((horizontal ? width : height) - 12, horizontal ? rect.left + rect.width / 2 - left - 4 : rect.top + rect.height / 2 - top - 4))}px`);
     }
     function hideTooltip() {
       $("#instantTooltip").hidden = true;
+      if (tooltipTrigger) {
+        const descriptions = (tooltipTrigger.getAttribute("aria-describedby") || "").split(/\s+/).filter(id => id && id !== "instantTooltip");
+        if (descriptions.length) tooltipTrigger.setAttribute("aria-describedby", descriptions.join(" "));
+        else tooltipTrigger.removeAttribute("aria-describedby");
+        tooltipTrigger = null;
+      }
     }
     function pointForEvent(event) {
       const rect = selectionCanvas.getBoundingClientRect();
@@ -1180,7 +1210,7 @@
       if (matchMedia("(max-width: 760px)").matches) {
         const anchor = $("#askAi").getBoundingClientRect();
         hint.style.transform = "none";
-        hint.style.left = `${Math.min(innerWidth - hint.offsetWidth - 8, toolbar.right + 10)}px`;
+        hint.style.left = `${Math.max(8, Math.min(innerWidth - hint.offsetWidth - 8, toolbar.right + 8))}px`;
         hint.style.top = `${Math.max(8, Math.min(innerHeight - hint.offsetHeight - 8, anchor.top + anchor.height / 2 - hint.offsetHeight / 2))}px`;
         return;
       }
@@ -1261,7 +1291,7 @@
       if (state.generating) {
         const pending = document.createElement("div"); pending.className = "image-card generation-pending"; pending.setAttribute("role", "status");
         const label = document.createElement("span"); label.className = "generation-label"; label.textContent = imageProgressLabel();
-        const progress = document.createElement("progress"); progress.className = "generation-progress"; progress.max = 100; progress.value = imageProgressPercent();
+        const progress = document.createElement("progress"); progress.className = "generation-progress"; progress.max = 100; progress.value = imageProgressPercent(); progress.hidden = Date.now() - state.generationStartedAt >= 120000;
         progress.setAttribute("aria-label", state.locale === "en" ? "Estimated image generation progress" : "预估生图进度");
         progress.setAttribute("aria-valuetext", label.textContent);
         pending.append(label, progress); grid.append(pending);
@@ -1853,6 +1883,7 @@
       button.addEventListener("pointerleave", hideTooltip);
       button.addEventListener("focus", () => showTooltip(button));
       button.addEventListener("blur", hideTooltip);
+      button.addEventListener("pointerdown", hideTooltip);
     });
     $("#stage").addEventListener("wheel", (event) => {
       if (!state.imageWidth || (!event.metaKey && !event.ctrlKey)) return;
@@ -1860,6 +1891,7 @@
       setZoom(currentZoom() + (event.deltaY < 0 ? .1 : -.1));
     }, { passive: false });
     addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hideTooltip();
       const target = event.target;
       const editingText = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
       if (editingText) return;
@@ -1877,6 +1909,7 @@
       if (shortcut) selectTool(shortcut);
     });
     addEventListener("blur", () => {
+      hideTooltip();
       if (!state.temporaryTool) return;
       const tool = state.temporaryTool; state.temporaryTool = ""; selectTool(tool);
     });
@@ -1925,7 +1958,8 @@
       if (event.source === parent && event.data?.type === "ipollowork:image-studio:download") downloadCurrentImage();
     });
     $("#fileInput").addEventListener("change", () => void importImage($("#fileInput").files?.[0]));
-    addEventListener("resize", () => { applyZoom(); positionToolOptions(); positionAnnotationHint(); });
+    addEventListener("resize", () => { hideTooltip(); applyZoom(); positionToolOptions(); positionAnnotationHint(); });
+    document.addEventListener("scroll", hideTooltip, true);
 
     selectTool(state.tool);
     selectAiMode(state.aiMode);

@@ -1,6 +1,6 @@
 {
   "name": "ipollowork-short-video-plugin",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,6 +12,7 @@
     "test:api": "bun test test/package-api.test.ts"
   },
   "devDependencies": {
+    "@ipollowork/ui": "workspace:*",
     "esbuild": "0.25.9",
     "jszip": "3.10.1"
   }

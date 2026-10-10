@@ -37,7 +37,7 @@ import { TemplateIcon } from "@/components/template-icon";
 import { TemplateCatalogFilters } from "@/components/template-catalog-filters";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -316,49 +316,46 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   return (
     <>
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent showCloseButton className="flex h-[min(650px,calc(100dvh-160px))] min-h-[420px] w-[min(960px,calc(100dvw-160px))] min-w-[640px] max-h-[calc(100dvh-32px)] max-w-[calc(100dvw-32px)] resize flex-col gap-0 overflow-hidden p-0 [&>[data-slot=dialog-close]]:top-[29px] max-[720px]:h-[calc(100dvh-32px)] max-[720px]:w-[calc(100%-32px)] max-[720px]:min-w-[320px]">
-        <DialogHeader className="mt-[29px] w-full shrink-0 px-6 text-left">
-          <DialogTitle className="font-['PingFang_SC',sans-serif] text-2xl font-semibold leading-8 tracking-normal text-foreground">{t("template_market.title")}</DialogTitle>
+      <DialogContent showCloseButton className="flex h-[min(650px,calc(100dvh-160px))] min-h-[420px] w-[min(960px,calc(100dvw-160px))] min-w-[640px] max-h-[calc(100dvh-32px)] max-w-[calc(100dvw-32px)] resize flex-col gap-0 overflow-hidden p-0 max-[720px]:h-[calc(100dvh-32px)] max-[720px]:w-[calc(100%-32px)] max-[720px]:min-w-[320px]">
+        <DialogHeader className="mt-4 w-full shrink-0 px-6 text-left">
+          <DialogTitle>{t("template_market.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="mt-4 w-full shrink-0 px-6">
           <div className="flex h-9 items-center">
             <div className="flex min-w-0 flex-1 items-center gap-4" role="tablist" aria-label={t("template_market.title")}>
               {TEMPLATE_MARKET_VIEWS.map((item) => (
-                <button
+                <Button
                   key={item}
                   type="button"
+                  variant={view === item ? "secondary" : "ghost"}
+                  size="sm"
                   role="tab"
                   aria-selected={view === item}
                   onClick={() => selectView(item)}
-                  className={cn(
-                    "h-9 rounded-lg px-3.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-                    view === item ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
                 >
                   {t(item === "explore" ? "template_market.explore" : "template_market.my_templates")}
-                </button>
+                </Button>
               ))}
             </div>
             <input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
             <Button
               variant="outline"
-              size="sm"
-              className="mr-2 h-9 shrink-0 rounded-lg px-3.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium shadow-none"
+              className="mr-2 shadow-none"
               disabled={props.busyId !== null || remoteCatalogMode}
               onClick={() => props.onCustom(category === "all" ? "slides" : category)}
             >
               <Plus className="size-3.5" />{t("template_market.custom_title")}
             </Button>
             <Tooltip>
-              <TooltipTrigger render={<Button variant="outline" size="sm" className="h-9 w-[90px] shrink-0 rounded-lg px-3.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium shadow-none" disabled={props.busyId !== null || remoteCatalogMode} onClick={() => importRef.current?.click()} />}>
+              <TooltipTrigger render={<Button variant="outline" className="w-[90px] shadow-none" disabled={props.busyId !== null || remoteCatalogMode} onClick={() => importRef.current?.click()} />}>
                 <Download className="size-3.5" />{t("template_market.import")}
               </TooltipTrigger>
               <TooltipContent positionerClassName="z-[90]">{t("template_market.import_tooltip")}</TooltipContent>
             </Tooltip>
           </div>
 
-          <div className="relative mt-4 w-full"><Search className="pointer-events-none absolute left-[17px] top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("template_market.search_placeholder")} className="h-9 w-full rounded-lg border-0 bg-muted/50 pl-[43px] pr-4 font-['PingFang_SC',sans-serif] text-xs font-medium text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring/20" /></div>
+          <InputGroup className="mt-4"><InputGroupAddon><Search aria-hidden="true" className="size-4" /></InputGroupAddon><InputGroupInput value={query} onChange={(event) => setQuery(event.currentTarget.value)} aria-label={t("template_market.search_placeholder")} placeholder={t("template_market.search_placeholder")} /></InputGroup>
 
           {view === "explore" && (props.cloudAvailable || props.enterpriseAvailable) ? (
             <div className="mt-3 flex min-h-9 items-center overflow-x-auto">
@@ -380,10 +377,10 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
           ) : null}
           <div className="mt-2 flex h-9 items-center gap-4 overflow-x-auto">
             {view === "explore" ? <div className="flex min-w-max items-center gap-4">
-            <button type="button" onClick={() => setCategory("all")} className={cn("inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded-[28px] bg-transparent px-2 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] transition-colors", category === "all" ? "bg-foreground text-background" : "text-foreground hover:bg-muted")}>{t("template_market.all_types")}</button>
-            {PRIMARY_CATEGORIES.map(({ id, labelKey, icon: Icon }) => <button key={id} type="button" onClick={() => setCategory(id)} className={cn("inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[28px] bg-transparent px-2 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] transition-colors", category === id ? "bg-foreground text-background" : "text-foreground hover:bg-muted")}><Icon className="size-3.5" />{t(labelKey)}</button>)}
+            <Button type="button" size="sm" variant={category === "all" ? "secondary" : "ghost"} aria-pressed={category === "all"} onClick={() => setCategory("all")}>{t("template_market.all_types")}</Button>
+            {PRIMARY_CATEGORIES.map(({ id, labelKey, icon: Icon }) => <Button key={id} type="button" size="sm" variant={category === id ? "secondary" : "ghost"} aria-pressed={category === id} onClick={() => setCategory(id)}><Icon className="size-3.5" />{t(labelKey)}</Button>)}
             <DropdownMenu>
-              <DropdownMenuTrigger render={<button type="button" className={cn("inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-[28px] bg-transparent px-2 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] transition-colors", moreCategoryActive ? "bg-foreground text-background" : "text-foreground hover:bg-muted")} />}>
+              <DropdownMenuTrigger render={<Button type="button" size="sm" variant={moreCategoryActive ? "secondary" : "ghost"} aria-pressed={moreCategoryActive} />}>
                 {t("template_market.more")}<ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" alignOffset={4} sideOffset={7} positionerClassName="z-[90]" className="w-[196px] min-w-[196px]">
@@ -392,12 +389,12 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
             </DropdownMenu>
             </div> : <>
             <div className="flex min-w-max items-center gap-2" role="tablist" aria-label={t("template_market.my_templates")}>
-              {MY_TEMPLATE_COLLECTIONS.map((item) => <button key={item} type="button" role="tab" aria-selected={myCollection === item} onClick={() => setMyCollection(item)} className={cn("inline-flex h-7 items-center justify-center whitespace-nowrap rounded-[28px] bg-transparent px-4 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] transition-colors", myCollection === item ? "bg-foreground text-background" : "text-foreground hover:bg-muted")}>{t(translationKey("template_market.my_", item))}</button>)}
+              {MY_TEMPLATE_COLLECTIONS.map((item) => <Button key={item} type="button" size="sm" variant={myCollection === item ? "secondary" : "ghost"} role="tab" aria-selected={myCollection === item} onClick={() => setMyCollection(item)}>{t(translationKey("template_market.my_", item))}</Button>)}
             </div>
             <DropdownMenu>
               <div className="ml-auto flex shrink-0 items-center gap-2">
                 <span className="font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[18px] text-foreground">{t("template_market.type_label")}</span>
-                <DropdownMenuTrigger render={<button type="button" className="flex h-[34px] w-[132px] shrink-0 items-center justify-between rounded-lg bg-muted/50 py-2 pl-2 pr-4 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[18px] text-foreground transition-colors hover:bg-muted" />}>
+                <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" className="w-[132px] justify-between" />}>
                   {category === "all" ? t("template_market.all") : t(CATEGORIES.find((item) => item.id === category)?.labelKey ?? "template_market.category.other")}<ChevronDown className="size-4" />
                 </DropdownMenuTrigger>
               </div>
@@ -423,7 +420,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
         {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2"><Download className="size-4 text-foreground" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}
 
         <section className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6">
-          {props.loading ? <div data-testid="template-catalog-loading" className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-[227px] animate-pulse rounded-lg bg-muted" />)}</div> : props.error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : remoteCatalogMode && view === "explore" ? (visibleRemoteResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleRemoteResources.map((resource) => {
+          {props.loading ? <div data-testid="template-catalog-loading" className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-[227px] animate-pulse rounded-lg bg-muted" />)}</div> : props.error ? <div role="alert" className="rounded-lg border-0 bg-feedback-error p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : remoteCatalogMode && view === "explore" ? (visibleRemoteResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleRemoteResources.map((resource) => {
             const installedTemplate = remoteTemplateInstallations.get(resource.id);
             return <RemoteTemplateCard key={resource.id} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={installedTemplate ? favoriteIds.has(installedTemplate.manifest.id) : false} source={props.source} sourceLabel={remoteSourceLabel} onToggleFavorite={() => { if (installedTemplate) toggleFavorite(installedTemplate.manifest.id); }} onPreview={(template) => setPreviewSelection({ template, remoteResourceId: resource.id })} onInstall={() => props.onInstallRemote(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
           })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center">{props.source === "enterprise" ? <Building2 className="mx-auto size-5 text-muted-foreground" /> : <Cloud className="mx-auto size-5 text-muted-foreground" />}<p className="mt-3 text-sm font-medium">{t(props.source === "enterprise" ? "enterprise_connection.enterprise_templates_empty" : "enterprise_connection.cloud_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : view === "my" && myCollection === "all" && myTemplatesEmpty ? <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.my_empty_title")}</p><Button type="button" size="sm" className="mt-4 rounded-lg bg-[var(--project-dialog-accent)] text-white hover:brightness-95 active:brightness-90" onClick={exploreTemplates}>{t("template_market.explore_templates")}</Button></div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}

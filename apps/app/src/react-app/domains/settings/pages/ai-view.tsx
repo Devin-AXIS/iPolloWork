@@ -113,14 +113,16 @@ export function AiSettingsView(props: AiSettingsViewProps) {
 
         {props.showiPolloWorkModelsSubscribe ? (
           <LayoutSectionItem className="relative overflow-hidden rounded-2xl border border-blue-6 bg-blue-2/30 px-4 py-4">
-            <button
+            <Button
               type="button"
-              className="absolute right-3 top-3 flex size-7 items-center justify-center rounded-full text-blue-11 transition-colors hover:bg-blue-3/70"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute right-3 top-3 text-blue-11 hover:bg-blue-3/70"
               onClick={() => void props.onDismissiPolloWorkModels?.()}
               aria-label={t("settings.ai.dismiss_models_banner")}
             >
               <X className="size-3.5" />
-            </button>
+            </Button>
             <div className="flex flex-col gap-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex min-w-0 gap-3">
                 <ProviderIcon providerId="ipollowork" size={22} className="mt-0.5 shrink-0 text-blue-11" />

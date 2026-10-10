@@ -175,8 +175,8 @@ export function ImageFillField({
   if (flat) {
     return (
       <div className="grid gap-3">
-        <div className="flex h-[34px] items-center justify-between gap-3 rounded-[6px] bg-panel-input pl-2 pr-4">
-          <span className="text-[13px] text-[#24262b] dark:text-panel-text-1">Image</span>
+        <div className="flex h-8 items-center justify-between gap-2 rounded-lg bg-panel-input px-2">
+          <span className="text-xs text-panel-text-1">Image</span>
           <FlatDropdown
             ariaLabel="Image fill"
             value={selectedAsset ?? ""}

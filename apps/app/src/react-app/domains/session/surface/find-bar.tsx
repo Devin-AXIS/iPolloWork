@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -295,9 +296,9 @@ export function SessionFindBar({
 
   return (
     <div className="absolute top-2 right-3 z-30 sm:right-5">
-      <div className="flex items-center gap-1 rounded-xl border border-dls-border bg-dls-surface/95 px-1.5 py-1 shadow-(--dls-card-shadow) backdrop-blur-md">
-        <Search className="ml-1 size-3.5 shrink-0 text-dls-secondary" />
-        <input
+      <InputGroup className="h-8 w-auto gap-1 bg-dls-surface/95 px-1.5 shadow-(--dls-card-shadow) backdrop-blur-md">
+        <InputGroupAddon className="p-0"><Search aria-hidden="true" className="size-3.5" /></InputGroupAddon>
+        <InputGroupInput
           ref={inputRef}
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
@@ -317,7 +318,7 @@ export function SessionFindBar({
               closeFind();
             }
           }}
-          className="h-7 w-48 bg-transparent px-1 text-sm text-dls-text outline-none placeholder:text-dls-secondary sm:h-8 sm:w-56"
+          className="w-48 px-1 sm:w-56"
           placeholder={t("find.in_conversation")}
           aria-label={t("find.in_conversation")}
         />
@@ -380,7 +381,7 @@ export function SessionFindBar({
           />
           <TooltipContent>{t("find.close_hint")}</TooltipContent>
         </Tooltip>
-      </div>
+      </InputGroup>
     </div>
   );
 }

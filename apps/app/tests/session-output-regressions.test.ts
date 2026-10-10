@@ -285,13 +285,14 @@ describe("session output issue regressions", () => {
 
   test("keeps generated image previews readable and localized", () => {
     const markdownSource = readFileSync(new URL("../src/components/markdown/markdown.tsx", import.meta.url), "utf8");
-    const imageSource = readFileSync(new URL("../src/components/ui/image.tsx", import.meta.url), "utf8");
+    const imageSource = readFileSync(new URL("../../../packages/ui/src/react/image.tsx", import.meta.url), "utf8");
+    const imageAdapter = readFileSync(new URL("../src/components/ui/image.tsx", import.meta.url), "utf8");
     const chineseLocaleSource = readFileSync(new URL("../src/i18n/locales/zh.ts", import.meta.url), "utf8");
 
     expect(markdownSource).toContain("const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 360;");
     expect(imageSource).toContain("const DEFAULT_PREVIEW_MAX_HEIGHT = 360");
     expect(markdownSource).toContain('t("image.preview.show_full")');
-    expect(imageSource).toContain('t("image.preview.show_less")');
+    expect(imageAdapter).toContain('t("image.preview.show_less")');
     expect(chineseLocaleSource).toContain('"image.preview.show_full": "查看完整图片"');
   });
 
@@ -797,7 +798,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain("const PRIMARY_CATEGORIES = CATEGORIES.slice(0, 4)");
     expect(source).toContain("const MORE_CATEGORIES = CATEGORIES.slice(4)");
     expect(source).toContain('type MyTemplateCollection = "all" | "favorites" | "mine"');
-    expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-xs font-medium text-foreground');
+    expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-[13px] font-medium leading-[18px] text-foreground');
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
     expect(source).toContain('remoteCatalogMode && view === "explore"');
     expect(source).toContain('view === "explore" && (props.cloudAvailable || props.enterpriseAvailable)');

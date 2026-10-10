@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Download, HardDrive, LoaderCircle, ShieldCheck, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "@/components/ui/sonner";
 import { formatBytes, isDesktopRuntime } from "@/app/utils";
 import { publicAssetUrl } from "@/app/lib/public-asset";
@@ -63,20 +64,12 @@ function hasManagedVersion(engine: EnginePackageInfo) {
 }
 
 function EngineProgress({ engine }: { engine: EnginePackageInfo }) {
-  const percent = engine.totalBytes && engine.downloadedBytes != null
+  const percent = engine.status === "downloading" && engine.totalBytes && engine.downloadedBytes != null
     ? Math.min(100, Math.round((engine.downloadedBytes / engine.totalBytes) * 100))
     : null;
   return (
     <div className="mt-3 space-y-1.5" role="status" aria-live="polite">
-      <div className="h-1 overflow-hidden rounded-full bg-dls-hover">
-        <div
-          className={cn(
-            "h-full rounded-full bg-foreground transition-[width] duration-300",
-            percent == null && "w-1/3 animate-pulse",
-          )}
-          style={percent == null ? undefined : { width: `${percent}%` }}
-        />
-      </div>
+      <Progress value={percent} aria-label={statusLabel(engine)} getAriaValueText={() => percent == null ? statusLabel(engine) : `${percent}%`} />
       <div className="flex items-center justify-between gap-3 text-[11px] text-dls-secondary">
         <span>{statusLabel(engine)}</span>
         {engine.downloadedBytes != null ? (

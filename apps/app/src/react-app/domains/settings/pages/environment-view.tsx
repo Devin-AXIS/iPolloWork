@@ -471,20 +471,20 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
       <DialogContent
         data-testid="environment-editor-dialog"
         showCloseButton={false}
-        className="w-[calc(100%-32px)] max-w-[520px] gap-0 rounded-[16px] p-6 ring-0 dark:ring-1 dark:ring-border sm:max-w-[520px]"
+        className="max-w-[520px] gap-0 ring-0 dark:ring-1 dark:ring-border sm:max-w-[520px]"
       >
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"
+          className="absolute end-3 top-3"
           aria-label={t("common.close")}
           onClick={props.onClose}
         >
           <X className="size-4" />
         </Button>
 
-        <DialogHeader className="pb-6 pe-8 text-left">
+        <DialogHeader className="pb-4 pe-8 text-left">
           <DialogTitle id={titleId}>
             {props.editor.mode === "add" ? t("settings.environment.add_title") : t("settings.environment.edit_title")}
           </DialogTitle>
@@ -502,7 +502,7 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
           error={error}
         />
 
-        <DialogFooter className="mx-0 mb-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
+        <DialogFooter className="mx-0 mb-0 flex-row gap-2 rounded-none border-0 bg-transparent p-0 pt-4 sm:justify-end">
           <DialogClose render={<Button variant="outline" size="sm" />}>
             {t("settings.environment.cancel")}
           </DialogClose>

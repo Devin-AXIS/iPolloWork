@@ -2,14 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const css = readFileSync(join(import.meta.dir, "../src/app/index.css"), "utf8");
+const css = ["../src/app/index.css", "../../../packages/ui/src/common/tokens.css", "../../../packages/ui/src/common/theme.css"]
+  .map(path => readFileSync(join(import.meta.dir, path), "utf8")).join("\n");
 const panel = readFileSync(
   join(import.meta.dir, "../src/react-app/domains/settings/shell/panel.tsx"),
   "utf8",
 );
-const button = readFileSync(join(import.meta.dir, "../src/components/ui/button.tsx"), "utf8");
-const input = readFileSync(join(import.meta.dir, "../src/components/ui/input.tsx"), "utf8");
-const dialog = readFileSync(join(import.meta.dir, "../src/components/ui/dialog.tsx"), "utf8");
+const button = readFileSync(join(import.meta.dir, "../../../packages/ui/src/common/control-styles.ts"), "utf8");
+const input = button;
+const dialog = readFileSync(join(import.meta.dir, "../../../packages/ui/src/react/dialog.tsx"), "utf8");
 
 describe("desktop typography contract", () => {
   test("uses one system font contract for Chinese and English UI", () => {

@@ -29,7 +29,7 @@ import {
   type ResolvedMotionInstance,
 } from "../editor/SemanticMotionPanel";
 import type { DomEditSelection } from "../editor/domEditing";
-import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import { SearchInput } from "../ui/SearchInput";
 import { ChevronDown } from "../../icons/SystemIcons";
 
 const StructuredMotionThumbnail = lazy(() =>
@@ -1204,21 +1204,12 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
       data-testid="animation-templates-tab"
     >
       <div className="flex-shrink-0 space-y-3 border-b border-panel-border px-4 pb-4 pt-3">
-        <div className="relative">
-          <img
-            src={searchIconSrc}
-            alt=""
-            className="pointer-events-none absolute left-[11px] top-1/2 h-4 w-4 -translate-y-1/2"
-          />
-          <input
-            type="search"
+          <SearchInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t("animation.searchPlaceholder")}
             aria-label={t("animation.searchLabel")}
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-xs text-panel-text-1 outline-none placeholder:text-panel-text-4 focus:ring-1 focus:ring-[#1FBAC0]/50"
           />
-        </div>
         {domEditSelection ? (
           <div className="rounded-[8px] bg-[#1FBAC0]/10 px-3 py-2 text-[11px] leading-4 text-[#168e92]">
             {t("animation.selected", { label: domEditSelection.label })}

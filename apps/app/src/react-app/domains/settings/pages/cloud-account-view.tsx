@@ -230,7 +230,7 @@ export function CloudAccountView({ developerMode, session }: CloudAccountViewPro
         : "signed-out";
 
   return (
-    <SettingsStack className="max-w-[760px]">
+    <SettingsStack>
       <div data-testid="cloud-account-content" data-state={accountState}>
         <SettingsSection className="gap-5">
           {developerMode ? (
