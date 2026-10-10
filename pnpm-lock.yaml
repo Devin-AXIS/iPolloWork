@@ -592,7 +592,7 @@ importers:
         version: 19.2.4
       react-dom:
         specifier: ^18 || ^19
-        version: 18.3.1(react@19.2.4)
+        version: 19.2.4(react@19.2.4)
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
