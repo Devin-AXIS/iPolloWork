@@ -1,6 +1,6 @@
 {
   "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
-  "runtimeVersion": "1.3.0",
+  "runtimeVersion": "1.4.0",
   "foundations": {
     "figmaCollectionId": "VariableCollectionId:237:1443",
     "modes": { "Light": "237:0", "Dark": "237:1" },
@@ -33,6 +33,15 @@
   },
   "tokenSource": "packages/ui/src/common/tokens.css",
   "components": [
+    {
+      "export": "Icon",
+      "relatedExports": ["ICON_NAMES"],
+      "package": "@ipollowork/ui/icon",
+      "source": "packages/ui/src/react/icon.tsx",
+      "figmaMainId": null,
+      "htmlMarker": null,
+      "scope": "32 curated Lucide glyphs; React/runtime composition; no dedicated Figma component identity"
+    },
     {
       "export": "Button",
       "package": "@ipollowork/ui/controls",

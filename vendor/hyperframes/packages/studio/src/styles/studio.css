@@ -2,17 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-.hf-export-button {
-  height: 34px;
-  border-radius: 6px;
-  background: var(--hf-panel-text-0);
-  color: var(--hf-panel-bg);
-}
-
-.hf-export-button:hover:not(:disabled) {
-  background: var(--hf-panel-text-2);
-}
-
 /*
  * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
  * browser-native chrome (scrollbars, form controls, focus rings) picks the
@@ -350,35 +339,7 @@ body {
   background-color: color-mix(in srgb, var(--hf-panel-bg) 90%, transparent);
 }
 
-[data-slot="studio-search"] {
-  outline: none;
-  box-shadow: none;
-}
 
-[data-slot="studio-search"]:focus-within {
-  border-color: var(--hf-panel-accent);
-}
-
-[data-slot="studio-search"] input,
-[data-slot="studio-search"] input:focus {
-  appearance: none;
-  border: 0;
-  outline: none;
-  box-shadow: none;
-}
-
-.hf-studio-header-export {
-  background-color: var(--hf-header-primary-bg) !important;
-  color: var(--hf-header-primary-text) !important;
-}
-
-.hf-studio-header-export:hover {
-  background-color: var(--hf-header-primary-hover) !important;
-}
-
-.hf-studio-header-export:active {
-  opacity: 0.88;
-}
 
 .hf-studio-header-action {
   display: flex;
@@ -390,11 +351,7 @@ body {
   gap: 6px;
   padding: 0 8px;
   border-radius: 8px;
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
   white-space: nowrap;
-  box-shadow: none;
 }
 
 .hf-studio-header-actions {

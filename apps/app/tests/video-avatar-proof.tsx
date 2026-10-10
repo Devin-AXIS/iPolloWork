@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import { VideoAvatarPanel } from "../src/react-app/domains/session/video/video-avatar-panel";
 import { VIDEO_VOICEOVER_REQUEST, type VideoVoiceoverRequest } from "../src/react-app/domains/session/video/video-voice";
+import { VideoStoryboardSettingsDialog } from "../src/react-app/domains/session/video/video-storyboard-settings-dialog";
 import { VideoVoicePanel } from "../src/react-app/domains/session/video/video-voice-panel";
 import { VideoPanel } from "../src/react-app/domains/session/video/video-panel";
 import type { VideoStudioRuntime } from "@ipollowork/video-studio";
@@ -266,6 +267,6 @@ createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParam
   <button onClick={() => { failUpload = !failUpload; }}>切换上传失败</button>
   <pre id="submission-receipt" className="max-w-xl whitespace-pre-wrap break-all text-xs" />
   <div style={{ position: "relative", width: 440, height: 1150, marginTop: 20 }}>
-    {voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path, timelineStart) => { requests.push({ action: `asset-${action}`, path, start: timelineStart }); }} /></div> : <VoiceProofPanel />}
+    {voiceProofParams.get("panel") === "storyboard" ? <VideoStoryboardSettingsDialog frameIndex={1} title="分镜素材" kind="picture" disabled={false} onClose={() => {}} onApply={async () => false} onImport={async () => []} request={{type:"ipollowork:video-studio-settings-open",projectId:"proof",requestId:"proof",frameIndex:1,title:"分镜素材",kind:"picture",fields:{asset_source:"generate",asset_kind:"image",asset_brief:"保留这个描述",asset_reference:"",asset_origin:"",camera:"固定镜头",transition_in:"",sound_effects:"",sound_effect_reference:""},assets:[],cameras:[{value:"固定镜头",label:"固定镜头"}]}} /> : voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path, timelineStart) => { requests.push({ action: `asset-${action}`, path, start: timelineStart }); }} /></div> : <VoiceProofPanel />}
   </div>
 </div>}</HashRouter>);

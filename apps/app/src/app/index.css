@@ -203,20 +203,34 @@ body {
 }
 
 [data-chat-readable-text="true"] {
-  font-size: 14px;
-  line-height: 1.5;
+  font-family: var(--ipollowork-font-sans);
+  font-size: var(--ui-body-size);
+  line-height: var(--ui-body-line);
+  font-weight: 400;
 }
 
-[data-chat-readable-text="true"] :is(p, li) {
-  line-height: 1.5;
+[data-chat-readable-text="true"] :is(p, li) { line-height: inherit; }
+[data-chat-readable-text="true"] :is(strong, b) { font-weight: 600; }
+[data-chat-readable-text="true"].markdown-content :where(p, ul, ol, li, blockquote, pre) { margin-block: 0; }
+[data-chat-readable-text="true"].markdown-content > * { margin-block: 0; }
+[data-chat-readable-text="true"].markdown-content > * + * { margin-top: 8px; }
+[data-chat-readable-text="true"].markdown-content li + li,
+[data-chat-readable-text="true"].markdown-content li > :is(ul, ol) { margin-top: 4px; }
+[data-chat-readable-text="true"].markdown-content h1 {
+  font-size: var(--ui-page-title-size);
+  line-height: var(--ui-page-title-line);
 }
-
-[data-assistant-result] .markdown-content > * {
-  margin-block: 0;
+[data-chat-readable-text="true"].markdown-content :is(h2, h3, h4, h5, h6) {
+  font-size: var(--ui-section-title-size);
+  line-height: var(--ui-section-title-line);
 }
-
-[data-assistant-result] .markdown-content > * + * {
-  margin-top: 12px;
+[data-chat-readable-text="true"].markdown-content :is(h1, h2, h3, h4, h5, h6) { margin-block: 0; font-weight: 600; }
+[data-chat-readable-text="true"].markdown-content > :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: 16px; }
+[data-chat-readable-text="true"].markdown-content :is(pre, code, [data-ipollowork-shiki]) {
+  font-family: var(--ipollowork-font-mono);
+  font-size: var(--ui-body-size);
+  line-height: var(--ui-body-line);
+  font-weight: 400;
 }
 
 .chat-thinking-dots {
@@ -242,6 +256,9 @@ body {
 .chat-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
 .chat-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
 
+/* Interrupted and historical tools can retain an in-flight protocol state. */
+[data-process-active="false"] .animate-spin { animation: none; }
+
 .chat-live-activity {
   animation: chat-live-activity 1.8s ease-in-out infinite;
 }
@@ -262,26 +279,15 @@ body {
   .chat-live-activity { animation: none; opacity: 0.75; }
 }
 
-/* Keep small labels, tool details, code blocks, and file titles in the conversation readable. */
-[data-chat-transcript] :is(.text-xs, .chat-output-title) {
-  font-size: 14px;
+[data-chat-transcript] .text-xs,
+.chat-process-heading {
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
 }
 
-.chat-tool-action[open] > summary .chat-tool-action-chevron {
-  transform: rotate(90deg);
-}
+.chat-tool-action > summary { font-size: var(--ui-control-size); line-height: var(--ui-control-line); }
 
-html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] {
-  font-weight: 500;
-}
-
-html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(strong, b) {
-  font-weight: 600;
-}
-
-html:lang(zh) .chat-process-heading {
-  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", var(--ipollowork-font-sans);
-}
+.chat-tool-action[open] > summary .chat-tool-action-chevron { transform: rotate(90deg); }
 
 /* Match the existing macOS Chinese readability correction in settings/chat.
    PingFang's 400 fallback can render as ExtraLight in Electron; keep captions
@@ -770,29 +776,30 @@ html:lang(zh).ipollowork-electron.ipollowork-platform-mac .media-composer-contro
 }
 
 /* Chat file links and response outputs share one visual specification. */
-.chat-output-card { position:relative; display:inline-flex; align-items:center; gap:10px; width:320px; max-width:100%; height:56px; padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--background); color:var(--foreground); box-shadow:none; vertical-align:middle; text-align:left; }
-.chat-output-card:hover { background:var(--muted); }
+.chat-output-card { position:relative; display:inline-flex; align-items:center; gap:10px; width:320px; max-width:100%; min-height:64px; padding:9px 10px; border:1px solid var(--border); border-radius:12px; background:var(--background); color:var(--foreground); box-shadow:none; vertical-align:middle; text-align:left; }
+.chat-output-card:hover { border-color:color-mix(in srgb,var(--muted-foreground) 30%,var(--border)); }
 .chat-output-open { display:flex; align-items:center; gap:10px; flex:1; min-width:0; height:100%; padding:0; text-align:left; }
 .chat-output-icon { display:grid; place-items:center; width:32px; height:32px; flex-shrink:0; border-radius:8px; background:var(--muted); color:var(--muted-foreground); }
 .chat-output-content { display:flex; flex:1; min-width:0; flex-direction:column; gap:2px; }
-.chat-output-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; line-height:16px; }
-.chat-output-description { display:block; font-size:10px; font-weight:400; line-height:14px; color:var(--muted-foreground); }
+.chat-output-title { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; text-overflow:ellipsis; white-space:normal; font-size:var(--ui-control-size); font-weight:500; line-height:var(--ui-control-line); }
+.chat-output-description { display:block; font-size:var(--ui-caption-size); font-weight:400; line-height:var(--ui-caption-line); color:var(--muted-foreground); }
 .chat-output-more { display:grid; place-items:center; width:28px; height:28px; flex-shrink:0; border-radius:8px; color:var(--muted-foreground); }
 .chat-output-more:hover { background:var(--background); color:var(--foreground); }
 
-[data-testid="artifact-file-shell"] > .chat-output-card { padding-right:76px; }
 .chat-output-title code { font:inherit; background:transparent; padding:0; }
 
 /* File list actions stay inside the same card at every panel width. */
 [data-testid="artifact-file-shell"] > .chat-output-card { width:100%; }
 .chat-output-icon svg { color:var(--muted-foreground); stroke-width:1.8; }
 [data-testid="artifact-file-actions"] { right:10px; }
+[data-testid="artifact-file-actions"] button { box-shadow:none; }
 
 /* File cards use the same responsive rows in Markdown and output lists. */
 .chat-output-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:12px; }
 .chat-output-grid .chat-output-card { display:flex; width:100%; min-width:0; }
 
 .chat-output-card { padding-top:7px; padding-bottom:7px; }
-.chat-output-icon { position:relative; width:40px; height:40px; overflow:hidden; }
-.chat-output-icon .artifact-thumbnail { position:absolute; inset:0; display:block; width:40px; height:40px; max-width:none; margin:0; object-fit:cover; border-radius:8px; }
+.chat-output-icon { position:relative; overflow:hidden; }
+.chat-output-icon[data-artifact-thumbnail] { width:64px; height:44px; border-radius:6px; }
+.chat-output-icon .artifact-thumbnail { position:absolute; inset:0; display:block; width:100%; height:100%; max-width:none; margin:0; object-fit:contain; border-radius:6px; }
 .chat-output-icon .artifact-thumbnail-play { position:absolute; right:2px; bottom:2px; width:14px; height:14px; padding:2px; border-radius:4px; background:rgba(0,0,0,.55); color:white; fill:currentColor; stroke:none; }

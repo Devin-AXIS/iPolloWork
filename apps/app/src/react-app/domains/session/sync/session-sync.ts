@@ -66,7 +66,7 @@ type SyncEntry = {
   sessionUpdatedListeners: Set<NonNullable<SyncOptions["onSessionUpdated"]>>;
   sessionStatusListeners: Set<NonNullable<SyncOptions["onSessionStatus"]>>;
   sessionErrorListeners: Set<NonNullable<SyncOptions["onSessionError"]>>;
-  pendingDeltas: Map<string, { messageId: string; reasoning: boolean; text: string }>;
+  pendingDeltas: Map<string, { sessionId: string; messageId: string; reasoning: boolean; text: string }>;
   reconcilingSessionIds: Set<string>;
   // Coalesce rapid-fire delta events from the SSE stream into one cache
   // commit per animation frame. Without this, a long response produces a
@@ -403,6 +403,9 @@ function clearTrackedSession(input: SyncScope, entry: SyncEntry, sessionId: stri
   entry.deltaFlushBuffer = entry.deltaFlushBuffer.filter(
     (item) => item.sessionId !== sessionId,
   );
+  for (const [key, pending] of entry.pendingDeltas) {
+    if (pending.sessionId === sessionId) entry.pendingDeltas.delete(key);
+  }
   const queryClient = getReactQueryClient();
   queryClient.removeQueries({ queryKey: permissionKey(input.workspaceId, sessionId), exact: true });
   if (entry.refs <= 0 && entry.retainedSessionTimers.size === 0) {
@@ -1270,17 +1273,13 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     if (!isTrackedSession(entry, event.sessionId)) return;
     const [mapped, ...attachments] = event.parts;
     if (!mapped) return;
-    const pending = entry.pendingDeltas.get(event.partId);
-    const seededPart = pending && (mapped.type === "text" || mapped.type === "reasoning")
-      ? {
-          ...mapped,
-          text: pending.text.length > mapped.text.length ? pending.text : mapped.text,
-          state: "streaming" as const,
-        }
+    // Drain this frame before reading early chunks held for the declaration.
+    if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
+    const pendingKey = `${event.sessionId}\u0000${event.messageId}\u0000${event.partId}`;
+    const pending = entry.pendingDeltas.get(pendingKey);
+    const seededPart = pending && (mapped.type === "text" || mapped.type === "reasoning") && !mapped.text
+      ? { ...mapped, text: pending.text }
       : mapped;
-    if (entry.deltaFlushBuffer.length > 0) {
-      entry.deltaFlushBuffer = entry.deltaFlushBuffer.filter((item) => item.partId !== event.partId);
-    }
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) => {
       const existing = current.find((message) => message.id === event.messageId);
       const role = event.messageRole ?? existing?.role ?? inferStubRole(current);
@@ -1296,7 +1295,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
         interrupted?.protectedOptimisticUserMessageIds,
       );
     });
-    if (pending) entry.pendingDeltas.delete(event.partId);
+    if (pending) entry.pendingDeltas.delete(pendingKey);
     return;
   }
 
@@ -1422,13 +1421,15 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
           const ownerPart = ownerPartsById.get(item.partId);
 
           if (!ownerPart) {
-            const existing = entry.pendingDeltas.get(item.partId) ?? {
+            const pendingKey = `${item.sessionId}\u0000${item.messageId}\u0000${item.partId}`;
+            const existing = entry.pendingDeltas.get(pendingKey) ?? {
+              sessionId: item.sessionId,
               messageId: item.messageId,
               reasoning: item.reasoning,
               text: "",
             };
             existing.text += item.delta;
-            entry.pendingDeltas.set(item.partId, existing);
+            entry.pendingDeltas.set(pendingKey, existing);
             continue;
           }
 

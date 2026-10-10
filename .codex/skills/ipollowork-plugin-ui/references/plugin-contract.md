@@ -127,6 +127,8 @@ HTML 的 `<head>` 保留这个原样标记：
 
 运行时样式已包含共享 palette/tokens/theme 与控件 utilities；插件不要再次手写控件 CSS。样板把业务 CSS 放在 `@layer plugin`，避免通用 button/input 样式覆盖共享控件。更新客户端运行时后，重新打开或重载工作区才取得新实现；已打开的文档没有热替换协议。Figma 编辑不会直接修改线上插件。
 
+无构建步骤的原始 HTML 包可在 module script 中使用固定公共导入 `import { requireRuntime } from "@ipollowork/ui/runtime-contract";`。宿主 `withSharedUiRuntime` 仅对带标记的 HTML 内联此无 React 的检查函数；独立开发预览也需显式注入 bundled 运行时。不支持任意裸模块导入，也不放宽 CSP。
+
 ## 两种环境共用的业务接法
 
 原生 HTML 在容器内标记真实 button/input/textarea，然后调用 `enhance(container)`：它查找容器的后代，不包含容器自身。
@@ -191,7 +193,7 @@ Select 保存中禁用并关联字段错误；风格提示失败恢复持久化�
 
 ## 版本兼容规则
 
-当前 `UI_RUNTIME_VERSION = '1.3.0'`；独立于客户端与插件版本。1.3增加公共颜色/字体变量、保证七档字号类生成并增加最低minor检查；保留原v1组件入口与Props。短片包0.1.3采用新规范，插件ID和数据路径不变。生产业务脚本不包含组件实现；旧体积统计属于1.2快照，不当作本轮产物实测。
+当前 `UI_RUNTIME_VERSION = '1.4.0'`（1.4新增公共Icon；1.3规范保持兼容）；独立于客户端与插件版本。1.3增加公共颜色/字体变量、保证七档字号类生成并增加最低minor检查；保留原v1组件入口与Props。短片包0.1.3采用新规范，插件ID和数据路径不变。生产业务脚本不包含组件实现；旧体积统计属于1.2快照，不当作本轮产物实测。
 
 | 运行时情况 | 当前代码行为 | 插件要求 |
 | --- | --- | --- |
@@ -251,3 +253,23 @@ Select 保存中禁用并关联字段错误；风格提示失败恢复持久化�
 使用插件已支持的宿主能力进行打开链接、发送上下文或展示模式切换。页面按钮不能直接操纵宿主 DOM，也不能仅凭 Figma 展示推断宿主 API 可用。异步操作的最终状态来自真实结果。
 
 首次接入优先验证一条完整小流程：填写 → 选择 → 提交中 → 成功或失败 → 重试；另验证主题更新和容器缩放。控件预览通过、模拟桥接通过与安装到宿主后通过分别记录。
+
+## 公共图标与按钮 · 运行时1.4
+
+共享源码使用 `import { Icon, type IconName } from '@ipollowork/ui/icon'`，或从core导入；iframe使用 `requireRuntime(1, ['Button', 'Icon'], 4)`。公共范围为 `ICON_NAMES` 列出的32个具名Lucide图标，不导出Lucide全集，不支持任意字符串。新图标必须加入同一映射并补齐验证。图标为线性描边、currentColor，默认M16px；S14px、L20px为固定像素，不随根字号或Button默认SVG选择器缩放。
+
+```js
+import { requireRuntime } from '@ipollowork/ui/runtime-contract';
+const ui = requireRuntime(1, ['Button', 'Icon'], 4);
+const h = ui.React.createElement;
+const leading = h(ui.Button, { size: 'sm', onClick: save },
+  h(ui.Icon, { name: 'Plus', size: 's', 'data-icon': 'inline-start' }), '新建');
+const trailing = h(ui.Button, { onClick: download }, '下载',
+  h(ui.Icon, { name: 'Download', 'data-icon': 'inline-end' }));
+const iconOnly = h(ui.Button, { size: 'icon', 'aria-label': '搜索', onClick: search },
+  h(ui.Icon, { name: 'Search' }));
+```
+
+Button继续使用原children API：sm28px、default32px、lg36px；icon-sm/icon/icon-lg分别同尺寸，xs24兼容。图标默认aria-hidden装饰；独立表达状态的图标提供label，生成role=img和可访问名称。纯图标按钮名称放在Button的aria-label，内部Icon保持装饰，不重复朗读。加载由调用方管理disabled/aria-busy与LoaderCircle的animate-spin，操作成功后恢复；Icon不自动触发动作或异步任务。
+
+验收范围为现有shared-ui-core样板和双模式流程：所有公共名字SVG非空、S/M/L、前置/后置/纯图标、真实鼠标与键盘、禁用/加载、亮暗窄容器及13/16px根字号。此处描述验证契约，完成状态以本轮fraimz证据为准。

@@ -76,7 +76,6 @@ interface ArtifactButtonProps {
   onOpenVideoStudio?: (displayName?: string) => void
 }
 
-const MAX_ARTIFACT_TITLE_LENGTH = 32;
 const EMPTY_WORKSPACE_FILES: iPolloWorkWorkspaceCatalogEntry[] = [];
 
 export type ArtifactRequestNaming = {
@@ -250,12 +249,6 @@ export function filterWorkspaceFileTree(nodes: readonly WorkspaceFileTreeNode[],
   return matches;
 }
 
-function compactArtifactTitle(name: string) {
-  return name.length > MAX_ARTIFACT_TITLE_LENGTH
-    ? `${name.slice(0, MAX_ARTIFACT_TITLE_LENGTH - 1)}...`
-    : name;
-}
-
 function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId, artifactContext, onOpenVideoStudio }: ArtifactButtonProps) {
   const thumbnailRoot = useRef<HTMLSpanElement>(null);
   const { loadWorkspaceThumbnail } = useOpenTargets();
@@ -301,7 +294,7 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
   const presentedArtifact = presentedName === artifact.name
     ? artifact
     : { ...artifact, name: presentedName, target: { ...artifact.target, name: presentedName } };
-  const title = compactArtifactTitle(presentedName);
+  const title = presentedName;
   const typeLabel = getArtifactTypeLabel(studioTarget?.surface === "video" ? "video" : artifact.type);
   const extension = artifact.name.includes(".") ? artifact.name.slice(artifact.name.lastIndexOf(".") + 1).toUpperCase() : typeLabel;
   const canDownload = Boolean(client && workspaceId && artifact.target.kind === "file");
@@ -358,12 +351,12 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
   }
 
   return (
-    <div className={cn("group/output relative max-w-full", "h-14 w-full min-w-0")} data-testid="artifact-file-shell">
+    <div className={cn("group/output relative max-w-full", "min-h-16 w-full min-w-0")} data-testid="artifact-file-shell">
       <DescriptiveButton
         disabled={!canActivate}
         data-testid="artifact-file-card"
         data-artifact-path={artifact.path}
-        className={cn("max-w-full items-center whitespace-nowrap", "chat-output-card pr-20")}
+        className={cn("max-w-full items-center whitespace-nowrap", "chat-output-card")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.(presentedName);
@@ -378,12 +371,12 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
         {content}
       </DescriptiveButton>
       {(
-        <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover/output:pointer-events-auto group-hover/output:opacity-100 group-focus-within/output:pointer-events-auto group-focus-within/output:opacity-100" data-testid="artifact-file-actions">
+        <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5 bg-background opacity-0 transition-opacity group-hover/output:pointer-events-auto group-hover/output:opacity-100 group-focus-within/output:pointer-events-auto group-focus-within/output:opacity-100" data-testid="artifact-file-actions">
           {canDownload ? (
             <Button
               variant="ghost"
               size="icon-sm"
-              className="size-7 rounded-lg bg-background/90 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="size-7 rounded-md bg-transparent text-muted-foreground/70 hover:bg-muted/40 hover:text-foreground [&_svg]:stroke-[1.5]"
               aria-label={t("artifact.download_artifact")}
               title={t("artifact.download_artifact")}
               disabled={downloading}
@@ -398,7 +391,7 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="size-7 rounded-lg bg-background/90 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="size-7 rounded-md bg-transparent text-muted-foreground/70 hover:bg-muted/40 hover:text-foreground [&_svg]:stroke-[1.5]"
                   aria-label={t("session.outputs.more_actions")}
                   data-testid="artifact-file-more"
                   title={t("session.outputs.more_actions")}

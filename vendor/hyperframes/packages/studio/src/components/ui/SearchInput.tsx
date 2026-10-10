@@ -1,5 +1,6 @@
 import { type ComponentPropsWithRef } from "react";
 import { Search } from "lucide-react";
+import { Input } from "@ipollowork/ui/controls";
 
 interface SearchInputProps extends Omit<ComponentPropsWithRef<"input">, "type"> {
   /** Accessible name — placeholder alone is not one. */
@@ -7,19 +8,19 @@ interface SearchInputProps extends Omit<ComponentPropsWithRef<"input">, "type"> 
 }
 
 /**
- * Shared search input — one visual system (panel-input tokens) for every
+ * Shared search input — the public Input with a search icon for every
  * panel search box, with a required accessible name.
  */
-export function SearchInput({ className = "", ...props }: SearchInputProps) {
+export function SearchInput({ className = "", style, ...props }: SearchInputProps) {
   return (
     <div
       data-slot="studio-search"
-      className={`flex h-8 min-w-0 items-center gap-2 rounded-[8px] border border-panel-border-input bg-panel-bg px-2.5 text-panel-text-3 transition-colors ${className}`}
+      className={`relative min-w-0 ${className}`}
     >
-      <Search size={16} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
-      <input
+      <Search size={16} strokeWidth={1.75} className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-panel-text-3" aria-hidden="true" />
+      <Input
         type="search"
-        className="h-full min-w-0 w-full bg-transparent text-[12px] leading-4 text-panel-text-1 outline-none placeholder:text-panel-text-4"
+        style={{ ...style, paddingInlineStart: 32, fontSize: "var(--ui-meta-size)", lineHeight: "var(--ui-meta-line)" }}
         {...props}
       />
     </div>

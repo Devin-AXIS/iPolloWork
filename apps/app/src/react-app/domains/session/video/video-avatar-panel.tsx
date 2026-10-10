@@ -5,6 +5,9 @@ import { ArrowLeft, Check, ChevronDown, ChevronRight, ImagePlus, Info, Loader2, 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -26,8 +29,8 @@ type Props = {
 };
 
 const defaultPrompt = `${AVATAR_CAMERA_PROMPT}人物面向镜头说出所选配音，嘴唇和下颌随每个音节自然变化，停顿时放松闭口，表情随语气变化，避免反复点头和晃动。`;
-const menuClassName = "video-settings-typography max-h-(--available-height) max-w-(--available-width) rounded-lg bg-popover p-1.5 text-xs [&_[role=option]]:min-h-[34px] [&_[role=option]]:px-2 [&_[role=option]]:py-1.5 [&_[role=option]]:text-xs";
-const fieldClassName = "h-[34px] data-[size=default]:h-[34px] w-full rounded-lg border-0 bg-muted/60 px-3 text-xs font-normal shadow-none";
+const menuClassName = "video-settings-typography";
+const fieldClassName = "w-full min-w-0";
 
 function sameConfiguration(left: AvatarProfile, right: AvatarProfile) {
   return left.name === right.name && left.imagePath === right.imagePath && left.imageName === right.imageName
@@ -292,67 +295,73 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
   const visibleJobs = draft ? jobs.filter(job => job.avatarProfileId === draft.id) : jobs.filter(job => !job.avatarProfileId);
   const taskJob = jobs.find(job => job.id === taskId);
 
-  return <div className="video-settings-typography space-y-4 text-xs font-normal text-foreground" data-testid="video-avatar-panel">
+  return <div className="video-settings-typography space-y-4 text-ui-control font-normal text-foreground" data-testid="video-avatar-panel">
     {draft ? <>
-      <div className="flex items-center justify-between gap-2"><Button variant="ghost" size="sm" className="-ml-2 h-[34px] text-xs" disabled={busy} onClick={() => void act(back)}><ArrowLeft className="size-4" />数字人列表</Button><Button variant="ghost" size="icon-xs" aria-label="删除此数字人" disabled={busy} onClick={() => setDeleteOpen(true)}><Trash2 className="size-4" /></Button></div>
+      <div className="flex items-center justify-between gap-2"><Button variant="ghost" size="sm" className="-ml-2 h-8 text-ui-control" disabled={busy} onClick={() => void act(back)}><ArrowLeft className="size-4" />数字人列表</Button><Button variant="ghost" size="icon-xs" aria-label="删除此数字人" disabled={busy} onClick={() => setDeleteOpen(true)}><Trash2 className="size-4" /></Button></div>
       <div className="space-y-6">
         <section className="space-y-4" aria-label="名称与人物图片">
           <div className="space-y-1.5"><label htmlFor={nameId} className="text-ui-control font-semibold">名称</label><Input id={nameId} value={draft.name} maxLength={80} disabled={busy} onChange={event => setDraft(current => current ? { ...current, name: event.target.value } : current)} className={fieldClassName} /></div>
           <div className="space-y-2">
             <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="选择人物图片" disabled={busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void act(() => upload(file)); }} />
-            <button type="button" disabled={busy} onClick={() => imageInputRef.current?.click()} aria-label={draft.imagePath ? "替换人物图片" : "上传人物图片"} className="flex w-full items-center gap-3 rounded-lg bg-muted/60 p-3 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+            <Button variant="ghost" type="button" disabled={busy} onClick={() => imageInputRef.current?.click()} aria-label={draft.imagePath ? "替换人物图片" : "上传人物图片"} className="h-auto w-full justify-start gap-3 whitespace-normal bg-muted/60 p-3 text-left">
               {draft.imagePath && thumbnails[draft.imagePath] ? <img src={thumbnails[draft.imagePath]} alt="数字人人物参考图片" className="h-16 w-14 shrink-0 rounded-md object-contain" /> : <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-background"><ImagePlus aria-hidden="true" className="size-5 text-muted-foreground" /></span>}
-              <span className="min-w-0 flex-1 space-y-1"><span className="block truncate text-xs font-medium" title={draft.imageName || undefined}>{draft.imageName || "上传人物图片"}</span><span className="block text-[11px] leading-5 text-muted-foreground">{draft.imagePath ? "点击替换图片" : "PNG / JPG / WebP · 最大 20 MB"}</span></span>
-            </button>
-            {imageMessage && imageMessage !== "图片已上传" ? <p role="status" className={`text-[11px] ${imageMessage.startsWith("图片上传失败") ? "text-destructive" : "text-muted-foreground"}`}>{imageMessage}</p> : null}
+              <span className="min-w-0 flex-1 space-y-1"><span className="block truncate text-ui-control font-medium" title={draft.imageName || undefined}>{draft.imageName || "上传人物图片"}</span><span className="block text-[11px] leading-5 text-muted-foreground">{draft.imagePath ? "点击替换图片" : "PNG / JPG / WebP · 最大 20 MB"}</span></span>
+            </Button>
+            {imageMessage && imageMessage !== "图片已上传" ? <Alert variant={imageMessage.startsWith("图片上传失败") ? "destructive" : "default"}><AlertDescription>{imageMessage}</AlertDescription></Alert> : null}
           </div>
         </section>
         <section className="space-y-1.5" aria-label="绑定配音片段">
           <label className="text-ui-control font-semibold" htmlFor="avatar-audio-clip">配音片段</label>
-          {source?.audioClips?.length ? <><Select value={draft.audioClipId || undefined} onValueChange={value => setDraft(current => current ? { ...current, audioClipId: value ?? "" } : current)}><SelectTrigger id="avatar-audio-clip" aria-label="配音片段" className={fieldClassName}><SelectValue>{selectedClip ? `${selectedClip.label} · ${selectedClip.duration.toFixed(1)} 秒` : "选择这位数字人的配音片段"}</SelectValue></SelectTrigger><SelectContent align="start" className={menuClassName}>{source.audioClips.map(clip => <SelectItem key={clip.id} value={clip.id}>{clip.label} · {clip.duration.toFixed(1)} 秒</SelectItem>)}</SelectContent></Select>{onOpenVoice ? <div className="flex justify-end"><Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" onClick={onOpenVoice}>调整配音</Button></div> : null}</> : <div className="flex items-start justify-between gap-3"><p role="status" className="min-w-0 text-[11px] leading-5 text-muted-foreground">{checking ? "正在读取配音…" : source?.audioIssue || "当前视频还没有可用的配音。可以先保存形象，设置配音后再生成。"}</p>{onOpenVoice ? <Button type="button" variant="link" size="sm" className="h-auto shrink-0 px-0 text-xs" onClick={onOpenVoice}>去设置配音</Button> : null}</div>}
+          {source?.audioClips?.length ? <><Select value={draft.audioClipId || undefined} onValueChange={value => setDraft(current => current ? { ...current, audioClipId: value ?? "" } : current)}><SelectTrigger id="avatar-audio-clip" aria-label="配音片段" className={fieldClassName}><SelectValue>{selectedClip ? `${selectedClip.label} · ${selectedClip.duration.toFixed(1)} 秒` : "选择这位数字人的配音片段"}</SelectValue></SelectTrigger><SelectContent align="start" className={menuClassName}>{source.audioClips.map(clip => <SelectItem key={clip.id} value={clip.id}>{clip.label} · {clip.duration.toFixed(1)} 秒</SelectItem>)}</SelectContent></Select>{onOpenVoice ? <div className="flex justify-end"><Button type="button" variant="link" size="sm" className="h-auto px-0 text-ui-control" onClick={onOpenVoice}>调整配音</Button></div> : null}</> : <div className="flex items-start justify-between gap-3"><p role="status" className="min-w-0 text-[11px] leading-5 text-muted-foreground">{checking ? "正在读取配音…" : source?.audioIssue || "当前视频还没有可用的配音。可以先保存形象，设置配音后再生成。"}</p>{onOpenVoice ? <Button type="button" variant="link" size="sm" className="h-auto shrink-0 px-0 text-ui-control" onClick={onOpenVoice}>去设置配音</Button> : null}</div>}
         </section>
         <section className="space-y-1.5" aria-label="画面设置"><h3 className="text-ui-control font-semibold">画面设置</h3>
-          <div className="grid grid-cols-2 gap-2">{(["9:16", "16:9"] as const).map(value => <button key={value} type="button" aria-pressed={draft.ratio === value} aria-label={value === "9:16" ? `竖屏 ${AVATAR_STANDARD_VIDEO.shortEdge}×${AVATAR_STANDARD_VIDEO.longEdge}` : `横屏 ${AVATAR_STANDARD_VIDEO.longEdge}×${AVATAR_STANDARD_VIDEO.shortEdge}`} onClick={() => setDraft(current => current ? { ...current, ratio: value } : current)} className={`relative flex items-center gap-2 rounded-lg border p-2.5 text-left text-xs ${draft.ratio === value ? "border-primary/50 bg-primary/5" : "border-transparent bg-muted/60 text-muted-foreground"}`}>
-            {value === "9:16" ? <RectangleVertical aria-hidden="true" className="size-5" strokeWidth={1.5} /> : <RectangleHorizontal aria-hidden="true" className="size-5" strokeWidth={1.5} />}{value === "9:16" ? "竖屏 9:16" : "横屏 16:9"}{draft.ratio === value ? <Check aria-hidden="true" className="ml-auto size-3 text-primary" /> : null}
-          </button>)}</div>
+          <RadioGroup aria-label="画面设置" value={draft.ratio} disabled={busy} onValueChange={value => {
+            if (value === "9:16" || value === "16:9") setDraft(current => current ? { ...current, ratio: value } : current);
+          }} className="grid-cols-2 gap-2">
+            {(["9:16", "16:9"] satisfies AvatarProfile["ratio"][]).map(value => <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border p-2.5 text-ui-control ${draft.ratio === value ? "border-primary/50 bg-primary/5" : "border-transparent bg-muted/60 text-muted-foreground"}`}>
+              <RadioGroupItem value={value} aria-label={value === "9:16" ? `竖屏 ${AVATAR_STANDARD_VIDEO.shortEdge}×${AVATAR_STANDARD_VIDEO.longEdge}` : `横屏 ${AVATAR_STANDARD_VIDEO.longEdge}×${AVATAR_STANDARD_VIDEO.shortEdge}`} />
+              {value === "9:16" ? <RectangleVertical aria-hidden="true" className="size-5" strokeWidth={1.5} /> : <RectangleHorizontal aria-hidden="true" className="size-5" strokeWidth={1.5} />}
+              {value === "9:16" ? "竖屏 9:16" : "横屏 16:9"}
+            </label>)}
+          </RadioGroup>
           {selectedClip && selectedClip.duration > 15 ? <p className="text-[11px] leading-5 text-muted-foreground">超过 15 秒将自动分段生成并拼接。</p> : null}
         </section>
         <section className="space-y-1.5" aria-label="动作描述">
           <div className="flex items-center justify-between gap-2"><label htmlFor={promptId} className="text-ui-control font-semibold">动作描述</label><Tooltip><TooltipTrigger render={<button type="button" aria-label="动作与背景说明" className="flex items-center gap-1 text-[11px] text-muted-foreground" />}>{avatarBackgroundForPrompt(draft.prompt) === "transparent" ? "透明背景" : "保留背景"}<Info aria-hidden="true" className="size-3" /></TooltipTrigger><TooltipContent className="text-[11px]">默认保留背景，生成后可手动智能抠图。明确要求去除背景时才自动抠图。</TooltipContent></Tooltip></div>
-          <Textarea id={promptId} value={draft.prompt} rows={3} maxLength={3000} disabled={busy} onChange={event => setDraft(current => current ? { ...current, prompt: event.target.value } : current)} className="min-h-20 resize-none border-0 bg-muted/60 text-xs leading-5 shadow-none" />
+          <Textarea id={promptId} value={draft.prompt} rows={3} maxLength={3000} disabled={busy} onChange={event => setDraft(current => current ? { ...current, prompt: event.target.value } : current)} className="min-h-20" />
           <p className="text-[11px] leading-5 text-muted-foreground">系统会自动要求固定镜头，并保持参考图的人物比例与构图；嘴唇、眨眼和自然表情仍可变化。</p>
         </section>
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="h-[34px] w-full rounded-lg text-ui-control shadow-none before:shadow-none" disabled={busy} onClick={() => void act(save)}>保存设置</Button><Button type="button" className="h-[34px] w-full rounded-lg text-[13px] disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" disabled={busy || !canSubmit} onClick={() => void beginGeneration()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}生成数字人片段</Button></div>
+          <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="w-full" disabled={busy} onClick={() => void act(save)}>保存设置</Button><Button type="button" className="w-full" disabled={busy || !canSubmit} onClick={() => void beginGeneration()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}生成数字人片段</Button></div>
           <p className="text-[11px] leading-5 text-muted-foreground">{checking ? "正在检查视频服务…" : ready ? "保存设置不会生成视频；生成片段按 RunningHub 实际用量计费。" : "请先在授权中心配置 RunningHub 视频服务的 Key。"}</p>
         </div>
       </div>
     </> : <>
-      <div className="flex min-h-[34px] items-center gap-2">
+      <div className="flex min-h-8 items-center gap-2">
         {profiles.length ? <p className="text-ui-caption text-muted-foreground">已创建 {profiles.length} 位</p> : null}
-        <Button variant="outline" size="sm" className="ml-auto h-[34px] rounded-lg text-ui-control shadow-none before:shadow-none" disabled={busy} onClick={() => void act(create)}><Plus className="size-4" />创建数字人</Button>
+        <Button variant="outline" size="sm" className="ml-auto" disabled={busy} onClick={() => void act(create)}><Plus className="size-4" />创建数字人</Button>
       </div>
       {profiles.length ? <div className="space-y-2">{profiles.map(profile => {
         const status = profileStatus(profile, jobs, source);
         const job = jobs.find(item => item.avatarProfileId === profile.id);
-        return <button key={profile.id} type="button" data-testid="avatar-profile-card" disabled={busy} onClick={() => { setDraft(profile); setPreview(""); }} className="flex w-full items-center gap-3 rounded-lg border border-border/70 p-2 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        return <Button variant="outline" key={profile.id} type="button" data-testid="avatar-profile-card" disabled={busy} onClick={() => { setDraft(profile); setPreview(""); }} className="h-auto w-full justify-start gap-3 whitespace-normal p-2 text-left">
           <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted/60">{profile.imagePath && thumbnails[profile.imagePath] ? <img src={thumbnails[profile.imagePath]} alt="" className="h-full w-full object-cover" /> : <ImagePlus aria-hidden="true" className="size-5 text-muted-foreground" />}</span>
           <span className="min-w-0 flex-1"><span className="block truncate text-ui-control font-medium">{profile.name}</span><span className="mt-0.5 block truncate text-ui-caption text-muted-foreground">{status}{job?.status === "succeeded" && status === "已生成" ? " · 可预览" : ""}</span></span>
           <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        </button>;
-      })}</div> : <p className="rounded-lg bg-muted/45 p-4 text-center text-[11px] leading-5 text-muted-foreground">还没有数字人。创建后可先保存形象，再选择配音片段生成。</p>}
+        </Button>;
+      })}</div> : <Empty className="p-4"><EmptyDescription>还没有数字人。创建后可先保存形象，再选择配音片段生成。</EmptyDescription></Empty>}
     </>}
-    {message ? <p role="status" className="break-words text-[11px] leading-5 text-muted-foreground">{message}</p> : null}
+    {message ? <Alert><AlertDescription>{message}</AlertDescription></Alert> : null}
     {visibleJobs.length > 0 ? <section className="space-y-2 border-t border-border/60 pt-4" aria-label={draft ? "此数字人的生成记录" : "历史生成记录"}>
       <div className="flex items-center justify-between"><h3 className="text-ui-control font-semibold">生成记录 <span className="font-normal text-muted-foreground">{visibleJobs.length}</span></h3><Button variant="ghost" size="icon-xs" aria-label="刷新数字人任务" disabled={busy} onClick={() => void act(refresh)}><RefreshCw /></Button></div>
       {(showAllHistory ? visibleJobs : visibleJobs.slice(0, 3)).map(job => {
         const needsAttention = ["failed", "uncertain", "save_failed"].includes(job.status);
-        return <button key={job.id} type="button" data-testid="avatar-job-card" onClick={() => { setTaskId(job.id); setPreview(""); setTaskOpen(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg border border-border/70 px-3 py-2 text-left text-xs hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="min-w-0"><span className={`block font-medium ${needsAttention ? "text-destructive" : ""}`}>{jobLabel(job)} · {new Date(job.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span className={`block truncate text-[11px] ${needsAttention ? "text-destructive" : "text-muted-foreground"}`} title={avatarJobStatusDetail(job)}>{avatarJobStatusDetail(job)}</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></button>;
+        return <Button variant="outline" key={job.id} type="button" data-testid="avatar-job-card" onClick={() => { setTaskId(job.id); setPreview(""); setTaskOpen(true); }} className="h-auto w-full justify-between gap-2 whitespace-normal px-3 py-2 text-left"><span className="min-w-0"><span className={`block font-medium ${needsAttention ? "text-destructive" : ""}`}>{jobLabel(job)} · {new Date(job.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span className={`block truncate text-[11px] ${needsAttention ? "text-destructive" : "text-muted-foreground"}`} title={avatarJobStatusDetail(job)}>{avatarJobStatusDetail(job)}</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></Button>;
       })}
-      {visibleJobs.length > 3 ? <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" onClick={() => setShowAllHistory(current => !current)}>{showAllHistory ? "收起记录" : `查看全部 ${visibleJobs.length} 条`}</Button> : null}
+      {visibleJobs.length > 3 ? <Button type="button" variant="link" size="sm" className="h-auto px-0 text-ui-control" onClick={() => setShowAllHistory(current => !current)}>{showAllHistory ? "收起记录" : `查看全部 ${visibleJobs.length} 条`}</Button> : null}
     </section> : null}
     <AvatarTaskDialog open={taskOpen} onOpenChange={setTaskOpen} job={taskJob} starting={starting} error={message} busy={busy} preview={preview} recoveryId={taskJob ? recoveryIds[taskJob.id] ?? "" : ""} onRecoveryId={value => { if (taskJob) setRecoveryIds(current => ({ ...current, [taskJob.id]: value })); }} onShow={path => void act(() => show(path))} onPause={() => { if (taskJob) void act(() => updateJob("pause", taskJob.id)); }} onResume={() => { if (taskJob) void act(() => updateJob("resume", taskJob.id)); }} onStop={() => { if (taskJob) void act(() => updateJob("stop", taskJob.id)); }} onRetry={index => { if (taskJob) void act(async () => { await call("retry-segment", { id: taskJob.id, index }); await refresh(); }); }} onRecover={() => { if (taskJob) void act(async () => { await call("recover", { id: taskJob.id, ...(recoveryIds[taskJob.id]?.trim() ? { upstreamId: recoveryIds[taskJob.id].trim() } : {}) }); await refresh(); }); }} onAssetAction={action => { if (taskJob?.path) void act(() => handleAssetAction(action, taskJob)); }} onRegenerate={() => void beginGeneration()} canRegenerate={canSubmit} />
-    <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialogContent className="video-settings-typography gap-4 rounded-xl p-5"><AlertDialogTitle className="text-sm">删除「{draft?.name}」？</AlertDialogTitle><AlertDialogDescription className="text-xs leading-5">这会删除人物配置，已生成的视频仍保留在素材库。</AlertDialogDescription><AlertDialogFooter><Button type="button" variant="outline" className="h-[34px] text-xs" onClick={() => setDeleteOpen(false)}>取消</Button><AlertDialogAction type="button" variant="destructive" className="h-[34px] text-xs" onClick={() => { setDeleteOpen(false); void act(remove); }}>删除数字人</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialogContent className="video-settings-typography gap-4 rounded-xl p-5"><AlertDialogTitle className="text-sm">删除「{draft?.name}」？</AlertDialogTitle><AlertDialogDescription className="text-ui-control leading-5">这会删除人物配置，已生成的视频仍保留在素材库。</AlertDialogDescription><AlertDialogFooter><Button type="button" variant="outline" className="h-8 text-ui-control" onClick={() => setDeleteOpen(false)}>取消</Button><AlertDialogAction type="button" variant="destructive" className="h-8 text-ui-control" onClick={() => { setDeleteOpen(false); void act(remove); }}>删除数字人</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </div>;
 }
 
@@ -372,7 +381,7 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
   const isActive = job && ["running", "submitting", "saving"].includes(job.status);
   const showProgress = Boolean(sequence || isActive);
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent data-testid="avatar-task-dialog" className="video-settings-typography max-h-[calc(100dvh-32px)] max-w-lg gap-4 overflow-y-auto rounded-xl p-5 text-xs">
+    <DialogContent data-testid="avatar-task-dialog" className="video-settings-typography max-h-[calc(100dvh-32px)] max-w-lg gap-4 overflow-y-auto rounded-xl p-5 text-ui-control">
       <DialogHeader className="gap-1 pr-8"><DialogTitle className="text-ui-title-sm font-semibold">数字人片段 · {job ? jobLabel(job) : "准备中"}</DialogTitle><DialogDescription className="text-ui-caption">关闭窗口后任务仍会继续，可从生成记录重新打开。</DialogDescription></DialogHeader>
       {job ? <div className="space-y-4">
         <div className="space-y-2 rounded-lg bg-muted/50 p-4" role={showProgress ? "status" : "alert"}>
@@ -381,12 +390,12 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
           <div className={`flex flex-wrap justify-between gap-1 text-[11px] ${showProgress ? "text-muted-foreground" : "text-destructive"}`}><span>{sequence ? `已完成 ${progress?.completed}/${progress?.total} 段 · 视频 ${sequence.duration.toFixed(1)} 秒` : avatarJobStatusDetail(job)}</span><span>{progress?.eta || (job.status === "saving" ? "正在完成最后处理" : "")}</span></div>
         </div>
         {job.message && sequence ? <p className="break-words text-[11px] leading-5 text-muted-foreground">{job.message}</p> : null}
-        {job.status === "succeeded" && job.path ? <div className="space-y-3"><p className="font-medium">成片已保存到素材库</p>{preview ? <video controls src={preview} className="max-h-60 w-full rounded-lg bg-black" /> : <Button type="button" variant="outline" className="h-[34px] w-full rounded-lg text-xs shadow-none" disabled={busy} onClick={() => onShow(job.path)}><Play className="size-4" />预览数字人</Button>}<div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="h-[34px] rounded-lg text-xs shadow-none" disabled={busy} onClick={() => onAssetAction("view")}>在素材中查看</Button><Button type="button" className="h-[34px] rounded-lg text-xs text-white" disabled={busy} onClick={() => onAssetAction("insert")}>插入当前视频</Button></div></div> : null}
-        {job.status === "running" && sequence && !job.pauseRequested ? <Button type="button" variant="outline" className="h-[34px] w-full rounded-lg text-xs shadow-none" disabled={busy} onClick={onPause}><Pause className="size-4" />当前片段完成后暂停</Button> : null}
-        {job.status === "paused" ? <Button type="button" className="h-[34px] w-full rounded-lg text-xs text-white" disabled={busy} onClick={onResume}><Play className="size-4" />继续生成</Button> : null}
+        {job.status === "succeeded" && job.path ? <div className="space-y-3"><p className="font-medium">成片已保存到素材库</p>{preview ? <video controls src={preview} className="max-h-60 w-full rounded-lg bg-black" /> : <Button type="button" variant="outline" className="h-8 w-full rounded-lg text-ui-control shadow-none" disabled={busy} onClick={() => onShow(job.path)}><Play className="size-4" />预览数字人</Button>}<div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="h-8 rounded-lg text-ui-control shadow-none" disabled={busy} onClick={() => onAssetAction("view")}>在素材中查看</Button><Button type="button" className="h-8 rounded-lg text-ui-control" disabled={busy} onClick={() => onAssetAction("insert")}>插入当前视频</Button></div></div> : null}
+        {job.status === "running" && sequence && !job.pauseRequested ? <Button type="button" variant="outline" className="h-8 w-full rounded-lg text-ui-control shadow-none" disabled={busy} onClick={onPause}><Pause className="size-4" />当前片段完成后暂停</Button> : null}
+        {job.status === "paused" ? <Button type="button" className="h-8 w-full rounded-lg text-ui-control" disabled={busy} onClick={onResume}><Play className="size-4" />继续生成</Button> : null}
         {job.pauseRequested && job.status === "running" ? <p className="text-[11px] text-muted-foreground">暂停请求已收到，当前片段保存后会暂停。</p> : null}
-        {["running", "submitting", "paused", "uncertain"].includes(job.status) ? <Button type="button" variant="ghost" className="h-[30px] text-xs text-destructive" disabled={busy} onClick={() => setStopOpen(true)}>停止生成</Button> : null}
-        {["uncertain", "save_failed"].includes(job.status) || job.status === "failed" && preparationFailed ? <div className="space-y-2">{job.status === "uncertain" && !job.upstreamId && !sequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input className="text-xs" aria-label="已有服务商任务 ID" placeholder="填写已有 RunningHub 任务 ID" value={recoveryId} onChange={event => onRecoveryId(event.target.value)} /> : null}<Button type="button" variant="outline" className="h-[34px] text-xs" disabled={busy} onClick={onRecover}>{preparationFailed ? "恢复准备并继续生成" : "恢复查询或拼接"}</Button></div> : null}
+        {["running", "submitting", "paused", "uncertain"].includes(job.status) ? <Button type="button" variant="ghost" className="h-[30px] text-ui-control text-destructive" disabled={busy} onClick={() => setStopOpen(true)}>停止生成</Button> : null}
+        {["uncertain", "save_failed"].includes(job.status) || job.status === "failed" && preparationFailed ? <div className="space-y-2">{job.status === "uncertain" && !job.upstreamId && !sequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input className="text-ui-control" aria-label="已有服务商任务 ID" placeholder="填写已有 RunningHub 任务 ID" value={recoveryId} onChange={event => onRecoveryId(event.target.value)} /> : null}<Button type="button" variant="outline" className="text-ui-control" disabled={busy} onClick={onRecover}>{preparationFailed ? "恢复准备并继续生成" : "恢复查询或拼接"}</Button></div> : null}
         {sequence ? <Collapsible key={`${job.id}:${job.status === "failed"}`} defaultOpen={job.status === "failed"} className="rounded-lg border border-border/70">
           <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left text-[11px] font-medium">片段详情 <ChevronDown className="size-4" /></CollapsibleTrigger>
           <CollapsibleContent data-testid="avatar-job-details" className="max-h-48 space-y-3 overflow-y-auto border-t border-border/70 p-3 text-[11px]">
@@ -400,11 +409,11 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
             </div>)}
           </CollapsibleContent>
         </Collapsible> : null}
-        {["succeeded", "failed", "stopped"].includes(job.status) && canRegenerate ? <Button type="button" variant="ghost" className="h-[30px] text-xs" disabled={busy} onClick={onRegenerate}>{sequence ? "重新生成全部（计费）" : "按当前设置重新生成（计费）"}</Button> : null}
+        {["succeeded", "failed", "stopped"].includes(job.status) && canRegenerate ? <Button type="button" variant="ghost" className="h-[30px] text-ui-control" disabled={busy} onClick={onRegenerate}>{sequence ? "重新生成全部（计费）" : "按当前设置重新生成（计费）"}</Button> : null}
         {preview && job.status !== "succeeded" ? <video controls src={preview} className="max-h-48 w-full rounded-lg bg-black" /> : null}
       </div> : <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground"><Loader2 className="size-4 animate-spin" />{starting ? "正在准备数字人任务…" : error || "正在读取任务…"}</div>}
-      {error && job ? <p role="alert" className="text-[11px] text-destructive">{error}</p> : null}
+      {error && job ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
     </DialogContent>
-    <AlertDialog open={stopOpen} onOpenChange={setStopOpen}><AlertDialogContent className="video-settings-typography gap-4 rounded-xl p-5"><AlertDialogTitle className="text-sm">停止数字人生成？</AlertDialogTitle><AlertDialogDescription className="text-xs leading-5">后续片段不再生成，已完成片段会保留。当前片段将请求服务商取消，是否继续计费以服务商结果为准。</AlertDialogDescription><AlertDialogFooter><Button type="button" variant="outline" className="h-[34px] text-xs" onClick={() => setStopOpen(false)}>返回任务</Button><AlertDialogAction type="button" variant="destructive" className="h-[34px] text-xs" onClick={() => { setStopOpen(false); onStop(); }}>停止生成</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={stopOpen} onOpenChange={setStopOpen}><AlertDialogContent className="video-settings-typography gap-4 rounded-xl p-5"><AlertDialogTitle className="text-sm">停止数字人生成？</AlertDialogTitle><AlertDialogDescription className="text-ui-control leading-5">后续片段不再生成，已完成片段会保留。当前片段将请求服务商取消，是否继续计费以服务商结果为准。</AlertDialogDescription><AlertDialogFooter><Button type="button" variant="outline" className="h-8 text-ui-control" onClick={() => setStopOpen(false)}>返回任务</Button><AlertDialogAction type="button" variant="destructive" className="h-8 text-ui-control" onClick={() => { setStopOpen(false); onStop(); }}>停止生成</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </Dialog>;
 }

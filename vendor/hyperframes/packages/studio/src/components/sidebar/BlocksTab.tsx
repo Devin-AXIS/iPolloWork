@@ -12,7 +12,8 @@ import {
 import { createPortal } from "react-dom";
 import { Eye, ChevronDown, ChevronRight, ListFilter, Plus, Sparkles, X } from "lucide-react";
 import { SearchInput } from "../ui/SearchInput";
-import { FlatDropdown } from "../editor/propertyPanelFlatSelectRow";
+import { Button } from "@ipollowork/ui/controls";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@ipollowork/ui/dropdown-menu";
 import { Tooltip } from "../ui/Tooltip";
 import { useDialogBehavior } from "../ui/useDialogBehavior";
 import { formatVisualComponentDataForAi } from "@hyperframes/core/registry";
@@ -192,7 +193,7 @@ export const BlocksTab = memo(function BlocksTab({
   }, [activeSection, sections]);
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[14px]">
+      <div className="flex-shrink-0 border-b border-panel-border px-4 py-3">
         <div className="flex items-center gap-2" data-testid="component-catalog-toolbar">
             <SearchInput
               value={search}
@@ -203,40 +204,23 @@ export const BlocksTab = memo(function BlocksTab({
               className="flex-1"
             />
           <ComponentImport onImported={async () => { await reload(); setSearch(""); setActiveSection(ALL_SECTIONS_FILTER); }} />
-          <FlatDropdown
-            value={activeSection}
-            onChange={(nextSection) => {
-              if (nextSection === ALL_SECTIONS_FILTER)
-                setActiveSection(ALL_SECTIONS_FILTER);
-              else {
-                const match = sections.find(
-                  (section) => section.id === nextSection,
-                );
-                if (match) setActiveSection(match.id);
-              }
-            }}
-            ariaLabel={locale === "zh" ? "组件分类" : "Component category"}
-            options={[
-              {
-                value: ALL_SECTIONS_FILTER,
-                label: `${locale === "zh" ? "全部组件" : "All components"} · ${totalCount}`,
-              },
-              ...sections.map((section) => ({
-                value: section.id,
-                label: `${SECTION_TITLES[section.id][locale]} · ${section.items.length}`,
-              })),
-            ]}
-            icon={
-              <ListFilter
-                aria-hidden="true"
-                size={16}
-                strokeWidth={1.5}
-                className="mx-auto"
-              />
-            }
-            menuWidth={208}
-            className={`h-8 w-8 shrink-0 rounded-[8px] border border-panel-border-input transition-colors hover:bg-panel-hover ${activeSection === ALL_SECTIONS_FILTER ? "bg-panel-input text-panel-text-2" : "bg-panel-accent/15 text-panel-accent"}`}
-          />
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label={locale === "zh" ? "组件分类" : "Component category"} />}>
+              <ListFilter aria-hidden="true" size={16} strokeWidth={1.5} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" style={{ minWidth: 208 }}>
+              <DropdownMenuRadioGroup value={activeSection} onValueChange={nextSection => {
+                if (nextSection === ALL_SECTIONS_FILTER) setActiveSection(ALL_SECTIONS_FILTER);
+                else {
+                  const match = sections.find(section => section.id === nextSection);
+                  if (match) setActiveSection(match.id);
+                }
+              }}>
+                <DropdownMenuRadioItem closeOnClick value={ALL_SECTIONS_FILTER}>{locale === "zh" ? "全部组件" : "All components"} · {totalCount}</DropdownMenuRadioItem>
+                {sections.map(section => <DropdownMenuRadioItem closeOnClick key={section.id} value={section.id}>{SECTION_TITLES[section.id][locale]} · {section.items.length}</DropdownMenuRadioItem>)}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

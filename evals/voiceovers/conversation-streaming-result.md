@@ -1,8 +1,8 @@
 # Conversation streaming: stable final answer
 
-1. Send a request that makes the assistant explain what it is doing, run a command, and then answer. The live explanation and running command appear in order beneath the process heading; the raw command remains optional, alongside a subtle animated thinking ellipsis. The process folds when the answer is complete.
+1. Send a request that makes the assistant explain what it is doing, run a command, and then answer. The live explanation and running command appear in order beneath the process heading; the raw command remains optional, with only the current tool state pulsing. The process folds when the answer is complete.
 
-2. When the assistant starts its final answer, the answer appears below the progress area and grows in place as text streams in. Once the text is done but the run is still ending, the process row says it is finishing and keeps counting time.
+2. When the assistant starts its final answer, the answer appears below the progress area and grows in place as text streams in. While text is still streaming, the process row says it is responding and keeps counting time.
 
 3. After the run completes, the elapsed time freezes beside the processed command count and the process details fold away. The final answer remains visible, and a follow-up entered while the run is busy stays queued for the next run.
 
@@ -26,7 +26,7 @@
 
 13. When an inline preview cannot be matched to a saved output, the preview stays labeled as a preview and the separate saved-file card remains available.
 
-14. If one tool step fails while the assistant continues, the result area still says it is preparing the result. It does not show a separate failed-step notice or raw tool output in the main conversation.
+14. If one tool step fails while the assistant continues, the current process state still says it is thinking. It does not show a separate failed-step notice or raw tool output in the main conversation.
 
 15. During an automatic retry, the conversation shows a calm retry status and countdown. The transport error remains in collapsed technical details.
 
@@ -40,10 +40,10 @@
 
 20. Expanding a completed run shows icon-labeled action groups for file inspection and command execution. Each group starts closed, opens to reveal its original steps, and can be folded again without hiding the final answer.
 
-21. OpenCode keeps only one thinking label while continuing after an earlier answer, then shows the same gently animated letters and dots before its first assistant part, while reasoning, and alongside a running command.
+21. OpenCode keeps only one thinking label while continuing after an earlier answer, then shows thinking before its first assistant part. During reasoning and tools, only the current state pulses.
 
-22. OpenCode text and command summaries append in arrival order without moving earlier text or creating a premature result area. When the run completes, its process folds and the final answer remains visible.
+22. OpenCode text streams in stable body nodes while tools appear in the process area. Later tools and completion preserve those text nodes; completion folds the process.
 
 23. After the model finishes generating the video source, the process still says it is in progress while the iPolloWork app exports the MP4, instead of reporting the task as complete too early.
 
-24. Returning to the conversation input, two typed lines and the placeholder use 14-pixel text with the same one-and-a-half line spacing as ordinary conversation text.
+24. Returning to the conversation input, two typed lines and the placeholder use shared 13-pixel text with 20-pixel line spacing as ordinary conversation text.

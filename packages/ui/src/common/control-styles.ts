@@ -20,14 +20,14 @@ export const buttonVariants = cva(
       },
       size: {
         default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 rounded-[8px]",
+          "h-[32px] gap-1.5 px-2.5 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 rounded-[8px]",
         xs: "h-6 gap-1 px-2.5 text-[11px] has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 px-2 has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5 rounded-[8px]",
-        lg: "h-9 gap-1.5 px-4 has-data-[icon=inline-end]:pe-3 has-data-[icon=inline-start]:ps-2.5 rounded-[12px]",
-        icon: "size-8 p-0",
+        sm: "h-[28px] gap-1 px-2 has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5 rounded-[8px]",
+        lg: "h-[36px] gap-1.5 px-4 has-data-[icon=inline-end]:pe-3 has-data-[icon=inline-start]:ps-2.5 rounded-[12px]",
+        icon: "size-[32px] p-0",
         "icon-xs": "size-6 p-0 [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-7 p-0 [&_svg:not([class*='size-'])]:size-3.5",
-        "icon-lg": "size-9 p-0",
+        "icon-sm": "size-[28px] p-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-lg": "size-[36px] p-0",
       },
     },
     defaultVariants: {
@@ -37,8 +37,8 @@ export const buttonVariants = cva(
   }
 )
 
-const settingsCompactButtonSize = "h-7 px-2 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3.5"
-const settingsCompactIconButtonSize = "size-7 [&_svg:not([class*='size-'])]:size-3.5"
+const settingsCompactButtonSize = "h-[28px] px-2 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3.5"
+const settingsCompactIconButtonSize = "size-[28px] [&_svg:not([class*='size-'])]:size-3.5"
 
 export const settingsButtonVariants = cva(
   "gap-[6px] rounded-[8px] text-[13px] font-medium leading-[18px] before:pointer-events-none before:absolute before:inset-0 before:rounded-[7px] active:not-aria-[haspopup]:translate-y-0",
@@ -70,5 +70,5 @@ export const settingsButtonVariants = cva(
 )
 
 
-export const inputClassName = "h-8 w-full min-w-0 rounded-lg border border-border px-2.5 py-1 text-ui-control transition-[color,box-shadow,background-color] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-ui-control file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 relative inline-flex bg-background not-dark:bg-clip-padding text-foreground ring-ring/24 has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-focus-visible:ring-[3px] dark:bg-background/40 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24"
-export const textareaClassName = "field-sizing-content flex min-h-16 w-full min-w-0 resize-none rounded-lg border border-border bg-background px-2.5 py-2 text-ui-control not-dark:bg-clip-padding text-foreground ring-ring/24 transition-[color,box-shadow,background-color] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-background/40 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 relative"
+export const inputClassName = "h-8 w-full min-w-0 rounded-lg border border-border px-2.5 py-1 text-ui-control transition-[color,box-shadow,background-color] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-ui-control file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-0 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 relative inline-flex bg-background not-dark:bg-clip-padding text-foreground ring-ring/24 has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-focus-visible:ring-0 dark:bg-background/40 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24"
+export const textareaClassName = "field-sizing-content flex min-h-16 w-full min-w-0 resize-none rounded-lg border border-border bg-background px-2.5 py-2 text-ui-control not-dark:bg-clip-padding text-foreground ring-ring/24 transition-[color,box-shadow,background-color] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-0 focus-visible:ring-ring/30 has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-focus-visible:ring-0 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-background/40 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 relative"

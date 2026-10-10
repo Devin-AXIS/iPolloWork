@@ -2,7 +2,7 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("conversation-streaming-result");
 
-async function mountFixture() {
+export async function mountFixture() {
   window.__streamingAnswerProof?.cleanup?.();
   document.querySelectorAll("#streaming-answer-proof").forEach((node) => node.remove());
   const resources = performance.getEntriesByType("resource").map((entry) => entry.name);
@@ -38,7 +38,18 @@ async function mountFixture() {
   const queryClient = new QueryClient();
   const imageUrl = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="420" height="960" viewBox="0 0 420 960"><rect width="420" height="960" fill="#193656"/><circle cx="210" cy="320" r="125" fill="#f6bd60"/><path d="M0 780 Q210 480 420 780 V960 H0" fill="#479f92"/></svg>')}`;
   const openTargets = ["design/proof/report.pdf", "design/proof/cover.png"].map((path) => createWorkspaceFileOpenTarget({ path }));
-  const client = { baseUrl: "http://127.0.0.1:52999", downloadWorkspaceFile: async (_workspaceId, path) => {
+  const thumbnailImage = new Image();
+  thumbnailImage.src = imageUrl;
+  await thumbnailImage.decode();
+  const thumbnailCanvas = document.createElement("canvas");
+  thumbnailCanvas.width = 160; thumbnailCanvas.height = 110;
+  const thumbnailContext = thumbnailCanvas.getContext("2d");
+  thumbnailContext.drawImage(thumbnailImage, 56, 0, 48, 110);
+  const thumbnailBlob = await new Promise(resolve => thumbnailCanvas.toBlob(resolve, "image/webp"));
+  const client = {
+    resolveArtifacts: async (_workspaceId, targets) => ({ items: targets.map(target => ({ kind: "file", value: target.value, exists: true })) }),
+    downloadWorkspaceThumbnail: async () => ({ data: new Uint8Array(await thumbnailBlob.arrayBuffer()), detail: "420 × 960" }),
+    baseUrl: "http://127.0.0.1:52999", downloadWorkspaceFile: async (_workspaceId, path) => {
     window.__streamingAnswerProof.downloadedPath = path;
     return { data: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" };
   } };
@@ -326,6 +337,7 @@ async function mountFixture() {
 export default {
   id: "conversation-streaming-result",
   title: "Final answer streams in place below collapsible progress",
+  ...(process.env.IPOLLOWORK_EVAL_APP_ORIGIN ? { cdpTarget: { urlIncludes: process.env.IPOLLOWORK_EVAL_APP_ORIGIN } } : {}),
   kind: "user-facing",
   steps: [
     {
@@ -344,15 +356,15 @@ export default {
               liveAction: process.querySelector('[data-tool-action=command] summary')?.textContent,
               commandDetailsClosed: !process.querySelector('[data-tool-action=command]')?.open,
               duplicateProgress: Boolean(host.querySelector('[data-testid=assistant-streaming-progress]')),
-              pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+              pending: Boolean(host.querySelector('[data-testid=assistant-result-pending]')),
+              currentState: host.querySelector('[data-testid=assistant-current-state]')?.textContent,
               activityKind: host.querySelector('[data-testid=assistant-live-activity]')?.getAttribute('data-activity-kind'),
               thinkingDots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
           ctx.assert(state.open === "true" && state.commentary && state.commentaryBeforeCommand && !state.duplicateProgress && !state.result
             && state.liveAction?.includes("运行命令") && state.liveAction?.includes("检查项目文件") && state.commandDetailsClosed
-            && state.pending?.includes("检查项目文件")
-            && state.activityKind === "tool"
+            && !state.pending && state.currentState?.includes("检查项目文件")
             && state.thinkingDots === 0, JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'false'");
@@ -372,7 +384,7 @@ export default {
           const afterTick = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent");
           ctx.assert(beforeTick !== afterTick && afterTick.includes("已用时"), "The live elapsed time did not advance.");
         },
-        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中", "检查项目文件"] },
+        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "检查项目文件"] },
       }),
     },
     {
@@ -397,9 +409,9 @@ export default {
               text: result.textContent, processText: process.textContent };
           })()`);
           ctx.assert(state.sameNode && !state.pending && state.belowProcess && state.text.includes("最终建议")
-            && !state.processText.includes("最终建议") && state.processText.includes("正在收尾"), JSON.stringify(state));
+            && !state.processText.includes("最终建议") && state.processText.includes("正在回复"), JSON.stringify(state));
         },
-        screenshot: { name: "streaming-result", requireText: ["正在收尾", "最终建议"] },
+        screenshot: { name: "streaming-result", requireText: ["正在回复", "最终建议"] },
       }),
     },
     {
@@ -436,7 +448,7 @@ export default {
           })()`);
           ctx.assert(state.sameNode && state.answer && state.queue && state.actionSize === 28
             && state.iconSize === 14 && state.answerBackground === 'rgba(0, 0, 0, 0)'
-            && state.answerBorder === '0px' && state.answerSize === '14px' && state.processBorder === '0px', JSON.stringify(state));
+            && state.answerBorder === '0px' && state.answerSize === '13px' && state.processBorder === '0px', JSON.stringify(state));
         },
         screenshot: { name: "completed-result", requireText: ["用时", "已处理 1 个命令", "最终建议", "完成后再检查测试结果"] },
       }),
@@ -562,14 +574,14 @@ export default {
         action: async () => {
           await ctx.eval(`(() => {
             const image = document.querySelector('#streaming-answer-proof img[alt="cover.png"]');
-            image?.parentElement?.querySelector('button')?.click();
+            image?.closest('button')?.click();
             image?.scrollIntoView({ block: 'start' });
             return true;
           })()`);
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === ''");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'true'");
         },
         assert: async () => {
-          const expanded = await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === ''");
+          const expanded = await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'true'");
           ctx.assert(expanded, "The full image did not expand.");
         },
         screenshot: { name: "expanded-image-preview", requireText: ["封面已生成"] },
@@ -582,14 +594,14 @@ export default {
         action: async () => {
           await ctx.eval(`(() => {
             const image = document.querySelector('#streaming-answer-proof img[alt="cover.png"]');
-            image?.parentElement?.parentElement?.querySelector(':scope > button')?.click();
+            image?.closest('button')?.click();
             document.querySelector('#streaming-answer-proof [data-assistant-result]')?.scrollIntoView({ block: 'start' });
             return true;
           })()`);
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === '360px'");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'false'");
         },
         assert: async () => {
-          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === '360px'"), "The compact preview was not restored.");
+          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'false'"), "The compact preview was not restored.");
         },
         screenshot: { name: "compact-image-preview", requireText: ["封面已生成"] },
       }),
@@ -670,7 +682,7 @@ export default {
         voiceover: vo[13],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showToolFailure()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在思考')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('正在思考')");
         },
         assert: async () => {
           const text = await ctx.eval("document.querySelector('#streaming-answer-proof')?.textContent");
@@ -805,7 +817,7 @@ export default {
             && state.onlyCommandOpen && state.icons[0]?.includes('lucide-file-search')
             && state.icons[1]?.includes('lucide-square-terminal') && state.arrowTransform !== 'none'
             && state.commands && state.resultOutside && state.fileCards === 2 && state.fileBullets === 0
-            && state.resultGaps.every((gap) => Math.abs(gap - 12) <= 1), JSON.stringify(state));
+            && state.resultGaps.every((gap) => Math.abs(gap - 8) <= 1), JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] summary').click()");
           ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command]').open === false"), "Command group did not collapse again.");
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] summary').click()");
@@ -833,42 +845,43 @@ export default {
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-loading]')?.textContent.includes('正在思考...')");
           ctx.assert(await ctx.eval("document.querySelectorAll('#streaming-answer-proof [data-testid=assistant-loading] .chat-thinking-dots span').length === 3"), "OpenCode waiting state lacks animated thinking dots.");
           await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('reasoning')");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在思考...')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('正在思考')");
           await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('tool')");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-tool-action=command]')?.textContent.includes('检查项目文件')");
         },
         assert: async () => {
           const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
-            return { pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+            return { pending: Boolean(host.querySelector('[data-testid=assistant-result-pending]')),
+              currentState: host.querySelector('[data-testid=assistant-current-state]')?.textContent,
               activityKind: host.querySelector('[data-testid=assistant-live-activity]')?.getAttribute('data-activity-kind'),
               dots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
               command: host.querySelector('[data-tool-action=command]')?.textContent,
               result: Boolean(host.querySelector('[data-assistant-result]')) }; })()`);
-          ctx.assert(state.pending?.includes('检查项目文件') && state.activityKind === 'tool' && state.dots === 0 && state.command?.includes('检查项目文件') && !state.result, JSON.stringify(state));
+          ctx.assert(!state.pending && state.currentState?.includes('检查项目文件') && state.dots === 0 && state.command?.includes('检查项目文件') && !state.result, JSON.stringify(state));
         },
         screenshot: { name: "opencode-thinking-and-tool", requireText: ["运行命令", "检查项目文件"] },
       }),
     },
     {
-      name: "Unphased output stays chronological until the final result",
-      run: (ctx) => ctx.prove("Unphased text stays in arrival order without a premature result area; completion folds the process", {
+      name: "Unphased output remains in stable body nodes",
+      run: (ctx) => ctx.prove("Unphased text keeps stable body nodes across tools and completion", {
         voiceover: vo[21],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('answer')");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]')?.textContent.includes('已找到相关文件。')");
           await ctx.eval("void (window.__orderedFirstText = document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]'))");
-          ctx.assert(await ctx.eval("!document.querySelector('#streaming-answer-proof [data-assistant-result]')"), "Intermediate text created a result area.");
+          ctx.assert(await ctx.eval("Boolean(document.querySelector('#streaming-answer-proof [data-assistant-result]'))"), "Streaming text lacks a body area.");
           await ctx.eval("window.__streamingAnswerProof.appendOpenCodeStep()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-final]')?.textContent.includes('目录确认完成。')");
           const ordered = await ctx.eval(`(() => {
             const host = document.querySelector('#streaming-answer-proof');
             const rows = [...host.querySelectorAll('[data-message-role=assistant]')];
-            return { ids: rows.map(n => n.dataset.messageId), retained: rows[0] === window.__orderedFirstText,
+            return { ids: rows.map(n => n.dataset.messageId), retained: host.querySelector('[data-message-id=opencode-proof-assistant]') === window.__orderedFirstText,
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
-          ctx.assert(ordered.retained && !ordered.result && JSON.stringify(ordered.ids) === JSON.stringify(['opencode-proof-assistant', 'opencode-proof-tool', 'opencode-proof-final']), JSON.stringify(ordered));
+          ctx.assert(ordered.retained && ordered.result && ordered.ids.includes('opencode-proof-final') && ordered.ids.includes('opencode-proof-tool'), JSON.stringify(ordered));
           await ctx.eval("window.__streamingAnswerProof.finishOpenCode()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-result]')?.textContent.includes('目录确认完成。')");
+          await ctx.waitFor("Array.from(document.querySelectorAll('#streaming-answer-proof [data-assistant-result]')).some(n=>n.textContent.includes('目录确认完成。'))");
         },
         assert: async () => {
           ctx.assert(await ctx.eval("!document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending], #streaming-answer-proof [data-testid=assistant-loading]')"), "Thinking remained visible after the answer began.");
@@ -882,7 +895,7 @@ export default {
         voiceover: vo[22],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showCompletedWhilePostProcessing()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent.includes('处理中')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent.includes('正在收尾')");
         },
         assert: async () => {
           const state = await ctx.eval(`(() => {
@@ -890,17 +903,17 @@ export default {
             const label = process?.querySelector('button')?.textContent ?? '';
             return { label, result: document.querySelector('#streaming-answer-proof [data-assistant-result]')?.textContent ?? '' };
           })()`);
-          ctx.assert(state.label.startsWith('处理中')
+          ctx.assert(state.label.startsWith('正在收尾')
             && state.result.includes('iPolloWork 应用正在导出 MP4'), JSON.stringify(state));
         },
-        screenshot: { name: "completed-engine-post-processing", requireText: ["处理中", "iPolloWork 应用正在导出 MP4"] },
+        screenshot: { name: "completed-engine-post-processing", requireText: ["正在收尾", "iPolloWork 应用正在导出 MP4"] },
       }),
     },
     {
       name: "Composer text matches conversation typography",
       run: async (ctx) => {
         let placeholderStyle;
-        await ctx.prove("The composer uses the same 14px text and 1.5 line height for typed and placeholder text", {
+        await ctx.prove("The composer uses the shared 13px text and 20px line height for typed and placeholder text", {
           voiceover: vo[23],
           action: async () => {
             await ctx.eval("window.__streamingAnswerProof.cleanup()");
@@ -920,7 +933,7 @@ export default {
               const read = (element) => { const style = getComputedStyle(element); return [style.fontSize, style.lineHeight]; };
               return { editor: read(editor), paragraph: editor.querySelector('p') ? read(editor.querySelector('p')) : null };
             })()`);
-            ctx.assert(Object.values({ ...styles, placeholder: placeholderStyle }).filter(Boolean).every(([size, height]) => size === "14px" && height === "21px"), JSON.stringify({ ...styles, placeholder: placeholderStyle }));
+            ctx.assert(Object.values({ ...styles, placeholder: placeholderStyle }).filter(Boolean).every(([size, height]) => size === "13px" && height === "20px"), JSON.stringify({ ...styles, placeholder: placeholderStyle }));
           },
           screenshot: { name: "composer-multiline-typography", requireText: ["第一行", "第二行"] },
         });

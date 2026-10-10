@@ -23,7 +23,7 @@ async function findFrame(ctx,mode) {
   for(let attempt=0;attempt<80;attempt++) {
     for(const target of (await listTargets(ctx.cdpBaseUrl)).filter(t=>t.type==='iframe')) {
       const c=await connect(target.webSocketDebuggerUrl);
-      if(await evaluate(c,`window.ipolloworkUi?.mode===${JSON.stringify(mode)} && Boolean(document.querySelector('#receipt'))`).catch(()=>false))return c;
+      if(await evaluate(c,`window.ipolloworkUi?.mode===${JSON.stringify(mode)} && Boolean(document.querySelector('#receipt')) && Boolean(document.querySelector('#name'))`).catch(()=>false))return c;
       c.close();
     }
     await new Promise(resolve=>setTimeout(resolve,250));
@@ -178,6 +178,43 @@ export default {
           await ctx.waitFor('document.querySelector("#receipt").textContent==="提醒重试已执行" && !document.querySelector("[data-feedback=default]")');
           ctx.assert(await ctx.eval('document.querySelectorAll("[data-slot=alert]").length===3'),'dismiss removes only the selected Alert');
         },screenshot:shot('soft-feedback'),
+      });
+      await ctx.prove('公共图标及按钮组合在双模式亮暗窄容器可操作', {
+        voiceover:vo[6], action:async()=>{
+          await click(parent,frame,'[id="group-图标与按钮"]');
+          await ctx.waitFor('Boolean(document.querySelector("#icon-gallery"))');
+          for(const theme of ['light','dark'])for(const width of [1280,390])for(const fontSize of [13,16]) {
+            await parent.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+            await ctx.eval(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.documentElement.style.fontSize=${JSON.stringify(fontSize+'px')}`);
+            const metrics=await ctx.eval(`(()=>{
+              const ui=window.ipolloworkUi;
+              const all=Array.from(document.querySelectorAll('#icon-gallery svg'));
+              const glyphs=all.length===ui.ICON_NAMES.length&&all.every(svg=>svg.children.length>0&&svg.getBoundingClientRect().width===16&&svg.getAttribute('aria-label')===svg.dataset.iconName);
+              const sizes=['s','m','l'].every((size,i)=>{const svg=document.querySelector('[aria-label="搜索 '+size+'"]'),r=svg.getBoundingClientRect();return r.width===[14,16,20][i]&&r.height===[14,16,20][i]});
+              const buttons=[['sm',28,14],['default',32,16],['lg',36,20]].every(([size,height,icon])=>{const b=document.querySelector('#icon-leading-'+size),r=b.getBoundingClientRect(),s=b.querySelector('svg').getBoundingClientRect();return r.height===height&&s.width===icon&&s.height===icon&&Math.abs(r.y+r.height/2-s.y-s.height/2)<=1&&b.querySelector('svg').getAttribute('aria-hidden')==='true'});
+              const only=document.querySelector('#icon-only'),r=only.getBoundingClientRect();
+              return {glyphs,sizes,buttons,only:r.width===32&&r.height===32&&only.getAttribute('aria-label')==='图标搜索',fits:document.documentElement.scrollWidth<=innerWidth,version:ui.version};
+            })()`);
+            ctx.assert(Object.values(metrics).every(Boolean),`${mode}/${theme}/${width}/${fontSize}px: ${JSON.stringify(metrics)}`);
+          }
+          await click(parent,frame,'#icon-leading-default');
+          await ctx.waitFor('document.querySelector("#icon-click-count").textContent==="1"');
+          await ctx.eval('document.querySelector("#icon-leading-default").scrollIntoView({block:"center"})');
+          const point=await ctx.eval('(()=>{const r=document.querySelector("#icon-leading-default").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+          for(const type of ['mouseMoved','mousePressed','mouseReleased'])await parent.send('Input.dispatchMouseEvent',{type,...point,button:'left',clickCount:1});
+          await ctx.waitFor('document.querySelector("#icon-click-count").textContent==="2"');
+          await click(parent,frame,'#icon-trailing');
+          await ctx.waitFor('document.querySelector("#receipt").textContent==="后置图标已执行"');
+          await click(parent,frame,'#icon-only');
+          await ctx.waitFor('document.querySelector("#receipt").textContent==="纯图标已执行"');
+          await ctx.eval('document.querySelector("#icon-disabled").click()');
+          ctx.assert(await ctx.eval('document.querySelector("#icon-disabled").disabled && document.querySelector("#receipt").textContent==="纯图标已执行"'),'disabled button cannot execute');
+          await click(parent,frame,'#icon-loading');
+          await ctx.waitFor('document.querySelector("#icon-loading").disabled && document.querySelector("#icon-loading").getAttribute("aria-busy")==="true" && document.querySelector("#icon-loading svg").dataset.iconName==="LoaderCircle"');
+        }, assert:async()=>{
+          await ctx.waitFor('!document.querySelector("#icon-loading").disabled && document.querySelector("#receipt").textContent==="保存完成" && document.querySelector("#icon-loading svg").dataset.iconName==="Save"');
+          ctx.assert(await ctx.eval('document.querySelector("#icon-loading").getAttribute("aria-busy")==="false"'),'loading state recovers');
+        }, screenshot:shot('icons-buttons'),
       });
     } finally {frame.close();ctx.client=parent;}
   }})),
