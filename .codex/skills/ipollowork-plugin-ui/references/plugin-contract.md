@@ -1,6 +1,6 @@
 # 插件工作区接入契约
 
-适用于独立 HTML、iframe 和插件自己的 React 构建。核对日期：2026-10-09。
+适用于独立 HTML、iframe 和插件自己的 React 构建。核对日期：2026-10-10。
 
 ## 公共入口 · v1
 
@@ -10,13 +10,14 @@
 | --- | --- | --- |
 | 宿主 React | `@/components/ui/button`、`input`、`textarea` | 原入口兼容重导出；不要强制业务调用方迁移私有路径 |
 | 共享源码消费者 | `@ipollowork/ui/controls` | Button、Input、Textarea；另导出 ButtonStyleScopeProvider、buttonVariants，但这两个不在 iframe 运行时对象中 |
-| iframe 插件业务脚本 | `@ipollowork/ui/runtime-contract` | `requireRuntime(major = 1)`；轻量检查入口，运行时代码不导入 React |
+| 共享浮层与反馈 | `@ipollowork/ui/select`、`dialog`、`sonner` | 原宿主组件同源实现；宿主原入口保留翻译、主题适配。iframe 业务仍从运行时对象取得组件，不静态导入实现 |
+| iframe 插件业务脚本 | `@ipollowork/ui/runtime-contract` | `requireRuntime(major = 1, required = [])`；轻量主版本和函数能力检查，不导入 React |
 | 宿主/插件的 Node 构建脚本 | `@ipollowork/ui/build-plugin-runtime` | `buildPluginRuntime('host' \| 'bundled') → { script, dependencies }`；不是浏览器接口 |
 | 主题构建 | `@ipollowork/ui/palette.css`、`tokens.css`、`theme.css` | 共同 Token 源；单独导入不等于已有完整控件样式 |
 
 `@ipollowork/ui/plugin-runtime` 虽然在 exports 中存在，但属于运行时安装实现入口，不作为插件业务脚本的接法；导入它可能把 React/ReactDOM 带入插件包。`@ipollowork/ui/react` 仍是 Paper 等现有组件入口，不能拿它替代 `controls`。不深导入 `packages/ui/src/*`、宿主领域内部代码或 Vite virtual 模块。
 
-`requireRuntime(1)` 返回 `window.ipolloworkUi`，v1 对象仅包含：`version`、`mode`、`React`、`createRoot`、`Button`、`Input`、`Textarea`、`enhance`、`observe`。业务代码调用检查函数取得对象，不覆盖全局运行时、不直接调用 `installRuntime`。`mode` 是诊断值，不是兼容性或授权判据。
+`requireRuntime(1)` 返回 `window.ipolloworkUi`。原v1对象的 `version`、`mode`、`React`、`createRoot`、`Button`、`Input`、`Textarea`、`enhance`、`observe` 保持兼容。1.1新增 `select.tsx` 和 `dialog.tsx` 的全部具名导出，以及 `Toaster`、`toast`；具体导出以这三个模块为准。业务代码调用检查函数取得对象，不覆盖全局运行时、不直接调用 `installRuntime`。`mode` 是诊断值，不是兼容性或授权判据。
 
 ## 宿主桥接
 
@@ -91,18 +92,29 @@ root.render(ui.React.createElement(ui.Button, { onClick: save }, '保存'));
 
 使用 JSX 时需要构建配置明确复用 `ui.React`；本轮样板以 createElement 验证，不声称已经提供通用 JSX external/import-map 适配器。加载/版本错误需就地显示可理解的提示并停止桥接初始化，不留下空白页。
 
+### Select、Dialog、Toast · 1.1
+
+启动先检查实际使用的函数，例如 `requireRuntime(1, ['Select', 'SelectTrigger', 'SelectValue', 'SelectContent', 'SelectItem', 'Dialog', 'DialogContent', 'Toaster', 'toast'])`。此检查针对实际能力，不凭版本字符串断言导出存在；新消费者必须携带新版轻量检查函数，旧客户端缺组件时就地提示更新并停止桥接。
+
+HTML 插件可以把这些 React 组件挂到独立容器中，使用运行时同一份 React/createRoot。替换容器内容前先 `root.unmount()`，不要让字符串渲染覆盖活跃 React 树。Select/Dialog 的 Portal 位于当前 iframe 中，不跨宿主 DOM；测试真实容器边界。原生多选、搜索选择器及高风险 AlertDialog 不在本轮迁移范围。
+
+样板只替换“风格提示”Select：保存中禁用，失败恢复持久化值并关联字段错误；成功将风格和提示词一起保存，业务由原服务处理。共享 Dialog 替换既有短弹窗，输入校验、异步提交与关闭策略仍由插件决定；沙箱不放宽 `allow-forms`，按钮/输入Enter走显式保存回调。等待浮层完成清理再交还焦点，避免抢走后续通知的焦点。
+
+每个工作区挂一个 Toaster。未传 theme 时跟随当前文档 `data-theme`；宿主适配保留原主题订阅和翻译。短成功操作可用 `toast.success`，字段错误仍就地持续显示。关闭按钮支持键盘和指针；测试时等待 Toast 实际挂载后再操作。Toaster和提示不修改作品配色。
+
 ## 版本兼容规则
 
-当前实现为 `UI_RUNTIME_VERSION = '1.0.1'`，来自 `packages/ui/src/plugin/runtime.ts`；它独立于主客户端版本、插件 package.version 和 Figma 节点身份。插件启动固定调用 `requireRuntime(1)`，再初始化桥接与业务。此 patch 修复插件根字号为13px时控件随 rem 缩成26px的问题：运行时仅在共享控件上固定4px的 Tailwind spacing，不修改插件全局字号或布局。
+当前实现为 `UI_RUNTIME_VERSION = '1.1.0'`，来自 `packages/ui/src/plugin/runtime.ts`；它独立于主客户端版本、插件 package.version 和 Figma 节点身份。1.0.1修复13px根字号下控件缩成26px的问题，1.1保留控件作用域4px spacing并扩展至新增浮层和Toast，不修改插件全局字号或布局。
 
 | 运行时情况 | 当前代码行为 | 插件要求 |
 | --- | --- | --- |
 | 不存在 | 抛出更新客户端提示 | 停止初始化，保留明确错误；不从网络补装或改用本地副本 |
 | version 首段转成数字后为 1 | 返回运行时 | 仅使用此契约已公开的 v1 API |
+| 主版本匹配，但 required 中任一导出不是函数 | 抛出缺少组件的更新提示 | 新消费者在初始化桥接前列出实际使用的函数；不静默改用插件副本 |
 | 首段不等于 1 | 抛出同一提示 | 停止；2.x 需要另行迁移，不能声称自动兼容 |
 | 重复安装且已有 v1 对象 | 复用已有对象，不替换 CSS/实现 | 不以此容错机制支持生产混入 bundled 包 |
 
-这是主版本检查，不是完整 semver 校验、功能探测或最低 minor/patch 约束。没有 `>=1.1` 检查、版本范围协商、运行时下载/回滚或 UI 版本 manifest 字段；现有 manifest 的 `compatibility.ipollowork` 只限制客户端版本，不能替代这个检查。1.x 字符串通过也不表示未来新增 API 在旧 1.0.0 上存在。
+这是主版本加具名函数检查，不是完整 semver 校验或最低 minor/patch 约束。没有 `>=1.1` 检查、版本范围协商、运行时下载/回滚或 UI 版本 manifest 字段；现有 manifest 的 `compatibility.ipollowork` 只限制客户端版本，不能替代这个检查。函数存在不保证未来改变后的语义兼容，破坏性修改仍必须升 major。
 
 维护规则：保持现有 v1 API、默认行为和 Token 语义兼容；修复用 patch，兼容新增用 minor，删除/改义/破坏原有 props 或 Token 需提升 major 并更新宿主、插件、映射及验证。新增组件需先扩展契约，再验证消费者；若插件需要旧 v1 没有的 API，必须增加明确的能力/最低版本机制及验证，不能只靠 `requireRuntime(1)` 宣称满足。这里是维护约束，不是说升级协商已实现。
 
@@ -120,7 +132,13 @@ root.render(ui.React.createElement(ui.Button, { onClick: save }, '保存'));
 
 复跑：先在临时 profile 内安装插件，使用 Control API 创建空任务，并打开右侧面板。设置 `IPOLLOWORK_UI_CLIENT_ROOT=/tmp/ipollowork-shared-ui-client-<本次目录>`，运行 `pnpm fraimz --flow shared-ui-client --cdp-url <专用ElectronCDP>`。此 flow 包含显式传输故障、宿主主题/容器测试状态和2.x替身，不能连日常客户端。
 
-代码已整合到本地 Carrie，未推送或发布。样板覆盖范围仍是短视频新建项目弹窗和隔离 React/HTML 控件；真实开发客户端的内置安装通过，不等于签名归档上传、Electron打包启动、跨客户端版本迁移或完整发布验收。当前证明1.0.0到1.0.1宿主运行时修正后原插件可重开，2.x拒绝使用替身；不把它扩大为完整升级协商通过。
+1.1.0 新增组件证据：`evals/results/2026-10-10T03-23-00-685Z/fraimz.html`，开发打包与生产注入各7帧，共14帧通过。验证 Dialog 提交禁用、失败保留与重试，Select 键盘/Escape、保存失败回滚与成功写盘、重绘后焦点恢复，以及暗色/390px 浮层、Toast 边界和键盘关闭。主题、传输故障和旧运行时是显式隔离测试状态，不调用收费生成。
+
+真实客户端1.1.0证据：`evals/results/2026-10-10T03-16-39-756Z/fraimz.html`，8帧通过；除原有6帧外，实际安装插件的 Select 保存同步写入风格与提示词并恢复焦点，旧1.x缺少新增组件时提示更新并阻止业务初始化。旧版由替身注入，不代表真实旧客户端升级验证。原有 React/HTML 控件兼容回归：`evals/results/2026-10-10T03-20-23-835Z/fraimz.html`。
+
+复跑新增组件：沿用上述隔离预览和独立数据目录，运行 `pnpm fraimz --flow shared-ui-overlays --cdp-url <隔离浏览器CDP>`。临时 Electron 应设置 `IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR=<当前仓库>/examples/plugin-packages`，防止链接依赖指向其它 checkout 的旧内置插件；从真实扩展目录安装当前生产构建，再运行真实客户端 flow。
+
+代码已整合到本地 Carrie，未推送或发布。样板覆盖短视频新建项目弹窗、风格提示单选、共享 Toast 和隔离 React/HTML 控件；不代表所有表单已替换。真实开发客户端的内置安装通过，不等于签名归档上传、Electron打包启动、跨客户端版本迁移或完整发布验收。新增依赖仅迁移既有锁定版本；完整 frozen install 因网络元数据请求失败、离线缓存缺失未通过，现有依赖环境的构建、类型和运行验证通过。
 
 ## 行为
 

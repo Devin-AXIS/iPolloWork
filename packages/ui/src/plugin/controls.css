@@ -7,5 +7,10 @@
 @custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @source "../common/control-styles.ts";
 @source "../react/controls.tsx";
+@source "../react/select.tsx";
+@source "../react/dialog.tsx";
+@source "../react/sonner.tsx";
+@source "../common/menu-styles.ts";
 /* No global reset: isolated plugin layouts and exported artwork stay untouched. */
-[data-ipw-control], [data-slot="button"], [data-slot="input"], [data-slot="textarea"] { --spacing: 4px; box-sizing: border-box; font-family: var(--ipollowork-font-sans); }
+[data-ipw-control], [data-slot="button"], [data-slot="input"], [data-slot="textarea"], [data-slot^="select-"], [data-slot^="dialog-"], [data-sonner-toaster], [data-slot="toast-card"] { --spacing: 4px; box-sizing: border-box; font-family: var(--ipollowork-font-sans); }
+[data-slot="toast-card"] p { margin: 0; }

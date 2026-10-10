@@ -86,7 +86,7 @@ const buttonSource = readFileSync(
   "utf8",
 ) + controlStylesSource;
 const selectSource = readFileSync(
-  new URL("../src/components/ui/select.tsx", import.meta.url),
+  new URL("../../../packages/ui/src/react/select.tsx", import.meta.url),
   "utf8",
 );
 const inputSource = readFileSync(

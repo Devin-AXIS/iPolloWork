@@ -733,7 +733,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const dialogSource = readFileSync(
-      new URL("../src/components/ui/dialog.tsx", import.meta.url),
+      new URL("../../../packages/ui/src/react/dialog.tsx", import.meta.url),
       "utf8",
     );
 

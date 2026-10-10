@@ -12,7 +12,8 @@ Exports resolve to `src/` directly, so consumers need no build step.
 
 `@ipollowork/ui/controls` exports the same Button, Input and Textarea used by
 the main app. Host CSS and iframe runtime share `palette.css`, `tokens.css`
-and `theme.css`. Other app components are not yet runtime exports.
+and `theme.css`. Select, Dialog and Toaster/toast also have shared entries
+`@ipollowork/ui/select`, `/dialog` and `/sonner`; other app components remain private.
 
 Development plugins bundle `buildPluginRuntime('bundled')`. Production HTML
 opts in with `<meta name="ipollowork-ui-runtime" content="1">`; the host
@@ -21,16 +22,19 @@ access or a looser CSP. Import `requireRuntime` from the lightweight
 `@ipollowork/ui/runtime-contract` entrypoint, not the implementation entrypoint,
 so production plugins do not accidentally bundle another React copy.
 
-The runtime exposes React, createRoot and the three React controls. For native
+Runtime 1.1 exposes React, createRoot, the three controls, Select/Dialog named
+exports and Toaster/toast. New consumers pass their actual function names to
+`requireRuntime(1, required)` before initializing the bridge. An old 1.x without
+these functions receives an update prompt. For native
 HTML, mark elements with `data-ipw-control="button|input|textarea"` and call
 `enhance(root)` or `observe(root)`. HTML adaptation shares styles, not Base UI
 behavior; labels, focus, validation and persistence remain plugin-owned.
 
 Existing dependencies were relocated with the controls; Tailwind and esbuild
 reuse workspace versions for two real consumers: host and short-video plugin.
-The runtime is approximately 408KB raw / 112KB gzip, built once per host build,
+The runtime is approximately 609KB raw / 173KB gzip, built once per host build,
 and injected only into opted-in workspaces. It includes React/ReactDOM for the
-supported React consumer. The HTML-only production pilot is approximately 54KB
+supported React consumer. The HTML/React-island production pilot is approximately 56KB
 and does not carry this runtime. Tokens and source recipes are not duplicated.
 
 Runtime bundles retain upstream license comments. These dependencies were
@@ -38,17 +42,27 @@ already used by the host, not replaced with a new UI framework. The Skill is
 a durable multi-file catalog/contract/mapping owner, and this plugin runtime
 is unrelated to the video compositor's similarly named runtime module.
 
+The extraction relocates lucide-react 0.577.0 (ISC) and Sonner 2.0.7 (MIT)
+from the host's existing locked graph, without upgrades. They preserve the
+actual existing icons and notification behavior instead of rebuilding them.
+The measured runtime growth is about 201KB raw / 61KB gzip; production plugin
+business scripts still contain neither React nor component implementations.
+Shared modules own implementation; same-named host files are reexports or
+small translation/theme adapters, not duplicate source implementations.
+
 See `.codex/skills/ipollowork-plugin-ui/references/plugin-contract.md` for
 the canonical v1 public-entry, build/injection and major-version contract,
 including current limitations, and `evals/flows/shared-ui-runtime.flow.mjs`
 for proof. `plugin-runtime` is an implementation entrypoint, not the production
-plugin business-script API. Runtime `1.0.1` is distinct from client/plugin
+plugin business-script API. Runtime `1.1.0` is distinct from client/plugin
 package versions; `requireRuntime(1)` does not enforce a minimum minor version.
 The built-in production plugin was installed in a dedicated Electron dev
 profile and verified through the real host: 32px controls at a 13px root font,
 failure recovery, disk persistence, reopen, theme/390px container and incompatible
-major rejection. See `evals/flows/shared-ui-client.flow.mjs`. The unchanged plugin
-artifact uses the patched host runtime; control spacing is scoped, not a global reset.
+major rejection and missing-function rejection. See `evals/flows/shared-ui-client.flow.mjs`
+and `evals/flows/shared-ui-overlays.flow.mjs`. This pilot was rebuilt to use the new
+APIs; compatible host implementation updates do not require bundling the components
+again into plugin business scripts. Control spacing is scoped, not a global reset.
 Signed archive upload, packaged Electron and cross-client upgrades must still
 be checked before a production release. Local Carrie integration is not publication.
 

@@ -1,11 +1,14 @@
 import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button, Input, Textarea } from '../react/controls';
+import * as select from '../react/select';
+import * as dialog from '../react/dialog';
+import { Toaster, toast } from '../react/sonner';
 import { buttonVariants, inputClassName, textareaClassName, cn } from '../common/control-styles';
 import { requireRuntime } from './runtime-contract';
 export { requireRuntime } from './runtime-contract';
 
-export const UI_RUNTIME_VERSION = '1.0.1';
+export const UI_RUNTIME_VERSION = '1.1.0';
 export type UiRuntime = ReturnType<typeof createRuntime>;
 declare global { interface Window { ipolloworkUi?: UiRuntime } }
 
@@ -44,7 +47,7 @@ function createRuntime(mode: 'host' | 'bundled') {
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
   }
-  return Object.freeze({ version: UI_RUNTIME_VERSION, mode, React, createRoot, Button, Input, Textarea, enhance, observe });
+  return Object.freeze({ version: UI_RUNTIME_VERSION, mode, React, createRoot, Button, Input, Textarea, ...select, ...dialog, Toaster, toast, enhance, observe });
 }
 
 export function installRuntime(css: string, mode: 'host' | 'bundled') {

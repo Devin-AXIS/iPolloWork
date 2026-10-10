@@ -4,6 +4,10 @@
   "type": "module",
   "exports": {
     "./controls": "./src/react/controls.tsx",
+    "./select": "./src/react/select.tsx",
+    "./dialog": "./src/react/dialog.tsx",
+    "./sonner": "./src/react/sonner.tsx",
+    "./menu-styles": "./src/common/menu-styles.ts",
     "./plugin-runtime": "./src/plugin/runtime.ts",
     "./runtime-contract": "./src/plugin/runtime-contract.ts",
     "./build-plugin-runtime": "./build-plugin-runtime.mjs",
@@ -25,6 +29,8 @@
     "build": "tsup --config tsup.config.react.ts"
   },
   "dependencies": {
+    "lucide-react": "^0.577.0",
+    "sonner": "^2.0.7",
     "@base-ui/react": "^1.4.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

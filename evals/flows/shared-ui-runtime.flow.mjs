@@ -33,33 +33,33 @@ export default {
     const shot=name=>({name:`${mode}-${name}`,targetId:parent.targetId,textTargetId:frame.targetId,requireText:['新建短片']});
     const draft=`共享运行时验证 ${mode} ${Date.now()}`;
     await click(parent,frame,'[aria-label="新建项目"]');
-    await ctx.waitFor('document.querySelector("#dialog").open');
+    await ctx.waitFor('Boolean(document.querySelector("#dialog"))');
     await ctx.fill('#dialog input',draft);
     await evaluate(parent,`(()=>{const original=fetch;window.__uiRequests=0;window.fetch=async(...args)=>{if(args[0]==='/rpc'&&JSON.parse(args[1].body).name==='project-create'){window.__uiRequests++;if(window.__uiRequests===1)return new Promise(resolve=>window.__uiReject=()=>resolve(new Response(JSON.stringify({error:'验证：存储暂不可用，请重试'}),{headers:{'content-type':'application/json'}})));}return original(...args);};})()`);
     await ctx.prove(`${mode} 提交中禁用重复操作，共享 Input 保留输入`,{
       voiceover:vo[0],
       action:()=>click(parent,frame,'[data-dialog="ok"]'),
-      assert:async()=>{await ctx.waitFor('document.querySelector("#dialog").getAttribute("aria-busy")==="true"');ctx.assert(await ctx.eval(`document.querySelector('#dialog input').value===${JSON.stringify(draft)} && [...document.querySelectorAll('#dialog button')].every(e=>e.disabled&&e.dataset.ipwReady===window.ipolloworkUi.version)`),'busy and shared native controls');},screenshot:shot('pending')});
+      assert:async()=>{await ctx.waitFor('document.querySelector("#dialog").getAttribute("aria-busy")==="true"');ctx.assert(await ctx.eval(`document.querySelector('#dialog input').value===${JSON.stringify(draft)} && [...document.querySelectorAll('#dialog button')].every(e=>e.disabled&&e.dataset.slot==='button')`),'busy and shared native controls');},screenshot:shot('pending')});
     await ctx.prove(`${mode} 失败就地提示且草稿不丢失（注入一次传输故障）`,{
       voiceover:vo[1],
       action:()=>evaluate(parent,'window.__uiReject()'),
-      assert:async()=>{await ctx.waitFor('!document.querySelector("#dialog-error").hidden');ctx.assert(await ctx.eval(`document.querySelector('#dialog').open && document.querySelector('#dialog input').value===${JSON.stringify(draft)} && document.querySelector('#dialog input').getAttribute('aria-describedby')==='dialog-error'`),'draft retained and error associated');},screenshot:shot('failed')});
+      assert:async()=>{await ctx.waitFor('!document.querySelector("#dialog-error").hidden');ctx.assert(await ctx.eval(`Boolean(document.querySelector('#dialog')) && document.querySelector('#dialog input').value===${JSON.stringify(draft)} && document.querySelector('#dialog input').getAttribute('aria-describedby')==='dialog-error'`),'draft retained and error associated');},screenshot:shot('failed')});
     await ctx.prove(`${mode} 共享 Token 跟随暗色主题且窄弹窗不越界`,{
       voiceover:vo[2],
       action:async()=>{await evaluate(parent,'document.querySelector("#theme").click()');await parent.send('Emulation.setDeviceMetricsOverride',{width:390,height:900,deviceScaleFactor:1,mobile:false});},
       assert:async()=>{await ctx.waitFor(`(()=>{const d=document.querySelector('#dialog'),r=d.getBoundingClientRect();return document.documentElement.dataset.theme==='dark'&&r.left>=0&&r.right<=innerWidth&&d.scrollWidth<=d.clientWidth})()`);ctx.assert(await ctx.eval('(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue("--sv-text").trim()===s.getPropertyValue("--foreground").trim()})()'),'plugin tokens resolve to shared semantics');},screenshot:shot('dark-narrow')});
     await click(parent,frame,'[data-dialog="ok"]');
-    await ctx.waitFor('!document.querySelector("#dialog").open');
-    ctx.log(JSON.stringify(await ctx.eval(`({returnValue:document.querySelector('#dialog').returnValue,selected:document.querySelector('#project-picker').selectedOptions[0].textContent})`)));
+    await ctx.waitFor('!document.querySelector("#dialog")');
+    ctx.log(JSON.stringify(await ctx.eval(`({selected:document.querySelector('#project-picker').selectedOptions[0].textContent})`)));
     await ctx.waitFor(`document.body.textContent.includes(${JSON.stringify(draft)})`);
     ctx.assert(await ctx.eval(`document.body.textContent.includes(${JSON.stringify(draft)})`),'real service retry creates project');
     ctx.assert(await evaluate(parent,'window.__uiRequests===2'),'one failed request, one real retry');
     ctx.assert(await ctx.eval('document.activeElement.getAttribute("aria-label")==="新建项目"'),'focus returns to entry');
     await evaluate(parent, `document.querySelector('iframe').contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/host-context-changed',params:{locale:'zh-CN'}},'*')`);
     ctx.assert(await ctx.eval('document.documentElement.dataset.theme==="dark"'),'unrelated context preserves host theme');
-    await click(parent,frame,'[aria-label="新建项目"]');await ctx.waitFor('document.querySelector("#dialog").open');
+    await click(parent,frame,'[aria-label="新建项目"]');await ctx.waitFor('Boolean(document.querySelector("#dialog"))');
     for(const type of ['keyDown','keyUp'])await parent.send('Input.dispatchKeyEvent',{type,key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
-    await ctx.waitFor('!document.querySelector("#dialog").open');
+    await ctx.waitFor('!document.querySelector("#dialog")');
     ctx.assert(await ctx.eval('document.activeElement.getAttribute("aria-label")==="新建项目"'),'Escape returns focus to entry');
     frame.close();ctx.client=parent;
     if(mode==='host'){

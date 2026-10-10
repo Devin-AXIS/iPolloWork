@@ -20,9 +20,9 @@ const gradientPicker = readFileSync(new URL("../src/react-app/domains/session/de
 const sidePanel = readFileSync(new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url), "utf8");
 const dropdownMenu = readFileSync(new URL("../src/components/ui/dropdown-menu.tsx", import.meta.url), "utf8");
 const contextMenu = readFileSync(new URL("../src/components/ui/context-menu.tsx", import.meta.url), "utf8");
-const select = readFileSync(new URL("../src/components/ui/select.tsx", import.meta.url), "utf8");
+const select = readFileSync(new URL("../../../packages/ui/src/react/select.tsx", import.meta.url), "utf8");
 const popover = readFileSync(new URL("../src/components/ui/popover.tsx", import.meta.url), "utf8");
-const menuStyles = readFileSync(new URL("../src/components/ui/menu-styles.ts", import.meta.url), "utf8");
+const menuStyles = readFileSync(new URL("../../../packages/ui/src/common/menu-styles.ts", import.meta.url), "utf8");
 const switchControl = readFileSync(new URL("../src/components/ui/switch.tsx", import.meta.url), "utf8");
 
 test("toast cards keep the library ID for close and action dismissal", () => {

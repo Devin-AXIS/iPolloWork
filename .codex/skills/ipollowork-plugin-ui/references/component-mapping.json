@@ -1,10 +1,13 @@
 {
   "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
-  "runtimeVersion": "1.0.1",
+  "runtimeVersion": "1.1.0",
   "tokenSource": "packages/ui/src/common/tokens.css",
   "components": [
     { "export": "Button", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:120", "figmaCatalogId": "6:711", "htmlMarker": "button" },
     { "export": "Input", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:20", "figmaCatalogId": "6:549", "htmlMarker": "input" },
-    { "export": "Textarea", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:37", "figmaCatalogId": "6:583", "htmlMarker": "textarea" }
+    { "export": "Textarea", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:37", "figmaCatalogId": "6:583", "htmlMarker": "textarea" },
+    { "export": "Select", "package": "@ipollowork/ui/select", "source": "packages/ui/src/react/select.tsx", "figmaMainId": null, "figmaCatalogId": "6:637", "htmlMarker": null, "integration": "React island", "mappingStatus": "catalog confirmed; main component identity not verified" },
+    { "export": "Dialog", "package": "@ipollowork/ui/dialog", "source": "packages/ui/src/react/dialog.tsx", "figmaMainId": null, "figmaCatalogId": "6:832", "htmlMarker": null, "integration": "React island", "mappingStatus": "catalog confirmed; main component identity not verified" },
+    { "export": "Toaster", "relatedExports": ["toast"], "package": "@ipollowork/ui/sonner", "source": "packages/ui/src/react/sonner.tsx", "figmaMainId": null, "figmaCatalogId": "6:977", "htmlMarker": null, "integration": "React island", "mappingStatus": "catalog confirmed; main component identity not verified" }
   ]
 }
