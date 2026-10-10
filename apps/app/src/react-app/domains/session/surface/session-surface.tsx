@@ -3,7 +3,7 @@ import type { ChatModelStatus } from "@/react-app/infra/preferred-chat-model";
 import { resolveInstalledPluginContributions, mediaStudioEngine } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { IMAGE_STUDIO_EDIT_RESULT } from "@/app/types";
 import { loadArtifactThumbnail } from "@/components/chat/artifact-thumbnail";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import type { UIMessage } from "ai";
 import { useSessionArtifacts } from "@/react-app/infra/session-artifacts-query";
 import { withStudioResults } from "../sync/message-merge";
@@ -163,7 +163,14 @@ type PendingImageStudioRefresh = {
   assistantMessageBaseline: number;
 };
 
+export type SessionSurfaceHandle = {
+  workspaceId: string;
+  sessionId: string;
+  sendDraft: (draft: ComposerDraft) => Promise<boolean>;
+};
+
 export type SessionSurfaceProps = {
+  ref?: Ref<SessionSurfaceHandle>;
   client: iPolloWorkServerClient;
   conversation: ConversationEngineConnection;
   environmentClient?: iPolloWorkServerClient | null;
@@ -1471,6 +1478,18 @@ export function SessionSurface(props: SessionSurfaceProps) {
     window.addEventListener(VIDEO_VOICEOVER_REQUEST, generateVoiceover);
     return () => window.removeEventListener(VIDEO_VOICEOVER_REQUEST, generateVoiceover);
   }, [chatStreaming, props.sessionId, sendDraft]);
+
+  // Workbench actions use the same optimistic message, waiting, Stop and error
+  // lifecycle as the composer instead of calling the transport directly.
+  useImperativeHandle(props.ref, () => ({
+    workspaceId: props.workspaceId,
+    sessionId: props.sessionId,
+    async sendDraft(draft) {
+      const status = getReactQueryClient().getQueryData<ConversationStatus>(statusQueryKey);
+      if (chatStreaming || status?.type === "busy" || status?.type === "retry") return false;
+      return Boolean(await sendDraft(draft, draft.attachments));
+    },
+  }), [chatStreaming, props.workspaceId, props.sessionId, sendDraft, statusQueryKey]);
 
   const programmaticDraftIdRef = useRef<string | null>(null);
   useEffect(() => {

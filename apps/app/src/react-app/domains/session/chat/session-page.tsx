@@ -89,7 +89,7 @@ import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType, subscribeToSessionType } from "../sidebar/session-type";
-import { SessionSurface, StarterCapabilityChip, type SessionSurfaceProps } from "../surface/session-surface";
+import { SessionSurface, StarterCapabilityChip, type SessionSurfaceHandle, type SessionSurfaceProps } from "../surface/session-surface";
 import { ReactSessionComposer, type ComposerPlusMenuData, type ComposerProps } from "../surface/composer/composer";
 import {
   NewConversationStarter,
@@ -1674,6 +1674,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
 }
 
 export function SessionPage(props: SessionPageProps) {
+  const sessionSurfaceRef = useRef<SessionSurfaceHandle>(null);
   const initialTaskScope = newTaskComposerScope(props.selectedWorkspaceId);
   // Observe the same status cache as the composer: Stop settles it immediately
   // and session-sync suppresses stale busy events until the next prompt.
@@ -3167,23 +3168,29 @@ export function SessionPage(props: SessionPageProps) {
     const composerStore = useComposerStateStore.getState();
     const request = instruction?.trim();
     if (request) {
-      const result = await sendSessionDraft({
-        mode: "prompt",
-        parts: [
-          { type: "text", text: request },
-          { type: "design-selection", contextId: context.id, label: context.target.label },
-        ],
-        attachments: [],
-        text: request,
-        resolvedText: request,
-        capability: { id: "video", instruction: `Continue editing the existing video project containing ${context.filePath}. Preserve unrelated scenes, timing, assets and manual edits. The user's request and selected context define the scope.` },
-      }, context.sessionId);
-      if (typeof result === "boolean" ? !result : !result.dispatched) {
+      const surface = sessionSurfaceRef.current;
+      if (!surface || surface.sessionId !== context.sessionId || surface.workspaceId !== context.workspaceId) {
+        throw new Error("当前对话尚未准备好，请在当前视频页重新提交需求");
+      }
+      try {
+        const dispatched = await surface.sendDraft({
+          mode: "prompt",
+          parts: [
+            { type: "text", text: request },
+            { type: "design-selection", contextId: context.id, label: context.target.label },
+          ],
+          attachments: [],
+          text: request,
+          resolvedText: request,
+          capability: { id: "video", instruction: `Continue editing the existing video project containing ${context.filePath}. Preserve unrelated scenes, timing, assets and manual edits. The user's request and selected context define the scope.` },
+        });
+        if (!dispatched) throw new Error("需求发送失败，已保留在左侧输入框，请重试");
+      } catch (error) {
         composerStore.setDraft(context.sessionId, replaceDesignSelectionToken(
           `${getComposerDraft(composerStore, context.sessionId)}\n${request}`.trim(),
           designAiSelectionToken(context.id),
         ));
-        throw new Error("需求发送失败，已保留在左侧输入框，请重试");
+        throw error;
       }
       if (rightPanelExpanded) setRightPanelExpanded(false);
       return;
@@ -3199,7 +3206,7 @@ export function SessionPage(props: SessionPageProps) {
     window.requestAnimationFrame(() => {
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     });
-  }, [props.selectedSessionId, props.runtimeWorkspaceId, rightPanelExpanded, sendSessionDraft]);
+  }, [props.selectedSessionId, props.runtimeWorkspaceId, rightPanelExpanded]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
     return target.value;
@@ -4790,6 +4797,7 @@ export function SessionPage(props: SessionPageProps) {
                         // SessionRoute, not from anything in `surface`.
                         {...props.surface!}
                         onSendDraft={sendSessionDraft}
+                        ref={sessionSurfaceRef}
                         client={props.ipolloworkServerClient!}
                         environmentClient={props.environmentClient}
                         workspaceId={props.runtimeWorkspaceId!}

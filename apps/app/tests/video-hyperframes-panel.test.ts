@@ -45,10 +45,14 @@ describe("HyperFrames Video Studio", () => {
     expect(panel).toContain('if (!active) throw');
     expect(submit).toContain('context.sessionId !== props.selectedSessionId');
     expect(submit).toContain('context.workspaceId !== props.runtimeWorkspaceId');
-    expect(submit).toContain('await sendSessionDraft({');
+    expect(submit).toContain('await surface.sendDraft({');
+    expect(submit).not.toContain('await sendSessionDraft(');
+    expect(submit).toContain('surface.sessionId !== context.sessionId');
+    expect(submit).toContain('surface.workspaceId !== context.workspaceId');
+    expect(page).toContain('ref={sessionSurfaceRef}');
     expect(submit).toContain('{ type: "text", text: request }');
     expect(submit).toContain('{ type: "design-selection", contextId: context.id, label: context.target.label }');
-    expect(submit).toContain('!result.dispatched');
+    expect(submit).toContain('!dispatched');
   });
 
   test("uses the same compact task-progress density across host, Studio and video plugin", () => {
