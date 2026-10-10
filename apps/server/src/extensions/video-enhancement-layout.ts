@@ -4,7 +4,7 @@ const overlaps = (a: VideoEnhancementRect, b: VideoEnhancementRect) =>
   a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
 /** Freeze each card's position for its whole window; never chase the presenter. */
-export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<VideoEnhancementResult, "people" | "duration" | "width" | "height">) {
+export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<VideoEnhancementResult, "people" | "duration" | "width" | "height"> & Partial<Pick<VideoEnhancementResult, "hands" | "gestures">>): VideoEnhancementResult["cues"] {
   const selected = cues.filter(cue => cue.enabled).sort((a, b) => a.start - b.start);
   if (selected.some((cue, index) => index > 0 && cue.start < selected[index - 1]!.end)) throw new Error("元素展示时间不能重叠，请调整时间后应用。");
   return cues.map(cue => {
@@ -20,18 +20,42 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
       blockers.push({ x, y, width: Math.max(...boxes.map(box => box.x + box.width)) - x,
         height: Math.max(...boxes.map(box => box.y + box.height)) - y });
     }
+    blockers.push(...(result.hands ?? []).filter(sample => sample.time >= Math.max(0, cue.start - .25) && sample.time <= cue.end + .25).flatMap(sample => sample.boxes));
     const padded = blockers.map(box => ({ x: box.x - .035, y: box.y - .035, width: box.width + .07, height: box.height + .07 }));
-    // Keep the bottom 18% free for original subtitles. Smaller cards are tried
-    // only while their text still has a useful minimum font size.
-    for (const width of [.32, .26, .2]) {
+    const matches = cue.placement === "left" || cue.placement === "right" ? []
+      : (result.gestures ?? []).filter(event => event.end > cue.start && event.start < cue.end)
+        .sort((a, b) => (Math.min(b.end, cue.end) - Math.max(b.start, cue.start)) - (Math.min(a.end, cue.end) - Math.max(a.start, cue.start)) || b.confidence - a.confidence);
+    if (cue.placement === "gesture" && !matches.length) return { ...cue, enabled: false, rect: null, reason: "此时段没有稳定手势，请调整时间或选择智能定位。" };
+    const dimensions = [.32, .26, .2].flatMap(width => {
       const font = Math.min(result.width * .028, result.height * .045);
       const lines = Math.max(1, Math.ceil((Array.from(cue.text).length + (cue.kind === "list" ? 2 : 0)) * font / (result.width * width - font)));
       const height = Math.max(.09, (lines * font * 1.35 + font * 1.3) / result.height);
-      if (height > .35) continue;
+      return height <= .35 ? [{ width, height }] : [];
+    });
+    for (const gesture of matches) {
+      for (const { width, height } of dimensions) {
+        for (const [dx, dy] of [[0, 0], [0, -.1], [-.1, 0], [.1, 0], [0, .1]]) {
+          const rect = { x: Math.max(.04, Math.min(.96 - width, gesture.target.x - width / 2 + dx!)),
+            y: Math.max(.06, Math.min(.82 - height, gesture.target.y - height / 2 + dy!)), width, height };
+          if (padded.some(box => overlaps(rect, box))) continue;
+          const start = Math.max(cue.start, gesture.start);
+          // Keep usable display time. The original speech window is never extended.
+          if (cue.end - start < .5) continue;
+          return { ...cue, start, rect, gesture, reason: gesture.kind === "point" ? "依据指向位置展示，已避让人物与手部。" : "依据张掌位置展示，已避让人物与手部。" };
+        }
+      }
+    }
+    const gesture = matches[0];
+    if (cue.placement === "gesture") return { ...cue, enabled: false, rect: null, gesture, reason: "手势目标区域没有安全空白，已跳过；可改为智能定位。" };
+    // Keep the bottom 18% free for original subtitles. Smaller cards are tried
+    // only while their text still has a useful minimum font size.
+    for (const { width, height } of dimensions) {
       for (const y of [.08, .32, .55]) {
-        for (const x of [.04, .96 - width]) {
+        const positions = cue.placement === "left" ? [.04] : cue.placement === "right" ? [.96 - width] : [.04, .96 - width];
+        for (const x of positions) {
           const rect = { x, y, width, height };
-          if (y + height <= .82 && !padded.some(box => overlaps(rect, box))) return { ...cue, rect };
+          if (y + height <= .82 && !padded.some(box => overlaps(rect, box))) return { ...cue, rect,
+            ...(gesture ? { gesture, reason: "手势目标区域被占用，已改用安全空白位置。" } : {}) };
         }
       }
     }

@@ -33,24 +33,28 @@ let starting = false;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const modelRoot = () => process.env.IPOLLOWORK_VIDEO_MODELS_PATH || fileURLToPath(new URL("../../models/", import.meta.url));
 export async function localEnhancementStatus() {
-  const files = models.flatMap(model => model.files.map(file => join(modelRoot(), model.id, file.path)));
-  const available = await Promise.all(files.map(file => stat(file).then(value => value.isFile() && value.size > 0).catch(() => false)));
-  return available.every(Boolean)
-    ? { ready: true, message: "本地语音与人物模型已就绪，可断网分析。" }
-    : { ready: false, message: "缺少本地语音或人物模型。请安装含模型的完整版本；开发环境运行 pnpm --filter ipollowork-server prepare:video-models。分析不会联网下载或调用云端 API。" };
+  const available = await Promise.all(models.map(async model => {
+    const files = await Promise.all(model.files.map(file => stat(join(modelRoot(), model.id, file.path)).then(value => value.isFile() && value.size > 0).catch(() => false)));
+    return { id: model.id, ready: files.every(Boolean) };
+  }));
+  const ready = available.filter(model => model.id.startsWith("Xenova/")).every(model => model.ready);
+  const gesturesReady = available.some(model => model.id === "opencv/opencv_zoo" && model.ready);
+  return { ready, gesturesReady, message: ready
+    ? `本地语音与人物模型已就绪，可断网分析。${gesturesReady ? "手势模型已就绪。" : "缺少手势模型，可关闭手势定位继续；开发环境运行 pnpm --filter ipollowork-server prepare:video-models。"}`
+    : "缺少本地语音或人物模型。请安装含模型的完整版本；开发环境运行 pnpm --filter ipollowork-server prepare:video-models。分析不会联网下载或调用云端 API。" };
 }
 async function save(path: string, value: VideoEnhancementJob) {
   const partial = path + "." + randomUUID() + ".partial";
   try { await writeFile(partial, JSON.stringify(value), { flag: "wx" }); await rename(partial, path); }
   finally { await rm(partial, { force: true }); }
 }
-async function run(jobPath: string, job: VideoEnhancementJob, input: string, directory: string, language: string, controller: AbortController) {
+async function run(jobPath: string, job: VideoEnhancementJob, input: string, directory: string, language: string, useGestures: boolean, controller: AbortController) {
   const item = { job, controller };
   live.set(jobPath, item);
   const timer = setTimeout(() => controller.abort(), 30 * 60_000);
   try {
     const worker = fileURLToPath(new URL(`./video-enhancement-worker${extname(fileURLToPath(import.meta.url))}`, import.meta.url));
-    const child = spawn(process.execPath, [worker, input, directory, modelRoot(), language], {
+    const child = spawn(process.execPath, [worker, input, directory, modelRoot(), language, useGestures ? "gestures" : "speech"], {
       windowsHide: true, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1" },
     });
@@ -112,7 +116,8 @@ export async function callVideoEnhancementAction(config: ServerConfig, action: s
     try {
     const start = videoEnhancementStartSchema.parse(raw);
     if (!start.sourcePath.startsWith(`${project}/assets/`) || !/^video\/[\w-]+\/assets\/[\w.-]+\.(mp4|mov|webm)$/i.test(start.sourcePath)) throw new ApiError(400, "enhancement_source", "请选择当前视频会话上传的视频。");
-    if (!(await localEnhancementStatus()).ready) throw new ApiError(503, "enhancement_models_missing", (await localEnhancementStatus()).message);
+    const modelStatus = await localEnhancementStatus();
+    if (!modelStatus.ready || start.useGestures && !modelStatus.gesturesReady) throw new ApiError(503, "enhancement_models_missing", modelStatus.message);
     if (live.size >= 1) throw new ApiError(409, "enhancement_busy", "已有本地分析正在运行，请等待完成或取消。");
     const source = await resolveWithinRoot(workspace.path, start.sourcePath);
     const info = await inspectLocalVideo(workspace, start.sourcePath);
@@ -127,7 +132,7 @@ export async function callVideoEnhancementAction(config: ServerConfig, action: s
     await copyFile(entry, join(jobDirectory, "before.html"));
     await save(join(jobDirectory, "job.json"), job);
     await writeFile(join(directory, "latest.json"), JSON.stringify({ id: job.id }));
-    void run(join(jobDirectory, "job.json"), job, source, jobDirectory, start.language, new AbortController()).catch(() => undefined);
+    void run(join(jobDirectory, "job.json"), job, source, jobDirectory, start.language, start.useGestures, new AbortController()).catch(() => undefined);
     return { ok: true, result: job };
     } finally { starting = false; }
   }

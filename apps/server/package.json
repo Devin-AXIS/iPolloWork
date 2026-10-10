@@ -57,6 +57,7 @@
     "jsonc-parser": "^3.2.1",
     "minimatch": "^10.0.1",
     "oauth4webapi": "^3.8.7",
+    "onnxruntime-node": "1.21.0",
     "sharp": "0.34.5",
     "ws": "^8.18.3",
     "yaml": "^2.6.1",

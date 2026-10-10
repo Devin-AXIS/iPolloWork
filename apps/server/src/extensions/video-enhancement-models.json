@@ -22,5 +22,17 @@
       { "path": "config.json" }, { "path": "preprocessor_config.json" },
       { "path": "onnx/model_quantized.onnx", "sha256": "82b5c1de8aaaffd763c67d67b09b742a1c53628acfee3077af3fa59233e86b6b" }
     ]
+  },
+  {
+    "id": "opencv/opencv_zoo",
+    "revision": "d4938dfc9d4ec5d098bfa33e98b3f3345a236586",
+    "license": "Apache-2.0",
+    "source": "https://github.com/opencv/opencv_zoo/tree/main/models/handpose_estimation_mediapipe",
+    "files": [
+      { "path": "models/palm_detection_mediapipe/palm_detection_mediapipe_2023feb.onnx", "sha256": "78ff51c38496b7fc8b8ebdb6cc8c1abb02fa6c38427c6848254cdaba57fcce7c" },
+      { "path": "models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx", "sha256": "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c" },
+      { "path": "models/palm_detection_mediapipe/LICENSE" },
+      { "path": "models/handpose_estimation_mediapipe/LICENSE" }
+    ]
   }
 ]

@@ -249,6 +249,9 @@ importers:
       oauth4webapi:
         specifier: ^3.8.7
         version: 3.8.7
+      onnxruntime-node:
+        specifier: 1.21.0
+        version: 1.21.0
       sharp:
         specifier: 0.34.5
         version: 0.34.5
@@ -368,6 +371,9 @@ importers:
       oauth4webapi:
         specifier: ^3.8.7
         version: 3.8.7
+      onnxruntime-node:
+        specifier: 1.21.0
+        version: 1.21.0
       sharp:
         specifier: 0.34.5
         version: 0.34.5
