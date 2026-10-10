@@ -130,7 +130,9 @@ test("prepares actual stereo event WAVs with room tails and one overlapping nati
   const speech = result.musicEnvelope.filter(point => point.time >= .8 && point.time <= 1.8);
   expect(speech.every(point => Math.abs(point.volume - .15) < 1e-9)).toBe(true);
   expect(result.musicEnvelope.at(-1)).toEqual({ time: 3, volume: .5 });
-  expect(result.musicTimelineScript).toContain('ease:"none"');
+  expect(JSON.parse(result.musicAutomationAttribute)).toEqual({ version: 1, lanes: [{ target: "volume", points: result.musicEnvelope.map(point => ({ t: point.time, v: point.volume })) }] });
+  expect(result.musicTimelineScript).toContain("tl.to(music,");
+  expect(result.instruction).toContain("do not use it alongside native automation");
 });
 
 test("sound events reject duplicate IDs, source escape and windows outside the film", async () => {

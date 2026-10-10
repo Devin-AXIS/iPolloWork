@@ -1,6 +1,7 @@
 import { getEditableSourceFileForElement } from "../components/editor/domEditingDom";
 import { parseCompositionVariables, updateTextVariableBinding } from "@hyperframes/parsers/composition";
 import { useCallback, useRef } from "react";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
 
@@ -37,7 +38,7 @@ import {
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
@@ -250,7 +251,7 @@ export function useDomEditCommits({
         `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
           body: JSON.stringify(patchBody),
         },
       );

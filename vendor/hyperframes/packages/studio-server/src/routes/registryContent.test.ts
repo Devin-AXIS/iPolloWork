@@ -40,7 +40,7 @@ describe("atomic component content API", () => {
     const before = await read(); const response = await write(before.revision, { content: { branches: [{ id: "a", label: "Changed" }, { id: "b", label: "Beta" }] } });
     expect(response.status).toBe(200); expect(capture).toHaveBeenCalledTimes(1);
     expect(capture.mock.calls[0]?.[0].componentVariables?.elementId).toBe("instance");
-    expect(readFileSync(join(dir, "index.html"), "utf8")).toContain('<aside id="other">Unchanged</aside>');
+    expect(readFileSync(join(dir, "index.html"), "utf8").replace(/ data-hf-id="[^"]*"/g, "")).toContain('<aside id="other">Unchanged</aside>');
     expect((await read()).data.content.branches[0].label).toBe("Changed");
     expect((await write(before.revision, {})).status).toBe(409);
   });

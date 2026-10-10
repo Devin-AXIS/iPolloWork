@@ -3,13 +3,16 @@
 // `skills add --global --agent claude-code universal --copy` writes REAL files
 // to two global stores: the Claude store (~/.claude/skills — what Claude Code
 // reads, at global priority) and the shared universal store (~/.agents/skills,
-// which Cursor/Codex/… read in PROJECT scope and the .agents-family agents read
-// globally). But every other agent reads its OWN global dir (~/.cursor/skills,
+// which Cursor/… read in PROJECT scope and Codex, Pi and the .agents-family
+// agents read globally). But every other agent reads its OWN global dir (~/.cursor/skills,
 // goose → ~/.config/goose/skills, …), which upstream's --global does NOT
 // populate.
 //
 // So we mirror the canonical Claude store into each of those per-agent dirs, but
-// only for agents the machine actually has (their marker dir exists). On Unix
+// only for agents the machine actually has (their marker dir exists). Agents
+// that already consume the universal ~/.agents/skills store globally (Pi, Codex) are
+// skipped: their universal copy is authoritative and a per-agent copy would
+// collide with it (#3294). On Unix
 // each skill is a relative symlink back into the store (one source of truth,
 // near-zero size, auto-fresh on update); on Windows it's a copy, because
 // symlinks there need admin / Developer Mode and otherwise silently dangle —
@@ -19,16 +22,139 @@
 // uses (XDG_CONFIG_HOME, CODEX_HOME, CLAUDE_CONFIG_DIR, …), so a machine with
 // those set mirrors into the exact dir the agent reads.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { AGENT_GLOBAL_DIRS, type AgentDirBase } from "./agentDirs.generated.js";
+
+/**
+ * Agents that natively discover the universal `~/.agents/skills` store globally
+ * in ADDITION to their own agent-specific directory. Mirroring into their own
+ * dir makes every skill discoverable twice.
+ *
+ * Pi and Codex are known cases. Pi (earendil-works/pi) reads both `~/.pi/agent/skills/`
+ * and `~/.agents/skills/` as global locations (pi's packages/coding-agent/docs/
+ * skills.md#locations), so a mirrored entry collides with the universal copy
+ * and Pi skips the universal one on name conflict (#3294). Codex likewise
+ * discovers the user-level `~/.agents/skills/` store.
+ *
+ * The generated table cannot carry this capability — it is a plain
+ * (agent, base, sub) list synced from vercel-labs/skills — so the set lives
+ * here next to the mirror logic that needs it.
+ */
+const UNIVERSAL_STORE_READERS = new Set(["pi", "codex"]);
 
 export interface MirrorResult {
   /** The store mirrored from, or null when no global Claude store was found. */
   source: string | null;
   /** Agents whose global dir was (re)populated. */
   mirrored: { agent: string; dir: string }[];
+  /** Agent targets skipped because their filesystem identity was unsafe. */
+  skipped: {
+    agent: string;
+    dir: string;
+    reason: "aliases_install_owned_store" | "unresolvable_target";
+  }[];
+}
+
+type MirrorSkipReason = MirrorResult["skipped"][number]["reason"];
+
+/** Resolve a path through existing ancestors without creating its missing tail. */
+function canonicalCandidate(input: string): string | null {
+  let current = resolve(input);
+  const missing: string[] = [];
+  while (true) {
+    try {
+      lstatSync(current);
+      break;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") return null;
+      const parent = dirname(current);
+      if (parent === current) return null;
+      missing.unshift(basename(current));
+      current = parent;
+    }
+  }
+  try {
+    return resolve(realpathSync(current), ...missing);
+  } catch {
+    return null;
+  }
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+  const fromLeft = relative(left, right);
+  const leftContainsRight =
+    fromLeft === "" ||
+    (fromLeft !== ".." && !fromLeft.startsWith(`..${sep}`) && !isAbsolute(fromLeft));
+  if (leftContainsRight) return true;
+  const fromRight = relative(right, left);
+  return fromRight !== ".." && !fromRight.startsWith(`..${sep}`) && !isAbsolute(fromRight);
+}
+
+function sameExistingNode(left: string, right: string): boolean {
+  try {
+    const leftStat = statSync(left);
+    const rightStat = statSync(right);
+    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+  } catch {
+    return false;
+  }
+}
+
+function targetSafety(
+  target: string,
+  protectedPaths: ReadonlyArray<{ lexical: string; canonical: string }>,
+): MirrorSkipReason | null {
+  const canonical = canonicalCandidate(target);
+  if (!canonical) return "unresolvable_target";
+  for (const protectedPath of protectedPaths) {
+    if (
+      pathsOverlap(canonical, protectedPath.canonical) ||
+      sameExistingNode(target, protectedPath.lexical)
+    ) {
+      return "aliases_install_owned_store";
+    }
+  }
+  return null;
+}
+
+function skillTargetSafety(
+  sourceSkill: string,
+  targetSkill: string,
+  targetDirSafety: () => MirrorSkipReason | null,
+): MirrorSkipReason | null {
+  const directoryReason = targetDirSafety();
+  if (directoryReason) return directoryReason;
+  try {
+    // A final symlink is the normal Unix mirror shape. rmSync unlinks it
+    // without traversing its target, so canonical equality is safe here.
+    if (lstatSync(targetSkill).isSymbolicLink()) return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "unresolvable_target";
+  }
+  const sourceCanonical = canonicalCandidate(sourceSkill);
+  const targetCanonical = canonicalCandidate(targetSkill);
+  if (!sourceCanonical || !targetCanonical) return "unresolvable_target";
+  if (
+    pathsOverlap(sourceCanonical, targetCanonical) ||
+    sameExistingNode(sourceSkill, targetSkill)
+  ) {
+    return "aliases_install_owned_store";
+  }
+  return null;
 }
 
 /** Resolve each env-overridable base dir exactly as upstream agents.ts does. */
@@ -59,39 +185,84 @@ function listSkillDirs(store: string): string[] {
  * copy, or a previous install) is removed first so the mirror always reflects
  * the canonical store — that's the whole point of "update".
  */
-function linkOrCopy(sourceSkill: string, targetSkill: string, platform: NodeJS.Platform): void {
+function linkOrCopy(
+  sourceSkill: string,
+  targetSkill: string,
+  platform: NodeJS.Platform,
+  safety: () => MirrorSkipReason | null,
+): MirrorSkipReason | null {
+  const unsafe = safety();
+  if (unsafe) return unsafe;
   rmSync(targetSkill, { recursive: true, force: true });
   if (platform === "win32") {
     cpSync(sourceSkill, targetSkill, { recursive: true });
   } else {
     symlinkSync(relative(dirname(targetSkill), sourceSkill), targetSkill);
   }
+  return null;
 }
 
 /**
  * Populate one agent's global dir from the store. Best-effort and idempotent;
- * per-skill failures don't abort the others. Returns false if the dir couldn't
- * be created at all.
+ * per-skill failures don't abort the others. Unsafe target identity stops the
+ * agent before the next destructive operation and returns a reportable reason.
  */
 function mirrorInto(
   targetDir: string,
   source: string,
   skills: string[],
   platform: NodeJS.Platform,
-): boolean {
+  safety: () => MirrorSkipReason | null,
+): { mirrored: boolean; skipReason?: MirrorSkipReason } {
+  const beforeCreate = safety();
+  if (beforeCreate) return { mirrored: false, skipReason: beforeCreate };
   try {
     mkdirSync(targetDir, { recursive: true });
   } catch {
-    return false;
+    return { mirrored: false };
   }
+  const afterCreate = safety();
+  if (afterCreate) return { mirrored: false, skipReason: afterCreate };
   for (const skill of skills) {
     try {
-      linkOrCopy(join(source, skill), join(targetDir, skill), platform);
+      const sourceSkill = join(source, skill);
+      const targetSkill = join(targetDir, skill);
+      const skipReason = linkOrCopy(sourceSkill, targetSkill, platform, () =>
+        skillTargetSafety(sourceSkill, targetSkill, safety),
+      );
+      if (skipReason) return { mirrored: false, skipReason };
     } catch {
       // best-effort per skill
     }
   }
-  return true;
+  return { mirrored: true };
+}
+
+/**
+ * Unlink symlinks an earlier mirror left in `targetDir` (they resolve to the same source skill),
+ * only where the universal store holds that skill. Real dirs and Windows copies stay.
+ */
+function removeMirrorLinks(
+  targetDir: string,
+  source: string,
+  universalStore: string,
+  skills: string[],
+  safety: () => MirrorSkipReason | null,
+): MirrorSkipReason | null {
+  const unsafe = safety();
+  if (unsafe) return unsafe;
+  for (const skill of skills) {
+    const targetSkill = join(targetDir, skill);
+    try {
+      if (!existsSync(join(universalStore, skill, "SKILL.md"))) continue;
+      if (!lstatSync(targetSkill).isSymbolicLink()) continue;
+      if (realpathSync(targetSkill) !== realpathSync(join(source, skill))) continue;
+      unlinkSync(targetSkill);
+    } catch {
+      // absent or dangling: nothing of ours to remove
+    }
+  }
+  return null;
 }
 
 /**
@@ -113,7 +284,7 @@ export function mirrorGlobalSkills(opts: {
   // reads from the Claude store and must never link/copy onto either of them.
   const source = join(bases.claudeHome, "skills");
   const universalStore = join(home, ".agents", "skills");
-  if (!existsSync(source)) return { source: null, mirrored: [] };
+  if (!existsSync(source)) return { source: null, mirrored: [], skipped: [] };
 
   // Mirror ONLY HyperFrames' own skills (by name), NEVER everything in the
   // store: ~/.claude/skills is shared, so a user's gstack / personal / company
@@ -122,14 +293,39 @@ export function mirrorGlobalSkills(opts: {
   // hyperframesSkillNames).
   const allowed = new Set(opts.skills);
   const skills = listSkillDirs(source).filter((name) => allowed.has(name));
-  if (skills.length === 0) return { source, mirrored: [] };
+  if (skills.length === 0) return { source, mirrored: [], skipped: [] };
+
+  const protectedPaths = [source, universalStore].map((lexical) => ({
+    lexical,
+    canonical: canonicalCandidate(lexical),
+  }));
+  const resolvedProtectedPaths = protectedPaths.filter(
+    (entry): entry is { lexical: string; canonical: string } => entry.canonical !== null,
+  );
+  if (resolvedProtectedPaths.length !== protectedPaths.length) {
+    return { source, mirrored: [], skipped: [] };
+  }
 
   const mirrored: { agent: string; dir: string }[] = [];
+  const skipped: MirrorResult["skipped"] = [];
   for (const { agent, base, sub } of AGENT_GLOBAL_DIRS) {
     const targetDir = join(bases[base], ...sub.split("/").filter(Boolean));
     if (targetDir === source || targetDir === universalStore) continue; // install-owned
+    if (UNIVERSAL_STORE_READERS.has(agent)) {
+      // Already reads the universal store (#3294); drop links an older version mirrored here.
+      const skipReason = removeMirrorLinks(targetDir, source, universalStore, skills, () =>
+        targetSafety(targetDir, resolvedProtectedPaths),
+      );
+      if (skipReason) skipped.push({ agent, dir: targetDir, reason: skipReason });
+      continue;
+    }
     if (!existsSync(dirname(targetDir))) continue; // agent not installed (no marker)
-    if (mirrorInto(targetDir, source, skills, platform)) mirrored.push({ agent, dir: targetDir });
+    const attempt = mirrorInto(targetDir, source, skills, platform, () =>
+      targetSafety(targetDir, resolvedProtectedPaths),
+    );
+    if (attempt.mirrored) mirrored.push({ agent, dir: targetDir });
+    else if (attempt.skipReason)
+      skipped.push({ agent, dir: targetDir, reason: attempt.skipReason });
   }
-  return { source, mirrored };
+  return { source, mirrored, skipped };
 }

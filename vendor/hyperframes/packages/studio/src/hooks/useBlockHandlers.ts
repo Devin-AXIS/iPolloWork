@@ -12,7 +12,7 @@ import {
   type BlockVariableValue,
   type InstalledComponentParams,
 } from "../utils/blockInstaller";
-import type { EditHistoryKind, EditHistoryState } from "../utils/editHistory";
+import type { EditHistoryKind } from "../utils/editHistory";
 import {
   resolveTimelineSelectionSeekTime,
   type RightPanelTab,
@@ -32,7 +32,7 @@ interface BlockCtxDeps {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
+    kind?: EditHistoryKind;
     coalesceKey?: string;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
@@ -47,7 +47,7 @@ interface UseBlockHandlersParams {
   projectId: string | null;
   blockCtxDeps: BlockCtxDeps;
   compositionLoading: boolean;
-  historyState: EditHistoryState;
+  historyState: { undo: ReadonlyArray<{ createdAt: number }>; redo: ReadonlyArray<{ createdAt: number }> };
   clearDomSelection: () => void;
   setCompositionLoading: (loading: boolean) => void;
   setRightCollapsed: (collapsed: boolean) => void;

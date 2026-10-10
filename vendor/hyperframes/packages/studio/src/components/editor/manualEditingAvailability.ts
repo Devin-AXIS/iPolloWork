@@ -1,3 +1,4 @@
+import { resolveEnabledSdkFamilies } from "../../utils/sdkCutoverPolicy";
 export type StudioFeatureFlagEnv = Record<string, boolean | string | undefined>;
 
 const STUDIO_PREVIEW_MANUAL_DRAGGING_ENV = "VITE_STUDIO_ENABLE_PREVIEW_MANUAL_DRAGGING";
@@ -107,10 +108,8 @@ export const STUDIO_SDK_RESOLVER_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
-// Studio inspector redesign ("Ledger, flat" — design_handoff_studio_inspector):
-// The Figma inspector is now the only supported Layer-panel implementation.
-// Keeping it behind an environment switch caused existing desktop sessions to
-// silently render retired property groups instead.
-export const STUDIO_FLAT_INSPECTOR_ENABLED = true;
-
 export const STUDIO_MANUAL_EDITING_DISABLED_TITLE = "Manual editing is temporarily disabled";
+
+// Official SDK operation-family switches, shared by the existing embedded editor.
+export const STUDIO_SDK_CUTOVER_FAMILIES = resolveEnabledSdkFamilies(env, STUDIO_SDK_CUTOVER_ENABLED);
+export const STUDIO_API_SAME_ORIGIN_CREDENTIALS = true;

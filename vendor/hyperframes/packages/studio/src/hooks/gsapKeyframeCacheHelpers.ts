@@ -5,7 +5,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { toAbsoluteTime } from "./gsapShared";
-import { buildTimelineAnimationSegments } from "../utils/timelineAnimationSegments";
+import { buildTimelineAnimationSegments, timelineKeyframe } from "../utils/timelineAnimationSegments";
 import {
   buildTimelineCacheUpdates,
   resolveGsapTimelineTargetKeys,
@@ -54,10 +54,10 @@ export function updateKeyframeCacheFromParsed(
         const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
         const clipPct =
           elDuration > 0
-            ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
+            ? Math.round(((absTime - elStart) / elDuration) * 100000) / 1000
             : kf.percentage;
         return {
-          ...kf,
+          ...timelineKeyframe(anim, kf),
           percentage: clipPct,
           tweenPercentage: kf.percentage,
           propertyGroup: anim.propertyGroup,
@@ -71,6 +71,7 @@ export function updateKeyframeCacheFromParsed(
           const prev = byPct.get(kf.percentage);
           if (prev) {
             prev.properties = { ...prev.properties, ...kf.properties };
+            if (kf.origin === "manual") prev.origin = "manual";
             if (kf.ease) prev.ease = kf.ease;
           } else {
             byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });

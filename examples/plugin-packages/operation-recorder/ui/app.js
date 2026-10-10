@@ -55,7 +55,7 @@
     // standalone operation never waits on this optional conversation channel.
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        const host = await bridgeRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: 'iPolloWork 操作录制', version: '0.3.0' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] } }, 2500);
+        const host = await bridgeRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: 'iPolloWork 操作录制', version: '0.4.2' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] } }, 2500);
         hostMessageSupported = Boolean(host?.hostCapabilities?.message);
         applyHostTheme(host?.hostContext);
         window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
@@ -263,8 +263,7 @@
   }
 
   function stepTarget(step) {
-    const target = step.target?.name || step.url || step.window || step.app || (step.action === 'key' ? step.key : step.action === 'assert' ? step.expected : '检查当前应用中的目标');
-    return target === 'AXWindow' ? '当前窗口' : target;
+    return step.description || '此步骤缺少详细描述，请刷新录制状态。';
   }
 
   function renderSteps() {
@@ -288,10 +287,12 @@
       summary.append(element('span', 'step-index', String(index + 1).padStart(2, '0')), element('span', 'step-action', actionNames[step.action] || step.action), element('span', 'step-target', stepTarget(step)));
       details.append(summary);
       const body = element('div', 'step-body');
-      const context = [step.app, step.window, step.target?.role, step.url, step.key ? `按键 ${step.key}` : ''].filter(Boolean);
+      const context = [step.app, step.page?.title, step.window, step.target?.position, step.target?.role, step.url, step.key ? `按键 ${step.key}` : ''].filter(Boolean);
       if (step.target?.selectors?.length) context.push(`定位参考：${step.target.selectors.join(' / ')}`);
       if (context.length) body.append(element('p', 'step-context', context.join(' · ')));
       const fields = element('div', 'field-grid');
+      fields.append(field(`page-${index}`, '页面或窗口标题', step.page?.title || step.window, { field: 'pageTitle', stepId: step.id }), field(`target-${index}`, '操作控件名称', step.target?.name, { field: 'targetName', stepId: step.id }));
+      fields.append(field(`area-${index}`, '控件所在区域（从外到内，用 → 分隔）', step.target?.ancestors?.map(parent => parent.name).filter(Boolean).join(' → '), { field: 'targetArea', stepId: step.id }));
       fields.append(field(`note-${index}`, '补充说明（可选）', step.note, { field: 'note', stepId: step.id, multiline: true }), field(`expected-${index}`, '预期结果（可选）', step.expected, { field: 'expected', stepId: step.id, multiline: true }));
       body.append(fields);
       const controls = element('div', 'toolbar');
@@ -394,6 +395,10 @@
       state.dirty = false;
       state.finalAssertId = result.session.steps.at(-1)?.action === 'assert' ? result.session.steps.at(-1).id : null;
       if (structureChanged) renderSteps();
+      else for (const step of state.session.steps) {
+        const row = Array.from($('steps').querySelectorAll('details')).find(node => node.dataset.stepId === step.id);
+        if (row) row.querySelector('.step-target').textContent = stepTarget(step);
+      }
       renderControls();
       renderList();
     }
@@ -484,7 +489,10 @@
     if (!input.dataset.stepId || !editable()) return;
     const step = state.session.steps.find((item) => item.id === input.dataset.stepId);
     if (!step) return;
-    step[input.dataset.field] = input.dataset.field === 'secret' ? input.checked : input.value;
+    if (input.dataset.field === 'pageTitle') step.page = { title: input.value };
+    else if (input.dataset.field === 'targetName') step.target = { ...step.target, name: input.value };
+    else if (input.dataset.field === 'targetArea') step.target = { ...step.target, ancestors: input.value.split('→').map(name => name.trim()).filter(Boolean).map(name => ({ role: 'Pane', name })) };
+    else step[input.dataset.field] = input.dataset.field === 'secret' ? input.checked : input.value;
     if (step.id === state.finalAssertId && input.dataset.field === 'expected') $('success-condition').value = input.value;
     markDirty();
   });
@@ -564,14 +572,14 @@
     download(JSON.stringify({ format: 'ipollowork-recorded-skill', version: 1, manifest: result.manifest, workflow: result.workflow, skill: $('skill-markdown').value, session: result.session || state.session }, null, 2) + '\n', `${result.name}.json`, 'application/json;charset=utf-8');
   });
   $('copy-path').addEventListener('click', () => void operation(() => copy(state.compiled.directory, '本地 Skill 目录已复制。')));
-  $('copy-ai').addEventListener('click', () => void operation(() => copy(`请根据以下录制草稿提炼通用 Skill。自动归纳用途与说明，保留输入变量、权限边界、前置条件和已有成功检查。没有明确完成条件时不要编造，也不要把导出标记为人工审阅或实际验证通过。兼容 OpenCode、Codex、DeepSeek，使用当前引擎已授权的可用工具。\n\n${$('skill-markdown').value}`, '提炼提示和 Skill 草稿已复制。')));
+  $('copy-ai').addEventListener('click', () => void operation(() => copy(`请根据以下录制草稿提炼通用 Skill。自动归纳用途与说明，每一步明确应用、页面标题或地址、所属区域、控件名称和操作方式；只用已录制证据，缺失项明确标注，不猜测位置。保留输入变量、权限边界、前置条件和已有成功检查。没有明确完成条件时不要编造，也不要把导出标记为人工审阅或实际验证通过。兼容 OpenCode、Codex、DeepSeek，使用当前引擎已授权的可用工具。\n\n${$('skill-markdown').value}`, '提炼提示和 Skill 草稿已复制。')));
   $('ask-ai').addEventListener('click', () => void operation(async () => {
     if (!hostMessageSupported || !state.session || !state.compiled || state.stale) throw new Error('请先生成当前录制的 Skill 草稿。');
     if (state.markdownDirty) {
       const saved = await request('compile', { sessionId: state.session.id, skillName: state.compiled.name, description: state.compiled.manifest.description, skillContent: $('skill-markdown').value });
       renderOutput(saved);
     }
-    const prompt = `请提炼这段操作录制，生成可复用的通用 Skill。通过 operation-recorder 插件的 status 动作读取 sessionId=${state.session.id}，保留变量、敏感字段标记、授权范围和已有成功检查。自动归纳用途与说明，不要求用户起技术名称或变量名；没有明确完成条件时不要编造。兼容 OpenCode、Codex、DeepSeek，并使用当前引擎已授权的工具。不要把草稿导出当成人工审阅通过，也不要编造实际重放或验证结果。当前 skillName=${state.compiled.name}，description=${JSON.stringify(state.compiled.manifest.description)}。如要保存提炼稿，请使用该插件的 compile 动作，传入同一 sessionId、skillName、description 及 skillContent；保留与名称和描述一致的 YAML frontmatter。先读取现有草稿 ${state.compiled.skillPath}。`;
+    const prompt = `请提炼这段操作录制，生成可复用的通用 Skill。通过 operation-recorder 插件的 status 动作读取 sessionId=${state.session.id}，每一步明确应用、页面标题或地址、所属区域、控件名称和操作方式；缺失信息明确标注，不猜测。保留变量、敏感字段标记、授权范围和已有成功检查。自动归纳用途与说明，不要求用户起技术名称或变量名；没有明确完成条件时不要编造。兼容 OpenCode、Codex、DeepSeek，并使用当前引擎已授权的工具。不要把草稿导出当成人工审阅通过，也不要编造实际重放或验证结果。当前 skillName=${state.compiled.name}，description=${JSON.stringify(state.compiled.manifest.description)}。如要保存提炼稿，请使用该插件的 compile 动作，传入同一 sessionId、skillName、description 及 skillContent；保留与名称和描述一致的 YAML frontmatter。先读取现有草稿 ${state.compiled.skillPath}。`;
     const result = await bridgeRequest('ui/message', { role: 'user', content: [{ type: 'text', text: prompt }] });
     if (result?.isError) throw new Error('当前 AI 会话未接受请求，请使用「复制给 AI 提炼」。');
     message('请求已送到当前 AI 会话。提炼结果请在会话中查看。');

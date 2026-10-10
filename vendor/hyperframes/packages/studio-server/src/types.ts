@@ -1,5 +1,7 @@
 import type { CanvasResolution } from "@hyperframes/parsers";
 import type { RegistryItem } from "@hyperframes/core";
+import type { BundleOptions } from "@hyperframes/core/compiler";
+import type { ProjectHistory } from "./history/projectHistory.js";
 
 /** Resolved info about a single project. */
 export interface ResolvedProject {
@@ -17,6 +19,7 @@ export interface RenderJobState {
   stage?: string;
   outputPath: string;
   error?: string;
+  audioLoweredDb?: number;
   /**
    * Optional abort hook set by the adapter. The cancel route calls this to
    * stop an in-flight render; adapters that can't abort may omit it (the
@@ -45,11 +48,16 @@ export interface MediaProcessingJobState {
 /** Lint result from the core linter. */
 export interface LintResult {
   findings: Array<{
+    code?: string;
     severity: string;
     message: string;
     file?: string;
     fixHint?: string;
   }>;
+}
+
+export interface ProjectLintResult {
+  results: Array<{ file: string; result: LintResult }>;
 }
 
 export interface StudioSelectionTextField {
@@ -101,21 +109,40 @@ export interface StudioApiAdapter {
   /** Resolve a project ID (or session ID) to its directory. Returns null if not found. */
   resolveProject(id: string): Promise<ResolvedProject | null> | ResolvedProject | null;
 
-  /** Bundle a project directory into a single HTML string. Returns null if unavailable. */
-  bundle(projectDir: string): Promise<string | null>;
+  /**
+   * Optional: the project's current history. A history refuses every call once its folder is replaced (a
+   * deleted `.hyperframes`, a new project there), so keep them in `historyCache`, which reopens. Else routes 404.
+   */
+  history?: (project: ResolvedProject) => Promise<ProjectHistory | null> | ProjectHistory | null;
 
-  /** Optional: cached signature for project files that should invalidate preview frame caches. */
+  /** Bundle a project directory into a single HTML string, forwarding `options` over the host's own. */
+  bundle(
+    projectDir: string,
+    options?: Pick<BundleOptions, "stampHfIds" | "onRead">,
+  ): Promise<string | null>;
+
+  /** Optional: a cached `createProjectSignature(dir)`; preview caching checks builds against it. */
   getProjectSignature?: (projectDir: string) => string;
+  invalidateProjectSignature?: (projectDir: string) => void;
 
   /**
    * Synchronously invalidate a host-owned project signature after a successful
    * mutation. File watchers remain a fallback for out-of-process edits, but an
    * API write must not race the preview request that immediately follows it.
    */
-  invalidateProjectSignature?: (projectDir: string) => void;
 
   /** Lint a single HTML string. */
-  lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
+  lint(
+    html: string,
+    opts?: { filePath?: string; isSubComposition?: boolean },
+  ): Promise<LintResult> | LintResult;
+
+  /**
+   * Lint the complete project, including relationships between files. Official
+   * adapters provide this; the single-file method remains as a compatibility
+   * fallback for third-party adapters compiled against older releases.
+   */
+  lintProject?: (projectDir: string) => Promise<ProjectLintResult> | ProjectLintResult;
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;
@@ -152,6 +179,13 @@ export interface StudioApiAdapter {
     quality: string;
     jobId: string;
     /**
+     * The triggering browser profile has telemetry disabled (localStorage
+     * opt-out, DNT, dev build...). The CLI cannot observe any of that, so the
+     * browser has to say so — without it the server emitted render outcomes
+     * for a user who had opted out, under the CLI's own policy.
+     */
+    telemetryOptOut?: boolean;
+    /**
      * Optional output resolution preset. See `resolveDeviceScaleFactor` in
      * the producer for the integer-scale + aspect + HDR constraints.
      */
@@ -186,6 +220,7 @@ export interface StudioApiAdapter {
     inputAssetPath: string;
     outputPath: string;
     outputAssetPath: string;
+    foregroundPath?: string;
     backgroundOutputPath?: string;
     backgroundOutputAssetPath?: string;
     quality: "fast" | "balanced" | "best";
@@ -193,18 +228,21 @@ export interface StudioApiAdapter {
     jobId: string;
   }) => MediaProcessingJobState;
 
-  /** Optional: generate a JPEG thumbnail via Puppeteer or similar. */
+  /** Optional: generate a thumbnail at the route's explicit output dimensions. */
   generateThumbnail?: (opts: {
     project: ResolvedProject;
     compPath: string;
     seekTime: number;
     width: number;
     height: number;
+    outputWidth: number;
+    outputHeight: number;
     previewUrl: string;
     selector?: string;
     format?: "jpeg" | "png";
     selectorIndex?: number;
     runtimeReview?: boolean;
+    signal: AbortSignal;
     componentVariables?: { elementId: string; values: Record<string, string | number | boolean> };
   }) => Promise<Buffer | import("./helpers/screenshotClip.js").VideoRuntimeReview | null>;
 

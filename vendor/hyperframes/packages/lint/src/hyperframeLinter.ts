@@ -1,4 +1,12 @@
-import type { HyperframeLintFinding, HyperframeLintResult, HyperframeLinterOptions } from "./types";
+import type {
+  HyperframeLintFinding,
+  HyperframeLintResult,
+  HyperframeLinterOptions,
+  LintRule,
+  LintTimings,
+} from "./types";
+import { createSourceLocator } from "./sourceLocations";
+import type { LintContext } from "./context";
 import { buildLintContext } from "./context";
 import { parseHtmlStructure, readAttr, truncateSnippet } from "./utils";
 import { coreRules } from "./rules/core";
@@ -10,41 +18,143 @@ import { adapterRules } from "./rules/adapters";
 import { textureRules } from "./rules/textures";
 import { fontRules } from "./rules/fonts";
 import { slideshowRules } from "./rules/slideshow";
+import { structureRules } from "./rules/structure";
 
-const ALL_RULES = [
-  ...coreRules,
-  ...mediaRules,
-  ...gsapRules,
-  ...captionRules,
-  ...compositionRules,
-  ...adapterRules,
-  ...textureRules,
-  ...fontRules,
-  ...slideshowRules,
+// Rules are grouped by source module so a timing can be attributed to
+// something a human can act on. Individual rules stay anonymous: an
+// index within its group ("gsap#7") is enough to locate a pathological
+// rule, and naming all 86 of them is a refactor this measurement does
+// not need in order to point at the right file.
+//
+// The cost of that choice is that the index is POSITIONAL: adding or
+// removing a rule renumbers every later slot in its group, so "gsap#8"
+// can mean different rules in two builds. LINT_RULE_GROUP_COUNTS below
+// is what makes that detectable — a consumer comparing two builds can
+// see which groups changed size and therefore which numbering is no
+// longer comparable, without anyone having to remember what shipped when.
+const RULE_GROUPS: ReadonlyArray<{
+  group: string;
+  rules: ReadonlyArray<LintRule<LintContext>>;
+}> = [
+  { group: "core", rules: coreRules },
+  { group: "media", rules: mediaRules },
+  { group: "gsap", rules: gsapRules },
+  { group: "captions", rules: captionRules },
+  { group: "composition", rules: compositionRules },
+  { group: "adapters", rules: adapterRules },
+  { group: "textures", rules: textureRules },
+  { group: "fonts", rules: fontRules },
+  { group: "slideshow", rules: slideshowRules },
+  { group: "structure", rules: structureRules },
 ];
+
+/**
+ * How many rules this build runs. `cli_version` already identifies the release,
+ * but a rule added or removed inside one version is invisible without this —
+ * and comparing findings-per-run across a rule change is the whole point of
+ * measuring them.
+ */
+export const LINT_RULE_COUNT = RULE_GROUPS.reduce((n, g) => n + g.rules.length, 0);
+
+/**
+ * How many rules each group runs. `slowest_rule` is reported as
+ * `<group>#<index>`, and that index shifts whenever a rule is added to or
+ * removed from its group. Comparing these counts between two builds tells a
+ * consumer exactly which groups' indices still mean the same thing.
+ */
+export const LINT_RULE_GROUP_COUNTS: Readonly<Record<string, number>> = Object.fromEntries(
+  RULE_GROUPS.map(({ group, rules }) => [group, rules.length]),
+);
+
+/** Two rules reporting the same problem on the same element report it once. */
+function dedupeKeyFor(finding: HyperframeLintFinding): string {
+  return [
+    finding.code,
+    finding.severity,
+    finding.selector || "",
+    finding.elementId || "",
+    finding.message,
+  ].join("|");
+}
+
+/**
+ * Run every rule against one parsed context, timing each and deduping as it
+ * goes. Rules are timed individually but reported per group; the slowest
+ * single rule is kept so a pathological one stays locatable.
+ */
+async function runRules(
+  ctx: LintContext,
+  filePath: string | undefined,
+): Promise<{ findings: HyperframeLintFinding[]; timings: Omit<LintTimings, "totalMs"> }> {
+  const findings: HyperframeLintFinding[] = [];
+  const seen = new Set<string>();
+  const groupMs: Record<string, number> = {};
+  let slowestRule = "";
+  let slowestRuleMs = 0;
+
+  for (const { group, rules } of RULE_GROUPS) {
+    for (let index = 0; index < rules.length; index++) {
+      const ruleStartedAt = performance.now();
+      const produced = await Promise.resolve(rules[index]!(ctx));
+      const ruleMs = performance.now() - ruleStartedAt;
+
+      groupMs[group] = (groupMs[group] ?? 0) + ruleMs;
+      if (ruleMs > slowestRuleMs) {
+        slowestRuleMs = ruleMs;
+        slowestRule = `${group}#${index}`;
+      }
+
+      collectFindings(produced, seen, filePath, findings);
+    }
+  }
+
+  return { findings, timings: { groupMs, slowestRule, slowestRuleMs } };
+}
+
+function collectFindings(
+  produced: readonly HyperframeLintFinding[],
+  seen: Set<string>,
+  filePath: string | undefined,
+  into: HyperframeLintFinding[],
+): void {
+  for (const finding of produced) {
+    const dedupeKey = dedupeKeyFor(finding);
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    into.push(filePath ? { ...finding, file: finding.file ?? filePath } : finding);
+  }
+}
 
 export async function lintHyperframeHtml(
   html: string,
   options: HyperframeLinterOptions = {},
 ): Promise<HyperframeLintResult> {
+  const startedAt = performance.now();
   const ctx = buildLintContext(html, options);
-  const findings: HyperframeLintFinding[] = [];
-  const seen = new Set<string>();
-
-  for (const rule of ALL_RULES) {
-    for (const finding of await Promise.resolve(rule(ctx))) {
-      const dedupeKey = [
-        finding.code,
-        finding.severity,
-        finding.selector || "",
-        finding.elementId || "",
-        finding.message,
-      ].join("|");
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-      findings.push(options.filePath ? { ...finding, file: options.filePath } : finding);
-    }
-  }
+  const { findings: rawFindings, timings } = await runRules(ctx, options.filePath);
+  const locate = createSourceLocator(html);
+  const findings = rawFindings.map((finding) => {
+    if (
+      finding.line !== undefined ||
+      finding.code === "invalid_inline_script_syntax" ||
+      finding.code === "non_deterministic_code" ||
+      [
+        "gsap_infinite_repeat",
+        "gsap_repeat_ceil_overshoot",
+        "gsap_repeat_floor_unclamped",
+      ].includes(finding.code)
+    )
+      return finding;
+    // External CSS has its own source coordinates; never attribute it to the HTML document.
+    if (
+      finding.snippet &&
+      options.externalStyles?.some((style) =>
+        style.content.replace(/\s+/g, " ").includes(finding.snippet!.replace(/\.\.\.$/, "")),
+      )
+    )
+      return finding;
+    return { ...finding, ...locate(finding) };
+  });
 
   const errorCount = findings.filter((f) => f.severity === "error").length;
   const warningCount = findings.filter((f) => f.severity === "warning").length;
@@ -56,6 +166,7 @@ export async function lintHyperframeHtml(
     warningCount,
     infoCount,
     findings,
+    timings: { totalMs: performance.now() - startedAt, ...timings },
   };
 }
 

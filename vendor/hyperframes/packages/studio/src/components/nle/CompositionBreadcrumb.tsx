@@ -9,6 +9,8 @@ export interface CompositionLevel {
   label: string;
   /** Preview URL for this composition level */
   previewUrl: string;
+  /** Parent-local playhead to restore when returning from a child. */
+  seekTime?: number;
 }
 
 interface CompositionBreadcrumbProps {

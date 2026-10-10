@@ -10,7 +10,7 @@ import {
   type MouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronRight, ListFilter, Plus, Sparkles, X } from "lucide-react";
+import { Eye, ChevronDown, ChevronRight, ListFilter, Plus, Sparkles, X } from "lucide-react";
 import { SearchInput } from "../ui/SearchInput";
 import { FlatDropdown } from "../editor/propertyPanelFlatSelectRow";
 import { Tooltip } from "../ui/Tooltip";
@@ -23,7 +23,10 @@ import {
   type CatalogSection,
   type CatalogSectionId,
 } from "../../hooks/useBlockCatalog";
-import { getCategoryColors, getCategoryLabel } from "../../utils/blockCategories";
+import {
+  getCategoryColors,
+  getCategoryLabel,
+} from "../../utils/blockCategories";
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -34,8 +37,12 @@ import {
   writeStudioUiPreferences,
   type CatalogColumnCount,
 } from "../../utils/studioUiPreferences";
+import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
+import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 import { PreviewController } from "./PreviewController";
 import { ComponentImport } from "./ComponentImport";
+import { AskAgentModal } from "../AskAgentModal";
+import { deliverStudioAgentPrompt } from "../editor/domEditingAgentPrompt";
 
 interface BlocksTabProps {
   onAddBlock?: (blockName: string) => Promise<boolean>;
@@ -57,15 +64,16 @@ const SUBCATEGORY_TITLES: Record<string, { en: string; zh: string }> = {
 };
 const SUBCATEGORY_ORDER = Object.keys(SUBCATEGORY_TITLES);
 
-function groupBySubcategory<T extends { visualComponent?: { subcategory?: string } }>(
-  items: T[],
-): Array<{ id: string | null; items: T[] }> {
+function groupBySubcategory<
+  T extends { visualComponent?: { subcategory?: string } },
+>(items: T[]): Array<{ id: string | null; items: T[] }> {
   const groups = new Map<string | null, T[]>();
   for (const item of items) {
     const id = item.visualComponent?.subcategory ?? null;
     groups.set(id, [...(groups.get(id) ?? []), item]);
   }
-  const rank = (id: string | null) => (id === null ? -1 : SUBCATEGORY_ORDER.indexOf(id) >>> 0);
+  const rank = (id: string | null) =>
+    id === null ? -1 : SUBCATEGORY_ORDER.indexOf(id) >>> 0;
   return [...groups.entries()]
     .sort(([a], [b]) => rank(a) - rank(b))
     .map(([id, groupItems]) => ({ id, items: groupItems }));
@@ -80,9 +88,13 @@ const CATALOG_GRID_COLUMNS: Record<CatalogColumnCount, string> = {
   4: "grid-cols-4",
 };
 const ALL_SECTIONS_FILTER = "all" as const;
-export type ComponentCatalogSection = CatalogSectionId | typeof ALL_SECTIONS_FILTER;
+export type ComponentCatalogSection =
+  CatalogSectionId | typeof ALL_SECTIONS_FILTER;
 
-function nextCatalogColumnCount(current: CatalogColumnCount, deltaY: number): CatalogColumnCount {
+function nextCatalogColumnCount(
+  current: CatalogColumnCount,
+  deltaY: number,
+): CatalogColumnCount {
   if (deltaY > 0) {
     if (current === 1) return 2;
     if (current === 2) return 3;
@@ -107,15 +119,23 @@ function getReducedMotionServerSnapshot(): boolean {
   return false;
 }
 
-export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps) {
+export const BlocksTab = memo(function BlocksTab({
+  onAddBlock,
+}: BlocksTabProps) {
   const { locale } = useStudioI18n();
-  const { loading, error, search, setSearch, sections, reload } = useBlockCatalog();
+  const { loading, error, search, setSearch, sections, reload } =
+    useBlockCatalog();
   const [previewController] = useState(() => new PreviewController());
-  const [activeSection, setActiveSection] = useState<ComponentCatalogSection>(ALL_SECTIONS_FILTER);
-  const [insertingBlockName, setInsertingBlockName] = useState<string | null>(null);
+  const [activeSection, setActiveSection] =
+    useState<ComponentCatalogSection>(ALL_SECTIONS_FILTER);
+  const [insertingBlockName, setInsertingBlockName] = useState<string | null>(
+    null,
+  );
   const insertingBlockNameRef = useRef<string | null>(null);
   const [columnCount, setColumnCount] = useState<CatalogColumnCount>(
-    () => readStudioUiPreferences().catalogColumnCount ?? DEFAULT_CATALOG_COLUMN_COUNT,
+    () =>
+      readStudioUiPreferences().catalogColumnCount ??
+      DEFAULT_CATALOG_COLUMN_COUNT,
   );
   const lastDensityWheelAtRef = useRef(Number.NEGATIVE_INFINITY);
   const reducedMotion = useSyncExternalStore(
@@ -185,19 +205,35 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps)
           <ComponentImport onImported={async () => { await reload(); setSearch(""); setActiveSection(ALL_SECTIONS_FILTER); }} />
           <FlatDropdown
             value={activeSection}
-            onChange={nextSection => {
-              if (nextSection === ALL_SECTIONS_FILTER) setActiveSection(ALL_SECTIONS_FILTER);
+            onChange={(nextSection) => {
+              if (nextSection === ALL_SECTIONS_FILTER)
+                setActiveSection(ALL_SECTIONS_FILTER);
               else {
-                const match = sections.find(section => section.id === nextSection);
+                const match = sections.find(
+                  (section) => section.id === nextSection,
+                );
                 if (match) setActiveSection(match.id);
               }
             }}
             ariaLabel={locale === "zh" ? "组件分类" : "Component category"}
             options={[
-              {value: ALL_SECTIONS_FILTER, label: `${locale === "zh" ? "全部组件" : "All components"} · ${totalCount}`},
-              ...sections.map(section => ({value: section.id, label: `${SECTION_TITLES[section.id][locale]} · ${section.items.length}`})),
+              {
+                value: ALL_SECTIONS_FILTER,
+                label: `${locale === "zh" ? "全部组件" : "All components"} · ${totalCount}`,
+              },
+              ...sections.map((section) => ({
+                value: section.id,
+                label: `${SECTION_TITLES[section.id][locale]} · ${section.items.length}`,
+              })),
             ]}
-            icon={<ListFilter aria-hidden="true" size={16} strokeWidth={1.5} className="mx-auto" />}
+            icon={
+              <ListFilter
+                aria-hidden="true"
+                size={16}
+                strokeWidth={1.5}
+                className="mx-auto"
+              />
+            }
             menuWidth={208}
             className={`h-8 w-8 shrink-0 rounded-[8px] border border-panel-border-input transition-colors hover:bg-panel-hover ${activeSection === ALL_SECTIONS_FILTER ? "bg-panel-input text-panel-text-2" : "bg-panel-accent/15 text-panel-accent"}`}
           />
@@ -259,10 +295,12 @@ function CatalogSectionGrid({
   testId: string;
 }) {
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
-  const [visibleNames, setVisibleNames] = useState<Set<string>>(() => new Set());
-  const [collapsedSections, setCollapsedSections] = useState<Set<CatalogSectionId>>(
+  const [visibleNames, setVisibleNames] = useState<Set<string>>(
     () => new Set(),
   );
+  const [collapsedSections, setCollapsedSections] = useState<
+    Set<CatalogSectionId>
+  >(() => new Set());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const cardElementsRef = useRef<Map<string, HTMLElement>>(new Map());
 
@@ -275,24 +313,28 @@ function CatalogSectionGrid({
     });
   }, []);
 
-  const registerCard = useCallback((name: string, element: HTMLElement | null) => {
-    const previous = cardElementsRef.current.get(name);
-    if (previous && previous !== element) observerRef.current?.unobserve(previous);
+  const registerCard = useCallback(
+    (name: string, element: HTMLElement | null) => {
+      const previous = cardElementsRef.current.get(name);
+      if (previous && previous !== element)
+        observerRef.current?.unobserve(previous);
 
-    if (element) {
-      cardElementsRef.current.set(name, element);
-      observerRef.current?.observe(element);
-      return;
-    }
+      if (element) {
+        cardElementsRef.current.set(name, element);
+        observerRef.current?.observe(element);
+        return;
+      }
 
-    cardElementsRef.current.delete(name);
-    setVisibleNames((current) => {
-      if (!current.has(name)) return current;
-      const next = new Set(current);
-      next.delete(name);
-      return next;
-    });
-  }, []);
+      cardElementsRef.current.delete(name);
+      setVisibleNames((current) => {
+        if (!current.has(name)) return current;
+        const next = new Set(current);
+        next.delete(name);
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!scrollRoot) return;
@@ -319,7 +361,8 @@ function CatalogSectionGrid({
       { root: scrollRoot, rootMargin: "240px 0px", threshold: 0 },
     );
     observerRef.current = observer;
-    for (const element of cardElementsRef.current.values()) observer.observe(element);
+    for (const element of cardElementsRef.current.values())
+      observer.observe(element);
 
     return () => {
       observer.disconnect();
@@ -343,7 +386,10 @@ function CatalogSectionGrid({
     return () => scrollRoot.removeEventListener("wheel", handleWheel);
   }, [onDensityWheel, scrollRoot]);
 
-  const itemCount = sections.reduce((total, section) => total + section.items.length, 0);
+  const itemCount = sections.reduce(
+    (total, section) => total + section.items.length,
+    0,
+  );
   return (
     <div
       ref={setScrollRoot}
@@ -355,7 +401,9 @@ function CatalogSectionGrid({
     >
       {itemCount === 0 ? (
         <div className="flex h-full min-h-16 items-center justify-center px-3 text-center text-[10px] text-neutral-600">
-          {locale === "zh" ? "此分类暂无组件" : "No components in this category yet"}
+          {locale === "zh"
+            ? "此分类暂无组件"
+            : "No components in this category yet"}
         </div>
       ) : (
         <div>
@@ -375,15 +423,27 @@ function CatalogSectionGrid({
               ) : null}
               {!collapsedSections.has(section.id)
                 ? groupBySubcategory(section.items).map((group) => (
-                    <div key={group.id ?? "all"} data-testid={`catalog-group-${section.id}-${group.id ?? "all"}`}>
+                    <div
+                      key={group.id ?? "all"}
+                      data-testid={`catalog-group-${section.id}-${group.id ?? "all"}`}
+                    >
                       {group.id ? (
                         <div className="px-4 pb-2 pt-1 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
-                          {(SUBCATEGORY_TITLES[group.id] ?? { en: group.id, zh: group.id })[locale]}
+                          {
+                            (SUBCATEGORY_TITLES[group.id] ?? {
+                              en: group.id,
+                              zh: group.id,
+                            })[locale]
+                          }
                         </div>
                       ) : null}
                       <div
                         className={`grid min-w-0 gap-x-[10px] gap-y-4 overflow-x-hidden px-4 ${CATALOG_GRID_COLUMNS[columnCount]}`}
-                        data-testid={group.id ? `catalog-grid-${section.id}-${group.id}` : `catalog-grid-${section.id}`}
+                        data-testid={
+                          group.id
+                            ? `catalog-grid-${section.id}-${group.id}`
+                            : `catalog-grid-${section.id}`
+                        }
                       >
                         {group.items.map((block) => (
                           <BlockCard
@@ -444,7 +504,9 @@ function CatalogSectionHeader({
           className="hf-panel-accordion-chevron"
         />
       )}
-      <span className="hf-panel-accordion-label min-w-0 flex-1 truncate">{title}</span>
+      <span className="hf-panel-accordion-label min-w-0 flex-1 truncate">
+        {title}
+      </span>
       <span className="hf-panel-accordion-count">{count}</span>
     </button>
   );
@@ -476,7 +538,8 @@ function formatCompositionContext(ctx: CompositionContext): string {
   }
   const visibleNow = ctx.elements.filter(
     (element) =>
-      ctx.currentTime >= element.start && ctx.currentTime < element.start + element.duration,
+      ctx.currentTime >= element.start &&
+      ctx.currentTime < element.start + element.duration,
   );
   if (visibleNow.length > 0) {
     lines.push(
@@ -492,15 +555,21 @@ function formatCompositionContext(ctx: CompositionContext): string {
   return lines.join("\n");
 }
 
-function buildAgentPrompt(block: CatalogItem, context: CompositionContext): string {
+function buildAgentPrompt(
+  block: CatalogItem,
+  context: CompositionContext,
+): string {
   const { title, name, description } = block;
   const compositionInfo = formatCompositionContext(context);
 
   if (block.visualComponent) {
-    const slots = block.visualComponent.ai?.slots.join(", ") ?? "declared component slots";
+    const slots =
+      block.visualComponent.ai?.slots.join(", ") ?? "declared component slots";
     const dataContract = block.visualComponent.data;
     const dataVariable = dataContract
-      ? block.variables?.find((variable) => variable.id === dataContract.binding.variable)
+      ? block.variables?.find(
+          (variable) => variable.id === dataContract.binding.variable,
+        )
       : undefined;
     const aiReadableData =
       dataContract && dataVariable?.type === "string"
@@ -537,7 +606,34 @@ function buildAgentPrompt(block: CatalogItem, context: CompositionContext): stri
     "Preserve the registered component contract, inherit the active theme, and prefer its declared variables for routine changes.",
   ].join("\n\n");
 
-  return [instruction, "", "## Current composition state", "", compositionInfo].join("\n");
+  return [
+    instruction,
+    "",
+    "## Current composition state",
+    "",
+    compositionInfo,
+  ].join("\n");
+}
+
+function previewUnavailableReason(
+  tags: string[] | undefined,
+  locale: "en" | "zh",
+): string | null {
+  if (
+    tags?.includes("html-in-canvas") &&
+    (typeof CanvasRenderingContext2D === "undefined" ||
+      !("drawElementImage" in CanvasRenderingContext2D.prototype))
+  ) {
+    return locale === "zh"
+      ? "当前浏览器未启用 HTML-in-Canvas，无法预览此组件"
+      : "HTML-in-Canvas is unavailable in this browser";
+  }
+  if (tags?.includes("webgl") && !window.WebGLRenderingContext) {
+    return locale === "zh"
+      ? "当前浏览器不支持此组件所需的 WebGL"
+      : "WebGL is unavailable";
+  }
+  return null;
 }
 
 const BlockCard = memo(function BlockCard({
@@ -559,20 +655,34 @@ const BlockCard = memo(function BlockCard({
   insertingBlockName: string | null;
   locale: "en" | "zh";
 }) {
+  const { compositionLoading } = useStudioPlaybackContext();
+  const disabledReason = compositionLoading
+    ? locale === "zh"
+      ? "镜头加载中，请稍候"
+      : "Composition is loading"
+    : previewUnavailableReason(block.tags, locale);
   const [posterFailed, setPosterFailed] = useState(false);
   const [videoThumbnailFailed, setVideoThumbnailFailed] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState<{ prompt: string; sourceFile: string } | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const { requestClose } = useDialogBehavior({ open: previewOpen, onClose: () => setPreviewOpen(false), containerRef: dialogRef });
+  const { requestClose } = useDialogBehavior({
+    open: previewOpen,
+    onClose: () => setPreviewOpen(false),
+    containerRef: dialogRef,
+  });
   const [previewReady, setPreviewReady] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const colors = getCategoryColors(block.category);
-  const duration = block.type === "hyperframes:component" ? undefined : block.duration;
+  const duration =
+    block.type === "hyperframes:component" ? undefined : block.duration;
   const posterUrl = block.preview?.poster;
   const videoUrl = block.preview?.video;
-  const previewRatio = block.dimensions ? block.dimensions.width / block.dimensions.height : 16 / 9;
+  const previewRatio = block.dimensions
+    ? block.dimensions.width / block.dimensions.height
+    : 16 / 9;
   const thumbnailFrameStyle = {
     width: `max(100%, ${100 * previewRatio}px)`,
     height: `max(100px, calc(100cqw / ${previewRatio}))`,
@@ -581,9 +691,13 @@ const BlockCard = memo(function BlockCard({
   const compositionPosterUrl = `${registryPreviewUrl}?time=${Math.min((duration ?? 4) / 2, 2).toFixed(2)}`;
   const compositionPlaybackUrl = `${registryPreviewUrl}?autoplay=1`;
   const prefersCompositionPreview =
-    block.type === "hyperframes:component" && block.librarySection === "caption-animation";
+    block.type === "hyperframes:component" &&
+    block.librarySection === "caption-animation";
   const canShowPoster =
-    visible && !prefersCompositionPreview && Boolean(posterUrl) && !posterFailed;
+    visible &&
+    !prefersCompositionPreview &&
+    Boolean(posterUrl) &&
+    !posterFailed;
   const canShowVideoThumbnail =
     visible &&
     !prefersCompositionPreview &&
@@ -595,8 +709,9 @@ const BlockCard = memo(function BlockCard({
     Boolean(compositionPosterUrl) &&
     (prefersCompositionPreview ||
       ((!videoUrl || videoThumbnailFailed) && (!posterUrl || posterFailed)));
-  const needsWebGL = block.tags?.includes("html-in-canvas") || block.tags?.includes("webgl");
-  const insertionBusy = insertingBlockName !== null;
+  const needsWebGL =
+    block.tags?.includes("html-in-canvas") || block.tags?.includes("webgl");
+  const insertionBusy = insertingBlockName !== null || disabledReason !== null;
   const adding = insertingBlockName === block.name;
 
   const setCardRef = useCallback(
@@ -611,28 +726,33 @@ const BlockCard = memo(function BlockCard({
   }, []);
 
   const startPreview = useCallback(() => {
-    if (reducedMotion) return;
+    if (disabledReason) return;
     previewController.start(block.name, async ({ isCurrent }) => {
       if (!isCurrent()) return undefined;
       if (mountedRef.current) {
         setPreviewReady(false);
         setPreviewing(true);
+        useAssetPreviewStore
+          .getState()
+          .setPreviewBlock({ name: block.name, title: block.title });
       }
 
       return () => {
+        if (useAssetPreviewStore.getState().previewBlock?.name === block.name)
+          useAssetPreviewStore.getState().setPreviewBlock(null);
         if (mountedRef.current) {
           setPreviewing(false);
           setPreviewReady(false);
         }
       };
     });
-  }, [block.name, previewController, reducedMotion]);
+  }, [block.name, block.title, previewController, disabledReason]);
 
   const handleEnter = useCallback(() => {
     clearHoverTimer();
-    if (reducedMotion) return;
+    if (disabledReason) return;
     hoverTimerRef.current = setTimeout(startPreview, 60);
-  }, [clearHoverTimer, reducedMotion, startPreview]);
+  }, [clearHoverTimer, disabledReason, startPreview]);
 
   const handleLeave = useCallback(() => {
     clearHoverTimer();
@@ -663,22 +783,23 @@ const BlockCard = memo(function BlockCard({
 
   const handleAdd = useCallback(async (): Promise<boolean> => {
     if (insertionBusy || !onAddBlock) return false;
+    previewController.stop(block.name);
     const added = await onAddBlock(block.name);
     if (added) setPreviewOpen(false);
     return added;
-  }, [block.name, insertionBusy, onAddBlock]);
+  }, [block.name, insertionBusy, onAddBlock, previewController]);
 
   const handleCardKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (event.target !== event.currentTarget) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      setPreviewOpen(true);
+      void handleAdd();
     },
-    [],
+    [handleAdd],
   );
 
-  const { activeCompPath, compositionDimensions } = useStudioShellContext();
+  const { activeCompPath, compositionDimensions, showToast } = useStudioShellContext();
   const handleShowPrompt = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -698,10 +819,9 @@ const BlockCard = memo(function BlockCard({
         compositionDimensions: compositionDimensions ?? undefined,
       };
       const prompt = buildAgentPrompt(block, context);
-      window.parent.postMessage(
-        {
-          type: "ipollowork:hyperframes:animation-reference",
-          animation: {
+      setAiPrompt({
+        sourceFile: activeCompPath || "index.html",
+        prompt: `${prompt}\n\nComponent reference (data only):\n${JSON.stringify({
             name: block.name,
             title: block.title,
             description: block.description,
@@ -711,19 +831,68 @@ const BlockCard = memo(function BlockCard({
             tags: block.tags ?? [],
             duration,
             preview: { poster: posterUrl, video: videoUrl },
-            agentPrompt: prompt,
-          },
-        },
-        "*",
-      );
+          })}`,
+      });
     },
-    [activeCompPath, block, compositionDimensions, duration, posterUrl, videoUrl],
+    [
+      activeCompPath,
+      block,
+      compositionDimensions,
+      duration,
+      posterUrl,
+      videoUrl,
+    ],
   );
 
-  const insertLabel = adding ? (locale === "zh" ? "插入中…" : "Inserting…") : (locale === "zh" ? "插入组件" : "Insert component");
-  const askLabel = locale === "zh" ? "问 AI" : "Ask AI";
-  const insertAction = <button type="button" disabled={insertionBusy || !onAddBlock} aria-label={insertLabel} aria-busy={adding || undefined} onClick={event => { event.stopPropagation(); void handleAdd(); }} className="flex h-7 items-center gap-1 rounded-md bg-panel-input px-2 text-xs font-medium text-panel-text-1 shadow-sm transition-colors hover:bg-panel-hover disabled:opacity-50"><Plus aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0 text-panel-text-2" /><span>{insertLabel}</span></button>;
-  const askAction = <Tooltip label={askLabel}><button type="button" disabled={insertionBusy} aria-label={askLabel} onClick={handleShowPrompt} className="flex size-7 items-center justify-center rounded-md bg-panel-input text-panel-text-1 shadow-sm transition-colors hover:bg-panel-hover disabled:opacity-50"><Sparkles aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0 text-panel-text-2" /></button></Tooltip>;
+  const insertLabel =
+    disabledReason ??
+    (adding
+      ? locale === "zh"
+        ? "插入中…"
+        : "Inserting…"
+      : locale === "zh"
+        ? "插入组件"
+        : "Insert component");
+  const askLabel = locale === "zh" ? "交给 AI" : "Ask AI";
+  const insertAction = (
+    <button
+      type="button"
+      disabled={insertionBusy || !onAddBlock}
+      aria-label={insertLabel}
+      aria-busy={adding || undefined}
+      onClick={(event) => {
+        event.stopPropagation();
+        void handleAdd();
+      }}
+      className="flex h-7 items-center gap-1 rounded-md bg-panel-input px-2 text-xs font-medium text-panel-text-1 shadow-sm transition-colors hover:bg-panel-hover disabled:opacity-50"
+    >
+      <Plus
+        aria-hidden="true"
+        size={16}
+        strokeWidth={1.5}
+        className="shrink-0 text-panel-text-2"
+      />
+      <span>{insertLabel}</span>
+    </button>
+  );
+  const askAction = (
+    <Tooltip label={askLabel}>
+      <button
+        type="button"
+        disabled={insertionBusy}
+        aria-label={askLabel}
+        onClick={handleShowPrompt}
+        className="flex size-7 items-center justify-center rounded-md bg-panel-input text-panel-text-1 shadow-sm transition-colors hover:bg-panel-hover disabled:opacity-50"
+      >
+        <Sparkles
+          aria-hidden="true"
+          size={16}
+          strokeWidth={1.5}
+          className="shrink-0 text-panel-text-2"
+        />
+      </button>
+    </Tooltip>
+  );
 
   return (
     <div
@@ -737,8 +906,9 @@ const BlockCard = memo(function BlockCard({
       data-testid="block-catalog-card"
       data-block-name={block.name}
       data-preview-active={previewing ? "true" : "false"}
+      title={disabledReason ?? undefined}
       draggable={!insertionBusy}
-      onClick={() => setPreviewOpen(true)}
+      onClick={() => void handleAdd()}
       onKeyDown={handleCardKeyDown}
       onDragStart={(event) => {
         if (insertionBusy) {
@@ -753,10 +923,15 @@ const BlockCard = memo(function BlockCard({
         event.dataTransfer.setData("text/plain", block.name);
         handleLeave();
       }}
+      onFocus={handleEnter}
+      onBlur={handleLeave}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
     >
-      <div style={{ containerType: "size" }} className="relative h-[100px] w-full overflow-hidden rounded-lg border border-panel-border bg-panel-input ">
+      <div
+        style={{ containerType: "size" }}
+        className="relative h-[100px] w-full overflow-hidden rounded-lg border border-panel-border bg-panel-input "
+      >
         {canShowPoster ? (
           <img
             src={posterUrl}
@@ -786,10 +961,16 @@ const BlockCard = memo(function BlockCard({
             className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-0 bg-black"
           />
         ) : (
-          <div className={`absolute inset-0 flex items-center justify-center ${colors.bg}`}>
+          <div
+            className={`absolute inset-0 flex items-center justify-center ${colors.bg}`}
+          >
             <div className="flex min-w-0 flex-col items-center gap-1 px-2 text-center">
-              <span className={`max-w-full truncate text-[7px] font-medium ${colors.text}`}>
-                {block.visualComponent ? block.title : getCategoryLabel(block.category, locale)}
+              <span
+                className={`max-w-full truncate text-[7px] font-medium ${colors.text}`}
+              >
+                {block.visualComponent
+                  ? block.title
+                  : getCategoryLabel(block.category, locale)}
               </span>
             </div>
           </div>
@@ -822,10 +1003,18 @@ const BlockCard = memo(function BlockCard({
           ) : null}
         </div>
         <div className="pointer-events-none absolute inset-0 z-[3] bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-100">
-          <div className="pointer-events-auto absolute right-2 top-2">{askAction}</div>
-          <div className="pointer-events-auto absolute bottom-2 right-2">{insertAction}</div>
+          <div className="pointer-events-auto absolute right-2 top-2">
+            {askAction}
+          </div>
+          <div className="pointer-events-auto absolute bottom-2 right-2">
+            {insertAction}
+          </div>
         </div>
-        <span aria-hidden="true" data-testid="component-card-hover-border" className="pointer-events-none absolute inset-0 z-[4] rounded-[inherit] border-2 border-[#1FBAC0] opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100" />
+        <span
+          aria-hidden="true"
+          data-testid="component-card-hover-border"
+          className="pointer-events-none absolute inset-0 z-[4] rounded-[inherit] border-2 border-[#1FBAC0] opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100"
+        />
       </div>
 
       <div className="pt-1">
@@ -835,13 +1024,91 @@ const BlockCard = memo(function BlockCard({
           </div>
         </div>
       </div>
-      {previewOpen ? createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) requestClose(); }}>
-        <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={block.title} tabIndex={-1} className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-panel-border bg-panel-bg text-panel-text-1">
-          <div className="flex items-center justify-between gap-3 p-3"><span className="truncate text-sm font-medium">{block.title}</span><Tooltip label={locale === "zh" ? "关闭" : "Close"}><button type="button" aria-label={locale === "zh" ? "关闭" : "Close"} onClick={requestClose} className="flex size-7 items-center justify-center rounded-md hover:bg-panel-input"><X aria-hidden="true" size={16} strokeWidth={1.5} /></button></Tooltip></div>
-          <iframe src={compositionPlaybackUrl} title={block.title} sandbox="allow-scripts" className="aspect-video min-h-0 w-full border-0 bg-panel-input" />
-          <div className="flex shrink-0 items-center justify-end gap-2 p-3">{askAction}{insertAction}</div>
-        </div>
-      </div>, document.body) : null}
+      {aiPrompt && (
+        <AskAgentModal
+          selectionLabel={block.title}
+          contextPreview={aiPrompt.prompt}
+          onClose={() => setAiPrompt(null)}
+          onSubmit={async (instruction) => {
+            // Preserve the existing rich conversation reference alongside the edit request.
+            if (window.parent !== window) window.parent.postMessage({
+              type: "ipollowork:hyperframes:animation-reference",
+              animation: {
+                name: block.name, title: block.title, description: block.description,
+                type: block.type, category: block.category, visualComponent: block.visualComponent,
+                tags: block.tags ?? [], duration, preview: { poster: posterUrl, video: videoUrl },
+                agentPrompt: aiPrompt.prompt,
+              },
+            }, "*");
+            const delivered = await deliverStudioAgentPrompt(`${instruction}\n\n${aiPrompt.prompt}`, aiPrompt.sourceFile, { instruction });
+            if (!delivered) throw new Error("无法复制提示词，请重试");
+            showToast(window.parent === window ? "已复制提示词" : "已交给左侧 AI 对话", "info");
+            setAiPrompt(null);
+          }}
+        />
+      )}
+      {previewOpen
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (event.target === event.currentTarget) requestClose();
+              }}
+            >
+              <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={block.title}
+                tabIndex={-1}
+                className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-panel-border bg-panel-bg text-panel-text-1"
+              >
+                <div className="flex items-center justify-between gap-3 p-3">
+                  <span className="truncate text-sm font-medium">
+                    {block.title}
+                  </span>
+                  <Tooltip label={locale === "zh" ? "关闭" : "Close"}>
+                    <button
+                      type="button"
+                      aria-label={locale === "zh" ? "关闭" : "Close"}
+                      onClick={requestClose}
+                      className="flex size-7 items-center justify-center rounded-md hover:bg-panel-input"
+                    >
+                      <X aria-hidden="true" size={16} strokeWidth={1.5} />
+                    </button>
+                  </Tooltip>
+                </div>
+                <iframe
+                  src={compositionPlaybackUrl}
+                  title={block.title}
+                  sandbox="allow-scripts"
+                  className="aspect-video min-h-0 w-full border-0 bg-panel-input"
+                />
+                <div className="flex shrink-0 items-center justify-end gap-2 p-3">
+                  {askAction}
+                  <button
+                    type="button"
+                    aria-label={
+                      locale === "zh"
+                        ? "放大预览组件"
+                        : "Expand component preview"
+                    }
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPreviewOpen(true);
+                    }}
+                    className="size-7 rounded hover:bg-panel-input"
+                  >
+                    <Eye size={15} />
+                  </button>
+                  {insertAction}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 });

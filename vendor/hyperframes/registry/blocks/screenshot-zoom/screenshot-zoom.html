@@ -48,7 +48,7 @@
   <script>
     window.__timelines=window.__timelines||{};
     (function(){
-      const root=document.getElementById("screenshot-zoom"),id=root.dataset.compositionId;
+      const root=document.getElementById("screenshot-zoom"),id=root.dataset.compositionId||"screenshot-zoom";
       const values={title:"Focus on what matters",imageUrl:"",focusX:52,focusY:27,...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
       root.querySelector("[data-ipw-variable=title]").textContent=String(values.title);
       const image=root.querySelector(".sz-image"),imageUrl=String(values.imageUrl).trim();

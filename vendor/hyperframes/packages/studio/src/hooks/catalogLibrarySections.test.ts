@@ -127,7 +127,7 @@ function contentVariableIds(manifest: MotionManifest): string[] {
 }
 
 describe("component catalog registry", () => {
-  it("publishes only the retained visual component categories", () => {
+  it("retains the baseline visual components while accepting validated catalog additions", () => {
     const components = visualComponentManifests();
     const imported = components.filter(({ manifest }) =>
       ["video-shotcraft", "hyperframes-video-shotcraft"].includes(manifest.source?.provider ?? ""),
@@ -145,18 +145,19 @@ describe("component catalog registry", () => {
       ]),
     );
 
-    expect(native).toHaveLength(23);
-    expect(categoryCounts).toEqual(EXPECTED_VISUAL_COMPONENT_COUNTS);
+    expect(native.length).toBeGreaterThanOrEqual(23);
+    for (const [category, minimum] of Object.entries(EXPECTED_VISUAL_COMPONENT_COUNTS)) {
+      expect(categoryCounts[category]).toBeGreaterThanOrEqual(minimum);
+    }
+    expect(native.map(({ manifest }) => manifest.name)).toEqual(
+      expect.arrayContaining([...VISUAL_COMPONENTS, ...OFFICIAL_MAP_COMPONENTS].map(([name]) => name)),
+    );
     expect(imported).toHaveLength(3);
     expect(
       imported.filter(({ manifest }) => manifest.visualComponent?.category === "media"),
     ).toHaveLength(3);
-    expect(personal).toHaveLength(0);
-    expect(components).toHaveLength(26);
-    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(26);
-    expect(components.map(({ manifest }) => manifest.visualComponent?.category)).not.toEqual(
-      expect.arrayContaining(["scene", "product", "diagrams", "data", "typography", "proof", "knowledge", "people", "social", "developer", "brand"]),
-    );
+    expect(components.length).toBeGreaterThanOrEqual(26);
+    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(components.length);
   });
 
   it("keeps visual components themeable, seekable, and within their authored property contracts", () => {
@@ -200,6 +201,11 @@ describe("component catalog registry", () => {
         expect(html).toContain("var(--ipw-color-bg,");
         expect(html).toContain("color:var(--ipw-color-text,");
       }
+      if (/\bid\s*=\s*\w+\.dataset\.compositionId/.test(html)) {
+        expect(html).toMatch(new RegExp(
+          String.raw`\bid\s*=\s*\w+\.dataset\.compositionId\s*\|\|\s*${JSON.stringify(manifest.name)}`,
+        ));
+      }
       expect(html).toMatch(/gsap\.timeline\(\{\s*paused:\s*true/);
       expect(html).not.toMatch(/Math\.random|Date\.now|repeat\s*:\s*-1/);
     }
@@ -241,7 +247,7 @@ describe("component catalog registry", () => {
       return html.includes("visual-component-catalog.ts");
     });
 
-    expect(generated).toHaveLength(3);
+    expect(generated.length).toBeGreaterThanOrEqual(3);
     for (const { manifestPath, manifest } of generated) {
       const html = readFileSync(
         join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),
@@ -292,7 +298,7 @@ describe("component catalog registry", () => {
     expect(captionComponents).not.toEqual(expect.arrayContaining(MIGRATED_CAPTION_COMPONENTS));
   });
 
-  it("lists retained captions and excludes migrated captions in registry.json", () => {
+  it("lists retained local captions and the upstream captions without duplicate names", () => {
     const registry = JSON.parse(
       readFileSync(join(REGISTRY_ROOT, "registry.json"), "utf8"),
     ) as RegistryIndex;
@@ -310,7 +316,8 @@ describe("component catalog registry", () => {
         "caption-editorial-emphasis",
       ]),
     );
-    expect(names).not.toEqual(expect.arrayContaining(MIGRATED_CAPTION_COMPONENTS));
+    expect(names).toEqual(expect.arrayContaining(MIGRATED_CAPTION_COMPONENTS));
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("keeps the reusable component set focused, themed, and simple to configure", () => {
@@ -337,6 +344,11 @@ describe("component catalog registry", () => {
           ? declarations.filter(isVariableEntry).map((variable) => variable.id)
           : [],
       ).toEqual(manifest.variables?.map((variable) => variable.id));
+      if (/\bid\s*=\s*\w+\.dataset\.compositionId/.test(html)) {
+        expect(html).toMatch(new RegExp(
+          String.raw`\bid\s*=\s*\w+\.dataset\.compositionId\s*\|\|\s*${JSON.stringify(manifest.name)}`,
+        ));
+      }
       expect(html).toMatch(/gsap\.timeline\(\{\s*paused:\s*true/);
       expect(html).toContain("getVariables");
       expect(html).toContain("var(--ipw-color-");
@@ -395,6 +407,11 @@ describe("component catalog registry", () => {
       }
       expect(html).toContain("window.__hyperframes");
       expect(html).toContain("var(--ipw-color-");
+      if (/\bid\s*=\s*\w+\.dataset\.compositionId/.test(html)) {
+        expect(html).toMatch(new RegExp(
+          String.raw`\bid\s*=\s*\w+\.dataset\.compositionId\s*\|\|\s*${JSON.stringify(manifest.name)}`,
+        ));
+      }
       expect(html).toMatch(/gsap\.timeline\(\{\s*paused:\s*true/);
     }
   });

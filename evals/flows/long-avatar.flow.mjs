@@ -17,17 +17,17 @@ export default {
       screenshot: { name: "avatar-compact-history", requireText: ["生成记录", "1/79 段"] },
     });
     await ctx.prove("Task dialog reveals progress and bounded segment details", {
-      voiceover: "点击记录打开进度弹窗，明细只在需要时展开。",
-      action: async () => { await ctx.trustedClick('[data-testid=avatar-job-card]'); await ctx.waitFor("Boolean(document.querySelector('[data-testid=avatar-task-dialog]'))"); await ctx.trustedClick('[data-testid=avatar-task-dialog] [data-slot=collapsible-trigger]'); },
+      voiceover: "点击失败记录后明细自动展开，可以查看异常原因，选择预览或只重试本段。",
+      action: async () => { await ctx.trustedClick('[data-testid=avatar-job-card]'); await ctx.waitFor("Boolean(document.querySelector('[data-testid=avatar-task-dialog]'))"); },
       assert: async () => {
         const state = await ctx.eval("(() => {const dialog=document.querySelector('[data-testid=avatar-task-dialog]');const list=dialog.querySelector('[data-testid=avatar-job-details]');return {text:dialog.innerText,height:list.getBoundingClientRect().height,scrollHeight:list.scrollHeight,rows:list.children.length};})()");
-        ctx.assert(state.text.includes("已完成 1/79 段") && state.height <= 200 && state.scrollHeight > state.height && state.rows === 79, JSON.stringify(state));
+        ctx.assert(state.text.includes("已完成 1/79 段") && state.text.includes("构图变化过大或画面突变") && state.text.includes("重试本段（计费）") && state.height <= 200 && state.scrollHeight > state.height && state.rows === 79, JSON.stringify(state));
       },
-      screenshot: { name: "avatar-task-details", requireText: ["数字人片段", "已完成 1/79 段", "片段详情"] },
+      screenshot: { name: "avatar-task-details", requireText: ["数字人片段", "已完成 1/79 段", "构图变化过大或画面突变", "重试本段（计费）"] },
     });
     await ctx.prove("Failed segment retry keeps saved work", {
       voiceover: "只重试失败的第二段，第一段保持不变。",
-      action: async () => { await ctx.clickText("重试", { selector: "[data-testid=avatar-job-details] button" }); await ctx.waitForText("生成中"); },
+      action: async () => { await ctx.clickText("重试本段（计费）", { selector: "[data-testid=avatar-job-details] button" }); await ctx.waitForText("生成中"); },
       assert: async () => {
         const state = await ctx.eval("(() => {const job=window.avatarProof.jobs[0];return {index:window.avatarProof.requests.find(item=>item.action==='retry-segment')?.args.index,first:job.avatarSequence.segments[0].path};})()");
         ctx.assert(state.index === 1 && state.first === "saved-first.mp4", JSON.stringify(state));

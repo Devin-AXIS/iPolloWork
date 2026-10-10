@@ -12,7 +12,7 @@ import { readDenSettings } from "@/app/lib/den";
 import { isDesktopRuntime } from "@/app/utils";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
-import { storyboardSettingsAssetSchema, storyboardSettingsRequestSchema, type StoryboardSettingsRequest, type StoryboardSettingsAsset, type StoryboardSettingsFields } from "@ipollowork/types/hyperframes";
+import { storyboardSettingsAssetSchema, storyboardSettingsRequestSchema, videoStudioPanelBoundsSchema, type VideoStudioPanelBounds, type StoryboardSettingsRequest, type StoryboardSettingsAsset, type StoryboardSettingsFields } from "@ipollowork/types/hyperframes";
 import { VideoStoryboardSettingsDialog } from "./video-storyboard-settings-dialog";
 import { toast } from "@/components/ui/sonner";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
@@ -64,6 +64,7 @@ import {
 import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
 import { VideoImageWorkbench } from "./video-image-workbench";
+import { VideoEnhancementPanel } from "./video-enhancement-panel";
 
 type VideoPanelProps = {
   title: string;
@@ -80,7 +81,7 @@ type VideoPanelProps = {
   aiEditing?: boolean;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
-  onAskAi?: (context: DesignAiSelectionContext) => void;
+  onAskAi?: (context: DesignAiSelectionContext, instruction?: string) => void | Promise<void>;
   onRegenerateFromStoryboard?: () => void | Promise<void>;
   onSaveAsTemplate?: () => void;
   onGenerateVideo?: () => Promise<boolean>;
@@ -182,6 +183,15 @@ export function VideoPanel({
     React.useState<StudioVoiceSelectionTarget | null>(null);
   const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
   const [studioPanelWidth, setStudioPanelWidth] = React.useState(DEFAULT_STUDIO_PANEL_WIDTH);
+  const [studioPanelBounds, setStudioPanelBounds] = React.useState<VideoStudioPanelBounds | null>(null);
+  const studioPanelStyle: React.CSSProperties = studioPanelBounds ? {
+    left: `${studioPanelBounds.left * 100}%`,
+    top: `${studioPanelBounds.top * 100}%`,
+    width: `${studioPanelBounds.width * 100}%`,
+    height: `${studioPanelBounds.height * 100}%`,
+    right: "auto",
+    bottom: "auto",
+  } : { width: studioPanelWidth };
   const [designTokenSource, setDesignTokenSource] = React.useState("");
   const designTokenSourceRef = React.useRef("");
   const designTokenLoadRequestRef = React.useRef(0);
@@ -536,7 +546,11 @@ export function VideoPanel({
       if (event.origin !== new URL(studioUrl).origin) return;
       if (event.data?.type !== "ipollowork:video-studio-panel") return;
       if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if (!["voice", "avatar", "style", null].includes(event.data.panel)) return;
       if ((scriptVoiceDialog || scriptSettingsRequest) && event.data.presentation !== "dialog") return;
+      const bounds = event.data.bounds === undefined ? null : videoStudioPanelBoundsSchema.safeParse(event.data.bounds);
+      if (bounds && !bounds.success) return;
+      setStudioPanelBounds(event.data.panel === null || event.data.presentation === "dialog" ? null : bounds?.data ?? null);
       if (typeof event.data.width === "number" && Number.isFinite(event.data.width)) {
         setStudioPanelWidth(
           Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)),
@@ -1012,18 +1026,29 @@ export function VideoPanel({
 
   React.useEffect(() => {
     if (!client || !workspaceId || !onAskAi) return;
+    let active = true;
     const handleMessage = (event: MessageEvent) => {
       if (event.source !== studioFrameRef.current?.contentWindow) return;
       if (event.origin !== new URL(studioUrl).origin) return;
       if (event.data?.type !== "ipollowork:hyperframes:ask-ai-selection") return;
+      const requestId = typeof event.data.requestId === "string" ? event.data.requestId.slice(0, 100) : undefined;
+      const instruction = typeof event.data.instruction === "string" ? event.data.instruction.trim().slice(0, 4_000) : undefined;
+      const reply = (accepted: boolean, error?: string) => {
+        if (!requestId) return;
+        studioFrameRef.current?.contentWindow?.postMessage({
+          type: "ipollowork:hyperframes:ai-request-result", requestId, accepted, error,
+        }, event.origin);
+      };
       const target = resolveVideoAiSelectionTarget(event.data.target);
       if (!target) {
+        reply(false, "无法识别视频目标，请重新选择后重试");
         toast.error("Could not identify the selected video element. Select it again and retry.");
         return;
       }
       const filePath = `${projectDirectory}/${target.file}`.replace(/\\/g, "/");
       void (async () => {
         const current = await client.readWorkspaceFile(workspaceId, filePath);
+        if (!active) throw new Error("视频页已切换，请重新提交需求");
         const tag =
           typeof event.data.tag === "string" && event.data.tag.trim()
             ? event.data.tag.trim().toLowerCase()
@@ -1048,9 +1073,9 @@ export function VideoPanel({
                 ),
               )
             : {};
-        onAskAi({
+        await onAskAi({
           id: `video-ai-${crypto.randomUUID()}`,
-          sessionId,
+          sessionId: conversationId ?? sessionId,
           workspaceId,
           filePath,
           baseUpdatedAt: current.updatedAt ?? null,
@@ -1067,9 +1092,11 @@ export function VideoPanel({
             styles,
             semanticContext,
           },
-        });
+        }, instruction);
+        reply(true);
         onExpandedChange?.(false);
       })().catch((error) => {
+        reply(false, error instanceof Error ? error.message : "无法发送到左侧 AI 对话");
         console.error("[video-studio] failed to create AI selection", error);
         toast.error(
           error instanceof Error
@@ -1079,8 +1106,11 @@ export function VideoPanel({
       });
     };
     window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [client, onAskAi, onExpandedChange, projectDirectory, sessionId, studioUrl, workspaceId]);
+    return () => {
+      active = false;
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [client, conversationId, onAskAi, onExpandedChange, projectDirectory, sessionId, studioUrl, workspaceId]);
 
   React.useEffect(() => {
     const handleAnimationReference = (event: MessageEvent) => {
@@ -1133,14 +1163,14 @@ export function VideoPanel({
       };
       window.dispatchEvent(
         new CustomEvent("ipollowork:add-animation-reference", {
-          detail: { sessionId, item },
+          detail: { sessionId: conversationId ?? sessionId, item },
         }),
       );
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     };
     window.addEventListener("message", handleAnimationReference);
     return () => window.removeEventListener("message", handleAnimationReference);
-  }, [sessionId, studioUrl]);
+  }, [conversationId, sessionId, studioUrl]);
 
   const scheduleStudioLocaleSync = React.useCallback(() => {
     syncStudioLocale();
@@ -1377,6 +1407,7 @@ export function VideoPanel({
         setStudioHostPanel(null);
       }}
       embeddedWidth={studioPanelWidth}
+      embeddedStyle={studioPanelStyle}
       inDialog={Boolean(scriptVoiceDialog)}
       embedded
     />
@@ -1388,6 +1419,20 @@ export function VideoPanel({
       data-testid="video-panel"
       data-expanded={expanded ? "true" : "false"}
     >
+      {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) && (
+        <VideoEnhancementPanel key={`${workspaceId}:${sessionId}`} client={client} workspaceId={workspaceId}
+          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio}
+          onGenerate={onAskAi ? async request => {
+            const current = await client.readWorkspaceFile(workspaceId, request.sourcePath);
+            await onAskAi({
+              id: `video-ai-${crypto.randomUUID()}`, sessionId: conversationId ?? sessionId, workspaceId,
+              filePath: request.sourcePath, baseUpdatedAt: current.updatedAt ?? null, beforeHtml: current.content,
+              target: { tag: "body", label: "视频智能增强 · AI 编排", locator: "body", text: "", src: "", alt: "", styles: {},
+                semanticContext: JSON.stringify({ type: "video-enhancement", requestPath: request.requestPath }) },
+            }, request.instruction);
+            onExpandedChange?.(false);
+          } : undefined} />
+      )}
       {!isRemoteWorkspace &&
       status === "ready" &&
       workspaceId &&
@@ -1504,6 +1549,7 @@ export function VideoPanel({
                 ariaLabel={t("video.voice.avatar_tab")}
                 className={`absolute bottom-0 right-0 top-[148px] z-20 h-auto min-w-0 max-w-full bg-popover ${studioHostPanel === "avatar" ? "" : "hidden"}`}
                 width={studioPanelWidth}
+                style={studioPanelStyle}
                 embedded
                 testId="video-avatar-tab-content"
                 bodyClassName="p-3"
@@ -1533,7 +1579,7 @@ export function VideoPanel({
             {features.designSystem ? (
               <div
                 className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background"
-                style={{ width: studioPanelWidth, display: studioHostPanel === "style" ? undefined : "none" }}
+                style={{ ...studioPanelStyle, display: studioHostPanel === "style" ? undefined : "none" }}
                 data-testid="video-style-tab-content"
               >
                 <DesignSystemDrawer

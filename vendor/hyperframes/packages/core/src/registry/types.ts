@@ -18,8 +18,25 @@ export type FileType =
 
 /** A single file to install as part of a registry item. */
 export interface FileTarget {
-  /** Path to the source file, relative to the item's `registry-item.json`. */
+  /**
+   * Path to the source file, relative to the item's `registry-item.json`.
+   * Stays the file's identity even when the bytes live off-repo: it is what an
+   * installed composition references, and what `url` replaces only the source
+   * of.
+   */
   path: string;
+  /**
+   * Absolute `https://` URL the bytes are fetched from, instead of
+   * `<registry base>/<type dir>/<item>/<path>`.
+   *
+   * Binary assets are the one thing a repository-backed registry carries
+   * badly: every revision of a 100 KB JPEG is permanent, and a block shipping
+   * two dozen of them costs more history than every composition in the
+   * registry combined. Hosting them keeps the repository text-only. `path`
+   * still says where the file lands relative to the item, so nothing that
+   * reads an installed composition can tell the difference.
+   */
+  url?: string;
   /** Destination path in the user's project, relative to the project root. */
   target: string;
   /** File type — controls how the installer treats this file. */
@@ -70,6 +87,8 @@ export function resolveVisualComponentCategory(
   switch (value) {
     case "interface":
       return "media";
+    case "product":
+      return "business";
     default:
       return null;
   }
@@ -255,6 +274,11 @@ export interface RegistryManifest {
   name: string;
   /** Registry homepage URL. */
   homepage: string;
+  /** Published on-device vector artifact, when this registry provides one. */
+  catalogArtifact?: {
+    /** SHA-256 identity of the searchable corpus and embedding contract. */
+    revision: string;
+  };
   /** Items in this registry. */
   items: RegistryManifestEntry[];
 }

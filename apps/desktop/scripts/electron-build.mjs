@@ -255,6 +255,9 @@ run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", 
 ensureHyperframesBuild();
 run(nodeCmd, [resolve(__dirname, "prepare-hyperframes-runtime.mjs")], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "package-video-resources.mjs"), "--bundled"], desktopRoot);
+run(nodeCmd, [resolve(repoRoot, "apps/server/script/prepare-video-models.mjs")], repoRoot, {
+  IPOLLOWORK_VIDEO_MODELS_PATH: resolve(repoRoot, "apps/server/models"),
+});
 run(nodeCmd, [resolve(repoRoot, "examples/plugin-packages/operation-recorder/scripts/build.mjs")], repoRoot);
 for (const pluginId of ["labelu-data-annotation", "short-video-studio"]) {
   run(nodeCmd, [resolve(repoRoot, `examples/plugin-packages/${pluginId}/scripts/build.mjs`)], repoRoot);

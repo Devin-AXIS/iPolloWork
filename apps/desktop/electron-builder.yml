@@ -20,6 +20,8 @@ files:
   - "!server/dist/opencode-plugins/**"
   - package.json
 extraResources:
+  - from: ../server/models
+    to: video-models
   - from: video-codecs
     to: video-codecs
   - from: ../../examples/plugin-packages/figma
@@ -177,6 +179,7 @@ extraResources:
     filter: *runtimeFiles
 asar: true
 asarUnpack:
+  - "**/node_modules/onnxruntime-node/**/*"
   - "**/node_modules/sharp/**/*"
   - "**/node_modules/@img/**/*"
   - node_modules/.pnpm/@lydell+node-pty*/**

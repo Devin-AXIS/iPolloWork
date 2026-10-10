@@ -1,4 +1,14 @@
 import { z } from "zod";
+
+/** Visible dock content, normalized to the embedded Studio viewport. */
+export const videoStudioPanelBoundsSchema = z.object({
+  left: z.number().finite().min(0).max(1),
+  top: z.number().finite().min(0).max(1),
+  width: z.number().finite().positive().max(1),
+  height: z.number().finite().positive().max(1),
+}).strict().refine(bounds => bounds.left + bounds.width <= 1.000001 && bounds.top + bounds.height <= 1.000001);
+export type VideoStudioPanelBounds = z.infer<typeof videoStudioPanelBoundsSchema>;
+
 export const storyboardSettingsFieldsSchema = z.object({
   asset_source: z.string(), asset_kind: z.string(), asset_brief: z.string(),
   asset_reference: z.string(), asset_origin: z.string(), camera: z.string(),

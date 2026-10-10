@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { compileMotionInstance, createMotionInstance } from "@hyperframes/core/motion-presets";
 import {
+  animationOrigin,
+  timelineKeyframe,
   buildTimelineAnimationSegment,
   buildTimelineAnimationSegments,
   clampAnimationMetaToOwner,
@@ -279,4 +281,48 @@ describe("timeline animation segments", () => {
       ),
     ).toEqual({ position: 7.5 });
   });
+});
+
+test("keeps a recorded point distinct from an existing authored tween", () => {
+  expect(animationOrigin(animation())).toBe("authored");
+  expect(
+    animationOrigin(animation({ extras: { data: "hf-manual-keyframes" } })),
+  ).toBe("manual");
+  expect(
+    buildTimelineAnimationSegment(
+      animation({ extras: { data: "hf-manual-keyframes" } }),
+      OWNER,
+    )?.origin,
+  ).toBe("manual");
+});
+
+test("recognizes the official parser raw literal origin", () => {
+  expect(
+    animationOrigin(
+      animation({ extras: { data: '__raw:"hf-manual-keyframes"' } }),
+    ),
+  ).toBe("manual");
+});
+
+test("distinguishes manual points inside a preset without changing its owning origin", () => {
+  const compiled = compileMotionInstance(createMotionInstance({
+    presetId: "text.enter.rise", target: { selector: "#title", elementId: "title" },
+    targetKind: "text", start: 0, duration: 1,
+  }));
+  const preset = animation({ extras: compiled.extras });
+  expect(animationOrigin(preset)).toBe("preset");
+  expect(timelineKeyframe(preset, { percentage: 0, properties: { x: 0 } }).origin).toBe("preset");
+  const manual = timelineKeyframe(preset, {
+    percentage: 50, properties: { x: 42, data: "hf-manual-keyframe" }, ease: "power2.out",
+  });
+  expect(manual).toEqual({ percentage: 50, properties: { x: 42 }, ease: "power2.out", origin: "manual" });
+  expect(animationOrigin(preset)).toBe("preset");
+});
+
+test("recognizes a private stable-id tween while preserving protection for shared class selectors", () => {
+  const privateTween = animation({ targetSelector: '[data-hf-id="hf-card"]' });
+  expect(isAnimationSharedForOwner(privateTween, undefined, { hfId: "hf-card" })).toBe(false);
+  expect(isAnimationSharedForOwner(privateTween, undefined, { hfId: "hf-other" })).toBe(true);
+  expect(isAnimationSharedForOwner(animation({ targetSelector: ".card" }), "card", { hfId: "hf-card" })).toBe(true);
+  expect(isAnimationSharedForOwner(animation({ targetSelector: '#card, .card' }), "card")).toBe(true);
 });

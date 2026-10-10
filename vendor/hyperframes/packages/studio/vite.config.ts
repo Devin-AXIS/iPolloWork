@@ -1,9 +1,11 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync, copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
-import { createViteAdapter, isPathWithin } from "./vite.adapter";
+import { watch } from "chokidar";
+import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
+import { previewChangeOwner } from "./vite.preview-watch";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -62,22 +64,54 @@ function devProjectApi(): Plugin {
   return {
     name: "studio-dev-api",
     configureServer(server): void {
+      const watchedProjects = new Map<string, string>();
+      try {
+        for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
+          const full = join(dataDir, entry.name);
+          try {
+            watchedProjects.set(
+              lstatSync(full).isSymbolicLink() ? realpathSync(full) : full,
+              entry.name,
+            );
+          } catch {
+            /* skip broken symlinks */
+          }
+        }
+      } catch {
+        /* dataDir doesn't exist yet */
+      }
+
+      const projectWatcher = watch([...watchedProjects.keys()], {
+        ignoreInitial: true,
+        // A project write is a whole-file replace; wait for it to settle so a
+        // half-written composition is never announced.
+        awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
+      });
+
+      // This watcher, and not Vite's, is what clears the preview signature.
+      // Vite's ignores `data/projects/**`, so subscribing the cache to it left
+      // the ETag frozen for the life of the dev server: the preview answered
+      // every revalidation with 304 and thumbnails regenerated after an edit
+      // still rendered the pre-edit composition. Every event type counts, since
+      // an added or deleted asset changes the signature as surely as an edit.
+      const signatureCache = createProjectSignatureCache({
+        watch: (projectDir) => void projectWatcher.add(projectDir),
+      });
+
+
       let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
-      let _studioServerModule: {
-        createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
-          fetch: (req: Request) => Promise<Response>;
-        };
-        consumeFileWriteReceipt?: (path: string) => {
-          path: string;
-          version: string;
-          writeToken: string;
-        } | null;
-      } | null = null;
+      let _studioServerModule: typeof import("@hyperframes/studio-server") | null = null;
       const getApi = async () => {
         if (!_api) {
           const mod = await server.ssrLoadModule("@hyperframes/studio-server");
           _studioServerModule = mod as typeof _studioServerModule;
-          const adapter = createViteAdapter(dataDir, server);
+          const adapter = createViteAdapter(dataDir, server, signatureCache, {
+            projectWatcher,
+            onResolveProject: project => {
+              watchedProjects.set(project.dir, project.id);
+              projectWatcher.add(project.dir);
+            },
+          });
           _api = mod.createStudioApi(adapter);
         }
         return _api;
@@ -143,68 +177,104 @@ function devProjectApi(): Plugin {
         }
       });
 
-      // Watch project directories for file changes → HMR
-      const realProjectPaths: string[] = [];
-      try {
-        for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
-          const full = join(dataDir, entry.name);
-          try {
-            const real = lstatSync(full).isSymbolicLink() ? realpathSync(full) : full;
-            realProjectPaths.push(real);
-            server.watcher.add(real);
-          } catch {
-            /* skip broken symlinks */
-          }
-        }
-      } catch {
-        /* dataDir doesn't exist yet */
-      }
-
-      server.watcher.on("change", (filePath: string) => {
-        const isProjectFile = realProjectPaths.some((p) => isPathWithin(p, filePath));
+      projectWatcher.on("change", (filePath: string) => {
+        const owner = previewChangeOwner(watchedProjects, filePath);
+        if (!owner) return;
         if (
-          isProjectFile &&
-          (filePath.endsWith(".html") ||
-            filePath.endsWith(".css") ||
-            filePath.endsWith(".js") ||
-            filePath.endsWith(".json"))
-        ) {
-          console.log(`[Studio] File changed: ${filePath}`);
-          const receipt = _studioServerModule?.consumeFileWriteReceipt?.(filePath) ?? null;
-          server.ws.send({
-            type: "custom",
-            event: "hf:file-change",
-            data: receipt ?? { path: filePath },
-          });
+          !filePath.endsWith(".html") &&
+          !filePath.endsWith(".css") &&
+          !filePath.endsWith(".js") &&
+          !filePath.endsWith(".json")
+        )
+          return;
+        console.log(`[Studio] File changed: ${filePath}`);
+        // The receipt is matched on the file's current bytes, not just its path,
+        // so a write is only recognised as ours when the version agrees. Calling
+        // this without the version could never match, which left every Studio
+        // write looking external and reloaded the preview on each edit.
+        const studioServer = _studioServerModule;
+        let version: string | null = null;
+        try {
+          version = studioServer?.fileContentVersion(readFileSync(filePath, "utf-8")) ?? null;
+        } catch {
+          // A deletion has no current bytes to match a write receipt against.
         }
+        const receipt = studioServer
+          ? studioServer.identifyFileWrite(filePath, version ?? studioServer.DELETED_VERSION)
+          : null;
+        // The API records what the preview loaded in this same module, so ask it here.
+        const reloads = studioServer?.affectsPreview(owner.projectDir, filePath) ?? true;
+        server.ws.send({
+          type: "custom",
+          event: "hf:file-change",
+          data: {
+            path: filePath,
+            version,
+            projectId: owner.projectId,
+            affectsPreview: reloads,
+            ...(reloads ? {} : { affectedCompositions: [] }),
+            ...receipt,
+          },
+        });
       });
+      server.httpServer?.on("close", () => void projectWatcher.close());
     },
   };
 }
 
+export function stableStylesCssPlugin(): Plugin {
+  return {
+    name: "studio-stable-styles-css",
+    writeBundle(options, bundle) {
+      const cssAssets = Object.values(bundle).filter(
+        (item) => item.type === "asset" && item.fileName.endsWith(".css"),
+      );
+      if (cssAssets.length !== 1) {
+        throw new Error(
+          `stableStylesCssPlugin: expected exactly one CSS asset for the ./styles.css ` +
+            `export, found ${cssAssets.length} (${cssAssets.map((a) => a.fileName).join(", ") || "none"}). ` +
+            `Scope this plugin to the entry stylesheet instead of assuming a single emit.`,
+        );
+      }
+      const outDir = options.dir ?? "dist";
+      copyFileSync(join(outDir, cssAssets[0]!.fileName), join(outDir, "styles.css"));
+    },
+  };
+}
+
+
 export default defineConfig({
-  plugins: [react(), devProjectApi()],
+  plugins: [react(), devProjectApi(), stableStylesCssPlugin()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
   },
   resolve: {
-    alias: {
-      // The embedded Studio consumes the host's source contract in both dev
-      // and release builds; Bun file dependencies may omit ignored dist files.
-      "@ipollowork/types/hyperframes": resolve(
-        __dirname,
-        "../../../../packages/types/src/hyperframes.ts",
-      ),
-      "@ipollowork/types/video-image-workbench": resolve(
-        __dirname,
-        "../../../../packages/types/src/video-image-workbench.ts",
-      ),
-      "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
-      "@hyperframes/studio-server/source-mutation": resolve(
-        __dirname,
-        "../studio-server/src/helpers/sourceMutation.ts",
-      ),
-    },
+    alias: [
+      ...Object.entries({
+        // The embedded Studio consumes the host's source contract in both dev
+        // and release builds; Bun file dependencies may omit ignored dist files.
+        "@ipollowork/types/hyperframes": resolve(
+          __dirname,
+          "../../../../packages/types/src/hyperframes.ts",
+        ),
+        "@ipollowork/types/video-image-workbench": resolve(
+          __dirname,
+          "../../../../packages/types/src/video-image-workbench.ts",
+        ),
+        "@hyperframes/player": resolve(
+          __dirname,
+          "../player/src/hyperframes-player.ts",
+        ),
+        "@hyperframes/studio-server/source-mutation": resolve(
+          __dirname,
+          "../studio-server/src/helpers/sourceMutation.ts",
+        ),
+      }).map(([find, replacement]) => ({ find, replacement })),
+      {
+        find: /^@hyperframes\/studio-server$/,
+        replacement: resolve(__dirname, "../studio-server/src/index.ts"),
+      },
+    ],
   },
   build: {
     outDir: "dist",
@@ -215,6 +285,11 @@ export default defineConfig({
   },
   server: {
     port: 5190,
+    watch: {
+      // Official dev ownership: composition edits refresh their preview without
+      // reloading Studio and losing selection, undo or Dock layout state.
+      ignored: ["**/data/projects/**"],
+    },
   },
   ssr: {
     // recast / @babel/parser are CommonJS and call `require("fs")`. They are

@@ -21,15 +21,18 @@ const englishLocaleSource = readFileSync(new URL("../src/i18n/locales/en.ts", im
 const chineseLocaleSource = readFileSync(new URL("../src/i18n/locales/zh.ts", import.meta.url), "utf8");
 
 describe("Video Studio animation reference handoff", () => {
-  test("Ask AI sends a structured animation reference instead of opening a prompt modal", () => {
+  test("Ask AI uses the shared instruction dialog and preserves the structured animation reference on submit", () => {
     expect(studioSource).toContain('type: "ipollowork:hyperframes:animation-reference"');
-    expect(studioSource).toContain("agentPrompt: prompt");
+    expect(studioSource).toContain("agentPrompt: aiPrompt.prompt");
+    expect(studioSource).toContain("<AskAgentModal");
+    expect(studioSource).toContain("await deliverStudioAgentPrompt");
     expect(studioSource).not.toContain("PromptPreviewModal");
   });
 
   test("the host turns the Studio reference into a hidden composer animation tag", () => {
     expect(videoPanelSource).toContain('event.data?.type !== "ipollowork:hyperframes:animation-reference"');
     expect(videoPanelSource).toContain('"ipollowork:add-animation-reference"');
+    expect(videoPanelSource).toContain('detail: { sessionId: conversationId ?? sessionId, item }');
     expect(surfaceSource).toContain('window.addEventListener("ipollowork:add-animation-reference"');
     expect(surfaceSource).toContain("item.agentPrompt");
     expect(surfaceSource).toContain("animation.item.title");

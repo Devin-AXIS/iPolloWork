@@ -1,3 +1,4 @@
+import { HF_AUDIO_GROUP_TAG } from "../audioGroups.js";
 /**
  * Pure, DOM-free editing-affordance resolution. Single source of truth for what
  * the studio's edit panel (and any SDK consumer) surfaces per selected element:
@@ -34,6 +35,9 @@ export interface EditingSectionApplicability {
   /** Position/size/rotation/stacking — meaningless on an element with no
    *  rendered box (e.g. `<audio>`, which never paints a visual frame). */
   layout: boolean;
+  /** Audio FX chain and voiceover carve — `<audio>` only. Video carries its
+   *  sound on a separate `<audio>` element, so this never applies to it. */
+  audioFx: boolean;
   /** Fill/radius/stroke/shadow/blend-mode/clip — same "no rendered box" gate
    *  as `layout`, kept separate since a future tag could need one without
    *  the other. */
@@ -65,6 +69,7 @@ export interface EditableElementFacts {
   hasTimingStart: boolean;
   /** count of GSAP tweens targeting this element */
   animationCount: number;
+  hasAudio?: boolean;
 }
 
 /**
@@ -202,16 +207,34 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
  * without re-running the capability geometry parse.
  */
 export function resolveEditingSections(facts: EditableElementFacts): EditingSectionApplicability {
+  // An `<hf-audio-group>` is a mixer bus: it has no visual frame AND no media
+  // of its own, but it does carry a `data-fx-chain`, which is the whole point
+  // of selecting one. Without this the timeline's "Open rack" on a group led to
+  // a panel offering Fill, Gradient, Stroke and Shadow for something that paints
+  // nothing — and no Audio FX section at all, so a bus effect could only ever be
+  // applied from the preset popover and never edited.
+  const isAudioBus = facts.tag === HF_AUDIO_GROUP_TAG;
   // `<audio>` never paints a visual frame — position/size/rotation/stacking
   // and fill/radius/stroke/shadow/etc. are all inert on it. Every other tag
   // (div, img, video, svg, canvas, composition hosts) renders a real box.
-  const hasVisualBox = facts.tag !== "audio";
+  const hasVisualBox = facts.tag !== "audio" && !isAudioBus;
   return {
     text: facts.hasEditableText && !facts.isCompositionHost && !facts.isInsideLockedComposition,
     media: facts.tag === "video" || facts.tag === "audio" || facts.tag === "img",
+    audioFx:
+      facts.tag === "audio" || isAudioBus || (facts.tag === "video" && facts.hasAudio === true),
     colorGrading: facts.tag === "video" || facts.tag === "img",
-    timing: facts.hasTimingStart || facts.animationCount > 0,
-    animation: facts.animationCount > 0,
+    // A bus has no clip range at all — no `data-start`, no duration, and its
+    // automation clock is composition time — so Start/Duration/End would be
+    // editing nothing. Audio keeps its timing: an `<audio>` clip is placed on
+    // the timeline like any other, it just cannot be tweened (see `animation`).
+    timing: !isAudioBus && (facts.hasTimingStart || facts.animationCount > 0),
+    // Has tweens AND could meaningfully have them. Neither an `<audio>` clip nor
+    // a bus has a transform, opacity or box, so a tween on one moves nothing —
+    // the flat panel gates its editor on the same two tags, and does it by tag
+    // rather than by this flag because a div with no tweens yet must still
+    // offer "+ Add".
+    animation: facts.animationCount > 0 && facts.tag !== "audio" && !isAudioBus,
     layout: hasVisualBox,
     style: hasVisualBox,
   };

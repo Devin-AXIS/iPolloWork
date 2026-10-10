@@ -44,7 +44,7 @@
   <script>
     window.__timelines=window.__timelines||{};
     (function(){
-      const root=document.getElementById("spatial-camera-suite"),id=root.dataset.compositionId;
+      const root=document.getElementById("spatial-camera-suite"),id=root.dataset.compositionId||"spatial-camera-suite";
       const defaults={title:"A clearer view, from every angle.",shotStyle:"depth-layer-moves",imageUrl:"",items:"*Signal::See the pattern|Decision::Choose the next move|Action::Move with confidence"};
       const values={...defaults,...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
       const styleIds=["graze-face-tour","depth-layer-moves","spotlight-hero-card","runway-ground-skim","steep-tilt-glide","subject-follow-track","container-morph","gather-lockup"];

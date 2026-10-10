@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio-server",
-  "version": "0.7.60",
+  "version": "0.8.140",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -74,6 +74,30 @@
       "node": "./dist/helpers/mediaProxyPreview.js",
       "import": "./src/helpers/mediaProxyPreview.ts",
       "types": "./src/helpers/mediaProxyPreview.ts"
+    },
+    "./safe-path": {
+      "bun": "./src/helpers/safePath.ts",
+      "node": "./dist/helpers/safePath.js",
+      "import": "./src/helpers/safePath.ts",
+      "types": "./src/helpers/safePath.ts"
+    },
+    "./hf-ids": {
+      "bun": "./src/helpers/hfIdPersist.ts",
+      "node": "./dist/helpers/hfIdPersist.js",
+      "import": "./src/helpers/hfIdPersist.ts",
+      "types": "./src/helpers/hfIdPersist.ts"
+    },
+    "./history": {
+      "bun": "./src/history/index.ts",
+      "node": "./dist/history/index.js",
+      "import": "./src/history/index.ts",
+      "types": "./src/history/index.ts"
+    },
+    "./loudness": {
+      "bun": "./src/helpers/loudness.ts",
+      "node": "./dist/helpers/loudness.js",
+      "import": "./src/helpers/loudness.ts",
+      "types": "./src/helpers/loudness.ts"
     }
   },
   "publishConfig": {
@@ -129,21 +153,25 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "echo skip"
+    "prepublishOnly": "echo skip",
+    "test:acorn-writer": "bun scripts/run-acorn-writer-tests.ts",
+    "report:gsap-writers": "bun src/routes/gsapMutationCapabilities.report.ts"
   },
   "dependencies": {
     "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
-    "hono": "^4.13.2",
+    "hono": "^4.0.0",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.26",
-    "postcss-selector-parser": "^7.1.5"
+    "postcss": "^8.5.8",
+    "postcss-selector-parser": "^7.1.2",
+    "sharp": "^0.35.0"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^25.0.10",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
-  }
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.11"
+  },
+  "peerDependencies": {}
 }

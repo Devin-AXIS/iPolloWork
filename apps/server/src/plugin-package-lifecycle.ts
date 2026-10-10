@@ -638,6 +638,7 @@ async function matchesHistoricalActivationFile(
   workspaceRoot: string,
   next: PackageProjection,
   targetPath: string,
+  targetSha256?: string,
 ): Promise<boolean> {
   const adapter = next.adapter;
   const target = resolveWithin(workspaceRoot, targetPath);
@@ -652,9 +653,36 @@ async function matchesHistoricalActivationFile(
     if (!pluginEngineCanActivate(adapter, manifest)) continue;
     const historicalFile = workspaceActivationFiles(config, workspaceId, next.installed.pluginId, version, adapter)
       .find((file) => file.targetPath === targetPath);
-    if (historicalFile && await activationTargetStatus(target, historicalFile.sha256) === "matching") return true;
+    if (historicalFile && (targetSha256
+      ? historicalFile.sha256 === targetSha256
+      : await activationTargetStatus(target, historicalFile.sha256) === "matching")) return true;
   }
   return false;
+}
+
+async function recoverHistoricalSnapshots(config: ServerConfig, installed: InstalledPackage): Promise<void> {
+  // Older installs could leave a complete immutable snapshot without committing
+  // its version to state. Recover ownership from that snapshot, never from the workspace.
+  const root = dirname(artifactRoot(config, installed.pluginId, installed.currentVersion));
+  const entries = await readdir(root, { withFileTypes: true });
+  if (entries.length > 64) return; // Fail closed rather than scan an unbounded artifact store.
+  const current = manifestFromVersion(installed.versions[installed.currentVersion]);
+  for (const entry of entries) {
+    if (!entry.isDirectory() || installed.versions[entry.name]) continue;
+    try {
+      const preview = await previewPluginPackage({ packageRoot: resolveWithin(root, entry.name) });
+      if (preview.manifest.id !== installed.pluginId || preview.manifest.package?.version !== entry.name
+        || preview.manifest.package.updateId !== current.package?.updateId) continue;
+      installed.versions[entry.name] = {
+        version: entry.name,
+        manifest: JSON.parse(await readFile(resolveWithin(root, `${entry.name}/${MANIFEST_FILE}`), "utf8")),
+        files: preview.files,
+        installedAt: (await stat(resolveWithin(root, entry.name))).mtimeMs,
+      };
+    } catch {
+      // Incomplete or invalid snapshots confer no ownership.
+    }
+  }
 }
 
 function workspaceActivationPaths(
@@ -840,7 +868,7 @@ async function preflightProjection(
     const target = resolveWithin(workspaceRoot, file.targetPath);
     const status = await activationTargetStatus(target, file.sha256);
     if (status === "conflict"
-      && !(current === null && next && await matchesHistoricalActivationFile(
+      && !(next && await matchesHistoricalActivationFile(
         config,
         workspaceId,
         workspaceRoot,
@@ -865,9 +893,9 @@ async function applyProjection(
   pluginId: string,
   current: PackageProjection | null,
   next: PackageProjection | null,
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const engineAdapter = next?.adapter ?? current?.adapter;
-  if (!engineAdapter) return;
+  if (!engineAdapter) return async () => {};
   await preflightProjection(config, workspaceId, workspaceRoot, pluginId, current, next);
   const currentInactivePaths = current
     ? inactiveActivationPaths(config, workspaceId, current.installed, current.version, current.adapter)
@@ -886,14 +914,52 @@ async function applyProjection(
   const currentPaths = new Set(currentActivationFiles.map((file) => file.targetPath));
   const nextPaths = new Set(nextActivationFiles.map((file) => file.targetPath));
   const adoptedPaths = new Set<string>();
+  const originalFiles = new Map<string, Buffer>();
   for (const file of nextActivationFiles) {
     if (currentPaths.has(file.targetPath)) continue;
-    if (await activationTargetStatus(resolveWithin(workspaceRoot, file.targetPath), file.sha256) === "matching") {
+    const target = resolveWithin(workspaceRoot, file.targetPath);
+    if (await fileExists(target)) {
+      const original = await readFile(target);
+      const hash = createHash("sha256").update(original).digest("hex");
+      if (hash !== file.sha256 && !(next && await matchesHistoricalActivationFile(config, workspaceId, workspaceRoot, next, file.targetPath, hash))) {
+        throw new ApiError(409, "plugin_package_conflict", `Install target changed during installation: ${file.targetPath}`, { paths: [file.targetPath] });
+      }
+      originalFiles.set(file.targetPath, original);
+    }
+    if (await activationTargetStatus(target, file.sha256) === "matching") {
       adoptedPaths.add(file.targetPath);
     }
   }
 
   const enabled = next?.installed.enabled === true;
+  const rollback = async () => {
+    let runtimeError: unknown;
+    await engineAdapter.syncRuntime({
+      config, workspaceId, resolvePath: resolveWithin,
+      current: nextEngineVersion, next: currentEngineVersion,
+      enabled: current?.installed.enabled === true,
+    }).catch((error: unknown) => { runtimeError = error; });
+    if (currentEngineVersion) {
+      for (const file of currentActivationFiles) {
+        const target = resolveWithin(workspaceRoot, file.targetPath);
+        await mkdir(dirname(target), { recursive: true });
+        await copyFile(resolveWithin(currentEngineVersion.artifactRoot, file.sourcePath), target);
+      }
+      for (const path of currentInactivePaths) await rm(resolveWithin(workspaceRoot, path), { force: true });
+    }
+    for (const file of nextActivationFiles) {
+      if (currentPaths.has(file.targetPath)) continue;
+      const target = resolveWithin(workspaceRoot, file.targetPath);
+      const original = originalFiles.get(file.targetPath);
+      if (original) {
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, original);
+      } else {
+        await rm(target, { force: true });
+      }
+    }
+    if (runtimeError) throw runtimeError;
+  };
   try {
     for (const file of nextActivationFiles) {
       if (!nextEngineVersion) {
@@ -901,6 +967,10 @@ async function applyProjection(
       }
       const source = resolveWithin(nextEngineVersion.artifactRoot, file.sourcePath);
       const target = resolveWithin(workspaceRoot, file.targetPath);
+      const original = originalFiles.get(file.targetPath);
+      if (original && await activationTargetStatus(target, createHash("sha256").update(original).digest("hex")) !== "matching") {
+        throw new ApiError(409, "plugin_package_conflict", `Install target changed during installation: ${file.targetPath}`, { paths: [file.targetPath] });
+      }
       if (adoptedPaths.has(file.targetPath)) {
         if (await activationTargetStatus(target, file.sha256) !== "matching") {
           throw new ApiError(409, "plugin_package_conflict", `Install target changed during installation: ${file.targetPath}`, { paths: [file.targetPath] });
@@ -923,33 +993,10 @@ async function applyProjection(
       enabled,
     });
   } catch (error) {
-    await engineAdapter.syncRuntime({
-      config,
-      workspaceId,
-      resolvePath: resolveWithin,
-      current: nextEngineVersion,
-      next: currentEngineVersion,
-      enabled: current?.installed.enabled === true,
-    }).catch(() => undefined);
-    if (current) {
-      if (!currentEngineVersion) {
-        throw new ApiError(500, "plugin_package_state_invalid", "Current engine projection is missing");
-      }
-      for (const file of currentActivationFiles) {
-        const source = resolveWithin(currentEngineVersion.artifactRoot, file.sourcePath);
-        const target = resolveWithin(workspaceRoot, file.targetPath);
-        await mkdir(dirname(target), { recursive: true });
-        await copyFile(source, target);
-      }
-      for (const path of currentInactivePaths) await rm(resolveWithin(workspaceRoot, path), { force: true });
-    }
-    for (const file of nextActivationFiles) {
-      if (!currentPaths.has(file.targetPath) && !adoptedPaths.has(file.targetPath)) {
-        await rm(resolveWithin(workspaceRoot, file.targetPath), { force: true });
-      }
-    }
+    await rollback();
     throw error;
   }
+  return rollback;
 }
 
 async function applyPackageTransition(
@@ -957,7 +1004,7 @@ async function applyPackageTransition(
   pluginId: string,
   currentInstalled: InstalledPackage | null,
   nextInstalled: InstalledPackage | null,
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const transitions = [];
   for (const workspace of await localProjectionTargets(config)) {
     let current = packageProjection(config, workspace.workspaceId, currentInstalled, workspace.engineId);
@@ -980,43 +1027,32 @@ async function applyPackageTransition(
       transition.next,
     );
   }
-  const applied: typeof transitions = [];
-  try {
-    for (const transition of transitions) {
-      await applyProjection(
-        config,
-        transition.workspaceId,
-        transition.workspaceRoot,
-        pluginId,
-        transition.current,
-        transition.next,
-      );
-      applied.push(transition);
-    }
-  } catch (error) {
+  const applied: Array<{ workspaceId: string; rollback: () => Promise<void> }> = [];
+  const rollback = async () => {
     const rollbackErrors: string[] = [];
-    for (const transition of applied.reverse()) {
+    for (const transition of [...applied].reverse()) {
       try {
-        await applyProjection(
-          config,
-          transition.workspaceId,
-          transition.workspaceRoot,
-          pluginId,
-          transition.next,
-          transition.current,
-        );
+        await transition.rollback();
       } catch (rollbackError) {
         rollbackErrors.push(`${transition.workspaceId}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
       }
     }
     if (rollbackErrors.length > 0) {
       throw new ApiError(500, "plugin_package_rollback_failed", "Plugin projection rollback failed", {
-        cause: error instanceof Error ? error.message : String(error),
         rollbackErrors,
       });
     }
+  };
+  try {
+    for (const transition of transitions) {
+      const undo = await applyProjection(config, transition.workspaceId, transition.workspaceRoot, pluginId, transition.current, transition.next);
+      applied.push({ workspaceId: transition.workspaceId, rollback: undo });
+    }
+  } catch (error) {
+    await rollback();
     throw error;
   }
+  return rollback;
 }
 
 export async function previewPluginPackage(input: { packageRoot: string; engineId?: string }): Promise<PluginPackagePreview> {
@@ -1694,12 +1730,12 @@ async function commitPackageTransition(input: {
   next: InstalledPackage | null;
   updateState(): void;
 }): Promise<void> {
-  await applyPackageTransition(input.config, input.pluginId, input.current, input.next);
+  const rollback = await applyPackageTransition(input.config, input.pluginId, input.current, input.next);
   try {
     input.updateState();
     await writeState(input.config, input.state);
   } catch (error) {
-    await applyPackageTransition(input.config, input.pluginId, input.next, input.current);
+    await rollback();
     throw error;
   }
 }
@@ -1797,6 +1833,7 @@ async function updatePluginPackageUnlocked(input: {
   }
   const next = await snapshotPackage(input.serverConfig, input.packageRoot, preview);
   const updated = copyInstalledPackage(installed);
+  await recoverHistoricalSnapshots(input.serverConfig, updated);
   updated.disabledResourceIds = updated.disabledResourceIds.filter((resourceId) =>
     preview.manifest.resources.some((resource) => resource.type === "skill" && resource.id === resourceId)
   );

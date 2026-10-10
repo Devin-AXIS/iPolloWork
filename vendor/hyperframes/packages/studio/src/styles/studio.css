@@ -239,6 +239,12 @@
   scrollbar-width: none;
 }
 
+.hf-annotation-drawing,
+.hf-annotation-drawing [data-clip],
+.hf-annotation-drawing [data-clip] * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='white' stroke='%2317212b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m16 3 5 5-12 12-6 1 1-6Z'/%3E%3Cpath d='m14 5 5 5M4 15l5 5'/%3E%3C/svg%3E") 3 21, crosshair !important;
+}
+
 .hf-timeline-toolbar[data-toolbar-layout="narrow"] {
   gap: 8px;
   padding-inline: 8px;

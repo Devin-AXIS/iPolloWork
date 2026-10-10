@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -12,7 +13,9 @@ export const examples: Example[] = [
 import { resolve } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
-import { resolveProject } from "../utils/project.js";
+import { resolveProject, type ProjectDir } from "../utils/project.js";
+import type { Hono } from "hono";
+import { requestSubPath } from "@hyperframes/studio-server";
 import {
   openBrowser,
   parseRemoteDebuggingPort,
@@ -50,7 +53,7 @@ export default defineCommand({
 
     if (args["user-data-dir"] && !args["browser-path"]) {
       clack.log.error("--user-data-dir requires --browser-path");
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     const depsError = validateRemoteDebuggingPortDeps({
@@ -60,7 +63,7 @@ export default defineCommand({
     });
     if (depsError) {
       clack.log.error(depsError);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     let remoteDebuggingPort: number | undefined;
@@ -70,7 +73,7 @@ export default defineCommand({
       );
     } catch (err) {
       clack.log.error((err as Error).message);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -80,7 +83,7 @@ export default defineCommand({
       clack.log.error(
         "@hyperframes/player not found. Run `bun run --cwd packages/player build` first.",
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -94,7 +97,7 @@ export default defineCommand({
         `No slideshow island found in ${project.indexPath}. ` +
           `Add a <script type="application/hyperframes-slideshow+json"> block — see /hyperframes (slideshow).`,
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     const islandJson = islandMatch[1].trim();
@@ -106,13 +109,12 @@ export default defineCommand({
       clack.log.error(
         `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
       );
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
     const { Hono } = await import("hono");
     const { createAdaptorServer } = await import("@hono/node-server");
-    const { isSafePath } = await import("@hyperframes/core/studio-api");
 
     const app = new Hono();
 
@@ -132,16 +134,7 @@ export default defineCommand({
     // timelines (no engine runtime injected) — the same model demo.html / the
     // standalone harness use; injecting a runtime would leave the composition
     // engine-paused and blank.
-    app.get("/composition/*", (ctx) => {
-      const reqPath = ctx.req.path.replace("/composition/", "");
-      const filePath = resolve(project.dir, reqPath);
-      // Security: canonicalizes symlinks + guards the trailing separator so neither
-      // an in-project symlink nor a sibling dir sharing the prefix can escape.
-      if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
-      if (!existsSync(filePath)) return ctx.text("Not found", 404);
-      if (filePath.endsWith(".html")) return ctx.html(readFileSync(filePath, "utf-8"));
-      return ctx.body(readFileSync(filePath), 200, { "Content-Type": assetContentType(filePath) });
-    });
+    await registerPresentCompositionRoute(app, project);
 
     // Both the presenter window and the audience window (opened by present() with
     // ?mode=audience) load this same page; the component reads the mode from the URL.
@@ -307,4 +300,21 @@ function escHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+export async function registerPresentCompositionRoute(
+  app: Hono,
+  project: ProjectDir,
+): Promise<void> {
+  const { isSafePath } = await import("@hyperframes/core/studio-api");
+  app.get("/composition/*", (ctx) => {
+    const reqPath = requestSubPath(ctx.req.url, "composition");
+    const filePath = resolve(project.dir, reqPath);
+    // Security: canonicalizes symlinks + guards the trailing separator so neither
+    // an in-project symlink nor a sibling dir sharing the prefix can escape.
+    if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
+    if (!existsSync(filePath)) return ctx.text("Not found", 404);
+    if (filePath.endsWith(".html")) return ctx.html(readFileSync(filePath, "utf-8"));
+    return ctx.body(readFileSync(filePath), 200, { "Content-Type": assetContentType(filePath) });
+  });
 }

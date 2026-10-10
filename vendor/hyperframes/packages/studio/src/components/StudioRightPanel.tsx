@@ -20,9 +20,7 @@ import {
   type RegistryVisualComponent,
 } from "@hyperframes/core/registry";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
-import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
-import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -38,8 +36,8 @@ import {
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 import { useStudioI18n } from "../i18n";
-import { postVideoAiSelectionToHost } from "./editor/domEditingAgentPrompt";
-import { MIN_RIGHT_PANEL_WIDTH } from "../hooks/usePanelLayout";
+import { useDockLayoutStore } from "./dock/dockLayoutStore";
+import type { VideoStudioPanelBounds } from "@ipollowork/types/hyperframes";
 
 const loadPropertyPanel = () =>
   import("./editor/PropertyPanel").then((module) => ({ default: module.PropertyPanel }));
@@ -81,7 +79,8 @@ const AssetsTab = lazy(() =>
   import("./sidebar/AssetsTab").then((module) => ({ default: module.AssetsTab })),
 );
 export interface StudioRightPanelProps {
-  designPanelActive: boolean;
+  onAddAssetToTimeline?: (path: string) => void;
+  focusedHostAsset?: string;
   activeBlockParams?: {
     blockTitle: string;
     params: BlockParam[];
@@ -97,38 +96,23 @@ export interface StudioRightPanelProps {
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
-  /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
-  sdkSession: Composition | null;
-  publishSdkSession: NonNullable<UseSlideshowPersistParams["publishSdkSession"]>;
-  /**
-   * Forces THIS `sdkSession` to re-open from disk. DesignPanelPromoteProvider
-   * opens its own separate SDK session scoped to the selected element's own
-   * file (needed so promoting inside a sub-composition binds a variable there,
-   * not on the host) — for a top-level selection that's the SAME file this
-   * session already has open, so a write through that other session leaves
-   * this one holding stale in-memory content. The self-write-echo registry
-   * that normally suppresses redundant reloads is keyed by file path only, not
-   * by session instance, so it wrongly treats the sibling session's write as
-   * "our own echo" and never reloads on its own — this must be called
-   * explicitly after such a write.
-   */
+  /** Reload the preview SDK after the variable editor writes through its own session. */
   forceReloadSdkSession?: () => void;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
+    kind?: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
   onAddBlock?: (blockName: string) => Promise<boolean>;
-  onAddAssetToTimeline?: (path: string) => void;
-  focusedHostAsset?: string;
 }
 
 // fallow-ignore-next-line complexity
 export function StudioRightPanel({
-  designPanelActive,
+  onAddAssetToTimeline,
+  focusedHostAsset,
   activeBlockParams,
   onBackFromBlockParams,
   onBlockVariableChange,
@@ -136,16 +120,12 @@ export function StudioRightPanel({
   recordingState,
   recordingDuration,
   onToggleRecording,
-  sdkSession,
-  publishSdkSession,
   forceReloadSdkSession,
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
   onToggleElementHidden,
   onAddBlock,
-  onAddAssetToTimeline,
-  focusedHostAsset,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -154,9 +134,6 @@ export function StudioRightPanel({
     setRightCollapsed,
     rightPanelTab,
     setRightPanelTab,
-    handlePanelResizeStart,
-    handlePanelResizeMove,
-    handlePanelResizeEnd,
   } = usePanelLayoutContext();
 
   const {
@@ -171,6 +148,17 @@ export function StudioRightPanel({
   } = useStudioShellContext();
   const { captionEditMode } = useStudioPlaybackContext();
   const { t, tx } = useStudioI18n();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const hostPanelSlotRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!panelRef.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && Math.abs(entry.contentRect.width - rightWidth) > 1)
+        setRightWidth(entry.contentRect.width);
+    });
+    observer.observe(panelRef.current);
+    return () => observer.disconnect();
+  }, [rightWidth, setRightWidth]);
   const [roleTab, setRoleTab] = useState<"avatar" | "voice">("voice");
 
   const {
@@ -192,6 +180,8 @@ export function StudioRightPanel({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
+    handleAskAgent,
+    setAgentPromptSelectionContext,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -223,8 +213,6 @@ export function StudioRightPanel({
     projectDir,
     handleImportFiles,
     handleImportFonts,
-    handleDeleteFile,
-    handleRenameFile,
     refreshFileTree,
     readProjectFile,
     writeProjectFile,
@@ -328,7 +316,7 @@ export function StudioRightPanel({
       projectDir={projectDir}
       assets={assets}
       element={singleDomEditSelection}
-      inspectorMode="properties"
+      inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}
       showInspectorChrome
       multiSelectCount={domEditGroupSelections.length}
       multiSelectedElements={domEditGroupSelections}
@@ -352,15 +340,10 @@ export function StudioRightPanel({
       onSetTextFieldStyle={handleDomTextFieldStyleCommit}
       onAddTextField={handleDomAddTextField}
       onRemoveTextField={handleDomRemoveTextField}
-      onAskAgent={
-        singleDomEditSelection
-          ? () =>
-              postVideoAiSelectionToHost(
-                singleDomEditSelection,
-                componentSemanticContext(activeBlockParams, singleDomEditSelection.id),
-              )
-          : undefined
-      }
+      onAskAgent={singleDomEditSelection ? () => {
+        handleAskAgent();
+        setAgentPromptSelectionContext(componentSemanticContext(activeBlockParams, singleDomEditSelection.id));
+      } : undefined}
       onImportAssets={handleImportFiles}
       fontAssets={fontAssets}
       onImportFonts={handleImportFonts}
@@ -418,8 +401,18 @@ export function StudioRightPanel({
     rightPanelTab === "animation" || rightPanelTab === "animation-properties";
 
   const animationPanel = (
-    <div className="h-full min-h-0 overflow-hidden">
-      <AnimationTemplatesTab
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 gap-1 border-b border-neutral-800 p-2">
+        {(["animation", "animation-properties"] as const).map((tab) => (
+          <button key={tab} type="button" aria-pressed={rightPanelTab === tab}
+            className={`rounded px-3 py-1 text-[11px] ${rightPanelTab === tab ? "bg-neutral-700 text-white" : "text-neutral-400 hover:bg-neutral-800"}`}
+            onClick={() => setRightPanelTab(tab)}>
+            {tx(tab === "animation" ? "Animation templates" : "Selected animation properties")}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+      {rightPanelTab === "animation-properties" ? propertyPanel : <AnimationTemplatesTab
         onMutate={handleMotionMutation}
         onStatus={(status) =>
           showToast(
@@ -435,7 +428,8 @@ export function StudioRightPanel({
             status === "selection-required" ? "error" : "success",
           )
         }
-      />
+      />}
+      </div>
     </div>
   );
 
@@ -482,12 +476,26 @@ export function StudioRightPanel({
   const postHostPanel = useCallback(
     (panel: "voice" | "style" | "avatar") => {
       if (window.parent !== window) {
+        const slot = hostPanelSlotRef.current?.getBoundingClientRect();
+        if (!slot || window.innerWidth <= 0 || window.innerHeight <= 0) return;
+        const left = Math.max(0, slot.left);
+        const top = Math.max(0, slot.top);
+        const width = Math.min(window.innerWidth, slot.right) - left;
+        const height = Math.min(window.innerHeight, slot.bottom) - top;
+        if (width <= 0 || height <= 0) return;
+        const bounds: VideoStudioPanelBounds = {
+          left: left / window.innerWidth,
+          top: top / window.innerHeight,
+          width: width / window.innerWidth,
+          height: height / window.innerHeight,
+        };
         window.parent.postMessage(
           {
             type: "ipollowork:video-studio-panel",
             projectId,
             panel,
             width: rightWidth,
+            bounds,
           },
           "*",
         );
@@ -516,8 +524,22 @@ export function StudioRightPanel({
 
   useEffect(() => {
     if (!rightCollapsed && (rightPanelTab === "voice" || rightPanelTab === "style")) {
-      postHostPanel(rightPanelTab === "voice" ? roleTab : "style");
-      return;
+      let frame = 0;
+      const publish = () => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => postHostPanel(rightPanelTab === "voice" ? roleTab : "style"));
+      };
+      const observer = new ResizeObserver(publish);
+      if (hostPanelSlotRef.current) observer.observe(hostPanelSlotRef.current);
+      const unsubscribe = useDockLayoutStore.subscribe(publish);
+      window.addEventListener("resize", publish);
+      publish();
+      return () => {
+        observer.disconnect();
+        unsubscribe();
+        window.removeEventListener("resize", publish);
+        cancelAnimationFrame(frame);
+      };
     }
     closeHostPanel();
   }, [closeHostPanel, roleTab, postHostPanel, rightPanelTab, rightCollapsed]);
@@ -546,7 +568,7 @@ export function StudioRightPanel({
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
   const selectStudioPanel = (
-    panel: "design" | "animation" | "animation-properties" | "assets" | "components",
+    panel: "design" | "animation" | "animation-properties" | "components" | "assets",
   ) => {
     setRightPanelTab(panel);
   };
@@ -556,32 +578,13 @@ export function StudioRightPanel({
 
   return (
     <>
-      {/* 0.5px visual separator with an expanded pointer-capture zone. */}
       <div
-        role="separator"
-        aria-label={t("right.resizeInspector")}
-        aria-orientation="vertical"
-        tabIndex={0}
-        className="hf-inspector-resizer group relative w-[0.5px] flex-shrink-0 cursor-ew-resize outline-none focus-visible:bg-studio-accent/20"
-        style={{ touchAction: "none" }}
-        onPointerDown={(e) => handlePanelResizeStart("right", e)}
-        onPointerMove={handlePanelResizeMove}
-        onPointerUp={handlePanelResizeEnd}
-        onPointerCancel={handlePanelResizeEnd}
-        onKeyDown={(e) => {
-          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-          e.preventDefault();
-          // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
-          const delta = e.key === "ArrowLeft" ? 16 : -16;
-          setRightWidth(Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(360, rightWidth + delta)));
-        }}
-      >
-        <div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
-        <div className="absolute inset-y-0 left-0 w-[0.5px] bg-[var(--hf-studio-divider)] group-focus-visible:bg-studio-accent/60" />
-      </div>
-      <div
+        ref={panelRef}
         className="hf-studio-inspector flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg"
-        style={{ width: rightWidth, minWidth: MIN_RIGHT_PANEL_WIDTH }}
+        style={{
+          width: "100%",
+          minWidth: 0,
+        }}
       >
         {captionEditMode ? (
           <Suspense
@@ -630,16 +633,16 @@ export function StudioRightPanel({
                       }}
                     />
                     <PanelTabButton
-                      label={t("right.role")}
-                      tooltip={t("right.voiceTooltip")}
-                      active={rightPanelTab === "voice"}
-                      onClick={() => openHostPanel("voice")}
-                    />
-                    <PanelTabButton
                       label={t("right.assets")}
                       tooltip={t("right.assetsTooltip")}
                       active={rightPanelTab === "assets"}
                       onClick={() => selectStudioPanel("assets")}
+                    />
+                    <PanelTabButton
+                      label={t("right.role")}
+                      tooltip={t("right.voiceTooltip")}
+                      active={rightPanelTab === "voice"}
+                      onClick={() => openHostPanel("voice")}
                     />
                   </div>
                 </div>
@@ -668,17 +671,12 @@ export function StudioRightPanel({
                   ) : animationPanelActive ? (
                     animationPanel
                   ) : rightPanelTab === "assets" ? (
-                    <AssetsTab
-                      projectId={projectId}
-                      assets={assets}
-                      onRefresh={refreshFileTree}
-                      onImport={handleImportFiles}
-                      onDelete={handleDeleteFile}
-                      onRename={handleRenameFile}
+                    <StudioAssetsPanel
                       onAddAssetToTimeline={onAddAssetToTimeline}
                       focusedHostAsset={focusedHostAsset}
                     />
                   ) : rightPanelTab === "voice" ? (
+                    <div className="flex h-full min-h-0 flex-col">
                     <div className="shrink-0 px-4 pb-3">
                       <div role="group" aria-label={t("right.role")} data-testid="role-subtabs" className="grid h-[34px] grid-cols-2 gap-1 rounded-lg bg-panel-input p-1">
                         {["voice", "avatar"].map(tab => (
@@ -689,8 +687,10 @@ export function StudioRightPanel({
                         ))}
                       </div>
                     </div>
+                    <div ref={hostPanelSlotRef} data-testid="host-panel-slot" className="min-h-0 flex-1" />
+                    </div>
                   ) : rightPanelTab === "style" ? (
-                    <div className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">{t("right.styleTooltip")}</div>
+                    <div ref={hostPanelSlotRef} data-testid="host-panel-slot" className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">{t("right.styleTooltip")}</div>
                   ) : inspectorTabActive ? (
                     propertyPanel
                   ) : (
@@ -729,4 +729,36 @@ function componentSemanticContext(
   if (!variable || variable.type !== "string") return undefined;
   const value = activeBlockParams.variableValues[variable.id] ?? variable.default;
   return formatVisualComponentDataForAi(contract, String(value));
+}
+
+/** The right sidebar owns the existing asset workflow. */
+function StudioAssetsPanel({
+  onAddAssetToTimeline,
+  focusedHostAsset,
+}: {
+  onAddAssetToTimeline?: (path: string) => void;
+  focusedHostAsset?: string;
+}) {
+  const { projectId } = useStudioShellContext();
+  const {
+    assets,
+    refreshFileTree,
+    handleImportFiles,
+    handleDeleteFile,
+    handleRenameFile,
+  } = useFileManagerContext();
+  return (
+    <Suspense fallback={<div className="h-full animate-pulse bg-panel-bg" />}>
+      <AssetsTab
+        projectId={projectId}
+        assets={assets}
+        onRefresh={refreshFileTree}
+        onImport={handleImportFiles}
+        onDelete={handleDeleteFile}
+        onRename={handleRenameFile}
+        onAddAssetToTimeline={onAddAssetToTimeline}
+        focusedHostAsset={focusedHostAsset}
+      />
+    </Suspense>
+  );
 }

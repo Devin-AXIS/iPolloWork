@@ -1,4 +1,5 @@
 // Vite adapter that wires the shared Studio API to the local filesystem and build tools.
+import { isValidProjectId } from "./src/utils/projectRouting";
 
 import {
   readFileSync,
@@ -10,7 +11,7 @@ import {
   copyFileSync,
   unlinkSync,
 } from "node:fs";
-import { join, relative, resolve, isAbsolute, dirname } from "node:path";
+import { join, relative, resolve, isAbsolute, dirname, basename, sep } from "node:path";
 import type { ViteDevServer } from "vite";
 import {
   type ResolvedProject,
@@ -18,7 +19,8 @@ import {
   type StudioApiAdapter,
   type BackgroundRemovalRender,
   createBackgroundRemovalJob,
-  createProjectSignature,
+  openProjectHistory, DEFAULT_HISTORY_ROOT, historyCache,
+  createProjectSignature, affectsProjectSignature,
   loadRegistryPreviewAssetFromRoot,
   loadRegistryPreviewFromRoot,
 } from "@hyperframes/studio-server";
@@ -32,7 +34,7 @@ export function isPathWithin(parentDir: string, childPath: string): boolean {
   const childRelativePath = relative(resolve(parentDir), resolve(childPath));
   return (
     childRelativePath === "" ||
-    (!childRelativePath.startsWith("..") && !isAbsolute(childRelativePath))
+    (childRelativePath !== ".." && !childRelativePath.startsWith(`..${sep}`) && !isAbsolute(childRelativePath))
   );
 }
 
@@ -40,7 +42,68 @@ export function resolveViteAutoProxy(value: string | undefined): boolean {
   return value !== "false";
 }
 
-export function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAdapter {
+export interface ProjectSignatureCache {
+  get(projectDir: string): string;
+  /** Drop the signature of whichever project contains `changedPath`. */
+  invalidate(changedPath: string): void;
+  forget(projectDir: string): void;
+}
+
+export function createProjectSignatureCache({
+  compute = createProjectSignature,
+  watch,
+}: {
+  compute?: (projectDir: string) => string;
+  watch?: (projectDir: string) => void;
+} = {}): ProjectSignatureCache {
+  const signatures = new Map<string, string>();
+  const watched = new Set<string>();
+  return {
+    get(projectDir) {
+      const key = resolve(projectDir);
+      const cached = signatures.get(key);
+      if (cached !== undefined) return cached;
+      if (!watched.has(key)) {
+        watched.add(key);
+        watch?.(key);
+      }
+      const signature = compute(key);
+      signatures.set(key, signature);
+      return signature;
+    },
+    invalidate(changedPath) {
+      // Filtered here rather than at the watcher so no caller can wire up a
+      // subscription that forgets to: the cache owns what can change its value.
+      for (const projectDir of signatures.keys()) {
+        if (affectsProjectSignature(projectDir, changedPath)) signatures.delete(projectDir);
+      }
+    },
+    forget(projectDir) {
+      signatures.delete(resolve(projectDir));
+    },
+  };
+}
+
+const isServableProjectId = (id: string) =>
+  isValidProjectId(id) && !(process.platform === "win32" && id.includes(":"));
+
+export function createViteAdapter(dataDir: string, server: ViteDevServer,
+  signatureCache: ProjectSignatureCache = createProjectSignatureCache({ watch: dir => server.watcher?.add(dir) }),
+  { historyRoot = DEFAULT_HISTORY_ROOT, openHistory = openProjectHistory, onResolveProject: resolved, projectWatcher = server.watcher }: {
+    historyRoot?: string; openHistory?: typeof openProjectHistory; onResolveProject?: (project: ResolvedProject) => void;
+    projectWatcher?: Pick<ViteDevServer["watcher"], "on">;
+  } = {}): StudioApiAdapter {
+  const resolvedProjects = new Set<string>();
+  const onResolveProject = (project: ResolvedProject) => { resolvedProjects.add(project.dir); resolved?.(project); };
+  const histories = historyCache(projectDir => openHistory({ projectDir, historyRoot }).catch(error => {
+    if (error instanceof Error && (error.name === "HistoryClosedError" || error.name === "HistoryBusyError")) histories.forget(projectDir);
+    console.warn("[Studio] Project history unavailable:", error); return null;
+  }));
+  projectWatcher?.on("all", (_event, file) => {
+    signatureCache.invalidate(file);
+    for (const dir of resolvedProjects) if (isPathWithin(dir, file)) void histories.peek(dir)?.then(history => history?.noteChange(file));
+  });
+  server.httpServer?.on("close", () => { void histories.closeAll(); });
   let _bundler:
     | ((
         dir: string,
@@ -73,13 +136,6 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
         ) => Promise<void>;
       }>)
     | null = null;
-
-  const projectSignatureCache = new Map<string, string>();
-  server.watcher.on("all", (_event, file) => {
-    for (const projectDir of projectSignatureCache.keys()) {
-      if (isPathWithin(projectDir, file)) projectSignatureCache.delete(projectDir);
-    }
-  });
 
   const getBundler = async () => {
     if (!_bundler) {
@@ -114,6 +170,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
   };
 
   return {
+    history: project => histories.get(project.dir),
     // The CLI resolves --proxy/--no-proxy against hyperframes.json before it
     // launches Vite. Direct `bun run dev` keeps the historical default-on
     // behavior when the child environment is absent.
@@ -142,7 +199,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       return readdirSync(dataDir, { withFileTypes: true })
         .filter(
           (d) =>
-            (d.isDirectory() || d.isSymbolicLink()) &&
+            isServableProjectId(d.name) && (d.isDirectory() || d.isSymbolicLink()) &&
             (existsSync(join(dataDir, d.name, "index.html")) ||
               existsSync(join(dataDir, d.name, `${d.name}.html`))),
         )
@@ -160,21 +217,27 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
 
     // fallow-ignore-next-line complexity
     resolveProject(id: string) {
-      let projectDir = join(dataDir, id);
+      if (!isServableProjectId(id)) return null;
+      let projectDir = resolve(dataDir, id);
+      if (!isPathWithin(dataDir, projectDir)) return null;
       if (!existsSync(projectDir)) {
         const sessionsDir = resolve(dataDir, "../sessions");
-        const sessionFile = join(sessionsDir, `${id}.json`);
+        const sessionFile = resolve(sessionsDir, `${id}.json`);
+        if (!isPathWithin(sessionsDir, sessionFile)) return null;
         if (existsSync(sessionFile)) {
           try {
             const session = JSON.parse(readFileSync(sessionFile, "utf-8"));
-            if (session.projectId) {
-              projectDir = join(dataDir, session.projectId);
+            if (typeof session.projectId === "string" && isServableProjectId(session.projectId)) {
+              projectDir = resolve(dataDir, session.projectId);
+              if (!isPathWithin(dataDir, projectDir)) return null;
               if (existsSync(projectDir)) {
-                return {
+                const project = {
                   id: session.projectId,
                   dir: realpathSync(projectDir),
                   title: session.title,
                 };
+                onResolveProject?.(project);
+                return project;
               }
             }
           } catch {
@@ -183,7 +246,9 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
         }
         return null;
       }
-      return { id, dir: realpathSync(projectDir) };
+      const project = { id, dir: realpathSync(projectDir) };
+      onResolveProject?.(project);
+      return project;
     },
 
     async bundle(dir: string) {
@@ -198,29 +263,14 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
     },
 
     async transformPreviewHtml({ html }) {
-      const producer = await import("../producer/src/services/deterministicFonts.js");
+      const producer = await import("@hyperframes/core/fonts/embed");
       return producer.injectDeterministicFontFaces(html, {
         maxSystemFontBytes: SYSTEM_FONT_SIZE_LIMIT,
       });
     },
 
-    getProjectSignature(projectDir: string): string {
-      const cacheKey = resolve(projectDir);
-      const cached = projectSignatureCache.get(cacheKey);
-      if (cached) return cached;
-      // Project dirs are symlinked from anywhere on disk (often outside the
-      // studio package), so Vite's default watch roots don't cover them.
-      // Without this, the signature cache never invalidates for external
-      // projects and the preview ETag serves stale 304s after edits.
-      server.watcher.add(cacheKey);
-      const signature = createProjectSignature(cacheKey);
-      projectSignatureCache.set(cacheKey, signature);
-      return signature;
-    },
-
-    invalidateProjectSignature(projectDir: string): void {
-      projectSignatureCache.delete(resolve(projectDir));
-    },
+    getProjectSignature(projectDir: string): string { return signatureCache.get(projectDir); },
+    invalidateProjectSignature(projectDir: string): void { signatureCache.forget(projectDir); },
 
     async lint(html: string, opts?: { filePath?: string }) {
       const mod = await server.ssrLoadModule("@hyperframes/core/lint");

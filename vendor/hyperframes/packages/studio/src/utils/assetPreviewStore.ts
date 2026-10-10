@@ -15,6 +15,8 @@
 import { create } from "zustand";
 
 interface AssetPreviewState {
+  previewBlock: { name: string; title: string } | null;
+  setPreviewBlock: (block: { name: string; title: string } | null) => void;
   /** Project-relative asset path currently being previewed, or null. */
   previewAsset: string | null;
   /** projectId for which the preview was opened (used to build the serve URL). */
@@ -26,8 +28,11 @@ interface AssetPreviewState {
 }
 
 export const useAssetPreviewStore = create<AssetPreviewState>((set) => ({
+  previewBlock: null,
+  setPreviewBlock: (previewBlock) => set({ previewBlock }),
   previewAsset: null,
   previewProjectId: null,
   setPreviewAsset: (asset, projectId) => set({ previewAsset: asset, previewProjectId: projectId }),
-  clearPreviewAsset: () => set({ previewAsset: null, previewProjectId: null }),
+  clearPreviewAsset: () =>
+    set({ previewAsset: null, previewProjectId: null, previewBlock: null }),
 }));

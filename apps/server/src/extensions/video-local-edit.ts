@@ -74,13 +74,13 @@ async function hashFile(path: string) {
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
 }
-async function videoFile(workspace: WorkspaceInfo, path: string) {
+async function videoFile(workspace: WorkspaceInfo, path: string, maxBytes = MAX_BYTES) {
   if (!safeVideoMediaPath(path) || !/\.(mp4|mov|webm)$/i.test(path)) throw new ApiError(400, "video_invalid_path", "请选择工作区内的 MP4、MOV 或 WebM 视频。");
   // Check ancestry as well as the file: a newly created output may not exist yet.
   await resolveWithinRoot(workspace.path, dirname(path));
   const absolute = await realpath(await resolveWithinRoot(workspace.path, path));
   const info = await stat(absolute);
-  if (!info.isFile() || !info.size || info.size > MAX_BYTES) throw new ApiError(400, "video_size", "本地编辑支持 100 MB 以内的非空视频。");
+  if (!info.isFile() || !info.size || info.size > maxBytes) throw new ApiError(400, "video_size", `请选择 ${maxBytes / 1024 / 1024} MB 以内的非空视频。`);
   return { absolute, bytes: info.size, revision: await hashFile(absolute) };
 }
 async function runBinary(name: "ffmpeg" | "ffprobe", args: string[], timeout: number) {
@@ -100,8 +100,8 @@ async function inspectVideoSource(source: Awaited<ReturnType<typeof videoFile>>)
   if (!video?.width || !video.height || video.width * video.height > 3840 * 2160) throw new ApiError(400, "video_dimensions", "请选择分辨率不超过 4K 的视频。");
   return { bytes: source.bytes, revision: source.revision, duration: metadata.format.duration, width: video.width, height: video.height, codec: video.codec_name, hasAudio: metadata.streams.some(stream => stream.codec_type === "audio") };
 }
-export async function inspectLocalVideo(workspace: WorkspaceInfo, path: string) {
-  return { path, ...await inspectVideoSource(await videoFile(workspace, path)) };
+export async function inspectLocalVideo(workspace: WorkspaceInfo, path: string, maxBytes = MAX_BYTES) {
+  return { path, ...await inspectVideoSource(await videoFile(workspace, path, maxBytes)) };
 }
 export function localVideoFilters(edit: Edit) {
   const { crop } = edit;

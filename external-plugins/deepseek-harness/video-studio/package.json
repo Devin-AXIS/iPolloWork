@@ -63,7 +63,7 @@
   },
   "homepage": "https://github.com/Devin-AXIS/deepseek-design#deepseek-ivideo",
   "ipollowork": {
-    "hyperframesVersion": "0.7.60"
+    "hyperframesVersion": "0.8.140"
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",

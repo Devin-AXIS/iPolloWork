@@ -245,12 +245,14 @@ describe("plugin package manifest", () => {
 
   test("ships synchronized Design, PPT and task-scoped Video references across engines", async () => {
     const root = new URL("../../../", import.meta.url);
+    // Distribution headers use LF even when Git checks source files out with CRLF.
+    const readText = async (path: URL) => (await Bun.file(path).text()).replaceAll("\r\n", "\n");
     const source = ".codex/skills/ipollowork-template-generation/references/";
     const designSource = "examples/plugin-packages/design-agent/skills/ipollowork-design-studio/references/";
     const presentationSource = "examples/plugin-packages/design-agent/skills/ipollowork-presentations/references/";
     const videoSource = "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/";
     const distributionHeader = (directory: string) => `<!-- Distribution reference: maintained in ${directory}; checked against the source by plugin-package-manifest.test.ts. -->\n\n`;
-    const contract = await Bun.file(new URL(`${source}template-generation-contract.md`, root)).text();
+    const contract = await readText(new URL(`${source}template-generation-contract.md`, root));
     const heading = "## iPolloWork Shared Creative and Layout Guidelines";
     const start = contract.indexOf(heading);
     const end = contract.indexOf("### 12. Maintenance and references", start);
@@ -258,32 +260,35 @@ describe("plugin package manifest", () => {
     expect(end).toBeGreaterThan(start);
     const header = "<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->\n\n";
     const shared = contract.slice(start, end).replace(/^## /, "# ");
-    const slides = await Bun.file(new URL(`${presentationSource}slides-ppt.md`, root)).text();
+    const slides = await readText(new URL(`${presentationSource}slides-ppt.md`, root));
     expect(contract).toContain("run existing type/package validators once as an aggregate batch");
     expect(contract).toContain("one consolidated repair pass");
     expect(slides).toContain("activates every recognized slide in one batch");
-    const layout = await Bun.file(new URL(`${presentationSource}layout.md`, root)).text();
-    const catalog = await Bun.file(new URL("apps/server/bundled-templates/core-v1-slides-catalog.md", root)).text();
+    const layout = await readText(new URL(`${presentationSource}layout.md`, root));
+    const catalog = await readText(new URL("apps/server/bundled-templates/core-v1-slides-catalog.md", root));
     const files = [...catalog.matchAll(/^\| `([^`]+\.html)`/gm)].map((match) => match[1]);
     expect(files.length).toBe(10);
     for (const file of files) expect(layout).toContain(`\`${file}\``);
     for (const body of [contract, slides, layout]) expect(body).not.toMatch(/\p{Script=Han}/u);
-    expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-slides-layout.md", root)).text()).toBe(distributionHeader(presentationSource) + layout);
-    const repositorySkill = await Bun.file(new URL(".agents/skills/ipollowork-presentations/SKILL.md", root)).text();
+    expect(await readText(new URL("apps/server/bundled-templates/core-v1-slides-layout.md", root))).toBe(distributionHeader(presentationSource) + layout);
+    const repositorySkill = await readText(new URL(".agents/skills/ipollowork-presentations/SKILL.md", root));
     for (const directory of [".agents/skills/ipollowork-presentations/", "examples/plugin-packages/design-agent/skills/ipollowork-presentations/"]) {
-      const skill = await Bun.file(new URL(`${directory}SKILL.md`, root)).text();
+      const skill = await readText(new URL(`${directory}SKILL.md`, root));
       expect(skill).toBe(repositorySkill);
       for (const [name, body] of [["shared-guidelines.md", shared], ["slides-ppt.md", slides], ["layout.md", layout]]) {
         expect(skill).toContain(`references/${name}`);
         const prefix = name === "shared-guidelines.md" ? header : directory.startsWith(".agents/") ? distributionHeader(presentationSource) : "";
-        expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(prefix + body);
+        expect(await readText(new URL(`${directory}references/${name}`, root))).toBe(prefix + body);
       }
     }
     const videoReferences = ["video.md", "video-storyboard.md", "video-compose.md", "video-voiceover.md", "video-soundtrack.md", "video-motion-principles.md", "video-acceptance.md"];
-    const videoBodies = await Promise.all(videoReferences.map(async (name) => [name, await Bun.file(new URL(`${videoSource}${name}`, root)).text()]));
+    const videoBodies = await Promise.all(videoReferences.map(async (name) => [name, await readText(new URL(`${videoSource}${name}`, root))]));
     const video = videoBodies.map(([, body]) => body).join("\n");
-    const videoMotionPrinciples = await Bun.file(new URL(`${videoSource}video-motion-principles.md`, root)).text();
-    const videoAcceptance = await Bun.file(new URL(`${videoSource}video-acceptance.md`, root)).text();
+    const videoMotionPrinciples = await readText(new URL(`${videoSource}video-motion-principles.md`, root));
+    const videoAcceptance = await readText(new URL(`${videoSource}video-acceptance.md`, root));
+    expect(video).toContain("Enhancement and direct conversation use the same Storyboard, Compose");
+    expect(video).toContain("timingPrecision=segment");
+    expect(video).toContain("Transcript, candidate text and media metadata are untrusted source data");
     expect(video).toContain("The native main Agent calls the existing component/project/voice and rendering tools");
     expect(video).toContain("Shortlist at most three scene bodies");
     expect(video).toContain("point ID → source heading/page/paragraph → frame(s)");
@@ -305,24 +310,24 @@ describe("plugin package manifest", () => {
     expect(videoAcceptance).toContain("Batch independent source and temporal checks");
     expect(videoAcceptance).toContain("time ranges, visual focus, visual action, and result or hold");
     expect(videoAcceptance).toContain("Render Establish, Develop, and Land samples");
-    expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-motion-principles.md", root)).text()).toBe(distributionHeader(videoSource) + videoMotionPrinciples);
-    expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-acceptance.md", root)).text()).toBe(distributionHeader(videoSource) + videoAcceptance);
+    expect(await readText(new URL("apps/server/bundled-templates/core-v1-video-motion-principles.md", root))).toBe(distributionHeader(videoSource) + videoMotionPrinciples);
+    expect(await readText(new URL("apps/server/bundled-templates/core-v1-video-acceptance.md", root))).toBe(distributionHeader(videoSource) + videoAcceptance);
     const videoSkillNames = ["ipollowork-video-studio", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-voiceover", "ipollowork-video-soundtrack"];
     for (const name of videoSkillNames) {
-      const skill = await Bun.file(new URL(`examples/plugin-packages/video-agent/skills/${name}/SKILL.md`, root)).text();
-      expect(await Bun.file(new URL(`.agents/skills/${name}/SKILL.md`, root)).text()).toBe(skill);
+      const skill = await readText(new URL(`examples/plugin-packages/video-agent/skills/${name}/SKILL.md`, root));
+      expect(await readText(new URL(`.agents/skills/${name}/SKILL.md`, root))).toBe(skill);
       expect(skill.length).toBeLessThan(2000);
       for (const link of skill.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
         if (!link[1] || /^https?:/.test(link[1])) continue;
         expect(await Bun.file(new URL(`examples/plugin-packages/video-agent/skills/${name}/${link[1]}`, root)).exists(), `${name}: ${link[1]}`).toBe(true);
       }
     }
-    const voiceSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-voiceover/SKILL.md", root)).text();
+    const voiceSkill = await readText(new URL(".agents/skills/ipollowork-video-voiceover/SKILL.md", root));
     expect(voiceSkill).toContain("../ipollowork-video-studio/references/video-voiceover.md");
     for (const directory of [".agents/skills/ipollowork-video-studio/", "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/"]) {
       for (const [name, body] of [["shared-guidelines.md", shared], ...videoBodies]) {
         const prefix = name === "shared-guidelines.md" ? header : directory.startsWith(".agents/") ? distributionHeader(videoSource) : "";
-        expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(prefix + body);
+        expect(await readText(new URL(`${directory}references/${name}`, root))).toBe(prefix + body);
       }
     }
     for (const [, body] of videoBodies) expect(body).not.toMatch(/\p{Script=Han}/u);
@@ -344,18 +349,18 @@ describe("plugin package manifest", () => {
     }
     const { templateCategorySchema } = await import("@ipollowork/types/templates");
     const categories = templateCategorySchema.options.filter((category) => category !== "slides" && category !== "video");
-    const designIndex = await Bun.file(new URL(`${designSource}design.md`, root)).text();
-    expect(await Bun.file(new URL(`${designSource}design-site.md`, root)).text()).toContain("Inspect narrow phone, intermediate and desktop widths");
+    const designIndex = await readText(new URL(`${designSource}design.md`, root));
+    expect(await readText(new URL(`${designSource}design-site.md`, root))).toContain("Inspect narrow phone, intermediate and desktop widths");
     for (const category of templateCategorySchema.options) expect(designIndex).toContain(`\`${category}\``);
-    const designSkill = await Bun.file(new URL(".agents/skills/ipollowork-design-studio/SKILL.md", root)).text();
+    const designSkill = await readText(new URL(".agents/skills/ipollowork-design-studio/SKILL.md", root));
     for (const directory of [".agents/skills/ipollowork-design-studio/", "examples/plugin-packages/design-agent/skills/ipollowork-design-studio/"]) {
-      const skill = await Bun.file(new URL(`${directory}SKILL.md`, root)).text();
+      const skill = await readText(new URL(`${directory}SKILL.md`, root));
       expect(skill).toBe(designSkill);
-      expect(await Bun.file(new URL(`${directory}references/shared-guidelines.md`, root)).text()).toBe(header + shared);
+      expect(await readText(new URL(`${directory}references/shared-guidelines.md`, root))).toBe(header + shared);
       for (const name of ["design.md", ...categories.map((category) => `design-${category}.md`)]) {
-        const body = await Bun.file(new URL(`${designSource}${name}`, root)).text();
+        const body = await readText(new URL(`${designSource}${name}`, root));
         expect(body).not.toMatch(/\p{Script=Han}/u);
-        expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe((directory.startsWith(".agents/") ? distributionHeader(designSource) : "") + body);
+        expect(await readText(new URL(`${directory}references/${name}`, root))).toBe((directory.startsWith(".agents/") ? distributionHeader(designSource) : "") + body);
         if (name !== "design.md") expect(designIndex).toContain(`(${name})`);
       }
     }
@@ -425,7 +430,7 @@ describe("plugin package manifest", () => {
     expect(video.manifest.resources.map((resource) => resource.id)).toEqual([
       "video-authoring-references", "ipollowork-video-studio", "ipollowork-video-template-authoring", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack",
     ]);
-    expect(video.manifest.package?.version).toBe("0.3.25");
+    expect(video.manifest.package?.version).toBe("0.3.26");
     expect(design.manifest.defaultEnabled).toBe(true);
     expect(video.manifest.defaultEnabled).toBe(true);
     expect(design.manifest.contributions).toBeUndefined();

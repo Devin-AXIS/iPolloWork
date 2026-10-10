@@ -5,6 +5,25 @@ import path from "node:path";
 import test from "node:test";
 import { createVideoResourceManager } from "./video-resource-manager.mjs";
 
+test("bundled models resolve beside codecs and respect an explicit offline model directory", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-video-model-path-"));
+  try {
+    for (const id of ["ffmpeg", "ffprobe"]) {
+      const directory = path.join(root, "video-codecs", id);
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, process.platform === "win32" ? `${id}.exe` : id), "test executable");
+    }
+    /** @type {NodeJS.ProcessEnv} */
+    const env = {};
+    const options = { app: { isPackaged: true, getVersion: () => "0.50.16" }, resourcesPath: root, env, probeBinary: async () => "fixture" };
+    assert.equal((await createVideoResourceManager(options).info()).status, "ready");
+    assert.equal(env.IPOLLOWORK_VIDEO_MODELS_PATH, path.join(root, "video-models"));
+    env.IPOLLOWORK_VIDEO_MODELS_PATH = path.join(root, "offline-models");
+    await createVideoResourceManager(options).info();
+    assert.equal(env.IPOLLOWORK_VIDEO_MODELS_PATH, path.join(root, "offline-models"));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("packaged codecs work offline without a cloud manifest or user cache", { skip: process.platform === "win32" }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-video-resource-test-"));
   try {

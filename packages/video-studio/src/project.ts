@@ -4,7 +4,7 @@ import {
   videoProjectId,
 } from "@ipollowork/types/hyperframes-project";
 
-export const HYPERFRAMES_VERSION = "0.7.60";
+export const HYPERFRAMES_VERSION = "0.8.140";
 
 export { hyperframesStudioPort, videoProjectDirectory, videoProjectId };
 

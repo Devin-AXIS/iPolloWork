@@ -186,5 +186,5 @@ export function installLibraryComponent(component: LibraryComponent, projectDir:
     mkdirSync(dirname(file.target), { recursive: true });
     writeFileSync(file.target, file.content, { flag: "wx" });
   }
-  return files.map(file => file.target.slice(resolve(projectDir).length + 1));
+  return files.map(file => file.target.slice(resolve(projectDir).length + 1).split(sep).join("/"));
 }

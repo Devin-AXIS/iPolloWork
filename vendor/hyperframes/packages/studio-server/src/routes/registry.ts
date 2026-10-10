@@ -216,6 +216,7 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
     let review;
     try {
       review = await adapter.generateThumbnail({ project, compPath: sourceFile, seekTime: 0, width: 1920, height: 1080,
+        outputWidth: 1920, outputHeight: 1080, signal: c.req.raw.signal,
         previewUrl: preview.href, componentVariables: { elementId, values: result.values } });
     } catch (error) { return c.json({ error: error instanceof Error ? error.message : "Layout validation failed" }, 422); }
     if (!review || Buffer.isBuffer(review)) return c.json({ error: "Component layout validation is unavailable" }, 503);
@@ -274,16 +275,21 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
     const seekTime = finitePreviewNumber(c.req.query("time"), duration / 2);
     const autoplay = c.req.query("autoplay") === "1";
     return c.html(
-      buildRegistryPreviewHtml(preview.html, {
-        assetBaseUrl: `/api/registry/blocks/${encodeURIComponent(c.req.param("name"))}/assets/`,
-        autoplay,
-        duration,
-        seekTime,
-        focus: preview.focus,
-        runtimeUrl: adapter.runtimeUrl,
-        width: preview.dimensions.width,
-        height: preview.dimensions.height,
-      }),
+      buildRegistryPreviewHtml(
+        c.req.query("overlay") === "1"
+          ? `${preview.html}<style>html,body{background:transparent!important}</style>`
+          : preview.html,
+        {
+          assetBaseUrl: `/api/registry/blocks/${encodeURIComponent(c.req.param("name"))}/assets/`,
+          autoplay,
+          duration,
+          seekTime,
+          focus: preview.focus,
+          runtimeUrl: adapter.runtimeUrl,
+          width: preview.dimensions.width,
+          height: preview.dimensions.height,
+        },
+      ),
       200,
       {
         "Cache-Control": "private, max-age=300",

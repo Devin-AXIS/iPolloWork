@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRuntimeStartTimeResolver, resolveCompositionElement } from "./startResolver";
 
 afterEach(() => {
@@ -41,5 +41,7 @@ describe("composition source clocks", () => {
 
  it("resolves a canonical mount behind a prepended sibling's authored inner id", () => {
   document.body.innerHTML = '<main data-composition-id="root"><section data-composition-id="scene-2" data-composition-file="scene.html" data-start="5"><div data-hf-inner-root="true" data-composition-id="scene"></div></section><section id="original" data-composition-id="scene" data-composition-file="scene.html" data-start="0"></section></main>';
+  vi.stubGlobal("CSS", { escape: (value: string) => value });
   expect(resolveCompositionElement("scene")?.id).toBe("original");
+  vi.unstubAllGlobals();
 });

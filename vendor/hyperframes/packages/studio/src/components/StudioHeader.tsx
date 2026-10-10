@@ -18,6 +18,7 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
 import { useViewMode } from "../contexts/ViewModeContext";
+import { Dock } from "./dock/Dock";
 
 export interface StudioHeaderProps {
   inspectorButtonActive: boolean;
@@ -130,6 +131,7 @@ export function StudioHeader({
 
   return (
     <header className="hf-studio-header relative flex h-10 flex-shrink-0 items-center gap-2 border-b border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-header-bg)] px-2 text-[var(--hf-panel-text-1)] backdrop-blur-sm">
+      {!previewMode && !scriptMode && <Dock.WindowMenu label="Control tools" visibilityOnly />}
       <div
         className="hf-studio-header-views flex h-8 shrink-0 items-center gap-1 rounded-[10px] bg-[var(--hf-panel-input)] p-1"
         role="tablist"
@@ -140,7 +142,9 @@ export function StudioHeader({
           role="tab"
           aria-selected={scriptMode}
           onClick={() => {
-            if (setViewMode("storyboard") && window.parent !== window) {
+            if (!setViewMode("storyboard")) return;
+            onPreviewModeChange(false);
+            if (window.parent !== window) {
               window.parent.postMessage({ type: "ipollowork:video-studio-panel", projectId, panel: null }, "*");
             }
           }}

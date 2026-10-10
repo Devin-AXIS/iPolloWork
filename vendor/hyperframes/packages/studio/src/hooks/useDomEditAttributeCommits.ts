@@ -104,7 +104,7 @@ export function useDomEditAttributeCommits({
   refreshDomEditSelectionFromPreview,
   persistDomEditOperations,
 }: UseDomEditAttributeCommitsParams) {
-  const domAttributeCommitVersionRef = useRef(new Map<string, number>());
+  const domAttributeCommitVersionRef = useRef(new Map<string, symbol>());
 
   const commitDataAttribute = useCallback(
     async (attr: string, value: string | null, options: DataAttributeCommitOptions) => {

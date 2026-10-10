@@ -4,7 +4,6 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { createEmptyEditHistory } from "../utils/editHistory";
 import { preloadBlockCatalog, type CatalogItem } from "./useBlockCatalog";
 import { useBlockHandlers } from "./useBlockHandlers";
 import * as blockInstaller from "../utils/blockInstaller";
@@ -44,7 +43,7 @@ async function mountHandlers(options: { readHost?: () => Promise<string>; writeG
   vi.mocked(preloadBlockCatalog).mockResolvedValue(catalog);
   usePlayerStore.getState().setSelectedElementId("radial-runtime");
   let hostSource = source("Saved title");
-  let historyState = createEmptyEditHistory();
+  let historyState = { undo: [], redo: [], updatedAt: 0 };
   let latest: ReturnType<typeof useBlockHandlers> | null = null;
   const readProjectFile = vi.fn(async (path: string) => path === "index.html"
     ? options.readHost ? options.readHost() : hostSource

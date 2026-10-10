@@ -25,10 +25,19 @@
  */
 
 import { emitAnalyticsEvent } from "./analytics";
+import { isStylableElement } from "./domRealm";
 
 export const EDIT_BASE_X_ATTR = "data-hf-edit-base-x";
 export const EDIT_BASE_Y_ATTR = "data-hf-edit-base-y";
 export const EDIT_ORIGINAL_TRANSLATE_ATTR = "data-hf-edit-original-translate";
+
+/**
+ * Elements a position edit can apply to: HTML elements AND SVG graphics (authored `<text>` labels,
+ * shapes, groups). Both expose `.style` and honor the CSS `translate` longhand in modern Chrome, so
+ * the same delta→translate compose logic works for either. (SVG was previously excluded by an
+ * `instanceof HTMLElement`-only guard, which silently dropped every move on an SVG element.)
+ */
+type StylableElement = HTMLElement | SVGElement;
 
 const num = (value: string | null): number => {
   const n = parseFloat(value ?? "");
@@ -80,7 +89,7 @@ export const composeTranslate = (original: string, x: string, y: string): string
  * reuse it and never read the translate again. gsap.getProperty parses
  * without mutating the element. Best-effort — absent or failing GSAP is fine.
  */
-const primeGsapTransformCache = (el: HTMLElement): void => {
+const primeGsapTransformCache = (el: StylableElement): void => {
   try {
     const view = el.ownerDocument.defaultView as
       | (Window & { gsap?: { getProperty?: (t: Element, p: string) => unknown } })
@@ -92,7 +101,7 @@ const primeGsapTransformCache = (el: HTMLElement): void => {
 };
 
 /** The element's effective translate: inline if set, computed otherwise ("" = none). */
-export const readCurrentTranslate = (el: HTMLElement): string => {
+export const readCurrentTranslate = (el: StylableElement): string => {
   const inline = el.style.getPropertyValue("translate").trim();
   if (inline) return inline === "none" ? "" : inline;
   try {
@@ -112,7 +121,12 @@ export const readCurrentTranslate = (el: HTMLElement): string => {
  * it then would DOUBLE the offset on every axis the tween doesn't animate, so
  * the non-forced path skips instead (degrading to the documented fold-loss).
  */
-const lastAppliedTranslate = new WeakMap<HTMLElement, string>();
+const lastAppliedTranslate = new WeakMap<StylableElement, string>();
+
+/** For an element whose inline style was reset: its next application runs as the first did. */
+export function forgetPositionEdit(el: StylableElement): void {
+  lastAppliedTranslate.delete(el);
+}
 
 /**
  * Apply one element's position edit. Idempotent — the pre-edit translate is
@@ -124,7 +138,7 @@ const lastAppliedTranslate = new WeakMap<HTMLElement, string>();
  * externally — used by editor commits, where the current inline translate is
  * the draft-composed one and must be overwritten.
  */
-export function applyPositionEditToElement(el: HTMLElement, opts?: { force?: boolean }): void {
+export function applyPositionEditToElement(el: StylableElement, opts?: { force?: boolean }): void {
   const previous = lastAppliedTranslate.get(el);
   if (
     !opts?.force &&
@@ -168,24 +182,17 @@ export function applyPositionEditToElement(el: HTMLElement, opts?: { force?: boo
  * longer matches and the non-forced path would silently skip the redo.
  */
 export function applyPositionEdits(doc: Document, opts?: { force?: boolean }): number {
-  // Not `instanceof HTMLElement`: `doc` is frequently an iframe's document (the
-  // SDK's edit preview, a host embedding a composition), and its elements are
-  // HTMLElement instances of THAT frame's realm — never this module's. A
-  // module-scope `instanceof HTMLElement` check silently no-ops on every element
-  // cross-realm. Use the document's own realm's constructor; duck-type on
-  // `.style` when defaultView is unavailable (a detached/synthetic document).
-  const RealmHTMLElement = doc.defaultView?.HTMLElement;
-  const isStylable = (el: Element): el is HTMLElement =>
-    RealmHTMLElement
-      ? el instanceof RealmHTMLElement
-      : typeof (el as HTMLElement).style?.setProperty === "function";
-
+  // `isStylableElement` covers HTML **and** SVG (SVG `<text>`/shapes are positioned via the same
+  // CSS `translate` longhand; an HTML-only check silently dropped every SVG move), and it is
+  // realm-independent, which this needs to be twice over: `doc` is frequently an iframe's document
+  // (the SDK's edit preview, a host embedding a composition), AND its elements are not necessarily
+  // from that iframe's realm either — see domRealm.ts.
   const orphaned = doc.querySelectorAll(
     `[${EDIT_ORIGINAL_TRANSLATE_ATTR}]:not([${EDIT_BASE_X_ATTR}]):not([${EDIT_BASE_Y_ATTR}])`,
   );
   for (let i = 0; i < orphaned.length; i++) {
     const el = orphaned[i];
-    if (el === undefined || !isStylable(el)) continue;
+    if (el === undefined || !isStylableElement(el)) continue;
     const original = el.getAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR) ?? "";
     if (original === "") {
       el.style.removeProperty("translate");
@@ -200,7 +207,7 @@ export function applyPositionEdits(doc: Document, opts?: { force?: boolean }): n
   let applied = 0;
   for (let i = 0; i < marked.length; i++) {
     const el = marked[i];
-    if (el === undefined || !isStylable(el)) continue;
+    if (el === undefined || !isStylableElement(el)) continue;
     applyPositionEditToElement(el, opts);
     applied += 1;
   }

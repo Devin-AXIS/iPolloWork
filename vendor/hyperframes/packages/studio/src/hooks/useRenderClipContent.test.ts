@@ -1,6 +1,11 @@
+// @vitest-environment happy-dom
+import React, { act, useRef } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, test } from "vitest";
 import type { TimelineElement } from "../player";
-import { resolveTimelineThumbnailPreview } from "./useRenderClipContent";
+import { usePlayerStore } from "../player/store/playerStore";
+import { readStudioUiPreferences } from "../utils/studioUiPreferences";
+import { resolveTimelineThumbnailPreview, useRenderClipContent } from "./useRenderClipContent";
 
 function element(overrides: Partial<TimelineElement> = {}): TimelineElement {
   return {
@@ -14,6 +19,35 @@ function element(overrides: Partial<TimelineElement> = {}): TimelineElement {
 }
 
 describe("timeline element thumbnail previews", () => {
+  test("toggles existing clip thumbnails immediately while preserving audio content and the saved preference", () => {
+    (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    function ClipState() {
+      const projectIdRef = useRef("project-1");
+      const render = useRenderClipContent({ projectIdRef, activePreviewUrl: null });
+      const visual = render(element({ selector: "#headline" }), { clip: "", label: "" });
+      const audio = render(element({ tag: "audio", src: "tone.wav" }), { clip: "", label: "" });
+      return React.createElement("div", null, `${visual ? "visual" : "hidden"}:${audio ? "audio" : "missing"}`);
+    }
+    try {
+      act(() => usePlayerStore.getState().setThumbnailMode("adaptive"));
+      act(() => root.render(React.createElement(ClipState)));
+      expect(host.textContent).toBe("visual:audio");
+      act(() => usePlayerStore.getState().setThumbnailMode("hidden"));
+      expect(host.textContent).toBe("hidden:audio");
+      expect(readStudioUiPreferences().thumbnailMode).toBe("hidden");
+      act(() => usePlayerStore.getState().setThumbnailMode("adaptive"));
+      expect(host.textContent).toBe("visual:audio");
+    } finally {
+      act(() => root.unmount());
+      act(() => usePlayerStore.getState().setThumbnailMode("adaptive"));
+      localStorage.clear();
+      host.remove();
+    }
+  });
+
   test("captures a top-level element from the master preview", () => {
     expect(
       resolveTimelineThumbnailPreview(

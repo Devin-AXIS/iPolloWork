@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import {
   AUDIT_SEEK_OPTIONS,
+  DENSE_GEOMETRY_SEEK_OPTIONS,
   DEFAULT_ZOOM_PADDING_PX,
   DEFAULT_ZOOM_SCALE,
   captureRegionCrop,
@@ -12,7 +13,11 @@ import {
   seekCompositionTimeline,
   waitForPreferredSeekTarget,
 } from "../capture/captureCompositionFrame.js";
-import { auditClipDurations, shouldIgnoreRequestFailure } from "../commands/validate.js";
+import {
+  auditClipDurations,
+  shouldIgnoreHttpError,
+  shouldIgnoreRequestFailure,
+} from "../commands/validate.js";
 import { loadBrowserScript } from "../commands/layout.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
@@ -21,6 +26,7 @@ import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import {
   decideMediaProxyEligibility,
+  proxyVariantFor,
   scanProjectMediaCodecMap,
 } from "@hyperframes/studio-server/media-codec-map";
 import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
@@ -40,7 +46,11 @@ import type {
   ContrastAuditEntry,
   ContrastCapture,
   GeometryCandidateRequest,
+  LayoutOptions,
   MotionSpecResolution,
+  OffPivotFrame,
+  OffPivotRotationSample,
+  RotationSample,
   RunAuditGrid,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
@@ -52,6 +62,8 @@ interface RuntimeDraft {
   time: number;
   url?: string;
   line?: number;
+  count?: number;
+  abortedImage?: boolean;
 }
 
 interface AnchorRequest {
@@ -110,24 +122,28 @@ export async function preResolveHostileMediaProxies(
   try {
     codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
   } catch (err) {
-    console.info(
+    console.error(
       `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
     );
     return;
   }
-  const hostilePathnames = Object.entries(codecMap)
-    .filter(([, facts]) => decideMediaProxyEligibility(facts).eligible)
-    .map(([pathname]) => pathname);
-  if (hostilePathnames.length === 0) return;
+  const hostileEntries = Object.entries(codecMap).filter(
+    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
+  );
+  if (hostileEntries.length === 0) return;
 
   const startedAt = Date.now();
   const results = await Promise.allSettled(
-    hostilePathnames.map((pathname) =>
-      resolveProxy(projectDir, resolve(projectDir, pathname.replace(/^\/+/, ""))),
+    hostileEntries.map(([pathname, facts]) =>
+      resolveProxy(
+        projectDir,
+        resolve(projectDir, pathname.replace(/^\/+/, "")),
+        proxyVariantFor(facts),
+      ),
     ),
   );
   const failed = results.filter((result) => result.status === "rejected").length;
-  console.info(
+  console.error(
     `[hyperframes] media proxy pre-resolve: ${results.length - failed}/${results.length} ready, ${failed} failed (${Date.now() - startedAt}ms)`,
   );
 }
@@ -155,9 +171,10 @@ export async function runBrowserCheck(
   try {
     const launchSettleStart = Date.now();
     const session = await openSettledCompositionPage(html, server.url, {
+      navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
-      browserGpuMode: resolveCliChromeGpuMode(),
+      browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
       beforeNavigate: (page) => wireRuntimeListeners(page, drafts, () => currentTime),
     });
     chromeBrowser = session.browser;
@@ -179,10 +196,13 @@ export async function runBrowserCheck(
       currentTime = time;
     });
     const result = await runGrid(driver, options, motion);
+    const broken = await abortedImagesStillBroken(page, drafts);
     return {
       ...result,
       timings: { ...result.timings, launchSettleMs },
-      runtimeFindings: drafts.map((draft) => runtimeFinding(draft, rootAnchor)),
+      runtimeFindings: keepBrokenImageAborts(drafts, broken).map((draft) =>
+        runtimeFinding(draft, rootAnchor),
+      ),
     };
   } finally {
     await chromeBrowser?.close().catch(() => undefined);
@@ -215,9 +235,10 @@ export async function captureFindingCrops(
   const written: string[] = [];
   try {
     const session = await openSettledCompositionPage(html, server.url, {
+      navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "capturing finding crops",
-      browserGpuMode: resolveCliChromeGpuMode(),
+      browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
     });
     chromeBrowser = session.browser;
     const page = session.page;
@@ -251,6 +272,50 @@ export async function captureFindingCrops(
 // `console.info` from a composition author's own script must not.
 const MEDIA_PROXY_MARKER_PREFIX = "[hyperframes] runtime_media_proxy_";
 const MEDIA_PROXY_UNAVAILABLE_MARKER = "[hyperframes] runtime_media_proxy_unavailable";
+// `reportWebAudioMediaRoute` (packages/core/src/runtime/webAudioRoute.ts) uses
+// the same code-in-the-console-line contract. It is emitted from the media
+// DISCOVERY phase rather than from playback scheduling, precisely so this
+// scraper can see it — `check` seeks, it never plays.
+const WEB_AUDIO_BYPASS_MARKER = "[hyperframes] runtime_web_audio_bypass";
+const WEBGPU_RUNTIME_FAILURE =
+  /\b(?:GPUValidationError|GPUOutOfMemoryError|GPUInternalError)\b|WebGPU uncaptured error|(?:destroyed\b.*\b(?:GPU )?(?:resource|buffer|texture)\b.*\bsubmit)|(?:(?:GPU )?(?:resource|buffer|texture)\b.*\bdestroyed\b.*\bsubmit)/i;
+
+function isWebGpuRuntimeFailure(text: string): boolean {
+  return WEBGPU_RUNTIME_FAILURE.test(text);
+}
+
+function pushRuntimeDraft(drafts: RuntimeDraft[], draft: RuntimeDraft): void {
+  if (draft.code !== "webgpu_runtime_error") {
+    drafts.push(draft);
+    return;
+  }
+  const duplicate = drafts.find(
+    (entry) =>
+      entry.code === draft.code &&
+      entry.message === draft.message &&
+      entry.url === draft.url &&
+      entry.line === draft.line,
+  );
+  if (duplicate) {
+    duplicate.count = (duplicate.count ?? 1) + 1;
+    return;
+  }
+  drafts.push({ ...draft, count: 1 });
+}
+
+/**
+ * The finding code for a runtime-emitted `console.info` line, or null for the
+ * ordinary info logging a composition author's own script produces. Matching is
+ * prefix-anchored on the stable diagnostic codes the runtime deliberately embeds
+ * in the text, so a line that merely mentions one is not promoted.
+ */
+function runtimeInfoFindingCode(text: string): string | null {
+  if (text.startsWith(WEB_AUDIO_BYPASS_MARKER)) return "web_audio_bypass";
+  if (!text.startsWith(MEDIA_PROXY_MARKER_PREFIX)) return null;
+  return text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)
+    ? "media_proxy_unavailable"
+    : "media_proxy_fallback";
+}
 
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("console", (message) => {
@@ -258,7 +323,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     const text = message.text();
     if (type === "error" && !text.startsWith("Failed to load resource")) {
       const location = message.location();
-      drafts.push({
+      pushRuntimeDraft(drafts, {
         code: "console_error",
         severity: "error",
         message: text,
@@ -268,20 +333,21 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       });
     } else if (type === "warn") {
       const location = message.location();
-      drafts.push({
-        code: "console_warning",
-        severity: "warning",
+      const webGpuFailure = isWebGpuRuntimeFailure(text);
+      pushRuntimeDraft(drafts, {
+        code: webGpuFailure ? "webgpu_runtime_error" : "console_warning",
+        severity: webGpuFailure ? "error" : "warning",
         message: text,
         time: currentTime(),
         url: location.url,
         line: location.lineNumber,
       });
-    } else if (type === "info" && text.startsWith(MEDIA_PROXY_MARKER_PREFIX)) {
+    } else if (type === "info") {
+      const code = runtimeInfoFindingCode(text);
+      if (!code) return;
       const location = message.location();
-      drafts.push({
-        code: text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)
-          ? "media_proxy_unavailable"
-          : "media_proxy_fallback",
+      pushRuntimeDraft(drafts, {
+        code,
         severity: "info",
         message: text,
         time: currentTime(),
@@ -295,9 +361,54 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     if (message.includes("Unexpected token '<'") || message.includes("Unexpected token '&lt;'")) {
       return;
     }
-    drafts.push({ code: "page_error", severity: "error", message, time: currentTime() });
+    pushRuntimeDraft(drafts, {
+      code: "page_error",
+      severity: "error",
+      message,
+      time: currentTime(),
+    });
   });
   wireNetworkListeners(page, drafts, currentTime);
+}
+
+/** Check's scrubs cancel image loads: an aborted image failed only if an `<img>` shows it and its decode fails. */
+export function keepBrokenImageAborts(drafts: RuntimeDraft[], broken: Set<string>): RuntimeDraft[] {
+  return drafts.filter((draft) => !draft.abortedImage || broken.has(draft.url ?? ""));
+}
+
+const IMAGE_DECODE_CAP_MS = 5000;
+
+async function abortedImagesStillBroken(page: Page, drafts: RuntimeDraft[]): Promise<Set<string>> {
+  const urls = drafts.filter((draft) => draft.abortedImage).map((draft) => draft.url ?? "");
+  if (urls.length === 0) return new Set();
+  const broken = await page.evaluate(
+    async (candidates: string[], capMs: number) => {
+      // A load still pending at the cap (a deferred lazy image) is not a failure.
+      const fails = (img: HTMLImageElement) =>
+        new Promise<boolean>((resolve) => {
+          const cap = setTimeout(() => resolve(false), capMs);
+          img
+            .decode()
+            .then(
+              () => resolve(false),
+              () => resolve(true),
+            )
+            .finally(() => clearTimeout(cap));
+        });
+      const stillBroken = await Promise.all(
+        candidates.map(async (url) => {
+          const shown = Array.from(document.querySelectorAll("img")).filter(
+            (img) => img.currentSrc === url || img.src === url,
+          );
+          return (await Promise.all(shown.map(fails))).some(Boolean);
+        }),
+      );
+      return candidates.filter((_, i) => stillBroken[i]);
+    },
+    urls,
+    IMAGE_DECODE_CAP_MS,
+  );
+  return new Set(broken);
 }
 
 function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
@@ -312,12 +423,14 @@ function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       message: `Failed to load ${urlPath(url)}: ${failure ?? "net::ERR_FAILED"}`,
       time: currentTime(),
       url,
+      abortedImage: failure === "net::ERR_ABORTED" && request.resourceType() === "image",
     });
   });
   page.on("response", (response) => {
     if (response.status() < 400) return;
     const url = response.url();
     if (url.includes("favicon")) return;
+    if (shouldIgnoreHttpError(url, response.status())) return;
     drafts.push({
       code: "http_error",
       severity: "error",
@@ -332,6 +445,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
   return {
     initialize: (contrast) => injectAuditScripts(page, contrast),
     getDuration: () => getCompositionDuration(page),
+    hasNoTimelineDeclaration: () => hasNoTimelineDeclaration(page),
     getTransitionBoundaries: () => collectTweenBoundaries(page),
     getCanvas: () =>
       page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
@@ -340,8 +454,15 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
       setTime(time);
       await seekCompositionTimeline(page, time, AUDIT_SEEK_OPTIONS);
     },
-    collectLayout: (time, tolerance) => collectLayout(page, time, tolerance),
+    seekGeometry: async (time) => {
+      setTime(time);
+      await seekCompositionTimeline(page, time, DENSE_GEOMETRY_SEEK_OPTIONS);
+    },
+    collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
+    collectOverlap: (time) => collectOverlap(page, time),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
+    collectRotationSample: (time) => collectRotationSample(page, time),
+    collectOffPivotRotationSample: (time) => collectOffPivotRotationSample(page, time),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
     collectMotionFrame: (time, selectors, scopes) =>
       collectMotionFrame(page, time, selectors, scopes),
@@ -350,7 +471,15 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
   };
 }
 
+async function hasNoTimelineDeclaration(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () =>
+      document.querySelector("[data-composition-id]")?.hasAttribute("data-no-timeline") ?? false,
+  );
+}
+
 async function injectAuditScripts(page: Page, contrast: boolean): Promise<void> {
+  await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("layout-audit.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   if (contrast) {
@@ -441,15 +570,35 @@ async function collectLayout(
   page: Page,
   time: number,
   tolerance: number,
+  layout?: LayoutOptions,
 ): Promise<AnchoredLayoutIssue[]> {
   const raw = await page.evaluate(
-    (options: { time: number; tolerance: number }) => {
+    (options: { time: number; tolerance: number; proseCoverageFloor?: number }) => {
       const audit = Reflect.get(window, "__hyperframesLayoutAudit");
       if (typeof audit !== "function") return [];
       const result = Reflect.apply(audit, window, [options]);
       return Array.isArray(result) ? result : [];
     },
-    { time, tolerance },
+    {
+      time,
+      tolerance,
+      ...(typeof layout?.proseCoverageFloor === "number"
+        ? { proseCoverageFloor: layout.proseCoverageFloor }
+        : {}),
+    },
+  );
+  return anchorLayoutIssues(page, raw.flatMap(parseLayoutIssue));
+}
+
+async function collectOverlap(page: Page, time: number): Promise<AnchoredLayoutIssue[]> {
+  const raw = await page.evaluate(
+    (options: { time: number }) => {
+      const audit = Reflect.get(window, "__hyperframesOverlapAudit");
+      if (typeof audit !== "function") return [];
+      const result = Reflect.apply(audit, window, [options]);
+      return Array.isArray(result) ? result : [];
+    },
+    { time },
   );
   return anchorLayoutIssues(page, raw.flatMap(parseLayoutIssue));
 }
@@ -461,6 +610,82 @@ async function collectLayoutGeometry(page: Page): Promise<string> {
     const result = Reflect.apply(geometry, window, []);
     return typeof result === "string" ? result : "";
   });
+}
+
+/** Invoke a `window.__hyperframes*` sampler injected by layout-audit.browser.js
+ * and return its array result (or [] when absent / non-array). Shared by the
+ * per-frame sample collectors so the page.evaluate boilerplate lives once. */
+async function evaluateSampler(page: Page, globalName: string): Promise<unknown[]> {
+  return page.evaluate((name) => {
+    const sample = Reflect.get(window, name);
+    if (typeof sample !== "function") return [];
+    const result = Reflect.apply(sample, window, []);
+    return Array.isArray(result) ? result : [];
+  }, globalName);
+}
+
+async function collectRotationSample(page: Page, time: number): Promise<RotationSample[]> {
+  const raw = await evaluateSampler(page, "__hyperframesRotationSample");
+  return raw.flatMap((value) => parseRotationSample(value, time));
+}
+
+function parseRotationSample(value: unknown, time: number): RotationSample[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const cx = numberValue(value, "cx");
+  const cy = numberValue(value, "cy");
+  const w = numberValue(value, "w");
+  const h = numberValue(value, "h");
+  const angle = numberValue(value, "angle");
+  if (!selector || cx === null || cy === null || w === null || h === null || angle === null) {
+    return [];
+  }
+  return [{ time, selector, cx, cy, w, h, angle }];
+}
+
+async function collectOffPivotRotationSample(page: Page, time: number): Promise<OffPivotFrame> {
+  const raw = await evaluateSampler(page, "__hyperframesOffPivotRotationSample");
+  return { time, samples: raw.flatMap(parseOffPivotRotationSample) };
+}
+
+/** Read every named key as a finite number; null if ANY is missing/non-finite.
+ * The mapped return type keeps each field a plain `number` (not `number |
+ * undefined`) so callers read `nums.ax` without re-narrowing. */
+function requiredNumbers<K extends string>(
+  value: Record<string, unknown>,
+  keys: readonly K[],
+): { [P in K]: number } | null {
+  const out = {} as { [P in K]: number };
+  for (const key of keys) {
+    const num = numberValue(value, key);
+    if (num === null) return null;
+    out[key] = num;
+  }
+  return out;
+}
+
+const OFF_PIVOT_REQUIRED_NUMBERS = ["ax", "ay", "bx", "by", "len", "angle", "hubCount"] as const;
+
+function parseOffPivotRotationSample(value: unknown): OffPivotRotationSample[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const nums = requiredNumbers(value, OFF_PIVOT_REQUIRED_NUMBERS);
+  if (!selector || !nums) return [];
+  return [
+    {
+      selector,
+      ax: nums.ax,
+      ay: nums.ay,
+      bx: nums.bx,
+      by: nums.by,
+      len: nums.len,
+      angle: nums.angle,
+      hx: numberValue(value, "hx"),
+      hy: numberValue(value, "hy"),
+      hr: numberValue(value, "hr"),
+      hubCount: nums.hubCount,
+    },
+  ];
 }
 
 async function collectGeometryCandidates(
@@ -973,7 +1198,8 @@ function runtimeFinding(draft: RuntimeDraft, root: CheckAnchor): CheckFinding {
   return {
     code: draft.code,
     severity: draft.severity,
-    message: draft.message,
+    message:
+      (draft.count ?? 1) > 1 ? `${draft.message} (repeated ${draft.count} times)` : draft.message,
     selector: root.selector,
     dataAttributes: root.dataAttributes,
     sourceFile: root.sourceFile,
@@ -1045,7 +1271,11 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "frame_out_of_frame",
   "escaped_container",
   "panel_out_of_canvas",
+  "canvas_content_at_edge",
   "connector_detached",
+  "connector_orphan",
+  "rotation_pivot_drift",
+  "off_pivot_rotation",
   "motion_appears_late",
   "motion_out_of_order",
   "motion_off_frame",

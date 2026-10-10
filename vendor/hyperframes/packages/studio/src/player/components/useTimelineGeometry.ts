@@ -43,8 +43,7 @@ export function useTimelineGeometry({
   scrollRef,
   lastScrollLeftRef,
 }: UseTimelineGeometryInput) {
-  // Fit pps maps at least MIN_TIMELINE_EXTENT_S onto the viewport, so short
-  // comps show a 60s ruler with usable empty space (see getTimelineFitPps).
+  // Fit the actual composition; an empty composition keeps an editable default extent.
   const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration, gutterWidth);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;

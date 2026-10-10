@@ -74,7 +74,7 @@ export interface GsapScriptCommitsParams {
   editHistory: {
     recordEdit: (entry: {
       label: string;
-      kind: EditHistoryKind;
+      kind?: EditHistoryKind;
       coalesceKey?: string;
       coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;

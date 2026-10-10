@@ -1,25 +1,57 @@
 # iPolloWork 操作录制插件
 
-录制器、工作台和 Skill 编译器，主仓源码位于 `examples/plugin-packages/operation-recorder`。插件通过现有 `local-service`、服务工作台和 portable Skill 协议接入；源码、依赖、构建产物和录制数据都属于本插件。
+示范一次桌面操作，将详细步骤保存并生成可编辑、可参数化的 Agent Skill。主仓源码在 `examples/plugin-packages/operation-recorder`；工作台、服务、采集器、依赖和录制数据均由本插件管理。
 
-使用流程：开始录制 → 操作一次 → 结束录制 → 生成并下载 Skill 插件。录制自动命名与保存，Skill 名称、用途说明和输入变量由插件自动生成；可选编辑步骤或补充完成条件，修改自动保存。安装生成的 `.ipollowork-plugin` 后，宿主现有适配器为 OpenCode、Codex harness 和 DeepSeek harness 投影同一份 Skill。执行引擎需要具备对应应用的浏览器或 Computer Use 工具。
+## 统一 Node.js 采集方案
 
-实时桌面采集器分别使用 macOS 辅助功能、Windows UI Automation 和 Linux X11/AT-SPI，发布物包含 x64/arm64 原生程序。它记录可访问性控件、应用切换、输入步骤、控制快捷键和滚动意图；不读取输入值、剪贴板内容或截图，也不持久化鼠标绝对坐标。无法识别的控件需在步骤中补充说明。第一份 Skill 是确定性编译的可编辑草稿；宿主中的“AI 提炼”使用当前会话引擎，独立页提供复制给 AI 的提示。
+macOS、Windows 和 Linux 使用同一个 `native/recorder.mjs` 入口。JavaScript 统一负责键鼠事件分类、应用切换、暂停/恢复、输入合并、双击合并、滚动方向、500 步上限和退出清理。`uiohook-napi` 监听全局键鼠；`koffi` 让 JavaScript 调用系统的辅助功能接口。没有 Go / Swift 采集程序，也不再调用 Go、swiftc、lipo 或 codesign 构建采集器。
 
-| 系统 | 原生采集方式 | 运行边界 |
+系统接口差异集中在 `native/accessibility.mjs`，使用独立 Node.js Worker 查询控件，防止辅助功能查询阻塞键鼠监听和停止命令。队列最多 256 个事件，单次查询有超时，异常会停止录制并保留已捕获步骤。同一入口和事件协议由三端共用，底层 N-API 二进制按系统和 CPU 区分，不能把同一个 `.node` 文件用于全部系统。
+
+| 系统 | JavaScript 调用的系统接口 | 运行条件 |
 | --- | --- | --- |
-| macOS 14+ | Swift 6，CGEventTap + Accessibility | 需要辅助功能和输入监控授权；Apple Silicon / Intel 通用程序 |
-| Windows 10/11 | Win32 被动键鼠 hooks + UI Automation | 当前用户的交互桌面；不申请管理员权限，不覆盖 UAC 安全桌面或所有提权应用 |
-| Linux X11 | XRecord + AT-SPI D-Bus | 需要可访问的 X11 RECORD 扩展与辅助功能总线；无需 Python/Go 运行时 |
-| Linux Wayland | Chrome Recorder 流程导入 | 原生全桌面被动录制不可用，能力检查明确说明；XWayland 不能冒充完整 Wayland 支持 |
+| Windows 10/11 x64 / arm64 | UI Automation、Win32 | 当前用户已解锁的交互桌面；目标应用权限不得高于录制器 |
+| macOS x64 / arm64 | Accessibility、CoreFoundation | 需要授予辅助功能和输入监控权限 |
+| Linux X11 x64 / arm64 | AT-SPI、X11 | glibc 桌面，X11 RECORD 扩展及 `libatspi` / `libXtst` 等桌面系统库 |
+| Linux Wayland / XWayland | 明确报告不可用 | 可以导入 Chrome DevTools Recorder JSON，继续编辑与导出 |
 
-采集器先检查当前会话的后端与辅助功能能力；Windows 还检查交互桌面和锁屏，Linux 检查 X11、RECORD 与辅助功能总线。能启动监听不等于操作任务成功，草稿导出不等于人工审阅或实际验证通过。最终成功条件可选；未提供时，执行引擎从当前任务确认期望结果，不编造录制断言。应用控件名称仍可能含业务信息；同一应用的多个窗口需要补充可复用的窗口识别说明。
+插件仍通过现有 `local-service` 和 portable Skill 协议接入。宿主投影同一份 Skill 到 OpenCode、Codex harness 和 DeepSeek harness；执行引擎需要具备当前应用的浏览器或 Computer Use 工具。
 
-## 安装与运行
+## 每一步明确操作位置
 
-在 iPolloWork 插件库安装“操作录制”，也可导入 `dist/operation-recorder-0.3.0.ipollowork-plugin`，启用后打开“操作录制”工作台。录制前无需填写标题，生成时无需填写技术名称、变量名、使用场景或勾选审阅确认。历史、权限和额外导出按需展开，录制步骤以紧凑时间线展示；生成草稿后可交给当前 AI 提炼。macOS 首次采集需要系统的辅助功能和输入监控权限，工作台提供显式申请按钮；Windows/Linux 根据当前用户的桌面和辅助功能服务探测可用性。无需配置模型 Key，也无需用户安装编译器或配置采集引擎。
+采集器记录应用、窗口/页面标题、可访问性控件名称和角色、最多 8 层有名称的父级区域，以及控件在窗口内的九宫格相对位置。位置用于说明和辅助核对，执行时仍需重新定位当前控件。鼠标坐标仅临时用于命中测试，不保存到步骤或 Skill。
 
-也可以从源码独立运行。构建需要 Node.js、pnpm 和 Go 1.26；macOS 通用程序另需要 Xcode 命令行工具。Go 只参与编译，安装后的插件自带采集器。Windows/Linux 四个程序以 gzip 资源分发，使同一个安装包符合宿主的 10 MB 上限；服务自动解压到插件自己的缓存，限制解压体积并核对缓存内容，不修改安装快照：
+时间线、JSON 工作流和 Skill 使用服务端同一份描述。示例：
+
+> 左键点击「Chrome」应用，「项目列表」页面，窗口右上方，「项目操作」工具栏内的「新建项目」按钮，点击前核对控件名称及所属页面，点击后检查界面变化。
+
+输入步骤说明输入框和本次任务的变量；按键步骤说明当前页面、控件和组合键；滚动步骤保留实际方向。已有备注和预期结果仍进入导出。没有捕获到页面或控件时，明确写出「页面未识别」「控件身份未完整识别」，允许用户补充，不编造位置、成功条件或操作结果。
+
+原生页面标题以系统可访问性证据为准；它可能只提供窗口标题，不能保证每个应用都有 DOM 页面或完整区域信息。Chrome 导入会将最近一次导航的地址关联到后续步骤，清除地址中的认证信息、查询和片段。历史选择器仅作为重新定位的参考。
+
+输入原文、剪贴板内容和截图不读取或保存。输入值由执行时的用户请求或授权上下文提供。页面标题、区域名称和控件标签仍可能包含业务信息；录制与导出不代表人工审阅或重放验证通过。
+
+## 详细操作流程
+
+1. 在 iPolloWork 的插件库页面，找到「操作录制」插件，打开其详情，安装/启用后打开「操作录制」工作台。
+2. 在工作台主内容区顶部的录制控制条，查看左侧的「准备就绪」状态。若不可用，展开控制条下方的「录制选项」，阅读具体原因；macOS 可点击该区域内的「检查系统权限」，再到系统设置授予权限。
+3. 点击录制控制条右侧的「开始录制」。确认状态变为「录制中」，并出现「暂停」「结束录制」按钮。录制标题自动生成，无需填写技术名称或变量名。
+4. 切换到要示范的应用/浏览器窗口。进入目标页面，依次点击实际控件、输入内容、滚动或使用快捷键。录制步骤会说明应用、页面、区域、控件和操作方式；控件不提供辅助功能信息时，该步骤会标记缺失信息。
+5. 需要处理与任务无关或私密操作时，回到工作台顶部控制条，点击「暂停」。完成后点击同一控制条里的「继续」，确认状态重新变为「录制中」。暂停期间的操作不加入步骤。
+6. 完成示范后，回到顶部控制条，点击「结束录制」。确认录制已保存，再展开下面的「录制步骤」时间线。
+7. 在时间线里点击某一步的整行描述，展开详情。核对「页面或窗口标题」「操作控件名称」「控件所在区域」；需要时补充区域路径，如「项目管理 → 项目操作」。备注和预期结果也可补充，修改自动保存。这里不会把自动保存标记为人工批准。
+8. 若有明确完成条件，在时间线下方的「生成 Skill」区域，展开「补充完成条件（可选）」并填写实际应该看到的结果；没有明确条件时可留空。
+9. 点击该区域的「生成 Skill」。在出现的「Skill 草稿已生成」区域，展开「查看与编辑草稿」，核对每一步是否说明了页面、区域和控件。修改后点击「下载 Skill 插件」，编辑内容会先保存再重新打包。
+10. 需要 AI 整理时，点击草稿区域的「让 AI 提炼」；独立工作台提供「复制给 AI 提炼」。提炼应保留已捕获位置和变量，明确缺失证据，不能把生成草稿描述为已经重放成功。
+11. 将下载的 `.ipollowork-plugin` 导入现有插件库。以后执行该 Skill 时，执行引擎先观察当前页面，重新识别同名控件及其所属区域，再逐步执行并验证已有成功条件。
+
+## 开发、生产和下载
+
+开发环境需要 Node.js 22.22+、pnpm，以及首次安装两个运行时依赖。开发依赖 TypeScript 和 `@types/node` 用于现有服务的类型检查。`pnpm-workspace.yaml` 下载三端 x64 / arm64 的预编译模块，构建不需要 Go、Swift、Xcode 或 C++ 编译器，也不执行依赖的安装脚本。
+
+现有桌面开发/生产构建调用本插件的构建脚本；检测到依赖缺失、版本不符或目标模块缺失时，脚本会在插件目录执行一次 `pnpm install --frozen-lockfile --ignore-scripts --prod=false`。已有依赖直接复用。Node.js 标准库没有全局键鼠监听和系统辅助功能 FFI，新增的两个依赖分别承担这两项职责；默认六种目标的完整插件约 8.4 MB，低于宿主 10 MiB 限制。
+
+构建复用已有 TypeScript 开发依赖，将 `service/` 编译为 JavaScript 并调整分发清单入口为 `service/recorder.js`。安装包包含服务的 ESM 声明，应用内置 Node.js 22.16 可以直接加载，不依赖 TypeScript 剥离开关；编译器不会随插件分发。0.4.1 修复了 0.4.0 在该宿主中直接导入 `.ts` 的启动失败。
 
 ```sh
 pnpm install
@@ -29,9 +61,15 @@ pnpm build
 pnpm start
 ```
 
-启动输出本机工作台地址。默认数据保存于 `.runtime/`；可设置 `IPOLLOWORK_RECORDER_DATA_DIR`。宿主安装模式使用其提供的插件 `dataDir`，并按工作区隔离。录制最多 500 步；工作台只展示最近 25 个会话。停止后保留记录，停用或更新时释放监听、子进程和 HTTP 服务。
+`dist/package/` 包含 JavaScript 采集器及独立依赖目录，可离开开发用的 `node_modules` 运行。`--host --if-stale` 构建仅包含当前系统；默认构建包含三端 x64 / arm64。Linux 分发 glibc 模块，不声称支持 musl。构建不在用户安装或开始录制时联网，不需要用户另行下载 Node 插件、模型、Go 或 Swift。
 
-本目录的 `dist/package/` 是自包含发布目录。桌面开发启动以 `--host --if-stale` 准备当前系统的采集器；桌面发布构建生成完整包并纳入 `plugin-packages/operation-recorder`。目录注册优先使用已准备的包，单独运行服务器时未构建的源码仍支持 Chrome 流程导入。macOS 构建会同时生成三端 x64/arm64 采集器；在 Windows/Linux 从源码构建时生成 Windows/Linux 程序，三端完整发布包由 macOS 构建。签名打包复用宿主既有工具和可信发布者，不更改宿主的信任表：
+生产桌面版复用 iPolloWork / Electron 内置 Node.js；在独立服务器模式下需要已有 Node.js，Bun 服务器可通过宿主已有 `IPOLLOWORK_NODE_BIN` 指定 Node。macOS 权限授权是系统设置。Linux 缺少桌面系统库时，需要通过系统包管理器安装；插件不会自动安装或提权。
+
+默认数据位于 `.runtime/`，可用 `IPOLLOWORK_RECORDER_DATA_DIR` 指定。宿主模式继续使用提供的 `dataDir`，按工作区隔离；历史只显示最近 25 个会话。数据路径和插件 ID 保持不变，旧录制加载后重新计算详细描述。关闭、停用、更新时释放采集进程、Worker、键鼠监听和 HTTP 服务。
+
+## 发布与验证
+
+签名打包复用宿主已有发布工具和可信发布者。私钥不放入工程或插件包：
 
 ```sh
 IPOLLOWORK_PLUGIN_HOST_ROOT=/path/to/iPolloWork \
@@ -40,32 +78,15 @@ IPOLLOWORK_PLUGIN_SIGNING_KEY_ID=smart-future-school-2026 \
 pnpm package:plugin
 ```
 
-不把签名私钥放进工程或分发包。生成的用户 Skill 包只包含声明式资源，无需本机可执行代码签名。
-
-## 接口与验证
-
-清单声明录制、整理、编译、导入、状态和工作台动作；`request-permissions` 单独声明为写操作。没有引擎原生绑定。服务复用本机随机端口与令牌，API 检查 Host、Origin、访问令牌、请求体和超时；在宿主嵌入时使用标准 MCP AppBridge 发送 AI 提炼请求。
-
-Skill 包包含 `SKILL.md` 和 `references/workflow.json`。修改草稿后重新编译同一份发布物，预览和安装内容一致；同名导出按本机已有产物递增版本，并用独占目录处理跨引擎并发。每步的备注和中间检查也进入 Skill。如果录制末尾有明确成功条件，导出会如实标记；否则保留缺失状态，由实际执行时确认结果。Chrome 键盘按下/释放会合并，视口设置不会被当成业务成功。页面文字与历史选择器只作为证据，运行时重新定位和验证。
+宿主安装和三引擎投影检查：
 
 ```sh
 IPOLLOWORK_PLUGIN_HOST_ROOT=/path/to/iPolloWork \
-pnpm exec bun scripts/verify-host.ts
+pnpm verify:host
 ```
 
-此验证使用隔离临时工作区检查签名、真实安装生命周期、服务工作台和三引擎投影。不会安装进当前用户工作区。实际证据保存在 `dist/verification/`；宿主生命周期测试和 mock helper 测试不能替代原生桌面操作验收。Windows 目前已交叉编译及静态检查，尚无真实 Windows 操作证据；Linux 在隔离 Ubuntu/Xvfb/AT-SPI 中验证启动、暂停、恢复和停止，完整人工操作仍需真实桌面验收。macOS 实际捕获过桌面点击、滚动与应用切换，但 Computer Use 工具改变测试框时没有形成对应输入步骤，完整输入到 Skill 的验收尚未通过，需要直接人工操作核对。
+此检查使用临时工作区，不安装到当前用户工作区。HTTP 工作台保留本机地址、令牌、Origin、请求大小和超时检查。原生桌面实测结果必须分别报告；模拟三端生命周期或打包六种模块不代表三端桌面操作已经验收。
 
-## 开源参考
+Windows 真实桌面录制与导出验证（复用指定仓库已安装的 Electron，不下载浏览器）：设置 `IPOLLOWORK_PLUGIN_HOST_ROOT` 为宿主仓库，然后运行 `pnpm build` 和 `pnpm verify:desktop`。验证打开两个隔离窗口，真实点击项目页右上方「项目操作」工具栏的「新建项目」，输入并保存，再检查时间线和导出 Skill；结果写入宿主本工作树的 `evals/results/<run-id>/fraimz.html`。测试结束后关闭自有窗口并清除临时工作区。目前 Windows 通过了这一验证；macOS / Linux 的真实桌面验证仍需在对应系统执行。
 
-设计参考了官方 [Codex Record & Replay](https://learn.chatgpt.com/docs/extend/record-and-replay) 的示范、审阅、变量和结果验证流程。公开产品说明不等于其实现开源。
-
-- [Playwright codegen](https://playwright.dev/docs/codegen-intro)，Apache-2.0：可访问性语义定位、操作和断言。
-- [Puppeteer Replay](https://github.com/puppeteer/replay)，Apache-2.0：Chrome Recorder UserFlow 格式。
-- [OpenAdapt Capture](https://github.com/OpenAdaptAI/openadapt-capture) / [Flow](https://github.com/OpenAdaptAI/openadapt-flow)：桌面示范、采集与编译分离；包代码 MIT，Flow 仓库另含具有不同许可的 benchmark。
-- [Agent Skills](https://agentskills.io/specification)：标准 `SKILL.md` 与渐进加载的 references。
-
-OpenAdapt 的实际 [Windows](https://github.com/OpenAdaptAI/openadapt-capture/blob/main/openadapt_capture/input_observer/windows.py) 和 [Linux](https://github.com/OpenAdaptAI/openadapt-capture/blob/main/openadapt_capture/input_observer/linux.py) 采集代码也已核对。Windows hook 回调只将事件加入有界队列，UIA 查询在独立 MTA 线程处理；Linux RECORD 流使用独立连接，点击坐标只用于当时的控件命中检查。Wayland 的 InputCapture portal 是经 compositor 激活的输入转移会话，不能直接等同被动全桌面监听。
-
-未引入以上完整项目的运行时或复制其代码。Windows/Linux 原生程序编译进固定版本的 `golang.org/x/sys`、`github.com/jezek/xgb` 和 `github.com/godbus/dbus/v5`，无需 npm/pip 运行时依赖；发行包内 `native/THIRD-PARTY-NOTICES.txt` 包含完整许可证和来源。Node 服务只使用标准库，TypeScript 与 Go 只参与检查和构建，宿主 Node 22.22+ 直接加载 TypeScript 服务。
-
-工程遵循宿主的统一代码质量规范。本目录是完整插件的源码所有者，旁边的独立仓库仅用于恢复源码：`service` 管理录制与工作台生命周期，`native` 是按系统编译的语义采集器，`ui` 是无框架的工作台，`skills` 使用标准 Skill 目录，`tests` 和 `scripts` 分别负责验证与分发。复用宿主既有目录注册、安装、服务和引擎投影，不新增宿主路由、数据库或运行时依赖。`.gitignore` 隔离构建产物、录制数据与私钥。开发依赖 `typescript`（Apache-2.0）和 `@types/node` 提供类型检查。
+源码所有者：`service/` 管理存储、验证、工作台和 Skill 编译；`native/` 管理共享采集器和系统接口适配；`ui/` 管理无框架工作台；`tests/` 管理回归验证；`scripts/` 管理构建、启动和宿主验证。Koffi 为 MIT，uiohook-napi 为 MIT，其链接的 libuiohook 为 LGPL-3.0-or-later；完整声明及源码链接随 `native/THIRD-PARTY-NOTICES.txt` 分发。

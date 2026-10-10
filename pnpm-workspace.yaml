@@ -26,6 +26,7 @@ catalog:
 linkWorkspacePackages: true
 preferWorkspacePackages: true
 allowBuilds:
+  onnxruntime-node: true
   "@ffmpeg-installer/darwin-arm64": true
   "@ffmpeg-installer/darwin-x64": true
   "@ffmpeg-installer/linux-arm64": true

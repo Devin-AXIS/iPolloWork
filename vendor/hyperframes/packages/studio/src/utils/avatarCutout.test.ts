@@ -3,15 +3,35 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveAllVisualDomEditTargets } from "../components/editor/domEditingElement";
 import { filterMaterialLibraryAssets } from "../components/sidebar/assetHelpers";
 import { waitForAvatarPreviewReady } from "../hooks/useAvatarCutout";
+import { applyUndoRestoreToPreview, diffSoftReloadableRestore } from "./gsapUndoRestore";
 import {
   applyAvatarCutout,
+  applyAvatarBackgroundRemoval,
   avatarCutoutOutputPath,
   removeAvatarCutout,
+  restoreAvatarBackground,
   projectMediaPath,
   relativeMediaPath,
 } from "./avatarCutout";
 
 const html = `<!doctype html><div data-composition-id="main"><div id="bg" style="z-index:0"></div><video id="person" data-hf-id="p1" src="assets/person.mp4" data-track-index="1" data-start="2" data-duration="8" data-media-start="1" data-volume="0.8" style="position:absolute;left:20px;width:300px;z-index:9"></video><div id="title" data-track-index="2" style="z-index:4">标题</div></div><script>timeline.to('#person', {x: 40});</script>`;
+
+it.each(["undo", "redo"])("reloads an avatar source %s without wiping its live GSAP position", (direction) => {
+  const transparent = applyAvatarBackgroundRemoval(html, { id: "person" }, "assets/person.mp4", "renders/person.webm");
+  const [previous, restored] = direction === "undo" ? [transparent, html] : [html, transparent];
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  try {
+    iframe.contentDocument!.body.innerHTML = previous;
+    const video = iframe.contentDocument!.querySelector("video")!;
+    video.style.transform = "translate(768px, 106px)";
+    const reload = vi.fn();
+    expect(applyUndoRestoreToPreview(iframe, "index.html", { "index.html": { previous, restored } }, 18.235, reload)).toBe("full");
+    expect(reload).toHaveBeenCalledOnce();
+    expect(video.style.transform).toBe("translate(768px, 106px)");
+    expect(diffSoftReloadableRestore(html, html.replace("z-index:9", "z-index:8"))).not.toBeNull();
+  } finally { iframe.remove(); }
+});
 const layers = [
   { target: { id: "person" }, zIndex: 1 },
   { target: { id: "title" }, zIndex: 2 },
@@ -21,6 +41,51 @@ const apply = () =>
 const parse = (value: string) => new DOMParser().parseFromString(value, "text/html");
 
 describe("smart avatar cutout", () => {
+  it.each([false, true])("waits for a loaded direct replacement when restoring is %s", async (removing) => {
+    const previousIframe = document.createElement("iframe");
+    const iframe = document.createElement("iframe");
+    document.body.append(previousIframe, iframe);
+    try {
+      const doc = iframe.contentDocument!;
+      doc.body.innerHTML = `<video id="person" ${removing ? "" : 'data-avatar-original-src="person.mp4"'}></video>`;
+      Object.defineProperty(doc, "readyState", { value: "complete", configurable: true });
+      Object.defineProperty(doc.querySelector("video"), "readyState", { value: 2, configurable: true });
+      await waitForAvatarPreviewReady({
+        previewIframeRef: { current: iframe }, previousIframe, selection: { id: "person" },
+        activeCompPath: null, removing, mode: "remove-background", signal: new AbortController().signal,
+        timeoutMs: 100,
+      });
+    } finally {
+      previousIframe.remove();
+      iframe.remove();
+    }
+  });
+  it("replaces the background without duplicating clips, changing audio controls, timing or animations", () => {
+    const output = applyAvatarBackgroundRemoval(html, { hfId: "p1" }, "assets/person.mp4", "assets/transparent.webm");
+    const doc = parse(output);
+    const source = doc.querySelector<HTMLVideoElement>("#person")!;
+    expect(doc.querySelectorAll("video")).toHaveLength(1);
+    expect(source.getAttribute("src")).toBe("assets/transparent.webm");
+    expect(source.getAttribute("data-avatar-original-src")).toBe("assets/person.mp4");
+    for (const attribute of ["data-hf-id", "data-track-index", "data-start", "data-duration", "data-media-start", "data-volume", "muted", "style"])
+      expect(source.getAttribute(attribute)).toBe(parse(html).querySelector("#person")!.getAttribute(attribute));
+    expect(output.endsWith("<script>timeline.to('#person', {x: 40});</script>")).toBe(true);
+    expect(applyAvatarBackgroundRemoval(output, { id: "person" }, "assets/person.mp4", "another.webm")).toBe(output);
+    const restored = parse(restoreAvatarBackground(output, { id: "person" })).querySelector("#person")!;
+    expect(restored.getAttribute("src")).toBe("assets/person.mp4");
+    expect(restored.hasAttribute("data-avatar-original-src")).toBe(false);
+    expect(avatarCutoutOutputPath("assets/person.mp4", "remove-background")).toBe("renders/avatar-cutouts/person-transparent.webm");
+  });
+  it("switches from smart layering to a transparent clip without leaving an obsolete foreground", () => {
+    const output = applyAvatarBackgroundRemoval(apply(), { id: "person" }, "assets/person.mp4", "assets/transparent.webm");
+    const doc = parse(output);
+    expect(doc.querySelectorAll("video")).toHaveLength(1);
+    expect(doc.querySelector("[data-avatar-source]")).toBeNull();
+    expect(doc.querySelector("[data-avatar-cutout]")).toBeNull();
+    expect(doc.querySelector<HTMLVideoElement>("#person")!.style.zIndex).toBe("9");
+    expect(parse(restoreAvatarBackground(output, { id: "person" })).querySelector("#person")!.getAttribute("src")).toBe("assets/person.mp4");
+    expect(() => applyAvatarBackgroundRemoval(html, { id: "person" }, "changed.mp4", "cutout.webm")).toThrow("变化");
+  });
   it("waits for the refreshed transparent foreground before finishing the operation", async () => {
     vi.useFakeTimers();
     try {

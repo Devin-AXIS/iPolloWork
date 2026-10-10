@@ -1,15 +1,23 @@
 import { defineConfig } from "tsup";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
+import { sourceAliases } from "../../scripts/package-subpaths.mjs";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8")) as {
   version: string;
 };
+const producerPkg = JSON.parse(
+  readFileSync(new URL("../producer/package.json", import.meta.url), "utf-8"),
+) as { version: string };
 
 export default defineConfig({
   entry: {
     cli: "src/cli.ts",
+    fontLocalizeCli: "src/fontLocalizeCli.ts",
     runtimeVersion: "src/runtimeVersion.ts",
+    renderSetupWorker: "src/renderSetupWorker.ts",
+    backgroundChecksWorker: "src/backgroundChecksWorker.ts",
+    sherpaWorker: "src/whisper/sherpaWorker.ts",
     shaderTransitionWorker: "../producer/src/services/shaderTransitionWorker.ts",
   },
   format: ["esm"],
@@ -17,11 +25,8 @@ export default defineConfig({
   target: "node22",
   platform: "node",
   bundle: true,
-  splitting: false,
+  splitting: true,
   sourcemap: false,
-  // dist also contains Studio and Player assets copied for preview/runtime use.
-  // A running preview can have those files open on Windows, so tsup must only
-  // overwrite its fixed entry outputs instead of unlinking the whole tree.
   clean: false,
   banner: {
     js: `import { createRequire as __hf_createRequire } from "node:module";
@@ -48,6 +53,21 @@ var __dirname = __hf_dirname(__filename);`,
     "esbuild",
     "giget",
     "postcss",
+    // aws-lambda transitively pulls @aws-sdk/* + @smithy/* which include
+    // .browser.js conditional exports esbuild can't bundle cleanly into
+    // a node binary. Keep it external; the lambda subverb files dynamic-
+    // import it only when the user runs `hyperframes lambda *`, so the
+    // CLI's cold start doesn't load it. Runtime resolution comes from
+    // @hyperframes/aws-lambda being a `dependencies` entry in package.json.
+    "@hyperframes/aws-lambda",
+    "@hyperframes/aws-lambda/sdk",
+    // Same treatment for the GCP adapter: the cloudrun subverb files
+    // dynamic-import `@hyperframes/gcp-cloud-run/sdk` only when the user runs
+    // `hyperframes cloudrun *`. Keep it external; runtime resolution comes
+    // from the `dependencies`/workspace entry, not the bundled CLI.
+    "@hyperframes/gcp-cloud-run",
+    "@hyperframes/gcp-cloud-run/sdk",
+    "@hyperframes/gcp-cloud-run/terraform",
   ],
   noExternal: [
     "@hyperframes/core",
@@ -66,34 +86,20 @@ var __dirname = __hf_dirname(__filename);`,
   ],
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
+    __PRODUCER_VERSION__: JSON.stringify(producerPkg.version),
   },
   esbuildOptions(options) {
     options.alias = {
-      "@hyperframes/studio-server": resolve(__dirname, "../studio-server/src/index.ts"),
-      "@hyperframes/studio-server/screenshot-clip": resolve(__dirname, "../studio-server/src/helpers/screenshotClip.ts"),
-      "@hyperframes/studio-server/manual-edits-render-script": resolve(__dirname, "../studio-server/src/helpers/manualEditsRenderScript.ts"),
-      "@hyperframes/studio-server/studio-motion-render-script": resolve(__dirname, "../studio-server/src/helpers/studioMotionRenderScript.ts"),
-      "@hyperframes/studio-server/draft-markers": resolve(__dirname, "../studio-server/src/helpers/draftMarkers.ts"),
-      "@hyperframes/studio-server/finite-mutation": resolve(__dirname, "../studio-server/src/helpers/finiteMutation.ts"),
-      "@hyperframes/studio-server/source-mutation": resolve(__dirname, "../studio-server/src/helpers/sourceMutation.ts"),
-      "@hyperframes/studio-server/media-codec-map": resolve(__dirname, "../studio-server/src/helpers/mediaCodecMap.ts"),
-      "@hyperframes/studio-server/proxy-transcoder": resolve(__dirname, "../studio-server/src/helpers/proxyTranscoder.ts"),
-      "@hyperframes/studio-server/media-proxy-preview": resolve(__dirname, "../studio-server/src/helpers/mediaProxyPreview.ts"),
-      "@hyperframes/producer": resolve(__dirname, "../producer/src/index.ts"),
-      // esbuild's alias map treats `@hyperframes/producer` as a file path
-      // and would otherwise resolve `@hyperframes/producer/distributed`
-      // to `../producer/src/index.ts/distributed` (treating the file as a
-      // directory). Adding an explicit alias for every subpath we import
-      // avoids the prefix-substitution misfire.
-      "@hyperframes/producer/distributed": resolve(__dirname, "../producer/src/distributed.ts"),
-      // hf#677 follow-up: the shader-blend worker imports from
-      // `@hyperframes/engine/shader-transitions` (subpath export) — a
-      // standalone TS file with zero internal imports that survives the
-      // worker_thread loader boundary.
-      "@hyperframes/engine/shader-transitions": resolve(
-        __dirname,
-        "../engine/src/utils/shaderTransitions.ts",
-      ),
+      // Exact subpaths are generated from the same contracts as package
+      // exports, avoiding esbuild's root-alias prefix substitution trap.
+      ...sourceAliases(resolve(__dirname, "../studio-server")),
+      ...sourceAliases(resolve(__dirname, "../producer"), [".", "./distributed"]),
+      ...sourceAliases(resolve(__dirname, "../engine"), [
+        ".",
+        "./chrome-host-ceiling",
+        "./shader-transitions",
+        "./system-memory",
+      ]),
     };
     options.loader = { ...options.loader, ".browser.js": "text" };
   },

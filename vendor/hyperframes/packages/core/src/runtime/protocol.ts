@@ -21,11 +21,15 @@ export function lastVideoFrameTime(time: number, duration: number, fps: FpsInput
 
 export const RUNTIME_PROTOCOL_VERSION = 1 as const;
 
+export const RUNTIME_FILLER = "hf-runtime-filler";
+
 export const RUNTIME_PROTOCOL_CAPABILITIES = [
   "seconds-time",
   "rational-fps",
   "seek-keep-playing",
   "composition-manifest-v1",
+  "runtime-data",
+  "play-range",
 ] as const;
 
 export type RuntimeProtocolFps = {
@@ -65,6 +69,10 @@ export function runtimeProtocolFpsFromNumber(value: number): RuntimeProtocolFps 
   const numerator = Math.round(safe * denominator);
   const divisor = greatestCommonDivisor(numerator, denominator);
   return { numerator: numerator / divisor, denominator: denominator / divisor };
+}
+
+export function playRangeHoldTime(start: number, end: number, fps: number): number {
+  return Math.max(start, (Math.ceil(end * fps - 1e-6) - 1) / fps);
 }
 
 export function runtimeProtocolFpsToNumber(value: unknown): number | null {

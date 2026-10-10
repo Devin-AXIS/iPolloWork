@@ -90,7 +90,7 @@ function splitInlineStyleDeclarations(style: string): string[] {
 }
 
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "text-content" | "inner-html" | "html-attribute";
+  type: "inline-style" | "attribute" | "text-content" | "rich-text" | "html-attribute";
   property: string;
   value: string | null;
   childSelector?: string;
@@ -513,7 +513,7 @@ export function applyPatch(html: string, elementId: string, op: PatchOperation):
       return patchHtmlAttribute(html, elementId, op.property, op.value);
     case "text-content":
       return op.value !== null ? patchTextContent(html, elementId, op.value) : html;
-    case "inner-html":
+    case "rich-text":
       return op.value !== null ? patchTextContent(html, elementId, op.value) : html;
     default:
       return html;
@@ -537,7 +537,7 @@ export function applyPatchByTarget(html: string, target: PatchTarget, op: PatchO
       return patchHtmlAttributeByTarget(html, target, op.property, op.value);
     case "text-content":
       return op.value !== null ? patchTextContentByTarget(html, target, op.value) : html;
-    case "inner-html":
+    case "rich-text":
       return op.value !== null ? patchTextContentByTarget(html, target, op.value) : html;
     default:
       return html;

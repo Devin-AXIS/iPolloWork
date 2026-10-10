@@ -56,6 +56,11 @@ export class StudioFileConflictError extends StudioSaveHttpError {
   }
 }
 
+export type StudioSaveDrainResult<Failure = unknown> =
+  | { status: "clean" }
+  | { status: "conflict"; error: StudioFileConflictError }
+  | { status: "failed"; error: Failure };
+
 function readNumericProperty(value: object, key: string): number | undefined {
   const record = value as Record<string, unknown>;
   const property = record[key];
@@ -160,11 +165,27 @@ export function buildStudioSaveFailureProperties(
     target_id: input.targetId ?? undefined,
     target_selector: input.targetSelector ?? undefined,
     target_source_file: input.targetSourceFile ?? undefined,
+    block_detail: gsapBlockDetail(input.error),
   };
+}
+
+/**
+ * The specific cause behind a blocked GSAP edit. `error_message` only carries
+ * the coarse copy, and one of those strings covers six different situations,
+ * so the message alone cannot say which one a user hit.
+ */
+function gsapBlockDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name !== "GsapEditBlockedError") return undefined;
+  const detail = (error as { detail?: unknown }).detail;
+  return typeof detail === "string" ? detail : undefined;
 }
 
 export function trackStudioSaveFailure(input: StudioSaveFailureInput): void {
   trackStudioEvent("save_failure", buildStudioSaveFailureProperties(input));
+}
+
+export function trackStudioEditBlocked(input: StudioSaveFailureInput): void {
+  trackStudioEvent("edit_blocked", buildStudioSaveFailureProperties(input));
 }
 
 export async function createStudioSaveHttpError(

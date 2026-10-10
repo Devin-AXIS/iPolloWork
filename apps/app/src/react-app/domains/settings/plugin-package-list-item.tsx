@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import type { ReactNode } from "react";
-import { Package } from "lucide-react";
+import { Loader2, Package } from "lucide-react";
 
 import type { iPolloWorkExtensionManifest } from "@/app/extensions";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,8 @@ export function PluginPackageListItem({
             <span className="line-clamp-2 text-ui-caption leading-[15px] text-dls-secondary">{manifest.description}</span>
           </span>
         </button>
-        <Button size="sm" variant="outline" className="shrink-0" disabled={actionBusy || actionDisabled} onClick={onAction}>
+        <Button size="sm" variant="outline" className="shrink-0" aria-busy={actionBusy} disabled={actionBusy || actionDisabled} onClick={onAction}>
+          {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
           {actionLabel}
         </Button>
       </div>
@@ -88,7 +89,8 @@ export function PluginPackageListItem({
           </span>
         </span>
       </button>
-      <Button size="sm" className="shrink-0" disabled={actionBusy || actionDisabled} onClick={onAction}>
+      <Button size="sm" className="shrink-0" aria-busy={actionBusy} disabled={actionBusy || actionDisabled} onClick={onAction}>
+        {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
         {actionLabel}
       </Button>
     </div>

@@ -358,12 +358,14 @@ function createServerProbeRequest(port, onConfig) {
   return request;
 }
 
-async function waitForHyperframesServer(port, expectedProjectPath, timeoutMs = HYPERFRAMES_START_TIMEOUT_MS) {
+async function waitForHyperframesServer(port, expectedProjectPath, timeoutMs = HYPERFRAMES_START_TIMEOUT_MS, signal) {
   const startedAt = Date.now();
   const expectedProjectDir = path.resolve(expectedProjectPath);
   const expectedProjectName = path.basename(expectedProjectDir);
   while (Date.now() - startedAt < timeoutMs) {
+    signal?.throwIfAborted();
     const config = await readHyperframesServerConfig(port);
+    signal?.throwIfAborted();
     if (config?.isHyperframes) {
       const runningProject = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
       const runningProjectName = typeof config.projectName === "string" ? config.projectName : "";
@@ -477,11 +479,16 @@ async function ensureVisibleHyperframesStarter(projectPath) {
   }
 }
 
-function stopHyperframesForKey(key) {
+function stopHyperframesForKey(key, cancelStart = true) {
+  hyperframesExportLeases.delete(key);
+  const starting = cancelStart ? hyperframesStarts.get(key) : null;
+  if (starting) {
+    hyperframesStarts.delete(key);
+    starting.controller.abort(new Error("HyperFrames Studio startup was cancelled."));
+  }
   const running = hyperframesProcesses.get(key);
   if (!running) return;
   hyperframesProcesses.delete(key);
-  hyperframesExportLeases.delete(key);
   clearTimeout(running.timeout);
   clearTimeout(running.idleTimeout);
   killProcessTree(running.process);
@@ -496,8 +503,8 @@ function scheduleHyperframesStopForKey(key) {
 }
 
 function stopHyperframesForWebContents(webContentsId) {
-  for (const [key, running] of hyperframesProcesses.entries()) {
-    if (running.webContentsId === webContentsId) stopHyperframesForKey(key);
+  for (const key of new Set([...hyperframesProcesses.keys(), ...hyperframesStarts.keys()])) {
+    if (key.startsWith(`${webContentsId}:`)) stopHyperframesForKey(key);
   }
 }
 
@@ -514,7 +521,7 @@ function ensureProcessCleanupForWebContents(webContents) {
 
 function stopAllDesktopChildProcesses() {
   for (const terminalId of Array.from(terminalProcesses.keys())) killTerminal(terminalId);
-  for (const key of Array.from(hyperframesProcesses.keys())) stopHyperframesForKey(key);
+  for (const key of new Set([...hyperframesProcesses.keys(), ...hyperframesStarts.keys()])) stopHyperframesForKey(key);
 }
 
 async function startHyperframesPreview(event, options = {}) {
@@ -522,20 +529,22 @@ async function startHyperframesPreview(event, options = {}) {
   if (!sessionId) throw new Error("sessionId is required.");
   const key = hyperframesKey(event.sender.id, sessionId);
   const pending = hyperframesStarts.get(key);
-  if (pending) return await pending;
-  const start = startHyperframesPreviewUnlocked(event, options);
+  if (pending) return await pending.promise;
+  const controller = new AbortController();
+  const start = { controller, promise: startHyperframesPreviewUnlocked(event, options, controller.signal) };
   hyperframesStarts.set(key, start);
   try {
-    return await start;
+    return await start.promise;
   } finally {
     if (hyperframesStarts.get(key) === start) hyperframesStarts.delete(key);
   }
 }
 
-async function startHyperframesPreviewUnlocked(event, options = {}) {
+async function startHyperframesPreviewUnlocked(event, options = {}, signal) {
   if (!await videoResourceManager.applyEnvironment()) {
     throw new Error("视频组件未完整打包，请重新安装完整的 iPolloWork 安装包。");
   }
+  signal.throwIfAborted();
   const sessionId = String(options.sessionId ?? "").trim();
   const port = Number(options.port);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("Valid HyperFrames port is required.");
@@ -552,12 +561,16 @@ async function startHyperframesPreviewUnlocked(event, options = {}) {
     current.idleTimeout = null;
     return { ok: true, port: current.port, reused: true };
   }
-  stopHyperframesForKey(key);
+  if (current) stopHyperframesForKey(key, false);
   const allocatedPort = await reserveHyperframesPort(port, key);
   let child;
   try {
+    signal.throwIfAborted();
     await runHyperframesInit(workspaceRoot, projectDirectory, projectPath);
-    child = spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--no-open"], projectPath);
+    signal.throwIfAborted();
+    // Electron owns this child and its reserved port. The CLI's non-interactive
+    // default detaches a background server, which cannot be stopped with this child.
+    child = spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--foreground", "--force-new", "--no-open"], projectPath);
   } catch (error) {
     releaseHyperframesPortReservation(allocatedPort, key);
     throw error;
@@ -572,6 +585,7 @@ async function startHyperframesPreviewUnlocked(event, options = {}) {
       child.stderr?.off("data", onData);
       child.off("error", onError);
       child.off("exit", onExit);
+      signal.removeEventListener("abort", onAbort);
     };
     const finishReady = () => {
       if (ready || settled) return;
@@ -580,6 +594,7 @@ async function startHyperframesPreviewUnlocked(event, options = {}) {
       child.stdout?.off("data", onData);
       child.stderr?.off("data", onData);
       child.off("error", onError);
+      signal.removeEventListener("abort", onAbort);
       hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port: allocatedPort, projectPath, timeout: null, idleTimeout: null });
       releaseHyperframesPortReservation(allocatedPort, key);
       resolve({ ok: true, port: allocatedPort, reused: false });
@@ -588,7 +603,7 @@ async function startHyperframesPreviewUnlocked(event, options = {}) {
       if (settled || ready) return;
       settled = true;
       cleanup();
-      hyperframesProcesses.delete(key);
+      if (hyperframesProcesses.get(key)?.process === child) hyperframesProcesses.delete(key);
       releaseHyperframesPortReservation(allocatedPort, key);
       reject(error);
     };
@@ -597,6 +612,10 @@ async function startHyperframesPreviewUnlocked(event, options = {}) {
     };
     const onError = (error) => {
       failStart(error);
+    };
+    const onAbort = () => {
+      failStart(signal.reason);
+      killProcessTree(child);
     };
     const onExit = (code) => {
       if (ready) {
@@ -619,7 +638,9 @@ async function startHyperframesPreviewUnlocked(event, options = {}) {
     child.stderr?.on("data", onData);
     child.once("error", onError);
     child.once("exit", onExit);
-    waitForHyperframesServer(allocatedPort, projectPath).then(finishReady, (error) => {
+    signal.addEventListener("abort", onAbort, { once: true });
+    waitForHyperframesServer(allocatedPort, projectPath, HYPERFRAMES_START_TIMEOUT_MS, signal).then(finishReady, (error) => {
+      if (settled || ready) return;
       killProcessTree(child);
       failStart(error);
     });

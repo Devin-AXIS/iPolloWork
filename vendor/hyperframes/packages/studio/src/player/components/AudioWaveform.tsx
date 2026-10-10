@@ -1,3 +1,4 @@
+export const WAVEFORM_LAYER_Z = 1;
 import { memo, useRef, useState, useCallback, useEffect } from "react";
 
 interface AudioWaveformProps {
@@ -202,7 +203,11 @@ export const AudioWaveform = memo(function AudioWaveform({
   );
 
   return (
-    <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
+    <div
+      ref={setContainerRef}
+      className="absolute inset-0 overflow-hidden"
+      style={{ zIndex: WAVEFORM_LAYER_Z }}
+    >
       <div ref={barsRef} className="absolute left-0 right-0 bottom-0" style={{ top: 16 }} />
       {/* Shimmer while decoding */}
       {!peaks && (

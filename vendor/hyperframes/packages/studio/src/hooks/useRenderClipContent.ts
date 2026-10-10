@@ -1,5 +1,10 @@
 import { createElement, useCallback, type ReactNode } from "react";
-import { CompositionThumbnail, VideoThumbnail, type TimelineElement } from "../player";
+import {
+  CompositionThumbnail,
+  VideoThumbnail,
+  usePlayerStore,
+  type TimelineElement,
+} from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import { TimelineClipContent } from "../player/components/TimelineClipContent";
 import {
@@ -129,10 +134,16 @@ export function useRenderClipContent({
   projectIdRef,
   activePreviewUrl,
 }: UseRenderClipContentOptions) {
+  const thumbnailMode = usePlayerStore((state) => state.thumbnailMode);
   return useCallback(
     (element: TimelineElement, style: { clip: string; label: string }): ReactNode => {
       const projectId = projectIdRef.current;
       const kind = resolveTimelineKind(element);
+      if (
+        thumbnailMode === "hidden" &&
+        !["audio", "music", "voiceover"].includes(kind)
+      )
+        return null;
       const label = resolveTimelineClipLabel(element);
       const timecode = formatTime(element.duration);
 
@@ -153,6 +164,7 @@ export function useRenderClipContent({
           variant: "media",
           body: createElement(VideoThumbnail, {
             videoSrc,
+            projectId: projectId ?? "",
             label: "",
             labelColor: style.label,
             duration: element.duration,
@@ -169,6 +181,7 @@ export function useRenderClipContent({
             variant: "media",
             body: createElement(CompositionThumbnail, {
               ...preview,
+              projectId,
               label: "",
               labelColor: style.label,
               loading: "lazy",
@@ -180,6 +193,6 @@ export function useRenderClipContent({
 
       return createElement(TimelineClipContent, { label, variant: "bar" });
     },
-    [activePreviewUrl, projectIdRef],
+    [activePreviewUrl, projectIdRef, thumbnailMode],
   );
 }

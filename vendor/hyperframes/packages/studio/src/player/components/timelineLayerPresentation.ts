@@ -72,6 +72,18 @@ export function resolveTimelineLayerLabel(elements: readonly TimelineElement[], 
   return first?.label?.trim() || first?.domId?.trim() || first?.id?.trim() || `Layer ${track + 1}`;
 }
 
+/** A shared lane's controls follow its selected clip, then the playhead. */
+export function resolveTimelineLayerPrimaryElement(
+  elements: readonly TimelineElement[],
+  selectedElementId: string | null,
+  currentTime: number,
+): TimelineElement | null {
+  return elements.find(element => selectedElementId != null &&
+    [element.key, element.id, element.domId].includes(selectedElementId)) ??
+    elements.find(element => currentTime >= element.start && currentTime < element.start + element.duration) ??
+    elements[0] ?? null;
+}
+
 /** A clip caption is intentionally independent from the layer-tree label. */
 export function resolveTimelineClipLabel(element: TimelineElement): string {
   return (

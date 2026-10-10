@@ -3159,9 +3159,35 @@ export function SessionPage(props: SessionPageProps) {
     viewportWidth,
     visibleLeftSidebarWidth,
   ]);
-  const handleDesignAskAi = useCallback((context: DesignAiSelectionContext) => {
+  const handleDesignAskAi = useCallback(async (context: DesignAiSelectionContext, instruction?: string) => {
+    if (context.sessionId !== props.selectedSessionId || context.workspaceId !== props.runtimeWorkspaceId) {
+      throw new Error("当前对话已切换，请在当前视频页重新提交需求");
+    }
     useDesignAiSelectionStore.getState().createContext(context);
     const composerStore = useComposerStateStore.getState();
+    const request = instruction?.trim();
+    if (request) {
+      const result = await sendSessionDraft({
+        mode: "prompt",
+        parts: [
+          { type: "text", text: request },
+          { type: "design-selection", contextId: context.id, label: context.target.label },
+        ],
+        attachments: [],
+        text: request,
+        resolvedText: request,
+        capability: { id: "video", instruction: `Continue editing the existing video project containing ${context.filePath}. Preserve unrelated scenes, timing, assets and manual edits. The user's request and selected context define the scope.` },
+      }, context.sessionId);
+      if (typeof result === "boolean" ? !result : !result.dispatched) {
+        composerStore.setDraft(context.sessionId, replaceDesignSelectionToken(
+          `${getComposerDraft(composerStore, context.sessionId)}\n${request}`.trim(),
+          designAiSelectionToken(context.id),
+        ));
+        throw new Error("需求发送失败，已保留在左侧输入框，请重试");
+      }
+      if (rightPanelExpanded) setRightPanelExpanded(false);
+      return;
+    }
     composerStore.setDraft(
       context.sessionId,
       replaceDesignSelectionToken(
@@ -3173,7 +3199,7 @@ export function SessionPage(props: SessionPageProps) {
     window.requestAnimationFrame(() => {
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     });
-  }, [rightPanelExpanded]);
+  }, [props.selectedSessionId, props.runtimeWorkspaceId, rightPanelExpanded, sendSessionDraft]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
     return target.value;

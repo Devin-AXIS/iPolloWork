@@ -206,18 +206,57 @@ function resolveStart(
 type DurationRead = Pick<ClipTiming, "duration" | "end" | "durationSource">;
 type TrackRead = Pick<ClipTiming, "trackIndex" | "trackSource">;
 
+// Float pairs like `data-start="0.1" + data-duration="0.2"` add to
+// `0.30000000000000004`, so the compiler-emitted `data-end` string can be a few
+// ulps off the sum a reader computes from the canonical inputs. Any drift below
+// this ceiling is treated as equal for the derived-end reconciliation check —
+// well below one 60fps frame (~16.67 ms) and orders of magnitude above the
+// worst realistic IEEE-754 residual (~2e-16 s).
+const DERIVED_END_EQUALITY_EPSILON_SECONDS = 1e-9;
+
+function derivedEndsAreConsistent(parsedEnd: number, canonicalEnd: number): boolean {
+  return Math.abs(parsedEnd - canonicalEnd) <= DERIVED_END_EQUALITY_EPSILON_SECONDS;
+}
+
+// Reconcile a `data-end` attribute paired with canonical `data-duration`.
+//
+// The compiler (`compileTimingAttrs` in @hyperframes/core) writes
+// `data-end = data-start + data-duration` into the bundled HTML so the runtime
+// can key off a single attribute. That derived attribute is legitimate — it is
+// not a legacy authoring shape. Treating it as `deprecated-end` here made the
+// linter fire `deprecated_data_end` on the compiler's own output whenever
+// StaticGuard re-validated a bundled composition, producing a false-positive
+// cluster reported in the field (n=25+ across cli-feedback crons 61-68).
+//
+// We keep `deprecated-end` for the truly legacy shape (see `readLegacyEnd` —
+// `data-end` present without `data-duration`) and for the *conflicting* case
+// where an author left a stale `data-end` behind a canonical duration edit; a
+// stale end must not be silently overridden without a diagnostic.
 function diagnoseDerivedEnd(
   rawEnd: string,
   canonicalEnd: number | null,
   diagnostics: ClipTimingDiagnostic[],
 ): void {
-  pushDiagnostic(diagnostics, "deprecated-end", COMPOSITION_ATTRIBUTES.derivedEnd, rawEnd);
   const parsedEnd = parseNumeric(rawEnd);
   if (parsedEnd == null) {
+    pushDiagnostic(diagnostics, "deprecated-end", COMPOSITION_ATTRIBUTES.derivedEnd, rawEnd);
     pushDiagnostic(diagnostics, "invalid-end", COMPOSITION_ATTRIBUTES.derivedEnd, rawEnd);
-  } else if (canonicalEnd != null && parsedEnd !== canonicalEnd) {
-    pushDiagnostic(diagnostics, "conflicting-end", COMPOSITION_ATTRIBUTES.derivedEnd, rawEnd);
+    return;
   }
+  if (canonicalEnd == null) {
+    // Canonical duration exists but resolved end is unknown (e.g. unresolved
+    // reference start). Preserve prior behavior — flag as deprecated so authors
+    // remove the stale companion attribute.
+    pushDiagnostic(diagnostics, "deprecated-end", COMPOSITION_ATTRIBUTES.derivedEnd, rawEnd);
+    return;
+  }
+  if (derivedEndsAreConsistent(parsedEnd, canonicalEnd)) {
+    // Compiler-derived (or manually consistent) `data-end` alongside
+    // `data-duration` — silent. No diagnostic.
+    return;
+  }
+  pushDiagnostic(diagnostics, "deprecated-end", COMPOSITION_ATTRIBUTES.derivedEnd, rawEnd);
+  pushDiagnostic(diagnostics, "conflicting-end", COMPOSITION_ATTRIBUTES.derivedEnd, rawEnd);
 }
 
 function readCanonicalDuration(

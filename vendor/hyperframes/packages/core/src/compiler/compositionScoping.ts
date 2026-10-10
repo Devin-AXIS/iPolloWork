@@ -1,4 +1,7 @@
+import { getSvgSelectorAliasesScript } from "../generated/svg-selector-aliases-inline";
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
+import { escapeCssIdentifier, replaceSelectorIdTokens } from "./selectorIdTokens";
+import { SCENE_PARTS_META } from "../sceneParts";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
 const INNER_ROOT_ATTR = "data-hf-inner-root";
@@ -11,20 +14,10 @@ function escapeCssAttributeValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function escapeCssIdentifier(value: string): string {
-  if (!value) return value;
-  const escaped = value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
-  return escaped.replace(/^-?\d/, (match) => `\\${match}`);
-}
-
 function getAuthoredRootIdSelectorForms(authoredRootId: string): string[] {
   const trimmed = authoredRootId.trim();
   if (!trimmed) return [];
   return Array.from(new Set([trimmed, escapeCssIdentifier(trimmed)])).filter(Boolean);
-}
-
-function isSelectorNameChar(char: string | undefined): boolean {
-  return !!char && /[\w-]/.test(char);
 }
 
 function replaceAuthoredRootIdSelectors(
@@ -32,59 +25,8 @@ function replaceAuthoredRootIdSelectors(
   authoredRootId: string,
   replacement: string,
 ): string {
-  const forms = getAuthoredRootIdSelectorForms(authoredRootId).sort((a, b) => b.length - a.length);
-  if (forms.length === 0) return selector;
-
-  let result = "";
-  let bracketDepth = 0;
-  let quote: '"' | "'" | null = null;
-
-  for (let index = 0; index < selector.length; index += 1) {
-    const char = selector[index];
-    const previousChar = index > 0 ? selector[index - 1] : "";
-
-    if (quote) {
-      result += char;
-      if (char === quote && previousChar !== "\\") {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      result += char;
-      continue;
-    }
-
-    if (char === "[") {
-      bracketDepth += 1;
-      result += char;
-      continue;
-    }
-
-    if (char === "]") {
-      bracketDepth = Math.max(0, bracketDepth - 1);
-      result += char;
-      continue;
-    }
-
-    if (char === "#" && bracketDepth === 0) {
-      const matchedForm = forms.find((form) => selector.startsWith(form, index + 1));
-      if (matchedForm) {
-        const nextChar = selector[index + 1 + matchedForm.length];
-        if (!isSelectorNameChar(nextChar)) {
-          result += replacement;
-          index += matchedForm.length;
-          continue;
-        }
-      }
-    }
-
-    result += char;
-  }
-
-  return result;
+  const forms = getAuthoredRootIdSelectorForms(authoredRootId);
+  return replaceSelectorIdTokens(selector, forms, () => replacement);
 }
 
 function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: string | null): string {
@@ -137,8 +79,9 @@ function scopeSelector(
     // caused the parent-body clobber, which is what this remap targets.
     return scopeRootSelectors ? compositionBoxSelector(scope) : selector;
   }
+  // Authored-root patterns must follow the renamed instance, not require a nested root.
   const compositionIdPattern = new RegExp(
-    `\\[\\s*data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
+    `\\[\\s*data-composition-id\\s*[\\^\\*\\$]?=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
     "g",
   );
   if (compositionIdPattern.test(trimmed)) {
@@ -200,6 +143,24 @@ function isInsideGlobalAtRule(rule: Rule): boolean {
   return false;
 }
 
+/**
+ * A Rule nested inside another Rule (CSS Nesting Module Level 1) already
+ * inherits scope from its parent's `&` prefix at match time — re-applying
+ * the composition scope to the nested selector produces
+ * `<scope> <scope> .child`, which matches nothing when the composition
+ * root only appears once in the DOM. Only top-level rules get scoped;
+ * their nested descendants inherit the scope naturally via CSS nesting.
+ * See #2721 for the reproducer that motivated this.
+ */
+function isNestedInsideAnotherRule(rule: Rule): boolean {
+  let current: Node["parent"] = rule.parent;
+  while (current) {
+    if (current.type === "rule") return true;
+    current = current.parent;
+  }
+  return false;
+}
+
 export function scopeCssToComposition(
   css: string,
   compositionId: string,
@@ -212,10 +173,16 @@ export function scopeCssToComposition(
   const scope =
     scopeSelectorOverride ||
     `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
-  const root = postcss.parse(css);
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    return "";
+  }
 
   root.walkRules((rule) => {
     if (isInsideGlobalAtRule(rule)) return;
+    if (isNestedInsideAnotherRule(rule)) return;
     rule.selectors = rule.selectors.map((selector) =>
       scopeSelector(
         selector,
@@ -231,6 +198,100 @@ export function scopeCssToComposition(
   return root.toResult({ map: false }).css;
 }
 
+function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {
+  return node.type === "atrule" && (node as AtRule).name.toLowerCase() === "font-face";
+}
+
+function fontFaceKey(atRule: AtRule): string {
+  const decls: string[] = [];
+  atRule.walkDecls((decl) => {
+    // Collapse whitespace outside quoted strings only: "A  B" and "A B" name different families.
+    const value = decl.value.replace(
+      /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\s+/g,
+      (_m, str) => str ?? " ",
+    );
+    decls.push(
+      `${decl.prop.trim().toLowerCase()}:${value.trim()}${decl.important ? "!important" : ""}`,
+    );
+  });
+  return decls.join(";");
+}
+
+/** Drops repeats of an identical `@font-face` across the given style texts, keeping the last copy:
+ * the last matching rule is the one the browser uses, so a rule in between never gains precedence. */
+export function dedupeFontFaceRules(styleTexts: string[]): string[] {
+  const seen = new Set<string>();
+  return [...styleTexts]
+    .reverse()
+    .map((css) => {
+      if (!css || !/@font-face/i.test(css)) return css;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(css);
+      } catch {
+        return css; // unparseable text ships as authored and takes no part
+      }
+      let changed = false;
+      for (const node of [...(root.nodes ?? [])].reverse()) {
+        if (!isFontFaceAtRule(node)) continue;
+        const key = fontFaceKey(node);
+        if (seen.has(key)) {
+          node.remove();
+          changed = true;
+        } else {
+          seen.add(key);
+        }
+      }
+      return changed ? root.toResult({ map: false }).css : css;
+    })
+    .reverse();
+}
+
+/**
+ * Serialize a value as a JS literal safe to emit inside a `<script>` element.
+ *
+ * `<script>` is a RAW TEXT element: HTML serialization does not escape its
+ * content, and the tokenizer ends the element at the first `</script` — in any
+ * string, comment or regex context. `JSON.stringify` escapes `"` and `\` but
+ * neither `<` nor `/`, so any dynamic literal carrying `</script>` would close
+ * the element early and have the remainder parsed as markup. Rewriting every
+ * `<` to `<` removes the only byte that can start a closing tag, and is
+ * transparent to both `JSON.parse` and the JS string grammar, so the value the
+ * runtime reads is unchanged.
+ *
+ * Every dynamic literal in an emitted script body must go through here: a
+ * per-value guard on this surface has already been missed once, since the
+ * composition id reaches the emitted script through four separate literals.
+ */
+function jsonScriptLiteral(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+const SCOPED_HYPERFRAMES_EXPRESSION = `!__hfBaseHyperframes
+    ? __hfBaseHyperframes
+    : Object.assign({}, __hfBaseHyperframes, {
+        assetUrl: function(path) {
+          var page = window.document.baseURI;
+          return new URL(path, __hfCompositionSrc ? new URL(__hfCompositionSrc, page) : page).href;
+        },
+        getVariables: function() {
+          var byComp = window.__hfVariablesByComp;
+          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
+          return scoped ? Object.assign({}, scoped) : {};
+        },
+      })`;
+
+export function scopedModulePrelude(
+  timelineCompositionId: string,
+  compositionSrc?: string | null,
+): string {
+  return `const __hyperframes = (function(__hfBaseHyperframes, __hfTimelineCompId, __hfCompositionSrc) {
+  return ${SCOPED_HYPERFRAMES_EXPRESSION};
+})(window.__hyperframes, ${jsonScriptLiteral(timelineCompositionId)}, ${jsonScriptLiteral(compositionSrc?.trim() || null)});
+${wrapScopedCompositionScript("", timelineCompositionId)}
+`;
+}
+
 export function wrapScopedCompositionScript(
   source: string,
   compositionId: string,
@@ -238,28 +299,29 @@ export function wrapScopedCompositionScript(
   scopeSelectorOverride?: string,
   timelineCompositionId = compositionId,
   authoredRootId?: string | null,
+  compositionSrc?: string | null,
 ): string {
-  const compositionIdLiteral = JSON.stringify(compositionId);
-  const timelineCompositionIdLiteral = JSON.stringify(timelineCompositionId);
-  const errorLabelLiteral = JSON.stringify(errorLabel);
+  const compositionIdLiteral = jsonScriptLiteral(compositionId);
+  const timelineCompositionIdLiteral = jsonScriptLiteral(timelineCompositionId);
+  const errorLabelLiteral = jsonScriptLiteral(errorLabel);
   const escapedCompositionId = escapeRegExp(compositionId);
-  const authoredRootIdLiteral = JSON.stringify(authoredRootId?.trim() || null);
-  const scopeSelectorLiteral = JSON.stringify(scopeSelectorOverride ?? null);
-  const rootSelectorPatternLiteral = JSON.stringify(
+  const authoredRootIdLiteral = jsonScriptLiteral(authoredRootId?.trim() || null);
+  const scopeSelectorLiteral = jsonScriptLiteral(scopeSelectorOverride ?? null);
+  const rootSelectorPatternLiteral = jsonScriptLiteral(
     String.raw`\[\s*data-composition-id\s*=\s*(?:"${escapedCompositionId}"|'${escapedCompositionId}')\s*\]`,
   );
-  const timingSelectorPatternLiteral = JSON.stringify(
+  const timingSelectorPatternLiteral = jsonScriptLiteral(
     String.raw`\s*\[\s*data-(?:start|duration)\s*=\s*(?:"[^"]*"|'[^']*')\s*\]`,
   );
-  const authoredRootIdFormsLiteral = JSON.stringify(
-    getAuthoredRootIdSelectorForms(authoredRootId?.trim() || ""),
-  );
+  const aliasInstallerOutsideAuthoredStrictness = `(function(){ ${getSvgSelectorAliasesScript()} })();`;
   return `(function(){
+  ${aliasInstallerOutsideAuthoredStrictness}
   var __hfCompId = ${compositionIdLiteral};
   var __hfTimelineCompId = ${timelineCompositionIdLiteral};
   var __hfErrorLabel = ${errorLabelLiteral};
   var __hfAuthoredRootId = ${authoredRootIdLiteral};
-  var __hfAuthoredRootAttr = ${JSON.stringify(AUTHORED_ROOT_ID_ATTR)};
+  var __hfCompositionSrc = ${jsonScriptLiteral(compositionSrc?.trim() || null)};
+  var __hfAuthoredRootAttr = ${jsonScriptLiteral(AUTHORED_ROOT_ID_ATTR)};
   var __hfEscapeAttr = function(value) {
     return (value + "").replace(/\\\\/g, "\\\\\\\\").replace(/"/g, "\\\\\\"");
   };
@@ -269,76 +331,18 @@ export function wrapScopedCompositionScript(
   var __hfRoot = null;
   var __hfRootSelectorPattern = ${rootSelectorPatternLiteral};
   var __hfTimingSelectorPattern = ${timingSelectorPatternLiteral};
-  var __hfAuthoredRootIdForms = ${authoredRootIdFormsLiteral};
   var __hfAuthoredRootSelector = __hfAuthoredRootId
     ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]'
     : "";
-  var __hfIsSelectorNameChar = function(char) {
-    return !!char && /[\\w-]/.test(char);
-  };
-  var __hfReplaceAuthoredRootIdSelectors = function(selector) {
-    if (!__hfAuthoredRootSelector || !__hfAuthoredRootIdForms.length || typeof selector !== "string") {
-      return selector;
-    }
-    var result = "";
-    var bracketDepth = 0;
-    var quote = null;
-    for (var index = 0; index < selector.length; index += 1) {
-      var char = selector[index];
-      var previousChar = index > 0 ? selector[index - 1] : "";
-      if (quote) {
-        result += char;
-        if (char === quote && previousChar !== "\\\\") {
-          quote = null;
-        }
-        continue;
-      }
-      if (char === '"' || char === "'") {
-        quote = char;
-        result += char;
-        continue;
-      }
-      if (char === "[") {
-        bracketDepth += 1;
-        result += char;
-        continue;
-      }
-      if (char === "]") {
-        bracketDepth = Math.max(0, bracketDepth - 1);
-        result += char;
-        continue;
-      }
-      if (char === "#" && bracketDepth === 0) {
-        var matchedForm = null;
-        for (var formIndex = 0; formIndex < __hfAuthoredRootIdForms.length; formIndex += 1) {
-          var form = __hfAuthoredRootIdForms[formIndex];
-          if (selector.slice(index + 1, index + 1 + form.length) === form) {
-            matchedForm = form;
-            break;
-          }
-        }
-        if (matchedForm) {
-          var nextChar = selector[index + 1 + matchedForm.length];
-          if (!__hfIsSelectorNameChar(nextChar)) {
-            result += __hfAuthoredRootSelector;
-            index += matchedForm.length;
-            continue;
-          }
-        }
-      }
-      result += char;
-    }
-    return result;
-  };
+  var __hfAuthoredRootEntries = __hfAuthoredRootSelector
+    ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }]
+    : [];
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
     var normalized = selector
       .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
       .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector);
-    if (__hfAuthoredRootSelector) {
-      normalized = __hfReplaceAuthoredRootIdSelectors(normalized);
-    }
-    return normalized;
+    return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
   var __hfFindRoot = function() {
     if (!__hfRoot && __hfRootSelector) {
@@ -459,8 +463,22 @@ export function wrapScopedCompositionScript(
           // (__hfScopedHyperframes is a hoisted var assigned below, before any
           // sub-comp script -- the only code that reads this -- runs.)
           if (prop === "__hyperframes") return __hfScopedHyperframes;
+          // Native window methods must stay bound to the real window. Handed
+          // back unbound, "this" at call time is this Proxy and Chrome rejects
+          // it with "Illegal invocation", which broke window.addEventListener,
+          // setTimeout, matchMedia and getComputedStyle inside every
+          // sub-composition -- including the window.addEventListener("hf-seek",
+          // ...) form the Three.js and TypeGPU adapters document. The sibling
+          // document and gsap proxies here already bind.
+          //
+          // Only bind non-constructors. Function.prototype.bind drops static
+          // members, so binding a class exposed on window (window.Texts and
+          // friends) would silently strip its statics. Built-in methods have
+          // no .prototype; classes and constructor functions do.
           var value = Reflect.get(target, prop, target);
-          return typeof value === "function" ? value.bind(target) : value;
+          return typeof value === "function" && value.prototype === undefined
+            ? value.bind(target)
+            : value;
         },
         set: function(target, prop, value, receiver) {
           if (prop === "__timelines") {
@@ -478,8 +496,16 @@ export function wrapScopedCompositionScript(
       })
     : window;
   var __hfResolveGsapTarget = function(target) {
-    if (typeof target !== "string") return target;
-    return __hfQueryAll(target);
+    if (typeof target === "string") return __hfQueryAll(target);
+    if (!Array.isArray(target)) return target;
+    return target.reduce(function(resolved, item) {
+      if (typeof item === "string") {
+        return resolved.concat(Array.prototype.slice.call(__hfQueryAll(item)));
+      }
+      resolved.push(item);
+      return resolved;
+    }, []);
+
   };
   var __hfScopeTimeline = function(timeline) {
     if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;
@@ -556,15 +582,7 @@ export function wrapScopedCompositionScript(
         },
       });
   var __hfBaseHyperframes = window.__hyperframes;
-  var __hfScopedHyperframes = !__hfBaseHyperframes
-    ? __hfBaseHyperframes
-    : Object.assign({}, __hfBaseHyperframes, {
-        getVariables: function() {
-          var byComp = window.__hfVariablesByComp;
-          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
-          return scoped ? Object.assign({}, scoped) : {};
-        },
-      });
+  var __hfScopedHyperframes = ${SCOPED_HYPERFRAMES_EXPRESSION};
   var __hfRun = function() {
     try {
       (function(document, gsap, window, __hyperframes) {
@@ -574,13 +592,38 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
   };
+  // What the script started on the global gsap timeline, by any route, for a scene swap to revert.
+  // Only a page with a scene manifest can swap; elsewhere the first script stores null and none records.
+  var __hfRecordAnimations = function(run) {
+    if (window.__hfSceneAnimations === undefined) {
+      window.__hfSceneAnimations = window.document.querySelector(${jsonScriptLiteral(`meta[name="${SCENE_PARTS_META}"]`)})
+        ? {}
+        : null;
+    }
+    var byComp = window.__hfSceneAnimations;
+    var globalTimeline = __hfBaseGsap && __hfBaseGsap.globalTimeline;
+    if (!byComp || !globalTimeline || !__hfTimelineCompId) return run();
+    var before = globalTimeline.getChildren(false);
+    // A set completes as it is made and would leave the timeline before the diff below.
+    var autoRemove = globalTimeline.autoRemoveChildren;
+    globalTimeline.autoRemoveChildren = false;
+    run();
+    globalTimeline.autoRemoveChildren = autoRemove;
+    var recorded = (byComp[__hfTimelineCompId] = byComp[__hfTimelineCompId] || []);
+    globalTimeline.getChildren(false).forEach(function(animation) {
+      if (before.indexOf(animation) >= 0) return;
+      recorded.push(animation);
+      // Dropped as the timeline drops a finished tween (it keeps a paused one); moved back, a tween re-adds itself.
+      if (autoRemove && !animation.getChildren && animation.totalProgress() === 1) globalTimeline.remove(animation);
+    });
+  };
   __hfFindRoot();
-  __hfRun();
+  __hfRecordAnimations(__hfRun);
 })();`;
 }
 
 export function wrapInlineScriptWithErrorBoundary(source: string, errorLabel: string): string {
-  return `(function(){ try { Function(${JSON.stringify(source)}).call(window); } catch (_err) { console.error(${JSON.stringify(errorLabel)}, _err); } })();`;
+  return `(function(){ try { Function(${jsonScriptLiteral(source)}).call(window); } catch (_err) { console.error(${jsonScriptLiteral(errorLabel)}, _err); } })();`;
 }
 
 /**
@@ -596,10 +639,14 @@ export function wrapInlineScriptWithErrorBoundary(source: string, errorLabel: st
  * `getVariables()` returned `{}` only during render — parametrized sub-comps
  * silently shipped blank/default text in the final MP4 while snapshot QA passed
  * (issue #2064). Both callers now share this one builder so they can't drift.
+ *
+ * Values, keys and composition ids are all attacker-reachable, so the whole
+ * table goes through `jsonScriptLiteral` — see there for why.
  */
 export function buildVariablesByCompScript(
   variablesByComp: Record<string, Record<string, unknown>>,
 ): string | null {
   if (!variablesByComp || Object.keys(variablesByComp).length === 0) return null;
-  return `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${JSON.stringify(variablesByComp)});`;
+  const json = jsonScriptLiteral(variablesByComp);
+  return `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${json});`;
 }

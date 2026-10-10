@@ -15,7 +15,7 @@ test("all fill values become variables before persistence or compilation", () =>
   const output = compileSkill(session, { skillName: "save-item" });
   const serialized = JSON.stringify(output);
   assert.ok(!serialized.includes("a completely private password"));
-  assert.match(output.skill, /user-provided `input_1` secret value/);
+  assert.match(output.skill, /变量 `input_1`（敏感值）/);
   assert.match(output.skill, /untrusted evidence/);
   assert.equal(output.manifest.resources[0]?.path, "skills/save-item");
   assert.equal(output.manifest.package.updateId, "ipollowork/recorded/save-item");
@@ -183,10 +183,10 @@ test("recorded mouse variants preserve their semantic operation", () => {
     success,
   ]);
   const compiled = compileSkill(session);
-  assert.match(compiled.skill, /Right-click/);
-  assert.match(compiled.skill, /Middle-click/);
-  assert.match(compiled.skill, /Double-click/);
-  assert.match(compiled.skill, /recording could not identify this control/);
+  assert.match(compiled.skill, /右键点击/);
+  assert.match(compiled.skill, /中键点击/);
+  assert.match(compiled.skill, /双击/);
+  assert.match(compiled.skill, /控件身份未完整识别/);
 });
 
 test("reviewed notes and intermediate success conditions are preserved in Skill steps", () => {
@@ -198,4 +198,23 @@ test("reviewed notes and intermediate success conditions are preserved in Skill 
   const compiled = compileSkill(session);
   assert.ok(compiled.skill.includes('Recorded note: "Open the profile settings, then use the\\nAccount tab."'));
   assert.ok(compiled.skill.includes('Then verify the recorded condition: "The account editor is visible."'));
+});
+
+test("detailed steps identify page, named region, control, relative position and click variant", () => {
+  const session = newSession("创建项目");
+  session.steps = normalizeSteps([{ id: "create", at, action: "click", app: "Chrome", page: { title: "项目列表" }, window: "管理后台", target: { role: "Button", name: "新建项目", position: "右上方", ancestors: [{ role: "ToolBar", name: "项目操作" }] }, description: "伪造的旧描述" }]);
+  const compiled = compileSkill(session);
+  const description = compiled.workflow.steps[0]?.description;
+  assert.match(String(description), /左键点击「Chrome」应用，「项目列表」页面，窗口右上方，「项目操作」工具栏内的「新建项目」按钮/);
+  assert.ok(compiled.skill.includes(String(description)));
+  assert.ok(!compiled.skill.includes("伪造的旧描述"));
+  assert.match(String(normalizeStep({ id: "unknown", at, action: "click" }, 0).description), /页面未识别/);
+  assert.throws(() => normalizeStep({ id: "bad", at, action: "click", target: { position: "999,555" } }, 0), /relative target position/);
+});
+
+test("Chrome page identity follows navigation and cannot leak query credentials into click descriptions", () => {
+  const session = importChromeFlow({ steps: [{ type: "navigate", url: "https://example.com/projects?token=private" }, { type: "click", selectors: [["aria/Create[role=button]"]] }, { type: "navigate", url: "https://example.com/settings" }, { type: "click", selectors: [["aria/Save[role=button]"]] }] });
+  assert.match(String(session.steps[1]?.description), /https:\/\/example.com\/projects/);
+  assert.match(String(session.steps[3]?.description), /https:\/\/example.com\/settings/);
+  assert.ok(!JSON.stringify(session).includes("token=private"));
 });

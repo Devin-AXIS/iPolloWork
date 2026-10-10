@@ -1,51 +1,102 @@
 // @vitest-environment happy-dom
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, createRef } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Player } from "./Player";
 
-vi.mock("@hyperframes/player", () => ({}));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
-class TestPlayer extends HTMLElement {
-  private readonly frame = document.createElement("iframe");
-
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" }).append(this.frame);
+vi.mock("@hyperframes/player", () => {
+  class TestPlayer extends HTMLElement {
+    ready = false;
+    readonly iframeElement: HTMLIFrameElement;
+    constructor() {
+      super();
+      this.iframeElement = document.createElement("iframe");
+      this.attachShadow({ mode: "open" }).append(this.iframeElement);
+    }
   }
-
-  get iframeElement(): HTMLIFrameElement {
-    return this.frame;
+  if (!customElements.get("hyperframes-player")) {
+    customElements.define("hyperframes-player", TestPlayer);
   }
+  return {};
+});
+
+let root: Root;
+let container: HTMLDivElement;
+let onError = vi.fn<() => void>();
+let player: HTMLElement & { ready: boolean; iframeElement: HTMLIFrameElement };
+
+beforeEach(async () => {
+  vi.useFakeTimers();
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  onError = vi.fn();
+  await act(async () => {
+    root.render(<Player ref={createRef()} projectId="proof" onLoad={vi.fn()} onError={onError} suppressLoadingOverlay />);
+  });
+  player = container.querySelector("hyperframes-player")! as typeof player;
+  expect(player).toBeTruthy();
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  vi.useRealTimers();
+});
+
+async function advanceOverlay() {
+  await act(async () => vi.advanceTimersByTime(250));
 }
 
-if (!customElements.get("hyperframes-player")) {
-  customElements.define("hyperframes-player", TestPlayer);
-}
-
-const cleanup: Array<() => void> = [];
-afterEach(() => cleanup.splice(0).forEach((dispose) => dispose()));
-
-describe("composition preview loading", () => {
-  it("shows loading immediately and offers a retry after player failure", async () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    cleanup.push(() => {
-      act(() => root.unmount());
-      container.remove();
+describe("official player readiness and iframe load ordering", () => {
+  it("keeps a ready preview usable after a late iframe load", async () => {
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+      player.iframeElement.dispatchEvent(new Event("load"));
     });
-    const onError = vi.fn();
+    await advanceOverlay();
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).toBeNull();
+  });
+
+  it("shows loading before readiness and removes it on the native ready event", async () => {
+    await act(async () => player.iframeElement.dispatchEvent(new Event("load")));
+    await advanceOverlay();
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).not.toBeNull();
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+    });
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).toBeNull();
+  });
+
+  it("tracks readiness again when the official player navigates to another document", async () => {
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+      player.ready = false;
+      player.iframeElement.dispatchEvent(new Event("load"));
+    });
+    await advanceOverlay();
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).not.toBeNull();
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+    });
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).toBeNull();
+  });
+
+  it("shows loading immediately and offers a retry after player failure", async () => {
 
     await act(async () => {
       root.render(<Player projectId="preview-proof" onLoad={vi.fn()} onError={onError} />);
       await Promise.resolve();
     });
+    player = container.querySelector("hyperframes-player")! as typeof player;
 
     expect(container.querySelector('[data-testid="composition-loading-overlay"]')).not.toBeNull();
-    const player = container.querySelector<TestPlayer>("hyperframes-player");
-    expect(player).not.toBeNull();
 
     await act(async () => player?.dispatchEvent(new Event("error")));
     expect(onError).toHaveBeenCalledOnce();

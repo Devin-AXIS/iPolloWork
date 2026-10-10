@@ -38,6 +38,7 @@ describe("component catalog contract", () => {
 
   it("maps the retained legacy interface category and rejects deleted categories", () => {
     expect(resolveCatalogSection({ visualComponent: { category: "interface" } })).toBe("media");
+    expect(resolveCatalogSection({ visualComponent: { category: "product" } })).toBe("business");
     for (const category of ["intro", "outro", "flow", "compare", "structured", "commerce"]) {
       expect(resolveCatalogSection({ visualComponent: { category } })).toBeNull();
     }

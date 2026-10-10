@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
@@ -80,6 +79,7 @@ function tryApplyBeatHistory(
 interface HistoryResult {
   ok: boolean;
   reason?: string;
+  message?: string;
   label?: string;
   paths?: string[];
   /** Per-file restored/previous content, used to soft-apply the preview. */
@@ -100,6 +100,8 @@ interface EditHistoryHandle {
 }
 
 interface UseAppHotkeysParams {
+  onOpenScript?: () => void;
+  onOpenAssets?: () => void;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
@@ -116,7 +118,6 @@ interface UseAppHotkeysParams {
     files?: Record<string, { previous: string; restored: string }>;
   }) => Promise<void>;
   waitForPendingDomEditSaves: () => Promise<void>;
-  leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
   handleCut: () => Promise<boolean>;
@@ -141,6 +142,8 @@ interface UseAppHotkeysParams {
 // ── Extracted keydown dispatch (pure function, no hooks) ──
 
 interface HotkeyCallbacks {
+  onOpenScript?: () => void;
+  onOpenAssets?: () => void;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
@@ -154,7 +157,6 @@ interface HotkeyCallbacks {
   onToggleRecording?: () => void;
   onGroupSelection?: () => void;
   onUngroupSelection?: () => void;
-  leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
 }
@@ -179,13 +181,13 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
   if (event.key === "1") {
     event.preventDefault();
     trackStudioEvent("keyboard_shortcut", { action: "tab_compositions" });
-    cb.leftSidebarRef.current?.selectTab("compositions");
+    cb.onOpenScript?.();
     return true;
   }
   if (event.key === "2") {
     event.preventDefault();
     trackStudioEvent("keyboard_shortcut", { action: "tab_assets" });
-    cb.leftSidebarRef.current?.selectTab("assets");
+    cb.onOpenAssets?.();
     return true;
   }
 
@@ -328,6 +330,8 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
 // ── Hook ──
 
 export function useAppHotkeys({
+  onOpenScript,
+  onOpenAssets,
   handleTimelineElementDelete,
   handleTimelineElementSplit,
   handleDomEditElementDelete,
@@ -340,7 +344,6 @@ export function useAppHotkeys({
   showToast,
   syncHistoryPreviewAfterApply,
   waitForPendingDomEditSaves,
-  leftSidebarRef,
   handleCopy,
   handlePaste,
   handleCut,
@@ -387,6 +390,10 @@ export function useAppHotkeys({
         writeFile: writeHistoryFile,
         serialize: serializeHistoryFiles,
       });
+      if (!result.ok && result.reason === "failed") {
+        showToast(result.message ?? "撤销操作未完成，请重试。", "error");
+        return;
+      }
       if (!result.ok && result.reason === "content-mismatch") {
         showToast(
           `File changed outside Studio. ${direction === "undo" ? "Undo" : "Redo"} history was not applied.`,
@@ -429,6 +436,8 @@ export function useAppHotkeys({
 
   const cbRef = useRef<HotkeyCallbacks>(null!);
   cbRef.current = {
+    onOpenScript,
+    onOpenAssets,
     handleTimelineElementDelete,
     handleTimelineElementSplit,
     handleDomEditElementDelete,
@@ -442,7 +451,6 @@ export function useAppHotkeys({
     onToggleRecording,
     onGroupSelection,
     onUngroupSelection,
-    leftSidebarRef,
     domEditSelectionRef,
     showToast,
   };

@@ -6,6 +6,9 @@ import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import { VideoAvatarPanel } from "../src/react-app/domains/session/video/video-avatar-panel";
 import { VIDEO_VOICEOVER_REQUEST, type VideoVoiceoverRequest } from "../src/react-app/domains/session/video/video-voice";
 import { VideoVoicePanel } from "../src/react-app/domains/session/video/video-voice-panel";
+import { VideoPanel } from "../src/react-app/domains/session/video/video-panel";
+import type { VideoStudioRuntime } from "@ipollowork/video-studio";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { DesignSystemDrawer } from "../src/react-app/domains/session/design/design-system-drawer";
 import "../src/app/index.css";
 import { setLocale } from "../src/i18n";
@@ -23,7 +26,7 @@ const etaProof = new URLSearchParams(location.search).has("eta");
 const longSegmentCount = Number(new URLSearchParams(location.search).get("segments")) || 5;
 if (preparationFailureProof) jobs.push({ id: "f251fcef-00fb-429d-ab4f-3db091849e08", model: "minimax-h3-avatar", operation: "reference", prompt: "提交前失败验证", fingerprint: "proof", workspaceId: "proof", sessionId: "avatar-proof", status: "failed", path: "", upstreamId: "", message: "数字人工作流节点已变化，尚未提交生成。", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0 });
 if (longProof) jobs.push({ id: "31f13c04-a138-4499-b9e4-293796ec07cc", model: "minimax-h3-avatar", operation: "reference", prompt: "长数字人验证", fingerprint: "proof", workspaceId: "proof", sessionId: "avatar-proof", status: completedProof ? "succeeded" : etaProof ? "running" : "failed", path: completedProof ? "video/avatar-proof/assets/avatar-result.mp4" : "", upstreamId: "", message: completedProof ? "已保存到素材库。" : etaProof ? "第 4 段正在生成。" : `第 2/${longSegmentCount} 段失败；第 1 段已保存，可只重试失败片段。`, createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
-  avatarSequence: {duration:longSegmentCount === 5 ? 58 : 935.8,audioPath:"voice.wav",imagePath:"person.png",ratio:"9:16",segments:Array.from({length:longSegmentCount},(_,index)=>({start:index*11.5,end:index*11.5+12.5,status:completedProof||etaProof&&index<3||index===0?"succeeded":!etaProof&&index===1?"failed":"pending",upstreamId:index<2?`task-${index}`:"",path:completedProof?`saved-${index}.mp4`:index===0?"saved-first.mp4":!etaProof&&index===1?"rejected-second.mp4":"",attempt:0,...(etaProof && index < 3 ? { startedAt: Date.now() - (index + 4) * 60_000, completedAt: Date.now() - (index + 3) * 60_000 } : {})}))} });
+  avatarSequence: {duration:longSegmentCount === 5 ? 58 : 935.8,audioPath:"voice.wav",imagePath:"person.png",ratio:"9:16",segments:Array.from({length:longSegmentCount},(_,index)=>({start:index*11.5,end:index*11.5+12.5,status:completedProof||etaProof&&index<3||index===0?"succeeded":!etaProof&&index===1?"failed":"pending",upstreamId:index<2?`task-${index}`:"",path:completedProof?`saved-${index}.mp4`:index===0?"saved-first.mp4":!etaProof&&index===1?"rejected-second.mp4":"",attempt:0,...(!completedProof && !etaProof && index === 1 ? { quality: { difference: .35, jump: .3 } } : {}),...(etaProof && index < 3 ? { startedAt: Date.now() - (index + 4) * 60_000, completedAt: Date.now() - (index + 3) * 60_000 } : {})}))} });
 const voiceProofParams = new URLSearchParams(location.search);
 let savedVoice = voiceProofParams.get("saved") === "none" ? "" : JSON.stringify({ enabled: voiceProofParams.get("saved") !== "off", provider: "aliyun-bailian", model: "cosyvoice-v3-flash", voiceId: "longanyang", source: "preset", selectionMode: voiceProofParams.get("mode") === "manual" ? "manual" : "auto", volume: voiceProofParams.has("volume") ? Number(voiceProofParams.get("volume")) : 50, updatedAt: new Date().toISOString() });
 const audioMarkup = (voice = "longyingmu_v3", rate = 1, pitch = 1, volume = 50, instruction = "") => `<audio src="assets/voice-${voice}.mp3" data-ipw-voiceover="true" data-ipw-voice="${voice}" data-ipw-voice-model="cosyvoice-v3-flash" data-ipw-voice-rate="${rate}" data-ipw-voice-pitch="${pitch}" data-ipw-voice-volume="${volume}" data-ipw-voice-instruction="${instruction}"></audio>`;
@@ -73,7 +76,7 @@ window.fetch = async (input, init) => {
     if (action === "retry-segment") {
       const job=jobs.find(item=>item.id===args.id);
       if(!job?.avatarSequence)throw new Error("missing sequence");
-      job.avatarSequence.segments[args.index]={...job.avatarSequence.segments[args.index],status:"pending",upstreamId:"",path:"",attempt:1};
+      job.avatarSequence.segments[args.index]={...job.avatarSequence.segments[args.index],status:"pending",upstreamId:"",path:"",attempt:1,quality:undefined};
       job.status="running";job.message=`只重试第 ${args.index+1} 段，其余已保存片段保持不变（模拟）。`;
       return json({ok:true,result:{job}});
     }
@@ -136,6 +139,7 @@ client.downloadWorkspaceFile = async (_workspaceId, path) => ({ data: path.endsW
   : new Uint8Array(await (await originalFetch("/default-brand-avatar.jpg")).arrayBuffer()), path });
 client.readWorkspaceFile = async (_workspaceId, path) => {
   if (path.endsWith("index.html")) return { content: appliedHtml, updatedAt: 1 };
+  if (path.endsWith("design-tokens.css")) return { content: ":root { --ipw-type-scale: 1; }", updatedAt: 1 };
   if (!savedVoice) throw new Error("Voice settings not found");
   const response = await window.fetch("https://avatar-proof.invalid/files/content");
   return response.json();
@@ -193,7 +197,70 @@ function RoleProofPanel() {
     {panel === "voice" ? <VideoVoicePanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} previewRequest={0} onClose={() => undefined} embedded embeddedWidth={width} /> : null}
   </div>;
 }
-createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParams.get("panel") === "role" ? <RoleProofPanel /> : <div style={{ height: "100vh", padding: 32 }}>
+// Real host + real Studio server. Only provider/workspace client calls use the fixture above.
+const dockProofRuntime: VideoStudioRuntime = {
+  start: async (options) => {
+    if (!voiceProofParams.has("lifecyclePort")) return { ok: true, port: Number(voiceProofParams.get("studioPort") || 5199) };
+    const response = await originalFetch(`http://127.0.0.1:${Number(voiceProofParams.get("lifecyclePort"))}/start`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(options),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    return { ok: result.ok === true, port: Number(result.port), reused: result.reused === true };
+  },
+  stop: async (sessionId, options) => {
+    if (voiceProofParams.has("lifecyclePort")) {
+      const response = await originalFetch(`http://127.0.0.1:${Number(voiceProofParams.get("lifecyclePort"))}/stop`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, ...options }),
+      });
+      if (!response.ok) throw new Error("Preview lifecycle stop failed");
+    }
+    return { ok: true };
+  },
+};
+function DockProofPanel() {
+  const lifecycle = voiceProofParams.has("lifecyclePort");
+  const aiProof = voiceProofParams.has("ai");
+  const [open, setOpen] = React.useState(!lifecycle);
+  const [rejectAi, setRejectAi] = React.useState(false);
+  const [aiMessages, setAiMessages] = React.useState<{ instruction: string; context: DesignAiSelectionContext }[]>([]);
+  const [animationReferences, setAnimationReferences] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    if (!aiProof) return;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; item?: { title?: string } }>).detail;
+      const title = detail?.item?.title;
+      if (detail?.sessionId !== "conversation-proof" || typeof title !== "string") return;
+      setAnimationReferences(current => [...current, title]);
+    };
+    window.addEventListener("ipollowork:add-animation-reference", receive);
+    return () => window.removeEventListener("ipollowork:add-animation-reference", receive);
+  }, [aiProof]);
+  return <div className="flex h-screen w-full flex-col" data-testid="dock-host-proof">
+    {lifecycle ? <div className="flex shrink-0 items-center gap-4 border-b p-2">
+      <span>视频标签启动与重开验证</span>
+      <button onClick={() => setOpen(value => !value)}>{open ? "关闭视频标签" : "打开视频标签"}</button>
+    </div> : null}
+    <div className="flex min-h-0 flex-1">
+      {aiProof ? <aside className="w-[300px] shrink-0 overflow-auto border-r p-4" data-testid="video-ai-proof-conversation">
+        <h2>左侧 AI 对话 · 测试接收端</h2><p className="mt-2 text-xs">实际视频桥接，模型调用为模拟，不产生费用。</p>
+        <button className="my-3 border p-2 text-xs" aria-pressed={rejectAi} onClick={() => setRejectAi(value => !value)}>模拟发送失败</button>
+        {animationReferences.map((title, index) => <p key={index} role="status" className="my-3 rounded border p-3 text-sm">左侧动画参考 · {title}</p>)}
+        {aiMessages.map((message, index) => <article key={index} className="my-3 rounded border p-3 text-sm">
+          <p>{message.instruction || "已同步所选元素到左侧输入区"}</p>
+          <p className="mt-2 text-xs" role="status">左侧已接收 · {message.context.sessionId}</p>
+          <details><summary className="text-xs">视频上下文</summary><pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify({ filePath: message.context.filePath, target: message.context.target }, null, 2)}</pre></details>
+        </article>)}
+      </aside> : null}
+      {open ? <div className="min-h-0 min-w-0 flex-1"><VideoPanel title="官方 Dock 与原有视频功能验证" sessionId="conflict-proof" conversationId={aiProof ? "conversation-proof" : undefined} workspaceRoot="proof"
+        workspaceId="proof" client={client} runtime={dockProofRuntime} onAskAi={aiProof ? async (context, instruction) => {
+          if (rejectAi) throw new Error("模拟发送失败：需求仍保留，请重试");
+          setAiMessages(current => [...current, { instruction: instruction ?? "", context }]);
+        } : undefined} /></div> : null}
+    </div>
+  </div>;
+}
+createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParams.get("panel") === "dock" ? <DockProofPanel /> : voiceProofParams.get("panel") === "role" ? <RoleProofPanel /> : <div style={{ height: "100vh", padding: 32 }}>
   <h1>VideoStudio · 数字人视频</h1><p>组件集成验证：模拟云端结果，不产生费用。</p>
   <div className="flex gap-2"><button onClick={()=>{configured=!configured;window.dispatchEvent(new Event("focus"));}}>切换 Key 配置</button><button onClick={()=>{hasNarration=!hasNarration;window.dispatchEvent(new Event("focus"));}}>切换视频配音</button><button onClick={()=>{audioVersion++;window.dispatchEvent(new Event("focus"));}}>更新配音片段</button></div>
   <button onClick={() => { failUpload = !failUpload; }}>切换上传失败</button>

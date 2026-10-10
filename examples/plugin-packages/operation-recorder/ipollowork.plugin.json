@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "operation-recorder",
   "name": "操作录制",
-  "description": "示范一次操作，整理成可编辑、可参数化、跨引擎复用的 Skill。",
+  "description": "统一 Node.js 录制器，记录页面、区域和控件，将详细操作步骤编译成可复用 Skill。",
   "category": "效率工具",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -10,7 +10,7 @@
     "trusted": false
   },
   "package": {
-    "version": "0.3.0",
+    "version": "0.4.2",
     "publisher": {
       "id": "smart-future-school",
       "name": "Smart Future School"
@@ -23,7 +23,7 @@
   "permissions": [
     {
       "id": "process",
-      "reason": "启动插件自带的 macOS、Windows 或 Linux X11 语义录制器，停用时释放监听。"
+      "reason": "通过 Node.js 启动三端共用的采集器及其内置原生模块，停用时释放监听和线程。"
     },
     {
       "id": "network",
@@ -264,7 +264,7 @@
     {
       "type": "file",
       "id": "recorder-native",
-      "label": "跨平台原生录制器",
+      "label": "统一 Node.js 桌面采集器",
       "path": "native",
       "required": true
     },
@@ -294,7 +294,7 @@
             "label": "Recording workbench UI"
           },
           "recorder-native": {
-            "label": "Cross-platform native recorders"
+            "label": "Unified Node.js desktop collector"
           },
           "recorder-service-files": {
             "label": "Recording service modules"
@@ -302,7 +302,7 @@
         },
         "permissions": {
           "process": {
-            "reason": "Run the bundled macOS, Windows or Linux X11 semantic recorder and dispose its listeners when disabled."
+            "reason": "Run the shared Node.js collector and bundled N-API modules; release listeners and workers when disabled."
           },
           "network": {
             "reason": "Serve the authenticated plugin workbench only on 127.0.0.1."

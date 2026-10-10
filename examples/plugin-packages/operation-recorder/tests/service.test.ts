@@ -3,7 +3,6 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { gzipSync } from "node:zlib";
 import { isRecord } from "../service/model.ts";
 import { createRecorderService } from "../service/recorder.ts";
 
@@ -55,7 +54,8 @@ test("import-review-export is workspace isolated, portable, redacted and a real 
     const workflow = await readFile(compiled.workflowPath, "utf8");
     assert.ok(!workflow.includes("private-input") && !workflow.includes("private-query"));
     assert.match(skill, /current engine's available/);
-    assert.equal((await stat(compiled.skillPath)).mode & 0o777, 0o600);
+    assert.ok((await stat(compiled.skillPath)).isFile());
+    if (process.platform !== "win32") assert.equal((await stat(compiled.skillPath)).mode & 0o777, 0o600);
     const manifest = object(compiled.manifest);
     assert.ok(!("engineBindings" in manifest));
     const otherWorkspace = join(context.root, "other-workspace");
@@ -68,7 +68,7 @@ test("import-review-export is workspace isolated, portable, redacted and a real 
 
 test("workbench authenticates token, blocks cross-origin and oversized requests, and opens once", async () => {
   const context = await fixture();
-  const service = await createRecorderService(context.runtime, { platform: "linux" });
+  const service = await createRecorderService(context.runtime, { collectorPath: join(context.root, "missing-collector.mjs"), platform: "linux" });
   try {
     const results = await Promise.all([service.actions["open-workbench"]({}), service.actions["open-workbench"]({})]);
     const first = object(results[0]);
@@ -99,7 +99,7 @@ test("symlinks under owned storage cannot redirect exports", async () => {
     if (typeof first.directory !== "string") throw new Error("Missing export directory");
     const exports = join(first.directory, "..");
     await rm(exports, { recursive: true });
-    await symlink(context.runtime.workspace.root, exports);
+    await symlink(context.runtime.workspace.root, exports, process.platform === "win32" ? "junction" : "dir");
     await assert.rejects(service.actions.compile({ sessionId: id, skillName: "safe-item" }), /symlink/);
   } finally { await service.dispose(); await context.remove(); }
 });
@@ -133,12 +133,12 @@ test("edited and concurrent exports reserve increasing immutable package version
 });
 
 for (const platform of ["darwin", "win32", "linux"] satisfies NodeJS.Platform[]) {
-test(`mock native lifecycle on ${platform} serializes recording and strips helper input before saving`, async () => {
+test(`Node.js collector lifecycle on ${platform} serializes recording and strips helper input before saving`, async () => {
   const context = await fixture();
-  const helper = join(context.root, "helper");
+  const helper = join(context.root, "helper.cjs");
   await writeFile(helper, `#!${process.execPath}\nconst readline = require('node:readline');\nif(process.argv.includes('--check') || process.argv.includes('--request-permissions')) { console.log(JSON.stringify({supported:true,accessibility:true,inputMonitoring:true})); process.exit(0); }\nconst observedAt=new Date().toISOString();\nconsole.log(JSON.stringify({type:'ready'}));\nconsole.log(JSON.stringify({type:'step',step:{id:'input-1',at:observedAt,action:'input',text:'raw-native-secret',target:{role:'AXSecureTextField',name:'Password'}}}));\nreadline.createInterface({input:process.stdin}).on('line', line => { const command=JSON.parse(line).command; if(command==='pause') console.log(JSON.stringify({type:'step',step:{id:'before-pause',at:observedAt,action:'click',target:{role:'button',name:'Earlier click'}}})); if(command==='stop') process.stdout.write(JSON.stringify({type:'step',step:{id:'final-click',at:new Date().toISOString(),action:'click',target:{role:'button',name:'Final confirmation'}}})+'\\n',()=>process.exit(0)); });\n`, { mode: 0o700 });
-  const service = await createRecorderService(context.runtime, { nativePath: helper, platform });
-  const second = await createRecorderService(context.runtime, { nativePath: helper, platform });
+  const service = await createRecorderService(context.runtime, { collectorPath: helper, platform });
+  const second = await createRecorderService(context.runtime, { collectorPath: helper, platform });
   try {
     await writeFile(join(context.runtime.storage.dataDir, "recording.lock"), JSON.stringify({ pid: 2_147_483_647, workspace: "interrupted-workspace" }), { mode: 0o600 });
     const started = object(object(await service.actions.start({})).session);
@@ -170,11 +170,76 @@ test(`mock native lifecycle on ${platform} serializes recording and strips helpe
 });
 }
 
-test("native capability rejection preserves actionable platform reasons", async () => {
+for (const mode of ["warning", "crash", "protocol-error"]) {
+test(`collector stderr warnings do not fail recording; ${mode} preserves its actual outcome`, async () => {
   const context = await fixture();
-  const helper = join(context.root, "unsupported-helper");
+  const helper = join(context.root, "diagnostic-helper.cjs");
+  await writeFile(helper, `
+    const readline = require('node:readline');
+    if (process.argv.includes('--check')) {
+      console.log(JSON.stringify({ supported: true, accessibility: true, inputMonitoring: true }));
+      process.exit(0);
+    }
+    process.emitWarning('EnvHttpProxyAgent is experimental, expect them to change at any time.', { code: 'UNDICI-EHPA' });
+    console.log(JSON.stringify({ type: 'ready' }));
+    readline.createInterface({ input: process.stdin }).on('line', line => {
+      const command = JSON.parse(line).command;
+      if (command === 'resume' && ${JSON.stringify(mode)} === 'crash') {
+        process.stderr.write('Native capture fatal: input hook disconnected\\n', () => process.exit(7));
+      } else if (command === 'resume' && ${JSON.stringify(mode)} === 'protocol-error') {
+        console.log(JSON.stringify({ type: 'error', message: 'Native input monitoring permission revoked' }));
+      } else if (command === 'pause' || command === 'resume') {
+        console.log(JSON.stringify({ type: 'step', step: { id: command, at: new Date().toISOString(), action: 'click', target: { role: 'button', name: 'Save project' } } }));
+      } else if (command === 'stop') process.exit(0);
+    });
+  `);
+  const service = await createRecorderService(context.runtime, { collectorPath: helper });
+  function stepCount(status: Record<string, unknown>) {
+    const steps = object(status.session).steps;
+    assert.ok(Array.isArray(steps));
+    return steps.length;
+  }
+  async function until(predicate: (status: Record<string, unknown>) => boolean) {
+    const deadline = Date.now() + 5_000;
+    do {
+      const status = object(await service.actions.status({}));
+      if (predicate(status)) return status;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    } while (Date.now() < deadline);
+    assert.fail('The collector did not reach its expected state');
+  }
+  try {
+    const id = sessionId(await service.actions.start({}));
+    await service.actions.pause({});
+    const paused = await until(status => stepCount(status) === 1);
+    assert.equal(paused.error, null, 'A real runtime warning must not become a recording error');
+    assert.equal(paused.recording, true);
+    await service.actions.resume({});
+    if (mode === 'warning') {
+      await until(status => stepCount(status) === 2);
+      await service.actions.stop({});
+      const saved = object(await service.actions.status({ sessionId: id }));
+      assert.equal(saved.error, null);
+      assert.equal(saved.recording, false);
+      assert.equal(object(saved.session).status, 'draft');
+      assert.equal(stepCount(saved), 2);
+      const exported = object(await service.actions.compile({ sessionId: id }));
+      assert.ok(typeof exported.archivePath === 'string' && (await stat(exported.archivePath)).size > 0);
+    } else {
+      const failed = await until(status => status.recording === false && object(status.session).status === 'draft' && typeof status.error === 'string');
+      assert.equal(object(failed.session).status, 'draft');
+      assert.equal(stepCount(failed), 1);
+      assert.match(String(failed.error), mode === 'crash' ? /stopped unexpectedly \(7\).*input hook disconnected/s : /input monitoring permission revoked/);
+    }
+  } finally { await service.dispose(); await context.remove(); }
+});
+}
+
+test("collector capability rejection preserves actionable platform reasons", async () => {
+  const context = await fixture();
+  const helper = join(context.root, "unsupported-helper.cjs");
   await writeFile(helper, `#!${process.execPath}\nconsole.log(JSON.stringify({supported:false,accessibility:false,inputMonitoring:false,backend:'x11-atspi',sessionType:'wayland',reason:'Wayland does not provide passive desktop input capture',permissionHelp:'Import a Chrome Recorder flow'}));\n`, { mode: 0o700 });
-  const service = await createRecorderService(context.runtime, { nativePath: helper, platform: "linux" });
+  const service = await createRecorderService(context.runtime, { collectorPath: helper, platform: "linux" });
   try {
     const capabilities = object(await service.actions.capabilities({}));
     const desktop = object(capabilities.desktop);
@@ -188,28 +253,20 @@ test("native capability rejection preserves actionable platform reasons", async 
   } finally { await service.dispose(); await context.remove(); }
 });
 
-test("compressed native helpers execute from an integrity checked owned cache", async () => {
+test("Node.js collector runs from its package without an executable cache and rejects oversized files", async () => {
   const context = await fixture();
-  const helper = join(context.root, "helper.gz");
+  const helper = join(context.root, "helper.cjs");
   const script = Buffer.from(`#!${process.execPath}\nconsole.log(JSON.stringify({supported:true,accessibility:true,inputMonitoring:true}));\n`);
-  await writeFile(helper, gzipSync(script));
-  const service = await createRecorderService(context.runtime, { nativePath: helper, platform: "linux" });
+  await writeFile(helper, script);
+  const service = await createRecorderService(context.runtime, { collectorPath: helper, platform: "linux" });
   try {
     const desktop = object(object(await service.actions.capabilities({})).desktop);
     assert.equal(desktop.supported, true);
-    const cache = join(context.runtime.storage.dataDir, "binaries");
-    const names = await readdir(cache);
-    assert.equal(names.length, 1);
-    const cachedName = names[0];
-    if (!cachedName) throw new Error("Missing cached native helper");
-    assert.deepEqual(await readFile(join(cache, cachedName)), script);
-    await writeFile(join(cache, cachedName), "tampered");
-    const rejected = object(object(await service.actions.capabilities({})).desktop);
-    assert.equal(rejected.supported, false);
-    assert.match(String(rejected.reason), /integrity validation/);
-    await writeFile(helper, gzipSync(Buffer.alloc(20_000_001)));
+    assert.ok(!(await readdir(context.runtime.storage.dataDir)).includes("binaries"));
+    assert.deepEqual(await readFile(helper), script);
+    await writeFile(helper, Buffer.alloc(1_048_577));
     const oversized = object(object(await service.actions.capabilities({})).desktop);
     assert.equal(oversized.supported, false);
-    assert.match(String(oversized.reason), /larger than|size limit/);
+    assert.match(String(oversized.reason), /bounded regular file/);
   } finally { await service.dispose(); await context.remove(); }
 });

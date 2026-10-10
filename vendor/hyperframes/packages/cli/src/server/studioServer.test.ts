@@ -57,7 +57,9 @@ describe("bundled registry installation", () => {
     const installed = await installRouteMap(createProject(true));
 
     expect(installed).not.toContain("cdn.jsdelivr.net/npm/gsap");
-    expect(installed).toContain('content="width=1280, height=720"');
+    expect(installed).toContain('content="width=1920, height=1080"');
+    expect(installed).toContain('data-width="1920"');
+    expect(installed).toContain('data-height="1080"');
   });
 
   it("keeps the GSAP CDN fallback when the project has no local runtime", async () => {
@@ -70,6 +72,30 @@ describe("bundled registry installation", () => {
     const installed = await installRouteMap(createProject(true, false));
 
     expect(installed).toContain("cdn.jsdelivr.net/npm/gsap");
+  });
+
+  it("uses the official install record and preserves edits when another instance is inserted", async () => {
+    const projectDir = createProject(true);
+    const installed = await installRouteMap(projectDir);
+    const record = JSON.parse(readFileSync(join(projectDir, "hyperframes.lock.json"), "utf8"));
+    const target = Object.keys(record).find((path) => path.endsWith("route-map.html"));
+    expect(target).toBeDefined();
+    expect(await installRouteMap(projectDir)).toBe(installed);
+
+    const edited = `${installed}\n<!-- User animation, theme and parameter edits -->`;
+    writeFileSync(join(projectDir, target!), edited);
+    expect(await installRouteMap(projectDir)).toBe(edited);
+    expect(readFileSync(join(projectDir, target!), "utf8")).toBe(edited);
+  });
+
+  it("preserves a pre-existing component without installation provenance", async () => {
+    const projectDir = createProject(false);
+    await installRouteMap(projectDir);
+    const record = JSON.parse(readFileSync(join(projectDir, "hyperframes.lock.json"), "utf8"));
+    const target = Object.keys(record).find((path) => path.endsWith("route-map.html"))!;
+    writeFileSync(join(projectDir, "hyperframes.lock.json"), "{}");
+    writeFileSync(join(projectDir, target), "<!-- Existing user component -->");
+    expect(await installRouteMap(projectDir)).toBe("<!-- Existing user component -->");
   });
 });
 

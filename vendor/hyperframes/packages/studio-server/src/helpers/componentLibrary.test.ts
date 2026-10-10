@@ -85,7 +85,7 @@ describe("component library import", () => {
     expect(() => parseComponentPack({ items: [] })).toThrow("component pack");
   });
   it("rejects writes through a project symlink", () => {
-    const root = temp(), outside = temp(); symlinkSync(outside, join(root, "compositions"));
+    const root = temp(), outside = temp(); symlinkSync(outside, join(root, "compositions"), process.platform === "win32" ? "junction" : "dir");
     expect(() => safeComponentPath(root, "compositions/sample/a.html")).toThrow("Symbolic");
   });
 });

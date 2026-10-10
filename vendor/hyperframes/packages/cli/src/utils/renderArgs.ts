@@ -1,3 +1,4 @@
+import { failUsage } from "./commandResult.js";
 /**
  * Pure parsers for `hyperframes render` argv that aren't already shared
  * (fps, quality, format, variables live elsewhere). Lives separately so
@@ -112,17 +113,25 @@ export function resolveBrowserTimeoutMsArg(raw: string | undefined): number | un
   if (!result.ok) {
     const { title, message, hint } = browserTimeoutErrorMessage(result.error);
     errorBox(title, message, hint);
-    process.exit(1);
+    failUsage();
   }
   return result.value;
 }
 
-/** Navigation budget shared by snapshot/check/inspect browser diagnostics. */
+/**
+ * Navigation budget shared by snapshot/check/inspect browser diagnostics.
+ *
+ * The environment variable remains the historical global override. Callers
+ * with their own timeout knob can supply a minimum without shortening that
+ * override or the existing 10-second default.
+ */
 export function resolveDiagnosticNavigationTimeoutMs(
   env: Record<string, string | undefined> = process.env,
+  minimumTimeoutMs = 0,
 ): number {
   const parsed = Number(env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+  const configured = Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+  return Math.max(configured, minimumTimeoutMs);
 }
 
 // ── --composition ──────────────────────────────────────────────────────
@@ -234,7 +243,7 @@ export function resolveCompositionEntryArg(
   if (!result.ok) {
     const { title, message, hint } = compositionEntryErrorMessage(result.error);
     errorBox(title, message, hint);
-    process.exit(1);
+    failUsage();
   }
   return result.value;
 }
@@ -285,6 +294,34 @@ export function parseGifLoopArg(raw: string | undefined): GifLoopParseResult {
     return {
       ok: false,
       message: `Got "${raw}". GIF loop count must be an integer between 0 and 65535.`,
+    };
+  }
+  return { ok: true, value: parsed };
+}
+
+export type HlsSegmentSecondsParseResult =
+  | { ok: true; value: number | undefined }
+  | { ok: false; message: string };
+
+const MAX_HLS_SEGMENT_SECONDS = 60;
+
+/**
+ * Parse and validate `--hls-segment-seconds <n>` (HLS target segment length).
+ * Whole seconds only: the value becomes ffmpeg's `-hls_time`, which writes an
+ * integer `#EXT-X-TARGETDURATION`. Returns `{ ok: true, value: undefined }`
+ * when the flag is absent so the caller can apply the format-dependent default.
+ */
+export function parseHlsSegmentSecondsArg(raw: string | undefined): HlsSegmentSecondsParseResult {
+  if (raw === undefined) return { ok: true, value: undefined };
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, message: "HLS segment length must not be empty." };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_HLS_SEGMENT_SECONDS) {
+    return {
+      ok: false,
+      message: `Got "${raw}". HLS segment length must be a whole number of seconds between 1 and ${MAX_HLS_SEGMENT_SECONDS}.`,
     };
   }
   return { ok: true, value: parsed };

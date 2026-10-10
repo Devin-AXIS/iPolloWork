@@ -1,150 +1,34 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import type {
-  RightInspectorPane,
-  RightInspectorPanes,
-  RightPanelTab,
-} from "../utils/studioHelpers";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
+import { useState, useCallback, useEffect } from "react";
+import type { RightPanelTab } from "../utils/studioHelpers";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { STUDIO_FLAT_INSPECTOR_ENABLED } from "../components/editor/manualEditingAvailability";
+import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 
 export interface InitialPanelLayoutState {
-  rightCollapsed?: boolean | null;
   rightPanelTab?: RightPanelTab | null;
 }
 
-export const MIN_RIGHT_PANEL_WIDTH = 260;
-
-function getInitialRightInspectorPanes(tab?: RightPanelTab | null): RightInspectorPanes {
-  if (tab === "layers") return { layers: true, design: false };
-  return { layers: false, design: true };
-}
-
 export function usePanelLayout(initialState?: InitialPanelLayoutState) {
-  const [leftWidth, setLeftWidth] = useState(240);
-  const [preferredRightWidth, setRightWidth] = useState(300);
-  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
-  useEffect(() => {
-    const resize = () => setViewportWidth(window.innerWidth);
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+  // Measured dock width for host narration/theme overlays, never a second resizer.
+  const [rightWidth, setRightWidth] = useState(400);
+  const rightCollapsed = useDockLayoutStore(state => !state.visiblePanels.has("design"));
+  const setRightCollapsed = useCallback((collapsed: boolean) => {
+    const dock = useDockLayoutStore.getState();
+    if (collapsed) dock.closePanel("design");
+    else dock.activatePanel("design");
   }, []);
-  const rightWidth = Math.min(preferredRightWidth, Math.max(MIN_RIGHT_PANEL_WIDTH, Math.floor(viewportWidth * 0.3)));
-  const [leftCollapsed, setLeftCollapsed] = useState(
-    () => readStudioUiPreferences().leftCollapsed ?? false,
-  );
-  const [rightCollapsed, setRightCollapsed] = useState(initialState?.rightCollapsed ?? true);
+  const initialTab = initialState?.rightPanelTab;
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(
-    initialState?.rightPanelTab ?? "renders",
+    initialTab === "layers" || initialTab === "code" ? "design" : initialTab ?? "renders",
   );
-  const [rightInspectorPanes, setRightInspectorPanes] = useState<RightInspectorPanes>(() =>
-    getInitialRightInspectorPanes(initialState?.rightPanelTab),
-  );
-  const panelDragRef = useRef<{
-    side: "left" | "right";
-    startX: number;
-    startW: number;
-  } | null>(null);
-
-  const toggleLeftSidebar = useCallback(() => {
-    setLeftCollapsed((collapsed) => {
-      writeStudioUiPreferences({ leftCollapsed: !collapsed });
-      trackStudioEvent("panel_toggle", { panel: "left_sidebar", collapsed: !collapsed });
-      return !collapsed;
-    });
+  useEffect(() => {
+    if (initialTab === "assets" || initialTab === "code") useDockLayoutStore.getState().activatePanel("design");
+  }, [initialTab]);
+  const trackedSetRightPanelTab = useCallback((tab: RightPanelTab) => {
+    if (tab === "assets" || tab === "code") useDockLayoutStore.getState().activatePanel("design");
+    // Preserve old Code deep links without reviving the removed sidebar page.
+    setRightPanelTab(tab === "layers" || tab === "code" ? "design" : tab);
+    trackStudioEvent("tab_switch", { panel: "right_panel", tab });
   }, []);
-
-  const handlePanelResizeStart = useCallback(
-    (side: "left" | "right", e: React.PointerEvent) => {
-      e.preventDefault();
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      panelDragRef.current = {
-        side,
-        startX: e.clientX,
-        startW: side === "left" ? leftWidth : rightWidth,
-      };
-    },
-    [leftWidth, rightWidth],
-  );
-
-  const handlePanelResizeMove = useCallback((e: React.PointerEvent) => {
-    const drag = panelDragRef.current;
-    if (!drag) return;
-    const delta = e.clientX - drag.startX;
-    const maxLeft = Math.floor(window.innerWidth * 0.5);
-    const minWidth = drag.side === "left" ? 160 : MIN_RIGHT_PANEL_WIDTH;
-    const newW = Math.max(
-      minWidth,
-      Math.min(
-        drag.side === "left" ? maxLeft : 360,
-        drag.startW + (drag.side === "left" ? delta : -delta),
-      ),
-    );
-    if (drag.side === "left") setLeftWidth(newW);
-    else setRightWidth(newW);
-  }, []);
-
-  const handlePanelResizeEnd = useCallback(() => {
-    panelDragRef.current = null;
-  }, []);
-
-  const trackedSetRightPanelTab = useCallback(
-    (tab: RightPanelTab) => {
-      if (tab === "design" || tab === "layers") {
-        // Flat inspector: Layers always renders full-height by itself (see
-        // StudioRightPanel's render gate), so this MUST land on the same
-        // radio-style exclusivity setExclusiveRightInspectorPane enforces for
-        // the direct in-panel tab click — every OTHER path that reaches here
-        // (element select, closing block-params, the header Inspector
-        // button, and this function's own callers outside an active
-        // inspector tab) would otherwise additively leave both panes `true`
-        // and reproduce the "both tabs highlight, only one renders" bug this
-        // still-additive branch used to cause under the flat flag.
-        setRightInspectorPanes(
-          STUDIO_FLAT_INSPECTOR_ENABLED
-            ? { design: tab === "design", layers: tab === "layers" }
-            : (panes) => ({ ...panes, [tab]: true }),
-        );
-      }
-      setRightPanelTab(tab);
-      trackStudioEvent("tab_switch", { panel: "right_panel", tab });
-    },
-    [setRightPanelTab],
-  );
-
-  const toggleRightInspectorPane = useCallback((pane: RightInspectorPane) => {
-    setRightInspectorPanes((panes) => {
-      const next = { ...panes, [pane]: !panes[pane] };
-      if (!next.design && !next.layers) return panes;
-      return next;
-    });
-  }, []);
-
-  // Radio-style variant for the flat inspector: Layers always renders full-
-  // height by itself there (never split-shared with Design), so leaving both
-  // panes independently toggleable would highlight both tabs as "active"
-  // while only one actually shows. Selecting one turns the other off.
-  const setExclusiveRightInspectorPane = useCallback((pane: RightInspectorPane) => {
-    setRightInspectorPanes({ design: pane === "design", layers: pane === "layers" });
-  }, []);
-
-  return {
-    leftWidth,
-    setLeftWidth,
-    rightWidth,
-    setRightWidth,
-    leftCollapsed,
-    setLeftCollapsed,
-    rightCollapsed,
-    setRightCollapsed,
-    rightPanelTab,
-    setRightPanelTab: trackedSetRightPanelTab,
-    rightInspectorPanes,
-    toggleRightInspectorPane,
-    setExclusiveRightInspectorPane,
-    toggleLeftSidebar,
-    handlePanelResizeStart,
-    handlePanelResizeMove,
-    handlePanelResizeEnd,
-  };
+  return { rightWidth, setRightWidth, rightCollapsed, setRightCollapsed,
+    rightPanelTab, setRightPanelTab: trackedSetRightPanelTab };
 }

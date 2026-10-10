@@ -1,29 +1,13 @@
-import { createEmptyEditHistory, type EditHistoryState } from "./editHistory";
+import { type EditHistoryState } from "./editHistory";
 
 export interface EditHistoryStorageAdapter {
   get(projectId: string): Promise<EditHistoryState | null>;
-  set(projectId: string, state: EditHistoryState): Promise<void>;
   delete(projectId: string): Promise<void>;
 }
 
 const DB_NAME = "hyperframes-studio-edit-history";
 const DB_VERSION = 1;
 const STORE_NAME = "project-history";
-
-export function createMemoryEditHistoryStorage(): EditHistoryStorageAdapter {
-  const states = new Map<string, EditHistoryState>();
-  return {
-    async get(projectId) {
-      return states.get(projectId) ?? null;
-    },
-    async set(projectId, state) {
-      states.set(projectId, structuredClone(state));
-    },
-    async delete(projectId) {
-      states.delete(projectId);
-    },
-  };
-}
 
 function openEditHistoryDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -54,8 +38,8 @@ function withStore<T>(
         const tx = db.transaction(STORE_NAME, mode);
         const request = callback(tx.objectStore(STORE_NAME));
         request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
-        request.onsuccess = () => resolve(request.result);
-        tx.oncomplete = () => db.close();
+        tx.oncomplete = () => { db.close(); resolve(request.result); };
+        tx.onabort = () => { db.close(); reject(tx.error ?? new Error("Legacy history transaction aborted")); };
         tx.onerror = () => {
           db.close();
           reject(tx.error ?? new Error("IndexedDB transaction failed"));
@@ -73,27 +57,8 @@ export function createIndexedDbEditHistoryStorage(): EditHistoryStorageAdapter {
         )) ?? null
       );
     },
-    async set(projectId, state) {
-      await withStore<IDBValidKey>("readwrite", (store) => store.put(state, projectId));
-    },
     async delete(projectId) {
       await withStore<undefined>("readwrite", (store) => store.delete(projectId));
     },
   };
-}
-
-export async function loadEditHistoryState(
-  storage: EditHistoryStorageAdapter,
-  projectId: string,
-): Promise<EditHistoryState> {
-  const state = await storage.get(projectId);
-  return state ?? createEmptyEditHistory();
-}
-
-export async function saveEditHistoryState(
-  storage: EditHistoryStorageAdapter,
-  projectId: string,
-  state: EditHistoryState,
-): Promise<void> {
-  await storage.set(projectId, state);
 }

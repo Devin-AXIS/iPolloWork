@@ -57,7 +57,7 @@ import { wrapAdapterWithTimedClipVisibility } from "../lib/timedClipVisibility";
 
 /**
  * Whether the derived elements differ from the current ones in any field that
- * affects rendering (identity, timing, track, or source length) — used to skip
+ * affects rendering (identity, timing, track, or authored media) — used to skip
  * redundant store writes.
  */
 function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[]): boolean {
@@ -70,7 +70,16 @@ function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[
       el.start !== p.start ||
       el.duration !== p.duration ||
       el.track !== p.track ||
-      el.sourceDuration !== p.sourceDuration
+      el.sourceDuration !== p.sourceDuration ||
+      el.volume !== p.volume ||
+      el.fadeIn !== p.fadeIn ||
+      el.fadeOut !== p.fadeOut ||
+      el.hasAudio !== p.hasAudio ||
+      el.src !== p.src ||
+      el.playbackStart !== p.playbackStart ||
+      el.playbackRate !== p.playbackRate ||
+      el.label !== p.label ||
+      el.clipLabel !== p.clipLabel
     );
   });
 }
@@ -164,6 +173,11 @@ export function useTimelinePlayer() {
           fps,
         );
 
+      if (shouldUseDirectRuntimeAdapter(adapterDur, requiredDuration, fps)) {
+        releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
+        return withTimedVisibility(playerAdapter!);
+      }
+
       if (shouldUseStudioClockForLegacyFrames(iframe.contentDocument, playerAdapter, docDuration)) {
         return withTimedVisibility(
           resolveStaticSeekFallback({
@@ -177,11 +191,6 @@ export function useTimelinePlayer() {
             reason: "legacy-frame-carousel",
           }),
         );
-      }
-
-      if (shouldUseDirectRuntimeAdapter(adapterDur, requiredDuration)) {
-        releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-        return withTimedVisibility(playerAdapter!);
       }
 
       let timelineAdapter: PlaybackAdapter | null = null;

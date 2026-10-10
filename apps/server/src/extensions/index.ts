@@ -1,4 +1,5 @@
 import { ApiError } from "../errors.js";
+import { callVideoEnhancementAction, VIDEO_ENHANCEMENT_ACTIONS, VIDEO_ENHANCEMENT_EXTENSION_ID } from "./video-enhancement.js";
 import {
   ARTIFACT_MEDIA_ACTION,
   ARTIFACT_PREVIEW_REVIEW_ACTION,
@@ -42,6 +43,7 @@ import {
 } from "./storage.js";
 
 const IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS = [
+  ...VIDEO_ENHANCEMENT_ACTIONS,
   ARTIFACT_MEDIA_ACTION,
   ARTIFACT_PREVIEW_REVIEW_ACTION,
   ...VIDEO_GENERATION_EXTENSION_ACTIONS,
@@ -142,6 +144,7 @@ async function callBuiltInExtensionAction(
   context: Record<string, unknown>,
   connectSnapshot?: ConnectSnapshot,
 ) {
+  if (extensionId === VIDEO_ENHANCEMENT_EXTENSION_ID) return callVideoEnhancementAction(config, action, args, context);
 
   if (extensionId === ARTIFACT_MEDIA_ACTION.extensionId && action === ARTIFACT_MEDIA_ACTION.action) {
     const authorization = createAuthorizationAccess(config);

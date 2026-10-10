@@ -5,33 +5,117 @@ import type {
   RuntimeTimelineLike,
 } from "./types";
 import { stableClipId } from "./clipTree";
+import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
+import {
+  AUTHORED_DURATION_ATTR,
+  AUTHORED_END_ATTR,
+  resolveAuthoredTimingWindow,
+} from "./authoredTiming";
 import { swallow } from "./diagnostics";
-import { readElementPlaybackRate } from "./media";
+import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
+import {
+  parseStrictFiniteTimingNumber,
+  resolveMediaElementDurationSeconds,
+  resolveNaturalMediaTimelineDuration,
+  resolveTimedImageDurationSeconds,
+} from "./playbackRate";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
-import { isSceneLikeCompositionId } from "@hyperframes/parsers/slideshow/scene-id";
+import { isClipVisibleAt } from "./clipWindow";
+import { exportClipWindow } from "../inline-scripts/parityContract";
+import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
-import { durationToFrameCount, runtimeProtocolMetadata } from "./protocol.js";
+import { runtimeProtocolMetadata } from "./protocol.js";
+import { isElementNode, isMediaElement } from "./domRealm";
 
-const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
-const AUTHORED_END_ATTR = "data-hf-authored-end";
+/** A root timeline this long is an endless loop, not a film: GSAP reports 1e10 s for `repeat: -1`.
+ *  Studio's sanitizeDurationSeconds rejects the same length. Animations that simply end past the
+ *  voiceover are real duration, and the runtime player already plays them. */
+export const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
+
+export function isRuntimeElementVisibleAt(
+  rawNode: HTMLElement,
+  options: {
+    currentTime: number;
+    compositionDuration: number;
+    canonicalFps: number;
+    exportRenderSeek: boolean;
+    timelineRegistry: Record<string, RuntimeTimelineLike | undefined>;
+    resolver: ReturnType<typeof createRuntimeStartTimeResolver>;
+  },
+): boolean {
+  const tag = rawNode.tagName.toLowerCase();
+  if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
+    return false;
+  }
+
+  const isMedia = tag === "video" || tag === "audio";
+  const start = isMedia
+    ? options.resolver.resolveMediaStartForElement(rawNode)
+    : options.resolver.resolveStartForElement(rawNode, 0);
+  let duration = options.resolver.resolveDurationForElement(rawNode);
+  const compId = rawNode.getAttribute("data-composition-id");
+  if (compId) {
+    const compTimeline = options.timelineRegistry[compId];
+    const liveDuration =
+      compTimeline && typeof compTimeline.duration === "function"
+        ? Number(compTimeline.duration())
+        : null;
+    const hasAuthoredTiming =
+      rawNode.hasAttribute("data-duration") ||
+      rawNode.hasAttribute("data-end") ||
+      rawNode.hasAttribute(AUTHORED_DURATION_ATTR) ||
+      rawNode.hasAttribute(AUTHORED_END_ATTR);
+    if (
+      !hasAuthoredTiming &&
+      (duration == null || duration <= 0) &&
+      liveDuration != null &&
+      Number.isFinite(liveDuration) &&
+      liveDuration > 0
+    ) {
+      duration = liveDuration;
+    }
+  }
+  const computedEnd =
+    duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+  // Export seeks snap to frame boundaries; interactive visibility uses authored seconds.
+  const clipWindow = options.exportRenderSeek
+    ? exportClipWindow(start, computedEnd, options.canonicalFps)
+    : { start, end: computedEnd };
+  return isClipVisibleAt(
+    options.currentTime,
+    clipWindow.start,
+    clipWindow.end,
+    options.compositionDuration,
+  );
+}
 
 function parseNum(value: string | null | undefined): number | null {
-  if (value == null || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseStrictFiniteTimingNumber(value);
 }
 
 function parseElementDurationAttr(element: Element): number | null {
-  return (
-    parseNum(element.getAttribute("data-duration")) ??
-    parseNum(element.getAttribute(AUTHORED_DURATION_ATTR))
-  );
+  const publicDuration = element.getAttribute("data-duration");
+  const authoredDuration = element.getAttribute(AUTHORED_DURATION_ATTR);
+  const resolved = resolveAuthoredTimingWindow({
+    start: 0,
+    duration: publicDuration,
+    authoredDuration,
+  })?.duration;
+  if (resolved != null) return resolved;
+  const hasExplicitNonpositive = [publicDuration, authoredDuration]
+    .map(parseNum)
+    .some((duration) => duration != null && duration <= 0);
+  return hasExplicitNonpositive ? 0 : null;
 }
 
 function parseElementEndAttr(element: Element): number | null {
   return (
-    parseNum(element.getAttribute("data-end")) ?? parseNum(element.getAttribute(AUTHORED_END_ATTR))
+    resolveAuthoredTimingWindow({
+      start: 0,
+      end: element.getAttribute("data-end"),
+      authoredEnd: element.getAttribute(AUTHORED_END_ATTR),
+    })?.end ?? null
   );
 }
 
@@ -59,7 +143,7 @@ function maxDefinedNumber(...values: Array<number | null>): number | null {
  * `parseInt(...) || fallback` silently replaced authored track 0 with the
  * synthetic fallback, so track-0 clips drifted to the bottom of the timeline.
  */
-function parseAuthoredTrack(el: Element, fallback: number): number {
+export function parseAuthoredTrack(el: Element, fallback: number): number {
   const raw = el.getAttribute("data-track-index") ?? el.getAttribute("data-track");
   if (raw == null) return fallback;
   const parsed = Number.parseInt(raw, 10);
@@ -125,6 +209,12 @@ function humanizeTimelineToken(value: string): string {
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function authoredCompositionId(node: Element): string | null {
+  return (
+    node.getAttribute("data-hf-original-composition-id") ?? node.getAttribute("data-composition-id")
+  );
+}
+
 function buildTimelineClipLabel(node: Element, kind: RuntimeTimelineClip["kind"], ordinal: number) {
   const explicit =
     node.getAttribute("data-timeline-label") ??
@@ -133,7 +223,7 @@ function buildTimelineClipLabel(node: Element, kind: RuntimeTimelineClip["kind"]
     null;
   if (explicit?.trim()) return explicit.trim();
 
-  const compositionId = node.getAttribute("data-composition-id");
+  const compositionId = authoredCompositionId(node);
   if (compositionId) return humanizeTimelineToken(compositionId);
 
   const id = (node as HTMLElement).id;
@@ -173,22 +263,6 @@ export function collectRuntimeTimelinePayload(params: {
       return null;
     }
   };
-  const resolveMediaElementDurationSeconds = (
-    mediaEl: HTMLVideoElement | HTMLAudioElement,
-  ): number | null => {
-    const declaredDuration = parseNum(mediaEl.getAttribute("data-duration"));
-    if (declaredDuration != null && declaredDuration > 0) {
-      return declaredDuration;
-    }
-    const playbackStart =
-      parseNum(mediaEl.getAttribute("data-playback-start")) ??
-      parseNum(mediaEl.getAttribute("data-media-start")) ??
-      0;
-    if (Number.isFinite(mediaEl.duration) && mediaEl.duration > playbackStart) {
-      return Math.max(0, (mediaEl.duration - playbackStart) / readElementPlaybackRate(mediaEl));
-    }
-    return null;
-  };
   const resolveMediaWindowEndSeconds = (): number | null => {
     const mediaNodes = Array.from(
       document.querySelectorAll("video[data-start], audio[data-start]"),
@@ -196,9 +270,7 @@ export function collectRuntimeTimelinePayload(params: {
     if (mediaNodes.length === 0) return null;
     let maxWindowEndSeconds = 0;
     for (const mediaNode of mediaNodes) {
-      const start = !mediaNode.hasAttribute("data-hf-auto-start")
-        ? Math.max(0, Number(mediaNode.getAttribute("data-start") ?? 0) || 0)
-        : startResolver.resolveStartForElement(mediaNode, 0);
+      const start = startResolver.resolveMediaStartForElement(mediaNode);
       if (!Number.isFinite(start)) continue;
       const duration = resolveMediaElementDurationSeconds(mediaNode);
       if (duration == null || duration <= 0) continue;
@@ -247,8 +319,8 @@ export function collectRuntimeTimelinePayload(params: {
     };
   };
 
-  const root = document.querySelector("[data-composition-id]") as Element | null;
-  const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]:not([data-hf-inner-root])"));
+  const root = findRootCompositionElement();
+  const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]"));
   const rootCompositionId = root?.getAttribute("data-composition-id") ?? null;
   const rootCompositionStart = root ? startResolver.resolveStartForElement(root, 0) : 0;
   const mediaWindowEnd = resolveMediaWindowEndSeconds();
@@ -304,7 +376,7 @@ export function collectRuntimeTimelinePayload(params: {
   const timelineLooksLoopInflated =
     timelineDurationCandidate != null &&
     finiteWindowFloor != null &&
-    timelineDurationCandidate > finiteWindowFloor + 1;
+    timelineDurationCandidate >= LOOP_INFLATED_TIMELINE_SECONDS;
   // Prefer explicit authored root duration first.
   // If absent, guard against loop-inflated GSAP durations by trusting finite media window.
   const preferredRootDuration =
@@ -351,29 +423,23 @@ export function collectRuntimeTimelinePayload(params: {
     if (["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(node.tagName))
       continue;
     const compositionContext = resolveNearestCompositionContext(node, root);
-    const start = startResolver.resolveStartForElement(
-      node,
-      compositionContext.inheritedStart ?? 0,
-    );
+    const tag = node.tagName.toLowerCase();
+    const start =
+      tag === "video" || tag === "audio"
+        ? startResolver.resolveMediaStartForElement(node)
+        : startResolver.resolveStartForElement(node, compositionContext.inheritedStart ?? 0);
     const nodeCompositionId = node.getAttribute("data-composition-id");
-    let duration = startResolver.resolveDurationForElement(node);
-    if (
-      (duration == null || duration <= 0) &&
-      nodeCompositionId &&
-      nodeCompositionId !== rootCompositionId
-    ) {
+    let duration = parseElementDurationAttr(node);
+    if (duration == null && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
-    if ((duration == null || duration <= 0) && node instanceof HTMLMediaElement) {
-      const mediaStart =
-        parseNum(node.getAttribute("data-playback-start")) ??
-        parseNum(node.getAttribute("data-media-start")) ??
-        0;
-      if (Number.isFinite(node.duration) && node.duration > 0) {
-        duration = Math.max(0, node.duration - mediaStart);
+    if (duration == null && isMediaElement(node)) {
+      if (Number.isFinite(node.duration)) {
+        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
       }
     }
-    if (duration == null || duration <= 0) {
+    if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);
+    if (duration == null) {
       const inheritedDuration = compositionContext.inheritedDuration;
       if (inheritedDuration != null && inheritedDuration > 0) {
         const inheritedStart = compositionContext.inheritedStart ?? 0;
@@ -386,7 +452,6 @@ export function collectRuntimeTimelinePayload(params: {
     if (duration <= 0) continue;
     const end = start + duration;
     maxEnd = Math.max(maxEnd, end);
-    const tag = node.tagName.toLowerCase();
     const kind: RuntimeTimelineClip["kind"] =
       nodeCompositionId && nodeCompositionId !== rootCompositionId
         ? "composition"
@@ -412,6 +477,8 @@ export function collectRuntimeTimelinePayload(params: {
       parentCompositionId: compositionContext.parentCompositionId,
       nodePath: null,
       compositionSrc: toAbsoluteAssetUrl(node.getAttribute("data-composition-src")),
+      playbackStart: readElementPlaybackStart(node),
+      playbackRate: readElementPlaybackRate(node),
       assetUrl: resolveNodeAssetUrl(node),
       timelineRole: node.getAttribute("data-timeline-role"),
       timelineLabel: node.getAttribute("data-timeline-label"),
@@ -482,7 +549,7 @@ export function collectRuntimeTimelinePayload(params: {
           const tweenEnd = tweenStart + tween.duration();
           if (!Number.isFinite(tweenStart) || !Number.isFinite(tweenEnd)) continue;
           for (const target of tween.targets()) {
-            if (!(target instanceof Element)) continue;
+            if (!isElementNode(target)) continue;
             // Bubble up to the scene-level ancestor
             const scene = findSceneAncestor(target);
             if (!scene) continue;
@@ -522,6 +589,8 @@ export function collectRuntimeTimelinePayload(params: {
             parentCompositionId: rootCompositionIdForGsap,
             nodePath: null,
             compositionSrc: null,
+            playbackStart: readElementPlaybackStart(el),
+            playbackRate: readElementPlaybackRate(el),
             assetUrl: null,
             timelineRole: el.getAttribute("data-timeline-role"),
             timelineLabel: el.getAttribute("data-timeline-label"),
@@ -578,6 +647,8 @@ export function collectRuntimeTimelinePayload(params: {
         parentCompositionId: rootCompositionIdForGsap,
         nodePath: null,
         compositionSrc: null,
+        playbackStart: readElementPlaybackStart(el),
+        playbackRate: readElementPlaybackRate(el),
         assetUrl: null,
         timelineRole,
         timelineLabel: el.getAttribute("data-timeline-label"),
@@ -617,7 +688,10 @@ export function collectRuntimeTimelinePayload(params: {
     if (clampedDuration <= 0) continue;
     scenes.push({
       id: compositionId,
-      label: compositionNode.getAttribute("data-label") ?? compositionId,
+      label:
+        compositionNode.getAttribute("data-label") ??
+        authoredCompositionId(compositionNode) ??
+        compositionId,
       start,
       duration: clampedDuration,
       thumbnailUrl: toAbsoluteAssetUrl(compositionNode.getAttribute("data-thumbnail-url")),
@@ -629,21 +703,19 @@ export function collectRuntimeTimelinePayload(params: {
   // hide structural/background tracks from the timeline UI; if we collapse the
   // payload duration down to the last visible clip end, the controls jump even
   // though playback still runs for the full authored root duration.
-  const safeDuration = Math.max(1, maxEnd || 1, rootCompositionDuration ?? 0);
-  const shouldEmitNonDeterministicInf = timelineLooksLoopInflated && attrDurationCandidate == null;
-  const durationInFrames = shouldEmitNonDeterministicInf
-    ? Number.POSITIVE_INFINITY
-    : Math.max(1, durationToFrameCount(safeDuration, Math.max(1, params.canonicalFps)));
+  const knownDuration = Math.max(maxEnd || 0, rootCompositionDuration ?? 0);
+  const safeDuration = knownDuration > 0 ? knownDuration : 1;
+  const durationInFrames = Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
   return {
     ...runtimeProtocolMetadata(params.canonicalFps),
     source: "hf-preview",
     type: "timeline",
     compositionContractVersion: COMPOSITION_CONTRACT_VERSION,
-    durationSeconds: shouldEmitNonDeterministicInf ? Number.POSITIVE_INFINITY : safeDuration,
+    durationSeconds: safeDuration,
     durationInFrames,
     clips,
     scenes,
-    compositionWidth: parseNum(root?.getAttribute("data-width")) ?? 1920,
-    compositionHeight: parseNum(root?.getAttribute("data-height")) ?? 1080,
+    compositionWidth: parseCompositionDimension(root?.getAttribute("data-width")) ?? 1920,
+    compositionHeight: parseCompositionDimension(root?.getAttribute("data-height")) ?? 1080,
   };
 }

@@ -5,6 +5,8 @@
  * as video must expose `window.__hf` implementing the HfProtocol interface.
  */
 import type { Fps } from "@hyperframes/core";
+import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
+import type { MotionBlurOptions } from "./services/motionBlur.js";
 
 /**
  * Outcome of waiting for a sub-composition's GSAP timelines to register.
@@ -18,7 +20,9 @@ export type CaptureWarningCode =
   | "media_load_failed"
   | "audio_processing_failed"
   | "sub_timeline_readiness_timeout"
-  | "sub_timeline_script_failure";
+  | "sub_timeline_script_failure"
+  | "vfx_failure"
+  | "live_map_detected";
 
 /** Structured correctness warning produced while preparing a capture session. */
 export interface CaptureWarning {
@@ -27,7 +31,12 @@ export interface CaptureWarning {
   details?: {
     mediaType?: "image" | "video" | "audio";
     sources?: string[];
+    pendingCompositionIds?: string[];
     timeoutMs?: number;
+    failureReasons?: string[];
+    failureStages?: string[];
+    failureOwner?: "user" | "system";
+    retryable?: boolean;
   };
 }
 
@@ -91,11 +100,23 @@ export interface HfTransitionMeta {
  * GSAP, Framer Motion, CSS animations, Three.js — anything works as long
  * as `seek()` produces deterministic visual output for a given time.
  */
+/**
+ * Per-seek controls the page honours. Both default off, which is an ordinary frame seek.
+ *
+ * `suppressEvents` stops a composition's own timeline callbacks from firing, and
+ * `subFrameDivisions` refines the grid the page quantizes onto so a fractional time is
+ * not floored back onto the output frame. Motion-blur sampling sets both.
+ */
+export interface HfSeekOptions {
+  suppressEvents?: boolean;
+  subFrameDivisions?: number;
+}
+
 export interface HfProtocol {
   /** Total duration of the composition in seconds */
   duration: number;
   /** Seek to a specific time. Must produce deterministic visual output. */
-  seek(time: number, options?: { suppressEvents?: boolean; subframe?: boolean }): void;
+  seek(time: number, options?: HfSeekOptions): void;
   /** Optional: media elements the engine should handle */
   media?: HfMediaElement[];
   /** Optional: shader transition metadata, populated by @hyperframes/shader-transitions */
@@ -105,6 +126,8 @@ export interface HfProtocol {
 // ── Capture Types ──────────────────────────────────────────────────────────────
 
 export interface CaptureOptions {
+  /** PNG also serves lossless opaque motion-blur samples; keep their authored background. */
+  transparentBackground?: boolean;
   width: number;
   height: number;
   /**
@@ -116,6 +139,15 @@ export interface CaptureOptions {
    * self-verification) MUST prefer this over `__hf.duration`.
    */
   compositionDurationSeconds?: number;
+  /** The composition declares `data-requires-webgpu`; skips createCaptureSession's own fetch. */
+  requiresWebGpu?: boolean;
+  /**
+   * Live Chrome memory samples during capture (browser/renderer RSS peaks,
+   * last total, GPU process presence). Invoked from an unref'd interval; must
+   * not throw. The producer forwards these to capture observability so a
+   * crash mid-render still reports the last known memory state.
+   */
+  onMemorySample?: (stats: ChromeMemoryStats) => void;
   /**
    * Frame rate as an exact rational. Integer fps is `{ num: 30, den: 1 }`;
    * NTSC is `{ num: 30000, den: 1001 }`. Captures are scheduled by the
@@ -124,11 +156,13 @@ export interface CaptureOptions {
    */
   fps: Fps;
   format?: "jpeg" | "png";
-  /** Four temporal samples across a 180° shutter, averaged in linear light (SDR). */
-  motionBlur?: boolean;
-  /** PNG is also used for opaque shutter integration; keep alpha policy separate from the codec. */
-  transparentBackground?: boolean;
   quality?: number;
+  /**
+   * Opt into sub-frame multi-sample motion blur (issue #4010). Absent means off and the
+   * capture path is byte-identical to a render without it. Requires `format: "png"` and
+   * screenshot capture mode; see `services/motionBlur.ts`.
+   */
+  motionBlur?: MotionBlurOptions;
   deviceScaleFactor?: number;
   /**
    * Opt into Chrome's capture-beyond-viewport screenshot path. Leave undefined
@@ -240,6 +274,38 @@ export interface CapturePerfSummary {
   p99TotalMs: number;
   /** Sub-composition timeline wait outcome (absent pre-init). */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /**
+   * Session init telemetry, mirrored from the `[FrameCapture:INIT]` console
+   * line so PARALLEL workers report it too: worker sessions' console buffers
+   * only propagate to the orchestrator on failure, which left the
+   * multi-worker path — the short-comp band's entire population — with 0%
+   * coverage of the motion axis (`observability_init_tween_count`) in fleet
+   * telemetry. Riding the perf summary reuses the one channel that already
+   * flows back per worker on success.
+   */
+  initDurationMs?: number;
+  /** GSAP tween count at init — the motion-axis signal for capture routing analysis. */
+  initTweenCount?: number;
+  /**
+   * Live DOM element count at end of init; undefined when the measurement
+   * failed (never 0 — see collectSessionInitTelemetry).
+   *
+   * WHICH FIELD TO QUERY — two element counts exist and they answer
+   * different questions:
+   *   • `composition_element_count` (+ `_source`) is the ROUTING-RELEVANT
+   *     one. Measured from the PROBE session before the routing decision,
+   *     falling back to a static source scan. That is what the short-comp
+   *     band actually gates on.
+   *   • `observability_init_element_count` (this field) is the
+   *     OBSERVATIONAL counterpart. Measured from the capture session's own
+   *     DOM at end of init, on every surviving render — including the ~83%
+   *     with no probe, where the routing signal is a blind static scan.
+   * They agree for most comps and diverge for one that mutates its DOM
+   * between probe launch and capture init. Use this for distribution and
+   * tail questions; use `composition_element_count` for anything about what
+   * the router did (review finding).
+   */
+  initElementCount?: number;
   /** Correctness warnings observed before or during capture. */
   warnings?: CaptureWarning[];
   /**
@@ -253,11 +319,27 @@ export interface CapturePerfSummary {
   staticDedupEnabled: boolean;
   /** Dedup passed every gate + verification and was active. */
   staticDedupArmed: boolean;
-  /** Predicted reusable frame count when armed; 0 otherwise. */
+  /** Original predicted reusable frame count before profitability/budget filtering. */
   staticDedupPredicted: number;
+  /** Frames retained after complete-run verification. */
+  staticDedupVerified?: number;
+  /** Bounded verifier result taxonomy. */
+  staticDedupVerificationOutcome?:
+    | "verified"
+    | "unprofitable"
+    | "time_budget"
+    | "count_budget"
+    | "mismatch"
+    | "infrastructure";
+  staticDedupVerificationPlannedRuns?: number;
+  staticDedupVerificationCompletedRuns?: number;
+  staticDedupVerificationScreenshots?: number;
+  staticDedupVerificationSeeks?: number;
+  staticDedupVerificationComparisons?: number;
+  staticDedupVerificationElapsedMs?: number;
   /**
    * Low-cardinality reason dedup did not arm: `capture_mode` | `video_injection`
-   * | `page_composite` | `ineligible` | `verification_failed` | `verification_budget`.
+   * | `page_composite` | `ineligible` | `unprofitable` | `verification_failed` | `verification_budget`.
    * Undefined when armed or when dedup was disabled. (Render-level aggregation may
    * `|`-join distinct reasons when parallel workers diverge.)
    */
@@ -275,6 +357,22 @@ export interface CapturePerfSummary {
   // ── drawElement fast-capture outcome (default-on release visibility) ──
   /** Final capture mode this session used: "drawelement" | "screenshot" | "beginframe". */
   captureMode: string;
+  /**
+   * Low-cardinality GPU bucket from DE session init: `<backend>/<vendor>`
+   * (e.g. `metal/apple`, `d3d11/nvidia`). Undefined when drawElement was
+   * never attempted. Lets telemetry cluster backend-specific damage now that
+   * DE engages on both Metal (darwin) and D3D11 (win32). Bucketed, not raw —
+   * see `classifyGpuRenderer`.
+   */
+  gpuRenderer?: string;
+  // ── Chrome process memory (spec: long-form render capture, Phase −1).
+  // Undefined when the sampler was disabled (HF_CHROME_MEMORY_SAMPLER=false)
+  // or never produced a successful sample. ──
+  chromeBrowserRssPeakMb?: number;
+  chromeRendererRssPeakMb?: number;
+  chromeRssLastMb?: number;
+  chromeGpuProcessSeenLastSample?: boolean;
+  chromeMemorySamples?: number;
   /**
    * Low-cardinality init-time gate that routed a drawElement-eligible session
    * to the baseline: `swiftshader` | `css_effect:<fx>` | `at_risk_timeline` |
@@ -304,6 +402,13 @@ export interface CapturePerfSummary {
   deBoundaryFrames: number;
   /** Per-frame "No cached paint record" screenshot fallbacks during capture. */
   deNcprFallbacks: number;
+  /**
+   * Per-frame drawElement captures that blew the `HF_DE_FRAME_TIMEOUT_MS`
+   * deadline (renderer stopped scheduling after drawElementImage returned —
+   * PRINFRA-488). Each timeout aborts that attempt so the producer can retry the
+   * whole render on a fresh screenshot session.
+   */
+  deFrameTimeouts: number;
 }
 
 // ── Global Augmentation ────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ const VALID_TABS: RightPanelTab[] = [
   "layers",
   "design",
   "assets",
+  "code",
   "voice",
   "style",
   "components",

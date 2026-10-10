@@ -111,6 +111,8 @@ export type EditOp =
       start?: number;
       duration?: number;
       trackIndex?: number;
+      /** Default true: start/duration also apply to `data-link` partners. `false` edits the target alone and unlinks it. */
+      linked?: boolean;
     }
   | { type: "setHold"; target: HfId | HfId[]; hold: ElasticHold }
   | { type: "moveElement"; target: HfId | HfId[]; x: number; y: number }
@@ -378,7 +380,10 @@ export interface SelectionProxy {
   setStyle(styles: Record<string, string | null>): void;
   setText(value: string): void;
   setAttribute(name: string, value: string | null): void;
-  setTiming(timing: { start?: number; duration?: number; trackIndex?: number }): void;
+  setTiming(
+    timing: { start?: number; duration?: number; trackIndex?: number },
+    opts?: { linked?: boolean },
+  ): void;
   removeElement(): void;
 }
 
@@ -391,7 +396,10 @@ export interface ElementHandle {
   setStyle(styles: Record<string, string | null>): void;
   setText(value: string): void;
   setAttribute(name: string, value: string | null): void;
-  setTiming(timing: { start?: number; duration?: number; trackIndex?: number }): void;
+  setTiming(
+    timing: { start?: number; duration?: number; trackIndex?: number },
+    opts?: { linked?: boolean },
+  ): void;
   removeElement(): void;
 }
 
@@ -421,7 +429,16 @@ export interface Composition {
   setStyle(id: HfId, styles: Record<string, string | null>): void;
   setText(id: HfId, value: string): void;
   setAttribute(id: HfId, name: string, value: string | null): void;
-  setTiming(id: HfId, timing: { start?: number; duration?: number; trackIndex?: number }): void;
+  /** Also moves `data-link` partners unless `{ linked: false }`, which edits `id` alone and unlinks it. */
+  setTiming(
+    id: HfId,
+    timing: { start?: number; duration?: number; trackIndex?: number },
+    opts?: { linked?: boolean },
+  ): void;
+  /** Frames `id` sits from its `data-sync-origin` partner, positive when late; null if unpaired or rates differ. */
+  syncOffset(id: HfId, fps?: number): number | null;
+  moveIntoSync(id: HfId): void;
+  slipIntoSync(id: HfId): void;
   removeElement(id: HfId): void;
   /**
    * Insert an HTML fragment as a child of `parent` at `index` (WS-D).
@@ -592,7 +609,8 @@ export interface Composition {
    * Dry-run validation — would dispatch(op) succeed?
    * Returns {ok:true} when dispatch would mutate the document, {ok:false,code,message} otherwise.
    * Use as a feature-detection gate: `const r = comp.can(op); if (!r.ok) return;`
-   * Phase 3b ops return {ok:false,code:'E_NO_GSAP_TIMELINE'} until parser engine ships.
+   * addGsapTween / addLabel return {ok:false,code:'E_NO_GSAP_TIMELINE'} when the
+   * script has no gsap.timeline() declaration to attach to.
    */
   can(op: EditOp): CanResult;
 

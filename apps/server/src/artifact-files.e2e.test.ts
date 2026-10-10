@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -163,6 +163,22 @@ describe("artifact file routes", () => {
     await legacy.arrayBuffer();
     await expect(readFile(join(root, path))).rejects.toMatchObject({ code: "ENOENT" });
   });
+  test("accepts enhancement originals above 100 MB", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token } = await startiPolloWorkServer(root);
+    const bytes = new Uint8Array(101 * 1024 * 1024).fill(37);
+    const path = "video/proof/assets/enhance-source-test.mp4";
+    const body = new FormData();
+    body.set("file", new File([bytes], "source.mp4", { type: "video/mp4" }));
+    const response = await fetch(`${base}/workspace/ws_1/files/raw?path=${encodeURIComponent(path)}`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, Connection: "close" }, body,
+    });
+    expect(response.status).toBe(200);
+    await response.arrayBuffer();
+    expect((await stat(join(root, path))).size).toBe(bytes.length);
+    expect(createHash("sha256").update(await readFile(join(root, path))).digest("hex"))
+      .toBe(createHash("sha256").update(bytes).digest("hex"));
+  }, 30_000);
   test("persists session outputs independently of chat, isolates owners, and rejects unsafe paths", async () => {
     const root = await createWorkspaceRoot();
     const { base, token, config } = await startiPolloWorkServer(root);

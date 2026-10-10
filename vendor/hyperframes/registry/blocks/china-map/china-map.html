@@ -174,7 +174,7 @@
       window.__timelines = window.__timelines || {};
       (function () {
         const root = document.getElementById("cm-root"),
-          id = root.dataset.compositionId,
+          id = root.dataset.compositionId||"china-map",
           values = {
             title: "中国区域增长指数",
             values: "广东:96,江苏:89,浙江:91,山东:82,四川:78,湖北:76,北京:88,上海:93,陕西:69,福建:84",

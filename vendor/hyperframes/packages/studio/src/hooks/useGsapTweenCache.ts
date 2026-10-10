@@ -13,7 +13,7 @@ import {
 } from "./gsapKeyframeCacheHelpers";
 import { toAbsoluteTime } from "./gsapShared";
 import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
-import { buildTimelineAnimationSegments } from "../utils/timelineAnimationSegments";
+import { buildTimelineAnimationSegments, timelineKeyframe } from "../utils/timelineAnimationSegments";
 import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import {
   appendTimelineAnimationSegments,
@@ -394,7 +394,11 @@ export function useGsapAnimationsForElement(
     });
 
     const allKeyframes: Array<
-      GsapKeyframesData["keyframes"][0] & { tweenPercentage?: number; propertyGroup?: string }
+      GsapKeyframesData["keyframes"][0] & {
+        tweenPercentage?: number;
+        propertyGroup?: string;
+        origin?: "manual" | "preset" | "authored";
+      }
     > = [];
     let format: GsapKeyframesData["format"] = "percentage";
     let ease: string | undefined;
@@ -428,7 +432,7 @@ export function useGsapAnimationsForElement(
             ? Math.round(((absTime - elStart) / elDuration) * 100000) / 1000
             : k.percentage;
         allKeyframes.push({
-          ...k,
+          ...timelineKeyframe(anim, k),
           percentage: clipPct,
           tweenPercentage: k.percentage,
           propertyGroup: anim.propertyGroup,
@@ -564,7 +568,7 @@ export function usePopulateKeyframeCacheForFile(
                 ? Math.round(((absTime - elStart) / elDuration) * 100000) / 1000
                 : kf.percentage;
             return {
-              ...kf,
+              ...timelineKeyframe(anim, kf),
               percentage: clipPct,
               tweenPercentage: kf.percentage,
               propertyGroup: anim.propertyGroup,

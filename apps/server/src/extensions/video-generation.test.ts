@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { avatarBackgroundForPrompt, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, AVATAR_CAMERA_PROMPT, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
 
 test("avatar preserves backgrounds by default and only removes them on explicit request", () => {
   for (const prompt of ["不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
@@ -63,7 +63,8 @@ function avatarFixture() {
     "128": node("CLIPLoader", { clip_name: "qwen3vl_32b_minimax_h3_int8_convrot.safetensors", type: "minimax" }),
     "137": node("LoadImage", { image: "demo.png" }), "171": node("LoadAudio", { audio: "demo.mp3" }),
     "199": node("TrimAudioDuration", { audio: ["171", 0], start_index: 40, duration: 10 }),
-    "172": node("VRGDG_MiniMaxH3AudioDrive", { av_latent: ["136", 1], source_audio: ["199", 0] }),
+    "172": node("VRGDG_MiniMaxH3AudioDrive", { av_latent: ["136", 1], source_audio: ["199", 0], audio_vae: ["173", 0] }),
+    "173": node("VAELoader", { vae_name: "minimax_h3_audio_vae_fp32.safetensors" }),
     "125": node("SamplerCustomAdvanced", { latent_image: ["172", 0], guider: ["126", 0], sigmas: ["124", 0], noise: ["129", 0] }),
     "126": node("BasicGuider", { conditioning: ["136", 0], model: ["196", 0] }),
     "124": node("BasicScheduler", { steps: 6 }), "129": node("RandomNoise", { noise_seed: 999 }),
@@ -113,13 +114,15 @@ test("avatar replaces demo media, starts at zero and preserves six steps in both
     expect(graph["136"]).toMatchObject({ class_type: "MiniMaxH3ImageToVideo", inputs: { width: ratio === "9:16" ? 384 : 672, height: ratio === "9:16" ? 672 : 384, length: 243, first_frame: ["avatar_frame", 0], last_frame: ["avatar_frame", 0] } });
     expect(graph["174"].inputs.unet_name).toBe("minimax_h3_fl2va_int8_convrot.safetensors");
     expect(graph.avatar_frame.inputs).toMatchObject({ crop: "center", image: ["137", 0] });
-    expect(graph.avatar_guide_72).toMatchObject({ class_type: "MiniMaxH3AddGuide", inputs: { positive: ["136", 0], latent: ["136", 1], image: ["avatar_frame", 0], frame_idx: 72 } });
-    expect(graph.avatar_guide_144.inputs.positive).toEqual(["avatar_guide_72", 0]);
-    expect(graph["126"].inputs.conditioning).toEqual(["avatar_guide_144", 0]);
-    expect(graph.avatar_guide_216).toBeUndefined();
+    expect(graph.avatar_speech).toEqual({ class_type: "MiniMaxH3AddGuide", inputs: { positive: ["136", 0], latent: ["136", 1], image: ["avatar_frame", 0], vae: ["119", 0], audio: ["199", 0], audio_vae: ["173", 0], frame_idx: 0 } });
+    expect(graph.avatar_framing).toEqual({ class_type: "MiniMaxH3AddGuide", inputs: { positive: ["avatar_speech", 0], latent: ["136", 1], image: ["avatar_frame", 0], vae: ["119", 0], frame_idx: 239 } });
+    expect(graph["126"].inputs.conditioning).toEqual(["avatar_framing", 0]);
+    expect(graph["125"].inputs.latent_image).toEqual(["136", 1]);
+    expect(Object.keys(graph).some(id => id.startsWith("avatar_guide_"))).toBe(false);
     expect(graph["199"].inputs).toMatchObject({ start_index: 0, duration: 10 });
     expect(graph["171"].inputs.audio).toBe("input/voice.wav");
-    expect(graph["172"].inputs.source_audio).toEqual(["199", 0]);
+    expect(graph["172"]).toBeUndefined();
+    expect(graph["173"].inputs.vae_name).toBe("minimax_h3_audio_vae_fp32.safetensors");
     expect(graph["142"].inputs).toMatchObject({ audio: ["199", 0], trim_to_audio: true });
     expect(graph["124"].inputs.steps).toBe(6);
     expect(graph["999"]).toBeUndefined();
@@ -139,19 +142,51 @@ test("avatar follows validated node types and wiring when RunningHub renumbers p
   expect(graph[ids["136"]!]).toMatchObject({ class_type: "MiniMaxH3ImageToVideo", inputs: { first_frame: ["avatar_frame", 0] } });
   expect(graph.avatar_frame.inputs.image).toEqual([ids["137"], 0]);
   expect(graph[ids["171"]!].inputs.audio).toBe("input/voice.wav");
-  expect(graph[ids["172"]!].inputs.source_audio).toEqual([ids["199"], 0]);
+  expect(graph.avatar_speech.inputs.audio).toEqual([ids["199"], 0]);
+  expect(graph.avatar_speech.inputs.audio_vae).toEqual([ids["173"], 0]);
+  expect(graph.avatar_framing.inputs.vae).toEqual([ids["119"], 0]);
+  expect(graph.avatar_framing.inputs.latent).toEqual([ids["136"], 1]);
+  expect(graph[ids["126"]!].inputs.conditioning).toEqual(["avatar_framing", 0]);
+  expect(graph[ids["172"]!]).toBeUndefined();
   expect(graph[ids["142"]!].inputs.audio).toEqual([ids["199"], 0]);
+});
+
+test.each(["5", "6.5", "8.2", "12.083333333333334", "15"])("avatar anchors the last retained frame for %s seconds and keeps audio guidance", async duration => {
+  const { root, config } = await setup();
+  await writeFile(join(root, "voice.wav"), "test-audio");
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : avatarFixture()));
+  const prompt = "穿蓝色衣服，自然眨眼，说话时微笑";
+  const request = await videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", duration, ratio: "9:16", prompt, imageRefs: "https://example.com/person.png", audioRefs: "voice.wav", avatarSource: "video-audio" })), "key", config, auth);
+  if (!("workflow" in request.body)) throw new Error("Missing workflow");
+  const graph = JSON.parse(request.body.workflow);
+  const retainedFrames = Math.ceil(Number(duration) * 24);
+  expect(graph.avatar_framing.inputs.frame_idx).toBe(retainedFrames - 1);
+  expect(graph.avatar_framing.inputs.frame_idx / 24).toBeLessThan(Number(duration));
+  expect(graph.avatar_framing.inputs.frame_idx).toBeLessThan(graph["136"].inputs.length);
+  expect(graph["136"].inputs.length % 17).toBe(5);
+  expect(graph.avatar_framing.inputs.positive).toEqual(["avatar_speech", 0]);
+  expect(graph.avatar_speech.inputs.audio).toEqual(["199", 0]);
+  expect(graph.avatar_speech.inputs.image).toEqual(["avatar_frame", 0]);
+  expect(graph.avatar_speech.inputs.vae).toEqual(["119", 0]);
+  expect(graph["199"].inputs.duration).toBe(Number(duration));
+  expect(graph["142"].inputs).toMatchObject({ audio: ["199", 0], trim_to_audio: true });
+  expect(Object.values(graph).filter(node => typeof node === "object" && node !== null && "class_type" in node && node.class_type === "MiniMaxH3AddGuide")).toHaveLength(2);
+  expect(graph["136"].inputs.prompt).toContain(prompt);
+  expect(graph["136"].inputs.prompt).toContain(AVATAR_CAMERA_PROMPT);
+  expect(graph["136"].inputs.prompt.endsWith(AVATAR_CAMERA_PROMPT)).toBe(true);
 });
 
 test("avatar rejects changed audio wiring before creating a billable task", async () => {
   const { root, config } = await setup(); await writeFile(join(root, "voice.wav"), "test-audio");
-  for (const change of ["wiring", "dependency"]) {
+  for (const change of ["wiring", "audio-vae", "dependency", "reserved-guide"]) {
     const fixture = avatarFixture(), graph = JSON.parse(fixture.data.prompt);
     if (change === "wiring") graph["172"].inputs.av_latent = ["wrong", 0];
-    else delete graph["128"];
+    else if (change === "audio-vae") graph["172"].inputs.audio_vae = ["119", 0];
+    else if (change === "dependency") delete graph["128"];
+    else graph.avatar_framing = { class_type: "UnknownGuide", inputs: {} };
     fixture.data.prompt = JSON.stringify(graph);
     Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : fixture));
-    await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow(change === "wiring" ? "尚未提交" : "数字人缺少生成节点");
+    await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow(change === "dependency" ? "数字人缺少生成节点" : "尚未提交");
   }
 });
 afterEach(async () => {
@@ -825,6 +860,75 @@ test("long avatar persists uncertain submissions and resumes the exact segment w
   expect(creates).toBe(1);
 });
 
+test.each(["status", "outputs", "download", "stream", "exhausted", "unauthorized"])("avatar result recovery retries only safe reads after %s failures", async mode => {
+  const { root, config, call } = await setup();
+  const video = join(root, "provider.mp4");
+  await promisify(execFile)(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=c=white:size=160x160:rate=24:duration=5", "-c:v", "libx264", "-threads", "1", video], { windowsHide: true });
+  const bytes = await readFile(video), id = randomUUID();
+  await createVideoJob(config, {
+    id, workspaceId: "workspace", sessionId: context.sessionId, model: "minimax-h3-avatar", operation: "reference",
+    prompt: "自然交流", fingerprint: "result-recovery", upstreamId: "", workflowId: "2099368776771919873",
+    status: "running", path: "", message: "正在生成", pauseRequested: true, createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
+    avatarSequence: { duration: 10, audioPath: "", imagePath: "person.png", ratio: "9:16", segments: [
+      { start: 0, end: 5, status: "running", upstreamId: "already-generated", path: "", attempt: 0 },
+      { start: 5, end: 10, status: "pending", upstreamId: "", path: "", attempt: 0 },
+    ] },
+  });
+  const requests = { status: 0, outputs: 0, download: 0, creates: 0 };
+  let recovered = false;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL, init?: RequestInit) => {
+    const path = String(url);
+    if (path.endsWith("/create")) { requests.creates++; throw new Error("Existing results must never be generated again"); }
+    if (path.endsWith("/status")) {
+      expect(JSON.parse(String(init?.body)).taskId).toBe("already-generated");
+      requests.status++;
+      return mode === "status" && requests.status === 1 ? new Response("gateway", { status: 503 }) : Response.json({ code: 0, data: "SUCCESS" });
+    }
+    if (path.endsWith("/outputs")) {
+      requests.outputs++;
+      return mode === "outputs" && requests.outputs === 1 ? new Response("gateway", { status: 503 }) : Response.json({ code: 0, data: [{ fileUrl: "https://rh-images-tos.xiaoyaoyou.com/result.mp4", fileType: "mp4", nodeId: "57" }] });
+    }
+    expect(path).toBe("https://rh-images-tos.xiaoyaoyou.com/result.mp4");
+    requests.download++;
+    const saving = await getVideoJob(config, id, "workspace", context.sessionId);
+    expect(saving.status).toBe("running");
+    expect(saving.message).toContain("已生成，正在下载");
+    if (!recovered) {
+      if (mode === "unauthorized") return new Response("invalid credentials", { status: 401 });
+      if (mode === "exhausted" || mode === "download" && requests.download === 1) return new Response("gateway", { status: 503 });
+      if (mode === "stream" && requests.download === 1) return new Response(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes.subarray(0, 12)); }, pull(controller) { controller.error(new Error("ECONNRESET private download diagnostics")); } }));
+    }
+    return new Response(bytes);
+  });
+  await pollVideoJobs(config, auth);
+  let job = await getVideoJob(config, id, "workspace", context.sessionId);
+  expect(requests.creates).toBe(0);
+  expect(requests.status).toBe(mode === "status" ? 2 : 1);
+  expect(requests.outputs).toBe(mode === "outputs" ? 2 : 1);
+  expect(requests.download).toBe(mode === "exhausted" ? 3 : ["download", "stream"].includes(mode) ? 2 : 1);
+  expect((await readdir(join(root, "video/session-one/renders"))).some(name => name.endsWith(".partial"))).toBe(false);
+  if (["exhausted", "unauthorized"].includes(mode)) {
+    expect(job.status).toBe("save_failed");
+    expect(job.message).toContain("已生成，但下载或本地保存未完成");
+    expect(job.message).toContain("无需重新生成");
+    expect(job.avatarSequence?.segments[0]).toMatchObject({ status: "save_failed", upstreamId: "already-generated", attempt: 0 });
+    if (mode === "unauthorized") expect(job.message).toContain("授权已失效");
+    recovered = true;
+    await call("recover", { id });
+    await call("pause", { id });
+    await pollVideoJobs(config, auth);
+    job = await getVideoJob(config, id, "workspace", context.sessionId);
+  }
+  expect(job.status).toBe("paused");
+  const saved = job.avatarSequence?.segments[0];
+  if (!saved) throw new Error("missing recovered segment");
+  expect(saved).toMatchObject({ status: "succeeded", upstreamId: "already-generated", attempt: 0 });
+  expect(await readFile(join(root, saved.path))).toEqual(bytes);
+  expect(job.avatarSequence?.segments[1]).toMatchObject({ status: "pending", upstreamId: "", attempt: 0 });
+  await pollVideoJobs(config, auth);
+  expect(requests.creates).toBe(0);
+});
+
 test("long avatar retries only a confirmed failed segment and keeps completed outputs", async () => {
   const {root,config,call}=await setup();
   await mkdir(join(root,"video/session-one"),{recursive:true});
@@ -1043,6 +1147,12 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
   if(!job.avatarSequence)throw new Error("missing sequence");
   expect(job.avatarSequence.duration).toBe(26);
   expect(Boolean(job.avatarSequence.audioPath)).toBe(useAudio);
+  expect(job.prompt.includes("自然交流")).toBe(!useAudio);
+  if (useAudio) {
+    // Previously persisted jobs must also be safe when resumed, not just new submissions.
+    job = await updateVideoJob(config, job, { prompt: "保持参考人物图片的视觉风格、身份、服装、色彩和光线；插画保持插画风格，写实照片保持写实风格。严格跟随视频配音对口型。\n保持白色背景\n视频内容：自然交流 产品界面和标题" });
+  }
+  if (!job.avatarSequence) throw new Error("missing persisted sequence");
   await exec(ffmpeg,["-v","error","-f","lavfi","-i","color=c=white:size=160x160:rate=24:duration=26",...(drift ? ["-vf", "negate=enable='gte(t,3)'"] : []),"-c:v","libx264","-threads","1",join(root,"continuous.mp4")],{windowsHide:true});
   const videos:Buffer[]=[];
   for(const [index,segment] of job.avatarSequence.segments.entries()) {
@@ -1051,6 +1161,7 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
     videos.push(await readFile(path));
   }
   let creates=0;
+  const seeds: number[] = [];
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL,init?:RequestInit)=>{
     const address=String(url);
     if(address.endsWith("/media/upload/binary")) {const file=init?.body instanceof FormData?init.body.get("file"):null;return Response.json({code:0,data:{fileName:file instanceof File&&file.type.startsWith("image/")?"input/person.png":"input/audio.wav"}});}
@@ -1060,6 +1171,16 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
       expect(body).not.toHaveProperty("instanceType");
       expect(body.workflowId).toBe(useAudio ? "2099368776771919873" : "2097511747551842305");
       if(!useAudio) expect(body.workflow).not.toContain("LoadAudio");
+      else {
+        const graph = JSON.parse(body.workflow);
+        expect(graph.avatar_speech.inputs.audio).toEqual(["199", 0]);
+        expect(graph["199"].inputs.start_index).toBe(0);
+        expect(graph["136"].inputs.prompt).not.toContain("自然交流 产品界面和标题");
+        expect(graph["136"].inputs.prompt).not.toContain("插画保持插画风格");
+        expect(graph["136"].inputs.prompt).toContain("保持白色背景");
+        expect(graph["136"].inputs.prompt).toContain("Do not add text");
+        seeds.push(graph["129"].inputs.noise_seed);
+      }
       return Response.json({code:0,data:{taskId:`segment-${creates++}`}});
     }
     if(address.endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
@@ -1075,13 +1196,35 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
   if (drift) {
     expect(job.status).toBe("failed"); expect(job.message).toContain("连续性检查未通过");
     expect(job.avatarSequence?.segments[0].path).not.toBe("");
+    expect(job.avatarSequence?.segments[0].quality?.jump).toBeGreaterThan(.08);
     expect(job.avatarSequence?.segments[1].status).toBe("pending");
     expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items.filter(item=>item.generation?.id===job.id)).toHaveLength(0);
     await pollVideoJobs(config,auth); expect(creates).toBe(1);
+    const before = job.avatarSequence;
+    if (!before) throw new Error("missing failed sequence");
+    await call("retry-segment", { id: job.id, index: 0 });
+    job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+    const after = job.avatarSequence;
+    if (!after) throw new Error("missing retry sequence");
+    expect(creates).toBe(1); // Retry schedules work; it does not silently bill/re-submit here.
+    expect(after.segments).toHaveLength(before.segments.length + 1);
+    expect(after.segments[0].start).toBe(before.segments[0].start);
+    expect(after.segments[1].end).toBe(before.segments[0].end);
+    expect(after.segments[0].end - after.segments[1].start).toBeCloseTo(1);
+    expect(after.segments.slice(2)).toEqual(before.segments.slice(1));
+    for (const segment of after.segments.slice(0, 2)) {
+      expect(segment).toMatchObject({ status: "pending", attempt: 1, upstreamId: "", path: "" });
+      expect(segment.end - segment.start).toBeLessThan(10);
+      expect(segment.quality).toBeUndefined();
+      expect(segment.startedAt).toBeUndefined();
+    }
+    if (useAudio) expect(job.prompt).not.toContain("视频内容：");
+    expect(job.message).toContain("拆成两个较短片段");
     return;
   }
   expect(job.status).toBe("succeeded");
   expect(creates).toBe(2);
+  if (useAudio) expect(new Set(seeds).size).toBe(2);
   expect(job.avatarSequence?.seams).toHaveLength(1);
   expect(job.message).toContain("26.0 秒数字人");
   expect(job.path).toMatch(/^video\/session-one\/assets\/avatar-long-/);
@@ -1104,6 +1247,9 @@ test("avatar content mode uses the supplied image and selected dimensions withou
   expect(result.body).not.toHaveProperty("instanceType");
   expect(graph["300"]).toMatchObject({class_type:"ImageScale",inputs:{width:1024,height:576}});
   expect(graph["17"].inputs.first_frame).toEqual(["300",0]);
+  expect(graph["17"].inputs.prompt.startsWith(AVATAR_CAMERA_PROMPT)).toBe(true);
+  expect(graph["17"].inputs.prompt).toContain(args.prompt);
+  expect(graph["17"].inputs.prompt.endsWith(AVATAR_CAMERA_PROMPT)).toBe(true);
   expect(result.body.workflow).not.toContain("LoadAudio");
 });
 
@@ -1138,8 +1284,10 @@ test("avatar submit derives narration server-side and blocks missing keys before
   if (!submitted) throw new Error("Submission missing");
   const graph=JSON.parse(String(Reflect.get(submitted,"workflow")));
   expect(graph["199"].inputs.duration).toBe(8.2);
-  expect(graph["136"].inputs.prompt).toContain("智能家居新品");
-  expect(graph["136"].inputs.prompt).toContain("插画保持插画风格");
+  expect(graph["136"].inputs.prompt).not.toContain("智能家居新品");
+  expect(graph["136"].inputs.prompt).toContain(input.prompt);
+  expect(graph["136"].inputs.prompt).toContain("不新增字幕");
+  expect(graph["136"].inputs.prompt).toContain("原有视觉风格");
 });
 
 

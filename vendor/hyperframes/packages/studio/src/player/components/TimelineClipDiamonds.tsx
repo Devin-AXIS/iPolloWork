@@ -7,6 +7,7 @@ import {
 } from "../../components/editor/keyframeDrag";
 
 interface KeyframeEntry {
+  origin?: "manual" | "preset" | "authored";
   percentage: number;
   /** Tween-relative percentage (the retime mutation keys on this, not clip %). */
   tweenPercentage?: number;
@@ -31,6 +32,8 @@ interface TimelineClipDiamondsProps {
   isSelected: boolean;
   currentPercentage: number;
   elementId: string;
+  clipStart?: number;
+  clipDuration?: number;
   selectedKeyframes: Set<string>;
   onClickKeyframe?: (percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
@@ -76,6 +79,8 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   isSelected,
   currentPercentage,
   elementId,
+  clipStart = 0,
+  clipDuration = 0,
   selectedKeyframes,
   onClickKeyframe,
   onShiftClickKeyframe,
@@ -132,7 +137,8 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         // establishes its own stacking context (position + z-index), so the
         // diamonds' own z-index (1/2) can't escape it on their own — the bump
         // has to happen here.
-        zIndex: 5,
+        zIndex: 7,
+        transform: "translateY(25px)",
         pointerEvents: "none",
       }}
     >
@@ -172,7 +178,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
         const isHighlighted = isKfSelected || atPlayhead;
-        const color = isHighlighted ? KEYFRAME_SELECTED_COLOR : KEYFRAME_IDLE_COLOR;
+        const color = isHighlighted
+          ? KEYFRAME_SELECTED_COLOR
+          : kf.origin === "manual"
+            ? "#1fbac0"
+            : KEYFRAME_IDLE_COLOR;
 
         const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
           if (e.button !== 0) return;
@@ -283,7 +293,8 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
               e.stopPropagation();
               onContextMenuKeyframe?.(e, elementId, kf.percentage);
             }}
-            title={`${kf.percentage}%`}
+            title={`${kf.origin === "manual" ? "手动关键帧" : kf.origin === "preset" ? "预设动画" : "原有动画"} · ${elementId} · ${Object.keys(kf.properties).join(", ")} · ${(clipStart + (kf.percentage / 100) * clipDuration).toFixed(3)}s`}
+            aria-label={`Keyframe ${elementId} ${kf.percentage}% ${Object.keys(kf.properties).join(", ")}`}
           >
             <svg width={diamondSize} height={diamondSize} viewBox="0 0 10 10">
               {isKfSelected && (

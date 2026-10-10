@@ -11,7 +11,6 @@ import { type DomEditSelection } from "../editor/domEditing";
 import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
 import { Tooltip } from "../ui/Tooltip";
 import { useStudioShellContext } from "../../contexts/StudioContext";
-import { postVideoAiSelectionToHost } from "../editor/domEditingAgentPrompt";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
 import { resolveBoundedOverlayPosition } from "./boundedOverlay";
 import { useStudioI18n } from "../../i18n";
@@ -298,7 +297,7 @@ export function PreviewTextSelectionToolbar({
   hidden,
 }: PreviewTextSelectionToolbarProps) {
   const { tx } = useStudioI18n();
-  const { applyDomSelection, buildDomSelectionFromTarget, handleDomEditElementDelete, handleDomInnerHtmlCommit, openImageWorkbench } =
+  const { applyDomSelection, buildDomSelectionFromTarget, handleDomEditElementDelete, handleDomInnerHtmlCommit, openImageWorkbench, handleAskAgent } =
     useDomEditActionsContext();
   const { projectId } = useStudioShellContext();
   const [state, setState] = useState<TextSelectionState | null>(null);
@@ -461,10 +460,8 @@ export function PreviewTextSelectionToolbar({
 
   const askAiAboutSelection = useCallback(() => {
     if (!activeSelection) return;
-    postVideoAiSelectionToHost(activeSelection);
-    stateRef.current = null;
-    setState(null);
-  }, [activeSelection]);
+    handleAskAgent();
+  }, [activeSelection, handleAskAgent]);
 
   if (!state || hidden || !containerRef.current) return null;
 

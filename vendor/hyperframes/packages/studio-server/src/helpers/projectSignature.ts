@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
-import { extname, isAbsolute, relative, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
@@ -20,7 +21,10 @@ const SIGNATURE_EXCLUDED_DIRS = new Set([
   ".git",
   ".hyperframes",
   ".next",
+  ".thumbnails",
+  ".transcode-cache",
   ".vite",
+  ".waveform-cache",
   "build",
   "coverage",
   "dist",
@@ -29,14 +33,50 @@ const SIGNATURE_EXCLUDED_DIRS = new Set([
   "renders",
 ]);
 const MAX_SIGNATURE_TEXT_BYTES = 2_000_000;
-const STUDIO_SIGNATURE_MANIFEST_PATHS = [
+export const STUDIO_SIGNATURE_MANIFEST_PATHS = [
   ".hyperframes/studio-manual-edits.json",
   ".hyperframes/studio-motion.json",
 ] as const;
 
+/**
+ * Whether a write at `changedPath` can change `createProjectSignature(projectDir)`.
+ *
+ * Owned here because it is the exact complement of what the walk below collects,
+ * and a second copy of that reasoning drifts the moment either set changes. A
+ * watcher that invalidates on everything is not merely wasteful: `.thumbnails/`
+ * is written by the thumbnail route on every capture, and each capture reads the
+ * preview, so an unfiltered watcher discards the memo on roughly every request of
+ * the one workload the memo exists for.
+ *
+ * Note this is not `WATCHER_EXCLUDED_DIRS`, which is character-identical but
+ * excludes all of `.hyperframes/` — the signature deliberately reads two manifest
+ * files from inside it, so filtering with that set would stop motion-state saves
+ * from ever invalidating.
+ *
+ * Every segment is tested, not just the parents, so a directory event on an
+ * excluded dir itself (`unlinkDir .thumbnails`) is filtered too. The cost is that
+ * a *file* literally named `dist` at the project root reads as excluded; the walk
+ * would collect it, so it is a false negative, and no real project has one.
+ */
+export function affectsProjectSignature(projectDir: string, changedPath: string): boolean {
+  const relativePath = relative(resolve(projectDir), resolve(changedPath));
+  if (
+    relativePath === "" ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath) ||
+    isAtomicTempPath(relativePath)
+  ) {
+    return false;
+  }
+  const segments = relativePath.split(sep);
+  if (STUDIO_SIGNATURE_MANIFEST_PATHS.includes(segments.join("/") as never)) return true;
+  return !segments.some((segment) => SIGNATURE_EXCLUDED_DIRS.has(segment));
+}
+
 interface ProjectSignatureFile {
   file: string;
   mtimeMs: number;
+  ctimeMs: number;
   size: number;
   textContentEligible: boolean;
 }
@@ -47,17 +87,7 @@ interface ProjectSignatureCacheEntry {
 }
 
 const projectSignatureCache = new Map<string, ProjectSignatureCacheEntry>();
-const MAX_PROJECT_SIGNATURE_CACHE_ENTRIES = 128;
-
-function cacheProjectSignature(projectDir: string, entry: ProjectSignatureCacheEntry): void {
-  projectSignatureCache.delete(projectDir);
-  projectSignatureCache.set(projectDir, entry);
-  while (projectSignatureCache.size > MAX_PROJECT_SIGNATURE_CACHE_ENTRIES) {
-    const oldest = projectSignatureCache.keys().next().value;
-    if (oldest === undefined) break;
-    projectSignatureCache.delete(oldest);
-  }
-}
+const COARSEST_FILE_TIME_TICK_MS = 2000;
 
 function isPathWithin(parentDir: string, childPath: string): boolean {
   const childRelativePath = relative(parentDir, childPath);
@@ -73,6 +103,9 @@ function isTextContentEligible(file: string, size: number): boolean {
   );
 }
 
+const isSkippedEntry = (entry: string) =>
+  SIGNATURE_EXCLUDED_DIRS.has(entry) || isAtomicTempPath(entry);
+
 function collectProjectSignatureFiles(
   projectDir: string,
   dir: string,
@@ -86,7 +119,7 @@ function collectProjectSignatureFiles(
   }
 
   for (const entry of entries) {
-    if (SIGNATURE_EXCLUDED_DIRS.has(entry)) continue;
+    if (isSkippedEntry(entry)) continue;
     const file = resolve(dir, entry);
     if (!isPathWithin(projectDir, file)) continue;
     let stat: ReturnType<typeof lstatSync>;
@@ -102,6 +135,7 @@ function collectProjectSignatureFiles(
       files.push({
         file,
         mtimeMs: stat.mtimeMs,
+        ctimeMs: stat.ctimeMs,
         size: stat.size,
         textContentEligible: isTextContentEligible(file, stat.size),
       });
@@ -127,6 +161,7 @@ function collectProjectSignatureManifestFiles(
     files.push({
       file,
       mtimeMs: stat.mtimeMs,
+      ctimeMs: stat.ctimeMs,
       size: stat.size,
       textContentEligible: isTextContentEligible(file, stat.size),
     });
@@ -143,10 +178,32 @@ function createProjectFingerprint(projectDir: string, files: ProjectSignatureFil
     hash.update("\0");
     hash.update(String(entry.mtimeMs));
     hash.update("\0");
+    hash.update(String(entry.ctimeMs));
+    hash.update("\0");
     hash.update(entry.textContentEligible ? "text" : "binary");
     hash.update("\0");
   }
   return hash.digest("hex").slice(0, 24);
+}
+
+function collectProjectFiles(normalizedProjectDir: string): ProjectSignatureFile[] {
+  const collected: ProjectSignatureFile[] = [];
+  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, collected);
+  collectProjectSignatureManifestFiles(normalizedProjectDir, collected);
+  return collected;
+}
+
+/** The files a project is made of (the signature's set: source plus Studio's two manifests), paths with `/`. */
+export function listProjectFiles(
+  projectDir: string,
+): Array<{ path: string; size: number; mtimeMs: number; ctimeMs: number }> {
+  const normalizedProjectDir = resolve(projectDir);
+  return collectProjectFiles(normalizedProjectDir).map((entry) => ({
+    path: relative(normalizedProjectDir, entry.file).split(sep).join("/"),
+    size: entry.size,
+    mtimeMs: entry.mtimeMs,
+    ctimeMs: entry.ctimeMs,
+  }));
 }
 
 /**
@@ -170,16 +227,27 @@ export async function resolveProjectAndSignature(
 
 /**
  * Creates a stable preview cache-busting signature for project source plus Studio manifests.
+ * `excluding` (project-relative paths) leaves those files out.
  */
-export function createProjectSignature(projectDir: string): string {
+export function createProjectSignature(
+  projectDir: string,
+  excluding: ReadonlySet<string> = new Set(),
+): string {
   const normalizedProjectDir = resolve(projectDir);
-  const files: ProjectSignatureFile[] = [];
-  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, files);
-  collectProjectSignatureManifestFiles(normalizedProjectDir, files);
+  const signedAt = Date.now();
+  const collected = collectProjectFiles(normalizedProjectDir);
+  const files = collected.filter(
+    (entry) => !excluding.has(relative(normalizedProjectDir, entry.file).split(sep).join("/")),
+  );
   files.sort((a, b) => a.file.localeCompare(b.file));
 
   const fingerprint = createProjectFingerprint(normalizedProjectDir, files);
-  const cached = projectSignatureCache.get(normalizedProjectDir);
+  const cacheKey = excluding.size
+    ? `${normalizedProjectDir}\0${createHash("sha256")
+        .update([...excluding].sort().join("\0"))
+        .digest("hex")}`
+    : normalizedProjectDir;
+  const cached = projectSignatureCache.get(cacheKey);
   if (cached?.fingerprint === fingerprint) return cached.signature;
 
   const hash = createHash("sha256");
@@ -201,6 +269,9 @@ export function createProjectSignature(projectDir: string): string {
     hash.update("\0");
   }
   const signature = hash.digest("hex").slice(0, 24);
-  cacheProjectSignature(normalizedProjectDir, { fingerprint, signature });
+  const settledATickBeforeSigning = files.every(
+    (entry) => Math.max(entry.mtimeMs, entry.ctimeMs) < signedAt - COARSEST_FILE_TIME_TICK_MS,
+  );
+  if (settledATickBeforeSigning) projectSignatureCache.set(cacheKey, { fingerprint, signature });
   return signature;
 }

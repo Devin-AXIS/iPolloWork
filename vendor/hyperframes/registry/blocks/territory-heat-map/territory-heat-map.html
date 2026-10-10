@@ -163,7 +163,7 @@
       window.__timelines = window.__timelines || {};
       (function () {
         const root = document.getElementById("th-root"),
-          id = root.dataset.compositionId,
+          id = root.dataset.compositionId||"territory-heat-map",
           values = {
             title: "Demand intensity by territory",
             regions: "North:87,Harbor:76,Central:96,East:64,South:58,West:71,River:82,Hills:49",

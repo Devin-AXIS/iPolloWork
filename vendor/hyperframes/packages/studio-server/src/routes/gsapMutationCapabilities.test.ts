@@ -1,0 +1,109 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  GSAP_MUTATION_CAPABILITIES,
+  behavioralParityOps,
+  renderGsapMutationCapabilityReport,
+  resolveGsapWriter,
+} from "./gsapMutationCapabilities.js";
+
+const source = readFileSync(resolve(process.cwd(), "src/routes/files.ts"), "utf8");
+
+function dispatcherCases(startMarker: string, endMarker: string): string[] {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (start < 0 || end < 0) throw new Error(`Could not locate dispatcher ${startMarker}`);
+  return [...source.slice(start, end).matchAll(/case\s+"([^"]+)"/g)].map((match) => match[1]!);
+}
+
+describe("GSAP writer capability matrix", () => {
+  const operations = Object.keys(GSAP_MUTATION_CAPABILITIES).sort();
+  const sharedOperations = ["mutate-motion", "isolate-selector-target", "offset-position-paths"];
+  const writerOperations = operations.filter((operation) => !sharedOperations.includes(operation));
+
+  it("matches both writer dispatchers and the shared source operations", () => {
+    const sharedBody = source.slice(source.indexOf("async function executeGsapMutation("), source.indexOf("function validateGsapMutationRequest("));
+    for (const operation of sharedOperations) expect(sharedBody).toContain(`body.type === "${operation}"`);
+    expect(
+      dispatcherCases(
+        "function executeGsapMutationAcorn",
+        "async function executeGsapMutationRecast",
+      ).sort(),
+    ).toEqual(writerOperations);
+    expect(
+      dispatcherCases(
+        "async function executeGsapMutationRecast",
+        "function registerFileRoutes",
+      ).sort(),
+    ).toEqual(writerOperations);
+  });
+
+  it("keeps the Acorn dispatcher free of Recast and gates hold sync with the selected writer", () => {
+    const acornBody = source.slice(
+      source.indexOf("function executeGsapMutationAcorn"),
+      source.indexOf("async function executeGsapMutationRecast"),
+    );
+    const mutationHelperBody = source.slice(
+      source.indexOf("async function applyGsapMutations"),
+      source.indexOf("function executeGsapMutationAcorn"),
+    );
+    const atomicCutHelperBody = source.slice(
+      source.indexOf("async function foldAtomicCutFile"),
+      source.indexOf("function registerFileRoutes"),
+    );
+    expect(acornBody).not.toContain("loadGsapParser");
+    expect(mutationHelperBody).toContain('writer === "acorn"');
+    expect(mutationHelperBody).toContain(
+      "? syncPositionHoldsBeforeKeyframes(newScript, previousScript)",
+    );
+    expect(mutationHelperBody).toContain(
+      "(await loadGsapParser()).syncPositionHoldsBeforeKeyframes",
+    );
+    expect(atomicCutHelperBody).toContain('writer === "acorn"');
+    expect(atomicCutHelperBody).toContain(
+      "? syncPositionHoldsBeforeKeyframes(script, block.scriptText)",
+    );
+    expect(atomicCutHelperBody).toContain(
+      "(await loadGsapParser()).syncPositionHoldsBeforeKeyframes(script, block.scriptText)",
+    );
+  });
+
+  it("renders every classified operation and names the behavioral-only ops", () => {
+    const report = renderGsapMutationCapabilityReport();
+    for (const operation of operations) expect(report).toContain(`| ${operation} |`);
+    expect(report).toContain("Behavioral-only parity");
+    expect(behavioralParityOps().sort()).toEqual(
+      [
+        "add-with-keyframes",
+        "consolidate-position-writes",
+        "convert-to-keyframes",
+        "delete-all-for-selector",
+        ...sharedOperations,
+        "materialize-keyframes",
+        "move-keyframe",
+        "remove-all-keyframes",
+        "remove-arc-path",
+        "replace-with-keyframes",
+        "resize-keyframed-tween",
+        "scale-positions",
+        "set-arc-path",
+        "shift-positions",
+        "shift-positions-batch",
+        "split-animations",
+        "split-into-property-groups",
+        "unroll-timeline",
+        "update-arc-segment",
+      ].sort(),
+    );
+  });
+
+  it("defaults to Acorn; recast is an explicit fallback", () => {
+    expect(resolveGsapWriter({})).toBe("acorn");
+    expect(resolveGsapWriter({ HYPERFRAMES_GSAP_WRITER: "recast" })).toBe("recast");
+    expect(resolveGsapWriter({ HYPERFRAMES_GSAP_WRITER: "acorn" })).toBe("acorn");
+    expect(() => resolveGsapWriter({ HYPERFRAMES_GSAP_WRITER: "unknown" })).toThrow(
+      "expected recast or acorn",
+    );
+  });
+});

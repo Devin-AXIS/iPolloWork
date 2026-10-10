@@ -34,7 +34,10 @@ test('concurrent stale edits cannot silently overwrite', async t => {
 test('asset import rejects traversal and symlinks; metadata cannot inject paths', async t => {
   const { root, actions, project } = await setup(t);
   await writeFile(join(root, 'source.png'), Buffer.from('test bytes, not decode test'));
-  await symlink('/etc', join(root, 'outside'));
+  const outside = await mkdtemp(join(tmpdir(), 'short-video-outside-'));
+  t.after(() => rm(outside, { recursive: true, force: true }));
+  await writeFile(join(outside, 'hosts'), 'external fixture');
+  await symlink(outside, join(root, 'outside'), process.platform === 'win32' ? 'junction' : 'dir');
   for (const path of ['../source.png', 'outside/hosts', '/etc/hosts', 'https://site/a.png']) {
     await assert.rejects(actions['asset-import']({ projectId: project.id, path }));
   }
