@@ -1421,7 +1421,17 @@ export function VideoPanel({
     >
       {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) && (
         <VideoEnhancementPanel key={`${workspaceId}:${sessionId}`} client={client} workspaceId={workspaceId}
-          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio} />
+          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio}
+          onGenerate={onAskAi ? async request => {
+            const current = await client.readWorkspaceFile(workspaceId, request.sourcePath);
+            await onAskAi({
+              id: `video-ai-${crypto.randomUUID()}`, sessionId: conversationId ?? sessionId, workspaceId,
+              filePath: request.sourcePath, baseUpdatedAt: current.updatedAt ?? null, beforeHtml: current.content,
+              target: { tag: "body", label: "视频智能增强 · AI 编排", locator: "body", text: "", src: "", alt: "", styles: {},
+                semanticContext: JSON.stringify({ type: "video-enhancement", requestPath: request.requestPath }) },
+            }, request.instruction);
+            onExpandedChange?.(false);
+          } : undefined} />
       )}
       {!isRemoteWorkspace &&
       status === "ready" &&

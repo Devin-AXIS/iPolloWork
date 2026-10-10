@@ -12,6 +12,13 @@ export const videoEnhancementSegmentSchema = z.object({
   start: z.number().nonnegative(), end: z.number().positive(), text: z.string().max(2000),
 }).strict().refine(value => value.end > value.start);
 const pointSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).strict();
+export const videoEnhancementLayoutSchema = z.object({
+  mode: z.enum(["background", "pip", "split"]).default("pip"),
+  aspectRatio: z.enum(["16:9", "9:16", "source"]).default("16:9"),
+  sourcePosition: z.enum(["bottom-left", "bottom-right", "top-left", "top-right"]).default("bottom-left"),
+  sourceSize: z.enum(["small", "medium", "large"]).default("medium"),
+  contentPosition: z.enum(["auto", "left", "right", "top", "bottom", "center"]).default("auto"),
+}).strict();
 export const videoEnhancementGestureSchema = z.object({
   id: z.string().regex(/^gesture-[0-9]+$/), kind: z.enum(["point", "open_palm"]),
   start: z.number().nonnegative(), end: z.number().positive(),
@@ -19,15 +26,17 @@ export const videoEnhancementGestureSchema = z.object({
 }).strict().refine(value => value.end > value.start);
 export const videoEnhancementCueSchema = z.object({
   id: z.string().regex(/^enhance-[0-9]+$/),
-  kind: z.enum(["keyword", "number", "list"]),
-  text: z.string().trim().min(1).max(80),
+  kind: z.enum(["keyword", "number", "list", "steps", "comparison", "quote", "summary"]),
+  text: z.string().trim().min(1).max(160),
+  detail: z.string().trim().max(480).optional(),
+  items: z.array(z.string().trim().min(1).max(160)).max(4).optional(),
   start: z.number().nonnegative(), end: z.number().positive(), enabled: z.boolean(),
-  placement: z.enum(["auto", "gesture", "left", "right"]).optional(),
+  placement: z.enum(["auto", "gesture", "left", "right", "top", "bottom", "center"]).optional(),
 }).strict().refine(value => value.end > value.start && value.end - value.start >= .5);
 export const videoEnhancementPlacedCueSchema = videoEnhancementCueSchema.safeExtend({
   rect: videoEnhancementRectSchema.nullable(), reason: z.string().optional(),
   gesture: videoEnhancementGestureSchema.optional(),
-  avoidance: z.enum(["contour", "box"]).optional(),
+  avoidance: z.enum(["contour", "box", "source"]).optional(),
 });
 // Fixed 64x64 occupancy bitmap, four horizontal cells per hex digit.
 // Null marks an unreliable frame; callers must retain box protection.
@@ -37,6 +46,7 @@ export const videoEnhancementMaskSchema = z.object({
 export const videoEnhancementResultSchema = z.object({
   duration: z.number().positive().max(VIDEO_ENHANCEMENT_MAX_SECONDS),
   width: z.number().int().positive().max(4096), height: z.number().int().positive().max(4096),
+  layout: videoEnhancementLayoutSchema.optional(),
   segments: z.array(videoEnhancementSegmentSchema).max(600),
   people: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(20) }).strict()).max(400),
   hands: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(2) }).strict()).max(721).default([]),
@@ -65,6 +75,18 @@ export const videoEnhancementJobInputSchema = z.object({ sessionId: videoEnhance
 export const videoEnhancementReadSchema = z.object({ sessionId: videoEnhancementSessionSchema, jobId: z.uuid().optional() }).strict();
 export const videoEnhancementApplySchema = videoEnhancementJobInputSchema.extend({
   cues: z.array(videoEnhancementCueSchema).min(1).max(60),
+  layout: videoEnhancementLayoutSchema.optional(),
+}).strict();
+export const videoEnhancementPreviewSchema = videoEnhancementJobInputSchema.extend({
+  cues: z.array(videoEnhancementCueSchema).max(60).optional(),
+  layout: videoEnhancementLayoutSchema,
+}).strict();
+export const videoEnhancementPreviewResultSchema = z.object({
+  html: z.string().max(500_000), cues: z.array(videoEnhancementPlacedCueSchema).max(60),
+  width: z.number().int().positive(), height: z.number().int().positive(),
+}).strict();
+export const videoEnhancementWorkflowResultSchema = z.object({
+  sourcePath: z.string(), requestPath: z.string(), instruction: z.string().max(6000),
 }).strict();
 export type VideoEnhancementRect = z.infer<typeof videoEnhancementRectSchema>;
 export type VideoEnhancementCue = z.infer<typeof videoEnhancementCueSchema>;
@@ -72,3 +94,6 @@ export type VideoEnhancementResult = z.infer<typeof videoEnhancementResultSchema
 export type VideoEnhancementJob = z.infer<typeof videoEnhancementJobSchema>;
 export type VideoEnhancementGesture = z.infer<typeof videoEnhancementGestureSchema>;
 export type VideoEnhancementMask = z.infer<typeof videoEnhancementMaskSchema>;
+export type VideoEnhancementLayout = z.infer<typeof videoEnhancementLayoutSchema>;
+export type VideoEnhancementPreview = z.infer<typeof videoEnhancementPreviewResultSchema>;
+export type VideoEnhancementWorkflow = z.infer<typeof videoEnhancementWorkflowResultSchema>;

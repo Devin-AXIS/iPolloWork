@@ -4,7 +4,7 @@ import { extname, join } from "node:path";
 import { promisify } from "node:util";
 import { env, pipeline, RawImage } from "@huggingface/transformers";
 import { z } from "zod";
-import { VIDEO_ENHANCEMENT_MAX_SECONDS, videoEnhancementResultSchema, type VideoEnhancementRect, type VideoEnhancementMask } from "@ipollowork/types/video-enhancement";
+import { VIDEO_ENHANCEMENT_MAX_SECONDS, videoEnhancementLayoutSchema, videoEnhancementResultSchema, type VideoEnhancementRect, type VideoEnhancementMask } from "@ipollowork/types/video-enhancement";
 import { buildEnhancementCues, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
 import type { HandSample, createEnhancementHandDetector } from "./video-enhancement-gestures.js";
 import type { createEnhancementSegmenter } from "./video-enhancement-segmentation.js";
@@ -87,7 +87,7 @@ try {
   const gestures = handModule ? handModule.buildEnhancementGestures(handSamples, duration) : [];
   const hands = handSamples.map(sample => ({ time: sample.time, boxes: sample.hands.map(hand => hand.box) }));
   const timings = { totalMs: Math.round(performance.now() - began), speechMs, visionMs: Math.round(performance.now() - visionBegan) };
-  const base = { duration, width: video.width, height: video.height, segments, people, hands, gestures, masks, timings };
+  const base = { duration, width: video.width, height: video.height, segments, people, hands, gestures, masks, timings, layout: videoEnhancementLayoutSchema.parse({}) };
   const cues = placeEnhancementCues(buildEnhancementCues(segments, base.duration), base);
   const warnings = [protection === "contour" ? "按人物轮廓与相邻采样帧避让；快速移动或分割不可靠时采用保守人物框。请预览校对，细小发丝与采样间运动仍可能漏检。" : "当前按人物区域避让；开启精细人物避让可识别轮廓。请预览校对文字与位置。"];
   if (masks.some(mask => !mask.data)) warnings.push("部分画面分割不可靠，相关展示时段已保留人物框保护。");

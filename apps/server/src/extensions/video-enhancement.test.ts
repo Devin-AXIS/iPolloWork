@@ -6,12 +6,12 @@ import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildEnhancementCues, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
+import { buildEnhancementCues, enhancementGeometry, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
 import { callVideoEnhancementAction, localEnhancementStatus } from "./video-enhancement.js";
 import models from "./video-enhancement-models.json" with { type: "json" };
 import { classifyEnhancementHand, buildEnhancementGestures } from "./video-enhancement-gestures.js";
 import { buildEnhancementMask, enhancementMaskProtection } from "./video-enhancement-segmentation.js";
-import { videoEnhancementJobSchema, videoEnhancementResultSchema } from "@ipollowork/types/video-enhancement";
+import { videoEnhancementJobSchema, videoEnhancementLayoutSchema, videoEnhancementPreviewResultSchema, videoEnhancementResultSchema, videoEnhancementWorkflowResultSchema } from "@ipollowork/types/video-enhancement";
 import type { VideoEnhancementJob, VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
 import type { ServerConfig } from "../types.js";
 
@@ -35,11 +35,42 @@ test.each([
 const base = { duration: 8, width: 1280, height: 720, segments: [{ start: 1, end: 4, text: "今年增长了30%" }],
   people: [{ time: 1, boxes: [{ x: .45, y: .1, width: .5, height: .9 }] }, { time: 3, boxes: [{ x: .5, y: .1, width: .45, height: .9 }] }], hands: [], gestures: [], masks: [], warnings: [] };
 test("quotes numeric evidence and keeps measured speech windows", () => {
-  expect(buildEnhancementCues(base.segments, 8)).toEqual([{ id: "enhance-1", kind: "number", text: "30%", start: 1, end: 4, enabled: true }]);
-  expect(buildEnhancementCues([{ start: 0, end: 7, text: "这是一段很长的讲话，不应该被截断成为意义不完整的断言或者新事实" }], 8)).toEqual([]);
+  expect(buildEnhancementCues(base.segments, 8)).toEqual([{ id: "enhance-1", kind: "number", text: "30%", detail: "今年增长了30%", start: 1, end: 4, enabled: true }]);
+  const long = "这是一段很长的讲话，不应该被截断成为意义不完整的断言或者新事实";
+  expect(buildEnhancementCues([{ start: 0, end: 7, text: long }], 8)[0]?.detail).toBe(long);
   expect(buildEnhancementCues([{ start: 0, end: 2, text: "变化是-30%" }], 8)[0]?.text).toBe("-30%");
   const splitList = buildEnhancementCues([{ start: 0, end: 1, text: "第一" }, { start: 1, end: 3, text: "提高质量" }], 8);
   expect(splitList[0]).toMatchObject({ kind: "list", text: "第一，提高质量", start: 0, end: 3 });
+});
+test("recognizes structured speech and retains its actual clauses rather than inventing data", () => {
+  const cues = buildEnhancementCues([
+    { start: 0, end: 4, text: "首先整理资料，然后设计画面，最后检查成果" },
+    { start: 4, end: 8, text: "不是重复工作，而是自动完成" },
+    { start: 8, end: 12, text: "总之，每个结果都可以继续编辑" },
+  ], 12);
+  expect(cues.map(cue => cue.kind)).toEqual(["steps", "comparison", "summary"]);
+  expect(cues[0]?.items).toEqual(["首先整理资料", "然后设计画面", "最后检查成果"]);
+  expect(cues[1]?.items).toEqual(["不是重复工作", "而是自动完成"]);
+  expect(cues.every(cue => cue.end > cue.start && cue.end <= 12)).toBe(true);
+});
+test.each(["16:9", "9:16", "source"])("picture-in-picture preserves source ratio and reserves its whole rectangle in %s", aspectRatio => {
+  const source = { ...base, width: 384, height: 672, layout: videoEnhancementLayoutSchema.parse({ aspectRatio }) };
+  const geometry = enhancementGeometry(source);
+  expect(geometry.source.width * geometry.width / (geometry.source.height * geometry.height)).toBeCloseTo(384 / 672, 6);
+  const placed = placeEnhancementCues(buildEnhancementCues(base.segments, 8), source)[0]!;
+  expect(placed.avoidance).toBe("source"); expect(placed.enabled).toBe(true);
+  expect(placed.rect!.x).toBeGreaterThanOrEqual(geometry.source.x + geometry.source.width);
+});
+test("content and source positions change independently and background protection uses transformed coordinates", () => {
+  const layout = videoEnhancementLayoutSchema.parse({ sourcePosition: "top-right", contentPosition: "bottom" });
+  const source = { ...base, width: 384, height: 672, layout };
+  const geometry = enhancementGeometry(source);
+  expect(geometry.source.y).toBe(.06); expect(geometry.source.x).toBeGreaterThan(.7);
+  expect(placeEnhancementCues(buildEnhancementCues(base.segments, 8), source)[0]!.rect!.y).toBeGreaterThanOrEqual(.52);
+  const background = { ...source, people: [{ time: 1, boxes: [{ x: 0, y: 0, width: 1, height: 1 }] }], layout: { ...layout, mode: "background", contentPosition: "auto" } };
+  const parsed = { ...background, layout: videoEnhancementLayoutSchema.parse(background.layout) };
+  const placed = placeEnhancementCues(buildEnhancementCues(base.segments, 8), parsed)[0]!;
+  expect(placed.enabled).toBe(true); expect(placed.rect!.x + placed.rect!.width).toBeLessThan(enhancementGeometry(parsed).source.x);
 });
 test("uses the whole person movement window and skips occupied frames", () => {
   const cues = buildEnhancementCues(base.segments, 8);
@@ -124,6 +155,74 @@ test("apply preserves original, is idempotent, and undo restores exact timeline"
   expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(html);
   await callVideoEnhancementAction(f.config, "undo", f.args, f.context);
   expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(f.before);
+});
+test("preview recomposes saved speech in read-only mode without changing the timeline or job", async () => {
+  const f = await fixture();
+  const jobPath = join(f.root, "video/proof/enhancement", f.job.id, "job.json");
+  const before = await readFile(jobPath, "utf8");
+  const layout = videoEnhancementLayoutSchema.parse({ sourcePosition: "top-right", contentPosition: "left" });
+  const response = await callVideoEnhancementAction({ ...f.config, readOnly: true }, "preview", { ...f.args, layout }, f.context);
+  const preview = videoEnhancementPreviewResultSchema.parse(response.result);
+  expect(preview.width).toBe(1280); expect(preview.height).toBe(720);
+  expect(preview.cues[0]?.detail).toBe("今年增长了30%"); expect(preview.cues[0]?.avoidance).toBe("source");
+  expect(preview.html).toContain('data-enhancement-layout="pip"');
+  expect(preview.html).not.toContain('<script src=');
+  expect(await readFile(jobPath, "utf8")).toBe(before);
+  expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(f.before);
+  await expect(callVideoEnhancementAction(f.config, "preview", { ...f.args, layout }, { ...f.context, sessionId: "other" })).rejects.toThrow("当前视频会话");
+  await expect(callVideoEnhancementAction(f.config, "preview", { ...f.args, layout, cues: [{ ...f.cues[0], rect: { x: 0, y: 0, width: 1, height: 1 } }] }, f.context)).rejects.toThrow();
+});
+test("reapplying a layout updates the composition but keeps the first backup and detects later studio edits", async () => {
+  const f = await fixture();
+  const layout = videoEnhancementLayoutSchema.parse({});
+  await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues, layout }, f.context);
+  const first = await readFile(join(f.root, "video/proof/index.html"), "utf8");
+  const changed = { ...layout, sourcePosition: "top-right" };
+  await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues, layout: changed }, f.context);
+  const second = await readFile(join(f.root, "video/proof/index.html"), "utf8");
+  expect(second).not.toBe(first);
+  expect(await readFile(join(f.root, "video/proof/enhancement", f.job.id, "before.html"), "utf8")).toBe(f.before);
+  await callVideoEnhancementAction(f.config, "undo", f.args, f.context);
+  expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(f.before);
+  await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues, layout }, f.context);
+  await writeFile(join(f.root, "video/proof/index.html"), "studio edit");
+  await expect(callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues, layout: changed }, f.context)).rejects.toThrow("时间轴已更改");
+  expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe("studio edit");
+});
+test("workflow hands local evidence to the shared Video Studio skills without rewriting the timeline or calling a model", async () => {
+  const f = await fixture();
+  const layout = videoEnhancementLayoutSchema.parse({ sourcePosition: "top-right", contentPosition: "left" });
+  const jobPath = join(f.root, "video/proof/enhancement", f.job.id, "job.json");
+  const jobBefore = await readFile(jobPath, "utf8");
+  // Later manual edits are inputs to the ordinary AI editing workflow, never overwritten here.
+  await writeFile(join(f.root, "video/proof/index.html"), "latest manual timeline");
+  const response = await callVideoEnhancementAction(f.config, "workflow", { ...f.args, layout }, f.context);
+  const result = videoEnhancementWorkflowResultSchema.parse(response.result);
+  const request = JSON.parse(await readFile(join(f.root, result.requestPath), "utf8"));
+  expect(result.sourcePath).toBe("video/proof/index.html");
+  expect(result.requestPath).toStartWith(`video/proof/enhancement/${f.job.id}/compose-`);
+  expect(result.instruction).toContain("ipollowork-video-studio");
+  expect(result.instruction).toContain("同一套 skill");
+  expect(result.instruction).not.toContain("今年增长了30%");
+  expect(request).toMatchObject({ type: "video-enhancement", layout, width: 1280, height: 720, timingPrecision: "segment", mediaPolicy: "existing-local-assets-only" });
+  expect(request.original.preserveAudio).toBe(true);
+  expect(request.segments).toEqual(f.job.result!.segments);
+  expect(request.cues[0].avoidance).toBe("source");
+  expect(request.sourceRevision).toBe(createHash("sha256").update("latest manual timeline").digest("hex"));
+  expect(await readFile(jobPath, "utf8")).toBe(jobBefore);
+  expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe("latest manual timeline");
+  await expect(callVideoEnhancementAction({ ...f.config, readOnly: true }, "workflow", { ...f.args, layout }, f.context)).rejects.toThrow("只读");
+  await expect(callVideoEnhancementAction(f.config, "workflow", { ...f.args, layout }, { ...f.context, sessionId: "other" })).rejects.toThrow("当前视频会话");
+});
+test("structured content is escaped in headings, details and items", () => {
+  const layout = videoEnhancementLayoutSchema.parse({});
+  const cue = { id: "enhance-1", kind: "comparison", text: "<script>bad()</script>", detail: "<img onerror=bad()>", items: ["<svg onload=bad()>", "安全内容"], start: 1, end: 4, enabled: true };
+  const parsed = videoEnhancementResultSchema.parse({ ...base, layout, cues: placeEnhancementCues([videoEnhancementResultSchema.shape.cues.element.parse({ ...cue, rect: null })], { ...base, layout }) });
+  const html = enhancementHtml(parsed, "local.mp4");
+  expect(html).toContain("&lt;script&gt;bad()&lt;/script&gt;"); expect(html).toContain("&lt;svg onload=bad()&gt;");
+  expect(html).not.toContain("<svg onload"); expect(html).not.toContain("<script>bad()");
+  const details = enhancementHtml({ ...parsed, cues: parsed.cues.map(cue => ({ ...cue, kind: "keyword" })) }, "local.mp4");
+  expect(details).toContain("&lt;img onerror=bad()&gt;"); expect(details).not.toContain("<img onerror");
 });
 test("never overwrites intervening timeline edits or writes in read-only mode", async () => {
   const f = await fixture();
