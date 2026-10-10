@@ -1,4 +1,6 @@
 import { lazy, Suspense, useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { parseHostAiEditingMessage } from "./utils/studioHelpers";
+import { thumbnailScheduler } from "./player/lib/thumbnailScheduler";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore, type TimelineElement } from "./player";
 import { StudioOverlays } from "./components/StudioOverlays";
@@ -145,6 +147,22 @@ export function StudioApp() {
     rightPanelTab: initialUrlStateRef.current.rightPanelTab,
   });
   const editHistory = usePersistentEditHistory({ projectId });
+  const [hostAiEditing, setHostAiEditing] = useState(false);
+  useEffect(() => {
+    setHostAiEditing(false);
+    const receive = (event: MessageEvent<unknown>) => {
+      if (event.source !== window.parent || !projectId) return;
+      const active = parseHostAiEditingMessage(event.data, projectId);
+      if (active === null) return;
+      setHostAiEditing(active);
+      thumbnailScheduler.setAgentEditing(active);
+    };
+    window.addEventListener("message", receive);
+    return () => {
+      window.removeEventListener("message", receive);
+      thumbnailScheduler.setAgentEditing(false);
+    };
+  }, [projectId]);
   const domEditSaveTimestampRef = useRef(0);
   const markStudioWrite = useCallback(() => {
     domEditSaveTimestampRef.current = Date.now();
@@ -242,6 +260,7 @@ export function StudioApp() {
     reloadSdkSession: sdkHandle.forceReload,
     refreshFileTree: fileManager.refreshFileTree,
     noteOutsideChange: editHistory.noteOutsideChange,
+    aiEditing: hostAiEditing,
   });
   const timelineEditing = useTimelineEditing({
     projectId,
@@ -562,6 +581,7 @@ export function StudioApp() {
     initialState: initialUrlStateRef.current,
   });
   const studioCtxValue = buildStudioContextValue({
+    hostAiEditing,
     projectId: projectId!,
     activeCompPath,
     setActiveCompPath,

@@ -3,7 +3,8 @@ import { z } from "zod";
 export const VIDEO_ENHANCEMENT_MAX_SECONDS = 180;
 export const VIDEO_ENHANCEMENT_MAX_BYTES = 500 * 1024 * 1024;
 export const VIDEO_ENHANCEMENT_MASK_SIZE = 64;
-export const VIDEO_ENHANCEMENT_GESTURE_FPS = 8;
+export const VIDEO_ENHANCEMENT_GESTURE_FPS = 12;
+export const VIDEO_ENHANCEMENT_MAX_GESTURES = 360;
 export const videoEnhancementSessionSchema = z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
 export const videoEnhancementRectSchema = z.object({
   x: z.number().min(0).max(1), y: z.number().min(0).max(1),
@@ -21,7 +22,7 @@ export const videoEnhancementLayoutSchema = z.object({
   contentPosition: z.enum(["auto", "left", "right", "top", "bottom", "center"]).default("auto"),
 }).strict();
 export const videoEnhancementGestureSchema = z.object({
-  id: z.string().regex(/^gesture-[0-9]+$/), kind: z.enum(["point", "open_palm"]),
+  id: z.string().regex(/^gesture-[0-9]+$/), kind: z.enum(["point", "two_finger_point", "three_finger_point", "thumb_point", "open_palm"]),
   start: z.number().nonnegative(), end: z.number().positive(),
   confidence: z.number().min(0).max(1), target: pointSchema,
 }).strict().refine(value => value.end > value.start);
@@ -51,7 +52,7 @@ export const videoEnhancementResultSchema = z.object({
   segments: z.array(videoEnhancementSegmentSchema).max(600),
   people: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(20) }).strict()).max(400),
   hands: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(2) }).strict()).max(VIDEO_ENHANCEMENT_MAX_SECONDS * VIDEO_ENHANCEMENT_GESTURE_FPS + 1).default([]),
-  gestures: z.array(videoEnhancementGestureSchema).max(120).default([]),
+  gestures: z.array(videoEnhancementGestureSchema).max(VIDEO_ENHANCEMENT_MAX_GESTURES).default([]),
   masks: z.array(videoEnhancementMaskSchema).max(721).default([]),
   timings: z.object({ totalMs: z.number().int().nonnegative(), speechMs: z.number().int().nonnegative(), visionMs: z.number().int().nonnegative() }).strict().optional(),
   cues: z.array(videoEnhancementPlacedCueSchema).max(60),

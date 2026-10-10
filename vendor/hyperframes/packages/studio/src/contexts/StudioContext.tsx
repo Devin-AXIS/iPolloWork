@@ -36,6 +36,7 @@ export interface StudioShellValue {
 }
 
 export interface StudioPlaybackValue {
+  hostAiEditing?: boolean;
   captionEditMode: boolean;
   compositionLoading: boolean;
   refreshKey: number;
@@ -145,6 +146,7 @@ export function StudioPlaybackProvider({
   children: ReactNode;
 }) {
   const {
+    hostAiEditing,
     captionEditMode,
     compositionLoading,
     refreshKey,
@@ -156,6 +158,7 @@ export function StudioPlaybackProvider({
 
   const stable = useMemo<StudioPlaybackValue>(
     () => ({
+      hostAiEditing,
       captionEditMode,
       compositionLoading,
       refreshKey,
@@ -165,6 +168,7 @@ export function StudioPlaybackProvider({
       refreshPreviewDocumentVersion,
     }),
     [
+      hostAiEditing,
       captionEditMode,
       compositionLoading,
       refreshKey,

@@ -1421,6 +1421,13 @@ describe("HyperFrames Video Studio", () => {
       expect(videoAuthoringGuidance).toContain(field);
   });
 
+  test("keeps enhancement preview acceptance scoped to editable source and original audio", () => {
+    const promptText = "使用当前对话的视频制作流程生成智能增强视频。此次交付为可编辑项目，在现有工作台画布和时间轴验收；不导出 MP4，不渲染验收视频或启动后台录制。仅保留原声，不需要配音、背景音乐和音效。";
+    expect(videoDeliveryIntentForPrompt(promptText)).toBeNull();
+    expect(videoDeliveryRequirementsForPrompt({ promptText, voiceoverAvailable: false }))
+      .toMatchObject({ voiceover: false, bgm: false, sfx: false });
+  });
+
   test("continues explicit publication through the session-owned render API without manual export", () => {
     const contract = videoTaskSystemContext("ses_auto_publish", "C:/workspace");
     expect(contract).toContain("media/video_render_start");

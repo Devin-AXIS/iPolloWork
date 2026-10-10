@@ -68,6 +68,7 @@ interface UsePreviewPersistenceParams {
   reloadSdkSession?: () => void;
   refreshFileTree?: () => Promise<void>;
   noteOutsideChange?: () => void;
+  aiEditing?: boolean;
 }
 
 function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
@@ -205,7 +206,7 @@ export function usePreviewPersistence({
   domEditSaveTimestampRef,
   reloadPreview,
   pendingTimelineEditPathRef,
-  reloadSdkSession, refreshFileTree, noteOutsideChange,
+  reloadSdkSession, refreshFileTree, noteOutsideChange, aiEditing,
 }: UsePreviewPersistenceParams) {
   void _recordEdit;
 
@@ -357,7 +358,7 @@ export function usePreviewPersistence({
     overwriteConflict: async conflict => {
       await _writeProjectFile(conflict.filePath, conflict.attemptedContent, conflict.currentContent);
     },
-    resetSaveQueues: resetDomEditSaveQueueBreaker, refreshFileTree,
+    resetSaveQueues: resetDomEditSaveQueueBreaker, refreshFileTree, aiEditing,
     onAcceptedPersistedFileChange: () => {
       noteOutsideChange?.();
       if (projectId) thumbnailScheduler.invalidateProject(projectId);

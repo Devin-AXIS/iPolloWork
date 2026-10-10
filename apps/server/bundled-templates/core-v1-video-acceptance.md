@@ -4,6 +4,8 @@
 
 Load applicable checks for delivery/delegated review; small edits check affected claims plus playback. Batch independent source and temporal checks; repair issues and repeat affected checks until the requested result is complete or a concrete blocker is identified. The native main Agent calls the existing component/project/voice and rendering tools, reads their real results and repairs defects; reuse the existing Studio service. Technical health and actual expression are separate verdicts.
 
+For `acceptance=studio-preview` (including uploaded-video enhancement), keep the source/timeline/media checks below and inspect changed scenes by seeking and playing the current built-in Studio canvas. This replaces rendered temporal samples, motion-audition review clips, contact sheets and exported audio/video review for this scope. Do not render, export, record, start another browser/service or require an MP4 receipt. Return the editable project and the checks actually observed; unobserved playback remains unverified. Only an explicit export/publication request enables those additional stages.
+
 ## Source and timeline
 
 - One valid root owns stage/aspect ratio, FPS, duration, tracks and paused timeline. Scripts/media load without console/decode/path errors; scene/clip/transition/caption/audio/animation windows agree within integer-frame bounds.

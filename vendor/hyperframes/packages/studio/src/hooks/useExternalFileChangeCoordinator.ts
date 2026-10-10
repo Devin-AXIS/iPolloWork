@@ -35,6 +35,7 @@ export type ExternalFileChangeBlockedState =
     };
 
 interface ExternalFileChangeCoordinatorOptions {
+  aiEditing?: boolean;
   projectId: string | null;
   activeCompPath: string | null;
   recoveryFilePath?: string | null;
@@ -148,6 +149,7 @@ function eventIdentity(path: string, payload: unknown): string | null {
 }
 
 export function useExternalFileChangeCoordinator({
+  aiEditing = false,
   projectId,
   activeCompPath,
   recoveryFilePath = activeCompPath,
@@ -250,7 +252,7 @@ export function useExternalFileChangeCoordinator({
   }, [loadConflictSnapshot, projectId, recoveryFilePath, setBlocked]);
 
   // What a settled change owes: thumbnails (unless its own write's echo brings them), then reloads.
-  const deliverOwed = useCallback(
+  const deliverImmediately = useCallback(
     (owed: unknown, accept = true) => {
       const path = readStudioFileChangePath(owed) ?? ".";
       const affectsPreview = readFileChangeAffectsPreview(owed);
@@ -260,7 +262,7 @@ export function useExternalFileChangeCoordinator({
         by: "external-change coordinator",
       });
       if (affectsPreview) reloadPreview();
-      reloadSdkSession(path);
+      if (affectsPreview) reloadSdkSession(path);
       // Fire-and-forget: a failed refresh leaves the tree as stale as it was,
       // which is the status quo this exists to improve on, not a new failure
       // mode to surface. The `absent`-triggered fallback in useSdkSession
@@ -270,6 +272,42 @@ export function useExternalFileChangeCoordinator({
     },
     [onAcceptedPersistedFileChange, reloadPreview, reloadSdkSession, refreshFileTree],
   );
+
+  // One settled update per second while the agent writes, with an immediate
+  // first update (the base canvas) and a final flush. Conflict/save draining
+  // above remains immediate; only derived preview/SDK/tree work is coalesced.
+  const pendingDeliveryRef = useRef<{ payload: unknown; accept: boolean } | null>(null);
+  const deliveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDeliveryRef = useRef(-Infinity);
+  const flushDelivery = useCallback(() => {
+    if (deliveryTimerRef.current !== null) clearTimeout(deliveryTimerRef.current);
+    deliveryTimerRef.current = null;
+    // A newer save conflict must retain the user's draft until resolved.
+    if (blockedRef.current) return;
+    const pending = pendingDeliveryRef.current;
+    pendingDeliveryRef.current = null;
+    if (!pending) return;
+    lastDeliveryRef.current = Date.now();
+    deliverImmediately(pending.payload, pending.accept);
+  }, [deliverImmediately]);
+  const deliverOwed = useCallback((payload: unknown, accept = true) => {
+    const pending = pendingDeliveryRef.current;
+    pendingDeliveryRef.current = pending
+      ? { payload: mergeFileChangePayloads(pending.payload, payload), accept: pending.accept || accept }
+      : { payload, accept };
+    const remaining = 1000 - (Date.now() - lastDeliveryRef.current);
+    if (!aiEditing || remaining <= 0) { flushDelivery(); return; }
+    if (deliveryTimerRef.current === null) deliveryTimerRef.current = setTimeout(flushDelivery, remaining);
+  }, [aiEditing, flushDelivery]);
+  useEffect(() => { if (!aiEditing) flushDelivery(); }, [aiEditing, flushDelivery]);
+  useEffect(() => {
+    lastDeliveryRef.current = -Infinity;
+    return () => {
+      if (deliveryTimerRef.current !== null) clearTimeout(deliveryTimerRef.current);
+      deliveryTimerRef.current = null;
+      pendingDeliveryRef.current = null;
+    };
+  }, [projectId]);
 
   const persistSnapshotInOrder = useCallback(async (write: () => Promise<void>) => {
     const next = snapshotWriteTailRef.current.catch(() => undefined).then(write);

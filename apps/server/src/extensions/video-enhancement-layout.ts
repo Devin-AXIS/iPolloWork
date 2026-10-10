@@ -73,6 +73,26 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
       return placed ? { ...cue, start: gesture ? Math.max(cue.start, gesture.start) : cue.start, rect: placed, avoidance: "source", ...(gesture ? { gesture, reason: "依据手势定位到内容区域，保留原视频位置。" } : {}) }
         : { ...cue, enabled: false, rect: null, reason: "当前版式没有足够内容区域，请调整原视频大小或位置。" };
     }
+    const dimensions = [.32, .26, .2].flatMap(width => {
+      const font = Math.min(geometry.width * .028, geometry.height * .045);
+      const characters = Array.from(cue.text + (cue.detail ?? "") + (cue.items ?? []).join("")).length;
+      const lines = Math.max(1, Math.ceil(characters * font / (geometry.width * width - font)));
+      const height = Math.max(.16, (lines * font * 1.35 + font * 2.2) / geometry.height);
+      return height <= .7 ? [{ width, height }] : [];
+    });
+    for (const gesture of matches) {
+      for (const { width, height } of dimensions) {
+        const target = { x: geometry.source.x + gesture.target.x * geometry.source.width, y: geometry.source.y + gesture.target.y * geometry.source.height };
+        const rect = { x: Math.max(.04, Math.min(.96 - width, target.x - width / 2)),
+          y: Math.max(.06, Math.min(.82 - height, target.y - height / 2)), width, height };
+        const start = Math.max(cue.start, gesture.start);
+        if (cue.end - start < .5) continue;
+        // Gesture placement explicitly permits overlap. Do not decode and union
+        // every person-mask sample merely to compute an unused avoidance result.
+        return { ...cue, start, rect, gesture, avoidance: "gesture", reason: "优先依据手势目标展示，此区域允许覆盖人物。" };
+      }
+    }
+    if (cue.placement === "gesture") return { ...cue, enabled: false, rect: null, gesture: matches[0], reason: "手势位置无法容纳当前文案，请缩短文字。" };
     const contour = enhancementMaskProtection(result.masks ?? [], cue.start, cue.end);
     const avoidance = contour ? "contour" : "box";
     // Include adjoining samples and their conservative swept bounds. Missing
@@ -98,27 +118,6 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
       }
       return padded.some(box => overlaps(rect, box));
     };
-    const dimensions = [.32, .26, .2].flatMap(width => {
-      const font = Math.min(geometry.width * .028, geometry.height * .045);
-      const characters = Array.from(cue.text + (cue.detail ?? "") + (cue.items ?? []).join("")).length;
-      const lines = Math.max(1, Math.ceil(characters * font / (geometry.width * width - font)));
-      const height = Math.max(.16, (lines * font * 1.35 + font * 2.2) / geometry.height);
-      return height <= .7 ? [{ width, height }] : [];
-    });
-    for (const gesture of matches) {
-      for (const { width, height } of dimensions) {
-        const target = { x: geometry.source.x + gesture.target.x * geometry.source.width, y: geometry.source.y + gesture.target.y * geometry.source.height };
-        const rect = { x: Math.max(.04, Math.min(.96 - width, target.x - width / 2)),
-          y: Math.max(.06, Math.min(.82 - height, target.y - height / 2)), width, height };
-        const start = Math.max(cue.start, gesture.start);
-        // Keep usable display time. The original speech window is never extended.
-        if (cue.end - start < .5) continue;
-        return { ...cue, start, rect, gesture, avoidance: "gesture", reason: protectedRect(rect)
-          ? "优先依据手势目标展示，此区域允许覆盖人物。" : "依据手势目标展示。" };
-      }
-    }
-    const gesture = matches[0];
-    if (cue.placement === "gesture") return { ...cue, enabled: false, rect: null, gesture, reason: "手势位置无法容纳当前文案，请缩短文字。" };
     // Keep the bottom 18% free for original subtitles. Smaller cards are tried
     // only while their text still has a useful minimum font size.
     for (const { width, height } of dimensions) {
@@ -126,8 +125,7 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
         const positions = position === "left" ? [.04] : position === "right" ? [.96 - width] : position === "center" ? [(1 - width) / 2] : [.04, .96 - width];
         for (const x of positions) {
           const rect = { x, y, width, height };
-          if (y + height <= .82 && !protectedRect(rect)) return { ...cue, rect, avoidance,
-            ...(gesture ? { gesture, reason: "手势目标区域被占用，已改用安全空白位置。" } : {}) };
+          if (y + height <= .82 && !protectedRect(rect)) return { ...cue, rect, avoidance };
         }
       }
     }

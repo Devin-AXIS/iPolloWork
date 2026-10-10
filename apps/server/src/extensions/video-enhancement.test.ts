@@ -11,7 +11,7 @@ import { callVideoEnhancementAction, localEnhancementStatus } from "./video-enha
 import models from "./video-enhancement-models.json" with { type: "json" };
 import { classifyEnhancementHand, buildEnhancementGestures } from "./video-enhancement-gestures.js";
 import { buildEnhancementMask, enhancementMaskProtection } from "./video-enhancement-segmentation.js";
-import { videoEnhancementJobSchema, videoEnhancementLayoutSchema, videoEnhancementPreviewResultSchema, videoEnhancementResultSchema, videoEnhancementWorkflowResultSchema } from "@ipollowork/types/video-enhancement";
+import { VIDEO_ENHANCEMENT_GESTURE_FPS, videoEnhancementJobSchema, videoEnhancementLayoutSchema, videoEnhancementPreviewResultSchema, videoEnhancementResultSchema, videoEnhancementWorkflowResultSchema } from "@ipollowork/types/video-enhancement";
 import type { VideoEnhancementJob, VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
 import type { ServerConfig } from "../types.js";
 
@@ -204,7 +204,8 @@ test("workflow hands local evidence to the shared Video Studio skills without re
   expect(result.instruction).toContain("ipollowork-video-studio");
   expect(result.instruction).toContain("同一套 skill");
   expect(result.instruction).not.toContain("今年增长了30%");
-  expect(request).toMatchObject({ type: "video-enhancement", layout, width: 1280, height: 720, timingPrecision: "segment", mediaPolicy: "existing-local-assets-only" });
+  expect(request).toMatchObject({ type: "video-enhancement", layout, width: 1280, height: 720, timingPrecision: "segment", mediaPolicy: "existing-local-assets-only", delivery: "editable-project", acceptance: "studio-preview", gestures: base.gestures });
+  expect(result.instruction).toContain("不导出 MP4，不渲染验收视频");
   expect(request.original.preserveAudio).toBe(true);
   expect(request.segments).toEqual(f.job.result!.segments);
   expect(request.cues[0].avoidance).toBe("source");
@@ -284,10 +285,41 @@ test("recognizes geometric pointing and open palm across rotation; rejects folde
 });
 const measuredHand = { box: { x: .1, y: .6, width: .1, height: .2 }, confidence: .95,
   gesture: { kind: "point", target: { x: .18, y: .4 } } } satisfies Parameters<typeof buildEnhancementGestures>[0][number]["hands"][number];
+test("recognizes one, two, three fingers, open palms and thumbs in all four directions", () => {
+  for (const count of [1, 2, 3, 4, 0]) {
+    const points = pointHand();
+    for (const [index, base] of [5, 9, 13, 17].entries()) {
+      points[base + 2]!.y = index < count ? .3 : .6;
+      points[base + 3]!.y = index < count ? .15 : .65;
+    }
+    if (!count) { points[2] = { x: .45, y: .7 }; points[3] = { x: .3, y: .7 }; points[4] = { x: .1, y: .7 }; }
+    const kind = count === 4 ? "open_palm" : count === 3 ? "three_finger_point" : count === 2 ? "two_finger_point" : count === 1 ? "point" : "thumb_point";
+    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      const rotated = points.map(p => ({ x: .5 + ((p.x - .5) * Math.cos(angle) - (p.y - .5) * Math.sin(angle)) * .65,
+        y: .5 + ((p.x - .5) * Math.sin(angle) + (p.y - .5) * Math.cos(angle)) * .65 }));
+      const found = classifyEnhancementHand(rotated, 1000, 1000);
+      expect(found?.kind).toBe(kind);
+      const direction = count ? angle - Math.PI / 2 : angle - Math.PI;
+      expect((found!.target.x - .5) * Math.cos(direction) + (found!.target.y - .5) * Math.sin(direction)).toBeGreaterThan(.2);
+      expect(classifyEnhancementHand(rotated, 1280, 720)?.kind).toBe(kind);
+    }
+  }
+});
+test("confirms a two-frame 12 fps indication and preserves earlier targets during a gradual sweep", () => {
+  const frame = 1 / VIDEO_ENHANCEMENT_GESTURE_FPS;
+  const samples = Array.from({ length: 9 }, (_, index) => ({ time: 1 + index * frame,
+    hands: [{ ...measuredHand, gesture: { ...measuredHand.gesture, target: { x: .1 + index * .05, y: .4 } } }] }));
+  const events = buildEnhancementGestures(samples, 8);
+  expect(buildEnhancementGestures(samples.slice(0, 2), 8)).toHaveLength(1);
+  expect(events).toHaveLength(3);
+  expect(events[0]!.target.x).toBeLessThan(.23);
+  expect(events.at(-1)!.target.x).toBeGreaterThan(.4);
+  expect(events[0]!.end).toBeLessThan(events.at(-1)!.start);
+});
 test("debounces adjacent gesture samples and rejects isolated, low-confidence or jumping detections", () => {
   const sample = { time: 1, hands: [measuredHand] };
   expect(buildEnhancementGestures([sample], 8)).toEqual([]);
-  expect(buildEnhancementGestures([sample, { ...sample, time: 1.25 }], 8)).toMatchObject([{ kind: "point", start: .875, end: 1.375 }]);
+  expect(buildEnhancementGestures([sample, { ...sample, time: 1.25 }], 8)).toMatchObject([{ kind: "point", start: 1 - 1 / VIDEO_ENHANCEMENT_GESTURE_FPS, end: 1.25 + 1 / VIDEO_ENHANCEMENT_GESTURE_FPS }]);
   expect(buildEnhancementGestures([sample, { ...sample, time: 2 }], 8)).toEqual([]);
   expect(buildEnhancementGestures([sample, { time: 1.25, hands: [{ ...measuredHand, confidence: .5 }] }], 8)).toEqual([]);
   expect(buildEnhancementGestures([sample, { time: 1.25, hands: [{ ...measuredHand, gesture: { ...measuredHand.gesture, target: { x: .9, y: .9 } } }] }], 8)).toEqual([]);
