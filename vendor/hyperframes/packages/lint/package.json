@@ -54,19 +54,19 @@
   },
   "dependencies": {
     "@hyperframes/parsers": "workspace:*",
-    "htmlparser2": "^10.1.0",
+    "htmlparser2": "^12.0.0",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.8",
-    "acorn": "^8.17.0",
+    "postcss": "^8.5.29",
+    "acorn": "^8.19.0",
     "acorn-walk": "^8.3.5",
-    "postcss-selector-parser": "^7.1.4"
+    "postcss-selector-parser": "^7.1.6"
   },
   "devDependencies": {
-    "@types/node": "^25.0.10",
+    "@types/node": "^26.6.4",
     "tsup": "^8.0.0",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {}
 }
