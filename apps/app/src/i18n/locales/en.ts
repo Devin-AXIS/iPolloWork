@@ -3209,6 +3209,8 @@ export default {
   "settings.authorization.apply_confirm": "iPolloWork will restart local agents so they can use the latest authorizations. Running local tasks may stop.",
   "settings.authorization.apply": "Apply changes",
   "settings.authorization.applying": "Applying…",
+  "settings.authorization.service.minimax_images.title": "MiniMax Images",
+  "settings.authorization.service.minimax_images.description": "Generate new images from character portraits. Masks and selections are unsupported.",
   "settings.authorization.service.openai_images.title": "OpenAI",
   "settings.authorization.service.fal_images.title": "fal · Image layers",
   "settings.authorization.service.fal_images.description": "Shared API credentials for text extraction and element decomposition. Saving credentials does not verify layer editing or output quality.",

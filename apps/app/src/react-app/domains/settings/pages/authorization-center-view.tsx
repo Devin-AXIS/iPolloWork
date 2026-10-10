@@ -65,6 +65,12 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     descriptionKey: "settings.authorization.service.fal_images.description",
     fields: [{ key: "FAL_KEY", label: "fal API key", placeholder: "Key ID:Key Secret", hintKey: "settings.authorization.fal_key_hint" }],
   },
+  "minimax-images": {
+    icon: Image,
+    titleKey: "settings.authorization.service.minimax_images.title",
+    descriptionKey: "settings.authorization.service.minimax_images.description",
+    fields: [{ key: "MINIMAX_API_KEY", label: "MiniMax API key", placeholder: "Your MiniMax API key" }],
+  },
   "openai-images": {
     icon: Image,
     titleKey: "settings.authorization.service.openai_images.title",
