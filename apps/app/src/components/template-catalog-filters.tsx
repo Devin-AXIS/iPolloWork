@@ -17,6 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +30,7 @@ type TemplateCatalogFiltersProps = {
   onTopicChange: (value: TemplateTopicFilter) => void;
 };
 
-const triggerClassName = "flex h-[30px] w-[124px] shrink-0 items-center justify-between gap-1.5 rounded-md px-2.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[18px] text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40";
+const triggerClassName = "w-[124px] justify-between text-foreground";
 
 /** Shared facets keep the marketplace and Design/Video pickers on one classification contract. */
 export function TemplateCatalogFilters(props: TemplateCatalogFiltersProps) {
@@ -43,9 +44,9 @@ export function TemplateCatalogFilters(props: TemplateCatalogFiltersProps) {
   const unclassified = scoped.some(({ manifest }) => !getTemplateTopic(manifest));
 
   return (
-    <div className="inline-flex h-[34px] shrink-0 items-center rounded-lg bg-muted/50 p-0.5" data-testid="template-catalog-filters">
+    <div className="inline-flex shrink-0 items-center rounded-lg bg-muted/50 p-0.5" data-testid="template-catalog-filters">
       <DropdownMenu>
-        <DropdownMenuTrigger aria-label={t("template_market.style_label")} render={<button type="button" className={triggerClassName} />}>
+        <DropdownMenuTrigger aria-label={t("template_market.style_label")} render={<Button type="button" variant="ghost" className={triggerClassName} />}>
           <span className="flex min-w-0 items-center gap-1.5">
             <span className={cn("shrink-0", props.style !== "all" && "text-muted-foreground")}>{t("template_market.style_label")}</span>
             {props.style !== "all" ? <span className="truncate">{t(translationKey("template_market.style.", props.style))}</span> : null}
@@ -59,7 +60,7 @@ export function TemplateCatalogFilters(props: TemplateCatalogFiltersProps) {
       </DropdownMenu>
       <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
       <DropdownMenu>
-        <DropdownMenuTrigger aria-label={t("template_market.topic_label")} render={<button type="button" className={triggerClassName} />}>
+        <DropdownMenuTrigger aria-label={t("template_market.topic_label")} render={<Button type="button" variant="ghost" className={triggerClassName} />}>
           <span className="flex min-w-0 items-center gap-1.5">
             <span className={cn("shrink-0", props.topic !== "all" && "text-muted-foreground")}>{t("template_market.topic_label")}</span>
             {props.topic !== "all" ? <span className="truncate">{t(translationKey("template_market.topic.", props.topic))}</span> : null}

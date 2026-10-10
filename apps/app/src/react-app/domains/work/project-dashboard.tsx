@@ -27,6 +27,8 @@ import type {
   iPolloWorkPluginPackageItem,
 } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -221,9 +223,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                   <div className="text-[11px] leading-[15px] text-dls-text/45">{t("project_overview.completion")}</div>
                 </div>
               </div>
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-dls-hover">
-                <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${metrics.completion}%` }} />
-              </div>
+              <Progress className="mt-4" value={metrics.completion} aria-label={t("project_overview.completion")} />
               <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(112px,1fr))] gap-4">
                 {props.config.dashboard.taskHealth.metrics.map((metric) => (
                   <TaskMetric key={metric} id={metric} metrics={metrics} />
@@ -264,7 +264,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                           <p className="truncate text-[14px] font-semibold leading-5 text-dls-text">{title}</p>
                           <p className="mt-0.5 truncate text-[11px] leading-[15px] text-dls-text/45">{assignee}</p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-dls-hover px-2 py-1 text-[11px] leading-[15px] text-dls-secondary">{status}</span>
+                        <Badge variant="secondary" className="text-dls-secondary">{status}</Badge>
                       </div>
                     );
                   })}

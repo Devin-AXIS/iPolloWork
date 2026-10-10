@@ -56,7 +56,7 @@ export function PluginPackageListItem({
           </span>
           <span data-testid="plugin-package-card-copy" className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-ui-body font-semibold leading-5 tracking-[0.1px] text-dls-text">{manifest.name}</span>
+              <span className="truncate text-ui-section-title font-semibold leading-5 tracking-[0.1px] text-dls-text">{manifest.name}</span>
               {badge}
             </span>
             <span className="line-clamp-2 text-ui-caption leading-[15px] text-dls-secondary">{manifest.description}</span>
@@ -77,7 +77,7 @@ export function PluginPackageListItem({
         </span>
         <span className="min-w-0">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-ui-body font-semibold text-dls-text">{manifest.name}</span>
+            <span className="truncate text-ui-section-title font-semibold text-dls-text">{manifest.name}</span>
             <span className="text-ui-caption text-dls-secondary">v{version}</span>
             {badge}
           </span>

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 import { motion } from "motion/react"
 
 const messageContentClassName =
-  "rounded-lg p-2 text-foreground leading-relaxed bg-secondary prose wrap-break-word whitespace-normal"
+  "min-w-0 rounded-lg p-2 text-foreground leading-relaxed bg-secondary prose wrap-break-word whitespace-normal"
 
 export type MessageProps = {
   children: React.ReactNode

@@ -781,7 +781,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {errorMessage ? (
-            <div className="rounded-xl border border-red-7/30 bg-red-1/40 px-3 py-2 text-xs text-red-11">
+            <div className="rounded-xl border-0 bg-feedback-error px-3 py-2 text-xs text-red-11">
               {errorMessage}
             </div>
           ) : props.loading ? (

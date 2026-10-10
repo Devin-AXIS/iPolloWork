@@ -134,7 +134,7 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
   return (
     <>
       <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-        <DialogContent className="grid h-[min(760px,calc(100dvh-48px))] grid-cols-1 grid-rows-[auto_auto_minmax(0,1fr)] gap-4 p-5 sm:p-6" data-testid="template-catalog-dialog">
+        <DialogContent className="grid h-[min(760px,calc(100dvh-48px))] grid-cols-1 grid-rows-[auto_auto_minmax(0,1fr)]" data-testid="template-catalog-dialog">
           <DialogHeader className="pr-12">
             <DialogTitle>{props.copy.title}</DialogTitle>
             <DialogDescription>{props.copy.description}</DialogDescription>
@@ -146,7 +146,7 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
                 placeholder={t("template_market.search_placeholder")}
-                className="h-10 rounded-xl pl-9"
+                className="pl-9"
               />
             </div>
             <div className="flex flex-wrap items-center gap-3 pb-1">

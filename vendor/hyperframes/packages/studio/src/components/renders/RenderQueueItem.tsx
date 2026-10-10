@@ -144,7 +144,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                 <span className="text-[9px] font-mono text-panel-accent">{job.progress}%</span>
               </div>
               <div
-                className="w-full h-1 bg-panel-border rounded-full overflow-hidden"
+                className="w-full h-1.5 bg-panel-border rounded-full overflow-hidden"
                 role="progressbar"
                 aria-valuenow={job.progress}
                 aria-valuemin={0}

@@ -33,7 +33,7 @@ test('system preference is used only before a host-selected theme exists', () =>
 test('every surface token has both light and dark values', () => {
   assert.deepEqual(Object.keys(workspaceThemeTokens.light), Object.keys(workspaceThemeTokens.dark));
   for (const name of Object.keys(workspaceThemeTokens.light)) {
-    assert.match(workspaceThemeTokens.light[name], /^#[0-9a-f]{6}$/);
-    assert.match(workspaceThemeTokens.dark[name], /^#[0-9a-f]{6}$/);
+    assert.match(workspaceThemeTokens.light[name], /^var\(--[a-z-]+\)$/);
+    assert.equal(workspaceThemeTokens.dark[name], workspaceThemeTokens.light[name]);
   }
 });

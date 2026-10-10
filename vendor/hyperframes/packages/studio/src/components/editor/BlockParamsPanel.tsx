@@ -33,7 +33,7 @@ import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext
 import { useStudioI18n } from "../../i18n";
 import { ColorField } from "./propertyPanelColor";
 import { FlatRow, FlatSlider } from "./propertyPanelFlatPrimitives";
-import { FlatSelectRow } from "./propertyPanelFlatSelectRow";
+import { FlatDropdown, FlatSelectRow } from "./propertyPanelFlatSelectRow";
 import { FlatToggle } from "./propertyPanelFlatToggle";
 import { CommitField, PROPERTY_INPUT_DEBOUNCE_MS } from "./propertyPanelPrimitives";
 
@@ -491,13 +491,12 @@ function ComponentDataFormField({
                   commitRows(nextRows);
                 }} />
             ) : column.options ? (
-              <select key={column.id} aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
-                value={row[column.id] ?? column.options[0]?.value ?? ""} disabled={saving && !liveCommit}
-                onChange={event => commitRows(rowsRef.current.map((item, index) =>
-                  index === rowIndex ? { ...item, [column.id]: event.target.value } : item))}
-                className="h-7 min-w-0 flex-1 rounded bg-panel-bg px-2 text-[11px] text-panel-text-1 outline-none focus:ring-1 focus:ring-panel-accent/40">
-                {column.options.map(option => <option key={option.value} value={option.value}>{tx(option.label)}</option>)}
-              </select>
+              <FlatDropdown key={column.id} ariaLabel={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
+                value={String(row[column.id] ?? column.options[0]?.value ?? "")} disabled={saving && !liveCommit}
+                options={column.options.map(option => ({ value: option.value, label: tx(option.label) }))}
+                onChange={value => commitRows(rowsRef.current.map((item, index) =>
+                  index === rowIndex ? { ...item, [column.id]: value } : item))}
+                className="h-8 min-w-0 flex-1 rounded-lg bg-panel-input px-2 text-xs text-panel-text-1" />
             ) : column.list && jsonLists ? (
               <textarea key={column.id} rows={Math.min(4, column.list.maxItems)}
                 aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}

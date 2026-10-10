@@ -277,13 +277,13 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
     expect(menu).toContain("min-w-0 max-w-72 flex-[0_1_auto]");
-    expect(menu.replaceAll("\r\n", "\n")).toContain(
-      'appearance === "composer"\n            ? "me-2 h-8',
-    );
-    expect(menu).toContain("rounded-full bg-transparent px-2 text-[12px]");
+    expect(menu).toContain('appearance === "composer"\n            ? "me-1 h-8');
+    expect(menu).toContain("rounded-full bg-transparent px-2 text-xs");
+    expect(menu).toContain('<Cpu className="size-4 shrink-0 [stroke-width:1.75]"');
     expect(menu).toContain('className="truncate @max-[560px]/composer:hidden">{summary}</span>');
-    expect(menu).toContain('className="hidden truncate @max-[560px]/composer:inline">{modelLabel}</span>');
-    expect(menu).toContain('appearance === "composer" ? "size-3.5 [stroke-width:1.75]" : "size-4"');
+    expect(menu).toContain('@max-[560px]/composer:w-8');
+    expect(menu).toContain('<TooltipContent>{summary}</TooltipContent>');
+    expect(menu).toContain('appearance === "composer" ? "size-3.5 [stroke-width:1.75] @max-[560px]/composer:hidden" : "size-4"');
     expect(menu).toContain("hover:bg-gray-3");
     expect(menu).toContain("focus-visible:ring-2 focus-visible:ring-gray-7");
     expect(model).not.toContain("Connect TokenStar");
@@ -322,13 +322,12 @@ describe("Composer model and reasoning menu", () => {
     expect(modelIndex).toBeGreaterThan(-1);
     expect(modeIndex).toBeGreaterThan(modelIndex);
     expect(composer).toContain("<PopoverTrigger");
-    expect(composer).toContain("rounded-full bg-transparent px-2 text-[12px]");
-    expect(composer).toContain("max-w-32 shrink-0");
+    expect(composer).toContain('className="h-8 max-w-32 rounded-full px-2 text-xs');
     expect(composer).toContain('<span className="truncate @max-[560px]/composer:hidden">{activeWorkMode.label}</span>');
-    expect(composer).toContain('@max-[560px]/composer:w-10');
-    expect(composer).toContain("hover:bg-gray-3");
+    expect(composer).toContain('@max-[560px]/composer:w-8');
+    expect(composer).toContain('<TooltipContent>{`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}</TooltipContent>');
     expect(composer).toContain('<WorkModeIcon icon={activeWorkMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />');
-    expect(composer).toContain('<ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />');
+    expect(composer).toContain('<ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75] @max-[560px]/composer:hidden" />');
     expect(composer).not.toContain('props.layout === "inline" ? "hidden @max-[560px]/composer:block"');
     expect(composer).toContain("props.listModes()")
     expect(composer).toContain("workModes.map((mode)");
@@ -359,7 +358,7 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain("pendingDangerousAccessMode");
     expect(composer).toContain("access_mode_full_access_confirm_title");
     expect(composer).toContain('<span className="@max-[560px]/composer:hidden">{activeAccessMode.label}</span>');
-    expect(composer).toContain('className="me-2 inline-flex h-8');
+    expect(composer).toContain('className="me-1 h-8 rounded-full px-2 text-xs');
     expect(composer).toContain("@container/composer");
     expect(composer).toContain('<span className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden">{percentageLabel}</span>');
     expect(composer).toContain('<AccessModeIcon icon={activeAccessMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />');

@@ -99,7 +99,7 @@ export function Tooltip({ label, children, delay = 400, side = "top", maxWidth }
             <div
               role="tooltip"
               id={tooltipId}
-              className={`px-2 py-1 rounded-md bg-neutral-800 border border-neutral-700/50 text-[10px] font-medium text-neutral-200 shadow-lg ${maxWidth === undefined ? "whitespace-nowrap" : "whitespace-normal leading-relaxed"}`}
+              className={`rounded-[8px] bg-[var(--hf-panel-text-0)] px-2 py-1 text-[12px] leading-4 text-[var(--hf-panel-bg)] ${maxWidth === undefined ? "whitespace-nowrap" : "whitespace-normal"}`}
               style={maxWidth === undefined ? undefined : { width: maxWidth, maxWidth: "calc(100vw - 16px)" }}
             >
               {label}

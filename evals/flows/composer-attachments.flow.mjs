@@ -60,7 +60,7 @@ async function assertLayout(ctx, {empty = false, scrolling = false} = {}) {
 }
 
 async function proveFlatPlusMenu(ctx) {
-  const plus = '.composer-card button[title="添加到任务"], .composer-card button[title="Add to this task"]';
+  const plus = '.composer-card button[aria-label="添加到任务"], .composer-card button[aria-label="Add to this task"]';
   const menu = '[data-testid="composer-plus-menu"]';
   const originalDraft = await ctx.eval(`document.querySelector('${editor}').textContent`);
   const originalWidth = await ctx.eval(`document.querySelector('${card}').style.width`);
@@ -80,10 +80,12 @@ async function proveFlatPlusMenu(ctx) {
           .map(element => element.textContent.trim())
           .filter(text => /^(添加|Add|插件|Plugins|外部智能体|External agents|MCP)$/.test(text))`);
         ctx.assert(groups.length === 4 && /^(添加|Add)$/.test(groups[0]) && /^(插件|Plugins)$/.test(groups[1]) && /^(外部智能体|External agents)$/.test(groups[2]) && groups[3] === 'MCP', `Menu section order: ${JSON.stringify(groups)}`);
-        ctx.assert(state.width <= 384 && state.height <= Math.min(state.viewportHeight * 0.56,416) + 1 && state.buttons >= 2 && state.submenus === 0 && state.overflow === 'auto' && state.shadow === 'none' && state.border === 'solid' && Number(state.weight) >= 500, `The outlined menu stays compact and readable: ${JSON.stringify(state)}`);
+        ctx.assert(state.width <= 320 && state.height <= Math.min(state.viewportHeight * 0.52,384) + 1 && state.buttons >= 2 && state.submenus === 0 && state.overflow === 'auto' && state.shadow !== 'none' && state.border === 'solid' && Number(state.weight) >= 500, `The glass menu stays compact and readable: ${JSON.stringify(state)}`);
+        const glass = await ctx.eval(`(() => {const s=getComputedStyle(document.querySelector('${menu}'));return {background:s.backgroundColor,blur:s.backdropFilter,font:s.fontSize};})()`);
+        ctx.assert(glass.blur !== 'none' && /\/ 0\./.test(glass.background) && glass.font === '12px', `Menu uses translucent blur and 12px controls: ${JSON.stringify(glass)}`);
         ctx.assert(state.icons.design?.includes('ext-design.png') && state.icons.video?.includes('ext-video.png') && state.icons.media?.includes('ext-image-studio.png'), `Menu icons follow their plugin identities: ${JSON.stringify(state.icons)}`);
-        const iconStyle = await ctx.eval(`(() => {const button=[...document.querySelectorAll('${menu} button')].find(b=>b.innerText.includes('iPollo Design')),image=button?.querySelector('img');return {size:image?.getAttribute('width'),filter:image&&getComputedStyle(image).filter,opacity:button&&getComputedStyle(button).opacity};})()`);
-        ctx.assert(iconStyle.size === '16' && iconStyle.filter === 'none' && iconStyle.opacity === '1', `Plugin icon keeps its original color at the installed-list size: ${JSON.stringify(iconStyle)}`);
+        const iconStyle = await ctx.eval(`(() => {const button=[...document.querySelectorAll('${menu} button')].find(b=>b.innerText.includes('iPollo Design')),image=button?.querySelector('img');return {size:image?.getAttribute('width'),filter:image&&getComputedStyle(image).filter,opacity:button&&getComputedStyle(button).opacity,disabled:button?.disabled};})()`);
+        ctx.assert(iconStyle.size === '16' && iconStyle.filter === 'none' && Number(iconStyle.opacity) > 0.5, `Plugin icon keeps its original color and remains legible: ${JSON.stringify(iconStyle)}`);
         ctx.assert(state.templateSize < state.paperclipSize, `The visually fuller template glyph uses a smaller box than the attachment icon: ${JSON.stringify(state)}`);
         const editorType = await ctx.eval(`(() => {const input=document.querySelector('${editor}'),placeholder=document.querySelector('${card} [data-testid=composer-placeholder]');return {inputSize:getComputedStyle(input).fontSize,inputLineHeight:getComputedStyle(input).lineHeight,placeholderSize:getComputedStyle(placeholder).fontSize};})()`);
         ctx.assert(editorType.inputSize === '14px' && editorType.placeholderSize === '14px' && editorType.inputLineHeight === '21px', `Composer input and placeholder share 14px text with 1.5 line height: ${JSON.stringify(editorType)}`);
@@ -141,7 +143,46 @@ export default {
     name: 'Empty, attached, tagged and long drafts at responsive widths',
     run: async ctx => {
       await ctx.waitFor(`Boolean(document.querySelector('${editor}'))`);
-      if (process.env.IPOLLOWORK_EVAL_COMPOSER_MENU_ONLY === '1') return proveFlatPlusMenu(ctx);
+      if (process.env.IPOLLOWORK_EVAL_COMPOSER_MENU_ONLY === '1') {
+        await ctx.prove('The composer keeps its designed input and action-row height', {
+          action: async () => {}, assert: () => assertLayout(ctx, {empty:true}),
+          screenshot: {name:'composer-empty', fromSurface:true},
+        });
+        await proveFlatPlusMenu(ctx);
+        await ctx.prove('The access menu opens above its shared button', {
+          action: async () => {
+            await ctx.trustedClick('.composer-card button[aria-label^="权限:"], .composer-card button[aria-label^="Access:"]');
+            await ctx.waitFor("document.querySelectorAll('[data-access-mode-option][data-slot=button]').length >= 2");
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          },
+          assert: async () => {
+            const state = await ctx.eval(`(() => {const trigger=document.querySelector('.composer-card button[aria-label^="权限:"], .composer-card button[aria-label^="Access:"]'),options=[...document.querySelectorAll('[data-access-mode-option][data-slot=button]')],popup=options[0]?.closest('[data-slot=popover-content]');return {triggerTop:trigger?.getBoundingClientRect().top,popupBottom:popup?.getBoundingClientRect().bottom,selected:options.filter(option=>option.getAttribute('aria-pressed')==='true').length,options:options.length};})()`);
+            ctx.assert(state.options >= 2 && state.selected === 1 && state.popupBottom <= state.triggerTop, `Access options use a single selected shared button in an upward popup: ${JSON.stringify(state)}`);
+          },
+          screenshot: {name:'composer-access-menu', fromSurface:true},
+        });
+        await ctx.client.send('Input.dispatchKeyEvent', {type:'keyDown', key:'Escape', code:'Escape'});
+        await ctx.client.send('Input.dispatchKeyEvent', {type:'keyUp', key:'Escape', code:'Escape'});
+        await ctx.waitFor("!document.querySelector('[data-access-mode-option]')");
+        await ctx.prove('The narrow composer keeps icon-only controls with hover labels', {
+          action: async () => {
+            await ctx.eval(`document.querySelector('${card}').style.width='360px'`);
+          },
+          assert: async () => {
+            const state = await ctx.eval(`(() => {const c=document.querySelector('${card}'),plus=c.querySelector('button[aria-label="添加到任务"],button[aria-label="Add to this task"]'),model=c.querySelector('[data-testid="composer-model-trigger"]'),access=c.querySelector('button[aria-label^="权限:"],button[aria-label^="Access:"]'),work=c.querySelector('button[aria-label^="工作模式:"],button[aria-label^="Work mode:"]');return {plusWidth:plus?.getBoundingClientRect().width,plusText:plus?.textContent.trim(),modelText:model?.querySelector('span')?.getBoundingClientRect().width,modelIcon:!!model?.querySelector('svg'),accessText:access?.querySelector('span')?.getBoundingClientRect().width,workText:work?.querySelector('span')?.getBoundingClientRect().width,fonts:[model,access,work].map(element=>element&&getComputedStyle(element).fontSize)};})()`);
+            ctx.assert(state.plusWidth === 32 && !state.plusText && state.modelIcon && state.modelText === 0 && state.accessText === 0 && state.workText === 0 && state.fonts.every(font=>font === '12px'), `Narrow controls use icons and consistent type: ${JSON.stringify(state)}`);
+            const point = await ctx.eval(`(() => {const r=document.querySelector('[data-testid="composer-model-trigger"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+            await ctx.client.send('Input.dispatchMouseEvent', {type:'mouseMoved',...point});
+            await ctx.waitFor(`Boolean(document.querySelector('[data-slot="tooltip-content"]'))`);
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            const tip = await ctx.eval(`(() => {const labels=[...document.querySelectorAll('[data-slot="tooltip-content"]')].filter(element=>getComputedStyle(element).visibility!=='hidden').map(element=>element.textContent.trim());return {labels,model:document.querySelector('[data-testid="composer-model-trigger"]').textContent.trim()};})()`);
+            ctx.assert(tip.labels.length === 1 && tip.labels[0] === tip.model, `Only the hovered model tooltip remains visible: ${JSON.stringify(tip)}`);
+          },
+          screenshot: {name:'composer-narrow-tooltip', fromSurface:true},
+        });
+        await ctx.eval(`document.querySelector('${card}').style.width=''`);
+        return;
+      }
       ctx.assert(await ctx.eval(`document.querySelector('${editor}').textContent.trim() === '' && !document.querySelector('${card} img[decoding=async]') && !document.querySelector('.new-conversation-capability-chip')`), 'Start with an empty draft and no capability chip');
       const theme = await ctx.eval("({value: document.documentElement.getAttribute('data-theme'), scheme: document.documentElement.style.colorScheme})");
       try {

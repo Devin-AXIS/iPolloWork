@@ -38,7 +38,6 @@ import {
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 import { useStudioI18n } from "../i18n";
-import { X } from "lucide-react";
 import { postVideoAiSelectionToHost } from "./editor/domEditingAgentPrompt";
 import { MIN_RIGHT_PANEL_WIDTH } from "../hooks/usePanelLayout";
 
@@ -150,6 +149,7 @@ export function StudioRightPanel({
 }: StudioRightPanelProps) {
   const {
     rightWidth,
+    rightCollapsed,
     setRightWidth,
     setRightCollapsed,
     rightPanelTab,
@@ -515,12 +515,21 @@ export function StudioRightPanel({
   }, [projectId]);
 
   useEffect(() => {
-    if (rightPanelTab === "voice" || rightPanelTab === "style") {
+    if (!rightCollapsed && (rightPanelTab === "voice" || rightPanelTab === "style")) {
       postHostPanel(rightPanelTab === "voice" ? roleTab : "style");
       return;
     }
     closeHostPanel();
-  }, [closeHostPanel, roleTab, postHostPanel, rightPanelTab]);
+  }, [closeHostPanel, roleTab, postHostPanel, rightPanelTab, rightCollapsed]);
+
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || window.innerWidth > 760 || document.querySelector('[role="listbox"], [role="dialog"]')) return;
+      setRightCollapsed(true);
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [setRightCollapsed]);
 
   useEffect(() => {
     const handleHostPanel = (event: MessageEvent) => {
@@ -553,7 +562,7 @@ export function StudioRightPanel({
         aria-label={t("right.resizeInspector")}
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-[0.5px] flex-shrink-0 cursor-ew-resize outline-none focus-visible:bg-studio-accent/20"
+        className="hf-inspector-resizer group relative w-[0.5px] flex-shrink-0 cursor-ew-resize outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("right", e)}
         onPointerMove={handlePanelResizeMove}
@@ -564,14 +573,14 @@ export function StudioRightPanel({
           e.preventDefault();
           // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
           const delta = e.key === "ArrowLeft" ? 16 : -16;
-          setRightWidth(Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(600, rightWidth + delta)));
+          setRightWidth(Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(360, rightWidth + delta)));
         }}
       >
         <div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
         <div className="absolute inset-y-0 left-0 w-[0.5px] bg-[var(--hf-studio-divider)] group-focus-visible:bg-studio-accent/60" />
       </div>
       <div
-        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg"
+        className="hf-studio-inspector flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg"
         style={{ width: rightWidth, minWidth: MIN_RIGHT_PANEL_WIDTH }}
       >
         {captionEditMode ? (
@@ -584,7 +593,7 @@ export function StudioRightPanel({
           </Suspense>
         ) : (
           <>
-            <div className="relative z-30 flex h-[49px] min-w-0 items-center overflow-hidden border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg pl-3 pr-11">
+            <div className="relative z-30 flex h-[49px] min-w-0 items-center overflow-hidden border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-2">
               {exportDrawer ? (
                 <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-panel-text-1">
                   {t("right.renders")}
@@ -635,18 +644,6 @@ export function StudioRightPanel({
                   </div>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  closeHostPanel();
-                  setRightCollapsed(true);
-                }}
-                className="absolute right-3 top-1/2 z-20 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-panel-bg text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-panel-input hover:text-neutral-200 active:scale-[0.96]"
-                aria-label={tx("Close right panel")}
-                title={tx("Close right panel")}
-              >
-                <X aria-hidden="true" size={14} strokeWidth={2} />
-              </button>
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden pt-3">
               <Suspense

@@ -2,6 +2,7 @@ import { createBridge } from './bridge.mjs';
 import { addNode, uuid } from './project.mjs';
 import './ui.css';
 import './responsive.css';
+import { requireRuntime } from '@ipollowork/ui/runtime-contract';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -10,22 +11,26 @@ const tabs = { canvas: '创作画布', shots: '分镜', script: '剧本', roles:
 const presets = { '自由创作': '', '电影分镜四宫格': '将以下内容制作成 2×2 电影分镜，保持角色一致：', '角色三视图': '同一角色的正面、侧面、背面三视图，纯色背景：', '角色设定': '角色设定表，包含全身、面部、表情，保持一致性：', '产品展示': '商业产品摄影，干净背景、柔和布光、材质细节：', '多角度场景': '同一场景不同机位的视觉设定，空间布局一致：', '时间演变': '同一场景在不同时段的四格时间演变：', '电影布光': '电影级布光，精确的光影与景深：' };
 const cameraOptions = ['自动', '固定镜头', '缓慢推进', '拉远', '水平摇镜', '垂直摇镜', '环绕拍摄', '跟随镜头', '俯拍', '仰拍', '微距', '航拍', '手持纪实', '慢动作', '变焦'];
 const state = { project: null, projects: [], tab: 'canvas', selection: null, capabilities: null, context: {}, zoom: 1, pan: { x: 0, y: 0 }, busy: false, undo: [], redo: [] };
-const previews = new Map(); let previewEpoch = 0, toastTimer, queue = Promise.resolve(), drag;
-const drafts = new Map(); let draftTimer;
+const previews = new Map(); let previewEpoch = 0, queue = Promise.resolve(), drag;
+let ui, presetFocusPending; const selectRoots = [], selectSpecs = [];
+const drafts = new Map(); let draftTimer, saveError = '';
 async function flushDrafts() {
   clearTimeout(draftTimer); if (!drafts.size) return;
   const pending = new Map(drafts); drafts.clear();
-  try { await mutate(p => [...pending.values()].forEach(edit => edit(p))); }
-  catch (error) { for (const [key, edit] of pending) if (!drafts.has(key)) drafts.set(key, edit); const footer=$('footer'); if(footer)footer.textContent='保存失败：改动仍暂存，请重新载入并重试。'; throw error; }
+  try { await mutate(p => [...pending.values()].forEach(edit => edit(p))); saveError = ''; showSaveStatus(); }
+  catch (error) { for (const [key, edit] of pending) if (!drafts.has(key)) drafts.set(key, edit); saveError = error.message || '保存失败'; showSaveStatus(); throw error; }
 }
-function notify(message) { const toast = $('#toast'); toast.hidden = false; toast.textContent = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.hidden = true, 5500); }
-function fail(error) { notify(error?.message || String(error)); }
-function option(value, label, selected) { return `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(label)}</option>`; }
-function select(options, value, attrs = '') { return `<select ${attrs}>${options.map(o => option(typeof o === 'string' ? o : o.id, typeof o === 'string' ? o : o.label, value)).join('')}</select>`; }
+function notify(message) { ui?.toast(message, { duration: 5500 }); }
+function fail(error) { ui?.toast.error(error?.message || String(error), { duration: 5500 }); }
+function select(options, value, attrs = '') {
+  const index = selectSpecs.push({ options: options.map(o => ({ value: String(typeof o === 'object' ? o.id : o), label: String(typeof o === 'object' ? o.label : o) })), value: String(value ?? '') }) - 1;
+  return `<div data-select-island="${index}" ${attrs}></div>`;
+}
 let fieldIndex = 0;
-function field(label, control) { const key = `field-${++fieldIndex}`; return `<label for="${key}">${esc(label)}</label>${control.replace(/<(input|select|textarea)/, `<$1 id="${key}"`)}`; }
-const button = (action, text, attrs = '') => `<button data-action="${action}" ${attrs}>${text}</button>`;
-const empty = (title, detail, action = '') => `<div class="empty"><div class="empty-symbol">▧</div><h2>${title}</h2><p>${detail}</p>${action}</div>`;
+function field(label, control) { const key = `field-${++fieldIndex}`; return `<label for="${key}">${esc(label)}</label>${control.replace(/<(input|div|textarea)/, `<$1 id="${key}"`)}`; }
+const closeIcon = '<svg class="size-4" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg>';
+const button = (action, text, attrs = '') => `<button data-ipw-control="button" data-ipw-variant="${attrs.includes('danger') ? 'destructive' : attrs.includes('primary') ? 'default' : 'ghost'}" data-ipw-size="${action === 'close-inspector' ? 'icon-sm' : 'default'}" data-action="${action}" ${attrs}>${action === 'close-inspector' ? closeIcon : text}</button>`;
+const empty = (title, detail, action = '') => `<div data-shared-empty data-title="${esc(title)}" data-detail="${esc(detail)}">${action}</div>`;
 const statuses = { submitting: '提交中', running: '生成中', saving: '保存中', succeeded: '已完成', failed: '失败', uncertain: '需确认', save_failed: '保存失败' };
 const schema = properties => ({ type: 'object', properties, additionalProperties: false });
 const tools = [
@@ -54,13 +59,137 @@ const bridge = createBridge(context => { state.context = { ...state.context, ...
   if (result.project) { state.project = result.project; render(); }
   return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
 });
-async function dialog(title, description, initial) {
-  const box = $('#dialog');
-  box.innerHTML = `<div><h2>${esc(title)}</h2><p class="muted" style="margin:12px 0">${esc(description)}</p>${initial !== undefined ? `<input name="value" aria-label="${esc(title)}" value="${esc(initial)}" maxlength="96" required>` : ''}<div class="toolbar"><button type="button" data-dialog="cancel">取消</button><button type="button" data-dialog="ok" class="primary">确定</button></div></div>`;
-  box.onclick = event => { const decision=event.target.closest('[data-dialog]')?.dataset.dialog; if (!decision) return; if (decision==='ok' && box.querySelector('input') && !box.querySelector('input').reportValidity()) return; box.close(decision); };
-  box.showModal();
-  return new Promise(resolve => box.addEventListener('close', () => resolve(box.returnValue === 'ok' ? initial !== undefined ? box.querySelector('input').value : true : false), { once: true }));
+async function dialog(title, description, initial, submit) {
+  const trigger = document.activeElement, root = ui.createRoot($('#dialog-root')), h = ui.React.createElement;
+  return new Promise(resolve => {
+    function Form() {
+      const [open, setOpen] = ui.React.useState(true), [value, setValue] = ui.React.useState(initial ?? '');
+      const [busy, setBusy] = ui.React.useState(false), [error, setError] = ui.React.useState('');
+      const input = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => { const close = $('#dialog [data-slot="dialog-close"]'); if (close) close.disabled = busy; }, [busy]);
+      const finish = result => { setOpen(false); queueMicrotask(() => { root.unmount(); requestAnimationFrame(() => { trigger?.focus(); resolve(result); }); }); };
+      const save = async event => {
+        event.preventDefault(); if (busy) return;
+        if (input.current && !input.current.reportValidity()) return;
+        setBusy(true); setError('');
+        try { finish(submit ? await submit(value) : initial !== undefined ? value : true); }
+        catch (reason) { setError(reason.message || '保存失败，请重试'); setBusy(false); input.current?.focus(); }
+      };
+      return h(ui.Dialog, { open, onOpenChange: (next, details) => { if (!next) { if (busy) details.cancel(); else finish(false); } } },
+        h(ui.DialogContent, { id: 'dialog', closeLabel: '关闭', initialFocus: initial !== undefined ? input : undefined, finalFocus: false, className: 'max-w-[480px]', 'aria-busy': busy },
+          h(ui.DialogHeader, null, h(ui.DialogTitle, null, title), h(ui.DialogDescription, null, description)),
+          h('div', { role: 'form', 'aria-label': title, onKeyDown: event => { if (event.key === 'Enter' && event.target === input.current) void save(event); } },
+            initial !== undefined ? h(ui.Input, { ref: input, name: 'value', 'aria-label': title, value, maxLength: 96, required: true, disabled: busy, 'aria-invalid': Boolean(error), 'aria-describedby': error ? 'dialog-error' : undefined, onChange: event => { setValue(event.target.value); setError(''); } }) : null,
+            h('p', { id: 'dialog-error', role: 'alert', hidden: !error }, error),
+            h(ui.DialogFooter, { className: 'mt-4' },
+              h(ui.Button, { type: 'button', variant: 'outline', 'data-dialog': 'cancel', disabled: busy, onClick: () => finish(false) }, '取消'),
+              h(ui.Button, { type: 'button', 'data-dialog': 'ok', disabled: busy, onClick: save }, busy ? '提交中…' : '确定')))));
+    }
+    root.render(h(Form));
+  });
 }
+function mountPresetSelect() {
+  const element = $('[data-shared-select="preset"]'); if (!element) return;
+  const nodeId = state.selection, node = state.project.nodes.find(n => n.id === nodeId);
+  const root = ui.createRoot(element); selectRoots.push(root);
+  const h = ui.React.createElement;
+  function PresetSelect() {
+    const saved = node.settings?.preset || '自由创作';
+    const [value, setValue] = ui.React.useState(saved), [busy, setBusy] = ui.React.useState(false), [error, setError] = ui.React.useState('');
+    const trigger = ui.React.useRef(null);
+    ui.React.useLayoutEffect(() => {
+      if (!busy && presetFocusPending === nodeId) { presetFocusPending = undefined; trigger.current?.focus(); }
+    }, [busy]);
+    const choose = async next => {
+      if (typeof next !== 'string' || next === value || busy) return;
+      presetFocusPending = nodeId; setValue(next); setBusy(true); setError('');
+      try {
+        await flushDrafts();
+        await mutate(p => { const n=p.nodes.find(n=>n.id===nodeId); n.settings ??= {}; n.settings.preset=next; if(presets[next])n.prompt=presets[next]+'\n'+n.prompt; });
+      } catch (reason) { setValue(saved); setBusy(false); setError(reason.message || '保存失败，请重新选择'); }
+    };
+    return h(ui.React.Fragment, null,
+      h(ui.Select, { value, items: Object.keys(presets).map(value => ({ value, label: value })), onValueChange: choose, disabled: busy },
+        h(ui.SelectTrigger, { ref: trigger, id: 'preset-select-trigger', 'aria-labelledby': 'preset-label', 'aria-invalid': Boolean(error), 'aria-describedby': error ? 'preset-error' : undefined, className: 'w-full' }, h(ui.SelectValue)),
+        h(ui.SelectContent, { finalFocus: () => presetFocusPending === nodeId ? false : trigger.current ?? false, className: 'max-w-[calc(100vw-32px)]' }, Object.keys(presets).map(value => h(ui.SelectItem, { key: value, value }, value)))),
+      h('p', { id: 'preset-error', role: 'alert', hidden: !error }, error));
+  }
+  root.render(h(PresetSelect));
+}
+function mountIsland(element, component) {
+  const root = ui.createRoot(element); selectRoots.push(root); root.render(component);
+}
+let saveRoot;
+function showSaveStatus() {
+  const element = $('#save-status'); if (!element) return;
+  saveRoot?.unmount(); saveRoot = undefined;
+  element.replaceChildren();
+  if (!saveError) return;
+  const h = ui.React.createElement;
+  saveRoot = ui.createRoot(element); saveRoot.render(h(ui.Alert, { id: 'save-error', variant: 'destructive' },
+    h(ui.AlertTitle, null, '改动尚未保存'),
+    h(ui.AlertDescription, null, `${saveError}。输入仍暂存，请重试；不要关闭工作台。`),
+    h(ui.AlertAction, null, h(ui.Button, { 'data-action': 'retry-save', variant: 'outline' }, '重试保存'))));
+}
+function mountControls() {
+  const h = ui.React.createElement;
+  for (const element of document.querySelectorAll('[data-select-island]')) {
+    const spec = selectSpecs[Number(element.dataset.selectIsland)], id = element.id;
+    const attrs = Object.fromEntries([...element.attributes].filter(a => a.name.startsWith('data-') && a.name !== 'data-select-island').map(a => [a.name, a.value]));
+    const dataset = { ...element.dataset };
+    element.removeAttribute('id');
+    for (const name of Object.keys(attrs)) element.removeAttribute(name);
+    function SharedSelect() {
+      const [value, setValue] = ui.React.useState(spec.value), [error, setError] = ui.React.useState(''), [busy, setBusy] = ui.React.useState(false);
+      const choose = async next => {
+        if (next === null || next === value || busy) return;
+        setValue(next); setBusy(true); setError('');
+        try { await handleField({ type: 'change', target: { id, value: next, type: 'select-one', dataset, closest: selector => element.closest(selector) } }); await flushDrafts(); setBusy(false); }
+        catch (reason) { if (id === 'project-picker') setValue(spec.value); setBusy(false); setError(reason.message || '保存失败，请重试'); }
+      };
+      ui.React.useLayoutEffect(() => { if (id === pendingFocus?.id) { document.getElementById(id)?.focus({ preventScroll: true }); pendingFocus = null; } }, []);
+      return h(ui.React.Fragment, null,
+        h(ui.Select, { value, items: spec.options, onValueChange: choose, disabled: busy },
+          h(ui.SelectTrigger, { ...attrs, id, 'aria-label': element.getAttribute('aria-label') || document.querySelector(`label[for="${id}"]`)?.textContent, 'aria-invalid': Boolean(error), 'aria-describedby': error ? `${id}-error` : undefined, className: 'w-full' }, h(ui.SelectValue)),
+          h(ui.SelectContent, { className: 'max-w-[calc(100vw-32px)]' }, spec.options.map(o => h(ui.SelectItem, { key: o.value, value: o.value }, o.label)))),
+        error ? h('p', { id: `${id}-error`, role: 'alert' }, error) : null);
+    }
+    mountIsland(element, h(SharedSelect));
+  }
+  const tabsElement = $('#view-tabs');
+  if (tabsElement) {
+    const workspace = $('.workspace'), status = $('#save-status'), tab = state.tab;
+    mountIsland(tabsElement, h(ui.Tabs, { value: tab, className: 'workbench-tabs', onValueChange: next => { if (next !== state.tab) void action(`tab:${next}`, tabsElement).catch(fail); } },
+      h('div', { className: 'view-navigation' }, h(ui.TabsList, { 'aria-label': '工作台视图' }, Object.entries(tabs).map(([key, label]) => h(ui.TabsTrigger, { key, value: key, id: `view-tab-${key}`, 'aria-controls': `view-panel-${key}`, ref: element => { if (element && pendingFocus?.id === element.id) { element.focus({preventScroll:true}); pendingFocus = null; } }, 'data-action': `tab:${key}`, 'data-view-tab': key }, label)))),
+      h('div', { ref: element => { if (element && status.parentElement !== element) element.append(status); } }),
+      h(ui.TabsContent, { value: tab, id: `view-panel-${tab}`, 'aria-labelledby': `view-tab-${tab}`, className: 'workbench-panel', ref: element => { if (element && workspace.parentElement !== element) element.append(workspace); } })));
+  }
+  for (const element of document.querySelectorAll('[data-shared-empty]')) {
+    const actions = element.innerHTML;
+    function SharedEmpty() {
+      const content = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => { if (content.current) ui.enhance(content.current); }, []);
+      return h(ui.Empty, { variant: 'ghost' }, h(ui.EmptyHeader, null, h(ui.EmptyTitle, null, element.dataset.title), h(ui.EmptyDescription, { dangerouslySetInnerHTML: { __html: element.dataset.detail } })), actions ? h(ui.EmptyContent, { ref: content, dangerouslySetInnerHTML: { __html: actions } }) : null);
+    }
+    mountIsland(element, h(SharedEmpty));
+  }
+  for (const element of document.querySelectorAll('.badge,.job-status')) { const label = element.textContent; element.classList.remove('badge', 'job-status', 'pulse'); mountIsland(element, h(ui.Badge, { variant: 'secondary' }, label)); }
+  for (const element of document.querySelectorAll('.notice')) { const html = element.innerHTML; element.classList.remove('notice'); mountIsland(element, h(ui.Alert, { variant: element.dataset.feedbackVariant || 'default' }, h(ui.AlertDescription, { dangerouslySetInnerHTML: { __html: html } }))); }
+  const references = $('[data-reference-checkboxes]');
+  if (references) {
+    const node = state.project.nodes.find(n => n.id === state.selection);
+    function ReferenceCheckboxes() {
+      const [selected, setSelected] = ui.React.useState(node.settings.referenceIds ?? []);
+      return state.project.assets.map(asset => h('label', { key: asset.id, className: 'reference-option' }, h(ui.Checkbox, { checked: selected.includes(asset.id), 'aria-label': asset.name, 'data-focus-key': asset.id, ref: element => { if (element && pendingFocus?.key === asset.id) { element.focus({preventScroll:true}); pendingFocus = null; } }, onCheckedChange: checked => {
+        const next = checked ? [...selected, asset.id] : selected.filter(id => id !== asset.id); setSelected(next);
+        void handleField({ type: 'change', target: { type: 'checkbox-group', value: next, dataset: { setting: 'referenceIds' }, id: 'referenceIds', closest: selector => references.closest(selector) } }).catch(fail);
+      } }), asset.name));
+    }
+    mountIsland(references, h(ReferenceCheckboxes));
+  }
+  ui.enhance($('#app')); showSaveStatus();
+}
+let pendingFocus;
 async function mutate(fn, history = true) {
   queue = queue.catch(() => {}).then(async () => {
     const before = structuredClone(state.project), next = structuredClone(before);
@@ -103,7 +232,7 @@ async function loadPreview(assetId) {
 function releasePreviews() { for (const url of previews.values()) URL.revokeObjectURL(url); previews.clear(); }
 function nodeMarkup(node) {
   const job = [...state.project.jobs].reverse().find(j => j.nodeId === node.id);
-  return `<section class="node ${state.selection === node.id ? 'selected' : ''}" data-node="${node.id}" style="left:${node.x}px;top:${node.y}px" tabindex="0" role="button" aria-label="编辑 ${esc(node.title)}"><div class="node-head"><span class="dot"></span><b>${esc(node.title)}</b><span class="spacer"></span><small>${names[node.kind]}</small></div><div class="node-body ${node.assetId ? 'media' : ''}">${node.assetId ? preview(node.assetId) : esc(node.prompt || '选中节点，编辑创意与参数')}</div><div class="node-foot"><span>${job ? esc(statuses[job.status] || job.status) : node.assetId ? '素材已就绪' : '草稿'}</span><span>···</span></div></section>`;
+  return `<section class="node ${state.selection === node.id ? 'selected' : ''}" data-node="${node.id}" style="left:${node.x}px;top:${node.y}px" tabindex="0" role="button" aria-label="编辑 ${esc(node.title)}"><div class="node-head"><span class="dot"></span><b>${esc(node.title)}</b><span class="spacer"></span><small>${names[node.kind]}</small></div><div class="node-body ${node.assetId ? 'media' : ''}">${node.assetId ? preview(node.assetId) : esc(node.prompt || '选中节点，编辑创意与参数')}</div><div class="node-foot"><span class="badge">${job ? esc(statuses[job.status] || job.status) : node.assetId ? '素材已就绪' : '草稿'}</span><span>···</span></div></section>`;
 }
 function edgeMarkup() {
   return state.project.edges.map(e => {
@@ -129,7 +258,7 @@ function inspector() {
     + field('分辨率', select(model.resolutions, s.resolution || model.defaultResolution, 'data-setting="resolution"'))
     + field('时长（秒）', select(model.durations, s.duration || model.durations.find(d => d !== '-1'), 'data-setting="duration"'))
     + field('画幅', select(['first', 'first-last', 'edit', 'extend'].includes(s.operation) ? ['adaptive'] : model.ratios, s.ratio || '16:9', 'data-setting="ratio"')) : '';
-  return `<aside class="inspector"><div class="inspector-head"><h3>${names[n.kind]} · 节点设置</h3>${button('close-inspector', '✕', 'class="ghost" aria-label="关闭属性"')}</div>${field('名称', `<input data-node-field="title" value="${esc(n.title)}" maxlength="96">`)}${field('创作描述', `<textarea data-node-field="prompt" rows="6" maxlength="8000">${esc(n.prompt)}</textarea>`)}${['image', 'video'].includes(n.kind) ? `${field('Work 生成渠道', select(usable.length ? usable.map(m => ({ id: m.id, label: m.label })) : [{ id: '', label: '尚未连接可用渠道' }], s.model || model?.id, 'data-setting="model"'))}${!usable.length ? '<p class="notice">请在 Work 的授权中心连接图片或视频渠道。插件不单独保存密钥。</p>' : ''}${params}${field('风格提示', select(Object.keys(presets), s.preset || '自由创作', 'data-setting="preset"'))}${field('镜头意图', select(cameraOptions, s.camera || '自动', 'data-setting="camera"'))}${assetSelect('referenceId', ['image'], n.kind === 'image' ? '参考图 / 编辑原图' : '首帧图片')}${n.kind === 'video' && s.operation === 'first-last' ? assetSelect('lastFrameId', ['image'], '尾帧图片') : ''}${n.kind === 'video' && ['reference','edit','extend'].includes(s.operation) ? field('多模态参考（按住 ⌘ 多选）', `<select multiple data-setting="referenceIds" size="4">${assets.map(a => `<option value="${a.id}" ${(s.referenceIds ?? []).includes(a.id) ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select>`) : ''}${button('generate', '生成素材', `class="primary" ${!model ? 'disabled' : ''}`)}<small>调用真实渠道，可能产生费用。镜头和风格是提示词意图，并非精确渲染控制。</small>` : ''}<hr>${field('节点素材', select([{ id: '', label: '未绑定' }, ...assets.map(a => ({ id: a.id, label: a.name }))], n.assetId || '', 'data-node-field="assetId"'))}${field('关联前序节点', select([{ id: '', label: '添加一条连线…' }, ...state.project.nodes.filter(x => x.id !== n.id).map(x => ({ id: x.id, label: x.title }))], '', 'data-link="true"'))}<small>连线组织创作关系；生成参考以此面板所选素材为准。</small><div class="toolbar" style="margin-top:14px">${button('preview-node', '预览')}${button('node-shot', '加入分镜')}${button('duplicate-node', '复制')}${button('unlink-node', '断开连线')}${button('delete-node', '删除', 'class="danger"')}</div></aside>`;
+  return `<aside class="inspector"><div class="inspector-head"><h3>${names[n.kind]} · 节点设置</h3>${button('close-inspector', '✕', 'class="ghost" aria-label="关闭属性"')}</div>${field('名称', `<input data-node-field="title" value="${esc(n.title)}" maxlength="96">`)}${field('创作描述', `<textarea data-node-field="prompt" rows="6" maxlength="8000">${esc(n.prompt)}</textarea>`)}${['image', 'video'].includes(n.kind) ? `${field('Work 生成渠道', select(usable.length ? usable.map(m => ({ id: m.id, label: m.label })) : [{ id: '', label: '尚未连接可用渠道' }], s.model || model?.id, 'data-setting="model"'))}${!usable.length ? '<p class="notice">请在 Work 的授权中心连接图片或视频渠道。插件不单独保存密钥。</p>' : ''}${params}<label id="preset-label">风格提示</label><div data-shared-select="preset"></div>${field('镜头意图', select(cameraOptions, s.camera || '自动', 'data-setting="camera"'))}${assetSelect('referenceId', ['image'], n.kind === 'image' ? '参考图 / 编辑原图' : '首帧图片')}${n.kind === 'video' && s.operation === 'first-last' ? assetSelect('lastFrameId', ['image'], '尾帧图片') : ''}${n.kind === 'video' && ['reference','edit','extend'].includes(s.operation) ? field('多模态参考（可选择多个素材）', `<div data-reference-checkboxes></div>`) : ''}${button('generate', '生成素材', `class="primary" ${!model ? 'disabled' : ''}`)}<small>调用真实渠道，可能产生费用。镜头和风格是提示词意图，并非精确渲染控制。</small>` : ''}<hr>${field('节点素材', select([{ id: '', label: '未绑定' }, ...assets.map(a => ({ id: a.id, label: a.name }))], n.assetId || '', 'data-node-field="assetId"'))}${field('关联前序节点', select([{ id: '', label: '添加一条连线…' }, ...state.project.nodes.filter(x => x.id !== n.id).map(x => ({ id: x.id, label: x.title }))], '', 'data-link="true"'))}<small>连线组织创作关系；生成参考以此面板所选素材为准。</small><div class="toolbar" style="margin-top:14px">${button('preview-node', '预览')}${button('node-shot', '加入分镜')}${button('duplicate-node', '复制')}${button('unlink-node', '断开连线')}${button('delete-node', '删除', 'class="danger"')}</div></aside>`;
 }
 function heading(title, desc, controls = '') { return `<div class="page-heading"><div><h2>${title}</h2><p>${desc}</p></div><div class="toolbar">${controls}</div></div>`; }
 function shots() { return `<div class="page">${heading('分镜', '先确定故事节奏，再为每个镜头选择素材。', button('add-shot', '＋ 分镜') + button('arrange', '编排到轨道', 'class="primary"'))}${state.project.shots.length ? `<div class="cards">${state.project.shots.map((s, i) => `<article class="card" data-shot="${s.id}"><div class="card-media" data-action="preview-shot" data-id="${s.id}">${preview(s.assetId)}</div><div class="card-content"><div class="row"><span class="badge">${String(i+1).padStart(2, '0')}</span><input class="title" data-shot-field="title" value="${esc(s.title)}" aria-label="分镜名称"></div>${field('画面描述', `<textarea data-shot-field="prompt">${esc(s.prompt)}</textarea>`)}${field('旁白 / 字幕', `<textarea data-shot-field="narration" style="min-height:55px">${esc(s.narration)}</textarea>`)}${field('镜头素材', select([{ id: '', label: '选择素材' }, ...state.project.assets.filter(a => a.kind !== 'audio').map(a => ({ id: a.id, label: a.name }))], s.assetId || '', 'data-shot-field="assetId"'))}<div class="row"><input type="number" min=".1" max="3600" step=".1" value="${s.duration}" data-shot-field="duration" aria-label="秒数"><small>秒</small>${button('shot-up', '↑')}${button('shot-down', '↓')}${button('shot-node', '生成节点')}${button('shot-delete', '×', 'aria-label="删除分镜"')}</div></div></article>`).join('')}</div>` : empty('故事从第一个镜头开始', '手动添加分镜，或让左侧 AI 读取剧本后写入。') }</div>`; }
@@ -140,18 +269,31 @@ function tracks() {
   const maxFrame = Math.max(1, ...p.tracks.flatMap(t => t.clips.map(c => c.startFrame+c.durationFrames)));
   return `<div class="page">${heading('轨道编排', '保留独立视频、原声、配乐和字幕；精细剪辑交给 Work 视频工具。', button('arrange', '从分镜重新编排') + button('handoff', '交到 Work 剪辑', 'class="primary"'))}<div class="row">${field('画幅', select(['1920x1080','1080x1920','1080x1080','2560x1440'],`${p.width}x${p.height}`,'data-project-size="true"'))}${field('帧率',select(['24','25','30','60'],String(fps),'data-project-fps="true"'))}</div>${p.tracks.map(t => `<section class="track" data-track="${t.id}"><div class="track-header"><h3>${esc(t.label)}</h3><span class="badge">${t.kind}</span><span class="spacer"></span>${button('track-delete','移除轨道','class="ghost danger"')}</div><div class="track-body"><div class="ruler">${t.clips.map(c => `<div class="clip-bar" style="left:${100*c.startFrame/maxFrame}%;width:${100*c.durationFrames/maxFrame}%">${esc(c.label)}</div>`).join('')}</div>${t.clips.map(c => `<div class="clip-row" data-clip="${c.id}"><label>${t.kind==='caption'?'字幕文字':'片段'}<input data-clip-field="${t.kind==='caption'?'text':'label'}" value="${esc(t.kind==='caption'?c.text:c.label)}"></label>${[['startFrame','起点/秒',c.startFrame/fps],['durationFrames','时长/秒',c.durationFrames/fps],['sourceStartSeconds','入点/秒',c.sourceStartSeconds??0],['volume','音量',c.volume??1]].map(([key,label,value])=>`<label>${label}<input type="number" step="${key==='volume'?'.05':1/fps}" min="0" ${key==='volume'?'max="1"':''} data-clip-field="${key}" value="${Number(value.toFixed(3))}" ${t.kind==='caption'&&['sourceStartSeconds','volume'].includes(key)?'disabled':''}></label>`).join('')}${button('clip-delete','×','aria-label="删除片段"')}</div>`).join('')}</div></section>`).join('')}${!p.tracks.length?empty('还没有编排轨道','在分镜中选好素材，点击「编排到轨道」。音频可从素材库单独添加。'):''}${p.exports.length ? `<div class="notice">已交接 ${p.exports.length} 份原生工程。原生剪辑后的修改不会被画布覆盖。${p.exports.slice(-3).map(e=>`<p>${esc(e.path)}</p>`).join('')}</div>`:''}</div>`;
 }
-function jobs() { return `<div class="page">${heading('生成记录','任务状态来自 Work 渠道。关闭工作台后视频任务由 Work 继续查询。',button('refresh-jobs','刷新状态'))}${state.project.jobs.slice().reverse().map(j=>`<div class="job"><span class="job-status ${['submitting','running','saving'].includes(j.status)?'pulse':''}">${esc(statuses[j.status]||j.status)}</span><div><h3>${esc(j.title)}</h3><small>${esc(j.message||j.kind)} · ${new Date(j.createdAt).toLocaleString()}</small></div><span class="spacer"></span>${j.assetId?button('preview-asset','查看素材',`data-id="${j.assetId}"`):''}</div>`).join('')||empty('尚无生成任务','在画布选中图片或视频节点，填写描述后生成。')}</div>`; }
+function jobs() { return `<div class="page">${heading('生成记录','任务状态来自 Work 渠道。关闭工作台后视频任务由 Work 继续查询。',button('refresh-jobs','刷新状态'))}${state.project.jobs.slice().reverse().map(j=>`<div class="job"><span class="job-status ${['submitting','running','saving'].includes(j.status)?'pulse':''}">${esc(statuses[j.status]||j.status)}</span><div><h3>${esc(j.title)}</h3><small>${esc(j.message||j.kind)} · ${new Date(j.createdAt).toLocaleString()}</small></div><span class="spacer"></span>${j.assetId?button('preview-asset','查看素材',`data-id="${j.assetId}"`):''}</div>${['failed','uncertain','save_failed'].includes(j.status)?`<p class="notice" data-feedback-variant="${j.status==='uncertain'?'warning':'destructive'}">${esc(j.message||'任务未完成，请查看渠道状态；不会自动重复付费提交。')}</p>`:''}`).join('')||empty('尚无生成任务','在画布选中图片或视频节点，填写描述后生成。')}</div>`; }
 function render() {
   if (!state.project) return;
   const focused = document.activeElement;
-  const focusState = focused?.id && focused.closest('#app') && ['INPUT','TEXTAREA','SELECT'].includes(focused.tagName)
-    ? { id: focused.id, start: focused.selectionStart, end: focused.selectionEnd } : null;
-  fieldIndex = 0;
-  const p = state.project;
-  $('#app').innerHTML = `<header class="topbar"><div class="brand">▧</div><select class="project-picker" id="project-picker" aria-label="切换项目">${state.projects.some(x=>x.id===p.id)?'':option(p.id,p.title,p.id)}${state.projects.map(x=>option(x.id,x.id===p.id?p.title:x.title,p.id)).join('')}</select>${button('new-project','＋','aria-label="新建项目"')}${button('rename-project','重命名','class="ghost minor"')}<span class="spacer"></span>${button('undo','↶',`aria-label="撤销" ${!state.undo.length?'disabled':''}`)}${button('redo','↷',`aria-label="重做" ${!state.redo.length?'disabled':''}`)}${button('handoff','交到 Work 剪辑','class="primary"')}</header><nav class="tabs" aria-label="工作台视图">${Object.entries(tabs).map(([key,label])=>button(`tab:${key}`,label,`class="${state.tab===key?'active':''}"`)).join('')}</nav><div class="workspace"><main class="main">${state.tab==='canvas'?canvas():state.tab==='shots'?shots():state.tab==='roles'?roles():state.tab==='assets'?assets():state.tab==='tracks'?tracks():state.tab==='jobs'?jobs():`<div class="page">${heading('剧本','脚本和分镜都可以由左侧 AI 读取和修改。',button('split-script','按段落拆分镜')+button('ask-script','让 AI 完善','class="primary"'))}<textarea class="script-area" data-script="true" aria-label="剧本内容" placeholder="写下创意、旁白或完整剧本…">${esc(p.script)}</textarea></div>`}</main>${state.tab==='canvas'?inspector():''}</div><footer><span>iPolloWork 短片工作台 · 本地工程</span><span>已保存 · r${p.revision} · ${p.nodes.length} 个节点</span></footer>`;
+  const focusState = (focused?.id || focused?.dataset.focusKey) && focused.closest('#app')
+    ? { id: focused.id, key: focused.dataset.focusKey, start: focused.selectionStart, end: focused.selectionEnd } : null;
+  fieldIndex = 0; selectSpecs.length = 0;
+  const savedProject = state.project, p = structuredClone(savedProject);
+  for (const edit of drafts.values()) edit(p);
+  state.project = p;
+  for (const root of selectRoots.splice(0)) root.unmount();
+  saveRoot?.unmount(); saveRoot = undefined;
+  $('#app').innerHTML = `<header class="topbar"><div class="brand">▧</div>${select([{id:p.id,label:p.title},...state.projects.filter(x=>x.id!==p.id).map(x=>({id:x.id,label:x.title}))],p.id,'class="project-picker" id="project-picker" aria-label="切换项目"')}${button('new-project','＋','aria-label="新建项目"')}${button('rename-project','重命名','class="ghost minor"')}<span class="spacer"></span>${button('undo','↶',`aria-label="撤销" ${!state.undo.length?'disabled':''}`)}${button('redo','↷',`aria-label="重做" ${!state.redo.length?'disabled':''}`)}${button('handoff','交到 Work 剪辑','class="primary"')}</header><div class="workbench-views" id="view-tabs"></div><div id="save-status"></div><div class="workspace"><main class="main">${state.tab==='canvas'?canvas():state.tab==='shots'?shots():state.tab==='roles'?roles():state.tab==='assets'?assets():state.tab==='tracks'?tracks():state.tab==='jobs'?jobs():`<div class="page">${heading('剧本','脚本和分镜都可以由左侧 AI 读取和修改。',button('split-script','按段落拆分镜')+button('ask-script','让 AI 完善','class="primary"'))}<textarea class="script-area" data-script="true" aria-label="剧本内容" placeholder="写下创意、旁白或完整剧本…">${esc(p.script)}</textarea></div>`}</main>${state.tab==='canvas'?inspector():''}</div><footer><span>iPolloWork 短片工作台 · 本地工程</span><span>已保存 · r${p.revision} · ${p.nodes.length} 个节点</span></footer>`;
   $('.topbar .spacer').insertAdjacentHTML('beforebegin',button('reload-project','重新载入','class="ghost minor"'));
   if(state.tab==='tracks')for(const track of p.tracks.filter(t=>t.kind==='video'))for(const input of document.querySelectorAll(`[data-track="${track.id}"] [data-clip-field="volume"]`)){input.disabled=true;input.title='视频轨不混入声音，请在独立原声轨调节音量';}
+  for (const element of document.querySelectorAll('#app input,#app textarea')) {
+    element.dataset.ipwControl = element.tagName === 'INPUT' ? 'input' : 'textarea';
+    if (!element.id) element.id = `field-${++fieldIndex}`;
+  }
+  for (const element of document.querySelectorAll('#app [data-action]')) if (!element.id) element.id = `action-${element.dataset.action}-${element.dataset.id || ''}`;
+  pendingFocus = focusState;
+  mountControls();
   if (focusState) { const next=document.getElementById(focusState.id); next?.focus({preventScroll:true}); if (next && typeof focusState.start==='number' && ['text','textarea'].includes(next.type)) next.setSelectionRange(focusState.start,focusState.end); }
+  mountPresetSelect();
+  state.project = savedProject;
   bridge.context(p,state.selection); const epoch = ++previewEpoch;
   // Load visible thumbnails without replacing focused form elements.
   void (async () => {
@@ -188,10 +330,11 @@ async function action(name, target) {
   if (name === 'upload') { $('#upload').click(); return; }
   if (name === 'reload-project') { const result=await bridge.call('project-read',{projectId:state.project.id}); state.project=result.project; await flushDrafts(); render(); notify('项目已重新载入'); return; }
   await flushDrafts();
+  if (name === 'retry-save') return;
   const [key,value]=name.split(':'), p=state.project, node=p.nodes.find(n=>n.id===state.selection), shotId=target.closest('[data-shot]')?.dataset.shot, roleId=target.closest('[data-role]')?.dataset.role;
   if(key==='tab'){state.tab=value;state.selection=null;render();return;}
   if(key==='add'){await mutate(p=>{state.selection=addNode(p,value).id});return;}
-  if(key==='new-project'){const title=await dialog('新建短片','每个项目独立保存。','未命名短片');if(!title)return;releasePreviews();state.project=(await bridge.call('project-create',{title})).project;state.projects=(await bridge.call('project-list')).projects;state.selection=null;state.undo=[];state.redo=[];state.tab='canvas';render();return;}
+  if(key==='new-project'){const created=await dialog('新建短片','每个项目独立保存。','未命名短片',title=>bridge.call('project-create',{title}));if(!created)return;releasePreviews();state.project=created.project;state.projects=(await bridge.call('project-list')).projects;state.selection=null;state.undo=[];state.redo=[];state.tab='canvas';render();document.querySelector('[aria-label="新建项目"]')?.focus();ui.toast.success('短片已创建');return;}
   if(key==='rename-project'){const title=await dialog('项目名称','',p.title);if(title)await mutate(p=>p.title=title);return;}
   if(['zoom-in','zoom-out','fit'].includes(key)){if(key==='fit'){state.zoom=1;state.pan={x:0,y:0}}else state.zoom=Math.max(.25,Math.min(2,state.zoom+(key==='zoom-in'?.1:-.1)));render();return;}
   if(key==='close-inspector'){state.selection=null;render();return;}
@@ -239,21 +382,21 @@ async function action(name, target) {
   if(key==='undo'||key==='redo'){const from=key==='undo'?state.undo:state.redo,to=key==='undo'?state.redo:state.undo,old=from.pop();if(!old)return;to.push(structuredClone(state.project));const result=await bridge.call('project-save',{project:{...old,revision:state.project.revision}});state.project=result.project;render();return;}
 }
 
-document.body.innerHTML='<div id="app"><div class="loading">正在连接 Work 短片工作台…</div></div><div id="toast" role="status" hidden></div><dialog id="dialog"></dialog><input id="upload" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.webm,.mp3,.wav,.m4a,.ogg" hidden>';
-document.addEventListener('click',e=>{if(e.target.closest('video,audio'))return;const target=e.target.closest('[data-action]');if(target)void action(target.dataset.action,target).catch(fail);else{const node=e.target.closest('[data-node]');if(node&&!drag){void flushDrafts().then(()=>{state.selection=node.dataset.node;render()}).catch(fail)}}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){state.selection=null;render()}if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-node]')){e.preventDefault();state.selection=e.target.dataset.node;render()}});
+document.body.innerHTML='<div id="app"><div class="loading">正在连接 Work 短片工作台…</div></div><div id="toast-root"></div><div id="dialog-root"></div><input id="upload" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.webm,.mp3,.wav,.m4a,.ogg" hidden>';
+document.addEventListener('click',e=>{if(e.target.closest('video,audio'))return;const target=e.target.closest('[data-action]');if(target && !target.matches('[data-slot="tabs-trigger"]'))void action(target.dataset.action,target).catch(fail);else{const node=e.target.closest('[data-node]');if(node&&!drag){void flushDrafts().then(()=>{state.selection=node.dataset.node;render()}).catch(fail)}}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#dialog')&&!$('[data-slot="select-content"]')){state.selection=null;render()}if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-node]')){e.preventDefault();state.selection=e.target.dataset.node;render()}});
 async function handleField(e) {
   const target=e.target, value=target.type==='number'?Number(target.value):target.value;
   if(e.type==='input'&&target.id==='project-picker')return;
   if(target.id==='upload'){void importFiles([...target.files]).catch(fail);target.value='';return;}
   if(target.id==='project-picker'){try{await flushDrafts();const r=await bridge.call('project-read',{projectId:value});releasePreviews();state.project=r.project;state.selection=null;state.undo=[];state.redo=[];render()}catch(e){target.value=state.project.id;throw e}return;}
   const nodeId=state.selection,shotId=target.closest('[data-shot]')?.dataset.shot,roleId=target.closest('[data-role]')?.dataset.role,clipId=target.closest('[data-clip]')?.dataset.clip;
-  const dataset={...target.dataset},selectedValues=target.multiple?[...target.selectedOptions].map(o=>o.value):[];
+  const dataset={...target.dataset};
   if(!Object.keys(dataset).some(k=>['nodeField','setting','link','shotField','roleField','script','projectSize','projectFps','clipField'].includes(k)))return;
   drafts.set(target.id||JSON.stringify([dataset,nodeId,shotId,roleId,clipId]),p=>{
     const n=p.nodes.find(n=>n.id===nodeId);
     if(dataset.nodeField&&n)n[dataset.nodeField]=value;
-    else if(dataset.setting&&n){const s=n.settings??={},key=dataset.setting;s[key]=key==='referenceIds'?selectedValues:value;if(key==='preset'&&presets[value])n.prompt=`${presets[value]}\n${n.prompt}`;if(key==='model'){n.settings={model:value}}}
+    else if(dataset.setting&&n){const s=n.settings??={},key=dataset.setting;s[key]=value;if(key==='preset'&&presets[value])n.prompt=`${presets[value]}\n${n.prompt}`;if(key==='model'){n.settings={model:value}}}
     else if(dataset.link&&n&&value&&!p.edges.some(e=>e.from===value&&e.to===n.id))p.edges.push({id:uuid('e'),from:value,to:n.id});
     else if(dataset.shotField)p.shots.find(s=>s.id===shotId)[dataset.shotField]=value;
     else if(dataset.roleField)p.roles.find(r=>r.id===roleId)[dataset.roleField]=value;
@@ -278,7 +421,7 @@ document.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-d
 document.addEventListener('pointerup',e=>{if(!drag)return;const d=drag;drag=null;if(d.node&&d.moved){const x=Math.max(-10000,Math.min(10000,d.x+(e.clientX-d.startX)/state.zoom)),y=Math.max(-10000,Math.min(10000,d.y+(e.clientY-d.startY)/state.zoom));void mutate(p=>Object.assign(p.nodes.find(n=>n.id===d.node.id),{x,y})).catch(fail)}});
 document.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()});
 document.addEventListener('drop',e=>{if(e.dataTransfer.files.length){e.preventDefault();void importFiles([...e.dataTransfer.files]).catch(fail)}});
-await bridge.start().then(async()=>{state.capabilities=await bridge.call('capabilities');state.projects=(await bridge.call('project-list')).projects;state.project=state.projects.length?(await bridge.call('project-read',{projectId:state.projects[0].id})).project:(await bridge.call('project-create',{title:'我的第一部短片'})).project;render();}).catch(e=>{$('#app').innerHTML=`<div class="empty"><h2>暂未连接</h2><p>${esc(e.message)}</p></div>`});
+await Promise.resolve().then(()=>{ui=requireRuntime(1,['createRoot','enhance','Button','Input','Textarea','Tabs','TabsList','TabsTrigger','TabsContent','Checkbox','Badge','Empty','EmptyHeader','EmptyTitle','EmptyDescription','EmptyContent','Alert','AlertTitle','AlertDescription','AlertAction','Skeleton','Select','SelectTrigger','SelectValue','SelectContent','SelectItem','Dialog','DialogContent','DialogHeader','DialogTitle','DialogDescription','DialogFooter','Toaster','toast'],3);ui.createRoot($('#toast-root')).render(ui.React.createElement(ui.Toaster,{closeLabel:'关闭'}));mountIsland($('.loading'),ui.React.createElement(ui.React.Fragment,null,'正在连接 Work 短片工作台…',ui.React.createElement(ui.Skeleton,{className:'h-8 w-full mt-4'})));return bridge.start();}).then(async()=>{state.capabilities=await bridge.call('capabilities');state.projects=(await bridge.call('project-list')).projects;state.project=state.projects.length?(await bridge.call('project-read',{projectId:state.projects[0].id})).project:(await bridge.call('project-create',{title:'我的第一部短片'})).project;render();}).catch(e=>{for(const root of selectRoots.splice(0))root.unmount();if(ui){mountIsland($('#app'),ui.React.createElement(ui.Alert,{variant:'destructive'},ui.React.createElement(ui.AlertTitle,null,'暂未连接'),ui.React.createElement(ui.AlertDescription,null,e.message)));}else{$('#app').innerHTML=`<div><h2>暂未连接</h2><p role="alert">${esc(e.message)}</p></div>`;}});
 async function pollJobs() {
   try {
     if(state.project && !document.hidden && !state.busy && !drafts.size && !document.activeElement?.matches('input,textarea,select') && state.project.jobs.some(j=>['submitting','running','saving'].includes(j.status))) {

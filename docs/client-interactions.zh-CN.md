@@ -262,7 +262,7 @@ macOS 使用 `Cmd`，Windows/Linux 使用 `Ctrl`。
 ## 12. 状态与反馈原则
 
 - 耗时操作使用加载动画、按钮禁用或骨架屏，避免重复提交。
-- 成功、失败和警告使用右下角 Toast；需要用户立即处理的内容尽量留在当前区域内。
+- 无操作的成功、失败和警告使用顶部居中的轻提醒；带确认或取消按钮的通知显示在右下角。需要用户立即处理的内容留在当前区域内。
 - 删除、移除等破坏性操作需要二次确认。
 - 远程项目无法执行的本机操作会隐藏、禁用或给出明确提示。
 - 组织策略限制某项设置时，设置页顶部显示策略说明；受限操作不会静默失败。
@@ -291,3 +291,37 @@ macOS 使用 `Cmd`，Windows/Linux 使用 `Ctrl`。
 - 新任务起始页：[`apps/app/src/components/chat/new-conversation-starter.tsx`](../apps/app/src/components/chat/new-conversation-starter.tsx)
 - 右侧工作台：[`apps/app/src/react-app/domains/session/panel/side-panel.tsx`](../apps/app/src/react-app/domains/session/panel/side-panel.tsx)
 - 设置导航：[`apps/app/src/react-app/domains/settings/shell/settings-page.tsx`](../apps/app/src/react-app/domains/settings/shell/settings-page.tsx)
+
+## 15. 紧凑组件分类与复用边界
+
+2026-10-09：以下共享组件已同步到日常使用的 `Carrie` 客户端；这只代表组件源码可用，不代表每个业务页面都已迁移。复用 `apps/app/src/components/ui` 中的现有组件；Figma 不会自动修改代码。
+
+| 分类 | 现有组件 / 组合 | 紧凑规则 |
+| --- | --- | --- |
+| 按钮 | Button、Toggle、ToggleGroup | default 32px、sm 28px、lg 36px；普通操作优先 ghost + Lucide 图标 + 文字；每个操作区保留一个主操作 |
+| 单行输入 / 搜索 | Input、InputGroup、Autocomplete、Command | 普通输入 32px；搜索保留图标、键盘操作、加载与无结果状态，不新建平行搜索框 |
+| 多行输入 / 表单 | Textarea、Field、FieldGroup | Textarea 最小高 64px，不压缩正文；标签和帮助文本间距 4–6px，表单组间距 16px |
+| 选择 / 菜单 / 浮层 | Select、DropdownMenu、ContextMenu、Popover | 浮层圆角 8px，跟随主题；单行菜单 32px，密集菜单 28px；含说明时高度自适应 |
+| 弹窗 / 确认 / 抽屉 | Dialog、AlertDialog、Sheet、ConfirmModal | 弹窗内边距及圆角 16px；抽屉头尾内边距 16px；长内容可滚动，关闭后返回触发入口；取消不提交 |
+| 警告 / 通知 | Alert、sonner 的 Toaster / toast | 共用 10px 圆角轻量卡片、无边框的语义浅背景与 24px 圆形 Lucide 图标、标题说明及右侧关闭图标；无左侧状态竖条；内容水平间距 8px；信息/成功/警告/错误使用对应低强调背景；高度随内容增长，深浅色跟随主题 |
+| 标签 / 状态 | Badge | 最小高 20px、水平内边距 6px、圆角 6px；状态不只靠颜色；可操作筛选另行组合，不把 span 当按钮 |
+| 表格 | Table、TableHead、TableCell | 表头 32px；单元格水平 10px、垂直 8px；行高随内容增长，保留横向滚动 |
+| 导航 / 卡片 / 空状态 | Tabs、Card、Empty | Tabs 容器 32px；Card 常规 16px、sm 12px 内边距，圆角 16px；Empty 内边距 24px、圆角 12px |
+| Tooltip / 画布工具栏 | Tooltip、DesignPanel | Tooltip 内边距 8×4px、圆角 8px；画布工具栏 28px 控件、上下 4px 留白，含边框总高 38px |
+| 对话输入框 | ReactSessionComposer | 收紧底部和附件间距，不改变待发送、执行、排队、停止、附件等业务状态与服务端协议 |
+
+2026-10-09：技能分享权限已迁入公共 Select，删除旧 SelectMenu；模板目录搜索框及环境变量、插件导入弹窗去掉重复尺寸覆盖，保留内容区宽度和滚动。图片插件 HTML Tooltip 对齐 12/16px 字体、8×4px 内边距、8px 圆角与反色主题，支持焦点关联、Esc 关闭和边缘避让；选区工具栏使用 28px 控件、16px Lucide 图标。AI 操作提示属于 status，不混用 Tooltip；点位与选区引用协议不变。
+
+真实页面接入核对：模型选择弹窗、会话内查找及模板市场搜索使用 InputGroup；模板市场的视图、分类和筛选触发器使用共享 Button 的轻量变体；项目概览完成率与活动状态使用 Progress、Badge。组件验收页只证明共享组件本身，不代表设计编辑器、设置页或插件内的所有独立控件已迁移。画布属性按钮、复杂表格操作和插件 HTML 仍需逐个按交互语义核对，不做全局替换。
+
+Alert 用于页面内持续反馈；Toast 用于短暂、非阻塞反馈。两者共享卡片视觉，不共享消失时机。Toast 始终有右侧关闭图标；可选确认/取消操作作为正文下方的轻量文字按钮，执行原有回调后关闭。Alert 仅在页面提供 `onDismiss` 时显示关闭图标，页面传入的 `AlertAction` 不替页面决定跳转或关闭逻辑。
+
+不要将“已改公共组件”等同于“所有页面已迁移”：调用方的显式尺寸仍可覆盖默认值，后续按实际页面收敛。图片插件属于另一运行环境，只共享规范，不直接导入宿主 React；AI 引用标签保留自己的移除、选区及来源语义。排序、分页、上传、结果采用和任务状态继续由所属业务负责，不通过统一样式臆造能力。视觉紧凑不取消触屏 44px 点击范围，不压缩预览画布和多行内容。
+
+新开发的 React 页面先组合公共控件。插件 iframe/HTML 页面应复用相同规范与主题契约，不能直接导入宿主的私有 React 文件。后续 Skill 应引用本规范与组件源码，不另建一套实现质量规则。
+
+### 任务加载进度规范与迁移（2026-10-09）
+
+已统一任务进度的视觉密度为 6px 圆角轨道和青绿色填充：宿主的更新下载、聊天页及设置页的引擎下载、数字人片段任务复用 `components/ui/progress.tsx`；Video Studio 渲染队列、合成预览及图片/视频插件使用相同轨道尺寸和填充色。Video Studio 启动遮罩及内嵌 Studio 的合成预览加载只知道阶段，不提供真实百分比。播放器时间轴属于播放定位，不是任务进度。
+
+统一时保留三种不同语义：有可靠分母的下载/渲染显示真实百分比；数字人按已完成片段显示片段进度，图片与视频插件按耗时推算的值明确标记为“预估/预计进度”，图片生成超过两分钟后只显示等待时长，不让进度条长期停在 95%；只有启动、排队、等待、加载阶段的操作显示阶段文字与不定进度或不显示轨道，不伪造百分比。宿主 React 页面复用 `components/ui/progress.tsx` 的视觉与无障碍结构；插件 HTML 与 Studio iframe 不能直接导入该组件，按相同尺寸和主题轨道对齐。

@@ -117,7 +117,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
             {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-36 animate-pulse rounded-2xl bg-dls-hover" />)}
           </div>
         ) : enterpriseError ? (
-          <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-4 py-3 text-sm text-red-11">{enterpriseError}</div>
+          <div role="alert" className="rounded-xl border-0 bg-feedback-error px-4 py-3 text-sm text-red-11">{enterpriseError}</div>
         ) : enterpriseResources.length ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {enterpriseResources.map((resource) => {

@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>共享核心组件调用样板</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0}body{overflow:hidden}</style></head><body><iframe title="共享核心组件" sandbox="allow-scripts"></iframe><script type="module">
+import { coreDemoHtml } from './shared-ui-core-fixture.mjs';
+import { withSharedUiRuntime } from '/src/react-app/plugin-ui/shared-ui-runtime.ts';
+if (new URLSearchParams(location.search).get('mode') !== 'bundled') {
+  document.querySelector('iframe').srcdoc=withSharedUiRuntime(coreDemoHtml());
+}
+</script></body></html>

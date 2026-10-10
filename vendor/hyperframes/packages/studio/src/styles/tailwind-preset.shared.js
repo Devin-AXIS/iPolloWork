@@ -41,7 +41,7 @@ const studioPreset = {
           "text-3": "var(--hf-panel-text-3)",
           "text-4": "var(--hf-panel-text-4)",
           "text-5": "var(--hf-panel-text-5)",
-          accent: "#1FBAC0",
+          accent: "var(--hf-panel-accent)",
           danger: "#EF4444",
           media: "#00E3FF",
           container: "#F5A623",
