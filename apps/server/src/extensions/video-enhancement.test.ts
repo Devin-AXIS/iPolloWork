@@ -1,19 +1,37 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildEnhancementCues, enhancementHtml, placeEnhancementCues } from "./video-enhancement-layout.js";
+import { buildEnhancementCues, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
 import { callVideoEnhancementAction, localEnhancementStatus } from "./video-enhancement.js";
 import models from "./video-enhancement-models.json" with { type: "json" };
 import { classifyEnhancementHand, buildEnhancementGestures } from "./video-enhancement-gestures.js";
 import { buildEnhancementMask, enhancementMaskProtection } from "./video-enhancement-segmentation.js";
-import { videoEnhancementResultSchema } from "@ipollowork/types/video-enhancement";
+import { videoEnhancementJobSchema, videoEnhancementResultSchema } from "@ipollowork/types/video-enhancement";
 import type { VideoEnhancementJob, VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
 import type { ServerConfig } from "../types.js";
 
 const roots: string[] = [];
+const desktopRequire = createRequire(new URL("../../../desktop/package.json", import.meta.url));
+const bundledFFmpeg = desktopRequire("@ffmpeg-installer/ffmpeg").path;
+const bundledFFprobe = desktopRequire("@ffprobe-installer/ffprobe").path;
+const execute = promisify(execFile);
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+test.each([
+  [1920, 1080, 1280, 1280, 720], [720, 1280, 768, 432, 768],
+  [383, 671, 1280, 382, 670], [384, 672, 1280, 384, 672],
+])("bundled desktop FFmpeg scales %dx%d within %d to %dx%d", async (width, height, limit, expectedWidth, expectedHeight) => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-enhancement-scale-")); roots.push(root);
+  const output = join(root, "scaled.mp4");
+  await execute(bundledFFmpeg, ["-nostdin", "-v", "error", "-f", "lavfi", "-i", `testsrc=size=${width}x${height}:rate=1:duration=0.1`,
+    "-vf", enhancementScaleFilter(limit), "-frames:v", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-threads", "2", output], { windowsHide: true, timeout: 15_000 });
+  const { stdout } = await execute(bundledFFprobe, ["-v", "error", "-show_entries", "stream=width,height", "-of", "json", output], { windowsHide: true, timeout: 15_000 });
+  expect(JSON.parse(stdout).streams).toEqual([{ width: expectedWidth, height: expectedHeight }]);
+});
 const base = { duration: 8, width: 1280, height: 720, segments: [{ start: 1, end: 4, text: "今年增长了30%" }],
   people: [{ time: 1, boxes: [{ x: .45, y: .1, width: .5, height: .9 }] }, { time: 3, boxes: [{ x: .5, y: .1, width: .45, height: .9 }] }], hands: [], gestures: [], masks: [], warnings: [] };
 test("quotes numeric evidence and keeps measured speech windows", () => {
@@ -60,6 +78,35 @@ async function fixture() {
   const cues = result.cues.map(({ id, kind, text, start, end, enabled }) => ({ id, kind, text, start, end, enabled }));
   return { root, job, config, context, before, cues, args: { sessionId: "proof", jobId } };
 }
+test("failed media preparation retains a local diagnostic and identifies its stage", async () => {
+  const f = await fixture();
+  await execute(bundledFFmpeg, ["-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=s=160x90:d=1", "-f", "lavfi", "-i", "sine=duration=1",
+    "-c:v", "libx264", "-threads", "1", "-c:a", "aac", "-shortest", join(f.root, f.job.sourcePath)], { windowsHide: true, timeout: 15_000 });
+  const modelRoot = join(f.root, "models");
+  for (const model of models) for (const file of model.files) {
+    const path = join(modelRoot, model.id, file.path);
+    await mkdir(dirname(path), { recursive: true }); await writeFile(path, "fixture");
+  }
+  const previous = { IPOLLOWORK_VIDEO_MODELS_PATH: process.env.IPOLLOWORK_VIDEO_MODELS_PATH,
+    HYPERFRAMES_FFMPEG_PATH: process.env.HYPERFRAMES_FFMPEG_PATH, HYPERFRAMES_FFPROBE_PATH: process.env.HYPERFRAMES_FFPROBE_PATH };
+  try {
+    process.env.IPOLLOWORK_VIDEO_MODELS_PATH = modelRoot;
+    process.env.HYPERFRAMES_FFMPEG_PATH = join(f.root, "missing-ffmpeg.exe");
+    process.env.HYPERFRAMES_FFPROBE_PATH = bundledFFprobe;
+    let job = videoEnhancementJobSchema.parse((await callVideoEnhancementAction(f.config, "start", { sessionId: "proof", sourcePath: f.job.sourcePath }, f.context)).result);
+    const deadline = performance.now() + 15_000;
+    while (job.status === "running" && performance.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      job = videoEnhancementJobSchema.parse((await callVideoEnhancementAction(f.config, "read", { sessionId: "proof", jobId: job.id }, f.context)).result);
+    }
+    expect(job.status).toBe("failed"); expect(job.message).toContain("准备原视频与本地音频");
+    expect(await readFile(join(f.root, "video/proof/enhancement", job.id, "diagnostic.txt"), "utf8")).toContain("ENOENT");
+    expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(f.before);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+}, 30_000);
+
 test("rejects cross-session, unknown workspace and traversal before writing", async () => {
   const f = await fixture();
   await expect(callVideoEnhancementAction(f.config, "read", f.args, { ...f.context, sessionId: "other" })).rejects.toThrow("当前视频会话");

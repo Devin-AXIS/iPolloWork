@@ -80,16 +80,21 @@ async function run(jobPath: string, job: VideoEnhancementJob, input: string, dir
       } catch { protocolError = true; child.kill(); }
     });
     let diagnostic = "";
-    child.stderr.on("data", chunk => { diagnostic = (diagnostic + String(chunk)).slice(-1000); });
+    child.stderr.on("data", chunk => { diagnostic = (diagnostic + String(chunk)).slice(-8192); });
     await new Promise<void>((resolve, reject) => {
       child.once("error", reject);
-      child.once("close", code => code === 0 && !protocolError ? resolve() : reject(new Error(diagnostic)));
+      child.once("close", code => code === 0 && !protocolError ? resolve() : reject(new Error(diagnostic || `Analysis process exited with code ${code}; invalid output: ${protocolError}`)));
     });
     const result = videoEnhancementResultSchema.parse(output);
     item.job = { ...item.job, result, status: "ready", progress: 100, message: "本地分析完成，请检查建议后应用。" };
-  } catch {
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      const diagnostic = (error instanceof Error ? error.message : String(error)).slice(-8192);
+      await writeFile(join(directory, "diagnostic.txt"), diagnostic).catch(() => undefined);
+      console.warn("[video-enhancement] Analysis failed", job.id, diagnostic);
+    }
     item.job = { ...item.job, status: controller.signal.aborted ? "cancelled" : "failed", message: controller.signal.aborted
-      ? "分析已取消或超时，原视频与当前时间轴未更改。" : "本地分析失败，请检查音轨、模型与 FFmpeg；原视频与当前时间轴未更改。" };
+      ? "分析已取消或超时，原视频与当前时间轴未更改。" : `本地分析在“${item.job.message}”阶段失败，错误记录保留在任务目录；原视频与当前时间轴未更改。` };
   } finally {
     clearTimeout(timer);
     // Intermediate decoded media is not a deliverable, including on cancellation.

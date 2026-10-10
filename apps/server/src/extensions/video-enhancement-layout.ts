@@ -1,6 +1,10 @@
 import type { VideoEnhancementCue, VideoEnhancementRect, VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
 import { enhancementMaskProtection } from "./video-enhancement-segmentation.js";
 
+/** Keep aspect ratio and even dimensions without newer FFmpeg scale options. */
+export const enhancementScaleFilter = (maxSide: number) =>
+  `scale=w='max(2,trunc(iw*min(1,${maxSide}/max(iw,ih))/2)*2)':h='max(2,trunc(ih*min(1,${maxSide}/max(iw,ih))/2)*2)'`;
+
 const overlaps = (a: VideoEnhancementRect, b: VideoEnhancementRect) =>
   a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 

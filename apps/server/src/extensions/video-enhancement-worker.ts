@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { env, pipeline, RawImage } from "@huggingface/transformers";
 import { z } from "zod";
 import { VIDEO_ENHANCEMENT_MAX_SECONDS, videoEnhancementResultSchema, type VideoEnhancementRect, type VideoEnhancementMask } from "@ipollowork/types/video-enhancement";
-import { buildEnhancementCues, placeEnhancementCues } from "./video-enhancement-layout.js";
+import { buildEnhancementCues, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
 import type { HandSample, createEnhancementHandDetector } from "./video-enhancement-gestures.js";
 import type { createEnhancementSegmenter } from "./video-enhancement-segmentation.js";
 
@@ -27,7 +27,7 @@ try {
   const began = performance.now();
   progress(3, "准备原视频与本地音频");
   await execute(ffmpeg, ["-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe", "-f", extname(input).toLowerCase() === ".webm" ? "matroska" : "mov", "-i", input, "-map", "0:v:0", "-map", "0:a:0",
-    "-t", String(VIDEO_ENHANCEMENT_MAX_SECONDS), "-vf", "scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2", "-c:v", "libx264", "-preset", "fast", "-force_key_frames", "expr:gte(t,n_forced*1)", "-crf", "20", "-threads", "2", "-c:a", "aac", "-movflags", "+faststart", join(directory, "original.mp4")], { windowsHide: true, timeout: 180_000 });
+    "-t", String(VIDEO_ENHANCEMENT_MAX_SECONDS), "-vf", enhancementScaleFilter(1280), "-c:v", "libx264", "-preset", "fast", "-force_key_frames", "expr:gte(t,n_forced*1)", "-crf", "20", "-threads", "2", "-c:a", "aac", "-movflags", "+faststart", join(directory, "original.mp4")], { windowsHide: true, timeout: 180_000 });
   const { stdout } = await execute(ffprobe, ["-v", "error", "-show_entries", "stream=width,height:format=duration", "-of", "json", join(directory, "original.mp4")], { windowsHide: true, timeout: 15_000 });
   const info = z.object({ streams: z.array(z.object({ width: z.number().optional(), height: z.number().optional() })), format: z.object({ duration: z.coerce.number() }) }).parse(JSON.parse(stdout));
   const video = info.streams.find(stream => stream.width && stream.height);
@@ -54,7 +54,7 @@ try {
   progress(48, "分析人物与手势区域");
   const visionBegan = performance.now();
   const fps = mode === "gestures" || protection === "contour" ? 4 : 2;
-  await execute(ffmpeg, ["-nostdin", "-v", "error", "-i", join(directory, "original.mp4"), "-vf", `fps=${fps},scale=w='min(768,iw)':h='min(768,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`, "-threads", "1", join(directory, "frame-%04d.jpg")], { windowsHide: true, timeout: 60_000 });
+  await execute(ffmpeg, ["-nostdin", "-v", "error", "-i", join(directory, "original.mp4"), "-vf", `fps=${fps},${enhancementScaleFilter(768)}`, "-threads", "1", join(directory, "frame-%04d.jpg")], { windowsHide: true, timeout: 60_000 });
   const detector = await pipeline("object-detection", "Xenova/yolos-tiny", { device: "cpu", dtype: "q8", local_files_only: true, session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 } });
   const frames = (await readdir(directory)).filter(file => /^frame-\d{4}\.jpg$/.test(file)).sort();
   const people = [];
@@ -95,7 +95,8 @@ try {
   if (mode === "gestures" && !gestures.length) warnings.push("未识别到稳定指向或张掌手势，已依据音频和安全空白位置生成建议。");
   const result = videoEnhancementResultSchema.parse({ ...base, cues, warnings });
   process.stdout.write(JSON.stringify({ result }) + "\n");
-} catch {
-  process.stderr.write("本地分析未完成，请检查音轨、本地模型和视频编解码组件。\n");
+} catch (error) {
+  // Preserve the bounded local cause; the server keeps it in the task folder.
+  process.stderr.write((error instanceof Error ? error.message : String(error)).slice(-8192) + "\n");
   process.exitCode = 1;
 }

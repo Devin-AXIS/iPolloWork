@@ -5,9 +5,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createRequire } from "node:module";
 import { startServer } from "../../apps/server/src/server.js";
 import { resolveWithinRoot } from "../../apps/server/src/paths.js";
 import type { ServerConfig } from "../../apps/server/src/types.js";
+// Match desktop codecs by default; a newer PATH binary can hide incompatibilities.
+const desktopRequire = createRequire(new URL("../../apps/desktop/package.json", import.meta.url));
+process.env.HYPERFRAMES_FFMPEG_PATH ??= desktopRequire("@ffmpeg-installer/ffmpeg").path;
+process.env.HYPERFRAMES_FFPROBE_PATH ??= desktopRequire("@ffprobe-installer/ffprobe").path;
 const root = process.env.IPOLLOWORK_ENHANCEMENT_PROOF_ROOT || await mkdtemp(join(tmpdir(), "ipw-enhancement-proof-"));
 const source = process.env.IPOLLOWORK_ENHANCEMENT_PROOF_VIDEO;
 if (!source) throw new Error("Set IPOLLOWORK_ENHANCEMENT_PROOF_VIDEO to a short local speech video.");
