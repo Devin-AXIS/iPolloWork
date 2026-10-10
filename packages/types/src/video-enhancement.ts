@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const VIDEO_ENHANCEMENT_MAX_SECONDS = 180;
-export const VIDEO_ENHANCEMENT_MAX_BYTES = 100 * 1024 * 1024;
+export const VIDEO_ENHANCEMENT_MAX_BYTES = 500 * 1024 * 1024;
 export const VIDEO_ENHANCEMENT_MASK_SIZE = 64;
 export const videoEnhancementSessionSchema = z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
 export const videoEnhancementRectSchema = z.object({

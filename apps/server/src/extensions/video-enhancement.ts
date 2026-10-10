@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
-  VIDEO_ENHANCEMENT_MAX_SECONDS, videoEnhancementApplySchema, videoEnhancementJobInputSchema,
+  VIDEO_ENHANCEMENT_MAX_SECONDS, VIDEO_ENHANCEMENT_MAX_BYTES, videoEnhancementApplySchema, videoEnhancementJobInputSchema,
   videoEnhancementJobSchema, videoEnhancementReadSchema, videoEnhancementResultSchema,
   videoEnhancementStartSchema, type VideoEnhancementJob,
 } from "@ipollowork/types/video-enhancement";
@@ -122,7 +122,7 @@ export async function callVideoEnhancementAction(config: ServerConfig, action: s
     if (!modelStatus.ready || start.useGestures && !modelStatus.gesturesReady || start.useSegmentation && !modelStatus.segmentationReady) throw new ApiError(503, "enhancement_models_missing", modelStatus.message);
     if (live.size >= 1) throw new ApiError(409, "enhancement_busy", "已有本地分析正在运行，请等待完成或取消。");
     const source = await resolveWithinRoot(workspace.path, start.sourcePath);
-    const info = await inspectLocalVideo(workspace, start.sourcePath);
+    const info = await inspectLocalVideo(workspace, start.sourcePath, VIDEO_ENHANCEMENT_MAX_BYTES);
     if (!info.hasAudio) throw new ApiError(400, "enhancement_no_audio", "视频没有音轨，无法依据讲话生成元素。");
     if (info.duration > VIDEO_ENHANCEMENT_MAX_SECONDS) throw new ApiError(400, "enhancement_duration", "首版支持 3 分钟以内的视频。");
     const entry = await resolveWithinRoot(workspace.path, project, "index.html");

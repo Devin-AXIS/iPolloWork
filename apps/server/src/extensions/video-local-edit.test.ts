@@ -1,13 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, toNamespacedPath } from "node:path";
 import { promisify } from "node:util";
 import { avatarCutoutTimeout, removeAvatarBackground, inspectNarrationDuration, mixAvatarNarration, inspectLocalVideo, localVideoEditSchema, localVideoFilters, saveLocalVideo } from "./video-local-edit.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
 import type { ServerConfig } from "../types.js";
+import { VIDEO_ENHANCEMENT_MAX_BYTES } from "@ipollowork/types/video-enhancement";
 const exec = promisify(execFile);
 const roots: string[] = [];
 test.each([true, false])("avatar cutout retains alpha and source audio presence (%s)", async hasAudio => {
@@ -74,6 +75,24 @@ test("rejects invalid edits before processing", () => {
   for (const patch of [{end:0},{speed:0},{rotation:45},{volume:2},{crop:{x:.8,y:0,width:.5,height:1}},{extra:"-i https://host"}]) expect(localVideoEditSchema.safeParse({...valid,...patch}).success).toBe(false);
   expect(localVideoFilters(localVideoEditSchema.parse(valid)).video).toContain("setpts=(PTS-STARTPTS)/1");
 });
+test("enhancement inspection accepts 500 MB and rejects larger files without raising editor limits", async () => {
+  const { root, workspace } = await fixture();
+  const source = await open(join(root, "source.mp4"), "r+");
+  try {
+    const original = await source.stat();
+    const padding = Buffer.alloc(8);
+    padding.writeUInt32BE(VIDEO_ENHANCEMENT_MAX_BYTES - original.size);
+    padding.write("free", 4);
+    await source.write(padding, 0, padding.length, original.size);
+    await source.truncate(VIDEO_ENHANCEMENT_MAX_BYTES);
+    await expect(inspectLocalVideo(workspace, "source.mp4")).rejects.toMatchObject({ code: "video_size" });
+    expect(await inspectLocalVideo(workspace, "source.mp4", VIDEO_ENHANCEMENT_MAX_BYTES))
+      .toMatchObject({ bytes: VIDEO_ENHANCEMENT_MAX_BYTES, hasAudio: true, width: 320, height: 240 });
+    await source.truncate(VIDEO_ENHANCEMENT_MAX_BYTES + 1);
+    await expect(inspectLocalVideo(workspace, "source.mp4", VIDEO_ENHANCEMENT_MAX_BYTES))
+      .rejects.toMatchObject({ code: "video_size" });
+  } finally { await source.close(); }
+}, 30_000);
 test("real local render crops, rotates, trims, changes speed, removes audio and saves a distinct copy", async () => {
   const {root,config,workspace,edit}=await fixture(); const original=await readFile(join(root,"source.mp4"));
   const saved=await saveLocalVideo(config,workspace,"session",edit);

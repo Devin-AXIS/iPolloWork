@@ -9,6 +9,7 @@ import { open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/pr
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { MAX_VIDEO_IMAGE_BYTES, MAX_VIDEO_MEDIA_BYTES, mediaKindForPath, safeVideoMediaPath } from "@ipollowork/types/video-image-workbench";
+import { VIDEO_ENHANCEMENT_MAX_BYTES } from "@ipollowork/types/video-enhancement";
 import { resolveWithinRoot } from "../paths.js";
 import { readLimitedRequestBody } from "../limited-request-body.js";
 import { recordAudit } from "../audit.js";
@@ -23,6 +24,9 @@ import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 const thumbnailJobs = new Map<string, Promise<{ bytes: Buffer; detail: string }>>();
 const executeThumbnail = promisify(execFile);
+// Enhancement originals use a larger upload budget than ordinary editor media.
+const mediaUploadLimit = (path: string) => /^video\/[\w-]+\/assets\/enhance-source-[\w-]+\.(mp4|mov|webm)$/i.test(path)
+  ? VIDEO_ENHANCEMENT_MAX_BYTES : mediaKindForPath(path) === "video" ? MAX_VIDEO_MEDIA_BYTES : MAX_VIDEO_IMAGE_BYTES;
 
 const FILE_SESSION_DEFAULT_TTL_MS = 15 * 60 * 1000;
 const FILE_SESSION_MIN_TTL_MS = 30 * 1000;
@@ -1383,7 +1387,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     if (multipart) {
       const path = safeVideoMediaPath(ctx.url.searchParams.get("path"));
       if (!path || !ctx.request.body) throw new ApiError(400, "invalid_path", "A local image or video path is required");
-      const limit = (mediaKindForPath(path) === "video" ? MAX_VIDEO_MEDIA_BYTES : MAX_VIDEO_IMAGE_BYTES) + 64 * 1024;
+      const limit = mediaUploadLimit(path) + 64 * 1024;
       const bounded = await readLimitedRequestBody(ctx.request, limit, { code: "file_too_large", message: "Media exceeds upload limit" });
       let form: FormData;
       try { form = await new Response(Buffer.from(bounded), { headers: { "content-type": contentType } }).formData(); }
@@ -1404,7 +1408,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     } catch {
       throw new ApiError(400, "invalid_payload", "dataBase64 is invalid");
     }
-    const maxBytes = mediaFile ? (mediaKindForPath(relativePath) === "video" ? MAX_VIDEO_MEDIA_BYTES : MAX_VIDEO_IMAGE_BYTES) : FILE_SESSION_MAX_FILE_BYTES;
+    const maxBytes = mediaFile ? mediaUploadLimit(relativePath) : FILE_SESSION_MAX_FILE_BYTES;
     if (bytes.byteLength > maxBytes) {
       throw new ApiError(413, "file_too_large", "File exceeds size limit", { maxBytes, size: bytes.byteLength });
     }

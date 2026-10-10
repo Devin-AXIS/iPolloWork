@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Progress } from "@/components/ui/progress";
 import { videoProjectDirectory } from "./video-project";
 
+const maxSizeMB = VIDEO_ENHANCEMENT_MAX_BYTES / 1024 / 1024;
 type Props = {
   client: iPolloWorkServerClient; workspaceId: string; sessionId: string;
   previewAssetUrl: (path: string) => string; onApplied: () => void;
@@ -92,7 +93,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
   const start = () => perform(async () => {
     if (!file) throw new Error("请先选择视频。");
     const suffix = file.name.split(".").pop()?.toLowerCase();
-    if (!suffix || !["mp4", "mov", "webm"].includes(suffix) || !file.size || file.size > VIDEO_ENHANCEMENT_MAX_BYTES) throw new Error("请选择 100 MB 以内的 MP4、MOV 或 WebM 视频。");
+    if (!suffix || !["mp4", "mov", "webm"].includes(suffix) || !file.size || file.size > VIDEO_ENHANCEMENT_MAX_BYTES) throw new Error(`请选择 ${maxSizeMB} MB 以内的 MP4、MOV 或 WebM 视频。`);
     // A failed new analysis must not leave the previous video's apply button active.
     setJob(null); setDraft([]); setTime(0);
     const path = `${videoProjectDirectory(sessionId)}/assets/enhance-source-${crypto.randomUUID()}.${suffix}`;
@@ -124,7 +125,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
         <DialogHeader className="shrink-0"><DialogTitle>视频智能增强</DialogTitle><DialogDescription>根据讲话生成关键词、数字与列表，结合手势定位并避让人物。全部在本机处理。</DialogDescription></DialogHeader>
         <p className={`shrink-0 text-xs ${ready ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400"}`} role="status">{modelMessage}</p>
         <div className="flex shrink-0 flex-wrap items-end gap-3">
-          <label className="min-w-48 flex-1 space-y-1 text-sm"><span>上传口播视频</span><Input type="file" accept=".mp4,.mov,.webm" disabled={busy || running} onChange={event => setFile(event.target.files?.[0] ?? null)} data-testid="enhancement-file" /><span className="text-xs text-muted-foreground">MP4 / MOV / WebM · 最长 3 分钟 · 最大 100 MB</span></label>
+          <label className="min-w-48 flex-1 space-y-1 text-sm"><span>上传口播视频</span><Input type="file" accept=".mp4,.mov,.webm" disabled={busy || running} onChange={event => setFile(event.target.files?.[0] ?? null)} data-testid="enhancement-file" /><span className="text-xs text-muted-foreground">MP4 / MOV / WebM · 最长 3 分钟 · 最大 {maxSizeMB} MB</span></label>
           <label className="space-y-1 text-sm"><span className="block">讲话语言</span><select className="h-9 rounded-md border bg-background px-2" value={language} disabled={busy || running} onChange={event => {
             if (event.target.value === "zh" || event.target.value === "en" || event.target.value === "auto") setLanguage(event.target.value);
           }}><option value="zh">中文</option><option value="en">英语</option><option value="auto">自动识别</option></select></label>
