@@ -2241,6 +2241,128 @@ describe("model runtime adapters", () => {
     expect(connectedIds).toContain("orcarouter");
   });
 
+  test("connects the Cheaper Inference compatible provider preset as a callable shared OpenCode provider", async () => {
+    const { calls, client } = createOpenCodeProviderClient();
+    const runtimePatches: unknown[] = [];
+    const mirroredCredentials: Array<{ key: string; value: string }> = [];
+    let providers = [
+      {
+        id: "opencode",
+        name: "OpenCode",
+        source: "api" as const,
+        env: [],
+        models: {},
+      },
+    ];
+    let connectedIds = ["opencode"];
+    const serverClient = {
+      patchConfig: async (_workspaceId: string, patch: unknown) => {
+        calls.push({ name: "patch-config" });
+        runtimePatches.push(patch);
+        return { ok: true };
+      },
+      reloadEngine: async () => {
+        calls.push({ name: "reload-engine" });
+        return { ok: true };
+      },
+      upsertUserEnv: async (entries: Array<{ key: string; value: string }>) => {
+        calls.push({ name: "mirror-shared" });
+        mirroredCredentials.push(...entries);
+        return { updated: entries.map((entry) => entry.key) };
+      },
+      deleteUserEnv: async () => ({ ok: true }),
+    };
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => ({ opencode: "default-model" }),
+      providerConnectedIds: () => connectedIds,
+      disabledProviders: () => [],
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-a",
+        name: "Workspace A",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43121/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-a",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { connectedIds = value; },
+      setDisabledProviders: () => {},
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    await store.openProviderAuthModal({ preferredProviderId: "cheaperinference" });
+    expect(store.getSnapshot()).toMatchObject({
+      providerAuthModalOpen: true,
+      providerAuthPreferredProviderId: "cheaperinference",
+      providerAuthMethods: {
+        cheaperinference: [{ type: "api", label: expect.any(String) }],
+      },
+    });
+
+    await store.submitProviderApiKey("cheaperinference", "secret");
+
+    expect(runtimePatches).toEqual([{
+      opencode: {
+        provider: {
+          cheaperinference: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Cheaper Inference",
+            options: { baseURL: "https://api.cheaperinference.com/v1" },
+            models: {
+              "gpt-5.4-mini": { name: "GPT-5.4 Mini" },
+              "gpt-5.4": { name: "GPT-5.4" },
+              "claude-sonnet-5": { name: "Claude Sonnet 5" },
+              "gemini-3.1-pro": { name: "Gemini 3.1 Pro" },
+              "deepseek-v4-flash": { name: "DeepSeek V4 Flash" },
+              "glm-5.3": { name: "GLM-5.3" },
+            },
+          },
+        },
+      },
+    }]);
+    expect(calls).toContainEqual({
+      name: "set",
+      value: {
+        providerID: "cheaperinference",
+        auth: { type: "api", key: "secret" },
+      },
+    });
+    expect(calls.findIndex((call) => call.name === "mirror-shared")).toBeLessThan(
+      calls.findIndex((call) => call.name === "patch-config"),
+    );
+    expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
+      calls.findIndex((call) => call.name === "set"),
+    );
+    expect(calls.findIndex((call) => call.name === "set")).toBeLessThan(
+      calls.findIndex((call) => call.name === "reload-engine"),
+    );
+    expect(mirroredCredentials[0]).toEqual({
+      key: sharedProviderCredentialEnvKey("cheaperinference"),
+      value: "secret",
+    });
+    expect(mirroredCredentials[1]?.key).toBe(sharedProviderProfileEnvKey("cheaperinference"));
+    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject({
+      providerId: "cheaperinference",
+      api: "openai-completions",
+      baseURL: "https://api.cheaperinference.com/v1",
+    });
+    expect(connectedIds).toContain("cheaperinference");
+  });
+
   test("imports a shared API key once per workspace across sibling stores", async () => {
     const { calls, client } = createOpenCodeProviderClient();
     const credentialKey = sharedProviderCredentialEnvKey("deepseek-official");

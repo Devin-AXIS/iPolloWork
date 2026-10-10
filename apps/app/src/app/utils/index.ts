@@ -24,6 +24,7 @@ const FRIENDLY_PROVIDER_LABELS: Record<string, string> = {
   groq: "Groq",
   openrouter: "OpenRouter",
   orcarouter: "OrcaRouter",
+  cheaperinference: "Cheaper Inference",
   minimax: "MiniMax",
   tokenstar: "TokenStar",
   together: "Together AI",
