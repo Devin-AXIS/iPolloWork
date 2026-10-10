@@ -2,7 +2,29 @@
 
 核对日期：2026-10-09。基于当前工作区（含未提交修改），状态可随代码与证据更新。62 个目录条目包含组件状态与内容示例，不等于 62 个独立组件。
 
-## Figma 入口
+## 共享包可调用范围 · 2026-10-10
+
+设计成熟度与插件公共可用性分开记录：下表实现已本地整合到 Carrie，未提交、推送或发布。原目录中的宿主路径保留为兼容入口，迁入实现的真实位置及包入口见 `component-mapping.json`。组件样板与真实业务页面的验收范围分别记录。
+
+| 核心范围 | 共享公共组件 |
+| --- | --- |
+| 输入与选择 | Label、Field、Input、InputGroup、Textarea、Select、Autocomplete、Checkbox、RadioGroup、Switch、Toggle、ToggleGroup |
+| 动作与菜单 | Button、DescriptiveButton、DropdownMenu、ContextMenu、Command（含 CommandInput / CommandDialog） |
+| 浮层 | Dialog、AlertDialog、Sheet、Popover、HoverCard、Tooltip |
+| 反馈与状态 | Alert（Info/Success/Warning/Error）、Toaster/toast、Badge、Progress、Skeleton、Empty |
+
+Alert / Toast 已统一为无边框的语义浅背景；主组件、完整目录与推荐页实例同步，其他状态页无这五个组件的实例。Alert 四种设计身份及对应 variant 已记录在 `component-mapping.json`，主题 Token 与迁移边界见 `plugin-contract.md` 的“反馈样式与迁移”。NotificationCenter 仍是宿主私有组合，本次保留其既有浅背景参考，不把它误标为公共导出。
+
+2026-10-10 用户截图修正：反馈背景减淡到palette第2档；模板操作32px、筛选触发器复用共享Button；设置按钮装饰不占flex间距，选中尺寸稳定；Dialog关闭统一28px点击区/16px图标。真实客户端8帧证据 `evals/results/2026-10-10T05-21-04-298Z/fraimz.html`，两种运行模式12帧证据 `evals/results/2026-10-10T05-18-34-476Z/fraimz.html`；这是所测页面与状态的证明，不是全客户端视觉验收。
+| 数据与布局 | Table、Card（含 CardContent）、Avatar、Image、Tabs、Accordion、Collapsible、ScrollArea、Separator |
+
+共38组基础组件（状态和子组件不重复计数），统一由 `@ipollowork/ui/core` 和单模块入口提供；iframe 运行时1.2提供同源值导出。单一实现，不另写插件版控件。`shared-ui-core.test.ts` 检查映射对应实际公共导出，`shared-ui-core.flow.mjs` 驱动两种加载模式的核心调用样板；样板回调隔离，不代表真实业务服务验收或所有组件全部状态已通过。
+
+以下推荐条目仍没有独立插件公共组件：SearchField、ModelBehaviorMenu、LinkActionMenu、ConfirmModal、NotificationCenter、ModelLoadingStatus、Tool/Tool Status、Message、Source、ChainOfThought、Artifact、Sidebar、PanelTabs、Resizable。不能让插件直接引用这些宿主私有路径；SearchField/ConfirmModal可先按共享基础组件组合，但不能声称已公开同名API。需继续提取数据/回调依赖或迁入纯组件，补齐类型与两模式验证。
+
+新增映射记录目录条目和真实源码；未核对 Figma 主组件身份的项目保留 `figmaMainId: null`。代码导出、设计身份与交互验收是三种不同状态。
+
+## Figma 状态页
 
 - [使用说明与交互规范](https://www.figma.com/design/kpx32oBzY6ecHJZX11mAvr?node-id=199-40)
 - [01 已实现与推荐使用](https://www.figma.com/design/kpx32oBzY6ecHJZX11mAvr?node-id=198-1447)：62 个条目，推荐范围以逐项证据为限。
@@ -128,6 +150,6 @@ Composer、附件项、预览四态、属性参数、工作项表单及日期时
 
 ## 候选与历史
 
-候选：统一上传恢复；表格排序/筛选/分页/批量操作；通用日期时间选择；独立插件 UI Token 与控件复用契约。Figma 本页提供待接入需求，不声称已存在通用实现。
+候选：统一上传恢复；表格排序/筛选/分页/批量操作；通用日期时间选择。独立插件 UI Token 与控件接入契约已有共享实现，见 `plugin-contract.md` 的“主题与 Token”；页面级字体收敛与完整Figma文字样式对照仍待完成，不把已有契约继续列为未实现候选。Figma 候选页是需求快照，不声称这些候选已存在通用实现。
 
 历史：SelectMenu 已在当前工作区删除，使用 Select；TextInput 仍为兼容封装，新普通表单组合 Field + Input。原审计稿泛称“已完成”的状态不能替代用户验收语义。

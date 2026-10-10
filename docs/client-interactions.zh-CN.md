@@ -303,7 +303,7 @@ macOS 使用 `Cmd`，Windows/Linux 使用 `Ctrl`。
 | 多行输入 / 表单 | Textarea、Field、FieldGroup | Textarea 最小高 64px，不压缩正文；标签和帮助文本间距 4–6px，表单组间距 16px |
 | 选择 / 菜单 / 浮层 | Select、DropdownMenu、ContextMenu、Popover | 浮层圆角 8px，跟随主题；单行菜单 32px，密集菜单 28px；含说明时高度自适应 |
 | 弹窗 / 确认 / 抽屉 | Dialog、AlertDialog、Sheet、ConfirmModal | 弹窗内边距及圆角 16px；抽屉头尾内边距 16px；长内容可滚动，关闭后返回触发入口；取消不提交 |
-| 警告 / 通知 | Alert、sonner 的 Toaster / toast | 共用 10px 圆角轻量卡片、1px 语义状态色边框与 24px 圆形 Lucide 图标、标题说明及右侧关闭图标；无左侧状态竖条；内容水平间距 8px；信息/成功/警告/错误不整卡染色；高度随内容增长，深浅色跟随主题 |
+| 警告 / 通知 | Alert、sonner 的 Toaster / toast | 共用 10px 圆角轻量卡片、无边框的语义浅背景与 24px 圆形 Lucide 图标、标题说明及右侧关闭图标；无左侧状态竖条；内容水平间距 8px；信息/成功/警告/错误使用对应低强调背景；高度随内容增长，深浅色跟随主题 |
 | 标签 / 状态 | Badge | 最小高 20px、水平内边距 6px、圆角 6px；状态不只靠颜色；可操作筛选另行组合，不把 span 当按钮 |
 | 表格 | Table、TableHead、TableCell | 表头 32px；单元格水平 10px、垂直 8px；行高随内容增长，保留横向滚动 |
 | 导航 / 卡片 / 空状态 | Tabs、Card、Empty | Tabs 容器 32px；Card 常规 16px、sm 12px 内边距，圆角 16px；Empty 内边距 24px、圆角 12px |

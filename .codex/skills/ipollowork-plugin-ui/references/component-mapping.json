@@ -1,13 +1,793 @@
 {
   "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
-  "runtimeVersion": "1.1.0",
+  "runtimeVersion": "1.3.0",
+  "foundations": {
+    "figmaCollectionId": "VariableCollectionId:237:1443",
+    "modes": { "Light": "237:0", "Dark": "237:1" },
+    "variables": {
+      "--brand-accent": "VariableID:237:1444",
+      "--brand-strong": "VariableID:237:1445",
+      "--brand-soft": "VariableID:237:1446",
+      "--action-background": "VariableID:237:1447",
+      "--action-foreground": "VariableID:237:1448",
+      "--action-hover": "VariableID:237:1449",
+      "--action-pressed": "VariableID:237:1450",
+      "--action-pressed-foreground": "VariableID:237:1451",
+      "--primary": "VariableID:237:1452",
+      "--primary-text": "VariableID:237:1453",
+      "--ring": "VariableID:237:1454",
+      "--field-hint-gap": "VariableID:237:1455"
+    },
+    "textStyles": {
+      "text-ui-page-title": "S:6a2cd23ced3c51e7e207004826e824739a153358,",
+      "text-ui-section-title": "S:b70e52cf1fd38f48bbc12da212a2130eaf1d06c1,",
+      "text-ui-control": "S:dc0b67d18fbf2796bf4782344afd9438d835c4a7,",
+      "text-ui-body": "S:7f2bf7738dc595f5839d8c17a8fbe887d955bb74,",
+      "text-ui-meta": "S:613041a0013df56c48fc9b0095588bb4b7b625b9,",
+      "text-ui-caption": "S:774ab096225fe582c1d990e4a2fb72b311014c92,",
+      "text-ui-micro": "S:06f422bfdfe3e4eb638dc42a72605725c1cfe53a,"
+    },
+    "figmaPreviewFont": "Inter; client uses shared system sans with Chinese fallback",
+    "boundMainIds": ["6:120", "6:15", "6:20", "6:37", "6:70", "6:209", "6:219", "6:277", "6:283", "6:289", "6:295", "6:301", "21:456"],
+    "scope": "public foundations and bound samples; remaining instance overrides need audit"
+  },
   "tokenSource": "packages/ui/src/common/tokens.css",
   "components": [
-    { "export": "Button", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:120", "figmaCatalogId": "6:711", "htmlMarker": "button" },
-    { "export": "Input", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:20", "figmaCatalogId": "6:549", "htmlMarker": "input" },
-    { "export": "Textarea", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:37", "figmaCatalogId": "6:583", "htmlMarker": "textarea" },
-    { "export": "Select", "package": "@ipollowork/ui/select", "source": "packages/ui/src/react/select.tsx", "figmaMainId": null, "figmaCatalogId": "6:637", "htmlMarker": null, "integration": "React island", "mappingStatus": "catalog confirmed; main component identity not verified" },
-    { "export": "Dialog", "package": "@ipollowork/ui/dialog", "source": "packages/ui/src/react/dialog.tsx", "figmaMainId": null, "figmaCatalogId": "6:832", "htmlMarker": null, "integration": "React island", "mappingStatus": "catalog confirmed; main component identity not verified" },
-    { "export": "Toaster", "relatedExports": ["toast"], "package": "@ipollowork/ui/sonner", "source": "packages/ui/src/react/sonner.tsx", "figmaMainId": null, "figmaCatalogId": "6:977", "htmlMarker": null, "integration": "React island", "mappingStatus": "catalog confirmed; main component identity not verified" }
-  ]
+    {
+      "export": "Button",
+      "package": "@ipollowork/ui/controls",
+      "source": "packages/ui/src/react/controls.tsx",
+      "figmaMainId": "6:120",
+      "figmaCatalogId": "6:711",
+      "htmlMarker": "button"
+    },
+    {
+      "export": "Input",
+      "package": "@ipollowork/ui/controls",
+      "source": "packages/ui/src/react/controls.tsx",
+      "figmaMainId": "6:20",
+      "figmaCatalogId": "6:549",
+      "htmlMarker": "input"
+    },
+    {
+      "export": "Textarea",
+      "package": "@ipollowork/ui/controls",
+      "source": "packages/ui/src/react/controls.tsx",
+      "figmaMainId": "6:37",
+      "figmaCatalogId": "6:583",
+      "htmlMarker": "textarea"
+    },
+    {
+      "export": "Select",
+      "relatedExports": [
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectStyleScopeProvider",
+        "SelectTrigger",
+        "SelectValue"
+      ],
+      "package": "@ipollowork/ui/select",
+      "source": "packages/ui/src/react/select.tsx",
+      "figmaMainId": "6:70",
+      "figmaMainName": "IPW/Catalog/Select",
+      "figmaComponentKey": "d002fef8b0343e255b62629474f0bcca01f92c30",
+      "figmaCatalogId": "6:637",
+      "figmaCatalogInstanceId": "6:640",
+      "figmaRecommendedInstanceId": "198:1585",
+      "identityVerifiedAt": "2026-10-10",
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "main component identity and both instance references verified"
+    },
+    {
+      "export": "Dialog",
+      "relatedExports": [
+        "DialogClose",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogTitle",
+        "DialogTrigger"
+      ],
+      "package": "@ipollowork/ui/dialog",
+      "source": "packages/ui/src/react/dialog.tsx",
+      "figmaMainId": "6:209",
+      "figmaMainName": "IPW/Catalog/Dialog",
+      "figmaComponentKey": "4f4f7b1083073e31ae809cc7a7ced38e5b151a55",
+      "figmaCatalogId": "6:832",
+      "figmaCatalogInstanceId": "6:835",
+      "figmaRecommendedInstanceId": "198:1659",
+      "identityVerifiedAt": "2026-10-10",
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "main component identity and both instance references verified",
+      "designNote": "Main description still says codex/compact-ui is not merged; current local Carrie contains the implementation. Identity verification does not certify all visual states."
+    },
+    {
+      "export": "Toaster",
+      "relatedExports": [
+        "toast"
+      ],
+      "package": "@ipollowork/ui/sonner",
+      "source": "packages/ui/src/react/sonner.tsx",
+      "figmaMainId": "6:301",
+      "figmaMainName": "IPW/Catalog/Toast / Sonner",
+      "figmaComponentKey": "89ad03fb3e4e48aedb7aa80584d981bdb4a4414e",
+      "figmaCatalogId": "6:977",
+      "figmaCatalogInstanceId": "6:980",
+      "figmaRecommendedInstanceId": "198:1842",
+      "identityVerifiedAt": "2026-10-10",
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "main component identity and both instance references verified",
+      "designNote": "Figma represents the Toast feedback card; Toaster is the code mounting container and toast is the invocation API, not three separate Figma components."
+    },
+    {
+      "export": "Table",
+      "relatedExports": [
+        "TableBody",
+        "TableCaption",
+        "TableCell",
+        "TableFooter",
+        "TableHead",
+        "TableHeader",
+        "TableRow"
+      ],
+      "package": "@ipollowork/ui/table",
+      "source": "packages/ui/src/react/table.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1196",
+      "figmaCatalogIds": [
+        "6:1196"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Card",
+      "relatedExports": [
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardFooter",
+        "CardHeader",
+        "CardTitle"
+      ],
+      "package": "@ipollowork/ui/card",
+      "source": "packages/ui/src/react/card.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1185",
+      "figmaCatalogIds": [
+        "6:1185",
+        "6:1308"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Avatar",
+      "relatedExports": [
+        "AvatarBadge",
+        "AvatarFallback",
+        "AvatarGroup",
+        "AvatarGroupCount",
+        "AvatarImage"
+      ],
+      "package": "@ipollowork/ui/avatar",
+      "source": "packages/ui/src/react/avatar.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1219",
+      "figmaCatalogIds": [
+        "6:1219"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Label",
+      "package": "@ipollowork/ui/label",
+      "source": "packages/ui/src/react/label.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:532",
+      "figmaCatalogIds": [
+        "6:532"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Field",
+      "relatedExports": [
+        "FieldContent",
+        "FieldDescription",
+        "FieldError",
+        "FieldGroup",
+        "FieldLabel",
+        "FieldLegend",
+        "FieldSeparator",
+        "FieldSet",
+        "FieldTitle"
+      ],
+      "package": "@ipollowork/ui/field",
+      "source": "packages/ui/src/react/field.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:540",
+      "figmaCatalogIds": [
+        "6:540"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "InputGroup",
+      "relatedExports": [
+        "InputGroupAddon",
+        "InputGroupButton",
+        "InputGroupInput",
+        "InputGroupText",
+        "InputGroupTextarea"
+      ],
+      "package": "@ipollowork/ui/input-group",
+      "source": "packages/ui/src/react/input-group.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:591",
+      "figmaCatalogIds": [
+        "6:591"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Autocomplete",
+      "relatedExports": [
+        "AutocompleteClear",
+        "AutocompleteCollection",
+        "AutocompleteEmpty",
+        "AutocompleteGroup",
+        "AutocompleteGroupLabel",
+        "AutocompleteInput",
+        "AutocompleteItem",
+        "AutocompleteList",
+        "AutocompletePopup",
+        "AutocompleteRow",
+        "AutocompleteSeparator",
+        "AutocompleteStatus",
+        "AutocompleteTrigger",
+        "AutocompleteValue",
+        "useAutocompleteFilter"
+      ],
+      "package": "@ipollowork/ui/autocomplete",
+      "source": "packages/ui/src/react/autocomplete.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:653",
+      "figmaCatalogIds": [
+        "6:653"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Checkbox",
+      "package": "@ipollowork/ui/checkbox",
+      "source": "packages/ui/src/react/checkbox.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:600",
+      "figmaCatalogIds": [
+        "6:600"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "RadioGroup",
+      "relatedExports": [
+        "RadioGroupItem"
+      ],
+      "package": "@ipollowork/ui/radio-group",
+      "source": "packages/ui/src/react/radio-group.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:612",
+      "figmaCatalogIds": [
+        "6:612"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Switch",
+      "package": "@ipollowork/ui/switch",
+      "source": "packages/ui/src/react/switch.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:624",
+      "figmaCatalogIds": [
+        "6:624"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Toggle",
+      "relatedExports": [
+        "toggleVariants"
+      ],
+      "package": "@ipollowork/ui/toggle",
+      "source": "packages/ui/src/react/toggle.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:668",
+      "figmaCatalogIds": [
+        "6:668"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "ToggleGroup",
+      "relatedExports": [
+        "ToggleGroupItem"
+      ],
+      "package": "@ipollowork/ui/toggle-group",
+      "source": "packages/ui/src/react/toggle-group.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:680",
+      "figmaCatalogIds": [
+        "6:680"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "DropdownMenu",
+      "relatedExports": [
+        "DropdownMenuCheckboxItem",
+        "DropdownMenuContent",
+        "DropdownMenuGroup",
+        "DropdownMenuItem",
+        "DropdownMenuLabel",
+        "DropdownMenuPortal",
+        "DropdownMenuRadioGroup",
+        "DropdownMenuRadioItem",
+        "DropdownMenuSeparator",
+        "DropdownMenuShortcut",
+        "DropdownMenuSub",
+        "DropdownMenuSubContent",
+        "DropdownMenuSubTrigger",
+        "DropdownMenuTrigger"
+      ],
+      "package": "@ipollowork/ui/dropdown-menu",
+      "source": "packages/ui/src/react/dropdown-menu.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:737",
+      "figmaCatalogIds": [
+        "6:737"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "ContextMenu",
+      "relatedExports": [
+        "ContextMenuCheckboxItem",
+        "ContextMenuContent",
+        "ContextMenuGroup",
+        "ContextMenuItem",
+        "ContextMenuLabel",
+        "ContextMenuPortal",
+        "ContextMenuRadioGroup",
+        "ContextMenuRadioItem",
+        "ContextMenuSeparator",
+        "ContextMenuShortcut",
+        "ContextMenuSub",
+        "ContextMenuSubContent",
+        "ContextMenuSubTrigger",
+        "ContextMenuTrigger"
+      ],
+      "package": "@ipollowork/ui/context-menu",
+      "source": "packages/ui/src/react/context-menu.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:756",
+      "figmaCatalogIds": [
+        "6:756"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "AlertDialog",
+      "relatedExports": [
+        "AlertDialogAction",
+        "AlertDialogCancel",
+        "AlertDialogContent",
+        "AlertDialogDescription",
+        "AlertDialogFooter",
+        "AlertDialogHeader",
+        "AlertDialogMedia",
+        "AlertDialogOverlay",
+        "AlertDialogPortal",
+        "AlertDialogTitle",
+        "AlertDialogTrigger"
+      ],
+      "package": "@ipollowork/ui/alert-dialog",
+      "source": "packages/ui/src/react/alert-dialog.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:846",
+      "figmaCatalogIds": [
+        "6:846"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Sheet",
+      "relatedExports": [
+        "SheetClose",
+        "SheetContent",
+        "SheetDescription",
+        "SheetFooter",
+        "SheetHeader",
+        "SheetTitle",
+        "SheetTrigger"
+      ],
+      "package": "@ipollowork/ui/sheet",
+      "source": "packages/ui/src/react/sheet.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:860",
+      "figmaCatalogIds": [
+        "6:860"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Popover",
+      "relatedExports": [
+        "PopoverClose",
+        "PopoverContent",
+        "PopoverDescription",
+        "PopoverHeader",
+        "PopoverTitle",
+        "PopoverTrigger"
+      ],
+      "package": "@ipollowork/ui/popover",
+      "source": "packages/ui/src/react/popover.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:874",
+      "figmaCatalogIds": [
+        "6:874"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "HoverCard",
+      "relatedExports": [
+        "HoverCardContent",
+        "HoverCardTrigger"
+      ],
+      "package": "@ipollowork/ui/hover-card",
+      "source": "packages/ui/src/react/hover-card.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:885",
+      "figmaCatalogIds": [
+        "6:885"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Tooltip",
+      "relatedExports": [
+        "TooltipContent",
+        "TooltipProvider",
+        "TooltipTrigger"
+      ],
+      "package": "@ipollowork/ui/tooltip",
+      "source": "packages/ui/src/react/tooltip.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:895",
+      "figmaCatalogIds": [
+        "6:895"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Badge",
+      "relatedExports": [
+        "badgeVariants"
+      ],
+      "package": "@ipollowork/ui/badge",
+      "source": "packages/ui/src/react/badge.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:987",
+      "figmaCatalogIds": [
+        "6:987"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Progress",
+      "relatedExports": [
+        "ProgressIndicator",
+        "ProgressLabel",
+        "ProgressTrack",
+        "ProgressValue"
+      ],
+      "package": "@ipollowork/ui/progress",
+      "source": "packages/ui/src/react/progress.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1001",
+      "figmaCatalogIds": [
+        "6:1001"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Skeleton",
+      "package": "@ipollowork/ui/skeleton",
+      "source": "packages/ui/src/react/skeleton.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1011",
+      "figmaCatalogIds": [
+        "6:1011"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Empty",
+      "relatedExports": [
+        "EmptyContent",
+        "EmptyDescription",
+        "EmptyHeader",
+        "EmptyMedia",
+        "EmptyTitle"
+      ],
+      "package": "@ipollowork/ui/empty",
+      "source": "packages/ui/src/react/empty.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1020",
+      "figmaCatalogIds": [
+        "6:1020"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Tabs",
+      "relatedExports": [
+        "TabsContent",
+        "TabsList",
+        "TabsTrigger",
+        "tabsListVariants"
+      ],
+      "package": "@ipollowork/ui/tabs",
+      "source": "packages/ui/src/react/tabs.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1063",
+      "figmaCatalogIds": [
+        "6:1063"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Accordion",
+      "relatedExports": [
+        "AccordionContent",
+        "AccordionItem",
+        "AccordionTrigger"
+      ],
+      "package": "@ipollowork/ui/accordion",
+      "source": "packages/ui/src/react/accordion.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1076",
+      "figmaCatalogIds": [
+        "6:1076"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Collapsible",
+      "relatedExports": [
+        "CollapsibleContent",
+        "CollapsibleTrigger"
+      ],
+      "package": "@ipollowork/ui/collapsible",
+      "source": "packages/ui/src/react/collapsible.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1097",
+      "figmaCatalogIds": [
+        "6:1097"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "ScrollArea",
+      "relatedExports": [
+        "ScrollAreaViewport",
+        "ScrollBar"
+      ],
+      "package": "@ipollowork/ui/scroll-area",
+      "source": "packages/ui/src/react/scroll-area.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1162",
+      "figmaCatalogIds": [
+        "6:1162"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Separator",
+      "package": "@ipollowork/ui/separator",
+      "source": "packages/ui/src/react/separator.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1173",
+      "figmaCatalogIds": [
+        "6:1173"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Command",
+      "relatedExports": [
+        "CommandCollection",
+        "CommandCreateHandle",
+        "CommandDialog",
+        "CommandDialogBackdrop",
+        "CommandDialogPopup",
+        "CommandDialogTitle",
+        "CommandDialogTrigger",
+        "CommandDialogViewport",
+        "CommandEmpty",
+        "CommandFooter",
+        "CommandGroup",
+        "CommandGroupLabel",
+        "CommandHeader",
+        "CommandInput",
+        "CommandItem",
+        "CommandList",
+        "CommandPanel",
+        "CommandSeparator",
+        "CommandShortcut"
+      ],
+      "package": "@ipollowork/ui/command",
+      "source": "packages/ui/src/react/command.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:693",
+      "figmaCatalogIds": [
+        "6:693",
+        "6:776",
+        "6:905"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "DescriptiveButton",
+      "relatedExports": [
+        "DescriptiveButtonContent",
+        "DescriptiveButtonDescription",
+        "DescriptiveButtonIcon",
+        "DescriptiveButtonTitle"
+      ],
+      "package": "@ipollowork/ui/descriptive-button",
+      "source": "packages/ui/src/react/descriptive-button.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:726",
+      "figmaCatalogIds": [
+        "6:726"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "Alert",
+      "relatedExports": [
+        "AlertAction",
+        "AlertDescription",
+        "AlertTitle"
+      ],
+      "package": "@ipollowork/ui/alert",
+      "source": "packages/ui/src/react/alert.tsx",
+      "figmaMainId": "6:277",
+      "figmaVariants": [
+        {
+          "variant": "default",
+          "mainId": "6:277",
+          "key": "11df29dd72ccd03c05fabd6b436b25704fe3685f",
+          "recommendedInstanceId": "198:1749",
+          "backgroundVariableId": "VariableID:228:1443"
+        },
+        {
+          "variant": "success",
+          "mainId": "6:283",
+          "key": "075782c1c1162d1d67885fdad25299aea7dbe07b",
+          "recommendedInstanceId": "198:1773",
+          "backgroundVariableId": "VariableID:228:1444"
+        },
+        {
+          "variant": "warning",
+          "mainId": "6:289",
+          "key": "b0d8111e080212e9605dd0c8134e330ea5115950",
+          "recommendedInstanceId": "198:1795",
+          "backgroundVariableId": "VariableID:228:1445"
+        },
+        {
+          "variant": "destructive",
+          "mainId": "6:295",
+          "key": "8d70eaaec2c6d28255472f39877d179655c3605b",
+          "recommendedInstanceId": "198:1819",
+          "backgroundVariableId": "VariableID:228:1446"
+        }
+      ],
+      "figmaCatalogId": "6:936",
+      "figmaCatalogIds": [
+        "6:936",
+        "6:946",
+        "6:956",
+        "6:966"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "main identity and catalog/recommended instance references verified 2026-10-10; soft semantic background migrated"
+    },
+    {
+      "export": "Image",
+      "package": "@ipollowork/ui/image",
+      "source": "packages/ui/src/react/image.tsx",
+      "figmaMainId": null,
+      "figmaCatalogId": "6:1233",
+      "figmaCatalogIds": [
+        "6:1233"
+      ],
+      "htmlMarker": null,
+      "integration": "React island",
+      "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    }
+  ],
+  "publicBarrel": "@ipollowork/ui/core"
 }
