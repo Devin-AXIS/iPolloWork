@@ -8,4 +8,4 @@
 @source "../common/control-styles.ts";
 @source "../react/controls.tsx";
 /* No global reset: isolated plugin layouts and exported artwork stay untouched. */
-[data-ipw-control], [data-slot="button"], [data-slot="input"], [data-slot="textarea"] { box-sizing: border-box; font-family: var(--ipollowork-font-sans); }
+[data-ipw-control], [data-slot="button"], [data-slot="input"], [data-slot="textarea"] { --spacing: 4px; box-sizing: border-box; font-family: var(--ipollowork-font-sans); }

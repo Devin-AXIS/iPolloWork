@@ -5,7 +5,7 @@ import { buttonVariants, inputClassName, textareaClassName, cn } from '../common
 import { requireRuntime } from './runtime-contract';
 export { requireRuntime } from './runtime-contract';
 
-export const UI_RUNTIME_VERSION = '1.0.0';
+export const UI_RUNTIME_VERSION = '1.0.1';
 export type UiRuntime = ReturnType<typeof createRuntime>;
 declare global { interface Window { ipolloworkUi?: UiRuntime } }
 
@@ -38,7 +38,7 @@ function createRuntime(mode: 'host' | 'bundled') {
     enhance(root);
     const observer = new MutationObserver(records => {
       const parents = new Set<ParentNode>();
-      for (const record of records) if (record.addedNodes.length) parents.add(record.target);
+      for (const record of records) if (record.addedNodes.length && record.target instanceof HTMLElement) parents.add(record.target);
       for (const parent of parents) enhance(parent);
     });
     observer.observe(root, { childList: true, subtree: true });

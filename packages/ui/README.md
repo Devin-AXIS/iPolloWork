@@ -42,10 +42,15 @@ See `.codex/skills/ipollowork-plugin-ui/references/plugin-contract.md` for
 the canonical v1 public-entry, build/injection and major-version contract,
 including current limitations, and `evals/flows/shared-ui-runtime.flow.mjs`
 for proof. `plugin-runtime` is an implementation entrypoint, not the production
-plugin business-script API. Runtime `1.0.0` is distinct from client/plugin
+plugin business-script API. Runtime `1.0.1` is distinct from client/plugin
 package versions; `requireRuntime(1)` does not enforce a minimum minor version.
-Client installation, packaged Electron and upgrade compatibility must still
-be checked before a production release.
+The built-in production plugin was installed in a dedicated Electron dev
+profile and verified through the real host: 32px controls at a 13px root font,
+failure recovery, disk persistence, reopen, theme/390px container and incompatible
+major rejection. See `evals/flows/shared-ui-client.flow.mjs`. The unchanged plugin
+artifact uses the patched host runtime; control spacing is scoped, not a global reset.
+Signed archive upload, packaged Electron and cross-client upgrades must still
+be checked before a production release. Local Carrie integration is not publication.
 
 ## Paper components
 

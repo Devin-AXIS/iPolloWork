@@ -93,7 +93,7 @@ root.render(ui.React.createElement(ui.Button, { onClick: save }, '保存'));
 
 ## 版本兼容规则
 
-当前唯一实现为 `UI_RUNTIME_VERSION = '1.0.0'`，来自 `packages/ui/src/plugin/runtime.ts`；它独立于主客户端版本、插件 package.version 和 Figma 节点身份。插件启动固定调用 `requireRuntime(1)`，再初始化桥接与业务。
+当前实现为 `UI_RUNTIME_VERSION = '1.0.1'`，来自 `packages/ui/src/plugin/runtime.ts`；它独立于主客户端版本、插件 package.version 和 Figma 节点身份。插件启动固定调用 `requireRuntime(1)`，再初始化桥接与业务。此 patch 修复插件根字号为13px时控件随 rem 缩成26px的问题：运行时仅在共享控件上固定4px的 Tailwind spacing，不修改插件全局字号或布局。
 
 | 运行时情况 | 当前代码行为 | 插件要求 |
 | --- | --- | --- |
@@ -116,7 +116,11 @@ root.render(ui.React.createElement(ui.Button, { onClick: save }, '保存'));
 
 复跑使用隔离工作区与浏览器：Vite 在 5193；样板 `PORT=5896 SHORT_VIDEO_UI_MODE=bundled node scripts/dev.mjs` 与 `PORT=5897 SHORT_VIDEO_UI_MODE=host node scripts/dev.mjs`，分别指定独立 `SHORT_VIDEO_DEV_ROOT`；再执行 `pnpm fraimz --flow shared-ui-runtime --cdp-url <隔离浏览器CDP>`。不要使用日常浏览器或用户项目目录。
 
-接入样板仅覆盖短视频新建项目弹窗和隔离 React/HTML 控件。正式安装、Electron 打包启动、升级兼容仍未验收，且代码仍需整合到主客户端。本次纯文档契约更新不重跑 fraimz，也不把旧证据扩大为全组件或生产发布通过。
+真实客户端证据：`evals/results/2026-10-10T02-44-36-997Z/fraimz.html`，6个截图帧通过。使用专用 Electron 数据目录，从内置目录安装生产插件，在真实 WorkspaceAppFrame 中接收宿主1.0.1运行时，验证32px控件、一次注入的503失败保留输入、真实服务重试写项目文件、刷新后重新打开、真实宿主主题桥接和390px容器、Escape焦点恢复，以及注入2.x时显示更新提示并停止业务初始化。生产插件文件hash保持不变，更新共享控件不要求重打插件包。
+
+复跑：先在临时 profile 内安装插件，使用 Control API 创建空任务，并打开右侧面板。设置 `IPOLLOWORK_UI_CLIENT_ROOT=/tmp/ipollowork-shared-ui-client-<本次目录>`，运行 `pnpm fraimz --flow shared-ui-client --cdp-url <专用ElectronCDP>`。此 flow 包含显式传输故障、宿主主题/容器测试状态和2.x替身，不能连日常客户端。
+
+代码已整合到本地 Carrie，未推送或发布。样板覆盖范围仍是短视频新建项目弹窗和隔离 React/HTML 控件；真实开发客户端的内置安装通过，不等于签名归档上传、Electron打包启动、跨客户端版本迁移或完整发布验收。当前证明1.0.0到1.0.1宿主运行时修正后原插件可重开，2.x拒绝使用替身；不把它扩大为完整升级协商通过。
 
 ## 行为
 

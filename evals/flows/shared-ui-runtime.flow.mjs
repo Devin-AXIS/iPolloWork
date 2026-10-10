@@ -39,7 +39,7 @@ export default {
     await ctx.prove(`${mode} 提交中禁用重复操作，共享 Input 保留输入`,{
       voiceover:vo[0],
       action:()=>click(parent,frame,'[data-dialog="ok"]'),
-      assert:async()=>{await ctx.waitFor('document.querySelector("#dialog").getAttribute("aria-busy")==="true"');ctx.assert(await ctx.eval(`document.querySelector('#dialog input').value===${JSON.stringify(draft)} && [...document.querySelectorAll('#dialog button')].every(e=>e.disabled&&e.dataset.ipwReady==='1.0.0')`),'busy and shared native controls');},screenshot:shot('pending')});
+      assert:async()=>{await ctx.waitFor('document.querySelector("#dialog").getAttribute("aria-busy")==="true"');ctx.assert(await ctx.eval(`document.querySelector('#dialog input').value===${JSON.stringify(draft)} && [...document.querySelectorAll('#dialog button')].every(e=>e.disabled&&e.dataset.ipwReady===window.ipolloworkUi.version)`),'busy and shared native controls');},screenshot:shot('pending')});
     await ctx.prove(`${mode} 失败就地提示且草稿不丢失（注入一次传输故障）`,{
       voiceover:vo[1],
       action:()=>evaluate(parent,'window.__uiReject()'),

@@ -1,6 +1,6 @@
 {
   "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
-  "runtimeVersion": "1.0.0",
+  "runtimeVersion": "1.0.1",
   "tokenSource": "packages/ui/src/common/tokens.css",
   "components": [
     { "export": "Button", "package": "@ipollowork/ui/controls", "source": "packages/ui/src/react/controls.tsx", "figmaMainId": "6:120", "figmaCatalogId": "6:711", "htmlMarker": "button" },
