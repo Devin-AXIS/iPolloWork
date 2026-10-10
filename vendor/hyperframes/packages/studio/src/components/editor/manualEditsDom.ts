@@ -432,6 +432,10 @@ function applyStudioBoxSizeDimensions(
   if (computedDisplay === "inline") {
     element.style.setProperty("display", "inline-block");
   }
+  // Flattened sub-compositions expose a runtime-owned synchronous fit hook.
+  // Invoke it in the same pointer frame as the host size write so an ending
+  // effect never paints one stretched frame while ResizeObserver catches up.
+  (element as HTMLElement & { __hfAspectFit?: () => boolean }).__hfAspectFit?.();
 }
 
 export function applyStudioBoxSize(

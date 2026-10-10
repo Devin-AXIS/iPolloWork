@@ -5,7 +5,6 @@ import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
-import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { Composition } from "@hyperframes/sdk";
 import { sdkCutoverPersist, sdkDeletePersist, type PublishSdkSession } from "../utils/sdkCutover";
 import { runResolverShadow, recordResolverParity } from "../utils/sdkResolverShadow";
@@ -20,12 +19,14 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
+import { useAvatarCutout } from "./useAvatarCutout";
+import { useImageWorkbench } from "./useImageWorkbench";
 
 // ── Types ──
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -65,8 +66,6 @@ export interface UseDomEditSessionParams {
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
-  selectSidebarTab?: (tab: SidebarTab) => void;
-  getSidebarTab?: () => SidebarTab;
   sdkSession?: Composition | null;
   publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
@@ -107,13 +106,23 @@ export function useDomEditSession({
   reloadPreview,
   setRefreshKey: _setRefreshKey,
   openSourceForSelection,
-  selectSidebarTab,
-  getSidebarTab,
   sdkSession,
   publishSdkSession,
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
+  const openImageWorkbench = useImageWorkbench({
+    projectId,
+    showToast,
+    queueDomEditSave,
+    readProjectFile,
+    writeProjectFile,
+    updateEditingFileContent,
+    domEditSaveTimestampRef,
+    editHistory,
+    reloadPreview,
+    forceReloadSdkSession,
+  });
   // ── Selection ──
 
   const {
@@ -240,6 +249,22 @@ export function useDomEditSession({
     forceReloadSdkSession,
   });
 
+  const { handleAvatarCutout, avatarCutoutProgress } = useAvatarCutout({
+    projectId,
+    previewIframeRef,
+    activeCompPath,
+    projectIdRef,
+    showToast,
+    writeProjectFile,
+    domEditSaveTimestampRef,
+    editHistory,
+    reloadPreview,
+    clearDomSelection,
+    refreshDomEditSelectionFromPreview,
+    queueDomEditSave,
+    forceReloadSdkSession,
+  });
+
   // ── DOM commit handlers ──
 
   const {
@@ -355,7 +380,7 @@ export function useDomEditSession({
     const single = domEditSelectionRef.current;
     const members = group.length > 0 ? group : single ? [single] : [];
     if (members.length < 2) {
-      showToast("Select at least 2 elements to group", "info");
+      showToast("Select at least 2 elements to group", "error");
       return;
     }
     trackStudioEvent("group", { action: "create", count: members.length });
@@ -365,7 +390,7 @@ export function useDomEditSession({
   const handleUngroupSelection = useCallback(() => {
     const sel = domEditSelectionRef.current;
     if (!sel?.element.hasAttribute("data-hf-group")) {
-      showToast("Select a group to ungroup", "info");
+      showToast("Select a group to ungroup", "error");
       return;
     }
     // Dissolving the group exits any drill-in (the wrapper is about to vanish).
@@ -405,6 +430,7 @@ export function useDomEditSession({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
   } = useDomEditWiring({
+    sourcePanelActive: rightPanelTab === "code",
     // fallow-ignore-next-line code-duplication
     projectId,
     activeCompPath,
@@ -423,8 +449,6 @@ export function useDomEditSession({
     applyDomSelection,
     buildDomSelectionFromTarget,
     openSourceForSelection,
-    selectSidebarTab,
-    getSidebarTab,
     updateGsapProperty,
     updateGsapMeta,
     deleteGsapAnimation,
@@ -533,6 +557,9 @@ export function useDomEditSession({
   );
 
   return {
+    handleAvatarCutout,
+    avatarCutoutProgress,
+    openImageWorkbench,
     // State
     domEditSelection,
     domEditGroupSelections,

@@ -69,6 +69,10 @@ Feature work starts with the demo, not a PRD:
 
 ## Coding Guidelines
 
+### Bundled social plugins
+
+Maintain Xiaohongshu and Douyin in `examples/plugin-packages/xiaohongshu-ops` and `examples/plugin-packages/douyin-ops`. These directories are the authoritative source; the sibling repositories are recovery copies only. Do not push or publish plugin changes unless the user explicitly requests it. Keep the stable plugin IDs and user data paths so accounts, drafts, credentials and browser profiles survive updates. After each change, run the plugin package's own checks and tests, then verify installation or update through the host catalog and the affected fraimz flow. Desktop builds copy both packages into `plugin-packages/`; the catalog must not depend on `~/.ipollowork/local-plugin-packages`.
+
 ### Mandatory AI Code Gate
 
 - For every code addition, edit, deletion, or refactor, load
@@ -93,6 +97,7 @@ Feature work starts with the demo, not a PRD:
 
 ### UI and UX
 
+- For plugin UI work, load `.codex/skills/ipollowork-plugin-ui/SKILL.md` before implementation. Use its component identity mapping, runtime compatibility, theme, and interaction rules; validate the bundled development path and host-owned production path separately.
 - Use components from @/components when possible.
 - When creating new components, we prefer using shadcn/ui with (Base UI).
 - Assume most end users of iPolloWork are non-technical.

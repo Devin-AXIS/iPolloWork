@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-learning-journey",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "education",
@@ -10,7 +10,8 @@
     "education",
     "playful",
     "pptx-compatible",
-    "themeable"
+    "themeable",
+    "topic:education"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

@@ -18,8 +18,8 @@ const zhSource = readFileSync(resolve(import.meta.dir, "../src/i18n/locales/zh.t
 describe("model picker vision badge", () => {
   test("tracks vision support separately from generic attachment support", () => {
     expect(typesSource).toContain("supportsVision?: boolean");
-    expect(hookSource).toContain('import { modelSupportsVision } from "@/app/utils/model-capabilities"');
-    expect(hookSource).toContain("supportsVision: modelSupportsVision(model)");
+    expect(hookSource).toContain("resolveModelRuntime(");
+    expect(hookSource).toContain("runtime?.capabilities?.vision === true");
   });
 
   test("renders the vision badge beside the model title and keeps the model id on its own line", () => {
@@ -31,8 +31,9 @@ describe("model picker vision badge", () => {
   });
 
   test("renders the vision badge in the compact composer model switcher", () => {
-    expect(compactSelectSource).toContain('import { modelSupportsVision } from "@/app/utils/model-capabilities"');
-    expect(compactSelectSource).toContain("supportsVision: modelSupportsVision(model)");
+    expect(compactSelectSource).toContain("resolveModelRuntime(");
+    expect(compactSelectSource).toContain("isConnected: true");
+    expect(compactSelectSource).toContain("runtime?.capabilities?.vision === true");
     expect(compactSelectSource).toContain("const visionBadgeLabel = option.supportsVision ? t(\"model_picker.badge_vision\") : null");
     expect(compactSelectSource).toContain("{visionBadgeLabel}");
   });
@@ -40,5 +41,16 @@ describe("model picker vision badge", () => {
   test("localizes the vision badge label", () => {
     expect(enSource).toContain('"model_picker.badge_vision": "Vision"');
     expect(zhSource).toContain('"model_picker.badge_vision": "视觉"');
+  });
+
+  test("keeps cached account models selectable while active-engine availability is discovered", () => {
+    expect(compactSelectSource).toContain("useProviderListQuery({");
+    expect(compactSelectSource).toContain("runtimePending");
+    expect(compactSelectSource).toContain("disabled: false");
+    expect(compactSelectSource).toContain("footer: undefined");
+    expect(hookSource).toContain("useProviderListQuery({");
+    expect(hookSource).toContain("runtimePending");
+    expect(hookSource).toContain("disabled: false");
+    expect(hookSource).toContain("footer: undefined");
   });
 });

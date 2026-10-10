@@ -39,7 +39,7 @@ export function FlatToggle({
           track("toggle", label);
           onChange(!checked);
         }}
-        className={`relative h-4 w-7 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`relative h-4 w-7 flex-shrink-0 rounded-full transition-[color,background-color,box-shadow,transform] hover:ring-1 hover:ring-panel-text-3/40 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/60 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${
           checked ? "bg-panel-accent/35" : "bg-panel-hover"
         }`}
       >

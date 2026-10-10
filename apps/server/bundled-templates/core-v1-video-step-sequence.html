@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Step sequence</title>
+<link rel="stylesheet" href="shared.css">
+<style data-layout-styles="step-sequence">.ipw-video-sequence{display:grid;grid-template-rows:auto 1fr;gap:10%}
+.ipw-video-sequence ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6%;padding:0;list-style:none;align-items:center}
+.ipw-video-sequence li{border-top:3px solid var(--ipw-color-primary);padding-top:28px}
+.ipw-video-sequence .number{display:block;font-size:30px;color:var(--ipw-color-primary);margin-bottom:24px}
+.ipw-video-sequence h3{margin-bottom:24px}</style></head><body>
+<aside data-layout-preview-only>Step sequence — static scene-body preview. No timeline, duration or audio is included.</aside>
+<template data-ipw-layout="step-sequence" data-layout-description="Ordered actions with visible sequence and supporting copy." data-layout-capacity="Three short steps in the reference; adapt geometry for other counts.">
+<div class="ipw-video-layout ipw-video-sequence">
+<h2 data-slot="title">Make each step easy to follow.</h2>
+<ol><li><span class="number" data-slot="number-1">01</span><h3 data-slot="heading-1">Observe</h3><p data-slot="body-1">Identify the real input and the condition to check.</p></li>
+<li><span class="number" data-slot="number-2">02</span><h3 data-slot="heading-2">Act</h3><p data-slot="body-2">Explain the operation and its expected feedback.</p></li>
+<li><span class="number" data-slot="number-3">03</span><h3 data-slot="heading-3">Confirm</h3><p data-slot="body-3">Show what makes the result complete.</p></li></ol>
+</div>
+</template>
+<main data-layout-preview-only></main>
+<script data-layout-preview-only>document.querySelector('main').append(document.querySelector('template').content.cloneNode(true));</script>
+</body></html>

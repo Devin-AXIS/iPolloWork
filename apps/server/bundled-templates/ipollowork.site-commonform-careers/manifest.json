@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-commonform-careers",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "recruiting",
@@ -10,7 +10,8 @@
     "recruiting",
     "brutalist",
     "responsive",
-    "themeable"
+    "themeable",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Commonform Careers",

@@ -1,20 +1,82 @@
-import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, isHtmlIllustrationAsset } from "./mediaTypes";
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 import { patchRootCompositionDuration, readRootCompositionDuration } from "./rootDuration";
+import { isAudioTimelineElement } from "./timelineInspector";
+import { timeRangesOverlap } from "../player/components/timelineCollision";
 
 export const TIMELINE_ASSET_MIME = "application/x-hyperframes-asset";
 export const TIMELINE_BLOCK_MIME = "application/x-hyperframes-block";
 const FALLBACK_TIMELINE_FILE_DROP_DURATION = 5;
 
-export type TimelineAssetKind = "image" | "video" | "audio" | "html";
+export type TimelineAssetKind = "image" | "video" | "audio";
+
+export type GeneratedAvatarCompositePaths = {
+  sourcePath: string;
+  foregroundPath: string;
+};
+
+/** Maps the single user-facing cutout asset to its original-background source. */
+export function resolveGeneratedAvatarCompositePaths(assetPath: string): GeneratedAvatarCompositePaths | null {
+  const normalized = assetPath.replace(/^\.\//, "");
+  const long = normalized.match(/^assets\/(avatar-long-[^/]+)\.(?:webm|mov)$/i);
+  if (long) return { sourcePath: `renders/${long[1]}.mp4`, foregroundPath: normalized };
+  const short = normalized.match(/^assets\/avatar-([^/]+)\.(?:webm|mov)$/i);
+  if (short && !/^reference-/i.test(short[1])) {
+    return { sourcePath: `renders/${short[1]}.mp4`, foregroundPath: normalized };
+  }
+  return null;
+}
+
+export function resolveGeneratedAvatarMaterialPath(sourcePath: string): string | null {
+  const normalized = sourcePath.replace(/^\.\//, "");
+  const match = normalized.match(/^renders\/(avatar-long-[^/]+|[^/]+)\.mp4$/i);
+  if (!match) return null;
+  const stem = match[1];
+  return stem.toLowerCase().startsWith("avatar-long-")
+    ? `assets/${stem}.webm`
+    : `assets/avatar-${stem}.webm`;
+}
 
 export function getTimelineAssetKind(assetPath: string): TimelineAssetKind | null {
-  if (isHtmlIllustrationAsset(assetPath)) return "html";
   if (IMAGE_EXT.test(assetPath)) return "image";
   if (VIDEO_EXT.test(assetPath)) return "video";
   if (AUDIO_EXT.test(assetPath)) return "audio";
   return null;
+}
+
+export function resolveAvailableVisualTrack(
+  elements: Array<{
+    track: number;
+    start: number;
+    duration: number;
+    tag: string;
+    src?: string;
+  }>,
+  start: number,
+  duration: number,
+): number {
+  const visualElements = elements.filter((element) => !isAudioTimelineElement(element));
+  const visualTracks = Array.from(new Set(visualElements.map((element) => element.track))).sort(
+    (a, b) => a - b,
+  );
+  const normalizedStart = roundToCenti(start);
+  const end = roundToCenti(start + duration);
+  const available = visualTracks.find(
+    (track) =>
+      !visualElements.some(
+        (element) =>
+          element.track === track &&
+          timeRangesOverlap(
+            normalizedStart,
+            end,
+            roundToCenti(element.start),
+            roundToCenti(element.start + element.duration),
+          ),
+      ),
+  );
+  if (available != null) return available;
+  return elements.length > 0 ? Math.max(...elements.map((element) => element.track)) + 1 : 0;
 }
 
 export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<string>): string {
@@ -24,7 +86,7 @@ export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<st
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
-  const baseId = normalized || "asset";
+  const baseId = normalized ? (/^\d/.test(normalized) ? `asset_${normalized}` : normalized) : "asset";
   const ids = new Set(existingIds);
   if (!ids.has(baseId)) return baseId;
   let suffix = 2;
@@ -117,21 +179,30 @@ export function buildTimelineAssetInsertHtml(input: {
   track: number;
   zIndex: number;
   geometry?: { left: number; top: number; width: number; height: number };
+  videoHasAudio?: boolean;
+  avatarForegroundPath?: string;
+  avatarForegroundTrack?: number;
 }): string {
-  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const avatarForegroundId = input.avatarForegroundPath ? `${input.id}-avatar-foreground` : "";
+  const avatarAttrs = avatarForegroundId
+    ? ` data-avatar-cutout="${avatarForegroundId}" data-avatar-material="${input.avatarForegroundPath}" data-avatar-prior-z="0"`
+    : "";
+  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"${avatarAttrs}`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
-  const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain; z-index: ${input.zIndex}`;
+  const visualBase = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain;`;
+  const visualStyles = `${visualBase} z-index: ${avatarForegroundId ? 0 : input.zIndex}`;
 
   if (input.kind === "image") {
     return `<img ${sharedAttrs} style="${visualStyles}" />`;
   }
 
   if (input.kind === "video") {
-    return `<video ${sharedAttrs} muted playsinline style="${visualStyles}"></video>`;
-  }
-
-  if (input.kind === "html") {
-    return `<div ${sharedAttrs} data-hf-asset-kind="html" data-hf-lock-aspect-ratio="16:9" style="${visualStyles}; overflow: hidden"><iframe src="${input.assetPath}" title="Illustration" sandbox="" width="1600" height="900" onload="var f=this,p=f.parentElement,r=function(){f.style.transform='scale('+(p.clientWidth/1600)+')'};r();if(f.__hfResizeObserver)f.__hfResizeObserver.disconnect();f.__hfResizeObserver=new ResizeObserver(r);f.__hfResizeObserver.observe(p)" style="pointer-events: none; position: absolute; inset: 0 auto auto 0; width: 1600px; height: 900px; max-width: none; border: 0; background: white; transform-origin: 0 0"></iframe></div>`;
+    const audioAttrs = input.videoHasAudio || avatarForegroundId ? 'data-has-audio="true" data-volume="1"' : "muted";
+    const source = `<video ${sharedAttrs} ${audioAttrs} playsinline style="${visualStyles}"></video>`;
+    if (!avatarForegroundId || !input.avatarForegroundPath) return source;
+    const foregroundTrack = input.avatarForegroundTrack ?? input.track + 1;
+    const foreground = `<video id="${avatarForegroundId}" class="clip" src="${input.avatarForegroundPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${foregroundTrack}" data-avatar-source="${input.id}" muted data-volume="0" aria-hidden="true" playsinline style="${visualBase} z-index: ${input.zIndex}; pointer-events: none"></video>`;
+    return `${source}\n${foreground}`;
   }
 
   return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;

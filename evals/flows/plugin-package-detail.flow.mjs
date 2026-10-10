@@ -1,62 +1,13 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { storedZip } from "../runner/stored-zip.mjs";
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("plugin-package-detail");
+const videoVersion = JSON.parse(await readFile(new URL("../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url), "utf8")).package.version;
 const SKILL_TOGGLE = '[role="switch"][aria-label="开关设计转代码"]';
-const IMPORT_FIXTURE = join(tmpdir(), "fraimz-community-notes.zip");
-
-const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
-  let entry = value;
-  for (let bit = 0; bit < 8; bit += 1) entry = entry & 1 ? 0xedb88320 ^ (entry >>> 1) : entry >>> 1;
-  return entry >>> 0;
-});
-
-function crc32(data) {
-  let checksum = 0xffffffff;
-  for (const byte of data) checksum = CRC32_TABLE[(checksum ^ byte) & 0xff] ^ (checksum >>> 8);
-  return (checksum ^ 0xffffffff) >>> 0;
-}
-
-function storedZip(files) {
-  const localParts = [];
-  const centralParts = [];
-  let offset = 0;
-  for (const [name, contents] of Object.entries(files)) {
-    const nameBuffer = Buffer.from(name);
-    const data = Buffer.from(contents);
-    const checksum = crc32(data);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);
-    local.writeUInt32LE(checksum, 14);
-    local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(data.length, 22);
-    local.writeUInt16LE(nameBuffer.length, 26);
-    localParts.push(local, nameBuffer, data);
-
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 4);
-    central.writeUInt16LE(20, 6);
-    central.writeUInt32LE(checksum, 16);
-    central.writeUInt32LE(data.length, 20);
-    central.writeUInt32LE(data.length, 24);
-    central.writeUInt16LE(nameBuffer.length, 28);
-    central.writeUInt32LE(offset, 42);
-    centralParts.push(central, nameBuffer);
-    offset += local.length + nameBuffer.length + data.length;
-  }
-  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(Object.keys(files).length, 8);
-  end.writeUInt16LE(Object.keys(files).length, 10);
-  end.writeUInt32LE(centralSize, 12);
-  end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...localParts, ...centralParts, end]);
-}
+const IMPORT_FIXTURE = join(tmpdir(), "fraimz-community-notes.ipollowork-plugin");
 
 const importManifest = {
   schemaVersion: 1,
@@ -454,14 +405,14 @@ export default {
             await ctx.waitForText("导入完整插件包", { timeoutMs: 30_000 });
           },
           assert: async () => {
-            await ctx.expectText("选择插件压缩包");
+            await ctx.expectText("选择 iPolloWork 插件包");
             await ctx.expectText("选择文件");
             await ctx.expectNoText("工作区内的路径");
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: {
             name: "plugin-import-empty",
-            requireText: ["导入完整插件包", "选择插件压缩包", "选择文件"],
+            requireText: ["导入完整插件包", "选择 iPolloWork 插件包", "选择文件"],
             rejectText: ["工作区内的路径", "Something went wrong"],
           },
         });
@@ -558,51 +509,48 @@ export default {
       },
     },
     {
-      name: "Group independent Video skills without taking ownership",
+      name: "Use the task-scoped Video specialist skills",
       run: async (ctx) => {
-        await ctx.prove("Video shows detected HyperFrames capabilities as related skills without managing their lifecycle", {
+        await ctx.prove("Video exposes five managed skills with on-demand creative guidance", {
           voiceover: vo[10],
           action: async () => {
             await ctx.navigateHash("/settings/extensions");
             await selectPersonalResourceScope(ctx);
-            await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
+            await ctx.waitForText("iPollo Video", { timeoutMs: 30_000 });
 
-            const updateStarted = await ctx.eval(pluginCardActionExpression("iPolloWork Video Agent", ["更新", "Update"], true));
+            const updateStarted = await ctx.eval(pluginCardActionExpression("iPollo Video", ["更新", "Update"], true));
             if (updateStarted) {
-              await ctx.waitFor(pluginCardActionExpression("iPolloWork Video Agent", ["打开", "Open"]), {
+              await ctx.waitFor(pluginCardActionExpression("iPollo Video", ["打开", "Open"]), {
                 timeoutMs: 45_000,
                 label: "Video Agent updated",
               });
             }
 
-            const opened = await ctx.eval(pluginCardActionExpression("iPolloWork Video Agent", ["打开", "Open"], true));
+            const opened = await ctx.eval(pluginCardActionExpression("iPollo Video", ["打开", "Open"], true));
             ctx.assert(opened, "Could not find the Video Agent detail action");
-            await ctx.waitFor("document.body.innerText.includes('相关技能 9') && document.body.innerText.includes('hyperframes-cli')", {
+            await ctx.waitFor("document.body.innerText.includes('技能 5') && document.body.innerText.includes('脚本与分镜') && document.body.innerText.includes('画面与动画') && document.body.innerText.includes('配乐与音效')", {
               timeoutMs: 30_000,
-              label: "Video related skills",
+              label: "task-scoped Video skills",
             });
             await ctx.eval(`(() => {
-              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.includes('相关技能'));
+              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.trim() === '技能');
               heading?.scrollIntoView({ block: 'center' });
             })()`);
           },
           assert: async () => {
-            await ctx.expectText("技能 2");
-            await ctx.expectText("相关技能 9");
-            await ctx.expectText("此插件不会安装、停用、更新或删除它们");
-            await ctx.expectText("hyperframes-cli");
-            await ctx.expectText("media-use");
-            await ctx.expectText("product-launch-video");
-            const relatedSwitchCount = await ctx.eval(`(() => {
-              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.includes('相关技能'));
-              return heading?.parentElement?.querySelectorAll('[role="switch"]').length ?? -1;
-            })()`);
-            ctx.assert(relatedSwitchCount === 0, `Expected related skills to have no lifecycle switches, received ${relatedSwitchCount}`);
+            await ctx.expectText("技能 5");
+            await ctx.expectText("Video Studio");
+            await ctx.expectText("视频旁白");
+            await ctx.expectText("脚本与分镜");
+            await ctx.expectText("画面与动画");
+            await ctx.expectText("配乐与音效");
+            await ctx.expectText(videoVersion);
+            await ctx.expectNoText("相关技能 9");
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: {
-            name: "plugin-video-related-skills",
-            requireText: ["技能 2", "相关技能 9", "hyperframes-cli", "media-use", "product-launch-video"],
+            name: "plugin-video-specialist-skills",
+            requireText: ["技能 5", "Video Studio", "视频旁白", "脚本与分镜", "画面与动画", "配乐与音效", videoVersion],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/plugin/video-agent",
           },

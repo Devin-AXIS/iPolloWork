@@ -290,9 +290,20 @@ describe("SemanticMotionPanel", () => {
       ),
     );
 
-    expect(container.querySelector('[role="slider"][aria-label="动画速度"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="开始时间"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="结束时间"]')).not.toBeNull();
+    expect(container.querySelector('select[aria-label="Speed"]')).not.toBeNull();
+    const startInput = container.querySelector('[aria-label="Start"]');
+    const endInput = container.querySelector('[aria-label="End"]');
+    expect(startInput).not.toBeNull();
+    expect(endInput).not.toBeNull();
+    expect(startInput?.getAttribute("type")).toBe("number");
+    expect(endInput?.getAttribute("type")).toBe("number");
+    expect(startInput?.className).toContain("[appearance:textfield]");
+    expect(endInput?.className).toContain("[&::-webkit-inner-spin-button]:appearance-none");
+    expect(container.querySelector('[data-animation-action="remove"]')).toBeNull();
+    expect(container.querySelector('[data-testid="animation-editor-popover"]')?.className).toContain(
+      "w-[200px]",
+    );
+    expect(container.textContent).not.toContain("Preview");
     expect(createTimeline).toHaveBeenCalledWith({ paused: true });
     expect(timeline.to).toHaveBeenCalledOnce();
     expect(timeline.to.mock.calls[0]?.[0]).toBe(title);
@@ -300,7 +311,7 @@ describe("SemanticMotionPanel", () => {
     expect(onMutate).not.toHaveBeenCalled();
     const loopSwitch = container.querySelector('[role="switch"]');
     const confirm = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "确定应用",
+      (button) => button.textContent === "Done",
     );
     if (!(loopSwitch instanceof HTMLButtonElement) || !confirm) {
       throw new Error("Animation property controls are missing");
@@ -308,11 +319,11 @@ describe("SemanticMotionPanel", () => {
     const loopThumb = loopSwitch.querySelector("span");
     if (!(loopThumb instanceof HTMLSpanElement)) throw new Error("Loop switch thumb is missing");
     expect(loopSwitch.getAttribute("aria-checked")).toBe("false");
-    expect(loopSwitch.className).toContain("p-0.5");
+    expect(loopSwitch.className).toContain("p-px");
     expect(loopThumb.className).toContain("translate-x-0");
-    expect(container.textContent).toContain("1.00×");
+    expect(container.textContent).toContain("1x");
     flushSync(() => loopSwitch.click());
-    expect(loopThumb.className).toContain("translate-x-4");
+    expect(loopThumb.className).toContain("translate-x-[15px]");
     confirm.click();
     await Promise.resolve();
 
@@ -497,13 +508,15 @@ describe("SemanticMotionPanel", () => {
     );
 
     const confirm = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "确定应用",
+      (button) => button.textContent === "Done",
     );
     if (!(confirm instanceof HTMLButtonElement)) throw new Error("Confirm action missing");
     confirm.click();
 
     await vi.waitFor(() => {
-      expect(container.querySelector('[role="alert"]')?.textContent).toContain("动画未能保存");
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        "animation couldn't be saved",
+      );
     });
     expect(onApplied).not.toHaveBeenCalled();
     expect(confirm.disabled).toBe(false);

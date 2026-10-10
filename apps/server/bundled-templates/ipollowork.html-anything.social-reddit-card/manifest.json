@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.social-reddit-card",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "cards",
   "subcategory": "marketing",
@@ -12,7 +12,8 @@
     "social",
     "card",
     "overlay",
-    "story"
+    "story",
+    "topic:social"
   ],
   "surface": "design",
   "title": "Reddit Post Card",

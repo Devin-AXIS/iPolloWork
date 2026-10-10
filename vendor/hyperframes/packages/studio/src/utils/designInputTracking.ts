@@ -31,6 +31,7 @@ export interface DesignInputDescriptor {
 // commits per interaction. Collapse repeated fires of the same input within this
 // window into one event so a single drag counts once (R4).
 const COALESCE_WINDOW_MS = 600;
+const MAX_TRACKED_INPUTS = 512;
 
 const lastFiredByKey = new Map<string, number>();
 
@@ -66,7 +67,13 @@ export function trackDesignInput(descriptor: DesignInputDescriptor): void {
     const t = now();
     const last = lastFiredByKey.get(key);
     if (last !== undefined && t - last < COALESCE_WINDOW_MS) return;
+    lastFiredByKey.delete(key);
     lastFiredByKey.set(key, t);
+    while (lastFiredByKey.size > MAX_TRACKED_INPUTS) {
+      const oldest = lastFiredByKey.keys().next().value;
+      if (oldest === undefined) break;
+      lastFiredByKey.delete(oldest);
+    }
 
     trackStudioEvent("design_input", {
       ui: descriptor.ui,

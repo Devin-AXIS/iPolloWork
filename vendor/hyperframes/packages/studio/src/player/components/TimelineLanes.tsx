@@ -1,3 +1,4 @@
+import { createTimelineClipIndex, queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { memo, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BeatStrip } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
@@ -37,7 +38,7 @@ import {
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { renderClipChildren } from "./timelineClipChildren";
-import { resolveTimelineKind } from "./timelineLayerPresentation";
+import { resolveTimelineKind, resolveTimelineLayerPrimaryElement } from "./timelineLayerPresentation";
 import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
 
 /**
@@ -48,6 +49,7 @@ import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
  */
 export interface TimelineLaneBaseProps {
   pps: number;
+  gutterWidth: number;
   trackContentWidth: number;
   theme: TimelineTheme;
   displayTrackOrder: number[];
@@ -122,6 +124,7 @@ interface TimelineLanesProps extends TimelineLaneBaseProps {
 
 export const TimelineLanes = memo(function TimelineLanes({
   pps,
+  gutterWidth,
   trackContentWidth,
   theme,
   displayTrackOrder,
@@ -177,6 +180,11 @@ export const TimelineLanes = memo(function TimelineLanes({
   const expandedTimelineElementIds = usePlayerStore((state) => state.expandedTimelineElementIds);
   const expandableParentIds = useMemo(() => new Set(clipParentMap.values()), [clipParentMap]);
   const tracksByNumber = new Map(tracks);
+  const clipIndex = useMemo(() => createTimelineClipIndex(tracks), [tracks]);
+  const pinnedIdentities = new Set([...selectedElementIds,
+    ...(selectedElementId ? [selectedElementId] : []),
+    ...(draggedElement ? [draggedElement.key ?? draggedElement.id] : []),
+    ...(hoveredClip ? [hoveredClip] : []), ...(draggedClip?.selectionKeys ?? [])]);
   const visibleTrackOrder = displayTrackOrder.slice(
     visibleWindow.firstTrackIndex,
     visibleWindow.lastTrackIndexExclusive,
@@ -237,6 +245,8 @@ export const TimelineLanes = memo(function TimelineLanes({
         // fallow-ignore-next-line complexity
         visibleTrackOrder.map((trackNum) => {
           const els = tracksByNumber.get(trackNum) ?? [];
+          const visibleClips = queryTimelineClipIndex(clipIndex, trackNum,
+            { start: visibleWindow.startTime, end: visibleWindow.endTime }, pinnedIdentities);
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
@@ -257,14 +267,12 @@ export const TimelineLanes = memo(function TimelineLanes({
             const key = element.key ?? element.id;
             return selectedElementId === key || selectedElementIds.has(key);
           });
-          const expanded = els.some(
-            (element) =>
-              expandedTimelineElementIds.has(element.domId ?? element.id) ||
-              expandedTimelineElementIds.has(element.key ?? element.id),
-          );
-          const expandable = els.some((element) =>
-            expandableParentIds.has(element.domId ?? element.id),
-          );
+          const primaryElement = resolveTimelineLayerPrimaryElement(els, selectedElementId, currentTime);
+          const expanded = Boolean(primaryElement && (
+            expandedTimelineElementIds.has(primaryElement.domId ?? primaryElement.id) ||
+            expandedTimelineElementIds.has(primaryElement.key ?? primaryElement.id)
+          ));
+          const expandable = Boolean(primaryElement && expandableParentIds.has(primaryElement.domId ?? primaryElement.id));
           return (
             <div
               key={trackNum}
@@ -274,6 +282,7 @@ export const TimelineLanes = memo(function TimelineLanes({
               <TimelineLayerHeader
                 track={trackNum}
                 elements={els}
+                primaryElement={primaryElement}
                 hidden={isTrackHidden}
                 locked={isTrackLocked}
                 selected={isTrackSelected}
@@ -281,6 +290,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                 expandable={expandable}
                 theme={theme}
                 visualStyle={ts}
+                gutterWidth={gutterWidth}
                 onToggleHidden={(hidden) => {
                   void onToggleTrackHidden?.(trackNum, hidden);
                 }}
@@ -381,20 +391,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                 )}
                 {
                   // fallow-ignore-next-line complexity
-                  els
-                    .filter((el) => {
-                      const elementKey = el.key ?? el.id;
-                      const forceVisible =
-                        selectedElementId === elementKey ||
-                        selectedElementIds.has(elementKey) ||
-                        hoveredClip === elementKey ||
-                        draggedClip?.selectionKeys.has(elementKey) === true;
-                      return (
-                        forceVisible ||
-                        (el.start <= visibleWindow.endTime &&
-                          el.start + el.duration >= visibleWindow.startTime)
-                      );
-                    })
+                  visibleClips
                     .map((el) => {
                       const elementKey = el.key ?? el.id;
                       const clipStyle =
@@ -452,6 +449,10 @@ export const TimelineLanes = memo(function TimelineLanes({
                           isSelected={isSelected}
                           isHovered={hoveredClip === clipKey}
                           isDragging={false}
+                          hasAnimationRow={Boolean(
+                            cacheEntry?.keyframes.length ||
+                            cacheEntry?.animationSegments?.length,
+                          )}
                           hasCustomContent={!!renderClipContent}
                           capabilities={capabilities}
                           theme={theme}
@@ -506,7 +507,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                             (e) => {
                               if (e.button !== 0) return;
                               if (usePlayerStore.getState().activeTool === "razor") return;
-                              if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
+                              if (e.shiftKey) {
                                 shiftClickClipRef.current = {
                                   element: el,
                                   anchorX: e.clientX,
@@ -626,7 +627,56 @@ export const TimelineLanes = memo(function TimelineLanes({
                             e.stopPropagation();
                             if (suppressClickRef.current) return;
                             if (isComposition && onDrillDown) onDrillDown(el);
+                            else if (expandableParentIds.has(el.domId ?? el.id)) {
+                              usePlayerStore.getState().toggleExpandedTimelineElementId(el.domId ?? el.id);
+                            }
                           }}
+                          animationContent={
+                            <>
+                              {cacheEntry?.animationSegments && (
+                                <TimelineClipAnimationSegments
+                                  segments={cacheEntry.animationSegments}
+                                  ownerElement={el}
+                                  canMoveAnimationSegment={
+                                    isPrimarySelection ? canMoveAnimationSegment : undefined
+                                  }
+                                  onMoveAnimationSegment={
+                                    isPrimarySelection ? onMoveAnimationSegment : undefined
+                                  }
+                                  suppressClickRef={suppressClickRef}
+                                />
+                              )}
+                              {STUDIO_KEYFRAMES_ENABLED &&
+                                cacheEntry &&
+                                cacheEntry.keyframes.length > 0 && (
+                                  <TimelineClipDiamonds
+                                    keyframesData={cacheEntry}
+                                    clipStart={previewElement.start}
+                                    clipDuration={previewElement.duration}
+                                    clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                                    clipHeightPx={16}
+                                    beatsActive={beatStripOnTrack}
+                                    isSelected={isSelected}
+                                    currentPercentage={
+                                      previewElement.duration > 0
+                                        ? ((currentTime - previewElement.start) /
+                                            previewElement.duration) *
+                                          100
+                                        : 0
+                                    }
+                                    elementId={elementKey}
+                                    selectedKeyframes={selectedKeyframes}
+                                    onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
+                                    onShiftClickKeyframe={
+                                      STUDIO_MULTI_SELECTION_ENABLED ? onShiftClickKeyframe : undefined
+                                    }
+                                    onContextMenuKeyframe={onContextMenuKeyframe}
+                                    onMoveKeyframe={onMoveKeyframe}
+                                    suppressClickRef={suppressClickRef}
+                                  />
+                                )}
+                            </>
+                          }
                         >
                           {renderClipChildren(
                             previewElement,
@@ -634,46 +684,6 @@ export const TimelineLanes = memo(function TimelineLanes({
                             renderClipContent,
                             renderClipOverlay,
                           )}
-                          {cacheEntry?.animationSegments && (
-                            <TimelineClipAnimationSegments
-                              segments={cacheEntry.animationSegments}
-                              ownerElement={el}
-                              canMoveAnimationSegment={
-                                isPrimarySelection ? canMoveAnimationSegment : undefined
-                              }
-                              onMoveAnimationSegment={
-                                isPrimarySelection ? onMoveAnimationSegment : undefined
-                              }
-                              suppressClickRef={suppressClickRef}
-                            />
-                          )}
-                          {STUDIO_KEYFRAMES_ENABLED &&
-                            cacheEntry &&
-                            cacheEntry.keyframes.length > 0 && (
-                              <TimelineClipDiamonds
-                                keyframesData={cacheEntry}
-                                clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                                clipHeightPx={TRACK_H - 2 * CLIP_Y}
-                                beatsActive={beatStripOnTrack}
-                                isSelected={isSelected}
-                                currentPercentage={
-                                  previewElement.duration > 0
-                                    ? ((currentTime - previewElement.start) /
-                                        previewElement.duration) *
-                                      100
-                                    : 0
-                                }
-                                elementId={elementKey}
-                                selectedKeyframes={selectedKeyframes}
-                                onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
-                                onShiftClickKeyframe={
-                                  STUDIO_MULTI_SELECTION_ENABLED ? onShiftClickKeyframe : undefined
-                                }
-                                onContextMenuKeyframe={onContextMenuKeyframe}
-                                onMoveKeyframe={onMoveKeyframe}
-                                suppressClickRef={suppressClickRef}
-                              />
-                            )}
                         </TimelineClip>
                       );
                       if (!isPassenger) return clip;

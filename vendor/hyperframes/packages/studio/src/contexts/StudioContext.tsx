@@ -1,12 +1,14 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { ToastToneInput } from "../utils/studioHelpers";
 
 export interface StudioShellValue {
   projectId: string;
   activeCompPath: string | null;
   setActiveCompPath: (path: string | null) => void;
-  showToast: (message: string, tone?: "error" | "info") => void;
+  showToast: (message: string, tone?: ToastToneInput) => number;
+  dismissToast: (id: number) => void;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   editHistory: {
     canUndo: boolean;
@@ -89,6 +91,7 @@ export function StudioShellProvider({
     activeCompPath,
     setActiveCompPath,
     showToast,
+    dismissToast,
     previewIframeRef,
     editHistory,
     handleUndo,
@@ -105,6 +108,7 @@ export function StudioShellProvider({
       activeCompPath,
       setActiveCompPath,
       showToast,
+      dismissToast,
       previewIframeRef,
       editHistory,
       handleUndo,
@@ -122,6 +126,7 @@ export function StudioShellProvider({
       renderQueue,
       setActiveCompPath,
       showToast,
+      dismissToast,
       previewIframeRef,
       handleUndo,
       handleRedo,

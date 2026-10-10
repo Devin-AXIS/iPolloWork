@@ -8,6 +8,7 @@ import {
   resolveTimelineColorGroupKey,
   resolveTimelineLayerDepth,
   resolveTimelineLayerLabel,
+  resolveTimelineLayerPrimaryElement,
   resolveTimelineLayerSourceTarget,
   shouldDisplayTimelineElement,
 } from "./timelineLayerPresentation";
@@ -25,6 +26,15 @@ function element(overrides: Partial<TimelineElement> = {}): TimelineElement {
 }
 
 describe("timeline layer presentation", () => {
+  test("shared lane controls follow the selected host before the playhead, then recover across gaps", () => {
+    const first = element({ id: "first", key: "index.html#first" });
+    const second = element({ id: "second", key: "index.html#second", start: 5 });
+    expect(resolveTimelineLayerPrimaryElement([first, second], second.key!, 1)).toBe(second);
+    expect(resolveTimelineLayerPrimaryElement([first, second], null, 5)).toBe(second);
+    expect(resolveTimelineLayerPrimaryElement([first, second], "audio-other-lane", 7)).toBe(second);
+    expect(resolveTimelineLayerPrimaryElement([first, second], null, 12)).toBe(first);
+    expect(resolveTimelineLayerPrimaryElement([], null, 0)).toBeNull();
+  });
   test("prefers explicit authored kinds", () => {
     expect(resolveTimelineKind(element({ tag: "div", timelineKind: "effect" }))).toBe("effect");
     expect(resolveTimelineKind(element({ tag: "img", timelineKind: "logo" }))).toBe("logo");
@@ -113,12 +123,12 @@ describe("timeline layer presentation", () => {
 
   test("uses one neutral clip style for every timeline kind and palette index", () => {
     const expected = {
-      accent: "#20BBC0",
+      accent: "#1FBAC0",
       clip: "var(--hf-timeline-clip-bg)",
       clipActive: "var(--hf-timeline-clip-active)",
       border: "var(--hf-timeline-clip-border)",
       hover: "var(--hf-timeline-clip-hover)",
-      dragging: "#20BBC0",
+      dragging: "#1FBAC0",
       label: "var(--hf-timeline-clip-text)",
     };
 

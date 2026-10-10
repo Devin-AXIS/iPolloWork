@@ -48,7 +48,7 @@ function PanelTab({ active, className, ...props }: PanelTabProps) {
       variant="ghost"
       size="sm"
       className={cn(
-        "w-full min-w-0 justify-start gap-2 px-2 pr-8 text-left text-sm font-normal text-muted-foreground hover:bg-muted hover:text-foreground",
+        "w-full min-w-0 justify-start gap-2 px-2 pr-8 text-left text-sm font-normal text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:stroke-[1.5]",
         active && "bg-muted/80 text-foreground",
         className,
       )}
@@ -78,7 +78,7 @@ function PanelTabClose({
       variant="ghost"
       size="icon-xs"
       className={cn(
-        "absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100",
+        "absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100 [&_svg]:!size-3.5 [&_svg]:stroke-[1.5]",
         active && "text-foreground hover:bg-muted hover:text-foreground",
         className,
       )}

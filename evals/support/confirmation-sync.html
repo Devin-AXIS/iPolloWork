@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- Run codex-approval-fixture.mjs; copy this file to apps/app/confirmation-sync.html and open it through Vite. Remove the temporary copy after verification. --><html lang="zh"><meta charset="utf-8"><title>Confirmation recovery proof</title><div id="root"></div><script>window.addEventListener("error", event => {document.getElementById("root").textContent = event.message;});</script><script type="module">
+import React, {useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import '/src/app/index.css';
+import {setLocale} from '/src/i18n/index.ts';
+import {codexHarnessConversationEngineAdapter} from '/src/react-app/domains/session/engine/codex-harness-conversation-engine.ts';
+import {useSessionInteractions} from '/src/react-app/domains/session/sync/use-session-interactions.ts';
+import {useSessionActivityStore} from '/src/react-app/domains/session/status/session-activity-store.ts';
+import {PendingConfirmationNotice, PermissionApprovalPanel} from '/src/react-app/domains/session/chat/permission-approval-modal.tsx';
+import {TooltipProvider} from '/src/components/ui/tooltip.tsx';
+setLocale('zh');
+const workspaceId='approval-proof';
+const connection=codexHarnessConversationEngineAdapter.connect({baseUrl:'http://127.0.0.1:5275',serverBaseUrl:'http://127.0.0.1:5275',workspaceId,token:'fixture'});
+// Deliberately never subscribe to SSE: a lost event must recover through the runtime snapshot.
+function View(){
+ const [started,setStarted]=useState(false);
+ const [receipt,setReceipt]=useState('');
+ const state=useSessionInteractions({connection,workspaceId,sessionId:workspaceId,workspaceRoot:''});
+ const status=useSessionActivityStore(s=>s.statusesByWorkspaceId[workspaceId]?.[workspaceId]??'idle');
+ const h=React.createElement;
+ return h(TooltipProvider,null,h('main',{className:'mx-auto max-w-3xl p-8 space-y-5'},
+ h('h1',{className:'text-xl font-semibold'},'确认状态恢复验证'),
+ h('p',null,'真实请求存储、适配器、同步 Hook 和确认面板；模拟引擎，不执行付费操作。'),
+ h('button',{className:'rounded-lg border px-3 py-2',onClick:async()=>{await fetch('http://127.0.0.1:5275/ask',{method:'POST'});useSessionActivityStore.getState().setRunStatus(workspaceId,workspaceId,{type:'busy'});setReceipt('');setStarted(true);}},'模拟漏收确认事件'),
+ h('p',{'data-testid':'activity'},`状态：${status}`),
+ state.activePermission ? h(PermissionApprovalPanel,{permission:state.activePermission,busy:state.permissionReplyBusy,respondPermission:async(id,reply)=>{await state.respondPermission(id,reply);useSessionActivityStore.getState().setRunStatus(workspaceId,workspaceId,{type:'idle'});setReceipt(JSON.stringify(await fetch('http://127.0.0.1:5275/receipts').then(r=>r.json())));}})
+ : started && !receipt ? h(PendingConfirmationNotice,{waitingFor:'approval',onRefresh:state.refreshInteractions,refreshing:state.interactionsRefreshing,onStop:()=>setStarted(false)}) : h('p',null,'没有待处理的确认'),
+ receipt ? h('pre',{'data-testid':'receipt',className:'whitespace-pre-wrap'},receipt):null));
+}
+createRoot(document.getElementById('root')).render(React.createElement(View));
+</script></html>

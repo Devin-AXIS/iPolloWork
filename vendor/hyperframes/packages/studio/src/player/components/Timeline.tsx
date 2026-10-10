@@ -1,4 +1,5 @@
 import { useRef, useMemo, useCallback, useState, useEffect, memo } from "react";
+import { roundTo3 } from "../../utils/rounding";
 import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
@@ -22,9 +23,11 @@ import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import {
-  GUTTER,
+  DEFAULT_TIMELINE_GUTTER_WIDTH,
   TRACKS_LEFT_PAD,
+  clampTimelineGutterWidth,
   generateTicks,
+  getTimelineGutterMaxWidth,
   getTimelineCanvasHeight,
   getTimelineVisibleWindow,
 } from "./timelineLayout";
@@ -36,6 +39,11 @@ import type { TimelineProps } from "./TimelineTypes";
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { shouldDisplayTimelineElement } from "./timelineLayerPresentation";
+import { TimelineLayerResizeHandle } from "./TimelineLayerResizeHandle";
+import {
+  readStudioUiPreferences,
+  writeStudioUiPreferences,
+} from "../../utils/studioUiPreferences";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -141,6 +149,10 @@ export const Timeline = memo(function Timeline({
   const isDragging = useRef(false);
   const [shiftHeld, setShiftHeld] = useState(false);
   const [razorGuideX, setRazorGuideX] = useState<number | null>(null);
+  const [preferredGutterWidth, setPreferredGutterWidth] = useState(
+    () => readStudioUiPreferences().timelineLayerWidth ?? DEFAULT_TIMELINE_GUTTER_WIDTH,
+  );
+  const gutterWidthRef = useRef(preferredGutterWidth);
 
   useMountEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(e.type === "keydown");
@@ -256,6 +268,7 @@ export const Timeline = memo(function Timeline({
       ppsRef,
       durationRef,
       trackOrderRef,
+      gutterWidthRef,
       onFileDrop: pinnedOnFileDrop,
       onAssetDrop: pinnedOnAssetDrop,
       onBlockDrop: pinnedOnBlockDrop,
@@ -276,6 +289,9 @@ export const Timeline = memo(function Timeline({
     setScrollRef,
     syncScrollViewport,
   } = useTimelineScrollViewport(scrollRef, [timelineReady, displayElements.length, totalH]);
+  const gutterWidth = clampTimelineGutterWidth(preferredGutterWidth, viewportWidth);
+  const gutterMaxWidth = getTimelineGutterMaxWidth(viewportWidth);
+  gutterWidthRef.current = gutterWidth;
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
 
@@ -297,6 +313,7 @@ export const Timeline = memo(function Timeline({
     manualZoomPercentRef,
   } = useTimelineGeometry({
     viewportWidth,
+    gutterWidth,
     effectiveDuration,
     zoomMode,
     manualZoomPercent,
@@ -320,6 +337,7 @@ export const Timeline = memo(function Timeline({
         pps,
         trackCount: displayTrackOrder.length,
         displayDuration,
+        gutterWidth,
       }),
     [
       displayDuration,
@@ -329,12 +347,14 @@ export const Timeline = memo(function Timeline({
       scrollTop,
       viewportHeight,
       viewportWidth,
+      gutterWidth,
     ],
   );
   useTimelineRevealClip(scrollRef, {
     elements: displayElements,
     displayTrackOrder,
     pps,
+    gutterWidth,
   });
 
   const laneGapStrips = useTimelineGapHighlights({
@@ -363,6 +383,7 @@ export const Timeline = memo(function Timeline({
     effectiveDuration,
     pps,
     timelineReady,
+    gutterWidth,
     elementsLength: displayElements.length,
     setZoomMode,
     setManualZoomPercent,
@@ -379,10 +400,12 @@ export const Timeline = memo(function Timeline({
     setRangeSelection,
     shiftClickClipRef,
     marqueeRect,
+    annotationOutline,
     isScrubbing,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    cancelRangeSelection,
   } = useTimelineRangeSelection({
     scrollRef,
     ppsRef,
@@ -397,6 +420,7 @@ export const Timeline = memo(function Timeline({
     elementsRef: expandedElementsRef,
     trackOrderRef,
     onSelectElement,
+    gutterWidth,
   });
   setRangeSelectionRef.current = setRangeSelection; // stable ref consumed by useTimelineClipDrag
 
@@ -454,7 +478,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className={`hf-timeline-root relative border-t select-none h-full overflow-hidden ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`hf-timeline-root relative border-t select-none h-full overflow-hidden ${activeTool === "razor" || activeTool === "annotate" || activeTool === "annotate-lasso" || shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={(e) => {
         if (activeTool === "razor" && scrollRef.current) {
           const rect = scrollRef.current.getBoundingClientRect();
@@ -471,7 +495,8 @@ export const Timeline = memo(function Timeline({
       <div
         ref={setScrollRef}
         tabIndex={-1}
-        className={`hf-timeline-scroll ${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
+        className={`hf-timeline-scroll ${activeTool === "annotate-lasso" ? "hf-annotation-drawing" : ""} ${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
+        style={{ touchAction: activeTool === "annotate" || activeTool === "annotate-lasso" ? "none" : undefined }}
         onScroll={(e) => {
           lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
           syncScrollViewport(e.currentTarget);
@@ -479,11 +504,22 @@ export const Timeline = memo(function Timeline({
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}
         onDrop={handleAssetDrop}
+        onPointerDownCapture={(event) => {
+          // Own the gesture before clip trim, animation, or drag handlers can run.
+          if ((activeTool !== "annotate" && activeTool !== "annotate-lasso") || event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          handlePointerDown(event);
+        }}
         onPointerDown={(e) => {
           if (activeTool === "razor" && e.shiftKey && e.button === 0 && scrollRef.current) {
             const rect = scrollRef.current.getBoundingClientRect();
             const x =
-              e.clientX - rect.left + scrollRef.current.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
+              e.clientX -
+              rect.left +
+              scrollRef.current.scrollLeft -
+              gutterWidth -
+              TRACKS_LEFT_PAD;
             const splitTime = Math.max(0, x / pps);
             onRazorSplitAll?.(splitTime);
             return;
@@ -492,6 +528,7 @@ export const Timeline = memo(function Timeline({
         }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={cancelRangeSelection}
         onLostPointerCapture={handlePointerUp}
       >
         <TimelineCanvas
@@ -499,11 +536,13 @@ export const Timeline = memo(function Timeline({
           minor={minor}
           pps={pps}
           trackContentWidth={displayContentWidth}
+          gutterWidth={gutterWidth}
           totalH={totalH}
           effectiveDuration={effectiveDuration}
           majorTickInterval={majorTickInterval}
           rangeSelection={rangeSelection}
           marqueeRect={marqueeRect}
+          annotationOutline={annotationOutline}
           laneGapStrips={laneGapStrips}
           visibleWindow={visibleWindow}
           theme={theme}
@@ -550,7 +589,7 @@ export const Timeline = memo(function Timeline({
             onSelectElement?.(el);
             // Select the clicked diamond (matches shift-click); cleared above so this single-selects.
             toggleSelectedKeyframe(`${elKey}:${pct}`);
-            const absTime = el.start + (pct / 100) * el.duration;
+            const absTime = roundTo3(el.start + (pct / 100) * el.duration);
             onSeek?.(absTime);
             const kfData = keyframeCache?.get(elKey);
             const kf = kfData?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.5);
@@ -595,13 +634,25 @@ export const Timeline = memo(function Timeline({
           />
         )}
       </div>
+      <TimelineLayerResizeHandle
+        width={gutterWidth}
+        viewportWidth={viewportWidth}
+        maxWidth={gutterMaxWidth}
+        containerRef={containerRef}
+        onWidthChange={setPreferredGutterWidth}
+        onCommit={(width) => writeStudioUiPreferences({ timelineLayerWidth: width })}
+      />
+      {(activeTool === "annotate" || activeTool === "annotate-lasso") && !rangeSelection && (
+        <div role="status" className="pointer-events-none absolute left-1/2 top-10 z-30 -translate-x-1/2 whitespace-nowrap rounded-xl border border-panel-border bg-panel-bg px-3 py-2 text-xs text-panel-text-2 shadow-lg">
+          {activeTool === "annotate-lasso" ? "用画笔圈住片段，松开后填写 AI 批注" : "在片段内拖选部分时段；空白处拖选时间范围"} · Esc 取消
+        </div>
+      )}
       <TimelineOverlays
         theme={theme}
         showShortcutHint={showShortcutHint}
         showPopover={showPopover}
         rangeSelection={rangeSelection}
-        setShowPopover={setShowPopover}
-        setRangeSelection={setRangeSelection}
+        onCloseRangeSelection={cancelRangeSelection}
         kfContextMenu={kfContextMenu}
         setKfContextMenu={setKfContextMenu}
         onDeleteKeyframe={onDeleteKeyframe}

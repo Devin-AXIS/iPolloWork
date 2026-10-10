@@ -2,8 +2,9 @@ import type { TemplateSessionSnapshot } from "@ipollowork/types/templates";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import type { iPolloWorkSessionType } from "../sidebar/session-type";
+import { isConversationTemplateSessionId } from "./template-brief";
 
-type TemplateSessionClient = Pick<iPolloWorkServerClient, "getTemplateSession" | "adoptLegacyVideoSession">;
+type TemplateSessionClient = Pick<iPolloWorkServerClient, "listTemplateSessions" | "getTemplateSession" | "adoptLegacyVideoSession">;
 
 type LoadTemplateSessionInput = {
   client: TemplateSessionClient;
@@ -23,13 +24,18 @@ export async function loadTemplateSession({
   knownSessionType,
 }: LoadTemplateSessionInput): Promise<TemplateSessionSnapshot | null> {
   try {
-    return await client.getTemplateSession(workspaceId, sessionId);
+    const sessions = await client.listTemplateSessions(workspaceId);
+    const latestConversationTemplate = sessions.items.find((session) =>
+      isConversationTemplateSessionId(sessionId, session.sessionId),
+    );
+    if (latestConversationTemplate) return latestConversationTemplate;
   } catch {
-    if (knownSessionType !== "video") return null;
-    try {
-      return await client.adoptLegacyVideoSession(workspaceId, sessionId);
-    } catch {
-      return null;
-    }
+    try { return await client.getTemplateSession(workspaceId, sessionId); } catch { /* legacy fallback below */ }
+  }
+  if (knownSessionType !== "video") return null;
+  try {
+    return await client.adoptLegacyVideoSession(workspaceId, sessionId);
+  } catch {
+    return null;
   }
 }

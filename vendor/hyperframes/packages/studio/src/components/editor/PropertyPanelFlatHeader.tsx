@@ -1,6 +1,7 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
 import askAiSparkleSrc from "../../icons/figmaAskAiSparkle.svg?url";
+import askAiWordmarkSrc from "../../icons/figmaAskAiWordmark.svg?url";
 
 export function PropertyPanelFlatHeader({
   name,
@@ -14,7 +15,7 @@ export function PropertyPanelFlatHeader({
   onAskAgent?: () => void;
 }) {
   const track = useTrackDesignInput();
-  const { tx } = useStudioI18n();
+  const { locale, tx } = useStudioI18n();
 
   return (
     <div
@@ -36,10 +37,26 @@ export function PropertyPanelFlatHeader({
           track("button", "Ask agent");
           onAskAgent?.();
         }}
-        className="hf-property-ask-ai flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-lg px-2 text-[12px] font-medium transition-[background-color,color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#54b2ff]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 dark:focus-visible:ring-[#ffcc73]/70 dark:focus-visible:ring-offset-panel-bg"
+        className="hf-property-ask-ai flex h-7 flex-shrink-0 items-center justify-center rounded-[6px] px-3 py-2 text-[12px] font-bold leading-none tracking-[1px] transition-[background-color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 dark:focus-visible:ring-offset-panel-bg"
       >
-        <img src={askAiSparkleSrc} alt="" aria-hidden="true" className="size-[18px] flex-shrink-0" />
-        <span className="hf-property-ask-ai__label whitespace-nowrap">{tx("Ask AI")}</span>
+        {locale === "zh" ? (
+          <span className="flex items-center justify-center gap-1 whitespace-nowrap">
+            <img
+              src={askAiSparkleSrc}
+              alt=""
+              aria-hidden="true"
+              className="h-3 w-[13px] flex-shrink-0"
+            />
+            <span>{tx("Ask AI")}</span>
+          </span>
+        ) : (
+          <img
+            src={askAiWordmarkSrc}
+            alt=""
+            aria-hidden="true"
+            className="h-3 w-[54.063px] flex-shrink-0"
+          />
+        )}
       </button>
     </div>
   );

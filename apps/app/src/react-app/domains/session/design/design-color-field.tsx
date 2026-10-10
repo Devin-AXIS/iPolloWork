@@ -30,7 +30,7 @@ export function DesignColorField({ value, onChange, label = "Color", mixed = fal
   };
 
   return (
-    <div className={cn("flex h-[34px] items-center gap-2 rounded-lg bg-muted px-2 pr-4", className)}>
+    <div data-slot="design-color-field" className={cn("flex h-[34px] items-center gap-2 rounded-lg bg-muted px-2 pr-4", className)}>
       <label className="relative size-5 shrink-0 cursor-pointer overflow-hidden rounded-[4px]" style={mixed ? { background: "linear-gradient(135deg, #d1d5db 50%, #f9fafb 50%)" } : { backgroundColor: hex }}>
         <span className="sr-only">Choose {label.toLowerCase()}</span>
         <input
@@ -54,7 +54,7 @@ export function DesignColorField({ value, onChange, label = "Color", mixed = fal
         textClassName="text-[10px] uppercase text-muted-foreground"
       />
       <Input
-        className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-right text-[13px] uppercase shadow-none focus-visible:ring-0"
+        className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-right text-xs uppercase shadow-none focus-visible:ring-0"
         value={mixed ? "" : draft}
         placeholder={mixed ? "Mixed" : undefined}
         onFocus={() => onChange(hex, true)}

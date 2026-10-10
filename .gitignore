@@ -1,6 +1,9 @@
 .turbo/
 node_modules/
+apps/server/models/
 apps/desktop/dist-electron/
+apps/desktop/dist-engine-packs/
+apps/desktop/dist-video-packs/
 apps/desktop/dist-electron-windows-0.17.34-20260728101109/
 
 
@@ -9,6 +12,7 @@ apps/*/node_modules/
 .next/
 out/
 dist/
+coverage/
 packages/*/dist/
 apps/*/dist/
 tmp/
@@ -23,6 +27,8 @@ apps/desktop/server/
 apps/desktop/.hyperframes-build-stamp.json
 apps/desktop/dist-electron-test-filter/
 apps/desktop/hyperframes-runtime/
+apps/desktop/dsh-runtime/node-runtime/
+apps/desktop/dsh-runtime/.install-stamp.json
 apps/desktop/video/
 # Runtime video-session projects created by the desktop app.
 /video/
@@ -76,5 +82,12 @@ evals/results/
 /design/
 /nba-story/
 .superpowers/
+# Local repositories and non-source working documents.
+/external-plugins/jev-decision-model/
+/docs/*.docx
+/docs/code-optimization.md
+/docs/superpowers/
 # Local design-system experiments; keep out of commits for now.
 # /apps/app/src/react-app/domains/session/design/design-systems/
+
+/apps/desktop/video-codecs/

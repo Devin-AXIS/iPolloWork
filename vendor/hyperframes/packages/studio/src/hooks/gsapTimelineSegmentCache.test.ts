@@ -1,9 +1,47 @@
 import { describe, expect, test } from "vitest";
+import { parseGsapScript } from "@hyperframes/core/gsap-parser";
+import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
+import { addKeyframeToScript } from "@hyperframes/core/gsap-writer-acorn";
+import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
+import { usePlayerStore } from "../player/store/playerStore";
+import { animatedProps } from "./useEnableKeyframes";
+import { markManualKeyframe } from "./gsapShared";
+import { deduplicateKeyframes } from "./gsapTweenSynth";
 import {
   resolveGsapTimelineTargetKeys,
   resolveMotionTimelineTargetKeys,
 } from "./gsapTimelineSegmentCache";
 import { resolveClipTimingBasis } from "./useGsapTweenCache";
+
+test("native writer and both parsers preserve point origin, ease, timing and position group", () => {
+  const source = 'const tl = gsap.timeline(); tl.to("#title", {duration: 3, keyframes: {"0%": {x:0}, "100%": {x:120}, easeEach:"power2.out"}}, 2);';
+  const before = parseGsapScriptAcorn(source).animations[0];
+  if (!before) throw new Error("native animation parse failed");
+  const mutation = markManualKeyframe({ type: "add-keyframe", properties: { x: 42 } });
+  const changed = addKeyframeToScript(source, before.id, 50, { x: 42, data: "hf-manual-keyframe" });
+  expect(mutation.properties).toEqual({ x: 42, data: "hf-manual-keyframe" });
+  for (const parse of [parseGsapScriptAcorn, parseGsapScript]) {
+    const anim = parse(changed).animations[0];
+    expect(anim?.propertyGroup).toBe("position");
+    expect(anim?.keyframes?.easeEach).toBe("power2.out");
+    expect(anim?.keyframes?.keyframes.map((keyframe) => keyframe.percentage)).toEqual([0, 50, 100]);
+    expect(animatedProps(anim ?? null)).toEqual(["x"]);
+    usePlayerStore.setState({ elements: [{ id: "title", tag: "h1", start: 0, duration: 6, track: 1 }], keyframeCache: new Map() });
+    if (!anim) throw new Error("round-trip animation missing");
+    updateKeyframeCacheFromParsed([anim], "index.html", "title", { targetSelector: "#title" });
+    const points = usePlayerStore.getState().keyframeCache.get("index.html#title")?.keyframes;
+    expect(points?.map((keyframe) => keyframe.origin)).toEqual(["authored", "manual", "authored"]);
+    expect(points?.map((keyframe) => keyframe.percentage)).toEqual([33.333, 58.333, 83.333]);
+    expect(points?.[1]?.properties).toEqual({ x: 42 });
+  }
+});
+
+test("merged property groups retain a manually recorded origin", () => {
+  expect(deduplicateKeyframes([
+    { percentage: 50, properties: { x: 42 }, origin: "authored" },
+    { percentage: 50, properties: { opacity: 0.7 }, origin: "manual" },
+  ])).toEqual([{ percentage: 50, properties: { x: 42, opacity: 0.7 }, origin: "manual" }]);
+});
 
 describe("resolveMotionTimelineTargetKeys", () => {
   test("maps selector-only semantic motion to the timeline row key", () => {

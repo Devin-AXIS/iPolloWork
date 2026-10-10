@@ -173,6 +173,7 @@ export function NLEProvider({
       // Delegate with the resolved compositionSrc (may be same as original)
       drillDown({
         id: compId,
+        start: element.start,
         compositionSrc: resolvedPath ?? element.compositionSrc,
       });
     },

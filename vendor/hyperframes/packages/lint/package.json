@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/lint",
-  "version": "0.7.60",
+  "version": "0.8.140",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -56,13 +56,17 @@
     "@hyperframes/parsers": "workspace:*",
     "htmlparser2": "^10.1.0",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.8"
+    "postcss": "^8.5.8",
+    "acorn": "^8.17.0",
+    "acorn-walk": "^8.3.5",
+    "postcss-selector-parser": "^7.1.4"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
-  }
+    "vitest": "^4.1.11"
+  },
+  "peerDependencies": {}
 }

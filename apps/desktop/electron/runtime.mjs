@@ -12,9 +12,34 @@ import { pathToFileURL } from "node:url";
 const __runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
 const DIRECT_RUNTIME = "direct";
-const ORCHESTRATOR_RUNTIME = "ipollowork-orchestrator";
-const IPOLLOWORK_SERVER_PORT_RANGE_START = 48_000;
-const IPOLLOWORK_SERVER_PORT_RANGE_END = 51_000;
+const RUNTIME_PROXY_ENV_KEYS = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "NODE_USE_ENV_PROXY",
+];
+const RUNTIME_PROXY_ENDPOINT_KEYS = RUNTIME_PROXY_ENV_KEYS.slice(0, 6);
+
+function runtimeProxyEnvironment(sourceEnv = {}) {
+  return Object.fromEntries(RUNTIME_PROXY_ENV_KEYS.flatMap((key) => (
+    Object.prototype.hasOwnProperty.call(sourceEnv, key)
+      ? [[key, sourceEnv[key]]]
+      : []
+  )));
+}
+
+function hasRuntimeProxyEndpoint(sourceEnv = {}) {
+  return RUNTIME_PROXY_ENDPOINT_KEYS.some((key) => String(sourceEnv[key] ?? "").trim());
+}
+
+export function runtimeProxyEnvironmentFingerprint(sourceEnv = {}) {
+  return JSON.stringify(RUNTIME_PROXY_ENV_KEYS.map((key) => [key, sourceEnv[key] ?? null]));
+}
 
 function truncateOutput(value, limit = 8000) {
   const text = String(value ?? "");
@@ -76,6 +101,9 @@ export function applyEmbeddedServerEnvironment(targetEnv, sourceEnv) {
     "OPENCODE_CONFIG_DIR",
     "OPENCODE_TEST_HOME",
   ]);
+  for (const key of RUNTIME_PROXY_ENV_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(sourceEnv ?? {}, key)) delete targetEnv[key];
+  }
   for (const [key, value] of Object.entries(sourceEnv ?? {})) {
     if (!desktopOnlyKeys.has(key)) targetEnv[key] = value;
   }
@@ -258,6 +286,7 @@ function createiPolloWorkServerState() {
     lastStdout: null,
     lastStderr: null,
     managedOpencodeExecution: null,
+    networkEnvironmentFingerprint: null,
   };
 }
 
@@ -282,24 +311,6 @@ function snapshotiPolloWorkServerState(state) {
     lastStdout: state.lastStdout,
     lastStderr: state.lastStderr,
     managedOpencodeExecution: state.managedOpencodeExecution,
-  };
-}
-
-const SECRET_ENV_PATTERN = /(TOKEN|PASSWORD|USERNAME|AUTH|SECRET|KEY|CREDENTIAL|PROXY)/i;
-
-function redactedExecutionSnapshot(command, args, cwd, injectedEnv) {
-  return {
-    command,
-    args: [...args],
-    cwd,
-    env: Object.entries(injectedEnv ?? {})
-      .filter((entry) => typeof entry[1] === "string")
-      .map(([name, value]) => ({
-        name,
-        value: SECRET_ENV_PATTERN.test(name) ? "<redacted>" : value,
-        redacted: SECRET_ENV_PATTERN.test(name),
-      }))
-      .sort((left, right) => left.name.localeCompare(right.name)),
   };
 }
 
@@ -383,12 +394,14 @@ function targetTriple() {
   return null;
 }
 
-function binaryFileNames(baseName) {
+export function binaryFileNames(baseName) {
   const ext = process.platform === "win32" ? ".exe" : "";
   const triple = targetTriple();
+  // Packaging normalizes the selected target to this canonical alias. Keep
+  // target-specific files as a fallback so stale dev artifacts cannot shadow it.
   return [
-    triple ? `${baseName}-${triple}${ext}` : null,
     `${baseName}${ext}`,
+    triple ? `${baseName}-${triple}${ext}` : null,
   ].filter(Boolean);
 }
 
@@ -716,6 +729,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   const engineState = createEngineState();
   const ipolloworkServerState = createiPolloWorkServerState();
   const orchestratorState = createOrchestratorState();
+  // Capture only the environment inherited when the desktop launched. Proxy
+  // values copied from a previous child environment must never become the
+  // next launch's "explicit" configuration after a VPN/system-proxy change.
+  const inheritedRuntimeProxyEnv = runtimeProxyEnvironment(process.env);
 
   // Serialize engine lifecycle operations. Without this, concurrent renderer
   // invocations of engineStart/engineStop/engineRestart race: each call's
@@ -781,16 +798,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
 
   async function readOrchestratorStateFile(dataDir) {
     return readJsonFile(orchestratorStatePath(dataDir), null);
-  }
-
-  async function readOrchestratorAuthFile(dataDir) {
-    return readJsonFile(orchestratorAuthPath(dataDir), null);
-  }
-
-  async function writeOrchestratorAuthFile(dataDir, auth) {
-    const filePath = orchestratorAuthPath(dataDir);
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, `${JSON.stringify({ ...auth, updatedAt: nowMs() }, null, 2)}\n`, "utf8");
   }
 
   async function clearOrchestratorAuthFile(dataDir) {
@@ -932,12 +939,21 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // User env is layered first so process.env + any caller overrides always
     // win. See apps/server/src/env-file.ts and apps/orchestrator/src/cli.ts —
     // all loaders must agree on path + reserved-keys policy.
+    const userEnv = loadUserEnvFile();
     const baseEnv = {
-      ...loadUserEnvFile(),
+      ...userEnv,
       ...process.env,
       BUN_CONFIG_DNS_RESULT_ORDER: "verbatim",
     };
-    Object.assign(baseEnv, resolveWindowsSystemProxyEnv(baseEnv));
+    const explicitProxyEnv = {
+      ...inheritedRuntimeProxyEnv,
+      ...runtimeProxyEnvironment(userEnv),
+    };
+    for (const key of RUNTIME_PROXY_ENV_KEYS) delete baseEnv[key];
+    Object.assign(baseEnv, explicitProxyEnv);
+    if (!hasRuntimeProxyEndpoint(explicitProxyEnv)) {
+      Object.assign(baseEnv, resolveWindowsSystemProxyEnv(explicitProxyEnv));
+    }
     const caEnv = Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : await systemCaEnv();
     // Bun honors Node's NODE_EXTRA_CA_CERTS, so bundled Bun sidecars inherit
     // the exported OS trust store through the same child env variable.
@@ -1188,36 +1204,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     return `curl -fsSL https://opencode.ai/install | bash -s -- --version ${version} --no-modify-path`;
   }
 
-  function spawnManagedChild(state, program, args, options = {}) {
-    const child = spawn(program, args, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-
-    state.child = child;
-    state.childExited = false;
-    state.lastStdout = null;
-    state.lastStderr = null;
-
-    child.stdout?.on("data", (chunk) => appendOutput(state, "lastStdout", chunk.toString()));
-    child.stderr?.on("data", (chunk) => appendOutput(state, "lastStderr", chunk.toString()));
-    child.on("exit", (code) => {
-      state.childExited = true;
-      if (code != null && code !== 0) {
-        appendOutput(state, "lastStderr", `Process exited with code ${code}.\n`);
-      }
-      options.onExit?.(code);
-    });
-    child.on("error", (error) => {
-      state.childExited = true;
-      appendOutput(state, "lastStderr", `${error instanceof Error ? error.message : String(error)}\n`);
-    });
-
-    return child;
-  }
-
   function processMatchesSidecar(command) {
     return commandMatchesPackagedSidecar(command, sidecarDirs);
   }
@@ -1296,10 +1282,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`,
       "utf8",
     );
-  }
-
-  function generateManagedCredentials() {
-    return [randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, ""), randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "")];
   }
 
   async function issueOwnerToken(baseUrl, hostToken) {
@@ -1417,6 +1399,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     ipolloworkServerState.baseUrl = baseUrl;
     ipolloworkServerState.clientToken = tokens.clientToken;
     ipolloworkServerState.hostToken = tokens.hostToken;
+    ipolloworkServerState.networkEnvironmentFingerprint = runtimeProxyEnvironmentFingerprint(serverEnv);
 
     const connectUrls = options.remoteAccessEnabled ? buildConnectUrls(boundPort) : { connectUrl: null, mdnsUrl: null, lanUrl: null };
     ipolloworkServerState.connectUrl = connectUrls.connectUrl;
@@ -1471,137 +1454,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       port: boundPort,
     });
     return snapshotiPolloWorkServerState(ipolloworkServerState);
-  }
-
-  async function resolveOrchestratorBaseUrl() {
-    if (orchestratorState.baseUrl) {
-      return orchestratorState.baseUrl;
-    }
-    const stateFile = await readOrchestratorStateFile(orchestratorState.dataDir || orchestratorDataDir());
-    const baseUrl = stateFile?.daemon?.baseUrl?.trim();
-    if (!baseUrl) {
-      throw new Error("orchestrator daemon is not running");
-    }
-    return baseUrl;
-  }
-
-  async function startOrchestratorRuntime(projectDir, options = {}) {
-    const dataDir = orchestratorDataDir();
-    await mkdir(dataDir, { recursive: true });
-    const daemonPort = await findFreePort("127.0.0.1");
-    const opencodePort = await findFreePort("127.0.0.1");
-    const [username, password] = generateManagedCredentials();
-
-    const orchestratorProgram = resolveBinary("ipollowork-orchestrator") ?? resolveBinary("ipollowork");
-    if (!orchestratorProgram) {
-      throw new Error("Failed to locate ipollowork-orchestrator.");
-    }
-
-    const opencodeBinary = resolveOpencodeBinary(options.opencodeBinPath);
-    if (!opencodeBinary?.path) {
-      throw new Error("Failed to locate opencode.");
-    }
-
-    const env = await buildChildEnv({
-      IPOLLOWORK_INTERNAL_ALLOW_OPENCODE_CREDENTIALS: "1",
-      IPOLLOWORK_OPENCODE_USERNAME: username,
-      IPOLLOWORK_OPENCODE_PASSWORD: password,
-      ...(options.opencodeEnableExa !== false ? { OPENCODE_ENABLE_EXA: "1" } : {}),
-    });
-
-    const args = [
-      "daemon",
-      "run",
-      "--data-dir",
-      dataDir,
-      "--daemon-host",
-      "127.0.0.1",
-      "--daemon-port",
-      String(daemonPort),
-      "--opencode-bin",
-      opencodeBinary.path,
-      "--opencode-host",
-      "127.0.0.1",
-      "--opencode-workdir",
-      projectDir,
-      "--opencode-port",
-      String(opencodePort),
-      "--allow-external",
-      "--cors",
-      "*",
-    ];
-
-    spawnManagedChild(orchestratorState, orchestratorProgram, args, { env });
-    orchestratorState.dataDir = dataDir;
-    orchestratorState.daemonPort = daemonPort;
-    orchestratorState.baseUrl = `http://127.0.0.1:${daemonPort}`;
-
-    await writeOrchestratorAuthFile(dataDir, {
-      opencodeUsername: username,
-      opencodePassword: password,
-      projectDir,
-    });
-
-    const health = await waitForHttpOk(`${orchestratorState.baseUrl}/health`, 180_000).then((response) => response.json());
-    const opencode = health?.opencode;
-    if (!opencode?.port) {
-      throw new Error("Orchestrator did not report OpenCode status.");
-    }
-
-    engineState.runtime = ORCHESTRATOR_RUNTIME;
-    engineState.projectDir = projectDir;
-    engineState.hostname = "127.0.0.1";
-    engineState.port = opencode.port;
-    engineState.baseUrl = `http://127.0.0.1:${opencode.port}`;
-    engineState.opencodeUsername = username;
-    engineState.opencodePassword = password;
-    engineState.opencodeBinPath = opencodeBinary.path;
-    engineState.opencodeBinSource = opencodeBinary.source;
-
-    return snapshotEngineState(engineState);
-  }
-
-  async function startDirectRuntime(projectDir, options = {}) {
-    const opencodeBinary = resolveOpencodeBinary(options.opencodeBinPath);
-    if (!opencodeBinary?.path) {
-      throw new Error("Failed to locate opencode.");
-    }
-
-    const port = await findFreePort("127.0.0.1");
-    const [username, password] = generateManagedCredentials();
-    const env = await buildChildEnv({
-      OPENCODE_SERVER_USERNAME: username,
-      OPENCODE_SERVER_PASSWORD: password,
-    });
-
-    const args = ["serve", "--hostname", "127.0.0.1", "--port", String(port), "--cors", "*"];
-    engineState.execution = redactedExecutionSnapshot(opencodeBinary.path, args, projectDir, {
-      OPENCODE_SERVER_USERNAME: username,
-      OPENCODE_SERVER_PASSWORD: password,
-    });
-
-    spawnManagedChild(
-      engineState,
-      opencodeBinary.path,
-      args,
-      {
-        cwd: projectDir,
-        env,
-      },
-    );
-
-    engineState.runtime = DIRECT_RUNTIME;
-    engineState.projectDir = projectDir;
-    engineState.hostname = "127.0.0.1";
-    engineState.port = port;
-    engineState.baseUrl = `http://127.0.0.1:${port}`;
-    engineState.opencodeUsername = username;
-    engineState.opencodePassword = password;
-    engineState.opencodeBinPath = opencodeBinary.path;
-    engineState.opencodeBinSource = opencodeBinary.source;
-
-    await waitForHttpOk(`${engineState.baseUrl}/health`, 10_000).catch(() => undefined);
-    return snapshotEngineState(engineState);
   }
 
   async function stopAllRuntimeChildren() {
@@ -1672,12 +1524,16 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // the sticky preferred port, racing the not-yet-released socket into
     // EADDRINUSE and leaving the runtime in error -> boot screen.
     const requestedRemoteAccess = options.ipolloworkRemoteAccess === true;
+    const currentNetworkEnvironmentFingerprint = ipolloworkServerState.inProcess
+      ? runtimeProxyEnvironmentFingerprint(await buildChildEnv())
+      : null;
     if (
       options.forceRestart !== true &&
       ipolloworkServerState.inProcess &&
       lifecycleState === "healthy" &&
       normalizeWorkspaceKey(engineState.projectDir) === normalizeWorkspaceKey(safeProjectDir) &&
-      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess
+      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess &&
+      ipolloworkServerState.networkEnvironmentFingerprint === currentNetworkEnvironmentFingerprint
     ) {
       const existing = snapshotiPolloWorkServerState(ipolloworkServerState);
       if (existing.running && existing.baseUrl && (existing.ownerToken || existing.clientToken)) {
@@ -1863,34 +1719,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const result = await runShellCommand("bash", ["-lc", command], {
       env: { ...(await buildChildEnv()), OPENCODE_INSTALL_DIR: installDir },
       timeoutMs: 180_000,
-    });
-    return {
-      ok: result.status === 0,
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
-  }
-
-  async function opencodeMcpAuth(projectDir, serverName) {
-    const safeProjectDir = String(projectDir ?? "").trim();
-    const safeServerName = String(serverName ?? "").trim();
-    if (!safeProjectDir) {
-      throw new Error("project_dir is required");
-    }
-    if (!safeServerName) {
-      throw new Error("server_name is required");
-    }
-
-    const program = resolveBinary("opencode");
-    if (!program) {
-      throw new Error("Failed to locate opencode.");
-    }
-
-    const result = await runShellCommand(program, ["mcp", "auth", safeServerName], {
-      cwd: safeProjectDir,
-      env: await buildChildEnv(),
-      timeoutMs: 120_000,
     });
     return {
       ok: result.status === 0,
@@ -2208,7 +2036,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     orchestratorWorkspaceActivate,
     orchestratorInstanceDispose,
     orchestratorStartDetached,
-    opencodeMcpAuth,
     sandboxDoctor,
     sandboxStop,
     sandboxCleanupiPolloWorkContainers,

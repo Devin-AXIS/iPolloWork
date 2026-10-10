@@ -35,7 +35,7 @@ function hasVisualPresence(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;
   if (!win) return false;
   const cs = win.getComputedStyle(el);
-  if (cs.backgroundImage !== "none") return true;
+  if (cs.backgroundImage && cs.backgroundImage !== "none") return true;
   if (
     cs.backgroundColor &&
     cs.backgroundColor !== "transparent" &&
@@ -45,6 +45,32 @@ function hasVisualPresence(el: HTMLElement): boolean {
   if (cs.borderWidth && parseFloat(cs.borderWidth) > 0 && cs.borderStyle !== "none") return true;
   if (cs.boxShadow && cs.boxShadow !== "none") return true;
   return false;
+}
+
+function hasOwnText(el: HTMLElement): boolean {
+  return Array.from(el.childNodes).some((node) => node.nodeType === 3 && node.textContent?.trim());
+}
+
+/** Visible members, through transparent layout/animation wrappers. */
+export function getDomEditGroupMembers(group: HTMLElement): HTMLElement[] {
+  const members: HTMLElement[] = [];
+  const visit = (element: Element): void => {
+    if (!isHtmlElement(element)) return;
+    const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
+    if (computed?.display === "none" || computed?.visibility === "hidden") return;
+    if (
+      element.matches("[data-hf-edit-as-unit], " + GENERATED_MOTION_TEXT_ROOT_SELECTOR) ||
+      VISUAL_LEAF_TAGS.has(element.tagName.toLowerCase()) ||
+      hasOwnText(element)
+    ) {
+      members.push(element);
+      return;
+    }
+    if (hasVisualPresence(element)) members.push(element);
+    for (const child of Array.from(element.children)) visit(child);
+  };
+  for (const child of Array.from(group.children)) visit(child);
+  return members;
 }
 
 function isEmptyVisualContainer(el: HTMLElement): boolean {
@@ -94,6 +120,8 @@ const DOM_LAYER_IGNORED_TAGS = new Set([
 ]);
 
 function isInspectableLayerElement(el: HTMLElement): boolean {
+  // The generated foreground is controlled through its original avatar clip.
+  if (el.hasAttribute("data-avatar-source")) return false;
   const tagName = el.tagName.toLowerCase();
   if (DOM_LAYER_IGNORED_TAGS.has(tagName)) return false;
 
@@ -161,18 +189,13 @@ function getPreferredClipAncestor(startEl: HTMLElement): HTMLElement | null {
   return null;
 }
 
-export function getEditableUnitSelectionTarget(startEl: HTMLElement): HTMLElement | null {
+export function getEditableUnitSelectionTarget(
+  startEl: HTMLElement,
+  _options?: Pick<DomEditContextOptions, "isMasterView">,
+): HTMLElement | null {
   let editableUnit: HTMLElement | null = startEl;
   while (editableUnit) {
-    const compositionSource = getCompositionSourceForHost(editableUnit)?.replace(/\\/g, "/");
-    const isEffectComposition = compositionSource?.includes("/effects/") === true;
-    // Inserted effects expose their authored descendants in the expanded
-    // timeline and must behave like ordinary canvas elements. Older projects
-    // may still carry the temporary edit-as-unit marker, so explicitly ignore
-    // it on effect hosts while preserving the marker for intentional units.
-    if (editableUnit.hasAttribute("data-hf-edit-as-unit") && !isEffectComposition) {
-      return editableUnit;
-    }
+    if (editableUnit.hasAttribute("data-hf-edit-as-unit")) return editableUnit;
     editableUnit = editableUnit.parentElement;
   }
   return null;
@@ -182,7 +205,7 @@ export function getSelectionCandidate(
   startEl: HTMLElement,
   options: DomEditContextOptions,
 ): HTMLElement {
-  const editableUnit = getEditableUnitSelectionTarget(startEl);
+  const editableUnit = getEditableUnitSelectionTarget(startEl, options);
   if (editableUnit) return editableUnit;
 
   const structuredMotionRoot = getStructuredMotionSelectionRoot(startEl);
@@ -221,9 +244,42 @@ export function resolveAllVisualDomEditTargets(
   options: Pick<DomEditContextOptions, "activeCompositionPath">,
 ): HTMLElement[] {
   const raw: HTMLElement[] = [];
+  const hits = Array.from(elementsFromPoint);
+  // SVG containers hit their entire viewport. Only a painted descendant hit
+  // makes transparent vector artwork selectable at this point. Otherwise an
+  // empty corner/outline layer can cover the card or icon underneath it.
+  const svgPaintHits = hits.filter(
+    (entry): entry is Element =>
+      entry != null &&
+      entry.namespaceURI === "http://www.w3.org/2000/svg" &&
+      !["svg", "g", "defs"].includes(entry.localName),
+  );
 
-  for (const entry of elementsFromPoint) {
+  for (const entry of hits) {
     if (!isHtmlElement(entry)) continue;
+    if (
+      ((entry.hasAttribute("data-hf-edit-as-unit") && entry.querySelector("svg")) ||
+        (entry.namespaceURI === "http://www.w3.org/2000/svg" &&
+          ["svg", "g"].includes(entry.localName))) &&
+      !hasVisualPresence(entry) &&
+      !hasOwnText(entry) &&
+      !svgPaintHits.some((paint) => entry.contains(paint))
+    )
+      continue;
+    // The pointer override also exposes transparent animation/layout wrappers.
+    // Their box may cover a different text layer even though they paint nothing
+    // at the click. Keep explicit groups and artwork selectable in the usual way.
+    if (
+      entry.children.length > 0 &&
+      entry.ownerDocument.defaultView?.getComputedStyle(entry).pointerEvents === "none" &&
+      !VISUAL_LEAF_TAGS.has(entry.tagName.toLowerCase()) &&
+      !entry.matches(
+        "[data-hf-group], [data-hf-edit-as-unit], " + GENERATED_MOTION_TEXT_ROOT_SELECTOR,
+      ) &&
+      !hasVisualPresence(entry) &&
+      !hasOwnText(entry)
+    )
+      continue;
     if (hasRenderedBox(entry) && getDomLayerPatchTarget(entry, options.activeCompositionPath)) {
       raw.push(entry);
     }

@@ -433,6 +433,51 @@ export async function shiftGsapPositions(
   );
 }
 
+/**
+ * Fold the GSAP half of an already-persisted ripple insert into the same undo
+ * entry. The structural insert owns preview reloading, so this helper only
+ * updates source and history; it deliberately does not touch the live iframe.
+ */
+export async function foldRippleGsapShiftsIntoHistory(input: {
+  projectId: string;
+  activeCompPath: string | null;
+  label: string;
+  coalesceKey: string;
+  recordEdit: (edit: RecordEditInput) => Promise<void>;
+  changes: readonly { element: TimelineElement; start: number }[];
+}): Promise<void> {
+  const shifts = input.changes.filter(
+    (change) => Boolean(change.element.domId) && change.start !== change.element.start,
+  );
+  if (shifts.length === 0) return;
+
+  const onRollbackError = (error: unknown) =>
+    console.error("[Timeline] Failed to roll back ripple GSAP positions", error);
+  await foldGsapMutationIntoHistory({
+    projectId: input.projectId,
+    label: input.label,
+    coalesceKey: input.coalesceKey,
+    recordEdit: input.recordEdit,
+    gsapMutation: async (runOwnedMutation) => {
+      let mutated = false;
+      for (const change of shifts) {
+        const targetPath = change.element.sourceFile || input.activeCompPath || "index.html";
+        const status = await runOwnedMutation(targetPath, () =>
+          shiftGsapPositions(
+            input.projectId,
+            targetPath,
+            change.element.domId!,
+            change.start - change.element.start,
+          ),
+        );
+        mutated = mutated || status.mutated;
+      }
+      return { mutated, scriptText: null };
+    },
+    onRollbackError,
+  });
+}
+
 export async function scaleGsapPositions(
   projectId: string,
   filePath: string,

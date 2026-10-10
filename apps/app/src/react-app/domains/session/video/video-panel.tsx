@@ -1,23 +1,53 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Ellipsis, Film, LayoutTemplate, Loader2, Maximize2, Minimize2, Palette, Plus, RefreshCw, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
-import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
+import {
+  pickLocalImageFile,
+  readLocalImageAsDataUrl,
+  videoResourceInfo,
+} from "@/app/lib/desktop";
+import { readDenSettings } from "@/app/lib/den";
+import { isDesktopRuntime } from "@/app/utils";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { storyboardSettingsAssetSchema, storyboardSettingsRequestSchema, videoStudioPanelBoundsSchema, type VideoStudioPanelBounds, type StoryboardSettingsRequest, type StoryboardSettingsAsset, type StoryboardSettingsFields } from "@ipollowork/types/hyperframes";
+import { VideoStoryboardSettingsDialog } from "./video-storyboard-settings-dialog";
 import { toast } from "@/components/ui/sonner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
-import type { DesignAiSelectionContext } from "../design/design-ai-selection";
-import { parseVideoIllustrationReference } from "./video-illustration";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
+import {
+  videoAvatarContextSchema,
+  videoJobsResultSchema,
+} from "@ipollowork/types/video-generation";
+import {
+  IPOLLOWORK_VIDEO_STUDIO_FEATURES,
+  type VideoStudioBranding,
+  type VideoStudioClient,
+  type VideoStudioFeatures,
+  type VideoStudioRuntime,
+} from "@ipollowork/video-studio";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
-import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
-import { buildStableTokenBridgeCss, buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
-import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
-import type { SidePanelLauncherItem } from "../panel/side-panel";
+import {
+  mergeTemplateTokenCss,
+  parseDesignTokenValues,
+  refreshTemplateTokenCss,
+  replaceDesignTokenValue,
+  type DesignTokenValues,
+} from "../design/design-system-files";
+import {
+  buildStableTokenBridgeCss,
+  buildTemplateTokenCss,
+  DESIGN_SYSTEM_THEMES,
+  getDesignSystemTheme,
+  type DesignSystemTheme,
+} from "../design/design-system-registry";
+import {
+  ensureHtmlDesignSystemContract,
+  readAppliedDesignSystemId,
+} from "../design/design-system-theme-contract";
+import { StudioInspectorPanel } from "../panel/studio-inspector-panel";
 import {
   HYPERFRAMES_STUDIO_LABEL,
   hyperframesStudioPort,
@@ -25,38 +55,58 @@ import {
   videoProjectDirectory,
   videoProjectId,
 } from "./video-project";
-import { resolveVideoAiSelectionTarget } from "./video-ai-selection";
+import { resolveVideoAiSelectionTarget } from "@ipollowork/video-studio/bridge";
+import {
+  resolveAvatarAudioStart,
+  resolveAvatarDuration,
+  VideoAvatarPanel,
+} from "./video-avatar-panel";
+import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
-
-export {
-  hyperframesStudioPort,
-  hyperframesStudioUrl,
-  videoProjectDirectory,
-  videoProjectId,
-} from "./video-project";
+import { VideoImageWorkbench } from "./video-image-workbench";
+import { VideoEnhancementPanel } from "./video-enhancement-panel";
 
 type VideoPanelProps = {
+  title: string;
   sessionId: string;
+  view?: "storyboard";
+  conversationId?: string;
   workspaceRoot: string;
-  client: iPolloWorkServerClient | null;
+  client: VideoStudioClient | null;
   workspaceId: string | null;
+  runtime?: VideoStudioRuntime;
+  features?: VideoStudioFeatures;
+  branding?: VideoStudioBranding;
   isRemoteWorkspace?: boolean;
-  launcherItems?: SidePanelLauncherItem[];
   aiEditing?: boolean;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
-  onAskAi?: (context: DesignAiSelectionContext) => void;
+  onAskAi?: (context: DesignAiSelectionContext, instruction?: string) => void | Promise<void>;
+  onRegenerateFromStoryboard?: () => void | Promise<void>;
   onSaveAsTemplate?: () => void;
-  onClose: () => void;
+  onGenerateVideo?: () => Promise<boolean>;
 };
 
-type StudioStartupStage = "starting-service" | "waiting-for-studio" | "loading-frame";
-type StudioHostPanel = "voice" | "style" | null;
+type StudioStartupStage =
+  | "starting-service"
+  | "waiting-for-studio"
+  | "loading-frame";
+type StudioHostPanel = "avatar" | "voice" | "style" | null;
+type StudioVoiceSelectionTarget = {
+  frameIndex: number;
+  speaker: string;
+  voiceId: string;
+  model: string;
+  name: string;
+};
 
-type StudioHistoryFiles = Record<"index.html" | "design-tokens.css", {
-  before: string;
-  after: string;
-}>;
+type StudioHistoryFiles = Record<
+  "index.html" | "design-tokens.css",
+  {
+    before: string;
+    after: string;
+  }
+>;
 
 const studioStartupTitleKey: Record<StudioStartupStage, string> = {
   "starting-service": "video.startup.starting_service_title",
@@ -70,14 +120,16 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
   "loading-frame": "video.startup.loading_frame_detail",
 };
 
-const DEFAULT_STUDIO_PANEL_WIDTH = 400;
-const MIN_STUDIO_PANEL_WIDTH = 160;
-const MAX_STUDIO_PANEL_WIDTH = 600;
-const RUNTIME_THEME_BRIDGE_PATTERN = /\/\*\s*ipw-runtime-theme-bridge:start\s*\*\/[\s\S]*?\/\*\s*ipw-runtime-theme-bridge:end\s*\*\//i;
+const DEFAULT_STUDIO_PANEL_WIDTH = 300;
+const MIN_STUDIO_PANEL_WIDTH = 260;
+const MAX_STUDIO_PANEL_WIDTH = 360;
+const RUNTIME_THEME_BRIDGE_PATTERN =
+  /\/\*\s*ipw-runtime-theme-bridge:start\s*\*\/[\s\S]*?\/\*\s*ipw-runtime-theme-bridge:end\s*\*\//i;
 
 function ensureVideoTokenBridge(source: string) {
   const bridge = buildStableTokenBridgeCss();
-  if (RUNTIME_THEME_BRIDGE_PATTERN.test(source)) return source.replace(RUNTIME_THEME_BRIDGE_PATTERN, bridge);
+  if (RUNTIME_THEME_BRIDGE_PATTERN.test(source))
+    return source.replace(RUNTIME_THEME_BRIDGE_PATTERN, bridge);
   return `${source.trimEnd()}${source.trim() ? "\n\n" : ""}${bridge}\n`;
 }
 
@@ -85,14 +137,39 @@ function normalizeVideoThemeTypeScale(source: string) {
   return replaceDesignTokenValue(source, "--ipw-type-scale", "1");
 }
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
-  const terminalIdRef = React.useRef<string | null>(null);
+function isIPolloWorkServerClient(
+  client: VideoStudioClient | null,
+): client is iPolloWorkServerClient {
+  return Boolean(client && "createVoiceRealtimeSession" in client);
+}
+
+export function VideoPanel({
+  title,
+  sessionId,
+  view,
+  conversationId = sessionId,
+  workspaceRoot,
+  client,
+  workspaceId,
+  runtime,
+  features = IPOLLOWORK_VIDEO_STUDIO_FEATURES,
+  branding,
+  isRemoteWorkspace = false,
+  aiEditing = false,
+  expanded = false,
+  onExpandedChange,
+  onAskAi,
+  onRegenerateFromStoryboard,
+  onSaveAsTemplate,
+  onGenerateVideo,
+}: VideoPanelProps) {
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
-  const keepStudioWarmOnCloseRef = React.useRef(false);
   const studioChromeReadyRef = React.useRef(false);
   const studioReadyFallbackRef = React.useRef<number | null>(null);
   const [revision, setRevision] = React.useState(0);
   const [startAttempt, setStartAttempt] = React.useState(0);
+  const [resourceAttempt, setResourceAttempt] = React.useState(0);
+  const [resourcesReady, setResourcesReady] = React.useState(Boolean(runtime));
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
   const [startupStage, setStartupStage] = React.useState<StudioStartupStage>("starting-service");
   const [detail, setDetail] = React.useState(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`);
@@ -100,13 +177,30 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [studioHistoryReady, setStudioHistoryReady] = React.useState(false);
   const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null);
+  const [scriptSettingsRequest, setScriptSettingsRequest] = React.useState<StoryboardSettingsRequest | null>(null);
+  const [scriptVoiceDialog, setScriptVoiceDialog] = React.useState<{ title: string } | null>(null);
+  const [voiceSelectionTarget, setVoiceSelectionTarget] =
+    React.useState<StudioVoiceSelectionTarget | null>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
   const [studioPanelWidth, setStudioPanelWidth] = React.useState(DEFAULT_STUDIO_PANEL_WIDTH);
+  const [studioPanelBounds, setStudioPanelBounds] = React.useState<VideoStudioPanelBounds | null>(null);
+  const studioPanelStyle: React.CSSProperties = studioPanelBounds ? {
+    left: `${studioPanelBounds.left * 100}%`,
+    top: `${studioPanelBounds.top * 100}%`,
+    width: `${studioPanelBounds.width * 100}%`,
+    height: `${studioPanelBounds.height * 100}%`,
+    right: "auto",
+    bottom: "auto",
+  } : { width: studioPanelWidth };
   const [designTokenSource, setDesignTokenSource] = React.useState("");
   const designTokenSourceRef = React.useRef("");
   const designTokenLoadRequestRef = React.useRef(0);
   const designTokenLoadedRef = React.useRef(false);
   const pendingDesignTokenChangesRef = React.useRef<DesignTokenValues>({});
-  const pendingStudioDesignTokensRef = React.useRef<{ tokens: Record<string, string>; cssSource?: string } | null>(null);
+  const pendingStudioDesignTokensRef = React.useRef<{
+    tokens: Record<string, string>;
+    cssSource?: string;
+  } | null>(null);
   const designTokenSaveTimerRef = React.useRef<number | null>(null);
   const studioPort = hyperframesStudioPort(sessionId);
   const [activeStudioPort, setActiveStudioPort] = React.useState(studioPort);
@@ -121,9 +215,225 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     videoProjectId(sessionId),
     currentLocale(),
     initialStudioThemeRef.current,
-    0,
+    revision,
+    view,
   );
+  React.useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow || event.origin !== new URL(studioUrl).origin) return;
+      const parsed = storyboardSettingsRequestSchema.safeParse(event.data);
+      if (!parsed.success || parsed.data.projectId !== videoProjectId(sessionId)) return;
+      setScriptVoiceDialog(null); setVoiceSelectionTarget(null); setStudioHostPanel(null);
+      setScriptSettingsRequest(parsed.data);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [sessionId, studioUrl]);
+  async function applyScriptSettings(fields: StoryboardSettingsFields | undefined) {
+    const request = scriptSettingsRequest;
+    const host = studioFrameRef.current?.contentWindow;
+    if (!request || !fields || !host) return false;
+    return new Promise<boolean>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.source !== host || event.origin !== new URL(studioUrl).origin ||
+          event.data?.type !== "ipollowork:video-studio-settings-apply-result" ||
+          event.data.projectId !== request.projectId || event.data.requestId !== request.requestId) return;
+        finish(event.data.accepted === true);
+      };
+      const finish = (accepted: boolean) => { window.clearTimeout(timeout); window.removeEventListener("message", receive); resolve(accepted); };
+      const timeout = window.setTimeout(() => finish(false), 5000);
+      window.addEventListener("message", receive);
+      host.postMessage({ type: "ipollowork:video-studio-settings-apply", projectId: request.projectId, requestId: request.requestId, fields }, new URL(studioUrl).origin);
+    });
+  }
+  async function importScriptAsset(file: File): Promise<StoryboardSettingsAsset[]> {
+    const request = scriptSettingsRequest;
+    const host = studioFrameRef.current?.contentWindow;
+    if (!request || !host) return [];
+    return new Promise(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.source !== host || event.origin !== new URL(studioUrl).origin ||
+          event.data?.type !== "ipollowork:video-studio-settings-import-result" ||
+          event.data.projectId !== request.projectId || event.data.requestId !== request.requestId) return;
+        const parsed = storyboardSettingsAssetSchema.array().safeParse(event.data.assets);
+        finish(parsed.success ? parsed.data : []);
+      };
+      const finish = (assets: StoryboardSettingsAsset[]) => { window.clearTimeout(timeout); window.removeEventListener("message", receive); resolve(assets); };
+      const timeout = window.setTimeout(() => finish([]), 60_000);
+      window.addEventListener("message", receive);
+      host.postMessage({ type: "ipollowork:video-studio-settings-import", projectId: request.projectId, requestId: request.requestId, file }, new URL(studioUrl).origin);
+    });
+  }
+  const generationPendingRef = React.useRef(false);
+  React.useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow ||
+        event.origin !== new URL(studioUrl).origin ||
+        event.data?.type !== "ipollowork:video-studio-generate" ||
+        event.data.projectId !== videoProjectId(sessionId) ||
+        typeof event.data.requestId !== "string") return;
+      const requestId: string = event.data.requestId;
+      const reply = (accepted: boolean) => studioFrameRef.current?.contentWindow?.postMessage({
+        type: "ipollowork:video-studio-generate-result",
+        projectId: videoProjectId(sessionId), requestId, accepted,
+      }, event.origin);
+      if (generationPendingRef.current || aiEditing || !onGenerateVideo) { reply(false); return; }
+      generationPendingRef.current = true;
+      void onGenerateVideo().then(reply).catch(() => reply(false)).finally(() => {
+        generationPendingRef.current = false;
+      });
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [sessionId, studioUrl, aiEditing, onGenerateVideo]);
   const projectDirectory = videoProjectDirectory(sessionId);
+  const handleAvatarAsset = React.useCallback(
+    (
+      action: "view" | "insert",
+      workspacePath: string,
+      timelineStart?: number,
+      timelineDuration?: number,
+    ) => {
+      const frameWindow = studioFrameRef.current?.contentWindow;
+      const prefix = `${videoProjectDirectory(sessionId)}/`;
+      if (!frameWindow || !workspacePath.startsWith(prefix))
+        return Promise.reject(new Error("视频工作区尚未就绪，请稍后重试。"));
+      const path = workspacePath.slice(prefix.length);
+      const projectId = videoProjectId(sessionId);
+      const requestId = crypto.randomUUID();
+      const targetOrigin = new URL(studioUrl).origin;
+      const start =
+        typeof timelineStart === "number" && Number.isFinite(timelineStart) && timelineStart >= 0
+          ? timelineStart
+          : undefined;
+      const duration =
+        typeof timelineDuration === "number" &&
+        Number.isFinite(timelineDuration) &&
+        timelineDuration > 0
+          ? timelineDuration
+          : undefined;
+      return new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          window.clearTimeout(timer);
+          window.removeEventListener("message", handleResult);
+        };
+        const handleResult = (event: MessageEvent) => {
+          if (
+            event.source !== frameWindow ||
+            event.origin !== targetOrigin ||
+            event.data?.type !== "ipollowork:video-avatar-asset-result" ||
+            event.data.projectId !== projectId ||
+            event.data.requestId !== requestId
+          )
+            return;
+          cleanup();
+          if (event.data.ok === true) resolve();
+          else
+            reject(
+              new Error(typeof event.data.error === "string" ? event.data.error : "素材操作失败"),
+            );
+        };
+        const timer = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Video Studio 没有响应，请重试。"));
+        }, 10_000);
+        window.addEventListener("message", handleResult);
+        frameWindow.postMessage(
+          {
+            type: "ipollowork:video-avatar-asset",
+            projectId,
+            requestId,
+            action,
+            path,
+            ...(start !== undefined ? { start } : {}),
+            ...(duration !== undefined ? { duration } : {}),
+          },
+          targetOrigin,
+        );
+      });
+    },
+    [sessionId, studioUrl],
+  );
+  React.useEffect(() => {
+    if (!workspaceId || !isIPolloWorkServerClient(client)) return;
+    const targetOrigin = new URL(studioUrl).origin;
+    const projectId = videoProjectId(sessionId);
+    const context = { workspaceId, sessionId, directory: workspaceRoot };
+    const handleAvatarStartRequest = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow || event.origin !== targetOrigin)
+        return;
+      if (
+        event.data?.type !== "ipollowork:video-avatar-asset-start-request" ||
+        event.data.projectId !== projectId
+      )
+        return;
+      const { path, requestId } = event.data;
+      if (
+        typeof requestId !== "string" ||
+        typeof path !== "string" ||
+        !/^assets\/avatar-(?:long-)?[\w.-]+\.(?:webm|mov)$/i.test(path)
+      )
+        return;
+      void (async () => {
+        let start: number | null = null;
+        let duration: number | null = null;
+        try {
+          const jobsResponse = await client.callExtensionAction({
+            extensionId: "video-generation",
+            action: "jobs",
+            args: {},
+            context,
+          });
+          if (!jobsResponse.ok) throw new Error(jobsResponse.message || "无法读取数字人任务");
+          const workspacePath = `${projectDirectory}/${path}`;
+          const job = videoJobsResultSchema
+            .parse(jobsResponse.result)
+            .jobs.find((item) => item.path === workspacePath);
+          if (job) {
+            duration = resolveAvatarDuration(job) ?? null;
+            if (job.avatarAudioStart !== undefined) {
+              start = resolveAvatarAudioStart(job, null);
+            } else {
+              const sourceResponse = await client.callExtensionAction({
+                extensionId: "video-generation",
+                action: "avatar-context",
+                args: {},
+                context,
+              });
+              if (!sourceResponse.ok) throw new Error(sourceResponse.message || "无法读取音频时间");
+              start = resolveAvatarAudioStart(
+                job,
+                videoAvatarContextSchema.parse(sourceResponse.result),
+              );
+            }
+          }
+        } catch (error) {
+          console.warn("[video-studio] could not resolve avatar audio start", error);
+        }
+        studioFrameRef.current?.contentWindow?.postMessage(
+          {
+            type: "ipollowork:video-avatar-asset-start-result",
+            projectId,
+            requestId,
+            start,
+            duration,
+          },
+          targetOrigin,
+        );
+      })();
+    };
+    window.addEventListener("message", handleAvatarStartRequest);
+    return () => window.removeEventListener("message", handleAvatarStartRequest);
+  }, [client, projectDirectory, sessionId, studioUrl, workspaceId, workspaceRoot]);
+  const avatarPreviewUrl = React.useCallback(
+    (workspacePath: string) => {
+      const prefix = `${videoProjectDirectory(sessionId)}/`;
+      if (!workspacePath.startsWith(prefix)) throw new Error("数字人素材不属于当前视频。");
+      const path = workspacePath.slice(prefix.length).split("/").map(encodeURIComponent).join("/");
+      return `${new URL(studioUrl).origin}/api/projects/${encodeURIComponent(videoProjectId(sessionId))}/preview/${path}`;
+    },
+    [sessionId, studioUrl],
+  );
   const compositionPath = `${projectDirectory}/index.html`;
   const designTokenPath = `${projectDirectory}/design-tokens.css`;
   const designTokenValues = React.useMemo<DesignTokenValues>(
@@ -138,42 +448,61 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     () => (appliedDesignSystemId ? getDesignSystemTheme(appliedDesignSystemId) : undefined),
     [appliedDesignSystemId],
   );
-  const showStudioStartupOverlay = status === "starting" || (status === "ready" && !studioChromeReady);
+  const showStudioStartupOverlay =
+    status === "starting" || (status === "ready" && !studioChromeReady);
+  const studioRuntime = runtime ?? window.__IPOLLOWORK_ELECTRON__?.hyperframes;
+  const templatesAvailable = Boolean(
+    features.templates &&
+    client?.listVideoStudioTemplates &&
+    client.getVideoStudioTemplateCover &&
+    client.applyVideoStudioTemplate,
+  );
 
-  const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>, cssSource?: string) => {
-    pendingStudioDesignTokensRef.current = { tokens, cssSource };
-    const frameWindow = studioFrameRef.current?.contentWindow;
-    if (!frameWindow || Object.keys(tokens).length === 0) return;
-    frameWindow.postMessage(
-      {
-        type: "ipollowork:studio-design-token-change",
-        projectId: videoProjectId(sessionId),
-        tokens,
-        cssSource,
-      },
-      new URL(studioUrl).origin,
-    );
-  }, [sessionId, studioUrl]);
+  const syncStudioDesignTokens = React.useCallback(
+    (tokens: Record<string, string>, cssSource?: string) => {
+      pendingStudioDesignTokensRef.current = { tokens, cssSource };
+      const frameWindow = studioFrameRef.current?.contentWindow;
+      if (!frameWindow || Object.keys(tokens).length === 0) return;
+      frameWindow.postMessage(
+        {
+          type: "ipollowork:studio-design-token-change",
+          projectId: videoProjectId(sessionId),
+          tokens,
+          cssSource,
+        },
+        new URL(studioUrl).origin,
+      );
+    },
+    [sessionId, studioUrl],
+  );
 
   const replayPendingStudioDesignTokens = React.useCallback(() => {
     const pending = pendingStudioDesignTokensRef.current;
     if (pending) syncStudioDesignTokens(pending.tokens, pending.cssSource);
   }, [syncStudioDesignTokens]);
 
-  const saveDesignTokenSource = React.useCallback((source: string) => {
-    if (!client || !workspaceId) return;
-    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
-    designTokenSaveTimerRef.current = window.setTimeout(() => {
-      designTokenSaveTimerRef.current = null;
-      void client.writeWorkspaceFile(workspaceId, {
-        path: designTokenPath,
-        content: source,
-        force: true,
-      }).catch((error) => {
-        toast.error(error instanceof Error ? error.message : "Could not save video design tokens.");
-      });
-    }, 350);
-  }, [client, designTokenPath, workspaceId]);
+  const saveDesignTokenSource = React.useCallback(
+    (source: string) => {
+      if (!client || !workspaceId) return;
+      if (designTokenSaveTimerRef.current != null)
+        window.clearTimeout(designTokenSaveTimerRef.current);
+      designTokenSaveTimerRef.current = window.setTimeout(() => {
+        designTokenSaveTimerRef.current = null;
+        void client
+          .writeWorkspaceFile(workspaceId, {
+            path: designTokenPath,
+            content: source,
+            force: true,
+          })
+          .catch((error) => {
+            toast.error(
+              error instanceof Error ? error.message : "Could not save video design tokens.",
+            );
+          });
+      }, 350);
+    },
+    [client, designTokenPath, workspaceId],
+  );
 
   const loadDesignSystemFiles = React.useCallback(async () => {
     if (!client || !workspaceId) return;
@@ -200,7 +529,8 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     designTokenLoadedRef.current = true;
     setDesignTokenSource(nextSource);
     const themeId = readAppliedDesignSystemId(source);
-    const previewCss = themeId && getDesignSystemTheme(themeId) ? nextSource : ensureVideoTokenBridge(nextSource);
+    const previewCss =
+      themeId && getDesignSystemTheme(themeId) ? nextSource : ensureVideoTokenBridge(nextSource);
     syncStudioDesignTokens(parseDesignTokenValues(nextSource), previewCss);
     if (hasPendingChanges) saveDesignTokenSource(nextSource);
   }, [client, designTokenPath, saveDesignTokenSource, syncStudioDesignTokens, workspaceId]);
@@ -216,20 +546,49 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       if (event.origin !== new URL(studioUrl).origin) return;
       if (event.data?.type !== "ipollowork:video-studio-panel") return;
       if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if (!["voice", "avatar", "style", null].includes(event.data.panel)) return;
+      if ((scriptVoiceDialog || scriptSettingsRequest) && event.data.presentation !== "dialog") return;
+      const bounds = event.data.bounds === undefined ? null : videoStudioPanelBoundsSchema.safeParse(event.data.bounds);
+      if (bounds && !bounds.success) return;
+      setStudioPanelBounds(event.data.panel === null || event.data.presentation === "dialog" ? null : bounds?.data ?? null);
       if (typeof event.data.width === "number" && Number.isFinite(event.data.width)) {
-        setStudioPanelWidth(Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)));
+        setStudioPanelWidth(
+          Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)),
+        );
       }
-      if (event.data.panel === "voice") {
-        setStudioHostPanel("voice");
+      if (event.data.panel === "avatar") {
+        setVoiceSelectionTarget(null);
+        if (features.voice) setStudioHostPanel("avatar");
+      } else if (event.data.panel === "voice") {
+        if (features.voice) {
+          const index = event.data.frameIndex;
+          const selection = event.data.voiceSelection;
+          setScriptVoiceDialog(event.data.presentation === "dialog" && Number.isInteger(index) && index > 0
+            ? { title: typeof event.data.title === "string" ? event.data.title : "" } : null);
+          setVoiceSelectionTarget(
+            Number.isInteger(index) && index > 0
+              ? {
+                  frameIndex: index,
+                  speaker: typeof event.data.speaker === "string" ? event.data.speaker.trim() : "",
+                  voiceId: typeof selection?.voiceId === "string" ? selection.voiceId : "",
+                  model: typeof selection?.model === "string" ? selection.model : "",
+                  name: typeof selection?.name === "string" ? selection.name : "",
+                }
+              : null,
+          );
+          setStudioHostPanel("voice");
+        }
       } else if (event.data.panel === "style") {
-        setStudioHostPanel("style");
+        setVoiceSelectionTarget(null);
+        if (features.designSystem) setStudioHostPanel("style");
       } else if (event.data.panel === null) {
+        setVoiceSelectionTarget(null);
         setStudioHostPanel(null);
       }
     };
     window.addEventListener("message", handlePanelRequest);
     return () => window.removeEventListener("message", handlePanelRequest);
-  }, [sessionId, studioUrl]);
+  }, [features.designSystem, features.voice, sessionId, studioUrl, scriptVoiceDialog, scriptSettingsRequest]);
 
   React.useEffect(() => {
     setStudioHistoryReady(false);
@@ -250,32 +609,45 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     return () => window.removeEventListener("message", handleHistoryMessage);
   }, [loadDesignSystemFiles, sessionId, studioUrl]);
 
-  React.useEffect(() => () => {
-    if (designTokenSaveTimerRef.current != null) window.clearTimeout(designTokenSaveTimerRef.current);
-  }, []);
+  React.useEffect(
+    () => () => {
+      if (designTokenSaveTimerRef.current != null)
+        window.clearTimeout(designTokenSaveTimerRef.current);
+    },
+    [],
+  );
 
-  const handleDesignTokenChanges = React.useCallback((values: DesignTokenValues) => {
-    if (!designTokenLoadedRef.current) {
-      pendingDesignTokenChangesRef.current = {
-        ...pendingDesignTokenChangesRef.current,
-        ...values,
-      };
-    }
-    let next = appliedDesignSystemTheme
-      ? refreshTemplateTokenCss(designTokenSourceRef.current, buildTemplateTokenCss(appliedDesignSystemTheme))
-      : ensureVideoTokenBridge(designTokenSourceRef.current);
-    for (const [name, value] of Object.entries(values)) {
-      next = replaceDesignTokenValue(next, name, value);
-    }
-    designTokenSourceRef.current = next;
-    setDesignTokenSource(next);
-    syncStudioDesignTokens(values, next);
-    saveDesignTokenSource(next);
-  }, [appliedDesignSystemTheme, saveDesignTokenSource, syncStudioDesignTokens]);
+  const handleDesignTokenChanges = React.useCallback(
+    (values: DesignTokenValues) => {
+      if (!designTokenLoadedRef.current) {
+        pendingDesignTokenChangesRef.current = {
+          ...pendingDesignTokenChangesRef.current,
+          ...values,
+        };
+      }
+      let next = appliedDesignSystemTheme
+        ? refreshTemplateTokenCss(
+            designTokenSourceRef.current,
+            buildTemplateTokenCss(appliedDesignSystemTheme),
+          )
+        : ensureVideoTokenBridge(designTokenSourceRef.current);
+      for (const [name, value] of Object.entries(values)) {
+        next = replaceDesignTokenValue(next, name, value);
+      }
+      designTokenSourceRef.current = next;
+      setDesignTokenSource(next);
+      syncStudioDesignTokens(values, next);
+      saveDesignTokenSource(next);
+    },
+    [appliedDesignSystemTheme, saveDesignTokenSource, syncStudioDesignTokens],
+  );
 
-  const handleDesignTokenChange = React.useCallback((name: string, value: string) => {
-    handleDesignTokenChanges({ [name]: value });
-  }, [handleDesignTokenChanges]);
+  const handleDesignTokenChange = React.useCallback(
+    (name: string, value: string) => {
+      handleDesignTokenChanges({ [name]: value });
+    },
+    [handleDesignTokenChanges],
+  );
 
   const chooseDesignSystemBackgroundImage = React.useCallback(async () => {
     const pickedPath = await pickLocalImageFile("选择视频背景图片");
@@ -299,151 +671,201 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     toast.success("背景图片已应用。");
   }, [handleDesignTokenChanges]);
 
-  const recordStudioHostEdit = React.useCallback((label: string, files: StudioHistoryFiles) => {
-    const frameWindow = studioFrameRef.current?.contentWindow;
-    if (!studioHistoryReady || !frameWindow) {
-      return Promise.reject(new Error("Video Studio undo history is not ready."));
-    }
-    const projectId = videoProjectId(sessionId);
-    const operationId = crypto.randomUUID();
-    const targetOrigin = new URL(studioUrl).origin;
-    return new Promise<void>((resolve, reject) => {
-      const cleanup = () => {
-        window.clearTimeout(timeoutId);
-        window.removeEventListener("message", handleResult);
-      };
-      const handleResult = (event: MessageEvent) => {
-        if (event.source !== frameWindow || event.origin !== targetOrigin) return;
-        if (
-          event.data?.type !== "ipollowork:studio-history-recorded"
-          || event.data.projectId !== projectId
-          || event.data.operationId !== operationId
-        ) {
-          return;
-        }
-        cleanup();
-        if (event.data.ok === true) {
-          resolve();
-          return;
-        }
-        reject(new Error(
-          typeof event.data.error === "string"
-            ? event.data.error
-            : "Could not record Video Studio undo history.",
-        ));
-      };
-      const timeoutId = window.setTimeout(() => {
-        cleanup();
-        reject(new Error("Video Studio did not confirm the undo history update."));
-      }, 3_000);
-      window.addEventListener("message", handleResult);
-      frameWindow.postMessage({
-        type: "ipollowork:studio-record-host-edit",
-        projectId,
-        operationId,
-        label,
-        files,
-      }, targetOrigin);
-    });
-  }, [sessionId, studioHistoryReady, studioUrl]);
-
-  const handleApplyDesignSystem = React.useCallback(async (theme: DesignSystemTheme) => {
-    if (!client || !workspaceId) return;
-    if (!studioHistoryReady) {
-      toast.info("Video Studio is still preparing undo history.");
-      return;
-    }
-    const hadPendingTokenSave = designTokenSaveTimerRef.current != null;
-    const pendingTokenSource = designTokenSourceRef.current;
-    try {
-      if (designTokenSaveTimerRef.current != null) {
-        window.clearTimeout(designTokenSaveTimerRef.current);
-        designTokenSaveTimerRef.current = null;
+  const recordStudioHostEdit = React.useCallback(
+    (label: string, files: StudioHistoryFiles) => {
+      const frameWindow = studioFrameRef.current?.contentWindow;
+      if (!studioHistoryReady || !frameWindow) {
+        return Promise.reject(new Error("Video Studio undo history is not ready."));
       }
-      const [current, currentTokens] = await Promise.all([
-        client.readWorkspaceFile(workspaceId, compositionPath),
-        client.readWorkspaceFile(workspaceId, designTokenPath).catch(() => ({
-          content: pendingTokenSource,
-        })),
-      ]);
-      const currentTokenCss = hadPendingTokenSave ? pendingTokenSource : currentTokens.content;
-      const themedHtml = ensureHtmlDesignSystemContract(current.content, theme.id);
-      const nextTokens = normalizeVideoThemeTypeScale(
-        mergeTemplateTokenCss(currentTokenCss, buildTemplateTokenCss(theme)),
-      );
-      if (themedHtml === current.content && nextTokens === currentTokenCss) {
-        if (hadPendingTokenSave) saveDesignTokenSource(currentTokenCss);
-        toast.info(`${theme.name} is already applied to Video Studio.`);
-        return;
-      }
-      syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens);
-      await client.writeWorkspaceFile(workspaceId, {
-        path: designTokenPath,
-        content: nextTokens,
-        force: true,
+      const projectId = videoProjectId(sessionId);
+      const operationId = crypto.randomUUID();
+      const targetOrigin = new URL(studioUrl).origin;
+      return new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          window.clearTimeout(timeoutId);
+          window.removeEventListener("message", handleResult);
+        };
+        const handleResult = (event: MessageEvent) => {
+          if (event.source !== frameWindow || event.origin !== targetOrigin) return;
+          if (
+            event.data?.type !== "ipollowork:studio-history-recorded" ||
+            event.data.projectId !== projectId ||
+            event.data.operationId !== operationId
+          ) {
+            return;
+          }
+          cleanup();
+          if (event.data.ok === true) {
+            resolve();
+            return;
+          }
+          reject(
+            new Error(
+              typeof event.data.error === "string"
+                ? event.data.error
+                : "Could not record Video Studio undo history.",
+            ),
+          );
+        };
+        const timeoutId = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Video Studio did not confirm the undo history update."));
+        }, 3_000);
+        window.addEventListener("message", handleResult);
+        frameWindow.postMessage(
+          {
+            type: "ipollowork:studio-record-host-edit",
+            projectId,
+            operationId,
+            label,
+            files,
+          },
+          targetOrigin,
+        );
       });
+    },
+    [sessionId, studioHistoryReady, studioUrl],
+  );
+
+  const handleApplyDesignSystem = React.useCallback(
+    async (theme: DesignSystemTheme) => {
+      if (!client || !workspaceId) return false;
+      if (!studioHistoryReady) {
+        toast.info("Video Studio is still preparing undo history.");
+        return false;
+      }
+      const hadPendingTokenSave = designTokenSaveTimerRef.current != null;
+      const pendingTokenSource = designTokenSourceRef.current;
       try {
-        if (themedHtml !== current.content) {
-          await client.writeWorkspaceFile(workspaceId, {
-            path: compositionPath,
-            content: themedHtml,
-            baseUpdatedAt: current.updatedAt ?? null,
-            force: true,
-          });
+        if (designTokenSaveTimerRef.current != null) {
+          window.clearTimeout(designTokenSaveTimerRef.current);
+          designTokenSaveTimerRef.current = null;
         }
-      } catch (error) {
+        const [current, currentTokens] = await Promise.all([
+          client.readWorkspaceFile(workspaceId, compositionPath),
+          client.readWorkspaceFile(workspaceId, designTokenPath).catch(() => ({
+            content: pendingTokenSource,
+          })),
+        ]);
+        const currentTokenCss = hadPendingTokenSave ? pendingTokenSource : currentTokens.content;
+        const themedHtml = ensureHtmlDesignSystemContract(current.content, theme.id);
+        const nextTokens = normalizeVideoThemeTypeScale(
+          mergeTemplateTokenCss(currentTokenCss, buildTemplateTokenCss(theme)),
+        );
+        if (themedHtml === current.content && nextTokens === currentTokenCss) {
+          if (hadPendingTokenSave) saveDesignTokenSource(currentTokenCss);
+          toast.info(`${theme.name} is already applied to Video Studio.`);
+          return true;
+        }
+        syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens);
         await client.writeWorkspaceFile(workspaceId, {
           path: designTokenPath,
-          content: currentTokenCss,
+          content: nextTokens,
           force: true,
-        }).catch((rollbackError) => {
-          console.error("[video-studio] failed to roll back design tokens", rollbackError);
         });
-        throw error;
-      }
-      try {
-        await recordStudioHostEdit(`Apply ${theme.name} design system`, {
-          "index.html": {
-            before: current.content,
-            after: themedHtml,
-          },
-          "design-tokens.css": {
-            before: currentTokenCss,
-            after: nextTokens,
-          },
-        });
-      } catch (historyError) {
         try {
-          await client.writeWorkspaceFile(workspaceId, {
-            path: designTokenPath,
-            content: currentTokenCss,
-            force: true,
-          });
           if (themedHtml !== current.content) {
             await client.writeWorkspaceFile(workspaceId, {
               path: compositionPath,
-              content: current.content,
+              content: themedHtml,
+              baseUpdatedAt: current.updatedAt ?? null,
               force: true,
             });
           }
-        } catch (rollbackError) {
-          throw new AggregateError(
-            [historyError, rollbackError],
-            "Could not record or roll back the video design system.",
-          );
+        } catch (error) {
+          await client
+            .writeWorkspaceFile(workspaceId, {
+              path: designTokenPath,
+              content: currentTokenCss,
+              force: true,
+            })
+            .catch((rollbackError) => {
+              console.error("[video-studio] failed to roll back design tokens", rollbackError);
+            });
+          throw error;
         }
-        throw historyError;
+        try {
+          await recordStudioHostEdit(`Apply ${theme.name} design system`, {
+            "index.html": {
+              before: current.content,
+              after: themedHtml,
+            },
+            "design-tokens.css": {
+              before: currentTokenCss,
+              after: nextTokens,
+            },
+          });
+        } catch (historyError) {
+          try {
+            await client.writeWorkspaceFile(workspaceId, {
+              path: designTokenPath,
+              content: currentTokenCss,
+              force: true,
+            });
+            if (themedHtml !== current.content) {
+              await client.writeWorkspaceFile(workspaceId, {
+                path: compositionPath,
+                content: current.content,
+                force: true,
+              });
+            }
+          } catch (rollbackError) {
+            throw new AggregateError(
+              [historyError, rollbackError],
+              "Could not record or roll back the video design system.",
+            );
+          }
+          throw historyError;
+        }
+        designTokenSourceRef.current = nextTokens;
+        setDesignTokenSource(nextTokens);
+        toast.success(`Applied ${theme.name} to Video Studio.`);
+        return true;
+      } catch (error) {
+        if (hadPendingTokenSave && designTokenSaveTimerRef.current == null) {
+          saveDesignTokenSource(pendingTokenSource);
+        }
+        toast.error(
+          error instanceof Error ? error.message : "Could not apply the video design system.",
+        );
+        return false;
       }
-      designTokenSourceRef.current = nextTokens;
-      setDesignTokenSource(nextTokens);
-      toast.success(`Applied ${theme.name} to Video Studio.`);
-    } catch (error) {
-      if (hadPendingTokenSave && designTokenSaveTimerRef.current == null) {
-        saveDesignTokenSource(pendingTokenSource);
-      }
-      toast.error(error instanceof Error ? error.message : "Could not apply the video design system.");
-    }
-  }, [client, compositionPath, designTokenPath, recordStudioHostEdit, saveDesignTokenSource, studioHistoryReady, syncStudioDesignTokens, workspaceId]);
+    },
+    [
+      client,
+      compositionPath,
+      designTokenPath,
+      recordStudioHostEdit,
+      saveDesignTokenSource,
+      studioHistoryReady,
+      syncStudioDesignTokens,
+      workspaceId,
+    ],
+  );
+
+  React.useEffect(() => {
+    const handleThemeSelection = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:video-studio-select-theme") return;
+      if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if (typeof event.data.themeId !== "string") return;
+      const theme = getDesignSystemTheme(event.data.themeId);
+      const requestId = event.data.requestId;
+      if (!theme || typeof requestId !== "string") return;
+      void handleApplyDesignSystem(theme).then((applied) => {
+        studioFrameRef.current?.contentWindow?.postMessage({
+          type: "ipollowork:video-studio-theme-result",
+          projectId: videoProjectId(sessionId),
+          requestId,
+          themeId: theme.id,
+          applied,
+        }, new URL(studioUrl).origin);
+      });
+    };
+    window.addEventListener("message", handleThemeSelection);
+    return () => window.removeEventListener("message", handleThemeSelection);
+  }, [handleApplyDesignSystem, sessionId, studioUrl]);
 
   React.useEffect(() => {
     if (studioHostPanel !== "style") return;
@@ -451,24 +873,32 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       if (!event.ctrlKey && !event.metaKey) return;
       const target = event.target;
       if (
-        target instanceof HTMLElement
-        && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
       ) {
         return;
       }
       const key = event.key.toLowerCase();
-      const action = key === "z"
-        ? event.shiftKey ? "redo" : "undo"
-        : key === "y" && event.ctrlKey && !event.metaKey ? "redo" : null;
+      const action =
+        key === "z"
+          ? event.shiftKey
+            ? "redo"
+            : "undo"
+          : key === "y" && event.ctrlKey && !event.metaKey
+            ? "redo"
+            : null;
       if (!action) return;
       const frameWindow = studioFrameRef.current?.contentWindow;
       if (!frameWindow) return;
       event.preventDefault();
-      frameWindow.postMessage({
-        type: "ipollowork:studio-history-action",
-        projectId: videoProjectId(sessionId),
-        action,
-      }, new URL(studioUrl).origin);
+      frameWindow.postMessage(
+        {
+          type: "ipollowork:studio-history-action",
+          projectId: videoProjectId(sessionId),
+          action,
+        },
+        new URL(studioUrl).origin,
+      );
     };
     window.addEventListener("keydown", handleHistoryShortcut);
     return () => window.removeEventListener("keydown", handleHistoryShortcut);
@@ -483,6 +913,77 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       targetOrigin,
     );
   }, [studioUrl]);
+
+  const syncStudioHostContext = React.useCallback(() => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    if (!frameWindow) return;
+    frameWindow.postMessage(
+      {
+        type: "ipollowork:studio-host-context",
+        projectId: videoProjectId(sessionId),
+        title,
+        branding: branding
+          ? {
+              title: branding.title,
+              byline: branding.byline,
+              bylineUrl: branding.bylineUrl,
+              repositoryUrl: branding.repositoryUrl,
+            }
+          : null,
+        designSystem: appliedDesignSystemTheme
+          ? {
+              id: appliedDesignSystemTheme.id,
+              name: appliedDesignSystemTheme.name,
+            }
+          : null,
+        designSystemThemes: DESIGN_SYSTEM_THEMES.map(({ id, name, category }) => ({
+          id,
+          name,
+          category,
+        })),
+        actions: {
+          reload: true,
+          saveAsTemplate: Boolean(onSaveAsTemplate),
+          openTemplates: templatesAvailable,
+          openDesignSystem: features.designSystem,
+          selectRoleVoice: features.voice && isIPolloWorkServerClient(client),
+          askAi: Boolean(branding?.onAskAi),
+          regenerateFromStoryboard: Boolean(onRegenerateFromStoryboard) && !aiEditing,
+        },
+      },
+      new URL(studioUrl).origin,
+    );
+  }, [
+    appliedDesignSystemTheme,
+    branding,
+    aiEditing,
+    client,
+    features.designSystem,
+    features.voice,
+    onSaveAsTemplate,
+    onRegenerateFromStoryboard,
+    sessionId,
+    studioUrl,
+    templatesAvailable,
+    title,
+  ]);
+
+  React.useEffect(() => {
+    if (!studioFrameLoaded) return;
+    syncStudioHostContext();
+  }, [studioFrameLoaded, syncStudioHostContext]);
+
+  React.useEffect(() => {
+    const replayHostContext = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:studio-host-context-request") return;
+      if (event.data.projectId !== videoProjectId(sessionId)) return;
+      syncStudioHostContext();
+    };
+    window.addEventListener("message", replayHostContext);
+    return () => window.removeEventListener("message", replayHostContext);
+  }, [sessionId, studioUrl, syncStudioHostContext]);
 
   const syncStudioTheme = React.useCallback(() => {
     const frameWindow = studioFrameRef.current?.contentWindow;
@@ -512,71 +1013,104 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   }, [studioFrameLoaded, syncStudioAiEditing]);
 
   React.useEffect(() => {
+    const handleRegenerationRequest = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:video-studio-regenerate") return;
+      if (event.data.projectId !== videoProjectId(sessionId) || aiEditing) return;
+      void onRegenerateFromStoryboard?.();
+    };
+    window.addEventListener("message", handleRegenerationRequest);
+    return () => window.removeEventListener("message", handleRegenerationRequest);
+  }, [aiEditing, onRegenerateFromStoryboard, sessionId, studioUrl]);
+
+  React.useEffect(() => {
     if (!client || !workspaceId || !onAskAi) return;
+    let active = true;
     const handleMessage = (event: MessageEvent) => {
       if (event.source !== studioFrameRef.current?.contentWindow) return;
       if (event.origin !== new URL(studioUrl).origin) return;
       if (event.data?.type !== "ipollowork:hyperframes:ask-ai-selection") return;
+      const requestId = typeof event.data.requestId === "string" ? event.data.requestId.slice(0, 100) : undefined;
+      const instruction = typeof event.data.instruction === "string" ? event.data.instruction.trim().slice(0, 4_000) : undefined;
+      const reply = (accepted: boolean, error?: string) => {
+        if (!requestId) return;
+        studioFrameRef.current?.contentWindow?.postMessage({
+          type: "ipollowork:hyperframes:ai-request-result", requestId, accepted, error,
+        }, event.origin);
+      };
       const target = resolveVideoAiSelectionTarget(event.data.target);
       if (!target) {
+        reply(false, "无法识别视频目标，请重新选择后重试");
         toast.error("Could not identify the selected video element. Select it again and retry.");
         return;
       }
       const filePath = `${projectDirectory}/${target.file}`.replace(/\\/g, "/");
       void (async () => {
         const current = await client.readWorkspaceFile(workspaceId, filePath);
-        const tag = typeof event.data.tag === "string" && event.data.tag.trim()
-          ? event.data.tag.trim().toLowerCase()
-          : "element";
+        if (!active) throw new Error("视频页已切换，请重新提交需求");
+        const tag =
+          typeof event.data.tag === "string" && event.data.tag.trim()
+            ? event.data.tag.trim().toLowerCase()
+            : "element";
         const text = typeof event.data.text === "string" ? event.data.text.trim() : "";
         const src = typeof event.data.src === "string" ? event.data.src : "";
         const alt = typeof event.data.alt === "string" ? event.data.alt : "";
-        const summary = (text || alt || src || target.locator).replace(/\s+/g, " ").trim().slice(0, 80);
-        const styles = event.data.styles && typeof event.data.styles === "object"
-          ? Object.fromEntries(Object.entries(event.data.styles).filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"))
-          : {};
-        onAskAi({
+        const semanticContext =
+          typeof event.data.semanticContext === "string"
+            ? event.data.semanticContext.slice(0, 20_000)
+            : undefined;
+        const summary = (text || alt || src || target.locator)
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 80);
+        const styles =
+          event.data.styles && typeof event.data.styles === "object"
+            ? Object.fromEntries(
+                Object.entries(event.data.styles).filter(
+                  (entry): entry is [string, string] =>
+                    typeof entry[0] === "string" && typeof entry[1] === "string",
+                ),
+              )
+            : {};
+        await onAskAi({
           id: `video-ai-${crypto.randomUUID()}`,
-          sessionId,
+          sessionId: conversationId ?? sessionId,
           workspaceId,
           filePath,
           baseUpdatedAt: current.updatedAt ?? null,
           beforeHtml: current.content,
           target: {
             tag,
-            label: summary ? `VIDEO ${tag.toUpperCase()} · ${summary}` : `VIDEO ${tag.toUpperCase()}`,
+            label: summary
+              ? `VIDEO ${tag.toUpperCase()} · ${summary}`
+              : `VIDEO ${tag.toUpperCase()}`,
             locator: target.locator,
             text,
             src,
             alt,
             styles,
+            semanticContext,
           },
-        });
+        }, instruction);
+        reply(true);
         onExpandedChange?.(false);
       })().catch((error) => {
+        reply(false, error instanceof Error ? error.message : "无法发送到左侧 AI 对话");
         console.error("[video-studio] failed to create AI selection", error);
-        toast.error(error instanceof Error ? error.message : "Could not add the selected video element to Ask AI.");
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Could not add the selected video element to Ask AI.",
+        );
       });
     };
     window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [client, onAskAi, onExpandedChange, projectDirectory, sessionId, studioUrl, workspaceId]);
-
-  React.useEffect(() => {
-    const handleIllustrationReference = (event: MessageEvent) => {
-      if (event.source !== studioFrameRef.current?.contentWindow) return;
-      if (event.origin !== new URL(studioUrl).origin) return;
-      if (event.data?.type !== "ipollowork:hyperframes:illustration-reference") return;
-      const reference = parseVideoIllustrationReference(event.data.illustration);
-      if (!reference) return;
-      window.dispatchEvent(new CustomEvent("ipollowork:add-illustration-reference", {
-        detail: { sessionId, reference },
-      }));
-      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    return () => {
+      active = false;
+      window.removeEventListener("message", handleMessage);
     };
-    window.addEventListener("message", handleIllustrationReference);
-    return () => window.removeEventListener("message", handleIllustrationReference);
-  }, [sessionId, studioUrl]);
+  }, [client, conversationId, onAskAi, onExpandedChange, projectDirectory, sessionId, studioUrl, workspaceId]);
 
   React.useEffect(() => {
     const handleAnimationReference = (event: MessageEvent) => {
@@ -592,39 +1126,51 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         typeof candidate.type !== "string" ||
         typeof candidate.category !== "string" ||
         typeof candidate.agentPrompt !== "string"
-      ) return;
+      )
+        return;
       const item: HyperframesCatalogItem = {
         name: candidate.name,
         title: candidate.title,
         description: candidate.description,
-        type: candidate.type === "hyperframes:block" ? "hyperframes:block" : "hyperframes:component",
-        kind: candidate.kind === "effect"
-          || candidate.type !== "hyperframes:block"
-          || ["scroll", "svg", "text-effects", "transitions", "captions", "effects", "vfx"].includes(candidate.category)
-          ? "effect"
-          : "animation",
+        type:
+          candidate.type === "hyperframes:block" ? "hyperframes:block" : "hyperframes:component",
+        kind:
+          candidate.kind === "effect" ||
+          candidate.type !== "hyperframes:block" ||
+          ["scroll", "svg", "text-effects", "transitions", "captions", "effects", "vfx"].includes(
+            candidate.category,
+          )
+            ? "effect"
+            : "animation",
         category: candidate.category,
         tags: Array.isArray(candidate.tags)
           ? candidate.tags.filter((tag: unknown): tag is string => typeof tag === "string")
           : [],
         duration: typeof candidate.duration === "number" ? candidate.duration : undefined,
-        preview: candidate.preview && typeof candidate.preview === "object"
-          ? {
-              poster: typeof candidate.preview.poster === "string" ? candidate.preview.poster : undefined,
-              video: typeof candidate.preview.video === "string" ? candidate.preview.video : undefined,
-            }
-          : undefined,
+        preview:
+          candidate.preview && typeof candidate.preview === "object"
+            ? {
+                poster:
+                  typeof candidate.preview.poster === "string"
+                    ? candidate.preview.poster
+                    : undefined,
+                video:
+                  typeof candidate.preview.video === "string" ? candidate.preview.video : undefined,
+              }
+            : undefined,
         variables: [],
         agentPrompt: candidate.agentPrompt,
       };
-      window.dispatchEvent(new CustomEvent("ipollowork:add-animation-reference", {
-        detail: { sessionId, item },
-      }));
+      window.dispatchEvent(
+        new CustomEvent("ipollowork:add-animation-reference", {
+          detail: { sessionId: conversationId ?? sessionId, item },
+        }),
+      );
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     };
     window.addEventListener("message", handleAnimationReference);
     return () => window.removeEventListener("message", handleAnimationReference);
-  }, [sessionId, studioUrl]);
+  }, [conversationId, sessionId, studioUrl]);
 
   const scheduleStudioLocaleSync = React.useCallback(() => {
     syncStudioLocale();
@@ -644,22 +1190,58 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       setStudioChromeReady(true);
       setDetail(t("video.ready_on_port", { port: activeStudioPort }));
       scheduleStudioLocaleSync();
+      syncStudioHostContext();
       syncStudioTheme();
       syncStudioAiEditing();
       replayPendingStudioDesignTokens();
     };
     window.addEventListener("message", handleStudioReady);
     return () => window.removeEventListener("message", handleStudioReady);
-  }, [activeStudioPort, replayPendingStudioDesignTokens, scheduleStudioLocaleSync, sessionId, studioUrl, syncStudioAiEditing, syncStudioTheme]);
+  }, [
+    activeStudioPort,
+    replayPendingStudioDesignTokens,
+    scheduleStudioLocaleSync,
+    sessionId,
+    studioUrl,
+    syncStudioAiEditing,
+    syncStudioHostContext,
+    syncStudioTheme,
+  ]);
+
+  React.useEffect(() => {
+    if (isRemoteWorkspace || runtime || !isDesktopRuntime()) {
+      setResourcesReady(true);
+      return;
+    }
+
+    let disposed = false;
+    setResourcesReady(false);
+    setStatus("starting");
+    setStartupStage("starting-service");
+    void videoResourceInfo().then((resource) => {
+      if (disposed) return;
+      if (!resource.installed) throw new Error(resource.error ?? "视频组件未完整打包，请重新安装完整安装包。");
+      setResourcesReady(true);
+    }).catch((cause) => {
+      if (disposed) return;
+      setStatus("failed");
+      setDetail(cause instanceof Error ? cause.message : t("video.resources.download_failed"));
+    });
+    return () => { disposed = true; };
+  }, [isRemoteWorkspace, resourceAttempt, runtime]);
 
   React.useEffect(() => {
     setStatus("starting");
-    setStartupStage("starting-service");
-    setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL }));
     setStudioFrameLoaded(false);
     studioChromeReadyRef.current = false;
     setStudioChromeReady(false);
     setActiveStudioPort(studioPort);
+    if (!resourcesReady) {
+      setStartupStage("starting-service");
+      return;
+    }
+    setStartupStage("starting-service");
+    setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL }));
     if (isRemoteWorkspace) {
       setStatus("failed");
       setDetail(t("video.local_workspaces"));
@@ -670,14 +1252,13 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       setDetail(t("video.starting_workspace"));
       return;
     }
-    const bridge = window.__IPOLLOWORK_ELECTRON__?.hyperframes;
-    if (!bridge?.start || !bridge.stop) {
+    if (!studioRuntime?.start || !studioRuntime.stop) {
       setStatus("failed");
       setDetail(t("video.requires_desktop"));
       return;
     }
-    const startHyperframes = bridge.start;
-    const stopHyperframes = bridge.stop;
+    const startHyperframes = studioRuntime.start;
+    const stopHyperframes = studioRuntime.stop;
 
     let disposed = false;
     const waitingTimer = window.setTimeout(() => {
@@ -691,24 +1272,26 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       sessionId,
       projectDirectory,
       port: studioPort,
-    }).then((result) => {
-      if (disposed) return;
-      window.clearTimeout(waitingTimer);
-      if (!result?.ok) throw new Error(t("video.could_not_start"));
-      if (typeof result.port === "number" && Number.isInteger(result.port) && result.port > 0) {
-        setActiveStudioPort(result.port);
-      }
-      setStatus("ready");
-      setStartupStage("loading-frame");
-      setDetail(t("video.ready_on_port", { port: result.port ?? studioPort }));
-      setStudioFrameLoaded(false);
-      setRevision((value) => value + 1);
-    }).catch((cause) => {
-      if (disposed) return;
-      window.clearTimeout(waitingTimer);
-      setStatus("failed");
-      setDetail(cause instanceof Error ? cause.message : t("video.could_not_start"));
-    });
+    })
+      .then((result) => {
+        if (disposed) return;
+        window.clearTimeout(waitingTimer);
+        if (!result?.ok) throw new Error(t("video.could_not_start"));
+        if (typeof result.port === "number" && Number.isInteger(result.port) && result.port > 0) {
+          setActiveStudioPort(result.port);
+        }
+        setStatus("ready");
+        setStartupStage("loading-frame");
+        setDetail(t("video.ready_on_port", { port: result.port ?? studioPort }));
+        setStudioFrameLoaded(false);
+        setRevision((value) => value + 1);
+      })
+      .catch((cause) => {
+        if (disposed) return;
+        window.clearTimeout(waitingTimer);
+        setStatus("failed");
+        setDetail(cause instanceof Error ? cause.message : t("video.could_not_start"));
+      });
 
     return () => {
       disposed = true;
@@ -717,9 +1300,18 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         window.clearTimeout(studioReadyFallbackRef.current);
         studioReadyFallbackRef.current = null;
       }
-      void stopHyperframes(sessionId, { keepWarm: keepStudioWarmOnCloseRef.current });
+      void stopHyperframes(sessionId, { keepWarm: false });
     };
-  }, [isRemoteWorkspace, projectDirectory, sessionId, startAttempt, studioPort, workspaceRoot]);
+  }, [
+    isRemoteWorkspace,
+    projectDirectory,
+    resourcesReady,
+    sessionId,
+    startAttempt,
+    studioPort,
+    studioRuntime,
+    workspaceRoot,
+  ]);
 
   React.useEffect(() => {
     window.addEventListener(localeChangedEvent, scheduleStudioLocaleSync);
@@ -732,10 +1324,6 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   React.useEffect(() => {
     syncStudioTheme();
   }, [resolvedTheme, syncStudioTheme]);
-
-  const toggleFullscreen = React.useCallback(() => {
-    onExpandedChange?.(!expanded);
-  }, [expanded, onExpandedChange]);
 
   const reloadStudio = React.useCallback(() => {
     if (studioReadyFallbackRef.current != null) {
@@ -752,142 +1340,278 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
   }, []);
 
   React.useEffect(() => {
+    const handleStudioHostAction = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:studio-host-action") return;
+      if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if (event.data.action === "reload") {
+        reloadStudio();
+        return;
+      }
+      if (event.data.action === "save-as-template") onSaveAsTemplate?.();
+      if (event.data.action === "open-templates" && templatesAvailable) setTemplateDialogOpen(true);
+      if (event.data.action === "ask-ai") branding?.onAskAi();
+    };
+    window.addEventListener("message", handleStudioHostAction);
+    return () => window.removeEventListener("message", handleStudioHostAction);
+  }, [branding, onSaveAsTemplate, reloadStudio, sessionId, studioUrl, templatesAvailable]);
+
+  React.useEffect(() => {
     setStudioHostPanel(null);
+    setScriptVoiceDialog(null);
+    setScriptSettingsRequest(null);
+    setVoiceSelectionTarget(null);
   }, [revision]);
 
   React.useEffect(() => {
     if (!expanded) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || scriptVoiceDialog || scriptSettingsRequest) return;
       event.preventDefault();
       onExpandedChange?.(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [expanded, onExpandedChange]);
+  }, [expanded, onExpandedChange, scriptVoiceDialog, scriptSettingsRequest]);
+
+  const voicePanel = features.voice && studioHostPanel === "voice" && isIPolloWorkServerClient(client) ? (
+    <VideoVoicePanel
+      key={
+        voiceSelectionTarget
+          ? `frame-${voiceSelectionTarget.frameIndex}`
+          : "project-default"
+      }
+      sessionId={sessionId}
+      conversationId={conversationId}
+      generating={aiEditing}
+      workspaceRoot={workspaceRoot}
+      client={client}
+      workspaceId={workspaceId}
+      previewRequest={0}
+      selectionTarget={voiceSelectionTarget}
+      onVoiceSelected={(selection) => {
+        if (!voiceSelectionTarget) return;
+        if (!scriptVoiceDialog) {
+          studioFrameRef.current?.contentWindow?.postMessage({
+            type: "ipollowork:video-studio-voice-selected",
+            projectId: videoProjectId(sessionId),
+            frameIndex: voiceSelectionTarget.frameIndex,
+            ...selection,
+          }, new URL(studioUrl).origin);
+        }
+        setVoiceSelectionTarget((current) => current ? { ...current, ...selection } : null);
+      }}
+      onClose={() => {
+        setVoiceSelectionTarget(null);
+        setStudioHostPanel(null);
+      }}
+      embeddedWidth={studioPanelWidth}
+      embeddedStyle={studioPanelStyle}
+      inDialog={Boolean(scriptVoiceDialog)}
+      embedded
+    />
+  ) : null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel" data-expanded={expanded ? "true" : "false"}>
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3 [border-bottom-width:0.5px] mac:titlebar-drag">
-        <Film className="size-4 text-primary" />
-        <div className="flex min-w-0 flex-1 items-center">
-          <p className="truncate text-sm font-medium">{t("video.title")}</p>
-          <span className="ml-2 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {status === "failed" ? t("video.status_failed") : status === "ready" && studioChromeReady ? t("video.status_ready") : startupStage === "waiting-for-studio" ? t("video.status_waiting") : t("video.status_starting")}
-          </span>
-        </div>
-        <Button variant="ghost" size="icon-xs" onClick={reloadStudio} aria-label={t("video.reload")}><RefreshCw /></Button>
-        <Button
-          variant={expanded ? "secondary" : "ghost"}
-          size="icon-xs"
-          onClick={toggleFullscreen}
-          aria-label={t("video.toggle_fullscreen")}
-          aria-pressed={expanded}
-        >
-          {expanded ? <Minimize2 /> : <Maximize2 />}
-        </Button>
-        {onSaveAsTemplate ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t("template_authoring.more_actions")}><Ellipsis /></Button>} />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onSaveAsTemplate}><LayoutTemplate />{t("template_authoring.save_as_template")}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-        {launcherItems.length > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={(
-                <Button variant="ghost" size="icon-xs" aria-label={t("session.right_panel_add")}>
-                  <Plus />
-                </Button>
-              )}
-            />
-            <DropdownMenuContent
-              align="end"
-              className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
-            >
-              {launcherItems.map((item) => (
-                <DropdownMenuItem
-                  key={item.id}
-                  disabled={item.disabled}
-                  onClick={item.onClick}
-                  className={cn(
-                    "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-foreground focus:bg-muted focus:text-foreground data-disabled:opacity-40",
-                    item.active && "bg-muted",
-                  )}
-                >
-                  <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
-                  <span className="flex-1">{item.label}</span>
-                  {item.shortcut ? (
-                    <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
-                  ) : null}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-        <Button variant="ghost" size="icon-xs" onClick={() => { keepStudioWarmOnCloseRef.current = true; onExpandedChange?.(false); onClose(); }} aria-label={t("video.close")} title={t("video.close")}><X /></Button>
-      </header>
-
+    <div
+      className="relative flex h-full min-h-0 flex-col bg-background"
+      data-testid="video-panel"
+      data-expanded={expanded ? "true" : "false"}
+    >
+      {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) && (
+        <VideoEnhancementPanel key={`${workspaceId}:${sessionId}`} client={client} workspaceId={workspaceId}
+          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio}
+          onGenerate={onAskAi ? async request => {
+            const current = await client.readWorkspaceFile(workspaceId, request.sourcePath);
+            await onAskAi({
+              id: `video-ai-${crypto.randomUUID()}`, sessionId: conversationId ?? sessionId, workspaceId,
+              filePath: request.sourcePath, baseUpdatedAt: current.updatedAt ?? null, beforeHtml: current.content,
+              target: { tag: "body", label: "视频智能增强 · AI 编排", locator: "body", text: "", src: "", alt: "", styles: {},
+                semanticContext: JSON.stringify({ type: "video-enhancement", requestPath: request.requestPath }) },
+            }, request.instruction);
+            onExpandedChange?.(false);
+          } : undefined} />
+      )}
+      {!isRemoteWorkspace &&
+      status === "ready" &&
+      workspaceId &&
+      isIPolloWorkServerClient(client) ? (
+        <VideoImageWorkbench
+          client={client}
+          workspaceId={workspaceId}
+          workspaceRoot={workspaceRoot}
+          sessionId={sessionId}
+          studioUrl={studioUrl}
+          studioFrameRef={studioFrameRef}
+        />
+      ) : null}
       {isRemoteWorkspace ? (
-        <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">{t("video.local_only")}</div>
+        <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">
+          {t("video.local_only")}
+        </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#0c0c0d]">
           <div className="relative min-w-0 flex-1">
-          {showStudioStartupOverlay ? (
-            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm" aria-live="polite">
-              <div className="text-center">
-                <Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" />
-                <p className="text-xs font-medium text-foreground">{t(studioStartupTitleKey[startupStage])}</p>
-                <p className="mt-1 text-[10px] font-medium text-primary">{startupStage === "starting-service" ? "1 / 3" : startupStage === "waiting-for-studio" ? "2 / 3" : "3 / 3"}</p>
-                <p className="mt-1 max-w-[32rem] text-[11px] text-muted-foreground">{detail || t(studioStartupDetailKey[startupStage])}</p>
+            {showStudioStartupOverlay ? (
+              <div
+                className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-background/80 backdrop-blur-sm"
+                aria-live="polite"
+              >
+                <div className="text-center">
+                  <Loader2 className="mx-auto mb-2 size-5 animate-spin text-[#1FBAC0]" />
+                  <p className="text-xs font-medium text-foreground">
+                    {t(studioStartupTitleKey[startupStage])}
+                  </p>
+                  <p className="mt-1 max-w-[32rem] text-[11px] text-muted-foreground">
+                    {detail || t(studioStartupDetailKey[startupStage])}
+                  </p>
+                </div>
               </div>
-            </div>
-          ) : null}
-          {status === "failed" ? <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6"><div className="max-w-md text-center"><p className="text-sm font-medium">{t("video.failed_to_start")}</p><p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p><Button className="mt-4" variant="secondary" size="sm" onClick={() => { setStatus("starting"); setStartupStage("starting-service"); setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL })); setStudioFrameLoaded(false); studioChromeReadyRef.current = false; setStudioChromeReady(false); setStartAttempt((value) => value + 1); }}>{t("common.retry")}</Button></div></div> : null}
-          {status === "ready" ? <iframe ref={studioFrameRef} key={`${sessionId}:${revision}`} src={studioUrl} title={t("video.iframe_title")} allow="fullscreen" allowFullScreen className="h-full w-full border-0" data-loading-covered={showStudioStartupOverlay ? "true" : "false"} data-loaded={studioFrameLoaded ? "true" : "false"} onLoad={() => {
-            setStudioFrameLoaded(true);
-            if (studioChromeReadyRef.current) return;
-            if (studioReadyFallbackRef.current != null) window.clearTimeout(studioReadyFallbackRef.current);
-            studioReadyFallbackRef.current = window.setTimeout(() => {
-              studioReadyFallbackRef.current = null;
-              studioChromeReadyRef.current = true;
-              setStudioChromeReady(true);
-              scheduleStudioLocaleSync();
-              syncStudioTheme();
-              syncStudioAiEditing();
-              replayPendingStudioDesignTokens();
-            }, 8_000);
-          }} onError={() => {
-            setStatus("failed");
-            setDetail(t("video.could_not_load", { url: studioUrl }));
-          }} /> : null}
-          {studioHostPanel === "voice" ? <VideoVoicePanel
-            sessionId={sessionId}
-            workspaceRoot={workspaceRoot}
-            client={client}
-            workspaceId={workspaceId}
-            previewRequest={0}
-            onClose={() => setStudioHostPanel(null)}
-            embeddedWidth={studioPanelWidth}
-            embedded
-          /> : null}
-          {studioHostPanel === "style" ? <div className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background" style={{ width: studioPanelWidth }} data-testid="video-style-tab-content">
-            <DesignSystemDrawer
-              embedded
-              open
-              templateName="Video Studio"
-              currentThemeId={appliedDesignSystemId}
-              initialValues={designTokenValues}
-              onClose={() => setStudioHostPanel(null)}
-              onTokenChange={handleDesignTokenChange}
-              onTokenChangeMany={handleDesignTokenChanges}
-              onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
-              onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
-            />
-          </div> : null}
+            ) : null}
+            {status === "failed" ? (
+              <div className="absolute inset-0 z-20 grid place-items-center bg-background p-6">
+                <div className="max-w-md text-center">
+                  <p className="text-sm font-medium">{t("video.failed_to_start")}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{detail}</p>
+                  <Button
+                    className="mt-4"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      if (!resourcesReady && isDesktopRuntime() && !runtime) {
+                        setResourceAttempt((value) => value + 1);
+                        return;
+                      }
+                      setStatus("starting");
+                      setStartupStage("starting-service");
+                      setDetail(
+                        t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL }),
+                      );
+                      setStudioFrameLoaded(false);
+                      studioChromeReadyRef.current = false;
+                      setStudioChromeReady(false);
+                      setStartAttempt((value) => value + 1);
+                    }}
+                  >
+                    {t("common.retry")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {status === "ready" ? (
+              <iframe
+                ref={studioFrameRef}
+                key={`${sessionId}:${revision}`}
+                src={studioUrl}
+                title={t("video.iframe_title")}
+                allow="autoplay; fullscreen"
+                allowFullScreen
+                className="h-full w-full border-0"
+                data-loading-covered={showStudioStartupOverlay ? "true" : "false"}
+                data-loaded={studioFrameLoaded ? "true" : "false"}
+                onLoad={() => {
+                  setStudioFrameLoaded(true);
+                  if (studioChromeReadyRef.current) return;
+                  if (studioReadyFallbackRef.current != null)
+                    window.clearTimeout(studioReadyFallbackRef.current);
+                  studioReadyFallbackRef.current = window.setTimeout(() => {
+                    studioReadyFallbackRef.current = null;
+                    studioChromeReadyRef.current = true;
+                    setStudioChromeReady(true);
+                    scheduleStudioLocaleSync();
+                    syncStudioHostContext();
+                    syncStudioTheme();
+                    syncStudioAiEditing();
+                    replayPendingStudioDesignTokens();
+                  }, 8_000);
+                }}
+                onError={() => {
+                  setStatus("failed");
+                  setDetail(t("video.could_not_load", { url: studioUrl }));
+                }}
+              />
+            ) : null}
+            {scriptSettingsRequest && <VideoStoryboardSettingsDialog key={scriptSettingsRequest.requestId}
+              frameIndex={scriptSettingsRequest.frameIndex} title={scriptSettingsRequest.title} kind={scriptSettingsRequest.kind}
+              request={scriptSettingsRequest} disabled={aiEditing} onClose={() => setScriptSettingsRequest(null)}
+              onApply={applyScriptSettings} onImport={importScriptAsset} />}
+            {scriptVoiceDialog && voiceSelectionTarget ? <VideoStoryboardSettingsDialog key={`voice-${voiceSelectionTarget.frameIndex}`}
+              frameIndex={voiceSelectionTarget.frameIndex} title={scriptVoiceDialog.title} kind="voice" voiceContent={voicePanel}
+              disabled={aiEditing} onClose={() => { setScriptVoiceDialog(null); setVoiceSelectionTarget(null); setStudioHostPanel(null); }}
+              onImport={async () => []} onApply={async () => {
+                studioFrameRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-studio-voice-selected",
+                  projectId: videoProjectId(sessionId), ...voiceSelectionTarget }, new URL(studioUrl).origin);
+                return true;
+              }} /> : voicePanel}
+            {features.voice && isIPolloWorkServerClient(client) && workspaceId ? (
+              <StudioInspectorPanel
+                ariaLabel={t("video.voice.avatar_tab")}
+                className={`absolute bottom-0 right-0 top-[148px] z-20 h-auto min-w-0 max-w-full bg-popover ${studioHostPanel === "avatar" ? "" : "hidden"}`}
+                width={studioPanelWidth}
+                style={studioPanelStyle}
+                embedded
+                testId="video-avatar-tab-content"
+                bodyClassName="p-3"
+              >
+                <VideoAvatarPanel
+                  key={sessionId}
+                  active={studioHostPanel === "avatar"}
+                  client={client}
+                  workspaceId={workspaceId}
+                  workspaceRoot={workspaceRoot}
+                  sessionId={sessionId}
+                  onAssetAction={handleAvatarAsset}
+                  previewAssetUrl={avatarPreviewUrl}
+                  onOpenVoice={() =>
+                    studioFrameRef.current?.contentWindow?.postMessage(
+                      {
+                        type: "ipollowork:video-studio-panel",
+                        projectId: videoProjectId(sessionId),
+                        panel: "voice",
+                      },
+                      new URL(studioUrl).origin,
+                    )
+                  }
+                />
+              </StudioInspectorPanel>
+            ) : null}
+            {features.designSystem ? (
+              <div
+                className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background"
+                style={{ ...studioPanelStyle, display: studioHostPanel === "style" ? undefined : "none" }}
+                data-testid="video-style-tab-content"
+              >
+                <DesignSystemDrawer
+                  embedded
+                  open={studioHostPanel === "style"}
+                  templateName="Video Studio"
+                  currentThemeId={appliedDesignSystemId}
+                  initialValues={designTokenValues}
+                  onClose={() => setStudioHostPanel(null)}
+                  onTokenChange={handleDesignTokenChange}
+                  onTokenChangeMany={handleDesignTokenChanges}
+                  onApplyDesignSystem={(theme) => void handleApplyDesignSystem(theme)}
+                  onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}
+                />
+              </div>
+            ) : null}
           </div>
+          {features.templates && templatesAvailable && client && workspaceId ? (
+            <VideoTemplateDialog
+              open={templateDialogOpen}
+              onOpenChange={setTemplateDialogOpen}
+              client={client}
+              workspaceId={workspaceId}
+              sessionId={sessionId}
+              copy={features.templates}
+              onApplied={(nextRuntime) => {
+                if (Number.isInteger(nextRuntime.port) && nextRuntime.port > 0)
+                  setActiveStudioPort(nextRuntime.port);
+                reloadStudio();
+              }}
+            />
+          ) : null}
         </div>
       )}
     </div>

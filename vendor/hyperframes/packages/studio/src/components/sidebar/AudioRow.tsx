@@ -229,7 +229,7 @@ export function AudioRow({
                   className="flex-1 rounded-[1px]"
                   style={{
                     height: `${Math.max(10, v * 100)}%`,
-                    background: `linear-gradient(to top, rgba(60, 230, 172, ${0.3 + v * 0.5}), rgba(60, 230, 172, ${0.5 + v * 0.5}))`,
+                    background: `linear-gradient(to top, rgba(31, 186, 192, ${0.3 + v * 0.5}), rgba(31, 186, 192, ${0.5 + v * 0.5}))`,
                     transition: "height 80ms ease-out",
                   }}
                 />

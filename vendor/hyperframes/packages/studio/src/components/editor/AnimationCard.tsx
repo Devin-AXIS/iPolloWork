@@ -18,10 +18,12 @@ import {
   BOOLEAN_PROPS,
 } from "./AnimationCardParts";
 import {
+  animationOrigin,
   clampAnimationMetaToOwner,
   isAnimationSharedForOwner,
   resolveTimelineAnimationPhase,
   type TimelineAnimationOwnerRange,
+  type TimelineAnimationOwnerLocator,
   type TimelineAnimationPhase,
 } from "../../utils/timelineAnimationSegments";
 import { useStudioI18n } from "../../i18n";
@@ -31,6 +33,7 @@ interface AnimationCardProps extends GsapAnimationEditCallbacks {
   defaultExpanded: boolean;
   flat?: boolean;
   ownerId?: string | null;
+  ownerLocator?: TimelineAnimationOwnerLocator;
   ownerRange?: TimelineAnimationOwnerRange;
 }
 
@@ -46,6 +49,7 @@ export const AnimationCard = memo(function AnimationCard({
   defaultExpanded,
   flat,
   ownerId,
+  ownerLocator,
   ownerRange,
   onUpdateProperty,
   onUpdateMeta,
@@ -165,7 +169,7 @@ export const AnimationCard = memo(function AnimationCard({
     animation.method === "set" || !ownerRange
       ? null
       : resolveTimelineAnimationPhase(animation, ownerRange);
-  const isShared = isAnimationSharedForOwner(animation, ownerId);
+  const isShared = isAnimationSharedForOwner(animation, ownerId, ownerLocator);
   const setKeys = Object.keys(animation.properties);
   if (
     animation.method === "set" &&
@@ -208,6 +212,15 @@ export const AnimationCard = memo(function AnimationCard({
           title={tx(METHOD_TOOLTIPS[animation.method])}
         >
           {methodLabel}
+        </span>
+        <span className="rounded px-1 text-[9px] text-panel-text-3">
+          {tx(
+            animationOrigin(animation) === "manual"
+              ? "Manual keyframes"
+              : animationOrigin(animation) === "preset"
+                ? "Preset animation"
+                : "Authored animation",
+          )}
         </span>
         {phase && (
           <span

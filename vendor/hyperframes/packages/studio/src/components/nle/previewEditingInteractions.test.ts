@@ -1,8 +1,65 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { deliverStudioAgentPrompt } from "../editor/domEditingAgentPrompt";
 import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
-import { buildTimelineAssetInsertHtml, getTimelineAssetKind } from "../../utils/timelineAssetDrop";
+import { buildTimelineAssetInsertHtml, getTimelineAssetKind, resolveGeneratedAvatarCompositePaths } from "../../utils/timelineAssetDrop";
 import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
+
+describe("video AI handoff acknowledgement", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+  const hostBridge = () => {
+    const events = new EventTarget();
+    const postMessage = vi.fn();
+    const parent = { postMessage };
+    vi.stubGlobal("window", { parent, addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) });
+    const acknowledge = (source: unknown, data: unknown) => {
+      const event = new Event("message");
+      Object.defineProperties(event, { source: { value: source }, data: { value: data } });
+      events.dispatchEvent(event);
+    };
+    return { postMessage, parent, acknowledge };
+  };
+
+  it("sends visible instructions separately from bounded selection context and waits for its own host acknowledgement", async () => {
+    const bridge = hostBridge();
+    let accepted = false;
+    const pending = deliverStudioAgentPrompt("x".repeat(25_000), "scenes/a.html", { instruction: "把标题改成蓝色" }).then(value => { accepted = value; return value; });
+    const request = bridge.postMessage.mock.calls[0]?.[0];
+    expect(request.target.file).toBe("scenes/a.html");
+    expect(request.instruction).toBe("把标题改成蓝色");
+    expect(request.semanticContext).toHaveLength(20_000);
+    bridge.acknowledge({}, { type: "ipollowork:hyperframes:ai-request-result", requestId: request.requestId, accepted: true });
+    bridge.acknowledge(bridge.parent, { type: "ipollowork:hyperframes:ai-request-result", requestId: "another-request", accepted: true });
+    await Promise.resolve();
+    expect(accepted).toBe(false);
+    bridge.acknowledge(bridge.parent, { type: "ipollowork:hyperframes:ai-request-result", requestId: request.requestId, accepted: true });
+    await expect(pending).resolves.toBe(true);
+  });
+
+  it("keeps host rejection visible instead of claiming that the request was sent", async () => {
+    const bridge = hostBridge();
+    const pending = deliverStudioAgentPrompt("context", "index.html");
+    const request = bridge.postMessage.mock.calls[0]?.[0];
+    bridge.acknowledge(bridge.parent, { type: "ipollowork:hyperframes:ai-request-result", requestId: request.requestId, accepted: false, error: "当前对话已切换" });
+    await expect(pending).rejects.toThrow("当前对话已切换");
+  });
+
+  it("never silently truncates precise annotation targets before handing them to the host", async () => {
+    const bridge = hostBridge();
+    await expect(deliverStudioAgentPrompt("x".repeat(20_001), "index.html", { requireCompleteContext: true }))
+      .rejects.toThrow("缩小批注范围");
+    expect(bridge.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("times out without reporting acceptance when the host is unavailable", async () => {
+    vi.useFakeTimers();
+    hostBridge();
+    const pending = deliverStudioAgentPrompt("context", "index.html");
+    const assertion = expect(pending).rejects.toThrow("未确认接收");
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+  });
+});
 
 describe("preview editing interactions", () => {
   it("selects canvas elements on one click without opening their inspector", () => {
@@ -111,6 +168,10 @@ describe("preview editing interactions", () => {
     expect(emptyStateSource).toContain(
       "const showMultiSelect = STUDIO_MULTI_SELECTION_ENABLED && multiSelectCount > 1",
     );
+    expect(emptyStateSource).not.toContain('tx("Record a gesture")');
+    expect(emptyStateSource).not.toContain('text-panel-danger">●');
+    expect(emptyStateSource).not.toContain('tx("Describe a change to the agent")');
+    expect(emptyStateSource).not.toContain("⌘K");
     expect(previewOverlaysSource).toContain(
       "STUDIO_MULTI_SELECTION_ENABLED ? applyMarqueeSelection : undefined",
     );
@@ -188,20 +249,15 @@ describe("preview editing interactions", () => {
     expect(source).toContain("setSelectedElementId(elementKey)");
     expect(source).toContain("onSelectElement?.(el)");
     expect(source).toContain("resolveTimelineSelectionSeekTime(");
-    expect(source).toContain("selectionTime,\n                                previewElement,");
+    expect(source).toMatch(/selectionTime,\s+previewElement,/);
     expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
     expect(source).not.toContain("onSelectElement?.(nextElement)");
   });
 
-  it("keeps composition clips in the master timeline when they are double-clicked", () => {
+  it("opens nested compositions through the official timeline navigation callback", () => {
     const paneSource = readFileSync(new URL("./TimelinePane.tsx", import.meta.url), "utf8");
-    const clipSource = readFileSync(
-      new URL("../../player/components/TimelineClip.tsx", import.meta.url),
-      "utf8",
-    );
-
-    expect(paneSource).not.toContain("onDrillDown={handleDrillDown}");
-    expect(clipSource).not.toContain("Double-click to open");
+    expect(paneSource).toContain("onDrillDown={handleDrillDown}");
+    expect(paneSource).toContain("handleNavigateComposition(compositionStack.length - 2)");
   });
 
   it("updates a hierarchy-row selection atomically before syncing the inspector", () => {
@@ -223,18 +279,18 @@ describe("preview editing interactions", () => {
   it("uses a visible proof frame when a timeline selection lands on a clip boundary", () => {
     expect(
       resolveTimelineSelectionSeekTime(0, {
-        id: "effect-ending-bilibili-triple",
+        id: "route-map",
         start: 0,
         duration: 3.4,
-        compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+        compositionSrc: "compositions/components/route-map.html",
       }),
     ).toBe(1.7);
     expect(
       resolveTimelineSelectionSeekTime(8, {
-        id: "effect-transition-iris-pulse",
+        id: "timeline-overlay",
         start: 3,
         duration: 1.1,
-        timelineKind: "effect",
+        timelineKind: "html",
       }),
     ).toBeCloseTo(3.55);
     expect(resolveTimelineSelectionSeekTime(0, { start: 0, duration: 3.4 })).toBe(1.7);
@@ -312,8 +368,9 @@ describe("preview editing interactions", () => {
     expect(editorShellSource).toContain("onPreviewAssetDrop={handlePreviewAssetDrop}");
     expect(editorShellSource).toContain("onPreviewBlockDrop={onPreviewBlockDrop}");
     expect(assetCardSource).toContain("setData(TIMELINE_ASSET_MIME");
-    expect(assetCardSource).toContain("HtmlIllustrationPreview");
-    expect(catalogSource).toContain("setData(TIMELINE_BLOCK_MIME");
+    expect(catalogSource).toContain("event.dataTransfer.setData(");
+    expect(catalogSource).toContain("TIMELINE_BLOCK_MIME,");
+    expect(catalogSource).toContain("dimensions: block.dimensions");
     expect(catalogSource).toContain("src={compositionPlaybackUrl}");
     expect(catalogSource).toContain("setPreviewing(true)");
     expect(previewOverlaySource).not.toContain("blockPreview");
@@ -368,7 +425,7 @@ describe("preview editing interactions", () => {
     expect(selectionSource).toContain('targetElement.closest<HTMLElement>("[data-hf-group]")');
     expect(selectionSource).toContain("activeGroupElement: owningGroup");
     expect(selectionSource).toContain(
-      'const owningGroup = target.closest<HTMLElement>("[data-hf-group]")',
+      'const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]")',
     );
   });
 
@@ -394,28 +451,83 @@ describe("preview editing interactions", () => {
     expect(source).toContain("width: ${geometry.width}px");
     expect(source).toContain("height: ${geometry.height}px");
     expect(source).toContain('id="${input.id}" data-hf-id="${input.hfId}"');
-    expect(source).toContain('input.kind === "html"');
-    expect(source).toContain("pointer-events: none; position: absolute");
-    expect(getTimelineAssetKind("assets/video-illustrations/idea.html")).toBe("html");
-    const htmlAsset = buildTimelineAssetInsertHtml({
-      id: "idea",
-      hfId: "hf-idea",
-      assetPath: "assets/video-illustrations/idea.html",
-      kind: "html",
+    expect(source).not.toContain('input.kind === "html"');
+    expect(getTimelineAssetKind("assets/embed.html")).toBeNull();
+    const imageAsset = buildTimelineAssetInsertHtml({
+      id: "cover",
+      hfId: "hf-cover",
+      assetPath: "assets/cover.png",
+      kind: "image",
       start: 0,
       duration: 5,
       track: 0,
       zIndex: 2,
       geometry: { left: 120, top: 80, width: 480, height: 270 },
     });
-    expect(htmlAsset).toContain("<iframe");
-    expect(htmlAsset).toContain("left: 120px");
-    expect(htmlAsset).toContain("width: 480px");
-    expect(htmlAsset).toContain('data-hf-lock-aspect-ratio="16:9"');
-    expect(htmlAsset).toContain('data-hf-asset-kind="html"');
-    expect(htmlAsset).toContain('width="1600" height="900"');
-    expect(htmlAsset).toContain("new ResizeObserver(r)");
-    expect(htmlAsset).toContain("p.clientWidth/1600");
+    expect(imageAsset).toContain("<img");
+    expect(imageAsset).toContain("left: 120px");
+    expect(imageAsset).toContain("width: 480px");
+  });
+
+  it("keeps generated avatar narration audible at its bound timeline start", () => {
+    const avatarAsset = buildTimelineAssetInsertHtml({
+      id: "avatar",
+      hfId: "hf-avatar",
+      assetPath: "assets/avatar.mp4",
+      kind: "video",
+      start: 20,
+      duration: 21,
+      track: 0,
+      zIndex: 3,
+      videoHasAudio: true,
+    });
+    const silentAsset = buildTimelineAssetInsertHtml({
+      id: "silent-video",
+      hfId: "hf-silent-video",
+      assetPath: "assets/silent.mp4",
+      kind: "video",
+      start: 0,
+      duration: 5,
+      track: 0,
+      zIndex: 2,
+    });
+    const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+
+    expect(avatarAsset).toContain('data-start="20"');
+    expect(avatarAsset).toContain('data-has-audio="true"');
+    expect(avatarAsset).toContain('data-volume="1"');
+    expect(avatarAsset).not.toContain(" muted ");
+    expect(silentAsset).toContain(" muted ");
+    expect(appSource).toContain("start: requestedStart");
+    expect(appSource).toContain("videoHasAudio: true");
+  });
+
+  it("authors a generated cutout as one editable source plus a linked foreground", () => {
+    expect(resolveGeneratedAvatarCompositePaths("assets/avatar-long-job-1.webm")).toEqual({
+      sourcePath: "renders/avatar-long-job-1.mp4",
+      foregroundPath: "assets/avatar-long-job-1.webm",
+    });
+    const html = buildTimelineAssetInsertHtml({
+      id: "avatar-long-job-1",
+      hfId: "hf-avatar",
+      assetPath: "renders/avatar-long-job-1.mp4",
+      avatarForegroundPath: "assets/avatar-long-job-1.webm",
+      avatarForegroundTrack: 9,
+      kind: "video",
+      start: 12.5,
+      duration: 120,
+      track: 0,
+      zIndex: 20,
+    });
+
+    expect(html.match(/<video/g)).toHaveLength(2);
+    expect(html).toContain('data-avatar-cutout="avatar-long-job-1-avatar-foreground"');
+    expect(html).toContain('data-avatar-source="avatar-long-job-1"');
+    expect(html).toContain('data-avatar-material="assets/avatar-long-job-1.webm"');
+    expect(html).toContain('src="renders/avatar-long-job-1.mp4"');
+    expect(html).toContain('data-start="12.5"');
+    expect(html).toContain('data-track-index="9"');
+    expect(html).toContain('pointer-events: none');
   });
 
   it("uploads OS files dropped anywhere in the right-side assets area", () => {
@@ -424,9 +536,9 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain('e.dataTransfer.types.includes("Files")');
     expect(assetsSource).toContain("onImport?.(e.dataTransfer.files)");
     expect(assetsSource).toContain("Drop files to upload");
-    expect(assetsSource).toContain('title={tx("Source selection is not available yet")}');
-    expect(assetsSource).toContain("disabled");
-    expect(assetsSource).toContain("Project 01");
+    expect(assetsSource).not.toContain("Source selection is not available yet");
+    expect(assetsSource).not.toContain("Project 01");
+    expect(assetsSource).toContain("<SearchInput");
     expect(assetsSource).toContain("bg-[#171816] text-[#ffffff]");
     expect(assetsSource).not.toContain("bg-[#2c2d2a] text-white");
     expect(assetsSource).toContain("flex h-full min-h-0 flex-1 flex-col overflow-hidden");
@@ -435,18 +547,21 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("window.setInterval(refreshVisibleAssets, 2500)");
     expect(assetsSource).toContain("figmaAssetsImport.svg?url");
-    expect(assetsSource).toContain("figmaAssetsSearch.svg?url");
-    expect(assetsSource).toContain("<select");
-    expect(assetsSource).toContain('className="flex h-[34px] w-auto flex-none');
+    const searchSource = readFileSync(new URL("../ui/SearchInput.tsx", import.meta.url), "utf8");
+    expect(searchSource).toContain('from "@ipollowork/ui/controls"');
+    expect(searchSource).toContain('type="search"');
+    expect(assetsSource).not.toContain("<select");
+    expect(assetsSource).toContain('className="flex h-8 w-auto flex-none');
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
     expect(assetsSource).toContain("visible ? (");
-    expect(assetsSource).toContain(
-      "type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER",
-    );
+    expect(assetsSource).toContain("type MediaCategory");
+    expect(assetsSource).toContain("CATEGORY_LABELS");
+    expect(assetsSource).toContain("getCategory");
+    expect(assetsSource).toContain("FILTER_ORDER");
     expect(assetsSource).toContain("tx(CATEGORY_LABELS[cat])");
     expect(assetsSource).not.toContain("const categoryLabels:");
-    expect(assetsSource).toContain("CaretDown");
+    expect(assetsSource).toContain("ChevronDown");
     expect(assetsSource).not.toContain("timelineChevronDown.svg?url");
     expect(assetsSource).toContain("e.stopPropagation()");
     expect(assetsSource).not.toContain("grid-cols-[minmax(0,194px)_104px]");
@@ -483,6 +598,21 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("beginDragSelection");
     expect(source).not.toContain("TextSelectionDrag");
     expect(styleSource).toMatch(/\.hf-preview-text-toolbar__input\s*\{[\s\S]*?color:\s*#18181b;/);
+  });
+
+  it("uses Lucide icons throughout the selected-element toolbar", () => {
+    const source = readFileSync(
+      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('from "lucide-react"');
+    expect(source).not.toContain('@phosphor-icons/react');
+    expect(source).toContain('<SlidersHorizontal size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Sparkles size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Video size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Image size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Trash2 size={18} strokeWidth={1.75}');
   });
 
   it("hides inline rich-text actions from the selected-element toolbar", () => {

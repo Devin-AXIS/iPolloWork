@@ -1,3 +1,4 @@
+import { sampleSpringEase } from "@hyperframes/parsers/spring-ease";
 import type { MotionKeyframe, MotionParameters } from "./motionPresets.js";
 
 function directionOffset(direction: string, amount: number): { x: number; y: number } {
@@ -47,7 +48,74 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
   const direction = String(params.direction ?? "up");
   const offset = directionOffset(direction, 42 * intensity);
   const color = motionColor(params, "color", "--ipw-color-accent", "#7c3aed");
+  if (
+    presetId === "camera.push-in" ||
+    presetId === "camera.pull-back" ||
+    presetId === "camera.focus-travel"
+  ) {
+    const zoom = Number(params.zoom);
+    // Clamp framing, not the input: even an edge focus must keep the viewport covered.
+    const pose = (x: number, y: number, scale: number) => {
+      const margin = 50 / scale;
+      const bounded = (value: number) => Math.max(margin, Math.min(100 - margin, value));
+      return {
+        xPercent: (50 - bounded(x)) * scale,
+        yPercent: (50 - bounded(y)) * scale,
+        scale,
+        transformOrigin: "50% 50%",
+      };
+    };
+    const near = pose(Number(params.focusX), Number(params.focusY), zoom);
+    const wide = pose(50, 50, 1);
+    const start =
+      presetId === "camera.pull-back"
+        ? near
+        : presetId === "camera.focus-travel"
+          ? pose(Number(params.fromX), Number(params.fromY), zoom)
+          : wide;
+    return [frame(0, start), frame(100, presetId === "camera.pull-back" ? wide : near)];
+  }
   switch (presetId) {
+    case "camera.oblique-glide": {
+      const sign = direction === "left" || direction === "up" ? -1 : 1;
+      const horizontal = direction === "left" || direction === "right";
+      const angle = Number(params.angle) * sign;
+      const travel = Number(params.travel) * sign;
+      const pose = (progress: number) => ({
+        xPercent: horizontal ? progress * travel : 0,
+        yPercent: horizontal ? 0 : progress * travel,
+        rotationY: horizontal ? -progress * angle : 0,
+        rotationX: horizontal ? 6 * Math.abs(progress) : progress * angle,
+        scale: 1 - Math.abs(progress) * 0.08,
+        transformOrigin: "50% 50%",
+        transformPerspective: 1600,
+      });
+      return [frame(0, pose(-1)), frame(65, pose(0.4)), frame(100, pose(0))];
+    }
+    case "transition.depth-push":
+      return [
+        frame(0, { opacity: 0, scale: Math.max(0.58, 0.78 - intensity * 0.04), filter: `blur(${18 * intensity}px)` }),
+        frame(64, { opacity: 1, scale: 1.025, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, scale: 1, filter: "blur(0px)" }),
+      ];
+    case "transition.diagonal-slice":
+      return [
+        frame(0, { opacity: 0, xPercent: 24 * intensity, clipPath: "polygon(100% 0, 100% 0, 76% 100%, 76% 100%)" }),
+        frame(76, { opacity: 1, xPercent: 0, clipPath: "polygon(0 0, 100% 0, 100% 100%, 0 100%)" }),
+        frame(100, { opacity: 1, xPercent: 0, clipPath: "polygon(0 0, 100% 0, 100% 100%, 0 100%)" }),
+      ];
+    case "transition.lens-focus":
+      return [
+        frame(0, { opacity: 0, scale: 1 + 0.12 * intensity, filter: `blur(${20 * intensity}px)`, clipPath: "circle(0% at 50% 50%)" }),
+        frame(72, { opacity: 1, scale: 1, filter: "blur(0px)", clipPath: "circle(74% at 50% 50%)" }),
+        frame(100, { opacity: 1, scale: 1, filter: "blur(0px)", clipPath: "circle(100% at 50% 50%)" }),
+      ];
+    case "transition.split-wipe":
+      return [
+        frame(0, { opacity: 0, xPercent: 28 * intensity, clipPath: "inset(0 0 0 100%)" }),
+        frame(52, { opacity: 1, xPercent: 0, clipPath: "inset(0 0 0 0%)" }),
+        frame(100, { opacity: 1, xPercent: 0, clipPath: "inset(0 0 0 0%)" }),
+      ];
     case "text.enter.fade":
       return [frame(0, { opacity: 0 }), frame(100, { opacity: 1 })];
     case "text.enter.rise":
@@ -221,24 +289,18 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
       const rotation = Number(params.rotation ?? 8) * intensity;
       const enterOffset = directionOffset(direction, 34 * intensity);
       const sign = direction === "left" || direction === "up" ? -1 : 1;
-      return [
-        frame(0, {
-          opacity: 0,
-          x: enterOffset.x,
-          y: enterOffset.y,
-          scale: Math.max(0.55, 0.78 - 0.06 * intensity),
-          rotation: rotation * sign,
-        }),
-        frame(68, {
-          opacity: 1,
-          x: -enterOffset.x * 0.08,
-          y: -enterOffset.y * 0.08,
-          scale: 1.07 + 0.02 * intensity,
-          rotation: -rotation * 0.18 * sign,
-        }),
-        frame(86, { opacity: 1, x: 0, y: 0, scale: 0.985, rotation: rotation * 0.06 * sign }),
-        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, rotation: 0 }),
-      ];
+      const initialScale = Math.max(0.55, 0.78 - 0.06 * intensity);
+      return Array.from({ length: 33 }, (_, index) => {
+        const t = index / 32, remaining = 1 - sampleSpringEase(1, 180, 12, t);
+        if (index === 32) return frame(100, { opacity: 1, x: 0, y: 0, scale: 1, rotation: 0 }, "none");
+        return frame(t * 100, {
+          opacity: Math.min(1, t * 5),
+          x: enterOffset.x * remaining,
+          y: enterOffset.y * remaining,
+          scale: 1 - (1 - initialScale) * remaining,
+          rotation: rotation * sign * remaining,
+        }, "none");
+      });
     }
     case "element.enter.fade":
       return [frame(0, { opacity: 0 }), frame(100, { opacity: 1 })];
@@ -713,19 +775,22 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
       const distance = Number(params.distance ?? 22) * intensity;
       const overshoot = Number(params.overshoot ?? 0.35);
       const pullOffset = directionOffset(direction, distance);
+      // Peak overshoot determines damping; zero overshoot is critical damping.
+      const log = Math.log(Math.max(0.0001, Math.min(0.95, overshoot)));
+      const ratio = overshoot === 0 ? 1 : -log / Math.sqrt(Math.PI ** 2 + log ** 2);
+      const damping = 2 * ratio * Math.sqrt(180);
       return [
         frame(0, { x: 0, y: 0, scale: 1 }),
-        frame(34, {
-          x: -pullOffset.x,
-          y: -pullOffset.y,
-          scale: 1 + 0.035 * intensity,
+        frame(26, { x: -pullOffset.x, y: -pullOffset.y, scale: 1 + 0.035 * intensity }, "power2.in"),
+        ...Array.from({ length: 32 }, (_, index) => {
+          const t = (index + 1) / 32, remaining = 1 - sampleSpringEase(1, 180, damping, t);
+          if (index === 31) return frame(100, { x: 0, y: 0, scale: 1 }, "none");
+          return frame(26 + t * 74, {
+            x: -pullOffset.x * remaining,
+            y: -pullOffset.y * remaining,
+            scale: 1 + 0.035 * intensity * remaining,
+          }, "none");
         }),
-        frame(68, {
-          x: pullOffset.x * overshoot,
-          y: pullOffset.y * overshoot,
-          scale: 1 - 0.012 * intensity,
-        }),
-        frame(100, { x: 0, y: 0, scale: 1 }),
       ];
     }
     case "background.emphasis.molten-flow":

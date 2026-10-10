@@ -1,0 +1,122 @@
+name: Sync DeepSeek Design repository
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "external-plugins/deepseek-harness/**"
+      - "packages/design-studio/**"
+      - "packages/video-studio/**"
+      - "packages/types/**"
+      - "apps/app/src/**"
+      - "apps/server/bundled-templates/**"
+      - "vendor/hyperframes/packages/studio/src/**"
+      - "vendor/hyperframes/packages/cli/**"
+      - "LICENSE"
+      - "LICENSES/**"
+      - "CONTRIBUTING.md"
+      - "CODE_OF_CONDUCT.md"
+      - "SECURITY.md"
+      - "scripts/export-deepseek-design-repository.mjs"
+      - ".github/workflows/sync-deepseek-design.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-deepseek-design
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Build and synchronize public mirror
+    if: github.repository == 'Devin-AXIS/iPolloWork'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout iPolloWork
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.4.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install iPolloWork workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Install plugin workspaces
+        run: |
+          pnpm --dir external-plugins/deepseek-harness/design-studio install --frozen-lockfile
+          pnpm --dir external-plugins/deepseek-harness/ppt-studio install --frozen-lockfile
+          pnpm --dir external-plugins/deepseek-harness/video-studio install --frozen-lockfile
+
+      - name: Check HyperFrames version alignment
+        run: pnpm check:hyperframes-version-sync
+
+      - name: Build runnable packages
+        run: |
+          mkdir -p "${RUNNER_TEMP}/deepseek-design-packages"
+          pnpm --dir external-plugins/deepseek-harness/design-studio run check
+          pnpm --dir external-plugins/deepseek-harness/design-studio pack --pack-destination "${RUNNER_TEMP}/deepseek-design-packages"
+          pnpm --dir external-plugins/deepseek-harness/ppt-studio run check
+          pnpm --dir external-plugins/deepseek-harness/ppt-studio pack --pack-destination "${RUNNER_TEMP}/deepseek-design-packages"
+          pnpm --dir external-plugins/deepseek-harness/video-studio run check
+          pnpm --dir external-plugins/deepseek-harness/video-studio run test
+          pnpm --dir external-plugins/deepseek-harness/video-studio pack --pack-destination "${RUNNER_TEMP}/deepseek-design-packages"
+
+      - name: Configure repository deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEEPSEEK_DESIGN_DEPLOY_KEY }}
+        run: |
+          test -n "${DEPLOY_KEY}"
+          install -m 700 -d "${RUNNER_TEMP}/deepseek-design-ssh"
+          printf '%s\n' "${DEPLOY_KEY}" > "${RUNNER_TEMP}/deepseek-design-ssh/id_ed25519"
+          chmod 600 "${RUNNER_TEMP}/deepseek-design-ssh/id_ed25519"
+          ssh-keyscan github.com > "${RUNNER_TEMP}/deepseek-design-ssh/known_hosts"
+          echo "GIT_SSH_COMMAND=ssh -i ${RUNNER_TEMP}/deepseek-design-ssh/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=${RUNNER_TEMP}/deepseek-design-ssh/known_hosts" >> "${GITHUB_ENV}"
+
+      - name: Export public repository
+        run: |
+          git clone git@github.com:Devin-AXIS/deepseek-design.git "${RUNNER_TEMP}/deepseek-design"
+          idesign_tarball="$(find "${RUNNER_TEMP}/deepseek-design-packages" -maxdepth 1 -name 'deepseek-idesign-*.tgz' -print -quit)"
+          ippt_tarball="$(find "${RUNNER_TEMP}/deepseek-design-packages" -maxdepth 1 -name 'deepseek-ippt-*.tgz' -print -quit)"
+          ivideo_tarball="$(find "${RUNNER_TEMP}/deepseek-design-packages" -maxdepth 1 -name 'deepseek-ivideo-*.tgz' -print -quit)"
+          test -n "${idesign_tarball}"
+          test -n "${ippt_tarball}"
+          test -n "${ivideo_tarball}"
+          pnpm export:deepseek-design -- \
+            --output "${RUNNER_TEMP}/deepseek-design" \
+            --idesign "${idesign_tarball}" \
+            --ippt "${ippt_tarball}" \
+            --ivideo "${ivideo_tarball}"
+
+      - name: Push synchronized snapshot
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          git -C "${RUNNER_TEMP}/deepseek-design" config user.name "iPolloWork Sync"
+          git -C "${RUNNER_TEMP}/deepseek-design" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "${RUNNER_TEMP}/deepseek-design" add --all
+          if git -C "${RUNNER_TEMP}/deepseek-design" diff --cached --quiet; then
+            echo "DeepSeek Design is already synchronized."
+            exit 0
+          fi
+          git -C "${RUNNER_TEMP}/deepseek-design" commit -m "sync: iPolloWork ${SOURCE_SHA:0:12}"
+          git -C "${RUNNER_TEMP}/deepseek-design" push origin main
+
+      - name: Remove deploy key
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/deepseek-design-ssh/id_ed25519"

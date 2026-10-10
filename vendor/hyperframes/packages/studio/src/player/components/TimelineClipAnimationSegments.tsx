@@ -16,6 +16,7 @@ import {
   resolveAnimationSegmentDrag,
 } from "../../components/editor/animationSegmentDrag";
 import { KEYFRAME_DRAG_THRESHOLD_PX } from "../../components/editor/keyframeDrag";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useStudioI18n } from "../../i18n";
 
 const PHASE_STYLE: Record<TimelineAnimationPhase, { background: string; label: string }> = {
@@ -57,6 +58,7 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
   suppressClickRef,
 }: TimelineClipAnimationSegmentsProps) {
   const { tx } = useStudioI18n();
+  const { onInspectAnimation } = useTimelineEditContextOptional();
   const dragRef = useRef<SegmentDragState | null>(null);
   const consumeClickRef = useRef(false);
 
@@ -139,7 +141,7 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
   if (segments.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-1 z-[6] h-2">
+      <div className="pointer-events-none absolute inset-x-0 top-[28px] z-[6] h-2">
       <span
         aria-hidden="true"
         className="absolute inset-x-1 inset-y-0 rounded-full bg-black/10"
@@ -160,13 +162,20 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
 
         if (!editTarget) {
           return (
-            <span
+            <button
+              type="button"
               key={segment.animationId}
-              aria-hidden="true"
+              aria-label={`${tx("Selected animation properties")} · ${tx(segment.origin === "manual" ? "Manual keyframes" : segment.origin === "preset" ? "Preset animation" : "Authored animation")}`}
+              onClick={(event) => {
+                if (usePlayerStore.getState().activeTool === "razor") return;
+                event.stopPropagation();
+                onInspectAnimation?.(ownerElement);
+              }}
               data-animation-id={segment.animationId}
               data-animation-phase={segment.phase}
+                data-animation-origin={segment.origin ?? "authored"}
               data-animation-editable="false"
-              className="absolute inset-y-0 rounded-full"
+              className="pointer-events-auto absolute inset-y-0 rounded-full border-0 p-0"
               title={tx(`${phaseStyle.label} animation (read-only)`)}
               style={style}
             />
@@ -239,6 +248,7 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
             event.currentTarget.releasePointerCapture(event.pointerId);
           }
+          if (!drag.started) { consumeClickRef.current = false; return; }
           suppressNextClipClick();
           commitResolvedAnimationSegmentDrag(
             segment.animationId,
@@ -270,12 +280,13 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
           <button
             type="button"
             key={segment.animationId}
-            aria-label={tx(`Move ${phaseStyle.label.toLowerCase()} animation`)}
+            aria-label={segment.origin === "manual" ? tx("Move manual keyframes") : tx(`Move ${phaseStyle.label.toLowerCase()} animation`)}
             data-animation-id={segment.animationId}
             data-animation-phase={segment.phase}
+              data-animation-origin={segment.origin ?? "authored"}
             data-animation-editable="true"
             className="pointer-events-auto absolute inset-y-0 rounded-full border-0 p-0"
-            title={tx(`Drag to move ${phaseStyle.label.toLowerCase()} animation`)}
+              title={`${tx(segment.origin === "manual" ? "Manual keyframes" : segment.origin === "preset" ? "Preset animation" : "Authored animation")} · ${tx(segment.origin === "manual" ? "Move manual keyframes" : `Drag to move ${phaseStyle.label.toLowerCase()} animation`)}`}
             style={{
               ...style,
               cursor: "ew-resize",
@@ -287,7 +298,8 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
             onPointerCancel={handlePointerCancel}
             onLostPointerCapture={handlePointerCancel}
             onClick={(event) => {
-              if (consumeClickRef.current) event.stopPropagation();
+              event.stopPropagation();
+              if (!consumeClickRef.current && usePlayerStore.getState().activeTool !== "razor") onInspectAnimation?.(ownerElement);
             }}
           />
         );

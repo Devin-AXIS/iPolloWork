@@ -382,8 +382,8 @@ export function FlatColorGradingSection({
                       label: asset.split("/").pop() ?? asset,
                     })),
                   ]}
-                  className="min-w-[88px] border-b border-panel-border-input/50"
-                  valueClassName="font-mono text-[10px] text-panel-text-3"
+                  className="h-8 min-w-[88px] rounded-lg bg-panel-input px-2"
+                  valueClassName="text-xs text-panel-text-1"
                   onChange={(src) => {
                     track("select", "Custom LUT");
                     applyLut(src || null, src && lut?.src === src ? lut.intensity : 1);
@@ -548,8 +548,8 @@ export function FlatColorGradingSection({
                 { value: "source-file", label: "Current file media" },
                 { value: "project", label: "All project media" },
               ]}
-              className="min-w-[120px] border-b border-panel-border-input/50"
-              valueClassName="font-mono text-[11px] text-panel-text-0"
+              className="h-8 min-w-[120px] rounded-lg bg-panel-input px-2"
+              valueClassName="text-xs text-panel-text-1"
               onChange={(next) => {
                 track("select", "Copy grade scope");
                 if (next === "source-file" || next === "project") onSetApplyScope(next);

@@ -7,10 +7,12 @@ import {
   Cable,
   CloudCog,
   Cog,
+  Cpu,
   FolderLock,
   Info,
   Layout,
   Paintbrush,
+  PanelsTopLeft,
   Puzzle,
   RefreshCcw,
   ShieldCheck,
@@ -36,6 +38,7 @@ import {
 } from "@/components/ui/sidebar";
 import { t } from "../../../../i18n";
 import type { SettingsTab } from "../../../../app/types";
+import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { cn } from "@/lib/utils";
 import { useOrgRestrictions } from "../../cloud/desktop-config-provider";
 import {
@@ -56,6 +59,8 @@ export function getSettingsTabIcon(tab: SettingsTab) {
   switch (tab) {
     case "ai":
       return Zap;
+    case "engines":
+      return Cpu;
     case "preferences":
       return SlidersHorizontal;
     case "shell":
@@ -95,10 +100,29 @@ export function getSettingsTabIcon(tab: SettingsTab) {
   }
 }
 
+export function SettingsTabIcon({ tab, className }: { tab: SettingsTab; className?: string }) {
+  if (tab === "extensions") {
+    return (
+      <span className={cn("flex size-4 shrink-0 items-center justify-center", className)} aria-hidden="true">
+        <img src={publicAssetUrl("sidebar-icon/toy-brick.svg")} alt="" className="size-[15px] dark:invert" />
+      </span>
+    );
+  }
+
+  const Icon = getSettingsTabIcon(tab);
+  return (
+    <span className={cn("flex size-4 shrink-0 items-center justify-center", className)} aria-hidden="true">
+      <Icon className="size-4! [&_*]:[vector-effect:non-scaling-stroke]" strokeWidth={1} />
+    </span>
+  );
+}
+
 export function getSettingsTabLabel(tab: SettingsTab) {
   switch (tab) {
     case "ai":
       return t("settings.tab_ai");
+    case "engines":
+      return t("settings.tab_engines");
     case "preferences":
       return t("settings.tab_preferences");
     case "shell":
@@ -144,6 +168,8 @@ export function getSettingsTabDescription(tab: SettingsTab) {
   switch (tab) {
     case "ai":
       return t("settings.tab_description_ai");
+    case "engines":
+      return t("settings.tab_description_engines");
     case "preferences":
       return t("settings.tab_description_preferences");
     case "shell":
@@ -190,7 +216,7 @@ export function getWorkspaceSettingsTabs(): SettingsTab[] {
 }
 
 export function getGlobalSettingsTabs(developerMode: boolean): SettingsTab[] {
-  const tabs: SettingsTab[] = ["ai", "authorizations", "shell", "appearance", "environment", "updates", "recovery"];
+  const tabs: SettingsTab[] = ["ai", "engines", "authorizations", "shell", "appearance", "environment", "updates", "recovery"];
   if (developerMode) tabs.push("debug");
   return tabs;
 }
@@ -237,8 +263,12 @@ export function getCloudSettingsTabs(memoryEnabled: boolean): SettingsTab[] {
 type SettingsPageProps = {
   activeTab: SettingsTab;
   onSelectTab: (tab: SettingsTab) => void;
+  pluginPages?: PluginSettingsNavigationItem[];
+  activePluginPageId?: string | null;
+  onSelectPluginPage?: (id: string) => void;
   developerMode: boolean;
   hidePageHeader?: boolean;
+  fullBleed?: boolean;
   showUpdateToolbar?: boolean;
   updateToolbarTone?: string;
   updateToolbarTitle?: string;
@@ -251,7 +281,14 @@ type SettingsPageProps = {
   children: React.ReactNode;
 };
 
-type SettingsSidebarProps = Pick<SettingsPageProps, "activeTab" | "onSelectTab" | "developerMode"> & {
+export type PluginSettingsNavigationItem = {
+  id: string;
+  label: string;
+  description?: string;
+  iconSrc?: string | null;
+};
+
+type SettingsSidebarProps = Pick<SettingsPageProps, "activeTab" | "onSelectTab" | "pluginPages" | "activePluginPageId" | "onSelectPluginPage" | "developerMode"> & {
   onClose: () => void;
 };
 
@@ -262,7 +299,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
   const cloudTabs = getCloudSettingsTabs(memoryEnabled);
 
   return (
-    <Sidebar className="mac:**:data-[sidebar=sidebar]:bg-transparent">
+    <Sidebar className="!border-e-0 mac:**:data-[sidebar=sidebar]:bg-transparent">
       <div className="hidden h-10 mac:block mac:titlebar-drag" />
       <SidebarHeader>
         <SidebarMenu>
@@ -280,20 +317,32 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {workspaceTabs.map((tab) => {
-                const Icon = getSettingsTabIcon(tab);
                 return (
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton
                       type="button"
-                      isActive={props.activeTab === tab}
+                      isActive={!props.activePluginPageId && props.activeTab === tab}
                       onClick={() => props.onSelectTab(tab)}
                     >
-                      <Icon />
+                      <SettingsTabIcon tab={tab} />
                       <SettingsSidebarTabLabel tab={tab} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
+              {props.pluginPages?.map((page) => (
+                <SidebarMenuItem key={page.id}>
+                  <SidebarMenuButton
+                    type="button"
+                    isActive={props.activePluginPageId === page.id}
+                    onClick={() => props.onSelectPluginPage?.(page.id)}
+                    title={page.description}
+                  >
+                    {page.iconSrc ? <img src={page.iconSrc} alt="" className="size-4 rounded-sm object-contain" /> : <PanelsTopLeft />}
+                    <span>{page.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -303,7 +352,6 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {globalTabs.map((tab) => {
-                const Icon = getSettingsTabIcon(tab);
                 return (
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton
@@ -311,7 +359,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
                       isActive={props.activeTab === tab}
                       onClick={() => props.onSelectTab(tab)}
                     >
-                      <Icon />
+                      <SettingsTabIcon tab={tab} />
                       <SettingsSidebarTabLabel tab={tab} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -326,7 +374,6 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {cloudTabs.map((tab) => {
-                const Icon = getSettingsTabIcon(tab);
                 return (
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton
@@ -334,7 +381,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
                       isActive={props.activeTab === tab}
                       onClick={() => props.onSelectTab(tab)}
                     >
-                      <Icon />
+                      <SettingsTabIcon tab={tab} />
                       <SettingsSidebarTabLabel tab={tab} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -379,6 +426,9 @@ function DesktopPolicyBanner() {
 }
 
 export function SettingsPage(props: SettingsPageProps) {
+  if (props.fullBleed) {
+    return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{props.children}</div>;
+  }
   return (
     <SettingsContent>
       {!props.hidePageHeader ? (

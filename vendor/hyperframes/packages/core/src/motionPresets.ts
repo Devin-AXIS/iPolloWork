@@ -390,6 +390,7 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
       // wrapper), giving Studio a stable, direct replacement handle.
       id: instance.id,
       data: encodeMotionData({ ...instance, parameters: validated.parameters }),
+      ...(["element.enter.bounce-card", "motion.emphasis.magnetic-snap"].includes(preset.id) ? { immediateRender: true } : {}),
       ...(instance.loop && instance.repeat > 0 ? { repeat: instance.repeat } : {}),
       ...(stagger > 0 ? { stagger } : {}),
     },
@@ -405,6 +406,8 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {
+  if (preset.id.startsWith("camera.")) return 3;
+  if (preset.id.startsWith("transition.")) return 0.9;
   const migratedCaptionDuration = MIGRATED_CAPTION_DURATIONS[preset.id];
   if (migratedCaptionDuration !== undefined) return migratedCaptionDuration;
   if (preset.id.startsWith("background.")) return 3.2;

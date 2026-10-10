@@ -6,10 +6,16 @@ export interface StoredPreviewZoomState {
 
 export type CatalogColumnCount = 1 | 2 | 3 | 4;
 
+import { parseDockLayout } from "../components/dock/dockLayoutSchema";
+import type { SerializedDockview } from "dockview-react";
+
 export interface StudioUiPreferences {
-  leftCollapsed?: boolean;
+  dockLayout?: SerializedDockview;
+  thumbnailMode?: "adaptive" | "hidden";
   timelineVisible?: boolean;
   timelineHeight?: number;
+  /** Width of the timeline's sticky layer-control column. */
+  timelineLayerWidth?: number;
   playbackRate?: number;
   audioMuted?: boolean;
   previewZoom?: StoredPreviewZoomState;
@@ -50,23 +56,36 @@ function getBrowserStorage(): Storage | null {
 }
 
 // fallow-ignore-next-line complexity
-function readStorage(storage: Storage | null): StudioUiPreferences {
+function readStorage(
+  storage: Storage | null,
+  key = STUDIO_UI_PREFERENCES_KEY,
+): StudioUiPreferences {
   if (!storage) return {};
   try {
-    const raw = storage.getItem(STUDIO_UI_PREFERENCES_KEY);
+    const raw = storage.getItem(key);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return {};
 
     const preferences: StudioUiPreferences = {};
-    if (typeof parsed.leftCollapsed === "boolean") {
-      preferences.leftCollapsed = parsed.leftCollapsed;
-    }
+    const layout = parseDockLayout(parsed.dockLayout);
+    if (layout) preferences.dockLayout = layout;
+    if (
+      parsed.thumbnailMode === "adaptive" ||
+      parsed.thumbnailMode === "hidden"
+    )
+      preferences.thumbnailMode = parsed.thumbnailMode;
     if (typeof parsed.timelineVisible === "boolean") {
       preferences.timelineVisible = parsed.timelineVisible;
     }
     if (typeof parsed.timelineHeight === "number" && Number.isFinite(parsed.timelineHeight)) {
       preferences.timelineHeight = parsed.timelineHeight;
+    }
+    if (
+      typeof parsed.timelineLayerWidth === "number" &&
+      Number.isFinite(parsed.timelineLayerWidth)
+    ) {
+      preferences.timelineLayerWidth = parsed.timelineLayerWidth;
     }
     if (typeof parsed.playbackRate === "number" && Number.isFinite(parsed.playbackRate)) {
       preferences.playbackRate = parsed.playbackRate;
@@ -133,21 +152,33 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
   }
 }
 
-export function readStudioUiPreferences(storage: Storage | null = getBrowserStorage()) {
-  return readStorage(storage);
+function storageKeyFor(projectId: string | null, key: string) {
+  return projectId ? `${key}:${projectId}` : key;
+}
+
+export function readStudioUiPreferences(
+  storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = null,
+  key: string = STUDIO_UI_PREFERENCES_KEY,
+): StudioUiPreferences {
+  const scoped = readStorage(storage, storageKeyFor(projectId, key));
+  if (!projectId || Object.keys(scoped).length > 0) return scoped;
+  return readStorage(storage, key);
 }
 
 export function writeStudioUiPreferences(
   patch: StudioUiPreferences,
   storage: Storage | null = getBrowserStorage(),
+  projectId: string | null = null,
+  key: string = STUDIO_UI_PREFERENCES_KEY,
 ) {
   if (!storage) return;
   try {
     const next = {
-      ...readStorage(storage),
+      ...readStudioUiPreferences(storage, projectId, key),
       ...patch,
     };
-    storage.setItem(STUDIO_UI_PREFERENCES_KEY, JSON.stringify(next));
+    storage.setItem(storageKeyFor(projectId, key), JSON.stringify(next));
   } catch {
     /* localStorage may be unavailable or full */
   }

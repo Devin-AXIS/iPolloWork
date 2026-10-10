@@ -1,12 +1,19 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-northstar-strategy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "strategy",
   "style": "swiss",
-  "tags": ["pptx-compatible", "editable", "strategy", "roadmap", "brand"],
+  "tags": [
+    "pptx-compatible",
+    "editable",
+    "strategy",
+    "roadmap",
+    "brand",
+    "topic:business"
+  ],
   "pptxCompatibility": "native-editable",
   "surface": "design",
   "title": "Northstar Strategy",

@@ -74,6 +74,7 @@ export function forwardRebasedTimelineResizeElements(
 }
 
 export interface TimelinePaneProps {
+  docked?: boolean;
   /** Slot rendered above the timeline tracks (toolbar with split, delete, zoom) */
   timelineToolbar?: ReactNode;
   /** Slot rendered below the timeline tracks */
@@ -106,6 +107,7 @@ export interface TimelinePaneProps {
 
 // fallow-ignore-next-line complexity
 export function TimelinePane({
+  docked = false,
   timelineToolbar,
   timelineFooter,
   renderClipContent,
@@ -120,7 +122,8 @@ export function TimelinePane({
   const {
     seek,
     compositionStack,
-    updateCompositionStack,
+    handleDrillDown,
+    handleNavigateComposition,
     timelineH,
     setTimelineH,
     persistTimelineH,
@@ -243,19 +246,21 @@ export function TimelinePane({
 
   return (
     <>
-      <TimelineResizeDivider
-        timelineH={timelineH}
-        setTimelineH={setTimelineH}
-        persistTimelineH={persistTimelineH}
-        containerRef={containerRef}
-        disabled={timelineDisabled}
-      />
+      {!docked && (
+        <TimelineResizeDivider
+          timelineH={timelineH}
+          setTimelineH={setTimelineH}
+          persistTimelineH={persistTimelineH}
+          containerRef={containerRef}
+          disabled={timelineDisabled}
+        />
+      )}
 
       {/* Timeline section — inner padding (not margin) keeps the divider's
           height math exact while giving the panel a gap from the shell edges. */}
       <div
         className="hf-timeline-section relative flex flex-col flex-shrink-0"
-        style={{ height: timelineH }}
+        style={{ height: docked ? "100%" : timelineH }}
         aria-disabled={timelineDisabled || undefined}
       >
         <div
@@ -264,13 +269,14 @@ export function TimelinePane({
             if ((e.target as HTMLElement).closest("[data-clip]")) return;
             if (timelineDisabled) return;
             if (compositionStack.length > 1) {
-              updateCompositionStack((prev) => prev.slice(0, -1));
+              handleNavigateComposition(compositionStack.length - 2);
             }
           }}
         >
           <div className="flex-shrink-0">{timelineToolbar}</div>
           <Timeline
             onSeek={seek}
+            onDrillDown={handleDrillDown}
             renderClipContent={renderClipContent}
             onFileDrop={onFileDrop}
             onDeleteElement={handleDeleteElement}

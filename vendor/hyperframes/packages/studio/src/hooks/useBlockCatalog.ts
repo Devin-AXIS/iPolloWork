@@ -1,80 +1,45 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  GSAP_OFFICIAL_CAPABILITIES,
+  VISUAL_COMPONENT_CATEGORIES,
   type RegistryItem,
   type RegistryItemKind,
+  type RegistryVisualComponentCategory,
   resolveRegistryItemKind,
+  resolveVisualComponentCategory,
 } from "@hyperframes/core/registry";
 import { type BlockCategory, resolveBlockCategory } from "../utils/blockCategories";
 
 export type CatalogItem = RegistryItem & {
   category: BlockCategory;
   kind: RegistryItemKind;
-  librarySection: AnimationLibrarySection;
 };
 
-export type AnimationLibrarySection = "opening-effect" | "ending-effect" | "transition-effect";
-
-export type CatalogPage = "effects";
+export type CatalogSectionId = RegistryVisualComponentCategory;
 
 export interface CatalogSection {
-  id: AnimationLibrarySection;
+  id: CatalogSectionId;
   items: CatalogItem[];
 }
 
-export const CATALOG_PAGE_SECTIONS: Record<CatalogPage, readonly AnimationLibrarySection[]> = {
-  effects: ["opening-effect", "ending-effect", "transition-effect"],
+export const COMPONENT_CATALOG_SECTIONS = VISUAL_COMPONENT_CATEGORIES;
+
+const SECTION_SEARCH_TERMS: Record<CatalogSectionId, string> = {
+  maps: "map route location geography flow 地图 路径 路线 地理 流向",
+  media:
+    "media image video split screen device mockup interface ui browser mobile walkthrough cursor 媒体 图片 视频 分屏 样机 界面 浏览器 手机 演示",
+  business:
+    "business diagram mindmap timeline architecture framework strategy launch keynote 商业图库 商业 图表 思维导图 时间线 架构 框架 战略 发布会",
 };
-
-const SECTION_SEARCH_TERMS: Record<AnimationLibrarySection, string> = {
-  "opening-effect": "opening intro title logo 开头 片头 开场",
-  "ending-effect": "ending outro cta follow social 结尾 片尾 关注 三连",
-  "transition-effect": "transition scene wipe push 转场 场景 切换",
-};
-
-export function resolveGsapCatalogCoverage(items: CatalogItem[]) {
-  const declaredCapabilities = new Set(items.flatMap((item) => item.engine?.plugins ?? []));
-  const plugins = GSAP_OFFICIAL_CAPABILITIES.filter((capability) => capability.kind === "plugin");
-  const eases = GSAP_OFFICIAL_CAPABILITIES.filter((capability) => capability.kind === "ease");
-  return {
-    plugins: {
-      covered: plugins.filter((capability) => declaredCapabilities.has(capability.runtimeName))
-        .length,
-      total: plugins.length,
-    },
-    eases: {
-      covered: eases.filter((capability) => declaredCapabilities.has(capability.runtimeName))
-        .length,
-      total: eases.length,
-    },
-  };
-}
-
-export function isGsapCatalogItem(item: CatalogItem): boolean {
-  return item.engine?.name.trim().toLowerCase() === "gsap";
-}
-
-export function isCatalogLibrarySection(value: unknown): value is AnimationLibrarySection {
-  return value === "opening-effect" || value === "ending-effect" || value === "transition-effect";
-}
 
 let catalogCache: CatalogItem[] | null = null;
 let catalogRequest: Promise<CatalogItem[]> | null = null;
 
 function normalizeCatalogItems(data: RegistryItem[]): CatalogItem[] {
   return data
-    .filter(
-      (
-        block,
-      ): block is RegistryItem & {
-        librarySection: AnimationLibrarySection;
-      } => isCatalogLibrarySection(block.librarySection),
-    )
-    .map((block) => ({
-      ...block,
-      category: resolveBlockCategory(block.tags),
-      kind: resolveRegistryItemKind(block),
-      librarySection: block.librarySection,
+    .map((item) => ({
+      ...item,
+      category: resolveBlockCategory(item.tags),
+      kind: resolveRegistryItemKind(item),
     }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
@@ -97,55 +62,67 @@ export function preloadBlockCatalog(): Promise<CatalogItem[]> {
   return catalogRequest;
 }
 
-export function useBlockCatalog(page: CatalogPage) {
+export function resolveCatalogSection(item: {
+  visualComponent?: { category?: unknown };
+}): CatalogSectionId | null {
+  return resolveVisualComponentCategory(item.visualComponent?.category);
+}
+
+export function useBlockCatalog() {
   const [blocks, setBlocks] = useState<CatalogItem[]>(() => catalogCache ?? []);
   const [loading, setLoading] = useState(() => catalogCache === null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const reload = useCallback(async () => {
+    await catalogRequest?.catch(() => {});
+    catalogCache = null;
+    catalogRequest = null;
+    setError(null);
+    setBlocks(await preloadBlockCatalog());
+  }, []);
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const items = await preloadBlockCatalog();
+    void preloadBlockCatalog()
+      .then((items) => {
+        if (active) setBlocks(items);
+      })
+      .catch((loadError: unknown) => {
         if (!active) return;
-        setBlocks(items);
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Failed to load catalog");
-      } finally {
+        setError(loadError instanceof Error ? loadError.message : "Failed to load catalog");
+      })
+      .finally(() => {
         if (active) setLoading(false);
-      }
-    })();
+      });
     return () => {
       active = false;
     };
   }, []);
 
-  const pageSections = CATALOG_PAGE_SECTIONS[page];
   const filteredBlocks = useMemo(() => {
     const query = search.trim().toLowerCase();
     return blocks.filter((block) => {
-      if (!isGsapCatalogItem(block) || !pageSections.includes(block.librarySection)) return false;
+      const section = resolveCatalogSection(block);
+      if (!section) return false;
       if (!query) return true;
       return (
         block.title.toLowerCase().includes(query) ||
         block.description.toLowerCase().includes(query) ||
         block.category.toLowerCase().includes(query) ||
-        SECTION_SEARCH_TERMS[block.librarySection].includes(query) ||
+        SECTION_SEARCH_TERMS[section].includes(query) ||
         block.tags?.some((tag) => tag.toLowerCase().includes(query)) ||
         block.engine?.plugins?.some((plugin) => plugin.toLowerCase().includes(query))
       );
     });
-  }, [blocks, pageSections, search]);
+  }, [blocks, search]);
 
-  const sections = useMemo(
+  const sections = useMemo<CatalogSection[]>(
     () =>
-      pageSections.map((id) => ({
+      COMPONENT_CATALOG_SECTIONS.map((id) => ({
         id,
-        items: filteredBlocks.filter((block) => block.librarySection === id),
+        items: filteredBlocks.filter((block) => resolveCatalogSection(block) === id),
       })),
-    [filteredBlocks, pageSections],
+    [filteredBlocks],
   );
 
   return {
@@ -154,5 +131,6 @@ export function useBlockCatalog(page: CatalogPage) {
     search,
     setSearch,
     sections,
+    reload,
   };
 }

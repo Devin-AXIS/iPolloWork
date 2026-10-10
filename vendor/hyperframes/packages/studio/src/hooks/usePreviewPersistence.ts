@@ -1,3 +1,8 @@
+import { useEffect } from "react";
+import { useExternalFileChangeCoordinator } from "./useExternalFileChangeCoordinator";
+import { StudioFileConflictError, type StudioSaveDrainResult } from "../utils/studioSaveDiagnostics";
+import { persistExternalConflictSnapshot, persistExternalFailureSnapshot, loadExternalConflictSnapshot, deleteExternalConflictSnapshot } from "../utils/externalConflictStorage";
+import { thumbnailScheduler } from "../player/lib/thumbnailScheduler";
 import { useCallback, useRef, useState } from "react";
 import { useMountEffect } from "./useMountEffect";
 import {
@@ -34,7 +39,7 @@ type HostDesignTokensMessage = {
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -43,7 +48,12 @@ interface UsePreviewPersistenceParams {
   projectId: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   readOptionalProjectFile: (path: string) => Promise<string>;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  readProjectFile: (path: string) => Promise<string>;
+  flushPendingSave: () => Promise<StudioSaveDrainResult>;
+  getPendingCandidate: () => { path: string; content: string } | null;
+  discardPendingSave: () => void;
+  onUseExternalFile: (path: string, content: string) => void;
+  writeProjectFile: (path: string, content: string, expectedContent?: string | null) => Promise<void>;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   activeCompPathRef: React.MutableRefObject<string | null>;
@@ -55,6 +65,9 @@ interface UsePreviewPersistenceParams {
   pendingTimelineEditPathRef?: React.MutableRefObject<Set<string>>;
   /** Called to reload the preview after undo/redo or external file changes. */
   reloadPreview: () => void;
+  reloadSdkSession?: () => void;
+  refreshFileTree?: () => Promise<void>;
+  noteOutsideChange?: () => void;
 }
 
 function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
@@ -160,21 +173,6 @@ function installManualEditReapply(iframe: HTMLIFrameElement): void {
   manualEditReadinessCleanup.set(iframe, cleanup);
 }
 
-function shouldReloadForStudioFileChange(
-  payload: unknown,
-  pendingTimelineEditPathRef: React.MutableRefObject<Set<string>> | undefined,
-  domEditSaveTimestampRef: React.MutableRefObject<number>,
-): boolean {
-  const changedPath = readStudioFileChangePath(payload);
-  if (!changedPath) return false;
-  const pendingTimelinePaths = pendingTimelineEditPathRef?.current;
-  if (pendingTimelinePaths?.has(changedPath)) {
-    pendingTimelinePaths.delete(changedPath);
-    return false;
-  }
-  return Date.now() - domEditSaveTimestampRef.current >= 4000;
-}
-
 // fallow-ignore-next-line complexity
 async function clearLegacyStudioMotionFile(
   readOptionalProjectFile: (path: string) => Promise<string>,
@@ -199,6 +197,7 @@ export function usePreviewPersistence({
   projectId,
   showToast,
   readOptionalProjectFile: _readOptionalProjectFile,
+  readProjectFile, flushPendingSave, getPendingCandidate, discardPendingSave, onUseExternalFile,
   writeProjectFile: _writeProjectFile,
   recordEdit: _recordEdit,
   previewIframeRef,
@@ -206,6 +205,7 @@ export function usePreviewPersistence({
   domEditSaveTimestampRef,
   reloadPreview,
   pendingTimelineEditPathRef,
+  reloadSdkSession, refreshFileTree, noteOutsideChange,
 }: UsePreviewPersistenceParams) {
   void _recordEdit;
 
@@ -253,9 +253,12 @@ export function usePreviewPersistence({
   }, []);
 
   const waitForPendingDomEditSaves = useCallback(async () => {
-    await flushStudioPendingEdits();
+    const result = await flushStudioPendingEdits();
+    if (result.status !== "clean") throw result.error;
+    const editorResult = await flushPendingSave();
+    if (editorResult.status !== "clean") throw editorResult.error;
     await domEditSaveQueueRef.current?.waitForIdle();
-  }, []);
+  }, [flushPendingSave]);
 
   const resetDomEditSaveQueueBreaker = useCallback(() => {
     domEditSaveQueueRef.current?.reset();
@@ -334,31 +337,38 @@ export function usePreviewPersistence({
     return () => window.removeEventListener("message", handleMessage);
   });
 
-  // ── Listen for external file changes (HMR / SSE) ──
-  useMountEffect(() => {
-    const handler = (payload?: unknown) => {
-      if (
-        shouldReloadForStudioFileChange(
-          payload,
-          pendingTimelineEditPathRef,
-          domEditSaveTimestampRef,
-        )
-      ) {
-        // fallow-ignore-next-line code-duplication
-        reloadPreview();
-      }
-    };
-    if (import.meta.hot) {
-      import.meta.hot.on("hf:file-change", handler);
-      return () => import.meta.hot?.off?.("hf:file-change", handler);
-    }
-    // SSE fallback for embedded studio server
-    const es = new EventSource("/api/events");
-    es.addEventListener("file-change", handler);
-    return () => es.close();
+  const emptyPendingPaths = useRef(new Set<string>());
+  const externalChanges = useExternalFileChangeCoordinator({
+    projectId, activeCompPath: activeCompPathRef.current,
+    pendingTimelineEditPathRef: pendingTimelineEditPathRef ?? emptyPendingPaths,
+    drainPendingChanges: async () => {
+      try { await waitForPendingDomEditSaves(); return { status: "clean" as const }; }
+      catch (error) { return error instanceof StudioFileConflictError
+        ? { status: "conflict" as const, error } : { status: "failed" as const, error }; }
+    },
+    getPendingCandidate,
+    discardPendingChanges: () => { discardPendingSave(); resetDomEditSaveQueueBreaker(); },
+    reloadPreview, reloadSdkSession: () => reloadSdkSession?.(),
+    readProjectFile, onUseExternalFile,
+    persistConflictSnapshot: persistExternalConflictSnapshot,
+    persistFailureSnapshot: persistExternalFailureSnapshot,
+    loadConflictSnapshot: loadExternalConflictSnapshot,
+    deleteConflictSnapshot: deleteExternalConflictSnapshot,
+    overwriteConflict: async conflict => {
+      await _writeProjectFile(conflict.filePath, conflict.attemptedContent, conflict.currentContent);
+    },
+    resetSaveQueues: resetDomEditSaveQueueBreaker, refreshFileTree,
+    onAcceptedPersistedFileChange: () => {
+      noteOutsideChange?.();
+      if (projectId) thumbnailScheduler.invalidateProject(projectId);
+    },
   });
+  useEffect(() => {
+    if (externalChanges.blocked) showToast("外部文件已修改，编辑暂未保存。请处理冲突后继续。", "error");
+  }, [externalChanges.blocked, showToast]);
 
   return {
+    externalChanges,
     domTextCommitVersionRef,
     domEditSaveQueueRef,
     applyStudioManualEditsToPreviewRef,

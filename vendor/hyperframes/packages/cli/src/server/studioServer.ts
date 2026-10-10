@@ -6,9 +6,10 @@
  */
 
 import { Hono, type Context } from "hono";
+import { createHash } from "node:crypto";
+import { SYSTEM_FONT_SIZE_LIMIT } from "@hyperframes/core/fonts/system-locator";
 import { streamSSE } from "hono/streaming";
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -31,6 +32,7 @@ import { isDevMode } from "../utils/env.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
+  openProjectHistory, DEFAULT_HISTORY_ROOT, historyCache, HistoryBusyError, HistoryClosedError, identifyFileWrite, DELETED_VERSION, fileContentVersion, affectsPreview,
   createProjectSignature,
   createBackgroundRemovalJob,
   consumeFileWriteReceipt,
@@ -42,12 +44,15 @@ import {
   type RenderJobState,
   type BackgroundRemovalRender,
 } from "@hyperframes/studio-server";
-import { resolveAutoProxy } from "../utils/projectConfig.js";
-import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
+import { resolveAutoProxy, loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
+import { DEFAULT_REGISTRY_URL } from "../registry/remote.js";
+import { getElementScreenshotClip, reviewVideoRuntime, reviewComponentVariables } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import type { RegistryItem } from "@hyperframes/core";
 import { resolveGsapRegistryItemEngine } from "@hyperframes/core/registry";
+import { publishItem, recordRewrittenInstall, type InstallResult } from "../registry/installer.js";
+import { registryRoot, registryTargetPath, publishRegistryFile } from "../registry/publication.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 const REMOTE_GIF_IMG_SRC_RE =
@@ -208,7 +213,7 @@ function withThumbnailTimeout<T>(
   ]);
 }
 
-async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser | null> {
+async function getThumbnailBrowser(browserGpuMode?: import("../browser/gpuPolicy.js").BrowserGpuMode): Promise<import("puppeteer-core").Browser | null> {
   if (_thumbnailBrowserLease?.browser.connected) return _thumbnailBrowserLease.browser;
   if (_thumbnailBrowserInitializing) {
     return (await _thumbnailBrowserInitializing)?.browser ?? null;
@@ -222,7 +227,7 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         width: 1920,
         height: 1080,
         captureMode: "screenshot",
-      });
+      }, { browserGpuMode });
       const launchOptions = {
         forceScreenshot: true as const,
         browserTimeout: THUMBNAIL_BROWSER_TIMEOUT_MS,
@@ -242,7 +247,9 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
           "[Studio] Managed thumbnail browser failed; retrying with a system browser:",
           managedError instanceof Error ? managedError.message : managedError,
         );
-        const systemBrowser = await ensureBrowser({ preferSystemBrowser: true });
+        const { findSystemBrowser } = await import("../browser/manager.js");
+        const systemBrowser = findSystemBrowser();
+        if (!systemBrowser) throw managedError;
         process.env.PRODUCER_HEADLESS_SHELL_PATH = systemBrowser.executablePath;
         acquired = await acquireBrowser(chromeArgs, {
           ...launchOptions,
@@ -280,6 +287,8 @@ export async function closeThumbnailBrowser(): Promise<void> {
 // ── Server factory ──────────────────────────────────────────────────────────
 
 export interface StudioServerOptions {
+  historyRoot?: string;
+  browserGpuMode?: import("../browser/gpuPolicy.js").BrowserGpuMode;
   projectDir: string;
   /** Display name for the project. Defaults to basename of projectDir. */
   projectName?: string;
@@ -293,6 +302,7 @@ export interface StudioServerOptions {
 }
 
 export interface StudioServer {
+  shutdown: () => Promise<void>;
   app: Hono;
   watcher: ProjectWatcher;
   /** Exposed for tests: the adapter handed to the shared studio API (carries
@@ -320,7 +330,8 @@ export async function loadPreviewServerBuildSignature(): Promise<string> {
 }
 
 // Normalize every installed HTML file for its host project. Viewport dimensions
-// follow the host. When the project already owns GSAP, remove the block's CDN
+// follow the host for ordinary blocks; visual components keep their authored
+// size for contain fitting. When the project owns GSAP, remove the block's CDN
 // copy: bundled previews inherit the host script and direct sub-composition
 // previews borrow the host <head>, so a second version only adds network latency
 // and duplicate global state. Applies to dependency HTML as well.
@@ -329,7 +340,11 @@ const EXTERNAL_GSAP_SCRIPT_RE =
 const LOCAL_GSAP_SCRIPT_RE =
   /<script\b[^>]*\bsrc=(["'])(?:\.\/|\/)?assets\/gsap(?:\.min)?\.js(?:\?[^"']*)?\1[^>]*>/i;
 
-function rewriteWrittenToHostViewport(projectDir: string, written: string[]): void {
+function rewriteWrittenToHostViewport(
+  projectDir: string,
+  written: string[],
+  preserveAuthoredSize = false,
+): void {
   const indexPath = join(projectDir, "index.html");
   if (!existsSync(indexPath)) return;
   const indexHtml = readFileSync(indexPath, "utf-8");
@@ -342,7 +357,7 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
     if (!absPath.endsWith(".html")) continue;
     const original = readFileSync(absPath, "utf-8");
     let content = hasProjectGsap ? original.replace(EXTERNAL_GSAP_SCRIPT_RE, "") : original;
-    if (hostW && hostH) {
+    if (hostW && hostH && !preserveAuthoredSize) {
       content = content.replace(
         /(<meta\s+name="viewport"\s+content="width=)\d+(,\s*height=)\d+/i,
         `$1${hostW}$2${hostH}`,
@@ -357,7 +372,10 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
         },
       );
     }
-    if (content !== original) writeFileSync(absPath, content, "utf-8");
+    if (content !== original) {
+      const root = registryRoot(projectDir);
+      publishRegistryFile(root, relative(root, absPath).replaceAll("\\", "/"), content);
+    }
   }
 }
 
@@ -407,26 +425,26 @@ function loadBundledRegistryItems(registryRoot: string): RegistryItem[] {
 }
 
 function installBundledRegistryItem(
-  registryRoot: string,
+  bundledRoot: string,
   item: RegistryItem,
   projectDir: string,
-): string[] {
+): InstallResult {
   const subdir = item.type === "hyperframes:block" ? "blocks" : "components";
-  const itemDir = join(registryRoot, subdir, item.name);
-  const written: string[] = [];
-  for (const file of item.files) {
-    const targetPath = resolve(projectDir, file.target);
-    const relativeTarget = targetPath.slice(resolve(projectDir).length + 1);
-    if (relativeTarget.startsWith("..") || relativeTarget === targetPath) {
-      throw new Error(`Unsafe registry target: ${file.target}`);
-    }
-    const sourcePath = join(itemDir, file.path);
-    if (!existsSync(sourcePath)) throw new Error(`Missing bundled registry file: ${file.path}`);
-    mkdirSync(dirname(targetPath), { recursive: true });
-    copyFileSync(sourcePath, targetPath);
-    written.push(targetPath);
-  }
-  return written;
+  const itemDir = join(bundledRoot, subdir, item.name);
+  const root = registryRoot(projectDir);
+  const sourceRoot = registryRoot(itemDir);
+  const outcomes = item.files.map((file) => {
+    const bytes = readFileSync(registryTargetPath(sourceRoot, file.path));
+    return {
+      destPath: registryTargetPath(root, file.target),
+      target: file.target,
+      preserved: false,
+      hash: createHash("sha256").update(bytes).digest("hex"),
+      vars: null,
+      bytes,
+    };
+  });
+  return publishItem({ root, outcomes, force: false });
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {
@@ -436,10 +454,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const runtimePath = resolveRuntimePath();
   const watcher = createProjectWatcher(projectDir);
   // The bundled registry is immutable for one preview-server lifetime. The
-  // effects catalog is fetched before a user can insert from it, so keeping the
+  // component catalog is fetched before a user can insert from it, so keeping the
   // parsed items and name index here removes the same full disk scan from every
   // subsequent insertion. Restarting the preview server invalidates the cache.
-  const bundledRegistryRoot = resolveBundledRegistryRoot();
+  const projectConfig = loadProjectConfig(projectDir);
+  const usesDefaultRegistryPaths = Object.entries(DEFAULT_PROJECT_CONFIG.paths).every(
+    ([kind, path]) => projectConfig.paths[kind as keyof typeof projectConfig.paths] === path,
+  );
+  const bundledRegistryRoot =
+    projectConfig.registry === DEFAULT_REGISTRY_URL && usesDefaultRegistryPaths
+      ? resolveBundledRegistryRoot()
+      : null;
   let bundledRegistryItems: RegistryItem[] | null = null;
   let bundledRegistryItemsByName: Map<string, RegistryItem> | null = null;
   const getBundledRegistryItems = (): RegistryItem[] | null => {
@@ -467,7 +492,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     cachedProjectSignature = null;
   });
 
+  const histories = historyCache(dir => openProjectHistory({ projectDir: dir, historyRoot: options.historyRoot ?? DEFAULT_HISTORY_ROOT }).catch(error => {
+    if (error instanceof HistoryBusyError || error instanceof HistoryClosedError) histories.forget(dir);
+    console.warn("[Studio] Project history unavailable:", error);
+    return null;
+  }));
+  watcher.addListener(path => { void histories.peek(projectDir)?.then(opened => opened?.noteChange(path)); });
   const adapter: PreviewApiAdapter = {
+    history: () => histories.get(projectDir),
     // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
     // otherwise honor the project's hyperframes.json media.autoProxy so every
     // createStudioServer caller (e.g. the background preview child) gets the
@@ -487,6 +519,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // caching across composition edits.
         let html = await bundleToSingleHtml(dir, {
           runtime: "placeholder",
+          inlineAssets: false,
           inlineColorGradingLuts: false,
         });
         html = html.replace(
@@ -502,7 +535,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     async transformPreviewHtml({ html, project }) {
       const { injectDeterministicFontFaces } =
-        await import("../../../producer/src/services/deterministicFonts.js");
+        await import("@hyperframes/core/fonts/embed");
       const { prepareAnimatedGifInputs } =
         await import("../../../producer/src/services/animatedGifPrep.js");
       const { downloadToTemp } = await import("../../../producer/src/utils/urlDownloader.js");
@@ -516,13 +549,19 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         cacheDir: gifOutputDir,
         sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, downloadToTemp),
       });
-      return injectDeterministicFontFaces(prepared.html);
+      return injectDeterministicFontFaces(prepared.html, {
+        maxSystemFontBytes: SYSTEM_FONT_SIZE_LIMIT,
+      });
     },
 
     getProjectSignature(dir: string): string {
       if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
       cachedProjectSignature ??= createProjectSignature(projectDir);
       return cachedProjectSignature;
+    },
+
+    invalidateProjectSignature(dir: string): void {
+      if (resolve(dir) === resolve(projectDir)) cachedProjectSignature = null;
     },
 
     async lint(html: string, opts?: { filePath?: string }) {
@@ -586,6 +625,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             quality: opts.quality as "draft" | "standard" | "high",
             format: opts.format,
             outputResolution: opts.outputResolution,
+            outputResolutionAspectAgnostic: opts.outputResolutionAspectAgnostic,
+            motionBlur: opts.motionBlur ? { samplesPerFrame: 4, shutterAngle: 180, shutterPhase: -90, blend: "linear" } : undefined,
+            outputSize: opts.outputSize,
+            captureSize: opts.captureSize,
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
@@ -649,9 +692,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       });
     },
 
-    async generateThumbnail(opts): Promise<Buffer | null> {
+    async generateThumbnail(opts) {
       const browser = await withThumbnailTimeout(
-        getThumbnailBrowser(),
+        getThumbnailBrowser(options.browserGpuMode),
         THUMBNAIL_BROWSER_TIMEOUT_MS + 5_000,
         "Timed out while starting the thumbnail browser",
       );
@@ -713,6 +756,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         });
         await new Promise((r) => setTimeout(r, 200));
         await reapplyStudioManualEditsToThumbnailPage(page);
+        if (opts.componentVariables) return await withThumbnailTimeout(page.evaluate(reviewComponentVariables, opts.componentVariables), 15_000, "Timed out validating component content");
+        if (opts.runtimeReview) return await withThumbnailTimeout(page.evaluate(reviewVideoRuntime), 30_000, "Timed out inspecting executed video timing and layout");
         let clip: ScreenshotClip | undefined;
         if (opts.selector) {
           clip = await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex);
@@ -751,11 +796,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       if (items) return items;
 
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
-      const entries = await listRegistryItems();
+      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
       );
-      return loadAllItems(blockAndComponentEntries);
+      return loadAllItems(blockAndComponentEntries, registry);
     },
 
     async loadRegistryPreview({ blockName }) {
@@ -772,40 +818,41 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       if (bundledRegistryRoot) {
         const item = getBundledRegistryItem(opts.blockName);
         if (!item) throw new Error(`Item "${opts.blockName}" not found in bundled registry`);
-        const written = installBundledRegistryItem(bundledRegistryRoot, item, opts.project.dir);
-        rewriteWrittenToHostViewport(opts.project.dir, written);
+        const installed = installBundledRegistryItem(bundledRegistryRoot, item, opts.project.dir);
+        rewriteWrittenToHostViewport(opts.project.dir, installed.written, Boolean(item.visualComponent));
+        recordRewrittenInstall(opts.project.dir, installed.written);
         return {
-          written: written.map((path) => path.slice(opts.project.dir.length + 1)),
+          written: [...installed.written, ...installed.preserved].map((path) =>
+            relative(registryRoot(opts.project.dir), path).replaceAll("\\", "/")),
           block: item,
         };
       }
 
-      const { resolveItemWithDependencies } = await import("../registry/resolver.js");
-      const { installItem } = await import("../registry/installer.js");
-      const { gateRegistryItemsCompatibility } = await import("../registry/compatibility.js");
-      // Resolve transitive registryDependencies and install them first so a
-      // block that depends on other registry items installs completely.
-      const items = await resolveItemWithDependencies(opts.blockName);
-      // Compatibility-gate the whole set before writing anything (same gate as
-      // `hyperframes add`), so an incompatible block or dep aborts cleanly.
-      const warnings = gateRegistryItemsCompatibility(items);
-      for (const warning of warnings) {
+      const { addToProject, primaryInstalledTarget } = await import("../commands/add.js");
+      const { result, item } = await addToProject({
+        name: opts.blockName,
+        projectDir: opts.project.dir,
+        skipClipboard: true,
+        source: "studio",
+      });
+      for (const warning of result.warnings) {
         process.stderr.write(`hyperframes:registry ${warning}\n`);
       }
-      const written: string[] = [];
-      for (const dep of items) {
-        const result = await installItem(dep, { destDir: opts.project.dir });
-        written.push(...result.written);
-      }
-      const item = items[items.length - 1]!;
+      const written = result.written;
 
-      rewriteWrittenToHostViewport(opts.project.dir, written);
+      rewriteWrittenToHostViewport(opts.project.dir, written, Boolean(item.visualComponent));
+      recordRewrittenInstall(opts.project.dir, written);
 
-      const relativePaths = written.map((abs) => {
-        const rel = abs.startsWith(opts.project.dir) ? abs.slice(opts.project.dir.length + 1) : abs;
-        return rel;
-      });
-      return { written: relativePaths, block: item };
+      const root = registryRoot(opts.project.dir);
+      const primary = primaryInstalledTarget(item);
+      const primaryPath = registryTargetPath(root, primary);
+      const others = written
+        .filter((abs) => abs !== primaryPath)
+        .map((abs) => relative(root, abs).replaceAll("\\", "/"));
+      return {
+        written: written.includes(primaryPath) ? [primary, ...others] : others,
+        block: item,
+      };
     },
   };
 
@@ -858,15 +905,30 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {
       const listener = (path: string) => {
-        const receipt = consumeFileWriteReceipt(resolve(projectDir, path));
-        stream
-          .writeSSE({ event: "file-change", data: JSON.stringify(receipt ?? { path }) })
-          .catch(() => {});
+        const absPath = resolve(projectDir, path);
+        let version: string | null = null;
+        try { version = fileContentVersion(readFileSync(absPath)); } catch { /* Deleted file. */ }
+        const receipt = identifyFileWrite(absPath, version ?? DELETED_VERSION);
+        void stream.writeSSE({ event: "file-change", data: JSON.stringify({ path, version,
+          projectId, affectsPreview: affectsPreview(projectDir, path), ...receipt }) }).catch(() => {});
       };
       watcher.addListener(listener);
-      while (true) {
-        await stream.sleep(30000);
-      }
+      await new Promise<void>((resolve) => {
+        const abort = () => stream.abort();
+        const heartbeat = setInterval(() => {
+          void stream.write(": heartbeat\n\n");
+        }, 30_000);
+        stream.onAbort(() => {
+          clearInterval(heartbeat);
+          c.req.raw.signal.removeEventListener("abort", abort);
+          watcher.removeListener(listener);
+          resolve();
+        });
+        c.req.raw.signal.addEventListener("abort", abort, { once: true });
+        if (c.req.raw.signal.aborted) abort();
+        // Flush the response immediately, including when the project is idle.
+        void stream.write(": connected\n\n");
+      });
     });
   });
 
@@ -1002,5 +1064,5 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return c.html(html);
   });
 
-  return { app, watcher, adapter };
+  return { app, watcher, adapter, shutdown: async () => { watcher.close(); await histories.closeAll(); await closeThumbnailBrowser(); } };
 }

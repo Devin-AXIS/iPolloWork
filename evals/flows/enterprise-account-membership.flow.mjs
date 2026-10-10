@@ -152,8 +152,8 @@ export default {
             const templates = await ctx.eval(selectButton("/^模版$/u"));
             ctx.assert(templates === true, "Expected the Templates button.");
             await ctx.waitFor(
-              `Boolean(document.querySelector('[role="dialog"]')) && document.body.innerText.includes("资源来源") && document.body.innerText.includes("个人") && document.body.innerText.includes("Enterprise")`,
-              { timeoutMs: 5_000, label: "Enterprise template resource switch" },
+              `Boolean(document.querySelector('[role="dialog"]')) && document.body.innerText.includes("模板来源") && document.body.innerText.includes("内置") && document.body.innerText.includes("Cloud")`,
+              { timeoutMs: 5_000, label: "Explore template source switch" },
             );
             await ctx.waitFor(
               `!document.querySelector('[data-testid="template-catalog-loading"]')`,
@@ -179,13 +179,13 @@ export default {
               "Enterprise must render only chats assigned to the active Enterprise.",
             );
             ctx.assert(observedExtensionResourceSwitch, "Expected Extensions to expose the Enterprise resource switch.");
-            await ctx.expectText("资源来源");
-            await ctx.expectText("个人");
-            await ctx.expectText("Enterprise");
+            await ctx.expectText("模板来源");
+            await ctx.expectText("内置");
+            await ctx.expectText("Cloud");
           },
           screenshot: {
-            name: "enterprise-template-resource-source",
-            requireText: ["模版", "资源来源", "个人", "Enterprise"],
+            name: "enterprise-template-explore-source",
+            requireText: ["模版", "模板来源", "内置", "Cloud"],
             rejectText: ["Something went wrong"],
           },
         });

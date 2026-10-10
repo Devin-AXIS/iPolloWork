@@ -1,9 +1,19 @@
+import { parseCompositionVariables, updateTextVariableBinding } from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
+import { removeElementWithGsapCascade } from "@hyperframes/parsers";
+import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
-import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
+import {
+  EXCLUDED_TAGS,
+  ensureHfIds,
+  mintHfId,
+  walkCompositionDescendants,
+} from "@hyperframes/parsers/hf-ids";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
+import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
 export interface SourceMutationTarget {
@@ -13,7 +23,11 @@ export interface SourceMutationTarget {
   selectorIndex?: number;
 }
 
-function parseSourceDocument(source: string): { document: Document; wrappedFragment: boolean } {
+export function parseSourceDocument(raw: string): {
+  document: Document;
+  wrappedFragment: boolean;
+} {
+  const source = ensureHfIds(raw);
   const hasDocumentShell = /<!doctype|<html[\s>]/i.test(source);
   if (hasDocumentShell) {
     return { document: parseHTML(source).document, wrappedFragment: false };
@@ -101,11 +115,15 @@ function findByHfId(document: Document, hfId: string): Element | null {
   }
 }
 
-function findTargetElement(document: Document, target: SourceMutationTarget): Element | null {
+export function findTargetElement(
+  document: Document,
+  target: SourceMutationTarget,
+): Element | null {
   if (target.hfId) {
-    // Stable ids are authoritative. A stale mutation must fail instead of
-    // falling through to a generic selector and changing a sibling element.
-    return findByHfId(document, target.hfId);
+    // The embedded editor also addresses older files through their authored
+    // selector: preview-only ids need not exist in their source yet.
+    const byHfId = findByHfId(document, target.hfId);
+    if (byHfId) return byHfId;
   }
 
   if (target.id) {
@@ -122,36 +140,28 @@ function findTargetElement(document: Document, target: SourceMutationTarget): El
   }
 }
 
-export function removeElementFromHtml(
+/**
+ * Removes every target in one parse and one serialization. A target nested inside one already
+ * removed no longer matches, which is a normal outcome rather than a failure.
+ */
+export function removeElementsFromHtml(
   source: string,
-  target: SourceMutationTarget,
-): { html: string; matched: boolean; removedSelectors: string[] } {
+  targets: readonly SourceMutationTarget[],
+): string {
   const { document, wrappedFragment } = parseSourceDocument(source);
-  const element = findTargetElement(document, target);
-  if (!element) return { html: source, matched: false, removedSelectors: [] };
-
-  const removedSelectors = new Set<string>();
-  for (const removedElement of [element, ...Array.from(element.querySelectorAll("*"))]) {
-    const hfId = removedElement.getAttribute("data-hf-id");
-    const id = removedElement.getAttribute("id");
-    if (hfId) removedSelectors.add(`[data-hf-id="${escapeCssAttrValue(hfId)}"]`);
-    if (id) removedSelectors.add(`#${id}`);
+  let removed = false;
+  for (const target of targets) {
+    const element = findTargetElement(document, target);
+    if (!element) continue;
+    removeElementWithGsapCascade(document, element);
+    removed = true;
   }
-  if (target.selector) {
-    try {
-      const matches = querySelectorAllWithTemplates(document, target.selector);
-      if (matches.length === 1 && matches[0] === element) removedSelectors.add(target.selector);
-    } catch {
-      // The element already resolved through a stable id; ignore an invalid fallback selector.
-    }
-  }
+  if (!removed) return source;
+  return wrappedFragment ? document.body.innerHTML || "" : document.toString();
+}
 
-  element.remove();
-  return {
-    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
-    matched: true,
-    removedSelectors: Array.from(removedSelectors),
-  };
+export function removeElementFromHtml(source: string, target: SourceMutationTarget): string {
+  return removeElementsFromHtml(source, [target]);
 }
 
 export function isHTMLElement(el: Node): el is HTMLElement {
@@ -159,8 +169,31 @@ export function isHTMLElement(el: Node): el is HTMLElement {
   return HTMLEl ? el instanceof HTMLEl : el.nodeType === 1 && "style" in el;
 }
 
+export function dedupeClonedCompositionId(document: Document, clone: Element): void {
+  const compositionId = clone.getAttribute("data-composition-id");
+  if (!compositionId) return;
+  const usedCompositionIds = new Set(
+    querySelectorAllWithTemplates(document, "[data-composition-id]").map((node) =>
+      node.getAttribute("data-composition-id"),
+    ),
+  );
+  const base = `${compositionId}-split`;
+  let nextCompositionId = base;
+  let suffix = 2;
+  while (usedCompositionIds.has(nextCompositionId)) nextCompositionId = `${base}-${suffix++}`;
+  clone.setAttribute("data-composition-id", nextCompositionId);
+}
+
 export interface PatchOperation {
-  type: "inline-style" | "attribute" | "html-attribute" | "text-content" | "inner-html";
+  /** `ensure-id` keeps the element's id, else writes `value` made unique in this file and `takenIds`. */
+  type:
+    | "inline-style"
+    | "attribute"
+    | "html-attribute"
+    | "text-content"
+    | "inner-html"
+    | "rich-text"
+    | "ensure-id";
   property: string;
   value: string | null;
   childSelector?: string;
@@ -213,16 +246,48 @@ function resolveOperationTarget(parent: HTMLElement, op: PatchOperation): HTMLEl
   }
 }
 
+/**
+ * Give the elements a rich-text patch just introduced their stable ids, here,
+ * in the bytes about to be written and handed back.
+ *
+ * Otherwise the next preview request mints them and writes the file a second
+ * time, after Studio has already recorded the edit in its history. The recorded
+ * "after" stops matching disk, the content check refuses, and undo reports the
+ * file as changed outside Studio — for every colour applied to a run of
+ * characters and every text layer added. The clip split stamps its own clone
+ * for exactly this reason.
+ *
+ * Minted one element at a time with the same function `ensureHfIds` uses, so
+ * these ids are the ones the next pass would have assigned. Not `ensureHfIds`
+ * itself: it takes a whole document, and handing it this element's markup would
+ * put the markup back as one.
+ */
+function stampNewChildIds(parent: Element): void {
+  const assigned = new Set<string>();
+  const root = parent.ownerDocument?.body ?? parent;
+  walkCompositionDescendants(root, (el) => {
+    const id = el.getAttribute("data-hf-id");
+    if (id) assigned.add(id);
+  });
+  for (const el of parent.querySelectorAll("*")) {
+    if (el.getAttribute("data-hf-id")) continue;
+    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    el.setAttribute("data-hf-id", mintHfId(el, assigned));
+  }
+}
+
 // fallow-ignore-next-line complexity
 export function patchElementInHtml(
   source: string,
   target: SourceMutationTarget,
   operations: PatchOperation[],
-): { html: string; matched: boolean } {
+  takenIds?: ReadonlySet<string>,
+): { html: string; matched: boolean; elementId?: string | null } {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
   const htmlEl = el;
+  const originalHtml = wrappedFragment ? document.body.innerHTML || "" : document.toString();
 
   const resolved: ResolvedPatchOperation[] = [];
   for (const op of operations) {
@@ -263,32 +328,78 @@ export function patchElementInHtml(
           opTarget.removeAttribute(op.property);
         }
         break;
+      case "ensure-id":
+        if (opTarget.getAttribute("id") || !op.value) break;
+        opTarget.setAttribute("id", nextUniqueId(document, op.value, takenIds));
+        break;
       case "text-content":
         if (op.value != null) {
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
           const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
+          const binding = textTarget.getAttribute("data-var-text") ?? opTarget.getAttribute("data-var-text");
+          if (binding) {
+            const declaration = document.querySelector("[data-composition-variables]");
+            if (declaration) {
+              const variables = parseCompositionVariables(declaration);
+              const values = Object.fromEntries(variables.map((v) => [v.id, v.default]));
+              const update = updateTextVariableBinding(binding, values, op.value);
+              if (update) {
+                const variable = variables.find((v) => v.id === update.id)!;
+                variable.default = update.value;
+                declaration.setAttribute("data-composition-variables", JSON.stringify(variables));
+              }
+            }
+          }
           textTarget.textContent = op.value;
         }
         break;
+      // The one operation that can write markup, so the one that has to check
+      // it. Assigned first and sanitised after, rather than sanitising a
+      // string: parsing is what turns a payload into the tree the allowlist
+      // can actually judge, and linkedom never runs anything it parses.
       case "inner-html":
+      case "rich-text":
         if (op.value != null) {
-          opTarget.innerHTML = sanitizeRichTextHtml(op.value);
+          opTarget.innerHTML = op.value;
+          sanitizeRichTextChildren(opTarget);
+          stampNewChildIds(opTarget);
         }
         break;
     }
   }
 
-  return {
-    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
-    matched: true,
-  };
+  const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
+  const elementId = htmlEl.getAttribute("id");
+  if (html === originalHtml) return { html: source, matched: true, elementId };
+  return { html: ensureHfIds(html), matched: true, elementId };
+}
+
+export function nextUniqueId(
+  document: Document,
+  base: string,
+  takenIds?: ReadonlySet<string>,
+): string {
+  let id = base;
+  let suffix = 2;
+  while (document.getElementById(id) || takenIds?.has(id)) id = `${base}-${suffix++}`;
+  return id;
+}
+
+/** Whether each target exists in `source`; the document is parsed once however many targets ask. */
+export function probeElementsInSource(
+  source: string,
+  targets: readonly SourceMutationTarget[],
+): boolean[] {
+  const { document } = parseSourceDocument(source);
+  return targets.map((target) => {
+    if (!target.id && !target.hfId && !target.selector) return false;
+    const el = findTargetElement(document, target);
+    return el != null && isHTMLElement(el);
+  });
 }
 
 export function probeElementInSource(source: string, target: SourceMutationTarget): boolean {
-  if (!target.id && !target.hfId && !target.selector) return false;
-  const { document } = parseSourceDocument(source);
-  const el = findTargetElement(document, target);
-  return el != null && isHTMLElement(el);
+  return probeElementsInSource(source, [target])[0] ?? false;
 }
 
 export interface SplitElementResult {
@@ -305,10 +416,16 @@ function resolveElementTiming(el: Element): {
   return { start: timing.start ?? 0, duration: timing.duration ?? 0 };
 }
 
-function setElementDuration(el: Element, start: number, duration: number): void {
+function setElementDuration(
+  el: Element,
+  start: number,
+  duration: number,
+  trackIndex?: number,
+): void {
   writeClipTiming(el, {
     start: Math.round(start * 1000) / 1000,
     duration: Math.round(duration * 1000) / 1000,
+    ...(trackIndex != null ? { trackIndex } : {}),
   });
 }
 
@@ -318,7 +435,18 @@ export function splitElementInHtml(
   target: SourceMutationTarget,
   splitTime: number,
   newId: string,
-  fallbackTiming?: { start: number; duration: number },
+  fallbackTiming?: {
+    start: number;
+    duration: number;
+    playbackStart?: number;
+    playbackRate?: number;
+    stampPlaybackStart?: boolean;
+    // The element's current resolved track (authored, or the runtime's
+    // positional-index fallback when unauthored). Stamped onto both halves so
+    // inserting the clone can't shift either one to a different row — see
+    // parseAuthoredTrack's fallback in core/runtime/timeline.ts.
+    track?: number;
+  },
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
@@ -338,13 +466,7 @@ export function splitElementInHtml(
     return { html: source, matched: false, newId: null };
   }
 
-  if (document.getElementById(newId)) {
-    let suffix = 2;
-    const base = newId;
-    while (document.getElementById(newId)) {
-      newId = `${base}-${suffix++}`;
-    }
-  }
+  newId = nextUniqueId(document, newId);
 
   const firstDuration = splitTime - start;
   const secondDuration = duration - firstDuration;
@@ -352,25 +474,38 @@ export function splitElementInHtml(
   const clone = el.cloneNode(true);
   if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", newId);
+  dedupeClonedCompositionId(document, clone);
   clone.removeAttribute("data-hf-id");
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.
   for (const node of clone.querySelectorAll("[data-hf-id]")) node.removeAttribute("data-hf-id");
-  setElementDuration(clone, splitTime, secondDuration);
+  setElementDuration(clone, splitTime, secondDuration, fallbackTiming?.track);
 
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
 
-  // Adjust media trim offset for the second half
+  // A split creates two views over the same media source. Even an untrimmed
+  // audio/video element needs an explicit zero in-point stamped on the first
+  // half so the second half can advance from it instead of restarting at zero.
   const playbackStartAttr = el.hasAttribute("data-playback-start")
     ? "data-playback-start"
     : el.hasAttribute("data-media-start")
       ? "data-media-start"
-      : null;
+      : fallbackTiming?.stampPlaybackStart
+        ? "data-playback-start"
+        : el.matches("audio, video")
+          ? "data-media-start"
+          : null;
   if (playbackStartAttr) {
-    const currentTrim = parseFloat(el.getAttribute(playbackStartAttr) ?? "0") || 0;
-    const rateRaw = parseFloat(el.getAttribute("data-playback-rate") ?? "");
-    const rate = Number.isFinite(rateRaw) ? rateRaw : 1;
+    const readAttr = (name: string) => el.getAttribute(name);
+    const authoredTrim = el.getAttribute(playbackStartAttr);
+    const currentTrim =
+      authoredTrim !== null
+        ? readMediaOffsetSeconds(readAttr)
+        : (fallbackTiming?.playbackStart ?? 0);
+    const rate = readPlaybackRate(readAttr, fallbackTiming?.playbackRate);
+    if (authoredTrim === null || Number(authoredTrim) !== currentTrim)
+      el.setAttribute(playbackStartAttr, String(Math.round(currentTrim * 1000) / 1000));
     clone.setAttribute(
       playbackStartAttr,
       String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),
@@ -385,7 +520,7 @@ export function splitElementInHtml(
 
   // Trim the original element's duration. A GSAP element had no data-start; stamp
   // it so the runtime windows the first half (visibility selects on [data-start]).
-  setElementDuration(el, start, firstDuration);
+  setElementDuration(el, start, firstDuration, fallbackTiming?.track);
 
   // Insert clone after original
   if (el.nextSibling) {
@@ -437,6 +572,10 @@ export interface ElementRebase {
   target: SourceMutationTarget;
   left: number;
   top: number;
+  /** The member's current resolved track (authored, or the runtime's
+   * positional-index fallback). Stamped explicitly so moving it into the
+   * wrapper can't shift its computed row — same hazard split closes. */
+  track?: number;
 }
 
 function getInlineStylePx(el: Element, property: string): number {
@@ -462,14 +601,9 @@ function uniqueGroupDomId(document: Document, groupId: string): string {
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "group";
-  let id = base;
-  let n = 2;
-  while (document.getElementById(id)) {
-    id = `${base}-${n}`;
-    n += 1;
-  }
-  return id;
+      // Normalization above leaves at most one hyphen at either edge.
+      .replace(/^-|-$/g, "") || "group";
+  return nextUniqueId(document, base);
 }
 
 // fallow-ignore-next-line complexity
@@ -513,11 +647,11 @@ export function wrapElementsInHtml(
   const memberSet = new Set<Element>(els);
   const ordered = Array.from(parent.children).filter((c): c is HTMLElement => memberSet.has(c));
 
-  // Map each member to its rebased left/top (resolved against the same document).
-  const rebaseByEl = new Map<Element, { left: number; top: number }>();
+  // Map each member to its rebased left/top and track (resolved against the same document).
+  const rebaseByEl = new Map<Element, { left: number; top: number; track?: number }>();
   for (const rebase of rebases) {
     const el = findTargetElement(document, rebase.target);
-    if (el) rebaseByEl.set(el, { left: rebase.left, top: rebase.top });
+    if (el) rebaseByEl.set(el, { left: rebase.left, top: rebase.top, track: rebase.track });
   }
 
   const wrapper = document.createElement("div");
@@ -552,6 +686,7 @@ export function wrapElementsInHtml(
   for (const el of ordered) {
     const rebase = rebaseByEl.get(el);
     if (rebase) setInlineLeftTop(el, rebase.left, rebase.top);
+    if (rebase?.track != null) writeClipTiming(el, { trackIndex: Math.round(rebase.track) });
     wrapper.appendChild(el); // appendChild moves the node, preserving order
   }
 
@@ -562,9 +697,62 @@ export function wrapElementsInHtml(
   };
 }
 
+export interface UnwrapChildTrack {
+  target: SourceMutationTarget;
+  /** The child's current resolved track, same hazard and fix as wrap's members. */
+  track?: number;
+}
+
+// Only children actually inside the group and given a resolved track qualify —
+// same hazard and fix as wrap's members, scoped to this group's own children.
+function buildChildTrackMap(
+  document: Document,
+  group: Element,
+  childTracks: UnwrapChildTrack[],
+): Map<Element, number> {
+  const trackByEl = new Map<Element, number>();
+  for (const entry of childTracks) {
+    const el = findTargetElement(document, entry.target);
+    if (el && group.contains(el) && entry.track != null) trackByEl.set(el, entry.track);
+  }
+  return trackByEl;
+}
+
+// Undoes the wrap-side rebase (child absolute = child rebased + wrapper
+// origin), stamps each child's resolved track where one was given, and moves
+// every child back into the parent ahead of the wrapper — preserving order.
+function relocateGroupChildren(
+  group: Element,
+  parent: Element,
+  wLeft: number,
+  wTop: number,
+  trackByEl: Map<Element, number>,
+): Array<{ id: string; cx: number; cy: number }> {
+  const members: Array<{ id: string; cx: number; cy: number }> = [];
+  for (const child of Array.from(group.children)) {
+    if (isHTMLElement(child)) {
+      const newLeft = getInlineStylePx(child, "left") + wLeft;
+      const newTop = getInlineStylePx(child, "top") + wTop;
+      setInlineLeftTop(child, newLeft, newTop);
+      const track = trackByEl.get(child);
+      if (track != null) writeClipTiming(child, { trackIndex: Math.round(track) });
+      if (child.id) {
+        members.push({
+          id: child.id,
+          cx: newLeft + getInlineStylePx(child, "width") / 2,
+          cy: newTop + getInlineStylePx(child, "height") / 2,
+        });
+      }
+    }
+    parent.insertBefore(child, group);
+  }
+  return members;
+}
+
 export function unwrapElementsFromHtml(
   source: string,
   groupTarget: SourceMutationTarget,
+  childTracks: UnwrapChildTrack[] = [],
 ): UnwrapElementsResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const group = findTargetElement(document, groupTarget);
@@ -578,6 +766,8 @@ export function unwrapElementsFromHtml(
   const parent = group.parentElement;
   if (!parent) return { html: source, unwrapped: false };
 
+  const trackByEl = buildChildTrackMap(document, group, childTracks);
+
   // Undo the rebase: child absolute position = child (rebased) + wrapper origin.
   const wLeft = getInlineStylePx(group, "left");
   const wTop = getInlineStylePx(group, "top");
@@ -586,23 +776,7 @@ export function unwrapElementsFromHtml(
     cy: wTop + getInlineStylePx(group, "height") / 2,
   };
 
-  // Move children back to the wrapper's slot, preserving order.
-  const members: Array<{ id: string; cx: number; cy: number }> = [];
-  for (const child of Array.from(group.children)) {
-    if (isHTMLElement(child)) {
-      const newLeft = getInlineStylePx(child, "left") + wLeft;
-      const newTop = getInlineStylePx(child, "top") + wTop;
-      setInlineLeftTop(child, newLeft, newTop);
-      if (child.id) {
-        members.push({
-          id: child.id,
-          cx: newLeft + getInlineStylePx(child, "width") / 2,
-          cy: newTop + getInlineStylePx(child, "height") / 2,
-        });
-      }
-    }
-    parent.insertBefore(child, group);
-  }
+  const members = relocateGroupChildren(group, parent, wLeft, wTop, trackByEl);
   const groupId = group.id || undefined;
   group.remove();
 
@@ -613,4 +787,18 @@ export function unwrapElementsFromHtml(
     members,
     groupCenter,
   };
+}
+
+/** After a cut, give each linked group's right halves their own `data-link` and `data-sync-origin`. */
+export function relinkSplitHalvesInHtml(source: string, rightHalfIds: readonly string[]): string {
+  const { document, wrappedFragment } = parseSourceDocument(source);
+  const carriesPairing = (id: string) => {
+    const el = document.getElementById(id);
+    return Boolean(el?.hasAttribute("data-link") || el?.hasAttribute("data-sync-origin"));
+  };
+  if (!rightHalfIds.some(carriesPairing)) {
+    return source;
+  }
+  relinkSplitHalves(document, rightHalfIds);
+  return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }

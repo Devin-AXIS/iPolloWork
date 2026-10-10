@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { FONT_EXT, isHtmlIllustrationAsset } from "../utils/mediaTypes";
+import { FONT_EXT } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 
 interface UseFileTreeOptions {
@@ -73,9 +73,7 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
 
   const assets = useMemo(
     () =>
-      fileTree.filter(
-        (f) => isHtmlIllustrationAsset(f) || (!f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
-      ),
+      fileTree.filter((f) => !f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
     [fileTree],
   );
 

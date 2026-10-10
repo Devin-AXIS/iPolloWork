@@ -2,7 +2,7 @@ import type React from "react";
 
 // Editor primary color (themeable via --hf-accent). Applied through inline
 // style because CSS var() isn't valid in SVG presentation attributes.
-export const ACCENT = "var(--hf-accent, #3CE6AC)";
+export const ACCENT = "var(--hf-accent, #1FBAC0)";
 
 /** One path node: a diamond (matching the timeline keyframe), a wider transparent
  *  grab target (when editable), and a hover-revealed × delete badge (when removable). */

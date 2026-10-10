@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Top US Cities by Population","maxLength":72},{"id":"cities","type":"string","label":"City data","default":"New York:8300000,Los Angeles:3900000,Chicago:2700000,Houston:2300000","maxLength":2000},{"id":"highlight","type":"string","label":"Highlight","default":"New York","maxLength":32},{"id":"source","type":"string","label":"Source","default":"Source: U.S. Census Bureau, 2024","maxLength":72}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -40,7 +40,7 @@
     >
       <div class="map-container">
         <div class="header">
-          <h1 class="headline">Top 20 US Cities by Population</h1>
+          <h1 class="headline" data-ipw-ai-slot="title">Top 20 US Cities by Population</h1>
           <p class="subtitle">Proportional bubble markers by metropolitan population</p>
         </div>
 
@@ -51,7 +51,7 @@
           <g class="callouts-group"></g>
         </svg>
 
-        <div class="source">Source: U.S. Census Bureau, 2024</div>
+        <div class="source" data-ipw-ai-slot="source">Source: U.S. Census Bureau, 2024</div>
       </div>
 
       <style>
@@ -115,7 +115,6 @@
           stroke: #ffffff;
           stroke-width: 1;
           transform-origin: center center;
-          transform: scale(0);
         }
 
         #us-map-bubble .city-pulse {
@@ -162,10 +161,30 @@
           color: #475569;
           opacity: 0;
         }
+        #us-map-bubble { background: var(--ipw-color-bg, #0f172a); color: var(--ipw-color-text, #e2e8f0); font-family: var(--ipw-font-body, Inter, sans-serif); }
+        #us-map-bubble .headline { color: var(--ipw-color-text, #f8fafc); font-family: var(--ipw-font-display, Inter, sans-serif); }
+        #us-map-bubble .subtitle, #us-map-bubble .source { color: var(--ipw-color-muted, #94a3b8); }
+        #us-map-bubble .state-path { fill: var(--ipw-color-surface, #1e293b); stroke: var(--ipw-color-border, #334155); }
+        #us-map-bubble .city-bubble { fill: color-mix(in srgb, var(--ipw-color-primary, #3b82f6) 62%, transparent); }
       </style>
 
       <script>
         (function () {
+          var root = document.querySelector("#us-map-bubble");
+          var values = Object.assign(
+            {
+              title: "Top US Cities by Population",
+              cities: "New York:8300000,Los Angeles:3900000,Chicago:2700000,Houston:2300000",
+              highlight: "New York",
+              source: "Source: U.S. Census Bureau, 2024",
+            },
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {},
+          );
+          root.querySelector(".headline").textContent = String(values.title);
+          root.querySelector(".source").textContent = String(values.source);
+          var highlightCity = String(values.highlight).trim() || "New York";
           var US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 
           var cities = [
@@ -190,6 +209,15 @@
             { name: "Denver", lat: 39.7392, lon: -104.9903, pop: 710000 },
             { name: "Nashville", lat: 36.1627, lon: -86.7816, pop: 690000 },
           ];
+          String(values.cities)
+            .split(",")
+            .forEach(function (entry) {
+              var separator = entry.lastIndexOf(":");
+              var name = entry.slice(0, separator).trim();
+              var pop = Number(entry.slice(separator + 1));
+              var match = cities.find(function (city) { return city.name === name; });
+              if (match && Number.isFinite(pop)) match.pop = pop;
+            });
 
           var radiusScale = d3.scaleSqrt().domain([500000, 8500000]).range([6, 45]);
 
@@ -248,7 +276,7 @@
 
               var nycCoords = null;
               projectedCities.forEach(function (city) {
-                if (city.name === "New York") {
+                if (city.name === highlightCity) {
                   nycCoords = { x: city.x, y: city.y };
                 }
               });
@@ -303,7 +331,8 @@
               if (nycCoords) {
                 pulseCircle.setAttribute("cx", nycCoords.x);
                 pulseCircle.setAttribute("cy", nycCoords.y);
-                pulseCircle.setAttribute("r", radiusScale(8300000));
+                var highlighted = projectedCities.find(function (city) { return city.name === highlightCity; });
+                pulseCircle.setAttribute("r", radiusScale(highlighted ? highlighted.pop : 8300000));
                 pulseCircle.setAttribute("class", "city-pulse");
                 bubblesGroup.appendChild(pulseCircle);
               }
@@ -390,8 +419,9 @@
               0.8,
             );
 
-            tl.to(
+            tl.fromTo(
               bubbles,
+              { scale: 0 },
               {
                 scale: 1,
                 duration: 0.5,

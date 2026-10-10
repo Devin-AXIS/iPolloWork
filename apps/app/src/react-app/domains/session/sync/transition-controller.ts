@@ -55,7 +55,11 @@ export function deriveSessionRenderModel(input: {
   return {
     intendedSessionId: input.intendedSessionId,
     renderedSessionId: input.renderedSessionId,
-    transitionState: input.isFetching ? "switching" : "idle",
+    // A background snapshot refresh must not lock the composer once the
+    // intended session is already on screen. Treating every refetch as a
+    // route transition temporarily disabled Enter while leaving the editor
+    // editable, so a send keystroke was inserted as a newline instead.
+    transitionState: "idle",
     renderSource: "live",
   };
 }

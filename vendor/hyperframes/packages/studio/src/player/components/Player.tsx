@@ -26,6 +26,7 @@ interface PlayerProps {
 
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
+  readonly ready: boolean;
 }
 
 const MEDIA_HAVE_CURRENT_DATA = 2;
@@ -35,6 +36,7 @@ const MEDIA_NETWORK_NO_SOURCE = 3;
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
 const REFRESH_LOADING_OVERLAY_DELAY_MS = 220;
 const DEFERRED_VISUAL_READY_TIMEOUT_MS = 800;
+const AVATAR_CUTOUT_VISUAL_READY_TIMEOUT_MS = 5_000;
 const DEFERRED_VISUAL_READY_PAINTS = 2;
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
@@ -56,16 +58,13 @@ export function shouldShowRefreshLoadingOverlay({
 export function CompositionRefreshLoadingOverlay() {
   return (
     <div
-      className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
+      className="absolute right-3 top-3 z-30 pointer-events-none select-none"
       data-hyperframes-ignore=""
       data-testid="composition-refresh-loading-overlay"
       draggable={false}
       style={{ transition: "opacity 180ms ease-out" }}
-      onDragStart={(event) => event.preventDefault()}
-      onMouseDown={(event) => event.preventDefault()}
-      onPointerDown={(event) => event.preventDefault()}
     >
-      <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
+      <div className="flex items-center gap-2 rounded-md bg-neutral-900/90 px-3 py-2 shadow-sm" role="status" aria-live="polite">
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
         <p className="text-xs text-neutral-400">Preparing preview…</p>
       </div>
@@ -142,6 +141,32 @@ function isVisuallyActive(element: HTMLElement): boolean {
   );
 }
 
+function isPendingAvatarCutoutForeground(video: HTMLVideoElement): boolean {
+  return (
+    video.hasAttribute("data-avatar-source") &&
+    (Boolean(video.error) ||
+      video.networkState === MEDIA_NETWORK_NO_SOURCE ||
+      video.readyState < MEDIA_HAVE_CURRENT_DATA)
+  );
+}
+
+function documentHasPendingAvatarCutout(doc: Document, depth = 0): boolean {
+  for (const video of doc.querySelectorAll<HTMLVideoElement>("video[data-avatar-source]")) {
+    if (isVisuallyActive(video) && isPendingAvatarCutoutForeground(video)) return true;
+  }
+  if (depth >= 2) return false;
+  for (const childFrame of doc.querySelectorAll<HTMLIFrameElement>("iframe")) {
+    if (!isVisuallyActive(childFrame)) continue;
+    try {
+      const childDoc = childFrame.contentDocument;
+      if (childDoc && documentHasPendingAvatarCutout(childDoc, depth + 1)) return true;
+    } catch {
+      // Cross-origin child frames are covered by the bounded generic handoff.
+    }
+  }
+  return false;
+}
+
 function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
   if (doc.fonts?.status !== "loaded") return true;
 
@@ -150,11 +175,13 @@ function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
   }
 
   for (const video of doc.querySelectorAll<HTMLVideoElement>("video")) {
+    const pendingAvatarCutout = isPendingAvatarCutoutForeground(video);
     if (
       isVisuallyActive(video) &&
-      !video.error &&
-      video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
-      video.readyState < MEDIA_HAVE_CURRENT_DATA
+      (pendingAvatarCutout ||
+        (!video.error &&
+          video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
+          video.readyState < MEDIA_HAVE_CURRENT_DATA))
     ) {
       return true;
     }
@@ -211,10 +238,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const playerRef = useRef<HyperframesPlayerElement | null>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [compositionLoading, setCompositionLoading] = useState(true);
-    const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
+    const [compositionError, setCompositionError] = useState(false);
+    const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(false);
     const previousRefreshTokenRef = useRef(refreshToken);
 
     // eslint-disable-next-line no-restricted-syntax
@@ -254,6 +283,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
+        playerRef.current = player;
         const srcUrl = new URL(
           directUrl || `/api/projects/${projectId}/preview`,
           window.location.origin,
@@ -312,6 +342,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         let deferredReadyHandled = false;
         const handleReady = () => {
           setCompositionLoading(false);
+          setCompositionError(false);
           if (!deferReveal) return;
           if (deferredReadyHandled) return;
           deferredReadyHandled = true;
@@ -329,8 +360,15 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               return;
             }
             if (visibleAt === 0) visibleAt = performance.now();
-            const timedOut = performance.now() - visibleAt >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
-            if (timedOut || isDeferredFrameVisuallyReady(iframe)) {
+            const doc = iframe.contentDocument;
+            const elapsedMs = performance.now() - visibleAt;
+            const pendingAvatarCutout = Boolean(doc && documentHasPendingAvatarCutout(doc));
+            if (pendingAvatarCutout && elapsedMs >= AVATAR_CUTOUT_VISUAL_READY_TIMEOUT_MS) {
+              onError?.();
+              return;
+            }
+            const timedOut = elapsedMs >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
+            if (!pendingAvatarCutout && (timedOut || isDeferredFrameVisuallyReady(iframe))) {
               readyPaints += 1;
             } else {
               readyPaints = 0;
@@ -345,6 +383,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         };
         const handleError = () => {
           setCompositionLoading(false);
+          setCompositionError(true);
           onError?.();
         };
         player.addEventListener("ready", handleReady);
@@ -357,7 +396,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // load event reaches this listener. Once the replacement has already
           // handed off, that late load must not reopen a redundant overlay over
           // the freshly revealed preview.
-          if (!deferredReadyHandled) setCompositionLoading(true);
+          setCompositionLoading(!player.ready && !deferredReadyHandled);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");
@@ -417,6 +456,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       return () => {
         canceled = true;
         cleanup?.();
+        playerRef.current = null;
       };
     });
 
@@ -457,6 +497,32 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           </div>
         )}
         {showRefreshOverlay && <CompositionRefreshLoadingOverlay />}
+        {compositionError && (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-neutral-950 text-center text-sm text-neutral-200"
+            role="alert"
+            data-testid="composition-error-overlay"
+          >
+            <p>Preview could not load.</p>
+            <button
+              type="button"
+              className="rounded border border-neutral-600 px-3 py-1.5 hover:border-neutral-400"
+              onClick={() => {
+                const player = playerRef.current;
+                const src = player?.getAttribute("src");
+                if (!player || !src) return;
+                const url = new URL(src, window.location.origin);
+                url.searchParams.set("_hfRetry", String(Date.now()));
+                setCompositionError(false);
+                setCompositionLoading(true);
+                setCompositionOverlayDeferred(false);
+                player.setAttribute("src", `${url.pathname}${url.search}`);
+              }}
+            >
+              Retry preview
+            </button>
+          </div>
+        )}
       </div>
     );
   },

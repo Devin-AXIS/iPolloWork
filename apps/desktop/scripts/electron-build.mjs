@@ -1,11 +1,16 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { stageServerConstants, stageServerRuntimeTypes } from "./server-packaging.mjs";
+import {
+  assertServerRuntimeDependencies,
+  stageServerConstants,
+  stageServerRuntime,
+  stageServerRuntimeTypes,
+} from "./server-packaging.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, "..");
@@ -20,6 +25,8 @@ const hyperframesBuildStamp = resolve(desktopRoot, ".hyperframes-build-stamp.jso
 const hyperframesInstallStamp = resolve(desktopRoot, ".hyperframes-install-stamp.json");
 const serverDistDir = resolve(repoRoot, "apps", "server", "dist");
 const constantsSrc = resolve(repoRoot, "constants.json");
+const serverPackagePath = resolve(repoRoot, "apps", "server", "package.json");
+const desktopPackagePath = resolve(desktopRoot, "package.json");
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCmd = process.platform === "win32" ? "bun.exe" : "bun";
@@ -163,16 +170,6 @@ function bundleNodeModule(entry, output) {
 }
 
 function stageBundledOpenCodeRuntime() {
-  const chromeEntry = fileURLToPath(import.meta.resolve("opencode-chrome-devtools"));
-  const chromeRoot = resolve(dirname(chromeEntry), "..");
-  const chromeDestinationRoot = resolve(
-    serverDistDir,
-    "opencode-plugins",
-    "opencode-chrome-devtools",
-  );
-  bundleNodeModule(chromeEntry, resolve(chromeDestinationRoot, "dist", "plugin.js"));
-  copyFileSync(resolve(chromeRoot, "package.json"), resolve(chromeDestinationRoot, "package.json"));
-
   const sdkEntry = fileURLToPath(import.meta.resolve("@opencode-ai/plugin"));
   const sdkRoot = resolve(dirname(sdkEntry), "..");
   const sdkPackage = JSON.parse(readFileSync(resolve(sdkRoot, "package.json"), "utf8"));
@@ -249,12 +246,22 @@ function stageBundledOpenCodeRuntime() {
   );
 }
 
+run(nodeCmd, [resolve(repoRoot, "scripts", "check-hyperframes-version-sync.mjs")], repoRoot);
+assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath });
 run(pnpmCmd, ["--filter", "@ipollowork/app", "typecheck"], repoRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", "--outdir", electronHelperDir], desktopRoot);
 // Build the server TS → JS so Electron can import it in-process
 ensureHyperframesBuild();
 run(nodeCmd, [resolve(__dirname, "prepare-hyperframes-runtime.mjs")], desktopRoot);
+run(nodeCmd, [resolve(__dirname, "package-video-resources.mjs"), "--bundled"], desktopRoot);
+run(nodeCmd, [resolve(repoRoot, "apps/server/script/prepare-video-models.mjs")], repoRoot, {
+  IPOLLOWORK_VIDEO_MODELS_PATH: resolve(repoRoot, "apps/server/models"),
+});
+run(nodeCmd, [resolve(repoRoot, "examples/plugin-packages/operation-recorder/scripts/build.mjs")], repoRoot);
+for (const pluginId of ["labelu-data-annotation", "short-video-studio"]) {
+  run(nodeCmd, [resolve(repoRoot, `examples/plugin-packages/${pluginId}/scripts/build.mjs`)], repoRoot);
+}
 run(pnpmCmd, ["--filter", "ipollowork-server", "build"], repoRoot);
 stageBundledOpenCodeRuntime();
 // IPOLLOWORK_ELECTRON_BUILD tells Vite to emit relative asset paths so
@@ -268,9 +275,7 @@ run(nodeCmd, [resolve(__dirname, "validate-renderer-assets.mjs")], repoRoot);
 // that still points at the repository root. Imports cannot escape app.asar.
 stageServerConstants({ serverDistDir, constantsSrc });
 stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir: resolve(runtimeTypesRoot, "dist") });
-rmSync(packagedServerRoot, { recursive: true, force: true });
-cpSync(serverDistDir, resolve(packagedServerRoot, "dist"), { recursive: true });
-copyFileSync(resolve(repoRoot, "apps", "server", "package.json"), resolve(packagedServerRoot, "package.json"));
+stageServerRuntime({ serverDistDir, serverPackagePath, packagedServerRoot });
 for (const fileName of readdirSync(electronRoot).filter((name) => name.endsWith(".mjs")).sort()) {
   run(nodeCmd, ["--check", resolve(electronRoot, fileName)], repoRoot);
 }

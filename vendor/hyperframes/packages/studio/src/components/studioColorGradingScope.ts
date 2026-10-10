@@ -12,7 +12,7 @@ type ProjectFileWriter = (path: string, content: string) => Promise<void>;
 type ShowToast = (message: string, tone?: "error" | "info") => void;
 type RecordEdit = (entry: {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   files: Record<string, { before: string; after: string }>;
 }) => Promise<void>;
 
@@ -101,7 +101,7 @@ export async function applyColorGradingScopeUpdate({
     readProjectFile,
   );
   if (Object.keys(files).length === 0) {
-    showToast("No color grading changed", "info");
+    showToast("No color grading changed", "error");
     return EMPTY_COLOR_GRADING_SCOPE_RESULT;
   }
 

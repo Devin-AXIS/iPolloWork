@@ -1,3 +1,5 @@
+import { frameAlignedDurationSeconds } from "@hyperframes/core/runtime/protocol";
+import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
 import { useRef, useCallback, useEffect } from "react";
 import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -55,7 +57,7 @@ import { wrapAdapterWithTimedClipVisibility } from "../lib/timedClipVisibility";
 
 /**
  * Whether the derived elements differ from the current ones in any field that
- * affects rendering (identity, timing, track, or source length) — used to skip
+ * affects rendering (identity, timing, track, or authored media) — used to skip
  * redundant store writes.
  */
 function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[]): boolean {
@@ -68,7 +70,16 @@ function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[
       el.start !== p.start ||
       el.duration !== p.duration ||
       el.track !== p.track ||
-      el.sourceDuration !== p.sourceDuration
+      el.sourceDuration !== p.sourceDuration ||
+      el.volume !== p.volume ||
+      el.fadeIn !== p.fadeIn ||
+      el.fadeOut !== p.fadeOut ||
+      el.hasAudio !== p.hasAudio ||
+      el.src !== p.src ||
+      el.playbackStart !== p.playbackStart ||
+      el.playbackRate !== p.playbackRate ||
+      el.label !== p.label ||
+      el.clipLabel !== p.clipLabel
     );
   });
 }
@@ -107,6 +118,7 @@ export function useTimelinePlayer() {
             elements,
             state.duration,
             resolvedDuration,
+            iframeRef.current?.contentDocument,
           ),
         ),
       );
@@ -150,14 +162,21 @@ export function useTimelinePlayer() {
 
       const playerAdapter =
         win.__player && typeof win.__player.play === "function" ? win.__player : null;
-      const docDuration = readTimelineDurationFromDocument(iframe.contentDocument);
+      const fps = acceptedRuntimeMessageFps(win.__clipManifest);
+      const docDuration = frameAlignedDurationSeconds(readTimelineDurationFromDocument(iframe.contentDocument), fps);
       const adapterDur = getAdapterDuration(playerAdapter);
       const requiredDuration = Math.max(docDuration, usePlayerStore.getState().duration);
       const withTimedVisibility = (adapter: PlaybackAdapter) =>
         wrapAdapterWithTimedClipVisibility(
           docDuration > 0 ? wrapAdapterWithDurationLimit(adapter, docDuration) : adapter,
           () => iframe.contentDocument,
+          fps,
         );
+
+      if (shouldUseDirectRuntimeAdapter(adapterDur, requiredDuration, fps)) {
+        releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
+        return withTimedVisibility(playerAdapter!);
+      }
 
       if (shouldUseStudioClockForLegacyFrames(iframe.contentDocument, playerAdapter, docDuration)) {
         return withTimedVisibility(
@@ -172,11 +191,6 @@ export function useTimelinePlayer() {
             reason: "legacy-frame-carousel",
           }),
         );
-      }
-
-      if (shouldUseDirectRuntimeAdapter(adapterDur, requiredDuration)) {
-        releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-        return withTimedVisibility(playerAdapter!);
       }
 
       let timelineAdapter: PlaybackAdapter | null = null;
@@ -393,6 +407,9 @@ export function useTimelinePlayer() {
       }
       const duration = Math.max(0, adapter.getDuration());
       const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+      // A user seek during a staged refresh supersedes the position saved by
+      // the edit. The replacement iframe must restore this newer playhead.
+      if (isRefreshingRef.current) pendingSeekRef.current = nextTime;
       const keepPlaying = options?.keepPlaying === true;
       const shouldResumeAfterSeek = shouldResumeForwardPlaybackAfterSeek({
         keepPlaying,

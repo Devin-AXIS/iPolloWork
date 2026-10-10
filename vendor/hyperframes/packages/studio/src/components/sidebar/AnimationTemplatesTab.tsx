@@ -1,8 +1,18 @@
-import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   defaultMotionDuration,
   getMotionPreset,
   type MotionApplicationKind,
+  type MotionMutationInput,
   type MotionParameters,
   type MotionPreset,
   type MotionTargetKind,
@@ -13,17 +23,27 @@ import {
 } from "../../contexts/DomEditContext";
 import { useStudioI18n } from "../../i18n";
 import { resolveCaptionMotionTargetElement } from "../../utils/motionPreset";
-import { resolveMotionInstances, resolveMotionTargetKind } from "../editor/SemanticMotionPanel";
+import {
+  resolveMotionInstances,
+  resolveMotionTargetKind,
+  type ResolvedMotionInstance,
+} from "../editor/SemanticMotionPanel";
 import type { DomEditSelection } from "../editor/domEditing";
-import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import { SearchInput } from "../ui/SearchInput";
+import { ChevronDown } from "../../icons/SystemIcons";
 
 const StructuredMotionThumbnail = lazy(() =>
   import("./StructuredMotionThumbnail").then((module) => ({
     default: module.StructuredMotionThumbnail,
   })),
 );
+const AnimationPropertiesPanel = lazy(() =>
+  import("../editor/SemanticMotionPanel").then((module) => ({
+    default: module.AnimationPropertiesPanel,
+  })),
+);
 
-export type AnimationTemplateCategory = "general" | "text";
+export type AnimationTemplateCategory = "general" | "text" | "camera" | "transition";
 
 export interface AnimationTemplateDefinition {
   id: string;
@@ -102,6 +122,19 @@ const CATEGORY_LABELS: Record<
     zh: "文字动画",
     hint: { en: "Word, character, mask, and glow motion", zh: "支持按词、按字、遮罩与流光" },
   },
+  camera: {
+    en: "Camera",
+    zh: "运镜",
+    hint: {
+      en: "Frame a world inside a clipped viewport; keep captions outside",
+      zh: "用于裁切视口内的画面，字幕保持在镜头之外",
+    },
+  },
+  transition: {
+    en: "Transitions",
+    zh: "转场",
+    hint: { en: "Apply at the start of the incoming scene", zh: "用于下一场景的起始衔接" },
+  },
 };
 
 const BOX_AUTOMATION_SECTION_LABEL = {
@@ -112,7 +145,85 @@ const BOX_AUTOMATION_SECTION_LABEL = {
   },
 };
 
+const ANIMATION_EDITOR_WIDTH = 200;
+
 export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
+  ...(
+    [
+      [
+        "camera.push-in",
+        "camera",
+        "Focus Push",
+        "焦点推进",
+        "Move from overview into a detail",
+        "从全景推进到指定细节",
+      ],
+      [
+        "camera.pull-back",
+        "camera",
+        "Pull Back",
+        "拉远揭示",
+        "Reveal the context around a detail",
+        "从细节拉远，揭示整体关系",
+      ],
+      [
+        "camera.focus-travel",
+        "camera",
+        "Focus Travel",
+        "焦点巡游",
+        "Travel between two framed points",
+        "在两个焦点之间连续移动",
+      ],
+      [
+        "camera.oblique-glide",
+        "camera",
+        "Oblique Glide",
+        "空间掠过",
+        "Glide across a tilted product plane",
+        "斜角掠过产品画面并稳定落位",
+      ],
+      [
+        "transition.depth-push",
+        "transition",
+        "Depth Push",
+        "景深推进",
+        "Enter a deeper focal plane",
+        "从环境进入更深的焦点层",
+      ],
+      [
+        "transition.diagonal-slice",
+        "transition",
+        "Diagonal Slice",
+        "斜切转场",
+        "Reveal the incoming scene diagonally",
+        "沿斜向揭示下一场景",
+      ],
+      [
+        "transition.lens-focus",
+        "transition",
+        "Lens Focus",
+        "镜头聚焦",
+        "Resolve the next scene from a focal aperture",
+        "从光圈聚焦到下一场景",
+      ],
+      [
+        "transition.split-wipe",
+        "transition",
+        "Split Wipe",
+        "分屏擦除",
+        "Hand off to the incoming scene",
+        "方向明确的场景交接",
+      ],
+    ] satisfies Array<[string, AnimationTemplateCategory, string, string, string, string]>
+  ).map(([presetId, category, en, zh, descriptionEn, descriptionZh]) => ({
+    id: presetId,
+    presetId,
+    category,
+    preview: presetId,
+    title: { en, zh },
+    description: { en: descriptionEn, zh: descriptionZh },
+    keywords: [category, category === "camera" ? "运镜 空间 焦点 镜头" : "转场 场景 衔接"],
+  })),
   {
     id: "general-fade-in",
     category: "general",
@@ -286,7 +397,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     },
     preview: "text-focus",
     presetId: "text.enter.editorial-emphasis",
-    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.075 },
+    parameters: { colorSource: "custom", color: "#1FBAC0", unit: "word", stagger: 0.075 },
     keywords: ["advanced", "高级", "editorial", "编辑"],
   },
   {
@@ -296,7 +407,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "A teal pill follows each spoken word", zh: "蓝绿色胶囊按词接力高亮" },
     preview: "text-highlight",
     presetId: "text.emphasis.karaoke-flow",
-    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.12 },
+    parameters: { colorSource: "custom", color: "#1FBAC0", unit: "word", stagger: 0.12 },
     keywords: ["advanced", "高级", "karaoke", "字幕", "逐词"],
   },
   {
@@ -325,7 +436,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     parameters: {
       colorSource: "custom",
       color: "#5B6CFF",
-      accentColor: "#20BBC0",
+      accentColor: "#1FBAC0",
       unit: "word",
       stagger: 0.055,
     },
@@ -553,14 +664,17 @@ function TemplatePreview({
   active: boolean;
 }) {
   const boxPreview = template.id.startsWith("box-");
+  const spatial = template.category === "camera" || template.category === "transition";
   const textPreset =
-    template.category === "text" ? resolveAnimationTemplatePreset(template, "text") : null;
+    template.category === "text" || spatial
+      ? resolveAnimationTemplatePreset(template, spatial ? "element" : "text")
+      : null;
   const textParameters = textPreset
     ? resolveAnimationTemplateParameters(template, textPreset, false)
     : null;
   return (
     <div
-      className="hf-animation-template-preview relative h-[92px] overflow-hidden rounded-[8px]"
+      className="hf-animation-template-preview relative h-[100px] overflow-hidden rounded-[8px]"
       data-preview={textPreset ? undefined : template.preview}
       data-structured-preview-active={textPreset ? (active ? "true" : "false") : undefined}
       aria-hidden="true"
@@ -573,11 +687,13 @@ function TemplatePreview({
           <Suspense fallback={<span>Make motion clear.</span>}>
             <StructuredMotionThumbnail
               presetId={textPreset.id}
-              targetKind="text"
+              targetKind={spatial ? "element" : "text"}
               parameters={textParameters}
               duration={defaultMotionDuration(textPreset)}
             />
           </Suspense>
+        ) : spatial ? (
+          <span>{template.title.en}</span>
         ) : template.category === "text" ? (
           "Make motion clear."
         ) : null}
@@ -611,6 +727,19 @@ export function createAnimationTemplateSections(
   const textTemplates = sortTextAnimationTemplates(
     templates.filter((item) => item.category === "text"),
   );
+  const spatialSections = (["camera", "transition"] as const).flatMap((category) => {
+    const matching = templates.filter((item) => item.category === category);
+    return matching.length
+      ? [
+          {
+            key: category,
+            title: CATEGORY_LABELS[category],
+            hint: CATEGORY_LABELS[category].hint,
+            templates: matching,
+          },
+        ]
+      : [];
+  });
 
   const generalSection =
     generalTemplates.length > 0
@@ -632,7 +761,7 @@ export function createAnimationTemplateSections(
       : null;
 
   if (targetKind !== "text") {
-    return [generalSection, boxAutomationSection].filter(
+    return [generalSection, boxAutomationSection, ...spatialSections].filter(
       (section): section is AnimationTemplateSection => section !== null,
     );
   }
@@ -651,62 +780,213 @@ export function createAnimationTemplateSections(
   );
 }
 
+export type AnimationLibraryCategory = "all" | "box-automation" | "text" | "camera" | "transition";
+
+export function animationTemplateMatchesCategory(
+  template: AnimationTemplateDefinition,
+  category: AnimationLibraryCategory,
+): boolean {
+  if (category === "all") return true;
+  if (category === "box-automation") return isBoxAutomationTemplate(template);
+  return template.category === category;
+}
+
+export function resolveAppliedAnimationTemplate(
+  template: AnimationTemplateDefinition,
+  targetKind: MotionTargetKind,
+  motions: readonly ResolvedMotionInstance[],
+): ResolvedMotionInstance | null {
+  const application = resolveAnimationTemplateApplication(template, targetKind);
+  if (!application) return null;
+  for (let index = motions.length - 1; index >= 0; index -= 1) {
+    const motion = motions[index];
+    if (motion.instance.templateId) {
+      if (motion.instance.templateId === template.id) return motion;
+      continue;
+    }
+    if (
+      motion.instance.applicationKind === application.applicationKind &&
+      motion.instance.presetId === application.preset.id
+    ) {
+      return motion;
+    }
+  }
+  return null;
+}
+
+type AnimationMutationHandler = (
+  targetKind: MotionTargetKind,
+  mutation: MotionMutationInput,
+  selectionOverride?: DomEditSelection | null,
+) => Promise<boolean>;
+
+type AnimationMutationStatus = "applied" | "updated" | "removed" | "selection-required";
+
 const AnimationTemplateCard = memo(function AnimationTemplateCard({
   template,
   locale,
+  duration,
+  applied,
+  loading,
+  applyDisabled,
   onApply,
+  onEdit,
+  onRemove,
 }: {
   template: AnimationTemplateDefinition;
   locale: "en" | "zh";
+  duration: number;
+  applied: ResolvedMotionInstance | null;
+  loading: boolean;
+  applyDisabled: boolean;
   onApply: (template: AnimationTemplateDefinition) => void | Promise<void>;
+  onEdit: (template: AnimationTemplateDefinition, anchor: HTMLElement) => void | Promise<void>;
+  onRemove: (
+    template: AnimationTemplateDefinition,
+    motion: ResolvedMotionInstance,
+  ) => void | Promise<void>;
 }) {
+  const { t } = useStudioI18n();
   const [previewActive, setPreviewActive] = useState(false);
   const advanced = isAdvancedTextAnimationTemplate(template);
+  const state = loading ? "loading" : applied ? "applied" : "available";
+  const preview = (
+    <div className="relative">
+      <div className="relative rounded-[8px]">
+        <TemplatePreview template={template} active={previewActive} />
+        <span
+          className="pointer-events-none absolute inset-0 rounded-[8px] border-2 border-[#1FBAC0] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          data-testid="animation-card-hover-border"
+        />
+      </div>
+      <span className="absolute left-2 top-2 rounded-[4px] bg-[#f6f7fb] px-1 py-0.5 text-[9px] font-semibold text-[#161e24]">
+        {Number(duration.toFixed(1))} s
+      </span>
+      {applied || loading ? (
+        <span className="absolute right-2 top-2 grid min-h-4 place-items-center rounded-[4px] bg-[#087b82] px-1 text-[9px] font-semibold text-[#a9e7ea]">
+          {loading ? (
+            <span className="size-3 animate-spin rounded-full border border-[#a9e7ea]/40 border-t-[#a9e7ea] motion-reduce:animate-none" />
+          ) : (
+            t("animation.inUse")
+          )}
+        </span>
+      ) : null}
+    </div>
+  );
 
   return (
     <article
-      className="hf-animation-template-card group min-w-0"
+      className="hf-animation-template-card group relative min-w-0"
       data-testid="animation-template-card"
       data-template-id={template.id}
+      data-state={state}
+      data-applied={applied ? "true" : "false"}
+      data-loading={loading ? "true" : "false"}
       data-advanced-text-animation={advanced ? "true" : undefined}
-      style={{ contentVisibility: "auto", containIntrinsicSize: "188px" }}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "128px" }}
       onMouseEnter={() => setPreviewActive(true)}
       onMouseLeave={() => setPreviewActive(false)}
     >
-      <TemplatePreview template={template} active={previewActive} />
-      <div className="mt-2 flex min-w-0 items-center gap-1.5">
-        <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-panel-text-1">
+      {applied ? (
+        preview
+      ) : (
+        <button
+          type="button"
+          disabled={loading || applyDisabled}
+          data-animation-action="apply"
+          aria-label={`${t("animation.apply")} ${template.title[locale]}`}
+          onClick={() => void onApply(template)}
+          className="block w-full rounded-[8px] text-left outline-none active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-wait disabled:opacity-60"
+        >
+          {preview}
+        </button>
+      )}
+      <div className="mt-1 flex h-5 min-w-0 items-center justify-between gap-1 pl-1">
+        <div className="min-w-0 flex-1 truncate text-xs font-medium text-black dark:text-panel-text-1">
           {template.title[locale]}
         </div>
-        {advanced ? (
-          <span className="shrink-0 rounded-full bg-[#20bbc0]/12 px-1.5 py-0.5 text-[8px] font-semibold text-[#168e92]">
-            {locale === "zh" ? "高级" : "Advanced"}
-          </span>
+        {applied ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              data-animation-action="edit"
+              onClick={(event) => void onEdit(template, event.currentTarget)}
+              className="h-5 rounded-[2px] px-1 text-[11px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+            >
+              {t("animation.edit")}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              data-animation-action="remove"
+              onClick={() => void onRemove(template, applied)}
+              className="h-5 rounded-[2px] px-1 text-[11px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-wait disabled:opacity-60 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+            >
+              {t("animation.remove")}
+            </button>
+          </div>
         ) : null}
       </div>
-      <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
-        {template.description[locale]}
-      </div>
-      <button
-        type="button"
-        onClick={() => void onApply(template)}
-        className="mt-2 h-7 w-full rounded-[6px] bg-panel-input text-[10px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/15 hover:text-[#168e92]"
-      >
-        {locale === "zh" ? "\u5e94\u7528" : "Apply"}
-      </button>
     </article>
   );
 });
 
-export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
-  onSelectTemplate,
+function AnimationTemplateGroup({
+  testId,
+  title,
+  expanded,
+  onToggle,
+  children,
 }: {
-  onSelectTemplate: (draft: AnimationTemplateDraft) => void;
+  testId: string;
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
 }) {
-  const { locale } = useStudioI18n();
+  return (
+    <section data-testid={testId} data-expanded={expanded ? "true" : "false"}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className="flex h-12 w-full items-center justify-between px-[17px] text-[12px] font-medium text-[#2c2d2a] shadow-[inset_3px_0_0_#1FBAC0] transition-colors hover:bg-[#f5f6f9] active:bg-[#eceef2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1FBAC0]/50 dark:text-panel-text-1 dark:hover:bg-panel-input dark:active:bg-panel-hover"
+      >
+        {title}
+        <ChevronDown
+          size={16}
+          className={`transition-transform ${expanded ? "rotate-0" : "-rotate-90"}`}
+        />
+      </button>
+      {expanded ? children : null}
+    </section>
+  );
+}
+
+interface AnimationEditorState {
+  templateId: string;
+  animationId: string;
+  selection: DomEditSelection;
+  anchor: { top: number; right: number; bottom: number; left: number };
+}
+
+export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
+  onMutate,
+  onStatus,
+}: {
+  onMutate: AnimationMutationHandler;
+  onStatus?: (status: AnimationMutationStatus) => void;
+}) {
+  const { locale, t } = useStudioI18n();
   const { buildDomSelectionFromTarget } = useDomEditActionsContext();
   const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<AnimationLibraryCategory>("all");
+  const [usedExpanded, setUsedExpanded] = useState(true);
+  const [unusedExpanded, setUnusedExpanded] = useState(true);
+  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
+  const [applyFailed, setApplyFailed] = useState(false);
+  const [editor, setEditor] = useState<AnimationEditorState | null>(null);
   const captionMotionTarget = domEditSelection
     ? resolveCaptionMotionTargetElement(domEditSelection.element)
     : null;
@@ -715,12 +995,14 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
       ? "text"
       : resolveMotionTargetKind(domEditSelection)
     : null;
-  const templateSections = useMemo(() => {
+  const motions = useMemo(
+    () => resolveMotionInstances(selectedGsapAnimations),
+    [selectedGsapAnimations],
+  );
+  const matchingTemplates = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const matches = ANIMATION_TEMPLATES.filter((template) => {
-      if (!targetKind) return false;
-      const application = resolveAnimationTemplateApplication(template, targetKind);
-      if (!application) return false;
+    return ANIMATION_TEMPLATES.filter((template) => {
+      if (targetKind && !resolveAnimationTemplateApplication(template, targetKind)) return false;
       const advancedAliasMatch =
         isAdvancedTextAnimationTemplate(template) &&
         ["advanced", "高级", "高级文字动画"].some(
@@ -736,130 +1018,292 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
         template.keywords?.some((keyword) => keyword.toLowerCase().includes(query))
       );
     });
-    return createAnimationTemplateSections(matches, targetKind);
   }, [search, targetKind]);
-  const appliedLabels = useMemo(() => {
-    if (!targetKind) return [];
-    const applications = new Set(
-      resolveMotionInstances(selectedGsapAnimations).map(
-        ({ instance }) => `${instance.applicationKind}:${instance.presetId}`,
-      ),
-    );
-    return ANIMATION_TEMPLATES.filter((template) => {
-      const application = resolveAnimationTemplateApplication(template, targetKind);
-      return application
-        ? applications.has(`${application.applicationKind}:${application.preset.id}`)
-        : false;
-    }).map((template) => template.title[locale]);
-  }, [locale, selectedGsapAnimations, targetKind]);
+  const visibleTemplates = useMemo(
+    () =>
+      matchingTemplates.filter((template) => animationTemplateMatchesCategory(template, category)),
+    [category, matchingTemplates],
+  );
+  const templateEntries = useMemo(
+    () =>
+      visibleTemplates.map((template) => ({
+        template,
+        applied: targetKind ? resolveAppliedAnimationTemplate(template, targetKind, motions) : null,
+      })),
+    [motions, targetKind, visibleTemplates],
+  );
+  const usedTemplates = templateEntries.filter((entry) => entry.applied !== null);
+  const unusedTemplates = templateEntries.filter((entry) => entry.applied === null);
+  const editorMotion = editor
+    ? (motions.find((motion) => motion.animation.id === editor.animationId) ?? null)
+    : null;
+  const editorTemplate = editor
+    ? (ANIMATION_TEMPLATES.find((template) => template.id === editor.templateId) ?? null)
+    : null;
+
+  useEffect(() => {
+    if (editor && !editorMotion) setEditor(null);
+  }, [editor, editorMotion]);
+
+  const resolveSelection = useCallback(async () => {
+    if (!domEditSelection) return null;
+    if (!captionMotionTarget || captionMotionTarget === domEditSelection.element) {
+      return domEditSelection;
+    }
+    return buildDomSelectionFromTarget(captionMotionTarget, { exactTarget: true });
+  }, [buildDomSelectionFromTarget, captionMotionTarget, domEditSelection]);
 
   const applyTemplate = useCallback(
     async (template: AnimationTemplateDefinition) => {
-      if (!targetKind || !domEditSelection) return;
-      const selection =
-        captionMotionTarget && captionMotionTarget !== domEditSelection.element
-          ? await buildDomSelectionFromTarget(captionMotionTarget, { exactTarget: true })
-          : domEditSelection;
-      if (!selection) return;
-      const resolvedTargetKind = resolveMotionTargetKind(selection);
-      const application = resolveAnimationTemplateApplication(template, resolvedTargetKind);
-      if (!application) return;
-      onSelectTemplate({
-        templateId: template.id,
-        presetId: application.preset.id,
-        targetKind: application.targetKind,
-        applicationKind: application.applicationKind,
-        selection,
-        parameters: resolveAnimationTemplateParameters(
+      if (pendingTemplateId) return;
+      if (!domEditSelection) {
+        onStatus?.("selection-required");
+        return;
+      }
+      setPendingTemplateId(template.id);
+      setApplyFailed(false);
+      try {
+        const selection = await resolveSelection();
+        if (!selection) return;
+        const application = resolveAnimationTemplateApplication(
           template,
-          application.preset,
-          selection.element.hasAttribute("data-var-text"),
-        ),
+          resolveMotionTargetKind(selection),
+        );
+        if (!application) return;
+        const applied = await onMutate(
+          application.targetKind,
+          {
+            operation: "upsert",
+            phase: application.preset.phase,
+            presetId: application.preset.id,
+            templateId: template.id,
+            applicationKind: application.applicationKind,
+            duration: defaultMotionDuration(application.preset),
+            loop: false,
+            parameters: resolveAnimationTemplateParameters(
+              template,
+              application.preset,
+              selection.element.hasAttribute("data-var-text"),
+            ),
+          },
+          selection,
+        );
+        if (!applied) {
+          setApplyFailed(true);
+          return;
+        }
+        onStatus?.("applied");
+      } catch {
+        setApplyFailed(true);
+      } finally {
+        setPendingTemplateId(null);
+      }
+    },
+    [domEditSelection, onMutate, onStatus, pendingTemplateId, resolveSelection],
+  );
+
+  const removeTemplate = useCallback(
+    async (template: AnimationTemplateDefinition, motion: ResolvedMotionInstance) => {
+      if (pendingTemplateId) return;
+      setPendingTemplateId(template.id);
+      setApplyFailed(false);
+      try {
+        const selection = await resolveSelection();
+        if (!selection) return;
+        const removed = await onMutate(
+          motion.instance.targetKind,
+          {
+            operation: "remove",
+            phase: motion.instance.phase,
+            templateId: motion.instance.templateId,
+            applicationKind: motion.instance.applicationKind,
+          },
+          selection,
+        );
+        if (!removed) {
+          setApplyFailed(true);
+          return;
+        }
+        if (editor?.animationId === motion.animation.id) setEditor(null);
+        onStatus?.("removed");
+      } catch {
+        setApplyFailed(true);
+      } finally {
+        setPendingTemplateId(null);
+      }
+    },
+    [editor?.animationId, onMutate, onStatus, pendingTemplateId, resolveSelection],
+  );
+
+  const openEditor = useCallback(
+    async (template: AnimationTemplateDefinition, anchorElement: HTMLElement) => {
+      if (!targetKind) return;
+      const motion = resolveAppliedAnimationTemplate(template, targetKind, motions);
+      if (!motion) return;
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const selection = await resolveSelection();
+      if (!selection) return;
+      setEditor({
+        templateId: template.id,
+        animationId: motion.animation.id,
+        selection,
+        anchor: {
+          top: anchorRect.top,
+          right: anchorRect.right,
+          bottom: anchorRect.bottom,
+          left: anchorRect.left,
+        },
       });
     },
-    [
-      buildDomSelectionFromTarget,
-      captionMotionTarget,
-      domEditSelection,
-      onSelectTemplate,
-      targetKind,
-    ],
+    [motions, resolveSelection, targetKind],
   );
+
+  const renderCards = (entries: typeof templateEntries) => (
+    <div className="grid grid-cols-2 gap-x-[10px] gap-y-4 px-4 py-2">
+      {entries.map(({ template, applied }) => {
+        const application = resolveAnimationTemplateApplication(
+          template,
+          targetKind ?? (template.category === "text" ? "text" : "element"),
+        );
+        return (
+          <AnimationTemplateCard
+            key={template.id}
+            template={template}
+            locale={locale}
+            duration={
+              applied?.instance.duration ??
+              (application ? defaultMotionDuration(application.preset) : 0)
+            }
+            applied={applied}
+            loading={pendingTemplateId === template.id}
+            applyDisabled={!domEditSelection}
+            onApply={applyTemplate}
+            onEdit={openEditor}
+            onRemove={removeTemplate}
+          />
+        );
+      })}
+    </div>
+  );
+
+  const editorPosition = editor
+    ? {
+        top: Math.max(8, Math.min(editor.anchor.top, window.innerHeight - 360)),
+        left: Math.max(
+          8,
+          editor.anchor.left >= ANIMATION_EDITOR_WIDTH + 16
+            ? editor.anchor.left - ANIMATION_EDITOR_WIDTH - 8
+            : editor.anchor.right + 8,
+        ),
+      }
+    : null;
 
   return (
     <div
       className="flex h-full min-h-0 flex-col overflow-hidden"
       data-testid="animation-templates-tab"
     >
-      <div className="flex-shrink-0 space-y-3 border-b border-panel-border px-4 pb-4 pt-3">
-        <div className="relative">
-          <img
-            src={searchIconSrc}
-            alt=""
-            className="pointer-events-none absolute left-[11px] top-1/2 h-4 w-4 -translate-y-1/2"
-          />
-          <input
-            type="search"
+      <div className="flex-shrink-0 space-y-3 border-b border-panel-border px-4 py-3">
+          <SearchInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={locale === "zh" ? "搜索动画…" : "Search animations…"}
-            aria-label={locale === "zh" ? "搜索动画" : "Search animations"}
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#20bbc0]/50"
+            placeholder={t("animation.searchPlaceholder")}
+            aria-label={t("animation.searchLabel")}
           />
-        </div>
-        <div
-          className={`rounded-[8px] px-3 py-2 text-[10px] leading-4 ${
-            domEditSelection ? "bg-[#20bbc0]/10 text-[#168e92]" : "bg-panel-input text-panel-text-3"
-          }`}
-        >
-          {domEditSelection
-            ? locale === "zh"
-              ? `已选中：${domEditSelection.label}${appliedLabels.length > 0 ? ` · 已有动画：${appliedLabels.join("、")}` : ""}`
-              : `Selected: ${domEditSelection.label}${appliedLabels.length > 0 ? ` · Applied: ${appliedLabels.join(", ")}` : ""}`
-            : locale === "zh"
-              ? "先在播放区或剪辑区选中一个元素"
-              : "Select an element in the preview or timeline first"}
-        </div>
+        {domEditSelection ? (
+          <div className="rounded-[8px] bg-[#1FBAC0]/10 px-3 py-2 text-[11px] leading-4 text-[#168e92]">
+            {t("animation.selected", { label: domEditSelection.label })}
+          </div>
+        ) : null}
       </div>
 
-      <div className="hf-animation-template-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {templateSections.length === 0 ? (
-          <div className="grid h-24 place-items-center text-[11px] text-panel-text-3">
-            {domEditSelection
-              ? locale === "zh"
-                ? "没有匹配的动画"
-                : "No matching animations"
-              : locale === "zh"
-                ? "请先在视频播放区选中元素"
-                : "Select an element in the video preview first"}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {templateSections.map((section) => (
-              <section key={section.key}>
-                <div className="mb-3">
-                  <div className="text-[12px] font-semibold text-panel-text-1">
-                    {section.title[locale]}
-                  </div>
-                  <div className="mt-0.5 text-[10px] leading-4 text-panel-text-3">
-                    {section.hint[locale]}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-[10px] gap-y-4">
-                  {section.templates.map((template) => (
-                    <AnimationTemplateCard
-                      key={template.id}
-                      template={template}
-                      locale={locale}
-                      onApply={applyTemplate}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
+      <div className="hf-animation-template-scroll min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-11 flex-wrap items-center gap-1.5 px-4 pt-2 pb-1">
+          {(
+            [
+              ["all", `${t("animation.filterAll")} ${matchingTemplates.length}`],
+              ["box-automation", t("animation.filterBoxAutomation")],
+              ["text", t("animation.filterText")],
+              ["camera", t("animation.filterCamera")],
+              ["transition", t("animation.filterTransition")],
+            ] satisfies Array<[AnimationLibraryCategory, string]>
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              data-testid="animation-category-filter"
+              data-category={id}
+              aria-pressed={category === id}
+              onClick={() => setCategory(id)}
+              className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg ${
+                category === id
+                  ? "bg-black text-white dark:bg-panel-accent/20 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/45"
+                  : "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:bg-panel-input dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+          {applyFailed ? (
+            <p role="alert" className="mx-4 mt-2 text-[11px] leading-4 text-red-500">
+              {t("animation.saveError")}
+            </p>
+          ) : null}
+
+          {templateEntries.length === 0 ? (
+            <div className="grid h-24 place-items-center text-[11px] text-panel-text-3">
+              {t("animation.noMatches")}
+            </div>
+          ) : (
+            <div className="pb-4 pt-1">
+              {usedTemplates.length === 0 ? (
+                renderCards(unusedTemplates)
+              ) : (
+                <>
+                  <AnimationTemplateGroup
+                    testId="animation-used-section"
+                    title={t("animation.used")}
+                    expanded={usedExpanded}
+                    onToggle={() => setUsedExpanded((value) => !value)}
+                  >
+                    {renderCards(usedTemplates)}
+                  </AnimationTemplateGroup>
+                  <AnimationTemplateGroup
+                    testId="animation-unused-section"
+                    title={t("animation.unused")}
+                    expanded={unusedExpanded}
+                    onToggle={() => setUnusedExpanded((value) => !value)}
+                  >
+                    {renderCards(unusedTemplates)}
+                  </AnimationTemplateGroup>
+                </>
+              )}
+            </div>
+          )}
       </div>
+
+      {editor && editorMotion && editorTemplate && editorPosition ? (
+        <div className="fixed z-[80]" style={editorPosition}>
+          <Suspense
+            fallback={<div className="h-[320px] w-[200px] rounded-[8px] bg-white" />}
+          >
+            <AnimationPropertiesPanel
+              draft={null}
+              element={editor.selection}
+              animations={[editorMotion.animation]}
+              title={editorTemplate.title[locale]}
+              onMutate={onMutate}
+              onApplied={() => {
+                setEditor(null);
+                onStatus?.("updated");
+              }}
+              onClose={() => setEditor(null)}
+            />
+          </Suspense>
+        </div>
+      ) : null}
     </div>
   );
 });

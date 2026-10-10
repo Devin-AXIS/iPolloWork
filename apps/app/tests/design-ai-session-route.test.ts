@@ -1,14 +1,23 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
 import * as sessionPrompt from "../src/react-app/shell/session-prompt";
-import type { DesignAiSelectionContext } from "../src/react-app/domains/session/design/design-ai-selection";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
+import { newTaskComposerScope, useComposerStateStore, type ComposerSessionState } from "../src/react-app/domains/session/surface/composer-state-store";
 
 const routeUrl = new URL("../src/react-app/shell/session-route.tsx", import.meta.url);
 const promptUrl = new URL("../src/react-app/shell/session-prompt.ts", import.meta.url);
 const runtimeUrl = new URL(
   "../src/react-app/domains/session/sync/runtime-sync.tsx",
+  import.meta.url,
+);
+const engineUrl = new URL(
+  "../src/react-app/domains/session/engine/opencode-conversation-engine.ts",
+  import.meta.url,
+);
+const surfaceUrl = new URL(
+  "../src/react-app/domains/session/surface/session-surface.tsx",
   import.meta.url,
 );
 
@@ -30,9 +39,216 @@ const lifecycleContext: DesignAiSelectionContext = {
   },
 };
 
+type InitialDraftSource = { sourceScope: string; sourceComposerState: ComposerSessionState };
+type InitialDraftHelpers = {
+  captureInitialProjectDraftSource: (workspaceId: string | null, draft: ComposerDraft) => InitialDraftSource;
+  clearInitialProjectDraftSource: (source: InitialDraftSource, releasePreviews: boolean) => void;
+  restoreInitialProjectDraft: (pending: InitialDraftSource & { sessionId: string | null }) => void;
+};
+
+async function loadInitialDraftHelpers(): Promise<InitialDraftHelpers> {
+  const source = await Bun.file(routeUrl).text();
+  const start = source.indexOf("function captureInitialProjectDraftSource(");
+  const end = source.indexOf("export function SessionRoute()", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  const compiled = new Bun.Transpiler({ loader: "ts" }).transformSync(source.slice(start, end));
+  return new Function("useComposerStateStore", "newTaskComposerScope", `${compiled}\nreturn { captureInitialProjectDraftSource, clearInitialProjectDraftSource, restoreInitialProjectDraft };`)(useComposerStateStore, newTaskComposerScope);
+}
+
+describe("initial task draft handoff", () => {
+  const revokePreview = spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const draft: ComposerDraft = {
+    text: "Use [pasted text 1]",
+    resolvedText: "Use the complete pasted requirement",
+    parts: [{ type: "text", text: "Use the complete pasted requirement" }],
+    attachments: [{ id: "image", kind: "image", name: "image.png", mimeType: "image/png", size: 3, file: new File(["png"], "image.png"), previewUrl: "blob:initial-image" }],
+  };
+
+  beforeEach(() => {
+    useComposerStateStore.setState({ sessions: {}, queuedDrafts: {}, pausedQueues: {} });
+    revokePreview.mockClear();
+  });
+  afterAll(() => revokePreview.mockRestore());
+
+  test("preserves the full original draft until dispatch and transfers it after failure", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const scope = newTaskComposerScope("ws");
+    const store = useComposerStateStore.getState();
+    store.setDraft(scope, draft.text);
+    store.setAttachments(scope, draft.attachments);
+    store.setPasteParts(scope, [{ id: "paste", label: "1", text: "the complete pasted requirement", lines: 1 }]);
+    store.setInitialTaskOptions(scope, { workTemplateId: "development" });
+    const original = useComposerStateStore.getState().sessions[scope];
+    const source = helpers.captureInitialProjectDraftSource("ws", draft);
+    expect(useComposerStateStore.getState().sessions[scope]).toBe(original);
+    expect(revokePreview).not.toHaveBeenCalled();
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: "ses_retry" });
+    expect(useComposerStateStore.getState().sessions[scope]).toBeUndefined();
+    expect(useComposerStateStore.getState().sessions.ses_retry).toBe(original);
+    expect(revokePreview).not.toHaveBeenCalled();
+  });
+
+  test("keeps both drafts when the destination already has user input", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const source = helpers.captureInitialProjectDraftSource("ws", draft);
+    useComposerStateStore.getState().setDraft("ses_retry", "My newer request");
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: "ses_retry" });
+    expect(useComposerStateStore.getState().sessions[source.sourceScope]).toBe(source.sourceComposerState);
+    expect(useComposerStateStore.getState().sessions.ses_retry.draft).toBe("My newer request");
+    expect(revokePreview).not.toHaveBeenCalled();
+    useComposerStateStore.getState().clearSession("ses_retry");
+    useComposerStateStore.getState().setDraft(source.sourceScope, "My next task");
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: "ses_retry" });
+    expect(useComposerStateStore.getState().sessions.ses_retry).toBe(source.sourceComposerState);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope].draft).toBe("My next task");
+    expect(revokePreview).not.toHaveBeenCalled();
+  });
+
+  test("cleans up a delivered draft while preserving any replacement input", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const source = helpers.captureInitialProjectDraftSource("ws", draft);
+    useComposerStateStore.getState().setDraft(source.sourceScope, "A newer task");
+    helpers.clearInitialProjectDraftSource(source, true);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope].draft).toBe("A newer task");
+    expect(revokePreview).not.toHaveBeenCalled();
+    const latest = helpers.captureInitialProjectDraftSource("ws", draft);
+    helpers.clearInitialProjectDraftSource(latest, true);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope]).toBeUndefined();
+    expect(revokePreview).toHaveBeenCalledTimes(1);
+    expect(revokePreview).toHaveBeenCalledWith("blob:initial-image");
+  });
+
+  test("retains a new-project draft when creation fails and uses its original scope after navigation", async () => {
+    const helpers = await loadInitialDraftHelpers();
+    const source = helpers.captureInitialProjectDraftSource(null, draft);
+    helpers.restoreInitialProjectDraft({ ...source, sessionId: null });
+    expect(useComposerStateStore.getState().sessions[source.sourceScope].draft).toBe(draft.resolvedText);
+    useComposerStateStore.getState().setDraft(newTaskComposerScope("created_ws"), "Different workspace draft");
+    helpers.clearInitialProjectDraftSource(source, true);
+    expect(useComposerStateStore.getState().sessions[source.sourceScope]).toBeUndefined();
+    expect(useComposerStateStore.getState().sessions[newTaskComposerScope("created_ws")].draft).toBe("Different workspace draft");
+  });
+
+  test("captures before asynchronous project creation and only cleans up after dispatch succeeds", async () => {
+    const source = await Bun.file(routeUrl).text();
+    const initialStart = source.indexOf("const handleCreateInitialProjectTask = useCallback");
+    const capture = source.indexOf("captureInitialProjectDraftSource(selectedWorkspaceId, draft)", initialStart);
+    expect(capture).toBeGreaterThan(initialStart);
+    expect(capture).toBeLessThan(source.indexOf("await createProject(", initialStart));
+    expect(source).toContain("restoreInitialProjectDraft(pending);");
+    expect(source).toContain("if (!dispatched) {\n          rollbackFailedInitialProjectPrompt(pending);\n        } else {\n          clearInitialProjectDraftSource(pending, true);");
+  });
+});
+
 describe("Design AI session lifecycle", () => {
   beforeEach(() => {
     useDesignAiSelectionStore.getState().resetSession("ses_1");
+  });
+
+  test("persists the first user request as the initial session title", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const promptIndex = routeSource.indexOf("const promptResult = await promptDesignSelectionContexts");
+    const persistIndex = routeSource.indexOf("void conversation.rename(targetSessionId, pendingTitlePersist");
+
+    expect(routeSource).toContain("isDefaultSessionTitle(targetSession.title)");
+    expect(routeSource).toContain("sessionTitleFromFirstPrompt(text)");
+    expect(routeSource).toContain("let pendingTitlePersist: string | null = null;");
+    expect(routeSource).toContain("pendingTitlePersist = initialTitle;");
+    expect(persistIndex).toBeGreaterThan(promptIndex);
+    expect(routeSource).toContain("patched before SessionPrompt creates the initial user message");
+  });
+
+  test("keeps the newly created task when the initial draft fails to dispatch", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const rollbackIndex = routeSource.indexOf("const rollbackFailedInitialProjectPrompt = useCallback");
+    const rollbackEnd = routeSource.indexOf("useEffect(() => {", rollbackIndex);
+    const rollbackSource = routeSource.slice(rollbackIndex, rollbackEnd);
+    const undispatchedIndex = routeSource.indexOf("if (!dispatched) {");
+    const catchIndex = routeSource.indexOf(".catch((error) => {");
+
+    expect(rollbackIndex).toBeGreaterThan(-1);
+    expect(rollbackSource).toContain("rollbackOptimisticSessionPrompt(");
+    expect(rollbackSource).not.toContain("deleteSession(");
+    expect(rollbackSource).not.toContain("setSessionsByWorkspaceId(");
+    expect(rollbackSource).not.toContain("writeLastSessionFor(");
+    expect(routeSource.indexOf("rollbackFailedInitialProjectPrompt(pending);", undispatchedIndex)).toBeGreaterThan(undispatchedIndex);
+    expect(routeSource.indexOf("rollbackFailedInitialProjectPrompt(pending);", catchIndex)).toBeGreaterThan(catchIndex);
+  });
+
+  test("drops stale non-work-mode OpenCode agents before sending a prompt", async () => {
+    const engineSource = await Bun.file(engineUrl).text();
+    const resolveIndex = engineSource.indexOf("function resolveOpenCodeWorkModeName");
+    const promptIndex = engineSource.indexOf("client.session.promptAsync");
+
+    expect(resolveIndex).toBeGreaterThan(-1);
+    expect(engineSource).toContain('agent.name === "plan"');
+    expect(engineSource).toContain('agent.name === "build"');
+    expect(engineSource).toContain("const agent = resolveOpenCodeWorkModeName(input.mode);");
+    expect(engineSource.indexOf("agent,", promptIndex)).toBeGreaterThan(promptIndex);
+  });
+
+  test("sends the live composer draft from the control action", async () => {
+    const surfaceSource = await Bun.file(surfaceUrl).text();
+    const sendControlIndex = surfaceSource.indexOf('id: "composer.send"');
+    const liveDraftIndex = surfaceSource.indexOf("getComposerDraft(useComposerStateStore.getState(), props.sessionId)", sendControlIndex);
+
+    expect(sendControlIndex).toBeGreaterThan(-1);
+    expect(liveDraftIndex).toBeGreaterThan(sendControlIndex);
+    expect(surfaceSource.indexOf("await handleSend(liveDraft);", liveDraftIndex)).toBeGreaterThan(liveDraftIndex);
+  });
+
+  test("starts the optimistic busy state for OpenCode prompts immediately", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const surfaceSource = await Bun.file(surfaceUrl).text();
+    const sendIndex = surfaceSource.indexOf("const sendDraft = useCallback");
+    const optimisticIndex = surfaceSource.indexOf("beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)", sendIndex);
+    const initialTaskIndex = routeSource.indexOf("pendingInitialProjectTask?.workspaceId === workspaceId");
+    const initialOptimisticIndex = routeSource.indexOf(
+      "const clientUserMessageId = beginOptimisticSessionPrompt(",
+      initialTaskIndex,
+    );
+    const initialNavigationIndex = routeSource.indexOf(
+      "navigateToWorkspaceSession(workspaceId, session.id);",
+      initialOptimisticIndex,
+    );
+
+    expect(surfaceSource).not.toContain("CODEX_HARNESS_ENGINE_ID");
+    expect(optimisticIndex).toBeGreaterThan(sendIndex);
+    expect(surfaceSource.indexOf("const dispatchOutcome = await props.onSendDraft(", sendIndex)).toBeGreaterThan(optimisticIndex);
+    expect(surfaceSource.indexOf("rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId)", sendIndex)).toBeGreaterThan(optimisticIndex);
+    expect(initialOptimisticIndex).toBeGreaterThan(initialTaskIndex);
+    expect(initialNavigationIndex).toBeGreaterThan(initialOptimisticIndex);
+  });
+
+  test("adds the current app language to the model system context", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const languageContextIndex = routeSource.indexOf("const languageSystemContext = responseLanguageSystemContext(currentLocale())");
+    const systemContextIndex = routeSource.indexOf("const systemContext = [projectSystemContext");
+
+    expect(sessionPrompt.responseLanguageSystemContext("zh")).toContain("Simplified Chinese");
+    expect(sessionPrompt.responseLanguageSystemContext("zh")).toContain("generated session/task titles");
+    expect(routeSource).toContain('import { currentLocale, t } from "@/i18n";');
+    expect(routeSource).toContain("responseLanguageSystemContext,");
+    expect(languageContextIndex).toBeGreaterThan(-1);
+    expect(systemContextIndex).toBeGreaterThan(languageContextIndex);
+    expect(routeSource.indexOf("languageSystemContext]", systemContextIndex)).toBeGreaterThan(systemContextIndex);
+  });
+
+  test("only asks standalone artifact requests to use a task-specific HTML filename", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const namingPromptIndex = routeSource.indexOf("const artifactNamingPromptPart");
+    const sendIndex = routeSource.indexOf("conversation.sendPrompt({");
+
+    expect(routeSource).toContain("uniqueHtmlArtifactFilenameFromTitle(text, artifactRequestId)");
+    expect(routeSource).toContain("automaticTemplateIntents.length > 0 && sessionTemplates.length === 0");
+    expect(routeSource).toContain("Do not create a new deliverable named entry.html or index.html");
+    expect(routeSource).toContain("do not reuse a filename from an earlier user turn");
+    expect(routeSource).toContain("so every new filename is distinct");
+    expect(namingPromptIndex).toBeGreaterThan(-1);
+    expect(routeSource.indexOf("...artifactNamingPromptPart", namingPromptIndex)).toBeGreaterThan(namingPromptIndex);
+    expect(sendIndex).toBeGreaterThan(namingPromptIndex);
+    expect(routeSource.indexOf("parts: promptParts", sendIndex)).toBeGreaterThan(sendIndex);
   });
 
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {

@@ -10,6 +10,7 @@ import type { DraggedClipState, ResizingClipState } from "./useTimelineClipDrag"
 
 interface UseTimelineGeometryInput {
   viewportWidth: number;
+  gutterWidth: number;
   effectiveDuration: number;
   zoomMode: ZoomMode;
   manualZoomPercent: number;
@@ -29,6 +30,7 @@ interface UseTimelineGeometryInput {
 // re-triggers dependent effects after an edit re-derives the elements.
 export function useTimelineGeometry({
   viewportWidth,
+  gutterWidth,
   effectiveDuration,
   zoomMode,
   manualZoomPercent,
@@ -41,9 +43,8 @@ export function useTimelineGeometry({
   scrollRef,
   lastScrollLeftRef,
 }: UseTimelineGeometryInput) {
-  // Fit pps maps at least MIN_TIMELINE_EXTENT_S onto the viewport, so short
-  // comps show a 60s ruler with usable empty space (see getTimelineFitPps).
-  const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration);
+  // Fit the actual composition; an empty composition keeps an editable default extent.
+  const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration, gutterWidth);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
@@ -73,6 +74,7 @@ export function useTimelineGeometry({
     pps,
     dragGhostEndPx,
     resizeGhostEndPx,
+    gutterWidth,
   });
   const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
   const clipStateVersion = useMemo(

@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>iPollo Onto</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font:
+          14px/1.6 system-ui,
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: light-dark(#fff, #111418);
+        color: light-dark(#252830, #e6e8ed);
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+      #status {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 8px;
+        padding: 28px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.5px;
+      }
+      p {
+        margin: 0;
+        color: light-dark(#777e87, #9ba1ac);
+        max-width: 320px;
+      }
+      button {
+        margin-top: 12px;
+        padding: 7px 18px;
+        border: 1px solid light-dark(#e5e7eb, #34383f);
+        border-radius: 8px;
+        color: inherit;
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        background: light-dark(#f4f5f6, #22262c);
+      }
+      button:focus-visible {
+        outline: 2px solid #8b8d98;
+        outline-offset: 3px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status" role="status">
+      <h1>iPollo Onto</h1>
+      <p id="message">正在连接业务数据…</p>
+      <button id="retry" type="button" hidden>重试</button>
+    </div>
+    <iframe
+      id="workbench"
+      title="iPollo Onto 业务工作台"
+      referrerpolicy="no-referrer"
+      hidden
+    ></iframe>
+    <script>
+      const frame = document.querySelector('#workbench')
+      const status = document.querySelector('#status')
+      const message = document.querySelector('#message')
+      const retry = document.querySelector('#retry')
+      const origins = ['http://127.0.0.1:5711', 'http://127.0.0.1:5710']
+      const pending = new Map()
+      let sequence = 0,
+        disposed = false,
+        hostReady = false,
+        connected = false
+      let candidates = [],
+        origin = '',
+        timer,
+        pingTimer,
+        hostContext = {},
+        navigation
+      let currentHash = '',
+        binding = null,
+        sessionKey = '',
+        workbenchId = ''
+      const uuid = (value) =>
+        typeof value === 'string' &&
+        /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value)
+      function restoreSession() {
+        const context = hostContext['ai.ipollo/workspace'] || {}
+        const nextKey =
+          context.sessionId && context.workspaceId
+            ? encodeURIComponent(JSON.stringify([context.workspaceId, context.sessionId]))
+            : ''
+        if (nextKey === sessionKey && workbenchId) return false
+        sessionKey = nextKey
+        let saved
+        try {
+          saved = JSON.parse(stored('session.' + sessionKey) || 'null')
+        } catch {}
+        workbenchId =
+          uuid(saved?.workbenchId) && sessionKey ? saved.workbenchId : crypto.randomUUID()
+        binding = sessionKey && uuid(saved?.binding?.projectId) ? saved.binding : null
+        currentHash = sessionKey && typeof saved?.route === 'string' ? saved.route : ''
+        persistSession()
+        return true
+      }
+      function persistSession() {
+        if (sessionKey)
+          save(
+            'session.' + sessionKey,
+            JSON.stringify({ workbenchId, binding, route: currentHash }),
+          )
+      }
+      function state() {
+        return {
+          connected,
+          href: '/' + currentHash,
+          binding,
+          workbench: binding ? { id: workbenchId } : null,
+        }
+      }
+      function updateContext() {
+        if (!hostReady) return
+        void request('ui/update-model-context', {
+          content: [
+            {
+              type: 'text',
+              text:
+                'Onto 当前对话绑定：' +
+                JSON.stringify(state()) +
+                '。绑定只决定工作对象，不扩展 MCP 权限。先用 onto_status 读取本对话绑定；数据工具携带返回的 workbench。业务资料按需读取，不保存无关对话。',
+            },
+          ],
+          structuredContent: state(),
+        }).catch(() => {})
+      }
+      function stored(key) {
+        try {
+          return localStorage.getItem('ipollo-onto.workbench.' + key)
+        } catch {
+          return null
+        }
+      }
+      function save(key, value) {
+        try {
+          localStorage.setItem('ipollo-onto.workbench.' + key, value)
+        } catch {}
+      }
+      function post(value) {
+        parent.postMessage({ jsonrpc: '2.0', ...value }, '*')
+      }
+      function result(id, data) {
+        post({
+          id,
+          result: {
+            content: [{ type: 'text', text: JSON.stringify(data) }],
+            structuredContent: data,
+          },
+        })
+      }
+      function request(method, params) {
+        const id = ++sequence
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            pending.delete(id)
+            reject(new Error('工作台连接超时'))
+          }, 10000)
+          pending.set(id, { resolve, reject, timeout })
+          post({ id, method, params })
+        })
+      }
+      function stopTimers() {
+        clearTimeout(timer)
+        clearInterval(pingTimer)
+      }
+      function failed(text) {
+        stopTimers()
+        frame.hidden = true
+        status.hidden = false
+        message.textContent = text
+        retry.hidden = false
+      }
+      function ping() {
+        frame.contentWindow?.postMessage(
+          { type: 'ipollo-onto:connect', theme: hostContext.theme, workbenchId, binding },
+          origin,
+        )
+      }
+      function next() {
+        stopTimers()
+        if (disposed) return
+        origin = candidates.shift()
+        if (!origin) {
+          frame.removeAttribute('src')
+          failed('Onto 数据服务尚未运行。启动独立服务后，点击重试。')
+          return
+        }
+        const hash = currentHash
+        frame.src =
+          origin + '/?workbench=1' + (hash.startsWith('#') && hash.length <= 10000 ? hash : '')
+        // A loaded error/404 document is not proof of readiness: require the Onto handshake.
+        timer = setTimeout(next, 12000)
+        pingTimer = setInterval(ping, 250)
+      }
+      function open() {
+        connected = false
+        frame.hidden = true
+        status.hidden = false
+        retry.hidden = true
+        message.textContent = '正在连接业务数据…'
+        const previous = stored('origin')
+        candidates = origins.includes(previous)
+          ? [previous, ...origins.filter((o) => o !== previous)]
+          : [...origins]
+        next()
+      }
+      frame.addEventListener('load', () => {
+        if (!origin || connected || disposed) return
+        ping()
+        clearTimeout(timer)
+        timer = setTimeout(next, 1800)
+      })
+      frame.addEventListener('error', () => {
+        if (!connected) next()
+      })
+      addEventListener('message', (event) => {
+        const data = event.data
+        if (!data || typeof data !== 'object' || disposed) return
+        if (
+          event.source === frame.contentWindow &&
+          event.origin === origin &&
+          data.type === 'ipollo-onto:ready' &&
+          data.workbenchId === workbenchId
+        ) {
+          stopTimers()
+          connected = true
+          frame.hidden = false
+          status.hidden = true
+          save('origin', origin)
+          if (typeof data.hash === 'string' && data.hash.length <= 10000) {
+            currentHash = data.hash
+            persistSession()
+          }
+          if (navigation && data.navigationId === navigation.id) {
+            clearTimeout(navigation.timer)
+            result(navigation.id, { connected, href: '/' + currentHash })
+            navigation = undefined
+          }
+          updateContext()
+          return
+        }
+        if (
+          event.source === frame.contentWindow &&
+          event.origin === origin &&
+          data.type === 'ipollo-onto:bound' &&
+          data.workbenchId === workbenchId
+        ) {
+          if (data.error) {
+            if (data.id !== undefined)
+              post({ id: data.id, error: { code: -32602, message: data.error } })
+          } else {
+            binding = uuid(data.projectId)
+              ? { projectId: data.projectId, name: String(data.name || '').slice(0, 160) }
+              : null
+            persistSession()
+            ping()
+            updateContext()
+            if (data.id !== undefined) result(data.id, state())
+          }
+          return
+        }
+        if (
+          event.source === frame.contentWindow &&
+          event.origin === origin &&
+          data.type === 'ipollo-onto:navigation-error'
+        ) {
+          if (navigation && data.id === navigation.id) {
+            clearTimeout(navigation.timer)
+            post({ id: navigation.id, error: { code: -32000, message: String(data.error) } })
+            navigation = undefined
+          }
+          return
+        }
+        if (event.source !== parent || data.jsonrpc !== '2.0') return
+        if (data.method === 'tools/list') {
+          post({
+            id: data.id,
+            result: {
+              tools: [
+                {
+                  name: 'onto_bind',
+                  description:
+                    'Bind this conversation to an existing Onto project, or clear its binding with null. Does not grant data permissions. Read onto_status before business work; pass its workbench object to connected data tools for automatic UI following.',
+                  inputSchema: {
+                    type: 'object',
+                    properties: { projectId: { type: ['string', 'null'] } },
+                    required: ['projectId'],
+                    additionalProperties: false,
+                  },
+                },
+                {
+                  name: 'onto_status',
+                  description:
+                    'Read the active Onto workbench route and connection state. Business data must be read through the connected project MCP.',
+                  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+                },
+                {
+                  name: 'onto_navigate',
+                  description:
+                    'Show a project, table or relation query in this workbench. Use the relative navigation.href returned by Onto MCP. Does not modify business data.',
+                  inputSchema: {
+                    type: 'object',
+                    properties: { href: { type: 'string', maxLength: 10000 } },
+                    required: ['href'],
+                    additionalProperties: false,
+                  },
+                },
+              ],
+            },
+          })
+        } else if (data.method === 'tools/call') {
+          if (data.params?.name === 'onto_status') result(data.id, state())
+          else if (data.params?.name === 'onto_bind') {
+            const projectId = data.params.arguments?.projectId
+            if (!connected || (projectId !== null && !uuid(projectId))) {
+              post({
+                id: data.id,
+                error: {
+                  code: -32602,
+                  message: 'Open Onto and provide an existing project UUID, or null to unbind.',
+                },
+              })
+              return
+            }
+            frame.contentWindow.postMessage(
+              { type: 'ipollo-onto:bind', projectId, id: data.id },
+              origin,
+            )
+          } else if (data.params?.name === 'onto_navigate') {
+            const href = data.params.arguments?.href
+            if (
+              !connected ||
+              typeof href !== 'string' ||
+              href.length > 10000 ||
+              !(href === '/' || href.startsWith('/#') || href.startsWith('#'))
+            ) {
+              post({
+                id: data.id,
+                error: {
+                  code: -32602,
+                  message:
+                    'Open Onto first and use a relative /#project=… route returned by its MCP.',
+                },
+              })
+              return
+            }
+            const projectId = new URLSearchParams(href.split('#')[1] || '').get('project')
+            if (binding && projectId && projectId !== binding.projectId) {
+              post({
+                id: data.id,
+                error: {
+                  code: -32602,
+                  message:
+                    'This conversation is bound to another project. Use onto_bind only when the user changes the task scope.',
+                },
+              })
+              return
+            }
+            if (navigation) {
+              post({
+                id: data.id,
+                error: { code: -32000, message: 'Navigation already in progress' },
+              })
+              return
+            }
+            navigation = {
+              id: data.id,
+              timer: setTimeout(() => {
+                post({
+                  id: data.id,
+                  error: { code: -32000, message: 'Onto did not confirm navigation' },
+                })
+                navigation = undefined
+              }, 8000),
+            }
+            frame.contentWindow.postMessage(
+              { type: 'ipollo-onto:navigate', href, id: data.id },
+              origin,
+            )
+          } else post({ id: data.id, error: { code: -32601, message: 'Unknown Onto tool' } })
+        } else if (data.id !== undefined && !data.method) {
+          const handler = pending.get(data.id)
+          if (!handler) return
+          clearTimeout(handler.timeout)
+          pending.delete(data.id)
+          data.error ? handler.reject(new Error(data.error.message)) : handler.resolve(data.result)
+        } else if (data.method === 'ui/notifications/host-context-changed') {
+          hostContext = data.params || {}
+          document.documentElement.style.colorScheme = hostContext.theme || 'light dark'
+          if (restoreSession()) open()
+          else if (connected) ping()
+        } else if (data.method === 'ui/resource-teardown') {
+          disposed = true
+          stopTimers()
+          frame.removeAttribute('src')
+          if (navigation) clearTimeout(navigation.timer)
+          for (const handler of pending.values()) {
+            clearTimeout(handler.timeout)
+            handler.reject(new Error('工作台已关闭'))
+          }
+          pending.clear()
+          post({ id: data.id, result: {} })
+        }
+      })
+      async function start() {
+        retry.hidden = true
+        try {
+          if (!hostReady) {
+            const host = await request('ui/initialize', {
+              protocolVersion: '2025-11-21',
+              appInfo: { name: 'iPollo Onto', version: '0.1.4' },
+              appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] },
+            })
+            if (disposed) return
+            hostReady = true
+            hostContext = host.hostContext || {}
+            document.documentElement.style.colorScheme = hostContext.theme || 'light dark'
+            post({ method: 'ui/notifications/initialized', params: {} })
+          }
+          restoreSession()
+          open()
+        } catch {
+          failed('无法连接 iPolloWork 工作台，请重试。')
+        }
+      }
+      retry.addEventListener('click', start)
+      void start()
+    </script>
+  </body>
+</html>

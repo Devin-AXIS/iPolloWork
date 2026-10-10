@@ -52,3 +52,6 @@ export type PersistDomEditOperations = (
     shouldSave?: () => boolean;
   },
 ) => Promise<void>;
+
+/** Official commit outcome; legacy desktop commits resolve void after a durable save. */
+export type DomEditPersistOutcome = { status: "persisted" } | { status: "declined"; reason: string };

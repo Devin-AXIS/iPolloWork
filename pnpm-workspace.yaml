@@ -1,6 +1,7 @@
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - "@opencode-ai/sdk"
+  - "@opencode-ai/plugin"
 
 # macOS release jobs build both Apple Silicon and Intel installers on the
 # same runner. Keep both optional native packages available so electron-builder
@@ -15,6 +16,8 @@ supportedArchitectures:
 packages:
   - "apps/*"
   - "packages/*"
+  - "examples/plugin-packages/labelu-data-annotation"
+  - "examples/plugin-packages/short-video-studio"
 
 catalog:
   react: 19.2.4
@@ -23,20 +26,29 @@ catalog:
 linkWorkspacePackages: true
 preferWorkspacePackages: true
 allowBuilds:
-  "@ffmpeg-installer/darwin-arm64": false
-  "@ffmpeg-installer/darwin-x64": false
+  onnxruntime-node: true
+  "@ffmpeg-installer/darwin-arm64": true
+  "@ffmpeg-installer/darwin-x64": true
   "@ffmpeg-installer/linux-arm64": true
   "@ffmpeg-installer/linux-x64": true
-  "@ffprobe-installer/darwin-arm64": false
-  "@ffprobe-installer/darwin-x64": false
+  "@ffprobe-installer/darwin-arm64": true
+  "@ffprobe-installer/darwin-x64": true
   "@ffprobe-installer/linux-arm64": true
   "@ffprobe-installer/linux-x64": true
   "@whiskeysockets/baileys": true
   better-sqlite3: true
+  canvas: false
   core-js: true
   electron: true
   esbuild: true
+  msgpackr-extract: false
   msw: false
   node-pty: true
   protobufjs: true
   sharp: true
+
+# electron/osx-sign 1.3.1 walks every bundled file with unbounded parallel I/O.
+# The bundled DeepSeek Harness runtime is large enough to exhaust macOS file
+# descriptors during release signing, so keep filesystem reads bounded.
+patchedDependencies:
+  "@electron/osx-sign@1.3.1": patches/@electron__osx-sign@1.3.1.patch

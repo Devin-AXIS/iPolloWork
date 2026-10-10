@@ -1,0 +1,6 @@
+/* Paired labels should never become vertical text in a narrow workspace. */
+.row > label { white-space: nowrap; flex-shrink: 0; }
+.row > [data-select-island] { flex: 1; }
+#dialog { max-width: calc(100vw - 32px); }
+#dialog [data-slot="dialog-description"] { white-space: pre-line; }
+#dialog-error { margin-block: 12px; color: var(--sv-danger); overflow-wrap: anywhere; }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
+import { resolveWorkspaceEndpoint } from "../src/app/lib/workspace-endpoint";
 
 const originalFetch = globalThis.fetch;
 
@@ -49,5 +50,32 @@ describe("iPolloWork workspace file catalog", () => {
     expect(catalogCalls).toHaveLength(2);
     expect(catalogCalls.every((call) => call.url.includes("prefix=video%2Fses_1"))).toBe(true);
     expect(calls.at(-1)?.method).toBe("DELETE");
+  });
+});
+
+describe("local workspace endpoint authentication", () => {
+  test("forwards the desktop host token to host-owned APIs", async () => {
+    let hostToken = "";
+    const fetchMock: typeof fetch = async (_input, init) => {
+      hostToken = new Headers(init?.headers).get("X-iPolloWork-Host-Token") ?? "";
+      return Response.json({ keys: [] });
+    };
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: fetchMock });
+
+    const endpoint = resolveWorkspaceEndpoint({
+      id: "ws_1",
+      name: "Workspace",
+      path: "C:\\workspace",
+      preset: "starter",
+      workspaceType: "local",
+    }, {
+      baseUrl: "https://ipollowork.test",
+      token: "client-token",
+      hostToken: "host-token",
+    });
+
+    await endpoint?.client.listUserEnvKeys();
+
+    expect(hostToken).toBe("host-token");
   });
 });

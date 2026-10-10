@@ -7,7 +7,7 @@ import {
 } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import { GUTTER, TRACKS_LEFT_PAD } from "./timelineLayout";
+import { TRACKS_LEFT_PAD } from "./timelineLayout";
 import {
   computeMarqueeSelection,
   getMarqueeRect,
@@ -15,7 +15,7 @@ import {
   isTimelineRulerPress,
   type MarqueeClipInput,
 } from "./timelineMarquee";
-import type { Rect } from "../../utils/marqueeGeometry";
+import { getSelectionPolygon, polygonIntersectsRect, type Point, type Rect } from "../../utils/marqueeGeometry";
 import { STUDIO_MULTI_SELECTION_ENABLED } from "../../components/editor/manualEditingAvailability";
 
 interface UseTimelineRangeSelectionInput {
@@ -32,6 +32,7 @@ interface UseTimelineRangeSelectionInput {
   elementsRef: React.RefObject<TimelineElement[]>;
   trackOrderRef: React.RefObject<number[]>;
   onSelectElement?: (element: TimelineElement | null) => void;
+  gutterWidth: number;
 }
 
 interface MarqueeDragState {
@@ -74,12 +75,14 @@ function commitMarqueeSelection(
   elements: TimelineElement[],
   trackOrder: number[],
   pps: number,
+  gutterWidth: number,
 ): void {
   const { ids, primaryId } = computeMarqueeSelection({
     clips: toMarqueeClips(elements),
     trackOrder,
     pps,
     marquee: rect,
+    gutterWidth,
     baseSelection: additive ? marquee.baseIds : undefined,
   });
   const store = usePlayerStore.getState();
@@ -92,7 +95,7 @@ function commitMarqueeSelection(
 export function useTimelineRangeSelection({
   scrollRef,
   ppsRef,
-  effectiveDuration: _effectiveDuration,
+  effectiveDuration,
   pps,
   onSeek: _onSeek,
   seekFromX,
@@ -103,9 +106,12 @@ export function useTimelineRangeSelection({
   elementsRef,
   trackOrderRef,
   onSelectElement,
+  gutterWidth,
 }: UseTimelineRangeSelectionInput) {
   const isRangeSelecting = useRef(false);
   const rangeAnchorTime = useRef(0);
+  const lassoRef = useRef<{ points: Point[]; clips: Array<{ element: TimelineElement; rect: Rect }> } | null>(null);
+  const [annotationOutline, setAnnotationOutline] = useState<Point[]>([]);
   // Reactive mirror of the scrub gesture (isDragging is a ref, so it can't drive
   // rendering). Drives the playhead head's filled-vs-hollow state.
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -170,9 +176,10 @@ export function useTimelineRangeSelection({
         elementsRef.current ?? [],
         trackOrderRef.current ?? [],
         ppsRef.current,
+        gutterWidth,
       );
     },
-    [toContentPoint, elementsRef, trackOrderRef, ppsRef],
+    [toContentPoint, elementsRef, trackOrderRef, ppsRef, gutterWidth],
   );
 
   const stopMarqueeAutoScroll = useCallback(() => {
@@ -225,24 +232,59 @@ export function useTimelineRangeSelection({
   const beginRangeSelection = useCallback(
     (e: React.PointerEvent) => {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      usePlayerStore.getState().setIsPlaying(false);
       isRangeSelecting.current = true;
       setShowPopover(false);
       const rect = scrollRef.current?.getBoundingClientRect();
       if (rect) {
         const x =
-          e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER - TRACKS_LEFT_PAD;
-        const time = Math.max(0, x / pps);
+          e.clientX -
+          rect.left +
+          (scrollRef.current?.scrollLeft ?? 0) -
+          gutterWidth -
+          TRACKS_LEFT_PAD;
+        const target = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-clip][data-el-id]") : null;
+        const clip = usePlayerStore.getState().activeTool === "annotate" && target
+          ? elementsRef.current.find((el) => (el.key ?? el.id) === target.dataset.elId) : undefined;
+        const time = Math.max(clip?.start ?? 0, Math.min(clip ? clip.start + clip.duration : effectiveDuration, x / pps));
         rangeAnchorTime.current = time;
-        setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY });
+        const bounds = clip && target ? target.getBoundingClientRect() : null;
+        setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY,
+          kind: clip ? "clip-range" : "timeline-range",
+          selectedElements: clip ? [{ ...clip }] : undefined,
+          row: bounds ? { top: bounds.top - rect.top + (scrollRef.current?.scrollTop ?? 0), height: bounds.height } : undefined,
+        });
       }
     },
-    [scrollRef, pps, setShowPopover],
+    [scrollRef, pps, effectiveDuration, setShowPopover, gutterWidth, elementsRef],
   );
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
-      if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
+      if (usePlayerStore.getState().activeTool === "annotate-lasso") {
+        const point = toContentPoint(e.clientX, e.clientY);
+        const scroll = scrollRef.current;
+        if (!point || !scroll) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        usePlayerStore.getState().setIsPlaying(false);
+        setShowPopover(false);
+        setRangeSelection(null);
+        const bounds = scroll.getBoundingClientRect();
+        const elementsByKey = new Map(elementsRef.current.map((el) => [el.key ?? el.id, el]));
+        const clips = [...scroll.querySelectorAll<HTMLElement>('[data-clip][data-el-id]')].flatMap((node) => {
+          const element = elementsByKey.get(node.dataset.elId || "");
+          if (!element || element.hidden) return [];
+          const box = node.getBoundingClientRect();
+          return [{ element: { ...element }, rect: { left: box.left - bounds.left + scroll.scrollLeft,
+            top: box.top - bounds.top + scroll.scrollTop, width: box.width, height: box.height } }];
+        });
+        lassoRef.current = { points: [point], clips };
+        setAnnotationOutline([point]);
+        return;
+      }
+      if (e.shiftKey || usePlayerStore.getState().activeTool === "annotate") {
+        if (!e.shiftKey) shiftClickClipRef.current = null;
         beginRangeSelection(e);
         return;
       }
@@ -288,6 +330,7 @@ export function useTimelineRangeSelection({
       setShowPopover,
       toContentPoint,
       onSelectElement,
+      elementsRef,
     ],
   );
 
@@ -300,7 +343,7 @@ export function useTimelineRangeSelection({
       const el = scrollRef.current;
       if (el) {
         const rect = el.getBoundingClientRect();
-        const x = clientX - rect.left + el.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
+        const x = clientX - rect.left + el.scrollLeft - gutterWidth - TRACKS_LEFT_PAD;
         if (x >= 0) {
           const dur = el.scrollWidth / pps;
           liveTime.notify(Math.max(0, Math.min(dur, x / pps)));
@@ -316,19 +359,40 @@ export function useTimelineRangeSelection({
         });
       }
     },
-    [scrollRef, pps, seekFromX, autoScrollDuringDrag, isDragging],
+    [scrollRef, pps, seekFromX, autoScrollDuringDrag, isDragging, gutterWidth],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      const lasso = lassoRef.current;
+      if (lasso) {
+        const point = toContentPoint(e.clientX, e.clientY);
+        if (!point) return;
+        const previous = lasso.points[lasso.points.length - 1]!;
+        if (Math.hypot(point.x - previous.x, point.y - previous.y) < 2) return;
+        if (lasso.points.length >= 160) lasso.points = lasso.points.filter((_, index) => index % 2 === 0);
+        lasso.points = [...lasso.points, point];
+        setAnnotationOutline(lasso.points);
+        return;
+      }
       if (isRangeSelecting.current) {
         const rect = scrollRef.current?.getBoundingClientRect();
         if (rect) {
           const x =
-            e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER - TRACKS_LEFT_PAD;
+            e.clientX -
+            rect.left +
+            (scrollRef.current?.scrollLeft ?? 0) -
+            gutterWidth -
+            TRACKS_LEFT_PAD;
           setRangeSelection((prev) =>
             prev
-              ? { ...prev, end: Math.max(0, x / pps), anchorX: e.clientX, anchorY: e.clientY }
+              ? {
+                  ...prev,
+                  end: Math.max(prev.selectedElements?.[0]?.start ?? 0, Math.min(
+                    prev.selectedElements?.[0] ? prev.selectedElements[0].start + prev.selectedElements[0].duration : effectiveDuration, x / pps)),
+                  anchorX: e.clientX,
+                  anchorY: e.clientY,
+                }
               : null,
           );
         }
@@ -345,13 +409,25 @@ export function useTimelineRangeSelection({
       if (!isDragging.current) return;
       updateScrubDrag(e.clientX);
     },
-    [pps, scrollRef, isDragging, applyMarqueeAtClient, syncMarqueeAutoScroll, updateScrubDrag],
+    [
+      pps,
+      effectiveDuration,
+      scrollRef,
+      isDragging,
+      applyMarqueeAtClient,
+      syncMarqueeAutoScroll,
+      updateScrubDrag,
+      gutterWidth,
+      toContentPoint,
+    ],
   );
 
   // Release of a shift time-range gesture: keep a real range (or a shift-click
   // clip range), otherwise clear it.
   const finishRangeSelection = useCallback(() => {
     isRangeSelecting.current = false;
+    if (usePlayerStore.getState().activeTool === "annotate")
+      usePlayerStore.getState().setActiveTool("select");
     const pendingShiftClick = shiftClickClipRef.current;
     shiftClickClipRef.current = null;
     setRangeSelection((prev) => {
@@ -361,10 +437,22 @@ export function useTimelineRangeSelection({
       }
       if (prev && Math.abs(prev.end - prev.start) > 0.2) {
         setShowPopover(true);
-        return prev;
+        return { ...prev, selectedElements: prev.selectedElements ?? elementsRef.current.filter((el) =>
+          el.start < Math.max(prev.start, prev.end) && el.start + el.duration > Math.min(prev.start, prev.end)).map((el) => ({ ...el })) };
       }
       return null;
     });
+  }, [setShowPopover, elementsRef]);
+
+  const cancelRangeSelection = useCallback(() => {
+    isRangeSelecting.current = false;
+    shiftClickClipRef.current = null;
+    lassoRef.current = null;
+    setAnnotationOutline([]);
+    setRangeSelection(null);
+    setShowPopover(false);
+    if (["annotate", "annotate-lasso"].includes(usePlayerStore.getState().activeTool))
+      usePlayerStore.getState().setActiveTool("select");
   }, [setShowPopover]);
 
   // Release of a marquee gesture: a plain empty-lane click clears selection;
@@ -388,7 +476,22 @@ export function useTimelineRangeSelection({
     [stopMarqueeAutoScroll, elementsRef, onSelectElement],
   );
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((event?: React.PointerEvent) => {
+    const lasso = lassoRef.current;
+    if (lasso) {
+      lassoRef.current = null;
+      const polygon = getSelectionPolygon(lasso.points);
+      const selected = lasso.clips.filter((clip) => polygonIntersectsRect(polygon, clip.rect)).map((clip) => clip.element);
+      if (selected.length) {
+        const start = Math.min(...selected.map((el) => el.start));
+        const end = Math.max(...selected.map((el) => el.start + el.duration));
+        setRangeSelection({ start, end, anchorX: event?.clientX ?? 0, anchorY: event?.clientY ?? 0,
+          kind: "timeline-lasso", selectedElements: selected });
+        setShowPopover(true);
+        usePlayerStore.getState().setActiveTool("select");
+      } else setAnnotationOutline([]);
+      return;
+    }
     if (isRangeSelecting.current) {
       finishRangeSelection();
       return;
@@ -407,14 +510,18 @@ export function useTimelineRangeSelection({
     isDragging.current = false;
     setIsScrubbing(false);
     cancelAnimationFrame(dragScrollRaf.current);
-  }, [isDragging, dragScrollRaf, seekFromX, finishRangeSelection, finishMarquee]);
+  }, [isDragging, dragScrollRaf, seekFromX, finishRangeSelection, finishMarquee, setShowPopover]);
 
   // Escape: cancel an in-flight marquee (restores the pre-drag selection);
   // otherwise clear any lingering multi-selection.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || (e.target instanceof Element && e.target.closest('[role="dialog"]'))) return;
       const store = usePlayerStore.getState();
+      if (isRangeSelecting.current || lassoRef.current || ["annotate", "annotate-lasso"].includes(store.activeTool)) {
+        cancelRangeSelection();
+        return;
+      }
       const marquee = marqueeRef.current;
       if (marquee) {
         marqueeRef.current = null;
@@ -436,16 +543,18 @@ export function useTimelineRangeSelection({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [stopMarqueeAutoScroll]);
+  }, [stopMarqueeAutoScroll, cancelRangeSelection]);
 
   return {
     rangeSelection,
     setRangeSelection,
     shiftClickClipRef,
     marqueeRect: STUDIO_MULTI_SELECTION_ENABLED ? marqueeRect : null,
+    annotationOutline,
     isScrubbing,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    cancelRangeSelection,
   };
 }

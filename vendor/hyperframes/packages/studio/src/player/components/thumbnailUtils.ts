@@ -1,55 +1,7 @@
+import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 /** Rendered height of a timeline-clip thumbnail strip, in CSS px. */
 export const THUMBNAIL_CLIP_HEIGHT = 24;
 export const MAX_THUMBNAIL_TILES = 24;
-export const MAX_CONCURRENT_TIMELINE_THUMBNAIL_TASKS = 2;
-
-interface TimelineThumbnailTask {
-  start: () => void;
-  started: boolean;
-  released: boolean;
-}
-
-const pendingTimelineThumbnailTasks: TimelineThumbnailTask[] = [];
-let activeTimelineThumbnailTasks = 0;
-
-function drainTimelineThumbnailTasks(): void {
-  while (
-    activeTimelineThumbnailTasks < MAX_CONCURRENT_TIMELINE_THUMBNAIL_TASKS &&
-    pendingTimelineThumbnailTasks.length > 0
-  ) {
-    const task = pendingTimelineThumbnailTasks.shift();
-    if (!task || task.released) continue;
-    task.started = true;
-    activeTimelineThumbnailTasks += 1;
-    try {
-      task.start();
-    } catch (error) {
-      task.released = true;
-      activeTimelineThumbnailTasks -= 1;
-      queueMicrotask(() => {
-        throw error;
-      });
-    }
-  }
-}
-
-/**
- * Bounds expensive timeline thumbnail capture/decoding work across all clips.
- * Call the returned release function when the task completes or is cancelled.
- */
-export function scheduleTimelineThumbnailTask(start: () => void): () => void {
-  const task: TimelineThumbnailTask = { start, started: false, released: false };
-  pendingTimelineThumbnailTasks.push(task);
-  drainTimelineThumbnailTasks();
-
-  return () => {
-    if (task.released) return;
-    task.released = true;
-    if (task.started) activeTimelineThumbnailTasks -= 1;
-    drainTimelineThumbnailTasks();
-  };
-}
-
 export interface ThumbnailStripLayout {
   /** Width of a single tile, in CSS px. */
   frameW: number;
@@ -106,4 +58,68 @@ export function encodePreviewPath(relativePath: string): string {
 export function resolveMediaPreviewUrl(src: string, projectId: string): string {
   if (/^(?:https?:|data:|blob:)/i.test(src)) return src;
   return `/api/projects/${projectId}/preview/${encodePreviewPath(src)}`;
+}
+
+/** Quantize request identities so a pixel-by-pixel resize does not thrash the cache. */
+export function quantizeThumbnailFrameCount(frameCount: number): number {
+  const safeCount = Math.max(1, Number.isFinite(frameCount) ? Math.ceil(frameCount) : 1);
+  const cap = 2 ** Math.floor(Math.log2(MAX_VISIBLE_THUMBNAIL_FRAMES));
+  return Math.min(cap, 2 ** Math.ceil(Math.log2(safeCount)));
+}
+
+/**
+ * The decoded frame tile `index` of `tileCount` shows, of a strip's `frameCount`: the last tile
+ * shows the clip's last frame; the others the slice (videoThumbnailTimestamps) holding their centre.
+ */
+export function thumbnailFrameForTile(
+  index: number,
+  tileCount: number,
+  frameCount: number,
+): number {
+  if (frameCount < 2) return 0;
+  if (tileCount > 1 && index >= tileCount - 1) return frameCount - 1;
+  const slices = frameCount - 1;
+  return Math.min(slices - 1, Math.floor(((index + 0.5) * slices) / tileCount));
+}
+
+
+export function probeImageAspect(
+  imageSrc: string,
+  signal: AbortSignal,
+  tolerateSvgError = false,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const cleanup = () => {
+      image.onload = null;
+      image.onerror = null;
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      image.src = "";
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+
+    image.onload = () => {
+      cleanup();
+      resolve(
+        image.naturalWidth > 0 && image.naturalHeight > 0
+          ? image.naturalWidth / image.naturalHeight
+          : 16 / 9,
+      );
+    };
+    image.onerror = () => {
+      cleanup();
+      if (tolerateSvgError && /\.svg($|\?)/i.test(imageSrc)) resolve(16 / 9);
+      else reject(new Error("Image thumbnail failed to load"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    image.src = imageSrc;
+  });
 }

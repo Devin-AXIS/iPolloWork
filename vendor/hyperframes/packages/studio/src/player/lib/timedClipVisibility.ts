@@ -1,3 +1,4 @@
+import { lastVideoFrameTime } from "@hyperframes/core/runtime/protocol";
 import { parseNumeric, parseStartExpression } from "@hyperframes/core/runtime/start-expression";
 
 import type { PlaybackAdapter } from "./playbackTypes";
@@ -351,13 +352,15 @@ export function syncTimedClipVisibility(
 export function wrapAdapterWithTimedClipVisibility(
   adapter: PlaybackAdapter,
   getDocument: () => Document | null | undefined,
+  fps = 30,
 ): PlaybackAdapter {
   const cached = visibilityAdapterCache.get(adapter);
   if (cached) return cached;
   const sync = (time = adapter.getTime()) => {
     const doc = getDocument();
-    syncTimedClipVisibility(doc, time);
-    syncLegacyFrameCarousel(doc, time, adapter.getDuration());
+    const visualTime = lastVideoFrameTime(time, adapter.getDuration(), fps);
+    syncTimedClipVisibility(doc, visualTime);
+    syncLegacyFrameCarousel(doc, visualTime, adapter.getDuration());
   };
   const wrapped: PlaybackAdapter = {
     play: () => {

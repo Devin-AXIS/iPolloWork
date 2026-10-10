@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
-import { computeDragPreview } from "./timelineClipDragPreview";
+import { computeDragPreview, computeResizePreview } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 
 const CLIP: TimelineElement = {
@@ -74,5 +74,63 @@ describe("timeline drag axis intent", () => {
     expect(preview.insertRow).not.toBeNull();
     expect(preview.snapTime).toBeNull();
     expect(preview.snapType).toBeNull();
+  });
+});
+
+describe("component stretch handles", () => {
+  test.each(["start", "end"] as const)(
+    "%s edge permits full source retiming without trim limits",
+    (edge) => {
+      const element = {
+        ...CLIP,
+        compositionSrc: "scene.html",
+        start: 10,
+        duration: 10,
+        sourceDuration: 10,
+        playbackStart: 0,
+      };
+      const preview = computeResizePreview(
+        {
+          element,
+          edge,
+          selectionKeys: new Set(),
+          originClientX: 0,
+          previewStart: 10,
+          previewDuration: 10,
+          started: true,
+        },
+        edge === "start" ? -1000 : 1000,
+        { scroll: null, pps: 100, duration: 40, buildSnapTargets: () => [] },
+      );
+      expect(preview.previewDuration).toBe(20);
+      expect(preview.previewPlaybackStart).toBeUndefined();
+      expect(preview.previewStart).toBe(edge === "start" ? 0 : 10);
+    },
+  );
+  test("a video retains its source trim limit", () => {
+    const element = {
+      ...CLIP,
+      tag: "video",
+      start: 10,
+      duration: 10,
+      sourceDuration: 10,
+      playbackStart: 0,
+    };
+    const preview = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        selectionKeys: new Set(),
+        originClientX: 0,
+        previewStart: 10,
+        previewDuration: 10,
+        started: true,
+      },
+      -1000,
+      { scroll: null, pps: 100, duration: 40, buildSnapTargets: () => [] },
+    );
+    expect(preview.previewStart).toBe(10);
+    expect(preview.previewDuration).toBe(10);
+    expect(preview.previewPlaybackStart).toBe(0);
   });
 });

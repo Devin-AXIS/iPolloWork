@@ -1,12 +1,19 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.agent-command-center",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "product-overview",
   "style": "dark",
-  "tags": ["video", "agents", "workflow", "tools", "command-center"],
+  "tags": [
+    "video",
+    "agents",
+    "workflow",
+    "tools",
+    "command-center",
+    "topic:product"
+  ],
   "surface": "video",
   "title": "Agent Command Center",
   "description": "A precise product overview that carries one task through agent reasoning, connected tools, and a finished result.",

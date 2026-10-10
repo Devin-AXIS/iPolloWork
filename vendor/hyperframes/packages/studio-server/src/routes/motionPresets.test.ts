@@ -167,6 +167,57 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("text.enter.typewriter");
   });
 
+  it("persists, edits and removes camera motion through the existing mutation route", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace(
+        '<h1 id="headline"',
+        '<div id="world" data-motion-role="camera"></div><h1 id="headline"',
+      ),
+    );
+    for (const zoom of [1.8, 2.4]) {
+      const response = await mutate({
+        type: "mutate-motion",
+        operation: "upsert",
+        targetSelector: "#world",
+        elementId: "world",
+        targetKind: "element",
+        phase: "emphasis",
+        presetId: "camera.push-in",
+        start: 1,
+        duration: 3,
+        parameters: { focusX: 72, focusY: 40, zoom },
+      });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      const motions = body.parsed.animations
+        .map((animation: { extras?: Record<string, unknown> }) =>
+          readMotionInstanceFromExtras(animation.extras),
+        )
+        .filter(Boolean);
+      expect(motions).toHaveLength(1);
+      expect(motions[0]).toMatchObject({
+        presetId: "camera.push-in",
+        start: 1,
+        duration: 3,
+        parameters: { zoom },
+      });
+      expect(readFileSync(join(projectDir, "index.html"), "utf8")).toContain("你好 mixed AI");
+    }
+    const removed = await mutate({
+      type: "mutate-motion",
+      operation: "remove",
+      targetSelector: "#world",
+      elementId: "world",
+      targetKind: "element",
+      phase: "emphasis",
+    });
+    expect(removed.status).toBe(200);
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain("camera.push-in");
+    expect(html).toContain('id="world"');
+  });
+
   it("keeps a manually placed element anchored when semantic motion is added", async () => {
     writeFileSync(
       join(projectDir, "index.html"),

@@ -63,13 +63,14 @@ function hashPath(hash, filePath, relativePath) {
   hash.update("\0");
 }
 
-function runtimeKey(formatVersion = runtimeFormatVersion) {
+function runtimeKey(resourceRoot = sourceRoot) {
   const hash = createHash("sha256");
-  hash.update(`runtime-format:${formatVersion}\0`);
-  for (const fileName of ["package.json", "bun.lock", "LICENSE"]) {
+  hash.update(`runtime-format:${runtimeFormatVersion}\0`);
+  for (const fileName of ["package.json", "bun.lock"]) {
     hashPath(hash, resolve(sourceRoot, fileName), fileName);
   }
-  const cliPackageRoot = resolve(sourceRoot, "packages", "cli");
+  hashPath(hash, resolve(resourceRoot, "LICENSE"), "LICENSE");
+  const cliPackageRoot = resolve(resourceRoot, "packages", "cli");
   hashPath(hash, resolve(cliPackageRoot, "package.json"), "packages/cli/package.json");
   for (const resource of cliRuntimeResources) {
     hashPath(hash, resolve(cliPackageRoot, resource), `packages/cli/${resource}`);
@@ -169,6 +170,19 @@ function pruneOnnxRuntimeBinaries(nodeModulesRoot) {
   }
 }
 
+function pruneStaticMediaBinaries(nodeModulesRoot) {
+  for (const packageName of ["ffmpeg-static", "ffprobe-static"]) {
+    rmSync(resolve(nodeModulesRoot, packageName), { recursive: true, force: true });
+    const bunRoot = resolve(nodeModulesRoot, ".bun");
+    if (!existsSync(bunRoot)) continue;
+    for (const entry of readdirSync(bunRoot)) {
+      if (entry.startsWith(`${packageName}@`)) {
+        rmSync(resolve(bunRoot, entry), { recursive: true, force: true });
+      }
+    }
+  }
+}
+
 function runtimePackageJson() {
   const sourcePackage = JSON.parse(readFileSync(resolve(sourceRoot, "package.json"), "utf8"));
   const cliPackage = JSON.parse(
@@ -211,6 +225,14 @@ function cachedRuntimeMatches(expectedPackage) {
   }
 }
 
+function verifyRuntimeImports() {
+  run(
+    process.execPath,
+    ["--input-type=module", "--eval", 'await Promise.all([import("fontkit"), import("onnxruntime-node")])'],
+    runtimeRoot,
+  );
+}
+
 const key = runtimeKey();
 // The installed app merges the separately packaged registry into the same
 // resources/hyperframes directory. A cached runtime restored from there can
@@ -218,13 +240,15 @@ const key = runtimeKey();
 // source registry separately, and two concurrent writers to the same Windows
 // destination intermittently fail with EBUSY.
 rmSync(resolve(runtimeRoot, "registry"), { recursive: true, force: true });
+pruneStaticMediaBinaries(resolve(runtimeRoot, "node_modules"));
 
-if (readStamp()?.key === key && existsSync(resolve(runtimeRoot, "node_modules"))) {
+const expectedRuntimePackage = runtimePackageJson();
+if (readStamp()?.key === key && cachedRuntimeMatches(expectedRuntimePackage) && runtimeKey(runtimeRoot) === key) {
+  verifyRuntimeImports();
   console.log("HyperFrames packaged runtime is up to date; skipping staging.");
   process.exit(0);
 }
 
-const expectedRuntimePackage = runtimePackageJson();
 if (cachedRuntimeMatches(expectedRuntimePackage)) {
   console.log("Migrating cached HyperFrames runtime to a packaged-safe layout...");
   copyPath(resolve(sourceRoot, "LICENSE"), resolve(runtimeRoot, "LICENSE"));
@@ -237,12 +261,9 @@ if (cachedRuntimeMatches(expectedRuntimePackage)) {
   }
   materializeBunPackages(resolve(runtimeRoot, "node_modules"));
   pruneOnnxRuntimeBinaries(resolve(runtimeRoot, "node_modules"));
+  pruneStaticMediaBinaries(resolve(runtimeRoot, "node_modules"));
   writeFileSync(resolve(runtimeRoot, "package.json"), `${JSON.stringify(expectedRuntimePackage, null, 2)}\n`);
-  run(
-    process.execPath,
-    ["--input-type=module", "--eval", 'await Promise.all([import("fontkit"), import("onnxruntime-node")])'],
-    runtimeRoot,
-  );
+  verifyRuntimeImports();
   writeFileSync(stampPath, `${JSON.stringify({ key, updatedAt: new Date().toISOString() }, null, 2)}\n`);
   console.log(`HyperFrames cached runtime migrated: ${runtimeRoot}`);
   process.exit(0);
@@ -272,24 +293,8 @@ run(
 );
 materializeBunPackages(resolve(runtimeRoot, "node_modules"));
 pruneOnnxRuntimeBinaries(resolve(runtimeRoot, "node_modules"));
-run(
-  process.execPath,
-  ["--input-type=module", "--eval", 'await Promise.all([import("fontkit"), import("onnxruntime-node")])'],
-  runtimeRoot,
-);
-
-// Electron supplies its own verified ffmpeg/ffprobe binaries to HyperFrames.
-for (const packageName of ["ffmpeg-static", "ffprobe-static"]) {
-  rmSync(resolve(runtimeRoot, "node_modules", packageName), { recursive: true, force: true });
-  const bunRoot = resolve(runtimeRoot, "node_modules", ".bun");
-  if (existsSync(bunRoot)) {
-    for (const entry of readdirSync(bunRoot)) {
-      if (entry.startsWith(`${packageName}@`)) {
-        rmSync(resolve(bunRoot, entry), { recursive: true, force: true });
-      }
-    }
-  }
-}
+pruneStaticMediaBinaries(resolve(runtimeRoot, "node_modules"));
+verifyRuntimeImports();
 
 writeFileSync(stampPath, `${JSON.stringify({ key, updatedAt: new Date().toISOString() }, null, 2)}\n`);
 console.log(`HyperFrames packaged runtime ready: ${runtimeRoot}`);

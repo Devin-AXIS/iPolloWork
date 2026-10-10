@@ -1,0 +1,250 @@
+<!doctype html>
+<!--
+  touch-indicator -- HyperFrames video primitive (pointers / interaction / demonstrate)
+
+  CONCEPT: a translucent contact-circle that represents a fingertip touching
+  glass. It never hovers: every appearance resolves into a touch-down, every
+  touch causes a same-frame response on its target, every gesture ends with
+  a physical lift. One mechanic (tap or swipe, picked by a variable at
+  setup), one file. This is the mobile counterpart to an oversized cursor,
+  but it obeys touch physics, not pointer physics.
+
+  MOUNTABLE SUB-COMPOSITION: this file is loaded by a host via
+  data-composition-src, not pasted inline. The runtime only clones
+  <template> contents (see skills/hyperframes-core/references/sub-compositions.md),
+  so every style, the markup, and the script that builds and registers the
+  timeline all live inside <template> below. The file is self-driving: it
+  builds its own paused GSAP timeline and registers it under
+  window.__timelines["touch-indicator"] on load, matching the root's own
+  data-composition-id. A host mounts it with a matching
+  data-composition-id="touch-indicator" data-composition-src="./touch-indicator.html".
+
+  COMPILED FROM: hyperframes-corpus-data/mobile/gesture-actor-spec.md (the
+  contact-never-hover law, contact-circle sizing, tap anatomy, swipe law,
+  lift/exit law, same-frame target-reaction contract) with supporting
+  constants cross-checked against gesture-physics-recipes.md. Evidence
+  status: spec ready, no rendered corpus clips yet.
+
+  USE WHEN: a mobile UI scene needs a visible tap or swipe to cause the next
+  animation beat (button press, list scroll, card swipe, sheet reveal).
+  Skip it for cursor/pointer UI (use a cursor primitive) and for gestures
+  whose drawn path is itself the subject (use a trail primitive instead).
+
+  VARIABLES (declared below via data-composition-variables):
+    - gesture   enum "tap" | "swipe", default "tap"
+    - polarity  enum "light" | "dark", default "light"
+    - targetX   number 0-100 (percent of host width), default 50
+    - targetY   number 0-100 (percent of host height), default 55
+
+  LOOK: the iOS "Show Touches" disc. A filled translucent disc with a 1px
+  edge, 18cqw of the host box (68px in a 380px-wide phone screen), fully
+  on in 0.067s, gone 0.2s after lift.
+
+  ENVELOPE (seconds, 60fps frame-quantized, gesture = "tap"):
+    IN   0.000 - 0.067  disc appears on contact (touch-down at 0.067)
+    HOLD 0.067 - 0.183  elastic contact dwell (stretch here only)
+    OUT  0.183 - 0.383  lift: the disc fades in place
+
+  ENVELOPE (seconds, 60fps frame-quantized, gesture = "swipe"):
+    IN   0.000 - 0.067  disc appears on contact (touch-down at 0.067)
+    HOLD 0.067 - 0.400  elastic travel: accelerate 41% / decelerate 59% of
+                        the stretchable swipe duration (default 0.333)
+    OUT  0.400 - 0.600  lift: the disc fades where the swipe ended
+
+  SOUND CUES (fixed offsets, never inside the elastic HOLD):
+    touch-down  IN + 0.067s -> soft fingertip contact
+    lift-off    OUT + 0s    -> physical release tick
+
+  TARGET RESPONSE: the host owns it. Put the target's reaction on the host
+  timeline at the mount's data-start + 0.067s (see demo.html).
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"gesture","type":"enum","label":"Gesture","default":"tap","options":[{"value":"tap","label":"Tap"},{"value":"swipe","label":"Swipe"}]},
+    {"id":"polarity","type":"enum","label":"Polarity","default":"light","options":[{"value":"light","label":"Light (on dark UI)"},{"value":"dark","label":"Dark (on light UI)"}]},
+    {"id":"targetX","type":"number","label":"Target X","default":50,"min":0,"max":100,"unit":"%"},
+    {"id":"targetY","type":"number","label":"Target Y","default":55,"min":0,"max":100,"unit":"%"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Touch Indicator</title>
+    <!-- Head is metadata for the source file only; the mount runtime clones
+         only <template> contents and discards everything else, including
+         this head. See sub-compositions.md, "Pitfall 1".
+
+         The data-composition-variables declared on <html> above duplicates
+         the same schema on the #root div inside <template> below (the
+         "dual-carrier contract", core/src/runtime/compositionLoader.ts and
+         packages/parsers/src/htmlParser.ts both read declared defaults from
+         <html> only on the lazy external-load / CLI-metadata paths, while
+         the render-time bundler reads the template's root div). Keep both
+         copies in sync if the variable schema changes. -->
+  </head>
+  <body>
+    <template>
+      <style>
+        /* INVARIANT: root fills the host's box, position-blind, elastic to
+           whatever size a host slot gives it. No data-width/data-height on
+           the root -- the host slot owns the size (see mount contract).
+           Root is styled by #root, never a class (sub-compositions.md,
+           Pitfall 3). */
+        #root {
+          position: absolute;
+          inset: 0;
+          container-type: inline-size;
+          isolation: isolate;
+          pointer-events: none;
+        }
+
+        .hf-touch-indicator__actor {
+          /* sized to 18cqw of the host box, meant to be the phone screen,
+             with a 46px floor and a 111px cap for wide hosts. */
+          --hf-gesture-size: clamp(46px, 18cqw, 111px);
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: var(--hf-gesture-size);
+          height: var(--hf-gesture-size);
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          will-change: transform, opacity;
+        }
+
+        .hf-touch-indicator__core {
+          position: absolute;
+          inset: 0;
+          box-sizing: border-box;
+          /* INVARIANT: circle geometry, hardcoded 50%, not var(--radius) -
+             that token is for rectangular UI corners, not this actor's
+             fixed disc. */
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.35);
+          border: 1px solid rgba(255, 255, 255, 0.6);
+          transform-origin: 50% 50%;
+          will-change: transform;
+        }
+
+        .hf-touch-indicator__actor--dark .hf-touch-indicator__core {
+          background: rgba(0, 0, 0, 0.22);
+          border-color: rgba(0, 0, 0, 0.45);
+        }
+      </style>
+
+      <div
+        id="root"
+        data-composition-id="touch-indicator"
+        data-composition-variables='[
+          {"id":"gesture","type":"enum","label":"Gesture","default":"tap","options":[{"value":"tap","label":"Tap"},{"value":"swipe","label":"Swipe"}]},
+          {"id":"polarity","type":"enum","label":"Polarity","default":"light","options":[{"value":"light","label":"Light (on dark UI)"},{"value":"dark","label":"Dark (on light UI)"}]},
+          {"id":"targetX","type":"number","label":"Target X","default":50,"min":0,"max":100,"unit":"%"},
+          {"id":"targetY","type":"number","label":"Target Y","default":55,"min":0,"max":100,"unit":"%"}
+        ]'
+      >
+        <div class="hf-touch-indicator__actor">
+          <div class="hf-touch-indicator__core"></div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          const FPS = 60;
+          const q = (s) => Math.max(1, Math.round(s * FPS)) / FPS;
+          const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+          // The actor owns x/y and opacity, the core owns scale.
+          function buildTouchIndicator(tl, root, { at = 0, elasticity = 1 } = {}) {
+            const defaults = { gesture: "tap", polarity: "light", targetX: 50, targetY: 55 };
+            // Per-instance overrides (a host's data-variable-values) land in
+            // window.__hfVariablesByComp, scoped by composition id. Reading
+            // window.__hfVariables directly here would silently ignore every
+            // host override -- window.__hyperframes.getVariables() is the
+            // scoped accessor, per the registry convention (see
+            // lower-third-bild.html, caption-texture.html).
+            const resolved =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : window.__hfVariables || {};
+            const vars = Object.assign({}, defaults, resolved);
+            const actor = root.querySelector(".hf-touch-indicator__actor");
+            const core = root.querySelector(".hf-touch-indicator__core");
+            if (vars.polarity === "dark") actor.classList.add("hf-touch-indicator__actor--dark");
+
+            // Compute layout geometry once at setup, never inside an ease/callback.
+            const hostW = root.clientWidth || 1;
+            const hostH = root.clientHeight || 1;
+            const x0 = (vars.targetX / 100) * hostW;
+            const y0 = (vars.targetY / 100) * hostH;
+
+            // --- IN: fixed, never stretched. ---
+            const appear = q(0.06);
+            tl.fromTo(
+              actor,
+              { x: x0, y: y0, xPercent: -50, yPercent: -50, autoAlpha: 0 },
+              {
+                x: x0,
+                y: y0,
+                xPercent: -50,
+                yPercent: -50,
+                autoAlpha: 1,
+                duration: appear,
+                ease: "power2.out",
+                immediateRender: false,
+              },
+              at,
+            );
+            tl.fromTo(
+              core,
+              { scale: 0.9 },
+              { scale: 1, duration: appear, ease: "power2.out", immediateRender: false },
+              at,
+            );
+            const touchDown = at + appear;
+
+            // --- HOLD: the only elastic phase. Stretch it, never gsap.timeScale(). ---
+            let holdEnd;
+            if (vars.gesture === "swipe") {
+              // a swipe lasts 0.28s to 0.52s; elasticity scales its pacing.
+              const swipeDuration = q(clamp(0.34 * elasticity, 0.28, 0.52));
+              const travel = hostH * 0.4; // vertical scroll, 40% of host height (32-68% allowed)
+              const accel = q(swipeDuration * 0.41);
+              const decel = swipeDuration - accel;
+              const bendY = y0 - travel * 0.41;
+              const endY = y0 - travel;
+              tl.fromTo(
+                actor,
+                { x: x0, y: y0 },
+                { x: x0, y: bendY, duration: accel, ease: "power2.in", immediateRender: false },
+                touchDown,
+              );
+              tl.to(
+                actor,
+                { x: x0, y: endY, duration: decel, ease: "power3.out" },
+                touchDown + accel,
+              );
+              holdEnd = touchDown + swipeDuration;
+            } else {
+              // a tap touches for 0.08s to 0.2s; any longer reads as a long-press.
+              holdEnd = touchDown + q(clamp(0.12 * elasticity, 0.08, 0.2));
+            }
+
+            // --- OUT: fixed, never stretched. ---
+            const lift = q(0.2);
+            tl.to(actor, { autoAlpha: 0, duration: lift, ease: "power1.in" }, holdEnd);
+          }
+
+          // Self-driving mount: build the paused timeline and register it
+          // under this file's own data-composition-id, matching the host's
+          // data-composition-src wiring (sub-compositions.md, Pitfall 2).
+          const root = document.querySelector('[data-composition-id="touch-indicator"]');
+          const tl = gsap.timeline({ paused: true });
+          window.__timelines = window.__timelines || {};
+          window.__timelines["touch-indicator"] = tl;
+          buildTouchIndicator(tl, root, { at: 0 });
+        })();
+      </script>
+    </template>
+  </body>
+</html>

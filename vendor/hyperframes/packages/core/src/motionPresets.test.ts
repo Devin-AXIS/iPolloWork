@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { generateSpringEaseData, sampleSpringEase } from "@hyperframes/parsers/spring-ease";
 import {
   MOTION_PRESETS,
   compileMotionInstance,
@@ -47,13 +48,13 @@ function compiledStructuredTrackTargetCount(
 
 describe("motion presets", () => {
   it("ships stable text and element presets across all three phases", () => {
-    expect(MOTION_PRESETS).toHaveLength(67);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(67);
+    expect(MOTION_PRESETS).toHaveLength(75);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(75);
     expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(19);
     expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(24);
     expect(listMotionPresets({ targetKind: "text", phase: "exit" })).toHaveLength(6);
-    expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(7);
-    expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(14);
+    expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(11);
+    expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(18);
     expect(listMotionPresets({ targetKind: "element", phase: "exit" })).toHaveLength(3);
     expect(
       listMotionPresets({ targetKind: "text", phase: "enter", tone: "modern" }).map(
@@ -63,6 +64,16 @@ describe("motion presets", () => {
     expect(
       listMotionPresets({ targetKind: "text", phase: "enter", intent: "title reveal" }),
     ).not.toHaveLength(0);
+    expect(
+      listMotionPresets({ targetKind: "element", phase: "emphasis", intent: "camera" }).map(
+        (preset) => preset.id,
+      ),
+    ).toEqual([
+      "camera.push-in",
+      "camera.pull-back",
+      "camera.focus-travel",
+      "camera.oblique-glide",
+    ]);
   });
 
   it("ships migrated caption effects as editable text presets", () => {
@@ -86,8 +97,8 @@ describe("motion presets", () => {
       "text.emphasis.particle-burst",
     ];
 
-    expect(MOTION_PRESETS).toHaveLength(67);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(67);
+    expect(MOTION_PRESETS).toHaveLength(75);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(75);
 
     for (const id of migratedIds) {
       const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
@@ -250,6 +261,107 @@ describe("motion presets", () => {
     expect(compiled.targetSelector).toBe("#card");
     expect(compiled.keyframes[0]?.properties).toMatchObject({ opacity: 0, x: -42, y: 0 });
     expect(compiled.extras).not.toHaveProperty("stagger");
+  });
+
+  it("exposes the complete seek-safe transition library to element motion tools", () => {
+    const transitions = [
+      "transition.depth-push",
+      "transition.diagonal-slice",
+      "transition.lens-focus",
+      "transition.split-wipe",
+    ];
+    expect(
+      listMotionPresets({ targetKind: "element", phase: "enter" }).map((preset) => preset.id),
+    ).toEqual(expect.arrayContaining(transitions));
+    for (const presetId of transitions) {
+      const compiled = compileMotionInstance(
+        createMotionInstance({
+          presetId,
+          target: { selector: "#incoming-scene" },
+          targetKind: "element",
+          start: 2,
+          duration: 0.9,
+        }),
+      );
+      expect(compiled.keyframes.length, presetId).toBeGreaterThanOrEqual(3);
+      expect(compiled.keyframes.at(-1)?.properties.opacity, presetId).toBe(1);
+    }
+  });
+
+  it("keeps camera framing inside its viewport at every focal edge and zoom", () => {
+    for (const presetId of ["camera.push-in", "camera.pull-back", "camera.focus-travel"]) {
+      for (const zoom of [1, 1.05, 1.8, 3]) {
+        for (const focus of [0, 15, 50, 85, 100]) {
+          const instance = createMotionInstance({
+            presetId,
+            target: { selector: "#world" },
+            targetKind: "element",
+            start: 2,
+            parameters: {
+              zoom,
+              focusX: focus,
+              focusY: 100 - focus,
+              ...(presetId === "camera.focus-travel" ? { fromX: 0, fromY: 100 } : {}),
+            },
+          });
+          const compiled = compileMotionInstance(instance);
+          expect(compiled.duration).toBe(3);
+          expect(readMotionInstanceFromExtras({ data: compiled.extras.data })).toEqual(instance);
+          expect(compileMotionInstance(instance).keyframes).toEqual(compiled.keyframes);
+          const [start, end] = compiled.keyframes;
+          for (let step = 0; step <= 20; step++) {
+            const interpolate = (key: string) =>
+              Number(start!.properties[key]) +
+              ((Number(end!.properties[key]) - Number(start!.properties[key])) * step) / 20;
+            const half = interpolate("scale") * 50;
+            for (const key of ["xPercent", "yPercent"]) {
+              const center = 50 + interpolate(key);
+              expect(center - half).toBeLessThanOrEqual(0.00001);
+              expect(center + half).toBeGreaterThanOrEqual(99.99999);
+            }
+          }
+        }
+      }
+      const preset = MOTION_PRESETS.find((entry) => entry.id === presetId)!;
+      expect(
+        preset.parameterSchema
+          .find((parameter) => parameter.id === "ease")
+          ?.options?.some((option) => option.value.startsWith("back.")),
+      ).toBe(false);
+      expect(() =>
+        compileMotionInstance(
+          createMotionInstance({
+            presetId,
+            target: { selector: "#title" },
+            targetKind: "text",
+            start: 0,
+          }),
+        ),
+      ).toThrow();
+    }
+  });
+
+  it("uses one editable perspective path and lands oblique cameras in a neutral pose", () => {
+    for (const direction of ["left", "right", "up", "down"]) {
+      const result = compileMotionInstance(
+        createMotionInstance({
+          presetId: "camera.oblique-glide",
+          target: { selector: "#stage" },
+          targetKind: "element",
+          start: 1,
+          parameters: { direction, angle: 30, travel: 12 },
+        }),
+      );
+      expect(result.keyframes).toHaveLength(3);
+      expect(result.keyframes[0]!.properties).not.toEqual(result.keyframes[1]!.properties);
+      expect(result.keyframes.at(-1)!.properties).toMatchObject({
+        scale: 1,
+        transformPerspective: 1600,
+      });
+      for (const property of ["rotationX", "rotationY", "xPercent", "yPercent"]) {
+        expect(Number(result.keyframes.at(-1)!.properties[property])).toBeCloseTo(0);
+      }
+    }
   });
 
   it("compiles deterministic, finite GSAP keyframes and semantic metadata", () => {
@@ -806,6 +918,47 @@ describe("motion presets", () => {
       expect(compiled.keyframes[0]?.percentage).toBe(0);
       expect(compiled.keyframes.at(-1)?.percentage).toBe(100);
       expect(compiled.keyframes.at(-1)?.properties.opacity ?? 1).toBe(1);
+    }
+  });
+});
+
+
+describe("shared physical spring motion", () => {
+  it("uses one oscillator for CustomEase paths and sampled preset motion", () => {
+    for (const damping of [8, 20, 40]) {
+      const values = Array.from({ length: 121 }, (_, index) => sampleSpringEase(1, 100, damping, index / 120));
+      expect(values.every(Number.isFinite)).toBe(true);
+      expect(values[0]).toBe(0);
+      expect(values.at(-1)).toBe(1);
+      const path = generateSpringEaseData(1, 100, damping).match(/[-\d.]+,[-\d.]+/g)!;
+      expect(path).toHaveLength(121);
+      for (let i = 0; i < 121; i++) expect(Number(path[i]!.split(",")[1])).toBeCloseTo(values[i]!, 4);
+      if (damping < 20) expect(Math.max(...values)).toBeGreaterThan(1.1);
+      else expect(values.every((value, index) => index === 0 || value >= values[index - 1]!)).toBe(true);
+    }
+    expect(() => sampleSpringEase(0, 100, 10, 0.5)).toThrow(RangeError);
+    expect(() => generateSpringEaseData(1, 100, 10, Infinity)).toThrow(RangeError);
+  });
+
+  it("lands bounce cards using coupled rotation, position and spring scale without repeated segment easing", () => {
+    const motion = compileMotionInstance(createMotionInstance({presetId: "element.enter.bounce-card", target: {selector: "#card"}, targetKind: "element", start: 0, parameters: {intensity: 1.5, rotation: 12}}));
+    expect(motion.keyframes).toHaveLength(33);
+    expect(motion.keyframes.slice(1).every((keyframe) => keyframe.ease === "none")).toBe(true);
+    expect(motion.keyframes[0]?.properties).toMatchObject({y: 51, rotation: -18, opacity: 0});
+    expect(Number(motion.keyframes[0]?.properties.scale)).toBeCloseTo(0.69, 8);
+    expect(motion.keyframes.at(-1)?.properties).toMatchObject({x: 0, y: 0, rotation: 0, scale: 1, opacity: 1});
+    expect(Math.min(...motion.keyframes.map((keyframe) => Number(keyframe.properties.y)))).toBeLessThan(-5);
+  });
+
+  it("honors magnetic damping: zero overshoot never crosses the anchor, lively motion rings out and returns", () => {
+    const compiled = (overshoot: number) => compileMotionInstance(createMotionInstance({presetId: "motion.emphasis.magnetic-snap", target: {selector: "#card"}, targetKind: "element", start: 0, parameters: {distance: 40, intensity: 1, direction: "right", overshoot}}));
+    const quiet = compiled(0), lively = compiled(0.35);
+    expect(quiet.keyframes.every((keyframe) => Number(keyframe.properties.x) >= 0)).toBe(true);
+    expect(Math.min(...lively.keyframes.map((keyframe) => Number(keyframe.properties.x)))).toBeLessThan(-10);
+    for (const motion of [quiet, lively]) {
+      expect(motion.keyframes.at(-1)?.properties).toEqual({x: 0, y: 0, scale: 1});
+      expect(motion.keyframes[1]?.properties.x).toBe(40);
+      expect(motion.keyframes.slice(2).every((keyframe) => keyframe.ease === "none")).toBe(true);
     }
   });
 });

@@ -1,3 +1,13 @@
-1. Video Studio keeps its native canvas and timeline intact, while the small sound control and Preview stay together in the Studio toolbar.
+1. 未连接声音服务时，配音保持关闭，面板引导前往授权中心。
 
-2. Opening the sound control reveals a focused right-side voice configuration area. It clearly separates Bailian's official voices from cloned personal voices, and leaves the composition timeline untouched.
+2. 连接服务后，没有配音的视频显示自动匹配和生成整段配音。长任务说明中的配音要求也会完整传到运行时。
+
+3. 已生成配音的视频直接显示实际音色。没有修改时，更新按钮不可点击。
+
+4. 选择新的音色后，原来已应用的声音仍然可见，修改会提示尚未应用。
+
+5. 点击更新后进入生成状态，原配音保留。生成失败时，也可以再次尝试。
+
+6. 更新完成后，面板显示新的已应用音色，尚未应用的提示消失。
+
+7. 多个音色或缺少历史音色信息时，面板如实显示，不拿当前选择代替实际结果。

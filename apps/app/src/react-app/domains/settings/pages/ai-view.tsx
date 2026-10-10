@@ -10,14 +10,11 @@ import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { SettingsNotice, SettingsStatusBadge } from "../settings-section";
 import {
   LayoutSection,
-  LayoutSectionDescription,
-  LayoutSectionHeader,
   LayoutSectionItem,
   LayoutSectionItemFootnote,
   LayoutSectionItemHeader,
   LayoutSectionItemHeaderActions,
   LayoutSectionItemTitle,
-  LayoutSectionTitle,
   LayoutStack,
 } from "../settings-layout";
 
@@ -25,7 +22,7 @@ type ConnectedProvider = {
   id: string;
   name: string;
   displayId?: string;
-  source?: "env" | "api" | "config" | "custom";
+  source?: "env" | "api" | "config" | "custom" | "engine";
 };
 
 export type AiSettingsViewProps = {
@@ -39,7 +36,7 @@ export type AiSettingsViewProps = {
   providerConnectError: string | null;
   providerDisconnectStatus: string | null;
   providerDisconnectError: string | null;
-  onOpenProviderAuth: () => void | Promise<void>;
+  onOpenProviderAuth: (preferredProviderId?: string) => void | Promise<void>;
   onDisconnectProvider: (providerId: string) => void | Promise<string | void>;
   canDisconnectProvider: (source?: ConnectedProvider["source"]) => boolean;
   /** Set of local provider IDs that were imported from cloud. */
@@ -92,11 +89,6 @@ export function AiSettingsView(props: AiSettingsViewProps) {
       <LayoutStack>
       {/* ---- Providers ---- */}
       <LayoutSection>
-        <LayoutSectionHeader>
-          <LayoutSectionTitle>{t("settings.providers_title")}</LayoutSectionTitle>
-          <LayoutSectionDescription>{t("settings.providers_desc")}</LayoutSectionDescription>
-        </LayoutSectionHeader>
-
         <LayoutSectionItem>
           <LayoutSectionItemHeader>
             <LayoutSectionItemTitle>
@@ -109,7 +101,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
             <LayoutSectionItemHeaderActions>
               <Button
                 onClick={() => void props.onOpenProviderAuth()}
-                disabled={props.busy || props.providerAuthBusy}
+                disabled={props.providerAuthBusy}
               >
                 {props.providerAuthBusy
                   ? t("settings.loading_providers")
@@ -121,14 +113,16 @@ export function AiSettingsView(props: AiSettingsViewProps) {
 
         {props.showiPolloWorkModelsSubscribe ? (
           <LayoutSectionItem className="relative overflow-hidden rounded-2xl border border-blue-6 bg-blue-2/30 px-4 py-4">
-            <button
+            <Button
               type="button"
-              className="absolute right-3 top-3 flex size-7 items-center justify-center rounded-full text-blue-11 transition-colors hover:bg-blue-3/70"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute right-3 top-3 text-blue-11 hover:bg-blue-3/70"
               onClick={() => void props.onDismissiPolloWorkModels?.()}
               aria-label={t("settings.ai.dismiss_models_banner")}
             >
               <X className="size-3.5" />
-            </button>
+            </Button>
             <div className="flex flex-col gap-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex min-w-0 gap-3">
                 <ProviderIcon providerId="ipollowork" size={22} className="mt-0.5 shrink-0 text-blue-11" />
@@ -195,7 +189,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
                     <div className="truncate font-mono text-xs text-muted-foreground">{provider.displayId ?? provider.id}</div>
                   </div>
                 </div>
-                {!props.cloudProviderIds?.has(provider.id) ? (
+                {!props.cloudProviderIds?.has(provider.id) && provider.id !== "opencode" ? (
                   <Button
                     variant="destructive"
                     onClick={() => setDisconnectTarget(provider)}

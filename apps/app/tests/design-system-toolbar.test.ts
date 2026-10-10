@@ -13,7 +13,7 @@ describe("Design System toolbar", () => {
   test("keeps Design System inside the shared properties inspector", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('aria-label="Toggle design properties"');
+    expect(source).toContain('aria-label={t("design.toolbar.properties")}');
     expect(source).toContain('activeTab={propertiesTab}');
     expect(source).toContain('open={propertiesTab === "design-system"}');
     expect(source).not.toContain('aria-label="Toggle design system"');

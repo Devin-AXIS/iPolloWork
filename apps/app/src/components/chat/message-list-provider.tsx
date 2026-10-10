@@ -1,18 +1,22 @@
 "use memo";
 
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server"
 import { useSessionActivityStore } from "@/react-app/domains/session/status/session-activity-store"
 import * as React from "react"
 
 interface MessageListContextValue {
+  client: iPolloWorkServerClient | null
   workspaceId: string
   sessionId: string
   sessionTitle: string
   showThinking: boolean
   highlightQuery?: string
+  waitingLabel?: string
   developerMode: boolean
   displaySuggestions: boolean
   providerConnectedCount: number
-  onOpenVideoStudio?: () => void
+  onOpenVideoStudio?: (displayName?: string) => void
+  onOpenSchedule?: (focusAt: number) => void
   dispatchAction: (action: DispatchAction) => void
   setPrompt: (prompt: string) => void
   onRevertToUserMessage: (messageId: string) => void
@@ -24,18 +28,21 @@ const MessageListContext = React.createContext<MessageListContextValue | null>(n
 
 interface MessageListProviderProps {
   children: React.ReactNode
+  client: iPolloWorkServerClient | null
   workspaceId: string
   sessionId: string
   sessionTitle: string
   showThinking: boolean
   highlightQuery?: string
+  waitingLabel?: string
   developerMode: boolean
   onRevertToUserMessage: (messageId: string) => void
   onForkAtMessage: (messageId: string) => void
   onEditUserMessage: (messageId: string, text: string) => void
   displaySuggestions: boolean
   providerConnectedCount: number
-  onOpenVideoStudio?: () => void
+  onOpenVideoStudio?: (displayName?: string) => void
+  onOpenSchedule?: (focusAt: number) => void
   dispatchAction: (action: DispatchAction) => void
   setPrompt: (prompt: string) => void
 }
@@ -48,15 +55,18 @@ export interface DispatchAction {
 
 export function MessageListProvider({
   children,
+  client,
   workspaceId,
   sessionId,
   sessionTitle,
   showThinking,
   highlightQuery,
+  waitingLabel,
   developerMode,
   displaySuggestions,
   providerConnectedCount,
   onOpenVideoStudio,
+  onOpenSchedule,
   dispatchAction,
   setPrompt,
   onRevertToUserMessage,
@@ -65,15 +75,18 @@ export function MessageListProvider({
 }: MessageListProviderProps) {
   const value = React.useMemo(
     () => ({
+      client,
       workspaceId,
       sessionId,
       sessionTitle,
       showThinking,
       highlightQuery,
+      waitingLabel,
       developerMode,
       displaySuggestions,
       providerConnectedCount,
       onOpenVideoStudio,
+      onOpenSchedule,
       dispatchAction,
       setPrompt,
       onRevertToUserMessage,
@@ -81,15 +94,18 @@ export function MessageListProvider({
       onEditUserMessage,
     }),
     [
+      client,
       workspaceId,
       sessionId,
       sessionTitle,
       showThinking,
       highlightQuery,
+      waitingLabel,
       developerMode,
       displaySuggestions,
       providerConnectedCount,
       onOpenVideoStudio,
+      onOpenSchedule,
       dispatchAction,
       setPrompt,
       onRevertToUserMessage,

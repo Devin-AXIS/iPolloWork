@@ -1,5 +1,5 @@
 /**
- * Side-effect proof for the ipollowork.json -> runtime.sqlite migration.
+ * Side-effect proof for the runtime-DB-backed iPolloWork workspace config.
  *
  * The user-facing experience (open app, create workspace, read config) must be
  * unchanged; these server-level checks only witness the expected side effects:
@@ -7,8 +7,8 @@
  *     `.opencode/ipollowork.json`.
  *   - GET /config still returns the same ipollowork payload shape (version,
  *     workspace, authorizedRoots).
- *   - a legacy on-disk `.opencode/ipollowork.json` (pre-migration install) is
- *     migrated into the DB on read and remains effective (back-compat).
+ *   - obsolete on-disk `.opencode/ipollowork.json` files are not loaded into
+ *     the current runtime state.
  */
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
@@ -66,7 +66,7 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-describe("ipollowork config DB migration", () => {
+describe("ipollowork workspace config store", () => {
   test("creating a workspace seeds the runtime DB and writes no ipollowork.json", async () => {
     await withSandbox(async ({ root, config }) => {
       const server = (await startServer(config)) as Served;
@@ -108,12 +108,12 @@ describe("ipollowork config DB migration", () => {
     });
   });
 
-  test("back-compat: a legacy ipollowork.json is migrated into the DB on read", async () => {
+  test("does not import obsolete ipollowork.json state", async () => {
     await withSandbox(async ({ root, config }) => {
       const workspacePath = join(root, "ws-legacy");
       const workspaceId = "ws_legacy_fixture";
       await mkdir(join(workspacePath, ".opencode"), { recursive: true });
-      // Pre-migration install: a real file, empty DB.
+      // Obsolete state on disk must not become a second config source.
       await writeFile(
         join(workspacePath, ".opencode", "ipollowork.json"),
         JSON.stringify({
@@ -138,20 +138,18 @@ describe("ipollowork config DB migration", () => {
         // Before read: DB has no row.
         expect(Object.keys(await readiPolloWorkWorkspaceConfig(legacyConfig, workspaceId)).length).toBe(0);
 
-        // User reads config -> migrate-on-read copies file contents into the DB.
+        // Reading config seeds the canonical DB defaults.
         const configRes = await fetch(`http://127.0.0.1:${server.port}/workspace/${workspaceId}/config`, {
           headers: { authorization: `Bearer ${legacyConfig.token}` },
         });
         expect(configRes.status).toBe(200);
         const body = (await configRes.json()) as { ipollowork: Record<string, unknown> };
-        // The legacy marker is honored (user-visible config unchanged).
-        expect((body.ipollowork.workspace as { name?: string } | undefined)?.name).toBe("Legacy");
-        expect((body.ipollowork.blueprint as { emptyState?: { title?: string } } | undefined)?.emptyState?.title)
-          .toBe("Legacy starter");
+        expect((body.ipollowork.workspace as { name?: string } | undefined)?.name).toBe("ws-legacy");
+        expect(body.ipollowork.blueprint).toBeUndefined();
 
-        // Side effect: the legacy contents now live in the DB.
+        // Only canonical defaults live in the DB.
         const stored = await readiPolloWorkWorkspaceConfig(legacyConfig, workspaceId);
-        expect((stored.workspace as { name?: string } | undefined)?.name).toBe("Legacy");
+        expect((stored.workspace as { name?: string } | undefined)?.name).toBe("ws-legacy");
         expect(stored.authorizedRoots).toEqual([workspacePath]);
       } finally {
         await server.stop(true);

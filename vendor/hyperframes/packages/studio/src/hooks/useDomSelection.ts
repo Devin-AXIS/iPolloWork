@@ -7,7 +7,6 @@ import {
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {
-  collectTimelineAncestorIds,
   resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
 } from "../player/lib/timelineTreeSelection";
@@ -29,6 +28,7 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
+import { previewGroupScope } from "../components/editor/domEditingGroups";
 
 // ── Types ──
 
@@ -173,11 +173,6 @@ export function useDomSelection({
         };
         const treeId = resolveTimelineTreeSelectionId(treeSelection);
         const treeKey = treeId ? resolveTimelineTreeSelectionKey(treeSelection) : "";
-        if (treeId) {
-          playerState.expandTimelineElementIds(
-            collectTimelineAncestorIds(treeId, playerState.clipParentMap),
-          );
-        }
         const key =
           treeKey ||
           findMatchingTimelineElementId(selection, timelineElements) ||
@@ -268,6 +263,7 @@ export function useDomSelection({
           // flow there; yanking to Design would lose the context.
           if (
             rightPanelTabRef.current !== "variables" &&
+            rightPanelTabRef.current !== "code" &&
             rightPanelTabRef.current !== "animation" &&
             rightPanelTabRef.current !== "animation-properties"
           ) {
@@ -319,11 +315,7 @@ export function useDomSelection({
 
   const resolveDomSelectionFromPreviewPoint = useCallback(
     // fallow-ignore-next-line complexity
-    async (
-      clientX: number,
-      clientY: number,
-      options?: ResolveDomSelectionOptions,
-    ) => {
+    async (clientX: number, clientY: number, options?: ResolveDomSelectionOptions) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
       try {
@@ -333,7 +325,6 @@ export function useDomSelection({
       }
       const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
       if (!target) return null;
-      const owningGroup = target.closest<HTMLElement>("[data-hf-group]");
       return buildDomSelectionFromTarget(
         target,
         options && "activeGroupElement" in options
@@ -347,7 +338,7 @@ export function useDomSelection({
               preferClipAncestor: options?.preferClipAncestor,
               exactTarget: options?.exactTarget,
               skipSourceProbe: options?.skipSourceProbe,
-              activeGroupElement: owningGroup,
+              activeGroupElement: previewGroupScope(target, activeGroupElementRef.current),
             },
       );
     },
@@ -452,8 +443,13 @@ export function useDomSelection({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(element);
-      if (nextSelection) {
+      const nextSelection = await buildDomSelectionFromTarget(element, {
+        exactTarget: true,
+        activeGroupElement: element.closest<HTMLElement>("[data-hf-group]"),
+      });
+      // A save can finish after the user selects another member. Refresh the
+      // same authored node without recapturing its group or restoring an old pick.
+      if (nextSelection && domEditSelectionsTargetSame(domEditSelectionRef.current, selection)) {
         applyDomSelection(nextSelection, {
           revealPanel: false,
           preserveGroup: true,
@@ -479,7 +475,10 @@ export function useDomSelection({
       for (const selection of selections) {
         const element = findElementForSelection(doc, selection, activeCompPath);
         if (!element) continue;
-        const nextSelection = await buildDomSelectionFromTarget(element);
+        const nextSelection = await buildDomSelectionFromTarget(element, {
+          exactTarget: true,
+          activeGroupElement: element.closest<HTMLElement>("[data-hf-group]"),
+        });
         if (nextSelection) nextGroup.push(nextSelection);
       }
       if (nextGroup.length === 0) return;

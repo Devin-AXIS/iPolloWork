@@ -6,7 +6,7 @@ import type { PublishSdkSession } from "../utils/sdkCutover";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }

@@ -27,26 +27,6 @@ function FlatEmptyState() {
             : "Select a single element to edit its properties",
         )}
       </div>
-      <div className="mt-2 flex w-full flex-col gap-1.5">
-        <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
-          <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-danger">●</span>
-            {tx("Record a gesture")}
-          </span>
-          <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
-            R
-          </span>
-        </span>
-        <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
-          <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-accent">✦</span>
-            {tx("Describe a change to the agent")}
-          </span>
-          <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
-            ⌘K
-          </span>
-        </span>
-      </div>
     </div>
   );
 }
@@ -160,61 +140,27 @@ function FlatMultiSelectState({
 
 export function PropertyPanelEmptyState({
   multiSelectCount,
-  flat,
   multiSelectedElements,
   onGroupSelection,
   onHideAllSelected,
   onClearSelection,
 }: {
   multiSelectCount: number;
-  flat?: boolean;
   multiSelectedElements?: DomEditSelection[];
   onGroupSelection?: () => void;
   onHideAllSelected?: () => void;
   onClearSelection?: () => void;
 }) {
   const showMultiSelect = STUDIO_MULTI_SELECTION_ENABLED && multiSelectCount > 1;
-  if (flat) {
-    return showMultiSelect ? (
-      <FlatMultiSelectState
-        multiSelectCount={multiSelectCount}
-        multiSelectedElements={multiSelectedElements}
-        onGroupSelection={onGroupSelection}
-        onHideAllSelected={onHideAllSelected}
-        onClearSelection={onClearSelection}
-      />
-    ) : (
-      <FlatEmptyState />
-    );
-  }
-
-  return (
-    <div className="flex h-full flex-col bg-neutral-900">
-      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-        {showMultiSelect ? (
-          <>
-            <Layers size={18} className="mb-3 text-neutral-600" />
-            <p className="text-sm font-medium text-neutral-200">
-              {multiSelectCount} elements selected
-            </p>
-            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-              Select a single element to edit its properties. Click an element in the preview or use
-              the timeline layer panel.
-            </p>
-          </>
-        ) : (
-          <>
-            <Eye size={18} className="mb-3 text-neutral-600" />
-            <p className="text-sm font-medium text-neutral-200">
-              Select an element in the preview.
-            </p>
-            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-              The inspector is tuned for element edits with safer geometry controls, color picking,
-              and cleaner grouped layer controls.
-            </p>
-          </>
-        )}
-      </div>
-    </div>
+  return showMultiSelect ? (
+    <FlatMultiSelectState
+      multiSelectCount={multiSelectCount}
+      multiSelectedElements={multiSelectedElements}
+      onGroupSelection={onGroupSelection}
+      onHideAllSelected={onHideAllSelected}
+      onClearSelection={onClearSelection}
+    />
+  ) : (
+    <FlatEmptyState />
   );
 }

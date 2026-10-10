@@ -13,10 +13,11 @@ import {
   insertTimelineAssetIntoSource,
   resolveTimelineAssetCompositionSize,
   resolveTimelineAssetSrc,
+  resolveGeneratedAvatarCompositePaths,
 } from "../utils/timelineAssetDrop";
 import { generateId } from "../utils/generateId";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
-import { collectHtmlIds, resolveDroppedAssetDuration } from "../utils/studioHelpers";
+import { collectHtmlIds, resolveDroppedAssetDuration, resolveDroppedAssetDimensions } from "../utils/studioHelpers";
 import { formatTimelineAttributeNumber } from "./timelineEditingHelpers";
 import { readFileContent } from "./timelineTimingSync";
 
@@ -54,9 +55,13 @@ export function useTimelineAssetDropOps({
       assetPath: string,
       placement: Pick<TimelineElement, "start" | "track">,
       durationOverride?: number,
+      propagateError = false,
+      options: { videoHasAudio?: boolean } = {},
     ) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        const message = "Cannot edit timeline while recording";
+        showToast(message, "error");
+        if (propagateError) throw new Error(message);
         return;
       }
       const pid = projectIdRef.current;
@@ -64,28 +69,39 @@ export function useTimelineAssetDropOps({
 
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
-        showToast("Only illustration HTML, image, video, and audio assets can be dropped onto the timeline.");
+        const message = "Only image, video, and audio assets can be dropped onto the timeline.";
+        showToast(message);
+        if (propagateError) throw new Error(message);
         return;
       }
 
       const targetPath = activeCompPath || "index.html";
       try {
         const originalContent = await readFileContent(pid, targetPath);
+        const avatarComposite = kind === "video" ? resolveGeneratedAvatarCompositePaths(assetPath) : null;
 
         const normalizedStart = Number(formatTimelineAttributeNumber(placement.start));
         const duration =
           Number.isFinite(durationOverride) && durationOverride != null && durationOverride > 0
             ? durationOverride
-            : await resolveDroppedAssetDuration(pid, assetPath, kind);
+            : await resolveDroppedAssetDuration(pid, avatarComposite?.sourcePath ?? assetPath, kind);
         const normalizedDuration = Number(formatTimelineAttributeNumber(duration));
         const newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
-        const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
+        const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, avatarComposite?.sourcePath ?? assetPath);
+        const resolvedAvatarForegroundSrc = avatarComposite
+          ? resolveTimelineAssetSrc(targetPath, avatarComposite.foregroundPath)
+          : undefined;
 
         const resolvedTargetPath = targetPath || "index.html";
         const relevantElements = timelineElements.filter(
           (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
         );
-        const newElementZIndex = Math.max(1, relevantElements.length + 1);
+        const newElementZIndex = Math.max(0, relevantElements.length,
+          ...Array.from(originalContent.matchAll(/z-index\s*:\s*(-?\d+)/gi), match => Number(match[1]))) + 1;
+        const avatarForegroundTrack = relevantElements.length
+          ? Math.max(...relevantElements.map((element) => element.track)) + 1
+          : placement.track + 1;
+        const dimensions = await resolveDroppedAssetDimensions(pid, avatarComposite?.sourcePath ?? assetPath, kind);
 
         const patchedContent = insertTimelineAssetIntoSource(
           originalContent,
@@ -99,9 +115,12 @@ export function useTimelineAssetDropOps({
             track: placement.track,
             zIndex: newElementZIndex,
             geometry: fitTimelineAssetGeometry(
-              null,
+              dimensions,
               resolveTimelineAssetCompositionSize(originalContent),
             ),
+            videoHasAudio: avatarComposite ? true : options.videoHasAudio,
+            avatarForegroundPath: resolvedAvatarForegroundSrc,
+            avatarForegroundTrack,
           }),
         );
 
@@ -122,6 +141,7 @@ export function useTimelineAssetDropOps({
         const message =
           error instanceof Error ? error.message : "Failed to drop asset onto timeline";
         showToast(message);
+        if (propagateError) throw error;
       }
     },
     [

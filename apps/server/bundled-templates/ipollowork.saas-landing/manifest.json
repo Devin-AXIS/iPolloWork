@@ -1,10 +1,14 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.saas-landing",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "kind": "design",
   "category": "site",
   "subcategory": "landing",
+  "style": "minimal",
+  "tags": [
+    "topic:product"
+  ],
   "title": "SaaS Landing",
   "description": "A responsive product landing page with editable navigation, features, pricing and calls to action.",
   "cover": "cover.png",

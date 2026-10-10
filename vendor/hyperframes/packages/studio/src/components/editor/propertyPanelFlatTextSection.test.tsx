@@ -280,8 +280,28 @@ describe("text content commits", () => {
       valueSetter.call(textarea, "2026 世界的");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
       expect(onSetText).not.toHaveBeenCalled();
-      textarea.blur();
+      expect(elementNode.textContent).toBe("2026 世界的");
     });
+    // Live selection updates may echo the draft before the user blurs.
+    flushSync(() =>
+      root.render(
+        <FlatTextSection
+          element={{
+            ...element,
+            textContent: "2026 世界的",
+            textFields: [{ ...element.textFields[0], value: "2026 世界的" }],
+          }}
+          styles={{}}
+          fontAssets={[]}
+          onSetText={onSetText}
+          onSetTextFieldStyle={vi.fn()}
+          onAddTextField={vi.fn()}
+          onRemoveTextField={vi.fn()}
+        />,
+      ),
+    );
+    expect(onSetText).not.toHaveBeenCalled();
+    flushSync(() => textarea.blur());
     expect(onSetText).toHaveBeenCalledOnce();
     expect(onSetText).toHaveBeenCalledWith("2026 世界的", "text-node:0");
 
@@ -290,7 +310,7 @@ describe("text content commits", () => {
     vi.useRealTimers();
   });
 
-  it("keeps the single-line value visible and commits it when Enter is pressed", () => {
+  it("keeps Enter available for multiline editing and commits on blur", () => {
     const elementNode = document.createElement("p");
     const element: DomEditSelection = {
       element: elementNode,
@@ -368,13 +388,43 @@ describe("text content commits", () => {
       textarea.dispatchEvent(enterEvent);
     });
 
-    expect(enterEvent?.defaultPrevented).toBe(true);
-    expect(document.activeElement).not.toBe(textarea);
-    expect(textarea.value).toBe("2026 world");
+    expect(enterEvent?.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(textarea);
+    expect(textarea.getAttribute("rows")).toBe("3");
+    expect(textarea.style.height).toBe("60px");
+    expect(onSetText).not.toHaveBeenCalled();
+    flushSync(() => {
+      valueSetter.call(textarea, "2026 world\n第二行");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    flushSync(() => textarea.blur());
+    expect(textarea.value).toBe("2026 world\n第二行");
     expect(onSetText).toHaveBeenCalledOnce();
-    expect(onSetText).toHaveBeenCalledWith("2026 world", "text-node:0");
+    expect(onSetText).toHaveBeenCalledWith("2026 world\n第二行", "text-node:0");
 
     flushSync(() => root.unmount());
     container.remove();
   });
+});
+
+
+import * as variablePromote from "../../contexts/VariablePromoteContext";
+import { PromotableControl } from "./PromotableControl";
+
+it("routes bound canvas text through the native editor and displays the instance value", () => {
+  const schemaCommit = vi.fn(), nativeCommit = vi.fn();
+  const spy = vi.spyOn(variablePromote, "useVariablePromoteChannel").mockReturnValue({
+    action: null, boundId: "heading", declaration: { id: "heading", label: "Heading", type: "string", default: "Old reusable default" }, promote: vi.fn(), setDefault: schemaCommit,
+  });
+  const container = document.createElement("div"), root = createRoot(container);
+  document.body.append(container);
+  try {
+    flushSync(() => root.render(<PromotableControl channel={{ kind: "text" }}>{({ value, onCommit }) => <button onClick={() => (onCommit ?? nativeCommit)("Edited")}>{value ?? "This instance"}</button>}</PromotableControl>));
+    expect(container.textContent).toBe("This instance");
+    container.querySelector("button")!.click();
+    expect(nativeCommit).toHaveBeenCalledWith("Edited");
+    expect(schemaCommit).not.toHaveBeenCalled();
+  } finally {
+    flushSync(() => root.unmount());container.remove();spy.mockRestore();
+  }
 });

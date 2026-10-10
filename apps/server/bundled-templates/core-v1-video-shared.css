@@ -1,0 +1,11 @@
+/* Preview theme and host only; do not copy these defaults into a project. */
+:root{--ipw-color-bg:#f8f5ee;--ipw-color-surface:#fff;--ipw-color-text:#242622;--ipw-color-muted:#62675e;--ipw-color-border:#cccfc3;--ipw-color-primary:#364d3d;--ipw-color-on-primary:#fff;--ipw-font-display:Georgia,serif;--ipw-font-body:system-ui,sans-serif}
+body{margin:0;background:#e7e7e3;font-family:system-ui,sans-serif}
+aside{padding:12px 24px;font-size:14px;line-height:1.5}
+main[data-layout-preview-only]{width:1920px;height:1080px}
+/* Reusable scene-body baseline: copy only these scoped selectors. */
+.ipw-video-layout{box-sizing:border-box;width:100%;height:100%;padding:7%;background:var(--ipw-color-bg);color:var(--ipw-color-text);font-family:var(--ipw-font-body)}
+.ipw-video-layout *{box-sizing:border-box;margin:0;min-width:0}
+.ipw-video-layout h2{font:500 72px/1.18 var(--ipw-font-display);text-wrap:balance}
+.ipw-video-layout h3{font:500 48px/1.2 var(--ipw-font-display);text-wrap:balance}
+.ipw-video-layout p{font-size:32px;line-height:1.5;color:var(--ipw-color-muted);text-wrap:balance;overflow-wrap:anywhere}

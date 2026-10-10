@@ -1,0 +1,31 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "map-flow",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Map Flow",
+  "description": "A theme-aware origin-to-destination map story with a clear route, signal, and annotation.",
+  "tags": ["component", "maps", "geography", "flow", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "maps",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": ["title", "origin", "destination", "insight"],
+      "instructions": "AI may change the route story, labels, or annotation and may request a more detailed geographic treatment, but the default component keeps one legible origin-to-destination path."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 9,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "map-flow.html", "target": "compositions/map-flow.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Every move has a direction", "maxLength": 72, "update": "live" },
+    { "id": "origin", "label": "Origin", "type": "string", "default": "Singapore", "maxLength": 40, "update": "live" },
+    { "id": "destination", "label": "Destination", "type": "string", "default": "San Francisco", "maxLength": 40, "update": "live" },
+    { "id": "insight", "label": "Insight", "type": "string", "default": "One shared signal connects the teams", "maxLength": 84, "update": "live" }
+  ]
+}

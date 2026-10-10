@@ -4,6 +4,7 @@ import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
 import keyboardIconSrc from "../../icons/figmaToolbarKeyboard.svg?url";
 import { useStudioI18n } from "../../i18n";
+import { useDockLayoutStore } from "../../components/dock/dockLayoutStore";
 
 const SHORTCUTS_TOOLBAR_SLOT_ID = "hf-shortcuts-toolbar-slot";
 
@@ -69,7 +70,7 @@ const SHORTCUT_SECTIONS = [
   {
     title: "Panels",
     hints: [
-      { key: "Ctrl/Cmd+1", label: "Compositions tab" },
+      { key: "Ctrl/Cmd+1", label: "Script table" },
       { key: "Ctrl/Cmd+2", label: "Assets tab" },
     ],
   },
@@ -110,6 +111,15 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
   const [jumpFrame, setJumpFrame] = useState("");
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
   const shortcutsPanelRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const controller = useDockLayoutStore((state) => state.controller);
+  const visiblePanels = useDockLayoutStore((state) => state.visiblePanels);
+  const hasTimeline = useDockLayoutStore((state) => state.panels.includes("timeline"));
+  const timelineVisible = visiblePanels.has("timeline");
+  // Hidden timeline content stays mounted. Keep its tools reachable in the preview.
+  const activeToolbarSlot = toolbarSlot?.isConnected && (!controller || timelineVisible)
+    ? toolbarSlot
+    : null;
 
   useEffect(() => {
     const findSlot = () => {
@@ -123,20 +133,41 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, []);
+  }, [visiblePanels]);
 
   useEffect(() => {
     if (!showShortcuts) return;
+    // Native top-layer placement escapes Dockview's clipped, contained panels.
+    menuRef.current?.showPopover();
     const handleMouseDown = (e: MouseEvent) => {
       if (shortcutsPanelRef.current && !shortcutsPanelRef.current.contains(e.target as Node)) {
         setShowShortcuts(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowShortcuts(false);
+        shortcutsPanelRef.current?.querySelector("button")?.focus();
+      }
+    };
     document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showShortcuts]);
+  }, [showShortcuts, activeToolbarSlot]);
+
+  useEffect(() => {
+    const group = activeToolbarSlot?.closest(".hf-timeline-toolbar-group");
+    if (!group) return;
+    const closeWithGroup = () => {
+      if (!group.matches(":popover-open")) setShowShortcuts(false);
+    };
+    group.addEventListener("toggle", closeWithGroup);
+    return () => group.removeEventListener("toggle", closeWithGroup);
+  }, [activeToolbarSlot]);
 
   const commitJumpFrame = useCallback(() => {
     if (disabled) return;
@@ -181,14 +212,16 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       </Tooltip>
       {showShortcuts && (
         <div
-          className={`hf-shortcuts-panel z-[100] min-w-[220px] overflow-y-auto rounded-lg shadow-xl ${
-            toolbarSlot ? "fixed" : "absolute bottom-full right-0 mb-2"
-          }`}
+          ref={menuRef}
+          popover="manual"
+          className="hf-shortcuts-panel fixed z-[100] min-w-[220px] overflow-y-auto rounded-lg shadow-xl"
           style={{
+            inset: "auto",
+            margin: 0,
             background: "var(--hf-shortcuts-bg)",
             border: "1px solid var(--hf-shortcuts-border)",
             maxHeight: "min(280px, calc(100vh - 80px))",
-            ...(toolbarSlot && shortcutsPanelRef.current
+            ...(shortcutsPanelRef.current
               ? {
                   bottom: window.innerHeight - shortcutsPanelRef.current.getBoundingClientRect().top + 8,
                   right: window.innerWidth - shortcutsPanelRef.current.getBoundingClientRect().right,
@@ -196,6 +229,31 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
               : {}),
           }}
         >
+          {controller && hasTimeline && (
+            <div className="px-3 pt-3 pb-2.5 flex flex-col gap-1">
+              <button
+                type="button"
+                className="rounded px-2 py-1 text-left text-xs hover:bg-white/10"
+                onClick={() => {
+                  setShowShortcuts(false);
+                  if (timelineVisible) controller.setGroupVisible("timeline", false);
+                  else useDockLayoutStore.getState().activatePanel("timeline");
+                }}
+              >
+                {tx(timelineVisible ? "Collapse timeline" : "Expand timeline")}
+              </button>
+              <button
+                type="button"
+                className="rounded px-2 py-1 text-left text-xs hover:bg-white/10"
+                onClick={() => {
+                  setShowShortcuts(false);
+                  useDockLayoutStore.getState().resetLayout();
+                }}
+              >
+                {tx("Reset layout")}
+              </button>
+            </div>
+          )}
           <div className="px-3 pt-3 pb-2.5">
             <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
               {tx("Jump to frame")}
@@ -341,5 +399,5 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       )}
     </div>
   );
-  return toolbarSlot ? createPortal(panel, toolbarSlot) : panel;
+  return activeToolbarSlot ? createPortal(panel, activeToolbarSlot) : panel;
 });

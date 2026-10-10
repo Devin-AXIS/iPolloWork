@@ -1,10 +1,35 @@
+import type { FpsInput } from "../core.types";
+
+/** Video duration always covers the source; only floating-point noise is rounded away. */
+export function durationToFrameCount(seconds: number, fps: FpsInput): number {
+  const rate = typeof fps === "number" ? fps : fps.num / fps.den;
+  const frames = Math.max(0, seconds) * rate;
+  const nearest = Math.round(frames);
+  const tolerance = Number.EPSILON * Math.max(1, frames) * 8;
+  return Math.abs(frames - nearest) <= tolerance ? nearest : Math.ceil(frames);
+}
+
+export function frameAlignedDurationSeconds(seconds: number, fps: FpsInput): number {
+  return durationToFrameCount(seconds, fps) / (typeof fps === "number" ? fps : fps.num / fps.den);
+}
+
+/** Hold the final video sample at transport end without rounding audio timestamps. */
+export function lastVideoFrameTime(time: number, duration: number, fps: FpsInput): number {
+  const rate = typeof fps === "number" ? fps : fps.num / fps.den;
+  return Math.max(0, Math.min(time, (durationToFrameCount(duration, fps) - 1) / rate));
+}
+
 export const RUNTIME_PROTOCOL_VERSION = 1 as const;
+
+export const RUNTIME_FILLER = "hf-runtime-filler";
 
 export const RUNTIME_PROTOCOL_CAPABILITIES = [
   "seconds-time",
   "rational-fps",
   "seek-keep-playing",
   "composition-manifest-v1",
+  "runtime-data",
+  "play-range",
 ] as const;
 
 export type RuntimeProtocolFps = {
@@ -44,6 +69,10 @@ export function runtimeProtocolFpsFromNumber(value: number): RuntimeProtocolFps 
   const numerator = Math.round(safe * denominator);
   const divisor = greatestCommonDivisor(numerator, denominator);
   return { numerator: numerator / divisor, denominator: denominator / divisor };
+}
+
+export function playRangeHoldTime(start: number, end: number, fps: number): number {
+  return Math.max(start, (Math.ceil(end * fps - 1e-6) - 1) / fps);
 }
 
 export function runtimeProtocolFpsToNumber(value: unknown): number | null {

@@ -15,6 +15,7 @@ import { exchangeHandoffAndSignIn } from "../../app/lib/den-handoff";
 import {
   denSettingsChangedEvent,
 } from "../../app/lib/den-session-events";
+import { isElectronRuntime } from "../../app/utils";
 import { evalRelaunchDesktopApp } from "../../app/lib/desktop";
 import { Button } from "../../components/ui/button";
 import { localeChangedEvent, t } from "../../i18n";
@@ -37,6 +38,296 @@ import { SessionRoute } from "./session-route";
 import { SettingsRoute } from "./settings-route";
 import { ShellConfigProvider } from "./shell-config";
 
+
+function BrowserControlActions() {
+  function controlObjectArg(args: unknown): Record<string, unknown> | null {
+    if (!args || typeof args !== "object" || Array.isArray(args)) return null;
+    return Object.fromEntries(Object.entries(args));
+  }
+  function controlStringArg(args: unknown, key: string) { const object = controlObjectArg(args); const value = object ? Reflect.get(object, key) : null; return typeof value === "string" ? value.trim() : ""; }
+  const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.open_url",
+    label: "Open URL in built-in browser",
+    description: "Open a website in a new iPolloWork built-in browser tab and return its host-owned tab ID.",
+    sideEffect: "navigation",
+    requiresArgs: true,
+    args: [
+      { name: "url", type: "string", required: true, description: "The website URL to open." },
+      { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
+      { name: "taskId", type: "string", required: false, description: "Host-owned task scope for an isolated tab that shares the selected profile login." },
+      { name: "background", type: "boolean", description: "Keep the user's selected page and window focus unchanged." },
+      { name: "loginUi", type: "object", required: false, description: "Host-owned plugin login UI policy." },
+      { name: "sessionRecovery", type: "object", required: false, description: "Host-owned plugin session recovery policy." },
+    ],
+    previewArgs: { url: "https://example.com" },
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const url = controlStringArg(args, "url");
+      if (!url) return { ok: false, error: "Missing URL." };
+      const profileId = controlStringArg(args, "profileId");
+      const taskId = controlStringArg(args, "taskId");
+      const object = controlObjectArg(args);
+      const background = object ? Reflect.get(object, "background") : undefined;
+      if (background !== undefined && typeof background !== "boolean") return { ok: false, error: "Invalid background option." };
+      const rawLoginUi = object ? controlObjectArg(Reflect.get(object, "loginUi")) : null;
+      const loginOrigin = controlStringArg(rawLoginUi, "origin");
+      const loginPath = controlStringArg(rawLoginUi, "path");
+      const loginWhenText = controlStringArg(rawLoginUi, "whenText");
+      const loginSelector = controlStringArg(rawLoginUi, "selector");
+      const rawRecovery = object ? controlObjectArg(Reflect.get(object, "sessionRecovery")) : null;
+      const recoveryOrigin = controlStringArg(rawRecovery, "origin");
+      const recoveryLoginPath = controlStringArg(rawRecovery, "loginPath");
+      const recoveryAuthenticatedPath = controlStringArg(rawRecovery, "authenticatedPath");
+      const rawCookieNames = rawRecovery ? Reflect.get(rawRecovery, "cookieNames") : null;
+      const cookieNames = Array.isArray(rawCookieNames)
+        ? rawCookieNames.filter((name): name is string => typeof name === "string")
+        : [];
+      if (rawLoginUi && (!loginOrigin || !loginPath || !loginWhenText || !loginSelector)) {
+        return { ok: false, error: "Invalid browser login UI policy." };
+      }
+      if (rawRecovery && (!recoveryOrigin || !recoveryLoginPath || !recoveryAuthenticatedPath
+        || !Array.isArray(rawCookieNames) || cookieNames.length !== rawCookieNames.length)) {
+        return { ok: false, error: "Invalid browser session recovery policy." };
+      }
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId || taskId || rawLoginUi || rawRecovery || background !== undefined ? {
+        ...(profileId ? { profileId } : {}),
+        ...(taskId ? { taskId } : {}),
+        ...(typeof background === "boolean" ? { background } : {}),
+        ...(rawLoginUi ? { loginUi: {
+          origin: loginOrigin,
+          path: loginPath,
+          whenText: loginWhenText,
+          selector: loginSelector,
+        } } : {}),
+        ...(rawRecovery ? { sessionRecovery: {
+          origin: recoveryOrigin,
+          loginPath: recoveryLoginPath,
+          authenticatedPath: recoveryAuthenticatedPath,
+          cookieNames,
+        } } : {}),
+      } : undefined);
+      return result;
+    },
+  }), []);
+  useControlAction(openBrowserUrlControlAction);
+  const listBrowserTabsControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.list_tabs",
+    label: "List task browser pages",
+    sideEffect: "none",
+    disabled: !isElectronRuntime(),
+    args: [{ name: "taskId", type: "string", description: "Host-injected task scope." }],
+    execute: async (args) => {
+      const taskId = controlStringArg(args, "taskId");
+      const listTabs = window.__IPOLLOWORK_ELECTRON__?.browser?.listTabs;
+      if (!listTabs) return { ok: false, error: "Built-in browser runtime is not available." };
+      const tabs = await listTabs();
+      return { ok: true, tabs: taskId ? tabs.filter(tab => tab.sessionId === taskId) : tabs };
+    },
+  }), []);
+  useControlAction(listBrowserTabsControlAction);
+  const reportBrowserDecisionAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.report_decision",
+    label: "Report optional browser decision availability",
+    sideEffect: "none",
+    requiresArgs: true,
+    disabled: !isElectronRuntime(),
+    args: [
+      { name: "tabId", type: "string", required: true },
+      { name: "taskId", type: "string" },
+      { name: "status", type: "string", required: true },
+    ],
+    execute: async args => {
+      const status = controlStringArg(args, "status");
+      if (status !== "ready" && status !== "unavailable") return { ok: false, error: "Invalid decision status." };
+      return window.__IPOLLOWORK_ELECTRON__?.browser?.reportDecision?.({
+        tabId: controlStringArg(args, "tabId"), taskId: controlStringArg(args, "taskId") || undefined, status,
+      });
+    },
+  }), []);
+  useControlAction(reportBrowserDecisionAction);
+  const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.snapshot",
+    label: "Read built-in browser page",
+    description: "Return a bounded semantic accessibility tree with stable refs, optional scope, and compact change output.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
+      { name: "mode", type: "string", description: "mixed, interactive, or content." },
+      { name: "scopeRef", type: "string", description: "Optional ref from the previous snapshot whose subtree should be read." },
+      { name: "delta", type: "boolean", description: "Return only the compact change when useful." },
+      { name: "includeControls", type: "boolean", description: "Include structured controls for the selected decision provider." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId) return { ok: false, error: "Missing tabId." };
+      const snapshot = window.__IPOLLOWORK_ELECTRON__?.browser?.snapshot;
+      if (!snapshot) return { ok: false, error: "Built-in browser runtime is not available." };
+      const object = controlObjectArg(args);
+      const mode = controlStringArg(args, "mode");
+      const scopeRef = controlStringArg(args, "scopeRef");
+      if (mode !== "" && mode !== "content" && mode !== "interactive" && mode !== "mixed") return { ok: false, error: "Invalid snapshot mode." };
+      return snapshot({
+        tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
+        mode: mode || undefined,
+        ...(scopeRef ? { scopeRef } : {}),
+        ...(object && Reflect.get(object, "delta") === true ? { delta: true } : {}),
+        ...(object && Reflect.get(object, "includeControls") === true ? { includeControls: true } : {}),
+      });
+    },
+  }), []);
+  useControlAction(snapshotBrowserControlAction);
+  const readBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.read",
+    label: "Read compact browser content",
+    description: "Read headings, paragraphs, links, tables, or forms without returning the full accessibility tree.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "mode", type: "string", description: "page, article, links, tables, or forms." },
+      { name: "maxChars", type: "number", description: "Maximum returned content characters." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId) return { ok: false, error: "Missing tabId." };
+      const read = window.__IPOLLOWORK_ELECTRON__?.browser?.read;
+      if (!read) return { ok: false, error: "Built-in browser runtime is not available." };
+      const mode = controlStringArg(args, "mode");
+      const rawMaxChars = object ? Reflect.get(object, "maxChars") : undefined;
+      if (mode !== "" && mode !== "article" && mode !== "forms" && mode !== "links" && mode !== "page" && mode !== "tables") return { ok: false, error: "Invalid read mode." };
+      if (rawMaxChars !== undefined && (typeof rawMaxChars !== "number" || !Number.isFinite(rawMaxChars) || rawMaxChars <= 0)) return { ok: false, error: "Invalid maxChars." };
+      return read({
+        tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
+        mode: mode || undefined,
+        ...(typeof rawMaxChars === "number" ? { maxChars: rawMaxChars } : {}),
+      });
+    },
+  }), []);
+  useControlAction(readBrowserControlAction);
+  const screenshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.screenshot",
+    label: "Capture built-in browser view",
+    description: "Capture the viewport, a bounded region, or one semantic ref, with optional ref annotations and unchanged-image suppression.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "snapshotId", type: "string", description: "Latest snapshot ID, required for ref or annotated captures." },
+      { name: "target", type: "string", description: "viewport, region, or ref." },
+      { name: "ref", type: "string", description: "Stable element ref when target is ref." },
+      { name: "region", type: "object", description: "Viewport-relative x, y, width, and height." },
+      { name: "mode", type: "string", description: "plain, annotated, or auto." },
+      { name: "ifChanged", type: "boolean", description: "Do not resend an unchanged image." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId || !object) return { ok: false, error: "Missing tabId." };
+      const screenshot = window.__IPOLLOWORK_ELECTRON__?.browser?.screenshot;
+      if (!screenshot) return { ok: false, error: "Built-in browser runtime is not available." };
+      const mode = controlStringArg(args, "mode");
+      const target = controlStringArg(args, "target");
+      if (mode !== "" && mode !== "annotated" && mode !== "auto" && mode !== "plain") return { ok: false, error: "Invalid screenshot mode." };
+      if (target !== "" && target !== "ref" && target !== "region" && target !== "viewport") return { ok: false, error: "Invalid screenshot target." };
+      const rawRegion = Reflect.get(object, "region");
+      let region: { x: number; y: number; width: number; height: number } | undefined;
+      if (rawRegion !== undefined) {
+        const value = controlObjectArg(rawRegion);
+        if (!value) return { ok: false, error: "Invalid screenshot region." };
+        const x: unknown = Reflect.get(value, "x");
+        const y: unknown = Reflect.get(value, "y");
+        const width: unknown = Reflect.get(value, "width");
+        const height: unknown = Reflect.get(value, "height");
+        if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
+          || ![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0) return { ok: false, error: "Invalid screenshot region." };
+        region = { x, y, width, height };
+      }
+      if (target === "region" && !region) return { ok: false, error: "Missing screenshot region." };
+      return screenshot({
+        tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
+        ...(controlStringArg(args, "snapshotId") ? { snapshotId: controlStringArg(args, "snapshotId") } : {}),
+        target: target || undefined,
+        ...(controlStringArg(args, "ref") ? { ref: controlStringArg(args, "ref") } : {}),
+        ...(region ? { region } : {}),
+        mode: mode || undefined,
+        ...(Reflect.get(object, "ifChanged") === true ? { ifChanged: true } : {}),
+      });
+    },
+  }), []);
+  useControlAction(screenshotBrowserControlAction);
+  const actInBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.act",
+    label: "Act in built-in browser",
+    description: "Execute a bounded ref-based browser action batch through real keyboard and pointer input.",
+    sideEffect: "mutation",
+    requiresArgs: true,
+    args: [
+      { name: "taskId", type: "string", description: "Host-injected task scope." },
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
+      { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
+      { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
+      { name: "observe", type: "object", description: "Optional compact semantic observation returned after the action batch." },
+      { name: "expect", type: "object", description: "Text or URL postcondition checked before reporting verified." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      const snapshotId = controlStringArg(args, "snapshotId");
+      const actions = object ? Reflect.get(object, "actions") : null;
+      const observe = object ? Reflect.get(object, "observe") : null;
+      const expect = object ? controlObjectArg(Reflect.get(object, "expect")) : null;
+      if (!tabId || !snapshotId || !Array.isArray(actions)) {
+        return { ok: false, error: "tabId, snapshotId, and actions are required." };
+      }
+      const act = window.__IPOLLOWORK_ELECTRON__?.browser?.act;
+      if (!act) return { ok: false, error: "Built-in browser runtime is not available." };
+      return act({
+        tabId,
+        taskId: controlStringArg(args, "taskId") || undefined,
+        snapshotId,
+        workspaceRoot: controlStringArg(args, "workspaceRoot") || undefined,
+        actions: actions.filter((action): action is Record<string, unknown> => (
+          Boolean(action) && typeof action === "object" && !Array.isArray(action)
+        )),
+        ...(observe && typeof observe === "object" && !Array.isArray(observe) ? { observe } : {}),
+        ...(expect ? { expect } : {}),
+      });
+    },
+  }), []);
+  useControlAction(actInBrowserControlAction);
+  const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.set_proxy",
+    label: "Set built-in browser proxy",
+    description: "Route all built-in browser traffic through an HTTP/SOCKS proxy (e.g. to browse from another location). Applies to every built-in browser tab until cleared. Pass an empty proxy to restore system network settings.",
+    sideEffect: "mutation",
+    args: [
+      { name: "proxy", type: "string", description: "Proxy URL like http://user:pass@host:8080 or socks5://host:1080, env:NAME to use the IPOLLOWORK_BROWSER_PROXY_NAME environment variable, or empty to clear." },
+    ],
+    previewArgs: { proxy: "env:DE" },
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const proxy = controlStringArg(args, "proxy") || "";
+      const setProxy = window.__IPOLLOWORK_ELECTRON__?.browser?.setProxy;
+      if (!setProxy) return { ok: false, error: "Built-in browser is not available." };
+      return setProxy(proxy);
+    },
+  }), []);
+  useControlAction(setBrowserProxyControlAction);
+  return null;
+}
 
 type DenSigninGateProps = {
   children: ReactNode;
@@ -127,7 +418,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
           <div
             role="status"
             aria-live="polite"
-            className="pointer-events-auto flex max-w-xl items-center gap-3 rounded-2xl border border-amber-7/50 bg-popover/95 px-4 py-3 text-popover-foreground shadow-md backdrop-blur-sm"
+            className="pointer-events-auto flex max-w-xl items-center gap-3 rounded-2xl border-0 bg-feedback-warning px-4 py-3 text-popover-foreground shadow-none"
           >
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{t("den.cloud_unavailable_title")}</p>
@@ -312,6 +603,7 @@ export function AppRoot() {
         <AppMenuProvider>
         <IPolloWorkControlProvider>
           <IPolloWorkRouteControlActions />
+          <BrowserControlActions />
           <DenAuthControlActions />
           <BrandThemeControlActions />
           <DenSigninGate>
@@ -338,7 +630,7 @@ export function AppRoot() {
               />
 
               <Route
-                path="/session"
+                path="/session/:sessionId?"
                 element={
                   <DevProfiler id="SessionRoute">
                     <SessionRoute />
@@ -346,23 +638,7 @@ export function AppRoot() {
                 }
               />
               <Route
-                path="/session/:sessionId"
-                element={
-                  <DevProfiler id="SessionRoute">
-                    <SessionRoute />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/workspace/:workspaceId/session"
-                element={
-                  <DevProfiler id="SessionRoute">
-                    <SessionRoute />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/workspace/:workspaceId/session/:sessionId"
+                path="/workspace/:workspaceId/session/:sessionId?"
                 element={
                   <DevProfiler id="SessionRoute">
                     <SessionRoute />

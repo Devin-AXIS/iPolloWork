@@ -1,0 +1,92 @@
+diff --git a/dist/cjs/util.js b/dist/cjs/util.js
+index 77e64b56872bc65bcb0f60ecfbec84eb3da02c6f..a8f8840691357600548ab80869321acad8b3b5fc 100644
+--- a/dist/cjs/util.js
++++ b/dist/cjs/util.js
+@@ -149,19 +149,37 @@ exports.validateOptsPlatform = validateOptsPlatform;
+  */
+ async function walkAsync(dirPath) {
+     (0, exports.debugLog)('Walking... ' + dirPath);
++    const maxConcurrentFileOperations = 64;
++    let activeFileOperations = 0;
++    const waitingFileOperations = [];
++    async function withFileOperationLimit(operation) {
++        if (activeFileOperations >= maxConcurrentFileOperations) {
++            await new Promise((resolve) => waitingFileOperations.push(resolve));
++        }
++        activeFileOperations += 1;
++        try {
++            return await operation();
++        }
++        finally {
++            activeFileOperations -= 1;
++            const next = waitingFileOperations.shift();
++            if (next)
++                next();
++        }
++    }
+     async function _walkAsync(dirPath) {
+-        const children = await fs.readdir(dirPath);
++        const children = await withFileOperationLimit(() => fs.readdir(dirPath));
+         return await Promise.all(children.map(async (child) => {
+             const filePath = path.resolve(dirPath, child);
+-            const stat = await fs.stat(filePath);
++            const stat = await withFileOperationLimit(() => fs.stat(filePath));
+             if (stat.isFile()) {
+                 switch (path.extname(filePath)) {
+                     case '.cstemp': // Temporary file generated from past codesign
+                         (0, exports.debugLog)('Removing... ' + filePath);
+-                        await fs.remove(filePath);
++                        await withFileOperationLimit(() => fs.remove(filePath));
+                         return null;
+                     default:
+-                        return await getFilePathIfBinary(filePath);
++                        return await withFileOperationLimit(() => getFilePathIfBinary(filePath));
+                 }
+             }
+             else if (stat.isDirectory() && !stat.isSymbolicLink()) {
+diff --git a/dist/esm/util.js b/dist/esm/util.js
+index d3f66d54b1a88e7410d78affe17de87302db02a3..e9a347b4b7be7b2570c0a0babb2ec50bd0ac1a5f 100644
+--- a/dist/esm/util.js
++++ b/dist/esm/util.js
+@@ -113,19 +113,37 @@ export async function validateOptsPlatform(opts) {
+  */
+ export async function walkAsync(dirPath) {
+     debugLog('Walking... ' + dirPath);
++    const maxConcurrentFileOperations = 64;
++    let activeFileOperations = 0;
++    const waitingFileOperations = [];
++    async function withFileOperationLimit(operation) {
++        if (activeFileOperations >= maxConcurrentFileOperations) {
++            await new Promise((resolve) => waitingFileOperations.push(resolve));
++        }
++        activeFileOperations += 1;
++        try {
++            return await operation();
++        }
++        finally {
++            activeFileOperations -= 1;
++            const next = waitingFileOperations.shift();
++            if (next)
++                next();
++        }
++    }
+     async function _walkAsync(dirPath) {
+-        const children = await fs.readdir(dirPath);
++        const children = await withFileOperationLimit(() => fs.readdir(dirPath));
+         return await Promise.all(children.map(async (child) => {
+             const filePath = path.resolve(dirPath, child);
+-            const stat = await fs.stat(filePath);
++            const stat = await withFileOperationLimit(() => fs.stat(filePath));
+             if (stat.isFile()) {
+                 switch (path.extname(filePath)) {
+                     case '.cstemp': // Temporary file generated from past codesign
+                         debugLog('Removing... ' + filePath);
+-                        await fs.remove(filePath);
++                        await withFileOperationLimit(() => fs.remove(filePath));
+                         return null;
+                     default:
+-                        return await getFilePathIfBinary(filePath);
++                        return await withFileOperationLimit(() => getFilePathIfBinary(filePath));
+                 }
+             }
+             else if (stat.isDirectory() && !stat.isSymbolicLink()) {

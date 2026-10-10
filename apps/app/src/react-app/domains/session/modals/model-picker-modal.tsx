@@ -18,21 +18,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { modelEquals, resolveProviderDisplayName } from "../../../../app/utils";
 import type { ModelOption, ModelRef } from "../../../../app/types";
 import { isRecommendedModel } from "../../../../app/defaults";
 import { ProviderIcon } from "../../../design-system/provider-icon";
 import { t } from "../../../../i18n";
+import { ModelDirectoryLoadingStatus } from "@/components/model-directory-loading-status";
 
 export type ModelPickerModalProps = {
   open: boolean;
   options: ModelOption[];
+  modelsLoading?: boolean;
+  engineId?: string | null;
   disabledProviders?: string[];
   query: string;
   setQuery: (value: string) => void;
   target: "default" | "session";
   current: ModelRef;
   onSelect: (model: ModelRef) => void;
+  onConnectProvider?: (providerId: string) => void;
   onBehaviorChange: (model: ModelRef, value: string | null) => void;
   onToggleProvider?: (providerId: string, enabled: boolean) => void;
   onOpenSettings: () => void;
@@ -44,6 +49,7 @@ type ProviderGroup = {
   name: string;
   isNew: boolean;
   isCloud: boolean;
+  isConnected: boolean;
   isDisabled: boolean;
   hasCurrent: boolean;
   recommended: ModelOption[];
@@ -97,6 +103,7 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
           name: opt.description ?? resolveProviderDisplayName(opt.providerID),
           isNew: !!opt.isRecommended,
           isCloud: opt.source === "cloud",
+          isConnected: opt.isConnected,
           isDisabled: disabledSet.has(opt.providerID),
           hasCurrent: false,
           recommended: [],
@@ -149,8 +156,15 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
   }, []);
 
   const handleSelect = useCallback(
-    (opt: ModelOption) => props.onSelect({ providerID: opt.providerID, modelID: opt.modelID }),
-    [props.onSelect],
+    (opt: ModelOption) => {
+      if (opt.disabled && !opt.isConnected) {
+        props.onConnectProvider?.(opt.providerID);
+        return;
+      }
+      if (opt.disabled) return;
+      props.onSelect({ providerID: opt.providerID, modelID: opt.modelID });
+    },
+    [props.onConnectProvider, props.onSelect],
   );
 
   // Escape
@@ -182,33 +196,48 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
 
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Search */}
-          <div className="relative mb-4 shrink-0">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dls-secondary" />
-            <input
+          <InputGroup className="mb-4 shrink-0">
+            <InputGroupAddon><Search aria-hidden="true" className="size-4" /></InputGroupAddon>
+            <InputGroupInput
               ref={searchInputRef}
               type="text"
-              className="h-10 w-full rounded-xl border border-dls-border bg-dls-surface pl-9 pr-3 text-sm text-dls-text placeholder:text-dls-secondary focus:outline-none focus:ring-2 focus:ring-[rgba(var(--dls-accent-rgb),0.2)]"
+              aria-label={t("model_picker.search_providers_models")}
               placeholder={t("model_picker.search_providers_models")}
               value={props.query}
               onChange={(e) => props.setQuery(e.target.value)}
             />
-          </div>
+          </InputGroup>
 
           {/* Content */}
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 -mr-1">
+            {props.modelsLoading && providerGroups.length > 0 ? (
+              <ModelDirectoryLoadingStatus
+                className="px-3 py-2 text-xs text-dls-secondary"
+                engineId={props.engineId}
+                hasModels
+              />
+            ) : null}
             {providerGroups.length === 0 ? (
-              <div className="space-y-3 rounded-2xl border border-dls-border bg-dls-hover/30 px-4 py-6 text-center">
-                <div className="text-sm text-dls-secondary">
-                  {props.query.trim()
-                    ? t("model_picker.no_results")
-                    : t("model_picker.no_models_available")}
+              props.modelsLoading ? (
+                <ModelDirectoryLoadingStatus
+                  className="justify-center rounded-2xl border border-dls-border bg-dls-hover/30 px-4 py-6 text-sm text-dls-secondary"
+                  engineId={props.engineId}
+                  hasModels={false}
+                />
+              ) : (
+                <div className="space-y-3 rounded-2xl border border-dls-border bg-dls-hover/30 px-4 py-6 text-center">
+                  <div className="text-sm text-dls-secondary">
+                    {props.query.trim()
+                      ? t("model_picker.no_results")
+                      : t("model_picker.no_models_available")}
+                  </div>
+                  {!props.query.trim() ? (
+                    <Button variant="outline" onClick={props.onOpenSettings}>
+                      {t("model_picker.connect_provider")}
+                    </Button>
+                  ) : null}
                 </div>
-                {!props.query.trim() ? (
-                  <Button variant="outline" onClick={props.onOpenSettings}>
-                    {t("model_picker.connect_provider")}
-                  </Button>
-                ) : null}
-              </div>
+              )
             ) : (
               providerGroups.map((group) => (
                 <ProviderAccordion
@@ -216,7 +245,8 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
                   group={group}
                   expanded={expandedProviders.has(group.id)}
                   current={props.current}
-                  canToggleProvider={!!props.onToggleProvider}
+                  canToggleProvider={!!props.onToggleProvider && group.isConnected}
+                  canConnectProvider={!!props.onConnectProvider}
                   onToggleExpand={() => toggleProvider(group.id)}
                   onToggleProvider={props.onToggleProvider}
                   onSelect={handleSelect}
@@ -246,6 +276,7 @@ function ProviderAccordion({
   expanded,
   current,
   canToggleProvider,
+  canConnectProvider,
   onToggleExpand,
   onToggleProvider,
   onSelect,
@@ -254,6 +285,7 @@ function ProviderAccordion({
   expanded: boolean;
   current: ModelRef;
   canToggleProvider: boolean;
+  canConnectProvider: boolean;
   onToggleExpand: () => void;
   onToggleProvider?: (providerId: string, enabled: boolean) => void;
   onSelect: (opt: ModelOption) => void;
@@ -322,7 +354,7 @@ function ProviderAccordion({
                 {t("model_picker.recommended")}
               </div>
               {group.recommended.map((opt) => (
-                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} recommended />
+                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} canConnectProvider={canConnectProvider} recommended />
               ))}
             </>
           ) : null}
@@ -334,7 +366,7 @@ function ProviderAccordion({
                 </div>
               ) : null}
               {group.other.map((opt) => (
-                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} />
+                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} canConnectProvider={canConnectProvider} />
               ))}
             </>
           ) : null}
@@ -349,9 +381,9 @@ function ProviderAccordion({
 /* ------------------------------------------------------------------ */
 
 function DefaultModelRow({
-  opt, current, onSelect, recommended,
+  opt, current, onSelect, canConnectProvider, recommended,
 }: {
-  opt: ModelOption; current: ModelRef; onSelect: (opt: ModelOption) => void; recommended?: boolean;
+  opt: ModelOption; current: ModelRef; onSelect: (opt: ModelOption) => void; canConnectProvider: boolean; recommended?: boolean;
 }) {
   const active = modelEquals(current, { providerID: opt.providerID, modelID: opt.modelID });
   const visionBadgeLabel = opt.supportsVision ? t("model_picker.badge_vision") : null;
@@ -359,9 +391,17 @@ function DefaultModelRow({
   return (
     <button
       type="button"
+      disabled={opt.disabled && (opt.isConnected || !canConnectProvider)}
+      title={opt.disabled ? opt.footer : undefined}
       className={[
         "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
-        active ? "bg-green-3/50" : "hover:bg-dls-hover",
+        opt.disabled && opt.isConnected
+          ? "cursor-not-allowed opacity-50"
+          : opt.disabled
+            ? "hover:bg-dls-hover"
+          : active
+            ? "bg-green-3/50"
+            : "hover:bg-dls-hover",
       ].join(" ")}
       onClick={() => onSelect(opt)}
     >
@@ -375,7 +415,9 @@ function DefaultModelRow({
             </span>
           ) : null}
         </div>
-        <span className="block truncate font-mono text-[10px] text-dls-secondary/60">{opt.modelID}</span>
+        <span className="block truncate font-mono text-[10px] text-dls-secondary/60">
+          {opt.disabled ? opt.footer : opt.modelID}
+        </span>
       </div>
       {active ? <Check size={14} className="shrink-0 text-green-11" /> : null}
     </button>

@@ -15,7 +15,7 @@ would see in a regular browser.
 Run inside the Electron or server sandbox:
 
 ```bash
-daytona exec "$SANDBOX" -- "bash -lc 'mkdir -p /tmp/daytona-chrome-profile; DISPLAY=:99 nohup chromium --no-sandbox --disable-dev-shm-usage --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --user-data-dir=/tmp/daytona-chrome-profile about:blank >/tmp/daytona-chrome.log 2>&1 &'"
+daytona exec "$SANDBOX" -- "bash -lc 'mkdir -p /tmp/daytona-chrome-profile; DISPLAY=:99 nohup chromium --no-sandbox --disable-dev-shm-usage --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --user-data-dir=/tmp/daytona-chrome-profile \"$DEN_WEB_URL\" >/tmp/daytona-chrome.log 2>&1 &'"
 ```
 
 If `chromium` is missing, try `google-chrome`, `google-chrome-stable`, or install
@@ -27,35 +27,29 @@ Chromium in the sandbox only when needed.
 CHROME_CDP_URL=$(daytona preview-url "$SANDBOX" -p 9222 2>/dev/null | grep -v '^time=')
 ```
 
-Then connect browser tools:
+Verify the target directly:
 
-```text
-browser_list({ browser_url: CHROME_CDP_URL })
+```bash
+curl -fsS "$CHROME_CDP_URL/json/list"
 ```
 
 ## Verify It Is Not Electron
 
-After selecting the Chrome target:
-
-```js
-navigator.userAgent
-```
-
-Expected: contains `Chrome/` or `Chromium/` and does not contain `Electron/`.
+The coded flow must assert that `navigator.userAgent` contains `Chrome/` or
+`Chromium/` and does not contain `Electron/`.
 
 ## Drive A Web Flow
 
-Use normal browser tools:
+Create or reuse an `evals/flows/*.flow.mjs` flow and set its `cdpTarget` to a
+stable title or URL fragment for the standalone page. Drive the visible flow
+with `ctx.clickText`, `ctx.fill`, `ctx.waitFor`, and `ctx.screenshot`, then run:
 
-```text
-browser_navigate({ browser_url: CHROME_CDP_URL, target_id: TARGET_ID, url: DEN_WEB_URL })
-browser_snapshot({ browser_url: CHROME_CDP_URL, target_id: TARGET_ID })
-browser_click({ browser_url: CHROME_CDP_URL, target_id: TARGET_ID, uid: UID })
-browser_fill({ browser_url: CHROME_CDP_URL, target_id: TARGET_ID, uid: UID, value: VALUE })
+```bash
+pnpm evals --flow <flow-id> --cdp-url "$CHROME_CDP_URL"
 ```
 
-Validate with the `daytona-flow-validator` loop. Do not assume navigation or
-sign-in worked until the post-action snapshot or URL proves it.
+Validate with the `fraimz` loop. Do not assume navigation or sign-in worked
+until the post-action URL, visible assertion, and frame prove it.
 
 ## Common Uses
 

@@ -1,13 +1,42 @@
 import type { UIMessage } from "ai";
+import type { SessionArtifact } from "@ipollowork/types/workspace";
+import { formatFileSize } from "@/lib/utils";
+
+export function getPartMetadataId(part: UIMessage["parts"][number]) {
+  if (part.type === "dynamic-tool") {
+    const metadata = part.callProviderMetadata?.ipollowork;
+    return metadata && typeof metadata === "object" && typeof metadata.partId === "string" ? metadata.partId : null;
+  }
+  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference") {
+    const data = part.data;
+    return data && typeof data === "object" && "partId" in data && typeof data.partId === "string" ? data.partId : null;
+  }
+  if (!("providerMetadata" in part)) return null;
+  const metadata = part.providerMetadata?.ipollowork;
+  return metadata && typeof metadata === "object" && typeof metadata.partId === "string" ? metadata.partId : null;
+}
 
 function mergeMessageParts(snapshotMessage: UIMessage, cachedMessage: UIMessage) {
+  // Parts can arrive out of order. Array positions are not provider identities.
+  const identity = (part: UIMessage["parts"][number]) =>
+    part.type === "dynamic-tool" ? part.toolCallId : getPartMetadataId(part);
+  const cachedById = new Map<string, UIMessage["parts"][number]>();
+  for (const part of cachedMessage.parts) {
+    const id = identity(part);
+    if (id && !cachedById.has(id)) cachedById.set(id, part);
+  }
+  const seen = new Set<string>();
   const parts = snapshotMessage.parts.map((part, index) => {
-    const cachedPart = cachedMessage.parts[index];
+    const id = identity(part);
+    if (id) seen.add(id);
+    const cachedPart = id ? cachedById.get(id) : cachedMessage.parts[index];
     if (!cachedPart) return part;
 
     if (
       (part.type === "text" || part.type === "reasoning") &&
       cachedPart.type === part.type &&
+      (!id || part.state !== "done") &&
+      cachedPart.text.startsWith(part.text) &&
       cachedPart.text.length > part.text.length
     ) {
       return { ...part, text: cachedPart.text };
@@ -16,8 +45,12 @@ function mergeMessageParts(snapshotMessage: UIMessage, cachedMessage: UIMessage)
     return part;
   });
 
-  if (cachedMessage.parts.length > snapshotMessage.parts.length) {
-    parts.push(...cachedMessage.parts.slice(snapshotMessage.parts.length));
+  for (const [index, part] of cachedMessage.parts.entries()) {
+    const id = identity(part);
+    if (id ? !seen.has(id) : index >= snapshotMessage.parts.length) {
+      parts.push(part);
+      if (id) seen.add(id);
+    }
   }
 
   return parts;
@@ -35,12 +68,12 @@ function mergeSnapshotMessageWithCached(snapshotMessage: UIMessage, cachedMessag
 
 function messageCreated(message: UIMessage) {
   const metadata = message.metadata;
-  if (!metadata || typeof metadata !== "object" || !("opencode" in metadata)) return null;
+  if (!metadata || typeof metadata !== "object" || !("ipollowork" in metadata)) return null;
 
-  const opencode = metadata.opencode;
-  if (!opencode || typeof opencode !== "object" || !("created" in opencode)) return null;
+  const ipollowork = metadata.ipollowork;
+  if (!ipollowork || typeof ipollowork !== "object" || !("created" in ipollowork)) return null;
 
-  const created = opencode.created;
+  const created = ipollowork.created;
   return typeof created === "number" ? created : null;
 }
 
@@ -141,4 +174,44 @@ export function mergeSnapshotIntoCachedMessages(snapshotMessages: UIMessage[], c
   }
 
   return sortFullyTimestampedMessages(merged);
+}
+
+/**
+ * Presentation only: these receipts must never be sent back to the conversation engine.
+ *
+ * Generated media can finish before the assistant has finished the whole turn.
+ * Keep those artifacts available to the session, but hold their delivery
+ * receipts until the caller has an authoritative end-of-turn signal.
+ */
+export function withStudioResults(
+  messages: UIMessage[],
+  artifacts: SessionArtifact[],
+  labels: { image: string; video: string },
+  options: { showResults?: boolean } = {},
+) {
+  if (options.showResults === false) return messages;
+
+  const seen = new Set<string>();
+  const results: UIMessage[] = [];
+  for (const artifact of artifacts) {
+    const generation = artifact.generation;
+    if (!generation || seen.has(generation.id)) continue;
+    seen.add(generation.id);
+    // A path in a tool result or inline preview is not a delivery card.
+    // Receipts use stable generation IDs so refreshes remain idempotent.
+    const details = [
+      formatFileSize(artifact.size),
+      generation.width && generation.height ? `${generation.width} × ${generation.height}` : null,
+      generation.duration ? `${Number(generation.duration.toFixed(1))} s` : null,
+      generation.model,
+    ].filter(Boolean).join(" · ");
+    const filename = artifact.path.split("/").pop() ?? artifact.path;
+    results.push({
+      id: `studio-result:${generation.id}`,
+      role: "assistant",
+      metadata: { ipollowork: { created: generation.completedAt, completed: generation.completedAt } },
+      parts: [{ type: "text", text: `${labels[generation.kind]}\n\n${details}\n\n[${filename.replace(/[\[\]\\]/g, "\\$&")}](${encodeURI(artifact.path).replace(/\(/g, "%28").replace(/\)/g, "%29")})` }],
+    });
+  }
+  return mergeSnapshotAndLiveMessages(messages, sortFullyTimestampedMessages(results), { appendLiveOnlyMessages: true });
 }

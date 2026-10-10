@@ -14,11 +14,11 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   if (element.isContentEditable) return true;
 
   const role = element.getAttribute?.("role");
-  if (role === "textbox" || role === "searchbox" || role === "combobox") return true;
+  if (role === "textbox" || role === "searchbox" || role === "combobox" || role === "slider" || role === "spinbutton") return true;
 
   return Boolean(
     element.closest?.(
-      "input, textarea, select, [contenteditable='true'], [role='textbox'], .cm-editor",
+      "input, textarea, select, [contenteditable='true'], [role='textbox'], [role='slider'], [role='spinbutton'], .cm-editor",
     ),
   );
 }

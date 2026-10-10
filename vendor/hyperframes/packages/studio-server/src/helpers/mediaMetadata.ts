@@ -1,5 +1,10 @@
 import { execFile } from "node:child_process";
 import { extname } from "node:path";
+import {
+  firstFrameColourArgs,
+  parseFirstFrameColour,
+  type ToneMapSourceColour,
+} from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 export interface FfprobeRunResult {
@@ -28,7 +33,7 @@ const execFileRunner: FfprobeRunner = (command, args, options) =>
     execFile(
       command,
       args,
-      { timeout: options?.timeout, maxBuffer: options?.maxBuffer },
+      { timeout: options?.timeout, maxBuffer: options?.maxBuffer, windowsHide: true },
       (error, stdout, stderr) => {
         if (error && error.code === "ENOENT") {
           resolvePromise({ status: null, stdout: "", stderr: "", error });
@@ -57,6 +62,7 @@ export interface MediaColorMetadata {
   codecName?: string;
   profile?: string;
   pixelFormat?: string;
+  hasAlpha?: boolean;
   colorSpace?: string;
   colorTransfer?: string;
   colorPrimaries?: string;
@@ -66,6 +72,8 @@ export interface MediaColorMetadata {
 export interface MediaMetadata {
   kind: "video" | "image" | "audio" | "unknown";
   color: MediaColorMetadata;
+  /** Video audio stream, when probed. Absent means the drop path stays muted. */
+  hasAudio?: boolean;
   probeError?: string;
 }
 
@@ -79,6 +87,7 @@ interface FfprobeStream {
   color_primaries?: string;
   bits_per_raw_sample?: string;
   disposition?: { attached_pic?: number };
+  tags?: Record<string, string | number>;
 }
 
 const VIDEO_EXT = new Set([
@@ -94,7 +103,7 @@ const VIDEO_EXT = new Set([
   ".ts",
 ]);
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
-const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
+const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"]);
 
 function lower(value: string | undefined): string {
   return value?.toLowerCase() ?? "";
@@ -168,11 +177,32 @@ export function classifyMediaColor(stream: FfprobeStream | null | undefined): Me
     codecName: stream?.codec_name,
     profile: stream?.profile,
     pixelFormat: stream?.pix_fmt,
+    // WebM stores VP8/VP9 alpha separately; ffprobe can still report yuv420p.
+    hasAlpha: pixelFormatHasAlpha(stream?.pix_fmt) ||
+      Object.entries(stream?.tags ?? {}).some(
+        ([key, value]) => key.toLowerCase() === "alpha_mode" && String(value) === "1",
+      ),
     colorSpace: stream?.color_space,
     colorTransfer: stream?.color_transfer,
     colorPrimaries: stream?.color_primaries,
     bitsPerRawSample: stream?.bits_per_raw_sample,
   };
+}
+
+/** The first shown frame's colour tags, which zscale reads per frame. Empty when unread. */
+export async function probeFirstFrameColour(
+  filePath: string,
+  runner: FfprobeRunner = execFileRunner,
+): Promise<ToneMapSourceColour> {
+  const ffmpegPath =
+    findFfBinary("ffmpeg", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffmpeg");
+  if (!ffmpegPath) return {};
+  const result = await runner(ffmpegPath, firstFrameColourArgs(filePath), {
+    timeout: 15_000,
+    maxBuffer: 1024 * 1024,
+  });
+  return result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
 }
 
 export async function probeMediaMetadata(
@@ -199,9 +229,10 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic:stream_tags=alpha_mode",
       "-of",
       "json",
+      "--",
       filePath,
     ],
     { timeout: 15_000, maxBuffer: 1024 * 1024 },
@@ -220,7 +251,11 @@ export async function probeMediaMetadata(
       if (kind === "image") return item.codec_type === "video";
       return item.codec_type === kind && item.disposition?.attached_pic !== 1;
     });
-    return { kind, color: classifyMediaColor(stream) };
+    const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
+    if (kind === "video") {
+      metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
+    }
+    return metadata;
   } catch {
     return { kind, color: classifyMediaColor(null), probeError: "ffprobe returned invalid json" };
   }

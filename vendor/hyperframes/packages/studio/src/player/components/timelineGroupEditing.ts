@@ -228,8 +228,9 @@ export function buildTimelineGroupResizeMembers(
     key: elementKey(element),
     start: element.start,
     duration: element.duration,
-    playbackStart:
-      edge === "start" && isMediaTimelineElement(element)
+    playbackStart: element.compositionSrc
+      ? undefined
+      : edge === "start" && isMediaTimelineElement(element)
         ? (element.playbackStart ?? 0)
         : element.playbackStart,
     playbackRate: element.playbackRate,

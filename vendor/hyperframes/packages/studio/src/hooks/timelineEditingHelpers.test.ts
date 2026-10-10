@@ -1,25 +1,20 @@
 import { Window } from "happy-dom";
 import { describe, expect, test, vi } from "vitest";
+import type { TimelineElement } from "../player/store/playerStore";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
+  readComponentSourceDuration,
   findTimelineElementInIframe,
   resolveTimelinePatch,
 } from "./timelineEditingHelpers";
 import { patchTimelineLayerStateInSource } from "./timelineTrackVisibility";
-import {
-  getEditableSourceFileForElement,
-  setCompositionSourceMap,
-} from "../components/editor/domEditingDom";
-import {
-  findElementForSelection,
-  findElementForTimelineElement,
-  getEditableUnitSelectionTarget,
-} from "../components/editor/domEditingElement";
+import { getEditableUnitSelectionTarget } from "../components/editor/domEditingElement";
 import { resolveDomEditSelection } from "../components/editor/domEditingLayers";
 import {
   buildOptimisticTimelineSplit,
+  canSplitElementAt,
   rollbackOptimisticTimelineSplit,
 } from "../utils/timelineElementSplit";
 
@@ -40,128 +35,30 @@ function moveSceneReplay(start: string) {
 }
 
 describe("timeline edit patch resolution", () => {
-  test("keeps an inserted effect host parent-owned while its children stay editable", async () => {
+  test("edits an explicitly authored composition unit as one host", async () => {
     const testWindow = new Window();
-    const root = testWindow.document.createElement("main");
-    root.setAttribute("data-composition-id", "main");
     const host = testWindow.document.createElement("div");
-    host.id = "effect-ending-bilibili-triple";
-    host.setAttribute("data-composition-id", "effect-ending-bilibili-triple");
-    host.setAttribute(
-      "data-composition-src",
-      "compositions/effects/effect-ending-bilibili-triple.html",
-    );
+    host.id = "route-map";
+    host.setAttribute("data-composition-id", "route-map");
+    host.setAttribute("data-composition-src", "compositions/components/route-map.html");
     host.setAttribute("data-hf-edit-as-unit", "");
-    const effectVisual = testWindow.document.createElement("div");
-    effectVisual.id = "effect-visual";
-    host.append(effectVisual);
-    root.append(host);
-    testWindow.document.body.append(root);
+    const child = testWindow.document.createElement("div");
+    host.append(child);
+    testWindow.document.body.append(host);
 
-    expect(getEditableSourceFileForElement(host, "index.html").sourceFile).toBe("index.html");
-    const hostSelection = await resolveDomEditSelection(host, {
-      activeCompositionPath: "index.html",
-      isMasterView: true,
-      skipSourceProbe: true,
-    });
-    expect(hostSelection?.element).toBe(host);
-    expect(hostSelection).toMatchObject({
-      sourceFile: "index.html",
-      compositionPath: "index.html",
-      compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
-      isCompositionHost: true,
-      capabilities: {
-        canEditStyles: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: true,
-        canApplyManualRotation: true,
-      },
-    });
-    expect(getEditableUnitSelectionTarget(effectVisual)).toBeNull();
+    expect(getEditableUnitSelectionTarget(child)).toBe(host);
     await expect(
-      resolveDomEditSelection(effectVisual, {
+      resolveDomEditSelection(child, {
         activeCompositionPath: "index.html",
         isMasterView: true,
         skipSourceProbe: true,
       }),
     ).resolves.toMatchObject({
-      element: effectVisual,
-      sourceFile: "compositions/effects/effect-ending-bilibili-triple.html",
-      compositionSrc: undefined,
-      isCompositionHost: false,
+      element: host,
+      sourceFile: "index.html",
+      compositionSrc: "compositions/components/route-map.html",
+      isCompositionHost: true,
     });
-
-    const intentionalUnit = testWindow.document.createElement("div");
-    intentionalUnit.setAttribute("data-hf-edit-as-unit", "");
-    const unitChild = testWindow.document.createElement("span");
-    intentionalUnit.append(unitChild);
-    root.append(intentionalUnit);
-    expect(getEditableUnitSelectionTarget(unitChild)).toBe(intentionalUnit);
-    expect(
-      findElementForSelection(
-        testWindow.document,
-        {
-          id: host.id,
-          selector: `#${host.id}`,
-          sourceFile: "index.html",
-        },
-        "index.html",
-      ),
-    ).toBe(host);
-    expect(
-      findElementForTimelineElement(
-        testWindow.document,
-        {
-          id: host.id,
-          domId: host.id,
-          compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
-          sourceFile: "index.html",
-        },
-        { activeCompositionPath: "index.html", isMasterView: true },
-      ),
-    ).toBe(host);
-
-    const nestedRoot = testWindow.document.createElement("div");
-    const nestedEffect = testWindow.document.createElement("div");
-    nestedEffect.setAttribute("data-composition-src", "compositions/effects/nested.html");
-    host.append(nestedRoot);
-    nestedRoot.append(nestedEffect);
-    expect(getEditableSourceFileForElement(nestedEffect, "index.html").sourceFile).toBe(
-      "compositions/effects/effect-ending-bilibili-triple.html",
-    );
-
-    host.removeAttribute("data-composition-src");
-    setCompositionSourceMap(
-      new Map([
-        [
-          "effect-ending-bilibili-triple",
-          "compositions/effects/effect-ending-bilibili-triple.html",
-        ],
-      ]),
-    );
-    try {
-      expect(getEditableSourceFileForElement(host, "index.html").sourceFile).toBe("index.html");
-      await expect(
-        resolveDomEditSelection(effectVisual, {
-          activeCompositionPath: "index.html",
-          isMasterView: true,
-          skipSourceProbe: true,
-        }),
-      ).resolves.toMatchObject({
-        element: effectVisual,
-        sourceFile: "compositions/effects/effect-ending-bilibili-triple.html",
-        compositionSrc: undefined,
-        isCompositionHost: false,
-        capabilities: {
-          canEditStyles: true,
-          canApplyManualOffset: true,
-          canApplyManualSize: true,
-          canApplyManualRotation: true,
-        },
-      });
-    } finally {
-      setCompositionSourceMap(new Map());
-    }
   });
 
   test("finds an inserted composition host by its manifest id when domId is absent", () => {
@@ -249,6 +146,39 @@ describe("timeline edit patch resolution", () => {
     ]);
   });
 
+  test("allows an authored component clip to split at the playhead", () => {
+    const component: TimelineElement = {
+      id: "sample-grid",
+      key: "index.html::sample-grid",
+      domId: "sample-grid",
+      hfId: "hf-sample-grid",
+      tag: "div",
+      start: 6,
+      duration: 10,
+      track: 3,
+      timingSource: "authored",
+      compositionSrc: "compositions/components/sample-grid.html",
+    };
+
+    expect(canSplitElementAt(component, 9)).toBe(true);
+    expect(
+      buildOptimisticTimelineSplit(
+        [component],
+        component,
+        9,
+        "index.html::sample-grid::pending-split-1",
+      )?.elements,
+    ).toMatchObject([
+      { id: "sample-grid", start: 6, duration: 3, compositionSrc: component.compositionSrc },
+      {
+        id: "index.html::sample-grid::pending-split-1",
+        start: 9,
+        duration: 7,
+        compositionSrc: component.compositionSrc,
+      },
+    ]);
+  });
+
   test("persists visibility and lock state for authored timeline layers", () => {
     const original = '<main><div id="authored-layer"></div></main>';
     const element = {
@@ -262,7 +192,12 @@ describe("timeline edit patch resolution", () => {
 
     const hidden = patchTimelineLayerStateInSource(original, element, "hidden", true);
     expect(hidden).toContain('data-hidden=""');
-    const locked = patchTimelineLayerStateInSource(hidden ?? original, element, "timelineLocked", true);
+    const locked = patchTimelineLayerStateInSource(
+      hidden ?? original,
+      element,
+      "timelineLocked",
+      true,
+    );
     expect(locked).toContain('data-timeline-locked=""');
     expect(
       patchTimelineLayerStateInSource(locked ?? original, element, "timelineLocked", false),
@@ -311,29 +246,15 @@ describe("timeline edit patch resolution", () => {
   test("materializes an implicit layer in one source patch", () => {
     const original =
       '<main data-composition-id="root" data-duration="6"><div id="rw-thread"></div></main>';
-    const materialized = buildTimelineMoveTimingPatch(
-      original,
-      { id: "rw-thread" },
-      2,
-      6,
-      3,
-      true,
-    );
+    const materialized = buildTimelineMoveTimingPatch(original, { id: "rw-thread" }, 2, 6, 3, true);
 
     expect(materialized).toContain(
       '<div id="rw-thread" data-start="2" data-duration="6" data-hf-preserve-flow="1" data-track-index="3">',
     );
     expect(materialized).toContain('data-composition-id="root" data-duration="8"');
-    expect(
-      buildTimelineMoveTimingPatch(
-        materialized,
-        { id: "rw-thread" },
-        2,
-        6,
-        3,
-        true,
-      ),
-    ).toBe(materialized);
+    expect(buildTimelineMoveTimingPatch(materialized, { id: "rw-thread" }, 2, 6, 3, true)).toBe(
+      materialized,
+    );
   });
 
   test("materializes track and flow layout when trimming an implicit layer", () => {
@@ -361,13 +282,50 @@ describe("timeline edit patch resolution", () => {
 
   test("adds timing attributes before the slash of a self-closing logo", () => {
     const original = '<main><img id="logo" src="logo.png" /></main>';
-    const patched = applyPatchByTarget(original, { id: "logo" }, {
-      type: "attribute",
-      property: "start",
-      value: "1",
-    });
+    const patched = applyPatchByTarget(
+      original,
+      { id: "logo" },
+      {
+        type: "attribute",
+        property: "start",
+        value: "1",
+      },
+    );
 
     expect(patched).toContain('<img id="logo" src="logo.png" data-start="1" />');
-    expect(patched).not.toContain('/ data-start');
+    expect(patched).not.toContain("/ data-start");
   });
+});
+
+describe("component resize source window", () => {
+  test("stretches its full declared animation and resets a legacy trim", () => {
+    const original =
+      '<main data-composition-id="root" data-duration="20"><div id="component" data-composition-src="scene.html" data-start="5" data-duration="5" data-playback-start="-2" data-media-start="4"></div></main>';
+    const element = {
+      id: "component",
+      tag: "div",
+      compositionSrc: "scene.html",
+      start: 5,
+      duration: 5,
+      track: 0,
+      sourceDuration: 10,
+      playbackStart: -2,
+    };
+    const patched = buildTimelineResizeTimingPatch(original, { id: "component" }, element, {
+      start: 0,
+      duration: 20,
+      playbackStart: -7,
+    });
+    expect(patched).toContain('data-playback-rate="0.5"');
+    expect(patched).toContain('data-source-duration="10"');
+    expect(patched).toContain('data-playback-start="0"');
+    expect(patched).not.toContain("data-media-start");
+  });
+});
+
+ test("reads the declared source duration inside a registry template rather than native timeline overrun", async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ content: '<html><body><template><div data-composition-id="stage-stack" data-duration="10"></div><script>tl.to({}, {duration:14})</script></template></body></html>' }) }));
+  vi.stubGlobal("fetch", fetchMock);
+  try { expect(await readComponentSourceDuration("project", "components/stack.html")).toBe(10); }
+  finally { vi.unstubAllGlobals(); vi.stubGlobal("DOMParser", new Window().DOMParser); }
 });

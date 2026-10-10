@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sharedProviderDisconnectedEnvKey } from "@ipollowork/types/provider-credentials";
 
+import { EnvService } from "./env-file.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
@@ -16,6 +18,7 @@ const stops: Array<() => void | Promise<void>> = [];
 const dirs: string[] = [];
 const priorEnvStore = process.env.IPOLLOWORK_ENV_STORE;
 const priorTokenStore = process.env.IPOLLOWORK_TOKEN_STORE;
+const priorRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const priorOpenAiApiKey = process.env.OPENAI_API_KEY;
 const prioriPolloWorkApiKey = process.env.IPOLLOWORK_API_KEY;
 const prioriPolloWorkInferenceBaseUrl = process.env.IPOLLOWORK_INFERENCE_BASE_URL;
@@ -30,6 +33,7 @@ function baseConfig(): ServerConfig {
     approval: { mode: "auto", timeoutMs: 1000 },
     corsOrigins: ["*"],
     workspaces: [],
+    opencodeAuthPath: join(dirs[0], "auth.json"),
     authorizedRoots: [],
     readOnly: false,
     startedAt: Date.now(),
@@ -60,6 +64,7 @@ beforeEach(() => {
   // touches the developer's real ~/.config/ipollowork/env.json.
   process.env.IPOLLOWORK_ENV_STORE = join(dir, "env.json");
   process.env.IPOLLOWORK_TOKEN_STORE = join(dir, "tokens.json");
+  process.env.IPOLLOWORK_RUNTIME_DB = join(dir, "runtime.sqlite");
 });
 
 afterEach(async () => {
@@ -78,6 +83,11 @@ afterEach(async () => {
     delete process.env.IPOLLOWORK_TOKEN_STORE;
   } else {
     process.env.IPOLLOWORK_TOKEN_STORE = priorTokenStore;
+  }
+  if (priorRuntimeDb === undefined) {
+    delete process.env.IPOLLOWORK_RUNTIME_DB;
+  } else {
+    process.env.IPOLLOWORK_RUNTIME_DB = priorRuntimeDb;
   }
   if (priorOpenAiApiKey === undefined) {
     delete process.env.OPENAI_API_KEY;
@@ -232,19 +242,19 @@ describe("env routes", () => {
 
     const list = await fetch(`${base}/env/keys`, { headers: hostAuth() });
     expect(list.status).toBe(200);
-    expect(await list.json()).toEqual({ keys: ["ANTHROPIC_API_KEY", "NBA_LIVE_KEY"] });
+    expect(await list.json()).toEqual({
+      keys: ["ANTHROPIC_API_KEY", "NBA_LIVE_KEY"],
+      oauthProviderIds: [],
+    });
   });
 
   test("authorization catalog returns safe AI usage metadata, never secret values", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/openai-images/credentials`, {
       method: "PUT",
       headers: hostAuth(),
       body: JSON.stringify({
-        entries: [
-          { key: "OPENAI_API_KEY", value: "sk-openai-secret" },
-          { key: "ALIYUN_OSS_BUCKET", value: "private-assets" },
-        ],
+        values: { OPENAI_API_KEY: "sk-openai-secret" },
       }),
     });
 
@@ -271,12 +281,36 @@ describe("env routes", () => {
     expect(catalog.items.find((item) => item.id === "aliyun-oss")?.configured).toBe(false);
   });
 
+  test("authorization center shares browser login without replacing API keys and respects disconnect", async () => {
+    writeFileSync(join(dirs[0], "auth.json"), JSON.stringify({ openai: {
+      type: "oauth", access: "private-browser-access", refresh: "private-browser-refresh",
+      accountId: "private-browser-account", expires: Date.now() + 3_600_000,
+    } }));
+    const { base } = await boot();
+    const save = await fetch(`${base}/authorization-services/openai-images/credentials`, {
+      method: "PUT", headers: hostAuth(), body: JSON.stringify({ values: { OPENAI_API_KEY: "private-api-key" } }),
+    });
+    expect(save.status).toBe(200);
+    const catalog = await fetch(`${base}/authorization-services`, { headers: hostAuth() });
+    const body = await catalog.text();
+    expect(body).not.toContain("private-");
+    expect(JSON.parse(body).items).toContainEqual(expect.objectContaining({
+      id: "openai-images", configured: true, browserLogin: { providerId: "openai", connected: true },
+    }));
+    const store = new EnvService({ processEnv: {} });
+    await store.upsertMany([{ key: sharedProviderDisconnectedEnvKey("openai"), value: "1" }]);
+    const disconnected = await fetch(`${base}/authorization-services`, { headers: hostAuth() });
+    expect((await disconnected.json()).items).toContainEqual(expect.objectContaining({
+      id: "openai-images", configured: true, browserLogin: { providerId: "openai", connected: false },
+    }));
+  });
+
   test("authorization tests keep credentials server-side and return a completed test result", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/openai-images/credentials`, {
       method: "PUT",
       headers: hostAuth(),
-      body: JSON.stringify({ key: "OPENAI_API_KEY", value: "sk-openai-secret" }),
+      body: JSON.stringify({ values: { OPENAI_API_KEY: "sk-openai-secret" } }),
     });
 
     globalThis.fetch = ((input, init) => {
@@ -298,16 +332,16 @@ describe("env routes", () => {
 
   test("OSS authorization test signs a read-only bucket listing with V4", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/aliyun-oss/credentials`, {
       method: "PUT",
       headers: hostAuth(),
       body: JSON.stringify({
-        entries: [
-          { key: "ALIYUN_OSS_ACCESS_KEY_ID", value: "LTAItest" },
-          { key: "ALIYUN_OSS_ACCESS_KEY_SECRET", value: "test-secret" },
-          { key: "ALIYUN_OSS_BUCKET", value: "private-assets" },
-          { key: "ALIYUN_OSS_REGION", value: "cn-hangzhou" },
-        ],
+        values: {
+          ALIYUN_OSS_ACCESS_KEY_ID: "LTAItest",
+          ALIYUN_OSS_ACCESS_KEY_SECRET: "test-secret",
+          ALIYUN_OSS_BUCKET: "private-assets",
+          ALIYUN_OSS_REGION: "cn-hangzhou",
+        },
       }),
     });
 
@@ -336,16 +370,16 @@ describe("env routes", () => {
 
   test("Wasabi authorization test signs a read-only bucket listing with V4", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/wasabi/credentials`, {
       method: "PUT",
       headers: hostAuth(),
       body: JSON.stringify({
-        entries: [
-          { key: "WASABI_ACCESS_KEY_ID", value: "WasabiAccess" },
-          { key: "WASABI_SECRET_ACCESS_KEY", value: "wasabi-secret" },
-          { key: "WASABI_BUCKET", value: "media" },
-          { key: "WASABI_REGION", value: "us-east-1" },
-        ],
+        values: {
+          WASABI_ACCESS_KEY_ID: "WasabiAccess",
+          WASABI_SECRET_ACCESS_KEY: "wasabi-secret",
+          WASABI_BUCKET: "media",
+          WASABI_REGION: "us-east-1",
+        },
       }),
     });
 
@@ -521,9 +555,12 @@ describe("env routes", () => {
     });
     expect(envPut.status).toBe(200);
 
+    let brokerCalls = 0;
     globalThis.fetch = ((input, init) => {
       const url = String(input);
       if (url === "https://inference.example.test/voice/realtime/session") {
+        brokerCalls += 1;
+        expect(init?.method).toBe("POST");
         expect(init?.headers).toMatchObject({ Authorization: "Bearer ow_inf_test" });
         return Promise.resolve(new Response(JSON.stringify({
           ok: true,
@@ -549,7 +586,9 @@ describe("env routes", () => {
       headers: hostAuth(),
       body: JSON.stringify({ scope: "owner", label: "managed voice owner" }),
     });
+    expect(issued.status).toBe(201);
     const tokenBody = (await issued.json()) as { token: string };
+    expect(typeof tokenBody.token).toBe("string");
 
     const response = await fetch(`${base}/voice/realtime/session`, {
       method: "POST",
@@ -562,8 +601,10 @@ describe("env routes", () => {
       ok: true,
       clientSecret: "managed-rt-secret",
       expiresAt: 456,
+      model: "gpt-realtime-2",
       source: "ipollowork-models",
     });
+    expect(brokerCalls).toBe(1);
   });
 
   test("voice realtime session falls back to direct OpenAI when broker returns 503", async () => {
@@ -660,7 +701,7 @@ describe("env routes", () => {
     expect(response.status).toBe(503);
     const body = (await response.json()) as { code: string; message: string };
     expect(body.code).toBe("ipollowork_models_voice_unavailable");
-    expect(body.message).toContain("not fully configured");
+    expect(body.message).toBe("第三方服务暂时不可用，请稍后重试。");
   });
 
   test("voice realtime session does not fall back on non-503 broker errors", async () => {
@@ -706,7 +747,7 @@ describe("env routes", () => {
 
     expect(response.status).toBe(429);
     const body = (await response.json()) as { code: string };
-    expect(body.code).toBe("ipollowork_models_voice_failed");
+    expect(body.code).toBe("provider_rate_limited");
   });
 
   test("values persist across server restart", async () => {

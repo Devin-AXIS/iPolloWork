@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { componentStretchAttributes, readComponentSourceDuration } from "./timelineEditingHelpers";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
   findElementForSelection,
@@ -12,6 +13,7 @@ import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRu
 // ── Types ──
 
 export interface UseDomEditAttributeCommitsParams {
+  projectId?: string | null;
   activeCompPath: string | null;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -94,6 +96,7 @@ function captureAttributeElement(
 // both revert the optimistic write on persist failure, version-guarded per
 // target+attribute so a stale failure can't stomp a newer successful commit.
 export function useDomEditAttributeCommits({
+  projectId,
   activeCompPath,
   previewIframeRef,
   showToast,
@@ -101,7 +104,7 @@ export function useDomEditAttributeCommits({
   refreshDomEditSelectionFromPreview,
   persistDomEditOperations,
 }: UseDomEditAttributeCommitsParams) {
-  const domAttributeCommitVersionRef = useRef(new Map<string, number>());
+  const domAttributeCommitVersionRef = useRef(new Map<string, symbol>());
 
   const commitDataAttribute = useCallback(
     async (attr: string, value: string | null, options: DataAttributeCommitOptions) => {
@@ -259,7 +262,20 @@ export function useDomEditAttributeCommits({
         onSettled?: (ok: boolean) => void;
       },
     ) => {
-      await commitDataAttributes(selection, attrs, {
+      let resolvedAttrs: Record<string, string | null> = attrs;
+      const duration = Number(attrs.duration ?? attrs["data-duration"]);
+      if (selection.isCompositionHost && selection.compositionSrc && duration > 0) {
+        const sourceDuration = await readComponentSourceDuration(
+          projectId ?? "",
+          selection.compositionSrc,
+          Number(selection.element.getAttribute("data-source-duration")) || undefined,
+        );
+        resolvedAttrs = {
+          ...attrs,
+          ...componentStretchAttributes(sourceDuration, duration),
+        };
+      }
+      await commitDataAttributes(selection, resolvedAttrs, {
         label,
         coalescePrefix: "attrs",
         skipRefresh: behavior?.skipRefresh ?? false,
@@ -267,11 +283,17 @@ export function useDomEditAttributeCommits({
         onSettled: behavior?.onSettled,
       });
     },
-    [commitDataAttributes],
+    [commitDataAttributes, projectId],
   );
 
   const handleDomAttributeCommit = useCallback(
     async (attr: string, value: string) => {
+      if (
+        (attr === "duration" || attr === "data-duration") &&
+        domEditSelection?.isCompositionHost
+      ) {
+        return handleDomAttributesCommit(domEditSelection, { duration: value }, "Resize component");
+      }
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/-/g, " ")}`,
         coalescePrefix: "attr",
@@ -279,7 +301,7 @@ export function useDomEditAttributeCommits({
         refreshAfter: true,
       });
     },
-    [commitDataAttribute],
+    [commitDataAttribute, domEditSelection, handleDomAttributesCommit],
   );
 
   const handleDomAttributeLiveCommit = useCallback(

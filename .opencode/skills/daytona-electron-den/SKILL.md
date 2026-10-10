@@ -74,7 +74,7 @@ Validate all of these:
 
 ## Marketplace, Policy, Provider Sync
 
-For each cloud feature, use the `daytona-flow-validator` loop:
+For each cloud feature, use the `fraimz` loop:
 
 1. Assert server seed or API state.
 2. Act in Electron UI.

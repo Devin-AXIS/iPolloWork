@@ -1,0 +1,52 @@
+[
+  {
+    "id": "Xenova/whisper-tiny",
+    "capability": "speech",
+    "revision": "5332fcc35e32a33b86612b9a57a89be7906102b1",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/Xenova/whisper-tiny",
+    "files": [
+      { "path": "config.json" }, { "path": "generation_config.json" },
+      { "path": "preprocessor_config.json" }, { "path": "tokenizer.json" },
+      { "path": "tokenizer_config.json" }, { "path": "special_tokens_map.json" },
+      { "path": "vocab.json" }, { "path": "merges.txt" },
+      { "path": "onnx/encoder_model_quantized.onnx", "sha256": "fd9d995b9dcb0520f0dbf6cf68651af639fc385f594d9d876e69ca2802dc438e" },
+      { "path": "onnx/decoder_model_merged_quantized.onnx", "sha256": "6c0c125986b007d2e3734bec84c18bda0152071b90b87fadac6d7764499927a0" }
+    ]
+  },
+  {
+    "id": "Xenova/yolos-tiny",
+    "capability": "people",
+    "revision": "e2f9c7673f0fa61849efe2b56a0d7774779ebb9d",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/hustvl/yolos-tiny",
+    "files": [
+      { "path": "config.json" }, { "path": "preprocessor_config.json" },
+      { "path": "onnx/model_quantized.onnx", "sha256": "82b5c1de8aaaffd763c67d67b09b742a1c53628acfee3077af3fa59233e86b6b" }
+    ]
+  },
+  {
+    "id": "opencv/opencv_zoo",
+    "capability": "gestures",
+    "revision": "d4938dfc9d4ec5d098bfa33e98b3f3345a236586",
+    "license": "Apache-2.0",
+    "source": "https://github.com/opencv/opencv_zoo/tree/main/models/handpose_estimation_mediapipe",
+    "files": [
+      { "path": "models/palm_detection_mediapipe/palm_detection_mediapipe_2023feb.onnx", "sha256": "78ff51c38496b7fc8b8ebdb6cc8c1abb02fa6c38427c6848254cdaba57fcce7c" },
+      { "path": "models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx", "sha256": "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c" },
+      { "path": "models/palm_detection_mediapipe/LICENSE" },
+      { "path": "models/handpose_estimation_mediapipe/LICENSE" }
+    ]
+  },
+  {
+    "id": "opencv/opencv_zoo",
+    "capability": "segmentation",
+    "revision": "d4938dfc9d4ec5d098bfa33e98b3f3345a236586",
+    "license": "Apache-2.0",
+    "source": "https://github.com/opencv/opencv_zoo/tree/main/models/human_segmentation_pphumanseg",
+    "files": [
+      { "path": "models/human_segmentation_pphumanseg/human_segmentation_pphumanseg_2023mar.onnx", "sha256": "552d8a984054e59b5d773d24b9b12022b22046ceb2bbc4c9aaeaceb36a9ddf24" },
+      { "path": "models/human_segmentation_pphumanseg/LICENSE" }
+    ]
+  }
+]

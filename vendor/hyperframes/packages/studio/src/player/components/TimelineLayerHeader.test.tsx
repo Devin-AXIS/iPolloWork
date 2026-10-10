@@ -19,7 +19,7 @@ const element: TimelineElement = {
 };
 
 const visualStyle = {
-  accent: "#20bbc0",
+  accent: "#1FBAC0",
   clip: "#f5f6f9",
   label: "#20262d",
 };
@@ -42,8 +42,9 @@ describe("TimelineLayerHeader", () => {
     container.remove();
   });
 
-  it("selects the layer without entering rename mode", async () => {
+  it("selects without expanding and expands only when the caret is clicked", async () => {
     const onSelect = vi.fn();
+    const onToggleExpanded = vi.fn();
     await act(async () => {
       root.render(
         <TimelineLayerHeader
@@ -53,13 +54,14 @@ describe("TimelineLayerHeader", () => {
           locked={false}
           selected={false}
           expanded={false}
-          expandable={false}
+          expandable
           theme={defaultTimelineTheme}
           visualStyle={visualStyle}
+          gutterWidth={255}
           onToggleHidden={vi.fn()}
           onToggleLocked={vi.fn()}
           onSelect={onSelect}
-          onToggleExpanded={vi.fn()}
+          onToggleExpanded={onToggleExpanded}
         />,
       );
     });
@@ -68,6 +70,12 @@ describe("TimelineLayerHeader", () => {
     await act(async () => select?.click());
 
     expect(onSelect).toHaveBeenCalledWith(element);
+    expect(onToggleExpanded).not.toHaveBeenCalled();
+    const caret = container.querySelector<HTMLButtonElement>(".hf-timeline-layer-header__caret");
+    await act(async () => caret?.click());
+    expect(onToggleExpanded).toHaveBeenCalledOnce();
+    expect(onToggleExpanded).toHaveBeenCalledWith(element);
+    expect(onSelect).toHaveBeenCalledOnce();
     expect(container.querySelector(".hf-timeline-layer-header__rename-input")).toBeNull();
     expect(container.querySelector(".hf-timeline-layer-header__label")?.textContent).toBe(
       "Opening title",
@@ -88,6 +96,7 @@ describe("TimelineLayerHeader", () => {
           expandable={false}
           theme={defaultTimelineTheme}
           visualStyle={visualStyle}
+          gutterWidth={255}
           onToggleHidden={onToggleHidden}
           onToggleLocked={vi.fn()}
           onSelect={vi.fn()}
@@ -100,5 +109,34 @@ describe("TimelineLayerHeader", () => {
     expect(eye?.getAttribute("aria-label")).toBe("Hide Opening title");
     await act(async () => eye?.click());
     expect(onToggleHidden).toHaveBeenCalledWith(true);
+  });
+
+  it("uses the full layer row as a selection target", async () => {
+    const onSelect = vi.fn();
+    await act(async () => {
+      root.render(
+        <TimelineLayerHeader
+          track={0}
+          elements={[element]}
+          hidden={false}
+          locked={false}
+          selected={false}
+          expanded={false}
+          expandable={false}
+          theme={defaultTimelineTheme}
+          visualStyle={visualStyle}
+          gutterWidth={320}
+          onToggleHidden={vi.fn()}
+          onToggleLocked={vi.fn()}
+          onSelect={onSelect}
+          onToggleExpanded={vi.fn()}
+        />,
+      );
+    });
+
+    const row = container.querySelector<HTMLElement>(".hf-timeline-layer-header");
+    expect(row?.style.width).toBe("320px");
+    await act(async () => row?.click());
+    expect(onSelect).toHaveBeenCalledWith(element);
   });
 });

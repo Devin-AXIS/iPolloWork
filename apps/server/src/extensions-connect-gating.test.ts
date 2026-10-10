@@ -1,15 +1,93 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { conversationWorkflowSchema, projectSessionExecutionRuntimeSchema, workTemplateSchema } from "@ipollowork/types/work-items";
 
+import { browserDecisionCandidatesSchema, consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES, ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { installPluginPackage } from "./plugin-package-lifecycle.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
+import { engineBrowserTaskId, engineCallContext, engineMcpSessionId } from "./routes/core.js";
+import { bindConversationSession, readProjectSessionWorkItem, writeConversationWorkflow } from "./work-items.js";
+import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 
 const CLIENT_TOKEN = "owt_connect_client_token";
 const HOST_TOKEN = "owt_connect_host_token";
+const conversationResultSchema = z.object({
+  ok: z.literal(true),
+  item: z.object({
+    version: z.number(),
+    execution: z.object({ workflow: conversationWorkflowSchema, runtime: projectSessionExecutionRuntimeSchema }),
+  }),
+});
+
+test("browser host policy identifies only consequential verified activations", () => {
+  expect(consequentialBrowserControlNames([
+    { type: "fill", ref: "@e1", value: "Publish" },
+    { type: "click", ref: "@e2", expectedName: "Preview" },
+    { type: "click", ref: "@e3", expectedName: "确认发布" },
+    { type: "click", ref: "@e4", expectedName: "Delete post" },
+    { type: "press", key: "Enter", ref: "@e5", expectedName: "Submit" },
+    { type: "check", ref: "@e6", expectedName: "Authorize access", checked: true },
+    { type: "click", target: { role: "button", name: "Pay now" } },
+    { type: "click", expectedName: "Preview", target: { role: "button", name: "Delete account" } },
+  ])).toEqual(["确认发布", "Delete post", "Submit", "Authorize access", "Pay now", "Delete account"]);
+});
+
+test("browser host action schema exposes one complete semantic action set", () => {
+  const tool = engineHostTool(ENGINE_HOST_TOOL_NAMES.browserAct);
+  const schema = JSON.stringify(tool?.parameters);
+  for (const action of ["check", "click", "fill", "hover", "press", "scroll", "select", "upload", "wait", "waitFor"]) {
+    expect(schema).toContain(`\"${action}\"`);
+  }
+  expect(schema).toContain("Enter");
+  expect(schema).toContain("Space");
+  for (const condition of ["load", "ref", "text", "url"]) expect(schema).toContain(`\"${condition}\"`);
+});
+
+test("browser host scopes shared account tabs to the calling task", () => {
+  expect(engineBrowserTaskId({ sessionId: "session-a", workspaceId: "ws_1" })).toBe("session-a");
+  expect(engineBrowserTaskId({ workspaceId: "ws_1" })).toBe("ws_1");
+  expect(engineBrowserTaskId({ sessionId: "../escape", workspaceId: "ws_1" })).toBe("ws_1");
+});
+
+test("browser decision candidates require complete executable actions before provider transport", () => {
+  const click = { type: "click", ref: "@e1", expectedName: "Preview" };
+  for (const incomplete of [
+    { id: "nextjs", description: "Next.js" }, { type: "fill", ref: "@e1" }, { type: "press" }, { type: "wait" },
+    { type: "select", ref: "@e1", expectedName: "Role" }, { type: "check", ref: "@e1", expectedName: "Option" },
+    { type: "upload", ref: "@e1" }, { type: "scroll", direction: "down" }, { type: "waitFor", condition: "text" },
+  ]) expect(browserDecisionCandidatesSchema.safeParse([click, incomplete]).success).toBe(false);
+  expect(browserDecisionCandidatesSchema.safeParse([click, { type: "fill", ref: "@e1", value: "" }]).success).toBe(true);
+  expect(browserDecisionCandidatesSchema.safeParse(undefined).success).toBe(true);
+});
+
+test("engine MCP calls prefer native task metadata and otherwise use the host prompt context", () => {
+  expect(engineMcpSessionId({ threadId: "thread-a" }, "latest-session")).toBe("thread-a");
+  expect(engineMcpSessionId({ sessionID: "session-a" }, "latest-session")).toBe("session-a");
+  expect(engineMcpSessionId({ threadId: "agent/current" }, "latest-session")).toBe("latest-session");
+  expect(engineMcpSessionId({}, "latest-session")).toBe("latest-session");
+});
+
+test("direct engine calls inherit the active task only when the engine omitted it", () => {
+  expect(engineCallContext({ workspaceId: "ws_1" }, "session-active")).toEqual({
+    workspaceId: "ws_1",
+    sessionId: "session-active",
+  });
+  expect(engineCallContext({ workspaceId: "ws_1", sessionId: "session-native" }, "session-active")).toEqual({
+    workspaceId: "ws_1",
+    sessionId: "session-native",
+  });
+  expect(engineCallContext({ workspaceId: "ws_1", sessionId: "agent/current" }, "session-active")).toEqual({
+    workspaceId: "ws_1",
+    sessionId: "session-active",
+  });
+});
 
 const actionSchema = z.object({
   extensionId: z.string(),
@@ -72,6 +150,16 @@ const previousEnv = {
 const stops: Array<() => void | Promise<void>> = [];
 const dirs: string[] = [];
 
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
+
 function restoreEnv(key: string, value: string | undefined) {
   if (typeof value === "string") process.env[key] = value;
   else delete process.env[key];
@@ -104,11 +192,12 @@ function serverConfig(root: string): ServerConfig {
   };
 }
 
-async function boot() {
+async function boot(options: { approval?: ServerConfig["approval"] } = {}) {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-connect-gating-"));
   dirs.push(root);
   process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   const config = serverConfig(root);
+  if (options.approval) config.approval = options.approval;
   const server = await startServer(config);
   stops.push(() => server.stop());
   return { base: `http://127.0.0.1:${server.port}`, config };
@@ -186,11 +275,15 @@ async function expectLegacyCallPassesThrough(base: string) {
 }
 
 function expectAllActions(actions: ActionItem[]) {
-  expect(actions).toHaveLength(33);
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
-  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(2);
-  expect(actions.filter((action) => action.extensionId === "media")).toHaveLength(15);
+  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(6);
+  expect(actionKeys(actions)).toContain("media/artifact_media_review");
+  expect(actionKeys(actions)).toContain("media/artifact_preview_review");
+  expect(actionKeys(actions)).toContain("media/video_render_start");
+  expect(actionKeys(actions)).toContain("media/video_render_status");
+  expect(actionKeys(actions)).toContain("video-generation/status");
   expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
+  expect(actions.filter((action) => action.extensionId === "video-generation")).toHaveLength(16);
 }
 
 beforeEach(() => {
@@ -203,7 +296,7 @@ afterEach(async () => {
   }
   while (dirs.length) {
     const dir = dirs.pop();
-    if (dir) await rm(dir, { recursive: true, force: true });
+    if (dir) await removeTestRoot(dir);
   }
   restoreEnv("IPOLLOWORK_RUNTIME_DB", previousEnv.runtimeDb);
   restoreEnv("GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET", previousEnv.googleClientSecret);
@@ -212,7 +305,626 @@ afterEach(async () => {
   restoreEnv("GOOGLE_WORKSPACE_TOKEN_BROKER_URL", previousEnv.legacyTokenBrokerUrl);
 });
 
-describe("Connect-aware legacy extension gating", () => {
+describe("extension and engine host tool gating", () => {
+  test("keeps JEV lazy and optional, chooses an indexed candidate through the installed extension and falls back on failure", async () => {
+    const { base, config } = await boot();
+    const root = config.workspaces[0].path;
+    const packageRoot = join(root, "jev-package");
+    await mkdir(join(packageRoot, "service"), { recursive: true });
+    await copyFile(new URL("../../../examples/plugin-packages/jev-decision-model/service/jev.mjs", import.meta.url), join(packageRoot, "service/jev.mjs"));
+    await writeFile(join(packageRoot, "service/decision.mjs"), `
+      import { createJevActions } from './jev.mjs';
+      export default async function () {
+        Reflect.set(globalThis, 'browser-jev-test-loads', Number(Reflect.get(globalThis, 'browser-jev-test-loads') || 0) + 1);
+        return createJevActions({ getApiKey: () => 'fixture-only-key', fetcher: async (url, options) => {
+          if (url !== 'https://api.typesafe.ai/v1/systemone') throw new Error('Unexpected endpoint');
+          const args = JSON.parse(options.body);
+          Reflect.set(globalThis, 'browser-jev-test-input', args);
+          const calls = Reflect.get(globalThis, 'browser-jev-test-inputs') || [];
+          calls.push(args); Reflect.set(globalThis, 'browser-jev-test-inputs', calls);
+          const hook = Reflect.get(globalThis, 'browser-jev-test-hook');
+          if (typeof hook === 'function') await hook();
+          if (args.state.goal.startsWith('fail')) throw new Error('offline');
+          const answers = Object.fromEntries(Object.entries(args.questions).map(([id, question]) => {
+            const ids = Object.keys(question.criteria);
+            const operation = args.state.goal.startsWith('text') ? 'TYPE_TEXT' : args.state.goal.startsWith('select') ? 'SELECT'
+              : args.state.goal.startsWith('done') ? 'DONE' : 'CLICK';
+            const choice = id === 'action' ? 'a1' : id === 'operation' ? operation : id === 'click_target' ? '@e1' : ids.at(-1);
+            return [id, { type: 'choice', choice, confidence: 0.9,
+              probabilities: Object.fromEntries([...ids].reverse().map(key => [key, key === choice ? 1 : 0])) }];
+          }));
+          if (args.state.goal === 'contradictory-choice') answers.operation.choice = 'BLOCKED';
+          return Response.json({ model: 'jev-fixture', usage: { input_tokens: 40, output_tokens: 12 }, answers });
+        } });
+      }
+    `);
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
+      schemaVersion: 2, id: "jev-decision-model", name: "JEV test adapter", description: "Offline transport fixture, no model request",
+      source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+      package: { version: "1.0.0", updateId: "fixture/browser-jev" }, defaultEnabled: true,
+      resources: [{ type: "file", id: "jev-client", path: "service/jev.mjs", required: true }, { type: "local-service", id: "decision", path: "service/decision.mjs", provides: ["action:evaluate"],
+        actions: [{ id: "evaluate", title: "Choose", description: "Fixture decision", inputSchema: { type: "object", additionalProperties: true } }],
+      }],
+    }));
+    await installPluginPackage({ serverConfig: config, packageRoot });
+    let engine = "agent";
+    let controller = "agent";
+    let closed = false;
+    let reportFails = false;
+    let listFails = false;
+    let revision = 0;
+    let serial = 0;
+    let verificationFails = false;
+    const controls = [
+      { ref: "@e1", role: "link", name: "Next.js guide", operations: ["click"] },
+      { ref: "@e2", role: "link", name: "Tic Tac Toe", operations: ["click"] },
+      { ref: "@e3", role: "textbox", name: "Title", value: "", operations: ["fill"] },
+      { ref: "@e4", role: "textbox", name: "Summary", value: "", operations: ["fill"] },
+      { ref: "@e5", role: "combobox", name: "Role", value: "Writer", operations: ["select"], options: [{ label: "Writer", value: "writer" }, { label: "Reviewer", value: "reviewer" }] },
+    ];
+    const requests: Array<Record<string, unknown>> = [];
+    const bridge = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
+      const body: unknown = await request.json();
+      const record = typeof body === "object" && body !== null ? Object.fromEntries(Object.entries(body)) : {};
+      requests.push(record);
+      if (record.actionId === "browser.list_tabs") return listFails
+        ? Response.json({ ok: false, error: "fixture state unavailable" })
+        : Response.json({ ok: true, result: { tabs: closed ? [] : [{ id: "tab-1", controller, decisionEngine: engine }] } });
+      if (record.actionId === "browser.snapshot") return Response.json({ ok: true, result: { snapshotId: `s${++serial}`, url: "https://example.test/docs", title: "Docs", tree: `Next.js guide; revision ${revision}`,
+        ...(record.args && Reflect.get(record.args, "includeControls") === true ? { controls } : {}) } });
+      if (record.actionId === "browser.act") return Response.json({ ok: true, result: { ok: true, status: verificationFails ? "executed" : "verified", verification: { condition: "text" },
+        observation: { snapshotId: `s${++serial}`, tree: "Next.js guide" } } });
+      if (record.actionId === "browser.report_decision" && reportFails) return Response.json({ ok: false, error: "fixture report unavailable" });
+      return Response.json({ ok: true, result: {} });
+    } });
+    stops.push(() => { bridge.stop(true); });
+    const previousDiscovery = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+    const discovery = join(root, "ui-bridge.json");
+    await writeFile(discovery, JSON.stringify({ baseUrl: `http://127.0.0.1:${bridge.port}`, token: "fixture" }));
+    process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
+    const candidates: Array<Record<string, unknown>> = [
+      { type: "click", target: { role: "button", name: "Preview" } },
+      { type: "fill", target: { role: "textbox", name: "Title" }, value: "draft" },
+    ];
+    const callArgs = async (args: Record<string, unknown>) => {
+      const response = await fetch(`${base}/engine-tools/call`, { method: "POST", headers: clientJsonHeaders(),
+        body: JSON.stringify({ name: ENGINE_HOST_TOOL_NAMES.browserDecide, args: { tabId: "tab-1", ...args }, context: { workspaceId: "ws_1", sessionId: "task-a" } }),
+      });
+      expect(response.status).toBe(200);
+      const body: unknown = await response.json();
+      return z.object({ engine: z.string(), status: z.string(), action: z.unknown().optional(), snapshotId: z.string().optional(), operation: z.string().optional(), model: z.string().optional(), usage: z.unknown().optional() }).parse(body);
+    };
+    const call = (goal: string, proposed = candidates) => callArgs({ goal, candidates: proposed });
+    try {
+      const scopedCall = (name: string, context: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+        method: "POST", headers: clientJsonHeaders(), body: JSON.stringify({ name, context,
+          args: { tabId: "other-task-tab", url: "https://example.com/login", profileId: "account:login", snapshotId: "s1", actions: [{ type: "click", target: { role: "button", name: "Preview" } }] },
+        }),
+      });
+      for (const name of [ENGINE_HOST_TOOL_NAMES.browserListTabs, ENGINE_HOST_TOOL_NAMES.browserDecide, ENGINE_HOST_TOOL_NAMES.browserOpenUrl,
+        ENGINE_HOST_TOOL_NAMES.browserSnapshot, ENGINE_HOST_TOOL_NAMES.browserRead, ENGINE_HOST_TOOL_NAMES.browserScreenshot, ENGINE_HOST_TOOL_NAMES.browserAct]) {
+        const response = await scopedCall(name, {});
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ code: "browser_task_context_missing" });
+      }
+      expect(requests).toEqual([]);
+      expect((await scopedCall(ENGINE_HOST_TOOL_NAMES.browserOpenUrl, { workspaceId: "ws_1" })).status).toBe(200);
+      expect((await scopedCall(ENGINE_HOST_TOOL_NAMES.browserOpenUrl, { directory: root })).status).toBe(200);
+      expect(requests).toHaveLength(2);
+      for (const request of requests) expect(request).toMatchObject({ actionId: "browser.open_url", args: { profileId: "account:login", taskId: "ws_1" } });
+      requests.length = 0;
+      const disabled = await call("preview");
+      expect(disabled).toEqual({ engine: "agent", status: "disabled" });
+      expect(Reflect.get(globalThis, "browser-jev-test-loads")).toBeUndefined();
+      expect(requests.some(request => request.actionId === "browser.snapshot")).toBe(false);
+      engine = "jev";
+      const selected = await call("preview");
+      expect(Reflect.get(globalThis, "browser-jev-test-loads")).toBe(1);
+      expect(selected.engine).toBe("jev");
+      expect(selected.action).toEqual(candidates[1]);
+      expect(Reflect.get(globalThis, "browser-jev-test-loads")).toBe(1);
+      expect(requests.every(request => !request.args || Reflect.get(request.args, "taskId") === "task-a")).toBe(true);
+      const invalid = await fetch(`${base}/engine-tools/call`, { method: "POST", headers: clientJsonHeaders(), body: JSON.stringify({ name: ENGINE_HOST_TOOL_NAMES.browserDecide,
+        args: { tabId: "tab-1", goal: "Open the Next.js guide", candidates: [{ id: "nextjs", description: "Next.js guide" }, { id: "tutorial", description: "Tic Tac Toe" }] },
+        context: { sessionId: "task-a" } }) });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toMatchObject({ code: "invalid_browser_decision" });
+      const described = [{ ...candidates[0], description: "Preview the current draft" }, { ...candidates[1], description: "Set the draft title" }];
+      expect((await call("choose an action", described)).action).toEqual(described[1]);
+      expect(JSON.stringify(Reflect.get(globalThis, "browser-jev-test-input"))).toContain("Set the draft title");
+
+      const dynamic = await callArgs({ goal: "Open the Next.js guide", recentActions: ["Opened the documentation; no result opened yet"] });
+      expect(dynamic).toMatchObject({ engine: "jev", status: "ready", operation: "CLICK", snapshotId: `s${serial}`, model: "jev-fixture", usage: { input_tokens: 40, output_tokens: 12 },
+        action: { type: "click", ref: "@e1", expectedName: "Next.js guide" } });
+      const remote = z.object({ questions: z.record(z.string(), z.unknown()), state: z.object({ recent_actions: z.array(z.string()) }) }).parse(Reflect.get(globalThis, "browser-jev-test-input"));
+      expect(Object.keys(remote.questions)).toEqual(["operation", "click_target", "type_text_target", "select_target"]);
+      expect(remote.state.recent_actions).toEqual(["Opened the documentation; no result opened yet"]);
+      expect(await callArgs({ goal: "text: set a summary from the goal" })).toMatchObject({ status: "needs-text", operation: "TYPE_TEXT", action: { type: "fill", ref: "@e4" } });
+      expect(await callArgs({ goal: "select Reviewer" })).toMatchObject({ status: "ready", operation: "SELECT", action: { type: "select", ref: "@e5", expectedName: "Role", option: "Reviewer" } });
+      expect(await callArgs({ goal: "contradictory-choice" })).toMatchObject({ engine: "agent", status: "unavailable" });
+      const previous = z.array(z.unknown()).parse(Reflect.get(globalThis, "browser-jev-test-inputs")).length;
+      let changedOnce = false;
+      Reflect.set(globalThis, "browser-jev-test-hook", () => { if (!changedOnce) { changedOnce = true; revision += 1; } });
+      expect(await callArgs({ goal: "Open the Next.js guide after a page change" })).toMatchObject({ status: "ready", snapshotId: `s${serial}` });
+      expect(z.array(z.unknown()).parse(Reflect.get(globalThis, "browser-jev-test-inputs"))).toHaveLength(previous + 2);
+      Reflect.set(globalThis, "browser-jev-test-hook", () => { revision += 1; });
+      expect(await callArgs({ goal: "Open the Next.js guide on an unstable page" })).toMatchObject({ status: "stale" });
+      Reflect.deleteProperty(globalThis, "browser-jev-test-hook");
+      const beforeDone = requests.filter(request => request.actionId === "browser.act").length;
+      expect(await callArgs({ goal: "done: Next.js guide is visible" })).toMatchObject({ status: "verification-required" });
+      expect(requests.filter(request => request.actionId === "browser.act")).toHaveLength(beforeDone);
+      expect(await callArgs({ goal: "done: Next.js guide is visible", expect: { condition: "text", value: "Next.js guide" } })).toMatchObject({ status: "verified" });
+      expect(requests.at(-1)).toMatchObject({ actionId: "browser.act", args: { taskId: "task-a", actions: [{ type: "wait", durationMs: 0 }], expect: { condition: "text", value: "Next.js guide" } } });
+      verificationFails = true;
+      expect(await callArgs({ goal: "done: not proven", expect: { condition: "text", value: "Missing proof" } })).toMatchObject({ status: "verification-failed" });
+      verificationFails = false;
+      const fallback = await call("fail");
+      expect(fallback.engine).toBe("agent");
+      expect(fallback.status).toBe("unavailable");
+      expect(requests.some(request => request.actionId === "browser.report_decision" && Reflect.get(request.args ?? {}, "status") === "unavailable")).toBe(true);
+
+      const privateCandidates = [
+        { type: "upload", target: { role: "button", name: "Upload file" }, filePaths: ["/private/account/secret.csv"], extensionId: "private-account" },
+        { type: "fill", target: { role: "textbox", name: "Password" }, value: "fixture-secret-password" },
+        { type: "press", key: "Enter", ref: "@e1", expectedName: "Preview" },
+      ];
+      const privateSelected = await call("choose target", privateCandidates);
+      expect(privateSelected.action).toEqual(privateCandidates[1]);
+      const remoteInput = Reflect.get(globalThis, "browser-jev-test-input");
+      const remotePayload = JSON.stringify(remoteInput);
+      for (const secret of ["/private/account/secret.csv", "private-account", "fixture-secret-password"]) expect(remotePayload).not.toContain(secret);
+      expect(remotePayload).toContain('"inputLength":23');
+      expect(remotePayload).toContain('"fileCount":1');
+
+      for (const outcome of ["paused", "disabled", "closed"]) {
+        Reflect.set(globalThis, "browser-jev-test-hook", () => {
+          if (outcome === "paused") controller = "human";
+          if (outcome === "disabled") engine = "agent";
+          if (outcome === "closed") closed = true;
+        });
+        const before = requests.filter(request => request.actionId === "browser.report_decision").length;
+        expect(await call(`fail-${outcome}`)).toMatchObject({ engine: "agent", status: outcome });
+        expect(requests.filter(request => request.actionId === "browser.report_decision")).toHaveLength(before);
+        controller = "agent";
+        engine = "jev";
+        closed = false;
+      }
+      Reflect.deleteProperty(globalThis, "browser-jev-test-hook");
+      reportFails = true;
+      expect(await call("fail-report")).toMatchObject({ engine: "agent", status: "unavailable" });
+      expect(await call("report-success")).toMatchObject({ engine: "jev", status: "ready" });
+      reportFails = false;
+      Reflect.set(globalThis, "browser-jev-test-hook", () => { listFails = true; });
+      expect(await call("fail-state")).toMatchObject({ engine: "agent", status: "unavailable" });
+    } finally {
+      restoreEnv("IPOLLOWORK_UI_CONTROL_DISCOVERY", previousDiscovery);
+      Reflect.deleteProperty(globalThis, "browser-jev-test-loads");
+      Reflect.deleteProperty(globalThis, "browser-jev-test-input");
+      Reflect.deleteProperty(globalThis, "browser-jev-test-inputs");
+      Reflect.deleteProperty(globalThis, "browser-jev-test-hook");
+    }
+  });
+
+  test("pauses consequential browser clicks and identifies the requesting session", async () => {
+    const { base } = await boot({ approval: { mode: "manual", timeoutMs: 5_000 } });
+    const pendingCall = fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({
+        name: "ipollowork_browser_act",
+        args: {
+          tabId: "tab_publish",
+          snapshotId: "snapshot_publish",
+          actions: [{ type: "click", ref: "@e7", expectedName: "Publish now" }],
+        },
+        context: { workspaceId: "ws_1", sessionId: "session_editor" },
+      }),
+    });
+
+    let approval: { id?: string; action?: string; summary?: string } | undefined;
+    const deadline = Date.now() + 2_000;
+    while (!approval && Date.now() < deadline) {
+      const response = await fetch(`${base}/approvals`, { headers: hostJsonHeaders() });
+      const payload = await response.json() as { items?: Array<{ id?: string; action?: string; summary?: string }> };
+      approval = payload.items?.[0];
+      if (!approval) await Bun.sleep(20);
+    }
+
+    expect(approval).toMatchObject({
+      action: "browser.external.consequential",
+      summary: "session session_editor requests browser action: Publish now",
+    });
+    const reply = await fetch(`${base}/approvals/${approval?.id}`, {
+      method: "POST",
+      headers: hostJsonHeaders(),
+      body: JSON.stringify({ reply: "deny" }),
+    });
+    expect(reply.status).toBe(200);
+    const denied = await pendingCall;
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: "browser_action_denied" });
+  });
+
+  test("exposes one engine-neutral host tool catalog and dispatches extension discovery through it", async () => {
+    const { base } = await boot();
+    const catalogResponse = await fetch(`${base}/engine-tools`, { headers: clientHeaders() });
+    expect(catalogResponse.status).toBe(200);
+    const catalog = await catalogResponse.json() as { tools?: Array<{ name?: string; description?: string }> };
+    expect(catalog.tools?.map((tool) => tool.name)).toEqual([
+      "ipollowork_extension_list_actions",
+      "ipollowork_extension_call",
+      "ipollowork_conversation_read",
+      "ipollowork_conversation_apply",
+      "ipollowork_work_template_save",
+      "ipollowork_project_read",
+      "ipollowork_project_apply",
+      "ipollowork_schedule_preview",
+      "ipollowork_schedule_apply",
+      "list_motion_presets",
+      "mutate_motion",
+      "ipollowork_workspace_app_list_tools",
+      "ipollowork_workspace_app_call_tool",
+      "ipollowork_browser_list_tabs",
+      "ipollowork_browser_decide",
+      "ipollowork_browser_open_url",
+      "ipollowork_browser_snapshot",
+      "ipollowork_browser_read",
+      "ipollowork_browser_screenshot",
+      "ipollowork_browser_act",
+      "ipollowork_browser_set_proxy",
+    ]);
+    const scheduleDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_schedule_preview")?.description;
+    expect(scheduleDescription).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(scheduleDescription).toContain("even when the plan does not yet include concrete dates or times");
+    expect(scheduleDescription).toContain("treat that request as agreement to schedule and do not repeat the offer");
+    expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
+    expect(scheduleDescription).toContain("include automation with enabled=true");
+    const extensionDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_extension_list_actions")?.description;
+    expect(extensionDescription).toContain("ipollowork-video-studio");
+    expect(extensionDescription).toContain("Host MCP actions own rendering and authenticated publication");
+    expect(extensionDescription?.length).toBeLessThan(1700);
+    expect(extensionDescription).not.toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);
+    const actions = await listActions(base);
+    expect(actions.find((action) => action.extensionId === "openai-image-generation" && action.action === "image_generate")?.description)
+      .toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);
+
+    const callResponse = await fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: { ...clientHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "ipollowork_extension_list_actions",
+        args: { extensionId: "storage" },
+        context: { workspaceId: "ws_1" },
+      }),
+    });
+    expect(callResponse.status).toBe(200);
+    const call = await callResponse.json() as { actions?: Array<{ extensionId?: string }> };
+    expect(call.actions?.length).toBeGreaterThan(0);
+    expect(call.actions?.every((action) => action.extensionId === "storage")).toBe(true);
+  });
+
+  test("exposes the shared host tools through the Codex-compatible MCP bridge", async () => {
+    const { base } = await boot();
+    const client = new McpClient({ name: "ipollowork-host-test", version: "1.0.0" });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`${base}/engine-tools/mcp?workspaceId=ws_1`),
+      { requestInit: { headers: clientHeaders() } },
+    );
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      const browserAct = tools.tools.find(tool => tool.name === ENGINE_HOST_TOOL_NAMES.browserAct);
+      expect(engineHostTool(ENGINE_HOST_TOOL_NAMES.browserAct)?.parameters).toEqual(browserAct?.inputSchema);
+      for (const example of ['{"type":"fill","ref":"@e1","value":"draft"}', '{"type":"click","ref":"@e2","expectedName":"Preview"}']) {
+        expect(browserAct?.description).toContain(example);
+        expect(engineHostTool(ENGINE_HOST_TOOL_NAMES.browserOpenUrl)?.description).toContain(example);
+      }
+      expect(tools.tools.map((tool) => tool.name)).toEqual([
+        "ipollowork_extension_list_actions",
+        "ipollowork_extension_call",
+        "ipollowork_conversation_read",
+        "ipollowork_conversation_apply",
+        "ipollowork_work_template_save",
+      "ipollowork_project_read",
+      "ipollowork_project_apply",
+      "ipollowork_schedule_preview",
+      "ipollowork_schedule_apply",
+      "list_motion_presets",
+      "mutate_motion",
+      "ipollowork_workspace_app_list_tools",
+        "ipollowork_workspace_app_call_tool",
+        "ipollowork_browser_list_tabs",
+        "ipollowork_browser_decide",
+        "ipollowork_browser_open_url",
+        "ipollowork_browser_snapshot",
+        "ipollowork_browser_read",
+        "ipollowork_browser_screenshot",
+        "ipollowork_browser_act",
+        "ipollowork_browser_set_proxy",
+      ]);
+      const result = await client.callTool({
+        name: "ipollowork_extension_list_actions",
+        arguments: { extensionId: "storage" },
+      });
+      expect(result.structuredContent).toMatchObject({
+        ok: true,
+        actions: expect.arrayContaining([
+          expect.objectContaining({ extensionId: "storage" }),
+        ]),
+      });
+      const callInThread = (threadId?: string) => client.callTool({
+        name: "ipollowork_extension_call",
+        arguments: { extensionId: "storage", action: "status", args: { sessionId: "model-supplied-id" } },
+        ...(threadId === undefined ? {} : { _meta: { threadId } }),
+      });
+      const [manual, scheduled] = await Promise.all([
+        callInThread("manual-session"), callInThread("schedule-session"),
+      ]);
+      expect(manual.structuredContent).toMatchObject({ context: { workspaceId: "ws_1", sessionId: "manual-session" } });
+      expect(scheduled.structuredContent).toMatchObject({ context: { workspaceId: "ws_1", sessionId: "schedule-session" } });
+      for (const threadId of [undefined, "  "]) {
+        const withoutThread = await callInThread(threadId);
+        expect(withoutThread.structuredContent).toMatchObject({ context: { workspaceId: "ws_1" } });
+        expect(withoutThread.structuredContent).not.toHaveProperty("context.sessionId");
+      }
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("conversation host tools isolate work, preserve progress and save reusable methods", async () => {
+    const { base, config } = await boot();
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Expected workspace");
+    const first = await bindConversationSession(config, workspace, "session_a", { title: "Video work", engineId: "deepseek-harness" });
+    await bindConversationSession(config, workspace, "session_b", { title: "Design work", engineId: "codex-harness" });
+    const call = (name: string, args: Record<string, unknown>, sessionId: string | null = "session_a", headers = clientJsonHeaders()) => fetch(`${base}/engine-tools/call`, {
+      method: "POST", headers,
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", ...(sessionId ? { sessionId } : {}) } }),
+    });
+    const progress = { summary: "Storyboard approved", decisions: ["Use existing product footage"], outputs: ["video/session_a/STORYBOARD.md"], blockers: [] };
+    const applied = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, {
+      expectedVersion: first.version, templateId: "video", source: "auto", goal: "Create a launch video", progress,
+    });
+    expect(applied.status).toBe(200);
+    const updated = await readSchema(applied, conversationResultSchema);
+    expect(updated.item.execution.workflow).toMatchObject({ workKind: "video", source: "auto", goal: "Create a launch video", progress });
+    expect((await readProjectSessionWorkItem(config, workspace.id, "session_b"))?.execution?.workflow?.workKind).toBe("general");
+    const reread = await call(ENGINE_HOST_TOOL_NAMES.conversationRead, {});
+    expect((await readSchema(reread, conversationResultSchema)).item.execution.workflow.progress).toEqual(progress);
+    const refined = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: updated.item.version, goal: "Create a 30-second launch video" });
+    expect(refined.status).toBe(200);
+    const refinedResult = await readSchema(refined, conversationResultSchema);
+    expect(refinedResult.item.execution.workflow.progress).toEqual(progress);
+    expect(refinedResult.item.execution.workflow.source).toBe("auto");
+    const stale = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: first.version, goal: "Stale edit" });
+    expect(stale.status).toBe(409);
+    const runtime = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: refinedResult.item.version, runtime: { engineId: "codex-harness" } });
+    expect(runtime.status).toBe(400);
+    const invalid = await call(ENGINE_HOST_TOOL_NAMES.conversationApply, { expectedVersion: refinedResult.item.version, goal: 123 });
+    expect(invalid.status).toBe(400);
+    const saved = await call(ENGINE_HOST_TOOL_NAMES.workTemplateSave, { name: "Launch video method", sessionId: "session_b" });
+    expect(saved.status).toBe(200);
+    const savedBody: unknown = await saved.json();
+    expect(savedBody).not.toHaveProperty("template.progress");
+    const template = z.object({ template: workTemplateSchema }).parse(savedBody).template;
+    expect(template.workKind).toBe("video");
+    const reused = await writeConversationWorkflow(config, workspace, "session_c", {
+      templateId: template.id, source: "manual", runtime: refinedResult.item.execution.runtime,
+    });
+    expect(reused.execution?.workflow?.templateId).toBe(template.id);
+    expect(reused.execution?.workflow?.progress).toBeUndefined();
+    const issued = await fetch(`${base}/tokens`, { method: "POST", headers: hostJsonHeaders(), body: JSON.stringify({ scope: "viewer", label: "viewer" }) });
+    expect(issued.status).toBe(201);
+    const viewer = z.object({ token: z.string() }).parse(await issued.json());
+    for (const name of [ENGINE_HOST_TOOL_NAMES.conversationApply, ENGINE_HOST_TOOL_NAMES.workTemplateSave]) {
+      const denied = await call(name, { expectedVersion: refinedResult.item.version, name: "Forbidden method" }, "session_a", { authorization: `Bearer ${viewer.token}`, "content-type": "application/json" });
+      expect(denied.status).toBe(403);
+    }
+    const nativeCall = spyOn(DeepSeekHarnessRuntime.prototype, "call").mockResolvedValue({});
+    try {
+      const active = await fetch(`${base}/workspace/ws_1/engine/deepseek-harness/prompt`, {
+        method: "POST", headers: clientJsonHeaders(), body: JSON.stringify({ payload: { sessionId: "session_a", content: [{ type: "text", text: "Continue" }] } }),
+      });
+      expect(active.status).toBe(200);
+      for (const name of [ENGINE_HOST_TOOL_NAMES.conversationRead, ENGINE_HOST_TOOL_NAMES.conversationApply, ENGINE_HOST_TOOL_NAMES.workTemplateSave]) {
+        const missing = await call(name, { expectedVersion: refinedResult.item.version, name: "Missing identity" }, null);
+        expect(missing.status).toBe(400);
+        expect(await missing.json()).toMatchObject({ code: "conversation_context_missing" });
+      }
+    } finally {
+      nativeCall.mockRestore();
+    }
+  });
+
+  test("conversation MCP tools use the native calling thread instead of model arguments", async () => {
+    const { base, config } = await boot();
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Expected workspace");
+    const first = await bindConversationSession(config, workspace, "session_a", { title: "Video work", engineId: "codex-harness" });
+    await bindConversationSession(config, workspace, "session_b", { title: "Design work", engineId: "codex-harness" });
+    const client = new McpClient({ name: "conversation-work-test", version: "1.0.0" });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/engine-tools/mcp?workspaceId=ws_1`), { requestInit: { headers: clientHeaders() } }));
+      const applied = await client.callTool({ name: ENGINE_HOST_TOOL_NAMES.conversationApply, arguments: { expectedVersion: first.version, templateId: "video", source: "auto", sessionId: "session_b" }, _meta: { threadId: "session_a" } });
+      expect(conversationResultSchema.parse(applied.structuredContent).item.execution.workflow.workKind).toBe("video");
+      const other = await client.callTool({ name: ENGINE_HOST_TOOL_NAMES.conversationRead, arguments: { sessionId: "session_a" }, _meta: { threadId: "session_b" } });
+      expect(conversationResultSchema.parse(other.structuredContent).item.execution.workflow.workKind).toBe("general");
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("reads and applies a validated project through the shared engine host tools", async () => {
+    const { base } = await boot();
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: { ...clientHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_builder" } }),
+    });
+
+    const blockedResponse = await call("ipollowork_project_read", {});
+    expect(blockedResponse.status).toBe(403);
+    const activateResponse = await fetch(`${base}/workspace/ws_1/project-builder-sessions/session_builder`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: "{}",
+    });
+    expect(activateResponse.status).toBe(200);
+
+    const initialResponse = await call("ipollowork_project_read", {});
+    expect(initialResponse.status).toBe(200);
+    const initial = await initialResponse.json() as { source?: string; project?: { agents?: Array<{ id?: string }> } };
+    expect(initial.source).toBe("default");
+    expect(initial.project?.agents?.[0]?.id).toBe("project-lead");
+
+    const project = {
+      schemaVersion: 1,
+      goal: "Publish the weekly briefing",
+      agents: [{ id: "editor", name: "Editor", avatarSeed: "editor" }],
+      orchestration: { entryAgentId: "editor", relations: [] },
+    };
+    const applyResponse = await call("ipollowork_project_apply", { config: project, summary: "Create editor workflow" });
+    expect(applyResponse.status).toBe(200);
+
+    const savedResponse = await call("ipollowork_project_read", {});
+    expect(savedResponse.status).toBe(200);
+    const saved = await savedResponse.json() as { source?: string; project?: { goal?: string } };
+    expect(saved.source).toBe("saved");
+    expect(saved.project?.goal).toBe("Publish the weekly briefing");
+
+    const invalidResponse = await call("ipollowork_project_apply", {
+      config: { ...project, orchestration: { entryAgentId: "missing", relations: [] } },
+      summary: "Break the project",
+    });
+    expect(invalidResponse.status).toBe(400);
+  });
+
+  test("previews and atomically imports confirmed AI plans into iPolloWork Schedule", async () => {
+    const { base } = await boot();
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_planner" } }),
+    });
+
+    const invalidResponse = await call("ipollowork_schedule_preview", {
+      tasks: [{
+        title: "Unaligned task",
+        startAt: "2026-08-26T09:10:00+08:00",
+        dueAt: "2026-08-26T10:00:00+08:00",
+      }],
+    });
+    expect(invalidResponse.status).toBe(400);
+
+    const previewResponse = await call("ipollowork_schedule_preview", {
+      tasks: [
+        {
+          title: "Outline launch plan",
+          description: "Create the first draft",
+          startAt: "2026-08-26T09:00:00+08:00",
+          dueAt: "2026-08-26T10:00:00+08:00",
+          priority: "high",
+          automation: { enabled: true, recurrence: "daily" },
+        },
+        {
+          title: "Review launch plan",
+          startAt: "2026-08-26T10:15:00+08:00",
+          dueAt: "2026-08-26T11:00:00+08:00",
+        },
+      ],
+    });
+    expect(previewResponse.status).toBe(200);
+    const preview = await previewResponse.json() as {
+      previewId?: string;
+      confirmationRequired?: boolean;
+      confirmationPrompt?: string;
+      tasks?: Array<{ startAt?: string; automation?: { enabled?: boolean; recurrence?: string } | null }>;
+    };
+    expect(preview.previewId).toMatch(/^schedule_/);
+    expect(preview).toMatchObject({
+      confirmationRequired: true,
+      confirmationPrompt: expect.stringContaining("1 with automatic execution"),
+      tasks: [
+        { startAt: "2026-08-26T01:00:00.000Z", automation: { enabled: true, recurrence: "daily" } },
+        { startAt: "2026-08-26T02:15:00.000Z", automation: null },
+      ],
+    });
+
+    const beforeApply = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    expect(await beforeApply.json()).toMatchObject({ items: [] });
+
+    const applyResponse = await call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    const applied = await applyResponse.json();
+    expect({ status: applyResponse.status, body: applied }).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        items: [
+          {
+            title: "Outline launch plan",
+            status: "ready",
+            priority: "high",
+            automation: { enabled: true, recurrence: "daily", model: null },
+          },
+          { title: "Review launch plan", status: "planned", priority: "normal", automation: null },
+        ],
+      },
+    });
+
+    const listed = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    const list = await listed.json() as { items?: Array<{ title?: string; startAt?: number }> };
+    expect(list.items).toHaveLength(2);
+    expect(list.items?.map((item) => item.title).sort()).toEqual(["Outline launch plan", "Review launch plan"]);
+
+    const repeatedResponse = await call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    expect(repeatedResponse.status).toBe(404);
+  });
+
+  test("keeps a schedule preview read-only when the user denies import approval", async () => {
+    const { base } = await boot({ approval: { mode: "manual", timeoutMs: 5_000 } });
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_planner" } }),
+    });
+    const previewResponse = await call("ipollowork_schedule_preview", {
+      tasks: [{
+        title: "Prepare campaign brief",
+        startAt: "2026-08-26T09:00:00+08:00",
+        dueAt: "2026-08-26T10:00:00+08:00",
+      }],
+    });
+    const preview = await previewResponse.json() as { previewId?: string };
+    if (!preview.previewId) throw new Error("Schedule preview id is required");
+
+    const pendingApply = call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    let approval: { id?: string; action?: string; summary?: string } | undefined;
+    const deadline = Date.now() + 2_000;
+    while (!approval && Date.now() < deadline) {
+      const response = await fetch(`${base}/approvals`, { headers: hostJsonHeaders() });
+      const payload = await response.json() as { items?: Array<{ id?: string; action?: string; summary?: string }> };
+      approval = payload.items?.[0];
+      if (!approval) await Bun.sleep(20);
+    }
+    expect(approval).toMatchObject({
+      action: "schedule.import.apply",
+      summary: "Add 1 planned task to iPolloWork Schedule",
+    });
+    const reply = await fetch(`${base}/approvals/${approval?.id}`, {
+      method: "POST",
+      headers: hostJsonHeaders(),
+      body: JSON.stringify({ reply: "deny" }),
+    });
+    expect(reply.status).toBe(200);
+    const denied = await pendingApply;
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: "write_denied" });
+
+    const listed = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    expect(await listed.json()).toMatchObject({ items: [] });
+  });
+
   test("defaults to unchanged legacy extension behavior when no connect state file exists", async () => {
     const { base } = await boot();
 
@@ -256,32 +968,14 @@ describe("Connect-aware legacy extension gating", () => {
 
   test("gates only non-status Google Workspace actions when Connect is enabled without legacy config", async () => {
     const { base, config } = await boot();
+    const before = await listActions(base);
     const put = await putConnectState(base, { connectEnabled: true });
     expect(put.status).toBe(200);
 
     const actions = await listActions(base);
-    expect(actionKeys(actions)).toEqual([
-      "google-workspace/status",
-      "media/digital_human_generate",
-      "media/speech_recognize_realtime",
-      "media/speech_synthesize",
-      "media/speech_synthesize_workspace_batch",
-      "media/speech_synthesize_workspace_file",
-      "media/speech_transcribe",
-      "media/speech_translate",
-      "media/status",
-      "media/task_get",
-      "media/video_edit",
-      "media/video_generate",
-      "media/voice_clone",
-      "media/voice_clone_workspace_file",
-      "media/voice_list",
-      "media/voiceover_timeline_validate",
-      "openai-image-generation/image_generate",
-      "openai-image-generation/status",
-      "storage/status",
-      "storage/upload_workspace_file",
-    ]);
+    expect(actionKeys(actions)).toEqual(actionKeys(before.filter(action =>
+      action.extensionId !== "google-workspace" || action.action === "status",
+    )));
 
     const gated = await callCalendarListEvents(base);
     expect(gated.status).toBe(200);

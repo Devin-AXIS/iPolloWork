@@ -335,17 +335,14 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     // high zoom) would commit an identical value — a no-op undo entry. Skip the
     // commit, but don't treat it as a click either (the user did drag).
     if (x === Math.round(d.initX) && y === Math.round(d.initY)) return;
-    // With auto-keyframe off (#1808), dragging a keyframe's node on the motion
-    // path (the common way to nudge a KEYFRAMED element's position on canvas,
-    // since the element renders exactly at its current keyframe) shifts the
-    // whole path instead of moving just that one keyframe.
+    // Canvas position drags shift the whole animation path. Individual points
+    // remain editable through explicit timeline keyframe selection.
     const anim =
       d.ref.type === "keyframe" ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
     if (
       d.ref.type === "keyframe" &&
       anim &&
-      selection &&
-      !usePlayerStore.getState().autoKeyframeEnabled
+      selection
     ) {
       void commitWholePropertyOffset(
         selection,

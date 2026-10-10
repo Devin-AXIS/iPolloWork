@@ -1,11 +1,14 @@
+import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { formatTime } from "../lib/time";
 import type { ZoomMode } from "../store/playerStore";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
-/** Fixed layer-control column. Time zero begins immediately after this header. */
-export const LAYER_HEADER_W = 255;
-/** Backward-compatible geometry name used by the existing time conversion helpers. */
-export const GUTTER = LAYER_HEADER_W;
+/** User-resizable layer-control column. Time zero begins immediately after this header. */
+export const DEFAULT_TIMELINE_GUTTER_WIDTH = 255;
+export const MIN_TIMELINE_GUTTER_WIDTH = 220;
+export const MAX_TIMELINE_GUTTER_WIDTH = 420;
+export const MIN_TIMELINE_CONTENT_WIDTH = 360;
 export const TRACK_H = 47;
 export const RULER_H = 32;
 export const CLIP_Y = 3;
@@ -46,6 +49,22 @@ export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
  */
 export const TRACKS_LEFT_PAD = 8;
 
+export function getTimelineGutterMaxWidth(viewportWidth: number): number {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return MAX_TIMELINE_GUTTER_WIDTH;
+  return Math.max(
+    MIN_TIMELINE_GUTTER_WIDTH,
+    Math.min(MAX_TIMELINE_GUTTER_WIDTH, viewportWidth - MIN_TIMELINE_CONTENT_WIDTH),
+  );
+}
+
+export function clampTimelineGutterWidth(width: number, viewportWidth: number): number {
+  const safeWidth = Number.isFinite(width) ? width : DEFAULT_TIMELINE_GUTTER_WIDTH;
+  return Math.max(
+    MIN_TIMELINE_GUTTER_WIDTH,
+    Math.min(getTimelineGutterMaxWidth(viewportWidth), safeWidth),
+  );
+}
+
 export interface TimelineVisibleWindow {
   firstTrackIndex: number;
   lastTrackIndexExclusive: number;
@@ -68,6 +87,7 @@ export function getTimelineVisibleWindow(input: {
   pps: number;
   trackCount: number;
   displayDuration: number;
+  gutterWidth: number;
   verticalOverscanRows?: number;
   horizontalOverscanViewports?: number;
 }): TimelineVisibleWindow {
@@ -82,7 +102,7 @@ export function getTimelineVisibleWindow(input: {
     };
   }
 
-  const verticalOverscanRows = Math.max(0, Math.floor(input.verticalOverscanRows ?? 4));
+  const verticalOverscanRows = Math.max(0, Math.floor(input.verticalOverscanRows ?? TIMELINE_VIEWPORT_BUDGETS.rowOverscanPerSide));
   const rowViewportStart = input.scrollTop - RULER_H - TRACKS_TOP_PAD;
   const rowViewportEnd = input.scrollTop + input.viewportHeight - RULER_H - TRACKS_TOP_PAD;
   const firstTrackIndex = Math.min(
@@ -94,19 +114,11 @@ export function getTimelineVisibleWindow(input: {
     Math.max(firstTrackIndex, Math.ceil(rowViewportEnd / TRACK_H) + verticalOverscanRows),
   );
 
-  const horizontalOverscanViewports = Math.max(0, input.horizontalOverscanViewports ?? 1);
-  const overscanPx = input.viewportWidth * horizontalOverscanViewports;
-  const timelineViewportStart = input.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
-  const timelineViewportEnd = input.scrollLeft + input.viewportWidth - GUTTER - TRACKS_LEFT_PAD;
-  const startTime = Math.min(
-    displayDuration,
-    Math.max(0, (timelineViewportStart - overscanPx) / input.pps),
+  const range = getTimelineRenderTimeRange(
+    { scrollLeft: input.scrollLeft, clientWidth: input.viewportWidth },
+    input.pps, input.gutterWidth + TRACKS_LEFT_PAD, displayDuration,
   );
-  const endTime = Math.min(
-    displayDuration,
-    Math.max(startTime, (timelineViewportEnd + overscanPx) / input.pps),
-  );
-
+  const startTime = range.start, endTime = range.end;
   return { firstTrackIndex, lastTrackIndexExclusive, startTime, endTime };
 }
 
@@ -278,17 +290,26 @@ export function formatTimelineTickLabel(time: number, duration: number, majorInt
 /**
  * Fit-mode pixels-per-second: fill the viewport with the composition plus
  * FIT_ZOOM_HEADROOM trailing headroom (CapCut-style — the comp never slams
- * into the right edge), and never map fewer than MIN_TIMELINE_EXTENT_S
- * seconds onto it — a short comp takes a fraction of the width and the
- * remaining ruler runs to 1:00.
- * Manual zoom multiplies this base, so the floor only anchors the default.
+ * into the right edge). Only an empty composition uses the default empty extent.
+ * Manual zoom multiplies this base; rendered empty space can still extend during dragging.
  */
-export function getTimelineFitPps(viewportWidth: number, effectiveDuration: number): number {
+export function getTimelineFitPps(
+  viewportWidth: number,
+  effectiveDuration: number,
+  gutterWidth: number,
+): number {
   const safeDuration =
-    Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
-  const span = Math.max(safeDuration * FIT_ZOOM_HEADROOM, MIN_TIMELINE_EXTENT_S);
-  if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER + TRACKS_LEFT_PAD) return 100;
-  return (viewportWidth - GUTTER - TRACKS_LEFT_PAD - 2) / span;
+    Number.isFinite(effectiveDuration) && effectiveDuration > 0
+      ? effectiveDuration
+      : 0;
+  const span =
+    safeDuration > 0 ? safeDuration * FIT_ZOOM_HEADROOM : MIN_TIMELINE_EXTENT_S;
+  if (
+    !Number.isFinite(viewportWidth) ||
+    viewportWidth <= gutterWidth + TRACKS_LEFT_PAD
+  )
+    return 100;
+  return (viewportWidth - gutterWidth - TRACKS_LEFT_PAD - 2) / span;
 }
 
 /**
@@ -304,11 +325,12 @@ export function getTimelineDisplayContentWidth(input: {
   pps: number;
   dragGhostEndPx?: number;
   resizeGhostEndPx?: number;
+  gutterWidth: number;
 }): number {
   const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
   return Math.max(
     input.trackContentWidth,
-    input.viewportWidth - GUTTER - TRACKS_LEFT_PAD - 2,
+    input.viewportWidth - input.gutterWidth - TRACKS_LEFT_PAD - 2,
     input.dragGhostEndPx ?? 0,
     input.resizeGhostEndPx ?? 0,
     MIN_TIMELINE_EXTENT_S * safePps,
@@ -376,12 +398,16 @@ export const PLAYHEAD_HEAD_W = 9;
  * on) at every zoom level. Without the half-head offset the line sat
  * `PLAYHEAD_HEAD_W / 2` px to the right of its ruler tick.
  */
-export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): number {
+export function getTimelinePlayheadLeft(
+  time: number,
+  pixelsPerSecond: number,
+  gutterWidth: number,
+): number {
   if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) {
-    return GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2;
+    return gutterWidth + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2;
   }
   return (
-    GUTTER +
+    gutterWidth +
     TRACKS_LEFT_PAD +
     Math.max(0, time) * Math.max(0, pixelsPerSecond) -
     PLAYHEAD_HEAD_W / 2
@@ -452,11 +478,13 @@ export function resolveTimelineAssetDrop(
     duration: number;
     trackHeight: number;
     trackOrder: number[];
+    gutterWidth: number;
   },
   clientX: number,
   clientY: number,
 ): { start: number; track: number } {
-  const x = clientX - input.rectLeft + input.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
+  const x =
+    clientX - input.rectLeft + input.scrollLeft - input.gutterWidth - TRACKS_LEFT_PAD;
   const contentY = clientY - input.rectTop + input.scrollTop;
   const start = Math.max(
     0,

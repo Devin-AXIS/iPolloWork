@@ -15,6 +15,7 @@ export interface KeyframeCacheEntry {
     tweenPercentage?: number;
     /** Which property group the source tween belongs to (position, scale, rotation, visual, etc.). */
     propertyGroup?: string;
+    origin?: "manual" | "preset" | "authored";
     properties: Record<string, number | string>;
     ease?: string;
   }>;
@@ -29,16 +30,18 @@ export interface KeyframeCacheUpdate {
   data: KeyframeCacheEntry | undefined;
 }
 
-/** Ordinary edits affect the full animation unless auto-keyframing is enabled
- * or the user explicitly selected a timeline keyframe. */
+/** Ordinary edits affect the full animation; only an explicitly selected
+ * timeline keyframe limits the edit to one point. */
 export function shouldCommitAnimationKeyframe(
-  autoKeyframeEnabled: boolean,
   activeKeyframePct: number | null,
 ): boolean {
-  return autoKeyframeEnabled || activeKeyframePct != null;
+  return activeKeyframePct != null;
 }
 
 export interface TimelineElement {
+  fadeIn?: number;
+  fadeOut?: number;
+  hasAudio?: boolean;
   id: string;
   label?: string;
   /** Timeline clip caption, independent from the layer-tree label. */
@@ -136,7 +139,7 @@ export type TimelineKind =
   | "element";
 
 export type ZoomMode = "fit" | "manual";
-type TimelineTool = "select" | "razor";
+type TimelineTool = "select" | "razor" | "annotate" | "annotate-lasso";
 
 export interface SelectElementOptions {
   preserveSet?: boolean;
@@ -191,6 +194,8 @@ interface PlayerState {
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
   outPoint: number | null;
 
+  thumbnailMode: "adaptive" | "hidden";
+  setThumbnailMode: (mode: "adaptive" | "hidden") => void;
   activeTool: TimelineTool;
   setActiveTool: (tool: TimelineTool) => void;
 
@@ -211,10 +216,6 @@ interface PlayerState {
   setMotionPathArmed: (armed: boolean) => void;
   motionPathCreateAvailable: boolean;
   setMotionPathCreateAvailable: (available: boolean) => void;
-  /** Enables implicit playhead keyframes for ordinary element edits. Explicitly
-   *  selecting a keyframe still edits that keyframe while this is disabled. */
-  autoKeyframeEnabled: boolean;
-  setAutoKeyframeEnabled: (enabled: boolean) => void;
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
@@ -414,6 +415,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   inPoint: null,
   outPoint: null,
 
+  thumbnailMode: readStudioUiPreferences().thumbnailMode ?? "adaptive",
+  setThumbnailMode: (mode) => {
+    writeStudioUiPreferences({ thumbnailMode: mode });
+    set({ thumbnailMode: mode });
+  },
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
 
@@ -433,11 +439,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setMotionPathArmed: (armed) => set({ motionPathArmed: armed }),
   motionPathCreateAvailable: false,
   setMotionPathCreateAvailable: (available) => set({ motionPathCreateAvailable: available }),
-  // Ordinary Studio edits must remain stable for the element's whole lifetime.
-  // Keyframes are added explicitly from the timeline unless a future UI enables
-  // implicit auto-keyframing.
-  autoKeyframeEnabled: false,
-  setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
 
   selectedElementIds: new Set<string>(),
   setSelection: (ids, anchor) => set(resolveElementSelection(ids, anchor)),
