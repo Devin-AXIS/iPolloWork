@@ -1421,7 +1421,7 @@ export function VideoPanel({
     >
       {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) && (
         <VideoEnhancementPanel key={`${workspaceId}:${sessionId}`} client={client} workspaceId={workspaceId}
-          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio}
+          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio} aiEditing={aiEditing}
           onGenerate={onAskAi ? async request => {
             const current = await client.readWorkspaceFile(workspaceId, request.sourcePath);
             await onAskAi({

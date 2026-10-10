@@ -32,7 +32,7 @@ export function classifyEnhancementHand(points: Point[], width: number, height: 
   return null;
 }
 
-/** Two adjacent 4-fps samples are required; motion/disappearance ends an event. */
+/** Two measured samples confirm a gesture; tolerate a brief missed frame, not a target jump. */
 export function buildEnhancementGestures(samples: HandSample[], duration: number): VideoEnhancementGesture[] {
   type Track = { kind: VideoEnhancementGesture["kind"]; start: number; last: number; confidence: number; target: Point; count: number };
   let active: Track[] = [];
@@ -41,22 +41,25 @@ export function buildEnhancementGestures(samples: HandSample[], duration: number
     const remaining = new Set(active);
     const next: Track[] = [];
     for (const hand of sample.hands) {
-      if (!hand.gesture || hand.confidence < .8) continue;
+      if (!hand.gesture || hand.confidence < .65) continue;
       const gesture = hand.gesture;
       const previous = [...remaining].filter(track => track.kind === gesture.kind && sample.time - track.last <= .3
         && distance(track.target, gesture.target) < .16).sort((a, b) => distance(a.target, gesture.target) - distance(b.target, gesture.target))[0];
       if (previous) {
         remaining.delete(previous);
         next.push({ ...previous, last: sample.time, count: previous.count + 1,
-          confidence: Math.min(previous.confidence, hand.confidence),
-          target: { x: (previous.target.x * previous.count + gesture.target.x) / (previous.count + 1),
-            y: (previous.target.y * previous.count + gesture.target.y) / (previous.count + 1) } });
-      } else next.push({ kind: gesture.kind, start: sample.time, last: sample.time, confidence: hand.confidence, target: gesture.target, count: 1 });
+          confidence: (previous.confidence * previous.count + hand.confidence) / (previous.count + 1),
+          target: { x: previous.target.x * .4 + gesture.target.x * .6,
+            y: previous.target.y * .4 + gesture.target.y * .6 } });
+      } else if (hand.confidence >= .8) next.push({ kind: gesture.kind, start: sample.time, last: sample.time, confidence: hand.confidence, target: gesture.target, count: 1 });
     }
-    complete.push(...remaining);
+    for (const track of remaining) {
+      if (sample.time - track.last <= .3) next.push(track);
+      else complete.push(track);
+    }
     active = next;
   }
-  return [...complete, ...active].filter(track => track.count >= 2 && track.last - track.start >= .24)
+  return [...complete, ...active].filter(track => track.count >= 2 && track.last - track.start >= .12)
     .sort((a, b) => a.start - b.start).slice(0, 120).map((track, index) => ({
       id: `gesture-${index + 1}`, kind: track.kind, start: Math.max(0, track.start - .125),
       end: Math.min(duration, track.last + .125), confidence: track.confidence, target: track.target,
@@ -149,7 +152,7 @@ export async function createEnhancementHandDetector(modelRoot: string) {
         const output = await pose.run({ [pose.inputNames[0]!]: new Tensor("float32", crop, [1, 224, 224, 3]) });
         const confidence = Number(output["Identity_1"]?.data[0]);
         const landmarks = output["Identity"]?.data;
-        if (!landmarks || landmarks.length !== 63 || !Number.isFinite(confidence) || confidence < .8) continue;
+        if (!landmarks || landmarks.length !== 63 || !Number.isFinite(confidence) || confidence < .65) continue;
         const points = Array.from({ length: 21 }, (_, index) => {
           const point = toImage(centerX + (Number(landmarks[index * 3]) - 112) / 224 * side,
             centerY + (Number(landmarks[index * 3 + 1]) - 112) / 224 * side);

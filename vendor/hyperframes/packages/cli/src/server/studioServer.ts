@@ -19,7 +19,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { resolve, join, basename, dirname, isAbsolute, relative } from "node:path";
-import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
+import { createProjectWatcher, readWatchedFileVersion, type ProjectWatcher } from "./fileWatcher.js";
 import {
   hashSignatureParts,
   loadRuntimeSource,
@@ -32,7 +32,7 @@ import { isDevMode } from "../utils/env.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
-  openProjectHistory, DEFAULT_HISTORY_ROOT, historyCache, HistoryBusyError, HistoryClosedError, identifyFileWrite, DELETED_VERSION, fileContentVersion, affectsPreview,
+  openProjectHistory, DEFAULT_HISTORY_ROOT, historyCache, HistoryBusyError, HistoryClosedError, identifyFileWrite, affectsPreview,
   createProjectSignature,
   createBackgroundRemovalJob,
   consumeFileWriteReceipt,
@@ -906,9 +906,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return streamSSE(c, async (stream) => {
       const listener = (path: string) => {
         const absPath = resolve(projectDir, path);
-        let version: string | null = null;
-        try { version = fileContentVersion(readFileSync(absPath)); } catch { /* Deleted file. */ }
-        const receipt = identifyFileWrite(absPath, version ?? DELETED_VERSION);
+        const version = readWatchedFileVersion(absPath);
+        const receipt = version === null ? null : identifyFileWrite(absPath, version);
         void stream.writeSSE({ event: "file-change", data: JSON.stringify({ path, version,
           projectId, affectsPreview: affectsPreview(projectDir, path), ...receipt }) }).catch(() => {});
       };

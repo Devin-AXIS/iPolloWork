@@ -27,8 +27,9 @@ type Props = {
   client: iPolloWorkServerClient; workspaceId: string; sessionId: string;
   previewAssetUrl: (path: string) => string; onApplied: () => void;
   onGenerate?: (request: VideoEnhancementWorkflow) => Promise<void>;
+  aiEditing?: boolean;
 };
-export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewAssetUrl, onApplied, onGenerate }: Props) {
+export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewAssetUrl, onApplied, onGenerate, aiEditing = false }: Props) {
   const [open, setOpen] = React.useState(false);
   const [model, setModel] = React.useState({ ready: false, gesturesReady: false, segmentationReady: false, message: "正在检查本地模型…" });
   const [useGestures, setUseGestures] = React.useState(true);
@@ -131,7 +132,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
     return () => window.removeEventListener("message", receive);
   }, [open]);
   const previewDocument = React.useMemo(() => {
-    if (!preview || !job) return "";
+    if (!open || !preview || !job) return "";
     const doc = new DOMParser().parseFromString(preview.html, "text/html");
     const media = doc.querySelector("#original-video");
     const url = previewAssetUrl("video/" + sessionId + "/enhancement/" + job.id + "/original.mp4");
@@ -141,7 +142,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
     policy.content = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src " + new URL(url, window.location.href).origin + ";";
     doc.head.prepend(policy);
     return "<!doctype html>" + doc.documentElement.outerHTML;
-  }, [preview, job?.id, previewAssetUrl, sessionId]);
+  }, [open, preview, job?.id, previewAssetUrl, sessionId]);
   React.useEffect(() => { setPreviewReady(false); setPaused(true); }, [previewDocument]);
   const seek = (value: number) => {
     timeRef.current = value; setTime(value);
@@ -169,16 +170,23 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
     const latest = videoEnhancementJobSchema.parse(await call("start", { sessionId, sourcePath: path, language, useGestures, useSegmentation }));
     if (mounted.current) setJob(latest);
   });
-  const apply = () => perform(async () => {
-    if (!job) return;
-    const latest = videoEnhancementJobSchema.parse(await call("apply", { sessionId, jobId: job.id, cues: draft.map(editableCue), layout }));
+  const applyBase = async (prepareForWorkflow = false) => {
+    if (!job || aiEditing) throw new Error("AI 正在修改视频，请等待当前编排完成。");
+    const latest = videoEnhancementJobSchema.parse(await call("apply", { sessionId, jobId: job.id, cues: draft.map(editableCue), layout, prepareForWorkflow }));
     if (mounted.current) { setJob(latest); setDraft(latest.result?.cues.map(editableCue) ?? []); onApplied(); }
-  });
+  };
+  const apply = () => perform(() => applyBase());
   const generate = () => perform(async () => {
-    if (!job || !onGenerate) return;
-    const request = videoEnhancementWorkflowResultSchema.parse(await call("workflow", { sessionId, jobId: job.id, layout, cues: draft.map(editableCue) }));
-    await onGenerate(request);
-    if (mounted.current) setOpen(false);
+    if (!job || !onGenerate || aiEditing) return;
+    await applyBase(true);
+    // Release the second player before the main canvas and agent start working.
+    frame.current?.contentWindow?.postMessage({ type: "enhancement-play", playing: false }, "*");
+    if (mounted.current) { setOpen(false); setPreview(null); }
+    try {
+      const request = videoEnhancementWorkflowResultSchema.parse(await call("workflow", { sessionId, jobId: job.id, layout, cues: draft.map(editableCue) }));
+      await onGenerate(request);
+    }
+    catch (reason) { if (mounted.current) setOpen(true); throw reason; }
   });
   const upload = <div className="flex flex-wrap items-end gap-3">
     <label className="min-w-48 flex-1 space-y-1.5 text-sm"><span className="font-medium">上传口播视频</span>
@@ -269,8 +277,8 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
         {result && <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t px-5 py-3" data-testid="enhancement-actions">
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="size-3.5" />{job.status === "applied" ? "已应用到时间轴 · 原视频和备份已保留" : job.message.startsWith("已恢复") ? "已恢复增强前时间轴" : "应用后可在时间轴继续编辑"}</p>
           <div className="flex flex-wrap items-center gap-2">{job.status === "applied" && <Button variant="ghost" size="sm" disabled={busy} data-testid="enhancement-restore" onClick={() => void perform(async () => { const latest = videoEnhancementJobSchema.parse(await call("undo", { sessionId, jobId: job.id })); setJob(latest); onApplied(); })}>恢复增强前时间轴</Button>}
-            <Button variant="outline" disabled={busy || previewing || Boolean(previewError) || !preview?.cues.some(cue => cue.enabled && cue.rect)} onClick={() => void apply()} data-testid="enhancement-apply">{job.status === "applied" ? "更新基础版" : "应用基础版"}</Button>
-            {onGenerate && <Button disabled={busy || previewing} onClick={() => void generate()} data-testid="enhancement-generate">{busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}AI 编排生成</Button>}</div>
+            <Button variant="outline" disabled={aiEditing || busy || previewing || Boolean(previewError) || !preview?.cues.some(cue => cue.enabled && cue.rect)} onClick={() => void apply()} data-testid="enhancement-apply">{job.status === "applied" ? "更新基础版" : "应用基础版"}</Button>
+            {onGenerate && <Button disabled={aiEditing || busy || previewing || Boolean(previewError) || !preview?.cues.some(cue => cue.enabled && cue.rect)} onClick={() => void generate()} data-testid="enhancement-generate">{busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}AI 编排生成</Button>}</div>
         </div>}
       </DialogContent>
     </Dialog>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { FONT_EXT } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 
@@ -12,6 +12,7 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
   const [fileTree, setFileTree] = useState<string[]>([]);
   const [compositionPaths, setCompositionPaths] = useState<string[]>([]);
   const [fileTreeLoaded, setFileTreeLoaded] = useState(false);
+  const refreshRef = useRef<{ projectId: string; promise: Promise<void>; queued: boolean } | null>(null);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -39,35 +40,33 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     };
   }, [projectId]);
 
-  const refreshFileTree = useCallback(async () => {
+  const refreshFileTree = useCallback((): Promise<void> => {
     const pid = projectIdRef.current;
-    if (!pid) return;
-    const res = await fetch(`/api/projects/${pid}`);
-    const data = await res.json();
-    if (data.files) setFileTree(data.files);
+    if (!pid) return Promise.resolve();
+    if (refreshRef.current?.projectId === pid) { refreshRef.current.queued = true; return refreshRef.current.promise; }
+    const promise: Promise<void> = fetch(`/api/projects/${pid}`).then(res => {
+      if (!res.ok) throw new Error("Could not refresh project files");
+      return res.json();
+    }).then((data: { files?: string[]; compositions?: string[] }) => {
+      if (projectIdRef.current !== pid) return;
+      if (data.files) {
+        const files = data.files;
+        setFileTree(current => current.length === files.length && current.every((file, index) => file === files[index]) ? current : files);
+      }
+      if (data.compositions) {
+        const paths = data.compositions;
+        setCompositionPaths(current => current.length === paths.length && current.every((file, index) => file === paths[index]) ? current : paths);
+      }
+    }).finally(() => {
+      if (refreshRef.current?.promise !== promise) return;
+      const queued = refreshRef.current.queued;
+      refreshRef.current = null;
+      if (queued && projectIdRef.current === pid) void refreshFileTree().catch(() => {});
+    });
+    refreshRef.current = { projectId: pid, promise, queued: false };
+    return promise;
   }, [projectIdRef]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const scheduleRefresh = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void refreshFileTree(), 120);
-    };
-    if (import.meta.hot) {
-      import.meta.hot.on("hf:file-change", scheduleRefresh);
-      return () => {
-        if (timer) clearTimeout(timer);
-        import.meta.hot?.off?.("hf:file-change", scheduleRefresh);
-      };
-    }
-    const events = new EventSource("/api/events");
-    events.addEventListener("file-change", scheduleRefresh);
-    return () => {
-      if (timer) clearTimeout(timer);
-      events.close();
-    };
-  }, [projectId, refreshFileTree]);
+  // useExternalFileChangeCoordinator owns the single event subscription and refreshes this tree.
 
   const compositions = compositionPaths;
 

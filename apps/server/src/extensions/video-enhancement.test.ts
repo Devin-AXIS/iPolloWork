@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildEnhancementCues, enhancementGeometry, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
+import { buildEnhancementCues, enhancementTranscriptSegments, enhancementGeometry, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
 import { callVideoEnhancementAction, localEnhancementStatus } from "./video-enhancement.js";
 import models from "./video-enhancement-models.json" with { type: "json" };
 import { classifyEnhancementHand, buildEnhancementGestures } from "./video-enhancement-gestures.js";
@@ -214,6 +214,23 @@ test("workflow hands local evidence to the shared Video Studio skills without re
   await expect(callVideoEnhancementAction({ ...f.config, readOnly: true }, "workflow", { ...f.args, layout }, f.context)).rejects.toThrow("只读");
   await expect(callVideoEnhancementAction(f.config, "workflow", { ...f.args, layout }, { ...f.context, sessionId: "other" })).rejects.toThrow("当前视频会话");
 });
+test("AI regeneration shows the base again and hands the exact latest edits to the shared workflow", async () => {
+  const f = await fixture();
+  await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues }, f.context);
+  const entry = join(f.root, "video/proof/index.html");
+  const manual = "<html><body>latest manual titles and prior AI content</body></html>";
+  await writeFile(entry, manual);
+  await expect(callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues }, f.context)).rejects.toThrow("时间轴已更改");
+  const applied = videoEnhancementJobSchema.parse((await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues, prepareForWorkflow: true }, f.context)).result);
+  expect(await readFile(entry, "utf8")).toContain('id="original-video"');
+  expect(await readFile(join(f.root, "video/proof/enhancement", f.job.id, ".hyperframes", applied.workflowBeforeFile!), "utf8")).toBe(manual);
+  const workflow = videoEnhancementWorkflowResultSchema.parse((await callVideoEnhancementAction(f.config, "workflow", { ...f.args, cues: f.cues, layout: videoEnhancementLayoutSchema.parse({}) }, f.context)).result);
+  const request = JSON.parse(await readFile(join(f.root, workflow.requestPath), "utf8"));
+  expect(request.beforePath).toEndWith(applied.workflowBeforeFile!);
+  expect(request.placementPolicy.gestureTarget).toBe("prefer-over-person-avoidance");
+  expect(request.sourceRevision).toBe(applied.appliedRevision);
+  expect(await readFile(join(f.root, "video/proof/enhancement", f.job.id, "before.html"), "utf8")).toBe(f.before);
+});
 test("structured content is escaped in headings, details and items", () => {
   const layout = videoEnhancementLayoutSchema.parse({});
   const cue = { id: "enhance-1", kind: "comparison", text: "<script>bad()</script>", detail: "<img onerror=bad()>", items: ["<svg onload=bad()>", "安全内容"], start: 1, end: 4, enabled: true };
@@ -286,16 +303,45 @@ test("aligns a quoted element with a measured gesture and supports explicit safe
   expect(manual.rect!.x).toBe(.04); expect(manual.gesture).toBeUndefined(); expect(manual.start).toBe(1);
   expect(placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "right" })), result)[0]?.enabled).toBe(false);
 });
-test("re-matches edited time and never follows a gesture through people or detected hands", () => {
+test("prioritizes the measured gesture target over person and hand avoidance, preserving manual placement", () => {
   const cues = buildEnhancementCues(base.segments, 8);
   const blocked = { ...base, gestures: [{ ...pointEvent, target: { x: .8, y: .45 } }] };
-  expect(placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "gesture" })), blocked)[0]?.enabled).toBe(false);
-  expect(placeEnhancementCues(cues, blocked)[0]).toMatchObject({ enabled: true, reason: "手势目标区域被占用，已改用安全空白位置。" });
+  const placed = placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "gesture" })), blocked)[0]!;
+  expect(placed).toMatchObject({ enabled: true, avoidance: "gesture", reason: "优先依据手势目标展示，此区域允许覆盖人物。" });
+  expect(placed.rect!.x + placed.rect!.width / 2).toBeCloseTo(.8);
+  expect(placeEnhancementCues(cues, blocked)[0]?.rect).toEqual(placed.rect);
   const twoHands = { ...base, gestures: [{ ...blocked.gestures[0]!, confidence: .99 }, { ...pointEvent, id: "gesture-2", confidence: .9 }] };
-  expect(placeEnhancementCues(cues, twoHands)[0]?.gesture?.id).toBe("gesture-2");
+  expect(placeEnhancementCues(cues, twoHands)[0]?.gesture?.id).toBe("gesture-1");
   expect(placeEnhancementCues(cues.map(cue => ({ ...cue, start: 5, end: 6, placement: "gesture" })), { ...base, gestures: [pointEvent] })[0]?.enabled).toBe(false);
   const hands = [{ time: 1, boxes: [{ x: 0, y: 0, width: .43, height: 1 }] }];
-  expect(placeEnhancementCues(cues, { ...base, hands, gestures: [pointEvent] })[0]?.enabled).toBe(false);
+  expect(placeEnhancementCues(cues, { ...base, hands, gestures: [pointEvent] })[0]).toMatchObject({ enabled: true, avoidance: "gesture" });
+});
+test("confirms a brief 8 fps gesture, tolerates one weak or missed frame and rejects low-confidence starts", () => {
+  const sample = { time: 1, hands: [measuredHand] };
+  expect(buildEnhancementGestures([sample, { ...sample, time: 1.125 }], 8)).toHaveLength(1);
+  expect(buildEnhancementGestures([sample, { time: 1.125, hands: [] }, { ...sample, time: 1.25 }], 8)).toHaveLength(1);
+  expect(buildEnhancementGestures([sample, { time: 1.125, hands: [{ ...measuredHand, confidence: .7 }] }], 8)).toHaveLength(1);
+  expect(buildEnhancementGestures([1, 1.125, 1.25].map(time => ({ time, hands: [{ ...measuredHand, confidence: .7 }] })), 8)).toEqual([]);
+});
+test("matches a leading gesture within 350 ms and moves content within the generated pane", () => {
+  const cues = buildEnhancementCues(base.segments, 8);
+  const leading = { ...pointEvent, start: .5, end: .8 };
+  expect(placeEnhancementCues(cues, { ...base, gestures: [leading] })[0]).toMatchObject({ start: 1, gesture: { id: leading.id } });
+  expect(placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "gesture" })), { ...base, gestures: [{ ...leading, end: .6 }] })[0]?.enabled).toBe(false);
+  const layout = videoEnhancementLayoutSchema.parse({ mode: "pip" });
+  const left = placeEnhancementCues(cues, { ...base, layout, gestures: [{ ...pointEvent, target: { x: 0, y: 0 } }] })[0]!;
+  const right = placeEnhancementCues(cues, { ...base, layout, gestures: [{ ...pointEvent, target: { x: 1, y: 1 } }] })[0]!;
+  expect(right.rect!.x).toBeGreaterThan(left.rect!.x);
+  expect(right.rect!.y).toBeGreaterThan(left.rect!.y);
+  expect(left.start).toBe(1.5);
+});
+test("keeps word timing, punctuation, pauses and the final open-ended speech chunk", () => {
+  expect(enhancementTranscriptSegments([
+    { text: "先", timestamp: [.2, .4] }, { text: "分析。", timestamp: [.4, 1] },
+    { text: "再", timestamp: [1.2, 1.4] }, { text: "生成", timestamp: [1.4, null] },
+  ], 3)).toEqual([{ text: "先分析。", start: .2, end: 1 }, { text: "再生成", start: 1.2, end: 3 }]);
+  expect(enhancementTranscriptSegments([{ text: "First", timestamp: [0, .5] }, { text: " step", timestamp: [.5, 1] }, { text: "Pause", timestamp: [2, 3] }], 3))
+    .toEqual([{ text: "First step", start: 0, end: 1 }, { text: "Pause", start: 2, end: 3 }]);
 });
 test("reads first-stage saved jobs and rejects client-forged gesture evidence before writing", async () => {
   const { hands, gestures, masks, ...oldResult } = base;

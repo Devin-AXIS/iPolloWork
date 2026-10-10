@@ -266,7 +266,7 @@ export function useExternalFileChangeCoordinator({
       // mode to surface. The `absent`-triggered fallback in useSdkSession
       // covers the case where this call is missed entirely (server restart,
       // a watcher event the SSE never delivered).
-      void refreshFileTree?.();
+      void Promise.resolve(refreshFileTree?.()).catch(() => {});
     },
     [onAcceptedPersistedFileChange, reloadPreview, reloadSdkSession, refreshFileTree],
   );

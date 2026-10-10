@@ -58,10 +58,19 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
   return cues.map(cue => {
     if (cue.end > result.duration + .001) throw new Error("元素时间超出原视频。");
     const position = cue.placement === "gesture" ? "auto" : cue.placement && cue.placement !== "auto" ? cue.placement : geometry.layout.contentPosition;
+    const matches = position !== "auto" ? [] : (result.gestures ?? [])
+      .filter(event => event.end > cue.start - .35 && event.start < cue.end - .5)
+      .sort((a, b) => (Math.min(b.end, cue.end) - Math.max(b.start, cue.start)) - (Math.min(a.end, cue.end) - Math.max(a.start, cue.start)) || b.confidence - a.confidence);
+    if (cue.placement === "gesture" && !matches.length) return { ...cue, enabled: false, rect: null, reason: "此时段没有稳定手势，请调整时间或选择智能定位。" };
     if (geometry.layout.mode !== "background") {
       const rect = contentRegion(geometry.reserved, position);
-      const gesture = (result.gestures ?? []).find(event => event.end > cue.start && event.start < cue.end);
-      return rect ? { ...cue, rect, avoidance: "source", ...(gesture ? { gesture } : {}) }
+      const gesture = matches[0];
+      // Project the hand's relative target into the generated-content pane.
+      // Keep the source inset intact while making pointing left/right meaningful.
+      const width = rect ? Math.min(.44, rect.width) : 0, height = rect ? Math.min(.5, rect.height) : 0;
+      const placed = rect && gesture ? { x: rect.x + (rect.width - width) * gesture.target.x,
+        y: rect.y + (rect.height - height) * gesture.target.y, width, height } : rect;
+      return placed ? { ...cue, start: gesture ? Math.max(cue.start, gesture.start) : cue.start, rect: placed, avoidance: "source", ...(gesture ? { gesture, reason: "依据手势定位到内容区域，保留原视频位置。" } : {}) }
         : { ...cue, enabled: false, rect: null, reason: "当前版式没有足够内容区域，请调整原视频大小或位置。" };
     }
     const contour = enhancementMaskProtection(result.masks ?? [], cue.start, cue.end);
@@ -89,10 +98,6 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
       }
       return padded.some(box => overlaps(rect, box));
     };
-    const matches = position !== "auto" && position !== "center" ? []
-      : (result.gestures ?? []).filter(event => event.end > cue.start && event.start < cue.end)
-        .sort((a, b) => (Math.min(b.end, cue.end) - Math.max(b.start, cue.start)) - (Math.min(a.end, cue.end) - Math.max(a.start, cue.start)) || b.confidence - a.confidence);
-    if (cue.placement === "gesture" && !matches.length) return { ...cue, enabled: false, rect: null, reason: "此时段没有稳定手势，请调整时间或选择智能定位。" };
     const dimensions = [.32, .26, .2].flatMap(width => {
       const font = Math.min(geometry.width * .028, geometry.height * .045);
       const characters = Array.from(cue.text + (cue.detail ?? "") + (cue.items ?? []).join("")).length;
@@ -102,20 +107,18 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
     });
     for (const gesture of matches) {
       for (const { width, height } of dimensions) {
-        for (const [dx, dy] of [[0, 0], [0, -.1], [-.1, 0], [.1, 0], [0, .1]]) {
-          const target = { x: geometry.source.x + gesture.target.x * geometry.source.width, y: geometry.source.y + gesture.target.y * geometry.source.height };
-          const rect = { x: Math.max(.04, Math.min(.96 - width, target.x - width / 2 + dx!)),
-            y: Math.max(.06, Math.min(.82 - height, target.y - height / 2 + dy!)), width, height };
-          if (protectedRect(rect)) continue;
-          const start = Math.max(cue.start, gesture.start);
-          // Keep usable display time. The original speech window is never extended.
-          if (cue.end - start < .5) continue;
-          return { ...cue, start, rect, gesture, avoidance, reason: gesture.kind === "point" ? "依据指向位置展示，已避让人物与手部。" : "依据张掌位置展示，已避让人物与手部。" };
-        }
+        const target = { x: geometry.source.x + gesture.target.x * geometry.source.width, y: geometry.source.y + gesture.target.y * geometry.source.height };
+        const rect = { x: Math.max(.04, Math.min(.96 - width, target.x - width / 2)),
+          y: Math.max(.06, Math.min(.82 - height, target.y - height / 2)), width, height };
+        const start = Math.max(cue.start, gesture.start);
+        // Keep usable display time. The original speech window is never extended.
+        if (cue.end - start < .5) continue;
+        return { ...cue, start, rect, gesture, avoidance: "gesture", reason: protectedRect(rect)
+          ? "优先依据手势目标展示，此区域允许覆盖人物。" : "依据手势目标展示。" };
       }
     }
     const gesture = matches[0];
-    if (cue.placement === "gesture") return { ...cue, enabled: false, rect: null, gesture, reason: "手势目标区域没有安全空白，已跳过；可改为智能定位。" };
+    if (cue.placement === "gesture") return { ...cue, enabled: false, rect: null, gesture, reason: "手势位置无法容纳当前文案，请缩短文字。" };
     // Keep the bottom 18% free for original subtitles. Smaller cards are tried
     // only while their text still has a useful minimum font size.
     for (const { width, height } of dimensions) {
@@ -130,6 +133,24 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
     }
     return { ...cue, enabled: false, rect: null, reason: "展示时段没有足够空白区域，已跳过。" };
   });
+}
+
+/** Preserve measured word boundaries, punctuation and the last (open-ended) ASR chunk. */
+export function enhancementTranscriptSegments(chunks: { text: string; timestamp: [number | null, number | null] }[], duration: number): VideoEnhancementResult["segments"] {
+  const segments: VideoEnhancementResult["segments"] = [];
+  for (let index = 0; index < chunks.length; index++) {
+    const chunk = chunks[index]!;
+    const text = chunk.text;
+    const previous = segments.at(-1);
+    const start = Math.max(0, chunk.timestamp[0] ?? previous?.end ?? 0);
+    const end = Math.min(duration, chunk.timestamp[1] ?? chunks[index + 1]?.timestamp[0] ?? duration);
+    if (!text.trim() || end <= start || start >= duration) continue;
+    if (previous && start - previous.end < .45 && end - previous.start <= 6 && previous.text.length + text.length <= 300
+      && !/[。！？.!?]$/u.test(previous.text.trim())) {
+      previous.text += text; previous.end = end;
+    } else segments.push({ text, start, end });
+  }
+  return segments;
 }
 
 /** Group complete speech clauses into visual beats; never invent facts or numbers. */
