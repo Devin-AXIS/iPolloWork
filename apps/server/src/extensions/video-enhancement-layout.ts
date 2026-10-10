@@ -1,27 +1,31 @@
 import type { VideoEnhancementCue, VideoEnhancementRect, VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
+import { enhancementMaskProtection } from "./video-enhancement-segmentation.js";
 
 const overlaps = (a: VideoEnhancementRect, b: VideoEnhancementRect) =>
   a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
 /** Freeze each card's position for its whole window; never chase the presenter. */
-export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<VideoEnhancementResult, "people" | "duration" | "width" | "height"> & Partial<Pick<VideoEnhancementResult, "hands" | "gestures">>): VideoEnhancementResult["cues"] {
+export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<VideoEnhancementResult, "people" | "duration" | "width" | "height"> & Partial<Pick<VideoEnhancementResult, "hands" | "gestures" | "masks">>): VideoEnhancementResult["cues"] {
   const selected = cues.filter(cue => cue.enabled).sort((a, b) => a.start - b.start);
   if (selected.some((cue, index) => index > 0 && cue.start < selected[index - 1]!.end)) throw new Error("元素展示时间不能重叠，请调整时间后应用。");
   return cues.map(cue => {
     if (cue.end > result.duration + .001) throw new Error("元素时间超出原视频。");
+    const contour = enhancementMaskProtection(result.masks ?? [], cue.start, cue.end);
+    const avoidance = contour ? "contour" : "box";
     // Include adjoining samples and their conservative swept bounds. Missing
     // detections protect the center, rather than treating uncertainty as empty.
     const samples = result.people.filter(sample => sample.time >= Math.max(0, cue.start - .5) && sample.time <= cue.end + .5);
     const boxes = samples.flatMap(sample => sample.boxes.length ? sample.boxes : [{ x: .2, y: 0, width: .6, height: 1 }]);
     if (!samples.length) boxes.push({ x: .2, y: 0, width: .6, height: 1 });
-    const blockers = [...boxes];
-    if (boxes.length) {
+    const blockers = contour ? [] : [...boxes];
+    if (!contour && boxes.length) {
       const x = Math.min(...boxes.map(box => box.x)), y = Math.min(...boxes.map(box => box.y));
       blockers.push({ x, y, width: Math.max(...boxes.map(box => box.x + box.width)) - x,
         height: Math.max(...boxes.map(box => box.y + box.height)) - y });
     }
     blockers.push(...(result.hands ?? []).filter(sample => sample.time >= Math.max(0, cue.start - .25) && sample.time <= cue.end + .25).flatMap(sample => sample.boxes));
     const padded = blockers.map(box => ({ x: box.x - .035, y: box.y - .035, width: box.width + .07, height: box.height + .07 }));
+    const protectedRect = (rect: VideoEnhancementRect) => Boolean(contour?.(rect)) || padded.some(box => overlaps(rect, box));
     const matches = cue.placement === "left" || cue.placement === "right" ? []
       : (result.gestures ?? []).filter(event => event.end > cue.start && event.start < cue.end)
         .sort((a, b) => (Math.min(b.end, cue.end) - Math.max(b.start, cue.start)) - (Math.min(a.end, cue.end) - Math.max(a.start, cue.start)) || b.confidence - a.confidence);
@@ -37,11 +41,11 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
         for (const [dx, dy] of [[0, 0], [0, -.1], [-.1, 0], [.1, 0], [0, .1]]) {
           const rect = { x: Math.max(.04, Math.min(.96 - width, gesture.target.x - width / 2 + dx!)),
             y: Math.max(.06, Math.min(.82 - height, gesture.target.y - height / 2 + dy!)), width, height };
-          if (padded.some(box => overlaps(rect, box))) continue;
+          if (protectedRect(rect)) continue;
           const start = Math.max(cue.start, gesture.start);
           // Keep usable display time. The original speech window is never extended.
           if (cue.end - start < .5) continue;
-          return { ...cue, start, rect, gesture, reason: gesture.kind === "point" ? "依据指向位置展示，已避让人物与手部。" : "依据张掌位置展示，已避让人物与手部。" };
+          return { ...cue, start, rect, gesture, avoidance, reason: gesture.kind === "point" ? "依据指向位置展示，已避让人物与手部。" : "依据张掌位置展示，已避让人物与手部。" };
         }
       }
     }
@@ -54,7 +58,7 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
         const positions = cue.placement === "left" ? [.04] : cue.placement === "right" ? [.96 - width] : [.04, .96 - width];
         for (const x of positions) {
           const rect = { x, y, width, height };
-          if (y + height <= .82 && !padded.some(box => overlaps(rect, box))) return { ...cue, rect,
+          if (y + height <= .82 && !protectedRect(rect)) return { ...cue, rect, avoidance,
             ...(gesture ? { gesture, reason: "手势目标区域被占用，已改用安全空白位置。" } : {}) };
         }
       }

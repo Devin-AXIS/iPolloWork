@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const VIDEO_ENHANCEMENT_MAX_SECONDS = 180;
 export const VIDEO_ENHANCEMENT_MAX_BYTES = 100 * 1024 * 1024;
+export const VIDEO_ENHANCEMENT_MASK_SIZE = 64;
 export const videoEnhancementSessionSchema = z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
 export const videoEnhancementRectSchema = z.object({
   x: z.number().min(0).max(1), y: z.number().min(0).max(1),
@@ -26,7 +27,13 @@ export const videoEnhancementCueSchema = z.object({
 export const videoEnhancementPlacedCueSchema = videoEnhancementCueSchema.safeExtend({
   rect: videoEnhancementRectSchema.nullable(), reason: z.string().optional(),
   gesture: videoEnhancementGestureSchema.optional(),
+  avoidance: z.enum(["contour", "box"]).optional(),
 });
+// Fixed 64x64 occupancy bitmap, four horizontal cells per hex digit.
+// Null marks an unreliable frame; callers must retain box protection.
+export const videoEnhancementMaskSchema = z.object({
+  time: z.number().nonnegative(), data: z.string().regex(/^[0-9a-f]{1024}$/).nullable(),
+}).strict();
 export const videoEnhancementResultSchema = z.object({
   duration: z.number().positive().max(VIDEO_ENHANCEMENT_MAX_SECONDS),
   width: z.number().int().positive().max(4096), height: z.number().int().positive().max(4096),
@@ -34,6 +41,8 @@ export const videoEnhancementResultSchema = z.object({
   people: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(20) }).strict()).max(400),
   hands: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(2) }).strict()).max(721).default([]),
   gestures: z.array(videoEnhancementGestureSchema).max(120).default([]),
+  masks: z.array(videoEnhancementMaskSchema).max(721).default([]),
+  timings: z.object({ totalMs: z.number().int().nonnegative(), speechMs: z.number().int().nonnegative(), visionMs: z.number().int().nonnegative() }).strict().optional(),
   cues: z.array(videoEnhancementPlacedCueSchema).max(60),
   warnings: z.array(z.string()).max(10),
 });
@@ -45,11 +54,12 @@ export const videoEnhancementJobSchema = z.object({
   createdAt: z.number(), result: videoEnhancementResultSchema.optional(),
   appliedRevision: z.string().optional(),
 });
-export const videoEnhancementStatusSchema = z.object({ ready: z.boolean(), message: z.string(), gesturesReady: z.boolean().default(false) });
+export const videoEnhancementStatusSchema = z.object({ ready: z.boolean(), message: z.string(), gesturesReady: z.boolean().default(false), segmentationReady: z.boolean().default(false) });
 export const videoEnhancementStartSchema = z.object({
   sessionId: videoEnhancementSessionSchema, sourcePath: z.string().max(400),
   language: z.enum(["zh", "en", "auto"]).default("zh"),
   useGestures: z.boolean().default(true),
+  useSegmentation: z.boolean().default(true),
 }).strict();
 export const videoEnhancementJobInputSchema = z.object({ sessionId: videoEnhancementSessionSchema, jobId: z.uuid() }).strict();
 export const videoEnhancementReadSchema = z.object({ sessionId: videoEnhancementSessionSchema, jobId: z.uuid().optional() }).strict();
@@ -61,3 +71,4 @@ export type VideoEnhancementCue = z.infer<typeof videoEnhancementCueSchema>;
 export type VideoEnhancementResult = z.infer<typeof videoEnhancementResultSchema>;
 export type VideoEnhancementJob = z.infer<typeof videoEnhancementJobSchema>;
 export type VideoEnhancementGesture = z.infer<typeof videoEnhancementGestureSchema>;
+export type VideoEnhancementMask = z.infer<typeof videoEnhancementMaskSchema>;

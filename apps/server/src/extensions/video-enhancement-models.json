@@ -1,6 +1,7 @@
 [
   {
     "id": "Xenova/whisper-tiny",
+    "capability": "speech",
     "revision": "5332fcc35e32a33b86612b9a57a89be7906102b1",
     "license": "Apache-2.0",
     "source": "https://huggingface.co/Xenova/whisper-tiny",
@@ -15,6 +16,7 @@
   },
   {
     "id": "Xenova/yolos-tiny",
+    "capability": "people",
     "revision": "e2f9c7673f0fa61849efe2b56a0d7774779ebb9d",
     "license": "Apache-2.0",
     "source": "https://huggingface.co/hustvl/yolos-tiny",
@@ -25,6 +27,7 @@
   },
   {
     "id": "opencv/opencv_zoo",
+    "capability": "gestures",
     "revision": "d4938dfc9d4ec5d098bfa33e98b3f3345a236586",
     "license": "Apache-2.0",
     "source": "https://github.com/opencv/opencv_zoo/tree/main/models/handpose_estimation_mediapipe",
@@ -33,6 +36,17 @@
       { "path": "models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx", "sha256": "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c" },
       { "path": "models/palm_detection_mediapipe/LICENSE" },
       { "path": "models/handpose_estimation_mediapipe/LICENSE" }
+    ]
+  },
+  {
+    "id": "opencv/opencv_zoo",
+    "capability": "segmentation",
+    "revision": "d4938dfc9d4ec5d098bfa33e98b3f3345a236586",
+    "license": "Apache-2.0",
+    "source": "https://github.com/opencv/opencv_zoo/tree/main/models/human_segmentation_pphumanseg",
+    "files": [
+      { "path": "models/human_segmentation_pphumanseg/human_segmentation_pphumanseg_2023mar.onnx", "sha256": "552d8a984054e59b5d773d24b9b12022b22046ceb2bbc4c9aaeaceb36a9ddf24" },
+      { "path": "models/human_segmentation_pphumanseg/LICENSE" }
     ]
   }
 ]

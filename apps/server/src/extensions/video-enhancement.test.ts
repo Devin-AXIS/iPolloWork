@@ -1,11 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildEnhancementCues, enhancementHtml, placeEnhancementCues } from "./video-enhancement-layout.js";
-import { callVideoEnhancementAction } from "./video-enhancement.js";
+import { callVideoEnhancementAction, localEnhancementStatus } from "./video-enhancement.js";
+import models from "./video-enhancement-models.json" with { type: "json" };
 import { classifyEnhancementHand, buildEnhancementGestures } from "./video-enhancement-gestures.js";
+import { buildEnhancementMask, enhancementMaskProtection } from "./video-enhancement-segmentation.js";
 import { videoEnhancementResultSchema } from "@ipollowork/types/video-enhancement";
 import type { VideoEnhancementJob, VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
 import type { ServerConfig } from "../types.js";
@@ -13,7 +15,7 @@ import type { ServerConfig } from "../types.js";
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const base = { duration: 8, width: 1280, height: 720, segments: [{ start: 1, end: 4, text: "今年增长了30%" }],
-  people: [{ time: 1, boxes: [{ x: .45, y: .1, width: .5, height: .9 }] }, { time: 3, boxes: [{ x: .5, y: .1, width: .45, height: .9 }] }], hands: [], gestures: [], warnings: [] };
+  people: [{ time: 1, boxes: [{ x: .45, y: .1, width: .5, height: .9 }] }, { time: 3, boxes: [{ x: .5, y: .1, width: .45, height: .9 }] }], hands: [], gestures: [], masks: [], warnings: [] };
 test("quotes numeric evidence and keeps measured speech windows", () => {
   expect(buildEnhancementCues(base.segments, 8)).toEqual([{ id: "enhance-1", kind: "number", text: "30%", start: 1, end: 4, enabled: true }]);
   expect(buildEnhancementCues([{ start: 0, end: 7, text: "这是一段很长的讲话，不应该被截断成为意义不完整的断言或者新事实" }], 8)).toEqual([]);
@@ -150,10 +152,78 @@ test("re-matches edited time and never follows a gesture through people or detec
   expect(placeEnhancementCues(cues, { ...base, hands, gestures: [pointEvent] })[0]?.enabled).toBe(false);
 });
 test("reads first-stage saved jobs and rejects client-forged gesture evidence before writing", async () => {
-  const { hands, gestures, ...oldResult } = base;
+  const { hands, gestures, masks, ...oldResult } = base;
   const parsed = videoEnhancementResultSchema.parse({ ...oldResult, cues: [] });
-  expect(parsed.hands).toEqual([]); expect(parsed.gestures).toEqual([]);
+  expect(parsed.hands).toEqual([]); expect(parsed.gestures).toEqual([]); expect(parsed.masks).toEqual([]);
   const f = await fixture();
   await expect(callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues.map(cue => ({ ...cue, gesture: pointEvent })) }, f.context)).rejects.toThrow();
   expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(f.before);
+});
+
+const wholePerson = [{ x: 0, y: 0, width: 1, height: 1 }];
+const silhouette = (left = 32) => Float32Array.from({ length: 64 * 64 }, (_, index) => Math.floor(index / 64) >= 24 && index % 64 >= left ? .95 : .01);
+const maskFrames = (data: string | null) => Array.from({ length: 19 }, (_, index) => ({ time: index / 4, data }));
+test("keeps uncertain contour edges and rejects empty, non-finite, overfull or missed-person masks", () => {
+  const probabilities = silhouette();
+  probabilities[3 * 64 + 4] = .36;
+  const data = buildEnhancementMask(probabilities, 64, 64, wholePerson)!;
+  expect(data).toHaveLength(1024);
+  const protect = enhancementMaskProtection(maskFrames(data), 1, 4)!;
+  expect(protect({ x: 4 / 64, y: 3 / 64, width: .01, height: .01 })).toBe(true);
+  expect(protect({ x: .1, y: .5, width: .2, height: .1 })).toBe(false);
+  expect(buildEnhancementMask(new Float32Array(4096), 64, 64, wholePerson)).toBeNull();
+  expect(buildEnhancementMask(new Float32Array(4096).fill(1), 64, 64, wholePerson)).toBeNull();
+  probabilities[0] = Number.NaN;
+  expect(buildEnhancementMask(probabilities, 64, 64, wholePerson)).toBeNull();
+  expect(buildEnhancementMask(silhouette(), 64, 64, [{ x: 0, y: 0, width: .2, height: .3 }])).toBeNull();
+  expect(buildEnhancementMask(silhouette(), 64, 64, [])).toBeNull();
+});
+test("opens safe contour gaps inside a large person box while retaining hand protection", () => {
+  const cues = buildEnhancementCues(base.segments, 8);
+  const people = [{ time: 1, boxes: wholePerson }, { time: 3, boxes: wholePerson }];
+  expect(placeEnhancementCues(cues, { ...base, people })[0]?.enabled).toBe(false);
+  const masks = maskFrames(buildEnhancementMask(silhouette(), 64, 64, wholePerson));
+  const placed = placeEnhancementCues(cues, { ...base, people, masks })[0]!;
+  expect(placed.enabled).toBe(true); expect(placed.avoidance).toBe("contour"); expect(placed.rect!.x).toBe(.04);
+  const hands = [{ time: 2, boxes: wholePerson }];
+  expect(placeEnhancementCues(cues, { ...base, people, masks, hands })[0]?.enabled).toBe(false);
+});
+test("uses the whole contour window and falls back for dropout, rapid motion or edited times", () => {
+  const data = buildEnhancementMask(silhouette(), 64, 64, wholePerson)!;
+  const masks = maskFrames(data);
+  expect(enhancementMaskProtection(masks, 1, 4)).not.toBeNull();
+  expect(enhancementMaskProtection(masks.filter(mask => mask.time !== 2), 1, 4)).toBeNull();
+  expect(enhancementMaskProtection(masks.map(mask => mask.time === 2 ? { ...mask, data: null } : mask), 1, 4)).toBeNull();
+  expect(enhancementMaskProtection(masks, 5, 6)).toBeNull();
+  const moving = buildEnhancementMask(Float32Array.from(silhouette(), (_, index) => index % 64 < 32 && Math.floor(index / 64) >= 24 ? .95 : .01), 64, 64, wholePerson)!;
+  const rapid = masks.map(mask => mask.time === 2 ? { ...mask, data: moving } : mask);
+  expect(enhancementMaskProtection(rapid, 1, 4)).toBeNull();
+  const people = [{ time: 1, boxes: wholePerson }, { time: 3, boxes: wholePerson }];
+  expect(placeEnhancementCues(buildEnhancementCues(base.segments, 8), { ...base, people, masks: rapid })[0]?.enabled).toBe(false);
+});
+test("recomputes saved contour positioning on apply and rejects client-forged protection", async () => {
+  const f = await fixture();
+  f.job.result!.masks = maskFrames(buildEnhancementMask(silhouette(), 64, 64, wholePerson));
+  await writeFile(join(f.root, "video/proof/enhancement", f.job.id, "job.json"), JSON.stringify(f.job));
+  await expect(callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues.map(cue => ({ ...cue, avoidance: "contour" })) }, f.context)).rejects.toThrow();
+  const applied = await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues }, f.context);
+  expect(applied.result).toHaveProperty("result.cues.0.avoidance", "contour");
+  await callVideoEnhancementAction(f.config, "undo", f.args, f.context);
+  expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(f.before);
+});
+test("missing optional segmentation weights do not disable installed speech or hand models", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-enhancement-models-")); roots.push(root);
+  for (const model of models.filter(model => model.capability !== "segmentation")) {
+    for (const file of model.files) {
+      const path = join(root, model.id, file.path);
+      await mkdir(dirname(path), { recursive: true }); await writeFile(path, "fixture");
+    }
+  }
+  const previous = process.env.IPOLLOWORK_VIDEO_MODELS_PATH;
+  try {
+    process.env.IPOLLOWORK_VIDEO_MODELS_PATH = root;
+    expect(await localEnhancementStatus()).toMatchObject({ ready: true, gesturesReady: true, segmentationReady: false });
+  } finally {
+    if (previous === undefined) delete process.env.IPOLLOWORK_VIDEO_MODELS_PATH; else process.env.IPOLLOWORK_VIDEO_MODELS_PATH = previous;
+  }
 });

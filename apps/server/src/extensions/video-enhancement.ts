@@ -35,12 +35,13 @@ const modelRoot = () => process.env.IPOLLOWORK_VIDEO_MODELS_PATH || fileURLToPat
 export async function localEnhancementStatus() {
   const available = await Promise.all(models.map(async model => {
     const files = await Promise.all(model.files.map(file => stat(join(modelRoot(), model.id, file.path)).then(value => value.isFile() && value.size > 0).catch(() => false)));
-    return { id: model.id, ready: files.every(Boolean) };
+    return { capability: model.capability, ready: files.every(Boolean) };
   }));
-  const ready = available.filter(model => model.id.startsWith("Xenova/")).every(model => model.ready);
-  const gesturesReady = available.some(model => model.id === "opencv/opencv_zoo" && model.ready);
-  return { ready, gesturesReady, message: ready
-    ? `本地语音与人物模型已就绪，可断网分析。${gesturesReady ? "手势模型已就绪。" : "缺少手势模型，可关闭手势定位继续；开发环境运行 pnpm --filter ipollowork-server prepare:video-models。"}`
+  const ready = available.filter(model => model.capability === "speech" || model.capability === "people").every(model => model.ready);
+  const gesturesReady = available.some(model => model.capability === "gestures" && model.ready);
+  const segmentationReady = available.some(model => model.capability === "segmentation" && model.ready);
+  return { ready, gesturesReady, segmentationReady, message: ready
+    ? `本地语音与人物模型已就绪，可断网分析。${gesturesReady ? "手势模型已就绪。" : "缺少手势模型，可关闭手势定位继续。"}${segmentationReady ? "人物分割模型已就绪。" : "缺少分割模型，可关闭精细避让继续。"}${gesturesReady && segmentationReady ? "" : "开发环境运行 pnpm --filter ipollowork-server prepare:video-models。"}`
     : "缺少本地语音或人物模型。请安装含模型的完整版本；开发环境运行 pnpm --filter ipollowork-server prepare:video-models。分析不会联网下载或调用云端 API。" };
 }
 async function save(path: string, value: VideoEnhancementJob) {
@@ -48,13 +49,13 @@ async function save(path: string, value: VideoEnhancementJob) {
   try { await writeFile(partial, JSON.stringify(value), { flag: "wx" }); await rename(partial, path); }
   finally { await rm(partial, { force: true }); }
 }
-async function run(jobPath: string, job: VideoEnhancementJob, input: string, directory: string, language: string, useGestures: boolean, controller: AbortController) {
+async function run(jobPath: string, job: VideoEnhancementJob, input: string, directory: string, language: string, useGestures: boolean, useSegmentation: boolean, controller: AbortController) {
   const item = { job, controller };
   live.set(jobPath, item);
   const timer = setTimeout(() => controller.abort(), 30 * 60_000);
   try {
     const worker = fileURLToPath(new URL(`./video-enhancement-worker${extname(fileURLToPath(import.meta.url))}`, import.meta.url));
-    const child = spawn(process.execPath, [worker, input, directory, modelRoot(), language, useGestures ? "gestures" : "speech"], {
+    const child = spawn(process.execPath, [worker, input, directory, modelRoot(), language, useGestures ? "gestures" : "speech", useSegmentation ? "contour" : "boxes"], {
       windowsHide: true, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1" },
     });
@@ -71,7 +72,8 @@ async function run(jobPath: string, job: VideoEnhancementJob, input: string, dir
     const lines = createInterface({ input: child.stdout });
     lines.on("line", line => {
       try {
-        if (line.length > 512 * 1024) throw new Error("Output too large");
+        // 721 fixed 64x64 masks plus bounded hand/person samples fit below 4 MiB.
+        if (line.length > 4 * 1024 * 1024) throw new Error("Output too large");
         const data = z.object({ progress: z.number().min(0).max(100).optional(), message: z.string().max(300).optional(), result: videoEnhancementResultSchema.optional() }).parse(JSON.parse(line));
         if (data.result) output = data.result;
         if (data.progress !== undefined) item.job = { ...item.job, progress: data.progress, message: data.message ?? item.job.message };
@@ -117,7 +119,7 @@ export async function callVideoEnhancementAction(config: ServerConfig, action: s
     const start = videoEnhancementStartSchema.parse(raw);
     if (!start.sourcePath.startsWith(`${project}/assets/`) || !/^video\/[\w-]+\/assets\/[\w.-]+\.(mp4|mov|webm)$/i.test(start.sourcePath)) throw new ApiError(400, "enhancement_source", "请选择当前视频会话上传的视频。");
     const modelStatus = await localEnhancementStatus();
-    if (!modelStatus.ready || start.useGestures && !modelStatus.gesturesReady) throw new ApiError(503, "enhancement_models_missing", modelStatus.message);
+    if (!modelStatus.ready || start.useGestures && !modelStatus.gesturesReady || start.useSegmentation && !modelStatus.segmentationReady) throw new ApiError(503, "enhancement_models_missing", modelStatus.message);
     if (live.size >= 1) throw new ApiError(409, "enhancement_busy", "已有本地分析正在运行，请等待完成或取消。");
     const source = await resolveWithinRoot(workspace.path, start.sourcePath);
     const info = await inspectLocalVideo(workspace, start.sourcePath);
@@ -132,7 +134,7 @@ export async function callVideoEnhancementAction(config: ServerConfig, action: s
     await copyFile(entry, join(jobDirectory, "before.html"));
     await save(join(jobDirectory, "job.json"), job);
     await writeFile(join(directory, "latest.json"), JSON.stringify({ id: job.id }));
-    void run(join(jobDirectory, "job.json"), job, source, jobDirectory, start.language, start.useGestures, new AbortController()).catch(() => undefined);
+    void run(join(jobDirectory, "job.json"), job, source, jobDirectory, start.language, start.useGestures, start.useSegmentation, new AbortController()).catch(() => undefined);
     return { ok: true, result: job };
     } finally { starting = false; }
   }
