@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 
 import type { UIMessage } from "ai";
-import { ChevronRight, Copy, Download, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
+import { ChevronRight, Copy, Download, FileOutput, FileText, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -44,7 +44,7 @@ import { toast } from "@/components/ui/sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { cn, formatFileSize } from "@/lib/utils";
 import {
   type ArtifactInteractionContext,
   type ArtifactItem,
@@ -295,9 +295,10 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
     ? artifact
     : { ...artifact, name: presentedName, target: { ...artifact.target, name: presentedName } };
   const title = presentedName;
-  const typeLabel = getArtifactTypeLabel(studioTarget?.surface === "video" ? "video" : artifact.type);
+  const typeLabel = getArtifactTypeLabel(artifact.type);
   const extension = artifact.name.includes(".") ? artifact.name.slice(artifact.name.lastIndexOf(".") + 1).toUpperCase() : typeLabel;
   const canDownload = Boolean(client && workspaceId && artifact.target.kind === "file");
+  const hasThumbnail = /\.(png|jpe?g|webp|gif|avif|svg|mp4|mov|webm)$/i.test(artifact.path);
 
   const download = async () => {
     if (!client || !workspaceId || artifact.target.kind !== "file" || downloading) return;
@@ -325,33 +326,33 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
 
   const content = (
     <>
-      <span ref={thumbnailRoot} className="contents"><DescriptiveButtonIcon className={cn("chat-output-icon")} data-artifact-thumbnail={/\.(png|jpe?g|webp|gif|avif|svg|mp4|mov|webm)$/i.test(artifact.path) ? artifact.path : undefined}>
-        <ArtifactIcon className={cn("shrink-0", "size-4")} type={artifact.type} />
+      <span ref={thumbnailRoot} className="contents"><DescriptiveButtonIcon className={cn("chat-output-icon")} data-artifact-thumbnail={hasThumbnail ? artifact.path : undefined}>
+        {hasThumbnail ? <ArtifactIcon className="size-4 shrink-0" type={artifact.type} /> : (
+          <>
+            <FileText className="artifact-file-document size-8" aria-hidden="true" />
+            <span className="artifact-file-extension" aria-hidden="true">{extension}</span>
+          </>
+        )}
       </DescriptiveButtonIcon></span>
       <DescriptiveButtonContent className={cn("min-w-0", "chat-output-content")}>
         <div className="flex min-w-0 items-center gap-1.5">
           <DescriptiveButtonTitle className={cn("chat-output-title")} data-testid="artifact-file-title" title={presentedName}>{title}</DescriptiveButtonTitle>
         </div>
         {(
-          <DescriptiveButtonDescription className={cn("chat-output-description")} data-testid="artifact-file-description">
-            {extension}
+          <DescriptiveButtonDescription className="artifact-file-meta" data-testid="artifact-file-description">
+            <span className="artifact-file-details">
+              <span className="chat-output-description">{typeLabel}</span>
+              {artifact.target.size !== undefined ? <span> · {formatFileSize(artifact.target.size)}</span> : null}
+            </span>
+            {artifact.target.exists === true ? <span className="artifact-file-saved" data-testid="artifact-file-saved"> · {t("artifact.status_saved")}</span> : null}
           </DescriptiveButtonDescription>
         )}
       </DescriptiveButtonContent>
     </>
   );
 
-  if (!canActivate && !(client && workspaceId && sessionId && artifact.target.kind === "file")) {
-    return (
-      <div data-testid="artifact-file-card"
-        data-artifact-path={artifact.path} className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", "chat-output-card")}>
-        {content}
-      </div>
-    );
-  }
-
   return (
-    <div className={cn("group/output relative max-w-full", "min-h-16 w-full min-w-0")} data-testid="artifact-file-shell">
+    <div className="artifact-file-shell" data-testid="artifact-file-shell">
       <DescriptiveButton
         disabled={!canActivate}
         data-testid="artifact-file-card"
@@ -371,20 +372,19 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
         {content}
       </DescriptiveButton>
       {(
-        <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5 bg-background opacity-0 transition-opacity group-hover/output:pointer-events-auto group-hover/output:opacity-100 group-focus-within/output:pointer-events-auto group-focus-within/output:opacity-100" data-testid="artifact-file-actions">
-          {canDownload ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-7 rounded-md bg-transparent text-muted-foreground/70 hover:bg-muted/40 hover:text-foreground [&_svg]:stroke-[1.5]"
-              aria-label={t("artifact.download_artifact")}
-              title={t("artifact.download_artifact")}
-              disabled={downloading}
-              onClick={() => void download()}
-            >
-              {downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-            </Button>
-          ) : null}
+        <div className="flex shrink-0 items-center gap-0.5" data-testid="artifact-file-actions">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 rounded-md bg-transparent text-muted-foreground/70 hover:bg-muted/40 hover:text-foreground [&_svg]:stroke-[1.5]"
+            aria-label={t("artifact.download_artifact")}
+            title={t("artifact.download_artifact")}
+            disabled={!canDownload || downloading}
+            aria-busy={downloading}
+            onClick={() => void download()}
+          >
+            {downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={(

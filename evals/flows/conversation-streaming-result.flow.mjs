@@ -2,6 +2,11 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("conversation-streaming-result");
 
+async function assertImageBadge(ctx, variant, icon, processing = false) {
+  const state = await ctx.eval(`(() => {const e=document.querySelector('[data-testid=assistant-image-status]'),i=e?.querySelector('svg');return {variant:e?.dataset.variant,icon:i?.classList.contains(${JSON.stringify(icon)}),animated:i?.classList.contains('animate-spin'),slot:e?.dataset.slot,font:e?getComputedStyle(e).fontSize:null,line:e?getComputedStyle(e).lineHeight:null};})()`);
+  ctx.assert(state.slot === 'badge' && state.variant === variant && state.icon && state.animated === processing && state.font === '10px' && state.line === '14px', JSON.stringify(state));
+}
+
 export async function mountFixture() {
   window.__streamingAnswerProof?.cleanup?.();
   document.querySelectorAll("#streaming-answer-proof").forEach((node) => node.remove());
@@ -37,7 +42,7 @@ export async function mountFixture() {
   const root = ReactDOM.createRoot(host);
   const queryClient = new QueryClient();
   const imageUrl = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="420" height="960" viewBox="0 0 420 960"><rect width="420" height="960" fill="#193656"/><circle cx="210" cy="320" r="125" fill="#f6bd60"/><path d="M0 780 Q210 480 420 780 V960 H0" fill="#479f92"/></svg>')}`;
-  const openTargets = ["design/proof/report.pdf", "design/proof/cover.png"].map((path) => createWorkspaceFileOpenTarget({ path }));
+  const openTargets = ["design/proof/report.pdf", "design/proof/cover.png", "design/proof/正反馈与负反馈为什么正不一定好完整说明与参考资料内容说明和图示示例与应用场景以及复盘检查清单和附加说明报告.pdf"].map((path) => createWorkspaceFileOpenTarget({ path, size: 122880 }));
   const thumbnailImage = new Image();
   thumbnailImage.src = imageUrl;
   await thumbnailImage.decode();
@@ -51,6 +56,8 @@ export async function mountFixture() {
     downloadWorkspaceThumbnail: async () => ({ data: new Uint8Array(await thumbnailBlob.arrayBuffer()), detail: "420 × 960" }),
     baseUrl: "http://127.0.0.1:52999", downloadWorkspaceFile: async (_workspaceId, path) => {
     window.__streamingAnswerProof.downloadedPath = path;
+    window.__streamingAnswerProof.downloadRequests=(window.__streamingAnswerProof.downloadRequests||0)+1;
+    await window.__streamingAnswerProof.downloadGate;
     return { data: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" };
   } };
   const commentary = {
@@ -185,6 +192,14 @@ export async function mountFixture() {
         ]);
         setStatus("ready");
       };
+      window.__streamingAnswerProof.showReferenceCard = () => {
+        setArtifactFiles(["design/proof/正反馈与负反馈为什么正不一定好完整说明与参考资料内容说明和图示示例与应用场景以及复盘检查清单和附加说明报告.pdf"]);
+        setMessages([
+          { id: "reference-file-user", role: "user", parts: [{ type: "text", text: "请生成报告" }] },
+          { id: "reference-file-answer", role: "assistant", parts: [{ type: "text", text: "报告已保存。", state: "done" }] },
+        ]);
+        setStatus("ready"); setRunOutcome("completed"); setFinalizing(false);
+      };
       window.__streamingAnswerProof.showImage = () => {
         setRunOutcome("running");
         setRunEndedAt(null);
@@ -232,6 +247,14 @@ export async function mountFixture() {
         setStoppedImageMessageIds(new Set(["proof-image-answer"]));
         setStopAcknowledged(true);
         setStatus("ready");
+      };
+      window.__streamingAnswerProof.showStoppedText = () => {
+        window.__streamingAnswerProof.showImage();
+        window.__streamingAnswerProof.stopImage();
+        setMessages(previous => [...previous,
+          { id: "proof-text-stop-request", role: "user", parts: [{ type: "text", text: "请继续写报告" }] },
+          { id: "proof-text-stop-answer", role: "assistant", parts: [{ type: "text", text: "已完成部分报告。", state: "done" }] },
+        ]);
       };
       window.__streamingAnswerProof.failImage = () => {
         setRunOutcome("failed");
@@ -495,6 +518,7 @@ export default {
             return { preview: host.querySelector('[data-testid=assistant-image-status]')?.textContent,
               userHeight: host.querySelector('img[alt="reference.svg"]')?.parentElement?.style.maxHeight };
           })()`);
+          await assertImageBadge(ctx, "info", "lucide-loader-circle", true);
           ctx.assert(state.preview?.includes("仍在生成") && state.userHeight === "160px", JSON.stringify(state));
         },
         screenshot: { name: "streaming-image-preview", requireText: ["仍在生成"] },
@@ -516,6 +540,7 @@ export default {
               open: [...host.querySelectorAll('button')].some((button) => button.textContent === '打开图片'),
               download: [...host.querySelectorAll('button')].some((button) => button.textContent === '下载图片') };
           })()`);
+          await assertImageBadge(ctx, "info", "lucide-loader-circle", true);
           ctx.assert(state.status?.includes("图片已保存") && state.open && state.download, JSON.stringify(state));
         },
         screenshot: { name: "saved-image-still-streaming", requireText: ["图片已保存", "正在整理结果", "打开图片"] },
@@ -621,14 +646,15 @@ export default {
           const state = await ctx.eval(`(() => {
             const host = document.querySelector('#streaming-answer-proof');
             return { status: host.querySelector('[data-testid=assistant-image-status]')?.textContent,
-              notice: host.querySelector('[data-testid=run-issue-notice]')?.textContent,
+              noticeCount: host.querySelectorAll('[data-testid=run-issue-notice]').length,
               duration: host.querySelector('[data-testid=assistant-process-column]')?.textContent,
               image: Boolean(host.querySelector('img[alt="cover.png"]')) };
           })()`);
-          ctx.assert(state.status?.includes("图片可能未完成") && state.notice?.includes("任务已中断")
+          await assertImageBadge(ctx, "warning", "lucide-circle-pause");
+          ctx.assert(state.status?.includes("图片可能未完成") && state.noticeCount === 0
             && state.duration?.includes("已停止 · 用时") && state.image, JSON.stringify(state));
         },
-        screenshot: { name: "stopped-image", requireText: ["已停止", "图片可能未完成", "任务已中断"] },
+        screenshot: { name: "stopped-image", requireText: ["已停止", "图片可能未完成"] },
       }),
     },
     {
@@ -649,6 +675,7 @@ export default {
               duration: host.querySelector('[data-testid=assistant-process-column]')?.textContent,
               image: Boolean(host.querySelector('img[alt="cover.png"]')) };
           })()`);
+          await assertImageBadge(ctx, "destructive", "lucide-circle-alert");
           ctx.assert(state.status?.includes("图片可能未完成") && state.duration?.includes("未完成 · 用时")
             && state.image, JSON.stringify(state));
         },
@@ -671,6 +698,7 @@ export default {
               preview: Boolean(host.querySelector('img[alt="preview.svg"]')),
               card: host.querySelector('[data-testid=artifact-file-card]')?.textContent };
           })()`);
+          await assertImageBadge(ctx, "info", "lucide-info");
           ctx.assert(state.status?.includes("预览已就绪") && state.preview && state.card?.includes("cover.png"), JSON.stringify(state));
         },
         screenshot: { name: "unmatched-image-file", requireText: ["预览已就绪", "cover.png"] },
@@ -741,6 +769,7 @@ export default {
               open: host.textContent.includes('打开图片'), run: host.textContent.includes('本次任务未完成'),
               errorInReply: Boolean(host.querySelector('[data-assistant-result] [data-assistant-run-error]')),
               cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
+          await assertImageBadge(ctx, "success", "lucide-circle-check");
           ctx.assert(state.saved?.includes('图片已生成') && state.open && state.run && state.errorInReply && state.cards === 0, JSON.stringify(state));
         },
         screenshot: { name: "saved-image-after-failure", requireText: ["图片已生成", "打开图片", "本次任务未完成"] },
@@ -907,6 +936,106 @@ export default {
             && state.result.includes('iPolloWork 应用正在导出 MP4'), JSON.stringify(state));
         },
         screenshot: { name: "completed-engine-post-processing", requireText: ["正在收尾", "iPolloWork 应用正在导出 MP4"] },
+      }),
+    },
+    {
+      name: "Reference document card",
+      run: ctx => ctx.prove("Compact document card separates filename and saved state", {
+        voiceover: vo[24],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showReferenceCard()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]')?.textContent.includes('已保存')");
+        },
+        assert: async () => {
+          const g = await ctx.eval(`(() => {const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const t=c.querySelector('[data-testid=artifact-file-title]');const d=c.querySelector('[data-testid=artifact-file-description]');return {height:c.getBoundingClientRect().height,width:c.getBoundingClientRect().width,titleSize:getComputedStyle(t).fontSize,titleLine:getComputedStyle(t).lineHeight,metaSize:getComputedStyle(d).fontSize,shadow:getComputedStyle(c).boxShadow,savedInside:c.querySelector('.artifact-file-saved')?.getBoundingClientRect().right<=d.getBoundingClientRect().right,text:c.textContent}})()`);
+          ctx.assert(g.height===56 && g.width===360 && g.titleSize==='13px' && g.titleLine==='18px' && g.metaSize==='12px' && g.shadow==='none' && g.savedInside && g.text.includes('PDF') && g.text.includes('已保存'),JSON.stringify(g));
+        }, screenshot:{name:"reference-document-card",requireText:["PDF","已保存"]},
+      }),
+    },
+    {
+      name: "Reference media card",
+      run: ctx => ctx.prove("Image file keeps its compact thumbnail and saved state", {
+        voiceover: vo[25],
+        action:async()=>{await ctx.eval("window.__streamingAnswerProof.showUnmatchedImage()");await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell] .artifact-thumbnail')?.naturalWidth>0");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const i=c.querySelector('.artifact-thumbnail').getBoundingClientRect();return {w:i.width,h:i.height,text:c.textContent}})()`);ctx.assert(g.w===52&&g.h===36&&g.text.includes('已保存'),JSON.stringify(g));},
+        screenshot:{name:"reference-image-thumbnail",requireText:["已保存"]},
+      }),
+    },
+    {
+      name: "Reference narrow long filename",
+      run: ctx => ctx.prove("Long filenames stay on one line with separate actions in narrow layouts", {
+        voiceover:vo[26],
+        action:async()=>{await ctx.client.send('Page.bringToFront');await ctx.client.send('Emulation.setDeviceMetricsOverride',{width:620,height:900,deviceScaleFactor:1,mobile:false});await ctx.eval("window.__streamingAnswerProof.showReferenceCard()");await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-title]')?.textContent.includes('正反馈')");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const t=c.querySelector('[data-testid=artifact-file-title]');const a=c.querySelector('[data-testid=artifact-file-actions]');const tr=t.getBoundingClientRect(),ar=a.getBoundingClientRect(),cr=c.getBoundingClientRect(),s=getComputedStyle(t);return {line:s.whiteSpace,ellipsis:s.textOverflow,clipped:t.scrollWidth>t.clientWidth,gap:ar.left-tr.right,inside:ar.right<=cr.right,visible:getComputedStyle(a).opacity,title:t.title,text:t.textContent}})()`);ctx.assert(g.line==='nowrap'&&g.ellipsis==='ellipsis'&&g.clipped&&g.gap>=0&&g.inside&&g.visible==='1'&&g.title===g.text,JSON.stringify(g));},
+        screenshot:{name:"reference-narrow-filename",requireText:["PDF","已保存"]},
+      }),
+    },
+    {
+      name: "Reference lightweight actions",
+      run:ctx=>ctx.prove("Lightweight file actions remain accessible without covering the title",{
+        voiceover:vo[27],
+        action:async()=>{await ctx.trustedClick('#streaming-answer-proof [data-testid=artifact-file-more]');await ctx.waitFor("document.querySelector('[role=menu]')!==null");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');return {buttons:Array.from(c.querySelectorAll('[data-testid=artifact-file-actions] button')).map(b=>({w:b.getBoundingClientRect().width,h:b.getBoundingClientRect().height,label:b.getAttribute('aria-label')})),menu:!!document.querySelector('[role=menu]')}})()`);ctx.assert(g.menu&&g.buttons.length===2&&g.buttons.every(b=>b.w===28&&b.h===28&&b.label),JSON.stringify(g));},
+        screenshot:{name:"reference-file-actions",requireText:["复制文件路径"]},
+      }).then(async()=>{await ctx.client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});await ctx.client.send('Emulation.setDeviceMetricsOverride',{width:1104,height:900,deviceScaleFactor:1,mobile:false});}),
+    },
+    {
+      name:"File card hover feedback",
+      run:ctx=>ctx.prove("Card hover changes background and border without moving content",{
+        voiceover:vo[28],
+        action:async()=>{
+          await ctx.eval("window.__streamingAnswerProof.showReferenceCard()");await ctx.waitFor("!!document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]')");
+          await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1});
+          await ctx.eval(`window.__cardMeasure=()=>{const e=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {bg:s.backgroundColor,border:s.borderColor,outline:s.outlineWidth,outlineColor:s.outlineColor,primary:(()=>{const p=document.createElement('span');p.style.color='var(--primary)';e.append(p);const color=getComputedStyle(p).color;p.remove();return color})(),w:r.width,h:r.height,x:r.x,y:r.y}};window.__cardIdle=window.__cardMeasure()`);
+          const point=await ctx.eval(`(()=>{const e=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+          await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
+          await ctx.waitFor("window.__cardMeasure().border!==window.__cardIdle.border");
+        },
+        assert:async()=>{const g=await ctx.eval("({idle:window.__cardIdle,hover:window.__cardMeasure()})");ctx.assert(g.idle.bg===g.hover.bg&&g.hover.border===g.hover.primary&&g.idle.w===g.hover.w&&g.idle.h===g.hover.h,JSON.stringify(g));await ctx.eval('window.__cardHover=window.__cardMeasure()');},
+        screenshot:{name:'card-hover-feedback',requireText:['已保存']},
+      }),
+    },
+    {
+      name:"File card press feedback",
+      run:ctx=>ctx.prove("Pressed card uses a stronger background and stays in place",{
+        voiceover:vo[29],
+        action:async()=>{const point=await ctx.eval(`(()=>{const r=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);await ctx.client.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});await ctx.waitFor('window.__cardMeasure().bg!==window.__cardHover.bg');},
+        assert:async()=>{const g=await ctx.eval('({hover:window.__cardHover,press:window.__cardMeasure()})');ctx.assert(g.hover.bg!==g.press.bg&&g.hover.w===g.press.w&&g.hover.h===g.press.h&&g.hover.x===g.press.x&&g.hover.y===g.press.y,JSON.stringify(g));},
+        screenshot:{name:'card-press-feedback',requireText:['已保存']},
+      }).finally(async()=>{const point=await ctx.eval(`(()=>{const r=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point});}),
+    },
+    {
+      name:"File card keyboard focus",
+      run:ctx=>ctx.prove("Keyboard focus gives the file card a visible focus ring",{
+        voiceover:vo[30],
+        action:async()=>{await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').focus()");await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').matches(':focus-visible')");},
+        assert:async()=>{const g=await ctx.eval('window.__cardMeasure()');ctx.assert(parseFloat(g.outline)>=2&&g.outlineColor===g.primary,JSON.stringify(g));},
+        screenshot:{name:'card-keyboard-focus',requireText:['已保存']},
+      }),
+    },
+    {
+      name:"File card download busy",
+      run:ctx=>ctx.prove("Downloading disables only download and does not open the file",{
+        voiceover:vo[31],
+        action:async()=>{await ctx.eval("window.__streamingAnswerProof.downloadBaseline=window.__streamingAnswerProof.downloadRequests||0;window.__streamingAnswerProof.openedPath=null;window.__streamingAnswerProof.downloadGate=new Promise(resolve=>window.__streamingAnswerProof.releaseDownload=resolve)");await ctx.trustedClick('#streaming-answer-proof [data-testid=artifact-file-actions] button:first-child');await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-actions] button:first-child')?.disabled");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]'),b=c.querySelector('[data-testid=artifact-file-actions] button');return {busy:b.getAttribute('aria-busy'),requests:window.__streamingAnswerProof.downloadRequests-window.__streamingAnswerProof.downloadBaseline,spinner:!!b.querySelector('.animate-spin'),cardDisabled:c.querySelector('[data-testid=artifact-file-card]').disabled,opened:window.__streamingAnswerProof.openedPath,downloaded:window.__streamingAnswerProof.downloadedPath}})()`);ctx.assert(g.busy==='true'&&g.requests===1&&g.spinner&&!g.cardDisabled&&!g.opened&&g.downloaded.endsWith('.pdf'),JSON.stringify(g));},
+        screenshot:{name:'card-download-busy',requireText:['已保存']},
+      }).finally(async()=>{await ctx.eval('window.__streamingAnswerProof.releaseDownload();window.__streamingAnswerProof.downloadGate=undefined');await ctx.waitFor("!document.querySelector('#streaming-answer-proof [data-testid=artifact-file-actions] button:first-child')?.disabled");}),
+    },
+    {
+      name: "Text interruption keeps one shared Alert despite historical image",
+      run: ctx => ctx.prove("An interrupted text turn retains its recovery hint in the shared warning Alert, independent of previous image status", {
+        voiceover: vo[32],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showStoppedText()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]')?.dataset.slot==='alert'");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]').scrollIntoView({block:'center'})");
+        },
+        assert: async () => {
+          const state = await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),e=h.querySelector('[data-testid=run-issue-notice]'),s=getComputedStyle(e),p=document.createElement('span');p.style.backgroundColor='var(--feedback-warning-background)';h.append(p);const bg=getComputedStyle(p).backgroundColor;p.remove();return {count:h.querySelectorAll('[data-testid=run-issue-notice]').length,shared:e.dataset.slot==='alert',icon:!!e.querySelector('svg'),semantic:s.backgroundColor===bg,border:s.borderTopWidth,text:e.textContent}})()`);
+          ctx.assert(state.count===1&&state.shared&&state.icon&&state.semantic&&state.border==='0px'&&state.text.includes('可以继续发送消息'),JSON.stringify(state));
+        },
+        screenshot:{name:'text-stop-shared-alert',requireText:['任务已中断','可以继续发送消息']},
       }),
     },
     {

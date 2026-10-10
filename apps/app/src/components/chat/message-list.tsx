@@ -5,6 +5,9 @@ import {
   AlertTriangle,
   CalendarDays,
   Check,
+  CircleAlert,
+  CircleCheck,
+  CirclePause,
   Clock3,
   ChevronRight,
   Copy,
@@ -13,6 +16,7 @@ import {
   FilePenLine,
   FileSearch,
   Globe,
+  Info,
   LoaderCircle,
   Pencil,
   Quote,
@@ -34,6 +38,8 @@ import { openDesktopUrl } from "@/app/lib/desktop"
 import { downloadBlobAsFile, downloadTextAsFile } from "@/app/lib/download"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t, translationKey } from "@/i18n"
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { ApplyPatchTool } from "@/components/tools/apply-patch"
 import { BashTool } from "@/components/tools/bash"
 import { EditTool } from "@/components/tools/edit"
@@ -429,10 +435,20 @@ function FileMessage({ part, tone, streaming, imageStatus, artifact }: FileMessa
       : imageStatus === "stopped" ? t("image.preview.stopped")
         : streaming ? artifact ? t("image.preview.saved_processing") : t("image.preview.generating")
           : artifact ? t("image.preview.ready") : t("image.preview.preview_ready")
+    const processing = streaming && !imageStatus
+    const statusVariant = imageStatus === "failed" && !artifact ? "destructive"
+      : imageStatus === "stopped" && !artifact ? "warning"
+        : processing ? "info" : artifact ? "success" : "info"
+    const StatusIcon = statusVariant === "destructive" ? CircleAlert
+      : statusVariant === "warning" ? CirclePause
+        : processing ? LoaderCircle : artifact ? CircleCheck : Info
     return (
       <div className="flex max-w-full flex-col items-start gap-2">
         {tone === "assistant" ? (
-          <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground" data-testid="assistant-image-status" aria-live="polite">{statusLabel}</span>
+          <Badge variant={statusVariant} data-testid="assistant-image-status" aria-live="polite">
+            <StatusIcon data-icon="inline-start" aria-hidden="true" className={processing ? "animate-spin" : undefined} />
+            {statusLabel}
+          </Badge>
         ) : null}
         <Image src={url} alt={title} compactPreview={tone !== "user"} previewMaxHeight={tone === "user" ? 160 : undefined} loading="lazy" decoding="async" />
         {tone === "assistant" && artifact ? (
@@ -1144,27 +1160,23 @@ export function RunIssueNotice({ detail, kind, onDismiss, children }: {
             : t("session.run_failed_hint")
 
   return (
-    <div className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm text-foreground" role="status" data-testid="run-issue-notice">
-      <div className="flex items-start gap-2">
-        {interrupted ? <Clock3 size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
-          : <AlertTriangle size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />}
-        <div className="min-w-0 flex-1">
-          <p className="font-medium">{title}</p>
-          <p className="mt-0.5 text-muted-foreground">{description}</p>
-          {children ? <div className="mt-2">{children}</div> : null}
-          {detail ? <details className="mt-2 text-xs text-muted-foreground">
-            <summary className="w-fit cursor-pointer hover:text-foreground">{t("session.error_details")}</summary>
-            <div className="mt-2 rounded-md border border-border bg-background p-2">
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">{detail}</pre>
-              <button type="button" className="mt-2 inline-flex items-center gap-1 hover:text-foreground" onClick={() => void navigator.clipboard.writeText(detail)}>
-                <Copy size={12} aria-hidden />{t("session.copy_error_details")}
-              </button>
-            </div>
-          </details> : null}
-        </div>
-        {onDismiss ? <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={onDismiss} aria-label={t("session.dismiss_error")}>×</button> : null}
-      </div>
-    </div>
+    <Alert variant={interrupted ? "warning" : "destructive"} onDismiss={onDismiss} closeLabel={t("session.dismiss_error")} role={interrupted ? "status" : "alert"} data-testid="run-issue-notice">
+      {interrupted ? <CirclePause aria-hidden /> : <CircleAlert aria-hidden />}
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>
+        <p>{description}</p>
+        {children ? <div className="mt-2">{children}</div> : null}
+        {detail ? <details className="mt-2 text-xs text-muted-foreground">
+          <summary className="w-fit cursor-pointer hover:text-foreground">{t("session.error_details")}</summary>
+          <div className="mt-2 rounded-md border border-border bg-background p-2">
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">{detail}</pre>
+            <button type="button" className="mt-2 inline-flex items-center gap-1 hover:text-foreground" onClick={() => void navigator.clipboard.writeText(detail)}>
+              <Copy size={12} aria-hidden />{t("session.copy_error_details")}
+            </button>
+          </div>
+        </details> : null}
+      </AlertDescription>
+    </Alert>
   )
 }
 
@@ -1673,6 +1685,10 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
   const error = deliveryError ?? activityError;
   const latestUserIndex = messages.findLastIndex(message => message.role === "user" && !isInternalContinuationMessage(message))
   const latestSessionErrorMessage = messages.slice(latestUserIndex + 1).findLast(isSessionErrorMessage)
+  const currentTurnHasStoppedImage = messages.slice(latestUserIndex + 1).some(message =>
+    message.role === "assistant" && stoppedImageMessageIds.has(message.id)
+    && message.parts.some(part => isFileUIPart(part) && getFileMediaType(part).startsWith("image/") && getFileUrl(part).length > 0),
+  )
   const latestErrorTargetId = latestTurnAssistantMessageId ?? latestSessionErrorMessage?.id
   const liveActionLabel = isStreaming
     ? getActiveToolLabel(collectToolParts(messages))
@@ -1756,7 +1772,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
         : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !latestErrorTargetId ? <AssistantRunErrorText error={error} /> : null}
-      {stopAcknowledged && !error && !latestSessionErrorMessage ? <Message className="not-prose mx-auto w-full max-w-[800px] px-0"><RunIssueNotice kind="stopped" /></Message> : null}
+      {stopAcknowledged && !error && !latestSessionErrorMessage && !currentTurnHasStoppedImage ? <Message className="not-prose mx-auto w-full max-w-[800px] px-0"><RunIssueNotice kind="stopped" /></Message> : null}
     </div>
     </StudioDeliveryPaths.Provider>
   )

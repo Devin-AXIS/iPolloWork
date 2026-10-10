@@ -92,7 +92,7 @@ See `.codex/skills/ipollowork-plugin-ui/references/plugin-contract.md` for
 the canonical v1 public-entry, build/injection and major-version contract,
 including current limitations, and `evals/flows/shared-ui-runtime.flow.mjs`
 for proof. `plugin-runtime` is an implementation entrypoint, not the production
-plugin business-script API. Runtime `1.4.0` is distinct from client/plugin
+plugin business-script API. Runtime `1.5.0` is distinct from client/plugin
 package versions; `requireRuntime(1, required, 3)` enforces minor >= 3 in major 1.
 Older two-argument callers remain compatible. There is no semver range negotiation.
 The built-in production plugin was installed in a dedicated Electron dev

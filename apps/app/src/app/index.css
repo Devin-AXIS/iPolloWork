@@ -789,13 +789,27 @@ html:lang(zh).ipollowork-electron.ipollowork-platform-mac .media-composer-contro
 .chat-output-title code { font:inherit; background:transparent; padding:0; }
 
 /* File list actions stay inside the same card at every panel width. */
-[data-testid="artifact-file-shell"] > .chat-output-card { width:100%; }
+.artifact-file-shell { --ring:var(--primary); display:flex; align-items:center; gap:8px; min-width:0; width:min(100%,360px); min-height:56px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:var(--background); box-shadow:none; }
+.artifact-file-shell:has(> .chat-output-card:not(:disabled):hover) { background:var(--background); border-color:var(--primary); }
+.artifact-file-shell:has(> .chat-output-card:not(:disabled):active) { background:color-mix(in srgb,var(--muted) 65%,var(--background)); }
+.artifact-file-shell:has(> .chat-output-card:focus-visible) { outline:2px solid var(--ring); outline-offset:2px; }
+.artifact-file-shell > .chat-output-card { flex:1; width:auto; min-width:0; min-height:36px; padding:0; border:0; border-radius:0; background:transparent; }
+.artifact-file-shell > .chat-output-card:hover, .artifact-file-shell > .chat-output-card:active { background:transparent; }
+.artifact-file-shell > .chat-output-card:focus-visible { box-shadow:none; }
+.artifact-file-shell .chat-output-title { display:block; width:100%; white-space:nowrap; font-size:var(--ui-control-size); line-height:var(--ui-control-line); }
+.artifact-file-shell .chat-output-icon:not([data-artifact-thumbnail]) { width:36px; height:36px; overflow:visible; border-radius:0; background:transparent; }
+.artifact-file-shell .artifact-file-document { width:26px; height:30px; stroke-width:1.3; }
+.artifact-file-shell .chat-output-icon[data-artifact-thumbnail] { width:52px; height:36px; }
+.artifact-file-extension { position:absolute; right:0; bottom:2px; max-width:44px; overflow:hidden; padding:1px 3px; border-radius:3px; background:var(--muted); color:var(--muted-foreground); font-size:9px; font-weight:600; line-height:12px; }
+.artifact-file-meta { display:flex; min-width:0; white-space:nowrap; font-size:var(--ui-meta-size); line-height:var(--ui-meta-line); color:var(--muted-foreground); }
+.artifact-file-details { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.artifact-file-saved { flex-shrink:0; white-space:pre; }
+.artifact-file-meta .chat-output-description { display:inline; font:inherit; }
 .chat-output-icon svg { color:var(--muted-foreground); stroke-width:1.8; }
-[data-testid="artifact-file-actions"] { right:10px; }
-[data-testid="artifact-file-actions"] button { box-shadow:none; }
+[data-testid="artifact-file-actions"] button:not(:disabled):active { background:var(--muted); color:var(--foreground); }
 
 /* File cards use the same responsive rows in Markdown and output lists. */
-.chat-output-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:12px; }
+.chat-output-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr)); gap:12px; }
 .chat-output-grid .chat-output-card { display:flex; width:100%; min-width:0; }
 
 .chat-output-card { padding-top:7px; padding-bottom:7px; }
