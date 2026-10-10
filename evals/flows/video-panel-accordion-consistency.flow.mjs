@@ -79,7 +79,7 @@ export default {
         },
         assert: async () => {
           const rows = await studioEval(ctx, contextId, headerStyles);
-          ctx.assert(rows.length >= 2 && rows.every(row => row.height === "48px" && row.font === "13px" && row.arrow), JSON.stringify(rows));
+          ctx.assert(rows.length >= 2 && rows.every(row => row.height === "36px" && row.font === "13px" && row.arrow), JSON.stringify(rows));
           ctx.assert(rows[0].expanded === "false" && rows[1].expanded === "true" && !rows[0].accent && rows[1].accent, JSON.stringify(rows));
         },
         screenshot: { name: "component-groups" },
@@ -106,7 +106,7 @@ export default {
         },
         assert: async () => {
           const rows = await studioEval(ctx, contextId, headerStyles);
-          ctx.assert(rows.length >= 2 && rows.every(row => row.height === "48px" && row.font === "13px" && row.arrow), JSON.stringify(rows));
+          ctx.assert(rows.length >= 2 && rows.every(row => row.height === "36px" && row.font === "13px" && row.arrow), JSON.stringify(rows));
           ctx.assert(rows[0].expanded === "false" && rows[1].expanded === "true" && !rows[0].accent && rows[1].accent, JSON.stringify(rows));
         },
         screenshot: { name: "asset-groups" },
@@ -133,7 +133,7 @@ export default {
         assert: async () => {
           const before = await studioEval(ctx, contextId, headerStyles);
           ctx.assert(before.length >= 2 && before[0].expanded === "true" && before[0].accent, JSON.stringify(before));
-          ctx.assert(before.every(row => row.height === "48px" && row.font === "13px" && row.arrow), JSON.stringify(before));
+          ctx.assert(before.every(row => row.height === "36px" && row.font === "13px" && row.arrow), JSON.stringify(before));
           ctx.assert(await studioEval(ctx, contextId,
             `Boolean(document.querySelector('[data-flat-group-open] [data-flat-group-content]'))`),
             "Default layer group has editable content");

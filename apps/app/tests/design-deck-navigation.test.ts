@@ -134,8 +134,8 @@ describe("Design deck navigation", () => {
   test("keeps the floating toolbar spacing compact and consistent", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('items-center gap-4 rounded-lg border border-border bg-popover px-4 py-2');
-    expect(source).toContain('<div className="flex items-center gap-3">');
+    expect(source).toContain('items-center gap-2 rounded-lg border border-border bg-popover px-2 py-1');
+    expect(source).toContain('<div className="flex items-center gap-1.5">');
     expect(source).toContain('<div className="flex items-center gap-1">');
     expect(source).not.toContain("gap-[17px]");
   });
@@ -273,7 +273,10 @@ describe("Design deck navigation", () => {
   test("uses consistent toolbar icons and constrains free dragging to the preview", async () => {
     const source = await Bun.file(panelUrl).text();
     expect(source).toContain('<GripVertical className="size-4" strokeWidth={1.5} />');
-    expect(source).toContain('import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg"');
+    expect(source).toContain('<Type className="size-3.5" aria-hidden="true" />');
+    expect(source).toContain('<Sparkles className="size-4" aria-hidden="true" />');
+    expect(source).not.toContain('floating-toolbar-edit-text.svg');
+    expect(source).not.toContain('floating-toolbar-ai.svg');
     expect(source).toContain('label={t("design.toolbar.drag")}');
     expect(source).toContain("onPointerMove={moveFloatingToolbar}");
     expect(source).toContain("viewport.clientWidth - toolbar.offsetWidth - padding");

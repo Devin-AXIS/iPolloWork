@@ -60,6 +60,7 @@ import {
   artifactPathMatchesTarget,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { MessageContent } from "@/components/ui/message";
 import { formatBytes } from "@/app/utils";
 import { useEnginePackages } from "@/react-app/domains/engines/use-engine-packages";
@@ -608,23 +609,12 @@ function EngineStartupGate({
           </div>
         ) : busy ? (
           <div className="mt-6 text-left" role="status" aria-live="polite">
-            <div
-              className="h-1.5 overflow-hidden rounded-full bg-dls-hover"
+            <Progress
+              value={percent}
               data-testid="engine-download-progress"
-              role="progressbar"
               aria-label={status}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={percent ?? undefined}
-            >
-              <div
-                className={cn(
-                  "h-full rounded-full bg-foreground transition-[width] duration-300",
-                  percent == null && "w-1/3 animate-pulse",
-                )}
-                style={percent == null ? undefined : { width: `${percent}%` }}
-              />
-            </div>
+              getAriaValueText={() => status}
+            />
             <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-dls-secondary">
               <span>{status}</span>
               {engine.downloadedBytes != null ? (
@@ -5011,8 +5001,8 @@ export function SessionPage(props: SessionPageProps) {
                   aria-orientation="vertical"
                   onPointerDown={startRightPanelResize}
                   className={cn(
-                    "relative z-20 hidden w-2 shrink-0 cursor-ew-resize touch-none lg:block",
-                    (!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none w-0",
+                    "relative z-30 -mr-2 hidden w-2 shrink-0 cursor-ew-resize touch-none lg:block",
+                    (!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none mr-0 w-0",
                   )}
                 />
                 <aside

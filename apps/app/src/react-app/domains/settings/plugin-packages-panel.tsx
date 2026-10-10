@@ -834,7 +834,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
               })}>{t("plugin_platform.rollback")}</Button> : null}
             </div>
           </details>
-        {error ? <div role="alert" className="mt-4 rounded-xl border border-red-6 bg-red-2 px-4 py-3 text-xs text-red-11">{error}</div> : null}
+        {error ? <div role="alert" className="mt-4 rounded-xl border-0 bg-feedback-error px-4 py-3 text-xs text-red-11">{error}</div> : null}
         <PluginAuthorizationDialog
           open={authorizationEditor !== null}
           item={authorizationEditor?.item ?? null}
@@ -1076,7 +1076,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         ) : null}
       </section>
 
-      {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
+      {error ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{error}</div> : null}
       <PluginPackageImportModal
         open={importOpen}
         client={props.client}

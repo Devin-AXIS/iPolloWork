@@ -52,9 +52,9 @@ type SettingsPanelTitleProps = {
   className?: string;
 };
 
-export const settingsPageTitleClass = "text-2xl font-semibold leading-8 text-dls-text";
-export const settingsPageDescriptionClass = "settings-description mt-1.5 text-ui-control leading-5 text-dls-secondary";
-export const settingsSectionTitleClass = "text-ui-body font-semibold text-dls-text";
+export const settingsPageTitleClass = "text-ui-page-title font-semibold text-dls-text";
+export const settingsPageDescriptionClass = "settings-description mt-1.5 text-ui-body text-dls-secondary";
+export const settingsSectionTitleClass = "text-ui-section-title font-semibold text-dls-text";
 
 export function SettingsPanelTitle(props: SettingsPanelTitleProps) {
   return <h2 className={cn(settingsPageTitleClass, props.className)}>{props.children}</h2>;
@@ -65,7 +65,7 @@ type SettingsPanelDescriptionProps = {
 };
 
 export function SettingsPanelDescription(props: SettingsPanelDescriptionProps) {
-  return <p className="settings-description text-ui-control leading-5 text-muted-foreground">{props.children}</p>;
+  return <p className="settings-description text-ui-body text-muted-foreground">{props.children}</p>;
 }
 
 type SettingsPanelToolbarProps = {

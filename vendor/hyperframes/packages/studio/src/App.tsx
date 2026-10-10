@@ -650,7 +650,7 @@ export function StudioApp() {
                       hidden={activeViewMode === "storyboard"}
                       previewOnly={previewMode}
                       right={
-                        panelLayout.rightCollapsed ? null : (
+                        <div style={{ display: panelLayout.rightCollapsed ? "none" : "contents" }}>
                           <Suspense
                             fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}
                           >
@@ -676,7 +676,7 @@ export function StudioApp() {
                               onAddBlock={handleAddBlock}
                             />
                           </Suspense>
-                        )
+                        </div>
                       }
                       timelineToolbar={timelineToolbar}
                       renderClipContent={renderClipContent}

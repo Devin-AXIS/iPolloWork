@@ -204,7 +204,8 @@ describe("template market actions", () => {
     expect(marketDialog).toContain("max-h-[calc(100dvh-32px)] max-w-[calc(100dvw-32px)] resize");
     expect(marketDialog).toContain("[&>[data-slot=dialog-close]]:top-[29px]");
     expect(marketDialog).toContain('className="mt-4 w-full shrink-0 px-6"');
-    expect(marketDialog).toContain('className="relative mt-4 w-full"');
+    expect(marketDialog).toContain('<InputGroup className="mt-4">');
+    expect(marketDialog).toContain('<InputGroupInput value={query}');
     expect(marketDialog).toContain('className="mt-3 flex min-h-9 items-center overflow-x-auto"');
     expect(marketDialog).toContain('className="mt-2 flex h-9 items-center gap-4 overflow-x-auto"');
     expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6"');
@@ -221,9 +222,9 @@ describe("template market actions", () => {
     expect(marketDialog).toContain('border-2 border-transparent bg-muted/50 pb-4 transition-colors duration-150 hover:border-[var(--project-dialog-accent)]');
     expect(marketDialog).toContain('className="relative block h-[137px] w-full shrink-0');
     expect(marketDialog).toContain('t("template_market.favorite")');
-    expect(marketDialog).toContain('category === id ? "bg-foreground text-background" : "text-foreground hover:bg-muted"');
+    expect(marketDialog).toContain('variant={category === id ? "secondary" : "ghost"}');
     expect(marketDialog).toContain('t("template_market.all_types")');
-    expect(marketDialog).toContain("items-center justify-center gap-1.5 whitespace-nowrap");
+    expect(marketDialog).toContain('aria-pressed={category === id}');
     expect(marketDialog).not.toMatch(/#[0-9a-f]{3,8}/i);
     expect(marketDialog).not.toContain("rgba(");
     expect(marketDialog).not.toContain("widthClass");
@@ -232,7 +233,7 @@ describe("template market actions", () => {
     expect(marketDialog.match(/w-full[^\"]*px-6/g)).toHaveLength(3);
     expect(marketDialog).not.toContain("ml-[57px]");
     expect(marketDialog).toContain('t("template_market.type_label")');
-    expect(marketDialog).toContain("bg-transparent px-4 font-['PingFang_SC',sans-serif]");
+    expect(marketDialog).toContain('variant={myCollection === item ? "secondary" : "ghost"}');
     expect(marketDialog).toContain('className="ml-auto flex shrink-0 items-center gap-2"');
     expect(marketDialog).not.toContain('view === "my" ? "mt-4" : "mt-5"');
   });

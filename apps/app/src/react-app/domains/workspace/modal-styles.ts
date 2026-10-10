@@ -43,10 +43,10 @@ export const infoBannerClass =
   "rounded-[20px] border border-dls-border bg-dls-hover px-4 py-3 text-[13px] text-dls-secondary";
 
 export const warningBannerClass =
-  "rounded-[20px] border border-amber-7/20 bg-amber-3/30 px-4 py-3 text-[13px] text-amber-11";
+  "rounded-[20px] border-0 bg-feedback-warning px-4 py-3 text-[13px] text-amber-11";
 
 export const errorBannerClass =
-  "rounded-[20px] border border-red-7/20 bg-red-1/40 px-4 py-3 text-[13px] text-red-11";
+  "rounded-[20px] border-0 bg-feedback-error px-4 py-3 text-[13px] text-red-11";
 
 export const successBannerClass =
   "rounded-[20px] border border-emerald-7/20 bg-emerald-3/30 px-4 py-3 text-[13px] text-emerald-11";

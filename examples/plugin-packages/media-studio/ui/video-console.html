@@ -115,9 +115,9 @@
     #generationLabel { font-size:14px; font-weight:500; }
     #generationDetails,#generationStage,#generationHint { font-size:12px; }
     .generation-progress { display:grid; gap:8px; width:min(280px,100%); margin:8px 0; font-size:12px; }
-    #generationProgress { appearance:none; width:100%; height:4px; border:0; border-radius:4px; overflow:hidden; background:var(--surface-muted); }
+    #generationProgress { appearance:none; width:100%; height:6px; border:0; border-radius:999px; overflow:hidden; background:var(--surface-muted); accent-color:#1FBAC0; }
     #generationProgress::-webkit-progress-bar { background:var(--surface-muted); }
-    #generationProgress::-webkit-progress-value { background:var(--accent); border-radius:4px; transition:width 1s linear; }
+    #generationProgress::-webkit-progress-value { background:#1FBAC0; border-radius:999px; transition:width 1s linear; }
 
     .toolbar { top:calc(14px + var(--workbench-hint-space, 0px)); }
     .workbench-back { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 8px; flex-shrink:0; border:0; border-radius:8px; background:transparent; color:var(--text); font-size:12px; }
@@ -404,12 +404,14 @@ SOFTWARE.
       if(generating){
         state.generationStartedAt ||= job?.createdAt || Date.now();
         const elapsed=Math.max(0,Math.floor((Date.now()-(job?.createdAt||state.generationStartedAt))/1000));
-        const percent=job?.status==="succeeded"?100:Math.min(95,Math.floor(95*(1-Math.exp(-elapsed/100))));
+        const estimating=job?.status==="running";
+        const percent=Math.min(95,Math.floor(95*(1-Math.exp(-elapsed/100))));
         const en=document.documentElement.lang.startsWith("en");
         $("#generationLabel").textContent=en?"Generating video":"正在生成视频";
         $("#generationDetails").textContent=`${model()?.label||state.model} · ${state.duration}s · ${state.ratio}`;
-        $("#generationPercent").textContent=`${en?"Estimated progress":"预计进度"} ${percent}%`;
-        $("#generationProgress").value=percent;
+        $("#generationPercent").textContent=estimating?`${en?"Estimated progress":"预计进度"} ${percent}%`:"";
+        $("#generationProgress").hidden=!estimating;
+        if(estimating)$("#generationProgress").value=percent;
         $("#generationProgress").setAttribute("aria-label",en?"Estimated progress":"预计进度");
         const stage=job?.status==="succeeded"?(en?"Loading video":"正在加载视频"):!job?(en?"Submitting":"正在提交"):job.status==="queued"?(en?"Queued":"排队中"):(en?"Generating":"生成中");
         $("#generationStage").textContent=`${stage} · ${en?"Elapsed":"已等待"} ${Math.floor(elapsed/60)}:${String(elapsed%60).padStart(2,"0")}`;

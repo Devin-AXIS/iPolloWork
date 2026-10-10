@@ -152,8 +152,8 @@ export function SettingsNotice({
   return (
     <div
       className={cn(
-        "rounded-xl border border-dls-border bg-dls-hover px-3 py-2 text-xs text-muted-foreground",
-        tone === "error" && "border-red-7/30 bg-red-1/40 text-red-11",
+        "rounded-xl border-0 bg-feedback-info px-3 py-2 text-xs text-muted-foreground",
+        tone === "error" && "bg-feedback-error text-red-11",
         className,
       )}
     >
@@ -188,7 +188,7 @@ interface SettingsItemHeaderTitleProps {
 
 export function SettingsSectionHeaderTitle({ children, className }: SettingsItemHeaderTitleProps) {
   return (
-    <div className={cn("flex items-center gap-2 text-ui-body font-semibold text-dls-text", className)}>
+    <div className={cn("flex items-center gap-2 text-ui-section-title font-semibold text-dls-text", className)}>
       {children}
     </div>
   );

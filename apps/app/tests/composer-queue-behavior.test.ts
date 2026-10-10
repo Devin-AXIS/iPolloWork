@@ -58,6 +58,8 @@ describe("composer queue behavior", () => {
     expect(busyActions).toContain('title={t("composer.queue_hint")}');
     expect(busyActions).not.toContain("onSteer");
     expect(composerSource).not.toContain("onSteer:");
+    expect(composerSource).toContain('import { Button } from "@/components/ui/button"');
+    expect(busyActions).toContain('size="icon"');
   });
 
   test("keeps Enter as submit while the visible session refreshes in the background", () => {

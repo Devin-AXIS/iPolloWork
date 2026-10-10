@@ -6,6 +6,8 @@ import type { ModelRef } from "@/app/types";
 import { resolveModelDisplayName } from "@/app/utils";
 import { ModelListContent } from "@/components/model-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { composerMenuSurfaceClassName } from "@/components/ui/menu-styles";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +70,7 @@ export function ModelBehaviorMenu({
   };
 
   return (
+    <Tooltip open={open ? false : undefined}>
     <Popover
       open={open}
       onOpenChange={(nextOpen) => {
@@ -75,32 +78,33 @@ export function ModelBehaviorMenu({
         if (!nextOpen) setView("root");
       }}
     >
-      <PopoverTrigger
+      <TooltipTrigger render={<PopoverTrigger
         type="button"
+        data-testid={appearance === "composer" ? "composer-model-trigger" : undefined}
         disabled={disabled}
         aria-label={`${t("model_picker.change_model")} ${hasBehavior ? `· ${t("composer.behavior_label")}` : ""}`}
         className={cn(
           "inline-flex items-center gap-1.5 transition-colors disabled:pointer-events-none disabled:opacity-60",
           appearance === "composer"
-            ? "me-2 h-8 min-w-0 max-w-72 flex-[0_1_auto] rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7"
-            : "h-9 w-full justify-between rounded-lg border border-border bg-background px-3 text-[13px] text-foreground shadow-xs hover:bg-gray-2 data-[state=open]:border-ring data-[state=open]:ring-3 data-[state=open]:ring-ring/30",
+            ? "me-1 h-8 min-w-0 max-w-72 flex-[0_1_auto] rounded-full bg-transparent px-2 text-xs leading-[18px] text-gray-10 hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:max-w-32"
+            : "h-8 w-full justify-between rounded-lg border border-border bg-background px-3 text-[13px] text-foreground shadow-xs hover:bg-gray-2 data-[state=open]:border-ring data-[state=open]:ring-3 data-[state=open]:ring-ring/30",
         )}
-      >
-        <span className="truncate @max-[560px]/composer:hidden">{summary}</span>
-        <span className="hidden truncate @max-[560px]/composer:inline">{modelLabel}</span>
+      />}>
+        <span className="min-w-0 truncate">{summary}</span>
         <ChevronDown className={cn("shrink-0", appearance === "composer" ? "size-3.5 [stroke-width:1.75]" : "size-4")} />
-      </PopoverTrigger>
+      </TooltipTrigger>
+      <TooltipContent>{summary}</TooltipContent>
       <PopoverContent
         side={appearance === "composer" ? "top" : "bottom"}
         align="start"
         sideOffset={appearance === "composer" ? 8 : 6}
-        className="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1.5"
+        className={cn(appearance === "composer" && composerMenuSurfaceClassName, "w-[min(18rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1 text-xs")}
       >
         {view === "root" ? (
           <div className="space-y-1">
             <button
               type="button"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-gray-2"
+              className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-gray-2"
               onClick={() => setView("model")}
             >
               <span className="flex-1 font-medium">{t("model_picker.change_model")}</span>
@@ -110,7 +114,7 @@ export function ModelBehaviorMenu({
             {hasBehavior ? (
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-gray-2"
+                className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-gray-2"
                 onClick={() => setView("behavior")}
               >
                 <span className="flex-1 font-medium">{t("model_behavior.title_reasoning_effort")}</span>
@@ -121,7 +125,7 @@ export function ModelBehaviorMenu({
           </div>
         ) : null}
         {view === "model" ? (
-          <div className="flex h-80 flex-col">
+          <div className="flex h-72 flex-col">
             <MenuBackButton label={t("model_picker.change_model")} onClick={() => setView("root")} />
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <ModelListContent
@@ -148,7 +152,7 @@ export function ModelBehaviorMenu({
                 <button
                   key={option.value ?? "default"}
                   type="button"
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left hover:bg-gray-2"
+                  className="flex min-h-8 w-full items-center justify-between rounded-md px-2 py-1 text-left text-xs hover:bg-gray-2"
                   onClick={() => selectBehavior(option.value)}
                 >
                   <span>{option.label}</span>
@@ -160,12 +164,13 @@ export function ModelBehaviorMenu({
         ) : null}
       </PopoverContent>
     </Popover>
+    </Tooltip>
   );
 }
 
 function MenuBackButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button type="button" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium hover:bg-gray-2" onClick={onClick}>
+    <button type="button" className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs font-medium hover:bg-gray-2" onClick={onClick}>
       <ChevronLeft className="size-4" />
       {label}
     </button>

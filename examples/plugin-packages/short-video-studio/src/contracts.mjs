@@ -19,7 +19,7 @@ export const manifest = {
   description: '创作画布、剧本分镜、角色素材、Work 模型生成与原生多轨剪辑交接。独立安装，左侧对话控制。',
   category: '设计与创作', defaultEnabled: true,
   source: { format: 'ipollowork-extension-manifest', origin: 'builtin', trusted: true },
-  package: { version: '0.1.0', publisher: { id: 'smart-future-school', name: '智慧未来学校' }, compatibility: { ipollowork: '>=0.21.0' }, updateId: 'smart-future-school/short-video-studio' },
+  package: { version: '0.1.3', publisher: { id: 'smart-future-school', name: '智慧未来学校' }, compatibility: { ipollowork: '>=0.21.0' }, updateId: 'smart-future-school/short-video-studio' },
   permissions: [
     { id: 'workspace-read', reason: '读取用户选择的短片图片、视频和音频。' },
     { id: 'workspace-write', reason: '保存独立短片项目和新建多轨剪辑工程；不覆盖已有剪辑。' },

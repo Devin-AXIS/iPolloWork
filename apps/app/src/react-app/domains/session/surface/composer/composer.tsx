@@ -4,8 +4,11 @@ import { flushSync } from "react-dom";
 import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { composerMenuSurfaceClassName } from "@/components/ui/menu-styles";
+import { cn } from "@/lib/utils";
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
 import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
@@ -191,22 +194,27 @@ function ContextHealth({
   const limitLabel = health.contextWindow ? formatContextTokenCount(health.contextWindow) : t("composer.context_limit_unknown");
   const percentageLabel = health.percentage === null ? "—" : `${health.percentage}%`;
   const summary = `${usedLabel} / ${limitLabel}${health.percentage === null ? "" : ` · ${percentageLabel}`}`;
+  const [contextOpen, setContextOpen] = useState(false);
 
   return (
-    <Popover>
-      <PopoverTrigger
+    <Tooltip open={contextOpen ? false : undefined}>
+    <Popover open={contextOpen} onOpenChange={setContextOpen}>
+      <TooltipTrigger render={<PopoverTrigger render={<Button
         type="button"
+        variant="ghost"
+        size="sm"
         data-testid="composer-context-health"
         aria-label={`${t("composer.context_health")}: ${summary}`}
-        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2.5 text-[12px] font-medium leading-[18px] transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:w-8 @max-[560px]/composer:justify-center @max-[560px]/composer:px-0 ${health.compressionWarning ? "text-amber-11" : "text-gray-10"}`}
-      >
+        className={cn("h-8 rounded-full px-2.5 text-xs text-gray-10 @max-[560px]/composer:w-8 @max-[560px]/composer:px-0", health.compressionWarning && "text-amber-11")}
+      />} />}>
         <ContextProgress percentage={health.percentage} />
         <span className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden">{percentageLabel}</span>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="end" sideOffset={8} className="w-72 gap-0 rounded-2xl p-4">
+      </TooltipTrigger>
+      <TooltipContent>{`${t("composer.context_health")}: ${summary}`}</TooltipContent>
+      <PopoverContent side="top" align="end" sideOffset={8} className={cn(composerMenuSurfaceClassName, "w-64 gap-0 p-2.5 text-xs")}>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-sm font-medium text-gray-11">{t("composer.context_health")}</span>
-          <span className={`text-sm font-semibold tabular-nums ${health.compressionWarning ? "text-amber-11" : "text-gray-12"}`}>
+          <span className="text-xs font-medium text-gray-11">{t("composer.context_health")}</span>
+          <span className={`text-xs font-semibold tabular-nums ${health.compressionWarning ? "text-amber-11" : "text-gray-12"}`}>
             {percentageLabel}
           </span>
         </div>
@@ -216,7 +224,7 @@ function ContextHealth({
             style={{ width: `${Math.min(100, health.percentage ?? 0)}%` }}
           />
         </div>
-        <dl className="mt-4 space-y-2 text-sm">
+        <dl className="mt-3 space-y-1.5 text-xs">
           <div className="flex items-center justify-between gap-4">
             <dt className="text-gray-10">{t("composer.context_usage_label")}</dt>
             <dd className="font-medium tabular-nums text-gray-12">{usedLabel}</dd>
@@ -234,15 +242,16 @@ function ContextHealth({
         {compactionAvailable !== undefined ? (
           <div className="mt-4 border-t border-gray-4 pt-3">
             {compactionAvailable ? (
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 data-testid="composer-compact-session"
                 disabled={compacting || compactionDisabled}
                 onClick={() => { void onCompact?.(); }}
-                className="w-full rounded-lg bg-gray-3 px-3 py-2 text-sm font-medium text-gray-12 transition-colors hover:bg-gray-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full"
               >
                 {t(compacting ? "session.assistant_compacting" : "session.compact_now")}
-              </button>
+              </Button>
             ) : (
               <p className="text-xs leading-5 text-gray-10">{t("session.compaction_unavailable")}</p>
             )}
@@ -260,6 +269,7 @@ function ContextHealth({
         ) : null}
       </PopoverContent>
     </Popover>
+    </Tooltip>
   );
 }
 
@@ -1276,7 +1286,7 @@ export function ReactSessionComposer(props: ComposerProps) {
             </div>
           ) : null}
 
-          {/* Keep the editor and actions at their original height; accessories add space above. */}
+          {/* Keep the editor and actions at the designed height; accessories add space above. */}
           <div className="flex h-[120px] shrink-0 flex-col px-4 pt-3 pb-2">
             {/* Editor */}
             <LexicalPromptEditor
@@ -1380,10 +1390,13 @@ export function ReactSessionComposer(props: ComposerProps) {
                     event.currentTarget.value = "";
                   }}
                 />
-                <div ref={plusMenuRef} className="relative me-2 shrink-0">
-                  <button
+                <div ref={plusMenuRef} className="relative me-1 shrink-0">
+                  <Tooltip open={accessModeOpen ? false : undefined}>
+                    <TooltipTrigger render={<Button
                     type="button"
-                    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "bg-transparent text-gray-10 hover:bg-gray-3 hover:text-gray-12"}`}
+                    variant="ghost"
+                    size="icon"
+                    className={cn("rounded-full text-gray-10", plusMenuOpen && "bg-gray-3 text-gray-12")}
                     onClick={() => {
                       setWorkModeOpen(false);
                       setPlusMenuLoadState("loading");
@@ -1391,16 +1404,18 @@ export function ReactSessionComposer(props: ComposerProps) {
                     }}
                     aria-expanded={plusMenuOpen}
                     aria-haspopup="dialog"
-                    title={t("composer.plus_menu_label")}
-                  >
+                    aria-label={t("composer.plus_menu_label")}
+                  />}>
                     <Plus size={16} strokeWidth={1.75} />
-                  </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("composer.plus_menu_label")}</TooltipContent>
+                  </Tooltip>
                   {plusMenuOpen ? (
                     <div
                       data-testid="composer-plus-menu"
                       role="dialog"
                       aria-label={t("composer.plus_menu_label")}
-                      className="absolute bottom-full left-0 z-40 mb-2 max-h-[min(56dvh,26rem)] w-[min(24rem,calc(100cqw-2rem))] overflow-y-auto rounded-xl border border-dls-border bg-dls-surface p-1.5"
+                      className={cn(composerMenuSurfaceClassName, "absolute bottom-full left-0 z-40 mb-2 max-h-[min(52dvh,24rem)] w-[min(20rem,calc(100cqw-2rem))] overflow-y-auto p-1 text-xs [&_[data-slot=button]]:h-7 [&_[data-slot=button]]:justify-start [&_[data-slot=button]]:text-xs")}
                       onMouseDown={(event) => {
                         if (event.target instanceof Element && event.target.closest("button")) event.preventDefault();
                       }}
@@ -1413,12 +1428,13 @@ export function ReactSessionComposer(props: ComposerProps) {
                     >
                       {plusMenuLoadState === "loading" || plusMenuLoadState === "error" ? <div className="flex items-center justify-between px-2.5 py-0.5 text-[10px] text-gray-10" role="status" aria-live="polite">
                         <span>{plusMenuLoadState === "loading" ? t(plusMenuData ? "composer.plus_previous_refreshing" : "composer.plus_refreshing") : plusMenuLoadState === "error" ? t(plusMenuData ? "composer.plus_previous_failed" : "composer.plus_refresh_failed") : null}</span>
-                        {plusMenuLoadState === "error" ? <button type="button" className="rounded px-1.5 py-0.5 font-medium text-gray-12 hover:bg-gray-3" onClick={() => { setPlusMenuLoadState("loading"); setPlusMenuRefresh((version) => version + 1); }}>{t("common.retry")}</button> : null}
+                        {plusMenuLoadState === "error" ? <Button type="button" variant="ghost" size="xs" onClick={() => { setPlusMenuLoadState("loading"); setPlusMenuRefresh((version) => version + 1); }}>{t("common.retry")}</Button> : null}
                       </div> : null}
                       <div className="px-2.5 pb-0.5 pt-0.5 text-[10px] font-semibold text-gray-10">{t("composer.plus_section_add")}</div>
-                      <button
+                      <Button
                         type="button"
-                        className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3"
+                        variant="ghost"
+                        className="w-full justify-start"
                         onClick={() => {
                           const input = fileInput;
                           flushSync(() => setPlusMenuOpen(false));
@@ -1427,11 +1443,12 @@ export function ReactSessionComposer(props: ComposerProps) {
                       >
                         <span className="flex size-4 shrink-0 items-center justify-center"><Paperclip className="size-3.5 text-gray-9" aria-hidden /></span>
                         <span>{t("composer.plus_attach_files")}</span>
-                      </button>
+                      </Button>
                       {props.onOpenTemplateMarket ? (
-                        <button
+                        <Button
                           type="button"
-                          className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3"
+                          variant="ghost"
+                          className="w-full justify-start"
                           onClick={() => {
                             setPlusMenuOpen(false);
                             props.onOpenTemplateMarket?.();
@@ -1439,51 +1456,51 @@ export function ReactSessionComposer(props: ComposerProps) {
                         >
                           <span className="flex size-4 shrink-0 items-center justify-center"><TemplateIcon className="size-3 opacity-60" /></span>
                           <span>{t("composer.plus_use_template")}</span>
-                        </button>
+                        </Button>
                       ) : null}
 
                       <div className="mx-2.5 my-0.5 border-t border-dls-border" />
                       <div className="flex items-center justify-between px-2.5 pb-0.5 pt-0.5">
                         <span className="text-[10px] font-semibold text-gray-10">{t("composer.extensions_label")}</span>
                         {props.onOpenSettingsSection ? (
-                          <button type="button" className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-10 hover:bg-gray-3 hover:text-gray-12" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("plugins"); }}>
+                          <Button type="button" variant="ghost" size="xs" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("plugins"); }}>
                             {t("composer.configure")}
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
                       {composerExtensions.length > 0 ? composerExtensions.map((entry) => (
-                        <button key={entry.pluginId} type="button" disabled={!menuDataReady} className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:cursor-default disabled:hover:bg-transparent" onClick={() => applyExtensionSelection(entry)}>
+                        <Button key={entry.pluginId} type="button" variant="ghost" disabled={!menuDataReady} className="w-full justify-start" onClick={() => applyExtensionSelection(entry)}>
                           <span className="flex size-4 shrink-0 items-center justify-center">{extensionIcon(entry, 16)}</span>
                           <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                           <span className="max-w-[45%] shrink-0 truncate text-[10px] font-normal text-gray-10">{entry.manifest.description}</span>
-                        </button>
+                        </Button>
                       )) : <div className="px-2.5 py-1 text-[11px] text-gray-9">{menuDataReady ? t("composer.no_extensions_enabled") : plusMenuLoadState === "error" ? t("composer.plus_refresh_failed") : t("common.loading")}</div>}
 
                       <div className="mx-2.5 my-0.5 border-t border-dls-border" />
                       <div className="px-2.5 pb-0.5 pt-0.5 text-[10px] font-semibold text-gray-10">{t("composer.external_agents_label")}</div>
                       {(plusMenuData?.externalAgents ?? []).length > 0 ? plusMenuData?.externalAgents.map((agent) => (
-                        <button key={agent.pluginId} type="button" disabled={!menuDataReady} className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:opacity-60" onClick={() => applyExternalAgentSelection(agent)}>
+                        <Button key={agent.pluginId} type="button" variant="ghost" disabled={!menuDataReady} className="w-full justify-start" onClick={() => applyExternalAgentSelection(agent)}>
                           <Bot className="size-3.5 shrink-0 text-gray-9" aria-hidden />
                           <span className="min-w-0 flex-1 truncate">{agent.name}</span>
                           <span className="max-w-[45%] shrink-0 truncate text-[10px] font-normal text-gray-10">{agent.manifest.description}</span>
-                        </button>
+                        </Button>
                       )) : <div className="px-2.5 py-1 text-[11px] text-gray-9">{menuDataReady ? t("composer.no_external_agents") : plusMenuLoadState === "error" ? t("composer.plus_refresh_failed") : t("common.loading")}</div>}
 
                       <div className="mx-2.5 my-0.5 border-t border-dls-border" />
                       <div className="flex items-center justify-between px-2.5 pb-0.5 pt-0.5">
                         <span className="text-[10px] font-semibold text-gray-10">{t("composer.mcps_label")}</span>
                         {props.onOpenSettingsSection ? (
-                          <button type="button" className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-10 hover:bg-gray-3 hover:text-gray-12" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("mcps"); }}>
+                          <Button type="button" variant="ghost" size="xs" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("mcps"); }}>
                             {t("composer.configure")}
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
                       {activeMcpItems.length > 0 ? activeMcpItems.map(({ entry, status }) => (
-                        <button key={entry.name} type="button" disabled={!props.onOpenSettingsSection} className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:cursor-default disabled:hover:bg-transparent" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("mcps"); }}>
+                        <Button key={entry.name} type="button" variant="ghost" disabled={!props.onOpenSettingsSection} className="w-full justify-start" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("mcps"); }}>
                           <Plug className="size-3.5 shrink-0 text-gray-9" aria-hidden />
                           <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                           <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${status && menuDataReady ? mcpStatusBadgeClass(status) : "bg-gray-3 text-gray-10"}`}>{status && menuDataReady ? formatMcpStatusLabel(status) : t("composer.plus_status_unavailable")}</span>
-                        </button>
+                        </Button>
                       )) : <div className="px-2.5 py-1 text-[11px] text-gray-9">{menuDataReady ? (plusMenuData?.mcpStatus ?? t("context_panel.no_mcp")) : plusMenuLoadState === "error" ? t("composer.plus_refresh_failed") : t("common.loading")}</div>}
                     </div>
                   ) : null}
@@ -1500,6 +1517,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                   disabled={props.busy}
                 />
                 {activeAccessMode && props.onSelectAccessMode ? (
+                  <Tooltip>
                   <Popover
                     open={accessModeOpen}
                     onOpenChange={(open) => {
@@ -1509,41 +1527,47 @@ export function ReactSessionComposer(props: ComposerProps) {
                       setPlusMenuOpen(false);
                     }}
                   >
-                    <PopoverTrigger
+                    <TooltipTrigger render={<PopoverTrigger render={<Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy}
                       aria-label={`${t("composer.access_mode_label")}: ${activeAccessMode.label}`}
-                      className="me-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
-                    >
+                      className="me-1 h-8 rounded-full px-2 text-xs text-gray-10 @max-[560px]/composer:w-8 @max-[560px]/composer:px-0"
+                    />} />}>
                       <AccessModeIcon icon={activeAccessMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />
                       <span className="@max-[560px]/composer:hidden">{activeAccessMode.label}</span>
-                      <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />
-                    </PopoverTrigger>
-                    <PopoverContent side="top" align="start" sideOffset={8} className="w-72 gap-0 p-1.5">
+                      <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75] @max-[560px]/composer:hidden" />
+                    </TooltipTrigger>
+                    <TooltipContent>{`${t("composer.access_mode_label")}: ${activeAccessMode.label}`}</TooltipContent>
+                    <PopoverContent side="top" align="start" sideOffset={8} className={cn(composerMenuSurfaceClassName, "w-64 gap-0 p-1 text-xs")}>
                       {accessModes.map((mode) => {
                         const active = mode.id === activeAccessMode.id;
                         return (
-                          <button
+                          <Button
                             key={mode.id}
                             type="button"
+                            variant={active ? "secondary" : "ghost"}
                             disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy || mode.selectable === false}
                             data-access-mode-option={mode.id}
                             aria-pressed={active}
-                            className="flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-2 disabled:cursor-not-allowed disabled:opacity-55"
+                            className="h-auto min-h-10 w-full items-start justify-start whitespace-normal px-2 py-1 text-left text-xs"
                             onClick={() => selectAccessMode(mode)}
                           >
                             <AccessModeIcon icon={mode.icon} className={`mt-0.5 size-4 shrink-0 ${mode.dangerous ? "text-red-10" : "text-gray-10"}`} />
                             <span className="min-w-0 flex-1">
                               <span className="block font-medium">{mode.label}</span>
-                              {mode.description ? <span className="mt-0.5 block text-xs leading-4 text-gray-9">{mode.description}</span> : null}
+                              {mode.description ? <span className="mt-0.5 block text-[11px] leading-4 text-gray-9">{mode.description}</span> : null}
                             </span>
                             {active ? <Check className="mt-0.5 size-4 shrink-0 text-gray-11" /> : null}
-                          </button>
+                          </Button>
                         );
                       })}
                     </PopoverContent>
                   </Popover>
+                  </Tooltip>
                 ) : null}
+                <Tooltip open={workModeOpen ? false : undefined}>
                 <Popover
                   open={workModeOpen}
                   onOpenChange={(open) => {
@@ -1552,60 +1576,69 @@ export function ReactSessionComposer(props: ComposerProps) {
                     setPlusMenuOpen(false);
                   }}
                 >
-                  <PopoverTrigger
+                  <TooltipTrigger render={<PopoverTrigger render={<Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     disabled={props.busy || props.modeSelectionDisabled}
                     aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
-                    className="inline-flex h-8 max-w-32 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
-                  >
+                    className="h-8 max-w-32 rounded-full px-2 text-xs text-gray-10 @max-[560px]/composer:w-8 @max-[560px]/composer:px-0"
+                  />} />}>
                     <WorkModeIcon icon={activeWorkMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />
                     <span className="truncate @max-[560px]/composer:hidden">{activeWorkMode.label}</span>
-                    <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />
-                  </PopoverTrigger>
-                  <PopoverContent side="top" align="start" sideOffset={8} className="w-64 gap-0 p-1.5">
+                    <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75] @max-[560px]/composer:hidden" />
+                  </TooltipTrigger>
+                  <TooltipContent>{`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}</TooltipContent>
+                  <PopoverContent side="top" align="start" sideOffset={8} className={cn(composerMenuSurfaceClassName, "w-56 gap-0 p-1 text-xs")}>
                     {workModes.map((mode) => {
                       const active = mode.id === activeWorkMode.id;
                       return (
-                        <button
+                        <Button
                           key={mode.id}
                           type="button"
+                          variant={active ? "secondary" : "ghost"}
                           disabled={props.busy || props.modeSelectionDisabled}
                           data-work-mode-option={mode.id}
                           aria-pressed={active}
-                          className="flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-2 disabled:pointer-events-none disabled:opacity-60"
+                          className="h-auto min-h-9 w-full items-start justify-start whitespace-normal px-2 py-1 text-left text-xs"
                           onClick={() => selectWorkMode(mode.id)}
                         >
                           <WorkModeIcon icon={mode.icon} className="mt-0.5 size-4 shrink-0 text-gray-10" />
                           <span className="min-w-0 flex-1">
                             <span className="block font-medium">{mode.label}</span>
-                            {mode.description ? <span className="mt-0.5 block text-xs leading-4 text-gray-9">{mode.description}</span> : null}
+                            {mode.description ? <span className="mt-0.5 block text-[11px] leading-4 text-gray-9">{mode.description}</span> : null}
                           </span>
                           {active ? <Check className="mt-0.5 size-4 shrink-0 text-gray-11" /> : null}
-                        </button>
+                        </Button>
                       );
                     })}
                   </PopoverContent>
                 </Popover>
+                </Tooltip>
                 {props.modelStatus === "loading" ? (
                   <span role="status" className="ms-1.5 text-xs text-gray-10">
                     {t("model_picker.loading.reading_catalog")}
                   </span>
                 ) : props.modelStatus === "error" ? (
-                  <button
+                  <Button
                     type="button"
-                    className="ms-1.5 text-xs font-medium text-gray-10 underline-offset-2 hover:underline"
+                    variant="link"
+                    size="xs"
+                    className="ms-1.5"
                     onClick={props.onRetryModelLoad}
                   >
                     {t("composer.model_load_failed")}
-                  </button>
+                  </Button>
                 ) : props.modelStatus === "unavailable" ? (
-                  <button
+                  <Button
                     type="button"
-                    className="ms-1.5 text-xs font-medium text-red-10 underline-offset-2 hover:underline"
+                    variant="link"
+                    size="xs"
+                    className="ms-1.5 text-red-10"
                     onClick={() => props.onModelPickerOpenChange(true)}
                   >
                     {t("composer.model_unavailable")}
-                  </button>
+                  </Button>
                 ) : null}
               </div>
 
@@ -1635,12 +1668,13 @@ export function ReactSessionComposer(props: ComposerProps) {
                       </span>
                     ) : null}
                     {canSend ? (
-                      <button
+                      <Button
                         type="button"
+                        size="icon"
                         onPointerDown={handleActionPointerDown}
                         onClick={handleActionClick}
                         aria-label={t("composer.queue")}
-                        className="relative inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] transition-colors hover:bg-[var(--dls-accent-hover)]"
+                        className="rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
                         title={t("composer.queue_hint")}
                       >
                         <ArrowUp size={15} />
@@ -1649,29 +1683,33 @@ export function ReactSessionComposer(props: ComposerProps) {
                             {props.queuedCount > 99 ? "99+" : props.queuedCount}
                           </span>
                         ) : null}
-                      </button>
+                      </Button>
                     ) : (
-                      <button
+                      <Button
                         type="button"
+                        size="icon"
                         onClick={props.onStop}
-                        className="inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] transition-colors hover:bg-[var(--dls-accent-hover)]"
+                        className="rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
                         aria-label={t("composer.stop")}
                         title={t("composer.stop")}
                       >
                         <Square size={12} fill="currentColor" />
-                      </button>
+                      </Button>
                     )}
                   </>
                 ) : (
                   <Tooltip open={emptySubmitHintOpen}>
                     <TooltipTrigger
                       render={(
-                        <button
+                        <Button
                           type="button"
+                          size="icon"
+                          onPointerLeave={() => setEmptySubmitHintOpen(false)}
+                          onBlur={() => setEmptySubmitHintOpen(false)}
                           onPointerDown={handleActionPointerDown}
                           onClick={handleActionClick}
                           disabled={props.disabled}
-                          className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                          className={`rounded-full ${
                             props.disabled
                               ? "bg-gray-2 text-gray-10"
                               : !canSend
@@ -1683,13 +1721,12 @@ export function ReactSessionComposer(props: ComposerProps) {
                           title={t("composer.run_task")}
                         >
                           <ArrowUp size={15} />
-                        </button>
+                        </Button>
                       )}
                     />
                     <TooltipContent
                       side="top"
-                      sideOffset={10}
-                      className="max-w-none whitespace-nowrap rounded-2xl px-4 py-3 text-sm font-medium"
+                      sideOffset={4}
                       data-testid="composer-empty-submit-hint"
                     >
                       {t("composer.empty_submit_hint")}

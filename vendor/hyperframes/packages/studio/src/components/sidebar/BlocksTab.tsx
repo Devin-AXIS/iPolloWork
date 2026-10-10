@@ -10,16 +10,8 @@ import {
   type MouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import {
-  Eye,
-  ChevronDown,
-  ChevronRight,
-  ListFilter,
-  Plus,
-  Search,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { Eye, ChevronDown, ChevronRight, ListFilter, Plus, Sparkles, X } from "lucide-react";
+import { SearchInput } from "../ui/SearchInput";
 import { FlatDropdown } from "../editor/propertyPanelFlatSelectRow";
 import { Tooltip } from "../ui/Tooltip";
 import { useDialogBehavior } from "../ui/useDialogBehavior";
@@ -201,34 +193,16 @@ export const BlocksTab = memo(function BlocksTab({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[14px]">
-        <div
-          className="flex items-center gap-2"
-          data-testid="component-catalog-toolbar"
-        >
-          <div className="relative min-w-0 flex-1">
-            <Search
-              aria-hidden="true"
-              size={16}
-              strokeWidth={1.5}
-              className="pointer-events-none absolute left-[11px] top-1/2 -translate-y-1/2 text-[#a2a6af]"
-            />
-            <input
-              type="search"
+        <div className="flex items-center gap-2" data-testid="component-catalog-toolbar">
+            <SearchInput
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={locale === "zh" ? "搜索组件…" : "Search components…"}
               aria-label={locale === "zh" ? "搜索组件" : "Search components"}
               data-testid="block-catalog-search"
-              className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-xs text-panel-text-1 outline-none transition-shadow placeholder:text-panel-text-4 focus:ring-1 focus:ring-[#1FBAC0]/50"
+              className="flex-1"
             />
-          </div>
-          <ComponentImport
-            onImported={async () => {
-              await reload();
-              setSearch("");
-              setActiveSection(ALL_SECTIONS_FILTER);
-            }}
-          />
+          <ComponentImport onImported={async () => { await reload(); setSearch(""); setActiveSection(ALL_SECTIONS_FILTER); }} />
           <FlatDropdown
             value={activeSection}
             onChange={(nextSection) => {
@@ -261,7 +235,7 @@ export const BlocksTab = memo(function BlocksTab({
               />
             }
             menuWidth={208}
-            className={`h-[34px] w-[34px] shrink-0 rounded-lg border-0 transition-colors hover:bg-panel-hover ${activeSection === ALL_SECTIONS_FILTER ? "bg-panel-input text-panel-text-2" : "bg-panel-accent/15 text-panel-accent"}`}
+            className={`h-8 w-8 shrink-0 rounded-[8px] border border-panel-border-input transition-colors hover:bg-panel-hover ${activeSection === ALL_SECTIONS_FILTER ? "bg-panel-input text-panel-text-2" : "bg-panel-accent/15 text-panel-accent"}`}
           />
         </div>
       </div>

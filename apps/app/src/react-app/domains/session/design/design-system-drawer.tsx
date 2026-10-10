@@ -606,7 +606,7 @@ function EmbeddedDesignSystemControls({
             {presetOpen ? <img src={designSystemChevronUpIcon} alt="" className="size-4 shrink-0" /> : <ChevronDown className="size-4 shrink-0 text-muted-foreground" />}
           </button>
           {presetOpen ? <div className="mt-3 h-[474px] rounded-xl border border-border p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)]">
-            <div className="relative"><img src={designSystemSearchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" /><Input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("design_system.embedded.search_presets")} className="h-[34px] rounded-lg border-0 bg-muted pl-[34px] text-[12px] shadow-none" /></div>
+            <div className="relative"><img src={designSystemSearchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" /><Input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("design_system.embedded.search_presets")} className="h-[34px] rounded-lg border-0 bg-muted pl-[34px] text-[12px] shadow-none" /></div>
             <div className="mt-[9px] flex gap-[5px] overflow-x-auto pb-1">{categories.map((item) => <button key={item} type="button" className={cn("h-[27px] shrink-0 rounded-[7px] px-2 text-[11px] transition-colors", category === item ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent")} onClick={() => setCategory(item)}>{item === "All" ? t("design_system.embedded.category_all") : item}</button>)}</div>
             <div className="mt-[9px] max-h-[340px] space-y-[5px] overflow-y-auto">{themes.map((theme) => {
               const active = theme.id === currentThemeId;

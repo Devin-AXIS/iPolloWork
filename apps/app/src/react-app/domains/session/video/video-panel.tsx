@@ -119,9 +119,9 @@ const studioStartupDetailKey: Record<StudioStartupStage, string> = {
   "loading-frame": "video.startup.loading_frame_detail",
 };
 
-const DEFAULT_STUDIO_PANEL_WIDTH = 400;
-const MIN_STUDIO_PANEL_WIDTH = 160;
-const MAX_STUDIO_PANEL_WIDTH = 600;
+const DEFAULT_STUDIO_PANEL_WIDTH = 300;
+const MIN_STUDIO_PANEL_WIDTH = 260;
+const MAX_STUDIO_PANEL_WIDTH = 360;
 const RUNTIME_THEME_BRIDGE_PATTERN =
   /\/\*\s*ipw-runtime-theme-bridge:start\s*\*\/[\s\S]*?\/\*\s*ipw-runtime-theme-bridge:end\s*\*\//i;
 
@@ -1444,18 +1444,13 @@ export function VideoPanel({
                 aria-live="polite"
               >
                 <div className="text-center">
-                  <Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" />
+                  <Loader2 className="mx-auto mb-2 size-5 animate-spin text-[#1FBAC0]" />
                   <p className="text-xs font-medium text-foreground">
                     {t(studioStartupTitleKey[startupStage])}
-                  </p>
-                  <p className="mt-1 text-[10px] font-medium text-primary">
-                    {startupStage === "starting-service" ? "1 / 3"
-                      : startupStage === "waiting-for-studio" ? "2 / 3" : "3 / 3"}
                   </p>
                   <p className="mt-1 max-w-[32rem] text-[11px] text-muted-foreground">
                     {detail || t(studioStartupDetailKey[startupStage])}
                   </p>
-
                 </div>
               </div>
             ) : null}
@@ -1542,7 +1537,7 @@ export function VideoPanel({
                 style={studioPanelStyle}
                 embedded
                 testId="video-avatar-tab-content"
-                bodyClassName="p-4"
+                bodyClassName="p-3"
               >
                 <VideoAvatarPanel
                   key={sessionId}
@@ -1566,15 +1561,15 @@ export function VideoPanel({
                 />
               </StudioInspectorPanel>
             ) : null}
-            {features.designSystem && studioHostPanel === "style" ? (
+            {features.designSystem ? (
               <div
                 className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background"
-                style={studioPanelStyle}
+                style={{ ...studioPanelStyle, display: studioHostPanel === "style" ? undefined : "none" }}
                 data-testid="video-style-tab-content"
               >
                 <DesignSystemDrawer
                   embedded
-                  open
+                  open={studioHostPanel === "style"}
                   templateName="Video Studio"
                   currentThemeId={appliedDesignSystemId}
                   initialValues={designTokenValues}

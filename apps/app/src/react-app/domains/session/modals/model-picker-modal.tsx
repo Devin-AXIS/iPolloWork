@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { modelEquals, resolveProviderDisplayName } from "../../../../app/utils";
 import type { ModelOption, ModelRef } from "../../../../app/types";
 import { isRecommendedModel } from "../../../../app/defaults";
@@ -195,17 +196,17 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
 
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Search */}
-          <div className="relative mb-4 shrink-0">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dls-secondary" />
-            <input
+          <InputGroup className="mb-4 shrink-0">
+            <InputGroupAddon><Search aria-hidden="true" className="size-4" /></InputGroupAddon>
+            <InputGroupInput
               ref={searchInputRef}
               type="text"
-              className="h-10 w-full rounded-xl border border-dls-border bg-dls-surface pl-9 pr-3 text-sm text-dls-text placeholder:text-dls-secondary focus:outline-none focus:ring-2 focus:ring-[rgba(var(--dls-accent-rgb),0.2)]"
+              aria-label={t("model_picker.search_providers_models")}
               placeholder={t("model_picker.search_providers_models")}
               value={props.query}
               onChange={(e) => props.setQuery(e.target.value)}
             />
-          </div>
+          </InputGroup>
 
           {/* Content */}
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 -mr-1">

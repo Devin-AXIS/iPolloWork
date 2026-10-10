@@ -197,14 +197,15 @@ describe("Studio right panel layout", () => {
     expect(primitives).toContain("hf-panel-accordion-header w-full");
     expect(studioStyles).toContain(".hf-panel-accordion-header {");
     expect(primitives).toContain('large ? "h-[34px] rounded-[6px] px-[10px]"');
-    expect(studioStyles).toContain("padding-inline: 16px;");
+    expect(studioStyles).toContain("padding-inline: 12px;");
     expect(primitives).toContain("hf-panel-accordion-label");
     expect(primitives).toContain("<ChevronRight size={14}");
     expect(primitives).toContain("<ChevronDown size={16}");
     expect(primitives).not.toContain("rotate-180 text-[#858a94]");
     expect(studioStyles).toContain('data-expanded="true"');
     expect(primitives).toContain("<ChevronDown size={16}");
-    expect(selects).toContain('large ? "h-[34px] rounded-[6px] pl-2 pr-4"');
+    expect(selects).toContain('large ? "h-8 rounded-[8px] px-2.5"');
+    expect(selects).not.toContain('border border-panel-border-input');
     expect(selects).toContain('role="listbox"');
     expect(selects).toContain("createPortal(");
     expect(colors).toContain("flex h-6 min-w-0");
@@ -294,7 +295,7 @@ describe("Studio right panel layout", () => {
     expect(primitives).toContain("focus-visible:ring-panel-accent/50");
     expect(toggle).toContain("active:scale-[0.96]");
     expect(toggle).toContain("focus-visible:ring-panel-accent/60");
-    expect(selects).toContain("dark:active:bg-panel-hover");
+    expect(selects).toContain("active:bg-panel-hover");
     expect(selects).toContain("focus-visible:ring-panel-accent/50");
     expect(layout).toContain("dark:hover:bg-panel-hover dark:hover:text-panel-text-1");
     expect(layout).not.toContain("dark:hover:text-[#24262b]");
@@ -426,8 +427,8 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("figmaFillGradient.svg?url");
     expect(styles).toContain("figmaFillImage.svg?url");
     expect(styles).toContain("active ? activeIcon : icon");
-    expect(styles).toContain("hover:bg-[#eceef2]");
-    expect(styles).toContain("active:bg-[#e2e5ea]");
+    expect(styles).toContain("hover:bg-panel-hover");
+    expect(styles).toContain("active:bg-panel-hover");
     expect(styles).toContain("disabled:opacity-40");
     expect(mask).toContain('label="Style"');
     expect(mask).toContain('label: "Mask rectangle"');
@@ -486,10 +487,10 @@ describe("Studio right panel layout", () => {
     expect(selects).toContain("large = true");
     expect(selects).toContain("const selectedLabel");
     expect(selects).toContain('aria-haspopup="listbox"');
-    expect(selects).toContain("hover:bg-[#f5f6f9]");
+    expect(selects).toContain("hover:bg-panel-input");
     expect(selects).not.toContain("appearance-none opacity-0");
     expect(toggles).toContain("flex h-[34px]");
-    expect(fonts).toContain("relative flex h-[34px]");
+    expect(fonts).toContain("relative flex h-8");
     expect(textFields).toContain("min-h-[43px]");
     expect(textFields).toContain("border-[#99b8f2]");
     expect(textSection).toContain('data-flat-text-controls="true"');
@@ -573,6 +574,13 @@ describe("Studio right panel layout", () => {
     expect(source).not.toContain('label={t("right.layers")}');
     expect(source).not.toContain('label={t("right.slideshow")}');
     expect(source).not.toContain('label={t("right.variables")}');
+  });
+
+  it("matches compact Tabs spacing without active shadows or borders", () => {
+    const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+    expect(header).toContain('gap-1 rounded-[10px] bg-[var(--hf-panel-input)] p-1');
+    expect(header.match(/h-6 rounded-md border-0 px-3 py-0 text-xs transition-\[background-color,color\]/g)).toHaveLength(3);
+    expect(header).not.toContain('h-[26px]');
   });
 
   it("uses property tabs and keeps export in its own drawer", () => {
@@ -672,7 +680,7 @@ describe("Studio right panel layout", () => {
     expect(header).toContain("hover:bg-[var(--hf-studio-header-hover)]");
     expect(header).toContain("hf-studio-header-export");
     expect(header).toContain("hf-studio-properties-action");
-    expect(header).toContain("hf-studio-header-title-text");
+    expect(header).not.toContain("hf-studio-header-title-text");
     expect(header).toContain("hf-studio-header-views");
     expect(header).toContain("hf-studio-header-actions");
     expect(header).toContain("hf-studio-header-utilities");
@@ -687,16 +695,17 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("color: var(--hf-header-primary-text) !important;");
     expect(styles).toContain(".hf-studio-header-actions-divider {");
     expect(styles).toContain("@media (max-width: 720px)");
-    expect(styles).toContain("width: 32px;");
+    expect(styles).toContain("width: 28px;");
     expect(styles).toContain("gap: 8px;");
     expect(styles).toContain("gap: 4px;");
     expect(styles).toContain("container-name: hf-flat-inspector");
-    expect(styles).toContain("@container hf-flat-inspector (max-width: 340px)");
+    expect(styles).toContain("@container hf-flat-inspector (max-width: 280px)");
     expect(styles).toContain(".hf-flat-responsive-grid {");
     expect(styles).toContain(".hf-inspector-tabs-scroll button {");
     expect(panel).toContain("hf-inspector-tabs-scroll");
     expect(panel).toContain("grid w-full min-w-0 grid-flow-col auto-cols-fr");
-    expect(panel).toContain("absolute right-3 top-1/2");
+    expect(panel).not.toContain('tx("Close right panel")');
+    expect(panel).toContain("hf-studio-inspector");
     expect(panel).toContain("border-[0.5px] border-[var(--hf-studio-divider)]");
     expect(styles).toContain("--hf-studio-divider: rgba(255, 255, 255, 0.075)");
     expect(styles).toContain("--hf-studio-divider: #dfe3e8");

@@ -42,7 +42,7 @@ interface LayoutSectionTitleProps {
 
 export function LayoutSectionTitle({ children, className }: LayoutSectionTitleProps) {
   return (
-    <h3 className={cn("flex items-center gap-2 text-ui-body font-semibold text-foreground", className)}>
+    <h3 className={cn("flex items-center gap-2 text-ui-section-title font-semibold text-foreground", className)}>
       {children}
     </h3>
   );
@@ -107,7 +107,7 @@ interface LayoutSectionItemTitleProps {
 
 export function LayoutSectionItemTitle({ children, className }: LayoutSectionItemTitleProps) {
   return (
-    <h4 data-slot="item-title" className={cn("flex items-center gap-2 text-ui-body font-semibold text-foreground", className)}>
+    <h4 data-slot="item-title" className={cn("flex items-center gap-2 text-ui-section-title font-semibold text-foreground", className)}>
       {children}
     </h4>
   );

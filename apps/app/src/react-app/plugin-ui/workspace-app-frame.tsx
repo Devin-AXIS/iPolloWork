@@ -53,6 +53,7 @@ import {
 
 import { mediaStudioEngine, workspaceAppServiceAction, type PluginUiSurface } from "./plugin-ui-contributions";
 import { ServiceWorkbenchFrame } from "./service-workbench-frame";
+import { withSharedUiRuntime } from "./shared-ui-runtime";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
 export type WorkspaceAppMessageResult = boolean | { accepted: boolean; sessionId: string };
@@ -149,9 +150,9 @@ function withContentSecurityPolicy(resource: iPolloWorkPluginUiResource) {
   ].join("; ");
   const meta = `<meta http-equiv="Content-Security-Policy" content="${policy.replaceAll("&", "&amp;").replaceAll("\"", "&quot;")}">`;
   if (/<head(?:\s[^>]*)?>/i.test(resource.html)) {
-    return resource.html.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${meta}`);
+    return withSharedUiRuntime(resource.html).replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${meta}`);
   }
-  return `${meta}${resource.html}`;
+  return `${meta}${withSharedUiRuntime(resource.html)}`;
 }
 
 function messageText(content: Array<{ type: string; text?: string }>) {
