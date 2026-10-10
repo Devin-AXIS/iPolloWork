@@ -47,3 +47,23 @@
 23. After the model finishes generating the video source, the process still says it is in progress while the iPolloWork app exports the MP4, instead of reporting the task as complete too early.
 
 24. Returning to the conversation input, two typed lines and the placeholder use shared 13-pixel text with 20-pixel line spacing as ordinary conversation text.
+
+25. 文件卡片左对齐，宽度最多360px，使用56px紧凑横排，纸张图标配合文件类型，文件名与已保存状态分成两行。
+
+26. 图片文件保留52×36px小缩略图，下面的类型与保存状态清晰可见。
+
+27. 缩窄窗口后，长文件名保持单行省略，悬停查看完整名称，右侧操作始终独立占位。
+
+28. 下载与更多采用轻量按钮，菜单仍能打开，操作不会遮挡文件名。
+
+29. 悬停文件卡片，背景保持白色，仅边框变为 primary 青色，内容保持原位。
+
+30. 按下卡片，背景进一步加深，尺寸与位置不变。
+
+31. 使用键盘聚焦文件卡片，可以看到清晰的焦点环。
+
+32. 下载时按钮转圈并避免重复点击，文件卡片仍然可以打开。
+
+文件卡片的键盘焦点使用 primary 青色。图片状态复用共享 Badge 的语义色与前置图标，只有仍在处理时显示动画；已保存文件与整个任务的执行结果分开表达。
+
+33. 中断图片任务时，图片的共享 Badge 已表达停止状态，不再额外出现相同任务提示；中断文字任务仍显示一条共享 Warning Alert，保留继续发送消息的说明，历史图片状态不影响当前文字任务。

@@ -21,7 +21,7 @@ async function click(parent,frame,selector) {
 }
 async function findFrame(ctx,mode) {
   for(let attempt=0;attempt<80;attempt++) {
-    for(const target of (await listTargets(ctx.cdpBaseUrl)).filter(t=>t.type==='iframe')) {
+    for(const target of (await listTargets(ctx.cdpBaseUrl)).filter(t=>t.type==='iframe' && t.parentId===ctx.client.targetId)) {
       const c=await connect(target.webSocketDebuggerUrl);
       if(await evaluate(c,`window.ipolloworkUi?.mode===${JSON.stringify(mode)} && Boolean(document.querySelector('#receipt')) && Boolean(document.querySelector('#name'))`).catch(()=>false))return c;
       c.close();
@@ -164,6 +164,7 @@ export default {
               const contrast=await ctx.eval(`(()=>{const e=document.querySelector('[data-feedback=${variant}]'),canvas=document.createElement('canvas'),c=canvas.getContext('2d');function luminance(color){c.fillStyle=color;c.fillRect(0,0,1,1);const s=[...c.getImageData(0,0,1,1).data].slice(0,3).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4});return s[0]*0.2126+s[1]*0.7152+s[2]*0.0722}const a=luminance(getComputedStyle(e).backgroundColor),b=luminance(getComputedStyle(e.querySelector('[data-slot=alert-description]')).color);return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05)})()`);
               ctx.assert(contrast>=4.5,`${mode}/${theme}/${width}/${variant}: description contrast ${contrast.toFixed(2)} >= 4.5`);
             }
+            await ctx.waitFor(`(()=>{return ['info','success','warning','destructive'].map(variant=>{const e=document.querySelector('[data-semantic-badge="'+variant+'"]'),s=getComputedStyle(e),p=document.createElement('span');p.style.backgroundColor=variant==='destructive'?'color-mix(in oklab, var(--destructive) '+(document.documentElement.dataset.theme==='dark'?20:10)+'%, transparent)':'var(--feedback-'+variant+'-background)';document.body.append(p);const expected=getComputedStyle(p).backgroundColor;p.remove();return {variant,pass:e.dataset.slot==='badge'&&s.backgroundColor===expected&&Boolean(e.querySelector('svg'))&&e.scrollWidth<=e.clientWidth&&s.fontSize==='10px'&&s.lineHeight==='14px'}}).every(b=>b.pass)})()`, {label:`${mode}/${theme}/${width}: semantic Badge backgrounds, typography and leading icons`});
             for(const kind of ['default','info','success','warning','error']) {
               await ctx.eval(`window.ipolloworkUi.toast${kind==='default'?'':'.'+kind}('语义背景：${kind}',{duration:Infinity})`);
               await ctx.waitFor('Boolean(document.querySelector("[data-slot=toast-card]"))');
