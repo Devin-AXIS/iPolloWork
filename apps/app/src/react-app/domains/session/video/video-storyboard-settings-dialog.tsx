@@ -4,6 +4,7 @@ import type { StoryboardSettingsAsset, StoryboardSettingsFields, StoryboardSetti
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { t, translationKey } from "@/i18n";
@@ -25,6 +26,8 @@ export function VideoStoryboardSettingsDialog({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const input = React.useRef<HTMLInputElement>(null);
+  const feedbackId = React.useId();
+  const feedbackProps = { "aria-describedby": feedbackId, "aria-invalid": Boolean(error) };
   function update(key: keyof StoryboardSettingsFields, value: string) {
     setFields(current => current ? { ...current, [key]: value } : current);
   }
@@ -47,15 +50,15 @@ export function VideoStoryboardSettingsDialog({
     finally { setBusy(false); }
   }
   function assetPicker() {
-    return <section className="space-y-3">
+    return <Field className="gap-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-ui-control font-medium">{t("video.script.project_assets")}</h3>
+        <FieldLabel>{t("video.script.project_assets")}</FieldLabel>
         <Button variant="outline" size="sm" disabled={busy || disabled} onClick={() => input.current?.click()}><Upload className="size-3.5" />{t("video.script.import")}</Button>
         <input ref={input} type="file" hidden accept={kind === "sound" ? "audio/*" : "image/*,video/*"} onChange={event => {
           const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file);
         }} />
       </div>
-      <Input aria-label={t("video.script.search_assets")} placeholder={t("video.script.search_assets")} value={query} onChange={event => setQuery(event.target.value)} />
+      <Input {...feedbackProps} aria-label={t("video.script.search_assets")} placeholder={t("video.script.search_assets")} value={query} onChange={event => setQuery(event.target.value)} />
       <div className="grid grid-cols-2 gap-2">
         {candidates.map(asset => <Button key={asset.path} variant={selected === asset.path ? "secondary" : "outline"} className="h-auto min-h-10 justify-start overflow-hidden px-3 py-2 text-left text-xs" aria-pressed={selected === asset.path} onClick={() => update(referenceKey, asset.path)}>
           <span className="truncate">{asset.path.split("/").at(-1)}</span>
@@ -69,7 +72,7 @@ export function VideoStoryboardSettingsDialog({
         {selectedAsset?.kind === "audio" && <audio controls preload="none" src={selectedAsset?.url} className="h-9 w-full" />}
         {selectedAsset?.kind === "video" && <video controls preload="metadata" src={selectedAsset?.url} className="max-h-40 w-full rounded-lg" />}
       </div>}
-    </section>;
+    </Field>;
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
     <DialogContent data-testid="storyboard-settings-dialog" data-kind={kind}
@@ -82,48 +85,48 @@ export function VideoStoryboardSettingsDialog({
       {kind === "voice" ? voiceContent : <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <fieldset disabled={disabled || busy} className="min-w-0 space-y-5">
           {kind === "picture" && fields && <>
-            <section className="space-y-2">
-              <h3 className="text-ui-control font-medium">{t("video.script.source")}</h3>
+            <Field>
+              <FieldLabel htmlFor="shot-source">{t("video.script.source")}</FieldLabel>
               <Select value={source} onValueChange={value => { if (value) update("asset_source", value); }}>
-                <SelectTrigger className="w-full" aria-label={t("video.script.source")}><SelectValue>{t(translationKey("video.script.source_", source))}</SelectValue></SelectTrigger>
+                <SelectTrigger {...feedbackProps} id="shot-source" className="w-full" aria-label={t("video.script.source")}><SelectValue>{t(translationKey("video.script.source_", source))}</SelectValue></SelectTrigger>
                 <SelectContent>{["auto", "existing", "generate", "code"].map(value => <SelectItem key={value} value={value}>{t(translationKey("video.script.source_", value))}</SelectItem>)}</SelectContent>
               </Select>
-            </section>
+            </Field>
             {(source === "auto" || source === "generate") && <>
-              <section className="space-y-2"><h3 className="text-ui-control font-medium">{t("video.script.media_type")}</h3>
+              <Field><FieldLabel htmlFor="shot-media-type">{t("video.script.media_type")}</FieldLabel>
                 <Select value={fields.asset_kind || "auto"} onValueChange={value => { if (value) update("asset_kind", value === "auto" ? "" : value); }}>
-                  <SelectTrigger className="w-full" aria-label={t("video.script.media_type")}><SelectValue>{t(translationKey("video.script.media_", fields.asset_kind || "auto"))}</SelectValue></SelectTrigger><SelectContent>{["auto", "image", "video"].map(value => <SelectItem key={value} value={value}>{t(translationKey("video.script.media_", value))}</SelectItem>)}</SelectContent>
+                  <SelectTrigger {...feedbackProps} id="shot-media-type" className="w-full" aria-label={t("video.script.media_type")}><SelectValue>{t(translationKey("video.script.media_", fields.asset_kind || "auto"))}</SelectValue></SelectTrigger><SelectContent>{["auto", "image", "video"].map(value => <SelectItem key={value} value={value}>{t(translationKey("video.script.media_", value))}</SelectItem>)}</SelectContent>
                 </Select>
-              </section>
-              <section className="space-y-2"><label htmlFor="shot-material-brief" className="text-ui-control font-medium">{t("video.script.brief")}</label>
-                <Textarea id="shot-material-brief" rows={4} value={fields.asset_brief} onChange={event => update("asset_brief", event.target.value)} /></section>
+              </Field>
+              <Field><FieldLabel htmlFor="shot-material-brief">{t("video.script.brief")}</FieldLabel>
+                <Textarea {...feedbackProps} id="shot-material-brief" rows={4} value={fields.asset_brief} onChange={event => update("asset_brief", event.target.value)} /></Field>
             </>}
-            {source !== "code" && <section className="space-y-2"><label htmlFor="shot-source-origin" className="text-ui-control font-medium">{t("video.script.origin")}</label>
-              <Textarea id="shot-source-origin" rows={2} value={fields.asset_origin} onChange={event => update("asset_origin", event.target.value)} /></section>}
+            {source !== "code" && <Field><FieldLabel htmlFor="shot-source-origin">{t("video.script.origin")}</FieldLabel>
+              <Textarea {...feedbackProps} id="shot-source-origin" rows={2} value={fields.asset_origin} onChange={event => update("asset_origin", event.target.value)} /></Field>}
             {source === "existing" && assetPicker()}
             <details className="border-t border-border pt-4"><summary className="cursor-pointer text-ui-control font-medium">{t("video.script.more")}</summary>
               <div className="mt-4 space-y-4">
-                <section className="space-y-2"><h3 className="text-ui-control font-medium">{t("video.script.camera")}</h3>
+                <Field><FieldLabel htmlFor="shot-camera">{t("video.script.camera")}</FieldLabel>
                   <Select value={request?.cameras.some(camera => camera.value === fields.camera) ? fields.camera : "custom"}
                     onValueChange={value => { if (value !== null && value !== "custom") update("camera", value); }}>
-                    <SelectTrigger className="w-full" aria-label={t("video.script.camera")}><SelectValue>{request?.cameras.find(camera => camera.value === fields.camera)?.label ?? t("video.script.custom_camera")}</SelectValue></SelectTrigger><SelectContent>
+                    <SelectTrigger {...feedbackProps} id="shot-camera" className="w-full" aria-label={t("video.script.camera")}><SelectValue>{request?.cameras.find(camera => camera.value === fields.camera)?.label ?? t("video.script.custom_camera")}</SelectValue></SelectTrigger><SelectContent>
                       <SelectItem value="custom">{t("video.script.custom_camera")}</SelectItem>
                       {request?.cameras.map(camera => <SelectItem key={camera.value} value={camera.value}>{camera.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Input aria-label={t("video.script.camera_direction")} value={fields.camera} onChange={event => update("camera", event.target.value)} />
-                </section>
-                <section className="space-y-2"><label htmlFor="shot-transition" className="text-ui-control font-medium">{t("video.script.transition")}</label>
-                  <Input id="shot-transition" value={fields.transition_in} onChange={event => update("transition_in", event.target.value)} /></section>
+                  <Input {...feedbackProps} aria-label={t("video.script.camera_direction")} value={fields.camera} onChange={event => update("camera", event.target.value)} />
+                </Field>
+                <Field><FieldLabel htmlFor="shot-transition">{t("video.script.transition")}</FieldLabel>
+                  <Input {...feedbackProps} id="shot-transition" value={fields.transition_in} onChange={event => update("transition_in", event.target.value)} /></Field>
               </div>
             </details>
           </>}
-          {kind === "sound" && fields && <><section className="space-y-2"><label htmlFor="shot-sound-effects" className="text-ui-control font-medium">{t("video.script.sound_cue")}</label>
-            <Textarea id="shot-sound-effects" rows={4} value={fields.sound_effects} placeholder={t("video.script.sound_placeholder")} onChange={event => update("sound_effects", event.target.value)} /></section>{assetPicker()}</>}
+          {kind === "sound" && fields && <><Field><FieldLabel htmlFor="shot-sound-effects">{t("video.script.sound_cue")}</FieldLabel>
+            <Textarea {...feedbackProps} id="shot-sound-effects" rows={4} value={fields.sound_effects} placeholder={t("video.script.sound_placeholder")} onChange={event => update("sound_effects", event.target.value)} /></Field>{assetPicker()}</>}
         </fieldset>
       </div>}
       <footer className="flex shrink-0 items-center justify-between gap-4 border-t border-border px-6 py-4">
-        <p role={error ? "alert" : undefined} className={error ? "text-ui-caption text-destructive" : "text-ui-caption text-muted-foreground"}>{error || t("video.voice.apply_help")}</p>
+        {error ? <FieldError id={feedbackId}>{error}</FieldError> : <FieldDescription id={feedbackId}>{t("video.voice.apply_help")}</FieldDescription>}
         <div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
           <Button size="sm" disabled={disabled || busy} onClick={async () => {
             setBusy(true); setError("");

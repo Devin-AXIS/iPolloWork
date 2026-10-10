@@ -24,7 +24,6 @@ function applyOpenCodeEvent(
 }
 import {
   describeConversationSessionError,
-  describeConversationSessionError,
   mapOpencodePartToUIParts,
 } from "../src/react-app/domains/session/engine/opencode-message-adapter";
 import {
@@ -275,6 +274,84 @@ describe("tool part mapper", () => {
       release();
       cleanup();
     }
+  });
+
+  test.each([false, true])("preserves early chunks exactly once across declaration, after frame: %s", async (afterFrame) => {
+    const scope = { workspaceId: "workspace-early", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(scope);
+    const release = trackWorkspaceSessionSync(scope, "session-a");
+    try {
+      for (const delta of ["Hello", " world"]) {
+        __applySessionSyncEventForTest(scope, {
+          type: "message.chunk", sessionId: "session-a", messageId: "msg-a",
+          chunk: { type: "text-delta", id: "part-a", delta },
+        });
+      }
+      if (afterFrame) await Promise.resolve();
+      __applySessionSyncEventForTest(scope, {
+        type: "message.parts", sessionId: "session-a", messageId: "msg-a", partId: "part-a",
+        messageRole: "assistant", visibleAssistantOutput: true,
+        parts: [{ type: "text", text: "", state: "streaming", providerMetadata: { ipollowork: { partId: "part-a" } } }],
+      });
+      __applySessionSyncEventForTest(scope, {
+        type: "message.chunk", sessionId: "session-a", messageId: "msg-a",
+        chunk: { type: "text-delta", id: "part-a", delta: "!" },
+      });
+      await Promise.resolve();
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey(scope.workspaceId, "session-a"))?.[0]?.parts)
+        .toMatchObject([{ type: "text", text: "Hello world!", state: "streaming" }]);
+    } finally { release(); cleanup(); }
+  });
+
+  test.each(["", "Final"])("early chunks respect authoritative done declaration: %s", async (text) => {
+    const scope = { workspaceId: "workspace-final", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(scope);
+    const release = trackWorkspaceSessionSync(scope, "session-a");
+    try {
+      __applySessionSyncEventForTest(scope, {
+        type: "message.chunk", sessionId: "session-a", messageId: "msg-a",
+        chunk: { type: "text-delta", id: "part-a", delta: "Early chunks" },
+      });
+      __applySessionSyncEventForTest(scope, {
+        type: "message.parts", sessionId: "session-a", messageId: "msg-a", partId: "part-a",
+        messageRole: "assistant", visibleAssistantOutput: true,
+        parts: [{ type: "text", text, state: "done", providerMetadata: { ipollowork: { partId: "part-a" } } }],
+      });
+      await Promise.resolve();
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey(scope.workspaceId, "session-a"))?.[0]?.parts)
+        .toMatchObject([{ type: "text", text: text || "Early chunks", state: "done" }]);
+    } finally { release(); cleanup(); }
+  });
+
+  test("early chunks are isolated by session and message with matching part IDs", async () => {
+    const scope = { workspaceId: "workspace-isolation", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(scope);
+    const releaseA = trackWorkspaceSessionSync(scope, "session-a");
+    const releaseB = trackWorkspaceSessionSync(scope, "session-b");
+    const owners = [
+      { sessionId: "session-a", messageId: "msg-a", text: "First" },
+      { sessionId: "session-a", messageId: "msg-b", text: "Second" },
+      { sessionId: "session-b", messageId: "msg-a", text: "Third" },
+    ];
+    try {
+      for (const owner of owners) {
+        __applySessionSyncEventForTest(scope, {
+          type: "message.chunk", sessionId: owner.sessionId, messageId: owner.messageId,
+          chunk: { type: "text-delta", id: "shared-part", delta: owner.text },
+        });
+      }
+      await Promise.resolve();
+      for (const owner of owners) {
+        __applySessionSyncEventForTest(scope, {
+          type: "message.parts", sessionId: owner.sessionId, messageId: owner.messageId, partId: "shared-part",
+          messageRole: "assistant", visibleAssistantOutput: true,
+          parts: [{ type: "text", text: "", state: "streaming", providerMetadata: { ipollowork: { partId: "shared-part" } } }],
+        });
+        const message = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey(scope.workspaceId, owner.sessionId))
+          ?.find((item) => item.id === owner.messageId);
+        expect(message?.parts).toMatchObject([{ type: "text", text: owner.text, state: "streaming" }]);
+      }
+    } finally { releaseA(); releaseB(); cleanup(); }
   });
 
   test("session sync does not append buffered deltas after an authoritative final message", () => {

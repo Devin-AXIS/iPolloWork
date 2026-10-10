@@ -5,7 +5,7 @@ import { buttonVariants, inputClassName, textareaClassName, cn } from '../common
 import { requireRuntime } from './runtime-contract';
 export { requireRuntime } from './runtime-contract';
 
-export const UI_RUNTIME_VERSION = '1.3.0';
+export const UI_RUNTIME_VERSION = '1.4.0';
 export type UiRuntime = ReturnType<typeof createRuntime>;
 declare global { interface Window { ipolloworkUi?: UiRuntime } }
 

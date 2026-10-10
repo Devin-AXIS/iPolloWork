@@ -1354,7 +1354,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
               if (duration !== undefined) detail = `${Math.floor(duration / 60).toString().padStart(2, "0")}:${Math.floor(duration % 60).toString().padStart(2, "0")}`;
             }
           }
-          const bytes = await thumbnail.rotate().resize(80, 80, { fit: /\.svg$/i.test(relativePath) ? "contain" : "cover", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toBuffer();
+          const bytes = await thumbnail.rotate().resize(160, 110, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toBuffer();
           return { bytes, detail };
         })();
         thumbnailJobs.set(key, pending);

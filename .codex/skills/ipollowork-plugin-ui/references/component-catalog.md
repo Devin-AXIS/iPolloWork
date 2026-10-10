@@ -9,7 +9,7 @@
 | 核心范围 | 共享公共组件 |
 | --- | --- |
 | 输入与选择 | Label、Field、Input、InputGroup、Textarea、Select、Autocomplete、Checkbox、RadioGroup、Switch、Toggle、ToggleGroup |
-| 动作与菜单 | Button、DescriptiveButton、DropdownMenu、ContextMenu、Command（含 CommandInput / CommandDialog） |
+| 动作与菜单 | Icon（运行时1.4，32个Lucide公共名字）、Button、DescriptiveButton、DropdownMenu、ContextMenu、Command（含 CommandInput / CommandDialog） |
 | 浮层 | Dialog、AlertDialog、Sheet、Popover、HoverCard、Tooltip |
 | 反馈与状态 | Alert（Info/Success/Warning/Error）、Toaster/toast、Badge、Progress、Skeleton、Empty |
 

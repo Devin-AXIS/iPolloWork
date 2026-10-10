@@ -5,6 +5,7 @@
   "exports": {
     "./alert": "./src/react/alert.tsx",
     "./image": "./src/react/image.tsx",
+    "./icon": "./src/react/icon.tsx",
     "./controls": "./src/react/controls.tsx",
     "./select": "./src/react/select.tsx",
     "./dialog": "./src/react/dialog.tsx",

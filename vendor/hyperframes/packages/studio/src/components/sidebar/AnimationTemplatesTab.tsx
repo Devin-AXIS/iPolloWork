@@ -1203,7 +1203,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
       className="flex h-full min-h-0 flex-col overflow-hidden"
       data-testid="animation-templates-tab"
     >
-      <div className="flex-shrink-0 space-y-3 border-b border-panel-border px-4 pb-4 pt-3">
+      <div className="flex-shrink-0 space-y-3 border-b border-panel-border px-4 py-3">
           <SearchInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}

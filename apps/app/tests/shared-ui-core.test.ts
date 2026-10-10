@@ -93,3 +93,40 @@ test("public mapping only names available runtime exports and existing public en
     expect(readFileSync(new URL("../../../" + component.source, import.meta.url), "utf8")).not.toContain('from "@/');
   }
 });
+
+
+test("every curated public icon renders nonempty Lucide SVG with correct fixed pixel sizes and semantics", () => {
+  expect(core.ICON_NAMES.length).toBe(32);
+  expect(new Set(core.ICON_NAMES).size).toBe(32);
+  for (const name of core.ICON_NAMES) {
+    for (const [size, pixels] of [["s", 14], ["m", 16], ["l", 20]] satisfies [NonNullable<ComponentProps<typeof core.Icon>["size"]>, number][]) {
+      const html = renderToStaticMarkup(createElement(core.Icon, { name, size }));
+      expect(html).toContain('<svg');
+      expect(html).toMatch(/<(path|circle|line|rect|polyline|polygon|ellipse) /);
+      expect(html).toContain(`width:${pixels}px;height:${pixels}px`);
+      expect(html).toContain('aria-hidden="true"');
+      expect(html).not.toContain('role="img"');
+    }
+  }
+  const labelled = renderToStaticMarkup(createElement(core.Icon, { name: "CircleCheck", label: "保存成功" }));
+  expect(labelled).toContain('role="img"');
+  expect(labelled).toContain('aria-label="保存成功"');
+  expect(labelled).not.toContain('aria-hidden');
+});
+
+test("icons compose with the existing Button without duplicating its accessible name", () => {
+  const html = renderToStaticMarkup(createElement(core.Button, { size: "icon", "aria-label": "搜索",
+    children: createElement(core.Icon, { name: "Search" }),
+  }));
+  expect(html).toContain('aria-label="搜索"');
+  expect(html).toContain('aria-hidden="true"');
+  expect(html).toContain('size-[32px]');
+  for (const [size, height] of [["sm", 28], ["default", 32], ["lg", 36]] satisfies [NonNullable<ComponentProps<typeof core.Button>["size"]>, number][]) {
+    expect(core.buttonVariants({ size })).toContain(`h-[${height}px]`);
+  }
+  for (const position of ["inline-start", "inline-end"] satisfies NonNullable<ComponentProps<typeof core.Icon>["data-icon"]>[]) {
+    const content = renderToStaticMarkup(createElement(core.Button, { children: [createElement(core.Icon, { key: "icon", name: "Download", "data-icon": position }), "下载"] }));
+    expect(content).toContain(`data-icon="${position}"`);
+    expect(content).toContain('data-slot="button"');
+  }
+});

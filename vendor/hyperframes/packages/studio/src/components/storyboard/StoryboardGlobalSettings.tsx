@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useStudioI18n } from "../../i18n";
 import { StoryboardAsset } from "./StoryboardAsset";
 import { StoryboardPlanField } from "./StoryboardPlanField";
+import { Button } from "@ipollowork/ui/controls";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ipollowork/ui/select";
+import { Alert, AlertDescription } from "@ipollowork/ui/alert";
 
 const AI_THEME = "ai-auto";
 
@@ -131,12 +134,12 @@ export function StoryboardGlobalSettings({
       aria-label={tx("Whole-video settings")}
       className="hf-script-global mx-5 mb-4 min-w-0 shrink-0 overflow-hidden rounded-lg border border-[var(--hf-workspace-border)] bg-[var(--hf-panel-bg)]"
     >
-      <button
+      <Button variant="ghost"
         type="button"
         aria-expanded={expanded}
         aria-controls="storyboard-global-settings-body"
         onClick={() => setExpanded((value) => !value)}
-        className="hf-script-global-toggle flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-[var(--hf-panel-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
+        className="hf-script-global-toggle h-auto w-full justify-between gap-3 whitespace-normal px-4 py-3 text-left"
       >
         <span>
           <span className="block text-xs font-semibold text-[var(--hf-panel-text-1)]">{tx("Whole-video direction")}</span>
@@ -145,7 +148,7 @@ export function StoryboardGlobalSettings({
           {tx(selectedTheme === AI_THEME ? "Automatic theme" : "Custom theme")} · {tx(musicDisabled ? "No music" : musicAsset ? "Choose from project assets" : "AI chooses from the script")}
         </span>
         <ChevronDown size={14} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
-      </button>
+      </Button>
       {expanded && <div id="storyboard-global-settings-body" className="grid min-h-0 grid-cols-1 gap-5 border-t border-[var(--hf-workspace-hairline)] p-4 sm:grid-cols-2 lg:grid-cols-3">
       <div className="min-w-0">
         <span className="block mb-2 text-xs font-medium text-[var(--hf-panel-text-1)]">
@@ -158,7 +161,7 @@ export function StoryboardGlobalSettings({
           ] as const).map(([mode, label]) => {
             const selected = mode === "ai" ? !manualThemeOpen : manualThemeOpen;
             return (
-              <button
+              <Button variant="ghost"
                 key={mode}
                 type="button"
                 aria-pressed={selected}
@@ -167,42 +170,25 @@ export function StoryboardGlobalSettings({
                   if (mode === "ai") selectTheme(AI_THEME);
                   else setManualThemeOpen(true);
                 }}
-                className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-studio-accent disabled:opacity-50 ${
-                  selected
-                    ? "border-studio-accent bg-studio-accent/10 text-[var(--hf-panel-text-0)]"
-                    : "border-[var(--hf-workspace-border)] text-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)]"
-                }`}
+                className={selected ? "bg-accent" : ""}
               >
                 {mode === "ai" ? <Sparkles size={12} className="shrink-0" /> : null}
                 {tx(label)}
-              </button>
+              </Button>
             );
           })}
         </div>
         {manualThemeOpen && (
-          <select
-            aria-label={tx("Choose video design theme")}
-            value={themeRequest?.theme ?? (isKnownTheme || hasCustomTheme ? selectedTheme : "")}
-            disabled={disabled || themeRequest !== null || themeOptions.length === 0}
-            onChange={(event) => selectTheme(event.target.value)}
-            className="mt-3 w-full min-w-0 rounded-lg border border-[var(--hf-workspace-border)] bg-[var(--hf-workspace-bg)] px-3 py-2 text-xs text-[var(--hf-panel-text-1)] outline-none focus:border-studio-accent disabled:opacity-60"
-          >
-            <option value="" disabled>{tx("Select an installed theme")}</option>
-            {hasCustomTheme && (
-              <option value={selectedTheme}>
-                {tx("Current custom theme")}: {selectedTheme}
-              </option>
-            )}
-            {themeOptions.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.category ? `${theme.category} · ` : ""}
-                {theme.name}
-              </option>
-            ))}
-          </select>
+          <Select value={themeRequest?.theme ?? (isKnownTheme || hasCustomTheme ? selectedTheme : null)} disabled={disabled || themeRequest !== null || themeOptions.length === 0} onValueChange={value => { if (value !== null) selectTheme(value); }}>
+            <SelectTrigger aria-label={tx("Choose video design theme")} className="mt-3 w-full"><SelectValue>{themeOptions.find(theme => theme.id === (themeRequest?.theme ?? selectedTheme))?.name ?? (hasCustomTheme ? selectedTheme : tx("Select an installed theme"))}</SelectValue></SelectTrigger>
+            <SelectContent>
+              {hasCustomTheme && <SelectItem value={selectedTheme}>{tx("Current custom theme")}: {selectedTheme}</SelectItem>}
+              {themeOptions.map(theme => <SelectItem key={theme.id} value={theme.id}>{theme.category ? `${theme.category} · ` : ""}{theme.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         )}
         {themeRequest && <p role="status" className="px-2 pt-1 text-xs">{tx("Applying")}</p>}
-        {themeError && <p role="alert" className="px-2 pt-1 text-xs">{tx("Theme was not applied. Please try again in Work.")}</p>}
+        {themeError && <Alert variant="destructive"><AlertDescription>{tx("Theme was not applied. Please try again in Work.")}</AlertDescription></Alert>}
         {manualThemeOpen && themeOptions.length === 0 && (
           <p className="px-2 pt-1 text-[10px] text-[var(--hf-panel-text-4)]">
             {typeof window !== "undefined" && window.parent === window
@@ -238,17 +224,13 @@ export function StoryboardGlobalSettings({
               ["none", "No background music"],
             ] as const
           ).map(([mode, label]) => (
-            <button
+            <Button variant="ghost"
               key={mode}
               type="button"
               aria-pressed={musicMode === mode}
               disabled={disabled}
               onClick={() => selectMusicMode(mode)}
-              className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-studio-accent disabled:opacity-50 ${
-                musicMode === mode
-                  ? "border-studio-accent bg-studio-accent/10 text-[var(--hf-panel-text-0)]"
-                  : "border-[var(--hf-workspace-border)] text-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)]"
-              }`}
+              className={musicMode === mode ? "bg-accent" : ""}
             >
               {mode === "auto" ? (
                 <Sparkles size={12} className="shrink-0" />
@@ -256,7 +238,7 @@ export function StoryboardGlobalSettings({
                 <Music2 size={12} className="shrink-0" />
               )}
               {tx(label)}
-            </button>
+            </Button>
           ))}
         </div>
         {musicMode !== "none" && (

@@ -20,7 +20,7 @@ description: 为 iPolloWork 新插件或插件工作区复用 UI 组件、颜色
 - 宿主 React 使用原有 `@/components/ui/*` 入口；共享包控件入口为 `@ipollowork/ui/controls`。
 - iframe 插件只从 `@ipollowork/ui/runtime-contract` 导入 `requireRuntime(1)`；实际 React/控件从返回的运行时对象取得。不要从 `plugin-runtime` 或宿主私有路径导入实现，也不要给生产插件再打包 React。
 - 开发构建显式选择 `buildPluginRuntime('bundled')`，将运行时放在业务脚本之前；生产包不包含运行时，保留契约中的固定 meta 标记，由宿主注入。不能仅凭 `NODE_ENV` 推断加载方式。
-- 当前运行时版本为 `1.3.0`。使用本轮颜色与字体规范时调用 `requireRuntime(1, required, 3)`，第三参数检查最低 minor；required 列出实际使用的全部函数导出（包括子组件）。旧版本或缺组件时停止初始化并提示更新客户端。不支持完整 semver 范围、最低 patch 或 manifest UI 版本协商，也不自动下载另一份组件库。
+- 当前运行时版本为 `1.4.0`。使用本轮颜色与字体规范时调用 `requireRuntime(1, required, 3)`，第三参数检查最低 minor；使用公共 Icon 时调用 `requireRuntime(1, ['Button', 'Icon'], 4)`，尺寸 S/M/L 为14/16/20px，Button 前后图标直接作为 children 组合，纯图标按钮必须有 aria-label。required 列出实际使用的全部函数导出（包括子组件）。旧版本或缺组件时停止初始化并提示更新客户端。不支持完整 semver 范围、最低 patch 或 manifest UI 版本协商，也不自动下载另一份组件库。
 
 1.2 核心扩展及 Alert/Toast 浅背景已本地整合到 Carrie，未提交、推送或发布；隔离分支仍保留。核心样板以浏览器沙箱验证，真实客户端安装验证另记在接入契约，不把两者等同。签名包上传、打包客户端和跨客户端版本升级未验收。推荐目录的 62 个条目不等于运行时已提供 62 个独立组件。
 

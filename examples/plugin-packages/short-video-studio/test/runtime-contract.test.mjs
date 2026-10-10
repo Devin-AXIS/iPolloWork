@@ -17,6 +17,11 @@ test('legacy consumers remain compatible; new components require actual capabili
     assert.throws(() => requireRuntime(1, ['Select'], 3), /版本过旧.*更新/);
     globalThis.window.ipolloworkUi = { ...runtime, version: '1.3.0' };
     assert.equal(requireRuntime(1, ['Select'], 3).version, '1.3.0');
+    assert.throws(() => requireRuntime(1, ['Icon'], 4), /版本过旧.*更新/);
+    globalThis.window.ipolloworkUi = { ...runtime, version: '1.4.0' };
+    assert.throws(() => requireRuntime(1, ['Icon'], 4), /缺少.*更新/);
+    globalThis.window.ipolloworkUi = { ...runtime, version: '1.4.0', Icon() {} };
+    assert.equal(requireRuntime(1, ['Icon'], 4).version, '1.4.0');
     globalThis.window.ipolloworkUi = { ...runtime, version: '1.invalid.0' };
     assert.throws(() => requireRuntime(1, ['Select'], 3), /版本过旧.*更新/);
     for (const incompatible of [undefined, { version: '2.0.0' }, { version: 'unknown' }]) {

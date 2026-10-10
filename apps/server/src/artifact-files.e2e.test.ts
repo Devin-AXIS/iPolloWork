@@ -93,16 +93,22 @@ describe("artifact file routes", () => {
     const root = await createWorkspaceRoot();
     const { base, token } = await startiPolloWorkServer(root);
     await sharp({ create: { width: 160, height: 90, channels: 3, background: "blue" } }).png().toFile(join(root, "image.png"));
+    await sharp({ create: { width: 90, height: 160, channels: 3, background: "blue" } }).png().toFile(join(root, "portrait.png"));
     await writeFile(join(root, "logo.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"><rect width="160" height="40" fill="red"/></svg>');
     execFileSync(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x90:d=0.2", "-pix_fmt", "yuv420p", join(root, "video.mp4")]);
-    for (const path of ["image.png", "logo.svg", "video.mp4"]) {
+    for (const path of ["image.png", "portrait.png", "logo.svg", "video.mp4"]) {
       const response = await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=${path}`, { headers: auth(token) });
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("image/webp");
       expect(response.headers.get("access-control-expose-headers")).toContain("X-Artifact-Detail");
-      expect(decodeURIComponent(response.headers.get("x-artifact-detail") ?? "")).toBe(path === "video.mp4" ? "00:00" : path === "logo.svg" ? "160 × 40" : "160 × 90");
-      const image = await sharp(Buffer.from(await response.arrayBuffer())).metadata();
-      expect([image.width, image.height]).toEqual([80, 80]);
+      expect(decodeURIComponent(response.headers.get("x-artifact-detail") ?? "")).toBe(path === "video.mp4" ? "00:00" : path === "logo.svg" ? "160 × 40" : path === "portrait.png" ? "90 × 160" : "160 × 90");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const image = await sharp(bytes).metadata();
+      expect([image.width, image.height]).toEqual([160, 110]);
+      const pixels = await sharp(bytes).ensureAlpha().raw().toBuffer();
+      // Wide and tall sources retain their full composition, with transparent letterboxing.
+      expect(pixels[3]).toBe(0);
+      expect(pixels[(55 * 160 + 80) * 4 + 3]).toBe(255);
     }
     expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=image.png`)).status).toBe(401);
     expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=reports/artifact-eval.md`, { headers: auth(token) })).status).toBe(415);

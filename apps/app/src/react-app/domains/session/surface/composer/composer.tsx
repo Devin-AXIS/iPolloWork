@@ -1287,7 +1287,7 @@ export function ReactSessionComposer(props: ComposerProps) {
           ) : null}
 
           {/* Keep the editor and actions at the designed height; accessories add space above. */}
-          <div className="flex h-[120px] shrink-0 flex-col px-4 pt-3 pb-2">
+          <div className={`flex shrink-0 flex-col px-4 pt-3 pb-2 ${props.layout === "inline" ? "h-[120px]" : "h-[96px]"}`}>
             {/* Editor */}
             <LexicalPromptEditor
               ref={editorRef}

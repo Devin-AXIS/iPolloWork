@@ -2430,10 +2430,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           data-testid="session-message-scroll"
           // Extra top padding while the find bar is open so it never covers
           // the first message (short transcripts cannot scroll it clear).
-          className={`absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 pb-4 sm:px-5 ${findOwned ? "pt-16" : "pt-4"}`}
+          className={`absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 pb-4 md:px-8 ${findOwned ? "pt-16" : "pt-4"}`}
         >
-          {/* Chat column: tighter than the composer (800px) so messages
-               keep a comfortable reading width and don't feel "too big". */}
+          {/* Share the composer's content width and outer gutters. */}
           <div ref={contentRef} className="mx-auto w-full max-w-[800px]">
             {showDelayedLoading && pendingSessionLoad ? (
               <div className="px-6 py-16">

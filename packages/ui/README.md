@@ -92,7 +92,7 @@ See `.codex/skills/ipollowork-plugin-ui/references/plugin-contract.md` for
 the canonical v1 public-entry, build/injection and major-version contract,
 including current limitations, and `evals/flows/shared-ui-runtime.flow.mjs`
 for proof. `plugin-runtime` is an implementation entrypoint, not the production
-plugin business-script API. Runtime `1.3.0` is distinct from client/plugin
+plugin business-script API. Runtime `1.4.0` is distinct from client/plugin
 package versions; `requireRuntime(1, required, 3)` enforces minor >= 3 in major 1.
 Older two-argument callers remain compatible. There is no semver range negotiation.
 The built-in production plugin was installed in a dedicated Electron dev
@@ -174,3 +174,13 @@ These components default to `fill={true}`, which means they render at `width: 10
 - Shared seed logic lives in `src/common/paper.ts`
 - React wrappers live in `src/react/paper/*`
 - Prefer extending the existing seed helpers instead of inventing per-app one-off shader configs
+
+### Public icons (runtime 1.4)
+
+`Icon` from `@ipollowork/ui/icon` or `core` provides 32 curated Lucide glyphs, enumerated by `ICON_NAMES` and typed by `IconName`. Sizes `s`/`m`/`l` are fixed14/16/20px; default `m`. It is decorative unless `label` is supplied. Compose existing Button children with `data-icon="inline-start"` or `inline-end`; pure icon buttons require an accessible Button name. iframe consumers call `requireRuntime(1, ['Button', 'Icon'], 4)`. Button `sm`/default/`lg` and matching icon sizes use28/32/36px; legacy xs remains24px. No Lucide namespace or arbitrary icon-name loading is exposed.
+
+```tsx
+import { Button, Icon } from '@ipollowork/ui/core';
+<Button onClick={save}><Icon name="Save" data-icon="inline-start" />保存</Button>
+<Button size="icon" aria-label="搜索"><Icon name="Search" /></Button>
+```
