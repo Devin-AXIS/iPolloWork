@@ -4,6 +4,8 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import JSZip from 'jszip';
+import { manifest } from '../src/contracts.mjs';
+const archiveName = `short-video-studio-${manifest.package.version}.ipollowork-plugin`;
 
 const root = process.env.IPOLLOWORK_SOURCE_ROOT;
 if (!root) throw new Error('Set IPOLLOWORK_SOURCE_ROOT for real host compatibility tests');
@@ -46,9 +48,9 @@ test('signed package passes real host upload and lifecycle, preserving user proj
     const lifecycle = await load('apps/server/src/plugin-package-lifecycle.ts');
     const runtime = await load('apps/server/src/plugin-service-runtime.ts');
     const { withMaterializedPluginPackageUpload } = await load('apps/server/src/plugin-package-upload.ts');
-    const archive = await JSZip.loadAsync(await readFile(new URL('../dist/short-video-studio-0.1.0.ipollowork-plugin', import.meta.url)));
+    const archive = await JSZip.loadAsync(await readFile(new URL(`../dist/${archiveName}`, import.meta.url)));
     const files=[];for(const [path,entry] of Object.entries(archive.files))if(!entry.dir)files.push({path,contentBase64:await entry.async('base64')});
-    await withMaterializedPluginPackageUpload({archiveName:'short-video-studio-0.1.0.ipollowork-plugin',files}, 'install', async ({packageRoot}: {packageRoot:string})=>{
+    await withMaterializedPluginPackageUpload({archiveName,files}, 'install', async ({packageRoot}: {packageRoot:string})=>{
       const preview=await lifecycle.previewPluginPackage({packageRoot});
       const safety=await lifecycle.assertPluginPackageSafeForImport({packageRoot,preview,purpose:'install'});
       expect(safety.signature.status).toBe('verified');

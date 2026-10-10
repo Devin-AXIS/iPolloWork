@@ -61,7 +61,7 @@ function SelectTrigger({
       data-size={size}
       className={cn(
         styleScope === "settings"
-          ? "group/select flex h-8 w-fit items-center justify-between gap-1.5 rounded-[8px] border border-transparent bg-[#f5f6f9] px-3 text-[13px] whitespace-nowrap text-dls-text shadow-none outline-none transition-colors hover:bg-[#f6f7fb] focus-visible:border-[#1FBAC0] focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/20 disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:bg-[#eceef2] data-placeholder:text-dls-secondary dark:bg-white/[0.06] dark:hover:bg-white/[0.09] dark:aria-expanded:bg-white/[0.12] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+          ? "group/select flex h-8 w-fit items-center justify-between gap-1.5 rounded-[8px] border border-transparent bg-muted/40 px-3 text-[13px] whitespace-nowrap text-dls-text shadow-none outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:bg-accent data-placeholder:text-dls-secondary dark:bg-white/[0.06] dark:hover:bg-white/[0.09] dark:aria-expanded:bg-white/[0.12] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           : "group/select flex w-fit items-center justify-between gap-1.5 rounded-[8px] border border-border bg-input/50 px-2.5 py-1 text-ui-control whitespace-nowrap transition-[color,box-shadow,background-color] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-8 data-[size=sm]:h-7 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
@@ -170,7 +170,7 @@ function SelectItem({
           <span className="pointer-events-none absolute end-2 flex size-4 items-center justify-center" />
         }
       >
-        <CheckIcon className={cn("pointer-events-none", styleScope === "settings" && "text-[#1FBAC0]")} />
+        <CheckIcon className={cn("pointer-events-none", styleScope === "settings" && "text-link")} />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )

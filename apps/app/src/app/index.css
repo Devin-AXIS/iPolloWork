@@ -189,8 +189,8 @@ html {
 body {
   margin: 0;
   font-family: var(--ipollowork-font-sans);
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: var(--ui-body-size);
+  line-height: var(--ui-body-line);
   color: var(--dls-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -472,7 +472,7 @@ html:lang(zh) [data-testid="work-center"] :where(
   justify-content: center;
   border-radius: 9999px;
   background: var(--dls-accent);
-  color: white;
+  color: var(--dls-accent-fg);
   box-shadow: 0 8px 20px -16px rgba(var(--dls-accent-rgb), 0.45);
 }
 
@@ -686,7 +686,7 @@ select:disabled {
 
 .dark,
 [data-theme="dark"] {
-  --project-dialog-accent: #1fbac0;
+  --project-dialog-accent: var(--brand-accent);
   --project-dialog-notice: var(--slate-3);
   --project-dialog-option-border: var(--slate-6);
   --background: var(--slate-1);
@@ -696,8 +696,6 @@ select:disabled {
   --popover: var(--slate-2);
   --popover-foreground: var(--slate-12);
   --popover-border: var(--slate-5);
-  --primary: var(--blue-10);
-  --primary-foreground: var(--slate-12);
   --secondary: var(--slate-3);
   --secondary-foreground: var(--slate-12);
   --muted: var(--slate-3);
@@ -708,7 +706,6 @@ select:disabled {
   --warning: var(--amber-11);
   --border: var(--slate-3);
   --input: var(--slate-6);
-  --ring: var(--slate-8);
   --chart-1: var(--sky-9);
   --chart-2: var(--blue-9);
   --chart-3: var(--indigo-9);
@@ -716,8 +713,6 @@ select:disabled {
   --chart-5: var(--purple-9);
   --sidebar: var(--slate-2);
   --sidebar-foreground: var(--slate-12);
-  --sidebar-primary: var(--blue-9);
-  --sidebar-primary-foreground: var(--slate-12);
   --sidebar-accent: var(--slate-3);
   --sidebar-accent-foreground: var(--slate-12);
   --sidebar-border: var(--slate-6);

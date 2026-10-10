@@ -50,7 +50,7 @@ export default {
       assert:async()=>{await ctx.waitFor(`(()=>{const d=document.querySelector('#dialog'),r=d.getBoundingClientRect();return document.documentElement.dataset.theme==='dark'&&r.left>=0&&r.right<=innerWidth&&d.scrollWidth<=d.clientWidth})()`);ctx.assert(await ctx.eval('(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue("--sv-text").trim()===s.getPropertyValue("--foreground").trim()})()'),'plugin tokens resolve to shared semantics');},screenshot:shot('dark-narrow')});
     await click(parent,frame,'[data-dialog="ok"]');
     await ctx.waitFor('!document.querySelector("#dialog")');
-    ctx.log(JSON.stringify(await ctx.eval(`({selected:document.querySelector('#project-picker').selectedOptions[0].textContent})`)));
+    ctx.log(JSON.stringify(await ctx.eval(`({selected:document.querySelector('#project-picker').textContent})`)));
     await ctx.waitFor(`document.body.textContent.includes(${JSON.stringify(draft)})`);
     ctx.assert(await ctx.eval(`document.body.textContent.includes(${JSON.stringify(draft)})`),'real service retry creates project');
     ctx.assert(await evaluate(parent,'window.__uiRequests===2'),'one failed request, one real retry');

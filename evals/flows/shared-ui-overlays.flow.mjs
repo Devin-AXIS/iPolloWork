@@ -51,7 +51,7 @@ export default {
         assert: async () => {
           await ctx.waitFor('document.querySelector("#dialog").getAttribute("aria-busy")==="true"');
           await key(parent, 'Escape');
-          ctx.assert(await ctx.eval(`document.querySelector('#dialog input').value===${JSON.stringify(title)} && [...document.querySelectorAll('#dialog button, #dialog input')].every(e=>e.disabled&&e.getBoundingClientRect().height===32)`), 'busy shared controls retain draft and geometry');
+          ctx.assert(await ctx.eval(`document.querySelector('#dialog input').value===${JSON.stringify(title)} && [...document.querySelectorAll('#dialog button:not([data-slot=dialog-close]), #dialog input')].every(e=>e.disabled&&e.getBoundingClientRect().height===32)`), 'busy shared controls retain draft and geometry');
         }, screenshot: shot('busy', ['新建短片', '提交中…']),
       });
       await ctx.prove('失败保留草稿，真实重试成功后显示共享 Toast', {
@@ -68,30 +68,30 @@ export default {
       });
       await evaluate(parent, 'window.fetch=window.__originalFetch;delete window.__originalFetch');
       await click(parent, frame, '[data-action="add:image"]');
-      await ctx.waitFor('Boolean(document.querySelector("[data-slot=select-trigger]"))');
+      await ctx.waitFor('Boolean(document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]"))');
       await inject('project-save');
       await ctx.prove('Select 键盘与取消不丢值，失败恢复原值并就地提示', {
         voiceover: vo[2], action: async () => {
-          await click(parent, frame, '[data-slot="select-trigger"]'); await ctx.waitFor('document.activeElement.getAttribute("role")==="option"');
-          await key(parent, 'Escape'); await ctx.waitFor('document.querySelector("[data-slot=select-trigger]").getAttribute("aria-expanded")==="false"');
+          await click(parent, frame, '[data-shared-select=preset] [data-slot="select-trigger"]'); await ctx.waitFor('document.activeElement.getAttribute("role")==="option"');
+          await key(parent, 'Escape'); await ctx.waitFor('document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]").getAttribute("aria-expanded")==="false"');
           await ctx.waitFor('document.activeElement.dataset.slot==="select-trigger"');
           ctx.assert(await ctx.eval('document.activeElement.dataset.slot==="select-trigger" && document.activeElement.textContent.includes("自由创作")'), 'Escape returns focus without altering selection');
-          await click(parent, frame, '[data-slot="select-trigger"]'); await ctx.waitFor('document.activeElement.getAttribute("role")==="option"'); await key(parent, 'Home'); await key(parent, 'ArrowDown'); await key(parent, 'Enter');
+          await click(parent, frame, '[data-shared-select=preset] [data-slot="select-trigger"]'); await ctx.waitFor('document.activeElement.getAttribute("role")==="option"'); await key(parent, 'Home'); await key(parent, 'ArrowDown'); await key(parent, 'Enter');
           ctx.client = parent; await ctx.waitFor('typeof window.__reject==="function"'); ctx.client = frame;
           await evaluate(parent, 'window.__reject()');
         }, assert: async () => {
           await ctx.waitFor('!document.querySelector("#preset-error").hidden');
           await ctx.waitFor('document.activeElement.dataset.slot==="select-trigger"');
-          ctx.assert(await ctx.eval('document.querySelector("[data-slot=select-trigger]").textContent.includes("自由创作") && document.querySelector("[data-slot=select-trigger]").getAttribute("aria-describedby")==="preset-error"'), 'failed choice restores persisted value');
+          ctx.assert(await ctx.eval('document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]").textContent.includes("自由创作") && document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]").getAttribute("aria-describedby")==="preset-error"'), 'failed choice restores persisted value');
           ctx.assert(!(await savedProject(root, title)).nodes[0].settings?.preset, 'failed save did not mutate disk');
         }, screenshot: shot('select-error', ['风格提示', '保存暂不可用', '自由创作']),
       });
       await ctx.prove('Select 重试保存风格及提示词到真实项目', {
         voiceover: vo[3], action: async () => {
-          await click(parent, frame, '[data-slot="select-trigger"]'); await ctx.waitFor('document.activeElement.getAttribute("role")==="option"'); await key(parent, 'Home');
+          await click(parent, frame, '[data-shared-select=preset] [data-slot="select-trigger"]'); await ctx.waitFor('document.activeElement.getAttribute("role")==="option"'); await key(parent, 'Home');
           for (let i = 0; i < 4; i++) await key(parent, 'ArrowDown'); await key(parent, 'Enter');
         }, assert: async () => {
-          await ctx.waitFor('document.querySelector("[data-slot=select-trigger]").textContent.includes("产品展示") && !document.querySelector("[data-slot=select-trigger]").disabled');
+          await ctx.waitFor('document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]").textContent.includes("产品展示") && !document.querySelector("[data-shared-select=preset] [data-slot=select-trigger]").disabled');
           await ctx.waitFor('document.activeElement.dataset.slot==="select-trigger"');
           const project = await savedProject(root, title);
           ctx.assert(project.nodes[0].settings.preset === '产品展示' && project.nodes[0].prompt.includes('商业产品摄影'), 'preset and prompt persisted together');
@@ -104,7 +104,7 @@ export default {
           await evaluate(parent, 'document.querySelector("#theme").click()');
           await parent.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
           await evaluate(frame, 'window.ipolloworkUi.toast.dismiss();window.ipolloworkUi.toast.info("共享主题已切换",{duration:60000})');
-          await click(parent, frame, '[data-slot="select-trigger"]');
+          await click(parent, frame, '[data-shared-select=preset] [data-slot="select-trigger"]');
         }, assert: async () => {
           await ctx.waitFor(`(()=>{const e=document.querySelector('[data-slot=select-content][data-open]');if(!e)return false;const r=e.getBoundingClientRect();return document.documentElement.dataset.theme==='dark'&&r.width>0&&r.left>=0&&r.right<=innerWidth})()`);
           await ctx.waitFor('document.querySelector("[data-sonner-toaster]").dataset.sonnerTheme==="dark"');

@@ -18,12 +18,12 @@ const saveMenu = readFileSync(new URL("../src/react-app/domains/session/design/d
 const panelSelect = readFileSync(new URL("../src/react-app/domains/session/design/design-panel-select.tsx", import.meta.url), "utf8");
 const gradientPicker = readFileSync(new URL("../src/react-app/domains/session/design/design-gradient-picker.tsx", import.meta.url), "utf8");
 const sidePanel = readFileSync(new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url), "utf8");
-const dropdownMenu = readFileSync(new URL("../src/components/ui/dropdown-menu.tsx", import.meta.url), "utf8");
-const contextMenu = readFileSync(new URL("../src/components/ui/context-menu.tsx", import.meta.url), "utf8");
+const dropdownMenu = readFileSync(new URL("../../../packages/ui/src/react/dropdown-menu.tsx", import.meta.url), "utf8");
+const contextMenu = readFileSync(new URL("../../../packages/ui/src/react/context-menu.tsx", import.meta.url), "utf8");
 const select = readFileSync(new URL("../../../packages/ui/src/react/select.tsx", import.meta.url), "utf8");
-const popover = readFileSync(new URL("../src/components/ui/popover.tsx", import.meta.url), "utf8");
+const popover = readFileSync(new URL("../../../packages/ui/src/react/popover.tsx", import.meta.url), "utf8");
 const menuStyles = readFileSync(new URL("../../../packages/ui/src/common/menu-styles.ts", import.meta.url), "utf8");
-const switchControl = readFileSync(new URL("../src/components/ui/switch.tsx", import.meta.url), "utf8");
+const switchControl = readFileSync(new URL("../../../packages/ui/src/react/switch.tsx", import.meta.url), "utf8");
 
 test("toast cards keep the library ID for close and action dismissal", () => {
   for (const options of [undefined, { id: "compact-toast-regression" }]) {
@@ -129,7 +129,8 @@ test("remaining compact families preserve content and semantic elements", () => 
   ));
   expect(alert).toContain('role="alert"');
   expect(alert).toContain("px-3 py-3");
-  expect(alert).toContain("border-sky-11");
+  expect(alert).toContain("border-0");
+  expect(alert).toContain("bg-feedback-info");
   expect(alert).toContain("请检查配置后重试。");
 });
 
@@ -138,7 +139,7 @@ test("task progress shares a compact track without inventing a value", () => {
   const pending = renderToStaticMarkup(React.createElement(Progress, { value: null, "aria-label": "正在连接" }));
   expect(measured).toContain('aria-valuenow="45"');
   expect(measured).toContain("h-1.5");
-  expect(measured).toContain("bg-[#1FBAC0]");
+  expect(measured).toContain("bg-primary");
   expect(pending).toContain("data-indeterminate");
   expect(pending).not.toContain("aria-valuenow");
 });

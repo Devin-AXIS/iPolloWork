@@ -7,10 +7,10 @@ export const menuInteractionClassName = "**:data-[slot$=-item]:focus:bg-foregrou
 export const menuDensityClassNames = {
   default: {
     content: "p-1.5",
-    item: "min-h-8 rounded-[6px]! px-2 py-1.5 text-[13px] font-medium",
+    item: "min-h-8 rounded-[6px]! px-2 py-1.5 text-ui-control font-medium",
   },
   compact: {
     content: "p-1",
-    item: "min-h-7 rounded-[6px]! px-2 py-1 text-xs font-normal",
+    item: "min-h-7 rounded-[6px]! px-2 py-1 text-ui-control font-medium",
   },
 };

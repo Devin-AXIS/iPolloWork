@@ -34,7 +34,7 @@ document.getElementById('narrow').onclick=()=>{frame.style.width=frame.style.wid
 </script></html>`;
 const server = createServer(async (req, res) => {
   res.setHeader('cache-control', 'no-store');
-  if (req.method === 'GET' && req.url === '/') { res.setHeader('content-type', 'text/html; charset=utf-8'); const html = await readFile(uiFile, 'utf8'); res.end(page(hostRuntime ? html.replace('<head>', `<head><script>${hostRuntime.replaceAll('</script', '<\\/script')}</script>`) : html)); return; }
+  if (req.method === 'GET' && req.url === '/') { res.setHeader('content-type', 'text/html; charset=utf-8'); const html = await readFile(uiFile, 'utf8'); res.end(page(hostRuntime ? html.replace('<head>', () => `<head><script>${hostRuntime.replaceAll('</script', '<\\/script')}</script>`) : html)); return; }
   if (req.method !== 'POST' || req.url !== '/rpc' || req.headers['x-dev-token'] !== token || req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403); res.end(); return; }
   try {
     const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>4*1024*1024)throw new Error('请求过大');chunks.push(chunk)}

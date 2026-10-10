@@ -1,4 +1,32 @@
 :root {
+  --brand-accent: #1fbac0;
+  --brand-strong: #087b82;
+  --brand-soft: #a9e7ea;
+  --action-background: #161e24;
+  --action-foreground: #ffffff;
+  --action-hover: #1e262b;
+  --action-pressed: #5a6774;
+  --action-pressed-foreground: #ffffff;
+  --primary-text: var(--brand-strong);
+  --field-hint-gap: 8px;
+  --ui-page-title-size: 16px;
+  --ui-page-title-line: 24px;
+  --ui-section-title-size: 14px;
+  --ui-section-title-line: 20px;
+  --ui-control-size: 13px;
+  --ui-control-line: 18px;
+  --ui-body-size: 13px;
+  --ui-body-line: 20px;
+  --ui-meta-size: 12px;
+  --ui-meta-line: 18px;
+  --ui-caption-size: 11px;
+  --ui-caption-line: 16px;
+  --ui-micro-size: 10px;
+  --ui-micro-line: 14px;
+  --feedback-info-background: var(--sky-2);
+  --feedback-success-background: var(--green-2);
+  --feedback-warning-background: var(--amber-2);
+  --feedback-error-background: var(--red-2);
   color-scheme: light;
   --ipollowork-font-sans:
     system-ui,
@@ -30,10 +58,10 @@
   --dls-canvas: var(--slate-2);
   --dls-surface-muted: var(--slate-3);
   --dls-border: #f3f4f6;
-  --dls-accent: #011627;
-  --dls-accent-hover: #000000;
-  --dls-accent-fg: #ffffff;
-  --dls-accent-rgb: 1 22 39;
+  --dls-accent: var(--action-background);
+  --dls-accent-hover: var(--action-hover);
+  --dls-accent-fg: var(--action-foreground);
+  --dls-accent-rgb: 22 30 36;
   --dls-secondary-rgb: 96 100 108;
   --dls-text-primary: var(--slate-12);
   --dls-text-secondary: var(--slate-11);
@@ -48,7 +76,7 @@
   --dls-radius-lg: 24px;
   --dls-shell-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
   --dls-card-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-  --project-dialog-accent: #1fbac0;
+  --project-dialog-accent: var(--brand-accent);
   --project-dialog-notice: #f4f4ee;
   --project-dialog-option-border: #e7e7e8;
   --background: var(--slate-1);
@@ -58,8 +86,8 @@
   --popover: var(--slate-1);
   --popover-foreground: var(--slate-12);
   --popover-border: var(--slate-5);
-  --primary: var(--blue-9);
-  --primary-foreground: white;
+  --primary: var(--brand-accent);
+  --primary-foreground: #161e24;
   --secondary: var(--slate-3);
   --secondary-foreground: var(--slate-12);
   --muted: var(--slate-3);
@@ -70,7 +98,7 @@
   --warning: var(--amber-11);
   --border: var(--slate-5);
   --input: var(--slate-6);
-  --ring: var(--slate-8);
+  --ring: var(--brand-strong);
   --chart-1: var(--sky-9);
   --chart-2: var(--blue-9);
   --chart-3: var(--indigo-9);
@@ -79,8 +107,8 @@
   --radius: 0.45rem;
   --sidebar: #fcfcfc;
   --sidebar-foreground: var(--slate-12);
-  --sidebar-primary: var(--blue-9);
-  --sidebar-primary-foreground: white;
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--slate-3);
   --sidebar-accent-foreground: var(--slate-12);
   --sidebar-border: var(--slate-6);
@@ -89,6 +117,15 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
+  --action-background: var(--brand-accent);
+  --action-foreground: #161e24;
+  --action-hover: var(--brand-soft);
+  --action-pressed: var(--brand-strong);
+  --primary-text: var(--brand-accent);
+  --ring: var(--brand-soft);
+  --card: var(--slate-2);
+  --popover: var(--slate-2);
+  --border: var(--slate-3);
   --dls-surface: var(--slate-1);
   --dls-sidebar: var(--slate-2);
   --dls-app-bg: var(--slate-1);
@@ -96,10 +133,10 @@
   --dls-canvas: var(--slate-2);
   --dls-surface-muted: var(--slate-3);
   --dls-border: #262626;
-  --dls-accent: #011627;
-  --dls-accent-hover: #0a2540;
-  --dls-accent-fg: #ffffff;
-  --dls-accent-rgb: 1 22 39;
+  --dls-accent: var(--action-background);
+  --dls-accent-hover: var(--action-hover);
+  --dls-accent-fg: var(--action-foreground);
+  --dls-accent-rgb: 31 186 192;
   --dls-secondary-rgb: 176 180 186;
   --dls-text-primary: var(--slate-12);
   --dls-text-secondary: var(--slate-11);

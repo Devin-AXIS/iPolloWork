@@ -20,7 +20,7 @@ describe("dark theme regressions", () => {
     const source = readAppSource("design/design-properties-inspector.tsx");
     const sharedInspectorSource = readAppSource("panel/studio-inspector-panel.tsx");
     const sharedPopoverSource = readFileSync(
-      new URL("../src/components/ui/popover.tsx", import.meta.url),
+      new URL("../../../packages/ui/src/react/popover.tsx", import.meta.url),
       "utf8",
     );
 

@@ -729,7 +729,7 @@ describe("HyperFrames Video Studio", () => {
 
   test("renders confirmation dialogs above expanded work surfaces", () => {
     const alertDialogSource = readFileSync(
-      new URL("../src/components/ui/alert-dialog.tsx", import.meta.url),
+      new URL("../../../packages/ui/src/react/alert-dialog.tsx", import.meta.url),
       "utf8",
     );
     const dialogSource = readFileSync(

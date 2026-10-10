@@ -3,11 +3,11 @@ import {clsx, type ClassValue} from "clsx"
 import {twMerge} from "tailwind-merge"
 export const cn = (...values: ClassValue[]) => twMerge(clsx(values))
 export const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-4xl border border-transparent bg-clip-padding text-ui-control font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 relative",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-4xl border border-transparent bg-clip-padding py-0 text-[13px] font-medium leading-[18px] whitespace-nowrap transition-[color,background-color,border-color,box-shadow] outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 relative",
   {
     variants: {
       variant: {
-        default: "bg-foreground text-background hover:bg-foreground/80 bg-clip-padding shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] active:not-aria-[haspopup]:translate-y-px",
+        default: "bg-action text-action-foreground hover:bg-action-hover active:bg-action-pressed active:text-action-pressed-foreground bg-clip-padding shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
         outline:
           "border-border bg-muted/20 hover:bg-muted hover:border-foreground/20 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-muted/20 dark:hover:bg-input/30 dark:hover:border-input/80 bg-clip-padding shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] active:not-aria-[haspopup]:translate-y-px",
         secondary:
@@ -16,18 +16,18 @@ export const buttonVariants = cva(
           "hover:bg-muted/60 hover:text-foreground aria-expanded:bg-muted/60 aria-expanded:text-foreground",
         destructive:
           "border-border text-destructive hover:bg-destructive/10 hover:border-destructive/40 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:border-border dark:hover:bg-destructive/10 dark:border-destructive/40 dark:focus-visible:ring-destructive/40 bg-clip-padding shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] active:not-aria-[haspopup]:translate-y-px",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-link underline-offset-4 hover:underline",
       },
       size: {
         default:
           "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 rounded-[8px]",
-        xs: "h-6 gap-1 px-2.5 text-ui-caption has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3",
+        xs: "h-6 gap-1 px-2.5 text-[11px] has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 px-2 has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5 rounded-[8px]",
         lg: "h-9 gap-1.5 px-4 has-data-[icon=inline-end]:pe-3 has-data-[icon=inline-start]:ps-2.5 rounded-[12px]",
-        icon: "size-8",
-        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
-        "icon-lg": "size-9",
+        icon: "size-8 p-0",
+        "icon-xs": "size-6 p-0 [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-7 p-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-lg": "size-9 p-0",
       },
     },
     defaultVariants: {
@@ -41,7 +41,7 @@ const settingsCompactButtonSize = "h-7 px-2 has-data-[icon=inline-end]:pe-2 has-
 const settingsCompactIconButtonSize = "size-7 [&_svg:not([class*='size-'])]:size-3.5"
 
 export const settingsButtonVariants = cva(
-  "gap-[6px] rounded-[8px] text-[13px] font-medium before:rounded-[7px] active:not-aria-[haspopup]:translate-y-0",
+  "gap-[6px] rounded-[8px] text-[13px] font-medium leading-[18px] before:pointer-events-none before:absolute before:inset-0 before:rounded-[7px] active:not-aria-[haspopup]:translate-y-0",
   {
     variants: {
       variant: {

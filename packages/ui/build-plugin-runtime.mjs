@@ -19,7 +19,7 @@ export async function buildPluginRuntime(mode = 'host') {
       resolveDir: base,
       sourcefile: 'plugin-runtime-entry.ts',
     },
-    bundle: true, write: false, metafile: true, format: 'iife', platform: 'browser', target: 'es2022', minify: true,
+    bundle: true, write: false, metafile: true, format: 'iife', platform: 'browser', target: 'es2022', minify: true, jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"' },
   });
   for (const path of [...scanner.files, ...Object.keys(result.metafile.inputs)]) if (!path.startsWith('<') && !path.endsWith('plugin-runtime-entry.ts')) dependencies.add(resolve(path));

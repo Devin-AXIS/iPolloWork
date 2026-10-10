@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Button } from "./controls"
 import { Toaster as Sonner, toast as sonnerToast, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon, XIcon, type LucideIcon } from "lucide-react"
 const CloseLabel = React.createContext("Close");
@@ -88,12 +89,12 @@ const accentColor: Record<ToastType, string> = {
   error: "bg-red-11",
 }
 
-const borderColor: Record<ToastType, string> = {
-  default: "border-sky-11",
-  info: "border-sky-11",
-  success: "border-green-11",
-  warning: "border-amber-11",
-  error: "border-red-11",
+const backgroundColor: Record<ToastType, string> = {
+  default: "bg-feedback-info",
+  info: "bg-feedback-info",
+  success: "bg-feedback-success",
+  warning: "bg-feedback-warning",
+  error: "bg-feedback-error",
 }
 
 function ToastIcon({ type }: { type: ToastType }) {
@@ -119,17 +120,17 @@ function ToastCard({ id, type, title, description, action, cancel }: ToastCardPr
   }
 
   return (
-    <div data-slot="toast-card" className={`relative flex w-full min-w-0 items-center gap-2 rounded-[10px] border bg-popover p-3 text-popover-foreground shadow-none md:max-w-sm ${borderColor[type]}`}>
+    <div data-slot="toast-card" className={`relative flex w-full min-w-0 items-center gap-2 rounded-[10px] border-0 p-3 text-popover-foreground shadow-none md:max-w-sm ${backgroundColor[type]}`}>
       <ToastIcon type={type} />
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm font-semibold leading-5">{title}</p>
-        {description ? <p className="text-[13px] leading-5 text-muted-foreground">{description}</p> : null}
+        <p className="text-ui-section-title font-semibold">{title}</p>
+        {description ? <p className="text-ui-body text-muted-foreground">{description}</p> : null}
         {action || cancel ? <div data-slot="toast-actions" className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
           {action ? <button type="button" className={`min-h-7 px-1 text-[13px] font-medium hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-ring ${type === "error" ? "text-destructive" : "text-foreground"}`} onClick={() => { action.onClick(); sonnerToast.dismiss(id) }}>{action.label}</button> : null}
           {cancel ? <button type="button" className="min-h-7 px-1 text-[13px] text-muted-foreground hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-ring" onClick={() => { cancel.onClick(); sonnerToast.dismiss(id) }}>{cancel.label}</button> : null}
         </div> : null}
       </div>
-      <button type="button" aria-label="Close notification" title={closeLabel} className="relative z-50 grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring" onPointerDown={dismiss} onClick={dismiss}><XIcon className="size-4" aria-hidden /></button>
+      <Button type="button" variant="ghost" size="icon-sm" data-slot="toast-close" aria-label="Close notification" title={closeLabel} className="z-50 rounded-full border-0 bg-transparent p-0 text-muted-foreground" onPointerDown={dismiss} onClick={dismiss}><XIcon className="m-0 block size-4 shrink-0" aria-hidden /></Button>
     </div>
   )
 }

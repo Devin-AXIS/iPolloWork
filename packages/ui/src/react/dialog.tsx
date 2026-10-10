@@ -71,8 +71,7 @@ function DialogContent({
               />
             }
           >
-            <XIcon
-            />
+            <XIcon className="size-4" />
             <span className="sr-only">{closeLabel}</span>
           </DialogPrimitive.Close>
         )}
