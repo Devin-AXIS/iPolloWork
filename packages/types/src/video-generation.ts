@@ -3,6 +3,17 @@ import { z } from "zod";
 // Bound persisted job metadata separately from the model's per-call duration.
 export const MAX_AVATAR_SEGMENTS = 10_000;
 export const AVATAR_STANDARD_VIDEO = { resolution: "0.258048MP", shortEdge: 384, longEdge: 672 };
+export const HEYGEN_AVATAR_VIDEO = { model: "heygen-avatar-iv", resolution: "1080p", shortEdge: 1080, longEdge: 1920, maxDuration: 300 };
+export const HEYGEN_FREE_AVATAR_VIDEO = { resolution: "720p", shortEdge: 720, longEdge: 1280, maxDuration: 60 };
+export function heygenAvatarFormat(plan: string) {
+  return plan.trim().toLowerCase() === "free" ? HEYGEN_FREE_AVATAR_VIDEO : HEYGEN_AVATAR_VIDEO;
+}
+export const heygenBillingModeSchema = z.enum(["api-key", "subscription"]);
+export type HeygenBillingMode = z.infer<typeof heygenBillingModeSchema>;
+export type HeygenSubscriptionStatus = { connected: boolean; mode: HeygenBillingMode };
+export function isAvatarVideoModel(model: string) {
+  return model === HEYGEN_AVATAR_VIDEO.model || model === "minimax-h3-avatar";
+}
 export const AVATAR_CAMERA_PROMPT = "全程保持单一固定机位，严格沿用参考图的景别、人物比例、位置与可见身体范围。摄像机固定在三脚架上，背景和构图保持一致；禁止推拉、缩放、摇移、切镜头，以及从全身或半身画面变成脸部特写。只生成参考人物的连续表演，不新增字幕、标题、文字、标志、产品画面、软件界面或演示幻灯片，不根据配音内容改变背景。嘴唇、下颌、眨眼和自然表情可以活动，人物身体与头部保持基本稳定。";
 export const MAX_AVATAR_PROFILES = 50;
 export const avatarProfileSchema = z.object({
@@ -37,10 +48,15 @@ export const videoJobSchema = z.object({
   id: z.string(), workspaceId: z.string(), sessionId: z.string(), model: z.string(),
   operation: z.string(), prompt: z.string(), fingerprint: z.string(), upstreamId: z.string(),
   workflowId: z.string().optional(),
+  // A submitted task keeps its billing channel and OAuth session even when settings change.
+  heygenBilling: z.object({ mode: heygenBillingModeSchema, sessionId: z.string().optional() }).optional(),
   avatarBackground: z.enum(["transparent", "scene"]).optional(),
   avatarProfileId: z.uuid().optional(), avatarProfileUpdatedAt: z.number().int().nonnegative().optional(),
   avatarAudioFingerprint: z.string().optional(),
   avatarAudioStart: z.number().nonnegative().optional(),
+  // Frozen local inputs let the existing worker submit HeyGen jobs after the UI returns.
+  avatarInput: z.object({ imagePath: z.string(), audioPath: z.string(), ratio: z.enum(["9:16", "16:9"]),
+    resolution: z.enum(["720p", "1080p"]), duration: z.number().positive().max(HEYGEN_AVATAR_VIDEO.maxDuration) }).optional(),
   avatarSequence: avatarSequenceSchema.optional(),
   status: z.enum(["submitting", "running", "saving", "paused", "succeeded", "failed", "uncertain", "save_failed", "stopped"]),
   pauseRequested: z.boolean().optional(),
@@ -49,7 +65,10 @@ export const videoJobSchema = z.object({
 export type VideoJob = z.infer<typeof videoJobSchema>;
 export const videoJobsResultSchema = z.object({ jobs: z.array(videoJobSchema) });
 export const videoSubmitResultSchema = z.object({ job: videoJobSchema });
-export const videoModelStatusSchema = z.object({ models: z.array(z.object({ id: z.string() })) });
+export const videoModelStatusSchema = z.object({ models: z.array(z.object({ id: z.string(), billingMode: heygenBillingModeSchema.optional(),
+  plan: z.string().max(100).optional(), availabilityIssue: z.string().max(700).optional(),
+  avatarLimits: z.object({ resolution: z.enum(["720p", "1080p"]), shortEdge: z.number().positive(), longEdge: z.number().positive(), maxDuration: z.number().positive() }).optional(),
+})) });
 
 export const videoAvatarContextSchema = z.object({
   content: z.string(),

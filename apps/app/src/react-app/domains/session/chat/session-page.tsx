@@ -1453,7 +1453,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
     if (!files.length) return;
     const unsupported = files.filter((file) => !isReferenceFile(file));
     const oversized = files.filter((file) => isReferenceFile(file) && file.size > REFERENCE_MAX_BYTES);
-    if (oversized.length) toast.warning(t("templates.brief.reference_too_large"), { description: oversized.map((file) => file.name).join("、") });
+    if (oversized.length) toast.warning(t("templates.brief.reference_too_large", { size: formatBytes(REFERENCE_MAX_BYTES) }), { description: oversized.map((file) => file.name).join("、") });
     const supported = files.filter((file) => isReferenceFile(file) && file.size <= REFERENCE_MAX_BYTES);
     if (unsupported.length) {
       toast.warning(

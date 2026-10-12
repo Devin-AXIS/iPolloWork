@@ -652,6 +652,7 @@ export type iPolloWorkAuthorizationServiceId =
   | "aliyun-bailian"
   | "volcengine-video"
   | "runninghub-video"
+  | "heygen-video"
   | "aliyun-oss"
   | "wasabi"
   | "storage-routing";
@@ -659,6 +660,7 @@ export type iPolloWorkAuthorizationServiceId =
 export type iPolloWorkAuthorizationService = {
   id: iPolloWorkAuthorizationServiceId;
   configured: boolean;
+  subscription?: import("@ipollowork/types/video-generation").HeygenSubscriptionStatus;
   browserLogin?: import("@ipollowork/types/provider-credentials").SharedProviderBrowserLogin;
   fields: Array<{ key: string; configured: boolean }>;
   category: "media" | "storage";
@@ -2376,6 +2378,10 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         },
       ),
 
+    updateHeygenSubscription: (action: "connect" | "disconnect" | "use-subscription" | "use-api-key") =>
+      requestJson<{ authorizationUrl?: string; expiresAt?: number }>(baseUrl, "/authorization-services/heygen-video/authorization", {
+        token, hostToken, method: "POST", body: { action }, timeoutMs: 60_000,
+      }),
     testAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId) =>
       requestJson<iPolloWorkAuthorizationServiceTestResult>(
         baseUrl,

@@ -248,6 +248,18 @@ describe("env routes", () => {
     });
   });
 
+  test("HeyGen subscription settings require the host token and keep credentials out of responses", async () => {
+    const { base } = await boot();
+    const url = `${base}/authorization-services/heygen-video/authorization`;
+    expect((await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "use-subscription" }) })).status).toBe(401);
+    expect((await fetch(url, { method: "POST", headers: { authorization: "Bearer owt_env_client_token", "content-type": "application/json" }, body: JSON.stringify({ action: "use-subscription" }) })).status).toBe(401);
+    const update = await fetch(url, { method: "POST", headers: hostAuth(), body: JSON.stringify({ action: "use-subscription" }) });
+    expect(update.status).toBe(200);
+    expect(await update.json()).toEqual({ status: { connected: false, mode: "subscription" } });
+    const catalog = await fetch(`${base}/authorization-services`, { headers: hostAuth() });
+    expect(await catalog.text()).toContain('"subscription":{"connected":false,"mode":"subscription"}');
+  });
+
   test("authorization catalog returns safe AI usage metadata, never secret values", async () => {
     const { base } = await boot();
     await fetch(`${base}/authorization-services/openai-images/credentials`, {

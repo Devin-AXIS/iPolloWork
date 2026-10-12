@@ -1,6 +1,7 @@
 "use memo";
 
 import * as React from "react"
+import { isAvatarVideoModel } from "@ipollowork/types/video-generation"
 import {
   AlertTriangle,
   CalendarDays,
@@ -1252,7 +1253,7 @@ RetryMessage.displayName = "RetryMessage"
 
 export function VideoJobStatus({ jobs }: { jobs: import("@ipollowork/types/workspace").SessionArtifactPage["videoJobs"] }) {
   // Avatar tasks have their own persistent progress dialog and compact history in Video Studio.
-  const visible = (jobs ?? []).filter(job => job.model !== "minimax-h3-avatar" && job.status !== "succeeded" && job.status !== "stopped" && job.status !== "paused");
+  const visible = (jobs ?? []).filter(job => !isAvatarVideoModel(job.model) && job.status !== "succeeded" && job.status !== "stopped" && job.status !== "paused");
   const failedJobs = visible.filter(job => job.status === "failed" || job.status === "save_failed");
   const renderJob = (job: (typeof visible)[number]) => {
     const failed = job.status === "failed" || job.status === "save_failed";

@@ -8,7 +8,7 @@ import {
   renameSync,
   rmSync,
 } from "node:fs";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { HLS_MASTER_PLAYLIST, HLS_VIDEO_PLAYLIST } from "@hyperframes/engine";
 import { extractMediaMetadata } from "../../utils/ffprobe.js";
 import type { RenderOutputFormat } from "./renderFormat.js";
@@ -140,12 +140,12 @@ export function buildArtifactExpectation(input: {
 
 function createSiblingTransactionDirectory(destination: string): string {
   const parent = dirname(destination);
-  const extension = extname(destination);
-  const stem = extension ? basename(destination, extension) : basename(destination);
   // mkdtemp reserves the directory atomically and creates it with private
   // permissions. Keeping it beside the destination preserves same-filesystem
   // rename semantics without exposing predictable files in a shared temp dir.
-  return createOwnedRenderDir(join(parent, `.${stem}.hf-transaction-`));
+  // Keep internal names short: Studio's UUID + timestamp can already put a
+  // valid Windows output near MAX_PATH. Repeating it here prevents mkdtemp.
+  return createOwnedRenderDir(join(parent, ".render.hf-transaction-"));
 }
 
 function assertReadableNonEmptyFile(path: string): void {
@@ -270,7 +270,7 @@ export class ArtifactTransaction {
   ) {
     this.destinationPath = resolve(destinationPath);
     this.transactionDirectory = createSiblingTransactionDirectory(this.destinationPath);
-    this.stagingPath = join(this.transactionDirectory, basename(this.destinationPath));
+    this.stagingPath = join(this.transactionDirectory, `artifact${extname(this.destinationPath)}`);
     this.backupPath = join(this.transactionDirectory, TRANSACTION_BACKUP);
     this.durationProbe = durationProbe;
   }

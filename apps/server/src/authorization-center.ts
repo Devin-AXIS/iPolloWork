@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import type { SharedProviderBrowserLogin } from "@ipollowork/types/provider-credentials";
+import type { HeygenSubscriptionStatus } from "@ipollowork/types/video-generation";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { providerApiError } from "./errors.js";
 import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
@@ -7,6 +9,7 @@ import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js
 import { authorizationVault } from "./authorization-runtime.js";
 import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-signing.js";
 import { providerFetch } from "./provider-fetch.js";
+import { callHeygenSubscriptionTool, heygenSubscriptionStatus } from "./heygen-subscription.js";
 import { resolveOpenAiBrowserSession, type OpenAiCodexOAuthSession } from "./openai-codex-oauth.js";
 import type { ServerConfig } from "./types.js";
 
@@ -16,6 +19,7 @@ export const AUTHORIZATION_SERVICE_IDS = [
   "aliyun-bailian",
   "volcengine-video",
   "runninghub-video",
+  "heygen-video",
   "aliyun-oss",
   "wasabi",
   "storage-routing",
@@ -46,6 +50,7 @@ export type AuthorizationServiceStatus = {
   kind: "credentials" | "routing";
   agent: AuthorizationServiceAgentInfo;
   browserLogin?: SharedProviderBrowserLogin;
+  subscription?: HeygenSubscriptionStatus;
 };
 
 export type AuthorizationServiceTestResult = {
@@ -56,6 +61,7 @@ export type AuthorizationServiceTestResult = {
 export type AuthorizationAccess = {
   read(serviceId: AuthorizationServiceId): Promise<Readonly<Record<string, string>>>;
   openAiBrowserSession?(): Promise<OpenAiCodexOAuthSession | null>;
+  heygenSubscription?(): Promise<HeygenSubscriptionStatus & { sessionId?: string }>;
 };
 
 const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
@@ -98,6 +104,16 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
       capability: "Volcengine Ark image and video generation",
       useWhen: "Use when the user asks to generate or edit an image with Seedream, or generate a video with Seedance.",
       instruction: `Use the iPolloWork image or media extension and keep generation outputs in the active workspace. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION}`,
+    },
+  },
+  {
+    id: "heygen-video",
+    keys: ["HEYGEN_API_KEY"],
+    category: "media",
+    agent: {
+      capability: "HeyGen Avatar IV digital human video generation",
+      useWhen: "Use to animate a person's photo with the current video's narration.",
+      instruction: "Use video-generation actions with model heygen-avatar-iv. Reuse avatar profiles and selected narration; generated clips belong to the current video session.",
     },
   },
   {
@@ -195,6 +211,7 @@ export function createAuthorizationAccess(config: ServerConfig): AuthorizationAc
   return {
     read: (serviceId) => readAuthorizationServiceValues(config, serviceId),
     openAiBrowserSession: () => resolveOpenAiBrowserSession(config),
+    heygenSubscription: () => heygenSubscriptionStatus(config),
   };
 }
 
@@ -247,6 +264,10 @@ export async function listAuthorizationServices(config: ServerConfig): Promise<A
       const session = await resolveOpenAiBrowserSession(config);
       status.browserLogin = { providerId: "openai", connected: Boolean(session?.accountId) };
     }
+    if (service.id === "heygen-video") {
+      const subscription = await heygenSubscriptionStatus(config);
+      status.subscription = { connected: subscription.connected, mode: subscription.mode };
+    }
     return status;
   }));
 }
@@ -268,6 +289,14 @@ async function fetchAuthorizationTest(url: string, init: RequestInit): Promise<A
 export async function testAuthorizationService(config: ServerConfig, serviceId: AuthorizationServiceId): Promise<AuthorizationServiceTestResult & { missingKeys?: string[] }> {
   const service = definitionFor(serviceId);
   if (!service) return { ok: false, detail: "This authorization service is not available." };
+  if (serviceId === "heygen-video" && (await heygenSubscriptionStatus(config)).mode === "subscription") {
+    try {
+      const user = await callHeygenSubscriptionTool(config, "get_current_user", {}, AbortSignal.timeout(15_000));
+      const subscription = z.object({ plan: z.string().max(100).optional() }).safeParse(user.subscription);
+      const plan = subscription.success ? subscription.data.plan : undefined;
+      return { ok: true, detail: `HeyGen 订阅授权已验证${plan ? `，当前套餐：${plan}` : ""}。${plan?.trim().toLowerCase() === "free" ? "免费生成受账户剩余配额限制，单条最长 60 秒，使用 720p；授权成功不代表免费次数仍有剩余。" : "生成使用该账户的套餐积分，是否可生成取决于套餐权限和剩余额度。"}本次未生成视频。` };
+    } catch (error) { return { ok: false, detail: serviceErrorMessage(error) }; }
+  }
   const resolved = requiredValues(service, await readAuthorizationServiceValues(config, serviceId));
   if (resolved.missingKeys.length) {
     return { ok: false, detail: "Complete the required fields before testing this service.", missingKeys: resolved.missingKeys };
@@ -290,6 +319,8 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
       return fetchAuthorizationTest("https://dashscope.aliyuncs.com/compatible-mode/v1/models", { headers: { Authorization: `Bearer ${resolved.values.DASHSCOPE_API_KEY}` } });
     case "volcengine-video":
       return fetchAuthorizationTest("https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks?page_num=1&page_size=1", { headers: { Authorization: `Bearer ${resolved.values.ARK_API_KEY}` } });
+    case "heygen-video":
+      return fetchAuthorizationTest("https://api.heygen.com/v3/users/me", { headers: { "X-Api-Key": resolved.values.HEYGEN_API_KEY } });
     case "runninghub-video": {
       try {
         const response = await providerFetch("https://www.runninghub.ai/uc/openapi/accountStatus", {

@@ -4,7 +4,7 @@ import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/prom
 import { basename, extname, posix } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import { avatarBackgroundForPrompt, avatarProfileSchema, avatarProfilesResultSchema, AVATAR_CAMERA_PROMPT, AVATAR_STANDARD_VIDEO, MAX_AVATAR_PROFILES, MAX_AVATAR_SEGMENTS, type AvatarProfile, type AvatarSegment } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, avatarProfileSchema, avatarProfilesResultSchema, AVATAR_CAMERA_PROMPT, AVATAR_STANDARD_VIDEO, HEYGEN_AVATAR_VIDEO, isAvatarVideoModel, MAX_AVATAR_PROFILES, MAX_AVATAR_SEGMENTS, type AvatarProfile, type AvatarSegment } from "@ipollowork/types/video-generation";
 import { prepareAvatarSegments, sliceAvatarAudio, joinAvatarSegments, inspectAvatarStability } from "./video-avatar-segments.js";
 import { avatarCutoutCli, avatarCutoutTimeout, removeAvatarBackground } from "./video-local-edit.js";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
@@ -14,6 +14,7 @@ import { resolveWithinRoot } from "../paths.js";
 import { readLimitedRequestBody } from "../limited-request-body.js";
 import { workspaceIdForPluginContext } from "../plugin-service-runtime.js";
 import { providerFetch } from "../provider-fetch.js";
+import { callHeygenSubscriptionTool, heygenSubscriptionAccount, uploadHeygenSubscriptionAsset } from "../heygen-subscription.js";
 import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { claimVideoJobs, createVideoJob, finishVideoJobPause, getVideoJob, listVideoJobs, requestVideoJobPause, resumeVideoJob, stopVideoJob, updateStoppedVideoJobMessage, updateVideoJob, type VideoJob } from "./video-jobs.js";
@@ -24,12 +25,13 @@ import { inspectLocalVideo, localVideoEditSchema, inspectNarrationDuration, mixA
 export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
 const RH = "https://www.runninghub.cn";
+const HEYGEN = "https://api.heygen.com/v3";
 const H3_WORKFLOW = "2097511747551842305";
 const AVATAR_WORKFLOW = "2099368776771919873";
 const MAX_OUTPUT = 256 * 1024 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const operations = z.enum(["text", "first", "first-last", "reference", "edit", "extend", "regenerate"]);
-const modelId = z.enum(["seedance-2.5", "minimax-h3", "minimax-h3-avatar"]);
+const modelId = z.enum(["seedance-2.5", "minimax-h3", "minimax-h3-avatar", "heygen-avatar-iv"]);
 const ratios = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const catalog = [
   {
@@ -47,6 +49,12 @@ const catalog = [
     durations: Array.from({ length: 11 }, (_, i) => String(i + 5)),
     operations: ["text", "first", "first-last"],
     imageLimit: 0, videoLimit: 0, audioLimit: 0, referenceSeconds: 0,
+  },
+  {
+    id: HEYGEN_AVATAR_VIDEO.model, label: "数字人 · HeyGen Avatar IV", service: "heygen-video", key: "HEYGEN_API_KEY",
+    upstream: "avatar_iv", resolutions: ["720p", "1080p"], defaultResolution: HEYGEN_AVATAR_VIDEO.resolution,
+    ratios: ["9:16", "16:9"], durations: ["-1"],
+    operations: ["reference"], imageLimit: 1, videoLimit: 0, audioLimit: 1, referenceSeconds: HEYGEN_AVATAR_VIDEO.maxDuration,
   },
   {
     id: "minimax-h3-avatar", label: "数字人 · MiniMax H3 lightx2v", service: "runninghub-video", key: "RUNNINGHUB_API_KEY",
@@ -89,20 +97,22 @@ export function validateVideoSubmission(input: unknown): Submission {
   const model = videoModelDefinition(args.model);
   if (!model.operations.includes(args.operation)) fail("当前模型不支持此操作。");
   const allowedRatios = ["first", "first-last", "edit", "extend"].includes(args.operation) ? ["adaptive"] : model.ratios;
-  if (!model.resolutions.includes(args.resolution) || !(model.durations.includes(args.duration) || args.model === "minimax-h3-avatar" && args.avatarSource && Number.isFinite(Number(args.duration)) && Number(args.duration) > 0) || !allowedRatios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
+  if (!model.resolutions.includes(args.resolution) || !(model.durations.includes(args.duration) || isAvatarVideoModel(args.model) && args.avatarSource && Number.isFinite(Number(args.duration)) && Number(args.duration) > 0) || !allowedRatios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
+  if (args.model === HEYGEN_AVATAR_VIDEO.model && (!Number.isFinite(Number(args.duration)) || Number(args.duration) <= 0 || Number(args.duration) > HEYGEN_AVATAR_VIDEO.maxDuration)) fail("HeyGen 数字人配音须在 5 分钟以内，请选择较短的配音片段。");
   if (args.model === "minimax-h3-avatar" && Math.ceil(Number(args.duration) / 10) > MAX_AVATAR_SEGMENTS) fail("数字人任务片段过多，请分成多个任务生成。");
   if (["first", "first-last", "edit", "extend"].includes(args.operation) && args.ratio !== "adaptive") fail("首帧、编辑和延长操作的画幅必须跟随输入素材。");
   if (args.operation === "edit" && args.duration !== "-1") fail("Seedance 视频编辑的时长必须跟随原视频。");
   if (["first", "first-last"].includes(args.operation) !== Boolean(args.firstFrame.trim())) fail("首帧模式需要首帧图片；其他模式请使用参考素材。");
   if ((args.operation === "first-last") !== Boolean(args.lastFrame.trim())) fail("首尾帧模式需要尾帧图片；其他模式不支持尾帧。");
   const images = lines(args.imageRefs), videos = lines(args.videoRefs), audio = lines(args.audioRefs);
-  if (args.model === "minimax-h3-avatar") {
+  if (isAvatarVideoModel(args.model)) {
+    if (args.model === HEYGEN_AVATAR_VIDEO.model && args.avatarSource !== "video-audio") fail("HeyGen 数字人需要选择项目配音。");
     if (images.length !== 1 || audio.length !== (args.avatarSource === "video-content" ? 0 : 1)) fail("数字人需要一张人物图片和一段配音。");
     if (audio[0]?.startsWith("https://")) fail("请上传音频或选择工作区中的配音文件。");
     if (args.generateAudio !== undefined || args.watermark !== undefined) fail("数字人保留上传的配音，不支持音频或水印开关。");
   }
-  if (args.avatarSource && args.model !== "minimax-h3-avatar") fail("配音来源仅适用于数字人。 ");
-  if ((args.avatarProfileId || args.avatarClipId) && args.model !== "minimax-h3-avatar") fail("人物配置仅适用于数字人。");
+  if (args.avatarSource && !isAvatarVideoModel(args.model)) fail("配音来源仅适用于数字人。 ");
+  if ((args.avatarProfileId || args.avatarClipId) && !isAvatarVideoModel(args.model)) fail("人物配置仅适用于数字人。");
   if (args.avatarClipId && !args.avatarProfileId) fail("请先选择数字人配置。");
   if (images.length > model.imageLimit || videos.length > model.videoLimit || audio.length > model.audioLimit) fail("参考素材数量超过当前模型限制。");
   if (!isReference(args.operation) && images.length + videos.length + audio.length) fail("当前操作不接受多模态参考素材。");
@@ -123,7 +133,7 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   { action: "jobs", title: "Session video tasks", effect: "read", properties: { before: { type: "number" } } },
   { action: "submit", title: "Generate or edit video", effect: "write", properties: Object.fromEntries(Object.keys(submissionSchema.shape).map(key => [key, key === "avatarProfileUpdatedAt" ? { type: "number" } : stringProperty])) },
   { action: "recover", title: "Resume an existing video task without resubmitting", effect: "write", properties: { id: stringProperty, upstreamId: stringProperty } },
-  { action: "stop", title: "Stop an avatar video task and request cancellation of its active RunningHub segment", effect: "write", properties: { id: stringProperty } },
+  { action: "stop", title: "Stop local avatar task tracking; cloud cancellation depends on the provider", effect: "write", properties: { id: stringProperty } },
   { action: "pause", title: "Pause an avatar video task after its current segment", effect: "write", properties: { id: stringProperty } },
   { action: "resume", title: "Continue a paused avatar video task", effect: "write", properties: { id: stringProperty } },
   { action: "retry-segment", title: "Retry one failed avatar segment", effect: "write", properties: { id: stringProperty, index: { type: "integer" } } },
@@ -147,8 +157,15 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
     additionalProperties: false,
   } }));
 
-async function credential(authorization: AuthorizationAccess, model: string) {
-  const values = await authorization.read(model === "seedance-2.5" ? "volcengine-video" : "runninghub-video");
+async function credential(authorization: AuthorizationAccess, model: string, billing?: VideoJob["heygenBilling"]) {
+  if (model === HEYGEN_AVATAR_VIDEO.model && billing?.mode === "subscription") {
+    const current = await authorization.heygenSubscription?.();
+    if (!current?.connected || !billing.sessionId || current.sessionId !== billing.sessionId) {
+      throw new ApiError(401, "heygen_subscription_authorization_required", "此任务的 HeyGen 订阅授权不可用，请重新授权。未改用 API 余额。");
+    }
+    return "";
+  }
+  const values = await authorization.read(model === HEYGEN_AVATAR_VIDEO.model ? "heygen-video" : model === "seedance-2.5" ? "volcengine-video" : "runninghub-video");
   const key = values[videoModelDefinition(model).key]?.trim();
   if (!key) throw new ApiError(400, "video_not_authorized", "请先在授权中心绑定该模型的服务。");
   return key;
@@ -162,15 +179,17 @@ function workflowData(value: unknown): unknown {
   return result.data;
 }
 function safeError(value: unknown, key = "") {
-  let message = classifyProviderFailure(value)?.message ?? (value instanceof z.ZodError
+  let message = value instanceof ApiError && value.code === "heygen_subscription_rejected" ? value.message : classifyProviderFailure(value)?.message ?? (value instanceof z.ZodError
     ? "第三方服务暂时不可用，请稍后重试。" : serviceErrorMessage(value, "第三方服务暂时不可用，请稍后重试。"));
   if (key) message = message.replaceAll(key, "[redacted]");
   return message.replace(/https?:\/\/[^\s"<>]+/g, "[服务链接]").replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 700);
 }
-async function jsonRequest(url: string, key: string, body?: unknown, signal?: AbortSignal) {
+async function jsonRequest(url: string, key: string, body?: unknown, signal?: AbortSignal, requestId?: string) {
+  const multipart = body instanceof FormData;
   const response = await providerFetch(url, { method: body === undefined ? "GET" : "POST",
-    headers: { Authorization: `Bearer ${key}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: "error",
+    headers: { ...(url.startsWith(`${HEYGEN}/`) ? { "X-Api-Key": key } : { Authorization: `Bearer ${key}` }),
+      ...(requestId ? { "Idempotency-Key": requestId } : {}), ...(body === undefined || multipart ? {} : { "Content-Type": "application/json" }) },
+    ...(body === undefined ? {} : { body: multipart ? body : JSON.stringify(body) }), redirect: "error",
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000) });
   const bytes = await readLimitedRequestBody(response, 2 * 1024 * 1024, { code: "video_response_too_large", message: "视频接口响应过大，请从服务商控制台检查任务。" });
   let parsed: unknown;
@@ -502,7 +521,32 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
   // Omit instanceType for the standard 24GB instance in every RunningHub mode.
   return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: H3_WORKFLOW, workflow: JSON.stringify(workflow), nodeInfoList, addMetadata: false } };
 }
-export async function videoRequest(workspace: WorkspaceInfo, args: Submission, key: string, config: ServerConfig, authorization: AuthorizationAccess, signal = AbortSignal.timeout(120_000)) {
+export async function videoRequest(workspace: WorkspaceInfo, args: Submission, key: string, config: ServerConfig, authorization: AuthorizationAccess, signal = AbortSignal.timeout(120_000), billing?: VideoJob["heygenBilling"]) {
+  if (args.model === HEYGEN_AVATAR_VIDEO.model) {
+    const upload = async (path: string, kind: "image" | "audio") => {
+      const file = await mediaFile(workspace, path);
+      if (!file.mime.startsWith(`${kind}/`) || file.size > 32 * 1024 * 1024) fail("HeyGen 素材类型无效或超过 32 MB。");
+      // The existing uploader accepts WebP. Normalize portraits here so its UI stays unchanged.
+      const source = await readFile(file.absolute);
+      const bytes = kind === "image"
+        ? await (await import("sharp")).default(source, { limitInputPixels: 40_000_000 }).rotate().resize({ width: 1920, height: 1920, fit: "inside", withoutEnlargement: true }).png().toBuffer()
+        : source;
+      if (bytes.length > 32 * 1024 * 1024) fail("HeyGen 素材超过 32 MB。");
+      if (billing?.mode === "subscription") {
+        if (!billing.sessionId) throw new ApiError(401, "heygen_subscription_authorization_required", "请先登录 HeyGen 订阅账户。");
+        return uploadHeygenSubscriptionAsset(config, new Uint8Array(bytes), kind === "image" ? "portrait.png" : basename(path), kind === "image" ? "image/png" : file.mime, signal, billing.sessionId);
+      }
+      const form = new FormData();
+      form.set("file", new Blob([new Uint8Array(bytes)], { type: kind === "image" ? "image/png" : file.mime }), kind === "image" ? "portrait.png" : basename(path));
+      const result = await jsonRequest(`${HEYGEN}/assets`, key, form, signal, `${args.requestId}:${kind}`);
+      return z.object({ asset_id: z.string().min(1).max(200) }).parse(result.data).asset_id;
+    };
+    const image = await upload(args.imageRefs, "image");
+    const audio = await upload(args.audioRefs, "audio");
+    return { url: `${HEYGEN}/videos`, body: { type: "image", image: { type: "asset_id", asset_id: image }, audio_asset_id: audio,
+      resolution: args.resolution, aspect_ratio: args.ratio, fit: "contain", output_format: "mp4", expressiveness: "low",
+      motion_prompt: avatarPrompt(args.prompt), title: `iPolloWork avatar ${args.requestId}` } };
+  }
   if (args.model === "minimax-h3-avatar" && Number(args.duration) > 15) fail("长数字人需要通过分段任务提交，单段最多 15 秒。");
   let inputBytes = 0;
   const consume = (bytes: number) => { inputBytes += bytes; if (inputBytes > 45 * 1024 * 1024) fail("图片和音频参考合计超过 45 MB，请减少素材或改用公开链接。"); };
@@ -539,10 +583,10 @@ export async function videoRequest(workspace: WorkspaceInfo, args: Submission, k
 
 async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: VideoJob, url: string, signal: AbortSignal, segmentId?: string) {
   const parsed = new URL(httpsUrl(url));
-  const domains = job.model === "seedance-2.5" ? ["volces.com", "volccdn.com", "byteimg.com"] : ["myqcloud.com", "runninghub.ai", "runninghub.cn", "aliyuncs.com", "rh-images.xiaoyaoyou.com", "rh-images-tos.xiaoyaoyou.com"];
+  const domains = job.model === HEYGEN_AVATAR_VIDEO.model ? ["heygen.ai", "heygen.com"] : job.model === "seedance-2.5" ? ["volces.com", "volccdn.com", "byteimg.com"] : ["myqcloud.com", "runninghub.ai", "runninghub.cn", "aliyuncs.com", "rh-images.xiaoyaoyou.com", "rh-images-tos.xiaoyaoyou.com"];
   if (!domains.some(domain => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`))) throw new Error("服务商返回了未受信任的视频下载域名，请联系管理员检查接口。");
-  const cutout = !segmentId && job.model === "minimax-h3-avatar" && job.avatarBackground === "transparent";
-  let path = `${await sessionDirectory(workspace, job.sessionId, !segmentId && job.model === "minimax-h3-avatar" && !cutout ? "assets" : "renders")}/${segmentId ?? job.id}.mp4`;
+  const cutout = !segmentId && isAvatarVideoModel(job.model) && job.avatarBackground === "transparent";
+  let path = `${await sessionDirectory(workspace, job.sessionId, !segmentId && isAvatarVideoModel(job.model) && !cutout ? "assets" : "renders")}/${segmentId ?? job.id}.mp4`;
   const destination = await resolveWithinRoot(workspace.path, path);
   const existing = await stat(destination).catch(() => null);
   if (!existing) {
@@ -610,6 +654,53 @@ async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
 
 const activeVideoJobControllers = new Map<string, AbortController>();
 
+async function validateHeygenPlan(config: ServerConfig, sessionId: string | undefined, duration: number, signal?: AbortSignal) {
+  if (!sessionId) throw new ApiError(401, "heygen_subscription_authorization_required", "请重新登录 HeyGen 授权账户。未改用 API 余额。");
+  const account = await heygenSubscriptionAccount(config, sessionId, true, signal);
+  if (duration > account.avatarLimits.maxDuration) {
+    throw new ApiError(400, "heygen_subscription_duration", `当前 HeyGen ${account.plan} 套餐的配音最长 ${account.avatarLimits.maxDuration} 秒，当前为 ${duration.toFixed(1)} 秒。请选择较短的配音片段或改用 RunningHub；尚未上传或提交生成。`);
+  }
+  return account;
+}
+
+async function submitHeygenJob(config: ServerConfig, workspace: WorkspaceInfo, job: VideoJob, key: string, authorization: AuthorizationAccess, signal: AbortSignal) {
+  let submitted = false;
+  try {
+    const input = job.avatarInput;
+    if (!input) throw new Error("HeyGen 任务缺少已保存的照片和配音，请重新生成。");
+    if (job.heygenBilling?.mode === "subscription") {
+      const { avatarLimits } = await validateHeygenPlan(config, job.heygenBilling.sessionId, input.duration, signal);
+      if (avatarLimits.resolution === "720p" && input.resolution !== "720p") {
+        input.resolution = "720p";
+        job = await updateVideoJob(config, job, { avatarInput: input });
+      }
+    }
+    await updateVideoJob(config, job, { status: "submitting", message: "正在上传素材并提交 HeyGen…", nextPoll: Date.now() + 15 * 60_000 });
+    const args = validateVideoSubmission({ requestId: job.id, model: job.model, operation: "reference", prompt: job.prompt,
+      imageRefs: input.imagePath, audioRefs: input.audioPath, ratio: input.ratio, resolution: input.resolution, duration: String(input.duration), avatarSource: "video-audio" });
+    const request = await videoRequest(workspace, args, key, config, authorization, signal, job.heygenBilling);
+    const body = object.parse(request.body);
+    signal.throwIfAborted();
+    submitted = true;
+    const result = job.heygenBilling?.mode === "subscription"
+      ? { data: await callHeygenSubscriptionTool(config, "create_video_from_image", {
+        image: body.image, audioAssetId: body.audio_asset_id, resolution: body.resolution,
+        aspectRatio: body.aspect_ratio, fit: body.fit, outputFormat: body.output_format,
+        expressiveness: body.expressiveness, motionPrompt: body.motion_prompt, title: body.title,
+      }, signal, job.heygenBilling.sessionId) }
+      : await jsonRequest(request.url, key, request.body, signal, job.id);
+    const data = object.parse(result.data);
+    const upstreamId = z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/).parse(data.video_id ?? data.videoId);
+    await updateVideoJob(config, job, { upstreamId, status: "running", nextPoll: 0, message: "HeyGen 任务已提交，正在等待结果。" });
+  } catch (error) {
+    if (signal.aborted) return;
+    // request_in_progress (409) can mean HeyGen accepted this idempotency key already.
+    const definite = !submitted || error instanceof ApiError && error.status < 500 && ![408, 409].includes(error.status);
+    await updateVideoJob(config, job, { status: definite ? "failed" : "uncertain",
+      message: `${safeError(error, key)}${definite ? "" : " 提交结果未确认，请从 HeyGen 控制台填写已有视频 ID 恢复查询，勿重复生成。"}` });
+  }
+}
+
 export async function pollVideoJobs(config: ServerConfig, authorization: AuthorizationAccess, signal = new AbortController().signal) {
   if (config.readOnly) return;
   await Promise.all((await claimVideoJobs(config)).map(async job => {
@@ -621,28 +712,36 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
     try {
       const workspace = config.workspaces.find(item => item.id === job.workspaceId);
       if (!workspace) throw new Error("发起任务的工作区已不可用，请恢复工作区后重试查询。");
-      key = await credential(authorization, job.model);
+      key = await credential(authorization, job.model, job.heygenBilling);
+      if (job.model === HEYGEN_AVATAR_VIDEO.model && !job.upstreamId) {
+        await submitHeygenJob(config, workspace, job, key, authorization, jobSignal);
+        return;
+      }
       if (job.avatarSequence) {
         await advanceAvatarSequence(config, workspace, job, key, authorization, jobSignal);
         return;
       }
-      const data = object.parse(job.model === "seedance-2.5"
+      const data = object.parse(job.model === HEYGEN_AVATAR_VIDEO.model
+        ? job.heygenBilling?.mode === "subscription"
+          ? await readVideoResult(() => callHeygenSubscriptionTool(config, "get_video", { videoId: job.upstreamId }, jobSignal, job.heygenBilling?.sessionId), jobSignal)
+          : (await readVideoResult(() => jsonRequest(`${HEYGEN}/videos/${encodeURIComponent(job.upstreamId)}`, key, undefined, jobSignal), jobSignal)).data
+        : job.model === "seedance-2.5"
         ? await jsonRequest(`${ARK}/contents/generations/tasks/${encodeURIComponent(job.upstreamId)}`, key, undefined, jobSignal)
         : job.workflowId ? await pollH3Workflow(job, key, jobSignal)
         : await jsonRequest(`${RH}/openapi/v2/query`, key, { taskId: job.upstreamId }, jobSignal));
       const status = z.string().parse(data.status).toLowerCase();
       if (["failed", "cancelled", "canceled", "expired"].includes(status)) {
         const error = object.safeParse(data.error);
-        await updateVideoJob(config, job, { status: "failed", message: safeError(error.success ? `${error.data.code ?? ""} ${error.data.message ?? ""}` : `${data.errorCode ?? ""} ${data.errorMessage ?? "生成失败"}`, key) });
-      } else if (["succeeded", "success"].includes(status)) {
+        await updateVideoJob(config, job, { status: "failed", message: safeError(error.success ? `${error.data.code ?? ""} ${error.data.message ?? ""}` : `${data.failure_code ?? data.errorCode ?? ""} ${data.failure_message ?? data.errorMessage ?? "生成失败"}`, key) });
+      } else if (["succeeded", "success", "completed"].includes(status)) {
         saving = true;
         await updateVideoJob(config, job, { status: "saving", message: job.avatarBackground === "transparent" ? "视频已生成，正在提取透明人物…" : "正在保存视频…", nextPoll: Date.now() + 35 * 60_000 });
-        const url = job.model === "seedance-2.5"
+        const url = job.model === HEYGEN_AVATAR_VIDEO.model ? z.string().parse(data.video_url ?? data.videoUrl) : job.model === "seedance-2.5"
           ? z.object({ video_url: z.string() }).parse(data.content).video_url
           : z.array(z.object({ url: z.string() })).min(1).parse(data.results)[0].url;
         const path = await saveOutput(config, workspace, job, url, jobSignal);
-        await updateVideoJob(config, job, { status: "succeeded", path, message: job.model === "minimax-h3-avatar" ? "已自动加入当前 Video Studio 素材库，可拖入时间线。" : "已保存到本会话的产出文件。" });
-      } else if (["queued", "running", "pending", "processing"].includes(status)) {
+        await updateVideoJob(config, job, { status: "succeeded", path, message: isAvatarVideoModel(job.model) ? "已自动加入当前 Video Studio 素材库，可拖入时间线。" : "已保存到本会话的产出文件。" });
+      } else if (["queued", "running", "pending", "processing", "waiting"].includes(status)) {
         const overdue = Date.now() - job.createdAt > 24 * 60 * 60 * 1000;
         await updateVideoJob(config, job, { status: overdue ? "uncertain" : "running", message: overdue ? "任务超过 24 小时仍未完成，已暂停自动查询。请在服务商控制台检查，也可恢复查询。" : "服务商正在生成，关闭控制台不会中断任务。", nextPoll: Date.now() + 10_000 });
       } else throw new Error("服务商返回未知任务状态，请稍后重试查询。");
@@ -816,8 +915,17 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
   if (action === "status") {
     const models = [];
     for (const model of catalog) {
-      const values = await authorization.read(model.id === "seedance-2.5" ? "volcengine-video" : "runninghub-video");
-      if (values[model.key]?.trim()) models.push({ ...model, key: undefined });
+      const values = await authorization.read(model.id === HEYGEN_AVATAR_VIDEO.model ? "heygen-video" : model.id === "seedance-2.5" ? "volcengine-video" : "runninghub-video");
+      const subscription = model.id === HEYGEN_AVATAR_VIDEO.model ? await authorization.heygenSubscription?.() : undefined;
+      const available = subscription?.mode === "subscription" ? subscription.connected : Boolean(values[model.key]?.trim());
+      if (!available) continue;
+      const status = { ...model, key: undefined, ...(subscription ? { billingMode: subscription.mode } : {}) };
+      if (subscription?.mode === "subscription") {
+        try {
+          if (!subscription.sessionId) throw new Error("HeyGen 授权状态不可用，请重新登录。");
+          models.push({ ...status, ...await heygenSubscriptionAccount(config, subscription.sessionId) });
+        } catch (error) { models.push({ ...status, availabilityIssue: `无法读取 HeyGen 套餐：${safeError(error)} 请刷新或重新授权。`.slice(0, 700) }); }
+      } else models.push(status);
     }
     return { ok: true, result: { models, ratios, localVideoReady: Boolean((await storageStatus(authorization)).defaultProvider) } };
   }
@@ -848,10 +956,14 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
   if (action === "stop") {
     const { id } = z.object({ id: z.uuid() }).strict().parse(input);
     const existing = await getVideoJob(config, id, workspace.id, sessionId);
-    if (existing.model !== "minimax-h3-avatar") fail("目前只能停止数字人生成任务。");
+    if (!isAvatarVideoModel(existing.model)) fail("目前只能停止数字人生成任务。");
+    if (existing.model === HEYGEN_AVATAR_VIDEO.model && !existing.upstreamId) fail("HeyGen 任务正在准备或提交，请取得任务 ID 后再停止等待。");
     const stopped = await stopVideoJob(config, id, workspace.id, sessionId);
     if (!stopped.changed) return { ok: true, result: { job: stopped.job } };
     activeVideoJobControllers.get(id)?.abort();
+    if (existing.model === HEYGEN_AVATAR_VIDEO.model) {
+      return { ok: true, result: { job: await updateStoppedVideoJobMessage(config, id, "已停止本地等待；HeyGen 云端任务仍可能继续运行和计费，可在 HeyGen 控制台查看结果。") } };
+    }
     const activeSegment = stopped.previous.avatarSequence?.segments.find(segment => ["submitting", "running", "uncertain"].includes(segment.status));
     const upstreamId = activeSegment?.upstreamId || stopped.previous.upstreamId;
     let message = "已停止后续生成，已完成片段保留。";
@@ -891,8 +1003,8 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
       draft.avatarSource = "video-audio";
       draft.audioRefs = "";
     }
-    const avatarBackground = draft.model === "minimax-h3-avatar" ? avatarBackgroundForPrompt(draft.prompt) : undefined;
-    const source = draft.model === "minimax-h3-avatar" && draft.avatarSource ? await avatarContext(workspace, sessionId) : null;
+    const avatarBackground = isAvatarVideoModel(draft.model) ? avatarBackgroundForPrompt(draft.prompt) : undefined;
+    const source = isAvatarVideoModel(draft.model) && draft.avatarSource ? await avatarContext(workspace, sessionId) : null;
     let narrationClips = source?.clips;
     let avatarAudioFingerprint: string | undefined;
     let avatarAudioStart: number | undefined;
@@ -921,10 +1033,17 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
       : `${avatarAudioPromptPrefix}${draft.prompt}`).slice(0, 8000);
     const args = validateVideoSubmission(draft);
     if (avatarBackground === "transparent") await avatarCutoutCli();
-    const key = await credential(authorization, args.model);
+    const subscription = args.model === HEYGEN_AVATAR_VIDEO.model ? await authorization.heygenSubscription?.() : undefined;
+    const heygenBilling = args.model === HEYGEN_AVATAR_VIDEO.model ? { mode: subscription?.mode ?? "api-key", ...(subscription?.mode === "subscription" ? { sessionId: subscription.sessionId } : {}) } : undefined;
+    const key = await credential(authorization, args.model, heygenBilling);
+    if (heygenBilling?.mode === "subscription") {
+      const { avatarLimits } = await validateHeygenPlan(config, heygenBilling.sessionId, Number(args.duration));
+      if (avatarLimits.resolution === "720p") args.resolution = "720p";
+    }
     const now = Date.now();
     const fingerprint = createHash("sha256").update(JSON.stringify(args)).digest("hex");
     const created = await createVideoJob(config, { id: args.requestId, workspaceId: workspace.id, sessionId, fingerprint,
+      ...(heygenBilling ? { heygenBilling } : {}),
       ...(avatarBackground ? { avatarBackground } : {}),
       ...(profile ? { avatarProfileId: profile.id, avatarProfileUpdatedAt: profile.updatedAt, avatarAudioFingerprint, avatarAudioStart } : {}),
       ...(args.model === "minimax-h3-avatar" ? { workflowId: args.avatarSource === "video-content" ? H3_WORKFLOW : AVATAR_WORKFLOW } : args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
@@ -936,6 +1055,19 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
       if (source && args.avatarSource === "video-audio") {
         await sessionDirectory(workspace, sessionId, "assets");
         await mixAvatarNarration(workspace, narrationClips ?? source.clips, args.audioRefs, Number(args.duration));
+      }
+      if (args.model === HEYGEN_AVATAR_VIDEO.model) {
+        const directory = await sessionDirectory(workspace, sessionId, "assets");
+        const image = await mediaFile(workspace, args.imageRefs);
+        const audio = await mediaFile(workspace, args.audioRefs);
+        if (!image.mime.startsWith("image/") || !audio.mime.startsWith("audio/") || image.size > 32 * 1024 * 1024 || audio.size > 32 * 1024 * 1024) fail("HeyGen 照片和配音文件各须在 32 MB 以内。");
+        const imagePath = `${directory}/avatar-reference-${args.requestId}${extname(args.imageRefs)}`;
+        await writeFile(await resolveWithinRoot(workspace.path, imagePath), await readFile(image.absolute), { flag: "wx" });
+        const audioPath = `${directory}/avatar-voice-${args.requestId}${extname(args.audioRefs)}`;
+        if (args.audioRefs !== audioPath) await writeFile(await resolveWithinRoot(workspace.path, audioPath), await readFile(audio.absolute), { flag: "wx" });
+        const job = await updateVideoJob(config, created.job, { status: "running", nextPoll: 0, message: "已加入 HeyGen 生成队列，可关闭此窗口。",
+          avatarInput: { imagePath, audioPath, ratio: args.ratio === "9:16" ? "9:16" : "16:9", resolution: args.resolution === "720p" ? "720p" : "1080p", duration: Number(args.duration) } });
+        return { ok: true, result: { job } };
       }
       if (args.model === "minimax-h3-avatar" && args.avatarSource && Number(args.duration) > 15) {
         const segments = await prepareAvatarSegments(workspace, args.audioRefs, Number(args.duration));

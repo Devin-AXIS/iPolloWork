@@ -27,6 +27,27 @@ function transactionDirectories(dir: string): string[] {
 }
 
 describe("ArtifactTransaction", () => {
+  it("publishes a long Studio export name without duplicating it in Windows staging paths", async () => {
+    const dir = tempDir();
+    const parent = join(dir, "p".repeat(Math.max(1, 183 - dir.length - 1)));
+    mkdirSync(parent);
+    const filename = "01a12e25-e5f9-7cc0-aa51-b47f9eecc756_2026-10-12_11-42-10.mp4";
+    const destination = join(parent, filename);
+    let transaction: ArtifactTransaction | undefined;
+    try {
+      transaction = new ArtifactTransaction(destination, "file");
+      expect(transaction.stagingPath.length).toBeLessThan(260);
+      expect(dirname(dirname(transaction.stagingPath))).toBe(parent);
+      writeFileSync(transaction.stagingPath, "complete-render");
+      await transaction.commit();
+      expect(readFileSync(destination, "utf8")).toBe("complete-render");
+      expect(transactionDirectories(parent)).toEqual([]);
+    } finally {
+      transaction?.rollback();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("uses a private, atomically reserved sibling directory", () => {
     const dir = tempDir();
     const destination = join(dir, "render.mp4");
@@ -34,7 +55,7 @@ describe("ArtifactTransaction", () => {
     const transactionDir = dirname(transaction.stagingPath);
 
     expect(dirname(transactionDir)).toBe(dir);
-    expect(transaction.stagingPath).toBe(join(transactionDir, "render.mp4"));
+    expect(transaction.stagingPath).toBe(join(transactionDir, "artifact.mp4"));
     if (process.platform !== "win32") {
       expect(lstatSync(transactionDir).mode & 0o777).toBe(0o700);
     }
