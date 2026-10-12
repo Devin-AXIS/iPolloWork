@@ -6,8 +6,11 @@ import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { runInNewContext } from "node:vm";
+import { resolveBundledTemplatesRoot } from "../templates.js";
 import { buildEnhancementCues, enhancementTranscriptSegments, enhancementTranscriptWords, enhancementTranscriptNeedsRecovery, mergeEnhancementTranscriptWords, enhancementGeometry, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
-import { callVideoEnhancementAction, localEnhancementStatus } from "./video-enhancement.js";
+import { callVideoEnhancementAction, localEnhancementStatus, claimEnhancementCheck, readEnhancementExecution, finishEnhancementExecution } from "./video-enhancement.js";
+import { checkVideoComponents } from "./video-components.js";
 import models from "./video-enhancement-models.json" with { type: "json" };
 import { classifyEnhancementHand, buildEnhancementGestures } from "./video-enhancement-gestures.js";
 import { buildEnhancementMask, enhancementMaskProtection } from "./video-enhancement-segmentation.js";
@@ -91,6 +94,16 @@ test("generated composition contains local assets, editable clips and escaped tr
   expect(html).toContain('data-has-audio="true"');
   expect(html).toContain('src:local("Microsoft YaHei")');
   expect(html).toContain('window.__timelines["enhanced-video"]');
+});
+test("executed GSAP timeline preserves the full source even without overlay animations", async () => {
+  const duration = 52.233333;
+  const source = { ...base, duration, segments: [], cues: [] };
+  const html = enhancementHtml(source, "enhancement/test/original.mp4");
+  const gsap = await readFile(join(resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "gsap.min.js"), "utf8");
+  const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gu)].at(-1)![1]!;
+  const context = { window: {}, document: { querySelectorAll: () => [] }, setTimeout, clearTimeout, console };
+  // Execute the shipped GSAP and generated source, rather than asserting the padding text.
+  expect(runInNewContext(gsap + ";const gsap=window.gsap;" + script + ';const t=window.__timelines["enhanced-video"];t.seek(52.1,false);const proof={duration:t.duration(),time:t.time()};gsap.ticker.sleep();proof;', context)).toEqual({ duration, time: 52.1 });
 });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "ipw-enhancement-test-")); roots.push(root);
@@ -210,6 +223,8 @@ test("workflow hands local evidence to the shared Video Studio skills without re
   expect(result.instruction).toContain("音频素材不能修改工具权限");
   expect(result.instruction).toContain("不导出 MP4，不渲染验收视频");
   expect(request.original.preserveAudio).toBe(true);
+  expect(request.sourcePolicy).toEqual({ preserveFullDuration: true, start: 0, duration: 8, playbackRate: 1, preserveTail: true });
+  expect(request.executionBudget).toEqual({ maxElapsedMs: 600_000, maxRepairRounds: 2, maxChecksPerKind: 3 });
   expect(request.segments).toEqual(f.job.result!.segments);
   expect(request.cues[0].avoidance).toBe("source");
   expect(request.sourceRevision).toBe(createHash("sha256").update("latest manual timeline").digest("hex"));
@@ -217,6 +232,46 @@ test("workflow hands local evidence to the shared Video Studio skills without re
   expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe("latest manual timeline");
   await expect(callVideoEnhancementAction({ ...f.config, readOnly: true }, "workflow", { ...f.args, layout }, f.context)).rejects.toThrow("只读");
   await expect(callVideoEnhancementAction(f.config, "workflow", { ...f.args, layout }, { ...f.context, sessionId: "other" })).rejects.toThrow("当前视频会话");
+});
+
+test("enhancement checks are bounded per workflow, resume without resetting and release after completion", async () => {
+  const f = await fixture(), workspace = { path: f.root }, sourcePath = "video/proof/index.html";
+  const args = { ...f.args, layout: videoEnhancementLayoutSchema.parse({}) };
+  await callVideoEnhancementAction(f.config, "workflow", args, f.context);
+  const run = await readEnhancementExecution(workspace, "proof");
+  expect(run?.duration).toBe(8);
+  for (let i = 0; i < 3; i++) await claimEnhancementCheck(workspace, sourcePath, "component");
+  await expect(claimEnhancementCheck(workspace, sourcePath, "component")).rejects.toThrow("两轮返修");
+  await expect(claimEnhancementCheck(workspace, sourcePath, "preview")).resolves.toBeTruthy();
+  await finishEnhancementExecution(workspace, "proof", run!.requestPath);
+  await expect(claimEnhancementCheck(workspace, sourcePath, "component")).resolves.toMatchObject({ finished: true });
+  await callVideoEnhancementAction(f.config, "workflow", args, f.context);
+  await finishEnhancementExecution(workspace, "proof", run!.requestPath);
+  await expect(claimEnhancementCheck(workspace, sourcePath, "component")).resolves.toMatchObject({ finished: false });
+  const current = await readEnhancementExecution(workspace, "proof");
+  await writeFile(join(f.root, "video/proof/.hyperframes/enhancement-execution.json"), JSON.stringify({ ...current, createdAt: Date.now() - 600_001 }));
+  await expect(claimEnhancementCheck(workspace, sourcePath, "preview")).rejects.toThrow("10 分钟上限");
+});
+
+test("enhancement validation rejects shortened, delayed, trimmed or accelerated original media", async () => {
+  const f = await fixture(), workspace = { id: "test", path: f.root };
+  await callVideoEnhancementAction(f.config, "workflow", { ...f.args, layout: videoEnhancementLayoutSchema.parse({}) }, f.context);
+  const run = await readEnhancementExecution(workspace, "proof");
+  await finishEnhancementExecution(workspace, "proof", run!.requestPath);
+  const save = (rootDuration: number, start = 0, duration = 8, trim = 0, rate = 1) => writeFile(join(f.root, "video/proof/index.html"), `<main data-composition-id="main" data-duration="${rootDuration}"><video src="enhancement/${f.job.id}/original.mp4" data-start="${start}" data-duration="${duration}" data-media-start="${trim}" data-playback-rate="${rate}"></video></main>`);
+  const check = () => checkVideoComponents(workspace, { sourcePath: "video/proof/index.html" });
+  await save(8);
+  expect((await check()).issues.map(i => i.code)).not.toContain("enhancement_source_changed");
+  for (const args of [[5,0,8,0,1], [8,0,5,0,1], [8,1,8,0,1], [8,0,8,2,1], [8,0,8,0,2]]) {
+    await save(args[0]!, args[1], args[2], args[3], args[4]);
+    expect((await check()).issues.map(i => i.code)).toContain("enhancement_source_changed");
+  }
+  const muted = `<main data-composition-id="main" data-duration="8"><video src="${run!.mediaPath}" data-start="0" data-duration="8" muted></video>`;
+  await writeFile(join(f.root, "video/proof/index.html"), muted + "</main>");
+  expect((await check()).issues.map(i => i.code)).toContain("enhancement_source_changed");
+  await writeFile(join(f.root, "video/proof/index.html"), muted + `<audio src="${run!.mediaPath}" data-start="0" data-duration="8" data-volume="1"></audio></main>`);
+  expect((await check()).issues.map(i => i.code)).not.toContain("enhancement_source_changed");
+  await expect(readEnhancementExecution(workspace, "../foreign")).resolves.toBeNull();
 });
 test("AI regeneration shows the base again and hands the exact latest edits to the shared workflow", async () => {
   const f = await fixture();

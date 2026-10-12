@@ -381,6 +381,7 @@ ${cues.map(cue => {
   }
   return fade;
 }).join("\n")}
+tl.set({}, {}, ${result.duration});
 window.__timelines["enhanced-video"]=tl;
 ${previewGsap ? `const media=document.getElementById("original-video"),root=document.getElementById("enhanced-video");
 document.body.style.cssText="display:grid;place-items:center;width:100vw;height:100vh;overflow:hidden;background:transparent";

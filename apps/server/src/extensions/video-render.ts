@@ -9,6 +9,7 @@ import { ApiError } from "../errors.js";
 import { uiControlRequest } from "../ui-control-client.js";
 import { resolveWorkspaceFile } from "./storage.js";
 import { attribute, numberAttribute, openingTags } from "./video-components.js";
+import { claimEnhancementCheck } from "./video-enhancement.js";
 
 export const videoRenderInput = z.object({
   sourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/),
@@ -355,6 +356,7 @@ export async function videoPreviewCheck(workspace: { id: string; path: string },
   const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
   const root = await realpath(workspace.path), actual = await realpath(source.absolutePath);
   if (!actual.startsWith(root + sep)) throw new ApiError(400, "path_escape", "Video source escapes workspace");
+  await claimEnhancementCheck(workspace, input.sourcePath, "preview");
   const startedAt = Date.now(), project = input.sourcePath.split("/")[1]!;
   const studioPort = await ensureVideoStudio(workspace, project);
   const sourceHash = await videoProjectFingerprint(dirname(actual));

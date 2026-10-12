@@ -11,6 +11,7 @@ import { importedVideoRegistryRoots, resolveHyperframesRegistryRoot } from "../h
 import { resolveWorkspaceFile } from "./storage.js";
 import { uiControlRequest } from "../ui-control-client.js";
 import { hyperframesStudioPort } from "@ipollowork/types/hyperframes";
+import { claimEnhancementCheck } from "./video-enhancement.js";
 
 const componentIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 const videoSourcePathSchema = z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/u);
@@ -56,9 +57,12 @@ const videoBeatSchema = z.object({
     z.array(z.string().min(1)).min(1),
   ),
   animation: z.string().regex(/^(?:component|preset|custom|hold):\S(?:.*\S)?$/u),
-  motion: videoMotionWindowSchema,
+  motion: z.object({ start: z.number().nonnegative(), end: z.number().nonnegative() }).strict(),
 }).strict().superRefine((beat, context) => {
   if (beat.end <= beat.start) context.addIssue({ code: z.ZodIssueCode.custom, path: ["end"], message: "Beat end must be after its start" });
+  if (beat.motion.end < beat.motion.start || (!beat.animation.startsWith("hold:") && beat.motion.end === beat.motion.start)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["motion", "end"], message: "Active motion must end after its start; only hold:* permits equal start/end" });
+  }
   if (beat.motion.start < beat.start || beat.motion.end > beat.end) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["motion"], message: "Motion must stay inside its beat" });
   }
@@ -714,7 +718,8 @@ function validateBeatMap(tag: string, sceneId: string, duration: number | null) 
   }
   const result = videoBeatMapSchema.safeParse(parsed);
   if (!result.success) {
-    return { beats: [], issues: [{ code: "invalid_scene_beats", sceneId, message: `${sceneId} has an invalid data-ipw-beats structure.` }] };
+    return { beats: [], issues: result.error.issues.slice(0, 12).map(issue => ({ code: "invalid_scene_beats", sceneId,
+      message: `${sceneId} data-ipw-beats[${issue.path.join(".")}]: ${issue.message}. Repair this field without shortening the source or inventing animation.` })) };
   }
   const tolerance = 0.05;
   if (result.data[0]?.start !== 0) {
@@ -845,6 +850,27 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const sceneTags = tags.filter(tag => /\bdata-ipw-scene(?:\s|=|>)/iu.test(tag));
   const issues: Array<{ code: string; sceneId?: string; message: string }> = [];
   const compositionRoot = tags.find(tag => attribute(tag, "data-composition-id")) ?? "";
+  const enhancement = await claimEnhancementCheck(workspace, source.relativePath, "component");
+  if (enhancement) {
+    const tolerance = 1 / (numberAttribute(compositionRoot, "data-fps") || 30) + .001;
+    const fail = (message: string) => issues.push({ code: "enhancement_source_changed", sceneId: "original-video", message });
+    const duration = numberAttribute(compositionRoot, "data-duration");
+    if (duration === null || Math.abs(duration - enhancement.duration) > tolerance) fail(`Root data-duration must preserve the complete ${enhancement.duration}s source, including its tail.`);
+    const original = tags.find(tag => /^<video\b/iu.test(tag) && attribute(tag, "src").replace(/^\.\//u, "") === enhancement.mediaPath);
+    const fullWindow = (tag: string) => {
+      const start = numberAttribute(tag, "data-start"), length = numberAttribute(tag, "data-duration");
+      return start !== null && Math.abs(start) <= tolerance && length !== null && Math.abs(length - enhancement.duration) <= tolerance
+        && (numberAttribute(tag, "data-media-start") ?? 0) === 0 && (numberAttribute(tag, "data-playback-rate") ?? 1) === 1;
+    };
+    const audible = (tag: string) => !/\smuted(?:\s|=|>)/iu.test(tag) && numberAttribute(tag, "data-volume") !== 0;
+    if (!original) fail(`Restore the complete original video: ${enhancement.mediaPath}.`);
+    else {
+      if (!fullWindow(original)) {
+        fail(`Original video must start at 0, run ${enhancement.duration}s at rate 1 with data-media-start=0. Do not trim, skip pauses or accelerate it to pass checks.`);
+      }
+      if (!audible(original) && !tags.some(tag => /^<audio\b/iu.test(tag) && attribute(tag, "src").replace(/^\.\//u, "") === enhancement.mediaPath && fullWindow(tag) && audible(tag))) fail("Restore the complete original audible track; a separate source-audio clip must retain the same full window.");
+    }
+  }
   const selection = attribute(compositionRoot, "data-ipw-selected-components");
   const recipePolicy = attribute(compositionRoot, "data-ipw-recipe-policy");
   const recipesOnly = input.recipesOnly === true || recipePolicy === "recipes-only";
@@ -911,7 +937,10 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
     const beatMap = validateBeatMap(tag, sceneId, duration);
     sceneBeats.set(sceneId, beatMap.beats);
     issues.push(...beatMap.issues);
-    const patternIssues = patternEvidenceIssues(tag, sceneId, motionPattern, timingSource, beatMap.beats, duration);
+    for (const issue of beatMap.issues.filter(item => item.code === "invalid_scene_beats")) {
+      repairPlan.push({ sceneId, code: issue.code, action: "repair-metadata", message: issue.message });
+    }
+    const patternIssues = beatMap.beats.length ? patternEvidenceIssues(tag, sceneId, motionPattern, timingSource, beatMap.beats, duration) : [];
     issues.push(...patternIssues);
     for (const issue of patternIssues) {
       repairPlan.push({
@@ -921,8 +950,16 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
         message: `Repair the ${motionPattern} beat map and its executable timeline together: ${issue.message}`,
       });
     }
-    if (duration !== null && duration > 0) {
-      for (const interval of unplannedStillIntervals(beatMap.beats, duration)) {
+    if (beatMap.beats.length && duration !== null && duration > 0) {
+      // A continuous source video is activity even while its overlays hold.
+      // Other hold kinds and missing/short media retain the ordinary pacing checks.
+      const measuredMedia = new Set(beatMap.beats.filter(beat => beat.animation === "hold:media" && start !== null && tags.some(media => {
+        const mediaId = attribute(media, "id"), mediaStart = numberAttribute(media, "data-start"), mediaDuration = numberAttribute(media, "data-duration");
+        return /^<video\b/iu.test(media) && attribute(media, "src") && mediaStart !== null && mediaDuration !== null
+          && beat.targets.some(target => target === "video" || Boolean(mediaId) && target === `#${mediaId}`)
+          && mediaStart <= start + beat.start + .05 && mediaStart + mediaDuration >= start + beat.end - .05;
+      })));
+      for (const interval of unplannedStillIntervals(beatMap.beats.map(beat => measuredMedia.has(beat) ? { ...beat, animation: "media:source", motion: { start: beat.start, end: beat.end } } : beat), duration)) {
         issues.push({
           code: "scene_still_interval_too_long",
           sceneId,
@@ -930,7 +967,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
         });
         repairPlan.push(repairForStillInterval(sceneId, interval));
       }
-      for (const beat of beatMap.beats.filter(item => item.animation.startsWith("hold:") && item.end - item.start > MAX_STILL_SECONDS)) {
+      for (const beat of beatMap.beats.filter(item => item.animation.startsWith("hold:") && !measuredMedia.has(item) && item.end - item.start > MAX_STILL_SECONDS)) {
         const interval = { start: beat.start, end: beat.end, duration: beat.end - beat.start };
         issues.push({
           code: "scene_hold_too_long",

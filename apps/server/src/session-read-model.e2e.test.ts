@@ -70,6 +70,7 @@ function startMockOpencode(input?: { delegatedWorker?: boolean; invalidList?: bo
         directory: request.headers.get("x-opencode-directory"),
         body,
       });
+      if (url.pathname === "/session/ses_created/abort") return Response.json(true);
 
       if (input?.delegatedWorker && /^\/session\/ses_(worker|fork|foreign)$/.test(url.pathname)) {
         return Response.json({ id: url.pathname.split("/").pop(), parentID: "ses_1", title: "Child", directory: url.pathname.endsWith("foreign") ? "/foreign" : request.headers.get("x-opencode-directory") });
@@ -247,6 +248,51 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe("workspace session completion projection", () => {
+  test.each([DEFAULT_ENGINE_ID, CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID])("%s stops an over-budget enhancement through the native cancellation API and retains its draft", async engineId => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const completion = { time: 0, status: "running" as const, rejected: false };
+    const mock = startMockOpencode({ promptCompletion: completion });
+    const id = engineId === DEFAULT_ENGINE_ID ? "ses_created" : engineId === CODEX_HARNESS_ENGINE_ID ? "codex_created" : "dsh_created";
+    const calls: Array<{ method: string; payload: unknown }> = [];
+    const start = spyOn(CodexHarnessRuntime.prototype, "startThread").mockResolvedValue({ thread: { id, cwd: workspaceRoot, turns: [] } });
+    const codex = spyOn(CodexHarnessRuntime.prototype, "call").mockImplementation(async <T>(method: string, payload: unknown): Promise<T> => {
+      calls.push({ method, payload });
+      if (method === "turn/start") { completion.time = Date.now(); return { turn: { id: "bounded-turn" } } as T; }
+      return { thread: { id, cwd: workspaceRoot, status: { type: "active" }, turns: [{ id: "bounded-turn", status: "running", startedAt: Math.floor(completion.time / 1000), completedAt: null, items: [] }] } } as T;
+    });
+    const dsh = spyOn(DeepSeekHarnessRuntime.prototype, "call").mockImplementation(async <T>(method: string, payload: unknown): Promise<T> => {
+      calls.push({ method, payload });
+      if (method === "session.prompt") completion.time = Date.now();
+      return (method === "session.create" ? { sessionId: id }
+        : method === "session.list" ? { items: [{ sessionId: id, cwd: workspaceRoot, running: true, blank: false }] }
+        : method === "session.history" ? { hasMore: false, events: [] } : {}) as T;
+    });
+    let clock: ReturnType<typeof spyOn> | undefined;
+    try {
+      const { server, token, config } = await startiPolloWorkServer({ workspaceRoot, opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`, engineId, readOnly: false });
+      const base = `http://127.0.0.1:${server.port}/workspace/ws_1`, headers = { ...auth(token), "Content-Type": "application/json" };
+      expect((await fetch(`${base}/sessions`, { method: "POST", headers, body: JSON.stringify({ engineId, title: "Enhancement" }) })).status).toBe(201);
+      const project = join(workspaceRoot, "video", id);
+      await mkdir(join(project, ".hyperframes"), { recursive: true });
+      const source = "complete original source and tail";
+      await writeFile(join(project, "index.html"), source);
+      const policy = { requestPath: `video/${id}/enhancement/12345678-1234/compose-12345678-1234.json`, createdAt: Date.now(), duration: 52.233333, mediaPath: "enhancement/12345678-1234/original.mp4", maxElapsedMs: 600_000, maxChecks: 3, finished: false };
+      await writeFile(join(project, ".hyperframes/enhancement-execution.json"), JSON.stringify(policy));
+      expect((await fetch(`${base}/sessions/${id}/prompt`, { method: "POST", headers, body: JSON.stringify({ text: "Compose the uploaded source" }) })).status).toBe(202);
+      clock = spyOn(Date, "now").mockReturnValue(policy.createdAt + 600_001);
+      let item = await readProjectSessionWorkItem(config, "ws_1", id);
+      for (let i = 0; i < 80 && item?.status !== "failed"; i++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        item = await readProjectSessionWorkItem(config, "ws_1", id);
+      }
+      expect(item?.status).toBe("failed");
+      expect(JSON.stringify(item)).toContain("10 分钟上限");
+      if (engineId === DEFAULT_ENGINE_ID) expect(mock.requests.some(r => r.pathname === `/session/${id}/abort`)).toBe(true);
+      else expect(calls).toContainEqual({ method: engineId === CODEX_HARNESS_ENGINE_ID ? "turn/interrupt" : "session.cancel", payload: engineId === CODEX_HARNESS_ENGINE_ID ? { threadId: id, turnId: "bounded-turn" } : { sessionId: id } });
+      expect(await readFile(join(project, "index.html"), "utf8")).toBe(source);
+      expect(JSON.parse(await readFile(join(project, ".hyperframes/enhancement-execution.json"), "utf8")).finished).toBe(true);
+    } finally { clock?.mockRestore(); start.mockRestore(); codex.mockRestore(); dsh.mockRestore(); }
+  }, 15_000);
   for (const engineId of [DEFAULT_ENGINE_ID, CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID]) {
     test.each(["running", "completed", "failed", "rejected"] as const)(`${engineId} canonical prompts start Ready bindings and settle %s outcomes`, async (outcome) => {
       const workspaceRoot = await createWorkspaceRoot();

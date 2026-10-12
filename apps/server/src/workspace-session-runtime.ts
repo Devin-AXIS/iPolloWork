@@ -26,6 +26,7 @@ import {
 } from "./deepseek-harness-session-read-model.js";
 import type { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
 import { ApiError } from "./errors.js";
+import { readEnhancementExecution, finishEnhancementExecution } from "./extensions/video-enhancement.js";
 import { reconcilePluginPackagesForWorkspace } from "./plugin-package-lifecycle.js";
 import {
   buildSession,
@@ -608,13 +609,19 @@ export class WorkspaceSessionRuntime {
   ): Promise<WorkspaceSessionCompletion> {
     const pollMs = Math.min(Math.max(options.pollMs ?? 2_000, 250), 30_000);
     const timeoutMs = Math.min(Math.max(options.timeoutMs ?? 30 * 60_000, 1_000), 24 * 60 * 60_000);
-    const deadline = Date.now() + timeoutMs;
+    const candidate = options.startedAt === undefined ? null : await readEnhancementExecution(workspace, sessionId);
+    const enhancement = candidate && !candidate.finished && options.startedAt !== undefined
+      && Math.abs(candidate.createdAt - options.startedAt) < 60_000 ? candidate : null;
+    const deadline = Math.min(Date.now() + timeoutMs, enhancement ? enhancement.createdAt + enhancement.maxElapsedMs : Infinity);
     let lastReadError: unknown;
     while (Date.now() < deadline) {
       if (options.signal?.aborted) throw options.signal.reason ?? new Error("Automatic task monitoring stopped");
       try {
         const completion = await this.#readCompletion(workspace, sessionId, options);
-        if (completion) return completion;
+        if (completion) {
+          if (enhancement) await finishEnhancementExecution(workspace, sessionId, enhancement.requestPath);
+          return completion;
+        }
         lastReadError = undefined;
       } catch (error) {
         lastReadError = error;
@@ -622,6 +629,35 @@ export class WorkspaceSessionRuntime {
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
       await delay(Math.min(pollMs, remaining), undefined, { signal: options.signal });
+    }
+    if (enhancement && Date.now() >= enhancement.createdAt + enhancement.maxElapsedMs) {
+      if (options.signal?.aborted) throw options.signal.reason;
+      const current = await readEnhancementExecution(workspace, sessionId);
+      if (current?.requestPath !== enhancement.requestPath) throw new Error("Enhancement run superseded");
+      const completed = await this.#readCompletion(workspace, sessionId, options);
+      if (completed) {
+        await finishEnhancementExecution(workspace, sessionId, enhancement.requestPath);
+        return completed;
+      }
+      const binding = await readProjectSessionWorkItem(this.#config, workspace.id, sessionId);
+      if (binding?.runStartedAt !== options.startedAt) throw new Error("Conversation run superseded");
+      if (options.signal?.aborted) throw options.signal.reason;
+      workspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, { codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness });
+      if (options.signal?.aborted) throw options.signal.reason;
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        const runtime = this.#codexHarness.forWorkspace(workspace);
+        const thread = options.turnId ? null : await readCodexHarnessThread(runtime, sessionId);
+        const turnId = options.turnId ?? thread?.turns?.at(-1)?.id;
+        if (!turnId) throw new Error("AI 编排超时，无法确认正在运行的 turn；草稿已保留，请停止当前任务。");
+        if (options.signal?.aborted) throw options.signal.reason;
+        await runtime.call("turn/interrupt", { threadId: sessionId, turnId });
+      } else if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        await this.#deepseekHarness.forWorkspace(workspace).call("session.cancel", { sessionId });
+      } else {
+        this.#unwrapOpencodeResult(await this.#createWorkspaceOpencodeClient(this.#config, workspace).session.abort({ sessionID: sessionId }), `/session/${sessionId}/abort`);
+      }
+      await finishEnhancementExecution(workspace, sessionId, enhancement.requestPath);
+      return { status: "failed", error: "AI 编排达到 10 分钟上限，已停止本轮生成。完整原视频和当前可编辑草稿已保留；请查看未完成的检查项后继续。" };
     }
     const detail = lastReadError ? `: ${errorMessage(lastReadError, "session status unavailable")}` : "";
     throw new Error(`Automatic task did not finish within ${Math.round(timeoutMs / 60_000)} minutes${detail}`);
