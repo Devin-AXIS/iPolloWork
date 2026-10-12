@@ -2,20 +2,24 @@ import { join } from "node:path";
 import { VIDEO_ENHANCEMENT_GESTURE_FPS, VIDEO_ENHANCEMENT_MAX_GESTURES, type VideoEnhancementGesture, type VideoEnhancementRect } from "@ipollowork/types/video-enhancement";
 
 type Point = { x: number; y: number };
-type Hand = { box: VideoEnhancementRect; confidence: number; gesture: { kind: VideoEnhancementGesture["kind"]; target: Point } | null };
+type SpatialPoint = Point & { z: number };
+type Hand = { box: VideoEnhancementRect; confidence: number; handedness?: VideoEnhancementGesture["handedness"]; gesture: { kind: VideoEnhancementGesture["kind"]; target: Point; motion?: "support" } | null };
 export type HandSample = { time: number; hands: Hand[] };
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** Geometric labels, not an interpretation of the speaker's intent. */
-export function classifyEnhancementHand(points: Point[], width: number, height: number): Hand["gesture"] {
+export function classifyEnhancementHand(points: Point[], width: number, height: number, world?: SpatialPoint[]): Hand["gesture"] {
   if (points.length !== 21 || width <= 0 || height <= 0 || points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null;
   const p = points.map(point => ({ x: point.x * width, y: point.y * height }));
+  const spatial = world?.length === 21 && world.every(point => [point.x, point.y, point.z].every(Number.isFinite));
+  const joints = spatial ? world! : p.map(point => ({ ...point, z: 0 }));
+  const distance3 = (a: SpatialPoint, b: SpatialPoint) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
   const extended = [5, 9, 13, 17].map(base => {
-    const mcp = p[base]!, pip = p[base + 1]!, tip = p[base + 3]!;
-    const a = { x: pip.x - mcp.x, y: pip.y - mcp.y }, b = { x: tip.x - pip.x, y: tip.y - pip.y };
-    return (a.x * b.x + a.y * b.y) / Math.max(1, Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y)) > .75
-      && distance(tip, p[0]!) > distance(pip, p[0]!) * 1.15;
+    const mcp = joints[base]!, pip = joints[base + 1]!, tip = joints[base + 3]!;
+    const a = { x: pip.x - mcp.x, y: pip.y - mcp.y, z: pip.z - mcp.z }, b = { x: tip.x - pip.x, y: tip.y - pip.y, z: tip.z - pip.z };
+    return (a.x * b.x + a.y * b.y + a.z * b.z) / Math.max(1e-9, Math.hypot(a.x, a.y, a.z) * Math.hypot(b.x, b.y, b.z)) > .75
+      && distance3(tip, joints[0]!) > distance3(pip, joints[0]!) * 1.15;
   });
   const fingers = [5, 9, 13, 17].filter((_, index) => extended[index]);
   const project = (kind: VideoEnhancementGesture["kind"], tip: Point, direction: Point, reach: number): Hand["gesture"] => {
@@ -25,6 +29,18 @@ export function classifyEnhancementHand(points: Point[], width: number, height: 
       y: clamp((tip.y + direction.y / length * reach) / height) } };
   };
   if (fingers.length) {
+    if (fingers.length === 4 && spatial) {
+      const wrist = joints[0]!, index = joints[5]!, little = joints[17]!;
+      const a = { x: index.x - wrist.x, y: index.y - wrist.y, z: index.z - wrist.z };
+      const b = { x: little.x - wrist.x, y: little.y - wrist.y, z: little.z - wrist.z };
+      const normal = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+      const length = Math.hypot(normal.x, normal.y, normal.z);
+      // A horizontal palm plane is evidence for support, not a claim about intent.
+      if (length > 1e-9 && Math.abs(normal.y) / length > .7) {
+        const center = [0, 5, 9, 13, 17].reduce((sum, i) => ({ x: sum.x + points[i]!.x / 5, y: sum.y + points[i]!.y / 5 }), { x: 0, y: 0 });
+        return { kind: "open_palm", motion: "support", target: { x: clamp(center.x), y: clamp(center.y - .025) } };
+      }
+    }
     const average = (offset: number) => ({ x: fingers.reduce((sum, base) => sum + p[base + offset]!.x, 0) / fingers.length,
       y: fingers.reduce((sum, base) => sum + p[base + offset]!.y, 0) / fingers.length });
     const tip = average(3), joint = average(1), direction = { x: tip.x - joint.x, y: tip.y - joint.y };
@@ -46,26 +62,35 @@ export function classifyEnhancementHand(points: Point[], width: number, height: 
   return null;
 }
 
-/** Two measured samples confirm a gesture; tolerate a brief missed frame, not a target jump. */
+/** Track hands one-to-one, retain a bounded smoothed path, and reject jumps/dropouts. */
 export function buildEnhancementGestures(samples: HandSample[], duration: number): VideoEnhancementGesture[] {
-  type Track = { kind: VideoEnhancementGesture["kind"]; start: number; last: number; confidence: number; target: Point; anchor: Point; count: number };
+  type Track = { kind: VideoEnhancementGesture["kind"]; start: number; last: number; confidence: number; target: Point; center: Point; count: number;
+    handId: string; handedness: VideoEnhancementGesture["handedness"]; support: number; path: { time: number; x: number; y: number }[] };
   let active: Track[] = [];
   const complete: Track[] = [];
+  let nextId = 1;
   for (const sample of samples) {
     const remaining = new Set(active);
     const next: Track[] = [];
     for (const hand of sample.hands) {
       if (!hand.gesture || hand.confidence < .65) continue;
       const gesture = hand.gesture;
+      const center = { x: hand.box.x + hand.box.width / 2, y: hand.box.y + hand.box.height / 2 };
       const previous = [...remaining].filter(track => track.kind === gesture.kind && sample.time - track.last <= .3
-        && distance(track.target, gesture.target) < .16 && distance(track.anchor, gesture.target) < .12).sort((a, b) => distance(a.target, gesture.target) - distance(b.target, gesture.target))[0];
+        && (hand.handedness === undefined || hand.handedness === "unknown" || track.handedness === "unknown" || track.handedness === hand.handedness)
+        && distance(track.target, gesture.target) < .18 && distance(track.center, center) < .18)
+        .sort((a, b) => distance(a.center, center) - distance(b.center, center))[0];
       if (previous) {
         remaining.delete(previous);
+        const target = { x: previous.target.x * .4 + gesture.target.x * .6, y: previous.target.y * .4 + gesture.target.y * .6 };
+        const path = [...previous.path];
+        if (sample.time - path.at(-1)!.time >= .25 - .001) path.push({ ...target, time: sample.time });
         next.push({ ...previous, last: sample.time, count: previous.count + 1,
           confidence: (previous.confidence * previous.count + hand.confidence) / (previous.count + 1),
-          target: { x: previous.target.x * .4 + gesture.target.x * .6,
-            y: previous.target.y * .4 + gesture.target.y * .6 } });
-      } else if (hand.confidence >= .8) next.push({ kind: gesture.kind, start: sample.time, last: sample.time, confidence: hand.confidence, target: gesture.target, anchor: gesture.target, count: 1 });
+          target, center, path, support: previous.support + Number(gesture.motion === "support") });
+      } else if (hand.confidence >= .8) next.push({ kind: gesture.kind, start: sample.time, last: sample.time, confidence: hand.confidence,
+        target: gesture.target, center, count: 1, handId: `hand-${nextId++}`, handedness: hand.handedness ?? "unknown",
+        support: Number(gesture.motion === "support"), path: [{ ...gesture.target, time: sample.time }] });
     }
     for (const track of remaining) {
       if (sample.time - track.last <= .3) next.push(track);
@@ -75,10 +100,16 @@ export function buildEnhancementGestures(samples: HandSample[], duration: number
   }
   const frame = 1 / VIDEO_ENHANCEMENT_GESTURE_FPS;
   return [...complete, ...active].filter(track => track.count >= 2 && track.last - track.start >= frame - .001)
-    .sort((a, b) => a.start - b.start).slice(0, VIDEO_ENHANCEMENT_MAX_GESTURES).map((track, index) => ({
-      id: `gesture-${index + 1}`, kind: track.kind, start: Math.max(0, track.start - frame),
-      end: Math.min(duration, track.last + frame), confidence: track.confidence, target: track.target,
-    }));
+    .sort((a, b) => a.start - b.start).slice(0, VIDEO_ENHANCEMENT_MAX_GESTURES).map((track, index) => {
+      const path = track.path.at(-1)!.time < track.last ? [...track.path, { ...track.target, time: track.last }] : track.path;
+      const first = path[0]!, last = path.at(-1)!;
+      const travel = path.slice(1).reduce((sum, point, i) => sum + distance(point, path[i]!), 0);
+      const guide = track.kind === "open_palm" && track.last - track.start >= .4 && distance(first, last) > .12 && distance(first, last) / Math.max(.001, travel) > .75;
+      return { id: `gesture-${index + 1}`, kind: track.kind, start: Math.max(0, track.start - frame),
+        end: Math.min(duration, track.last + frame), confidence: track.confidence, target: track.target,
+        handId: track.handId, handedness: track.handedness, path,
+        motion: guide ? "guide" : track.support / track.count > .65 ? "support" : "hold" };
+    });
 }
 
 /** MediaPipe ONNX models distributed by OpenCV Zoo (Apache-2.0).
@@ -170,6 +201,8 @@ export async function createEnhancementHandDetector(modelRoot: string) {
           const output = await pose.run({ [pose.inputNames[0]!]: new Tensor("float32", crop, [1, 224, 224, 3]) });
           const confidence = Number(output["Identity_1"]?.data[0]);
           const landmarks = output["Identity"]?.data;
+          const spatial = output["Identity_3"]?.data;
+          const sideScore = Number(output["Identity_2"]?.data[0]);
           if (!landmarks || landmarks.length !== 63 || !Number.isFinite(confidence) || confidence < .65) continue;
           const points = Array.from({ length: 21 }, (_, index) => {
             const point = toImage(centerX + (Number(landmarks[index * 3]) - 112) / 224 * side,
@@ -181,7 +214,13 @@ export async function createEnhancementHandDetector(modelRoot: string) {
           const w = clamp(Math.max(...points.map(point => point.x)) + .015) - x, h = clamp(Math.max(...points.map(point => point.y)) + .015) - y;
           if (w <= 0 || h <= 0) continue;
           const absolutePoints = points.map(point => ({ x: viewport.x + point.x * viewport.width, y: viewport.y + point.y * viewport.height }));
-          hands.push({ box: { x, y, width: w, height: h }, confidence, gesture: classifyEnhancementHand(absolutePoints, width / viewport.width, height / viewport.height) });
+          const world = spatial?.length === 63 ? Array.from({ length: 21 }, (_, index) => {
+            const x = Number(spatial[index * 3]), y = Number(spatial[index * 3 + 1]);
+            return { x: right.x * x - up.x * y, y: right.y * x - up.y * y, z: Number(spatial[index * 3 + 2]) };
+          }) : undefined;
+          hands.push({ box: { x, y, width: w, height: h }, confidence,
+            handedness: sideScore >= .8 ? "right" : sideScore <= .2 ? "left" : "unknown",
+            gesture: classifyEnhancementHand(absolutePoints, width / viewport.width, height / viewport.height, world) });
         }
         return hands;
       };

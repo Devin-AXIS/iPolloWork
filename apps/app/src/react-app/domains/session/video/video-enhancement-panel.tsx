@@ -17,10 +17,10 @@ import { videoProjectDirectory } from "./video-project";
 
 const maxSizeMB = VIDEO_ENHANCEMENT_MAX_BYTES / 1024 / 1024;
 const kindLabels: Record<VideoEnhancementCue["kind"], string> = {
-  keyword: "重点标题", number: "数字强调", list: "行动要点", steps: "步骤流程", comparison: "对比卡片", quote: "金句", summary: "总结",
+  keyword: "重点标题", number: "数字强调", list: "行动要点", steps: "步骤流程", comparison: "对比卡片", quote: "金句", summary: "总结", chart: "数据图",
 };
-const editableCue = ({ id, kind, text, detail, items, start, end, enabled, placement }: VideoEnhancementCue) =>
-  ({ id, kind, text, detail, items: items?.map(item => item.trim()).filter(Boolean), start, end, enabled, placement });
+const editableCue = ({ id, kind, text, detail, items, start, end, enabled, placement, anchor, chart }: VideoEnhancementCue) =>
+  ({ id, kind, text, detail, items: items?.map(item => item.trim()).filter(Boolean), start, end, enabled, placement, anchor, chart });
 const clock = (seconds: number) => Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0");
 const selectClass = "h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 type Props = {
@@ -268,10 +268,26 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
                 <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">编辑当前片段</span><button type="button" className="text-xs text-muted-foreground underline" onClick={() => seek(selected.start + .25)}>定位片段</button></div>
                 <label className="block space-y-1.5 text-xs"><span>呈现方式</span><select className={selectClass} aria-label={selected.id + " 呈现方式"} value={selected.kind} onChange={event => { const kind = videoEnhancementCueSchema.shape.kind.safeParse(event.target.value); if (kind.success) edit(selected.id, { kind: kind.data }); }}>{Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 <label className="block space-y-1.5 text-xs"><span>标题 / 重点</span><Textarea className="min-h-16 py-2 text-sm" aria-label={selected.id + " 元素文字"} value={selected.text} maxLength={160} onChange={event => edit(selected.id, { text: event.target.value })} /></label>
+                {selected.kind === "chart" && <div className="space-y-2 text-xs" data-testid="enhancement-chart-editor">
+                  <p>图表数据（使用同一单位，最多 4 项）</p>
+                  {!selected.chart?.length && <p className="text-muted-foreground">当前显示占位图，请补充真实数据。</p>}
+                  {selected.chart?.map((point, index) => <div key={index} className="flex items-center gap-2">
+                    <Input aria-label={selected.id + " 数据标签 " + (index + 1)} value={point.label} maxLength={80} onChange={event => edit(selected.id, { chart: selected.chart?.map((item, i) => i === index ? { ...item, label: event.target.value } : item) })} />
+                    <Input aria-label={selected.id + " 数据值 " + (index + 1)} type="number" value={point.value} onChange={event => edit(selected.id, { chart: selected.chart?.map((item, i) => i === index ? { ...item, value: Number(event.target.value) } : item) })} />
+                    <Button variant="ghost" size="sm" aria-label={"删除数据 " + (index + 1)} onClick={() => { const chart = selected.chart?.filter((_, i) => i !== index); edit(selected.id, { chart: chart?.length ? chart : undefined }); }}>删除</Button>
+                  </div>)}
+                  <Button variant="outline" size="sm" disabled={(selected.chart?.length ?? 0) >= 4} onClick={() => edit(selected.id, { chart: [...(selected.chart ?? []), { label: "数据项", value: 0 }] })}>添加数据</Button>
+                </div>}
                 {(selected.kind === "steps" || selected.kind === "comparison" || selected.kind === "list") ? <label className="block space-y-1.5 text-xs"><span>内容条目（每行一项，最多 4 项）</span><Textarea className="py-2 text-sm" aria-label={selected.id + " 内容条目"} value={selected.items?.join("\n") ?? ""} maxLength={644} onChange={event => edit(selected.id, { items: event.target.value.split("\n").slice(0, 4) })} /></label>
                   : <label className="block space-y-1.5 text-xs"><span>补充说明</span><Textarea className="py-2 text-sm" aria-label={selected.id + " 补充说明"} value={selected.detail ?? ""} maxLength={480} onChange={event => edit(selected.id, { detail: event.target.value })} /></label>}
                 <div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs"><span>开始（秒）</span><Input aria-label={selected.id + " 开始秒数"} type="number" min={0} max={result.duration} step={.1} value={selected.start} onChange={event => edit(selected.id, { start: Number(event.target.value) })} /></label><label className="space-y-1.5 text-xs"><span>结束（秒）</span><Input aria-label={selected.id + " 结束秒数"} type="number" min={0} max={result.duration} step={.1} value={selected.end} onChange={event => edit(selected.id, { end: Number(event.target.value) })} /></label></div>
                 <label className="block space-y-1.5 text-xs"><span>此片段位置</span><select className={selectClass} aria-label={selected.id + " 元素位置"} value={selected.placement ?? "auto"} onChange={event => { const placement = videoEnhancementCueSchema.shape.placement.safeParse(event.target.value); if (placement.success) edit(selected.id, { placement: placement.data }); }}><option value="auto">跟随画面布局</option><option value="left">左侧</option><option value="right">右侧</option><option value="top">上方</option><option value="bottom">下方</option><option value="center">中央</option>{layout.mode === "background" && <option value="gesture">手势位置</option>}</select></label>
+                {selectedPlacement?.binding && <p className="text-xs text-muted-foreground" data-testid="enhancement-binding">{selectedPlacement.binding.precision === "word" ? "词语" : "语句"}“{selectedPlacement.binding.phrase || "手势"}” · {selectedPlacement.binding.time.toFixed(2)} 秒 · {{ locked: "指向锁定", follow: "托举跟随", reveal: "引导展开", frame: "双手展示" }[selectedPlacement.binding.behavior]} · {selectedPlacement.binding.space === "source" ? "原视频位置" : "内容区域"}</p>}
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" aria-label={selected.id + " 锁定位置"} checked={Boolean(selected.anchor)} onChange={event => edit(selected.id, { anchor: event.target.checked ? selectedPlacement?.binding?.anchor ?? { x: .5, y: .4 } : undefined })} />手动校正并锁定位置</label>
+                {selected.anchor && <div className="grid grid-cols-2 gap-3">
+                  {(["x", "y"] satisfies (keyof NonNullable<VideoEnhancementCue["anchor"]>)[]).map(axis => <label key={axis} className="space-y-1.5 text-xs"><span>{axis === "x" ? "水平位置（%）" : "垂直位置（%）"}</span><Input aria-label={selected.id + " 位置 " + axis} type="number" min={0} max={100} step={1} value={Math.round(selected.anchor![axis] * 100)} onChange={event => edit(selected.id, { anchor: { ...selected.anchor!, [axis]: Math.max(0, Math.min(100, Number(event.target.value))) / 100 } })} /></label>)}
+                  <p className="col-span-2 text-muted-foreground">{layout.mode === "background" ? "对应原视频中的位置。" : "对应生成内容区域中的位置。"}</p>
+                </div>}
                 {selectedPlacement?.reason && !selectedPlacement.rect && <p className="text-xs text-amber-600">{selectedPlacement.reason}</p>}
               </fieldset>}
             </TabsContent>

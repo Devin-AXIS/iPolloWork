@@ -25,19 +25,36 @@ export const videoEnhancementGestureSchema = z.object({
   id: z.string().regex(/^gesture-[0-9]+$/), kind: z.enum(["point", "two_finger_point", "three_finger_point", "thumb_point", "open_palm"]),
   start: z.number().nonnegative(), end: z.number().positive(),
   confidence: z.number().min(0).max(1), target: pointSchema,
-}).strict().refine(value => value.end > value.start);
+  handId: z.string().regex(/^hand-[0-9]+$/).optional(),
+  handedness: z.enum(["left", "right", "unknown"]).optional(),
+  motion: z.enum(["hold", "support", "guide", "frame"]).optional(),
+  // Four samples/second retain the measured trajectory without storing model tensors.
+  path: z.array(pointSchema.extend({ time: z.number().nonnegative() }).strict()).max(721).optional(),
+  region: videoEnhancementRectSchema.optional(),
+}).strict().refine(value => value.end > value.start && (!value.path || value.path.every((point, index) =>
+  point.time >= value.start && point.time <= value.end && (index === 0 || point.time > value.path![index - 1]!.time))));
 export const videoEnhancementCueSchema = z.object({
   id: z.string().regex(/^enhance-[0-9]+$/),
-  kind: z.enum(["keyword", "number", "list", "steps", "comparison", "quote", "summary"]),
+  kind: z.enum(["keyword", "number", "list", "steps", "comparison", "quote", "summary", "chart"]),
   text: z.string().trim().min(1).max(160),
   detail: z.string().trim().max(480).optional(),
   items: z.array(z.string().trim().min(1).max(160)).max(4).optional(),
   start: z.number().nonnegative(), end: z.number().positive(), enabled: z.boolean(),
   placement: z.enum(["auto", "gesture", "left", "right", "top", "bottom", "center"]).optional(),
+  // Explicit correction in source (background) or content (PiP/split) coordinates.
+  anchor: pointSchema.optional(),
+  chart: z.array(z.object({ label: z.string().trim().min(1).max(80), value: z.number().finite() }).strict()).min(1).max(4).optional(),
 }).strict().refine(value => value.end > value.start && value.end - value.start >= .5);
 export const videoEnhancementPlacedCueSchema = videoEnhancementCueSchema.safeExtend({
   rect: videoEnhancementRectSchema.nullable(), reason: z.string().optional(),
   gesture: videoEnhancementGestureSchema.optional(),
+  binding: z.object({
+    time: z.number().nonnegative(), precision: z.enum(["word", "segment"]),
+    phrase: z.string().max(160), behavior: z.enum(["locked", "follow", "reveal", "frame"]),
+    space: z.enum(["source", "content"]),
+    anchor: pointSchema.optional(),
+    path: z.array(pointSchema.extend({ time: z.number().nonnegative() }).strict()).max(721),
+  }).strict().optional(),
   avoidance: z.enum(["contour", "box", "source", "gesture"]).optional(),
 });
 // Fixed 64x64 occupancy bitmap, four horizontal cells per hex digit.
@@ -50,6 +67,7 @@ export const videoEnhancementResultSchema = z.object({
   width: z.number().int().positive().max(4096), height: z.number().int().positive().max(4096),
   layout: videoEnhancementLayoutSchema.optional(),
   segments: z.array(videoEnhancementSegmentSchema).max(600),
+  words: z.array(videoEnhancementSegmentSchema).max(6000).optional(),
   people: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(20) }).strict()).max(400),
   hands: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(2) }).strict()).max(VIDEO_ENHANCEMENT_MAX_SECONDS * VIDEO_ENHANCEMENT_GESTURE_FPS + 1).default([]),
   gestures: z.array(videoEnhancementGestureSchema).max(VIDEO_ENHANCEMENT_MAX_GESTURES).default([]),
