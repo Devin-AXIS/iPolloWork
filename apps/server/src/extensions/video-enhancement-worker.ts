@@ -4,8 +4,8 @@ import { extname, join } from "node:path";
 import { promisify } from "node:util";
 import { env, pipeline, RawImage } from "@huggingface/transformers";
 import { z } from "zod";
-import { VIDEO_ENHANCEMENT_GESTURE_FPS, VIDEO_ENHANCEMENT_MAX_SECONDS, videoEnhancementLayoutSchema, videoEnhancementResultSchema, type VideoEnhancementRect, type VideoEnhancementMask } from "@ipollowork/types/video-enhancement";
-import { buildEnhancementCues, enhancementTranscriptSegments, enhancementTranscriptWords, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
+import { VIDEO_ENHANCEMENT_GESTURE_FPS, VIDEO_ENHANCEMENT_MAX_SECONDS, videoEnhancementLayoutSchema, videoEnhancementResultSchema, type VideoEnhancementRect, type VideoEnhancementMask, type VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
+import { buildEnhancementCues, enhancementTranscriptSegments, enhancementTranscriptWords, enhancementTranscriptNeedsRecovery, mergeEnhancementTranscriptWords, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
 import type { HandSample, createEnhancementHandDetector } from "./video-enhancement-gestures.js";
 import type { createEnhancementSegmenter } from "./video-enhancement-segmentation.js";
 import models from "./video-enhancement-models.json" with { type: "json" };
@@ -47,13 +47,22 @@ try {
   const transcriber = await pipeline("automatic-speech-recognition", speechModel.id, { device: "cpu", dtype: "q8", local_files_only: true, session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 } });
   const bytes = await readFile(join(cache, "audio.f32"));
   const audio = new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  const transcript = await transcriber(audio, { return_timestamps: "word", chunk_length_s: 20, stride_length_s: 4, task: "transcribe",
-    ...(language === "auto" ? {} : { language: language === "zh" ? "chinese" : "english" }) });
-  await transcriber.dispose();
+  const transcriptSchema = z.object({ chunks: z.array(z.object({ text: z.string(), timestamp: z.tuple([z.number().nullable(), z.number().nullable()]) })) });
+  const speechOptions = { task: "transcribe", ...(language === "auto" ? {} : { language: language === "zh" ? "chinese" : "english" }) };
+  let words: NonNullable<VideoEnhancementResult["words"]>;
+  let recoveredSpeech = false;
+  try {
+    const parsed = transcriptSchema.parse(await transcriber(audio, { ...speechOptions, return_timestamps: "word", chunk_length_s: 20, stride_length_s: 4 }));
+    words = enhancementTranscriptWords(parsed.chunks, duration);
+    if (enhancementTranscriptNeedsRecovery(parsed.chunks, duration)) {
+      progress(35, "语音时间戳异常，使用短分段恢复遗漏的讲话");
+      const recovered = transcriptSchema.parse(await transcriber(audio, { ...speechOptions, return_timestamps: "word", chunk_length_s: 10, stride_length_s: 2 }));
+      words = mergeEnhancementTranscriptWords(words, enhancementTranscriptWords(recovered.chunks, duration));
+      recoveredSpeech = true;
+    }
+  } finally { await transcriber.dispose(); }
   const speechMs = Math.round(performance.now() - speechBegan);
-  const parsed = z.object({ chunks: z.array(z.object({ text: z.string(), timestamp: z.tuple([z.number().nullable(), z.number().nullable()]) })) }).parse(transcript);
-  const segments = enhancementTranscriptSegments(parsed.chunks, duration);
-  const words = enhancementTranscriptWords(parsed.chunks, duration);
+  const segments = enhancementTranscriptSegments(words.map(word => ({ text: word.text, timestamp: [word.start, word.end] })), duration);
   if (!segments.length) throw new Error("没有识别到带时间的有效讲话，请检查原音频或更换语言。");
   progress(48, "分析人物与手势区域");
   const visionBegan = performance.now();
@@ -94,6 +103,7 @@ try {
   const base = { duration, width: video.width, height: video.height, segments, words, people, hands, gestures, masks, timings, layout: videoEnhancementLayoutSchema.parse({}) };
   const cues = placeEnhancementCues(buildEnhancementCues(segments, base.duration, words), base);
   const warnings = ["依据展示词语匹配手势：指向锁定、托举跟随、引导展开。背景叠加对应原视频位置，画中画与分栏对应内容区域。请预览校对。"];
+  if (recoveredSpeech) warnings.push("语音出现异常时间戳，已用短分段恢复并去除重复或越界词语；转写内容仍需结合原声校对。");
   if (cues.some(cue => cue.kind === "chart" && !cue.chart?.length)) warnings.push("部分数据图未提供明确数据，暂显示占位图，请在生成内容中补充。 ");
   if (masks.some(mask => !mask.data)) warnings.push("部分画面分割不可靠，相关展示时段已保留人物框保护。");
   if (people.some(sample => !sample.boxes.length)) warnings.push("部分画面未可靠识别人物，已按保守保护区域处理。");

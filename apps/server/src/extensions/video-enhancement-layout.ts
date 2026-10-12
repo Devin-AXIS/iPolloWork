@@ -51,7 +51,9 @@ function contentRegion(source: VideoEnhancementRect, position: string) {
 /** Locate a bounded visual intent in measured words; transcript text remains data. */
 function cueIntent(cue: VideoEnhancementCue, words: VideoEnhancementResult["words"]) {
   const text = cue.detail?.trim() || cue.text;
-  const phrase = text.match(/这里|這裡|这儿|此处|这个位置|左边|左侧|右边|右侧|上方|下方|掌心|托住|托着|手掌|展开|引导|对比|對比|两边|双手|范围|数据图|数据表|图表|柱状图|折线图|饼图|\b(?:here|left|right|above|below|chart|compare|reveal)\b/iu)?.[0] ?? "";
+  // A spoken location takes precedence over an earlier noun such as “图表”.
+  const phrase = text.match(/这里|這裡|这儿|這兒|此处|这边|這邊|这个位置|这个地方|左边|左侧|右边|右侧|上方|下方|掌心|手上|托住|托着|手掌|双手|两只手|中间|\b(?:here|left|right|above|below)\b/iu)?.[0]
+    ?? text.match(/展开|引导|对比|對比|两边|范围|数据图|数据表|图表|柱状图|折线图|饼图|\b(?:chart|compare|reveal)\b/iu)?.[0] ?? "";
   const nearby = words?.filter(word => word.start >= cue.start - .35 && word.start < cue.end) ?? [];
   const joined = nearby.map(word => word.text).join("");
   const offset = phrase ? joined.toLowerCase().indexOf(phrase.toLowerCase()) : -1;
@@ -98,12 +100,23 @@ export function placeEnhancementCues(cues: VideoEnhancementCue[], result: Pick<V
         return score(a) - score(b);
       });
     const matched = matches[0];
-    const paired = matched?.kind === "open_palm" && /对比|對比|两边|双手|范围|compare/iu.test(intent.text)
+    const paired = matched?.kind === "open_palm" && intent.explicit
       ? matches.find(event => event !== matched && event.kind === "open_palm" && event.handId !== matched.handId
-        && Math.abs(gestureTarget(event, intent.time).x - gestureTarget(matched, intent.time).x) > .15) : undefined;
-    const gesture = matched && paired ? { ...matched, motion: "frame", region: {
+        && Math.min(event.end, matched.end) >= Math.max(event.start, matched.start)
+        && (intent.precision !== "word" || (event.start <= intent.time + .1 && event.end >= intent.time - .1 && matched.start <= intent.time + .1 && matched.end >= intent.time - .1))
+        && Math.abs(gestureTarget(event, intent.time).x - gestureTarget(matched, intent.time).x) > .15
+        && Math.abs(gestureTarget(event, intent.time).y - gestureTarget(matched, intent.time).y) < .22) : undefined;
+    const frameSample = paired ? result.hands?.filter(sample => sample.boxes.length === 2 && Math.abs(sample.time - intent.time) <= .2)
+      .sort((a, b) => Math.abs(a.time - intent.time) - Math.abs(b.time - intent.time))[0] : undefined;
+    const frameHands = frameSample ? [...frameSample.boxes].sort((a, b) => a.x - b.x) : undefined;
+    const gesture = matched && paired ? { ...matched, motion: "frame", region: frameHands ? {
+      x: frameHands[0]!.x + frameHands[0]!.width / 2,
+      y: Math.min(...frameHands.map(box => box.y)),
+      width: frameHands[1]!.x + frameHands[1]!.width / 2 - frameHands[0]!.x - frameHands[0]!.width / 2,
+      height: Math.max(...frameHands.map(box => box.y + box.height)) - Math.min(...frameHands.map(box => box.y)),
+    } : {
       x: Math.min(gestureTarget(matched, intent.time).x, gestureTarget(paired, intent.time).x),
-      y: Math.max(.06, Math.min(gestureTarget(matched, intent.time).y, gestureTarget(paired, intent.time).y) - .25),
+      y: Math.max(.06, Math.min(.75, (gestureTarget(matched, intent.time).y + gestureTarget(paired, intent.time).y) / 2 - .125)),
       width: Math.abs(gestureTarget(matched, intent.time).x - gestureTarget(paired, intent.time).x), height: .25,
     } } satisfies typeof matched : matched;
     const behavior = gesture?.motion === "frame" ? "frame" : gesture?.motion === "guide" ? "reveal" : gesture?.motion === "support" ? "follow" : "locked";
@@ -209,10 +222,29 @@ export function enhancementTranscriptWords(chunks: { text: string; timestamp: [n
     const previous = words.at(-1);
     const start = Math.max(0, chunk.timestamp[0] ?? previous?.end ?? 0);
     const end = Math.min(duration, chunk.timestamp[1] ?? chunks[index + 1]?.timestamp[0] ?? duration);
-    if (!text.trim() || end <= start || start >= duration) continue;
+    // An overlapping chunk can repeat old words or pin hallucinated text to
+    // padded audio beyond the source. Neither is usable word-level evidence.
+    if (!text.trim() || end <= start || start >= duration || (chunk.timestamp[1] !== null && chunk.timestamp[1] > duration + .15)
+      || (previous && start < previous.end - .001)) continue;
     words.push({ text, start, end });
   }
   return words.slice(0, 6000);
+}
+
+/** Reject alignment failures before clipping would hide their invalid timestamps. */
+export function enhancementTranscriptNeedsRecovery(chunks: Parameters<typeof enhancementTranscriptWords>[0], duration: number) {
+  return chunks.some((chunk, index) => {
+    const [start, end] = chunk.timestamp;
+    return (start !== null && (start < 0 || start >= duration)) || (end !== null && end > duration + .15)
+      || (start !== null && end !== null && end <= start)
+      || (start !== null && index > 0 && start < (chunks[index - 1]!.timestamp[1] ?? 0) - .001);
+  });
+}
+
+/** Keep the first reliable observation; fill missing windows from one bounded retry. */
+export function mergeEnhancementTranscriptWords(primary: NonNullable<VideoEnhancementResult["words"]>, recovered: NonNullable<VideoEnhancementResult["words"]>) {
+  return [...primary, ...recovered.filter(word => !primary.some(before => before.start < word.end - .001 && before.end > word.start + .001))]
+    .sort((a, b) => a.start - b.start).slice(0, 6000);
 }
 
 export function enhancementTranscriptSegments(chunks: { text: string; timestamp: [number | null, number | null] }[], duration: number): VideoEnhancementResult["segments"] {
@@ -236,8 +268,9 @@ export function buildEnhancementCues(segments: VideoEnhancementResult["segments"
     if (!text) continue;
     const previous = beats.at(-1);
     const marker = /^(?:第[一二三四五六七八九十]|首先|其次|最后|一是|二是|三是|总之|總之|总结|總結)/u;
-    if (previous && segment.start - previous.end < 1 && previous.end - previous.start < 3.5
-      && segment.end - previous.start <= 10 && previous.text.length + text.length < 150 && !marker.test(text)) {
+    const placementSuffix = /^(?:数据|數據|图片|圖片|我|把|将|將|请|請|再|有|就|它|在)*(?:放|摆|擺|加|展示|显示|顯示).{0,12}(?:这里|這裡|这边|這邊|此处)/u.test(text);
+    if (previous && segment.start - previous.end < 1 && (previous.end - previous.start < 3.5 || placementSuffix)
+      && segment.end - previous.start <= (placementSuffix ? 12 : 10) && previous.text.length + text.length < 150 && !marker.test(text)) {
       previous.text += "，" + text; previous.end = segment.end;
     } else beats.push({ ...segment, text });
   }
@@ -247,7 +280,8 @@ export function buildEnhancementCues(segments: VideoEnhancementResult["segments"
     const clauses = beat.text.match(/[^，,。！？!?；;]+[，,。！？!?；;]?/gu) ?? [beat.text];
     const groups: string[] = [];
     for (const clause of clauses) {
-      if (groups.length && groups.at(-1)!.length + clause.length <= 150 && !/这里|左边|右边|掌心|双手|对比|展开/u.test(clause)) groups[groups.length - 1] += clause;
+      const suffix = /^(?:数据|數據|图片|圖片|我|把|将|將|请|請|再|有|就|它|在)*(?:放|摆|擺|加|展示|显示|顯示).{0,12}(?:这里|這裡|这边|這邊|此处)/u.test(clause);
+      if (groups.length && groups.at(-1)!.length + clause.length <= 150 && (suffix || !/这里|這裡|左边|右边|掌心|双手|对比|展开/u.test(clause))) groups[groups.length - 1] += clause;
       else groups.push(clause);
     }
     let offset = 0;
@@ -275,18 +309,26 @@ export function buildEnhancementCues(segments: VideoEnhancementResult["segments"
       const summary = /^(?:总之|總之|总结|總結|记住|記住|关键是|關鍵是|in summary|remember)/iu.test(text);
       const sequence = list || /然后|然後|接着|接著|变成|變成|转换|轉換|first.+then/iu.test(text);
       const chartRequested = /数据图|数据表|图表|柱状图|折线图|饼图|\bchart\b/iu.test(text);
+      const imageRequested = /图片|圖片|照片|插图|插圖|示意图|\b(?:image|photo|picture)\b/iu.test(text);
       const kind = chartRequested ? "chart" : numeric ? "number" : comparison ? "comparison" : summary ? "summary" : sequence ? items.length > 1 ? "steps" : "list" : items.length >= 3 ? "list" : "keyword";
-      const title = kind === "chart" ? "数据图" : numeric?.[0] ?? (kind === "keyword" && items.length > 1 ? items[0]! : text);
+      const title = kind === "chart" ? "数据图" : imageRequested ? "图片" : numeric?.[0] ?? (kind === "keyword" && items.length > 1 ? items[0]! : text);
       // Accept only explicitly labeled values of one unit. Never guess chart data.
       const values = chartRequested ? [...text.matchAll(/([\p{L}]{1,12})\s*[:：]\s*(-?\d+(?:\.\d+)?)\s*(%|％|万|亿|元|倍)?/gu)] : [];
       const chart = values.length && values.every(value => value[3] === values[0]![3]) ? values.slice(0, 4).map(value => ({ label: value[1]!, value: Number(value[2]) })) : undefined;
       cues.push({ id: `enhance-${cues.length + 1}`, kind, text: title, start, end, enabled: true,
         ...(chart ? { chart } : {}),
         ...(title !== text ? { detail: text } : {}), ...((kind === "steps" || kind === "comparison" || kind === "list") && items.length > 1 ? { items: items.slice(0, 4) } : {}) });
-      if (cues.length >= 60) return cues;
+      if (cues.length >= 60) break;
     }
+    if (cues.length >= 60) break;
   }
-  return cues;
+  // A reference can be the last word in the sentence. Keep its graphic visible
+  // long enough to read instead of silently discarding a <.5s binding.
+  return cues.map((cue, index) => {
+    const intent = cueIntent(cue, words);
+    return intent.explicit && cue.end - intent.time < .5
+      ? { ...cue, end: Math.min(duration, cues[index + 1]?.start ?? duration, Math.max(cue.end, intent.time + 1.25)) } : cue;
+  });
 }
 
 export function enhancementHtml(result: VideoEnhancementResult, mediaPath: string, previewGsap?: string) {

@@ -15,13 +15,16 @@ export function classifyEnhancementHand(points: Point[], width: number, height: 
   const spatial = world?.length === 21 && world.every(point => [point.x, point.y, point.z].every(Number.isFinite));
   const joints = spatial ? world! : p.map(point => ({ ...point, z: 0 }));
   const distance3 = (a: SpatialPoint, b: SpatialPoint) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-  const extended = [5, 9, 13, 17].map(base => {
+  const fingersShape = [5, 9, 13, 17].map(base => {
     const mcp = joints[base]!, pip = joints[base + 1]!, tip = joints[base + 3]!;
     const a = { x: pip.x - mcp.x, y: pip.y - mcp.y, z: pip.z - mcp.z }, b = { x: tip.x - pip.x, y: tip.y - pip.y, z: tip.z - pip.z };
-    return (a.x * b.x + a.y * b.y + a.z * b.z) / Math.max(1e-9, Math.hypot(a.x, a.y, a.z) * Math.hypot(b.x, b.y, b.z)) > .75
-      && distance3(tip, joints[0]!) > distance3(pip, joints[0]!) * 1.15;
+    return { straightness: (a.x * b.x + a.y * b.y + a.z * b.z) / Math.max(1e-9, Math.hypot(a.x, a.y, a.z) * Math.hypot(b.x, b.y, b.z)),
+      reach: distance3(tip, joints[0]!) / Math.max(1e-9, distance3(pip, joints[0]!)) };
   });
-  const fingers = [5, 9, 13, 17].filter((_, index) => extended[index]);
+  // Relaxed C-shaped hands still expose four fingers. Requiring every finger
+  // to be ruler-straight fragmented a two-hand frame into pointing tracks.
+  const open = fingersShape.every(finger => finger.straightness > .45 && finger.reach > 1.15);
+  const fingers = [5, 9, 13, 17].filter((_, index) => open || (fingersShape[index]!.straightness > .75 && fingersShape[index]!.reach > 1.15));
   const project = (kind: VideoEnhancementGesture["kind"], tip: Point, direction: Point, reach: number): Hand["gesture"] => {
     const length = Math.hypot(direction.x, direction.y);
     if (length < Math.min(width, height) * .012) return null;
@@ -36,7 +39,7 @@ export function classifyEnhancementHand(points: Point[], width: number, height: 
       const normal = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
       const length = Math.hypot(normal.x, normal.y, normal.z);
       // A horizontal palm plane is evidence for support, not a claim about intent.
-      if (length > 1e-9 && Math.abs(normal.y) / length > .7) {
+      if (length > 1e-9 && Math.abs(normal.y) / length > .5 && Math.abs(normal.z) / length < .55) {
         const center = [0, 5, 9, 13, 17].reduce((sum, i) => ({ x: sum.x + points[i]!.x / 5, y: sum.y + points[i]!.y / 5 }), { x: 0, y: 0 });
         return { kind: "open_palm", motion: "support", target: { x: clamp(center.x), y: clamp(center.y - .025) } };
       }

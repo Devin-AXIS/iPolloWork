@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { startServer } from "../../apps/server/src/server.js";
 import { resolveWithinRoot } from "../../apps/server/src/paths.js";
 import type { ServerConfig } from "../../apps/server/src/types.js";
-import { videoEnhancementJobSchema, videoEnhancementLayoutSchema, type VideoEnhancementGesture } from "../../packages/types/src/video-enhancement.js";
+import { videoEnhancementJobSchema, videoEnhancementLayoutSchema, videoEnhancementResultSchema, type VideoEnhancementGesture } from "../../packages/types/src/video-enhancement.js";
 import { buildEnhancementCues, placeEnhancementCues } from "../../apps/server/src/extensions/video-enhancement-layout.js";
 // Match desktop codecs by default; a newer PATH binary can hide incompatibilities.
 const desktopRequire = createRequire(new URL("../../apps/desktop/package.json", import.meta.url));
@@ -28,7 +28,8 @@ await mkdir(join(root, "video/proof/assets"), { recursive: true });
 await writeFile(join(root, "video/proof/index.html"), '<!doctype html><html><body style="font:24px Arial;padding:48px">增强前时间轴</body></html>', { flag: "wx" }).catch(error => { if (error.code !== "EEXIST") throw error; });
 // Controlled evidence isolates timing/placement/rendering from detector accuracy.
 // The native model is validated separately; this fixture never claims recognition accuracy.
-if (process.env.IPOLLOWORK_ENHANCEMENT_GESTURE_PROOF === "1") {
+const nativeAnalysis = process.env.IPOLLOWORK_ENHANCEMENT_ANALYSIS_RESULT;
+if (nativeAnalysis || process.env.IPOLLOWORK_ENHANCEMENT_GESTURE_PROOF === "1") {
   const id = randomUUID(), directory = join(root, "video/proof/enhancement", id);
   await mkdir(directory, { recursive: true });
   await copyFile(source, join(directory, "original.mp4"));
@@ -45,7 +46,9 @@ if (process.env.IPOLLOWORK_ENHANCEMENT_GESTURE_PROOF === "1") {
     ...[.2, .8].map((x, i) => ({ id: `gesture-${i + 4}`, kind: "open_palm", start: 5.9, end: 8, confidence: .98, target: { x, y: .65 }, handId: `hand-${i + 4}`, motion: "hold", path: [{ time: 6, x, y: .65 }, { time: 8, x, y: .65 }] } satisfies VideoEnhancementGesture)),
   ];
   const base = { duration: 8, width: 1280, height: 720, layout: videoEnhancementLayoutSchema.parse({ mode: "background", aspectRatio: "source" }), segments, words: segments, people: [], hands: [], masks: [], gestures };
-  const job = videoEnhancementJobSchema.parse({ id, sessionId: "proof", sourcePath: "video/proof/assets/source.mp4", status: "ready", progress: 100, message: "受控手势轨迹验证", createdAt: Date.now(), baseRevision: createHash("sha256").update(before).digest("hex"), result: { ...base, cues: placeEnhancementCues(buildEnhancementCues(segments, 8, segments), base), warnings: ["验证使用受控轨迹与词语时间；不代表真实视频的识别准确率。"] } });
+  const result = nativeAnalysis ? videoEnhancementResultSchema.parse(JSON.parse(await readFile(nativeAnalysis, "utf8")))
+    : { ...base, cues: placeEnhancementCues(buildEnhancementCues(segments, 8, segments), base), warnings: ["验证使用受控轨迹与词语时间；不代表真实视频的识别准确率。"] };
+  const job = videoEnhancementJobSchema.parse({ id, sessionId: "proof", sourcePath: "video/proof/assets/source.mp4", status: "ready", progress: 100, message: nativeAnalysis ? "原视频本地分析验证" : "受控手势轨迹验证", createdAt: Date.now(), baseRevision: createHash("sha256").update(before).digest("hex"), result });
   await writeFile(join(directory, "job.json"), JSON.stringify(job));
   await writeFile(join(root, "video/proof/enhancement/latest.json"), JSON.stringify({ id }));
 }
