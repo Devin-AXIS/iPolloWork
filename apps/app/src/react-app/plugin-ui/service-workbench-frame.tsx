@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { BrowserPanelTab } from "@/app/lib/desktop-types";
 import type { PluginUiSurface } from "./plugin-ui-contributions";
+import { sharedUiRuntimeSource } from "./shared-ui-runtime";
 
 const browserOpenLinkSchema = McpUiOpenLinkRequestSchema.extend({
   params: McpUiOpenLinkRequestSchema.shape.params.passthrough(),
@@ -110,10 +111,18 @@ export function ServiceWorkbenchFrame(props: {
       surface: "workspace", workspaceId: props.workspaceId, workspaceRoot: props.workspaceRoot,
       sessionId: props.sessionId ?? null,
     };
+    const currentTheme = (): "dark" | "light" => document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const hostContext = {
+      [PLUGIN_UI_HOST_CONTEXT_KEY]: context,
+      theme: currentTheme(),
+      "ai.ipollo/ui-runtime": sharedUiRuntimeSource,
+    };
     const bridge = new AppBridge(null, { name: "iPolloWork", version: "0.21.2" }, {
       experimental: { "ai.ipollo/browser-profiles": {} },
       ...(sendMessageRef.current ? { message: { text: {} } } : {}),
-    }, { hostContext: { [PLUGIN_UI_HOST_CONTEXT_KEY]: context } });
+    }, { hostContext });
+    let modelContext: WorkspaceAppModelContext | null = null;
+    bridge.onupdatemodelcontext = async context => { modelContext = context; return {}; };
     bridge.setRequestHandler(browserOpenLinkSchema, async ({ params: { url, browserProfileId } }) => {
       if (browserProfileId !== undefined && (typeof browserProfileId !== "string"
         || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(browserProfileId))) return { isError: true };
@@ -136,7 +145,7 @@ export function ServiceWorkbenchFrame(props: {
     bridge.onmessage = async ({ content }) => {
       const text = content.flatMap(item => item.type === "text" ? [item.text] : []).join("\n").trim();
       if (!text || text.length > 30_000 || !sendMessageRef.current) return { isError: true };
-      const sent = await sendMessageRef.current({ text, modelContext: null });
+      const sent = await sendMessageRef.current({ text, modelContext });
       const accepted = typeof sent === "boolean" ? sent : sent.accepted;
       if (accepted && typeof sent !== "boolean" && sent.sessionId !== context.sessionId
         && props.surface.resource.type === "local-service"
@@ -150,8 +159,12 @@ export function ServiceWorkbenchFrame(props: {
       }
       return accepted ? {} : { isError: true };
     };
+    const themeObserver = new MutationObserver(() => bridge.setHostContext({
+      theme: currentTheme(),
+    }));
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     void bridge.connect(new PostMessageTransport(frameWindow, frameWindow)).catch(console.error);
-    return () => { void bridge.close(); };
+    return () => { themeObserver.disconnect(); void bridge.close(); };
   }, [frameLoad, workbench.data, props.sessionId, props.workspaceId, props.workspaceRoot, props.surface.pluginId, props.surface.resource.id]);
 
   useEffect(() => {

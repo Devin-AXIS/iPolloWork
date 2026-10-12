@@ -23,12 +23,13 @@ async function jsonBody(request) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
   catch { fail('请求不是有效 JSON'); }
 }
-export async function startServer({ dataDir, workspaceRoot, port = 0, token = randomBytes(32).toString('base64url'), executorToken = '' }) {
+export async function startServer({ dataDir, workspaceRoot, port = 0, token = randomBytes(32).toString('base64url'), executorToken = '', uiRuntime }) {
   const store = new Store(dataDir), operations = new Operations({ store, dataDir, workspaceRoot });
   let origin, uploads = 0;
+  const nonce = randomBytes(24).toString('base64');
   const assets = new Map();
   for (const [path, name, type] of [['/', 'index.html', 'text/html'], ['/app.js', 'app.js', 'text/javascript'], ['/app.css', 'app.css', 'text/css']]) {
-    assets.set(path, { body: await readFile(resolve(uiRoot, name)), type });
+    assets.set(path, { body: name === 'index.html' ? (await readFile(resolve(uiRoot, name), 'utf8')).replace('__UI_NONCE__', nonce) : await readFile(resolve(uiRoot, name)), type });
   }
   const signature = (id, expires) => createHmac('sha256', token).update(`${id}:${expires}`).digest('hex');
   const state = () => {
@@ -37,11 +38,16 @@ export async function startServer({ dataDir, workspaceRoot, port = 0, token = ra
     result.localOnly = !executorToken;
     return result;
   };
+  // Development callers explicitly build the shared runtime in bundled mode.
+  if (uiRuntime) {
+    assets.set('/ipollowork-ui-runtime.js', { body: uiRuntime, type: 'text/javascript' });
+    assets.get('/').body = assets.get('/').body.replace('</head>', `<script src="/ipollowork-ui-runtime.js" nonce="${nonce}"></script></head>`);
+  }
   const server = createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
-    response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors http://localhost:* http://127.0.0.1:* file:");
+    response.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors http://localhost:* http://127.0.0.1:* file:`);
     const json = (status, data) => { if (!response.destroyed && !response.headersSent) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(data)); } };
     try {
       if (request.headers.host !== new URL(origin).host || (request.headers.origin && request.headers.origin !== origin)) fail('请求来源不匹配', 'forbidden');

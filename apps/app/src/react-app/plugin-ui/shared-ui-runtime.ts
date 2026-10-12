@@ -1,5 +1,6 @@
 import { requireRuntime } from '@ipollowork/ui/runtime-contract';
 import runtimeSource from 'virtual:ipollowork-plugin-ui-runtime';
+export { runtimeSource as sharedUiRuntimeSource };
 
 /** Inline the host-owned runtime inside the sandbox; no network/CSP relaxation. */
 export function withSharedUiRuntime(html: string) {
