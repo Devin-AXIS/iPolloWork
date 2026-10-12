@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ServiceWorkbenchFrame } from "../../apps/app/src/react-app/plugin-ui/service-workbench-frame";
@@ -16,6 +16,7 @@ window.__IPOLLOWORK_ELECTRON__ = {
   },
 };
 function Fixture() {
+  const rejectNext = useRef(false);
   const [plugin, setPlugin] = useState("wechat-channels-ops"),
     [messages, setMessages] = useState([]),
     [width, setWidth] = useState("wide");
@@ -79,6 +80,14 @@ function Fixture() {
           <span className="text-xs text-muted-foreground">
             隔离验收 · 平台与模型执行以回执替代
           </span>
+          <Button
+            variant="outline"
+            onClick={() => {
+              rejectNext.current = true;
+            }}
+          >
+            模拟下次 AI 投递失败
+          </Button>
         </header>
         <div
           style={{
@@ -107,6 +116,10 @@ function Fixture() {
             workspaceRoot="fixture-workspace"
             sessionId="fixture-session"
             onSendMessage={(message) => {
+              if (rejectNext.current) {
+                rejectNext.current = false;
+                throw new Error("隔离验收：AI 暂未接收，请重试。");
+              }
               window.__socialOpsReceipts.push(message);
               setMessages((current) => [...current, message]);
               return { accepted: true, sessionId: "fixture-session" };

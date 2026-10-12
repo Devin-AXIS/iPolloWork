@@ -1,6 +1,6 @@
 const pluginId = "douyin-ops",
   pluginName = "抖音运营台",
-  pluginVersion = "0.2.21";
+  pluginVersion = "0.2.22";
 const storageKey = `${pluginId}-token`;
 let token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
 try {
@@ -23,6 +23,7 @@ let hostPromise,
   root;
 const requests = new Map(),
   pending = new Set();
+const dispatchedJobs = new Set();
 function applyTheme(context) {
   if (!context?.theme) return;
   document.documentElement.dataset.theme = context.theme;
@@ -457,9 +458,10 @@ async function saveDraft() {
   return draft;
 }
 async function selectAccount(id) {
-  if (model.dirty && !draftLocked()) await saveDraft();
+  if (model.dirty && account() && !draftLocked()) await saveDraft();
   model.accountId = id;
   model.draft = items("drafts")[0] || {};
+  model.dirty = false;
   model.videos = [];
   model.comments = [];
   model.search = [];
@@ -504,11 +506,24 @@ async function connect(id) {
   await openTarget(target);
   notify("请在账号浏览器完成登录并进入“我”的主页，账号会自动识别。");
 }
-async function executeJob(job) {
+const dispatchKey = (job, reconcile = false) =>
+  reconcile
+    ? `reconcile:${job.id}:${job.status}:${job.updatedAt || job.finishedAt}`
+    : job.id;
+async function executeJob(job, reconcile = false) {
+  const key = dispatchKey(job, reconcile);
+  if (dispatchedJobs.has(key)) return;
   await sendAI(
-    `${jobNames[job.browserAction || job.kind] || "执行抖音任务"}。`,
-    { action: "execute-job", accountId: job.accountId, jobId: job.id },
+    reconcile
+      ? "核对抖音任务的实际结果。"
+      : `${jobNames[job.browserAction || job.kind] || "执行抖音任务"}。`,
+    {
+      action: reconcile ? "reconcile-job" : "execute-job",
+      accountId: job.accountId,
+      jobId: job.id,
+    },
   );
+  dispatchedJobs.add(key);
 }
 async function perform(name, args) {
   if (
@@ -550,6 +565,11 @@ async function externalWrite(name, args, key) {
     });
     entry.status = result.job?.status || "succeeded";
     rememberOperations();
+    if (!result.browserTask && result.job)
+      notify(
+        result.job.message,
+        ["failed", "uncertain"].includes(result.job.status),
+      );
     return result;
   } catch (error) {
     entry.status =
@@ -603,9 +623,18 @@ async function load(field, more = false) {
     model.readJobs[field] = result.job.id;
     await refresh();
   } else {
-    model[field] = more
-      ? [...model[field], ...(result.list || [])]
-      : result.list || [];
+    const merged = new Map();
+    for (const item of [
+      ...(more ? model[field] : []),
+      ...(result.list || []),
+    ]) {
+      const id =
+        field === "comments"
+          ? item.comment_id || item.commentId
+          : videoId(item);
+      merged.set(id || item, item);
+    }
+    model[field] = [...merged.values()];
     model.pages[field] = result;
     notify(result.list?.length ? "读取完成。" : "没有读取到结果。");
   }
@@ -663,7 +692,7 @@ function Accounts() {
         ui.Button,
         {
           id: "connect-browser",
-          disabled: pending.has("connect"),
+          disabled: pending.size > 0,
           onClick: () => run("connect", () => connect()),
         },
         h(ui.Icon, { name: "Plus" }),
@@ -710,7 +739,7 @@ function Accounts() {
                 {
                   variant: "outline",
                   size: "sm",
-                  disabled: pending.has("connect"),
+                  disabled: pending.size > 0,
                   onClick: () => run("connect", () => connect(item.id)),
                 },
                 "打开账号",
@@ -721,7 +750,7 @@ function Accounts() {
                   {
                     variant: "ghost",
                     size: "sm",
-                    disabled: pending.has("ai"),
+                    disabled: pending.size > 0,
                     onClick: () =>
                       run("ai", () =>
                         sendAI("识别当前登录的抖音账号。", {
@@ -824,8 +853,7 @@ function Accounts() {
             {
               variant: "outline",
               disabled:
-                !model.data.settings.secretConfigured ||
-                pending.has("authorize"),
+                !model.data.settings.secretConfigured || pending.size > 0,
               onClick: () =>
                 run("authorize", async () =>
                   openTarget(await action("start-authorization")),
@@ -870,7 +898,7 @@ function Accounts() {
               {
                 type: "submit",
                 variant: "outline",
-                disabled: !model.callbackUrl || pending.has("authorize"),
+                disabled: !model.callbackUrl || pending.size > 0,
               },
               "完成授权",
             ),
@@ -884,12 +912,12 @@ function Studio() {
   const draft = model.draft,
     asset = model.data.assets.find((item) => item.id === draft.assetId),
     immutable = draftLocked(),
-    locked =
-      immutable ||
+    busy =
       pending.has("draft") ||
       pending.has("publish") ||
       pending.has("upload") ||
-      pending.has("ai");
+      pending.has("ai"),
+    locked = !account() || immutable || busy;
   return h(
     "div",
     { className: "workspace" },
@@ -930,7 +958,7 @@ function Studio() {
           {
             variant: "ghost",
             size: "sm",
-            disabled: pending.has("draft") || pending.has("publish"),
+            disabled: !account() || busy,
             onClick: () =>
               run("draft", async () => {
                 if (model.dirty && !immutable) await saveDraft();
@@ -1169,7 +1197,7 @@ function Studio() {
                     {
                       variant: "ghost",
                       className: "long-copy",
-                      disabled: pending.has("draft") || pending.has("publish"),
+                      disabled: busy,
                       onClick: () =>
                         run("draft", async () => {
                           if (model.dirty && !immutable) await saveDraft();
@@ -1438,16 +1466,14 @@ function Data() {
                 sendAI("分析当前抖音作品数据，给出改进建议。", {
                   action: "review",
                   accountId: requireAccount(),
-                  observations: model.videos
-                    .slice(0, 100)
-                    .map((item) => ({
-                      title: item.title || item.text || "作品",
-                      statistics:
-                        item.statistics ||
-                        Object.fromEntries(
-                          metricFields.map(([key]) => [key, item[key] ?? null]),
-                        ),
-                    })),
+                  observations: model.videos.slice(0, 100).map((item) => ({
+                    title: item.title || item.text || "作品",
+                    statistics:
+                      item.statistics ||
+                      Object.fromEntries(
+                        metricFields.map(([key]) => [key, item[key] ?? null]),
+                      ),
+                  })),
                 }),
               ),
           },
@@ -1511,7 +1537,9 @@ function Data() {
                   ui.TableCell,
                   { key },
                   metricNumber((item.statistics || item)[key]) !== null
-                    ? metricNumber((item.statistics || item)[key]).toLocaleString()
+                    ? metricNumber(
+                        (item.statistics || item)[key],
+                      ).toLocaleString()
                     : "—",
                 ),
               ),
@@ -1826,10 +1854,25 @@ function Jobs() {
                   ui.Button,
                   {
                     size: "sm",
-                    disabled: pending.has("ai"),
+                    disabled: pending.has("ai") || dispatchedJobs.has(job.id),
                     onClick: () => run("ai", () => executeJob(job)),
                   },
-                  "交给 AI 执行",
+                  dispatchedJobs.has(job.id) ? "已发送到 AI" : "交给 AI 执行",
+                ),
+              job.status === "uncertain" &&
+                h(
+                  ui.Button,
+                  {
+                    variant: "outline",
+                    size: "sm",
+                    disabled:
+                      pending.has("ai") ||
+                      dispatchedJobs.has(dispatchKey(job, true)),
+                    onClick: () => run("ai", () => executeJob(job, true)),
+                  },
+                  dispatchedJobs.has(dispatchKey(job, true))
+                    ? "已发送到 AI"
+                    : "核对实际结果",
                 ),
               job.canCancelRead &&
                 h(
@@ -1869,103 +1912,119 @@ function Jobs() {
             ),
             job.status === "uncertain" &&
               h(
-                "form",
-                {
-                  className: "stack compact",
-                  onSubmit: (event) => {
-                    event.preventDefault();
-                    void run(`resolve:${job.id}`, async () => {
-                      await action("resolve-job", {
-                        jobId: job.id,
-                        outcome: resolve.outcome,
-                        evidence: resolve.evidence,
-                        resultUrl: resolve.resultUrl || undefined,
-                      });
-                      await refresh();
-                      notify("实际核对结果已保存。");
-                    });
-                  },
-                },
+                ui.Collapsible,
+                null,
                 h(
-                  "p",
-                  { className: "caption" },
-                  "请先核对平台实际结果，再保存依据。",
+                  ui.CollapsibleTrigger,
+                  { render: h(ui.Button, { variant: "ghost", size: "sm" }) },
+                  "手动填写核对结果",
                 ),
                 h(
-                  ui.Select,
-                  {
-                    value: resolve.outcome || "",
-                    onValueChange: (value) => {
-                      model.resolving[job.id] = { ...resolve, outcome: value };
-                      render();
-                    },
-                  },
+                  ui.CollapsibleContent,
+                  null,
                   h(
-                    ui.SelectTrigger,
-                    { "aria-label": "实际核对结果" },
+                    "form",
+                    {
+                      className: "stack compact",
+                      onSubmit: (event) => {
+                        event.preventDefault();
+                        void run(`resolve:${job.id}`, async () => {
+                          await action("resolve-job", {
+                            jobId: job.id,
+                            outcome: resolve.outcome,
+                            evidence: resolve.evidence,
+                            resultUrl: resolve.resultUrl || undefined,
+                          });
+                          await refresh();
+                          notify("实际核对结果已保存。");
+                        });
+                      },
+                    },
                     h(
-                      ui.SelectValue,
-                      null,
-                      resolve.outcome === "succeeded"
-                        ? "确认已成功"
-                        : resolve.outcome === "failed"
-                          ? "确认未成功"
-                          : "选择核对结果",
+                      "p",
+                      { className: "caption" },
+                      "请先核对平台实际结果，再保存依据。",
+                    ),
+                    h(
+                      ui.Select,
+                      {
+                        value: resolve.outcome || "",
+                        onValueChange: (value) => {
+                          model.resolving[job.id] = {
+                            ...resolve,
+                            outcome: value,
+                          };
+                          render();
+                        },
+                      },
+                      h(
+                        ui.SelectTrigger,
+                        { "aria-label": "实际核对结果" },
+                        h(
+                          ui.SelectValue,
+                          null,
+                          resolve.outcome === "succeeded"
+                            ? "确认已成功"
+                            : resolve.outcome === "failed"
+                              ? "确认未成功"
+                              : "选择核对结果",
+                        ),
+                      ),
+                      h(
+                        ui.SelectContent,
+                        null,
+                        h(ui.SelectItem, { value: "succeeded" }, "确认已成功"),
+                        h(ui.SelectItem, { value: "failed" }, "确认未成功"),
+                      ),
+                    ),
+                    h(ui.Textarea, {
+                      "aria-label": "核对依据",
+                      required: true,
+                      rows: 2,
+                      value: resolve.evidence || "",
+                      placeholder: "实际核对位置、时间和结果",
+                      onChange: (event) => {
+                        model.resolving[job.id] = {
+                          ...resolve,
+                          evidence: event.target.value,
+                        };
+                        render();
+                      },
+                    }),
+                    resolve.outcome === "succeeded" &&
+                      h(ui.Input, {
+                        type: "url",
+                        "aria-label": "实际作品链接",
+                        required:
+                          job.transport === "browser" &&
+                          [
+                            "publish-draft",
+                            "reply-comment",
+                            "comment-video",
+                          ].includes(job.browserAction),
+                        value: resolve.resultUrl || "",
+                        placeholder: "https://www.douyin.com/video/...",
+                        onChange: (event) => {
+                          model.resolving[job.id] = {
+                            ...resolve,
+                            resultUrl: event.target.value,
+                          };
+                          render();
+                        },
+                      }),
+                    h(
+                      ui.Button,
+                      {
+                        type: "submit",
+                        variant: "outline",
+                        disabled:
+                          !resolve.outcome ||
+                          !resolve.evidence?.trim() ||
+                          pending.has(`resolve:${job.id}`),
+                      },
+                      "保存核对结果",
                     ),
                   ),
-                  h(
-                    ui.SelectContent,
-                    null,
-                    h(ui.SelectItem, { value: "succeeded" }, "确认已成功"),
-                    h(ui.SelectItem, { value: "failed" }, "确认未成功"),
-                  ),
-                ),
-                h(ui.Textarea, {
-                  "aria-label": "核对依据",
-                  required: true,
-                  rows: 2,
-                  value: resolve.evidence || "",
-                  placeholder: "实际核对位置、时间和结果",
-                  onChange: (event) => {
-                    model.resolving[job.id] = {
-                      ...resolve,
-                      evidence: event.target.value,
-                    };
-                    render();
-                  },
-                }),
-                resolve.outcome === "succeeded" &&
-                  h(ui.Input, {
-                    type: "url",
-                    "aria-label": "实际作品链接",
-                    required:
-                      job.transport === "browser" &&
-                      [
-                        "publish-draft",
-                        "reply-comment",
-                        "comment-video",
-                      ].includes(job.browserAction),
-                    value: resolve.resultUrl || "",
-                    placeholder: "https://www.douyin.com/video/...",
-                    onChange: (event) => {
-                      model.resolving[job.id] = {
-                        ...resolve,
-                        resultUrl: event.target.value,
-                      };
-                      render();
-                    },
-                  }),
-                h(
-                  ui.Button,
-                  {
-                    type: "submit",
-                    variant: "outline",
-                    disabled:
-                      !resolve.outcome ||
-                      !resolve.evidence?.trim() ||
-                      pending.has(`resolve:${job.id}`),
-                  },
-                  "保存核对结果",
                 ),
               ),
           );

@@ -1,6 +1,6 @@
 const pluginId = "wechat-channels-ops",
   pluginName = "视频号运营台",
-  pluginVersion = "0.1.15";
+  pluginVersion = "0.1.16";
 const storageKey = `${pluginId}-token`;
 let token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
 try {
@@ -371,9 +371,10 @@ async function saveDraft() {
   return draft;
 }
 async function selectAccount(id) {
-  if (model.dirty) await saveDraft();
+  if (model.dirty && account()) await saveDraft();
   model.accountId = id;
   model.draft = items("drafts")[0] || {};
+  model.dirty = false;
   model.commentVideoId = "";
   model.replies = {};
   model.notice = null;
@@ -400,6 +401,7 @@ async function connect(id) {
   await getHost();
   const existing = model.data.accounts.find((item) => item.id === id);
   if (existing?.status === "verified") {
+    await selectAccount(id);
     await openTarget(await action("browser-target", { accountId: id }));
     return;
   }
@@ -409,7 +411,11 @@ async function connect(id) {
   await openTarget(target);
   notify("请在账号浏览器扫码登录，完成后会自动识别。");
 }
+const dispatchKey = (job, reconcile = false) =>
+  reconcile ? `reconcile:${job.id}:${job.status}:${job.updatedAt}` : job.id;
 async function executeJob(job, reconcile = false) {
+  const key = dispatchKey(job, reconcile);
+  if (dispatchedJobs.has(key)) return;
   await sendAI(
     reconcile
       ? "核对视频号任务的实际结果。"
@@ -420,7 +426,7 @@ async function executeJob(job, reconcile = false) {
       accountId: job.accountId,
     },
   );
-  if (!reconcile) dispatchedJobs.add(job.id);
+  dispatchedJobs.add(key);
 }
 async function prepare(type, extra = {}) {
   if (!hostReady) await getHost();
@@ -502,7 +508,7 @@ function Accounts() {
         ui.Button,
         {
           id: "connect-account",
-          disabled: pending.has("connect"),
+          disabled: pending.size > 0,
           onClick: () => run("connect", () => connect()),
         },
         h(ui.Icon, { name: "Plus" }),
@@ -542,7 +548,7 @@ function Accounts() {
                 {
                   variant: "outline",
                   size: "sm",
-                  disabled: pending.has("connect"),
+                  disabled: pending.size > 0,
                   onClick: () => run("connect", () => connect(item.id)),
                 },
                 item.status === "verified" ? "打开账号" : "登录账号",
@@ -630,6 +636,7 @@ function Studio() {
     asset = model.data.assets.find((item) => item.id === draft.assetId),
     cover = model.data.assets.find((item) => item.id === draft.coverId),
     locked =
+      !account() ||
       pending.has("draft") ||
       pending.has("publish") ||
       pending.has("upload") ||
@@ -1339,10 +1346,10 @@ function Jobs() {
                   ui.Button,
                   {
                     size: "sm",
-                    disabled: pending.has("ai"),
+                    disabled: pending.has("ai") || dispatchedJobs.has(job.id),
                     onClick: () => run("ai", () => executeJob(job)),
                   },
-                  "交给 AI 执行",
+                  dispatchedJobs.has(job.id) ? "已发送到 AI" : "交给 AI 执行",
                 ),
               job.status === "prepared" &&
                 h(
@@ -1368,10 +1375,14 @@ function Jobs() {
                   {
                     variant: "outline",
                     size: "sm",
-                    disabled: pending.has("ai"),
+                    disabled:
+                      pending.has("ai") ||
+                      dispatchedJobs.has(dispatchKey(job, true)),
                     onClick: () => run("ai", () => executeJob(job, true)),
                   },
-                  "核对实际结果",
+                  dispatchedJobs.has(dispatchKey(job, true))
+                    ? "已发送到 AI"
+                    : "核对实际结果",
                 ),
             ),
           ),

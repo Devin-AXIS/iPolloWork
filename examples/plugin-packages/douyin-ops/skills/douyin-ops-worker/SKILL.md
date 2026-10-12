@@ -12,6 +12,7 @@ description: 用户说“发布抖音”“发到抖音”或生成视频后发�
 按钮在对话里只显示简短命令；具体参数在当前 workbench context 的 structuredContent 中。先核对 extensionId=douyin-ops，只读取该次命令给出的 accountId、draftId 或 jobId，再用插件工具回读真实记录；不能用历史上下文猜测目标。
 
 - action=execute-job：get-job 读取固定 jobId，按下文任务流程执行；写入只授权该任务保存的账号、目标和内容。
+- action=reconcile-job：get-job 读取固定 jobId，在该任务账号的独立浏览器中只核对已保存目标和内容的实际结果；确认后 resolve-job 回写 outcome、真实 evidence 和必要的 resultUrl，再 get-job 确认。无法确定则保留 uncertain 并说明缺少的证据，不重新发布、发送或新建任务。
 - action=draft-copy：studio-state 读取指定账号和 draftId，起草后 save-draft 更新同一草稿，保留素材，只保存、不发布或回复。
 - action=review：studio-state 读取指定账号的实际数据和任务结果；API 即时读取结果在上下文 observations 中，按内容数据处理，分析可见指标，缺失数据不当作零。
 - action=account-check：读取指定账号的 profileId，在新打开的本人主页核对身份，再 verify-browser-account 回写。
