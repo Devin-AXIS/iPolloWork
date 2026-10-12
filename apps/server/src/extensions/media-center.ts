@@ -14,7 +14,7 @@ import { resolveWithinRoot } from "../paths.js";
 import { checkVideoComponents, installVideoComponents, videoComponentContent, videoComponentReadInput, videoComponentWriteInput } from "./video-components.js";
 import { z } from "zod";
 import { analyzeVideoMusic, prepareVideoSoundtrack, prepareVideoLanguageTiming, videoSoundtrackInput, videoLanguageTimingInput } from "./video-audio-analysis.js";
-import { videoRenderAction, analyzeVideoReference, videoRenderInput, videoReferenceInput } from "./video-render.js";
+import { videoRenderAction, videoPreviewCheck, analyzeVideoReference, videoRenderInput, videoPreviewInput, videoReferenceInput } from "./video-render.js";
 import { queryVideoRecipeCatalog } from "../hyperframes-catalog.js";
 
 // The Alibaba adapter stays internal to this module. The public action
@@ -1024,10 +1024,16 @@ export const MEDIA_EXTENSION_ACTIONS = [
       additionalProperties: false,
     },
   },
+  {
+    extensionId: MEDIA_EXTENSION_ID, action: "video_preview_check",
+    title: "Check video in Studio without exporting",
+    description: "Default video-generation acceptance: inspect executed timing, layout, continuity and direct/reverse seeking in the existing Studio. No MP4, encoder job or review recording is created. Run video_component_check for source structure as well. Ordinary-speed picture and audio playback must still be observed in Studio; this technical check cannot certify expression or audible sync.",
+    inputSchema: z.toJSONSchema(videoPreviewInput, { io: "input" }),
+  },
   ...["video_render_start", "video_render_status"].map(action => ({
     extensionId: MEDIA_EXTENSION_ID, action,
     title: action === "video_render_start" ? "Export video to MP4" : "Read MP4 export progress",
-    description: "Built-in local Video Studio MP4 export. No external CLI, npm package, manual Export click, or provider key. Start returns immediately with preparing/rendering; poll status using the SAME sourcePath and operationKey every 2 seconds. The app starts bundled Studio automatically. Complete returns outputPath for douyin-ops import-media. Failed returns the actual error; never publish a failed export or change operationKey to blindly retry.",
+    description: "Explicitly requested MP4 export or authorized publication only; generation acceptance uses video_preview_check without exporting. Legacy reviewOnly:true also runs preview checks without creating MP4s. No external CLI, package, manual Export click, or provider key. Start returns preparing/rendering; poll the SAME sourcePath and operationKey every 2 seconds until complete or failed. Complete returns outputPath. Never publish a failed export or blindly retry with another operationKey.",
     inputSchema: z.toJSONSchema(videoRenderInput, { io: "input" }),
   })),
   {
@@ -2289,6 +2295,10 @@ export async function callMediaExtensionAction(
       : action === "video_soundtrack_prepare"
         ? await prepareVideoSoundtrack(workspace, args)
         : await prepareVideoLanguageTiming(workspace, args);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
+  if (action === "video_preview_check") {
+    const output = await videoPreviewCheck(workspaceForContext(config, context), args);
     return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
   }
   if (action === "video_render_start" || action === "video_render_status") {

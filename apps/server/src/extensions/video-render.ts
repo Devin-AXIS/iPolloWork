@@ -14,11 +14,12 @@ export const videoRenderInput = z.object({
   sourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/),
   operationKey: z.string().trim().min(1).max(160),
   review: z.boolean().optional(),
-  reviewOnly: z.boolean().optional(),
+  reviewOnly: z.boolean().optional().describe("Legacy preview-check mode. Runs Studio runtime inspection without rendering or exporting; prefer video_preview_check."),
   motionBlur: z.boolean().optional(),
   fps: z.number().int().min(1).max(120).optional(),
   resolution: z.enum(["1080p", "4k", "landscape", "portrait", "square", "landscape-4k", "portrait-4k", "square-4k"]).optional(),
 }).strict();
+export const videoPreviewInput = videoRenderInput.pick({ sourcePath: true }).strict();
 export const videoReferenceInput = videoRenderInput.pick({ sourcePath: true }).extend({ referencePath: z.string().min(1), sampling: z.enum(["uniform", "frames"]).default("uniform") }).strict();
 const temporalReviewSchema = z.object({
   scope: z.literal("sampled-pixel-change-not-semantic-or-carrier-approval"),
@@ -58,6 +59,10 @@ const receiptSchema = z.object({
   progress: z.number().optional(), stage: z.string().optional(), error: z.string().optional(),
   outputPath: z.string().optional(), size: z.number().optional(),
   pixelReview: pixelReviewSchema.optional(),
+  acceptance: z.literal("studio-preview").optional(),
+  exported: z.literal(false).optional(),
+  previewReview: pixelReviewSchema.shape.runtimeReview.optional(),
+  playback: z.literal("unverified").optional(),
   sourceHash: z.string().optional(),
   renderSettings: z.object({ fps: z.number().positive(), resolution: videoRenderInput.shape.resolution, motionBlurRequested: z.boolean() }).optional(),
 });
@@ -327,9 +332,47 @@ export async function reviewRenderedPixels(videoPath: string, html: string): Pro
   return { valid: blankSceneIds.length === 0 && issues.length === 0, scope: "rendered-motion-health-not-semantic-approval", sampledFrameCount: frameNumbers.length, blankSceneIds, issues, scenes: reviewedScenes, temporalReview };
 }
 
+async function ensureVideoStudio(workspace: { id: string }, project: string) {
+  const ready = await uiControlRequest("/video/ensure-studio", { method: "POST", timeoutMs: 100000,
+    body: { workspaceId: workspace.id, projectId: project } });
+  const studio = z.object({ ok: z.literal(true), port: z.number().int().min(1).max(65_535).optional() }).parse(ready);
+  return studio.port ?? hyperframesStudioPort(project);
+}
+
+async function inspectVideoRuntime(studioPort: number, project: string) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${studioPort}/api/projects/${project}/thumbnail/index.html?review=runtime`, { signal: AbortSignal.timeout(60000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return pixelReviewSchema.shape.runtimeReview.unwrap().parse(await response.json());
+  } catch (error) {
+    throw new Error(`Video runtime inspection unavailable (runtime-review-unavailable); delivery remains a draft: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** Inspect the current Studio composition without an encoder, export receipt or media output. */
+export async function videoPreviewCheck(workspace: { id: string; path: string }, raw: unknown): Promise<Receipt> {
+  const input = videoPreviewInput.parse(raw);
+  const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
+  const root = await realpath(workspace.path), actual = await realpath(source.absolutePath);
+  if (!actual.startsWith(root + sep)) throw new ApiError(400, "path_escape", "Video source escapes workspace");
+  const startedAt = Date.now(), project = input.sourcePath.split("/")[1]!;
+  const studioPort = await ensureVideoStudio(workspace, project);
+  const sourceHash = await videoProjectFingerprint(dirname(actual));
+  const previewReview = await inspectVideoRuntime(studioPort, project);
+  const changed = sourceHash !== await videoProjectFingerprint(dirname(actual));
+  const error = changed ? "Video source changed during preview inspection; check the current saved project again."
+    : previewReview.valid ? undefined : previewReview.issues.map(issue => `${issue.sceneId}: ${issue.code} (${issue.detail})`).join(", ") || "Studio runtime inspection failed.";
+  return receiptSchema.parse({ status: error ? "failed" : "complete", startedAt, progress: 100,
+    acceptance: "studio-preview", exported: false, sourceHash, studioPort, previewReview, playback: "unverified",
+    stage: "Studio timing and layout checked; ordinary-speed picture/audio playback still requires observation", ...(error ? { error } : {}) });
+}
+
 /** Owns the durable export receipt; Studio remains the only render engine. */
 export async function videoRenderAction(workspace: { id: string; path: string }, action: string, raw: unknown) {
   const input = videoRenderInput.parse(raw);
+  // Older agent instructions used reviewOnly for draft MP4s. Verification now
+  // reads the live project; it must not create or resume an export receipt.
+  if (input.reviewOnly) return videoPreviewCheck(workspace, { sourcePath: input.sourcePath });
   const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
   const root = await realpath(workspace.path);
   const actual = await realpath(source.absolutePath);
@@ -363,27 +406,17 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       await rm(temporaryPath, { force: true });
     }
   };
-  const inspectRuntime = async (studioPort: number) => {
-    const base = `http://127.0.0.1:${studioPort}/api`;
-    try {
-      const response = await fetch(`${base}/projects/${project}/thumbnail/index.html?review=runtime`, { signal: AbortSignal.timeout(60000) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return pixelReviewSchema.shape.runtimeReview.unwrap().parse(await response.json());
-    } catch (error) {
-      throw new Error(`Video runtime inspection unavailable (runtime-review-unavailable); delivery remains a draft: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
   const review = async (output: string, studioPort: number, sourceHash?: string) => {
     const html = await readFile(actual, "utf8");
     if (!sourceHash || await videoProjectFingerprint(directory) !== sourceHash) throw new Error("Video source changed (including dependencies) during rendering; this output cannot pass delivery review.");
-    const runtimeReview = await inspectRuntime(studioPort);
+    const runtimeReview = await inspectVideoRuntime(studioPort, project);
     const pixels = await reviewRenderedPixels(output, html);
     const audioReview = await reviewRenderedAudio(output, html);
     const frames = await saveReviewFrames(output, html, root);
     if (await videoProjectFingerprint(directory) !== sourceHash) throw new Error("Video source changed during review; retry acceptance of the saved draft.");
     const issues = [...pixels.issues ?? [], ...runtimeReview.issues, ...audioReview.issues.map(code => ({ sceneId: "mix", code, time: 0 }))];
     return { ...pixelReviewSchema.parse({ ...pixels, valid: pixels.valid && runtimeReview.valid && audioReview.valid, runtimeReview, audioReview,
-      evidence: { videoPath: relative(root, output).replaceAll(sep, "/"), frames, resolution: input.reviewOnly ? "draft" : "export", expression: "unverified", audibleSync: "unverified" },
+      evidence: { videoPath: relative(root, output).replaceAll(sep, "/"), frames, resolution: "export", expression: "unverified", audibleSync: "unverified" },
       issues }), issues };
   };
   const completedReceipt = async (receipt: Receipt, studioPort: number): Promise<Receipt> => {
@@ -391,8 +424,8 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
     const size = (await stat(output)).size;
     if (size === 0) throw new Error("Completed export is empty");
-    const pixelReview = input.review || input.reviewOnly ? await review(output, studioPort, receipt.sourceHash) : undefined;
-    return { ...receipt, ...(pixelReview?.valid === false ? { status: "failed", error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
+    const pixelReview = input.review ? await review(output, studioPort, receipt.sourceHash) : undefined;
+    return { ...receipt, ...(pixelReview?.valid === false ? { status: "failed", error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : { outputPath: relative(root, output).replaceAll(sep, "/"), size }), ...(pixelReview ? { pixelReview } : {}) };
   };
   let receipt: Receipt;
   try { receipt = await readReceipt(); }
@@ -403,7 +436,7 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     if (action !== "video_render_start") throw new ApiError(404, "render_not_found", "No export exists for this operationKey");
     if (preparing.size >= 16) throw new ApiError(429, "render_busy", "Too many exports are preparing");
     receipt = { status: "preparing", startedAt: Date.now(), progress: 0, stage: "Starting bundled Studio",
-      renderSettings: { fps: input.reviewOnly ? 30 : input.fps ?? 30, resolution: input.reviewOnly ? undefined : input.resolution, motionBlurRequested: input.motionBlur === true } };
+      renderSettings: { fps: input.fps ?? 30, resolution: input.resolution, motionBlurRequested: input.motionBlur === true } };
     preparing.set(receiptPath, receipt);
     // Exclusive creation makes retries and concurrent requests reuse one job.
     try { await writeFile(receiptPath, JSON.stringify(receipt), { flag: "wx" }); }
@@ -415,16 +448,13 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     const initial = receipt;
     void (async () => {
       try {
-        const ready = await uiControlRequest("/video/ensure-studio", { method: "POST", timeoutMs: 100000,
-          body: { workspaceId: workspace.id, projectId: project } });
-        const studio = z.object({ ok: z.literal(true), port: z.number().int().min(1).max(65_535).optional() }).parse(ready);
-        const studioPort = studio.port ?? hyperframesStudioPort(project);
+        const studioPort = await ensureVideoStudio(workspace, project);
         const base = `http://127.0.0.1:${studioPort}/api`;
-        if (input.review || input.reviewOnly) {
+        if (input.review) {
           const checking = { ...initial, studioPort, stage: "Checking executed timing and layout" };
           preparing.set(receiptPath, checking);
           await save(checking);
-          const runtimeReview = await inspectRuntime(studioPort);
+          const runtimeReview = await inspectVideoRuntime(studioPort, project);
           if (!runtimeReview.valid) throw new Error(`Video remains a draft: ${runtimeReview.issues.map(issue => `${issue.sceneId}: ${issue.code} (${issue.detail})`).join(", ") || "runtime-review-unavailable"}`);
         }
         // First Studio inspection may normalize editable IDs. Snapshot its
@@ -432,11 +462,10 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         const sourceHash = await videoProjectFingerprint(directory);
         const job = z.object({ jobId: z.string().regex(/^[A-Za-z0-9_-]+$/) }).parse(await studioJson(`${base}/projects/${project}/render`, {
           format: "mp4",
-          quality: input.reviewOnly ? "draft" : "high",
-          fps: input.reviewOnly ? 30 : input.fps ?? 30,
+          quality: "high",
+          fps: input.fps ?? 30,
           motionBlur: input.motionBlur === true,
-          ...(!input.reviewOnly && input.resolution ? { resolution: input.resolution } : {}),
-          ...(input.reviewOnly ? { captureSize: { width: 640, height: 360 } } : {}),
+          ...(input.resolution ? { resolution: input.resolution } : {}),
         }));
         await save({ ...initial, ...job, studioPort, sourceHash, status: "rendering", stage: "Rendering MP4" });
       } catch (error) {
@@ -454,14 +483,14 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       await save(receipt);
     }
   }
-  if (receipt.status === "complete" && (input.review || input.reviewOnly) && (!receipt.pixelReview?.evidence || !receipt.pixelReview.temporalReview || receipt.sourceHash !== await videoProjectFingerprint(directory))) {
+  if (receipt.status === "complete" && input.review && (!receipt.pixelReview?.evidence || !receipt.pixelReview.temporalReview || receipt.sourceHash !== await videoProjectFingerprint(directory))) {
     receipt = { ...receipt, status: "failed", outputPath: undefined, error: "The saved source changed or this older export has no runtime acceptance evidence; review the current draft again." };
     await save(receipt);
   }
   if (receipt.status === "rendering" && receipt.jobId) {
     const studioPort = receipt.studioPort ?? hyperframesStudioPort(project);
     const base = `http://127.0.0.1:${studioPort}/api`;
-    if ((input.review || input.reviewOnly) && receipt.sourceHash
+    if (input.review && receipt.sourceHash
       && await videoProjectFingerprint(directory) !== receipt.sourceHash) {
       receipt = { ...receipt, status: "failed", outputPath: undefined,
         error: "Video source changed (including dependencies) during rendering; this output cannot pass delivery review." };

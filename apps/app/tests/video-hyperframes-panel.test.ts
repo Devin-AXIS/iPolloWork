@@ -1431,6 +1431,9 @@ describe("HyperFrames Video Studio", () => {
   test("continues explicit publication through the session-owned render API without manual export", () => {
     const contract = videoTaskSystemContext("ses_auto_publish", "C:/workspace");
     expect(contract).toContain("media/video_render_start");
+    expect(contract).toContain("Default acceptance is studio-preview");
+    expect(contract).toContain("media/video_preview_check");
+    expect(contract).toContain("Do not render/export MP4s, review clips, contact sheets or recordings for generation validation");
     expect(contract).toContain("video_render_status");
     expect(contract).toContain('sourcePath:"video/ses_auto_publish/index.html"');
     expect(contract).toContain("never start a duplicate after a wait timeout");
