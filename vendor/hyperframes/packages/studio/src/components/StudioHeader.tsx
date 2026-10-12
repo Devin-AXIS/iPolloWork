@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Button } from "@ipollowork/ui/controls";
+import { Tabs, TabsList, TabsTrigger } from "@ipollowork/ui/tabs";
 import {
   Download,
   Github,
@@ -132,79 +134,43 @@ export function StudioHeader({
   return (
     <header className="hf-studio-header relative flex h-10 flex-shrink-0 items-center gap-2 border-b border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-header-bg)] px-2 text-[var(--hf-panel-text-1)] backdrop-blur-sm">
       {!previewMode && !scriptMode && <Dock.WindowMenu label="Control tools" visibilityOnly />}
-      <div
-        className="hf-studio-header-views flex h-8 shrink-0 items-center gap-1 rounded-[10px] bg-[var(--hf-panel-input)] p-1"
-        role="tablist"
-        aria-label={t("header.viewLabel")}
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={scriptMode}
-          onClick={() => {
-            if (!setViewMode("storyboard")) return;
-            onPreviewModeChange(false);
-            if (window.parent !== window) {
-              window.parent.postMessage({ type: "ipollowork:video-studio-panel", projectId, panel: null }, "*");
-            }
-          }}
-          className={`h-6 rounded-md border-0 px-3 py-0 text-xs transition-[background-color,color] ${scriptMode
-            ? "bg-[var(--hf-panel-bg)] font-semibold text-[var(--hf-panel-text-0)]"
-            : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"}`}
-        >
-          {t("header.storyboard")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!scriptMode && !previewMode}
-          onClick={() => setPreviewMode(false)}
-          className={`h-6 rounded-md border-0 px-3 py-0 text-xs transition-[background-color,color] ${
-            !scriptMode && !previewMode
-              ? "bg-[var(--hf-panel-bg)] font-semibold text-[var(--hf-panel-text-0)]"
-              : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
-          }`}
-        >
-          {t("header.edit")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!scriptMode && previewMode}
-          onClick={() => setPreviewMode(true)}
-          className={`h-6 rounded-md border-0 px-3 py-0 text-xs transition-[background-color,color] ${
-            !scriptMode && previewMode
-              ? "bg-[var(--hf-panel-bg)] font-semibold text-[var(--hf-panel-text-0)]"
-              : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
-          }`}
-        >
-          {t("header.preview")}
-        </button>
-      </div>
+      <Tabs value={scriptMode ? "storyboard" : previewMode ? "preview" : "edit"} onValueChange={value => {
+        if (value === "storyboard") {
+          if (!setViewMode("storyboard")) return;
+          onPreviewModeChange(false);
+          if (window.parent !== window) window.parent.postMessage({ type: "ipollowork:video-studio-panel", projectId, panel: null }, "*");
+        } else if (value === "edit" || value === "preview") setPreviewMode(value === "preview");
+      }}>
+        <TabsList className="hf-studio-header-views shrink-0" aria-label={t("header.viewLabel")}>
+          <TabsTrigger value="storyboard">{t("header.storyboard")}</TabsTrigger>
+          <TabsTrigger value="edit">{t("header.edit")}</TabsTrigger>
+          <TabsTrigger value="preview">{t("header.preview")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      <div className="hf-studio-header-actions ml-auto flex items-center justify-end gap-1">
+      <div className="hf-studio-header-actions ml-auto flex min-w-0 items-center">
         {!previewMode && !scriptMode ? (
           <>
             {hostContext?.branding && hostContext.actions.askAi ? (
               <div className="flex items-center gap-1">
                 <Tooltip label={t("header.openRepository")} side="bottom">
-                <a href={hostContext.branding.repositoryUrl} target="_blank" rel="noreferrer" aria-label={t("header.openRepository")} className="hf-studio-header-action text-[var(--hf-panel-text-2)] hover:bg-[var(--hf-studio-header-hover)]">
+                <a href={hostContext.branding.repositoryUrl} target="_blank" rel="noreferrer" aria-label={t("header.openRepository")} className="hf-studio-header-action">
                   <Github className="h-[17px] w-[17px]" strokeWidth={1.75} aria-hidden="true" />
                   <span className="hf-studio-header-action-label">{t("header.openRepository")}</span>
                 </a>
                 </Tooltip>
                 <Tooltip label={t("header.askAi")} side="bottom">
-                <button type="button" aria-label={t("header.askAi")} onClick={() => requestHostAction("ask-ai")} className="hf-studio-header-action text-[var(--hf-panel-text-2)] hover:bg-[var(--hf-studio-header-hover)]">
+                <Button variant="ghost" type="button" aria-label={t("header.askAi")} onClick={() => requestHostAction("ask-ai")} className="hf-studio-header-action">
                   <Sparkles className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /><span className="hf-studio-header-action-label">{t("header.askAi")}</span>
-                </button>
+                </Button>
                 </Tooltip>
               </div>
             ) : null}
             {hostContext?.actions.openTemplates ? (
               <Tooltip label={t("header.templates")} side="bottom">
-                <button type="button" aria-label={t("header.templates")} onClick={() => requestHostAction("open-templates")} className="hf-studio-header-action text-[var(--hf-panel-text-2)] hover:bg-[var(--hf-studio-header-hover)]">
+                <Button variant="ghost" type="button" aria-label={t("header.templates")} onClick={() => requestHostAction("open-templates")} className="hf-studio-header-action">
                   <LayoutGrid className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /><span className="hf-studio-header-action-label">{t("header.templates")}</span>
-                </button>
+                </Button>
               </Tooltip>
             ) : null}
             {hostContext?.actions.reload || hostContext?.actions.saveAsTemplate ? (
@@ -212,28 +178,28 @@ export function StudioHeader({
                 <div className="hf-studio-header-utilities flex items-center gap-1">
                   {hostContext.actions.saveAsTemplate ? (
                     <Tooltip label={t("header.saveAsTemplate")} side="bottom">
-                      <button
+                      <Button variant="ghost"
                         type="button"
                         onClick={() => requestHostAction("save-as-template")}
-                        className="hf-studio-header-action grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                        className="hf-studio-header-action"
                         aria-label={t("header.saveAsTemplate")}
                       >
                         <Save className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                         <span className="hf-studio-header-action-label">{t("header.saveAsTemplate")}</span>
-                      </button>
+                      </Button>
                     </Tooltip>
                   ) : null}
                   {hostContext.actions.reload ? (
                     <Tooltip label={t("header.reloadStudio")} side="bottom">
-                      <button
+                      <Button variant="ghost"
                         type="button"
                         onClick={() => requestHostAction("reload")}
-                        className="hf-studio-header-action grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                        className="hf-studio-header-action"
                         aria-label={t("header.reloadStudio")}
                       >
                         <RefreshCw className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                         <span className="hf-studio-header-action-label">{t("header.reloadStudio")}</span>
-                      </button>
+                      </Button>
                     </Tooltip>
                   ) : null}
                 </div>
@@ -241,36 +207,31 @@ export function StudioHeader({
               </>
             ) : null}
             <Tooltip label={STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE} side="bottom">
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={toggleProperties}
               disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
               aria-pressed={inspectorButtonActive}
-              className={`hf-studio-header-action hf-studio-properties-action flex h-8 items-center gap-1.5 overflow-hidden rounded-lg px-2.5 py-px text-xs font-medium leading-normal transition-[background-color,color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98] ${
-                inspectorButtonActive
-                  ? "bg-[var(--hf-panel-input)] text-[var(--hf-panel-text-0)]"
-                  : STUDIO_INSPECTOR_PANELS_ENABLED
-                    ? "bg-transparent text-[var(--hf-panel-text-2)] hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)]"
-                    : "cursor-not-allowed text-[var(--hf-panel-text-4)]"
-              }`}
+              className="hf-studio-header-action hf-studio-properties-action"
+
               aria-label={
                 STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
               }
             >
               <SlidersHorizontal className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               <span className="hf-studio-header-action-label">{t("header.inspector")}</span>
-            </button>
+            </Button>
             </Tooltip>
             <Tooltip label={isRendering ? t("header.rendering") : t("header.export")} side="bottom">
-            <button
+            <Button
               type="button"
               onClick={openExport}
-              className="hf-studio-header-action hf-studio-header-export flex h-8 items-center gap-1.5 overflow-hidden rounded-lg px-2.5 text-xs font-semibold leading-normal transition-[background-color,color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98]"
+              className="hf-studio-header-action hf-studio-header-export"
               aria-label={isRendering ? t("header.rendering") : t("header.export")}
             >
               <Download className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               <span className="hf-studio-header-action-label">{isRendering ? t("header.rendering") : t("header.export")}</span>
-            </button>
+            </Button>
             </Tooltip>
           </>
         ) : null}

@@ -310,7 +310,7 @@ describe("text content commits", () => {
     vi.useRealTimers();
   });
 
-  it("keeps the single-line value visible and commits it when Enter is pressed", () => {
+  it("keeps Enter available for multiline editing and commits on blur", () => {
     const elementNode = document.createElement("p");
     const element: DomEditSelection = {
       element: elementNode,
@@ -388,11 +388,19 @@ describe("text content commits", () => {
       textarea.dispatchEvent(enterEvent);
     });
 
-    expect(enterEvent?.defaultPrevented).toBe(true);
-    expect(document.activeElement).not.toBe(textarea);
-    expect(textarea.value).toBe("2026 world");
+    expect(enterEvent?.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(textarea);
+    expect(textarea.getAttribute("rows")).toBe("3");
+    expect(textarea.style.height).toBe("60px");
+    expect(onSetText).not.toHaveBeenCalled();
+    flushSync(() => {
+      valueSetter.call(textarea, "2026 world\n第二行");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    flushSync(() => textarea.blur());
+    expect(textarea.value).toBe("2026 world\n第二行");
     expect(onSetText).toHaveBeenCalledOnce();
-    expect(onSetText).toHaveBeenCalledWith("2026 world", "text-node:0");
+    expect(onSetText).toHaveBeenCalledWith("2026 world\n第二行", "text-node:0");
 
     flushSync(() => root.unmount());
     container.remove();

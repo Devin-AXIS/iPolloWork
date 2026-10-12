@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import postcss from "postcss";
 import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync, copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
@@ -24,6 +25,36 @@ async function loadRuntimeSourceForDev(
 }
 
 const studioPkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"));
+const sharedUiRoot = resolve(__dirname, "../../../../packages/ui");
+const sharedUiPackage = JSON.parse(readFileSync(join(sharedUiRoot, "package.json"), "utf-8"));
+
+function sharedUiStyles(): Plugin {
+  return {
+    name: "ipollowork-shared-ui-styles",
+    resolveId(id) { if (id === "virtual:ipollowork-shared-ui.css") return "\0" + id; },
+    async load(id) {
+      if (id !== "\0virtual:ipollowork-shared-ui.css") return;
+      const { buildPluginStyles } = await import("../../../../packages/ui/build-plugin-runtime.mjs");
+      const { css, dependencies } = await buildPluginStyles();
+      for (const file of dependencies) this.addWatchFile(file);
+      // Studio's Tailwind 3 must not recompile the shared Tailwind 4 output.
+      // Scope utilities to shared controls, preserving the editor and artwork.
+      const stylesheet = postcss.parse(css);
+      stylesheet.walkAtRules("layer", layer => {
+        if (layer.params === "base") layer.walkRules(rule => {
+          rule.selectors = rule.selectors.map(selector => `:where(${selector})`);
+        });
+        if (layer.params === "utilities") layer.each(node => {
+          if (node.type === "rule") node.selectors = node.selectors.map(selector =>
+            `${selector}:where([data-slot="input"], [data-slot="textarea"], [data-slot="button"], [data-slot^="select-"], [data-slot="alert"], [data-slot^="alert-"], [data-slot="button"] *, [data-slot^="select-"] *, [data-slot="alert"] *, [data-slot^="tabs-"], [data-slot^="tabs-"] *, [data-slot="tabs"], [data-slot="field"], [data-slot^="field-"], [data-slot^="radio-group"], [data-slot^="radio-group"] *, [data-slot^="tooltip-"], [data-slot^="dropdown-menu-"], [data-slot^="dropdown-menu-"] *)`);
+        });
+        if (layer.nodes) layer.replaceWith(layer.nodes);
+        else layer.remove();
+      });
+      return stylesheet.toString();
+    },
+  };
+}
 
 // ── Bridge Hono fetch → Node http response ───────────────────────────────────
 
@@ -244,13 +275,19 @@ export function stableStylesCssPlugin(): Plugin {
 
 
 export default defineConfig({
-  plugins: [react(), devProjectApi(), stableStylesCssPlugin()],
+  plugins: [react(), devProjectApi(), sharedUiStyles(), stableStylesCssPlugin()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
   },
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: [
       ...Object.entries({
+        react: resolve(sharedUiRoot, "node_modules/react"),
+        "react-dom": resolve(sharedUiRoot, "node_modules/react-dom"),
+        ...Object.fromEntries(["controls", "select", "alert", "tabs", "field", "radio-group", "tooltip", "dropdown-menu"].map(name => [
+          `@ipollowork/ui/${name}`, resolve(sharedUiRoot, sharedUiPackage.exports[`./${name}`]),
+        ])),
         // The embedded Studio consumes the host's source contract in both dev
         // and release builds; Bun file dependencies may omit ignored dist files.
         "@ipollowork/types/hyperframes": resolve(

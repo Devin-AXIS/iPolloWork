@@ -136,7 +136,8 @@ function createEmojiAliases() {
 }
 
 const emojiAliases = createEmojiAliases();
-const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 360;
+const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 260;
+const MARKDOWN_IMAGE_PREVIEW_MAX_WIDTH = 420;
 
 function parseShikiLanguage(lang: string) {
   const normalized = lang.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -145,15 +146,6 @@ function parseShikiLanguage(lang: string) {
 
 function hasFencedCodeBlock(text: string) {
   return /(^|\n)```/.test(text);
-}
-
-function estimatedRenderedImageHeight(image: HTMLImageElement) {
-  if (!image.naturalWidth || !image.naturalHeight) return 0;
-
-  const renderedWidth = image.clientWidth || image.getBoundingClientRect().width;
-  return renderedWidth > 0
-    ? (image.naturalHeight / image.naturalWidth) * renderedWidth
-    : image.naturalHeight;
 }
 
 function syncMarkdownImagePreviews(root: HTMLElement) {
@@ -166,19 +158,14 @@ function syncMarkdownImagePreviews(root: HTMLElement) {
     const button = preview.querySelector("[data-ipollowork-image-toggle]");
     if (!(image instanceof HTMLImageElement) || !(button instanceof HTMLButtonElement)) continue;
 
-    const previewable = estimatedRenderedImageHeight(image) > MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT;
-    button.hidden = !previewable;
-
-    if (!previewable) {
-      preview.style.maxHeight = "";
-      continue;
-    }
-
     const expanded = preview.dataset.ipolloworkImagePreview === "expanded";
-    preview.style.maxHeight = expanded ? "" : `${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px`;
-
+    button.style.maxWidth = expanded ? "100%" : `min(${MARKDOWN_IMAGE_PREVIEW_MAX_WIDTH}px, 100%)`;
+    image.style.maxHeight = expanded ? "" : `${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px`;
+    button.setAttribute("aria-expanded", String(expanded));
+    const labelText = expanded ? t("image.preview.show_less") : t("image.preview.show_full");
+    button.setAttribute("aria-label", labelText);
     const label = button.querySelector("[data-ipollowork-image-toggle-label]");
-    if (label) label.textContent = expanded ? t("image.preview.show_less") : t("image.preview.show_full");
+    if (label) label.textContent = labelText;
   }
 }
 
@@ -323,7 +310,7 @@ const baseMarkedOptions = {
         : `src="${escapeAttribute(safeImageHref(href))}"`;
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
 
-      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img ${source} alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">${escapeHtml(t("image.preview.show_full"))}</span></button></span>`;
+      return `<span data-ipollowork-image-preview="collapsed" class="my-3 inline-block max-w-full align-top"><button type="button" data-ipollowork-image-toggle="" aria-expanded="false" aria-label="${escapeAttribute(t("image.preview.show_full"))}" class="max-w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style="max-width: min(${MARKDOWN_IMAGE_PREVIEW_MAX_WIDTH}px, 100%)"><img ${source} alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto w-auto max-w-full rounded-lg border border-border/70" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><span data-ipollowork-image-toggle-label="" class="mt-1 block text-xs text-muted-foreground">${escapeHtml(t("image.preview.show_full"))}</span></button></span>`;
     },
     table(token) {
       const header = token.header.map((cell) => this.tablecell({ ...cell, header: true })).join("");

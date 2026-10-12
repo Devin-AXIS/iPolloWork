@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback, useEffect, useId, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { type ReactNode } from "react";
+import { Tooltip as SharedTooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@ipollowork/ui/tooltip";
 
 interface TooltipProps {
   label: string;
@@ -9,104 +9,11 @@ interface TooltipProps {
   side?: "top" | "bottom";
 }
 
-// Rough bubble height (padding + one text line) used to decide flipping
-// before the bubble has rendered; exact height isn't needed for the guard.
-const APPROX_BUBBLE_H = 28;
-const VIEWPORT_MARGIN = 8;
-
 export function Tooltip({ label, children, delay = 400, side = "top", maxWidth }: TooltipProps) {
-  const [visible, setVisible] = useState(false);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [resolvedSide, setResolvedSide] = useState<"top" | "bottom">(side);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const triggerRef = useRef<HTMLSpanElement>(null);
-  // WCAG 4.1.2: programmatically associate the bubble with its trigger.
-  const tooltipId = useId();
-
-  const show = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      const el = triggerRef.current;
-      if (!el) return;
-      const child = el.firstElementChild as HTMLElement | null;
-      const rect = (child ?? el).getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return;
-      // Flip when the preferred side would clip the viewport edge.
-      let nextSide = side;
-      if (side === "top" && rect.top - APPROX_BUBBLE_H - 6 < VIEWPORT_MARGIN) {
-        nextSide = "bottom";
-      } else if (
-        side === "bottom" &&
-        rect.bottom + APPROX_BUBBLE_H + 6 > window.innerHeight - VIEWPORT_MARGIN
-      ) {
-        nextSide = "top";
-      }
-      const edgeInset = VIEWPORT_MARGIN + (maxWidth === undefined ? 0 : Math.min(maxWidth, window.innerWidth - VIEWPORT_MARGIN * 2) / 2);
-      const x = Math.min(
-        Math.max(rect.left + rect.width / 2, edgeInset),
-        window.innerWidth - edgeInset,
-      );
-      setResolvedSide(nextSide);
-      setPos({
-        x,
-        y: nextSide === "top" ? rect.top - 6 : rect.bottom + 6,
-      });
-      setVisible(true);
-    }, delay);
-  }, [delay, side, maxWidth]);
-
-  const hide = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setVisible(false);
-  }, []);
-
-  // WCAG 1.4.13: tooltip content must be dismissible with Escape.
-  useEffect(() => {
-    if (!visible) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") hide();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [visible, hide]);
-
-  return (
-    <>
-      <span
-        ref={triggerRef}
-        onPointerEnter={show}
-        onPointerLeave={hide}
-        onFocus={show}
-        onBlur={hide}
-        aria-describedby={visible ? tooltipId : undefined}
-        className="contents"
-      >
-        {children}
-      </span>
-      {visible &&
-        createPortal(
-          <div
-            className="fixed z-[200] pointer-events-none"
-            style={{
-              left: pos.x,
-              top: pos.y,
-              transform: resolvedSide === "top" ? "translate(-50%, -100%)" : "translate(-50%, 0)",
-            }}
-          >
-            <div
-              role="tooltip"
-              id={tooltipId}
-              className={`rounded-[8px] bg-[var(--hf-panel-text-0)] px-2 py-1 text-[12px] leading-4 text-[var(--hf-panel-bg)] ${maxWidth === undefined ? "whitespace-nowrap" : "whitespace-normal"}`}
-              style={maxWidth === undefined ? undefined : { width: maxWidth, maxWidth: "calc(100vw - 16px)" }}
-            >
-              {label}
-            </div>
-          </div>,
-          triggerRef.current?.closest("[popover]") ?? document.body,
-        )}
-    </>
-  );
+  return <TooltipProvider delay={delay}>
+    <SharedTooltip>
+      <TooltipTrigger render={<span className="inline-flex" tabIndex={0} />}>{children}</TooltipTrigger>
+      <TooltipContent side={side} style={maxWidth === undefined ? undefined : { maxWidth }}>{label}</TooltipContent>
+    </SharedTooltip>
+  </TooltipProvider>;
 }

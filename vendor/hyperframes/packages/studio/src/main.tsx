@@ -6,6 +6,7 @@ import { trackStudioEvent } from "./utils/studioTelemetry";
 import { installIPolloWorkThemeSync } from "./ipolloworkTheme";
 import { bindThumbnailPageLifecycle } from "./player/lib/thumbnailPageLifecycle";
 import "./styles/studio.css";
+import "virtual:ipollowork-shared-ui.css";
 
 installIPolloWorkThemeSync();
 const unbindThumbnailPageLifecycle = bindThumbnailPageLifecycle(window, document);

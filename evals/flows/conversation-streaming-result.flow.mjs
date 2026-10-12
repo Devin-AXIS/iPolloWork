@@ -2,7 +2,12 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("conversation-streaming-result");
 
-async function mountFixture() {
+async function assertImageBadge(ctx, variant, icon, processing = false) {
+  const state = await ctx.eval(`(() => {const e=document.querySelector('[data-testid=assistant-image-status]'),i=e?.querySelector('svg');return {variant:e?.dataset.variant,icon:i?.classList.contains(${JSON.stringify(icon)}),animated:i?.classList.contains('animate-spin'),slot:e?.dataset.slot,font:e?getComputedStyle(e).fontSize:null,line:e?getComputedStyle(e).lineHeight:null};})()`);
+  ctx.assert(state.slot === 'badge' && state.variant === variant && state.icon && state.animated === processing && state.font === '10px' && state.line === '14px', JSON.stringify(state));
+}
+
+export async function mountFixture() {
   window.__streamingAnswerProof?.cleanup?.();
   document.querySelectorAll("#streaming-answer-proof").forEach((node) => node.remove());
   const resources = performance.getEntriesByType("resource").map((entry) => entry.name);
@@ -37,9 +42,22 @@ async function mountFixture() {
   const root = ReactDOM.createRoot(host);
   const queryClient = new QueryClient();
   const imageUrl = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="420" height="960" viewBox="0 0 420 960"><rect width="420" height="960" fill="#193656"/><circle cx="210" cy="320" r="125" fill="#f6bd60"/><path d="M0 780 Q210 480 420 780 V960 H0" fill="#479f92"/></svg>')}`;
-  const openTargets = ["design/proof/report.pdf", "design/proof/cover.png"].map((path) => createWorkspaceFileOpenTarget({ path }));
-  const client = { baseUrl: "http://127.0.0.1:52999", downloadWorkspaceFile: async (_workspaceId, path) => {
+  const openTargets = ["design/proof/report.pdf", "design/proof/cover.png", "design/proof/正反馈与负反馈为什么正不一定好完整说明与参考资料内容说明和图示示例与应用场景以及复盘检查清单和附加说明报告.pdf"].map((path) => createWorkspaceFileOpenTarget({ path, size: 122880 }));
+  const thumbnailImage = new Image();
+  thumbnailImage.src = imageUrl;
+  await thumbnailImage.decode();
+  const thumbnailCanvas = document.createElement("canvas");
+  thumbnailCanvas.width = 160; thumbnailCanvas.height = 110;
+  const thumbnailContext = thumbnailCanvas.getContext("2d");
+  thumbnailContext.drawImage(thumbnailImage, 56, 0, 48, 110);
+  const thumbnailBlob = await new Promise(resolve => thumbnailCanvas.toBlob(resolve, "image/webp"));
+  const client = {
+    resolveArtifacts: async (_workspaceId, targets) => ({ items: targets.map(target => ({ kind: "file", value: target.value, exists: true })) }),
+    downloadWorkspaceThumbnail: async () => ({ data: new Uint8Array(await thumbnailBlob.arrayBuffer()), detail: "420 × 960" }),
+    baseUrl: "http://127.0.0.1:52999", downloadWorkspaceFile: async (_workspaceId, path) => {
     window.__streamingAnswerProof.downloadedPath = path;
+    window.__streamingAnswerProof.downloadRequests=(window.__streamingAnswerProof.downloadRequests||0)+1;
+    await window.__streamingAnswerProof.downloadGate;
     return { data: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" };
   } };
   const commentary = {
@@ -174,6 +192,14 @@ async function mountFixture() {
         ]);
         setStatus("ready");
       };
+      window.__streamingAnswerProof.showReferenceCard = () => {
+        setArtifactFiles(["design/proof/正反馈与负反馈为什么正不一定好完整说明与参考资料内容说明和图示示例与应用场景以及复盘检查清单和附加说明报告.pdf"]);
+        setMessages([
+          { id: "reference-file-user", role: "user", parts: [{ type: "text", text: "请生成报告" }] },
+          { id: "reference-file-answer", role: "assistant", parts: [{ type: "text", text: "报告已保存。", state: "done" }] },
+        ]);
+        setStatus("ready"); setRunOutcome("completed"); setFinalizing(false);
+      };
       window.__streamingAnswerProof.showImage = () => {
         setRunOutcome("running");
         setRunEndedAt(null);
@@ -221,6 +247,14 @@ async function mountFixture() {
         setStoppedImageMessageIds(new Set(["proof-image-answer"]));
         setStopAcknowledged(true);
         setStatus("ready");
+      };
+      window.__streamingAnswerProof.showStoppedText = () => {
+        window.__streamingAnswerProof.showImage();
+        window.__streamingAnswerProof.stopImage();
+        setMessages(previous => [...previous,
+          { id: "proof-text-stop-request", role: "user", parts: [{ type: "text", text: "请继续写报告" }] },
+          { id: "proof-text-stop-answer", role: "assistant", parts: [{ type: "text", text: "已完成部分报告。", state: "done" }] },
+        ]);
       };
       window.__streamingAnswerProof.failImage = () => {
         setRunOutcome("failed");
@@ -326,6 +360,7 @@ async function mountFixture() {
 export default {
   id: "conversation-streaming-result",
   title: "Final answer streams in place below collapsible progress",
+  ...(process.env.IPOLLOWORK_EVAL_APP_ORIGIN ? { cdpTarget: { urlIncludes: process.env.IPOLLOWORK_EVAL_APP_ORIGIN } } : {}),
   kind: "user-facing",
   steps: [
     {
@@ -344,15 +379,15 @@ export default {
               liveAction: process.querySelector('[data-tool-action=command] summary')?.textContent,
               commandDetailsClosed: !process.querySelector('[data-tool-action=command]')?.open,
               duplicateProgress: Boolean(host.querySelector('[data-testid=assistant-streaming-progress]')),
-              pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+              pending: Boolean(host.querySelector('[data-testid=assistant-result-pending]')),
+              currentState: host.querySelector('[data-testid=assistant-current-state]')?.textContent,
               activityKind: host.querySelector('[data-testid=assistant-live-activity]')?.getAttribute('data-activity-kind'),
               thinkingDots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
           ctx.assert(state.open === "true" && state.commentary && state.commentaryBeforeCommand && !state.duplicateProgress && !state.result
             && state.liveAction?.includes("运行命令") && state.liveAction?.includes("检查项目文件") && state.commandDetailsClosed
-            && state.pending?.includes("检查项目文件")
-            && state.activityKind === "tool"
+            && !state.pending && state.currentState?.includes("检查项目文件")
             && state.thinkingDots === 0, JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'false'");
@@ -372,7 +407,7 @@ export default {
           const afterTick = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent");
           ctx.assert(beforeTick !== afterTick && afterTick.includes("已用时"), "The live elapsed time did not advance.");
         },
-        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中", "检查项目文件"] },
+        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "检查项目文件"] },
       }),
     },
     {
@@ -397,9 +432,9 @@ export default {
               text: result.textContent, processText: process.textContent };
           })()`);
           ctx.assert(state.sameNode && !state.pending && state.belowProcess && state.text.includes("最终建议")
-            && !state.processText.includes("最终建议") && state.processText.includes("正在收尾"), JSON.stringify(state));
+            && !state.processText.includes("最终建议") && state.processText.includes("正在回复"), JSON.stringify(state));
         },
-        screenshot: { name: "streaming-result", requireText: ["正在收尾", "最终建议"] },
+        screenshot: { name: "streaming-result", requireText: ["正在回复", "最终建议"] },
       }),
     },
     {
@@ -436,7 +471,7 @@ export default {
           })()`);
           ctx.assert(state.sameNode && state.answer && state.queue && state.actionSize === 28
             && state.iconSize === 14 && state.answerBackground === 'rgba(0, 0, 0, 0)'
-            && state.answerBorder === '0px' && state.answerSize === '14px' && state.processBorder === '0px', JSON.stringify(state));
+            && state.answerBorder === '0px' && state.answerSize === '13px' && state.processBorder === '0px', JSON.stringify(state));
         },
         screenshot: { name: "completed-result", requireText: ["用时", "已处理 1 个命令", "最终建议", "完成后再检查测试结果"] },
       }),
@@ -483,6 +518,7 @@ export default {
             return { preview: host.querySelector('[data-testid=assistant-image-status]')?.textContent,
               userHeight: host.querySelector('img[alt="reference.svg"]')?.parentElement?.style.maxHeight };
           })()`);
+          await assertImageBadge(ctx, "info", "lucide-loader-circle", true);
           ctx.assert(state.preview?.includes("仍在生成") && state.userHeight === "160px", JSON.stringify(state));
         },
         screenshot: { name: "streaming-image-preview", requireText: ["仍在生成"] },
@@ -504,6 +540,7 @@ export default {
               open: [...host.querySelectorAll('button')].some((button) => button.textContent === '打开图片'),
               download: [...host.querySelectorAll('button')].some((button) => button.textContent === '下载图片') };
           })()`);
+          await assertImageBadge(ctx, "info", "lucide-loader-circle", true);
           ctx.assert(state.status?.includes("图片已保存") && state.open && state.download, JSON.stringify(state));
         },
         screenshot: { name: "saved-image-still-streaming", requireText: ["图片已保存", "正在整理结果", "打开图片"] },
@@ -562,14 +599,14 @@ export default {
         action: async () => {
           await ctx.eval(`(() => {
             const image = document.querySelector('#streaming-answer-proof img[alt="cover.png"]');
-            image?.parentElement?.querySelector('button')?.click();
+            image?.closest('button')?.click();
             image?.scrollIntoView({ block: 'start' });
             return true;
           })()`);
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === ''");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'true'");
         },
         assert: async () => {
-          const expanded = await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === ''");
+          const expanded = await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'true'");
           ctx.assert(expanded, "The full image did not expand.");
         },
         screenshot: { name: "expanded-image-preview", requireText: ["封面已生成"] },
@@ -582,14 +619,14 @@ export default {
         action: async () => {
           await ctx.eval(`(() => {
             const image = document.querySelector('#streaming-answer-proof img[alt="cover.png"]');
-            image?.parentElement?.parentElement?.querySelector(':scope > button')?.click();
+            image?.closest('button')?.click();
             document.querySelector('#streaming-answer-proof [data-assistant-result]')?.scrollIntoView({ block: 'start' });
             return true;
           })()`);
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === '360px'");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'false'");
         },
         assert: async () => {
-          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.parentElement?.style.maxHeight === '360px'"), "The compact preview was not restored.");
+          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof img[alt=\"cover.png\"]')?.closest('button')?.getAttribute('aria-expanded') === 'false'"), "The compact preview was not restored.");
         },
         screenshot: { name: "compact-image-preview", requireText: ["封面已生成"] },
       }),
@@ -609,14 +646,15 @@ export default {
           const state = await ctx.eval(`(() => {
             const host = document.querySelector('#streaming-answer-proof');
             return { status: host.querySelector('[data-testid=assistant-image-status]')?.textContent,
-              notice: host.querySelector('[data-testid=run-issue-notice]')?.textContent,
+              noticeCount: host.querySelectorAll('[data-testid=run-issue-notice]').length,
               duration: host.querySelector('[data-testid=assistant-process-column]')?.textContent,
               image: Boolean(host.querySelector('img[alt="cover.png"]')) };
           })()`);
-          ctx.assert(state.status?.includes("图片可能未完成") && state.notice?.includes("任务已中断")
+          await assertImageBadge(ctx, "warning", "lucide-circle-pause");
+          ctx.assert(state.status?.includes("图片可能未完成") && state.noticeCount === 0
             && state.duration?.includes("已停止 · 用时") && state.image, JSON.stringify(state));
         },
-        screenshot: { name: "stopped-image", requireText: ["已停止", "图片可能未完成", "任务已中断"] },
+        screenshot: { name: "stopped-image", requireText: ["已停止", "图片可能未完成"] },
       }),
     },
     {
@@ -637,6 +675,7 @@ export default {
               duration: host.querySelector('[data-testid=assistant-process-column]')?.textContent,
               image: Boolean(host.querySelector('img[alt="cover.png"]')) };
           })()`);
+          await assertImageBadge(ctx, "destructive", "lucide-circle-alert");
           ctx.assert(state.status?.includes("图片可能未完成") && state.duration?.includes("未完成 · 用时")
             && state.image, JSON.stringify(state));
         },
@@ -659,6 +698,7 @@ export default {
               preview: Boolean(host.querySelector('img[alt="preview.svg"]')),
               card: host.querySelector('[data-testid=artifact-file-card]')?.textContent };
           })()`);
+          await assertImageBadge(ctx, "info", "lucide-info");
           ctx.assert(state.status?.includes("预览已就绪") && state.preview && state.card?.includes("cover.png"), JSON.stringify(state));
         },
         screenshot: { name: "unmatched-image-file", requireText: ["预览已就绪", "cover.png"] },
@@ -670,7 +710,7 @@ export default {
         voiceover: vo[13],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showToolFailure()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在思考')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('正在思考')");
         },
         assert: async () => {
           const text = await ctx.eval("document.querySelector('#streaming-answer-proof')?.textContent");
@@ -729,6 +769,7 @@ export default {
               open: host.textContent.includes('打开图片'), run: host.textContent.includes('本次任务未完成'),
               errorInReply: Boolean(host.querySelector('[data-assistant-result] [data-assistant-run-error]')),
               cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
+          await assertImageBadge(ctx, "success", "lucide-circle-check");
           ctx.assert(state.saved?.includes('图片已生成') && state.open && state.run && state.errorInReply && state.cards === 0, JSON.stringify(state));
         },
         screenshot: { name: "saved-image-after-failure", requireText: ["图片已生成", "打开图片", "本次任务未完成"] },
@@ -805,7 +846,7 @@ export default {
             && state.onlyCommandOpen && state.icons[0]?.includes('lucide-file-search')
             && state.icons[1]?.includes('lucide-square-terminal') && state.arrowTransform !== 'none'
             && state.commands && state.resultOutside && state.fileCards === 2 && state.fileBullets === 0
-            && state.resultGaps.every((gap) => Math.abs(gap - 12) <= 1), JSON.stringify(state));
+            && state.resultGaps.every((gap) => Math.abs(gap - 8) <= 1), JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] summary').click()");
           ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command]').open === false"), "Command group did not collapse again.");
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] summary').click()");
@@ -833,42 +874,43 @@ export default {
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-loading]')?.textContent.includes('正在思考...')");
           ctx.assert(await ctx.eval("document.querySelectorAll('#streaming-answer-proof [data-testid=assistant-loading] .chat-thinking-dots span').length === 3"), "OpenCode waiting state lacks animated thinking dots.");
           await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('reasoning')");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在思考...')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('正在思考')");
           await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('tool')");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-tool-action=command]')?.textContent.includes('检查项目文件')");
         },
         assert: async () => {
           const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
-            return { pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+            return { pending: Boolean(host.querySelector('[data-testid=assistant-result-pending]')),
+              currentState: host.querySelector('[data-testid=assistant-current-state]')?.textContent,
               activityKind: host.querySelector('[data-testid=assistant-live-activity]')?.getAttribute('data-activity-kind'),
               dots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
               command: host.querySelector('[data-tool-action=command]')?.textContent,
               result: Boolean(host.querySelector('[data-assistant-result]')) }; })()`);
-          ctx.assert(state.pending?.includes('检查项目文件') && state.activityKind === 'tool' && state.dots === 0 && state.command?.includes('检查项目文件') && !state.result, JSON.stringify(state));
+          ctx.assert(!state.pending && state.currentState?.includes('检查项目文件') && state.dots === 0 && state.command?.includes('检查项目文件') && !state.result, JSON.stringify(state));
         },
         screenshot: { name: "opencode-thinking-and-tool", requireText: ["运行命令", "检查项目文件"] },
       }),
     },
     {
-      name: "Unphased output stays chronological until the final result",
-      run: (ctx) => ctx.prove("Unphased text stays in arrival order without a premature result area; completion folds the process", {
+      name: "Unphased output remains in stable body nodes",
+      run: (ctx) => ctx.prove("Unphased text keeps stable body nodes across tools and completion", {
         voiceover: vo[21],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('answer')");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]')?.textContent.includes('已找到相关文件。')");
           await ctx.eval("void (window.__orderedFirstText = document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]'))");
-          ctx.assert(await ctx.eval("!document.querySelector('#streaming-answer-proof [data-assistant-result]')"), "Intermediate text created a result area.");
+          ctx.assert(await ctx.eval("Boolean(document.querySelector('#streaming-answer-proof [data-assistant-result]'))"), "Streaming text lacks a body area.");
           await ctx.eval("window.__streamingAnswerProof.appendOpenCodeStep()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-final]')?.textContent.includes('目录确认完成。')");
           const ordered = await ctx.eval(`(() => {
             const host = document.querySelector('#streaming-answer-proof');
             const rows = [...host.querySelectorAll('[data-message-role=assistant]')];
-            return { ids: rows.map(n => n.dataset.messageId), retained: rows[0] === window.__orderedFirstText,
+            return { ids: rows.map(n => n.dataset.messageId), retained: host.querySelector('[data-message-id=opencode-proof-assistant]') === window.__orderedFirstText,
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
-          ctx.assert(ordered.retained && !ordered.result && JSON.stringify(ordered.ids) === JSON.stringify(['opencode-proof-assistant', 'opencode-proof-tool', 'opencode-proof-final']), JSON.stringify(ordered));
+          ctx.assert(ordered.retained && ordered.result && ordered.ids.includes('opencode-proof-final') && ordered.ids.includes('opencode-proof-tool'), JSON.stringify(ordered));
           await ctx.eval("window.__streamingAnswerProof.finishOpenCode()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-result]')?.textContent.includes('目录确认完成。')");
+          await ctx.waitFor("Array.from(document.querySelectorAll('#streaming-answer-proof [data-assistant-result]')).some(n=>n.textContent.includes('目录确认完成。'))");
         },
         assert: async () => {
           ctx.assert(await ctx.eval("!document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending], #streaming-answer-proof [data-testid=assistant-loading]')"), "Thinking remained visible after the answer began.");
@@ -882,7 +924,7 @@ export default {
         voiceover: vo[22],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showCompletedWhilePostProcessing()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent.includes('处理中')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent.includes('正在收尾')");
         },
         assert: async () => {
           const state = await ctx.eval(`(() => {
@@ -890,17 +932,117 @@ export default {
             const label = process?.querySelector('button')?.textContent ?? '';
             return { label, result: document.querySelector('#streaming-answer-proof [data-assistant-result]')?.textContent ?? '' };
           })()`);
-          ctx.assert(state.label.startsWith('处理中')
+          ctx.assert(state.label.startsWith('正在收尾')
             && state.result.includes('iPolloWork 应用正在导出 MP4'), JSON.stringify(state));
         },
-        screenshot: { name: "completed-engine-post-processing", requireText: ["处理中", "iPolloWork 应用正在导出 MP4"] },
+        screenshot: { name: "completed-engine-post-processing", requireText: ["正在收尾", "iPolloWork 应用正在导出 MP4"] },
+      }),
+    },
+    {
+      name: "Reference document card",
+      run: ctx => ctx.prove("Compact document card separates filename and saved state", {
+        voiceover: vo[24],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showReferenceCard()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]')?.textContent.includes('已保存')");
+        },
+        assert: async () => {
+          const g = await ctx.eval(`(() => {const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const t=c.querySelector('[data-testid=artifact-file-title]');const d=c.querySelector('[data-testid=artifact-file-description]');return {height:c.getBoundingClientRect().height,width:c.getBoundingClientRect().width,titleSize:getComputedStyle(t).fontSize,titleLine:getComputedStyle(t).lineHeight,metaSize:getComputedStyle(d).fontSize,shadow:getComputedStyle(c).boxShadow,savedInside:c.querySelector('.artifact-file-saved')?.getBoundingClientRect().right<=d.getBoundingClientRect().right,text:c.textContent}})()`);
+          ctx.assert(g.height===56 && g.width===360 && g.titleSize==='13px' && g.titleLine==='18px' && g.metaSize==='12px' && g.shadow==='none' && g.savedInside && g.text.includes('PDF') && g.text.includes('已保存'),JSON.stringify(g));
+        }, screenshot:{name:"reference-document-card",requireText:["PDF","已保存"]},
+      }),
+    },
+    {
+      name: "Reference media card",
+      run: ctx => ctx.prove("Image file keeps its compact thumbnail and saved state", {
+        voiceover: vo[25],
+        action:async()=>{await ctx.eval("window.__streamingAnswerProof.showUnmatchedImage()");await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell] .artifact-thumbnail')?.naturalWidth>0");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const i=c.querySelector('.artifact-thumbnail').getBoundingClientRect();return {w:i.width,h:i.height,text:c.textContent}})()`);ctx.assert(g.w===52&&g.h===36&&g.text.includes('已保存'),JSON.stringify(g));},
+        screenshot:{name:"reference-image-thumbnail",requireText:["已保存"]},
+      }),
+    },
+    {
+      name: "Reference narrow long filename",
+      run: ctx => ctx.prove("Long filenames stay on one line with separate actions in narrow layouts", {
+        voiceover:vo[26],
+        action:async()=>{await ctx.client.send('Page.bringToFront');await ctx.client.send('Emulation.setDeviceMetricsOverride',{width:620,height:900,deviceScaleFactor:1,mobile:false});await ctx.eval("window.__streamingAnswerProof.showReferenceCard()");await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-title]')?.textContent.includes('正反馈')");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const t=c.querySelector('[data-testid=artifact-file-title]');const a=c.querySelector('[data-testid=artifact-file-actions]');const tr=t.getBoundingClientRect(),ar=a.getBoundingClientRect(),cr=c.getBoundingClientRect(),s=getComputedStyle(t);return {line:s.whiteSpace,ellipsis:s.textOverflow,clipped:t.scrollWidth>t.clientWidth,gap:ar.left-tr.right,inside:ar.right<=cr.right,visible:getComputedStyle(a).opacity,title:t.title,text:t.textContent}})()`);ctx.assert(g.line==='nowrap'&&g.ellipsis==='ellipsis'&&g.clipped&&g.gap>=0&&g.inside&&g.visible==='1'&&g.title===g.text,JSON.stringify(g));},
+        screenshot:{name:"reference-narrow-filename",requireText:["PDF","已保存"]},
+      }),
+    },
+    {
+      name: "Reference lightweight actions",
+      run:ctx=>ctx.prove("Lightweight file actions remain accessible without covering the title",{
+        voiceover:vo[27],
+        action:async()=>{await ctx.trustedClick('#streaming-answer-proof [data-testid=artifact-file-more]');await ctx.waitFor("document.querySelector('[role=menu]')!==null");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');return {buttons:Array.from(c.querySelectorAll('[data-testid=artifact-file-actions] button')).map(b=>({w:b.getBoundingClientRect().width,h:b.getBoundingClientRect().height,label:b.getAttribute('aria-label')})),menu:!!document.querySelector('[role=menu]')}})()`);ctx.assert(g.menu&&g.buttons.length===2&&g.buttons.every(b=>b.w===28&&b.h===28&&b.label),JSON.stringify(g));},
+        screenshot:{name:"reference-file-actions",requireText:["复制文件路径"]},
+      }).then(async()=>{await ctx.client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});await ctx.client.send('Emulation.setDeviceMetricsOverride',{width:1104,height:900,deviceScaleFactor:1,mobile:false});}),
+    },
+    {
+      name:"File card hover feedback",
+      run:ctx=>ctx.prove("Card hover changes background and border without moving content",{
+        voiceover:vo[28],
+        action:async()=>{
+          await ctx.eval("window.__streamingAnswerProof.showReferenceCard()");await ctx.waitFor("!!document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]')");
+          await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1});
+          await ctx.eval(`window.__cardMeasure=()=>{const e=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]');const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {bg:s.backgroundColor,border:s.borderColor,outline:s.outlineWidth,outlineColor:s.outlineColor,primary:(()=>{const p=document.createElement('span');p.style.color='var(--primary)';e.append(p);const color=getComputedStyle(p).color;p.remove();return color})(),w:r.width,h:r.height,x:r.x,y:r.y}};window.__cardIdle=window.__cardMeasure()`);
+          const point=await ctx.eval(`(()=>{const e=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+          await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
+          await ctx.waitFor("window.__cardMeasure().border!==window.__cardIdle.border");
+        },
+        assert:async()=>{const g=await ctx.eval("({idle:window.__cardIdle,hover:window.__cardMeasure()})");ctx.assert(g.idle.bg===g.hover.bg&&g.hover.border===g.hover.primary&&g.idle.w===g.hover.w&&g.idle.h===g.hover.h,JSON.stringify(g));await ctx.eval('window.__cardHover=window.__cardMeasure()');},
+        screenshot:{name:'card-hover-feedback',requireText:['已保存']},
+      }),
+    },
+    {
+      name:"File card press feedback",
+      run:ctx=>ctx.prove("Pressed card uses a stronger background and stays in place",{
+        voiceover:vo[29],
+        action:async()=>{const point=await ctx.eval(`(()=>{const r=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);await ctx.client.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});await ctx.waitFor('window.__cardMeasure().bg!==window.__cardHover.bg');},
+        assert:async()=>{const g=await ctx.eval('({hover:window.__cardHover,press:window.__cardMeasure()})');ctx.assert(g.hover.bg!==g.press.bg&&g.hover.w===g.press.w&&g.hover.h===g.press.h&&g.hover.x===g.press.x&&g.hover.y===g.press.y,JSON.stringify(g));},
+        screenshot:{name:'card-press-feedback',requireText:['已保存']},
+      }).finally(async()=>{const point=await ctx.eval(`(()=>{const r=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point});}),
+    },
+    {
+      name:"File card keyboard focus",
+      run:ctx=>ctx.prove("Keyboard focus gives the file card a visible focus ring",{
+        voiceover:vo[30],
+        action:async()=>{await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').focus()");await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').matches(':focus-visible')");},
+        assert:async()=>{const g=await ctx.eval('window.__cardMeasure()');ctx.assert(parseFloat(g.outline)>=2&&g.outlineColor===g.primary,JSON.stringify(g));},
+        screenshot:{name:'card-keyboard-focus',requireText:['已保存']},
+      }),
+    },
+    {
+      name:"File card download busy",
+      run:ctx=>ctx.prove("Downloading disables only download and does not open the file",{
+        voiceover:vo[31],
+        action:async()=>{await ctx.eval("window.__streamingAnswerProof.downloadBaseline=window.__streamingAnswerProof.downloadRequests||0;window.__streamingAnswerProof.openedPath=null;window.__streamingAnswerProof.downloadGate=new Promise(resolve=>window.__streamingAnswerProof.releaseDownload=resolve)");await ctx.trustedClick('#streaming-answer-proof [data-testid=artifact-file-actions] button:first-child');await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=artifact-file-actions] button:first-child')?.disabled");},
+        assert:async()=>{const g=await ctx.eval(`(()=>{const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-shell]'),b=c.querySelector('[data-testid=artifact-file-actions] button');return {busy:b.getAttribute('aria-busy'),requests:window.__streamingAnswerProof.downloadRequests-window.__streamingAnswerProof.downloadBaseline,spinner:!!b.querySelector('.animate-spin'),cardDisabled:c.querySelector('[data-testid=artifact-file-card]').disabled,opened:window.__streamingAnswerProof.openedPath,downloaded:window.__streamingAnswerProof.downloadedPath}})()`);ctx.assert(g.busy==='true'&&g.requests===1&&g.spinner&&!g.cardDisabled&&!g.opened&&g.downloaded.endsWith('.pdf'),JSON.stringify(g));},
+        screenshot:{name:'card-download-busy',requireText:['已保存']},
+      }).finally(async()=>{await ctx.eval('window.__streamingAnswerProof.releaseDownload();window.__streamingAnswerProof.downloadGate=undefined');await ctx.waitFor("!document.querySelector('#streaming-answer-proof [data-testid=artifact-file-actions] button:first-child')?.disabled");}),
+    },
+    {
+      name: "Text interruption keeps one shared Alert despite historical image",
+      run: ctx => ctx.prove("An interrupted text turn retains its recovery hint in the shared warning Alert, independent of previous image status", {
+        voiceover: vo[32],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showStoppedText()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]')?.dataset.slot==='alert'");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]').scrollIntoView({block:'center'})");
+        },
+        assert: async () => {
+          const state = await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),e=h.querySelector('[data-testid=run-issue-notice]'),s=getComputedStyle(e),p=document.createElement('span');p.style.backgroundColor='var(--feedback-warning-background)';h.append(p);const bg=getComputedStyle(p).backgroundColor;p.remove();return {count:h.querySelectorAll('[data-testid=run-issue-notice]').length,shared:e.dataset.slot==='alert',icon:!!e.querySelector('svg'),semantic:s.backgroundColor===bg,border:s.borderTopWidth,text:e.textContent}})()`);
+          ctx.assert(state.count===1&&state.shared&&state.icon&&state.semantic&&state.border==='0px'&&state.text.includes('可以继续发送消息'),JSON.stringify(state));
+        },
+        screenshot:{name:'text-stop-shared-alert',requireText:['任务已中断','可以继续发送消息']},
       }),
     },
     {
       name: "Composer text matches conversation typography",
       run: async (ctx) => {
         let placeholderStyle;
-        await ctx.prove("The composer uses the same 14px text and 1.5 line height for typed and placeholder text", {
+        await ctx.prove("The composer uses the shared 13px text and 20px line height for typed and placeholder text", {
           voiceover: vo[23],
           action: async () => {
             await ctx.eval("window.__streamingAnswerProof.cleanup()");
@@ -920,7 +1062,7 @@ export default {
               const read = (element) => { const style = getComputedStyle(element); return [style.fontSize, style.lineHeight]; };
               return { editor: read(editor), paragraph: editor.querySelector('p') ? read(editor.querySelector('p')) : null };
             })()`);
-            ctx.assert(Object.values({ ...styles, placeholder: placeholderStyle }).filter(Boolean).every(([size, height]) => size === "14px" && height === "21px"), JSON.stringify({ ...styles, placeholder: placeholderStyle }));
+            ctx.assert(Object.values({ ...styles, placeholder: placeholderStyle }).filter(Boolean).every(([size, height]) => size === "13px" && height === "20px"), JSON.stringify({ ...styles, placeholder: placeholderStyle }));
           },
           screenshot: { name: "composer-multiline-typography", requireText: ["第一行", "第二行"] },
         });

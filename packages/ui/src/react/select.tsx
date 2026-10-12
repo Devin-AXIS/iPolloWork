@@ -162,12 +162,12 @@ function SelectItem({
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
+      <SelectPrimitive.ItemText data-slot="select-item-text" className="me-2 min-w-0 flex-1 truncate">
         {children}
       </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator
         render={
-          <span className="pointer-events-none absolute end-2 flex size-4 items-center justify-center" />
+          <span data-slot="select-item-indicator" className="pointer-events-none absolute inset-y-0 end-2 my-auto flex size-4 items-center justify-center" />
         }
       >
         <CheckIcon className={cn("pointer-events-none", styleScope === "settings" && "text-link")} />

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 export function formatTextFieldPreview(value: string): string {
@@ -53,6 +53,7 @@ export function TextAreaField({
   value,
   disabled,
   autoFocus,
+  flat = false,
   onPreview,
   onCommit,
 }: {
@@ -60,6 +61,7 @@ export function TextAreaField({
   value: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  flat?: boolean;
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
@@ -84,6 +86,27 @@ export function TextAreaField({
     textareaRef.current?.focus();
   }, [autoFocus]);
 
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!flat || !textarea) return;
+    const resize = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(160, Math.max(60, textarea.scrollHeight))}px`;
+    };
+    resize();
+    const container = textarea.parentElement;
+    if (!container) return;
+    let width = container.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const nextWidth = container.getBoundingClientRect().width;
+      if (nextWidth === width) return;
+      width = nextWidth;
+      resize();
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [draft, flat]);
+
   const commitDraft = (d: string) => {
     if (interactionChangedRef.current) {
       interactionChangedRef.current = false;
@@ -105,6 +128,27 @@ export function TextAreaField({
     focusedRef.current = false;
     commitDraft(draftRef.current);
   };
+
+  if (flat) {
+    return (
+      <div className="flex min-h-[43px] items-center rounded-[9px] border border-[#99b8f2] bg-panel-bg px-4 py-2 focus-within:border-[#4f8fe8] focus-within:ring-1 focus-within:ring-[#4f8fe8]/20">
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          disabled={disabled}
+          rows={3}
+          aria-label={label}
+          onFocus={handleFocus}
+          onChange={handleChange}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.stopPropagation();
+          }}
+          onBlur={handleBlur}
+          className="min-h-[60px] max-h-[160px] w-full resize-none overflow-y-auto bg-transparent font-sans text-[14px] font-normal leading-[20px] text-[#24262b] outline-none disabled:cursor-not-allowed disabled:text-panel-text-4 dark:text-panel-text-1"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[43px] items-center rounded-[9px] border border-[#99b8f2] bg-panel-bg px-4 py-2 focus-within:border-[#4f8fe8] focus-within:ring-1 focus-within:ring-[#4f8fe8]/20">

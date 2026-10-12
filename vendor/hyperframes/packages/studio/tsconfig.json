@@ -4,6 +4,12 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {
+      "react": ["../../../../packages/ui/node_modules/@types/react"],
+      "react/*": ["../../../../packages/ui/node_modules/@types/react/*"],
+      "react-dom": ["../../../../packages/ui/node_modules/@types/react-dom"],
+      "react-dom/*": ["../../../../packages/ui/node_modules/@types/react-dom/*"],
+      "@ipollowork/types/hyperframes": ["../../../../packages/types/src/hyperframes.ts"],
+      "@ipollowork/ui/*": ["../../../../packages/ui/src/react/*"],
       "@hyperframes/player": ["../player/src/hyperframes-player.ts"]
     },
     "jsx": "react-jsx",
@@ -15,7 +21,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "..",
+    "rootDir": "../../../..",
     "types": ["vite/client", "node"],
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,

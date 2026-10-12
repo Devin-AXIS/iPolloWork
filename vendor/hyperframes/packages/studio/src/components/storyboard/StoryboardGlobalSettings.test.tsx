@@ -73,13 +73,16 @@ describe("StoryboardGlobalSettings interactions", () => {
     );
     if (!(manualMode instanceof HTMLButtonElement)) throw new Error("Manual theme mode missing");
     flushSync(() => manualMode.click());
-    const theme = container.querySelector<HTMLSelectElement>(
+    const theme = container.querySelector<HTMLButtonElement>(
       '[aria-label="Choose video design theme"]',
     );
     if (!theme) throw new Error("Theme selector missing");
-    expect(theme.options).toHaveLength(2);
-    theme.value = "editorial";
-    flushSync(() => theme.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(theme.dataset.slot).toBe("select-trigger");
+    flushSync(() => theme.click());
+    const editorial = document.body.querySelector('[role="option"]');
+    if (!(editorial instanceof HTMLElement)) throw new Error("Theme option missing");
+    expect(editorial.textContent).toContain("Editorial");
+    flushSync(() => editorial.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 
     expect(onThemeChange).not.toHaveBeenCalled();
     expect(postMessage).toHaveBeenCalledWith(

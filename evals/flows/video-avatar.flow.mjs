@@ -33,7 +33,7 @@ export default {
     { name: "Choose RunningHub and HeyGen before generating", run: async ctx => {
       await ctx.prove("Each submission uses the selected provider and its resolution while retaining photo, narration and orientation", { voiceover: narration[1],
         action: async () => {
-          await ctx.clickText("横屏 16:9");
+          await ctx.trustedClick('[role="radio"][aria-label^="横屏"]');
           await ctx.trustedClick("#avatar-generation-method");
           await ctx.trustedClick("[role=presentation][data-open] [role=option]:first-of-type");
           await ctx.waitForText("使用 RunningHub 账户余额生成");

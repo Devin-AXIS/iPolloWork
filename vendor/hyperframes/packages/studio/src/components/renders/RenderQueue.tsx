@@ -1,7 +1,8 @@
 import { memo, useState, useRef, useEffect, useId } from "react";
 import { RenderQueueItem } from "./RenderQueueItem";
-import { Button } from "../ui/Button";
-import { FlatDropdown } from "../editor/propertyPanelFlatSelectRow";
+import { Button as StudioButton } from "../ui/Button";
+import { Button } from "@ipollowork/ui/controls";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ipollowork/ui/select";
 import type { OutputSize, RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
@@ -271,6 +272,17 @@ function formatEta(ms: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
+function ExportSelect({ ariaLabel, value, options, onChange, disabled }: {
+  ariaLabel: string; value: string; options: { value: string; label: string; disabled?: boolean }[];
+  onChange: (value: string) => void; disabled: boolean;
+}) {
+  const { tx } = useStudioI18n();
+  return <Select value={value} disabled={disabled} onValueChange={next => { if (next !== null) onChange(next); }}>
+    <SelectTrigger aria-label={tx(ariaLabel)} className="w-full"><SelectValue>{options.find(option => option.value === value)?.label}</SelectValue></SelectTrigger>
+    <SelectContent className="w-max min-w-(--anchor-width) max-w-(--available-width)">{options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}</SelectContent>
+  </Select>;
+}
+
 function FormatExportButton({
   onStartRender,
   isRendering,
@@ -294,9 +306,6 @@ function FormatExportButton({
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
 
-  const selectCls =
-    "h-[34px] w-full rounded-[6px] border border-panel-border-input bg-panel-input px-2.5 text-xs text-panel-text-1 cursor-pointer transition-colors hover:bg-panel-hover";
-
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-x-2 gap-y-3">
@@ -305,7 +314,7 @@ function FormatExportButton({
             <span className="text-[11px] text-panel-text-3">{tx("Format")}</span>
             <FormatInfoTooltip format={format} />
           </div>
-          <FlatDropdown
+          <ExportSelect
             ariaLabel="Format"
             value={format}
             options={[{ value: "mp4", label: "MP4" }, { value: "mov", label: "MOV (ProRes)" }, { value: "webm", label: "WebM" }]}
@@ -315,12 +324,11 @@ function FormatExportButton({
               persistRenderSettings(v, quality, fps, resolution);
             }}
             disabled={exportBusy}
-            className={selectCls}
           />
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
           <span className="text-[11px] text-panel-text-3">{tx("Resolution")}</span>
-          <FlatDropdown
+          <ExportSelect
             ariaLabel="Resolution"
             value={resolution}
             options={SCALE_OPTION_ORDER.map((value) => ({
@@ -335,12 +343,11 @@ function FormatExportButton({
               persistRenderSettings(format, quality, fps, v);
             }}
             disabled={exportBusy}
-            className={selectCls}
           />
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
           <span className="text-[11px] text-panel-text-3">{tx("Frame rate")}</span>
-          <FlatDropdown
+          <ExportSelect
             ariaLabel="Frame rate"
             value={String(fps)}
             options={[15, 24, 30, 60].map((value) => ({ value: String(value), label: `${value} fps` }))}
@@ -351,13 +358,12 @@ function FormatExportButton({
               persistRenderSettings(format, quality, v, resolution);
             }}
             disabled={exportBusy}
-            className={selectCls}
           />
         </div>
         {showQuality && (
           <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-[11px] text-panel-text-3">{tx("Quality")}</span>
-            <FlatDropdown
+            <ExportSelect
               ariaLabel="Quality"
               value={quality}
               options={QUALITY_OPTIONS.map(({ value, label }) => ({ value, label }))}
@@ -368,15 +374,12 @@ function FormatExportButton({
                 persistRenderSettings(format, v, fps, resolution);
               }}
               disabled={exportBusy}
-              className={selectCls}
             />
           </div>
         )}
       </div>
       <Button
-        variant="primary"
-        size="md"
-        loading={exportBusy}
+        disabled={exportBusy}
         onClick={() => {
           // loading already disables the button; this guard also stops a
           // double-click in the same frame from enqueueing two renders.
@@ -398,7 +401,7 @@ function FormatExportButton({
             onStartRender(format, quality, outputResolution, fps, outputSize, captureSize),
           ).finally(() => setIsStarting(false));
         }}
-        className="hf-export-button w-full text-xs font-medium"
+        className="w-full"
       >
         {tx(isRendering ? "Rendering…" : isStarting ? "Preparing…" : "Export")}
       </Button>
@@ -476,9 +479,9 @@ export const RenderQueue = memo(function RenderQueue({
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2" role="alert">
             <p className="text-[10px] text-red-400 text-center">{loadError}</p>
             {onRetryLoad && (
-              <Button size="sm" variant="secondary" onClick={onRetryLoad}>
+              <StudioButton size="sm" variant="secondary" onClick={onRetryLoad}>
                 {tx("Retry")}
-              </Button>
+              </StudioButton>
             )}
           </div>
         ) : jobs.length === 0 ? (

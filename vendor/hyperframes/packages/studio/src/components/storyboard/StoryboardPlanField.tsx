@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-const INPUT =
-  "w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-xs leading-5 text-[var(--hf-panel-text-0)] outline-none placeholder:text-[var(--hf-panel-text-4)] hover:border-[var(--hf-panel-border-input)] focus:border-studio-accent focus:bg-[var(--hf-panel-surface)]";
+import { Input, Textarea } from "@ipollowork/ui/controls";
+
+const INPUT = "w-full min-w-0";
 
 /** Preserve in-progress whitespace while the canonical Markdown draft updates. */
 export function StoryboardPlanField({
@@ -63,8 +64,8 @@ export function StoryboardPlanField({
     },
   };
   return multiline ? (
-    <textarea {...props} ref={textarea} rows={rows} className={`${INPUT} resize-none overflow-hidden`} />
+    <Textarea {...props} ref={textarea} rows={rows} className={`${INPUT} resize-none overflow-hidden`} />
   ) : (
-    <input {...props} />
+    <Input {...props} />
   );
 }

@@ -549,13 +549,13 @@ describe("Studio right panel layout", () => {
     expect(source).toContain('status === "selection-required" ? "error" : "success"');
     expect(toast).toContain('data-testid="studio-toast-surface"');
     expect(toast).toContain('data-tone={resolvedTone}');
-    expect(toast).toContain('rounded-xl border');
+    expect(toast).toContain('from "@ipollowork/ui/alert"');
     expect(toast).toContain('from "lucide-react"');
     expect(toast).toContain('LoaderCircle');
     expect(toast).toContain('CircleCheck');
     expect(toast).toContain('TriangleAlert');
-    expect(toast).toContain('var(--hf-toast-bg)');
-    expect(toast).toContain('var(--hf-toast-${resolvedTone})');
+    expect(toast).toContain('<Alert');
+    expect(toast).toContain('variant={isError ? "destructive" : resolvedTone === "success" ? "success" : "default"}');
     expect(source).not.toContain('setRightPanelTab("animation-properties")');
     expect(source).not.toContain("const showAnimationProperties =");
     expect(source).not.toContain('rightPanelTab === "catalog"');
@@ -578,8 +578,8 @@ describe("Studio right panel layout", () => {
 
   it("matches compact Tabs spacing without active shadows or borders", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
-    expect(header).toContain('gap-1 rounded-[10px] bg-[var(--hf-panel-input)] p-1');
-    expect(header.match(/h-6 rounded-md border-0 px-3 py-0 text-xs transition-\[background-color,color\]/g)).toHaveLength(3);
+    expect(header).toContain('from "@ipollowork/ui/tabs"');
+    expect(header.match(/<TabsTrigger value=/g)).toHaveLength(3);
     expect(header).not.toContain('h-[26px]');
   });
 
@@ -656,7 +656,7 @@ describe("Studio right panel layout", () => {
     expect(tabButton).toContain("text-current");
     expect(header).not.toContain('aria-disabled="true"');
     expect(header).toContain("onPreviewModeChange");
-    expect(header).toContain("aria-selected={!scriptMode && previewMode}");
+    expect(header).toContain('<TabsTrigger value="preview">');
     expect(app).toContain("previewOnly={previewMode}");
     expect(app).toContain("onToggleRecording: undefined");
     expect(app).toContain("const recordingToggle = undefined");
@@ -672,12 +672,12 @@ describe("Studio right panel layout", () => {
     expect(header).not.toContain('../icons/SystemIcons');
     expect(header).toContain('<SlidersHorizontal className="h-4 w-4 shrink-0" strokeWidth={1.75}');
     expect(header).toContain('<Download className="h-4 w-4 shrink-0" strokeWidth={1.75}');
-    expect(header).toContain('text-[var(--hf-panel-text-2)]');
+    expect(header).toContain('variant="ghost"');
     expect(header).not.toContain("hover:border-[var(--hf-panel-border-input)]");
-    const propertiesAction = header.match(/className=\{`hf-studio-header-action hf-studio-properties-action[\s\S]*?aria-label=/)?.[0];
+    const propertiesAction = header.match(/className="hf-studio-header-action hf-studio-properties-action"[\s\S]*?aria-label=/)?.[0];
     expect(propertiesAction).toBeDefined();
     expect(propertiesAction).not.toContain("border-[var(--hf-panel-border-input)]");
-    expect(header).toContain("hover:bg-[var(--hf-studio-header-hover)]");
+    expect(header).toContain('from "@ipollowork/ui/controls"');
     expect(header).toContain("hf-studio-header-export");
     expect(header).toContain("hf-studio-properties-action");
     expect(header).not.toContain("hf-studio-header-title-text");
@@ -689,10 +689,10 @@ describe("Studio right panel layout", () => {
     expect(header).toContain(
       'aria-label={isRendering ? t("header.rendering") : t("header.export")}',
     );
-    expect(styles).toContain(".hf-studio-header-export {");
+    expect(styles).not.toContain(".hf-studio-header-export {");
     expect(styles).toContain("--hf-header-primary-bg:");
-    expect(styles).toContain("background-color: var(--hf-header-primary-bg) !important;");
-    expect(styles).toContain("color: var(--hf-header-primary-text) !important;");
+    expect(header).toContain("<Button");
+    expect(header).toContain("<TabsList");
     expect(styles).toContain(".hf-studio-header-actions-divider {");
     expect(styles).toContain("@media (max-width: 720px)");
     expect(styles).toContain("width: 28px;");
@@ -725,7 +725,7 @@ describe("Studio right panel layout", () => {
     expect(header).toContain('<SlidersHorizontal className="h-4 w-4 shrink-0" strokeWidth={1.75}');
     expect(header).toContain('<Download className="h-4 w-4 shrink-0" strokeWidth={1.75}');
     expect(header).not.toContain("hover:border-[var(--hf-panel-border-input)]");
-    expect(header).toContain("hover:bg-[var(--hf-studio-header-hover)]");
+    expect(header).toContain('from "@ipollowork/ui/controls"');
   });
 
   it("keeps the empty property inspector off playback hot paths", () => {
@@ -1188,5 +1188,23 @@ describe("Studio right panel layout", () => {
     expect(assets).not.toContain(">Import<");
     expect(i18n).toContain('Import: "导入"');
     expect(i18n).toContain('"Drop files to upload": "拖入文件以上传"');
+  });
+
+  it("keeps header actions right aligned and domain accordions independent", () => {
+    const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+    const primitives = readFileSync(new URL("./editor/propertyPanelFlatPrimitives.tsx", import.meta.url), "utf8");
+    const blocks = readFileSync(new URL("./sidebar/BlocksTab.tsx", import.meta.url), "utf8");
+    expect(header).toContain('hf-studio-header-actions ml-auto flex min-w-0 items-center');
+    expect(primitives).not.toContain('@ipollowork/ui/controls');
+    expect(blocks).toContain('DropdownMenuTrigger');
+    expect(blocks).not.toContain('FlatDropdown');
+  });
+
+  it("keeps component, animation and asset search headers at the same spacing", () => {
+    for (const file of ["BlocksTab", "AnimationTemplatesTab", "AssetsTab"]) {
+      const source = readFileSync(new URL(`./sidebar/${file}.tsx`, import.meta.url), "utf8");
+      expect(source).toContain("border-b border-panel-border px-4 py-3");
+      expect(source).toContain("<SearchInput");
+    }
   });
 });

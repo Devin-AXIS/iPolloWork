@@ -392,7 +392,7 @@ export const AssetsTab = memo(function AssetsTab({
         </div>
       )}
       {/* Search and import share the same compact row. */}
-      <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[15px] pt-3">
+      <div className="flex-shrink-0 border-b border-panel-border px-4 py-3">
         <div className="flex h-8 items-center gap-2">
             <SearchInput
               value={searchQuery}
