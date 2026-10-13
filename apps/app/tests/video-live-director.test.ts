@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createiPolloWorkServerClient, type iPolloWorkExtensionActionCall } from "../src/app/lib/ipollowork-server";
-import { createVideoLiveDirector, readVideoJevAdvice, publishVideoOpeningBeforePrompt } from "../src/react-app/domains/session/video/video-live-director";
+import { createVideoLiveDirector, readVideoJevAdvice } from "../src/react-app/domains/session/video/video-live-director";
 import type { ConversationPromptPart } from "../src/react-app/domains/session/engine/conversation-engine";
 import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
 
@@ -15,7 +15,6 @@ function provider(evaluate: (call: iPolloWorkExtensionActionCall) => Response | 
   const mock = spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
     const call: iPolloWorkExtensionActionCall = JSON.parse(String(init?.body));
     calls.push(call);
-    if (call.action === "video_live_direction") return Response.json({ ok: true, result: { output: { directionRevision: 1 } } });
     return call.action === "status" ? ok("status", { configured }) : evaluate(call);
   });
   restorers.push(() => mock.mockRestore());
@@ -25,73 +24,17 @@ function preview(duration = 4, id = "live-run"): VideoLivePreviewMessage {
 }
 const parts = (text: string): ConversationPromptPart[] => [{ type: "text", text }];
 
-describe("Host opening before the main agent", () => {
-  const input = { prompt: "给我生成一个介绍ipollowork的视频", generationId: "host-run", templateId: "ipollowork.delivery.video" };
-  test("publishes the actual requested subject through the server without asking a model", async () => {
-    provider(call => Response.json({ ok: true, result: { output: { generationId: "host-run", openingDuration: 4, sourcePath: "video/video-session/index.html" } } }));
-    const contextText = await publishVideoOpeningBeforePrompt(client, context, input);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ extensionId: "media", action: "video_live_opening", context,
-      args: { sourcePath: "video/video-session/index.html", generationId: "host-run", title: "ipollowork", supporting: "主题介绍", duration: 4 } });
-    expect(contextText).toContain("ALREADY published");
-    expect(contextText).toContain("voiceover: none");
-    expect(contextText).toContain("whole-film narration/music still apply");
-  });
-  test("preserves explicit media, selected templates, existing content and review-only scope", async () => {
-    provider(() => { throw new Error("must not publish"); });
-    for (const prompt of ["先给我看介绍ipollowork的视频分镜", `${input.prompt}，第一幕用流程图`, `${input.prompt}，带配音`, `${input.prompt}，不要片头`, "生成一个3秒介绍ipollowork的视频", `${input.prompt}，参考 https://example.com`]) {
-      expect(await publishVideoOpeningBeforePrompt(client, context, { ...input, prompt })).toBe("");
-    }
-    expect(await publishVideoOpeningBeforePrompt(client, context, { ...input, templateId: "selected-template" })).toBe("");
-    expect(calls).toHaveLength(0);
-    restorers.splice(0).forEach(restore => restore());
-    provider(() => Response.json({ ok: false, code: "video_opening_source_changed", message: "Edited source" }, { status: 409 }));
-    expect(await publishVideoOpeningBeforePrompt(client, context, input)).toBe("");
-    expect(calls).toHaveLength(1);
-  });
-  test("bounds unavailable services and respects cancellation without retrying writes", async () => {
-    provider(() => new Promise<Response>(() => {}));
-    const cancelled = new AbortController(); cancelled.abort();
-    expect(await publishVideoOpeningBeforePrompt(client, context, input, cancelled.signal)).toBe("");
-    expect(calls).toHaveLength(0);
-    const start = performance.now();
-    expect(await publishVideoOpeningBeforePrompt(client, context, input)).toBe("");
-    expect(performance.now() - start).toBeLessThan(3000);
-    expect(calls).toHaveLength(1);
-  });
-});
-
 describe("Jev video direction routing", () => {
-  test("invalidates the displayed artifact before optional advice and passes its revision to native steering", async () => {
-    let releaseAdvice: ((response: Response) => void) | undefined;
-    provider(() => new Promise<Response>(resolve => { releaseAdvice = resolve; }));
-    const sent: ConversationPromptPart[][] = [];
-    const director = createVideoLiveDirector({ client, context: { ...context, sessionId: "parent-conversation" }, send: async parts => { sent.push(parts); } });
-    const task = director.steer(parts("后面展示案例"), () => preview());
-    for (let attempt = 0; !calls.some(call => call.action === "video_live_direction") && attempt < 20; attempt++) await Bun.sleep(5);
-    expect(calls.find(call => call.action === "video_live_direction")?.args).toMatchObject({ sourcePath: "video/video-session/index.html", generationId: "live-run" });
-    expect(sent).toHaveLength(0);
-    releaseAdvice?.(ok("evaluate", { answers: { route: choice("content") } }));
-    expect(await task).toBe(true);
-    expect(JSON.stringify(sent)).toContain("directionRevision:1");
-  });
-
-  test("chooses an opening with one evaluation and sends only bounded request context", async () => {
-    provider(() => ok("evaluate", { answers: { route: choice("typography") }, explanation: "untrusted arbitrary output" }));
-    const advice = await readVideoJevAdvice(client, context, { phase: "opening", prompt: "做一个产品介绍视频" });
-    expect(advice).toContain("editable typography");
+  test("classifies guidance without selecting or simplifying the opening", async () => {
+    provider(() => ok("evaluate", { answers: { route: choice("content") }, explanation: "untrusted arbitrary output" }));
+    const advice = await readVideoJevAdvice(client, context, { phase: "steering", prompt: "做一个产品介绍视频" });
+    expect(advice).toContain("requested text, narrative or media");
     expect(advice).not.toContain("untrusted arbitrary output");
     expect(calls.map(call => call.action)).toEqual(["status", "evaluate"]);
     expect(calls[1].context).toEqual(context);
-    expect(calls[1].args?.state).toEqual({ phase: "opening", request: "做一个产品介绍视频" });
+    expect(calls[1].args?.state).toEqual({ phase: "steering", request: "做一个产品介绍视频" });
     expect(JSON.stringify(calls[1].args)).not.toContain("host-test-token");
     expect(JSON.stringify(calls[1].args)).not.toContain("video-workspace");
-  });
-
-  test("offers a template only when one was actually selected", async () => {
-    provider(() => ok("evaluate", { answers: { route: choice("template") } }));
-    expect(await readVideoJevAdvice(client, context, { phase: "opening", prompt: "生成视频" })).toBe("");
-    expect(await readVideoJevAdvice(client, context, { phase: "opening", prompt: "生成视频", templateTitle: "产品介绍" })).toContain("selected template's existing opening");
   });
 
   test.each(["parameters", "content", "structure"])("maps %s to a bounded production instruction", async route => {
@@ -135,16 +78,16 @@ describe("Jev video direction routing", () => {
 
   test("skips oversized text, absent clients, and attachment contents", async () => {
     provider(() => { throw new Error("must not evaluate"); });
-    expect(await readVideoJevAdvice(client, context, { phase: "opening", prompt: "x".repeat(4_001) })).toBe("");
-    expect(await readVideoJevAdvice(null, context, { phase: "opening", prompt: "生成视频" })).toBe("");
+    expect(await readVideoJevAdvice(client, context, { phase: "steering", prompt: "x".repeat(4_001) })).toBe("");
+    expect(await readVideoJevAdvice(null, context, { phase: "steering", prompt: "生成视频" })).toBe("");
     const sent: ConversationPromptPart[][] = [];
     const director = createVideoLiveDirector({ client, context, send: async input => { sent.push(input); } });
     await director.steer([...parts("参考这个文件"), { type: "file", mime: "text/plain", url: "file:///private.txt" }], () => preview());
-    expect(calls.filter(call => call.extensionId === "jev-decision-model")).toHaveLength(0);
-    expect(sent[0]).toHaveLength(4);
+    expect(calls).toHaveLength(0);
+    expect(sent[0]).toHaveLength(3);
     await director.steer([...parts("参考这个文件"), { type: "text", text: "private file contents", synthetic: true }], () => preview());
     await director.steer(parts("pasted private contents"), () => preview(), null);
-    expect(calls.filter(call => call.extensionId === "jev-decision-model")).toHaveLength(0);
+    expect(calls).toHaveLength(0);
   });
 
   test("reads the latest publication after Jev returns instead of freezing an obsolete prefix", async () => {
@@ -192,7 +135,7 @@ describe("Jev video direction routing", () => {
     const director = createVideoLiveDirector({ client, context, send: async () => {} });
     await director.steer(parts("后面改成蓝色"), () => current);
     await director.steer(parts("再慢一点"), () => current);
-    expect(calls.filter(call => call.action === "evaluate")[1].args?.state).toEqual({ phase: "steering", request: "再慢一点", previous_direction: "后面改成蓝色" });
+    expect(calls[3].args?.state).toEqual({ phase: "steering", request: "再慢一点", previous_direction: "后面改成蓝色" });
     current = preview(4, "new-run");
     await director.steer(parts("生成新故事"), () => current);
     expect(JSON.stringify(calls.at(-1)?.args?.state)).not.toContain("previous_direction");

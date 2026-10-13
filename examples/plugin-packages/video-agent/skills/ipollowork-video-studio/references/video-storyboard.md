@@ -1,7 +1,5 @@
 # iPolloWork Video Storyboard
 
-Live finished-video exception: publish the first complete scene from a concise outline before completing the whole storyboard. Extend the saved native storyboard as production advances, keeping published scenes fixed. The complete-storyboard-first rule below still applies to script-only/review work and ordinary non-live production.
-
 Read for script, source coverage or narrative changes. Input is the confirmed brief/source and latest native storyboard; inspect the current entry only when existing frame identities, visible content or implementation constrain the requested change. Script-only work stops at the saved storyboard. Shared session boundaries are in [video.md](video.md); this phase does not load assembly, speech, soundtrack or final-render guides.
 
 ## Plan content and storyboard

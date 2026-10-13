@@ -1,8 +1,8 @@
 # Progressive video generation
 
-The user approved this journey and its continued first-segment and pipeline optimization: play each generated segment immediately and guide the remaining content while generation continues. Opening and subsequent scenes use production host assemblers; direction revisions use the production publication guard. Later scene copy and Jev provider responses are simulated. Playback, the Jev client and decision core, routing, and native instruction dispatch use production code. Concurrent speech, ordered release, incremental SSE and cancellation are independently covered by Media Center tests with simulated audio. This does not benchmark real model latency or judgment accuracy. The Node runner requires the server build (`pnpm --filter ipollowork-server build`); Bun can use source directly.
+The user approved progressive playback and mid-generation guidance, then explicitly requested restoration of all quality-reducing shortcuts. Normal storyboard, visual design, media, narration and acceptance stages are retained. This proof uses authored scene fixtures to validate production playback, the Jev client/decision core and native steering; scene production and Jev provider responses are simulated. It does not measure real generation latency or certify the visual quality of model-generated films. Incremental speech streaming is covered independently by Media Center tests.
 
-1. 输入介绍视频的主题，工作台先直接发布可播放的文字开场，模型继续生成后续场景。
+1. 完成正常分镜和视觉规划后，第一段完整场景就绪即播放，后续场景继续制作。
 
 2. 播到已生成内容的末尾时保留最后画面，下一段就绪后从原位置自动续播。
 

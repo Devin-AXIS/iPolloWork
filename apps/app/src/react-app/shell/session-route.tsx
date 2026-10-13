@@ -148,7 +148,7 @@ import {
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
 import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
-import { createVideoLiveDirector, readVideoJevAdvice, publishVideoOpeningBeforePrompt } from "@/react-app/domains/session/video/video-live-director";
+import { createVideoLiveDirector } from "@/react-app/domains/session/video/video-live-director";
 import { useUiStateStore } from "./ui-state-store";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
@@ -1780,12 +1780,7 @@ export function SessionRoute() {
           || draft.capability?.id === "video-storyboard-regeneration");
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
           const liveGenerationId = liveVideoRequest ? crypto.randomUUID() : undefined;
-          const plainVideoRequest = draft.attachments.length === 0 && draft.parts.every(part => part.type === "text" && !part.synthetic);
-          const publishedOpeningTask = liveGenerationId && selectedWorkspaceEndpoint && plainVideoRequest
-            ? publishVideoOpeningBeforePrompt(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
-                { prompt: draft.text, generationId: liveGenerationId, templateId: template?.manifest.id }, dispatchSignal)
-            : Promise.resolve("");
-          const [voiceover, originalBriefText, publishedOpening] = await Promise.all([
+          const [voiceover, originalBriefText] = await Promise.all([
             selectedWorkspaceEndpoint ? readVideoVoiceoverAvailability(
               selectedWorkspaceEndpoint.client,
               selectedWorkspaceEndpoint.workspaceId,
@@ -1793,12 +1788,7 @@ export function SessionRoute() {
               selectedWorkspaceRoot,
             ) : Promise.resolve({ configured: false, enabled: false }),
             selectedWorkspaceEndpoint ? readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId)) : Promise.resolve(undefined),
-            publishedOpeningTask,
           ]);
-          const openingAdvice = !publishedOpening && liveVideoRequest && selectedWorkspaceEndpoint && plainVideoRequest
-            ? await readVideoJevAdvice(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
-                { phase: "opening", prompt: draft.text, templateTitle: template?.manifest.title }, dispatchSignal)
-            : "";
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
             capabilityId: draft.capability?.id,
             promptText: videoPromptText,
@@ -1818,10 +1808,9 @@ export function SessionRoute() {
               deliveryRequirements: videoDeliveryRequirements,
               requireStoryboardReview: requiresStoryboardReview,
               ...(liveGenerationId ? { liveGenerationId } : {}),
-              hostOpeningPublished: Boolean(publishedOpening),
             },
           );
-          return [publishedOpening, systemContext, ...(publishedOpening ? [] : [openingAdvice])].filter(Boolean).join("\n\n");
+          return systemContext;
         }));
         const designSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "design");
         const designSystemContexts = designSessionTemplates.map((template) => designHtmlThemeSystemContext({

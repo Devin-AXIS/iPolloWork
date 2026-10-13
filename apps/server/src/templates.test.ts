@@ -11,9 +11,6 @@ import { deflateRawSync } from "node:zlib";
 import { IPOLLOWORK_PACKAGE_EXTENSION, MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, TEMPLATE_TOPIC_OPTIONS, getTemplateTopic, matchesTemplateFilters, templateManifestV1Schema, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { isCustomerVisibleBundledTemplate, adoptLegacyVideoSession, createTemplateAuthoringSession, exportLocalTemplatePackage, exportTemplateFromSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
-import { publishVideoLiveOpening } from "./templates.js";
-import { checkVideoComponents } from "./extensions/video-components.js";
-import { callMediaExtensionAction, MEDIA_EXTENSION_ACTIONS } from "./extensions/media-center.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -1203,55 +1200,6 @@ describe("template installations", () => {
     expect(video.state.entry).toBe("video/delivery_video/index.html");
     expect((await readTemplateSession(serverConfig, ws, slides.sessionId)).authoring).toBe(false);
     expect((await readTemplateSession(serverConfig, ws, video.sessionId)).authoring).toBe(false);
-  });
-
-  test("publishes a validated local opening once, escaping copy and preserving later edits", async () => {
-    const root = await mkdtemp(join(tmpdir(), "ipw-live-opening-"));
-    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
-    const serverConfig = config(root), ws = workspace(root, "alpha");
-    const created = await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "live_opening", category: "video", purpose: "artifact-delivery" });
-    const input = { sourcePath: created.state.entry, generationId: 'run-"<&', title: '创意 <script> & "', supporting: "一个想法，开始流动", duration: 4 };
-    const started = performance.now();
-    expect(MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_live_opening")).toMatchObject({ effect: "write" });
-    serverConfig.workspaces = [ws];
-    expect(await callMediaExtensionAction(serverConfig, { read: async () => ({}) }, "video_live_opening", input, { workspaceId: ws.id, sessionId: "live_opening" }))
-      .toMatchObject({ result: { output: { reused: false, openingDuration: 4 } } });
-    console.info(`Local opening publication: ${(performance.now() - started).toFixed(1)}ms`);
-    const html = await readFile(join(ws.path, input.sourcePath), "utf8");
-    expect(html).toContain('data-ipw-live-status="generating"');
-    expect(html).toContain('data-duration="4"');
-    expect(html).toContain('创意 &lt;script&gt; &amp; &quot;');
-    expect(html).not.toContain('创意 <script>');
-    expect(html).not.toContain('Reusable motion system');
-    expect(html).toContain('.fromTo("#live-opening"');
-    expect(html).not.toContain('.fromTo(".scene"');
-    expect(html).not.toContain('.to("#live-opening", { opacity: 0');
-    expect(await checkVideoComponents(ws, { sourcePath: input.sourcePath })).toMatchObject({ valid: true, sceneCount: 1 });
-    await writeFile(join(ws.path, input.sourcePath), html.replace('data-composition-id="main"', 'data-composition-id="main" data-ipw-recipe-policy="recipe-first"'));
-    expect(await checkVideoComponents(ws, { sourcePath: input.sourcePath })).toMatchObject({ valid: true });
-    expect(await validateTemplatePackageDirectory(dirname(join(ws.path, input.sourcePath)))).toMatchObject({ ready: true });
-    const edited = html.replace('data-duration="4"', 'data-duration="8"') + "<!-- later user scene -->";
-    await writeFile(join(ws.path, input.sourcePath), edited);
-    expect(await publishVideoLiveOpening(serverConfig, ws, input)).toMatchObject({ reused: true });
-    await expect(publishVideoLiveOpening(serverConfig, ws, { ...input, title: "另一个开场" })).rejects.toMatchObject({ code: "video_opening_source_changed" });
-    expect(await readFile(join(ws.path, input.sourcePath), "utf8")).toBe(edited);
-    await expect(publishVideoLiveOpening({ ...serverConfig, readOnly: true }, ws, input)).rejects.toMatchObject({ code: "read_only" });
-    await expect(publishVideoLiveOpening(serverConfig, ws, { ...input, sourcePath: "video/../other/index.html" })).rejects.toThrow();
-  });
-
-  test("fast opening rejects edited scaffolds and unavailable local assets", async () => {
-    const root = await mkdtemp(join(tmpdir(), "ipw-live-opening-guard-"));
-    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
-    const serverConfig = config(root), ws = workspace(root, "alpha");
-    const created = await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "live_guard", category: "video", purpose: "artifact-delivery" });
-    const input = { sourcePath: created.state.entry, generationId: "run", title: "测试", supporting: "保持已有内容" };
-    const path = join(ws.path, input.sourcePath), original = await readFile(path, "utf8");
-    await writeFile(path, original + "<!-- user edit -->");
-    await expect(publishVideoLiveOpening(serverConfig, ws, input)).rejects.toMatchObject({ code: "video_opening_source_changed" });
-    await writeFile(path, original);
-    await rm(join(dirname(path), "assets", "gsap.min.js"));
-    await expect(publishVideoLiveOpening(serverConfig, ws, input)).rejects.toThrow();
-    expect(await readFile(path, "utf8")).toBe(original);
   });
 
   test("initializes native PPT and HyperFrames authoring contracts without changing session paths", async () => {

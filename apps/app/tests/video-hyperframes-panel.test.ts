@@ -36,20 +36,15 @@ const videoAuthoringGuidance = [
 ].map(path => readFileSync(new URL(`../../../examples/plugin-packages/video-agent/skills/${path}`, import.meta.url), "utf8")).join("\n");
 
 describe("HyperFrames Video Studio", () => {
-  test("publishes complete short scenes before whole-film work without changing review-only requests", () => {
+  test("keeps full production quality while publishing complete scenes progressively", () => {
     const contract = videoTaskSystemContext("live", undefined, null, { liveGenerationId: "generation-1" });
+    expect(contract).toContain("Complete the whole-film storyboard and visual direction before publishing the first scene");
+    expect(contract).toContain("Keep the planned opening, scene lengths, motion audition, layouts, transitions, media, narration, captions and music");
+    expect(contract).toContain("Publish each complete scene only after its required local checks");
+    expect(contract).toContain("earlier scenes, timing and audio may be refined");
     expect(contract).toContain('data-ipw-live-id="generation-1"');
-    expect(contract).toContain("one complete 3–6 second scene FIRST");
-    expect(contract).toContain("ONLY the complete playable prefix");
-    expect(contract).toContain("direct mid-generation feedback changes only unpublished content");
-    expect(contract).toContain("media/video_live_opening");
-    expect(contract.indexOf("FIRST PLAYABLE SCENE")).toBeLessThan(contract.indexOf("Read ipollowork-video-studio"));
-    expect(contract).toContain("never reset the file to force this tool");
-    expect(videoTaskSystemContext("review", undefined, null, { liveGenerationId: "generation-1", requireStoryboardReview: true })).not.toContain("media/video_live_opening");
-    const published = videoTaskSystemContext("child-artifact-video", undefined, null, { liveGenerationId: "generation-1", hostOpeningPublished: true });
-    expect(published).toContain("already published");
-    expect(published).toContain("next complete scene at 4s FIRST");
-    expect(published).not.toContain("media/video_live_opening");
+    expect(contract).not.toContain("media/video_live_");
+    expect(contract).not.toContain("3–6 second scene FIRST");
     expect(videoTaskSystemContext("review", undefined, null, { liveGenerationId: "generation-1", requireStoryboardReview: true })).not.toContain('data-ipw-live-id="generation-1"');
   });
   test("validates playable publications and attaches a bounded prefix to steering", () => {

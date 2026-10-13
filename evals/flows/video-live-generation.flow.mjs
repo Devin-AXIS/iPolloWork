@@ -1,6 +1,5 @@
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, readFile, writeFile, rename, copyFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, writeFile, rename, copyFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
@@ -11,42 +10,18 @@ const project = fileURLToPath(new URL("../../vendor/hyperframes/packages/studio/
 let fixture;
 const publications = [];
 const jevCalls = [];
-const pipelineCalls = [];
 let jevEnabled = true;
-let opening = "";
-let openingPublicationMs = null;
 function composition(count, complete, cases) {
   const scenes = Array.from({ length: count }, (_, index) => {
     const title = index === 0 ? "让创意开始流动" : index === 1 ? "从一个想法，到一个视频" : cases ? "使用案例 · 产品发布" : "更多产品功能";
     return `<section id="scene-${index + 1}" class="clip" data-start="${index * 4}" data-duration="4"><small>IPOLLOWORK / ${String(index + 1).padStart(2, "0")}</small><h1 class="headline">${title}</h1><p>${index > 1 && cases ? "你的新指令，正在改变后续内容。" : "每一个完成的场景，都立即成为可以播放的内容。"}</p><div class="bar"></div></section>`;
   });
-  if (opening) {
-    const laterScenes = scenes.slice(1).map(scene => scene.replace('class="clip"', 'class="clip proof-scene"'));
-    const animation = laterScenes.map((_, index) => `timeline.fromTo("#scene-${index + 2} .headline",{opacity:0,y:36},{opacity:1,y:0,duration:.7},${(index + 1) * 4});timeline.fromTo("#scene-${index + 2} .bar",{scaleX:0,transformOrigin:"left"},{scaleX:1,duration:4,ease:"none"},${(index + 1) * 4});`).join("");
-    return opening.replace('data-duration="4"', `data-duration="${count * 4}"`)
-      .replace('data-ipw-live-status="generating"', `data-ipw-live-status="${complete ? "complete" : "generating"}"`)
-      .replace("</head>", '<style>.proof-scene{position:absolute;inset:0;padding:180px 135px;background:#10181f}.proof-scene small{color:#65c8ca;font-size:36px}.proof-scene h1{font-size:102px;line-height:1.2;margin:96px 0 48px}.proof-scene p{font-size:42px;color:#adc1ce}.proof-scene .bar{height:9px;width:1650px;background:#65c8ca;margin-top:100px}</style></head>')
-      .replace("</main>", `${laterScenes.join("")}</main>`)
-      .replace("window.__timelines.main = timeline;", `${animation}window.__timelines.main = timeline;`);
-  }
   return `<!doctype html><html><head><meta charset="utf-8"><title>Live video proof</title><script src="assets/gsap.min.js"></script><style>body{margin:0;background:#10181f;color:#f2f5f7;font-family:Arial,sans-serif}main{width:1280px;height:720px;position:relative;overflow:hidden}.clip{position:absolute;inset:0;box-sizing:border-box;padding:120px 90px;background:#10181f}small{color:#65c8ca;letter-spacing:5px;font-size:24px}h1{font-size:68px;line-height:1.4;margin:65px 0 32px}p{font-size:28px;color:#adc1ce}.bar{position:absolute;bottom:90px;left:90px;height:6px;width:1100px;background:#65c8ca}</style></head><body><main data-composition-id="live" data-width="1280" data-height="720" data-duration="${count * 4 || 1}" ${count ? `data-ipw-live-id="proof-run" data-ipw-live-status="${complete ? "complete" : "generating"}"` : ""}>${scenes.join("")}</main><script>const timeline=gsap.timeline({paused:true});${scenes.map((_, index) => `timeline.fromTo("#scene-${index + 1} .headline",{opacity:0,y:36},{opacity:1,y:0,duration:.7},${index * 4});timeline.fromTo("#scene-${index + 1} .bar",{scaleX:0,transformOrigin:"left"},{scaleX:1,duration:4,ease:"none"},${index * 4});`).join("")}timeline.to({}, {duration:.001},${count * 4 || 1}-.001);window.__timelines=window.__timelines||{};window.__timelines.live=timeline;</script></body></html>`;
 }
 export async function startFixture() {
   publications.length = 0;
   jevCalls.length = 0;
-  pipelineCalls.length = 0;
   jevEnabled = true;
-  opening = "";
-  openingPublicationMs = null;
-  // Bun uses the source; the ordinary Node runner uses the owning server build.
-  const host = await import(process.versions.bun ? "../../apps/server/src/templates.ts" : "../../apps/server/dist/templates.js");
-  const media = await import(process.versions.bun ? "../../apps/server/src/extensions/media-center.ts" : "../../apps/server/dist/extensions/media-center.js");
-  const workspaceRoot = await mkdtemp(join(tmpdir(), "ipw-live-proof-"));
-  process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
-  const workspace = { id: "proof", name: "Proof", path: workspaceRoot, preset: "default", workspaceType: "local" };
-  const config = { host: "127.0.0.1", port: 0, token: "proof", hostToken: "proof-host", approval: { mode: "auto", timeoutMs: 1000 }, corsOrigins: [], workspaces: [workspace], authorizedRoots: [workspaceRoot], readOnly: false, startedAt: Date.now(), tokenSource: "env", hostTokenSource: "env", logFormat: "pretty", logRequests: false };
-  await host.createTemplateAuthoringSession(config, workspace, { sessionId: "live-proof", category: "video", purpose: "artifact-delivery" });
-  const sourcePath = "video/live-proof/index.html";
   const jev = createJevActions({ getApiKey: async () => jevEnabled ? "isolated-proof-key" : null,
     fetcher: async (_url, init) => {
       const input = JSON.parse(init.body);
@@ -61,7 +36,6 @@ export async function startFixture() {
   });
   await mkdir(join(project, "assets"), { recursive: true });
   await copyFile(fileURLToPath(new URL("../../vendor/hyperframes/packages/studio/node_modules/gsap/dist/gsap.min.js", import.meta.url)), join(project, "assets/gsap.min.js"));
-  await copyFile(join(workspaceRoot, "video/live-proof/design-tokens.css"), join(project, "design-tokens.css"));
   await writeFile(join(project, "index.html"), composition(0, false, false));
   fixture = createServer(async (request, response) => {
     response.setHeader("Access-Control-Allow-Origin", request.headers.origin === "http://localhost:5178" ? "http://localhost:5178" : "http://127.0.0.1:5178");
@@ -70,31 +44,13 @@ export async function startFixture() {
     if (request.method === "OPTIONS") { response.end(); return; }
     try {
       if (request.url === "/source" && request.method === "GET") { response.end(await readFile(join(project, "index.html"))); return; }
-      if (request.url === "/evidence" && request.method === "GET") { response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ jevCalls, pipelineCalls, publications: publications.length, openingPublicationMs, hostOpening: opening.includes('data-ipw-live-opening="') })); return; }
+      if (request.url === "/evidence" && request.method === "GET") { response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ jevCalls, publications: publications.length })); return; }
       if (!["/publish", "/jev-mode", "/experimental/extensions/call"].includes(request.url) || request.method !== "POST") { response.writeHead(404).end(); return; }
       let body = "";
       for await (const chunk of request) { body += chunk; if (body.length > 16000) throw new Error("Fixture request too large"); }
       const input = JSON.parse(body);
       if (request.url === "/jev-mode") { jevEnabled = input.enabled === true; response.end(JSON.stringify({ ok: true })); return; }
       if (request.url === "/experimental/extensions/call") {
-        if (input.extensionId === "media" && input.action === "video_live_direction" && input.context?.workspaceId === "proof") {
-          const result = await media.callMediaExtensionAction(config, { read: async () => ({}) }, input.action, input.args, input.context);
-          const source = await readFile(join(workspaceRoot, sourcePath), "utf8");
-          await writeFile(join(project, ".publication.html"), source);
-          await rename(join(project, ".publication.html"), join(project, "index.html"));
-          response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(result)); return;
-        }
-        if (input.extensionId === "media" && input.action === "video_live_opening"
-          && input.context?.workspaceId === "proof" && input.context?.sessionId === "live-proof") {
-          const start = performance.now();
-          const output = await host.publishVideoLiveOpening(config, workspace, input.args);
-          openingPublicationMs = performance.now() - start;
-          opening = await readFile(join(workspaceRoot, sourcePath), "utf8");
-          await writeFile(join(project, ".publication.html"), opening);
-          await rename(join(project, ".publication.html"), join(project, "index.html"));
-          response.setHeader("Content-Type", "application/json");
-          response.end(JSON.stringify({ ok: true, extensionId: "media", action: input.action, result: { output } })); return;
-        }
         if (input.extensionId !== "jev-decision-model" || !["status", "evaluate"].includes(input.action)
           || input.context?.workspaceId !== "proof" || input.context?.sessionId !== "live-proof") throw new Error("Unexpected decision call");
         const result = await jev.actions[input.action](input.args ?? {});
@@ -102,27 +58,7 @@ export async function startFixture() {
         response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ ok: true, extensionId: input.extensionId, action: input.action, result })); return;
       }
       if (!Number.isInteger(input.count) || input.count < 1 || input.count > 4 || input.count !== publications.length + 1) throw new Error("Invalid publication");
-      if (input.count === 1 && !opening) {
-        const start = performance.now();
-        await host.publishVideoLiveOpening(config, workspace, { sourcePath, generationId: "proof-run", title: "让创意开始流动", supporting: "每个完成的场景，都立即成为可以播放的内容。", duration: 4 });
-        openingPublicationMs = performance.now() - start;
-        opening = await readFile(join(workspaceRoot, sourcePath), "utf8");
-      }
-      if (input.count > 1) {
-        const current = await readFile(join(workspaceRoot, sourcePath), "utf8");
-        const directionRevision = Number(current.match(/data-ipw-live-direction="(\d+)"/)?.[1] ?? 0);
-        const result = await media.callMediaExtensionAction(config, { read: async () => ({}) }, "video_live_scenes", {
-          sourcePath, generationId: "proof-run", directionRevision, expectedReadyDuration: (input.count - 1) * 4,
-          scenes: [{ sceneId: `scene-${input.count}`, title: input.count === 2 ? "从一个想法，到一个视频" : input.cases ? "使用案例 · 产品发布" : "更多产品功能",
-            supporting: input.cases ? "你的新指令，正在改变后续内容。" : "每一个完成的场景，都立即成为可以播放的内容。", duration: 4 }],
-        }, { workspaceId: "proof", sessionId: "live-proof" });
-        pipelineCalls.push(result.result.output);
-      }
-      let source = await readFile(join(workspaceRoot, sourcePath), "utf8");
-      if (input.complete === true) {
-        source = source.replace('data-ipw-live-status="generating"', 'data-ipw-live-status="complete"');
-        await writeFile(join(workspaceRoot, sourcePath), source);
-      }
+      const source = composition(input.count, input.complete === true, input.cases === true);
       await writeFile(join(project, ".publication.html"), source);
       await rename(join(project, ".publication.html"), join(project, "index.html"));
       publications.push({ ...input, source });
@@ -156,9 +92,7 @@ export default {
           await ctx.trustedClick('[data-testid="publish-scene"]');
           await ctx.waitFor("window.liveVideoProof.preview?.generation?.readyDuration === 4 && window.liveVideoProof.preview.playhead > .2 && window.liveVideoProof.preview.playhead < 4", { timeoutMs: 30000 });
         }, assert: async () => {
-          ctx.assert(await ctx.eval("window.liveVideoProof.preview.generation.status === 'generating' && window.liveVideoProof.publications === 1 && window.liveVideoProof.openingAdvice.includes('ALREADY published')"), "The app publishes the host opening before any model-produced scene");
-          const evidence = await fetch("http://127.0.0.1:5397/evidence").then(response => response.json());
-          ctx.assert(evidence.hostOpening && evidence.openingPublicationMs !== null, "The actual host assembler published the first scene");
+          ctx.assert(await ctx.eval("window.liveVideoProof.preview.generation.status === 'generating' && window.liveVideoProof.publications === 1"), "A fully authored scene plays while later scene production continues");
         }, screenshot: { name: "first-scene-playing", requireText: ["边生成边播放", "已生成 4 秒"] } });
     } },
     { name: "Buffer then resume at the previous boundary", run: async ctx => {
@@ -173,7 +107,7 @@ export default {
         }, screenshot: { name: "second-scene-resumed", requireText: ["已生成 8 秒"] } });
     } },
     { name: "Guide the current native generation task", run: async ctx => {
-      await ctx.prove("A typed direction reaches turn/steer with the frozen prefix and changes the next scene", { voiceover: voiceover[2],
+      await ctx.prove("A typed direction reaches turn/steer with the current playable prefix and changes the next scene", { voiceover: voiceover[2],
         action: async () => {
           await ctx.fill('[contenteditable="true"]', "后面改成使用案例");
           await ctx.trustedClick('[aria-label="引导后续视频"]');
@@ -202,7 +136,7 @@ export default {
         }, assert: async () => {
           const request = await ctx.eval("window.liveVideoProof.requests.filter(request => request.method === 'turn/steer').at(-1)");
           ctx.assert(request.payload.expectedTurnId === "live-turn" && JSON.stringify(request).includes("published through 12.00s") && !JSON.stringify(request).includes("Jev production advice"), "Fallback preserves raw direction and current published boundary");
-          ctx.assert(jevCalls.filter(call => call.action === "evaluate").length === 1 && jevCalls.at(-1).result.configured === false, "Unconfigured Jev never calls inference; a host opening does not require Jev");
+          ctx.assert(jevCalls.filter(call => call.action === "evaluate").length === 1 && jevCalls.at(-1).result.configured === false, "Unconfigured Jev never calls inference");
         }, screenshot: { name: "jev-unavailable-steering", requireText: ["已引导后续内容：结尾保留案例，再慢一点", "已生成 12 秒"] } });
     } },
     { name: "Preserve manual pause through the final publication", run: async ctx => {

@@ -8,45 +8,6 @@ export const videoLiveGenerationSchema = z.object({
 });
 export type VideoLiveGeneration = z.infer<typeof videoLiveGenerationSchema>;
 
-/** Host-owned text opening; publication is restricted to an untouched video scaffold. */
-export const videoLiveOpeningInputSchema = z.object({
-  sourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/),
-  generationId: videoLiveGenerationSchema.shape.id,
-  title: z.string().trim().min(1).max(32),
-  supporting: z.string().trim().min(1).max(56),
-  duration: z.number().min(4).max(6).default(4),
-}).strict();
-export type VideoLiveOpeningInput = z.infer<typeof videoLiveOpeningInputSchema>;
-
-export const videoLiveDirectionInputSchema = videoLiveOpeningInputSchema.pick({ sourcePath: true, generationId: true })
-  .extend({ directionId: z.string().uuid() }).strict();
-
-/** One current scene and at most one lookahead; the host owns absolute timing and publication. */
-export const videoLiveScenesInputSchema = videoLiveOpeningInputSchema.pick({ sourcePath: true, generationId: true }).extend({
-  directionRevision: z.number().int().nonnegative().default(0),
-  expectedReadyDuration: z.number().finite().nonnegative().max(7200),
-  scenes: z.array(z.object({
-    sceneId: z.string().regex(/^(?!main$|live-opening$)[A-Za-z][A-Za-z0-9_-]*$/).max(96),
-    title: videoLiveOpeningInputSchema.shape.title,
-    supporting: videoLiveOpeningInputSchema.shape.supporting,
-    duration: z.number().finite().min(4).max(12).default(4),
-    narration: z.object({
-      text: z.string().trim().min(1).max(600),
-      voice: z.string().max(160).optional(),
-      rate: z.number().min(.5).max(2).optional(),
-    }).strict().optional(),
-    captions: z.boolean().default(false),
-  }).strict()).min(1).max(2),
-}).strict().superRefine((input, context) => {
-  if (new Set(input.scenes.map(scene => scene.sceneId)).size !== input.scenes.length) {
-    context.addIssue({ code: "custom", path: ["scenes"], message: "Scene IDs must be unique." });
-  }
-  input.scenes.forEach((scene, index) => {
-    if (scene.captions && !scene.narration) context.addIssue({ code: "custom", path: ["scenes", index, "captions"], message: "Speech-linked captions require narration." });
-  });
-});
-export type VideoLiveScenesInput = z.infer<typeof videoLiveScenesInputSchema>;
-
 export function readVideoLiveGeneration(root: { getAttribute(name: string): string | null } | null): VideoLiveGeneration | null {
   if (!root) return null;
   const parsed = videoLiveGenerationSchema.safeParse({
