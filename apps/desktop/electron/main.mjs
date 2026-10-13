@@ -570,7 +570,8 @@ async function startHyperframesPreviewUnlocked(event, options = {}, signal) {
     signal.throwIfAborted();
     // Electron owns this child and its reserved port. The CLI's non-interactive
     // default detaches a background server, which cannot be stopped with this child.
-    child = spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--foreground", "--force-new", "--no-open"], projectPath);
+    // The project is absolute; use the shorter workspace cwd for Windows CreateProcess.
+    child = spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--foreground", "--force-new", "--no-open"], workspaceRoot);
   } catch (error) {
     releaseHyperframesPortReservation(allocatedPort, key);
     throw error;
