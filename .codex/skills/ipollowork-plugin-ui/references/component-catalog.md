@@ -13,16 +13,26 @@
 | 浮层 | Dialog、AlertDialog、Sheet、Popover、HoverCard、Tooltip |
 | 反馈与状态 | Alert（Info/Success/Warning/Error）、Toaster/toast、Badge、Progress、Skeleton、Empty |
 
-Alert / Toast 已统一为无边框的语义浅背景；主组件、完整目录与推荐页实例同步，其他状态页无这五个组件的实例。Alert 四种设计身份及对应 variant 已记录在 `component-mapping.json`，主题 Token 与迁移边界见 `plugin-contract.md` 的“反馈样式与迁移”。NotificationCenter 仍是宿主私有组合，本次保留其既有浅背景参考，不把它误标为公共导出。
+Alert / Toast 已统一为无边框的语义浅背景；主组件、完整目录与推荐页实例同步，其他状态页无这五个组件的实例。2026-10-13 警告背景改为 project-dialog-notice 浅暖灰（Light #F4F4EE / Dark gray-3），Figma 原有警告背景变量同步，组件与变量 ID 不变。警告图标保留语义强调，信息、成功、错误底色不变。Alert 四种设计身份及对应 variant 已记录在 `component-mapping.json`，主题 Token 与迁移边界见 `plugin-contract.md` 的“反馈样式与迁移”。NotificationCenter 仍是宿主私有组合，本次保留其既有浅背景参考，不把它误标为公共导出。
 
 2026-10-10 用户截图修正：反馈背景减淡到palette第2档；模板操作32px、筛选触发器复用共享Button；设置按钮装饰不占flex间距，选中尺寸稳定；Dialog关闭统一28px点击区/16px图标。真实客户端8帧证据 `evals/results/2026-10-10T05-21-04-298Z/fraimz.html`，两种运行模式12帧证据 `evals/results/2026-10-10T05-18-34-476Z/fraimz.html`；这是所测页面与状态的证明，不是全客户端视觉验收。
 | 数据与布局 | Table、Card（含 CardContent）、Avatar、Image、Tabs、Accordion、Collapsible、ScrollArea、Separator |
 
-共38组基础组件（状态和子组件不重复计数），统一由 `@ipollowork/ui/core` 和单模块入口提供；iframe 运行时1.2提供同源值导出。单一实现，不另写插件版控件。`shared-ui-core.test.ts` 检查映射对应实际公共导出，`shared-ui-core.flow.mjs` 驱动两种加载模式的核心调用样板；样板回调隔离，不代表真实业务服务验收或所有组件全部状态已通过。
+共45组基础组件（状态和子组件不重复计数），统一由 `@ipollowork/ui/core` 和单模块入口提供；iframe 运行时1.2提供同源值导出。单一实现，不另写插件版控件。`shared-ui-core.test.ts` 检查映射对应实际公共导出，`shared-ui-core.flow.mjs` 驱动两种加载模式的核心调用样板；样板回调隔离，不代表真实业务服务验收或所有组件全部状态已通过。
 
-以下推荐条目仍没有独立插件公共组件：SearchField、ModelBehaviorMenu、LinkActionMenu、ConfirmModal、NotificationCenter、ModelLoadingStatus、Tool/Tool Status、Message、Source、ChainOfThought、Artifact、Sidebar、PanelTabs、Resizable。不能让插件直接引用这些宿主私有路径；SearchField/ConfirmModal可先按共享基础组件组合，但不能声称已公开同名API。需继续提取数据/回调依赖或迁入纯组件，补齐类型与两模式验证。
+以下推荐条目仍没有独立插件公共组件：ModelBehaviorMenu、LinkActionMenu、ConfirmModal、NotificationCenter、ModelLoadingStatus、Tool/Tool Status、Message、Source、ChainOfThought、Artifact、Sidebar、PanelTabs、Resizable。不能让插件直接引用这些宿主私有路径；ConfirmModal可先按共享基础组件组合，但不能声称已公开同名API。需继续提取数据/回调依赖或迁入纯组件，补齐类型与两模式验证。
 
 新增映射记录目录条目和真实源码；未核对 Figma 主组件身份的项目保留 `figmaMainId: null`。代码导出、设计身份与交互验收是三种不同状态。
+
+## 高频控件补齐 · 2026-10-12
+
+2026-10-12 真实客户端表格接入：工作中心保留看板/日程并新增列表，复用已加载（上限1,000条）查询，支持名称/更新时间排序、状态和名称组合筛选、分页、跨页选择及版本化批量状态更新。执行绑定和启用自动执行的记录保留原生命周期入口，不参与批量改状态。环境变量复用原数据接口、遮罩值与应用变更流程，支持名称搜索/排序、分页及列明名称的批量删除确认；两处均保留刷新前内容、限制5个并发写入并只保留失败项重试。真实业务组件与HTTP客户端的10帧隔离响应证据：`evals/results/2026-10-12T06-02-08-850Z/fraimz.html`；实际服务端接口另以临时存储测试。没有对用户日常数据执行写入，不代表真实用户数据上的破坏性操作或原生桌面窗口全链路验收。
+
+公共运行时 1.6 新增六组：SearchField、NumberField、Slider、Calendar、DatePicker（含 TimeInput）、FileUpload（含 FileUploadItem）。统一32px控件、13px字体与共享主题；NumberField/Slider复用Base UI，日历复用DayPicker。输入附件/按钮组合参考shadcn/ui Base InputGroup，不引入第二套视觉系统。
+
+真实接入：设置搜索、插件自定义比例、模板数值滑杆、任务日期、数字人图片上传。日期保存本地年月日；任务时间菜单保持原15分钟步长。上传校验为空文件/类型/大小；失败保留文件重试，仅调用方提供真实进度或取消回调时显示相应功能。专业时间轴、画布和属性布局不改。
+
+验证：`evals/results/2026-10-12T04-30-25-419Z/fraimz.html`，两种运行时和宿主搜索/日期/上传交互通过。上传传输为模拟HTTP响应，保存回调为隔离数据，不表示真实服务器写入验收。Figma主组件身份未核对，映射保持null。新增控件需最低minor6。
 
 ## Figma 状态页
 
@@ -146,10 +156,19 @@ Autocomplete 在 Command 内组合使用；HoverCard 在 Source 内组合使用�
 
 ## 业务复合模式
 
+2026-10-12 表格组合：在既有 `/table` 和 core 导出 TableSortHead、TablePagination、TablePageSelection、TableBulkActions，运行时最低minor7。受控排序/分页/选择；筛选复用 SearchField/Select；确认复用 AlertDialog。紧凑13px文字、32px分页和表头操作，旧Table默认样式不变。开发样板以23条完整隔离数据演示先排序筛选后分页、跨页选择、筛选重置选择、取消不执行、部分失败仅重试失败项，以及失败页保留上一页。无真实服务或卡片列表迁移、无新依赖；Figma身份未在本轮核对。16帧证据：`evals/results/2026-10-12T05-18-08-985Z/fraimz.html`。
+
+
+2026-10-12 异步反馈：复用 Skeleton、Empty、Alert/AlertAction、Button、FileUploadItem；无新增公共 API 或依赖。声音列表刷新保留已确认数据，失败就地重试且不误报空列表；分镜素材导入保留搜索、草稿和同一 File，重试成功才更新素材。数字人图片上传复用上一批恢复规则。模拟延迟/失败由现有夹具显式提供，不代表真实云端收费或写盘验收；完整规则见共享包 README。当前客户端源码11帧证据：`evals/results/2026-10-12T05-01-28-249Z/fraimz.html`。
+
+
+2026-10-12 标准组合补齐：复用现有 Field / InputGroup / Button / Popover / DropdownMenu，不新增独立组合 API、依赖或运行时能力。1.6.1 修正多行附件聚焦和字段窄容器边界。示例与调用规则见 `packages/ui/README.md`；可执行流程 `shared-ui-compositions.flow.mjs` 分别验证两种运行时及实际声音、数字人、分镜和插件库入口。输入与菜单业务行为仍由调用方拥有，插件库目录数据、视频云端与分镜保存回调隔离，不代表真实安装/付费生成/保存已验收。Figma 未在本轮更新。当前客户端源码12帧证明：`evals/results/2026-10-12T04-47-29-594Z/fraimz.html`。
+
+
 Composer、附件项、预览四态、属性参数、工作项表单及日期时间是场景组合，按实际能力复用。参考原稿的章节 13、14、15、17 和相应业务源码；不要把 Figma 中的组合展示误称为独立导出的公共组件。Composer 排队验证包含模拟传输；AI 标记与悬浮工具的能力有工作区边界。
 
 ## 候选与历史
 
-候选：统一上传恢复；表格排序/筛选/分页/批量操作；通用日期时间选择。独立插件 UI Token 与控件接入契约已有共享实现，见 `plugin-contract.md` 的“主题与 Token”；页面级字体收敛与完整Figma文字样式对照仍待完成，不把已有契约继续列为未实现候选。Figma 候选页是需求快照，不声称这些候选已存在通用实现。
+候选：全客户端上传恢复覆盖；数据表格真实业务服务接入；通用日期时间选择。独立插件 UI Token 与控件接入契约已有共享实现，见 `plugin-contract.md` 的“主题与 Token”；页面级字体收敛与完整Figma文字样式对照仍待完成，不把已有契约继续列为未实现候选。Figma 候选页是需求快照，不声称这些候选已存在通用实现。
 
 历史：SelectMenu 已在当前工作区删除，使用 Select；TextInput 仍为兼容封装，新普通表单组合 Field + Input。原审计稿泛称“已完成”的状态不能替代用户验收语义。

@@ -3,6 +3,6 @@
 import { coreDemoHtml } from './shared-ui-core-fixture.mjs';
 import { withSharedUiRuntime } from '/src/react-app/plugin-ui/shared-ui-runtime.ts';
 if (new URLSearchParams(location.search).get('mode') !== 'bundled') {
-  document.querySelector('iframe').srcdoc=withSharedUiRuntime(coreDemoHtml());
+  document.querySelector('iframe').srcdoc=withSharedUiRuntime(coreDemoHtml('', new URLSearchParams(location.search).has('table') ? '数据表格' : '输入与选择'));
 }
 </script></body></html>

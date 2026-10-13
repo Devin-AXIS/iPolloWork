@@ -25,7 +25,7 @@
   --ui-micro-line: 14px;
   --feedback-info-background: var(--sky-2);
   --feedback-success-background: var(--green-2);
-  --feedback-warning-background: var(--amber-2);
+  --feedback-warning-background: var(--project-dialog-notice);
   --feedback-error-background: var(--red-2);
   color-scheme: light;
   --ipollowork-font-sans:
@@ -117,6 +117,7 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
+  --project-dialog-notice: var(--gray-3);
   --action-background: var(--brand-accent);
   --action-foreground: #161e24;
   --action-hover: var(--brand-soft);
