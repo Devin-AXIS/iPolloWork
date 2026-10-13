@@ -188,7 +188,7 @@ jobs:
           CHROME_PATH: /usr/bin/google-chrome
         run: node examples/stage-diagrams/build.mjs
       - name: Upload the five current component packs and AI adapter
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: stage-diagrams-4.0.0
           path: examples/stage-diagrams/dist/hyperframes/
