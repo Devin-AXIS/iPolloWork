@@ -144,11 +144,11 @@ import {
   videoPromptRequestsFinishedVideo,
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
-  videoLiveSteeringContext,
   type VideoDeliveryRequirements,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
 import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
+import { createVideoLiveDirector, readVideoJevAdvice } from "@/react-app/domains/session/video/video-live-director";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -391,6 +391,15 @@ export function SessionRoute() {
     [opencodeBaseUrl, activeEngineId, selectedSessionId, selectedConversation?.id, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
   );
   const conversationConnectionKey = `${activeEngineId}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
+  const videoLiveDirector = useMemo(() => createVideoLiveDirector({
+    client: selectedWorkspaceEndpoint?.client ?? null,
+    context: { workspaceId: selectedWorkspaceEndpoint?.workspaceId ?? "", sessionId: selectedSessionId ?? "" },
+    send: (parts) => {
+      if (!conversation?.steerPrompt || !selectedSessionId) throw new Error("Video steering is unavailable");
+      return conversation.steerPrompt({ sessionId: selectedSessionId, parts });
+    },
+  }), [conversation, selectedSessionId, selectedWorkspaceEndpoint?.client, selectedWorkspaceEndpoint?.workspaceId]);
+  useEffect(() => () => videoLiveDirector.cancel(), [videoLiveDirector]);
   const readConversationSnapshot = useCallback(async (sessionId: string) => {
     if (!conversation || !selectedWorkspaceEndpoint) {
       throw new Error("Conversation runtime is unavailable");
@@ -1154,6 +1163,7 @@ export function SessionRoute() {
 
   const handleSessionStatus = useCallback((update: { sessionId: string; status: ConversationStatus }) => {
     if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
+    if (update.sessionId === selectedSessionId) videoLiveDirector.cancel();
     invalidateProjectExecutionQueries();
     const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
     const runningContexts = Object.values(contexts).filter((context) => (
@@ -1180,7 +1190,7 @@ export function SessionRoute() {
         }
       })();
     }
-  }, [invalidateProjectExecutionQueries, selectedWorkspaceEndpoint]);
+  }, [invalidateProjectExecutionQueries, selectedWorkspaceEndpoint, selectedSessionId, videoLiveDirector]);
 
   const handleSessionError = useCallback(() => {
     invalidateProjectExecutionQueries();
@@ -1253,7 +1263,7 @@ export function SessionRoute() {
         });
       },
       onSteerDraft: conversation.steerPrompt
-        ? async (draft: ComposerDraft, sessionId: string, preview?: VideoLivePreviewMessage) => {
+        ? async (draft: ComposerDraft, sessionId: string, readPreview?: () => VideoLivePreviewMessage | undefined) => {
             const targetSessionId = sessionId.trim() || selectedSessionId;
             if (!targetSessionId) return false;
             const parts = await draftToParts(
@@ -1263,11 +1273,11 @@ export function SessionRoute() {
               undefined,
               { supportsNativeAttachments: selectedModelSupportsAttachments },
             );
-            await conversation.steerPrompt?.({
-              sessionId: targetSessionId,
-              parts: preview?.generation?.status === "generating"
-                ? [...parts, { type: "text", text: videoLiveSteeringContext(preview) }] : parts,
-            });
+            if (readPreview && targetSessionId === selectedSessionId && readPreview()?.generation?.status === "generating") {
+              return videoLiveDirector.steer(parts, readPreview,
+                draft.attachments.length === 0 && draft.parts.every(part => part.type === "text" && !part.synthetic) ? draft.text : null);
+            }
+            await conversation.steerPrompt?.({ sessionId: targetSessionId, parts });
             return true;
           }
         : undefined,
@@ -1286,6 +1296,7 @@ export function SessionRoute() {
         if (!targetSessionId) return false;
         const dispatchSignal = dispatchOptions?.signal;
         if (dispatchSignal?.aborted) return false;
+        videoLiveDirector.cancel();
         const projectBuilderActive = isProjectBuilderSession(selectedWorkspaceId, targetSessionId);
         if (projectBuilderActive) {
           if (!selectedWorkspaceEndpoint) throw new Error(t("work.project_unavailable"));
@@ -1750,8 +1761,10 @@ export function SessionRoute() {
           promptText: videoPromptText,
           hasReferenceAttachments: draft.attachments.length > 0,
         });
+        const liveVideoRequest = !requiresStoryboardReview && (videoPromptRequestsFinishedVideo(videoPromptText)
+          || draft.capability?.id === "video-storyboard-regeneration");
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
-          const [voiceover, originalBriefText] = await Promise.all([
+          const [voiceover, originalBriefText, openingAdvice] = await Promise.all([
             selectedWorkspaceEndpoint ? readVideoVoiceoverAvailability(
               selectedWorkspaceEndpoint.client,
               selectedWorkspaceEndpoint.workspaceId,
@@ -1759,6 +1772,11 @@ export function SessionRoute() {
               selectedWorkspaceRoot,
             ) : Promise.resolve({ configured: false, enabled: false }),
             selectedWorkspaceEndpoint ? readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId)) : Promise.resolve(undefined),
+            liveVideoRequest && selectedWorkspaceEndpoint && draft.attachments.length === 0
+              && draft.parts.every(part => part.type === "text" && !part.synthetic)
+              ? readVideoJevAdvice(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
+                  { phase: "opening", prompt: draft.text, templateTitle: template?.manifest.title }, dispatchSignal)
+              : Promise.resolve(""),
           ]);
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
             capabilityId: draft.capability?.id,
@@ -1770,7 +1788,7 @@ export function SessionRoute() {
           const includeVoiceoverContext = !requiresStoryboardReview && videoPromptRequestsVoiceoverContext(
             draft.capability?.id, videoPromptText, videoDeliveryRequirements,
           );
-          return videoTaskSystemContext(
+          const systemContext = videoTaskSystemContext(
             sessionId,
             selectedWorkspaceRoot,
             template?.manifest ?? null,
@@ -1778,10 +1796,10 @@ export function SessionRoute() {
               includeVoiceover: includeVoiceoverContext,
               deliveryRequirements: videoDeliveryRequirements,
               requireStoryboardReview: requiresStoryboardReview,
-              ...(!requiresStoryboardReview && (videoPromptRequestsFinishedVideo(videoPromptText) || draft.capability?.id === "video-storyboard-regeneration")
-                ? { liveGenerationId: crypto.randomUUID() } : {}),
+              ...(liveVideoRequest ? { liveGenerationId: crypto.randomUUID() } : {}),
             },
           );
+          return [systemContext, openingAdvice].filter(Boolean).join("\n\n");
         }));
         const designSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "design");
         const designSystemContexts = designSessionTemplates.map((template) => designHtmlThemeSystemContext({
@@ -2028,6 +2046,7 @@ export function SessionRoute() {
   }, [
     client,
     conversation,
+    videoLiveDirector,
     activeEngineId,
     modelPicker.compactOpen,
     handleOpenSettings,

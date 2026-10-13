@@ -48,13 +48,14 @@ describe("composer queue behavior", () => {
   test("uses queue as the primary busy action", () => {
     const busyActions = composerSource.slice(
       composerSource.indexOf("{props.busy ? ("),
-      composerSource.indexOf("{props.busy ? (") + 4000,
+      composerSource.indexOf("<Tooltip open={emptySubmitHintOpen}>"),
     );
 
     expect(busyActions).toContain("{canSend ? (");
     expect(busyActions).toContain("onPointerDown={handleActionPointerDown}");
     expect(busyActions).toContain("onClick={handleActionClick}");
-    expect(busyActions).toContain("onClick={props.onStop}");
+    expect(busyActions).not.toContain("onClick={props.onStop}");
+    expect(busyActions.match(/onClick=\{handleActionClick\}/g)).toHaveLength(2);
     expect(busyActions).toContain('title={props.busySubmitLabel ?? t("composer.queue_hint")}');
     expect(busyActions).not.toContain("onSteer");
     expect(composerSource).not.toContain("onSteer:");

@@ -198,7 +198,7 @@ export type SessionSurfaceProps = {
     sessionId: string,
     options?: PromptDispatchOptions,
   ) => PromptDispatchOutcome | Promise<PromptDispatchOutcome>;
-  onSteerDraft?: (draft: ComposerDraft, sessionId: string, preview?: VideoLivePreviewMessage) => boolean | Promise<boolean>;
+  onSteerDraft?: (draft: ComposerDraft, sessionId: string, readPreview?: () => VideoLivePreviewMessage | undefined) => boolean | Promise<boolean>;
   liveVideoGeneration?: boolean;
   onDraftChange: (draft: ComposerDraft) => void;
   supportsNativeAttachments: boolean;
@@ -745,7 +745,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
       liveVideoPreviewRef.current = parsed.success ? parsed.data : null;
     };
     window.addEventListener(VIDEO_LIVE_PREVIEW_EVENT, receive);
-    return () => window.removeEventListener(VIDEO_LIVE_PREVIEW_EVENT, receive);
+    return () => {
+      liveVideoPreviewRef.current = null;
+      window.removeEventListener(VIDEO_LIVE_PREVIEW_EVENT, receive);
+    };
   }, [props.sessionId, props.workspaceId]);
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [animationCatalog, setAnimationCatalog] = useState<HyperframesCatalogItem[]>([]);
@@ -1560,7 +1563,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const submittedComposerState = { draft, attachments, mentions, pasteParts };
       clearComposer();
       try {
-        const accepted = await props.onSteerDraft(nextDraft, props.sessionId, liveVideoPreviewRef.current ?? undefined);
+        const accepted = await props.onSteerDraft(nextDraft, props.sessionId, () => liveVideoPreviewRef.current ?? undefined);
         if (!accepted) { restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState); return; }
         toast.success(t("composer.steer_sent"));
       } catch (error) {
@@ -1583,7 +1586,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const queuedDraft = queuedDrafts[index];
     if (!queuedDraft || !props.onSteerDraft) return;
     try {
-      const accepted = await props.onSteerDraft(queuedDraft, props.sessionId, liveVideoPreviewRef.current ?? undefined);
+      const accepted = await props.onSteerDraft(queuedDraft, props.sessionId, () => liveVideoPreviewRef.current ?? undefined);
       if (!accepted) return;
       removeQueuedDraftFromStore(props.sessionId, index);
       toast.success(t("composer.steer_sent"));

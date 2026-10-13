@@ -1,11 +1,13 @@
 /** @jsxImportSource react */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { VideoPanel } from "../src/react-app/domains/session/video/video-panel";
 import { ReactSessionComposer } from "../src/react-app/domains/session/surface/composer/composer";
 import { canSteerActiveDraft } from "../src/react-app/domains/session/surface/composer/composer-draft";
-import { VIDEO_LIVE_PREVIEW_EVENT, videoLiveSteeringContext } from "../src/react-app/domains/session/video/video-project";
+import { VIDEO_LIVE_PREVIEW_EVENT } from "../src/react-app/domains/session/video/video-project";
+import { createVideoLiveDirector, readVideoJevAdvice } from "../src/react-app/domains/session/video/video-live-director";
+import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import { codexHarnessConversationEngineAdapter } from "../src/react-app/domains/session/engine/codex-harness-conversation-engine";
 import { videoLivePreviewMessageSchema, type VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
 import type { VideoStudioClient } from "@ipollowork/video-studio";
@@ -16,7 +18,7 @@ import "../src/app/index.css";
 setLocale("zh");
 const fixtureUrl = "http://127.0.0.1:5397";
 const requests: Array<{ method: string; payload: unknown }> = [];
-const proof: { requests: typeof requests; preview: VideoLivePreviewMessage | null; direction: string; publications: number } = { requests, preview: null, direction: "", publications: 0 };
+const proof: { requests: typeof requests; preview: VideoLivePreviewMessage | null; direction: string; publications: number; openingAdvice: string } = { requests, preview: null, direction: "", publications: 0, openingAdvice: "" };
 Object.assign(window, { liveVideoProof: proof });
 const realFetch = window.fetch.bind(window);
 // Simulate only the model boundary. The production Codex adapter sends the actual turn/steer RPC.
@@ -31,6 +33,8 @@ window.fetch = async (input, init) => {
   return realFetch(input, init);
 };
 const conversation = codexHarnessConversationEngineAdapter.connect({ serverBaseUrl: "https://video-live-proof.invalid", workspaceId: "proof" });
+const decisionClient = createiPolloWorkServerClient({ baseUrl: fixtureUrl });
+const decisionContext = { workspaceId: "proof", sessionId: "live-proof" };
 const client: VideoStudioClient = {
   readWorkspaceFile: async (_workspace, path) => ({ content: path.endsWith("design-tokens.css") ? ":root { --ipw-color-bg: #111827; }" : await (await realFetch(`${fixtureUrl}/source`)).text(), updatedAt: 1 }),
   writeWorkspaceFile: async () => { throw new Error("The proof never writes user projects"); },
@@ -45,6 +49,14 @@ function Proof() {
   const [direction, setDirection] = useState("");
   const [error, setError] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [jevEnabled, setJevEnabled] = useState(true);
+  const director = useMemo(() => createVideoLiveDirector({ client: decisionClient, context: decisionContext,
+    send: async parts => {
+      if (!conversation.steerPrompt) throw new Error("Native steering is unavailable");
+      return conversation.steerPrompt({ sessionId: "live-proof", parts });
+    },
+  }), []);
+  useEffect(() => () => director.cancel(), [director]);
   const previewRef = useRef<VideoLivePreviewMessage | null>(null);
   useEffect(() => {
     void realFetch(`${fixtureUrl}/source`).then(response => response.text()).then(source => {
@@ -65,6 +77,8 @@ function Proof() {
   const publish = async (complete = false) => {
     setPublishing(true); setError("");
     try {
+      if (!count) proof.openingAdvice = await readVideoJevAdvice(decisionClient, decisionContext,
+        { phase: "opening", prompt: "制作一个文字动效产品介绍视频，先介绍产品再展示使用案例" });
       const response = await realFetch(`${fixtureUrl}/publish`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ count: count + 1, complete, cases: Boolean(proof.direction) }) });
       if (!response.ok) throw new Error(await response.text());
       setCount(count + 1); proof.publications = count + 1;
@@ -76,17 +90,22 @@ function Proof() {
     const submitted = draft.trim();
     const nextDraft = { mode: "prompt", text: submitted, parts: [{ type: "text", text: submitted }], attachments: [] } satisfies import("../src/app/types").ComposerDraft;
     if (!submitted || !canSteerActiveDraft(nextDraft)) return;
+    setDraft("");
     try {
-      const context = previewRef.current ? videoLiveSteeringContext(previewRef.current) : "";
-      const parts: import("../src/react-app/domains/session/engine/conversation-engine").ConversationPromptPart[] = [{ type: "text", text: submitted }];
-      if (context) parts.push({ type: "text", text: context });
-      await conversation.steerPrompt?.({ sessionId: "live-proof", parts });
-      proof.direction = submitted; setDirection(submitted); setDraft("");
-    } catch (error) { setError(String(error)); }
+      const accepted = await director.steer([{ type: "text", text: submitted }], () => previewRef.current ?? undefined);
+      if (!accepted) throw new Error("生成任务已经变化，请重新发送");
+      proof.direction = submitted; setDirection(submitted);
+    } catch (error) { setDraft(current => current || submitted); setError(String(error)); }
   };
   return <HashRouter><div className="flex h-screen min-h-0 flex-col bg-background text-foreground">
     <header className="flex flex-wrap items-center gap-3 border-b p-3">
-      <strong>边生成边播放</strong><span className="text-xs text-muted-foreground">确定性生成模拟 · 原生工作台与 Codex 引导通道</span>
+      <strong>边生成边播放</strong><span className="text-xs text-muted-foreground">生成与 Jev 模型响应均为模拟 · 原生工作台与引导通道</span>
+      <label className="flex items-center gap-2 text-xs"><input data-testid="jev-enabled" type="checkbox" checked={jevEnabled} onChange={event => {
+        const enabled = event.target.checked;
+        void realFetch(`${fixtureUrl}/jev-mode`, { method: "POST", body: JSON.stringify({ enabled }) }).then(response => {
+          if (!response.ok) throw new Error("无法切换验证模式"); setJevEnabled(enabled);
+        }).catch(error => setError(String(error)));
+      }} />Jev 辅助判断</label>
       <Button data-testid="publish-scene" disabled={publishing || !busy} onClick={() => void publish()}>{count ? "生成下一段" : "生成首段"}</Button>
       <Button data-testid="finish-generation" disabled={publishing || !count || !busy} onClick={() => void publish(true)}>生成最后一段并完成</Button>
       <span data-testid="publication-count" className="text-xs">已生成 {count * 4} 秒</span>
@@ -94,6 +113,7 @@ function Proof() {
     <main className="flex min-h-0 flex-1 flex-col md:flex-row">
       <aside className="flex w-full flex-col gap-4 border-r p-4 md:w-[340px] md:shrink-0">
         <p className="text-sm text-muted-foreground">先介绍产品，再展示使用案例。第一段就绪后开始播放，剩余内容按你的指令继续生成。</p>
+        {proof.openingAdvice && <p data-testid="opening-advice" className="text-xs text-muted-foreground">首段制作方式：文字动效</p>}
         <div className="mt-auto">
           {direction && <p data-testid="steering-receipt" data-native-request={JSON.stringify(requests.at(-1))} className="mb-3 text-sm">已引导后续内容：{direction}</p>}
           {error && <p role="alert">{error}</p>}
