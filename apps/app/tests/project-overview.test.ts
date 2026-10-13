@@ -920,11 +920,11 @@ describe("conversation work, runtime metrics and tasks", () => {
     expect(deleteMutationSource).toContain('onError: (error) => toast.error(t("work.delete_failed")');
   });
 
-  test("uses a native date picker and a 15-minute 24-hour time menu for task scheduling", () => {
+  test("uses the shared calendar date picker and preserves the 15-minute 24-hour time menu", () => {
     expect(workItemSheetSource).toContain("function DateTimePickerField");
     expect(workItemSheetSource).toContain("function TimePicker24Hour");
     expect(workItemSheetSource).toContain('data-testid="work-item-time-pickers"');
-    expect(workItemSheetSource).toContain('type="date"');
+    expect(workItemSheetSource).toContain("<DatePicker");
     expect(workItemSheetSource).not.toContain('type="time"');
     expect(workItemSheetSource).toContain("const TIME_PICKER_INTERVAL_MINUTES = 15;");
     expect(workItemSheetSource).toContain("TIME_OPTIONS_15_MINUTES");
@@ -935,14 +935,12 @@ describe("conversation work, runtime metrics and tasks", () => {
     expect(workItemSheetSource).toContain('collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}');
     expect(workItemSheetSource).toContain('className="max-h-64 w-(--anchor-width) min-w-(--anchor-width) p-1"');
     expect(workItemSheetSource).toContain('className="grid grid-cols-2 gap-2"');
-    expect(workItemSheetSource).toContain("<CalendarDays");
-    expect(workItemSheetSource).toContain("strokeWidth={1}");
+    expect(workItemSheetSource).toContain('from "@/components/ui/date-picker"');
     expect(workItemSheetSource).toContain('rounded-[8px] border-[#EBEBEB] pe-4 leading-[18px]');
     expect(workItemSheetSource).toContain('[&_svg]:text-[#858A94] [&_svg]:[stroke-width:1.333]');
     expect(workItemSheetSource).toContain("updateDatePart(props.timestamp");
     expect(workItemSheetSource).toContain("updateTimePart(props.timestamp");
-    expect(workItemSheetSource).toContain("event.currentTarget.showPicker();");
-    expect(workItemSheetSource.match(/onClick=\{openNativePicker\}/g)).toHaveLength(1);
+    expect(workItemSheetSource).not.toContain("event.currentTarget.showPicker();");
     expect(workItemSheetSource).not.toContain('type="datetime-local"');
   });
 

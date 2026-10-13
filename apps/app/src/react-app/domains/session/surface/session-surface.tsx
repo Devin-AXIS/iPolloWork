@@ -2233,7 +2233,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       {(props.providerConnectedCount ?? 0) === 0 ? (
         <button
           type="button"
-          className="mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-amber-7/40 bg-amber-2/30 px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-amber-3/40"
+          className="mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg bg-feedback-warning px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-accent"
           onClick={() => props.onOpenSettingsSection?.("providers")}
         >
           <span className="font-medium">{t("session.no_model_connected")}</span>

@@ -354,7 +354,7 @@ export function CloudSkillsSection({
             <SettingsListSearchInput
               id="cloud-skill-search"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
+              onValueChange={setSearchQuery}
             />
             <FieldDescription className="sr-only">{t("settings.cloud.search_skill")}</FieldDescription>
           </Field>
@@ -464,7 +464,7 @@ export function CloudProvidersSection({
             <SettingsListSearchInput
               id="cloud-provider-search"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
+              onValueChange={setSearchQuery}
             />
             <FieldDescription className="sr-only">{t("settings.cloud.search_provider")}</FieldDescription>
           </Field>

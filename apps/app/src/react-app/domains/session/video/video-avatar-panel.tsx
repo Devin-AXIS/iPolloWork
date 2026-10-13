@@ -11,9 +11,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import { FileUpload, FileUploadItem } from "@/components/ui/file-upload";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
+import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupText } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { videoProjectDirectory } from "./video-project";
 
@@ -98,7 +100,9 @@ export function resolveAvatarDuration(job: VideoJob) {
 }
 
 export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId, active, onOpenVoice, onAssetAction, previewAssetUrl }: Props) {
-  const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const [pendingImage, setPendingImage] = React.useState<File | null>(null);
+  const [imageError, setImageError] = React.useState("");
+  const [imageUploading, setImageUploading] = React.useState(false);
   const promptId = React.useId();
   const nameId = React.useId();
   const mounted = React.useRef(true);
@@ -109,6 +113,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
   const profilesRef = React.useRef<AvatarProfile[]>([]);
   const [profiles, setProfiles] = React.useState<AvatarProfile[]>([]);
   const [draft, setDraft] = React.useState<AvatarProfile | null>(null);
+  React.useEffect(() => { setPendingImage(null); setImageError(""); }, [draft?.id]);
   const [source, setSource] = React.useState<VideoAvatarContext | null>(null);
   const [jobs, setJobs] = React.useState<VideoJob[]>([]);
   const [thumbnails, setThumbnails] = React.useState<Record<string, string>>({});
@@ -250,6 +255,20 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     setDraft(current => current ? { ...current, imagePath: path, imageName: file.name } : current);
     setImageMessage("图片已上传");
   };
+  const uploadImage = async (file: File) => {
+    setPendingImage(file);
+    setImageError("");
+    setImageUploading(true);
+    try {
+      await act(async () => {
+        try { await upload(file); }
+        catch (error) {
+          setImageError(error instanceof Error ? error.message : "图片上传失败");
+          throw error;
+        }
+      });
+    } finally { if (mounted.current) setImageUploading(false); }
+  };
   const show = async (path: string) => {
     if (previewAssetUrl) { setPreview(previewAssetUrl(path)); return; }
     const file = await client.downloadWorkspaceFile(workspaceId, path);
@@ -314,13 +333,15 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
       <div className="flex items-center justify-between gap-2"><Button variant="ghost" size="sm" className="-ml-2 h-8 text-ui-control" disabled={busy} onClick={() => void act(back)}><ArrowLeft className="size-4" />数字人列表</Button><Button variant="ghost" size="icon-xs" aria-label="删除此数字人" disabled={busy} onClick={() => setDeleteOpen(true)}><Trash2 className="size-4" /></Button></div>
       <div className="space-y-6">
         <section className="space-y-4" aria-label="名称与人物图片">
-          <div className="space-y-1.5"><label htmlFor={nameId} className="text-ui-control font-semibold">名称</label><Input id={nameId} value={draft.name} maxLength={80} disabled={busy} onChange={event => setDraft(current => current ? { ...current, name: event.target.value } : current)} className={fieldClassName} /></div>
+          <Field><FieldLabel htmlFor={nameId}>名称</FieldLabel><Input id={nameId} value={draft.name} maxLength={80} disabled={busy} onChange={event => setDraft(current => current ? { ...current, name: event.target.value } : current)} className={fieldClassName} /></Field>
           <div className="space-y-2">
-            <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="选择人物图片" disabled={busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void act(() => upload(file)); }} />
-            <Button variant="ghost" type="button" disabled={busy} onClick={() => imageInputRef.current?.click()} aria-label={draft.imagePath ? "替换人物图片" : "上传人物图片"} className="h-auto w-full justify-start gap-3 whitespace-normal bg-muted/60 p-3 text-left">
-              {draft.imagePath && thumbnails[draft.imagePath] ? <img src={thumbnails[draft.imagePath]} alt="数字人人物参考图片" className="h-16 w-14 shrink-0 rounded-md object-contain" /> : <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-background"><ImagePlus aria-hidden="true" className="size-5 text-muted-foreground" /></span>}
-              <span className="min-w-0 flex-1 space-y-1"><span className="block truncate text-ui-control font-medium" title={draft.imageName || undefined}>{draft.imageName || "上传人物图片"}</span><span className="block text-[11px] leading-5 text-muted-foreground">{draft.imagePath ? "点击替换图片" : "PNG / JPG / WebP · 最大 20 MB"}</span></span>
-            </Button>
+            <FileUpload label={draft.imagePath ? "替换人物图片" : "上传人物图片"} description="PNG / JPG / WebP · 最大 20 MB" accept=".png,.jpg,.jpeg,.webp" maxSize={20 * 1024 * 1024} disabled={busy}
+              messages={{ invalidType: "人物图片支持 PNG、JPG 和 WebP。", tooLarge: "人物图片不能超过 20 MB。", empty: "文件不能为空。", tooMany: "请一次选择一张人物图片。" }}
+              onError={setImageError} onFilesSelected={files => { const file = files[0]; if (file) void uploadImage(file); }}>
+              {draft.imagePath && thumbnails[draft.imagePath] ? <img src={thumbnails[draft.imagePath]} alt="数字人人物参考图片" className="h-16 w-14 rounded-md object-contain" /> : <ImagePlus aria-hidden="true" className="size-5 text-muted-foreground" />}
+            </FileUpload>
+            {pendingImage ? <FileUploadItem name={pendingImage.name} status={imageUploading ? "uploading" : imageError ? "error" : "success"} statusLabel={imageUploading ? "正在上传图片…" : "图片已上传"} error={imageError}
+              retryLabel="重试上传" onRetry={busy ? undefined : () => void uploadImage(pendingImage)} /> : imageError ? <p role="alert" className="text-ui-meta text-destructive">{imageError}</p> : null}
             {imageMessage && imageMessage !== "图片已上传" ? <Alert variant={imageMessage.startsWith("图片上传失败") ? "destructive" : "default"}><AlertDescription>{imageMessage}</AlertDescription></Alert> : null}
           </div>
         </section>
@@ -352,13 +373,18 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
           {heygen && !planUnavailable && selectedClip && selectedClip.duration > maxDuration ? <p role="alert" className="text-[11px] leading-5 text-destructive">{freePlan ? "HeyGen Free 套餐" : "HeyGen"}配音最长 {maxDuration} 秒，当前 {selectedClip.duration.toFixed(1)} 秒。请选择较短片段或改用 RunningHub 分段生成。</p> : null}
           {!heygen && selectedClip && selectedClip.duration > 15 ? <p className="text-[11px] leading-5 text-muted-foreground">超过 15 秒将自动分段生成并拼接。</p> : null}
         </section>
-        <section className="space-y-1.5" aria-label="动作描述">
-          <div className="flex items-center justify-between gap-2"><label htmlFor={promptId} className="text-ui-control font-semibold">动作描述</label><Tooltip><TooltipTrigger render={<button type="button" aria-label="动作与背景说明" className="flex items-center gap-1 text-[11px] text-muted-foreground" />}>{avatarBackgroundForPrompt(draft.prompt) === "transparent" ? "透明背景" : "保留背景"}<Info aria-hidden="true" className="size-3" /></TooltipTrigger><TooltipContent className="text-[11px]">默认保留背景，生成后可手动智能抠图。明确要求去除背景时才自动抠图。</TooltipContent></Tooltip></div>
-          <Textarea id={promptId} value={draft.prompt} rows={3} maxLength={3000} disabled={busy} onChange={event => setDraft(current => current ? { ...current, prompt: event.target.value } : current)} className="min-h-20" />
-          <p className="text-[11px] leading-5 text-muted-foreground">系统会自动要求固定镜头，并保持参考图的人物比例与构图；嘴唇、眨眼和自然表情仍可变化。</p>
-        </section>
+        <Field aria-label="动作描述">
+          <div className="flex items-center justify-between gap-2"><FieldLabel htmlFor={promptId}>动作描述</FieldLabel><Tooltip><TooltipTrigger render={<button type="button" aria-label="动作与背景说明" className="flex items-center gap-1 text-[11px] text-muted-foreground" />}>{avatarBackgroundForPrompt(draft.prompt) === "transparent" ? "透明背景" : "保留背景"}<Info aria-hidden="true" className="size-3" /></TooltipTrigger><TooltipContent className="text-[11px]">默认保留背景，生成后可手动智能抠图。明确要求去除背景时才自动抠图。</TooltipContent></Tooltip></div>
+          <InputGroup className="rounded-lg has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+            <InputGroupTextarea id={promptId} value={draft.prompt} rows={3} maxLength={3000} disabled={busy} aria-describedby={promptId + "-description " + promptId + "-count"} onChange={event => setDraft(current => current ? { ...current, prompt: event.target.value } : current)} className="min-h-20" />
+            <InputGroupAddon align="block-end" tabIndex={-1}>
+              <InputGroupText id={promptId + "-count"} className="ml-auto text-ui-meta tabular-nums">{draft.prompt.length} / 3000</InputGroupText>
+            </InputGroupAddon>
+          </InputGroup>
+          <FieldDescription id={promptId + "-description"}>系统会自动要求固定镜头，并保持参考图的人物比例与构图；嘴唇、眨眼和自然表情仍可变化。</FieldDescription>
+        </Field>
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="w-full" disabled={busy} onClick={() => void act(save)}>保存设置</Button><Button type="button" className="w-full" disabled={busy || !canSubmit} onClick={() => void beginGeneration()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}生成数字人片段</Button></div>
+          <div role="group" aria-label="数字人操作" className="flex flex-wrap gap-2 [&>button]:min-w-36 [&>button]:flex-1"><Button type="button" variant="outline" className="w-full" disabled={busy} onClick={() => void act(save)}>保存设置</Button><Button type="button" className="w-full" disabled={busy || !canSubmit} onClick={() => void beginGeneration()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}生成数字人片段</Button></div>
           <p className="text-[11px] leading-5 text-muted-foreground">{generationHint}</p>
         </div>
       </div>

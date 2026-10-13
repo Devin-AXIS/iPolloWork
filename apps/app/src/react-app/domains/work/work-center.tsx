@@ -36,6 +36,7 @@ import {
   type WorkItemEditorValue,
   type WorkItemScheduleDraft,
 } from "./work-item-sheet";
+import { WorkItemList } from "./work-item-list";
 import { BoardConfigDialog } from "./board-config-dialog";
 import { ProjectBoard, type ProjectBoardItem } from "./project-board";
 import { ProjectPickerDialog } from "./project-picker-dialog";
@@ -51,7 +52,7 @@ import {
 } from "./work-endpoints";
 
 type WorkCenterMode = "global" | "project";
-type ProjectView = "board" | "schedule";
+type ProjectView = "board" | "schedule" | "list";
 
 type WorkCenterProps = {
   mode: WorkCenterMode;
@@ -529,7 +530,7 @@ export function WorkCenter(props: WorkCenterProps) {
             title={t("sidebar.expand")}
           />
         ) : null}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-40 flex-1">
           <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text">{title}</h1>
           <p className="mt-0.5 truncate text-[13px] leading-5 text-dls-secondary">{subtitle}</p>
         </div>
@@ -539,6 +540,7 @@ export function WorkCenter(props: WorkCenterProps) {
             <button type="button" className={cn("flex h-7 items-center gap-1.5 rounded-md px-3 text-xs transition", projectView === "board" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text")} onClick={() => setProjectView("board")}>
               <LayoutDashboard className="size-3.5" />{t("work.board")}
             </button>
+            <Button size="sm" variant={projectView === "list" ? "secondary" : "ghost"} aria-pressed={projectView === "list"} onClick={() => setProjectView("list")}>{t("client_list.list")}</Button>
             <button type="button" className={cn("flex h-7 items-center gap-1.5 rounded-md px-3 text-xs transition", projectView === "schedule" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text")} onClick={() => setProjectView("schedule")}>
               <CalendarDays className="size-3.5" />{t("work.schedule")}
             </button>
@@ -570,7 +572,26 @@ export function WorkCenter(props: WorkCenterProps) {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
-        {itemsQuery.isLoading || (props.mode === "project" && projectBoardQuery.isLoading) ? <WorkCenterLoading /> : itemsQuery.isError ? (
+        {props.mode === "project" && projectView === "list" ? itemsQuery.isLoading ? <WorkCenterLoading /> : (
+          <WorkItemList key={selectedEndpoint?.workspaceId + ":" + selectedEndpoint?.key + ":" + props.sessionId} items={boardItems} board={board}
+            refreshing={itemsQuery.isFetching} readError={itemsQuery.isError} onRefresh={() => void itemsQuery.refetch()} onOpen={openEntry}
+            onStatus={async (keys, status) => {
+              const failures: { key: string; message: string }[] = [];
+              // Reuse versioned updates, bound concurrent writes, and never mutate execution records.
+              for (let start = 0; start < keys.length; start += 5) {
+                await Promise.all(keys.slice(start, start + 5).map(async key => {
+                  const entry = items.find(candidate => candidate.key === key && !candidate.executionRecord && !candidate.item.automation?.enabled && !candidate.item.execution);
+                  if (!entry) { failures.push({ key, message: t("work.project_unavailable") }); return; }
+                  try {
+                    const updated = await entry.endpoint.client.updateWorkItem(entry.endpoint.workspaceId, entry.item.id, { status, expectedVersion: entry.item.version });
+                    queryClient.setQueriesData<ResolvedWorkItem[]>({ queryKey: ["work-items"] }, current => current?.map(candidate => candidate.key === key ? { ...candidate, item: updated } : candidate));
+                  } catch (error) { failures.push({ key, message: error instanceof Error ? error.message : t("app.unknown_error") }); }
+                }));
+              }
+              await invalidateWork();
+              return failures;
+            }} />
+        ) : itemsQuery.isLoading || (props.mode === "project" && projectBoardQuery.isLoading) ? <WorkCenterLoading /> : itemsQuery.isError ? (
           <WorkCenterError onRetry={() => void itemsQuery.refetch()} />
         ) : showBoard ? (
           <ProjectBoard

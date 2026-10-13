@@ -693,7 +693,6 @@ select:disabled {
 .dark,
 [data-theme="dark"] {
   --project-dialog-accent: var(--brand-accent);
-  --project-dialog-notice: var(--slate-3);
   --project-dialog-option-border: var(--slate-6);
   --background: var(--slate-1);
   --foreground: var(--slate-12);

@@ -627,7 +627,7 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
       </div>
 
       {diagnostic ? (
-        <div className="shrink-0 border-t border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+        <div className="shrink-0 bg-feedback-warning px-3 py-2 text-xs text-amber-11">
           <div className="flex items-start gap-2">
             <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
             <p className="min-w-0 flex-1 break-words">{diagnostic}</p>
