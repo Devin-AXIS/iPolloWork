@@ -2,6 +2,8 @@
 
 Live production uses the first complete 3–6 second scene as its motion audition, including a host-assembled text opening when the task permits `media/video_live_opening`. Publish before whole-film planning/catalog/media work and before full-film checks; the usual 8–15 second audition below is for non-live production. Preserve every published scene while appending. Required first-scene audio/media must be ready before publication.
 
+For compatible text scenes after a host opening, prefer `media/video_live_scenes` with the current direction revision and ready duration: the host owns concurrent visual/speech preparation, measured timing, captions, source validation and ordered publication. Submit only the current scene and at most one lookahead. Use the returned actual windows when saving the storyboard; do not repeat separate TTS/read/patch/full-film-check rounds. For bespoke or media scenes, lock only this scene's narration first, prepare its visuals/assets and speech concurrently, then join them at one atomic publication point. Independent soundtrack work may overlap subsequent scenes; do not mutate shared published styles or publish missing required sound/media.
+
 Use the saved storyboard, current entry and design/media/audio constraints. Before initial generation or substantial motion redesign read [motion principles](video-motion-principles.md); small edits read affected sections and preserve unrelated choreography. Storyboard, Voiceover and Soundtrack own their phases; existing artifacts do not request reloading them. Boundaries are in [video.md](video.md).
 
 ## Recipes and components

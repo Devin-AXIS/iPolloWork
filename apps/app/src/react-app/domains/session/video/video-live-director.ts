@@ -163,12 +163,28 @@ export function createVideoLiveDirector(options: {
         ? readVideoJevAdvice(options.client, options.context, { phase: "steering", prompt: request, previousDirection }, controller.signal)
         : Promise.resolve("");
       const task = tail.then(async () => {
+        let directionRevision: number | undefined;
+        if (runId && options.client && requestVersion === version) {
+          try {
+            // Invalidate paid lookahead work before waiting for optional Jev advice.
+            const response = await options.client.callExtensionAction({ extensionId: "media", action: "video_live_direction", context: options.context,
+              args: { sourcePath: videoProjectEntryPath(initial?.projectId ?? options.context.sessionId), generationId: runId, directionId: crypto.randomUUID() } },
+              { signal: AbortSignal.timeout(2000) });
+            if (response.ok && record(response.result) && record(response.result.output)
+              && typeof response.result.output.directionRevision === "number" && Number.isSafeInteger(response.result.output.directionRevision)) {
+              directionRevision = response.result.output.directionRevision;
+            }
+          } catch {
+            // Custom/template productions and unavailable hosts retain native steering.
+          }
+        }
         const suggestion = await advice;
         if (requestVersion !== version) return false;
         const preview = readPreview();
         if (runId && (preview?.generation?.id !== runId || preview.generation.status !== "generating")) return false;
         const context = preview ? videoLiveSteeringContext(preview) : "";
         await options.send([...parts, ...(context ? [{ type: "text", text: context } satisfies ConversationPromptPart] : []),
+          ...(directionRevision !== undefined ? [{ type: "text", text: `Host direction revision is now ${directionRevision}. Obsolete unpublished work was cancelled. Use directionRevision:${directionRevision} with media/video_live_scenes; retain the published prefix and follow this new user direction.` } satisfies ConversationPromptPart] : []),
           ...(suggestion && !controller.signal.aborted ? [{ type: "text", text: suggestion } satisfies ConversationPromptPart] : [])]);
         if (requestVersion === version && runId === previousRunId) previousDirection = request && request.length <= 4_000 ? request : "";
         return true;

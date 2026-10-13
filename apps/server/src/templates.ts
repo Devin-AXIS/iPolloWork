@@ -33,7 +33,7 @@ import {
 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ApiError, isApiError } from "./errors.js";
-import { videoLiveOpeningInputSchema, type VideoLiveOpeningInput } from "@ipollowork/types/hyperframes";
+import { videoLiveDirectionInputSchema, videoLiveOpeningInputSchema, type VideoLiveOpeningInput, type VideoLiveScenesInput } from "@ipollowork/types/hyperframes";
 import { resolveWorkspaceFile } from "./extensions/storage.js";
 import { resolveWithinRoot } from "./paths.js";
 import pkg from "../package.json" with { type: "json" };
@@ -939,7 +939,7 @@ export async function publishVideoLiveOpening(config: ServerConfig, workspace: W
   const input = videoLiveOpeningInputSchema.parse(raw);
   const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
   await resolveWithinRoot(workspace.path, input.sourcePath);
-  return withTemplateLock(`video-opening:${source.absolutePath}`, async () => {
+  return withTemplateLock(`video-publication:${source.absolutePath}`, async () => {
     const original = await readFile(source.absolutePath, "utf8");
     const receipt = { sourcePath: input.sourcePath, generationId: input.generationId, openingDuration: input.duration,
       next: "Opening published. Read index.html and append complete scenes after this frozen prefix; retain its scoped timeline, metadata, tokens and local GSAP. Finish storyboard and whole-film audio/checks before marking complete." };
@@ -965,6 +965,110 @@ export async function publishVideoLiveOpening(config: ServerConfig, workspace: W
       await rm(staged, { force: true });
     }
     return { ...receipt, reused: false };
+  });
+}
+
+/** The live text path reuses the local scaffold; bespoke/template scenes retain their normal authoring path. */
+export async function readVideoLiveSource(config: ServerConfig, workspace: WorkspaceInfo,
+  input: Pick<VideoLiveScenesInput, "sourcePath" | "generationId"> & { directionRevision?: number }) {
+  if (config.readOnly) throw new ApiError(403, "read_only", "Workspace is read-only");
+  const source = resolveWorkspaceFile(workspace.path, videoLiveOpeningInputSchema.shape.sourcePath.parse(input.sourcePath));
+  await resolveWithinRoot(workspace.path, input.sourcePath);
+  if ((await stat(source.absolutePath)).size > 2 * 1024 * 1024) throw new ApiError(413, "video_live_source_too_large", "Use normal authoring for this composition.");
+  const html = await readFile(source.absolutePath, "utf8");
+  const root = html.match(/<main\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/i)?.[0];
+  const attr = (name: string) => decodeHtmlAttribute(root?.match(new RegExp(`\\s${name}=["']([^"']*)["']`, "i"))?.[1] ?? "");
+  const readyDuration = Number(attr("data-duration"));
+  const directionRevision = Number(attr("data-ipw-live-direction") || 0);
+  if (!root || attr("data-composition-id") !== "main" || attr("data-ipw-live-id") !== input.generationId || attr("data-ipw-live-status") !== "generating"
+    || !attr("data-ipw-live-opening") || !Number.isFinite(readyDuration) || readyDuration <= 0
+    || !Number.isSafeInteger(directionRevision) || directionRevision < 0) {
+    throw new ApiError(409, "video_live_generation_changed", "This is not the active host-assembled video. Preserve it and use normal authoring.");
+  }
+  if (input.directionRevision !== undefined && input.directionRevision !== directionRevision) {
+    throw new ApiError(409, "video_live_direction_changed", "A new user direction superseded this unpublished work. Replan only the remaining scenes with the current revision.", { directionRevision, readyDuration });
+  }
+  return { source, html, root, readyDuration, directionRevision, directionId: attr("data-ipw-live-direction-id"),
+    recentDirectionIds: attr("data-ipw-live-direction-ids").split(",").filter(Boolean).slice(-128) };
+}
+
+async function saveVideoLiveSource(source: { absolutePath: string }, original: string, html: string) {
+  const staged = `${source.absolutePath}.${randomUUID()}.publication`;
+  try {
+    await writeFile(staged, html, { flag: "wx" });
+    if (await readFile(source.absolutePath, "utf8") !== original) throw new ApiError(409, "video_live_source_changed", "The video changed during publication; preserve the latest source and retry.");
+    await rename(staged, source.absolutePath);
+  } finally { await rm(staged, { force: true }); }
+}
+
+/** Persist direction before releasing it to the agent, using the same single writer as scene publication. */
+export async function advanceVideoLiveDirection(config: ServerConfig, workspace: WorkspaceInfo, raw: unknown) {
+  const input = videoLiveDirectionInputSchema.parse(raw);
+  const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
+  return withTemplateLock(`video-publication:${source.absolutePath}`, async () => {
+    const current = await readVideoLiveSource(config, workspace, input);
+    if (current.directionId === input.directionId || current.recentDirectionIds.includes(input.directionId)) {
+      return { directionRevision: current.directionRevision, readyDuration: current.readyDuration, reused: true };
+    }
+    const directionRevision = current.directionRevision + 1;
+    const recentIds = [...new Set([...current.recentDirectionIds, current.directionId, input.directionId].filter(Boolean))].slice(-128);
+    const root = current.root.replace(/\sdata-ipw-live-direction(?:-ids?)?=["'][^"']*["']/g, "")
+      .replace(/>$/, ` data-ipw-live-direction="${directionRevision}" data-ipw-live-direction-id="${input.directionId}" data-ipw-live-direction-ids="${recentIds.map(escapeSvgText).join(",")}">`);
+    await saveVideoLiveSource(source, current.html, current.html.replace(current.root, root));
+    return { directionRevision, readyDuration: current.readyDuration, reused: false };
+  });
+}
+
+/** Prepare local dependencies independently of narration; no visible source is changed here. */
+export async function prepareVideoLiveTextScene(workspace: WorkspaceInfo, input: Pick<VideoLiveScenesInput, "sourcePath" | "generationId">,
+  scene: VideoLiveScenesInput["scenes"][number]) {
+  const project = dirname(resolveWorkspaceFile(workspace.path, input.sourcePath).absolutePath);
+  const manifest = await readManifest(project);
+  await Promise.all(["assets/gsap.min.js", "design-tokens.css"].map(async path => {
+    const absolute = await resolveWithinRoot(project, path);
+    if (!(await stat(absolute)).isFile()) throw new ApiError(409, "video_live_asset_missing", `Missing ${path}`);
+  }));
+  return (start: number, duration: number, fingerprint: string) => {
+    const document = sessionScaffoldEntry(manifest, "artifact-delivery", {
+      ...input, title: scene.title, supporting: scene.supporting, duration,
+    }).replaceAll("live-opening", scene.sceneId).replace(' data-var-text="title"', "")
+      .replace("</h1>", `</h1>${scene.narration ? `<p data-ipw-narration-source="true" style="font-size:32px;line-height:1.45;max-width:1000px;margin:32px 0 0;color:var(--ipw-color-muted,#c6cedc)">${escapeSvgText(scene.narration.text)}</p>` : ""}`);
+    const markup = document.match(/<section\b[\s\S]*?<\/section>/)?.[0];
+    const script = document.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
+    if (!markup || !script) throw new ApiError(500, "video_live_scaffold_invalid", "The bundled scene scaffold is incomplete.");
+    const section = markup.replace(`id="${scene.sceneId}"`, `id="${scene.sceneId}" data-composition-id="${scene.sceneId}" data-ipw-timing-owner="host"`)
+      .replace('data-start="0"', `data-start="${start}"`)
+      .replace(' data-ipw-scene="true"', ` data-ipw-scene="true" data-ipw-live-fingerprint="${fingerprint}" data-ipw-transition-in="cut" data-ipw-transition-duration="0" data-ipw-transition-intent="continue"`);
+    // The framework nests each registered child timeline at its host's absolute start.
+    const animation = `<script>(() => {${script.replace("window.__timelines.main = timeline;", `window.__timelines[${JSON.stringify(scene.sceneId)}] = timeline;`)}})();</script>`;
+    return { section, animation };
+  };
+}
+
+/** A scene is published only after its audio and local assets are complete. */
+export async function publishVideoLiveScene(config: ServerConfig, workspace: WorkspaceInfo, input: VideoLiveScenesInput,
+  scene: VideoLiveScenesInput["scenes"][number], prepared: Awaited<ReturnType<typeof prepareVideoLiveTextScene>>,
+  publication: { start: number; duration: number; fingerprint: string; audioHtml: string; captionsHtml: string }) {
+  const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
+  return withTemplateLock(`video-publication:${source.absolutePath}`, async () => {
+    const current = await readVideoLiveSource(config, workspace, input);
+    const existing = current.html.match(new RegExp(`<section\\b[^>]*\\bid=["']${scene.sceneId}["'][^>]*>`, "i"))?.[0];
+    if (existing) {
+      if (!existing.includes(`data-ipw-live-fingerprint="${publication.fingerprint}"`)) throw new ApiError(409, "video_live_scene_conflict", "This scene ID already contains different content; preserve it and choose a new ID.");
+      return { sceneId: scene.sceneId, start: publication.start, duration: publication.duration, readyDuration: publication.start + publication.duration, reused: true };
+    }
+    if (Math.abs(current.readyDuration - publication.start) > .001) throw new ApiError(409, "video_live_prefix_changed", "The playable prefix advanced. Read the latest duration before appending; no published scene was replaced.");
+    const readyDuration = Math.round((publication.start + publication.duration) * 30) / 30;
+    if (readyDuration > 7200) throw new ApiError(400, "video_live_duration_exceeded", "The video exceeds the live duration limit.");
+    const { section, animation } = prepared(publication.start, publication.duration, publication.fingerprint);
+    const root = current.root.replace(/\sdata-duration=["'][^"']*["']/, ` data-duration="${readyDuration}"`);
+    const html = current.html.replace(current.root, root)
+      .replace(/<\/main>/i, `${section}\n${publication.audioHtml}\n${publication.captionsHtml}\n</main>`)
+      .replace(/<\/body>/i, `${animation}\n</body>`);
+    const issues = [...validateVideoHtmlScripts(html), ...await validateVideoScriptAssets(html, dirname(source.absolutePath))];
+    if (issues.length) throw new ApiError(422, "video_live_scene_invalid", "Scene validation failed; the published prefix is intact.", { issues });
+    await saveVideoLiveSource(source, current.html, html);
+    return { sceneId: scene.sceneId, start: publication.start, duration: publication.duration, readyDuration, reused: false };
   });
 }
 

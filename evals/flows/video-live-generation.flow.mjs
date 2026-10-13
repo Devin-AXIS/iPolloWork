@@ -11,6 +11,7 @@ const project = fileURLToPath(new URL("../../vendor/hyperframes/packages/studio/
 let fixture;
 const publications = [];
 const jevCalls = [];
+const pipelineCalls = [];
 let jevEnabled = true;
 let opening = "";
 let openingPublicationMs = null;
@@ -33,11 +34,13 @@ function composition(count, complete, cases) {
 export async function startFixture() {
   publications.length = 0;
   jevCalls.length = 0;
+  pipelineCalls.length = 0;
   jevEnabled = true;
   opening = "";
   openingPublicationMs = null;
   // Bun uses the source; the ordinary Node runner uses the owning server build.
   const host = await import(process.versions.bun ? "../../apps/server/src/templates.ts" : "../../apps/server/dist/templates.js");
+  const media = await import(process.versions.bun ? "../../apps/server/src/extensions/media-center.ts" : "../../apps/server/dist/extensions/media-center.js");
   const workspaceRoot = await mkdtemp(join(tmpdir(), "ipw-live-proof-"));
   process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
   const workspace = { id: "proof", name: "Proof", path: workspaceRoot, preset: "default", workspaceType: "local" };
@@ -67,13 +70,20 @@ export async function startFixture() {
     if (request.method === "OPTIONS") { response.end(); return; }
     try {
       if (request.url === "/source" && request.method === "GET") { response.end(await readFile(join(project, "index.html"))); return; }
-      if (request.url === "/evidence" && request.method === "GET") { response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ jevCalls, publications: publications.length, openingPublicationMs, hostOpening: opening.includes('data-ipw-live-opening="') })); return; }
+      if (request.url === "/evidence" && request.method === "GET") { response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ jevCalls, pipelineCalls, publications: publications.length, openingPublicationMs, hostOpening: opening.includes('data-ipw-live-opening="') })); return; }
       if (!["/publish", "/jev-mode", "/experimental/extensions/call"].includes(request.url) || request.method !== "POST") { response.writeHead(404).end(); return; }
       let body = "";
       for await (const chunk of request) { body += chunk; if (body.length > 16000) throw new Error("Fixture request too large"); }
       const input = JSON.parse(body);
       if (request.url === "/jev-mode") { jevEnabled = input.enabled === true; response.end(JSON.stringify({ ok: true })); return; }
       if (request.url === "/experimental/extensions/call") {
+        if (input.extensionId === "media" && input.action === "video_live_direction" && input.context?.workspaceId === "proof") {
+          const result = await media.callMediaExtensionAction(config, { read: async () => ({}) }, input.action, input.args, input.context);
+          const source = await readFile(join(workspaceRoot, sourcePath), "utf8");
+          await writeFile(join(project, ".publication.html"), source);
+          await rename(join(project, ".publication.html"), join(project, "index.html"));
+          response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(result)); return;
+        }
         if (input.extensionId === "media" && input.action === "video_live_opening"
           && input.context?.workspaceId === "proof" && input.context?.sessionId === "live-proof") {
           const start = performance.now();
@@ -98,7 +108,21 @@ export async function startFixture() {
         openingPublicationMs = performance.now() - start;
         opening = await readFile(join(workspaceRoot, sourcePath), "utf8");
       }
-      const source = composition(input.count, input.complete === true, input.cases === true);
+      if (input.count > 1) {
+        const current = await readFile(join(workspaceRoot, sourcePath), "utf8");
+        const directionRevision = Number(current.match(/data-ipw-live-direction="(\d+)"/)?.[1] ?? 0);
+        const result = await media.callMediaExtensionAction(config, { read: async () => ({}) }, "video_live_scenes", {
+          sourcePath, generationId: "proof-run", directionRevision, expectedReadyDuration: (input.count - 1) * 4,
+          scenes: [{ sceneId: `scene-${input.count}`, title: input.count === 2 ? "从一个想法，到一个视频" : input.cases ? "使用案例 · 产品发布" : "更多产品功能",
+            supporting: input.cases ? "你的新指令，正在改变后续内容。" : "每一个完成的场景，都立即成为可以播放的内容。", duration: 4 }],
+        }, { workspaceId: "proof", sessionId: "live-proof" });
+        pipelineCalls.push(result.result.output);
+      }
+      let source = await readFile(join(workspaceRoot, sourcePath), "utf8");
+      if (input.complete === true) {
+        source = source.replace('data-ipw-live-status="generating"', 'data-ipw-live-status="complete"');
+        await writeFile(join(workspaceRoot, sourcePath), source);
+      }
       await writeFile(join(project, ".publication.html"), source);
       await rename(join(project, ".publication.html"), join(project, "index.html"));
       publications.push({ ...input, source });
@@ -178,7 +202,7 @@ export default {
         }, assert: async () => {
           const request = await ctx.eval("window.liveVideoProof.requests.filter(request => request.method === 'turn/steer').at(-1)");
           ctx.assert(request.payload.expectedTurnId === "live-turn" && JSON.stringify(request).includes("published through 12.00s") && !JSON.stringify(request).includes("Jev production advice"), "Fallback preserves raw direction and current published boundary");
-          ctx.assert(jevCalls.filter(call => call.action === "evaluate").length === 2 && jevCalls.at(-1).result.configured === false, "Unconfigured Jev never calls inference");
+          ctx.assert(jevCalls.filter(call => call.action === "evaluate").length === 1 && jevCalls.at(-1).result.configured === false, "Unconfigured Jev never calls inference; a host opening does not require Jev");
         }, screenshot: { name: "jev-unavailable-steering", requireText: ["已引导后续内容：结尾保留案例，再慢一点", "已生成 12 秒"] } });
     } },
     { name: "Preserve manual pause through the final publication", run: async ctx => {

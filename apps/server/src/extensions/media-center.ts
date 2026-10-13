@@ -16,8 +16,8 @@ import { z } from "zod";
 import { analyzeVideoMusic, prepareVideoSoundtrack, prepareVideoLanguageTiming, videoSoundtrackInput, videoLanguageTimingInput } from "./video-audio-analysis.js";
 import { videoRenderAction, videoPreviewCheck, analyzeVideoReference, videoRenderInput, videoPreviewInput, videoReferenceInput } from "./video-render.js";
 import { queryVideoRecipeCatalog } from "../hyperframes-catalog.js";
-import { videoLiveOpeningInputSchema } from "@ipollowork/types/hyperframes";
-import { publishVideoLiveOpening } from "../templates.js";
+import { videoLiveDirectionInputSchema, videoLiveOpeningInputSchema, videoLiveScenesInputSchema } from "@ipollowork/types/hyperframes";
+import { advanceVideoLiveDirection, prepareVideoLiveTextScene, publishVideoLiveOpening, publishVideoLiveScene, readVideoLiveSource } from "../templates.js";
 
 // The Alibaba adapter stays internal to this module. The public action
 // contract is provider-neutral so Media Center can add providers without
@@ -35,6 +35,8 @@ const MAX_VOICEOVER_AUDIO_CACHE_ENTRIES = 128;
 const COSYVOICE_V3_FLASH = "cosyvoice-v3-flash";
 const DEFAULT_COSYVOICE_V3_FLASH_VOICE = "longanyang";
 const VOICEOVER_READING_BUFFER_SECONDS = 0.25;
+// At most one publishing batch per video; direction changes abort its unpublished work.
+const liveVideoBatches = new Map<string, AbortController>();
 const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
   longxiaochun: "longyingmu_v3",
   longxiaoxia: "longyingmu_v3",
@@ -971,6 +973,18 @@ export const MEDIA_EXTENSION_ACTIONS = [
     description: "Publish a complete 4–6 second text opening from the app's local scaffold with one call. Supply real title and supporting copy, not HTML. Only an untouched blank video scaffold can be replaced; existing content returns 409. Use only when a text opening fits the request and no first-scene narration, captions, music, specific media or recipes-only restriction is required. Then append scenes normally while it plays.",
     inputSchema: z.toJSONSchema(videoLiveOpeningInputSchema, { io: "input" }),
   },
+  {
+    extensionId: MEDIA_EXTENSION_ID, action: "video_live_scenes", effect: "write",
+    title: "Produce and publish the next live video scenes",
+    description: "For a host text opening, append 1–2 complete editable text scenes with real title/supporting copy and optional narration/captions in ONE call. The host prepares visuals and speech concurrently, measures timing and publishes each scene in order as soon as it is ready, without waiting for the next scene. Supply the latest directionRevision (initially 0) and expectedReadyDuration. No HTML, separate speech call, whole-film planning or per-scene full-film check is needed. Preserve required media/music and custom/template composition through their normal tools. Read the receipt for exact storyboard/timing. 409 means rebase unpublished work; never reset the published prefix.",
+    inputSchema: z.toJSONSchema(videoLiveScenesInputSchema, { io: "input" }),
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID, action: "video_live_direction", effect: "write",
+    title: "Invalidate unpublished video work for a new direction",
+    description: "Host steering boundary. Persist a fresh directionId once before sending a user direction to the active video agent; abort obsolete unpublished synthesis and return the revision required by video_live_scenes. Published scenes are preserved. Retries of the most recent 128 direction IDs are idempotent.",
+    inputSchema: z.toJSONSchema(videoLiveDirectionInputSchema, { io: "input" }),
+  },
   ...[
     { action: "video_component_read", title: "Read editable video component JSON", description: "Read an installed component's current {content,copy,timing,look}, revision, schema and guide. elementId is the exact data-composition-src host id in the video source. Read before editing; retain stable ids.", schema: videoComponentReadInput },
     { action: "video_component_write", title: "Apply video component JSON", description: "Apply one natural JSON data object using the revision from video_component_read. Omitted fields remain; arrays replace completely. Shared count, reference, timing and actual font/layout checks run before one atomic save. 422 returns exact correction paths; 409 means read current data and rebase. Invalid requests leave source and preview intact.", schema: videoComponentWriteInput },
@@ -1497,13 +1511,15 @@ function synthesizedAudioUrl(payload: unknown): string {
   return url.toString();
 }
 
-async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
+async function downloadSynthesizedAudio(url: string, signal?: AbortSignal): Promise<Buffer> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  const downloadSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
   let response: Response;
   try {
-    response = await providerFetch(url, { signal: controller.signal, redirect: "error" });
+    response = await providerFetch(url, { signal: downloadSignal, redirect: "error" });
   } catch (error) {
+    clearTimeout(timeout);
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
     }
@@ -1522,15 +1538,22 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
     const chunks: Uint8Array[] = [];
     let bytes = 0;
     const reader = response.body.getReader();
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      bytes += chunk.value.byteLength;
-      if (bytes > MAX_SYNTHESIZED_AUDIO_BYTES) {
-        await reader.cancel();
-        throw new ApiError(413, "bailian_audio_too_large", "Synthesized audio exceeded the local file size limit.");
+    const cancelStream = () => { void reader.cancel().catch(() => undefined); };
+    downloadSignal.addEventListener("abort", cancelStream, { once: true });
+    try {
+      while (true) {
+        downloadSignal.throwIfAborted();
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(413, "bailian_audio_too_large", "Synthesized audio exceeded the local file size limit.");
+        chunks.push(chunk.value);
       }
-      chunks.push(chunk.value);
+      downloadSignal.throwIfAborted();
+    } finally {
+      downloadSignal.removeEventListener("abort", cancelStream);
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
     }
     if (!bytes) throw new ApiError(502, "bailian_audio_download_failed", "Synthesized audio response was empty.");
     return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), bytes);
@@ -1624,50 +1647,92 @@ async function requestStreamingVoiceover(input: {
   url: string;
   body: JsonRecord;
   text: string;
+  signal?: AbortSignal;
 }): Promise<CachedVoiceover> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
-  let response: Response;
+  const signal = input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal;
   try {
-    response = await providerFetch(input.url, {
+    const response = await providerFetch(input.url, {
       method: "POST",
       headers: { Authorization: `Bearer ${input.apiKey}`, "Content-Type": "application/json", "X-DashScope-SSE": "enable" },
       body: JSON.stringify(input.body),
-      signal: controller.signal,
+      signal,
     });
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("text/event-stream")) {
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", providerMessage(payload) || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
+      signal.throwIfAborted();
+      const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(payload), signal);
+      signal.throwIfAborted();
+      const alignment = reconcileVoiceoverWordTimings([payload], input.text, mp3DurationSeconds(audio));
+      return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
+    }
+    if (!response.ok || !response.body) throw new ApiError(response.status || 502, "bailian_request_failed", "Alibaba Model Studio did not return a speech stream.");
+    const reader = response.body.getReader();
+    const cancelStream = () => { void reader.cancel().catch(() => undefined); };
+    signal.addEventListener("abort", cancelStream, { once: true });
+    const decoder = new TextDecoder();
+    const chunks: Buffer[] = [];
+    const payloads: unknown[] = [];
+    let pending = "", receivedBytes = 0, audioBytes = 0, done = false;
+    const consume = (event: string) => {
+      const data = event.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("\n");
+      if (!data) return;
+      if (data === "[DONE]") { done = true; return; }
+      let payload: unknown;
+      try { payload = JSON.parse(data); }
+      catch { throw new ApiError(502, "bailian_audio_invalid", "Invalid speech stream event."); }
+      const output = readRecord(payload, "output");
+      const audio = readRecord(output, "audio");
+      const encoded = readStringField(audio, "data");
+      if (encoded) {
+        const chunk = Buffer.from(encoded, "base64");
+        audioBytes += chunk.byteLength;
+        if (audioBytes > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(413, "bailian_audio_invalid", "Speech stream exceeded the local audio limit.");
+        chunks.push(chunk);
+      }
+      // Keep timing/receipt metadata, not a second copy of every base64 audio chunk.
+      const { data: _audioData, ...audioMetadata } = audio;
+      payloads.push({ ...readRecord({ payload }, "payload"), output: { ...output, audio: audioMetadata } });
+      if (payloads.length > 20_000) throw new ApiError(413, "bailian_audio_invalid", "Too many speech stream events.");
+      const code = readStringField(payload, "code");
+      if (code) throw new ApiError(502, "bailian_request_failed", providerMessage(payload) || "Speech synthesis failed.");
+    };
+    try {
+      while (!done) {
+        signal.throwIfAborted();
+        const next = await reader.read();
+        if (next.done) { pending += decoder.decode(); break; }
+        receivedBytes += next.value.byteLength;
+        if (receivedBytes > MAX_SYNTHESIZED_AUDIO_BYTES * 2) throw new ApiError(413, "bailian_audio_invalid", "Speech stream exceeded the local response limit.");
+        pending += decoder.decode(next.value, { stream: true });
+        let boundary: RegExpExecArray | null;
+        while (!done && (boundary = /\r?\n\r?\n/.exec(pending))) {
+          consume(pending.slice(0, boundary.index));
+          pending = pending.slice(boundary.index + boundary[0].length);
+        }
+      }
+      if (!done && pending.trim()) consume(pending);
+    } finally {
+      signal.removeEventListener("abort", cancelStream);
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+    signal.throwIfAborted();
+    const audio = chunks.length ? Buffer.concat(chunks, audioBytes) : await downloadSynthesizedAudio(synthesizedAudioUrl(payloads.at(-1)), signal);
+    if (!audio.byteLength || audio.byteLength > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(502, "bailian_audio_invalid", "Alibaba Model Studio returned invalid streaming audio.");
+    const alignment = reconcileVoiceoverWordTimings(payloads, input.text, mp3DurationSeconds(audio));
+    return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
   } catch (error) {
+    if (input.signal?.aborted) throw new ApiError(409, "video_live_direction_changed", "Unpublished speech was cancelled for a new video direction.");
     if (error instanceof Error && error.name === "AbortError") throw new ApiError(504, "bailian_timeout", "Alibaba Model Studio did not respond before the request timed out.");
     if (isApiError(error)) throw error;
     throw new ApiError(502, "bailian_unreachable", "Could not reach Alibaba Model Studio. Check the network and try again.");
   } finally {
     clearTimeout(timeout);
   }
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("text/event-stream")) {
-    const payload: unknown = await response.json().catch(() => null);
-    if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", providerMessage(payload) || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
-    const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(payload));
-    const alignment = reconcileVoiceoverWordTimings([payload], input.text, mp3DurationSeconds(audio));
-    return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
-  }
-  const stream = await response.text();
-  if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", `Alibaba Model Studio request failed (HTTP ${response.status}).`);
-  const payloads = stream.split(/\r?\n\r?\n/).flatMap((event) => {
-    const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("");
-    if (!data || data === "[DONE]") return [];
-    try { return [JSON.parse(data) as unknown]; } catch { return []; }
-  });
-  const chunks = payloads.flatMap((payload) => {
-    if (!isRecord(payload) || !isRecord(payload.output) || !isRecord(payload.output.audio)) return [];
-    const data = readStringField(payload.output.audio, "data");
-    return data ? [Buffer.from(data, "base64")] : [];
-  });
-  const audio = chunks.length
-    ? Buffer.concat(chunks)
-    : await downloadSynthesizedAudio(synthesizedAudioUrl(payloads.at(-1)));
-  if (!audio.byteLength || audio.byteLength > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(502, "bailian_audio_invalid", "Alibaba Model Studio returned invalid streaming audio.");
-  const alignment = reconcileVoiceoverWordTimings(payloads, input.text, mp3DurationSeconds(audio));
-  return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
 }
 
 function mp3DurationSeconds(bytes: Uint8Array): number {
@@ -1827,6 +1892,7 @@ async function synthesizeWorkspaceVoiceover(input: {
   voice: string;
   sampleRate?: number;
   controls: SpeechSynthesisControls;
+  signal?: AbortSignal;
 }): Promise<SynthesizedWorkspaceVoiceover> {
   const cacheKey = voiceoverAudioCacheKey({
     apiKey: input.apiKey,
@@ -1840,6 +1906,8 @@ async function synthesizeWorkspaceVoiceover(input: {
   const workspace = workspaceForContext(input.config, input.context);
   const destination = resolveWorkspaceFile(workspace.path, input.scene.outputPath);
   const timingDestination = resolveWorkspaceFile(workspace.path, input.scene.outputPath.replace(/\.mp3$/i, ".timings.json"));
+  await resolveWithinRoot(workspace.path, destination.relativePath);
+  await resolveWithinRoot(workspace.path, timingDestination.relativePath);
   const existingAudio = await readFile(destination.absolutePath).catch((error: unknown) => {
     if (isRecord(error) && error.code === "ENOENT") return null;
     throw error;
@@ -1860,13 +1928,15 @@ async function synthesizeWorkspaceVoiceover(input: {
     synthesized = readCachedVoiceoverAudio(cacheKey);
   }
   if (!synthesized) {
-    let request = voiceoverAudioRequests.get(cacheKey);
+    // A cancellable live job must not abort another consumer's deduplicated request.
+    let request = input.signal ? undefined : voiceoverAudioRequests.get(cacheKey);
     if (!request) {
       if (voiceoverAudioRequests.size >= MAX_VOICEOVER_AUDIO_CACHE_ENTRIES) {
         throw new ApiError(429, "voiceover_busy", "Too many narration requests are running. Wait before retrying the same batch.");
       }
       request = requestStreamingVoiceover({
         apiKey: input.apiKey,
+        signal: input.signal,
         text: input.scene.text,
         url: endpoint(input.baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
         body: {
@@ -1875,12 +1945,13 @@ async function synthesizeWorkspaceVoiceover(input: {
           parameters: { word_timestamp_enabled: true },
         },
       }).then(result => { cacheVoiceoverAudio(cacheKey, result); return result; })
-        .finally(() => { voiceoverAudioRequests.delete(cacheKey); });
-      voiceoverAudioRequests.set(cacheKey, request);
+        .finally(() => { if (!input.signal) voiceoverAudioRequests.delete(cacheKey); });
+      if (!input.signal) voiceoverAudioRequests.set(cacheKey, request);
     }
     synthesized = await request;
   }
   const audio = synthesized.audio;
+  input.signal?.throwIfAborted();
   const temporaryPath = `${destination.absolutePath}.${randomUUID()}.tmp`;
   const temporaryTimingPath = `${timingDestination.absolutePath}.${randomUUID()}.tmp`;
   let timingLinked = false;
@@ -2270,6 +2341,90 @@ export async function bailianMediaStatus(authorization: AuthorizationAccess) {
   }
 }
 
+async function produceVideoLiveScenes(config: ServerConfig, authorization: AuthorizationAccess, raw: JsonRecord, context: JsonRecord) {
+  const input = videoLiveScenesInputSchema.parse(raw);
+  const workspace = workspaceForContext(config, context);
+  const current = await readVideoLiveSource(config, workspace, input);
+  const firstScene = input.scenes[0];
+  const firstFingerprint = createHash("sha256").update(JSON.stringify({ generationId: input.generationId, directionRevision: input.directionRevision, scene: firstScene })).digest("hex");
+  if (Math.abs(current.readyDuration - input.expectedReadyDuration) > .001 && !current.html.includes(`data-ipw-live-fingerprint="${firstFingerprint}"`)) {
+    throw new ApiError(409, "video_live_prefix_changed", "Use the latest playable duration before requesting another scene. No synthesis was started.");
+  }
+  const key = current.source.absolutePath;
+  if (liveVideoBatches.has(key)) throw new ApiError(409, "video_live_batch_running", "A scene batch is already running for this video. Reuse it or send a direction before starting another.");
+  if (liveVideoBatches.size >= 8) throw new ApiError(429, "video_live_busy", "Wait for a running live video batch before starting another.");
+  const controller = new AbortController();
+  liveVideoBatches.set(key, controller);
+  const started = performance.now();
+  const items: Array<{ sceneId: string; start: number; duration: number; readyDuration: number; reused: boolean }> = [];
+  let preparations: Array<Promise<{
+    render: Awaited<ReturnType<typeof prepareVideoLiveTextScene>>;
+    audio: SynthesizedWorkspaceVoiceover | null;
+    fingerprint: string;
+  }>> = [];
+  try {
+    const narrated = input.scenes.some(scene => scene.narration);
+    const voicePath = await resolveWithinRoot(workspace.path, `${posix.dirname(input.sourcePath)}/voiceover.json`);
+    const savedVoice = await readFile(voicePath, "utf8").then((source): unknown => JSON.parse(source)).catch((error: unknown) => {
+      if (isRecord(error) && error.code === "ENOENT") return {};
+      throw error;
+    });
+    if (narrated && readOptionalBoolean(savedVoice, "enabled") === false) throw new ApiError(409, "video_voiceover_disabled", "Narration is disabled in this project's voice settings. Preserve that choice.");
+    const credentials = narrated ? await resolveBailianCredentials(authorization) : null;
+    controller.signal.throwIfAborted();
+    await readVideoLiveSource(config, workspace, input);
+    const model = readStringField(savedVoice, "model") || COSYVOICE_V3_FLASH;
+    preparations = input.scenes.map(scene => {
+      const fingerprint = createHash("sha256").update(JSON.stringify({ generationId: input.generationId, directionRevision: input.directionRevision, scene })).digest("hex");
+      const voiceRequest = scene.narration?.voice || readStringField(savedVoice, "voiceId") || defaultCosyVoiceVoice(model);
+      const audio = scene.narration && credentials ? synthesizeWorkspaceVoiceover({
+        config, context, ...credentials, model, signal: controller.signal,
+        voice: compatibleCosyVoiceVoice(model, voiceRequest),
+        scene: workspaceVoiceoverSceneInput({ text: scene.narration.text, sceneText: scene.narration.text,
+          sceneId: scene.sceneId, sceneStart: 0, sceneDuration: scene.duration,
+          outputPath: `${posix.dirname(input.sourcePath)}/assets/voiceover-live-${fingerprint.slice(0, 24)}.mp3` }),
+        controls: speechSynthesisControls({ ...readRecord({ savedVoice }, "savedVoice"), ...(scene.narration.rate ? { rate: scene.narration.rate } : {}) }),
+      }) : Promise.resolve(null);
+      return Promise.all([prepareVideoLiveTextScene(workspace, input, scene), audio])
+        .then(([render, audio]) => ({ render, audio, fingerprint }));
+    });
+    // Attach handlers immediately: a lookahead may fail while the current scene is still producing.
+    const settled = preparations.map(preparation => preparation.then(
+      value => ({ value }), (error: unknown) => ({ error }),
+    ));
+    let start = input.expectedReadyDuration;
+    let firstPublishedMs: number | undefined;
+    for (const [index, scene] of input.scenes.entries()) {
+      const result = await settled[index];
+      if (!result || "error" in result) throw result && "error" in result ? result.error : new Error("Scene preparation is incomplete");
+      controller.signal.throwIfAborted();
+      const { render, audio, fingerprint } = result.value;
+      const duration = Math.ceil(Math.max(scene.duration, (audio?.durationSeconds ?? 0) + VOICEOVER_READING_BUFFER_SECONDS) * 30) / 30;
+      if (duration > 12) throw new ApiError(422, "video_live_scene_too_long", "Split this narration at a spoken boundary; a live scene cannot exceed 12 seconds. Completed audio is preserved.");
+      const voiceover = audio ? workspaceVoiceoverResult(audio, input.sourcePath, start) : null;
+      const captionsHtml = scene.captions && voiceover ? voiceover.captionCues.map((cue, cueIndex) =>
+        `<div id="${scene.sceneId}-caption-${cueIndex}" class="clip" data-ipw-caption="true" data-start="${cue.startFrame / 30}" data-duration="${(cue.endFrame - cue.startFrame) / 30}" data-track-index="2" style="position:absolute;top:auto;left:10%;right:10%;bottom:48px;height:auto;display:flex;justify-content:center;align-items:center;overflow:visible;background:transparent"><span data-ipw-caption-text="true" style="background:transparent;text-align:center;max-width:100%;font:32px/1.4 var(--ipw-font-body);color:var(--ipw-color-text,#fff);text-shadow:0 2px 8px #000">${escapeHtmlAttribute(cue.text)}</span></div>`).join("\n") : "";
+      const item = await publishVideoLiveScene(config, workspace, input, scene, render, {
+        start, duration, fingerprint, audioHtml: voiceover?.audioElementHtml ?? "", captionsHtml,
+      });
+      items.push(item);
+      firstPublishedMs ??= Math.round(performance.now() - started);
+      start = item.readyDuration;
+    }
+    return { sourcePath: input.sourcePath, generationId: input.generationId, directionRevision: input.directionRevision,
+      items, readyDuration: start, firstPublishedMs, elapsedMs: Math.round(performance.now() - started),
+      next: "Scenes are already playing. Preserve the published prefix and use readyDuration for the next call. Prepare at most one lookahead scene. Record the returned exact windows and narration in STORYBOARD.md; finish required music/media and whole-film checks before marking complete. A new user direction requires its new directionRevision." };
+  } catch (error) {
+    throw new ApiError(isApiError(error) ? error.status : 502, controller.signal.aborted ? "video_live_direction_changed" : isApiError(error) ? error.code : "video_live_batch_incomplete",
+      controller.signal.aborted ? "New direction cancelled unpublished work. Keep the playable prefix and replan the remainder." : error instanceof Error ? error.message : "Live scene production failed.",
+      { publishedSceneIds: items.map(item => item.sceneId), readyDuration: items.at(-1)?.readyDuration ?? current.readyDuration });
+  } finally {
+    controller.abort();
+    await Promise.allSettled(preparations);
+    if (liveVideoBatches.get(key) === controller) liveVideoBatches.delete(key);
+  }
+}
+
 export async function callMediaExtensionAction(
   config: ServerConfig,
   authorization: AuthorizationAccess,
@@ -2277,6 +2432,17 @@ export async function callMediaExtensionAction(
   args: JsonRecord,
   context: JsonRecord,
 ) {
+  if (action === "video_live_direction") {
+    const workspace = workspaceForContext(config, context);
+    const output = await advanceVideoLiveDirection(config, workspace, args);
+    const source = resolveWorkspaceFile(workspace.path, requireString(args, "sourcePath"));
+    if (!output.reused) liveVideoBatches.get(source.absolutePath)?.abort();
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
+  if (action === "video_live_scenes") {
+    const output = await produceVideoLiveScenes(config, authorization, args, context);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
   if (action === "video_live_opening") {
     const output = await publishVideoLiveOpening(config, workspaceForContext(config, context), args);
     return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };

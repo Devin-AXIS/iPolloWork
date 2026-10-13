@@ -1229,37 +1229,11 @@ export function VideoPanel({
   ]);
 
   React.useEffect(() => {
-    if (isRemoteWorkspace || runtime || !isDesktopRuntime()) {
-      setResourcesReady(true);
-      return;
-    }
-
-    let disposed = false;
-    setResourcesReady(false);
-    setStatus("starting");
-    setStartupStage("starting-service");
-    void videoResourceInfo().then((resource) => {
-      if (disposed) return;
-      if (!resource.installed) throw new Error(resource.error ?? "视频组件未完整打包，请重新安装完整安装包。");
-      setResourcesReady(true);
-    }).catch((cause) => {
-      if (disposed) return;
-      setStatus("failed");
-      setDetail(cause instanceof Error ? cause.message : t("video.resources.download_failed"));
-    });
-    return () => { disposed = true; };
-  }, [isRemoteWorkspace, resourceAttempt, runtime]);
-
-  React.useEffect(() => {
     setStatus("starting");
     setStudioFrameLoaded(false);
     studioChromeReadyRef.current = false;
     setStudioChromeReady(false);
     setActiveStudioPort(studioPort);
-    if (!resourcesReady) {
-      setStartupStage("starting-service");
-      return;
-    }
     setStartupStage("starting-service");
     setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL }));
     if (isRemoteWorkspace) {
@@ -1287,13 +1261,19 @@ export function VideoPanel({
         setDetail(t("video.waiting_on_port", { port: studioPort }));
       }
     }, 900);
-    void startHyperframes({
+    // Resource inspection and the idempotent native startup are independent.
+    // Wait for both before exposing the frame, while project/model preparation continues.
+    const resources = !runtime && isDesktopRuntime() ? videoResourceInfo().then(resource => {
+      if (!resource.installed) throw new Error(resource.error ?? "视频组件未完整打包，请重新安装完整安装包。");
+      if (!disposed) setResourcesReady(true);
+    }) : Promise.resolve().then(() => { if (!disposed) setResourcesReady(true); });
+    void Promise.all([resources, startHyperframes({
       workspaceRoot,
       sessionId,
       projectDirectory,
       port: studioPort,
-    })
-      .then((result) => {
+    })])
+      .then(([, result]) => {
         if (disposed) return;
         window.clearTimeout(waitingTimer);
         if (!result?.ok) throw new Error(t("video.could_not_start"));
@@ -1325,7 +1305,8 @@ export function VideoPanel({
   }, [
     isRemoteWorkspace,
     projectDirectory,
-    resourcesReady,
+    resourceAttempt,
+    runtime,
     sessionId,
     startAttempt,
     studioPort,

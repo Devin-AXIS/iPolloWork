@@ -1,6 +1,6 @@
 import { disposeiPolloWorkWorkspaceConfigStore } from "../ipollowork-workspace-config-store.js";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rmdir, rm, writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,11 +18,13 @@ import {
   compileVoiceoverCaptions,
 } from "./media-center.js";
 import { renderedSceneWindows } from "./video-render.js";
+import { createTemplateAuthoringSession, publishVideoLiveOpening } from "../templates.js";
 
 const nativeFetch = globalThis.fetch;
 const mediaProviderFetchKey = Symbol.for("ipollowork.mediaProviderFetch");
 const nativeMediaProviderFetch: unknown = Reflect.get(globalThis, mediaProviderFetchKey);
 const directories: string[] = [];
+const originalRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 
 const config = {
   workspaces: [],
@@ -33,6 +35,8 @@ function env(values: Record<string, string>): AuthorizationAccess {
 }
 
 afterEach(async () => {
+  if (originalRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+  else process.env.IPOLLOWORK_RUNTIME_DB = originalRuntimeDb;
   globalThis.fetch = nativeFetch;
   if (nativeMediaProviderFetch === undefined) Reflect.deleteProperty(globalThis, mediaProviderFetchKey);
   else Reflect.set(globalThis, mediaProviderFetchKey, nativeMediaProviderFetch);
@@ -134,6 +138,204 @@ async function workspaceConfig() {
     } as unknown as ServerConfig,
   };
 }
+
+async function liveWorkspace() {
+  const fixture = await workspaceConfig();
+  process.env.IPOLLOWORK_RUNTIME_DB = join(fixture.root, "live.sqlite");
+  const workspace = fixture.config.workspaces[0];
+  if (!workspace) throw new Error("Missing fixture workspace");
+  workspace.workspaceType = "local";
+  await rmdir(join(fixture.root, "video/session"));
+  await createTemplateAuthoringSession(fixture.config, workspace, { sessionId: "session", category: "video", purpose: "artifact-delivery" });
+  await publishVideoLiveOpening(fixture.config, workspace, { sourcePath: "video/session/index.html", generationId: "pipeline-run", title: "实时视频", supporting: "边生成边播放", duration: 4 });
+  const input = { sourcePath: "video/session/index.html", generationId: "pipeline-run", expectedReadyDuration: 4, directionRevision: 0,
+    scenes: [{ sceneId: "first", title: "第一段", supporting: "先看到完整内容", duration: 4 }] };
+  const call = (args: Record<string, unknown> = input, action = "video_live_scenes") => callMediaExtensionAction(fixture.config, env({ DASHSCOPE_API_KEY: "sk-live-pipeline-test" }), action, args, { workspaceId: workspace.id });
+  const html = () => readFile(join(fixture.root, input.sourcePath), "utf8");
+  return { ...fixture, workspace, input, call, html };
+}
+
+function speechStream(text: string, frames = 100) {
+  const frame = Buffer.alloc(417); frame.set([0xff, 0xfb, 0x90, 0x00]);
+  const audio = Buffer.concat(Array.from({ length: frames }, () => frame));
+  return new Response(`data: ${JSON.stringify({ output: { audio: { data: audio.toString("base64") }, sentence: {
+    words: [{ text, begin_index: 0, end_index: text.length, begin_time: 100, end_time: 2200 }],
+  } } })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+}
+
+async function waitForPublished(html: () => Promise<string>, sceneId: string) {
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if ((await html()).includes(`id="${sceneId}"`)) return;
+    await Bun.sleep(10);
+  }
+  throw new Error(`Scene ${sceneId} did not publish`);
+}
+
+describe("Live scene production pipeline", () => {
+  test("a delayed duplicate direction does not advance the revision or cancel newer work", async () => {
+    const fixture = await liveWorkspace();
+    const direction = { sourcePath: fixture.input.sourcePath, generationId: fixture.input.generationId, directionId: crypto.randomUUID() };
+    await fixture.call(direction, "video_live_direction");
+    await fixture.call({ ...direction, directionId: crypto.randomUUID() }, "video_live_direction");
+    expect(await fixture.call(direction, "video_live_direction")).toMatchObject({ result: { output: { directionRevision: 2, reused: true } } });
+  });
+  test("rejects read-only, stale generation/prefix and oversized lookahead before paid work", async () => {
+    const fixture = await liveWorkspace();
+    let requests = 0;
+    Reflect.set(globalThis, mediaProviderFetchKey, () => { requests++; throw new Error("Must not synthesize"); });
+    const scenes = [{ ...fixture.input.scenes[0], narration: { text: "未授权的旧请求" } }];
+    await expect(fixture.call({ ...fixture.input, generationId: "old", scenes })).rejects.toMatchObject({ code: "video_live_generation_changed" });
+    await expect(fixture.call({ ...fixture.input, expectedReadyDuration: 8, scenes })).rejects.toMatchObject({ code: "video_live_prefix_changed" });
+    await expect(fixture.call({ ...fixture.input, scenes: [{ ...scenes[0], sceneId: "main" }] })).rejects.toThrow();
+    await expect(fixture.call({ ...fixture.input, scenes: [...scenes, { ...scenes[0], sceneId: "second" }, { ...scenes[0], sceneId: "third" }] })).rejects.toThrow();
+    fixture.config.readOnly = true;
+    await expect(fixture.call({ ...fixture.input, scenes })).rejects.toMatchObject({ code: "read_only" });
+    expect(requests).toBe(0);
+  });
+
+  test("publishes structured text without a provider and preserves the opening and exact retry", async () => {
+    const fixture = await liveWorkspace();
+    Reflect.set(globalThis, mediaProviderFetchKey, () => { throw new Error("Silent scenes must not call a provider"); });
+    const original = await fixture.html();
+    const opening = original.match(/<section[\s\S]*?<\/section>/)?.[0];
+    expect(await fixture.call()).toMatchObject({ result: { output: { readyDuration: 8, items: [{ sceneId: "first", start: 4, duration: 4, reused: false }] } } });
+    const published = await fixture.html();
+    expect(published).toContain(opening ?? "missing opening");
+    expect(published).toContain('data-composition-id="first" data-ipw-timing-owner="host"');
+    expect(published).not.toContain('data-var-text="title">第一段');
+    expect(await fixture.call()).toMatchObject({ result: { output: { items: [{ reused: true }] } } });
+    expect(await fixture.html()).toBe(published);
+    await expect(fixture.call({ ...fixture.input, scenes: [{ ...fixture.input.scenes[0], title: "别的内容" }] })).rejects.toMatchObject({ code: "video_live_prefix_changed" });
+    expect(validateVoiceoverTimelineHtml(published).issues).toEqual([]);
+  });
+
+  test("prepares two speeches concurrently and publishes the first while the second is still pending", async () => {
+    const fixture = await liveWorkspace();
+    let first: ((response: Response) => void) | undefined, second: ((response: Response) => void) | undefined;
+    let requests = 0;
+    Reflect.set(globalThis, mediaProviderFetchKey, (_url: string, init?: RequestInit) => new Promise<Response>(resolve => {
+      const text = JSON.parse(String(init?.body)).input.text;
+      requests++;
+      if (text === "第一段讲解") first = resolve; else second = resolve;
+    }));
+    const input = { ...fixture.input, scenes: [
+      { ...fixture.input.scenes[0], narration: { text: "第一段讲解" }, captions: true },
+      { sceneId: "second", title: "第二段", supporting: "继续前进", duration: 4, narration: { text: "第二段讲解" } },
+    ] };
+    let finished = false;
+    const task = fixture.call(input).then(result => { finished = true; return result; });
+    for (let attempt = 0; requests < 2 && attempt < 100; attempt++) await Bun.sleep(10);
+    expect(requests).toBe(2);
+    first?.(speechStream("第一段讲解"));
+    await waitForPublished(fixture.html, "first");
+    const firstHtml = await fixture.html();
+    expect(finished).toBe(false);
+    expect(firstHtml).not.toContain('id="second"');
+    expect(firstHtml).toContain('data-duration="8"');
+    expect(validateVoiceoverTimelineHtml(firstHtml).issues).toEqual([]);
+    second?.(speechStream("第二段讲解", 200));
+    expect(await task).toMatchObject({ result: { output: { items: [{ start: 4 }, { start: 8 }], readyDuration: expect.any(Number) } } });
+    const completed = await fixture.html();
+    expect(validateVoiceoverTimelineHtml(completed).issues).toEqual([]);
+    await fixture.call(input);
+    expect(requests).toBe(2);
+  });
+
+  test("never publishes a ready lookahead ahead of its still-pending predecessor", async () => {
+    const fixture = await liveWorkspace();
+    let release: ((response: Response) => void) | undefined;
+    let requests = 0;
+    Reflect.set(globalThis, mediaProviderFetchKey, (_url: string, init?: RequestInit) => {
+      requests++;
+      return JSON.parse(String(init?.body)).input.text === "等待前段"
+        ? new Promise<Response>(resolve => { release = resolve; }) : Promise.resolve(speechStream("后段先完成"));
+    });
+    const task = fixture.call({ ...fixture.input, scenes: [
+      { ...fixture.input.scenes[0], narration: { text: "等待前段" } },
+      { sceneId: "second", title: "后段", supporting: "按顺序播放", duration: 4, narration: { text: "后段先完成" } },
+    ] });
+    for (let attempt = 0; requests < 2 && attempt < 100; attempt++) await Bun.sleep(10);
+    expect(requests).toBe(2);
+    await Bun.sleep(30);
+    expect(await fixture.html()).not.toContain('id="second"');
+    release?.(speechStream("等待前段"));
+    await task;
+    expect((await fixture.html()).indexOf('id="first"')).toBeLessThan((await fixture.html()).indexOf('id="second"'));
+  });
+
+  test("direction changes abort pending speech and reject late publication while preserving ready scenes", async () => {
+    const fixture = await liveWorkspace();
+    let cancelled = false;
+    Reflect.set(globalThis, mediaProviderFetchKey, (_url: string, init?: RequestInit) => {
+      const text = JSON.parse(String(init?.body)).input.text;
+      if (text === "先发布") return Promise.resolve(speechStream(text));
+      return Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new TextEncoder().encode(": pending\n\n")); },
+        cancel() { cancelled = true; },
+      }), { headers: { "content-type": "text/event-stream" } }));
+    });
+    const task = fixture.call({ ...fixture.input, scenes: [
+      { ...fixture.input.scenes[0], narration: { text: "先发布" } },
+      { sceneId: "obsolete", title: "旧方向", supporting: "不应发布", duration: 4, narration: { text: "待取消" } },
+    ] }).then(value => ({ value }), (error: unknown) => ({ error }));
+    await waitForPublished(fixture.html, "first");
+    const first = (await fixture.html()).match(/<section[^>]*id="first"[\s\S]*?<\/section>/)?.[0];
+    const direction = { sourcePath: fixture.input.sourcePath, generationId: fixture.input.generationId, directionId: crypto.randomUUID() };
+    expect(await fixture.call(direction, "video_live_direction")).toMatchObject({ result: { output: { directionRevision: 1 } } });
+    expect(await fixture.call(direction, "video_live_direction")).toMatchObject({ result: { output: { directionRevision: 1, reused: true } } });
+    expect(await task).toMatchObject({ error: { code: "video_live_direction_changed" } });
+    expect(cancelled).toBe(true);
+    expect(await fixture.html()).not.toContain('id="obsolete"');
+    await expect(fixture.call({ ...fixture.input, expectedReadyDuration: 8 })).rejects.toMatchObject({ code: "video_live_direction_changed" });
+    await fixture.call({ ...fixture.input, directionRevision: 1, expectedReadyDuration: 8,
+      scenes: [{ sceneId: "guided", title: "新的方向", supporting: "保留已发布的片段", duration: 4 }] });
+    expect(await fixture.html()).toContain(first ?? "missing first scene");
+    expect(await fixture.html()).toContain('id="guided"');
+  });
+
+  test("a failed lookahead retains its predecessor and an exact retry reuses successful speech", async () => {
+    const fixture = await liveWorkspace();
+    let failure = true, requests = 0;
+    Reflect.set(globalThis, mediaProviderFetchKey, (_url: string, init?: RequestInit) => {
+      requests++;
+      const text = JSON.parse(String(init?.body)).input.text;
+      return Promise.resolve(text === "重试后段" && failure ? Response.json({ message: "Unavailable" }, { status: 503 }) : speechStream(text));
+    });
+    const input = { ...fixture.input, scenes: [
+      { ...fixture.input.scenes[0], narration: { text: "保留前段" } },
+      { sceneId: "retry", title: "恢复生产", supporting: "复用成功的资源", duration: 4, narration: { text: "重试后段" } },
+    ] };
+    await expect(fixture.call(input)).rejects.toMatchObject({ details: { publishedSceneIds: ["first"], readyDuration: 8 } });
+    expect(await fixture.html()).toContain('id="first"');
+    expect(await fixture.html()).not.toContain('id="retry"');
+    failure = false;
+    await fixture.call(input);
+    expect(requests).toBe(3);
+    expect(await fixture.html()).toContain('id="retry"');
+  });
+
+  test("reads fragmented UTF-8 SSE events incrementally and stops at DONE without waiting for EOF", async () => {
+    const fixture = await liveWorkspace();
+    const streamResponse = speechStream("逐块读取");
+    const bytes = new Uint8Array(await streamResponse.arrayBuffer());
+    let offset = 0, cancelled = false;
+    Reflect.set(globalThis, mediaProviderFetchKey, () => {
+      const response = new Response(new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (offset === bytes.length) return;
+          const next = Math.min(bytes.length, offset + 317);
+          controller.enqueue(bytes.slice(offset, next)); offset = next;
+        },
+        cancel() { cancelled = true; },
+      }), { headers: { "content-type": "text/event-stream" } });
+      response.text = () => { throw new Error("Must not buffer the full response as text"); };
+      return Promise.resolve(response);
+    });
+    await fixture.call({ ...fixture.input, scenes: [{ ...fixture.input.scenes[0], narration: { text: "逐块读取" }, captions: true }] });
+    expect(cancelled).toBe(true);
+    expect(validateVoiceoverTimelineHtml(await fixture.html()).issues).toEqual([]);
+  });
+});
 
 describe("Media Center extension", () => {
   test("rejects a missing bound video project before a paid synthesis request", async () => {

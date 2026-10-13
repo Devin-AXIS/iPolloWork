@@ -9,6 +9,8 @@ Read the active task contract and identify this turn's requested scope. Use [sha
 
 Live production overrides the saved-storyboard-first stage order below. Follow the task's fast-opening contract before loading specialist guides when eligible; otherwise publish one complete 3–6 second scene with its required assets/audio first. That scene is the motion audition. Build and save the remaining storyboard, media and soundtrack incrementally while appending complete scenes; preserve the published prefix. Script-review/script-only requests retain their normal stop point.
 
+After a host opening, text-led scenes can use `media/video_live_scenes`: pass real `title`, `supporting`, optional required `narration`/`captions`, the current `generationId`, `directionRevision` and `expectedReadyDuration`. One call assembles editable scenes, prepares visuals and speech concurrently, measures duration and publishes each in order immediately. Limit a call to the current scene plus one lookahead; receipts supply exact windows for the storyboard. Successful calls need no repeated entry reads, separate speech/mounting edits or full-film checks. A new direction invalidates unpublished work; use its new revision. Complex visuals, supplied media, custom/selected templates and recipes-only requests keep the normal specialist path. Prepare independent assets/music in parallel with scene work; required current-scene media/audio must be complete before publishing. Validate the current scene locally, and run normal full-film acceptance after production.
+
 | Actual work now | Skill |
 | --- | --- |
 | Script, source coverage or narrative plan | `ipollowork-video-storyboard` |

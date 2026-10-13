@@ -115,11 +115,12 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(panelSource).toContain("void videoResourceInfo().then");
+    expect(panelSource).toContain("videoResourceInfo().then");
+    expect(panelSource).toContain("Promise.all([resources, startHyperframes(");
     expect(panelSource).not.toContain("videoResourceInstall");
     expect(panelSource).not.toContain('setStartupStage("downloading-resources")');
     expect(panelSource).not.toContain('data-testid="video-resource-download-progress"');
-    expect(panelSource).toContain("if (!resourcesReady)");
+    expect(panelSource).toContain("if (!resource.installed)");
   });
 
   test("shows avatar preparation failures instead of a waiting placeholder", () => {

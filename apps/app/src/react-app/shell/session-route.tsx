@@ -1598,15 +1598,14 @@ export function SessionRoute() {
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
-        const [envSystemContext, workspaceTemplateSessions] = await Promise.all([
-          buildiPolloWorkEnvSystemContext(client, {
+        // Environment discovery is needed only by the model; it must not delay project/Studio preparation.
+        const envSystemContextTask = buildiPolloWorkEnvSystemContext(client, {
             cacheKey: targetSessionId,
             runtimeKey: environmentRuntimeKey,
-          }),
-          selectedWorkspaceEndpoint
+          }).then(value => ({ value }), (error: unknown) => ({ error }));
+        const workspaceTemplateSessions = await (selectedWorkspaceEndpoint
             ? selectedWorkspaceEndpoint.client.listTemplateSessions(selectedWorkspaceEndpoint.workspaceId).catch(() => ({ items: [] }))
-            : Promise.resolve({ items: [] as TemplateSessionSnapshot[] }),
-        ]);
+            : Promise.resolve({ items: [] as TemplateSessionSnapshot[] }));
         if (await stopDispatchIfRequested()) return false;
         const conversationTemplates = workspaceTemplateSessions.items.filter((template) =>
           !workspaceAppRequest
@@ -1666,8 +1665,7 @@ export function SessionRoute() {
               templateScope,
             );
             const occupiedTemplateSessionIds = conversationTemplates.map((template) => template.sessionId);
-            for (const intent of automaticTemplateIntents) {
-              if (await stopDispatchIfRequested()) return false;
+            const artifactTemplates = await Promise.all(automaticTemplateIntents.map(async intent => {
               const artifactSessionId = nextConversationArtifactSessionId(
                 targetSessionId,
                 intent.category,
@@ -1704,7 +1702,12 @@ export function SessionRoute() {
                   },
                 );
               }
+              return artifactTemplate;
+            }));
+            if (await stopDispatchIfRequested()) return false;
+            for (const artifactTemplate of artifactTemplates) {
               sessionTemplates.push(artifactTemplate);
+              const artifactSessionId = artifactTemplate.sessionId;
               setSessionType(artifactSessionId, sessionTypeForTemplate(artifactTemplate.manifest));
               templateInstructions.push(templateBriefPrompt({
                 template: artifactTemplate.manifest,
@@ -1778,7 +1781,11 @@ export function SessionRoute() {
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
           const liveGenerationId = liveVideoRequest ? crypto.randomUUID() : undefined;
           const plainVideoRequest = draft.attachments.length === 0 && draft.parts.every(part => part.type === "text" && !part.synthetic);
-          const [voiceover, originalBriefText, openingAdvice, publishedOpening] = await Promise.all([
+          const publishedOpeningTask = liveGenerationId && selectedWorkspaceEndpoint && plainVideoRequest
+            ? publishVideoOpeningBeforePrompt(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
+                { prompt: draft.text, generationId: liveGenerationId, templateId: template?.manifest.id }, dispatchSignal)
+            : Promise.resolve("");
+          const [voiceover, originalBriefText, publishedOpening] = await Promise.all([
             selectedWorkspaceEndpoint ? readVideoVoiceoverAvailability(
               selectedWorkspaceEndpoint.client,
               selectedWorkspaceEndpoint.workspaceId,
@@ -1786,15 +1793,12 @@ export function SessionRoute() {
               selectedWorkspaceRoot,
             ) : Promise.resolve({ configured: false, enabled: false }),
             selectedWorkspaceEndpoint ? readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId)) : Promise.resolve(undefined),
-            liveVideoRequest && selectedWorkspaceEndpoint && plainVideoRequest
-              ? readVideoJevAdvice(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
-                  { phase: "opening", prompt: draft.text, templateTitle: template?.manifest.title }, dispatchSignal)
-              : Promise.resolve(""),
-            liveGenerationId && selectedWorkspaceEndpoint && plainVideoRequest
-              ? publishVideoOpeningBeforePrompt(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
-                  { prompt: draft.text, generationId: liveGenerationId, templateId: template?.manifest.id }, dispatchSignal)
-              : Promise.resolve(""),
+            publishedOpeningTask,
           ]);
+          const openingAdvice = !publishedOpening && liveVideoRequest && selectedWorkspaceEndpoint && plainVideoRequest
+            ? await readVideoJevAdvice(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
+                { phase: "opening", prompt: draft.text, templateTitle: template?.manifest.title }, dispatchSignal)
+            : "";
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
             capabilityId: draft.capability?.id,
             promptText: videoPromptText,
@@ -1845,6 +1849,9 @@ export function SessionRoute() {
           return templateAuthoringSystemContext(template, selectedDesignSystemGuide);
         }));
         const languageSystemContext = responseLanguageSystemContext(currentLocale());
+        const environment = await envSystemContextTask;
+        if ("error" in environment) throw environment.error;
+        const envSystemContext = environment.value;
         const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, languageSystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
