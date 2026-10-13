@@ -1,7 +1,7 @@
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
 import type { ConversationPromptPart } from "../engine/conversation-engine";
-import { videoLiveSteeringContext } from "./video-project";
+import { requestedVideoDurationSeconds, videoLiveSteeringContext, videoProjectEntryPath, videoPromptRequestsFinishedVideo } from "./video-project";
 
 type JevClient = Pick<iPolloWorkServerClient, "callExtensionAction">;
 type VideoContext = { workspaceId: string; sessionId: string };
@@ -32,6 +32,41 @@ const relationAdvice = {
 };
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** A plain introduction can show real user-supplied subject copy before the agent starts. */
+export async function publishVideoOpeningBeforePrompt(
+  client: JevClient,
+  context: VideoContext,
+  input: { prompt: string; generationId: string; templateId?: string },
+  cancellation?: AbortSignal,
+): Promise<string> {
+  const prompt = input.prompt.trim();
+  const targetDuration = requestedVideoDurationSeconds(prompt);
+  if (input.templateId !== "ipollowork.delivery.video" || cancellation?.aborted || prompt.length > 4000 || !videoPromptRequestsFinishedVideo(prompt)
+    || (targetDuration !== undefined && targetDuration < 8)
+    || /(?:旁白|配音|解说|口播|字幕|音乐|配乐|音效|素材|实拍|图片|照片|参考|配方|片头|开场|首段|第一幕|镜头|场景|三维|流程图|地图|图表|不要.{0,8}视频|直接进入|https?:\/\/|voice[ -]?over|narration|caption|subtitle|music|footage|image|photo|reference|recipes.only|intro|opening|first scene|diagram|chart|3d|camera)/i.test(prompt)) return "";
+  const chinese = /(?:介绍|关于|讲解)\s*[“"《]?([^\n，。！？,!?《》“”"]{1,32}?)[”"》]?\s*的(?:视频|短片|宣传片)/u.exec(prompt);
+  const english = /\b(?:video|film|explainer)\s+(?:about|introducing)\s+["“]?([^\n.!?"”]{1,32})["”]?\s*[.!?]?$/i.exec(prompt);
+  const title = (chinese?.[1] ?? english?.[1])?.trim();
+  if (!title || title.length > 32) return "";
+  const deadline = new AbortController();
+  const signal = cancellation ? AbortSignal.any([cancellation, deadline.signal]) : deadline.signal;
+  const timer = setTimeout(() => deadline.abort(), 2000);
+  try {
+    const response = await client.callExtensionAction({ extensionId: "media", action: "video_live_opening", context,
+      args: { sourcePath: videoProjectEntryPath(context.sessionId), generationId: input.generationId,
+        title, supporting: chinese ? "主题介绍" : "An introduction", duration: 4 } }, { signal });
+    if (!response.ok || signal.aborted || !record(response.result) || !record(response.result.output)
+      || response.result.output.generationId !== input.generationId || response.result.output.openingDuration !== 4
+      || response.result.output.sourcePath !== videoProjectEntryPath(context.sessionId)) return "";
+    return `The host has ALREADY published the complete 0–4s visual introduction in ${videoProjectEntryPath(context.sessionId)} for generation "${input.generationId}". Read that current source and preserve this frozen opening, its scoped GSAP and tokens. Start the next complete scene at 4s; do not generate another opening, rebuild the prefix, or repeat video_live_opening. Record the opening as Frame 1 with voiceover: none in STORYBOARD.md. Default whole-film narration/music still apply to subsequent scenes; preserve all user requirements. Append the next scene before full-film planning, music preparation or delegating whole-film work.`;
+  } catch {
+    // Conflict, denial, cancellation or unavailable service preserves normal authoring.
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function adviceFor(answer: unknown, choices: Record<string, string>, available: Record<string, unknown> = choices): string {

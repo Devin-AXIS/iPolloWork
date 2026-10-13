@@ -61,7 +61,7 @@ export async function startFixture() {
   await copyFile(join(workspaceRoot, "video/live-proof/design-tokens.css"), join(project, "design-tokens.css"));
   await writeFile(join(project, "index.html"), composition(0, false, false));
   fixture = createServer(async (request, response) => {
-    response.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5178");
+    response.setHeader("Access-Control-Allow-Origin", request.headers.origin === "http://localhost:5178" ? "http://localhost:5178" : "http://127.0.0.1:5178");
     response.setHeader("Access-Control-Allow-Headers", "content-type");
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     if (request.method === "OPTIONS") { response.end(); return; }
@@ -74,6 +74,17 @@ export async function startFixture() {
       const input = JSON.parse(body);
       if (request.url === "/jev-mode") { jevEnabled = input.enabled === true; response.end(JSON.stringify({ ok: true })); return; }
       if (request.url === "/experimental/extensions/call") {
+        if (input.extensionId === "media" && input.action === "video_live_opening"
+          && input.context?.workspaceId === "proof" && input.context?.sessionId === "live-proof") {
+          const start = performance.now();
+          const output = await host.publishVideoLiveOpening(config, workspace, input.args);
+          openingPublicationMs = performance.now() - start;
+          opening = await readFile(join(workspaceRoot, sourcePath), "utf8");
+          await writeFile(join(project, ".publication.html"), opening);
+          await rename(join(project, ".publication.html"), join(project, "index.html"));
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify({ ok: true, extensionId: "media", action: input.action, result: { output } })); return;
+        }
         if (input.extensionId !== "jev-decision-model" || !["status", "evaluate"].includes(input.action)
           || input.context?.workspaceId !== "proof" || input.context?.sessionId !== "live-proof") throw new Error("Unexpected decision call");
         const result = await jev.actions[input.action](input.args ?? {});
@@ -81,7 +92,7 @@ export async function startFixture() {
         response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ ok: true, extensionId: input.extensionId, action: input.action, result })); return;
       }
       if (!Number.isInteger(input.count) || input.count < 1 || input.count > 4 || input.count !== publications.length + 1) throw new Error("Invalid publication");
-      if (input.count === 1) {
+      if (input.count === 1 && !opening) {
         const start = performance.now();
         await host.publishVideoLiveOpening(config, workspace, { sourcePath, generationId: "proof-run", title: "让创意开始流动", supporting: "每个完成的场景，都立即成为可以播放的内容。", duration: 4 });
         openingPublicationMs = performance.now() - start;
@@ -121,7 +132,7 @@ export default {
           await ctx.trustedClick('[data-testid="publish-scene"]');
           await ctx.waitFor("window.liveVideoProof.preview?.generation?.readyDuration === 4 && window.liveVideoProof.preview.playhead > .2 && window.liveVideoProof.preview.playhead < 4", { timeoutMs: 30000 });
         }, assert: async () => {
-          ctx.assert(await ctx.eval("window.liveVideoProof.preview.generation.status === 'generating' && window.liveVideoProof.publications === 1 && window.liveVideoProof.openingAdvice.includes('video_live_opening')"), "Jev selects the host opening and four seconds play without a complete film");
+          ctx.assert(await ctx.eval("window.liveVideoProof.preview.generation.status === 'generating' && window.liveVideoProof.publications === 1 && window.liveVideoProof.openingAdvice.includes('ALREADY published')"), "The app publishes the host opening before any model-produced scene");
           const evidence = await fetch("http://127.0.0.1:5397/evidence").then(response => response.json());
           ctx.assert(evidence.hostOpening && evidence.openingPublicationMs !== null, "The actual host assembler published the first scene");
         }, screenshot: { name: "first-scene-playing", requireText: ["边生成边播放", "已生成 4 秒"] } });

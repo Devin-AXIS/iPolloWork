@@ -6,7 +6,7 @@ import { VideoPanel } from "../src/react-app/domains/session/video/video-panel";
 import { ReactSessionComposer } from "../src/react-app/domains/session/surface/composer/composer";
 import { canSteerActiveDraft } from "../src/react-app/domains/session/surface/composer/composer-draft";
 import { VIDEO_LIVE_PREVIEW_EVENT } from "../src/react-app/domains/session/video/video-project";
-import { createVideoLiveDirector, readVideoJevAdvice } from "../src/react-app/domains/session/video/video-live-director";
+import { createVideoLiveDirector, publishVideoOpeningBeforePrompt } from "../src/react-app/domains/session/video/video-live-director";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import { codexHarnessConversationEngineAdapter } from "../src/react-app/domains/session/engine/codex-harness-conversation-engine";
 import { videoLivePreviewMessageSchema, type VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
@@ -50,6 +50,8 @@ function Proof() {
   const [error, setError] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [jevEnabled, setJevEnabled] = useState(true);
+  const [firstFrameLatency, setFirstFrameLatency] = useState<number | null>(null);
+  const firstRequestAt = useRef<number | null>(null);
   const director = useMemo(() => createVideoLiveDirector({ client: decisionClient, context: decisionContext,
     send: async parts => {
       if (!conversation.steerPrompt) throw new Error("Native steering is unavailable");
@@ -60,7 +62,7 @@ function Proof() {
   const previewRef = useRef<VideoLivePreviewMessage | null>(null);
   useEffect(() => {
     void realFetch(`${fixtureUrl}/source`).then(response => response.text()).then(source => {
-      const restoredCount = source.match(/<section id="scene-/g)?.length ?? 0;
+      const restoredCount = source.match(/<section\b[^>]*\bid="(?:scene-\d+|live-opening)"/g)?.length ?? 0;
       setCount(restoredCount); proof.publications = restoredCount;
     }).catch(error => setError(String(error)));
   }, []);
@@ -70,6 +72,10 @@ function Proof() {
       const parsed = videoLivePreviewMessageSchema.safeParse(event.detail.preview);
       previewRef.current = parsed.success ? parsed.data : null;
       proof.preview = previewRef.current;
+      if (firstRequestAt.current !== null && parsed.success && parsed.data.generation?.readyDuration === 4 && parsed.data.playhead > .2) {
+        setFirstFrameLatency(performance.now() - firstRequestAt.current);
+        firstRequestAt.current = null;
+      }
     };
     window.addEventListener(VIDEO_LIVE_PREVIEW_EVENT, receive);
     return () => window.removeEventListener(VIDEO_LIVE_PREVIEW_EVENT, receive);
@@ -77,8 +83,12 @@ function Proof() {
   const publish = async (complete = false) => {
     setPublishing(true); setError("");
     try {
-      if (!count) proof.openingAdvice = await readVideoJevAdvice(decisionClient, decisionContext,
-        { phase: "opening", prompt: "制作一个文字动效产品介绍视频，先介绍产品再展示使用案例" });
+      if (!count) {
+        firstRequestAt.current = performance.now();
+        proof.openingAdvice = await publishVideoOpeningBeforePrompt(decisionClient, decisionContext,
+          { prompt: "给我生成一个介绍ipollowork的视频", templateId: "ipollowork.delivery.video", generationId: "proof-run" });
+        if (!proof.openingAdvice) throw new Error("The host did not publish the opening");
+      }
       const response = await realFetch(`${fixtureUrl}/publish`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ count: count + 1, complete, cases: Boolean(proof.direction) }) });
       if (!response.ok) throw new Error(await response.text());
       setCount(count + 1); proof.publications = count + 1;
@@ -113,7 +123,8 @@ function Proof() {
     <main className="flex min-h-0 flex-1 flex-col md:flex-row">
       <aside className="flex w-full flex-col gap-4 border-r p-4 md:w-[340px] md:shrink-0">
         <p className="text-sm text-muted-foreground">先介绍产品，再展示使用案例。第一段就绪后开始播放，剩余内容按你的指令继续生成。</p>
-        {proof.openingAdvice && <p data-testid="opening-advice" className="text-xs text-muted-foreground">首段制作方式：文字动效</p>}
+        {proof.openingAdvice && <p data-testid="opening-advice" data-host-instruction={proof.openingAdvice} className="text-xs text-muted-foreground">宿主已发布首段，模型继续生成后续</p>}
+        {firstFrameLatency !== null && <p data-testid="first-frame-latency" data-latency-ms={firstFrameLatency} className="text-xs text-muted-foreground">本次首段可播放：{(firstFrameLatency / 1000).toFixed(2)} 秒</p>}
         <div className="mt-auto">
           {direction && <p data-testid="steering-receipt" data-native-request={JSON.stringify(requests.at(-1))} className="mb-3 text-sm">已引导后续内容：{direction}</p>}
           {error && <p role="alert">{error}</p>}

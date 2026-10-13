@@ -260,13 +260,13 @@ export function videoTaskSystemContext(
   sessionId: string,
   workspaceRoot?: string,
   template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist" | "authoringGuide" | "layoutLibrary"> | null,
-  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements; requireStoryboardReview?: boolean; liveGenerationId?: string } = {},
+  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements; requireStoryboardReview?: boolean; liveGenerationId?: string; hostOpeningPublished?: boolean } = {},
 ) {
   const projectDirectory = videoProjectDirectory(sessionId);
   const projectPath = videoProjectPath(sessionId, workspaceRoot);
   return [
     "Video task contract:",
-    ...(options.liveGenerationId && !options.requireStoryboardReview ? [
+    ...(options.liveGenerationId && !options.requireStoryboardReview && !options.hostOpeningPublished ? [
       `FIRST PLAYABLE SCENE takes priority over the normal stage order in video guides. Before reading full storyboard, component catalogs or whole-film music guides, read the current entry. If it is the untouched app scaffold and a text opening fits the request, publish it with media/video_live_opening: sourcePath="${projectDirectory}/index.html", generationId="${options.liveGenerationId}", title=<real subject, max 32 characters>, supporting=<real supporting phrase, max 56 characters>, duration=4..6. The host assembles and atomically saves the editable opening with local assets. Do not write HTML or install components for that opening. This is optional: preserve selected templates, no-intro/scene-specific requests, recipes-only restrictions, and required first-scene speech/captions/music/media; use normal first-scene production for those. A 409 means preserve existing content and continue normally, never reset the file to force this tool.`,
     ] : []),
     "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once; it owns creative planning and routes to only the specialist needed now. Do not preload unrelated stages.",
@@ -281,7 +281,9 @@ export function videoTaskSystemContext(
     ] : ["Use the prepared blank composition unless the user explicitly selected a template." ]),
     VIDEO_STORYBOARD_FORMAT_CONTRACT,
     ...(options.liveGenerationId && !options.requireStoryboardReview ? [
-      "Live production: the viewer plays each published scene while you create the rest. Make a concise outline and publish one complete 3–6 second scene FIRST, using editable code/installed components and already available assets. This first scene is the motion audition; do not wait for a complete storyboard, all media, narration for the entire film or full-film validation before saving it. Respect required narration/captions for this scene before publishing it; synthesize only this scene's speech now.",
+      options.hostOpeningPublished
+        ? "Live production: the host's 0–4s visual introduction is already published and is the motion audition. Keep it frozen, record voiceover: none for its storyboard frame, and produce the next complete scene at 4s FIRST. Prepare only that next scene's required narration/captions/assets before appending; whole-film defaults remain required later. Do not delegate, plan, synthesize or source music for the whole film before the next publication."
+        : "Live production: the viewer plays each published scene while you create the rest. Make a concise outline and publish one complete 3–6 second scene FIRST, using editable code/installed components and already available assets. This first scene is the motion audition; do not wait for a complete storyboard, all media, narration for the entire film or full-film validation before saving it. Respect required narration/captions for this scene before publishing it; synthesize only this scene's speech now.",
       `On the composition root set data-ipw-live-id="${options.liveGenerationId}", data-ipw-live-status="generating" and data-duration to ONLY the complete playable prefix in seconds. Keep the eventual target duration in STORYBOARD.md, never in the playable root. Save each valid complete document atomically. No blank placeholders, partial HTML or missing referenced assets in the published prefix.`,
       "Then produce and append one complete scene at a time. Preserve every published scene, its IDs, animation and audio. Re-read the latest entry and user directions before each publication; direct mid-generation feedback changes only unpublished content. Reuse tokens/components/assets; do not batch all speech or rebuild the entire film between publications. A save extends data-duration only when the next scene and its required media are ready. Finish the saved storyboard and perform the normal whole-project checks after the final scene; mark data-ipw-live-status=complete only when production finishes. On failure retain the last playable prefix and report the unfinished portion. Never export while the live source is changing.",
     ] : []),

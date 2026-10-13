@@ -148,7 +148,8 @@ import {
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
 import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
-import { createVideoLiveDirector, readVideoJevAdvice } from "@/react-app/domains/session/video/video-live-director";
+import { createVideoLiveDirector, readVideoJevAdvice, publishVideoOpeningBeforePrompt } from "@/react-app/domains/session/video/video-live-director";
+import { useUiStateStore } from "./ui-state-store";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -1761,10 +1762,23 @@ export function SessionRoute() {
           promptText: videoPromptText,
           hasReferenceAttachments: draft.attachments.length > 0,
         });
+        if (videoTasks.length === 1) {
+          const videoTask = videoTasks[0];
+          const panelStore = usePanelTabStore.getState();
+          panelStore.openTab(targetSessionId, { id: `video:${videoTask.sessionId}`, type: "video",
+            sessionId: videoTask.sessionId, label: pendingTitlePersist || targetSession?.title || t("video.title"),
+            ...(requiresStoryboardReview ? { view: "storyboard" } : {}) });
+          if (videoTask.sessionId !== targetSessionId && !conversationTemplates.some(template => template.sessionId === targetSessionId)) {
+            panelStore.closeTab(targetSessionId, `video:${targetSessionId}`);
+          }
+          useUiStateStore.getState().setSidePanelState(targetSessionId, "panel");
+        }
         const liveVideoRequest = !requiresStoryboardReview && (videoPromptRequestsFinishedVideo(videoPromptText)
           || draft.capability?.id === "video-storyboard-regeneration");
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
-          const [voiceover, originalBriefText, openingAdvice] = await Promise.all([
+          const liveGenerationId = liveVideoRequest ? crypto.randomUUID() : undefined;
+          const plainVideoRequest = draft.attachments.length === 0 && draft.parts.every(part => part.type === "text" && !part.synthetic);
+          const [voiceover, originalBriefText, openingAdvice, publishedOpening] = await Promise.all([
             selectedWorkspaceEndpoint ? readVideoVoiceoverAvailability(
               selectedWorkspaceEndpoint.client,
               selectedWorkspaceEndpoint.workspaceId,
@@ -1772,10 +1786,13 @@ export function SessionRoute() {
               selectedWorkspaceRoot,
             ) : Promise.resolve({ configured: false, enabled: false }),
             selectedWorkspaceEndpoint ? readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId)) : Promise.resolve(undefined),
-            liveVideoRequest && selectedWorkspaceEndpoint && draft.attachments.length === 0
-              && draft.parts.every(part => part.type === "text" && !part.synthetic)
+            liveVideoRequest && selectedWorkspaceEndpoint && plainVideoRequest
               ? readVideoJevAdvice(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
                   { phase: "opening", prompt: draft.text, templateTitle: template?.manifest.title }, dispatchSignal)
+              : Promise.resolve(""),
+            liveGenerationId && selectedWorkspaceEndpoint && plainVideoRequest
+              ? publishVideoOpeningBeforePrompt(selectedWorkspaceEndpoint.client, { workspaceId: selectedWorkspaceEndpoint.workspaceId, sessionId },
+                  { prompt: draft.text, generationId: liveGenerationId, templateId: template?.manifest.id }, dispatchSignal)
               : Promise.resolve(""),
           ]);
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
@@ -1796,10 +1813,11 @@ export function SessionRoute() {
               includeVoiceover: includeVoiceoverContext,
               deliveryRequirements: videoDeliveryRequirements,
               requireStoryboardReview: requiresStoryboardReview,
-              ...(liveVideoRequest ? { liveGenerationId: crypto.randomUUID() } : {}),
+              ...(liveGenerationId ? { liveGenerationId } : {}),
+              hostOpeningPublished: Boolean(publishedOpening),
             },
           );
-          return [systemContext, openingAdvice].filter(Boolean).join("\n\n");
+          return [publishedOpening, systemContext, ...(publishedOpening ? [] : [openingAdvice])].filter(Boolean).join("\n\n");
         }));
         const designSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "design");
         const designSystemContexts = designSessionTemplates.map((template) => designHtmlThemeSystemContext({

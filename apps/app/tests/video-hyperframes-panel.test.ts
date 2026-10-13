@@ -46,6 +46,10 @@ describe("HyperFrames Video Studio", () => {
     expect(contract.indexOf("FIRST PLAYABLE SCENE")).toBeLessThan(contract.indexOf("Read ipollowork-video-studio"));
     expect(contract).toContain("never reset the file to force this tool");
     expect(videoTaskSystemContext("review", undefined, null, { liveGenerationId: "generation-1", requireStoryboardReview: true })).not.toContain("media/video_live_opening");
+    const published = videoTaskSystemContext("child-artifact-video", undefined, null, { liveGenerationId: "generation-1", hostOpeningPublished: true });
+    expect(published).toContain("already published");
+    expect(published).toContain("next complete scene at 4s FIRST");
+    expect(published).not.toContain("media/video_live_opening");
     expect(videoTaskSystemContext("review", undefined, null, { liveGenerationId: "generation-1", requireStoryboardReview: true })).not.toContain('data-ipw-live-id="generation-1"');
   });
   test("validates playable publications and attaches a bounded prefix to steering", () => {

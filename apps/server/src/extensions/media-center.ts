@@ -661,15 +661,13 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
     }));
   const storyboardFrames = options.storyboardFrames;
   if (storyboardFrames) {
+    const voiceoversByScene = new Map(voiceovers.map(voiceover => [voiceover.sceneId, voiceover]));
     if (storyboardFrames.length !== orderedScenes.length) {
       issues.push({
         code: "storyboard_scene_count_mismatch",
         message: `STORYBOARD.md defines ${storyboardFrames.length} frames, but index.html contains ${orderedScenes.length} timed scenes. Rebuild the composition from the current storyboard.`,
       });
     }
-    const orderedVoiceovers = [...voiceovers]
-      .filter((voiceover): voiceover is typeof voiceover & { start: number } => voiceover.start != null)
-      .sort((left, right) => left.start - right.start);
     for (let index = 0; index < Math.min(storyboardFrames.length, orderedScenes.length); index += 1) {
       const frame = storyboardFrames[index]!;
       const scene = orderedScenes[index]!;
@@ -683,7 +681,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
           ...(scene.id ? { sceneId: scene.id } : {}),
         });
       }
-      const voiceover = orderedVoiceovers[index];
+      const voiceover = voiceoversByScene.get(scene.id);
       if (frame.voiceover && (!voiceover || normalizeSceneText(decodeHtmlText(voiceover.sceneText)) !== normalizeSceneText(frame.voiceover))) {
         issues.push({
           code: "storyboard_voiceover_mismatch",

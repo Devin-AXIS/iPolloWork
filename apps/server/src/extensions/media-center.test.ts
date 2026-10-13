@@ -253,6 +253,18 @@ describe("Media Center extension", () => {
     });
   });
 
+  test("matches storyboard speech by scene id after a silent visual opening", () => {
+    const html = `<main data-composition-id="main" data-duration="9">
+      <section id="live-opening" class="scene clip" data-start="0" data-duration="4">iPolloWork</section>
+      <section id="details" class="scene clip" data-start="4" data-duration="5">Product details</section>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="details" data-ipw-scene-text="Product details" data-ipw-narration-text="Product details" data-start="4" data-duration="4"></audio>
+    </main>`;
+    const storyboardFrames = [{ durationSeconds: 4, voiceover: "" }, { durationSeconds: 5, voiceover: "Product details" }];
+    expect(validateVoiceoverTimelineHtml(html, { storyboardFrames, requirements: { voiceover: true } })).toMatchObject({ valid: true });
+    expect(validateVoiceoverTimelineHtml(html.replace('data-ipw-scene-id="details"', 'data-ipw-scene-id="wrong"'), { storyboardFrames }).issues)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ code: "storyboard_voiceover_mismatch" })]));
+  });
+
   test("rejects composition timing and narration that drift from STORYBOARD.md", () => {
     const html = `<main data-composition-id="main" data-duration="9">
       <section id="one" class="scene clip" data-start="0" data-duration="4"><p data-ipw-narration-source="true">First line</p></section>

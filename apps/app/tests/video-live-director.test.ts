@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createiPolloWorkServerClient, type iPolloWorkExtensionActionCall } from "../src/app/lib/ipollowork-server";
-import { createVideoLiveDirector, readVideoJevAdvice } from "../src/react-app/domains/session/video/video-live-director";
+import { createVideoLiveDirector, readVideoJevAdvice, publishVideoOpeningBeforePrompt } from "../src/react-app/domains/session/video/video-live-director";
 import type { ConversationPromptPart } from "../src/react-app/domains/session/engine/conversation-engine";
 import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
 
@@ -23,6 +23,42 @@ function preview(duration = 4, id = "live-run"): VideoLivePreviewMessage {
   return { type: "ipollowork:video-live-preview", projectId: "video-session", generation: { id, status: "generating", readyDuration: duration }, playhead: duration };
 }
 const parts = (text: string): ConversationPromptPart[] => [{ type: "text", text }];
+
+describe("Host opening before the main agent", () => {
+  const input = { prompt: "给我生成一个介绍ipollowork的视频", generationId: "host-run", templateId: "ipollowork.delivery.video" };
+  test("publishes the actual requested subject through the server without asking a model", async () => {
+    provider(call => Response.json({ ok: true, result: { output: { generationId: "host-run", openingDuration: 4, sourcePath: "video/video-session/index.html" } } }));
+    const contextText = await publishVideoOpeningBeforePrompt(client, context, input);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ extensionId: "media", action: "video_live_opening", context,
+      args: { sourcePath: "video/video-session/index.html", generationId: "host-run", title: "ipollowork", supporting: "主题介绍", duration: 4 } });
+    expect(contextText).toContain("ALREADY published");
+    expect(contextText).toContain("voiceover: none");
+    expect(contextText).toContain("whole-film narration/music still apply");
+  });
+  test("preserves explicit media, selected templates, existing content and review-only scope", async () => {
+    provider(() => { throw new Error("must not publish"); });
+    for (const prompt of ["先给我看介绍ipollowork的视频分镜", `${input.prompt}，第一幕用流程图`, `${input.prompt}，带配音`, `${input.prompt}，不要片头`, "生成一个3秒介绍ipollowork的视频", `${input.prompt}，参考 https://example.com`]) {
+      expect(await publishVideoOpeningBeforePrompt(client, context, { ...input, prompt })).toBe("");
+    }
+    expect(await publishVideoOpeningBeforePrompt(client, context, { ...input, templateId: "selected-template" })).toBe("");
+    expect(calls).toHaveLength(0);
+    restorers.splice(0).forEach(restore => restore());
+    provider(() => Response.json({ ok: false, code: "video_opening_source_changed", message: "Edited source" }, { status: 409 }));
+    expect(await publishVideoOpeningBeforePrompt(client, context, input)).toBe("");
+    expect(calls).toHaveLength(1);
+  });
+  test("bounds unavailable services and respects cancellation without retrying writes", async () => {
+    provider(() => new Promise<Response>(() => {}));
+    const cancelled = new AbortController(); cancelled.abort();
+    expect(await publishVideoOpeningBeforePrompt(client, context, input, cancelled.signal)).toBe("");
+    expect(calls).toHaveLength(0);
+    const start = performance.now();
+    expect(await publishVideoOpeningBeforePrompt(client, context, input)).toBe("");
+    expect(performance.now() - start).toBeLessThan(3000);
+    expect(calls).toHaveLength(1);
+  });
+});
 
 describe("Jev video direction routing", () => {
   test("chooses an opening with one evaluation and sends only bounded request context", async () => {
