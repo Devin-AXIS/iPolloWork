@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { Player } from "../../player";
+import { Player, liveTime, usePlayerStore } from "../../player";
+import { setPreviewPlaybackActive } from "../../player/lib/timelineIframeHelpers";
 import {
   DEFAULT_PREVIEW_ZOOM,
   PREVIEW_ZOOM_RESET_EVENT,
@@ -538,6 +539,13 @@ export const NLEPreview = memo(function NLEPreview({
                   key={slot.key}
                   ref={(node) => {
                     if (incoming && loadingSlotKeyRef.current !== slot.key) return;
+                    if (incoming && node && node !== previewIframeRef.current) {
+                      const state = usePlayerStore.getState();
+                      if (state.liveGenerationActive && state.liveGeneration) {
+                        state.setCurrentTime(state.isPlaying ? liveTime.get() : state.currentTime);
+                        setPreviewPlaybackActive(visibleIframeRef.current, false);
+                      }
+                    }
                     if (active) visibleIframeRef.current = node;
                     setPreviewIframeRef(node);
                   }}

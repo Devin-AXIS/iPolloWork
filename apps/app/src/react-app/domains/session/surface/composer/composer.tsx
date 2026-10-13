@@ -78,6 +78,7 @@ export type ComposerProps = {
   onStop: () => void | Promise<void>;
   busy: boolean;
   queuedCount: number;
+  busySubmitLabel?: string;
   disabled: boolean;
   inputDisabled?: boolean;
   modelStatus?: ChatModelStatus;
@@ -1673,9 +1674,9 @@ export function ReactSessionComposer(props: ComposerProps) {
                         size="icon"
                         onPointerDown={handleActionPointerDown}
                         onClick={handleActionClick}
-                        aria-label={t("composer.queue")}
+                        aria-label={props.busySubmitLabel ?? t("composer.queue")}
                         className="rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                        title={t("composer.queue_hint")}
+                        title={props.busySubmitLabel ?? t("composer.queue_hint")}
                       >
                         <ArrowUp size={15} />
                         {props.queuedCount > 0 ? (

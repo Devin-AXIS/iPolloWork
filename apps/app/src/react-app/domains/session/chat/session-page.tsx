@@ -4864,6 +4864,7 @@ export function SessionPage(props: SessionPageProps) {
                           if (template) void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
                         }}
                         onActivateVideoStudio={activateVideoStudio}
+                        liveVideoGeneration={Boolean(currentVideoEntryPath)}
                         designTemplates={starterTemplateCatalog}
                         designTemplatesLoading={starterTemplateCatalogLoading}
                         designTemplateBusyId={templateBusyId}

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { readVideoLiveGeneration, videoLivePreviewMessageSchema } from "../../../packages/types/src/hyperframes";
+import { videoLiveSteeringContext } from "../src/react-app/domains/session/video/video-project";
+import { canSteerActiveDraft } from "../src/react-app/domains/session/surface/composer/composer-draft";
 import { videoStudioPanelBoundsSchema } from "../../../packages/types/src/hyperframes";
 
 import {
@@ -33,6 +36,30 @@ const videoAuthoringGuidance = [
 ].map(path => readFileSync(new URL(`../../../examples/plugin-packages/video-agent/skills/${path}`, import.meta.url), "utf8")).join("\n");
 
 describe("HyperFrames Video Studio", () => {
+  test("publishes complete short scenes before whole-film work without changing review-only requests", () => {
+    const contract = videoTaskSystemContext("live", undefined, null, { liveGenerationId: "generation-1" });
+    expect(contract).toContain('data-ipw-live-id="generation-1"');
+    expect(contract).toContain("one complete 3–6 second scene FIRST");
+    expect(contract).toContain("ONLY the complete playable prefix");
+    expect(contract).toContain("direct mid-generation feedback changes only unpublished content");
+    expect(videoTaskSystemContext("review", undefined, null, { liveGenerationId: "generation-1", requireStoryboardReview: true })).not.toContain('data-ipw-live-id="generation-1"');
+  });
+  test("validates playable publications and attaches a bounded prefix to steering", () => {
+    const root = (attributes: Record<string, string>) => ({ getAttribute: (name: string) => attributes[name] ?? null });
+    expect(readVideoLiveGeneration(root({ "data-duration": "60" }))).toBeNull();
+    expect(readVideoLiveGeneration(root({ "data-duration": "Infinity", "data-ipw-live-id": "run", "data-ipw-live-status": "generating" }))).toBeNull();
+    const generation = readVideoLiveGeneration(root({ "data-duration": "5", "data-ipw-live-id": "run", "data-ipw-live-status": "generating" }));
+    expect(generation).toEqual({ id: "run", readyDuration: 5, status: "generating" });
+    const preview = videoLivePreviewMessageSchema.parse({ type: "ipollowork:video-live-preview", projectId: "live", generation, playhead: 2 });
+    expect(videoLiveSteeringContext(preview)).toContain("published through 5.00s");
+    expect(videoLiveSteeringContext(preview)).toContain("remaining, unpublished scenes");
+    expect(videoLiveSteeringContext({ ...preview, generation: null })).toBe("");
+    expect(videoLivePreviewMessageSchema.safeParse({ ...preview, playhead: -1 }).success).toBe(false);
+    const draft = { mode: "prompt", text: "后面改成使用案例", parts: [{ type: "text", text: "后面改成使用案例" }], attachments: [] } satisfies import("../src/app/types").ComposerDraft;
+    expect(canSteerActiveDraft(draft)).toBe(true);
+    expect(canSteerActiveDraft({ ...draft, capability: { id: "voice", instruction: "synthesize" } })).toBe(false);
+    expect(canSteerActiveDraft({ ...draft, parts: [{ type: "agent", name: "other" }] })).toBe(false);
+  });
   test("submits video edit instructions through the current conversation with selection context and acceptance feedback", () => {
     const panel = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
     const page = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");

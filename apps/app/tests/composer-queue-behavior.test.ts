@@ -55,7 +55,7 @@ describe("composer queue behavior", () => {
     expect(busyActions).toContain("onPointerDown={handleActionPointerDown}");
     expect(busyActions).toContain("onClick={handleActionClick}");
     expect(busyActions).toContain("onClick={props.onStop}");
-    expect(busyActions).toContain('title={t("composer.queue_hint")}');
+    expect(busyActions).toContain('title={props.busySubmitLabel ?? t("composer.queue_hint")}');
     expect(busyActions).not.toContain("onSteer");
     expect(composerSource).not.toContain("onSteer:");
     expect(composerSource).toContain('import { Button } from "@/components/ui/button"');

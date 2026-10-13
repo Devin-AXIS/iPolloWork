@@ -5,10 +5,12 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlayerStore, liveTime } from "../store/playerStore";
 import { resolveForwardPlaybackWindow, useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { useTimelinePlayer } from "./useTimelinePlayer";
 import { resolveTimelineTotalDuration, useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { useStudioUrlState } from "../../hooks/useStudioUrlState";
+import { parseStudioUrlStateFromHash } from "../../utils/studioUrlState";
 
 describe("shared video frame boundaries", () => {
   it("preserves audio seconds while padding video to 2895 frames", () => {
@@ -194,6 +196,7 @@ describe("authored audio metadata refresh", () => {
 afterEach(() => {
   vi.restoreAllMocks();
   usePlayerStore.getState().reset();
+  usePlayerStore.setState({ liveGenerationActive: false });
 });
 
 describe("timeline adapter initialization", () => {
@@ -268,6 +271,130 @@ describe("timeline adapter initialization", () => {
 });
 
 describe("playback refresh races", () => {
+  it.each([0, 2])("preserves live autoplay during default URL hydration but honours an explicit seek (%ss)", initialTime => {
+    const container = document.createElement("div"); document.body.append(container);
+    const root = createRoot(container);
+    usePlayerStore.setState({ isPlaying: true, liveGenerationActive: true,
+      liveGeneration: { id: "run", status: "generating", readyDuration: 4 } });
+    const requestSeek = vi.spyOn(usePlayerStore.getState(), "requestSeek");
+    function Harness() {
+      useStudioUrlState({ projectId: "live", activeCompPath: null, duration: 4, isPlaying: true, compositionLoading: false,
+        refreshKey: 0, previewIframeRef: { current: null }, rightPanelTab: "design", rightCollapsed: true, activeCompPathHydrated: true,
+        domEditSelection: null, buildDomSelectionFromTarget: async () => null, applyDomSelection: vi.fn(), setRightCollapsed: vi.fn(),
+        setRightPanelTab: vi.fn(), initialState: parseStudioUrlStateFromHash(`#project/live?t=${initialTime}`) });
+      return null;
+    }
+    try {
+      flushSync(() => root.render(createElement(Harness)));
+      if (initialTime === 0) expect(requestSeek).not.toHaveBeenCalled();
+      else expect(requestSeek).toHaveBeenCalledWith(2);
+    } finally { flushSync(() => root.unmount()); container.remove(); }
+  });
+  it("starts a preloaded scene when the host busy message arrives after iframe readiness", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    const frame = document.createElement("iframe"); document.body.append(frame);
+    frame.contentDocument!.body.innerHTML = '<main data-composition-id="main" data-ipw-live-id="run" data-ipw-live-status="generating" data-duration="4"></main>';
+    const play = vi.fn();
+    Object.defineProperty(frame.contentWindow, "__player", { value: {
+      play, pause: vi.fn(), seek: vi.fn(), getTime: () => 0, getDuration: () => 4, isPlaying: () => false,
+    } });
+    const harness = mountTimelinePlayerHarness(); harness.iframeRef.current = frame;
+    try {
+      harness.onIframeLoad();
+      expect(play).not.toHaveBeenCalled();
+      expect(usePlayerStore.getState().liveGeneration).toBeNull();
+      usePlayerStore.setState({ liveGenerationActive: true });
+      expect(play).toHaveBeenCalledOnce();
+      expect(usePlayerStore.getState().isPlaying).toBe(true);
+      usePlayerStore.getState().reset();
+      expect(usePlayerStore.getState().liveGenerationActive).toBe(true);
+    } finally { harness.unmount(); frame.remove(); }
+  });
+  it("autoplays the first publication, waits at its boundary without looping and resumes the extended prefix", () => {
+    const scheduled: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { scheduled.push(callback); return scheduled.length; });
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    frame.contentDocument!.body.innerHTML = '<main data-composition-id="main" data-ipw-live-id="run" data-ipw-live-status="generating" data-duration="4"></main>';
+    let time = 0, duration = 4, playing = false;
+    const play = vi.fn(() => { playing = true; });
+    const adapter: PlaybackAdapter = {
+      play, pause: () => { playing = false; }, seek: value => { time = value; playing = false; },
+      getTime: () => time, getDuration: () => duration, isPlaying: () => playing,
+    };
+    Object.defineProperty(frame.contentWindow, "__player", { value: adapter });
+    usePlayerStore.setState({ liveGenerationActive: true, loopEnabled: true });
+    const harness = mountTimelinePlayerHarness();
+    harness.iframeRef.current = frame;
+    try {
+      harness.onIframeLoad();
+      expect(play).toHaveBeenCalledOnce();
+      expect(usePlayerStore.getState().isPlaying).toBe(true);
+      time = 4;
+      scheduled.shift()?.(0);
+      expect(time).toBeCloseTo(4 - 1 / 30);
+      expect(playing).toBe(false);
+      expect(usePlayerStore.getState().currentTime).toBe(4);
+      expect(usePlayerStore.getState().isPlaying).toBe(true);
+      expect(liveTime.get()).toBe(4);
+      duration = 8;
+      frame.contentDocument!.querySelector("main")!.setAttribute("data-duration", "8");
+      harness.refreshPlayer();
+      harness.onIframeLoad();
+      expect(time).toBe(4);
+      expect(playing).toBe(true);
+      expect(play).toHaveBeenCalledTimes(2);
+      harness.pause();
+      duration = 12;
+      frame.contentDocument!.querySelector("main")!.setAttribute("data-duration", "12");
+      harness.refreshPlayer();
+      harness.onIframeLoad();
+      expect(playing).toBe(false);
+      expect(play).toHaveBeenCalledTimes(2);
+      expect(usePlayerStore.getState().isPlaying).toBe(false);
+    } finally { harness.unmount(); frame.remove(); }
+  });
+
+  it("keeps live playback running while a replacement loads and finishes buffering when the task stops", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    const frame = document.createElement("iframe"); document.body.append(frame);
+    frame.contentDocument!.body.innerHTML = '<main data-composition-id="main" data-ipw-live-id="run" data-ipw-live-status="generating" data-duration="4"></main>';
+    const pause = vi.fn();
+    Object.defineProperty(frame.contentWindow, "__player", { value: {
+      play: vi.fn(), pause, seek: vi.fn(), getTime: () => 2, getDuration: () => 4, isPlaying: () => true,
+    } });
+    usePlayerStore.setState({ liveGenerationActive: true, isPlaying: true, currentTime: 2, duration: 4,
+      liveGeneration: { id: "run", status: "generating", readyDuration: 4 } });
+    const harness = mountTimelinePlayerHarness(); harness.iframeRef.current = frame;
+    try {
+      harness.refreshPlayer();
+      expect(pause).not.toHaveBeenCalled();
+      usePlayerStore.setState({ currentTime: 4, liveGenerationActive: false });
+      expect(usePlayerStore.getState().isPlaying).toBe(false);
+    } finally { harness.unmount(); frame.remove(); }
+  });
+
+  it.each([false, true])("resumes the final publication after idle unless the user seeks while waiting (%s)", userSeek => {
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    const frame = document.createElement("iframe"); document.body.append(frame);
+    frame.contentDocument!.body.innerHTML = '<main data-composition-id="main" data-ipw-live-id="run" data-ipw-live-status="complete" data-duration="8"></main>';
+    let time = 0;
+    const play = vi.fn();
+    Object.defineProperty(frame.contentWindow, "__player", { value: {
+      play, pause: vi.fn(), seek: (next: number) => { time = next; }, getTime: () => time, getDuration: () => 8, isPlaying: () => false,
+    } });
+    usePlayerStore.setState({ liveGenerationActive: false, isPlaying: false, currentTime: 4, duration: 4,
+      liveGeneration: { id: "run", status: "generating", readyDuration: 4 }, liveGenerationResumePending: true });
+    const harness = mountTimelinePlayerHarness(); harness.iframeRef.current = frame;
+    try {
+      if (userSeek) harness.seek(2);
+      harness.onIframeLoad();
+      expect(time).toBe(userSeek ? 2 : 4);
+      expect(play).toHaveBeenCalledTimes(userSeek ? 0 : 1);
+      expect(usePlayerStore.getState().isPlaying).toBe(!userSeek);
+      expect(usePlayerStore.getState().liveGenerationResumePending).toBe(false);
+    } finally { harness.unmount(); frame.remove(); }
+  });
   it("restores a seek made while an edited preview is still loading", () => {
     const visibleFrame = document.createElement("iframe");
     const replacementFrame = document.createElement("iframe");

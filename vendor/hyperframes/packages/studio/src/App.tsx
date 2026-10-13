@@ -155,12 +155,14 @@ export function StudioApp() {
       const active = parseHostAiEditingMessage(event.data, projectId);
       if (active === null) return;
       setHostAiEditing(active);
+      usePlayerStore.setState({ liveGenerationActive: active });
       thumbnailScheduler.setAgentEditing(active);
     };
     window.addEventListener("message", receive);
     return () => {
       window.removeEventListener("message", receive);
       thumbnailScheduler.setAgentEditing(false);
+      usePlayerStore.setState({ liveGenerationActive: false });
     };
   }, [projectId]);
   const domEditSaveTimestampRef = useRef(0);

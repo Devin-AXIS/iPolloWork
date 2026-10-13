@@ -14,6 +14,8 @@ import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
 import { storyboardSettingsAssetSchema, storyboardSettingsRequestSchema, videoStudioPanelBoundsSchema, type VideoStudioPanelBounds, type StoryboardSettingsRequest, type StoryboardSettingsAsset, type StoryboardSettingsFields } from "@ipollowork/types/hyperframes";
 import { VideoStoryboardSettingsDialog } from "./video-storyboard-settings-dialog";
+import { videoLivePreviewMessageSchema } from "@ipollowork/types/hyperframes";
+import { VIDEO_LIVE_PREVIEW_EVENT } from "./video-project";
 import { toast } from "@/components/ui/sonner";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
@@ -266,6 +268,23 @@ export function VideoPanel({
     });
   }
   const generationPendingRef = React.useRef(false);
+  React.useEffect(() => {
+    const receive = (event: MessageEvent<unknown>) => {
+      if (event.source !== studioFrameRef.current?.contentWindow || event.origin !== new URL(studioUrl).origin) return;
+      const parsed = videoLivePreviewMessageSchema.safeParse(event.data);
+      if (!parsed.success || parsed.data.projectId !== videoProjectId(sessionId)) return;
+      window.dispatchEvent(new CustomEvent(VIDEO_LIVE_PREVIEW_EVENT, {
+        detail: { workspaceId, sessionId: conversationId ?? sessionId, preview: parsed.data },
+      }));
+    };
+    window.addEventListener("message", receive);
+    return () => {
+      window.removeEventListener("message", receive);
+      window.dispatchEvent(new CustomEvent(VIDEO_LIVE_PREVIEW_EVENT, {
+        detail: { workspaceId, sessionId: conversationId ?? sessionId, preview: null },
+      }));
+    };
+  }, [conversationId, sessionId, studioUrl, workspaceId]);
   React.useEffect(() => {
     const receive = (event: MessageEvent) => {
       if (event.source !== studioFrameRef.current?.contentWindow ||

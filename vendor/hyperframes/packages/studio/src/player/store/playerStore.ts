@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { VideoLiveGeneration } from "@ipollowork/types/hyperframes";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { BeatEditState } from "../../utils/beatEditing";
 import type { TimelineAnimationSegment } from "../../utils/timelineAnimationSegments";
@@ -164,6 +165,9 @@ function resolveElementSelection(
 
 interface PlayerState {
   isPlaying: boolean;
+  liveGenerationActive: boolean;
+  liveGeneration: VideoLiveGeneration | null;
+  liveGenerationResumePending: boolean;
   currentTime: number;
   duration: number;
   timelineReady: boolean;
@@ -385,8 +389,10 @@ interface BeatHistoryEntry {
 // without triggering re-renders on every frame.
 type TimeListener = (time: number) => void;
 const _timeListeners = new Set<TimeListener>();
+let _currentTime = 0;
 export const liveTime = {
-  notify: (t: number) => _timeListeners.forEach((cb) => cb(t)),
+  get: () => _currentTime,
+  notify: (t: number) => { _currentTime = t; _timeListeners.forEach((cb) => cb(t)); },
   subscribe: (cb: TimeListener) => {
     _timeListeners.add(cb);
     return () => _timeListeners.delete(cb);
@@ -395,6 +401,9 @@ export const liveTime = {
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
+  liveGenerationActive: false,
+  liveGeneration: null,
+  liveGenerationResumePending: false,
   currentTime: 0,
   duration: 0,
   timelineReady: false,
@@ -754,9 +763,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // Resets project-specific state when switching compositions.
   // playbackRate, audioMuted, loopEnabled, zoomMode, and manualZoomPercent are intentionally preserved
   // because they are user preferences that should survive project switches.
+  // The host owns liveGenerationActive and clears it on project teardown; a late
+  // editor mount must not erase a busy message already received from the host.
   reset: () =>
     set({
       isPlaying: false,
+      liveGeneration: null,
+      liveGenerationResumePending: false,
       currentTime: 0,
       duration: 0,
       timelineReady: false,

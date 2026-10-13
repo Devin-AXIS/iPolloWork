@@ -141,11 +141,14 @@ import {
   videoDeliveryIntentForPrompt,
   videoProjectEntryPath,
   videoPromptRequiresStoryboardReview,
+  videoPromptRequestsFinishedVideo,
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
+  videoLiveSteeringContext,
   type VideoDeliveryRequirements,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
+import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -1250,7 +1253,7 @@ export function SessionRoute() {
         });
       },
       onSteerDraft: conversation.steerPrompt
-        ? async (draft: ComposerDraft, sessionId: string) => {
+        ? async (draft: ComposerDraft, sessionId: string, preview?: VideoLivePreviewMessage) => {
             const targetSessionId = sessionId.trim() || selectedSessionId;
             if (!targetSessionId) return false;
             const parts = await draftToParts(
@@ -1262,7 +1265,8 @@ export function SessionRoute() {
             );
             await conversation.steerPrompt?.({
               sessionId: targetSessionId,
-              parts,
+              parts: preview?.generation?.status === "generating"
+                ? [...parts, { type: "text", text: videoLiveSteeringContext(preview) }] : parts,
             });
             return true;
           }
@@ -1747,20 +1751,19 @@ export function SessionRoute() {
           hasReferenceAttachments: draft.attachments.length > 0,
         });
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
-          const voiceover = selectedWorkspaceEndpoint
-            ? await readVideoVoiceoverAvailability(
+          const [voiceover, originalBriefText] = await Promise.all([
+            selectedWorkspaceEndpoint ? readVideoVoiceoverAvailability(
               selectedWorkspaceEndpoint.client,
               selectedWorkspaceEndpoint.workspaceId,
               sessionId,
               selectedWorkspaceRoot,
-            )
-            : { configured: false, enabled: false };
+            ) : Promise.resolve({ configured: false, enabled: false }),
+            selectedWorkspaceEndpoint ? readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId)) : Promise.resolve(undefined),
+          ]);
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
             capabilityId: draft.capability?.id,
             promptText: videoPromptText,
-            originalBriefText: selectedWorkspaceEndpoint
-              ? await readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId))
-              : undefined,
+            originalBriefText,
             voiceoverAvailable: voiceover.configured,
             voiceoverEnabled: voiceover.enabled,
           });
@@ -1775,6 +1778,8 @@ export function SessionRoute() {
               includeVoiceover: includeVoiceoverContext,
               deliveryRequirements: videoDeliveryRequirements,
               requireStoryboardReview: requiresStoryboardReview,
+              ...(!requiresStoryboardReview && (videoPromptRequestsFinishedVideo(videoPromptText) || draft.capability?.id === "video-storyboard-regeneration")
+                ? { liveGenerationId: crypto.randomUUID() } : {}),
             },
           );
         }));

@@ -10,6 +10,17 @@ import {
   videoProjectEntryPath,
 } from "@ipollowork/video-studio/project";
 import { VIDEO_STORYBOARD_FORMAT_CONTRACT } from "./video-storyboard";
+import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
+
+export const VIDEO_LIVE_PREVIEW_EVENT = "ipollowork:video-live-preview";
+
+export function videoLiveSteeringContext(preview: VideoLivePreviewMessage): string {
+  if (preview.generation?.status !== "generating") return "";
+  return [
+    `Live video direction for generation ${JSON.stringify(preview.generation.id)}. Playback is at ${preview.playhead.toFixed(2)}s; complete scenes are already published through ${preview.generation.readyDuration.toFixed(2)}s.`,
+    "Apply my new direction to the remaining, unpublished scenes of this same video. Preserve the published prefix, its audio, scene IDs and timing. Re-read the current entry and latest user direction before publishing each next scene; discard obsolete unpublished work. Continue publishing complete scenes, without restarting the video or waiting to rebuild the whole film.",
+  ].join("\n");
+}
 
 export {
   hyperframesStudioPort,
@@ -249,7 +260,7 @@ export function videoTaskSystemContext(
   sessionId: string,
   workspaceRoot?: string,
   template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist" | "authoringGuide" | "layoutLibrary"> | null,
-  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements; requireStoryboardReview?: boolean } = {},
+  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements; requireStoryboardReview?: boolean; liveGenerationId?: string } = {},
 ) {
   const projectDirectory = videoProjectDirectory(sessionId);
   const projectPath = videoProjectPath(sessionId, workspaceRoot);
@@ -266,6 +277,11 @@ export function videoTaskSystemContext(
       ] : []),
     ] : ["Use the prepared blank composition unless the user explicitly selected a template." ]),
     VIDEO_STORYBOARD_FORMAT_CONTRACT,
+    ...(options.liveGenerationId && !options.requireStoryboardReview ? [
+      "Live production: the viewer plays each published scene while you create the rest. Make a concise outline and publish one complete 3–6 second scene FIRST, using editable code/installed components and already available assets. This first scene is the motion audition; do not wait for a complete storyboard, all media, narration for the entire film or full-film validation before saving it. Respect required narration/captions for this scene before publishing it; synthesize only this scene's speech now.",
+      `On the composition root set data-ipw-live-id="${options.liveGenerationId}", data-ipw-live-status="generating" and data-duration to ONLY the complete playable prefix in seconds. Keep the eventual target duration in STORYBOARD.md, never in the playable root. Save each valid complete document atomically. No blank placeholders, partial HTML or missing referenced assets in the published prefix.`,
+      "Then produce and append one complete scene at a time. Preserve every published scene, its IDs, animation and audio. Re-read the latest entry and user directions before each publication; direct mid-generation feedback changes only unpublished content. Reuse tokens/components/assets; do not batch all speech or rebuild the entire film between publications. A save extends data-duration only when the next scene and its required media are ready. Finish the saved storyboard and perform the normal whole-project checks after the final scene; mark data-ipw-live-status=complete only when production finishes. On failure retain the last playable prefix and report the unfinished portion. Never export while the live source is changing.",
+    ] : []),
     "Keep design-tokens.css and --ipw-* palette/type tokens, static data-composition-variables with stable IDs, and editable nodes/hooks. Components and custom content inherit the active design system; later theme/token changes preserve variables, media and timeline. Do not bake theme values into every scene or flatten editable content into imagery.",
     options.requireStoryboardReview
       ? `Script review requested: load ipollowork-video-storyboard and create or update only \`${projectPath}/STORYBOARD.md\`, then wait for the user's review. Do not source or generate media or change index.html in this turn.`

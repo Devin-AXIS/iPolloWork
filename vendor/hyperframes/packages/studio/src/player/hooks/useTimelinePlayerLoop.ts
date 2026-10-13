@@ -13,6 +13,7 @@
  */
 
 import { useCallback } from "react";
+import { lastVideoFrameTime } from "@hyperframes/core/runtime/protocol";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 
@@ -95,6 +96,18 @@ export function useTimelinePlayerLoop({
         }
         const { duration, loopEnd, loopStart } = playbackWindow;
         const time = Math.min(rawTime, duration);
+        const publication = state.liveGeneration?.status === "generating"
+          ? state.liveGeneration : null;
+        if (publication && time >= Math.min(duration, publication.readyDuration) - 1e-6) {
+          const boundary = Math.min(duration, publication.readyDuration);
+          adapter.pause();
+          adapter.seek(lastVideoFrameTime(boundary, duration, 30));
+          liveTime.notify(boundary);
+          setCurrentTime(boundary);
+          if (!state.liveGenerationActive) usePlayerStore.setState({ isPlaying: false, liveGenerationResumePending: state.isPlaying });
+          // Keep playback intent: Pause still cancels it, and the next publication resumes it.
+          return;
+        }
         liveTime.notify(time); // direct DOM updates, no React re-render
         if (time >= loopEnd) {
           if (state.loopEnabled) {

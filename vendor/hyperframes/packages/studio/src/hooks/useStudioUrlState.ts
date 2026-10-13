@@ -179,6 +179,15 @@ export function useStudioUrlState({
 
   useEffect(() => {
     if (!projectId || hydratedSeekRef.current || compositionLoading) return;
+    const playback = usePlayerStore.getState();
+    if (initialState.currentTime === 0 && !initialState.selection && playback.liveGenerationActive && playback.liveGeneration && playback.isPlaying) {
+      // The host's default t=0 is startup state, not a user seek that should
+      // pause a first publication which became playable before URL hydration.
+      stableTimeRef.current = playback.currentTime;
+      hydratedSeekRef.current = true;
+      hydratedInitialTimeRef.current = true;
+      return;
+    }
     const nextTime =
       duration > 0
         ? clampNumber(initialState.currentTime ?? 0, 0, duration)
