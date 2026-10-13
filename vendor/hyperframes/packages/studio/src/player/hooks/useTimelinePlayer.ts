@@ -297,6 +297,12 @@ export function useTimelinePlayer() {
     stopScrubPreviewAudio();
     const adapter = getAdapter();
     if (!adapter) return;
+    const state = usePlayerStore.getState();
+    if (state.liveGenerationActive && state.liveGeneration?.status === "generating"
+      && state.currentTime >= state.liveGeneration.readyDuration - 1e-6) {
+      setIsPlaying(true);
+      return;
+    }
     if (adapter.getTime() >= adapter.getDuration()) {
       adapter.seek(usePlayerStore.getState().inPoint ?? 0);
     }
@@ -376,6 +382,7 @@ export function useTimelinePlayer() {
     ],
   );
   const pause = useCallback(() => {
+    usePlayerStore.setState({ liveGenerationResumePending: false });
     stopReverseLoop();
     const adapter = getAdapter();
     const pausedAt = adapter?.getTime();
@@ -398,6 +405,7 @@ export function useTimelinePlayer() {
   }, [getAdapter, setCurrentTime, setIsPlaying, stopPreviewMedia, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
     (time: number, options?: { keepPlaying?: boolean }) => {
+      usePlayerStore.setState({ liveGenerationResumePending: false });
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();
@@ -476,7 +484,7 @@ export function useTimelinePlayer() {
       seek,
     });
 
-  const { processTimelineMessageRef, enrichMissingCompositionsRef, onIframeLoad } =
+  const { processTimelineMessageRef, enrichMissingCompositionsRef, onIframeLoad, initializeAdapter } =
     useTimelineSyncCallbacks({
       iframeRef,
       probeIntervalRef,
@@ -493,6 +501,18 @@ export function useTimelinePlayer() {
       stopPreviewMedia,
       resumePlayback: play,
     });
+  useEffect(() => usePlayerStore.subscribe((state, previous) => {
+    if (state.liveGenerationActive === previous.liveGenerationActive) return;
+    if (state.liveGenerationActive) {
+      usePlayerStore.setState({ liveGenerationResumePending: false });
+      initializeAdapter();
+    }
+    if (!state.liveGenerationActive && state.liveGeneration && state.currentTime >= state.liveGeneration.readyDuration - 1e-6) {
+      const resumePending = state.isPlaying;
+      pause();
+      usePlayerStore.setState({ liveGenerationResumePending: resumePending });
+    }
+  }), [initializeAdapter, pause]);
   const saveSeekPosition = useCallback(() => {
     // Never DEGRADE the saved position. Overlapping reloads (e.g. an external
     // file drop = upload reload + insert reload back-to-back) call this while
@@ -523,6 +543,12 @@ export function useTimelinePlayer() {
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    const state = usePlayerStore.getState();
+    if (state.liveGenerationActive && state.liveGeneration) {
+      // The visible player keeps running while NLEPreview prepares the next publication.
+      isRefreshingRef.current = true;
+      return;
+    }
     saveSeekPosition();
     setPreviewPlaybackActive(iframe, false);
     // NLEPreview stages a second Player for refreshToken and keeps this frame

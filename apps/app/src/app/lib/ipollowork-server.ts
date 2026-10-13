@@ -1220,12 +1220,13 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     googleWorkspaceSetActiveAccount: (accountId: string) => requestJson<GoogleWorkspaceAuthStatus>(baseUrl, "/experimental/google-workspace/active-account", { token, hostToken, method: "POST", body: { accountId }, timeoutMs: timeouts.status }),
     googleWorkspaceTestConnection: () => requestJson<GoogleWorkspaceAuthStatus>(baseUrl, "/experimental/google-workspace/test", { token, hostToken, method: "POST", timeoutMs: 60_000 }),
     googleWorkspaceRunScopeSmokeTest: () => requestJson<GoogleWorkspaceAuthStatus>(baseUrl, "/experimental/google-workspace/smoke-test", { token, hostToken, method: "POST", timeoutMs: 120_000 }),
-    callExtensionAction: (payload: iPolloWorkExtensionActionCall) =>
+    callExtensionAction: (payload: iPolloWorkExtensionActionCall, options?: { signal?: AbortSignal }) =>
       requestJson<iPolloWorkExtensionActionResult>(baseUrl, "/experimental/extensions/call", {
         token,
         hostToken,
         method: "POST",
         body: payload,
+        signal: options?.signal,
         timeoutMs: (payload.extensionId === "openai-image-generation" && payload.action !== "status")
           || (payload.extensionId === "image-studio" && ["generate-image", "edit-image"].includes(payload.action))
           ? Math.max(timeouts.binary, IMAGE_GENERATION_REQUEST_TIMEOUT_MS)

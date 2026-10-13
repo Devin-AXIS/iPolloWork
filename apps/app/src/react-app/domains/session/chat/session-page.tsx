@@ -1813,7 +1813,7 @@ export function SessionPage(props: SessionPageProps) {
       : null
   ), [props.selectedSessionId, sessionTypeRevision]);
   useEffect(() => subscribeToSessionType((sessionId) => {
-    if (sessionId !== props.selectedSessionId) return;
+    if (!props.selectedSessionId || !isConversationTemplateSessionId(props.selectedSessionId, sessionId)) return;
     setSessionTypeRevision((value) => value + 1);
   }), [props.selectedSessionId]);
   const isDesignSession = selectedSessionType === "design";
@@ -2236,11 +2236,7 @@ export function SessionPage(props: SessionPageProps) {
       }
       try {
         const materializedType = sessionTypeForTemplate(result.manifest);
-        setSessionType(result.sessionId, materializedType);
-        if (result.sessionId === sessionId && materializedType !== selectedSessionType) {
-          setSessionType(sessionId, materializedType);
-          setSessionTypeRevision((value) => value + 1);
-        }
+        if (readSessionType(result.sessionId) !== materializedType) setSessionType(result.sessionId, materializedType);
         if (materializedType !== "design" && materializedType !== "video") {
           if (active) setTemplateSessionData(null);
           return;
@@ -2253,7 +2249,7 @@ export function SessionPage(props: SessionPageProps) {
     })();
     void refreshTemplateCatalog();
     return () => { active = false; };
-  }, [templateSessionRevision, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, selectedSessionType]);
+  }, [templateSessionRevision, sessionTypeRevision, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, selectedSessionType]);
   useEffect(() => {
     if (
       !props.ipolloworkServerClient
@@ -2275,9 +2271,18 @@ export function SessionPage(props: SessionPageProps) {
         hasBrief = Boolean(brief && typeof brief === "object" && Object.keys(brief).length);
       } catch { hasBrief = false; }
       if (active) setTemplateSessionData({ ...result, hasBrief });
-    }).catch(() => undefined);
+    }).catch((error: unknown) => {
+      // A legacy parent placeholder must not hide the actual child being produced.
+      if (active && error instanceof iPolloWorkServerError && error.status === 404
+        && activePanelTab.type === "video" && templateSessionId === props.selectedSessionId
+        && currentTemplateSessionData?.manifest.surface === "video"
+        && currentTemplateSessionData.sessionId !== templateSessionId) {
+        openVideoStudio(currentTemplateSessionData.sessionId, { auto: true });
+        closeTab(templateSessionId, activePanelTab.id);
+      }
+    });
     return () => { active = false; };
-  }, [activePanelTab, currentTemplateSessionData?.sessionId, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
+  }, [activePanelTab, currentTemplateSessionData, closeTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     const item = templateCatalog.find((template) => template.manifest.id === templateId);
     if (!item) return;
@@ -4864,6 +4869,7 @@ export function SessionPage(props: SessionPageProps) {
                           if (template) void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
                         }}
                         onActivateVideoStudio={activateVideoStudio}
+                        liveVideoGeneration={Boolean(currentVideoEntryPath)}
                         designTemplates={starterTemplateCatalog}
                         designTemplatesLoading={starterTemplateCatalogLoading}
                         designTemplateBusyId={templateBusyId}

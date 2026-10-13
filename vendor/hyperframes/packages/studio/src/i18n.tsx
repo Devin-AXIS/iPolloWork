@@ -19,6 +19,8 @@ type TranslationKey =
   | "header.preview"
   | "header.previewComingSoon"
   | "preview.aiEditingWarning"
+  | "preview.liveGenerating"
+  | "preview.liveWaiting"
   | "preview.avatarCutoutPreparing"
   | "preview.avatarCutoutProgress"
   | "header.undo"
@@ -144,6 +146,8 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.preview": "Preview",
     "header.previewComingSoon": "Preview is coming soon",
     "preview.aiEditingWarning": "AI is editing the video · Avoid manual edits",
+    "preview.liveGenerating": "Playing as generated · {seconds}s ready · Guide what happens next in chat",
+    "preview.liveWaiting": "{seconds}s played · Waiting for the next scene",
     "preview.avatarCutoutPreparing": "Updating avatar background…",
     "preview.avatarCutoutProgress": "Avatar background {progress}% · Processing transparent video",
     "header.undo": "Undo",
@@ -270,6 +274,8 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.preview": "预览",
     "header.previewComingSoon": "预览功能即将开放",
     "preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
+    "preview.liveGenerating": "边生成边播放 · 已就绪 {seconds} 秒 · 可在聊天中引导后续内容",
+    "preview.liveWaiting": "已播放 {seconds} 秒 · 等待下一段生成",
     "preview.avatarCutoutPreparing": "正在更新人物背景…",
     "preview.avatarCutoutProgress": "人物背景 {progress}% · 正在处理透明视频",
     "header.undo": "撤销",

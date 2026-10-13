@@ -78,6 +78,7 @@ export type ComposerProps = {
   onStop: () => void | Promise<void>;
   busy: boolean;
   queuedCount: number;
+  busySubmitLabel?: string;
   disabled: boolean;
   inputDisabled?: boolean;
   modelStatus?: ChatModelStatus;
@@ -585,9 +586,13 @@ export function ReactSessionComposer(props: ComposerProps) {
     runComposerAction();
   };
 
-  const handleActionClick = () => {
-    if (actionPointerSubmittedRef.current) {
-      actionPointerSubmittedRef.current = false;
+  const handleActionClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
+    const pointerSubmitted = actionPointerSubmittedRef.current;
+    actionPointerSubmittedRef.current = false;
+    // Clearing a busy draft can turn this same DOM button into Stop before mouseup.
+    if (pointerSubmitted && event.detail > 0) return;
+    if (props.busy && !canSend) {
+      void props.onStop();
       return;
     }
     runComposerAction();
@@ -1673,9 +1678,9 @@ export function ReactSessionComposer(props: ComposerProps) {
                         size="icon"
                         onPointerDown={handleActionPointerDown}
                         onClick={handleActionClick}
-                        aria-label={t("composer.queue")}
+                        aria-label={props.busySubmitLabel ?? t("composer.queue")}
                         className="rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                        title={t("composer.queue_hint")}
+                        title={props.busySubmitLabel ?? t("composer.queue_hint")}
                       >
                         <ArrowUp size={15} />
                         {props.queuedCount > 0 ? (
@@ -1688,7 +1693,8 @@ export function ReactSessionComposer(props: ComposerProps) {
                       <Button
                         type="button"
                         size="icon"
-                        onClick={props.onStop}
+                        onPointerDown={() => { actionPointerSubmittedRef.current = false; }}
+                        onClick={handleActionClick}
                         className="rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
                         aria-label={t("composer.stop")}
                         title={t("composer.stop")}
