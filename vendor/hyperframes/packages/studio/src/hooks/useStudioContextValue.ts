@@ -4,6 +4,7 @@ import type { StudioContextValue } from "../contexts/StudioContext";
 import type { ToastToneInput } from "../utils/studioHelpers";
 
 interface StudioContextInput {
+  hostAiEditing?: boolean;
   projectId: string;
   activeCompPath: string | null;
   setActiveCompPath: (path: string | null) => void;
@@ -40,6 +41,7 @@ interface StudioContextInput {
 // fallow-ignore-next-line complexity
 export function buildStudioContextValue(input: StudioContextInput): StudioContextValue {
   return {
+    hostAiEditing: input.hostAiEditing,
     projectId: input.projectId,
     activeCompPath: input.activeCompPath,
     setActiveCompPath: input.setActiveCompPath,

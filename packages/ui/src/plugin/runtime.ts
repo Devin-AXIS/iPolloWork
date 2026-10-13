@@ -44,12 +44,15 @@ function createRuntime(mode: 'host' | 'bundled') {
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
   }
-  return Object.freeze({ version: UI_RUNTIME_VERSION, mode, React, createRoot, ...core, enhance, observe });
+  return Object.freeze({ version: UI_RUNTIME_VERSION, mode, React, createRoot, requireRuntime, ...core, enhance, observe });
 }
 
 export function installRuntime(css: string, mode: 'host' | 'bundled') {
   if (window.ipolloworkUi) return requireRuntime();
   const style = document.createElement('style');
+  // Local-service frames receive the host runtime through their authenticated
+  // bridge. Keep their strict CSP by inheriting the bootstrap script's nonce.
+  style.nonce = document.currentScript?.nonce ?? '';
   style.dataset.ipwRuntime = UI_RUNTIME_VERSION;
   style.textContent = css;
   document.head.append(style);

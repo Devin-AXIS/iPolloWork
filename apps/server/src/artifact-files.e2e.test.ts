@@ -291,6 +291,31 @@ describe("artifact file routes", () => {
 });
 
 
+test("inbox advertises the 200 MB default and honors configured limits", async () => {
+  const previous = process.env.IPOLLOWORK_INBOX_MAX_BYTES;
+  const root = await createWorkspaceRoot();
+  const { base, token } = await startiPolloWorkServer(root);
+  const limit = async () => {
+    const response = await fetch(`${base}/capabilities`, { headers: auth(token) });
+    expect(response.status).toBe(200);
+    return (await response.json()).toolProviders.files.maxBytes;
+  };
+  try {
+    delete process.env.IPOLLOWORK_INBOX_MAX_BYTES;
+    expect(await limit()).toBe(200 * 1024 * 1024);
+    process.env.IPOLLOWORK_INBOX_MAX_BYTES = "1024";
+    expect(await limit()).toBe(1024);
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array(1025)], "oversized.txt"));
+    const response = await fetch(`${base}/workspace/ws_1/inbox`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ code: "file_too_large" });
+  } finally {
+    if (previous === undefined) delete process.env.IPOLLOWORK_INBOX_MAX_BYTES;
+    else process.env.IPOLLOWORK_INBOX_MAX_BYTES = previous;
+  }
+});
+
 test("reference inbox verifies disk bytes and reconstructs parts before publishing", async () => {
   const root = await createWorkspaceRoot();
   const { base, token } = await startiPolloWorkServer(root);

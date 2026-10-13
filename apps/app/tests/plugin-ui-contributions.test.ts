@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, mock } from "bun:test";
+import { buildPluginRuntime } from "@ipollowork/ui/build-plugin-runtime";
 
 import type { iPolloWorkPluginPackageItem } from "../src/app/lib/ipollowork-server";
 import type { BrowserPanelTab } from "../src/app/lib/desktop-types";
 import { resolveInstalledPluginContributions, mediaStudioEngine, workspaceAppLaunchers, workspaceAppServiceAction } from "../src/react-app/plugin-ui/plugin-ui-contributions";
-import { browserSessionTabsToObserve } from "../src/react-app/plugin-ui/service-workbench-frame";
+const hostRuntime = await buildPluginRuntime("host");
+mock.module("virtual:ipollowork-plugin-ui-runtime", () => ({ default: hostRuntime.script }));
+const { browserSessionTabsToObserve } = await import("../src/react-app/plugin-ui/service-workbench-frame");
 import {
   parsePluginPackageManifest,
   parsePluginUiInspectorContext,

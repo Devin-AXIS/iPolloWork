@@ -167,6 +167,7 @@ export function VideoPanel({
   const studioChromeReadyRef = React.useRef(false);
   const studioReadyFallbackRef = React.useRef<number | null>(null);
   const [revision, setRevision] = React.useState(0);
+  const [enhancementPreparing, setEnhancementPreparing] = React.useState(false);
   const [startAttempt, setStartAttempt] = React.useState(0);
   const [resourceAttempt, setResourceAttempt] = React.useState(0);
   const [resourcesReady, setResourcesReady] = React.useState(Boolean(runtime));
@@ -1001,11 +1002,11 @@ export function VideoPanel({
       {
         type: "ipollowork:studio-ai-editing",
         projectId: videoProjectId(sessionId),
-        active: aiEditing,
+        active: aiEditing || enhancementPreparing,
       },
       new URL(studioUrl).origin,
     );
-  }, [aiEditing, sessionId, studioUrl]);
+  }, [aiEditing, enhancementPreparing, sessionId, studioUrl]);
 
   React.useEffect(() => {
     if (!studioFrameLoaded) return;
@@ -1421,7 +1422,7 @@ export function VideoPanel({
     >
       {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) && (
         <VideoEnhancementPanel key={`${workspaceId}:${sessionId}`} client={client} workspaceId={workspaceId}
-          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onApplied={reloadStudio}
+          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onPreparingChange={setEnhancementPreparing} aiEditing={aiEditing}
           onGenerate={onAskAi ? async request => {
             const current = await client.readWorkspaceFile(workspaceId, request.sourcePath);
             await onAskAi({

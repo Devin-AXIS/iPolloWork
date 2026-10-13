@@ -13,7 +13,7 @@ import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { DesignSystemDrawer } from "../src/react-app/domains/session/design/design-system-drawer";
 import "../src/app/index.css";
 import { setLocale } from "../src/i18n";
-import type { AvatarProfile, VideoJob } from "@ipollowork/types/video-generation";
+import { HEYGEN_AVATAR_VIDEO, heygenAvatarFormat, type AvatarProfile, type VideoJob } from "@ipollowork/types/video-generation";
 setLocale("zh");
 
 // Real panel and HTTP client, simulated provider boundary: never bills or uses credentials.
@@ -63,8 +63,12 @@ window.fetch = async (input, init) => {
       if (action === "speech_synthesize_workspace_file") return json({ ok: true, result: { output: { sourcePath: args.outputPath, durationSeconds: 8.2 } } });
     }
     if (extensionId === "storage") return json({ ok: true, result: { output: { providers: [] } } });
-    if (action === "status") return json({ ok: true, result: { models: configured ? [{ id: "minimax-h3-avatar" }] : [] } });
-    if (action === "avatar-context") return json({ok:true,result:{content:"一款插画风格的智能家居产品介绍",audioCount:hasNarration?2:0,audioDuration:hasNarration?(longProof?58:8.2):0,audioIssue:hasNarration?"":"当前视频没有配音素材。",audioClips:hasNarration?[{id:"all",label:"整段配音",start:0,duration:longProof?58:8.2,voiceId:"",fingerprint:`all-${audioVersion}`},{id:"scene-one",label:"片段 1",start:0,duration:4.2,voiceId:"longanyang",fingerprint:`one-${audioVersion}`},{id:"scene-two",label:"片段 2",start:4.2,duration:4,voiceId:"longanhuan",fingerprint:`two-${audioVersion}`}]:[]}});
+    if (action === "status") return json({ ok: true, result: { models: configured ? [
+      ...voiceProofParams.has("heygenOnly") ? [] : [{ id: "minimax-h3-avatar" }],
+      ...voiceProofParams.has("runninghubOnly") ? [] : [{ id: HEYGEN_AVATAR_VIDEO.model, billingMode: "subscription", plan: voiceProofParams.has("freePlan") ? "free" : "creator",
+        ...(voiceProofParams.has("accountUnavailable") ? { availabilityIssue: "无法读取 HeyGen 套餐，请刷新或重新授权。" } : { avatarLimits: heygenAvatarFormat(voiceProofParams.has("freePlan") ? "free" : "creator") }) }],
+    ] : [] } });
+    if (action === "avatar-context") return json({ok:true,result:{content:"一款插画风格的智能家居产品介绍",audioCount:hasNarration?2:0,audioDuration:hasNarration?(voiceProofParams.has("freePlan")?71.576:longProof?58:8.2):0,audioIssue:hasNarration?"":"当前视频没有配音素材。",audioClips:hasNarration?[{id:"all",label:"整段配音",start:0,duration:voiceProofParams.has("freePlan")?71.576:longProof?58:8.2,voiceId:"",fingerprint:`all-${audioVersion}`},{id:"scene-one",label:"片段 1",start:0,duration:4.2,voiceId:"longanyang",fingerprint:`one-${audioVersion}`},{id:"scene-two",label:"片段 2",start:4.2,duration:4,voiceId:"longanhuan",fingerprint:`two-${audioVersion}`}]:[]}});
     if (action === "avatar-profiles") return json({ok:true,result:{profiles}});
     if (action === "avatar-profile-save") {
       const previous = profiles.find(profile => profile.id === args.id);
@@ -100,6 +104,7 @@ window.fetch = async (input, init) => {
       const receipt=document.getElementById("submission-receipt"); if(receipt&&!longProof) receipt.textContent=JSON.stringify(args,null,2);
       const profile = profiles.find(item => item.id === args.avatarProfileId);
       const job: VideoJob = { id: args.requestId, model: args.model, status: "succeeded", path: "video/avatar-proof/assets/result.mp4", message: "已自动加入当前 Video Studio 素材库（模拟结果，没有调用云端）", upstreamId: "simulated", workspaceId: "proof", sessionId: "avatar-proof", operation: "reference", prompt: args.prompt, fingerprint: "proof", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0, ...(profile ? {avatarProfileId:profile.id,avatarProfileUpdatedAt:profile.updatedAt,avatarAudioFingerprint:`${args.avatarClipId === "scene-one" ? "one" : args.avatarClipId === "scene-two" ? "two" : "all"}-${audioVersion}`,avatarAudioStart:args.avatarClipId === "scene-two" ? 4.2 : 0} : {}) };
+      if (args.model === HEYGEN_AVATAR_VIDEO.model) job.avatarInput = { imagePath: args.imageRefs, audioPath: "voice.wav", ratio: args.ratio, resolution: "1080p", duration: Number(args.duration) };
       jobs.unshift(job); return json({ ok: true, result: { job } });
     }
   }
@@ -136,7 +141,7 @@ client.callMedia = async (action, args) => {
   return response.json();
 };
 client.downloadWorkspaceFile = async (_workspaceId, path) => ({ data: path.endsWith(".mp4")
-  ? new Uint8Array([0, 0, 0, 20, 102, 116, 121, 112])
+  ? Uint8Array.from(atob("AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMWbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAkB0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAACAAAAAgAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAG4bWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAQABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABY21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAASNzdGJsAAAAv3N0c2QAAAAAAAAAAQAAAK9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAACAAIABIAAAASAAAAAAAAAABFUxhdmM2Mi4yOC4xMDEgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAANWF2Y0MBZAAK/+EAGGdkAAqs2UlsBEAAAAMAQAAAAwCDxIllgAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAWeAAAAAAAAAAYc3R0cwAAAAAAAAABAAAAAQAAQAAAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAEAAAABAAAAFHN0c3oAAAAAAAACzwAAAAEAAAAUc3RjbwAAAAAAAAABAAADRgAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNjIuMTIuMTAxAAAACGZyZWUAAALXbWRhdAAAAq0GBf//qdxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjUgcjMyMjMgMDQ4MGNiMCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjUgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0xIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAGmWIhAAV//7sz34FNsMdS92bssG5143uhD/5"), value => value.charCodeAt(0))
   : new Uint8Array(await (await originalFetch("/default-brand-avatar.jpg")).arrayBuffer()), path });
 client.readWorkspaceFile = async (_workspaceId, path) => {
   if (path.endsWith("index.html")) return { content: appliedHtml, updatedAt: 1 };
@@ -267,6 +272,6 @@ createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParam
   <button onClick={() => { failUpload = !failUpload; }}>切换上传失败</button>
   <pre id="submission-receipt" className="max-w-xl whitespace-pre-wrap break-all text-xs" />
   <div style={{ position: "relative", width: 440, height: 1150, marginTop: 20 }}>
-    {voiceProofParams.get("panel") === "storyboard" ? <VideoStoryboardSettingsDialog frameIndex={1} title="分镜素材" kind="picture" disabled={false} onClose={() => {}} onApply={async () => false} onImport={async () => []} request={{type:"ipollowork:video-studio-settings-open",projectId:"proof",requestId:"proof",frameIndex:1,title:"分镜素材",kind:"picture",fields:{asset_source:"generate",asset_kind:"image",asset_brief:"保留这个描述",asset_reference:"",asset_origin:"",camera:"固定镜头",transition_in:"",sound_effects:"",sound_effect_reference:""},assets:[],cameras:[{value:"固定镜头",label:"固定镜头"}]}} /> : voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path, timelineStart) => { requests.push({ action: `asset-${action}`, path, start: timelineStart }); }} /></div> : <VoiceProofPanel />}
+    {voiceProofParams.get("panel") === "storyboard" ? <VideoStoryboardSettingsDialog frameIndex={1} title="分镜素材" kind="picture" disabled={false} onClose={() => {}} onApply={async () => false} onImport={async () => []} request={{type:"ipollowork:video-studio-settings-open",projectId:"proof",requestId:"proof",frameIndex:1,title:"分镜素材",kind:"picture",fields:{asset_source:"generate",asset_kind:"image",asset_brief:"保留这个描述",asset_reference:"",asset_origin:"",camera:"固定镜头",transition_in:"",sound_effects:"",sound_effect_reference:""},assets:[],cameras:[{value:"固定镜头",label:"固定镜头"}]}} /> : voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path, timelineStart, timelineDuration) => { requests.push({ action: `asset-${action}`, path, start: timelineStart, duration: timelineDuration }); }} /></div> : <VoiceProofPanel />}
   </div>
 </div>}</HashRouter>);

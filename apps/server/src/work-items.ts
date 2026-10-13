@@ -464,8 +464,8 @@ const builtinWorkTemplates: WorkTemplate[] = [
   { id: "video", name: "视频制作", description: "从创意、素材到可播放的成片", workKind: "video", stages: [
     { id: "plan", title: "策划与分镜", instructions: "在当前已准备的视频项目中读取需求与已有素材，使用 ipollowork-video-storyboard 保存原生 STORYBOARD.md；交接准确路径、场景、暂定时长、素材与声音需求。仅分镜或要求先审稿时在这里停止。", acceptance: ["保存的原生分镜覆盖需求、素材与声音决策，暂定时长不冒充实测时长"] },
     { id: "produce", title: "素材与制作", instructions: "参考已批准分镜制作素材、画面与动效；需要声音时加载相应 Skill，使用真实音频和时长完成时间线。", acceptance: ["实际素材与所需音频接入同一可编辑项目", "保留设计变量、编辑钩子与实测时间绑定"] },
-    { id: "verify", title: "播放与检查", instructions: "参考 video-acceptance.md，用现有工具检查真实文件和播放；发现问题由原生 Agent 返修，按用户要求交付成片或源文件。", acceptance: ["问题关联具体场景、时间与证据", "没有观测到的画面、声音、导出和独立检查不标记通过"] },
-  ], acceptance: ["交付可播放成片及需要的可编辑源文件", "验证实际画面和音频"] },
+    { id: "verify", title: "播放与检查", instructions: "参考 video-acceptance.md，默认用 video_component_check、video_preview_check 和现有工作台播放验收；不为生成验证导出 MP4、审片视频或录屏。发现问题由原生 Agent 返修；只有用户明确要求导出或已授权发布需要文件时才单独导出。", acceptance: ["问题关联具体场景、时间与证据", "没有观测到的画面、声音、导出和独立检查不标记通过"] },
+  ], acceptance: ["默认交付工作台可播放的可编辑项目，按明确要求单独导出", "验证实际画面和音频"] },
   { id: "design", name: "设计", description: "探索方向，制作并检查设计成果", workKind: "design", stages: [
     { id: "brief", title: "明确方向", instructions: "理解受众、应用场景、视觉约束和现有品牌资料。", acceptance: ["方向与交付范围明确"] },
     { id: "create", title: "设计制作", instructions: "复用现有设计系统，制作用户需要的设计成果。", acceptance: ["产出可查看的实际设计"] },
@@ -496,9 +496,9 @@ const builtinWorkTemplates: WorkTemplate[] = [
       { id: "plan", name: "脚本与分镜", role: "需要新建或修改脚本、内容顺序、场景与素材声音计划时调用", skills: ["ipollowork-video-storyboard"],
         prompt: "使用 ipollowork-video-storyboard。读取已批准需求、资料及当前分镜，保存同一视频项目的原生 STORYBOARD.md。保留必需事实、用户修改与明确约束；按内容安排场景，不强设场景数量。时长标明暂定或实测。仅脚本任务不生成素材、不修改合成、不渲染。交回准确路径、修改的场景及待确认输入。" },
       { id: "produce", name: "画面与合成", role: "需要制作或修改视觉素材、组件动效及可编辑时间线时调用", skills: ["ipollowork-video-compose", "ipollowork-video-voiceover", "ipollowork-video-soundtrack"],
-        prompt: "使用 ipollowork-video-compose，延续已批准分镜和当前项目。读取所选组件的真实实现，保留设计变量、编辑钩子与统一时间线；现有音频不要求重新合成，仅新需求加载旁白或配乐 Skill，并以实测时长绑定画面。遵守本次分派的文件范围，使用现有工具检查和修复。交回可编辑源文件、素材和检查证据；由原生主 Agent 整合、渲染和交付。" },
+        prompt: "使用 ipollowork-video-compose，延续已批准分镜和当前项目。读取所选组件的真实实现，保留设计变量、编辑钩子与统一时间线；现有音频不要求重新合成，仅新需求加载旁白或配乐 Skill，并以实测时长绑定画面。遵守本次分派的文件范围，使用现有工具检查和修复。交回可编辑源文件、素材和检查证据；由原生主 Agent 整合并在现有工作台验收，仅在明确要求导出或已授权发布时导出。" },
       { id: "verify", name: "成片审查", role: "需要独立核对当前产物的内容、动效、音画与导出结果时调用", skills: ["ipollowork-video-studio"],
-        prompt: "只审查主 Agent 指定的当前视频产物，按适用范围读取 video-acceptance.md。使用现有工具获取证据，检查真实文件、时间线、场景采样和普通速度播放；需要声音或导出时核对真实混音及导出文件。技术检查与实际表达分别报告；未观看、未听到或无证据的项目保持未验证。交回具体场景、时间、问题与证据，不以制作者结论代替独立判断。" },
+        prompt: "只审查主 Agent 指定的当前视频产物，按适用范围读取 video-acceptance.md。默认使用 video_component_check、video_preview_check 和现有 Studio 的拖动及普通速度播放；不为审查渲染导出、审片视频或录屏。仅核对用户明确要求导出或已授权发布的真实文件。技术检查与实际表达分别报告；未观看、未听到或无证据的项目保持未验证。交回具体场景、时间、问题与证据，不以制作者结论代替独立判断。" },
     ],
     design: [
       { id: "create", name: "设计制作", role: "需要把已明确的方向制作成实际设计或局部修改时调用",
@@ -535,14 +535,14 @@ const builtinWorkTemplates: WorkTemplate[] = [
     coordinator.role = "统筹视频目标、原生分工与当前项目的实际交付";
     coordinator.skillIds = ["video-agent:ipollowork-video-studio"];
     coordinator.pluginIds = ["video-agent"];
-    coordinator.prompt += " 按需加载 ipollowork-video-studio，沿用现有视频制作工具和项目。仅讨论、脚本或局部修改时遵守该范围；负责收回实际文件，完成所需检查、渲染与交付。";
+    coordinator.prompt += " 按需加载 ipollowork-video-studio，沿用现有视频制作工具和项目。仅讨论、脚本或局部修改时遵守该范围；负责收回实际文件，完成所需检查和工作台预览交付，不为生成验证渲染导出；仅明确要求导出或已授权发布时单独导出。";
     config.orchestration.relations = [
       { sourceAgentId: "plan", targetAgentId: "produce", type: "dependency", label: "分镜输入" },
       { sourceAgentId: "produce", targetAgentId: "verify", type: "dependency", label: "当前产物" },
     ];
   }
   return workTemplateSchema.parse({
-    ...definition, version: definition.id === "video" ? 6 : 2, origin: "builtin", config,
+    ...definition, version: definition.id === "video" ? 7 : 2, origin: "builtin", config,
     stages: definition.stages.map((stage) => ({ ...stage, agentId: config.agents.some((agent) => agent.id === stage.id) ? stage.id : coordinator.id })),
   });
 });

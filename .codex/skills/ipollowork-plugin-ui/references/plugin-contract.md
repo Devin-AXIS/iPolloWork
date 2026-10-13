@@ -273,3 +273,7 @@ const iconOnly = h(ui.Button, { size: 'icon', 'aria-label': '搜索', onClick: s
 Button继续使用原children API：sm28px、default32px、lg36px；icon-sm/icon/icon-lg分别同尺寸，xs24兼容。图标默认aria-hidden装饰；独立表达状态的图标提供label，生成role=img和可访问名称。纯图标按钮名称放在Button的aria-label，内部Icon保持装饰，不重复朗读。加载由调用方管理disabled/aria-busy与LoaderCircle的animate-spin，操作成功后恢复；Icon不自动触发动作或异步任务。
 
 验收范围为现有shared-ui-core样板和双模式流程：所有公共名字SVG非空、S/M/L、前置/后置/纯图标、真实鼠标与键盘、禁用/加载、亮暗窄容器及13/16px根字号。此处描述验证契约，完成状态以本轮fraimz证据为准。
+
+## 本地服务 iframe
+
+ServiceWorkbenchFrame 的初始化 hostContext["ai.ipollo/ui-runtime"] 提供宿主运行时。页面只接受 parent 的响应，以本地服务生成的 CSP nonce 加载脚本；installRuntime 沿用 nonce 安装样式。业务从运行时公开的 requireRuntime 取得原始 React 和组件，不将 React 或运行时打包进插件。独立开发显式使用 startServer({ uiRuntime: (await buildPluginRuntime("bundled")).script })，生产只用宿主提供的版本。

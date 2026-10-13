@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { avatarBackgroundForPrompt, AVATAR_CAMERA_PROMPT, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, AVATAR_CAMERA_PROMPT, HEYGEN_AVATAR_VIDEO, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
+import sharp from "sharp";
 
 test("avatar preserves backgrounds by default and only removes them on explicit request", () => {
   for (const prompt of ["不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
@@ -29,7 +30,7 @@ import { claimVideoJobs, createVideoJob, finishVideoJobPause, getVideoJob, updat
 const roots: string[] = [];
 const initialCutoutCli = process.env.HYPERFRAMES_CLI_PATH;
 const oldFetch: unknown = Reflect.get(globalThis, PROVIDER_FETCH_SYMBOL);
-const auth: AuthorizationAccess = { read: async (id): Promise<Readonly<Record<string,string>>> => id === "volcengine-video" ? { ARK_API_KEY: "test-ark-secret" } : id === "runninghub-video" ? { RUNNINGHUB_API_KEY: "test-rh-secret" } : {} };
+const auth: AuthorizationAccess = { read: async (id): Promise<Readonly<Record<string,string>>> => id === "volcengine-video" ? { ARK_API_KEY: "test-ark-secret" } : id === "runninghub-video" ? { RUNNINGHUB_API_KEY: "test-rh-secret" } : id === "heygen-video" ? { HEYGEN_API_KEY: "test-heygen-secret" } : {} };
 const context = { workspaceId: "workspace", sessionId: "session-one" };
 // Minimal ftyp fixture; provider transport is mocked, not a claim of real generated video.
 const mp4 = Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109]);
@@ -710,6 +711,156 @@ function narrationWav(seconds: number) {
   buffer.write("data", 36); buffer.writeUInt32LE(samples * 2, 40);
   return buffer;
 }
+
+async function heygenSetup() {
+  const state = await setup();
+  const directory = join(state.root, "video/session-one");
+  await mkdir(join(directory, "assets"), { recursive: true });
+  const portrait = await sharp({ create: { width: 24, height: 32, channels: 3, background: "#808080" } }).webp().toBuffer();
+  await writeFile(join(directory, "assets/person.webp"), portrait);
+  await writeFile(join(directory, "voice.wav"), narrationWav(21));
+  await writeFile(join(directory, "index.html"), '<main><audio data-ipw-voiceover="true" src="voice.wav" data-start="12" data-duration="21"></audio></main>');
+  const clip = videoAvatarContextSchema.parse((await state.call("avatar-context")).result).audioClips?.[1];
+  if (!clip) throw new Error("Missing narration clip");
+  const profile = avatarProfileResultSchema.parse((await state.call("avatar-profile-save", { name: "原有数字人", imagePath: "video/session-one/assets/person.webp", imageName: "person.webp", prompt: "自然讲述，保留背景", ratio: "16:9", audioClipId: clip.id })).result).profile;
+  const input = submission({ model: HEYGEN_AVATAR_VIDEO.model, operation: "reference", resolution: "1080p", ratio: "9:16", avatarProfileId: profile.id, avatarProfileUpdatedAt: profile.updatedAt, avatarClipId: clip.id });
+  return { ...state, portrait, clip, profile, input };
+}
+
+test("HeyGen reuses avatar profiles and narration, queues locally, uploads normalized inputs once and saves to session assets", async () => {
+  const { root, config, call, portrait, clip, profile, input } = await heygenSetup();
+  let uploads = 0, creates = 0, downloads = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL, init: RequestInit) => {
+    const target = String(url);
+    const headers = new Headers(init.headers);
+    if (target.startsWith("https://api.heygen.com/")) {
+      expect(headers.get("X-Api-Key")).toBe("test-heygen-secret");
+      expect(headers.has("Authorization")).toBe(false);
+    }
+    if (target.endsWith("/assets")) {
+      expect(init.body).toBeInstanceOf(FormData);
+      if (!(init.body instanceof FormData)) throw new Error("Expected multipart upload");
+      const file = init.body.get("file");
+      if (!(file instanceof Blob)) throw new Error("Expected file");
+      uploads++;
+      if (uploads === 1) {
+        expect(file.type).toBe("image/png");
+        expect((await sharp(Buffer.from(await file.arrayBuffer())).metadata()).format).toBe("png");
+        expect(headers.get("Idempotency-Key")).toBe(`${input.requestId}:image`);
+      } else {
+        expect(file.type).toBe("audio/wav");
+        expect(headers.get("Idempotency-Key")).toBe(`${input.requestId}:audio`);
+      }
+      return Response.json({ data: { asset_id: `asset-${uploads}` } });
+    }
+    if (target.endsWith("/videos")) {
+      creates++;
+      expect(headers.get("Idempotency-Key")).toBe(input.requestId);
+      expect(JSON.parse(String(init.body))).toMatchObject({ type: "image", image: { type: "asset_id", asset_id: "asset-1" }, audio_asset_id: "asset-2", resolution: "1080p", aspect_ratio: "16:9", fit: "contain", output_format: "mp4" });
+      expect(JSON.parse(String(init.body)).motion_prompt).toContain(AVATAR_CAMERA_PROMPT);
+      return Response.json({ data: { video_id: "heygen-existing-id", status: "waiting" } });
+    }
+    if (target.endsWith("/videos/heygen-existing-id")) return Response.json({ data: { status: "completed", video_url: "https://files.heygen.ai/result.mp4" } });
+    expect(target).toBe("https://files.heygen.ai/result.mp4");
+    expect(headers.has("X-Api-Key")).toBe(false);
+    downloads++;
+    return new Response(mp4);
+  });
+  let job = videoSubmitResultSchema.parse((await call("submit", input)).result).job;
+  expect(job).toMatchObject({ status: "running", upstreamId: "", avatarProfileId: profile.id, avatarAudioStart: 12, avatarAudioFingerprint: clip.fingerprint, avatarInput: { duration: 21, ratio: "16:9", resolution: "1080p" } });
+  expect(job.avatarSequence).toBeUndefined();
+  expect(uploads + creates).toBe(0);
+  if (!job.avatarInput) throw new Error("Missing frozen inputs");
+  expect((await readFile(join(root, job.avatarInput.imagePath))).equals(portrait)).toBe(true);
+  await writeFile(join(root, profile.imagePath), "changed after submission");
+  await call("submit", input);
+  await pollVideoJobs({ ...config }, auth);
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job.upstreamId).toBe("heygen-existing-id");
+  expect(creates).toBe(1);
+  expect(uploads).toBe(2);
+  await pollVideoJobs({ ...config }, auth);
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job.status).toBe("succeeded");
+  expect(job.path).toBe(`video/session-one/assets/${job.id}.mp4`);
+  expect(await readFile(join(root, job.path))).toEqual(mp4);
+  expect((await listSessionArtifacts(config, "workspace", context.sessionId)).items).toHaveLength(1);
+  await expect(call("recover", { id: job.id }, { ...context, sessionId: "another-session" })).rejects.toThrow("当前会话");
+  await pollVideoJobs(config, auth);
+  expect([creates, uploads, downloads]).toEqual([1, 2, 1]);
+});
+
+test("HeyGen lost create response stays uncertain across restart and recovery only queries the existing video", async () => {
+  const { config, call, input } = await heygenSetup();
+  let creates = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL) => {
+    if (String(url).endsWith("/assets")) return Response.json({ data: { asset_id: "asset" } });
+    creates++;
+    throw new Error("test-heygen-secret connection lost");
+  });
+  await call("submit", input);
+  await pollVideoJobs(config, auth);
+  let job = await getVideoJob(config, input.requestId, "workspace", context.sessionId);
+  expect(job.status).toBe("uncertain");
+  expect(job.message).not.toContain("test-heygen-secret");
+  await call("submit", input);
+  await pollVideoJobs({ ...config }, auth);
+  expect(creates).toBe(1);
+  await call("recover", { id: job.id, upstreamId: "recovered-video" });
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL) => {
+    expect(String(url)).toBe("https://api.heygen.com/v3/videos/recovered-video");
+    return Response.json({ data: { status: "waiting" } });
+  });
+  await pollVideoJobs({ ...config }, auth);
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job).toMatchObject({ status: "running", upstreamId: "recovered-video" });
+  const stopped = videoSubmitResultSchema.parse((await call("stop", { id: job.id })).result).job;
+  expect(stopped.status).toBe("stopped");
+  expect(stopped.message).toContain("云端任务仍可能继续运行和计费");
+  expect(creates).toBe(1);
+});
+
+test.each(["failed", "untrusted-output", "download-failed"])("HeyGen %s preserves the existing task without creating another", async phase => {
+  const { config, call, input } = await heygenSetup();
+  await call("submit", input);
+  const queued = await getVideoJob(config, input.requestId, "workspace", context.sessionId);
+  await updateVideoJob(config, queued, { upstreamId: "existing-video" });
+  let requests = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL) => {
+    requests++;
+    if (String(url).endsWith("/videos/existing-video")) return Response.json({ data: phase === "failed"
+      ? { status: "failed", failure_message: "Account quota exhausted" }
+      : { status: "completed", video_url: phase === "untrusted-output" ? "https://127.0.0.1/result.mp4" : "https://files.heygen.ai/result.mp4" } });
+    return new Response("offline", { status: 404 });
+  });
+  await pollVideoJobs(config, auth);
+  const failed = await getVideoJob(config, queued.id, "workspace", context.sessionId);
+  expect(failed.status).toBe(phase === "failed" ? "failed" : "save_failed");
+  expect(failed.upstreamId).toBe("existing-video");
+  expect(requests).toBe(phase === "download-failed" ? 2 : 1);
+  if (phase === "download-failed") {
+    await call("recover", { id: failed.id });
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL) => String(url).endsWith("/videos/existing-video")
+      ? Response.json({ data: { status: "completed", video_url: "https://files.heygen.ai/result.mp4" } }) : new Response(mp4));
+    await pollVideoJobs({ ...config }, auth);
+    expect((await getVideoJob(config, queued.id, "workspace", context.sessionId)).status).toBe("succeeded");
+  }
+});
+
+test("HeyGen rejects unsupported input before provider traffic and authorization probe never generates video", async () => {
+  const { config } = await setup();
+  const input = submission({ model: HEYGEN_AVATAR_VIDEO.model, operation: "reference", resolution: "1080p", imageRefs: "person.png", audioRefs: "voice.wav", avatarSource: "video-audio" });
+  for (const patch of [{ duration: "301" }, { duration: "0" }, { duration: "-1" }, { duration: "NaN" }, { avatarSource: "video-content", audioRefs: "" }, { resolution: "0.258048MP" }]) {
+    expect(() => validateVideoSubmission({ ...input, ...patch })).toThrow();
+  }
+  await saveAuthorizationService(config, "heygen-video", { HEYGEN_API_KEY: "test-account-key" });
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string, init: RequestInit) => {
+    expect(url).toBe("https://api.heygen.com/v3/users/me");
+    expect(new Headers(init.headers).get("X-Api-Key")).toBe("test-account-key");
+    return Response.json({ data: { id: "account" } });
+  });
+  expect((await testAuthorizationService(config, "heygen-video")).ok).toBe(true);
+});
 
 test("avatar context reads actual narration duration, excludes BGM and prepares long narration without billing", async () => {
   const {root, call} = await setup();

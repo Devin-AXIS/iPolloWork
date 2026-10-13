@@ -151,7 +151,7 @@ describe("work item store", () => {
       const templates = await listWorkTemplates(config, workspace);
       const video = templates.templates.find((template) => template.id === "video");
       if (!video) throw new Error("Video template required");
-      expect(video.version).toBe(6);
+      expect(video.version).toBe(7);
       expect(video.config.agents.map((agent) => agent.id)).toEqual(["project-lead", "plan", "produce", "verify"]);
       const manifest = await Bun.file(new URL("../../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url)).json();
       const resources = manifest.resources.filter((resource: { type: string }) => resource.type === "skill");
@@ -168,7 +168,8 @@ describe("work item store", () => {
       expect(video.config.agents.find((agent) => agent.id === "produce")?.skillIds).toEqual([
         "video-agent:ipollowork-video-compose", "video-agent:ipollowork-video-voiceover", "video-agent:ipollowork-video-soundtrack",
       ]);
-      expect(video.config.agents.find((agent) => agent.id === "verify")?.prompt).toContain("用现有工具获取证据");
+      expect(video.config.agents.find((agent) => agent.id === "verify")?.prompt).toContain("video_preview_check");
+      expect(video.config.agents.find((agent) => agent.id === "project-lead")?.prompt).toContain("不为生成验证渲染导出");
       const original = JSON.stringify(video);
       const nativeRoles = nativeWorkTemplateAgents().filter((agent) => agent.name.startsWith("ipw-video."));
       expect(nativeRoles.map((agent) => agent.name)).toEqual(["ipw-video.plan", "ipw-video.produce", "ipw-video.verify"]);

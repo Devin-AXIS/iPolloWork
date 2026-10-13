@@ -45,10 +45,14 @@ describe("HyperFrames Video Studio", () => {
     expect(panel).toContain('if (!active) throw');
     expect(submit).toContain('context.sessionId !== props.selectedSessionId');
     expect(submit).toContain('context.workspaceId !== props.runtimeWorkspaceId');
-    expect(submit).toContain('await sendSessionDraft({');
+    expect(submit).toContain('await surface.sendDraft({');
+    expect(submit).not.toContain('await sendSessionDraft(');
+    expect(submit).toContain('surface.sessionId !== context.sessionId');
+    expect(submit).toContain('surface.workspaceId !== context.workspaceId');
+    expect(page).toContain('ref={sessionSurfaceRef}');
     expect(submit).toContain('{ type: "text", text: request }');
     expect(submit).toContain('{ type: "design-selection", contextId: context.id, label: context.target.label }');
-    expect(submit).toContain('!result.dispatched');
+    expect(submit).toContain('!dispatched');
   });
 
   test("uses the same compact task-progress density across host, Studio and video plugin", () => {
@@ -1417,9 +1421,19 @@ describe("HyperFrames Video Studio", () => {
       expect(videoAuthoringGuidance).toContain(field);
   });
 
+  test("keeps enhancement preview acceptance scoped to editable source and original audio", () => {
+    const promptText = "使用当前对话的视频制作流程生成智能增强视频。此次交付为可编辑项目，在现有工作台画布和时间轴验收；不导出 MP4，不渲染验收视频或启动后台录制。仅保留原声，不需要配音、背景音乐和音效。";
+    expect(videoDeliveryIntentForPrompt(promptText)).toBeNull();
+    expect(videoDeliveryRequirementsForPrompt({ promptText, voiceoverAvailable: false }))
+      .toMatchObject({ voiceover: false, bgm: false, sfx: false });
+  });
+
   test("continues explicit publication through the session-owned render API without manual export", () => {
     const contract = videoTaskSystemContext("ses_auto_publish", "C:/workspace");
     expect(contract).toContain("media/video_render_start");
+    expect(contract).toContain("Default acceptance is studio-preview");
+    expect(contract).toContain("media/video_preview_check");
+    expect(contract).toContain("Do not render/export MP4s, review clips, contact sheets or recordings for generation validation");
     expect(contract).toContain("video_render_status");
     expect(contract).toContain('sourcePath:"video/ses_auto_publish/index.html"');
     expect(contract).toContain("never start a duplicate after a wait timeout");

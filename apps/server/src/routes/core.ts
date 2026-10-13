@@ -20,6 +20,7 @@ import {
 import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import { z } from "zod";
+import { updateHeygenSubscription } from "../heygen-subscription.js";
 import { recordAudit } from "../audit.js";
 import {
   getConnectSnapshot,
@@ -1510,6 +1511,13 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
 
   addRoute(routes, "GET", "/authorization-services", "host-token", async () => {
     return jsonResponse({ items: await listAuthorizationServices(config) });
+  });
+
+  addRoute(routes, "POST", "/authorization-services/heygen-video/authorization", "host-token", async (ctx) => {
+    ensureWritable(config);
+    const host = config.host === "0.0.0.0" || config.host === "::" ? "127.0.0.1" : config.host;
+    const callbackUrl = new URL("/mcp/oauth/callback", `http://${host}:${config.port}`).toString();
+    return jsonResponse(await updateHeygenSubscription(config, await readJsonBody(ctx.request), callbackUrl));
   });
 
   addRoute(routes, "PUT", "/authorization-services/:serviceId/credentials", "host-token", async (ctx) => {

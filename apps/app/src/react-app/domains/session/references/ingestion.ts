@@ -11,6 +11,7 @@ import type { ExtractedReferenceContent, ReferenceIngestionResult, ReferenceProg
 
 import { REFERENCE_MAX_BYTES } from "@ipollowork/types/reference-context";
 export { REFERENCE_MAX_BYTES };
+const REFERENCE_SIZE_LIMIT_LABEL = `${REFERENCE_MAX_BYTES / (1024 * 1024)} MB (${REFERENCE_MAX_BYTES.toLocaleString("en-US")} bytes)`;
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
@@ -108,7 +109,7 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
       summary: "",
       chunks: [],
       quality: "failed",
-      warnings: [file.size > REFERENCE_MAX_BYTES ? `${file.name} exceeds 50 MB (50,000,000 bytes).` : "Unsupported reference type. Upload PDF, DOCX, PPTX, Markdown, TXT, CSV or JSON."],
+      warnings: [file.size > REFERENCE_MAX_BYTES ? `${file.name} exceeds ${REFERENCE_SIZE_LIMIT_LABEL}.` : "Unsupported reference type. Upload PDF, DOCX, PPTX, Markdown, TXT, CSV or JSON."],
     };
   }
 
@@ -148,7 +149,7 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
 }
 
 export async function prepareOriginalReferenceAttachment(file: File): Promise<ComposerAttachment> {
-  if (file.size > REFERENCE_MAX_BYTES) throw new Error(`${file.name} is larger than 50 MB (50,000,000 bytes).`);
+  if (file.size > REFERENCE_MAX_BYTES) throw new Error(`${file.name} is larger than ${REFERENCE_SIZE_LIMIT_LABEL}.`);
   if (!isReferenceFile(file)) throw new Error(`${file.name} is not a supported reference document.`);
 
   const mimeType = referenceMime(file);

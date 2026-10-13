@@ -1,9 +1,18 @@
 import { isApiError, providerApiError } from "./errors.js";
 import { readLimitedRequestBody } from "./limited-request-body.js";
 
-type ProviderFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+export type ProviderFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export const PROVIDER_FETCH_SYMBOL = Symbol.for("ipollowork.mediaProviderFetch");
+
+/** OAuth discovery needs the original 401 challenge, without provider error translation. */
+export async function providerOAuthFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const desktopFetch: unknown = Reflect.get(globalThis, PROVIDER_FETCH_SYMBOL);
+  const deadline = AbortSignal.timeout(30_000);
+  const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+  const options = { ...init, signal: signal ? AbortSignal.any([signal, deadline]) : deadline };
+  return typeof desktopFetch === "function" ? (desktopFetch as ProviderFetch)(input, options) : fetch(input, options);
+}
 
 /**
  * Route external provider traffic through Electron's system-proxy-aware fetch

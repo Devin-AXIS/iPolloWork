@@ -186,6 +186,25 @@ describe("ThumbnailScheduler", () => {
     });
   });
 
+  it("defers all video, waveform and composition work during agent editing and resumes once", async () => {
+    const scheduler = new ThumbnailScheduler();
+    scheduler.setAgentEditing(true);
+    const load = vi.fn(async () => result("media"));
+    const still = vi.fn(async () => result("still"));
+    for (const kind of ["video", "waveform", "composition"] as const) {
+      scheduler.acquire(request(kind, load, "visible", { kind, rich: false }), vi.fn());
+    }
+    scheduler.acquire(request("still", still), vi.fn());
+    await flush();
+    expect(load).not.toHaveBeenCalled();
+    expect(still).toHaveBeenCalledOnce();
+    scheduler.setAgentEditing(false);
+    await flush();
+    expect(load).toHaveBeenCalledTimes(3);
+    scheduler.setAgentEditing(false);
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
   it("aborts queued and active jobs after the final release", async () => {
     const scheduler = new ThumbnailScheduler(
       resolveTimelineViewportBudgets({ concurrentVideoDecodes: 1 }),

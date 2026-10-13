@@ -6,12 +6,15 @@ import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildEnhancementCues, enhancementGeometry, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
-import { callVideoEnhancementAction, localEnhancementStatus } from "./video-enhancement.js";
+import { runInNewContext } from "node:vm";
+import { resolveBundledTemplatesRoot } from "../templates.js";
+import { buildEnhancementCues, enhancementTranscriptSegments, enhancementTranscriptWords, enhancementTranscriptNeedsRecovery, mergeEnhancementTranscriptWords, enhancementGeometry, enhancementHtml, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
+import { callVideoEnhancementAction, localEnhancementStatus, claimEnhancementCheck, readEnhancementExecution, finishEnhancementExecution } from "./video-enhancement.js";
+import { checkVideoComponents } from "./video-components.js";
 import models from "./video-enhancement-models.json" with { type: "json" };
 import { classifyEnhancementHand, buildEnhancementGestures } from "./video-enhancement-gestures.js";
 import { buildEnhancementMask, enhancementMaskProtection } from "./video-enhancement-segmentation.js";
-import { videoEnhancementJobSchema, videoEnhancementLayoutSchema, videoEnhancementPreviewResultSchema, videoEnhancementResultSchema, videoEnhancementWorkflowResultSchema } from "@ipollowork/types/video-enhancement";
+import { VIDEO_ENHANCEMENT_GESTURE_FPS, videoEnhancementJobSchema, videoEnhancementLayoutSchema, videoEnhancementPreviewResultSchema, videoEnhancementResultSchema, videoEnhancementWorkflowResultSchema } from "@ipollowork/types/video-enhancement";
 import type { VideoEnhancementJob, VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
 import type { ServerConfig } from "../types.js";
 
@@ -91,6 +94,16 @@ test("generated composition contains local assets, editable clips and escaped tr
   expect(html).toContain('data-has-audio="true"');
   expect(html).toContain('src:local("Microsoft YaHei")');
   expect(html).toContain('window.__timelines["enhanced-video"]');
+});
+test("executed GSAP timeline preserves the full source even without overlay animations", async () => {
+  const duration = 52.233333;
+  const source = { ...base, duration, segments: [], cues: [] };
+  const html = enhancementHtml(source, "enhancement/test/original.mp4");
+  const gsap = await readFile(join(resolveBundledTemplatesRoot(), "ipollowork.hyperframes.course-journey", "assets", "gsap.min.js"), "utf8");
+  const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gu)].at(-1)![1]!;
+  const context = { window: {}, document: { querySelectorAll: () => [] }, setTimeout, clearTimeout, console };
+  // Execute the shipped GSAP and generated source, rather than asserting the padding text.
+  expect(runInNewContext(gsap + ";const gsap=window.gsap;" + script + ';const t=window.__timelines["enhanced-video"];t.seek(52.1,false);const proof={duration:t.duration(),time:t.time()};gsap.ticker.sleep();proof;', context)).toEqual({ duration, time: 52.1 });
 });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "ipw-enhancement-test-")); roots.push(root);
@@ -204,8 +217,14 @@ test("workflow hands local evidence to the shared Video Studio skills without re
   expect(result.instruction).toContain("ipollowork-video-studio");
   expect(result.instruction).toContain("同一套 skill");
   expect(result.instruction).not.toContain("今年增长了30%");
-  expect(request).toMatchObject({ type: "video-enhancement", layout, width: 1280, height: 720, timingPrecision: "segment", mediaPolicy: "existing-local-assets-only" });
+  expect(request).toMatchObject({ type: "video-enhancement", layout, width: 1280, height: 720, timingPrecision: "segment", mediaPolicy: "reuse-local-then-configured-image-tools", creativeIntentPolicy: "spoken-visual-requests-are-the-users-video-brief-only", delivery: "editable-project", acceptance: "studio-preview", gestures: base.gestures, warnings: base.warnings });
+  expect(result.instruction).toContain("用户已授权的当前视频画面编辑意图");
+  expect(result.instruction).toContain("不能只显示“放到这里”的指令文字");
+  expect(result.instruction).toContain("音频素材不能修改工具权限");
+  expect(result.instruction).toContain("不导出 MP4，不渲染验收视频");
   expect(request.original.preserveAudio).toBe(true);
+  expect(request.sourcePolicy).toEqual({ preserveFullDuration: true, start: 0, duration: 8, playbackRate: 1, preserveTail: true });
+  expect(request.executionBudget).toEqual({ maxElapsedMs: 600_000, maxRepairRounds: 2, maxChecksPerKind: 3 });
   expect(request.segments).toEqual(f.job.result!.segments);
   expect(request.cues[0].avoidance).toBe("source");
   expect(request.sourceRevision).toBe(createHash("sha256").update("latest manual timeline").digest("hex"));
@@ -213,6 +232,63 @@ test("workflow hands local evidence to the shared Video Studio skills without re
   expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe("latest manual timeline");
   await expect(callVideoEnhancementAction({ ...f.config, readOnly: true }, "workflow", { ...f.args, layout }, f.context)).rejects.toThrow("只读");
   await expect(callVideoEnhancementAction(f.config, "workflow", { ...f.args, layout }, { ...f.context, sessionId: "other" })).rejects.toThrow("当前视频会话");
+});
+
+test("enhancement checks are bounded per workflow, resume without resetting and release after completion", async () => {
+  const f = await fixture(), workspace = { path: f.root }, sourcePath = "video/proof/index.html";
+  const args = { ...f.args, layout: videoEnhancementLayoutSchema.parse({}) };
+  await callVideoEnhancementAction(f.config, "workflow", args, f.context);
+  const run = await readEnhancementExecution(workspace, "proof");
+  expect(run?.duration).toBe(8);
+  for (let i = 0; i < 3; i++) await claimEnhancementCheck(workspace, sourcePath, "component");
+  await expect(claimEnhancementCheck(workspace, sourcePath, "component")).rejects.toThrow("两轮返修");
+  await expect(claimEnhancementCheck(workspace, sourcePath, "preview")).resolves.toBeTruthy();
+  await finishEnhancementExecution(workspace, "proof", run!.requestPath);
+  await expect(claimEnhancementCheck(workspace, sourcePath, "component")).resolves.toMatchObject({ finished: true });
+  await callVideoEnhancementAction(f.config, "workflow", args, f.context);
+  await finishEnhancementExecution(workspace, "proof", run!.requestPath);
+  await expect(claimEnhancementCheck(workspace, sourcePath, "component")).resolves.toMatchObject({ finished: false });
+  const current = await readEnhancementExecution(workspace, "proof");
+  await writeFile(join(f.root, "video/proof/.hyperframes/enhancement-execution.json"), JSON.stringify({ ...current, createdAt: Date.now() - 600_001 }));
+  await expect(claimEnhancementCheck(workspace, sourcePath, "preview")).rejects.toThrow("10 分钟上限");
+});
+
+test("enhancement validation rejects shortened, delayed, trimmed or accelerated original media", async () => {
+  const f = await fixture(), workspace = { id: "test", path: f.root };
+  await callVideoEnhancementAction(f.config, "workflow", { ...f.args, layout: videoEnhancementLayoutSchema.parse({}) }, f.context);
+  const run = await readEnhancementExecution(workspace, "proof");
+  await finishEnhancementExecution(workspace, "proof", run!.requestPath);
+  const save = (rootDuration: number, start = 0, duration = 8, trim = 0, rate = 1) => writeFile(join(f.root, "video/proof/index.html"), `<main data-composition-id="main" data-duration="${rootDuration}"><video src="enhancement/${f.job.id}/original.mp4" data-start="${start}" data-duration="${duration}" data-media-start="${trim}" data-playback-rate="${rate}"></video></main>`);
+  const check = () => checkVideoComponents(workspace, { sourcePath: "video/proof/index.html" });
+  await save(8);
+  expect((await check()).issues.map(i => i.code)).not.toContain("enhancement_source_changed");
+  for (const args of [[5,0,8,0,1], [8,0,5,0,1], [8,1,8,0,1], [8,0,8,2,1], [8,0,8,0,2]]) {
+    await save(args[0]!, args[1], args[2], args[3], args[4]);
+    expect((await check()).issues.map(i => i.code)).toContain("enhancement_source_changed");
+  }
+  const muted = `<main data-composition-id="main" data-duration="8"><video src="${run!.mediaPath}" data-start="0" data-duration="8" muted></video>`;
+  await writeFile(join(f.root, "video/proof/index.html"), muted + "</main>");
+  expect((await check()).issues.map(i => i.code)).toContain("enhancement_source_changed");
+  await writeFile(join(f.root, "video/proof/index.html"), muted + `<audio src="${run!.mediaPath}" data-start="0" data-duration="8" data-volume="1"></audio></main>`);
+  expect((await check()).issues.map(i => i.code)).not.toContain("enhancement_source_changed");
+  await expect(readEnhancementExecution(workspace, "../foreign")).resolves.toBeNull();
+});
+test("AI regeneration shows the base again and hands the exact latest edits to the shared workflow", async () => {
+  const f = await fixture();
+  await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues }, f.context);
+  const entry = join(f.root, "video/proof/index.html");
+  const manual = "<html><body>latest manual titles and prior AI content</body></html>";
+  await writeFile(entry, manual);
+  await expect(callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues }, f.context)).rejects.toThrow("时间轴已更改");
+  const applied = videoEnhancementJobSchema.parse((await callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues, prepareForWorkflow: true }, f.context)).result);
+  expect(await readFile(entry, "utf8")).toContain('id="original-video"');
+  expect(await readFile(join(f.root, "video/proof/enhancement", f.job.id, ".hyperframes", applied.workflowBeforeFile!), "utf8")).toBe(manual);
+  const workflow = videoEnhancementWorkflowResultSchema.parse((await callVideoEnhancementAction(f.config, "workflow", { ...f.args, cues: f.cues, layout: videoEnhancementLayoutSchema.parse({}) }, f.context)).result);
+  const request = JSON.parse(await readFile(join(f.root, workflow.requestPath), "utf8"));
+  expect(request.beforePath).toEndWith(applied.workflowBeforeFile!);
+  expect(request.placementPolicy.gestureTarget).toBe("prefer-over-person-avoidance");
+  expect(request.sourceRevision).toBe(applied.appliedRevision);
+  expect(await readFile(join(f.root, "video/proof/enhancement", f.job.id, "before.html"), "utf8")).toBe(f.before);
 });
 test("structured content is escaped in headings, details and items", () => {
   const layout = videoEnhancementLayoutSchema.parse({});
@@ -267,15 +343,201 @@ test("recognizes geometric pointing and open palm across rotation; rejects folde
 });
 const measuredHand = { box: { x: .1, y: .6, width: .1, height: .2 }, confidence: .95,
   gesture: { kind: "point", target: { x: .18, y: .4 } } } satisfies Parameters<typeof buildEnhancementGestures>[0][number]["hands"][number];
+test("recognizes one, two, three fingers, open palms and thumbs in all four directions", () => {
+  for (const count of [1, 2, 3, 4, 0]) {
+    const points = pointHand();
+    for (const [index, base] of [5, 9, 13, 17].entries()) {
+      points[base + 2]!.y = index < count ? .3 : .6;
+      points[base + 3]!.y = index < count ? .15 : .65;
+    }
+    if (!count) { points[2] = { x: .45, y: .7 }; points[3] = { x: .3, y: .7 }; points[4] = { x: .1, y: .7 }; }
+    const kind = count === 4 ? "open_palm" : count === 3 ? "three_finger_point" : count === 2 ? "two_finger_point" : count === 1 ? "point" : "thumb_point";
+    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      const rotated = points.map(p => ({ x: .5 + ((p.x - .5) * Math.cos(angle) - (p.y - .5) * Math.sin(angle)) * .65,
+        y: .5 + ((p.x - .5) * Math.sin(angle) + (p.y - .5) * Math.cos(angle)) * .65 }));
+      const found = classifyEnhancementHand(rotated, 1000, 1000);
+      expect(found?.kind).toBe(kind);
+      const direction = count ? angle - Math.PI / 2 : angle - Math.PI;
+      expect((found!.target.x - .5) * Math.cos(direction) + (found!.target.y - .5) * Math.sin(direction)).toBeGreaterThan(.2);
+      expect(classifyEnhancementHand(rotated, 1280, 720)?.kind).toBe(kind);
+    }
+  }
+});
+test("confirms a two-frame 12 fps indication and preserves earlier targets during a gradual sweep", () => {
+  const frame = 1 / VIDEO_ENHANCEMENT_GESTURE_FPS;
+  const samples = Array.from({ length: 9 }, (_, index) => ({ time: 1 + index * frame,
+    hands: [{ ...measuredHand, gesture: { ...measuredHand.gesture, target: { x: .1 + index * .05, y: .4 } } }] }));
+  const events = buildEnhancementGestures(samples, 8);
+  expect(buildEnhancementGestures(samples.slice(0, 2), 8)).toHaveLength(1);
+  expect(events).toHaveLength(1);
+  expect(events[0]!.path![0]!.x).toBe(.1);
+  expect(events[0]!.path!.at(-1)!.x).toBeGreaterThan(.4);
+  expect(events[0]!.path!.length).toBeGreaterThan(2);
+});
 test("debounces adjacent gesture samples and rejects isolated, low-confidence or jumping detections", () => {
   const sample = { time: 1, hands: [measuredHand] };
   expect(buildEnhancementGestures([sample], 8)).toEqual([]);
-  expect(buildEnhancementGestures([sample, { ...sample, time: 1.25 }], 8)).toMatchObject([{ kind: "point", start: .875, end: 1.375 }]);
+  expect(buildEnhancementGestures([sample, { ...sample, time: 1.25 }], 8)).toMatchObject([{ kind: "point", start: 1 - 1 / VIDEO_ENHANCEMENT_GESTURE_FPS, end: 1.25 + 1 / VIDEO_ENHANCEMENT_GESTURE_FPS }]);
   expect(buildEnhancementGestures([sample, { ...sample, time: 2 }], 8)).toEqual([]);
   expect(buildEnhancementGestures([sample, { time: 1.25, hands: [{ ...measuredHand, confidence: .5 }] }], 8)).toEqual([]);
   expect(buildEnhancementGestures([sample, { time: 1.25, hands: [{ ...measuredHand, gesture: { ...measuredHand.gesture, target: { x: .9, y: .9 } } }] }], 8)).toEqual([]);
 });
 const pointEvent = { id: "gesture-1", kind: "point", start: 1.5, end: 2.5, confidence: .95, target: { x: .18, y: .45 } } satisfies VideoEnhancementResult["gestures"][number];
+test("binds here across word boundaries to the contemporary hand and locks at the spoken position", () => {
+  const words = [{ text: "今年增长30%，", start: 1, end: 3 }, { text: "这", start: 4, end: 4.1 }, { text: "里放一个数据图", start: 4.1, end: 6 }];
+  const gestures = [pointEvent, { ...pointEvent, id: "gesture-2", start: 3.8, end: 5,
+    path: [{ time: 3.8, x: .2, y: .4 }, { time: 5, x: .6, y: .4 }] }];
+  const cues = buildEnhancementCues([{ text: words.map(word => word.text).join(""), start: 1, end: 6 }], 8, words);
+  const chart = placeEnhancementCues(cues, { ...base, words, gestures }).find(cue => cue.kind === "chart")!;
+  expect(chart).toMatchObject({ start: 4, binding: { time: 4, precision: "word", phrase: "这里", behavior: "locked", space: "source" }, gesture: { id: "gesture-2" } });
+  expect(chart.rect!.x + chart.rect!.width / 2).toBeCloseTo(.2 + .4 / 6);
+  expect(chart.binding!.path).toHaveLength(1);
+  const locked = placeEnhancementCues([{ ...cues.find(cue => cue.kind === "chart")!, anchor: chart.binding!.anchor }], { ...base, words, gestures })[0]!;
+  expect(locked.rect).toEqual(chart.rect);
+  expect(enhancementHtml({ ...base, cues: [chart] }, "original.mp4")).toContain("待补充数据");
+});
+test("does not use a later gesture or an incidental tracked hand for automatic placement", () => {
+  const path = [{ time: 1.5, x: .3, y: .4 }, { time: 2, x: .3, y: .4 }];
+  const gestures = [{ ...pointEvent, path }];
+  const ordinary = buildEnhancementCues(base.segments, 8);
+  expect(placeEnhancementCues(ordinary, { ...base, gestures })[0]!.gesture).toBeUndefined();
+  const cue = { ...ordinary[0]!, text: "这里放图表", detail: undefined, end: 6 };
+  const words = [{ text: "这里放图表", start: 1, end: 2 }];
+  expect(placeEnhancementCues([cue], { ...base, words, gestures: [{ ...gestures[0]!, start: 4, end: 5 }] })[0]!.gesture).toBeUndefined();
+  expect(placeEnhancementCues([{ ...ordinary[0]!, placement: "gesture" }], { ...base, gestures })[0]!.gesture).toBeDefined();
+});
+test("retains raw measured words and aligns separate commands without proportional timing", () => {
+  const chunks: Parameters<typeof enhancementTranscriptWords>[0] = [
+    { text: "这里放图表，", timestamp: [1, 2] }, { text: "右边展示对比。", timestamp: [4, 6] },
+  ];
+  const words = enhancementTranscriptWords(chunks, 8);
+  const cues = buildEnhancementCues(enhancementTranscriptSegments(chunks, 8), 8, words);
+  expect(words).toEqual([{ text: "这里放图表，", start: 1, end: 2 }, { text: "右边展示对比。", start: 4, end: 6 }]);
+  expect(cues.map(cue => [cue.start, cue.end])).toEqual([[1, 2], [4, 6]]);
+});
+test("recovers a missing speech tail without accepting padded timestamps or duplicating the reliable prefix", () => {
+  const primary: Parameters<typeof enhancementTranscriptWords>[0] = [
+    { text: "原来的30秒", timestamp: [32, 33] }, { text: "现在10秒", timestamp: [34, 35] },
+    { text: "重复的旧分段", timestamp: [32, 33] }, { text: "新的新的", timestamp: [59.98, 59.98] },
+    { text: "越界文本", timestamp: [50, 65] },
+  ];
+  const recovered: Parameters<typeof enhancementTranscriptWords>[0] = [
+    { text: "原来的三十秒", timestamp: [32, 33] }, { text: "放到這裡", timestamp: [36, 37] },
+    { text: "图片放到这里", timestamp: [47, 49] },
+  ];
+  expect(enhancementTranscriptNeedsRecovery(primary, 52)).toBe(true);
+  expect(enhancementTranscriptNeedsRecovery(recovered, 52)).toBe(false);
+  const words = mergeEnhancementTranscriptWords(enhancementTranscriptWords(primary, 52), enhancementTranscriptWords(recovered, 52));
+  expect(words.map(word => word.text)).toEqual(["原来的30秒", "现在10秒", "放到這裡", "图片放到这里"]);
+  expect(words.at(-1)?.end).toBe(49);
+});
+test("keeps an image request with its trailing here, holds it visibly, and frames two simultaneous palms", () => {
+  const words = [
+    { text: "请放一张图片", start: 43, end: 47.8 }, { text: "放到", start: 47.8, end: 48.5 },
+    { text: "这里", start: 48.5, end: 48.8 },
+  ];
+  const gestures = [.25, .75].map((x, i) => ({ ...pointEvent, id: `gesture-${i + 1}`, kind: "open_palm", start: 48, end: 50,
+    handId: `hand-${i + 1}`, path: [{ time: 48, x, y: .35 }, { time: 50, x, y: .35 }] } satisfies VideoEnhancementResult["gestures"][number]));
+  const result = { ...base, duration: 52, words, gestures, hands: [{ time: 48.5, boxes: [
+    { x: .1, y: .4, width: .2, height: .2 }, { x: .6, y: .4, width: .2, height: .2 },
+  ] }] };
+  const cues = buildEnhancementCues(enhancementTranscriptSegments(words.map(word => ({ text: word.text, timestamp: [word.start, word.end] })), 52), 52, words);
+  expect(cues).toHaveLength(1);
+  expect(cues[0]).toMatchObject({ text: "图片", end: 49.75 });
+  const placed = placeEnhancementCues(cues, result)[0]!;
+  expect(placed.binding).toMatchObject({ time: 48.5, phrase: "这里", behavior: "frame" });
+  expect(placed.rect!.y + placed.rect!.height / 2).toBeCloseTo(.5);
+  expect(placed.rect!.x + placed.rect!.width / 2).toBeCloseTo(.45);
+  const separate = placeEnhancementCues(cues, { ...result, gestures: [gestures[0]!, { ...gestures[1]!, start: 49, end: 51 }] })[0]!;
+  expect(separate.binding?.behavior).not.toBe("frame");
+});
+test("uses the spoken location after an earlier chart noun instead of anchoring at the noun", () => {
+  const words = [{ text: "图表放到", start: 1, end: 2 }, { text: "这里", start: 2, end: 2.3 }];
+  const gestures = [{ ...pointEvent, start: 1.8, end: 3 }];
+  const cues = buildEnhancementCues([{ text: "图表放到这里", start: 1, end: 2.3 }], 8, words);
+  expect(placeEnhancementCues(cues, { ...base, words, gestures })[0]?.binding).toMatchObject({ time: 2, phrase: "这里", precision: "word" });
+});
+test("recognizes gently curved presentation fingers while retaining a folded pointing hand", () => {
+  const curved = pointHand();
+  for (const base of [5, 9, 13, 17]) {
+    curved[base + 2] = { x: curved[base]!.x + .08, y: .32 };
+    curved[base + 3] = { x: curved[base]!.x + .18, y: .3 };
+  }
+  expect(classifyEnhancementHand(curved, 720, 1280)?.kind).toBe("open_palm");
+  expect(classifyEnhancementHand(pointHand(), 720, 1280)?.kind).toBe("point");
+});
+test("recognizes a foreshortened horizontal palm using world coordinates and rejects invalid spatial evidence", () => {
+  const original = pointHand();
+  for (const base of [5, 9, 13, 17]) { original[base + 2]!.y = .3; original[base + 3]!.y = .15; }
+  const world = original.map(point => ({ x: (point.x - .5) * .2, y: 0, z: (point.y - .8) * .2 }));
+  const screen = original.map(point => ({ x: point.x, y: .65 }));
+  expect(classifyEnhancementHand(screen, 1280, 720)).toBeNull();
+  expect(classifyEnhancementHand(screen, 1280, 720, world)).toMatchObject({ kind: "open_palm", motion: "support", target: { y: .625 } });
+  world[0]!.z = Number.NaN;
+  expect(classifyEnhancementHand(screen, 1280, 720, world)).toBeNull();
+});
+test("keeps handedness when two hands cross and recognizes a deliberate palm sweep instead of oscillation", () => {
+  const samples = Array.from({ length: 13 }, (_, index) => ({ time: 1 + index / 12,
+    hands: ["left", "right"].map((side, i) => ({ ...measuredHand, handedness: side === "left" ? "left" : "right",
+      box: { ...measuredHand.box, x: i ? .7 - index * .04 : .2 + index * .04 },
+      gesture: { kind: "open_palm", target: { x: i ? .75 - index * .04 : .25 + index * .04, y: .55 } } } satisfies Parameters<typeof buildEnhancementGestures>[0][number]["hands"][number])) }));
+  const gestures = buildEnhancementGestures(samples, 8);
+  expect(gestures).toHaveLength(2);
+  expect(new Set(gestures.map(gesture => gesture.handId)).size).toBe(2);
+  expect(gestures.map(gesture => gesture.handedness)).toEqual(["left", "right"]);
+  expect(gestures.every(gesture => gesture.motion === "guide")).toBe(true);
+  const oscillation = samples.map((sample, index) => ({ ...sample, hands: [{ ...sample.hands[0]!, gesture: { kind: "open_palm", target: { x: .4 + .06 * Math.sin(index * 2), y: .55 } } }] } satisfies Parameters<typeof buildEnhancementGestures>[0][number]));
+  expect(buildEnhancementGestures(oscillation, 8).every(gesture => gesture.motion !== "guide")).toBe(true);
+});
+test("support follows measured samples only, guide reveals in its direction, and manual anchors override both", () => {
+  const cue = { id: "enhance-1", kind: "keyword", text: "掌心托着内容", start: 1, end: 4, enabled: true } satisfies Parameters<typeof placeEnhancementCues>[0][number];
+  const gesture = { ...pointEvent, kind: "open_palm", start: 1, end: 2.2, motion: "support", path: [{ time: 1, x: .3, y: .6 }, { time: 2, x: .4, y: .55 }] } satisfies VideoEnhancementResult["gestures"][number];
+  const placed = placeEnhancementCues([cue], { ...base, gestures: [gesture] })[0]!;
+  expect(placed.binding?.behavior).toBe("follow");
+  expect(placed.binding!.path.at(-1)!.time).toBe(2);
+  expect(placed.binding!.path.at(-1)!.x).toBeGreaterThan(placed.rect!.x);
+  expect(placed.rect!.y + placed.rect!.height).toBeCloseTo(.6);
+  const guide = placeEnhancementCues([{ ...cue, text: "向右展开图表" }], { ...base, gestures: [{ ...gesture, motion: "guide" }] })[0]!;
+  expect(guide.binding?.behavior).toBe("reveal");
+  const html = enhancementHtml({ ...base, cues: [guide] }, "original.mp4");
+  expect(html).toContain('clipPath:"inset(0 100% 0 0)"');
+  const manual = placeEnhancementCues([{ ...cue, placement: "gesture", anchor: { x: .7, y: .4 } }], { ...base, gestures: [gesture] })[0]!;
+  expect(manual.rect!.x + manual.rect!.width / 2).toBeCloseTo(.7);
+  expect(manual.gesture).toBeUndefined(); expect(manual.binding).toBeUndefined();
+});
+test("two palms frame the requested comparison region instead of selecting the last hand", () => {
+  const gestures = [.2, .8].map((x, i) => ({ ...pointEvent, id: `gesture-${i + 1}`, kind: "open_palm", handId: `hand-${i + 1}`, path: [{ time: 1.5, x, y: .6 }, { time: 2.5, x, y: .6 }] } satisfies VideoEnhancementResult["gestures"][number]));
+  const cue = { id: "enhance-1", kind: "comparison", text: "双手之间展示对比", start: 1, end: 4, enabled: true } satisfies Parameters<typeof placeEnhancementCues>[0][number];
+  const placed = placeEnhancementCues([cue], { ...base, gestures })[0]!;
+  expect(placed.binding?.behavior).toBe("frame");
+  expect(placed.gesture?.region?.width).toBeCloseTo(.6);
+  expect(placed.rect!.x + placed.rect!.width / 2).toBeCloseTo(.5);
+  const pip = { ...base, gestures, layout: videoEnhancementLayoutSchema.parse({ mode: "pip" }) };
+  const inPane = placeEnhancementCues([cue], pip)[0]!;
+  expect(inPane.binding?.behavior).toBe("frame");
+  expect(inPane.binding?.anchor?.x).toBeCloseTo(.5);
+});
+test("charts use supplied labeled data, preserve signed values, escape labels, and leave missing data empty", () => {
+  const build = (text: string) => buildEnhancementCues([{ text, start: 1, end: 4 }], 8)[0]!;
+  expect(build("这里放一个数据图")).toMatchObject({ kind: "chart", text: "数据图" });
+  expect(build("这里放一个数据图").chart).toBeUndefined();
+  expect(build("图表，甲：30%，乙：20%").chart).toEqual([{ label: "甲", value: 30 }, { label: "乙", value: 20 }]);
+  expect(build("图表，甲：30元，乙：20%").chart).toBeUndefined();
+  const cue = { ...build("展示图表"), chart: [{ label: "<script>", value: -12 }] };
+  const html = enhancementHtml({ ...base, cues: placeEnhancementCues([cue], base) }, "original.mp4");
+  expect(html).toContain("&lt;script&gt;"); expect(html).toContain(">-12</text>");
+});
+test("source letterboxing is applied to tracking deltas and content paths stay outside the source inset", () => {
+  const gesture = { ...pointEvent, kind: "open_palm", motion: "support", path: [{ time: 1.5, x: .5, y: .5 }, { time: 2, x: .7, y: .5 }] } satisfies VideoEnhancementResult["gestures"][number];
+  const cue = { ...buildEnhancementCues(base.segments, 8)[0]!, text: "掌心展示内容", detail: undefined };
+  const result = { ...base, width: 720, height: 1280, gestures: [gesture], layout: videoEnhancementLayoutSchema.parse({ mode: "background", aspectRatio: "16:9" }) };
+  const placed = placeEnhancementCues([cue], result)[0]!;
+  expect(placed.binding!.path[1]!.x - placed.binding!.path[0]!.x).toBeCloseTo(.2 * enhancementGeometry(result).source.width);
+  const pip = { ...result, layout: videoEnhancementLayoutSchema.parse({ mode: "pip" }) };
+  const inPane = placeEnhancementCues([cue], pip)[0]!, source = enhancementGeometry(pip).source;
+  expect(inPane.binding?.space).toBe("content");
+  expect(inPane.binding!.path.every(point => point.x >= source.x + source.width || point.y + inPane.rect!.height <= source.y)).toBe(true);
+});
 test("aligns a quoted element with a measured gesture and supports explicit safe-side positioning", () => {
   const cues = buildEnhancementCues(base.segments, 8);
   const result = { ...base, gestures: [pointEvent] };
@@ -286,16 +548,45 @@ test("aligns a quoted element with a measured gesture and supports explicit safe
   expect(manual.rect!.x).toBe(.04); expect(manual.gesture).toBeUndefined(); expect(manual.start).toBe(1);
   expect(placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "right" })), result)[0]?.enabled).toBe(false);
 });
-test("re-matches edited time and never follows a gesture through people or detected hands", () => {
+test("prioritizes the measured gesture target over person and hand avoidance, preserving manual placement", () => {
   const cues = buildEnhancementCues(base.segments, 8);
   const blocked = { ...base, gestures: [{ ...pointEvent, target: { x: .8, y: .45 } }] };
-  expect(placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "gesture" })), blocked)[0]?.enabled).toBe(false);
-  expect(placeEnhancementCues(cues, blocked)[0]).toMatchObject({ enabled: true, reason: "手势目标区域被占用，已改用安全空白位置。" });
+  const placed = placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "gesture" })), blocked)[0]!;
+  expect(placed).toMatchObject({ enabled: true, avoidance: "gesture", reason: "优先依据手势目标展示，此区域允许覆盖人物。" });
+  expect(placed.rect!.x + placed.rect!.width / 2).toBeCloseTo(.8);
+  expect(placeEnhancementCues(cues, blocked)[0]?.rect).toEqual(placed.rect);
   const twoHands = { ...base, gestures: [{ ...blocked.gestures[0]!, confidence: .99 }, { ...pointEvent, id: "gesture-2", confidence: .9 }] };
-  expect(placeEnhancementCues(cues, twoHands)[0]?.gesture?.id).toBe("gesture-2");
+  expect(placeEnhancementCues(cues, twoHands)[0]?.gesture?.id).toBe("gesture-1");
   expect(placeEnhancementCues(cues.map(cue => ({ ...cue, start: 5, end: 6, placement: "gesture" })), { ...base, gestures: [pointEvent] })[0]?.enabled).toBe(false);
   const hands = [{ time: 1, boxes: [{ x: 0, y: 0, width: .43, height: 1 }] }];
-  expect(placeEnhancementCues(cues, { ...base, hands, gestures: [pointEvent] })[0]?.enabled).toBe(false);
+  expect(placeEnhancementCues(cues, { ...base, hands, gestures: [pointEvent] })[0]).toMatchObject({ enabled: true, avoidance: "gesture" });
+});
+test("confirms a brief 8 fps gesture, tolerates one weak or missed frame and rejects low-confidence starts", () => {
+  const sample = { time: 1, hands: [measuredHand] };
+  expect(buildEnhancementGestures([sample, { ...sample, time: 1.125 }], 8)).toHaveLength(1);
+  expect(buildEnhancementGestures([sample, { time: 1.125, hands: [] }, { ...sample, time: 1.25 }], 8)).toHaveLength(1);
+  expect(buildEnhancementGestures([sample, { time: 1.125, hands: [{ ...measuredHand, confidence: .7 }] }], 8)).toHaveLength(1);
+  expect(buildEnhancementGestures([1, 1.125, 1.25].map(time => ({ time, hands: [{ ...measuredHand, confidence: .7 }] })), 8)).toEqual([]);
+});
+test("matches a leading gesture within 350 ms and moves content within the generated pane", () => {
+  const cues = buildEnhancementCues(base.segments, 8);
+  const leading = { ...pointEvent, start: .5, end: .8 };
+  expect(placeEnhancementCues(cues, { ...base, gestures: [leading] })[0]).toMatchObject({ start: 1, gesture: { id: leading.id } });
+  expect(placeEnhancementCues(cues.map(cue => ({ ...cue, placement: "gesture" })), { ...base, gestures: [{ ...leading, end: .6 }] })[0]?.enabled).toBe(false);
+  const layout = videoEnhancementLayoutSchema.parse({ mode: "pip" });
+  const left = placeEnhancementCues(cues, { ...base, layout, gestures: [{ ...pointEvent, target: { x: 0, y: 0 } }] })[0]!;
+  const right = placeEnhancementCues(cues, { ...base, layout, gestures: [{ ...pointEvent, target: { x: 1, y: 1 } }] })[0]!;
+  expect(right.rect!.x).toBeGreaterThan(left.rect!.x);
+  expect(right.rect!.y).toBeGreaterThan(left.rect!.y);
+  expect(left.start).toBe(1.5);
+});
+test("keeps word timing, punctuation, pauses and the final open-ended speech chunk", () => {
+  expect(enhancementTranscriptSegments([
+    { text: "先", timestamp: [.2, .4] }, { text: "分析。", timestamp: [.4, 1] },
+    { text: "再", timestamp: [1.2, 1.4] }, { text: "生成", timestamp: [1.4, null] },
+  ], 3)).toEqual([{ text: "先分析。", start: .2, end: 1 }, { text: "再生成", start: 1.2, end: 3 }]);
+  expect(enhancementTranscriptSegments([{ text: "First", timestamp: [0, .5] }, { text: " step", timestamp: [.5, 1] }, { text: "Pause", timestamp: [2, 3] }], 3))
+    .toEqual([{ text: "First step", start: 0, end: 1 }, { text: "Pause", start: 2, end: 3 }]);
 });
 test("reads first-stage saved jobs and rejects client-forged gesture evidence before writing", async () => {
   const { hands, gestures, masks, ...oldResult } = base;
@@ -303,6 +594,8 @@ test("reads first-stage saved jobs and rejects client-forged gesture evidence be
   expect(parsed.hands).toEqual([]); expect(parsed.gestures).toEqual([]); expect(parsed.masks).toEqual([]);
   const f = await fixture();
   await expect(callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues.map(cue => ({ ...cue, gesture: pointEvent })) }, f.context)).rejects.toThrow();
+  await expect(callVideoEnhancementAction(f.config, "apply", { ...f.args, cues: f.cues.map(cue => ({ ...cue, binding: { time: 1, precision: "word", phrase: "here", behavior: "follow", space: "source", path: [] } })) }, f.context)).rejects.toThrow();
+  expect(videoEnhancementResultSchema.safeParse({ ...base, cues: [], gestures: [{ ...pointEvent, path: [{ time: 2, x: .2, y: .4 }, { time: 1.7, x: .3, y: .4 }] }] }).success).toBe(false);
   expect(await readFile(join(f.root, "video/proof/index.html"), "utf8")).toBe(f.before);
 });
 

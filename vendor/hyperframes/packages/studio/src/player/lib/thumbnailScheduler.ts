@@ -117,6 +117,7 @@ export class ThumbnailScheduler {
   private nextSequence = 1;
   private scrolling = false;
   private previewReloading = false;
+  private agentEditing = false;
   private pageHidden = false;
   private cacheBytes = 0;
   private waveformCacheBytes = 0;
@@ -243,6 +244,16 @@ export class ThumbnailScheduler {
     }
   }
 
+  /** Background decoders and headless composition captures can wait for the agent. */
+  setAgentEditing(editing: boolean): void {
+    if (this.agentEditing === editing) return;
+    this.agentEditing = editing;
+    if (!editing) { this.pump(); return; }
+    for (const entry of this.entries.values()) {
+      if (entry.state === "loading" && (entry.request.rich || entry.request.kind !== "image")) this.preempt(entry);
+    }
+  }
+
   private preempt(entry: ThumbnailEntry): void {
     entry.preempted = true;
     entry.controller?.abort();
@@ -295,6 +306,7 @@ export class ThumbnailScheduler {
       });
 
     for (const entry of queued) {
+      if (this.agentEditing && (entry.request.rich || entry.request.kind !== "image")) continue;
       if (this.scrolling && entry.request.rich) continue;
       if (this.previewReloading && entry.request.kind === "composition") continue;
       const bucket = concurrencyBucket(entry.request.kind);

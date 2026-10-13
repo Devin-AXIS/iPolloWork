@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { avatarBackgroundForPrompt, AVATAR_CAMERA_PROMPT, AVATAR_STANDARD_VIDEO, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoJobsResultSchema, videoSubmitResultSchema, videoModelStatusSchema, type AvatarProfile, type VideoAvatarContext, type VideoJob } from "@ipollowork/types/video-generation";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, ImagePlus, Info, Loader2, Pause, Play, Plus, RefreshCw, Trash2, RectangleVertical, RectangleHorizontal } from "lucide-react";
+import { avatarBackgroundForPrompt, AVATAR_CAMERA_PROMPT, AVATAR_STANDARD_VIDEO, HEYGEN_AVATAR_VIDEO, isAvatarVideoModel, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoJobsResultSchema, videoSubmitResultSchema, videoModelStatusSchema, type AvatarProfile, type VideoAvatarContext, type VideoJob } from "@ipollowork/types/video-generation";
+import { ArrowLeft, ChevronDown, ChevronRight, ImagePlus, Info, Loader2, Pause, Play, Plus, RefreshCw, Trash2, RectangleVertical, RectangleHorizontal } from "lucide-react";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ function jobLabel(job: VideoJob) {
   if (job.status === "stopped") return "已停止";
   if (job.status === "paused") return "已暂停";
   if (job.pauseRequested && job.status === "running") return "暂停中";
-  if (job.status === "saving") return "正在拼接与保存";
+  if (job.status === "saving") return job.avatarSequence ? "正在拼接与保存" : "正在保存";
   if (["running", "submitting"].includes(job.status)) return "生成中";
   return "需要处理";
 }
@@ -94,7 +94,7 @@ export function resolveAvatarAudioStart(job: VideoJob, source: VideoAvatarContex
 }
 
 export function resolveAvatarDuration(job: VideoJob) {
-  return job.avatarSequence?.duration;
+  return job.avatarInput?.duration ?? job.avatarSequence?.duration;
 }
 
 export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId, active, onOpenVoice, onAssetAction, previewAssetUrl }: Props) {
@@ -113,7 +113,8 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
   const [jobs, setJobs] = React.useState<VideoJob[]>([]);
   const [thumbnails, setThumbnails] = React.useState<Record<string, string>>({});
   const [preview, setPreview] = React.useState("");
-  const [ready, setReady] = React.useState(false);
+  const [models, setModels] = React.useState<ReturnType<typeof videoModelStatusSchema.parse>["models"]>([]);
+  const [modelId, setModelId] = React.useState("");
   const [checking, setChecking] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("");
@@ -136,8 +137,8 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
       call("jobs", {}), call("status", {}), call("avatar-context", {}), call("avatar-profiles", {}),
     ]);
     if (!mounted.current) return;
-    if (jobResult.status === "fulfilled") setJobs(videoJobsResultSchema.parse(jobResult.value).jobs.filter(job => job.model === "minimax-h3-avatar"));
-    setReady(statusResult.status === "fulfilled" && videoModelStatusSchema.parse(statusResult.value).models.some(model => model.id === "minimax-h3-avatar"));
+    if (jobResult.status === "fulfilled") setJobs(videoJobsResultSchema.parse(jobResult.value).jobs.filter(job => isAvatarVideoModel(job.model)));
+    setModels(statusResult.status === "fulfilled" ? videoModelStatusSchema.parse(statusResult.value).models.filter(model => isAvatarVideoModel(model.id)) : []);
     if (sourceResult.status === "fulfilled") setSource(videoAvatarContextSchema.parse(sourceResult.value));
     if (profileResult.status === "fulfilled") updateProfiles(avatarProfilesResultSchema.parse(profileResult.value).profiles);
     setChecking(false);
@@ -217,6 +218,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     while (used.has(`数字人 ${index}`)) index++;
     const { profile } = avatarProfileResultSchema.parse(await call("avatar-profile-save", { name: `数字人 ${index}`, ratio: "9:16", prompt: defaultPrompt }));
     updateProfiles([...profilesRef.current, profile]);
+    setModelId("");
     setDraft(profile);
   };
   const back = async () => {
@@ -257,21 +259,27 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     setPreview(previewRef.current);
   };
   const selectedClip = source?.audioClips?.find(clip => clip.id === draft?.audioClipId);
-  const canSubmit = Boolean(draft && draft.imagePath && draft.prompt.trim() && selectedClip && ready && !checking);
+  const selectedModel = models.find(model => model.id === modelId);
+  const heygen = modelId === HEYGEN_AVATAR_VIDEO.model;
+  const format = heygen ? selectedModel?.avatarLimits ?? HEYGEN_AVATAR_VIDEO : AVATAR_STANDARD_VIDEO;
+  const maxDuration = selectedModel?.avatarLimits?.maxDuration ?? HEYGEN_AVATAR_VIDEO.maxDuration;
+  const freePlan = selectedModel?.plan?.trim().toLowerCase() === "free";
+  const planUnavailable = heygen && selectedModel?.billingMode === "subscription" && !selectedModel.avatarLimits;
+  const canSubmit = Boolean(draft && draft.imagePath && draft.prompt.trim() && selectedClip && (!heygen || selectedClip.duration <= maxDuration) && selectedModel && !selectedModel.availabilityIssue && !planUnavailable && !checking);
   const save = async () => {
     if (!draft) return;
     await persist(draft);
     setMessage("设置已保存");
   };
   const submit = async () => {
-    if (!draft || !selectedClip || !canSubmit) throw new Error("请先配置人物图片、对应配音片段和 RunningHub Key。");
+    if (!draft || !selectedClip || !canSubmit) throw new Error("请先选择已授权的生成方式，并配置人物图片和可用的配音片段。");
     const saved = await persist(draft);
     if (!saved) throw new Error("保存数字人失败，请重试。");
     const { job } = videoSubmitResultSchema.parse(await call("submit", {
-      requestId: crypto.randomUUID(), model: "minimax-h3-avatar", operation: "reference",
+      requestId: crypto.randomUUID(), model: modelId, operation: "reference",
       avatarProfileId: saved.id, avatarProfileUpdatedAt: saved.updatedAt, avatarClipId: selectedClip.id,
       avatarSource: "video-audio", prompt: saved.prompt, imageRefs: saved.imagePath, ratio: saved.ratio,
-      duration: String(selectedClip.duration), resolution: AVATAR_STANDARD_VIDEO.resolution,
+      duration: String(selectedClip.duration), resolution: format.resolution,
     }));
     setJobs(current => [job, ...current.filter(item => item.id !== job.id)]);
     setTaskId(job.id);
@@ -294,6 +302,12 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
   };
   const visibleJobs = draft ? jobs.filter(job => job.avatarProfileId === draft.id) : jobs.filter(job => !job.avatarProfileId);
   const taskJob = jobs.find(job => job.id === taskId);
+  const generationHint = checking ? "正在检查视频服务…"
+    : !modelId ? "生成前请选择 RunningHub 或 HeyGen，保存设置不会生成视频。"
+    : !selectedModel ? heygen ? "请先在授权中心登录 HeyGen 订阅账户，或配置 API Key 并选择 API 余额。" : "请先在授权中心配置 RunningHub API Key。"
+    : selectedModel.availabilityIssue || planUnavailable ? selectedModel.availabilityIssue || "无法读取 HeyGen 套餐，请刷新或重新授权后再生成。"
+    : heygen ? `照片和配音将上传至 HeyGen，生成片段使用${selectedModel.billingMode === "subscription" ? freePlan ? "免费账户的视频配额；剩余次数以 HeyGen 为准" : "订阅套餐积分" : " API 余额"}。`
+    : "照片和配音将上传至 RunningHub，使用 RunningHub 账户余额生成；保存设置不会产生生成费用。";
 
   return <div className="video-settings-typography space-y-4 text-ui-control font-normal text-foreground" data-testid="video-avatar-panel">
     {draft ? <>
@@ -314,17 +328,29 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
           <label className="text-ui-control font-semibold" htmlFor="avatar-audio-clip">配音片段</label>
           {source?.audioClips?.length ? <><Select value={draft.audioClipId || undefined} onValueChange={value => setDraft(current => current ? { ...current, audioClipId: value ?? "" } : current)}><SelectTrigger id="avatar-audio-clip" aria-label="配音片段" className={fieldClassName}><SelectValue>{selectedClip ? `${selectedClip.label} · ${selectedClip.duration.toFixed(1)} 秒` : "选择这位数字人的配音片段"}</SelectValue></SelectTrigger><SelectContent align="start" className={menuClassName}>{source.audioClips.map(clip => <SelectItem key={clip.id} value={clip.id}>{clip.label} · {clip.duration.toFixed(1)} 秒</SelectItem>)}</SelectContent></Select>{onOpenVoice ? <div className="flex justify-end"><Button type="button" variant="link" size="sm" className="h-auto px-0 text-ui-control" onClick={onOpenVoice}>调整配音</Button></div> : null}</> : <div className="flex items-start justify-between gap-3"><p role="status" className="min-w-0 text-[11px] leading-5 text-muted-foreground">{checking ? "正在读取配音…" : source?.audioIssue || "当前视频还没有可用的配音。可以先保存形象，设置配音后再生成。"}</p>{onOpenVoice ? <Button type="button" variant="link" size="sm" className="h-auto shrink-0 px-0 text-ui-control" onClick={onOpenVoice}>去设置配音</Button> : null}</div>}
         </section>
+        <section className="space-y-1.5" aria-label="生成方式">
+          <label htmlFor="avatar-generation-method" className="text-ui-control font-semibold">生成方式</label>
+          <Select value={modelId || undefined} disabled={busy} onValueChange={value => setModelId(value ?? "")}>
+            <SelectTrigger id="avatar-generation-method" aria-label="生成方式" className={fieldClassName}><SelectValue placeholder="选择 RunningHub 或 HeyGen">{modelId ? heygen ? "HeyGen · Avatar IV" : "RunningHub · MiniMax H3" : undefined}</SelectValue></SelectTrigger>
+            <SelectContent align="start" className={menuClassName}>
+              <SelectItem value="minimax-h3-avatar">RunningHub · MiniMax H3{models.some(model => model.id === "minimax-h3-avatar") ? "" : " · 未授权"}</SelectItem>
+              <SelectItem value={HEYGEN_AVATAR_VIDEO.model}>HeyGen · Avatar IV{models.some(model => model.id === HEYGEN_AVATAR_VIDEO.model) ? "" : " · 未授权"}</SelectItem>
+            </SelectContent>
+          </Select>
+          {modelId && !planUnavailable ? <p className="text-[11px] leading-5 text-muted-foreground">{heygen ? `${freePlan ? "Free 套餐 · " : ""}${format.resolution} · 单次配音最长 ${maxDuration} 秒` : `${format.shortEdge}×${format.longEdge} / ${format.longEdge}×${format.shortEdge} · 长配音自动分段生成`}</p> : null}
+        </section>
         <section className="space-y-1.5" aria-label="画面设置"><h3 className="text-ui-control font-semibold">画面设置</h3>
           <RadioGroup aria-label="画面设置" value={draft.ratio} disabled={busy} onValueChange={value => {
             if (value === "9:16" || value === "16:9") setDraft(current => current ? { ...current, ratio: value } : current);
           }} className="grid-cols-2 gap-2">
             {(["9:16", "16:9"] satisfies AvatarProfile["ratio"][]).map(value => <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border p-2.5 text-ui-control ${draft.ratio === value ? "border-primary/50 bg-primary/5" : "border-transparent bg-muted/60 text-muted-foreground"}`}>
-              <RadioGroupItem value={value} aria-label={value === "9:16" ? `竖屏 ${AVATAR_STANDARD_VIDEO.shortEdge}×${AVATAR_STANDARD_VIDEO.longEdge}` : `横屏 ${AVATAR_STANDARD_VIDEO.longEdge}×${AVATAR_STANDARD_VIDEO.shortEdge}`} />
+              <RadioGroupItem value={value} aria-label={value === "9:16" ? `竖屏 ${format.shortEdge}×${format.longEdge}` : `横屏 ${format.longEdge}×${format.shortEdge}`} />
               {value === "9:16" ? <RectangleVertical aria-hidden="true" className="size-5" strokeWidth={1.5} /> : <RectangleHorizontal aria-hidden="true" className="size-5" strokeWidth={1.5} />}
               {value === "9:16" ? "竖屏 9:16" : "横屏 16:9"}
             </label>)}
           </RadioGroup>
-          {selectedClip && selectedClip.duration > 15 ? <p className="text-[11px] leading-5 text-muted-foreground">超过 15 秒将自动分段生成并拼接。</p> : null}
+          {heygen && !planUnavailable && selectedClip && selectedClip.duration > maxDuration ? <p role="alert" className="text-[11px] leading-5 text-destructive">{freePlan ? "HeyGen Free 套餐" : "HeyGen"}配音最长 {maxDuration} 秒，当前 {selectedClip.duration.toFixed(1)} 秒。请选择较短片段或改用 RunningHub 分段生成。</p> : null}
+          {!heygen && selectedClip && selectedClip.duration > 15 ? <p className="text-[11px] leading-5 text-muted-foreground">超过 15 秒将自动分段生成并拼接。</p> : null}
         </section>
         <section className="space-y-1.5" aria-label="动作描述">
           <div className="flex items-center justify-between gap-2"><label htmlFor={promptId} className="text-ui-control font-semibold">动作描述</label><Tooltip><TooltipTrigger render={<button type="button" aria-label="动作与背景说明" className="flex items-center gap-1 text-[11px] text-muted-foreground" />}>{avatarBackgroundForPrompt(draft.prompt) === "transparent" ? "透明背景" : "保留背景"}<Info aria-hidden="true" className="size-3" /></TooltipTrigger><TooltipContent className="text-[11px]">默认保留背景，生成后可手动智能抠图。明确要求去除背景时才自动抠图。</TooltipContent></Tooltip></div>
@@ -333,7 +359,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
         </section>
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="w-full" disabled={busy} onClick={() => void act(save)}>保存设置</Button><Button type="button" className="w-full" disabled={busy || !canSubmit} onClick={() => void beginGeneration()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}生成数字人片段</Button></div>
-          <p className="text-[11px] leading-5 text-muted-foreground">{checking ? "正在检查视频服务…" : ready ? "保存设置不会生成视频；生成片段按 RunningHub 实际用量计费。" : "请先在授权中心配置 RunningHub 视频服务的 Key。"}</p>
+          <p className="text-[11px] leading-5 text-muted-foreground">{generationHint}</p>
         </div>
       </div>
     </> : <>
@@ -344,7 +370,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
       {profiles.length ? <div className="space-y-2">{profiles.map(profile => {
         const status = profileStatus(profile, jobs, source);
         const job = jobs.find(item => item.avatarProfileId === profile.id);
-        return <Button variant="outline" key={profile.id} type="button" data-testid="avatar-profile-card" disabled={busy} onClick={() => { setDraft(profile); setPreview(""); }} className="h-auto w-full justify-start gap-3 whitespace-normal p-2 text-left">
+        return <Button variant="outline" key={profile.id} type="button" data-testid="avatar-profile-card" disabled={busy} onClick={() => { setDraft(profile); setModelId(""); setPreview(""); }} className="h-auto w-full justify-start gap-3 whitespace-normal p-2 text-left">
           <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted/60">{profile.imagePath && thumbnails[profile.imagePath] ? <img src={thumbnails[profile.imagePath]} alt="" className="h-full w-full object-cover" /> : <ImagePlus aria-hidden="true" className="size-5 text-muted-foreground" />}</span>
           <span className="min-w-0 flex-1"><span className="block truncate text-ui-control font-medium">{profile.name}</span><span className="mt-0.5 block truncate text-ui-caption text-muted-foreground">{status}{job?.status === "succeeded" && status === "已生成" ? " · 可预览" : ""}</span></span>
           <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
@@ -356,7 +382,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
       <div className="flex items-center justify-between"><h3 className="text-ui-control font-semibold">生成记录 <span className="font-normal text-muted-foreground">{visibleJobs.length}</span></h3><Button variant="ghost" size="icon-xs" aria-label="刷新数字人任务" disabled={busy} onClick={() => void act(refresh)}><RefreshCw /></Button></div>
       {(showAllHistory ? visibleJobs : visibleJobs.slice(0, 3)).map(job => {
         const needsAttention = ["failed", "uncertain", "save_failed"].includes(job.status);
-        return <Button variant="outline" key={job.id} type="button" data-testid="avatar-job-card" onClick={() => { setTaskId(job.id); setPreview(""); setTaskOpen(true); }} className="h-auto w-full justify-between gap-2 whitespace-normal px-3 py-2 text-left"><span className="min-w-0"><span className={`block font-medium ${needsAttention ? "text-destructive" : ""}`}>{jobLabel(job)} · {new Date(job.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span className={`block truncate text-[11px] ${needsAttention ? "text-destructive" : "text-muted-foreground"}`} title={avatarJobStatusDetail(job)}>{avatarJobStatusDetail(job)}</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></Button>;
+        return <Button variant="outline" key={job.id} type="button" data-testid="avatar-job-card" onClick={() => { setTaskId(job.id); setPreview(""); setTaskOpen(true); }} className="h-auto w-full justify-between gap-2 whitespace-normal px-3 py-2 text-left"><span className="min-w-0"><span className={`block font-medium ${needsAttention ? "text-destructive" : ""}`}>{jobLabel(job)} · {new Date(job.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span className={`block truncate text-[11px] ${needsAttention ? "text-destructive" : "text-muted-foreground"}`} title={avatarJobStatusDetail(job)}>{job.model === HEYGEN_AVATAR_VIDEO.model ? "HeyGen" : "RunningHub"} · {avatarJobStatusDetail(job)}</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></Button>;
       })}
       {visibleJobs.length > 3 ? <Button type="button" variant="link" size="sm" className="h-auto px-0 text-ui-control" onClick={() => setShowAllHistory(current => !current)}>{showAllHistory ? "收起记录" : `查看全部 ${visibleJobs.length} 条`}</Button> : null}
     </section> : null}
@@ -375,6 +401,7 @@ type AvatarTaskDialogProps = {
 function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, preview, recoveryId, onRecoveryId, onShow, onPause, onResume, onStop, onRetry, onRecover, onAssetAction, onRegenerate, canRegenerate }: AvatarTaskDialogProps) {
   const [stopOpen, setStopOpen] = React.useState(false);
   const sequence = job?.avatarSequence;
+  const heygen = job?.model === HEYGEN_AVATAR_VIDEO.model;
   const progress = job ? jobProgress(job) : null;
   const currentIndex = sequence?.segments.findIndex(segment => segment.status !== "succeeded") ?? -1;
   const preparationFailed = sequence?.segments.some(segment => ["failed", "save_failed"].includes(segment.status) && !segment.upstreamId && !segment.path);
@@ -382,10 +409,10 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
   const showProgress = Boolean(sequence || isActive);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent data-testid="avatar-task-dialog" className="video-settings-typography max-h-[calc(100dvh-32px)] max-w-lg gap-4 overflow-y-auto rounded-xl p-5 text-ui-control">
-      <DialogHeader className="gap-1 pr-8"><DialogTitle className="text-ui-title-sm font-semibold">数字人片段 · {job ? jobLabel(job) : "准备中"}</DialogTitle><DialogDescription className="text-ui-caption">关闭窗口后任务仍会继续，可从生成记录重新打开。</DialogDescription></DialogHeader>
+      <DialogHeader className="gap-1 pr-8"><DialogTitle className="text-ui-title-sm font-semibold">数字人片段 · {job ? jobLabel(job) : "准备中"}</DialogTitle><DialogDescription className="text-ui-caption">{job ? `${heygen ? "HeyGen · Avatar IV" : "RunningHub · MiniMax H3"} · ` : ""}关闭窗口后任务仍会继续，可从生成记录重新打开。</DialogDescription></DialogHeader>
       {job ? <div className="space-y-4">
         <div className="space-y-2 rounded-lg bg-muted/50 p-4" role={showProgress ? "status" : "alert"}>
-          <div className="flex items-center justify-between gap-3"><span className={showProgress ? "font-medium" : "font-medium text-destructive"}>{job.status === "saving" ? "正在拼接与保存" : currentIndex >= 0 && isActive ? `第 ${currentIndex + 1}/${progress?.total} 段正在生成` : jobLabel(job)}</span>{sequence ? <span className="tabular-nums">{progress?.percent}%</span> : null}</div>
+          <div className="flex items-center justify-between gap-3"><span className={showProgress ? "font-medium" : "font-medium text-destructive"}>{currentIndex >= 0 && isActive ? `第 ${currentIndex + 1}/${progress?.total} 段正在生成` : jobLabel(job)}</span>{sequence ? <span className="tabular-nums">{progress?.percent}%</span> : null}</div>
           {showProgress ? <Progress value={sequence ? progress?.percent ?? 0 : null} aria-label="数字人片段进度" getAriaValueText={() => sequence ? `已完成 ${progress?.completed}/${progress?.total} 段` : avatarJobStatusDetail(job)} /> : null}
           <div className={`flex flex-wrap justify-between gap-1 text-[11px] ${showProgress ? "text-muted-foreground" : "text-destructive"}`}><span>{sequence ? `已完成 ${progress?.completed}/${progress?.total} 段 · 视频 ${sequence.duration.toFixed(1)} 秒` : avatarJobStatusDetail(job)}</span><span>{progress?.eta || (job.status === "saving" ? "正在完成最后处理" : "")}</span></div>
         </div>
@@ -394,8 +421,8 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
         {job.status === "running" && sequence && !job.pauseRequested ? <Button type="button" variant="outline" className="h-8 w-full rounded-lg text-ui-control shadow-none" disabled={busy} onClick={onPause}><Pause className="size-4" />当前片段完成后暂停</Button> : null}
         {job.status === "paused" ? <Button type="button" className="h-8 w-full rounded-lg text-ui-control" disabled={busy} onClick={onResume}><Play className="size-4" />继续生成</Button> : null}
         {job.pauseRequested && job.status === "running" ? <p className="text-[11px] text-muted-foreground">暂停请求已收到，当前片段保存后会暂停。</p> : null}
-        {["running", "submitting", "paused", "uncertain"].includes(job.status) ? <Button type="button" variant="ghost" className="h-[30px] text-ui-control text-destructive" disabled={busy} onClick={() => setStopOpen(true)}>停止生成</Button> : null}
-        {["uncertain", "save_failed"].includes(job.status) || job.status === "failed" && preparationFailed ? <div className="space-y-2">{job.status === "uncertain" && !job.upstreamId && !sequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input className="text-ui-control" aria-label="已有服务商任务 ID" placeholder="填写已有 RunningHub 任务 ID" value={recoveryId} onChange={event => onRecoveryId(event.target.value)} /> : null}<Button type="button" variant="outline" className="text-ui-control" disabled={busy} onClick={onRecover}>{preparationFailed ? "恢复准备并继续生成" : "恢复查询或拼接"}</Button></div> : null}
+        {["running", "submitting", "paused", "uncertain"].includes(job.status) && (!heygen || job.upstreamId) ? <Button type="button" variant="ghost" className="h-[30px] text-ui-control text-destructive" disabled={busy} onClick={() => setStopOpen(true)}>{heygen ? "停止等待" : "停止生成"}</Button> : null}
+        {["uncertain", "save_failed"].includes(job.status) || job.status === "failed" && preparationFailed ? <div className="space-y-2">{job.status === "uncertain" && !job.upstreamId && !sequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input className="text-ui-control" aria-label="已有服务商任务 ID" placeholder={heygen ? "填写已有 HeyGen 视频 ID" : "填写已有 RunningHub 任务 ID"} value={recoveryId} onChange={event => onRecoveryId(event.target.value)} /> : null}<Button type="button" variant="outline" className="text-ui-control" disabled={busy} onClick={onRecover}>{heygen ? "恢复查询与保存" : preparationFailed ? "恢复准备并继续生成" : "恢复查询或拼接"}</Button></div> : null}
         {sequence ? <Collapsible key={`${job.id}:${job.status === "failed"}`} defaultOpen={job.status === "failed"} className="rounded-lg border border-border/70">
           <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left text-[11px] font-medium">片段详情 <ChevronDown className="size-4" /></CollapsibleTrigger>
           <CollapsibleContent data-testid="avatar-job-details" className="max-h-48 space-y-3 overflow-y-auto border-t border-border/70 p-3 text-[11px]">
@@ -414,6 +441,6 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
       </div> : <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground"><Loader2 className="size-4 animate-spin" />{starting ? "正在准备数字人任务…" : error || "正在读取任务…"}</div>}
       {error && job ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
     </DialogContent>
-    <AlertDialog open={stopOpen} onOpenChange={setStopOpen}><AlertDialogContent className="video-settings-typography gap-4 rounded-xl p-5"><AlertDialogTitle className="text-sm">停止数字人生成？</AlertDialogTitle><AlertDialogDescription className="text-ui-control leading-5">后续片段不再生成，已完成片段会保留。当前片段将请求服务商取消，是否继续计费以服务商结果为准。</AlertDialogDescription><AlertDialogFooter><Button type="button" variant="outline" className="h-8 text-ui-control" onClick={() => setStopOpen(false)}>返回任务</Button><AlertDialogAction type="button" variant="destructive" className="h-8 text-ui-control" onClick={() => { setStopOpen(false); onStop(); }}>停止生成</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={stopOpen} onOpenChange={setStopOpen}><AlertDialogContent className="video-settings-typography gap-4 rounded-xl p-5"><AlertDialogTitle className="text-sm">{heygen ? "停止等待数字人结果？" : "停止数字人生成？"}</AlertDialogTitle><AlertDialogDescription className="text-ui-control leading-5">{heygen ? "这会停止本地查询。HeyGen 云端任务仍可能继续生成和计费，可在 HeyGen 控制台查看结果。" : "后续片段不再生成，已完成片段会保留。当前片段将请求服务商取消，是否继续计费以服务商结果为准。"}</AlertDialogDescription><AlertDialogFooter><Button type="button" variant="outline" className="h-8 text-ui-control" onClick={() => setStopOpen(false)}>返回任务</Button><AlertDialogAction type="button" variant="destructive" className="h-8 text-ui-control" onClick={() => { setStopOpen(false); onStop(); }}>{heygen ? "停止等待" : "停止生成"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </Dialog>;
 }

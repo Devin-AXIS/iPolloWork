@@ -7,6 +7,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
 import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
+import { REFERENCE_MAX_BYTES } from "@ipollowork/types/reference-context";
 import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { sanitizePortableOpencodeConfig } from "./portable-opencode.js";
@@ -23,7 +24,7 @@ import { deleteSkill, listSkills, upsertSkill } from "./skills.js";
 import { installHubSkill, listHubSkills } from "./skill-hub.js";
 import { deleteCommand, listCommands, repairCommands, upsertCommand } from "./commands.js";
 import { ApiError, formatError, isApiError, toApiError } from "./errors.js";
-import { providerFetch } from "./provider-fetch.js";
+import { providerFetch, providerOAuthFetch } from "./provider-fetch.js";
 import { readLimitedRequestBody } from "./limited-request-body.js";
 import { readJsoncFile, updateJsoncTopLevel, writeJsoncFile } from "./jsonc.js";
 import { recordAudit, readAuditEntries, readLastAudit } from "./audit.js";
@@ -1419,7 +1420,7 @@ function resolveInboxMaxBytes(): number {
   if (Number.isFinite(parsed) && parsed > 0) {
     return Math.min(Math.trunc(parsed), 250_000_000);
   }
-  return 50_000_000;
+  return REFERENCE_MAX_BYTES;
 }
 
 function resolveToyUiEnabled(): boolean {
@@ -3133,7 +3134,7 @@ function createRoutes(
   });
 
   addRoute(routes, "GET", "/mcp/oauth/callback", "none", async (ctx) => {
-    await completeMcpAuthorization(config, ctx.url);
+    await completeMcpAuthorization(config, ctx.url, providerOAuthFetch);
     return new Response("<!doctype html><meta charset=\"utf-8\"><title>iPolloWork</title><body style=\"font:16px system-ui;padding:48px\">MCP connected. You can close this window.</body>", {
       headers: { "content-type": "text/html; charset=utf-8" },
     });

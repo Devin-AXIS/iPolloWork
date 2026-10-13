@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
+import { openDesktopUrl } from "@/app/lib/desktop";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -92,6 +93,12 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     descriptionKey: "settings.authorization.service.runninghub_video.description",
     fields: [{ key: "RUNNINGHUB_API_KEY", label: "RunningHub API key", placeholder: "Enterprise-Shared API key", hintKey: "settings.authorization.runninghub_key_hint" }],
   },
+  "heygen-video": {
+    icon: AudioLines,
+    titleKey: "settings.authorization.service.heygen_video.title",
+    descriptionKey: "settings.authorization.service.heygen_video.description",
+    fields: [{ key: "HEYGEN_API_KEY", label: "HeyGen API key", placeholder: "HeyGen API key" }],
+  },
   "aliyun-oss": {
     icon: Cloud,
     titleKey: "settings.authorization.service.aliyun_oss.title",
@@ -154,6 +161,7 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
   const queryClient = useQueryClient();
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [testResults, setTestResults] = useState<Record<string, iPolloWorkAuthorizationServiceTestResult>>({});
+  const [heygenLoginExpiresAt, setHeygenLoginExpiresAt] = useState(0);
 
   const servicesQuery = useQuery({
     queryKey: authorizationQueryKey(props.runtimeKey),
@@ -162,7 +170,39 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
       return props.client.listAuthorizationServices();
     },
     enabled: canEdit,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: () => heygenLoginExpiresAt > Date.now() ? 2000 : false,
+  });
+
+  useEffect(() => {
+    if (servicesQuery.data?.items.some(service => service.id === "heygen-video" && service.subscription?.connected)) setHeygenLoginExpiresAt(0);
+  }, [servicesQuery.data]);
+
+  useEffect(() => {
+    if (!heygenLoginExpiresAt) return;
+    const timer = setTimeout(() => setHeygenLoginExpiresAt(0), Math.max(0, heygenLoginExpiresAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [heygenLoginExpiresAt]);
+
+  const heygenMutation = useMutation({
+    mutationFn: async (action: "connect" | "disconnect" | "use-subscription" | "use-api-key") => {
+      if (!props.client) throw new Error(t("app.unknown_error"));
+      const result = await props.client.updateHeygenSubscription(action);
+      if (result.authorizationUrl) {
+        const url = new URL(result.authorizationUrl);
+        if (url.protocol !== "https:" || !["api2.heygen.com", "app.heygen.com"].includes(url.hostname)) throw new Error(t("app.unknown_error"));
+        await openDesktopUrl(result.authorizationUrl);
+        setHeygenLoginExpiresAt(result.expiresAt ?? 0);
+      } else setHeygenLoginExpiresAt(0);
+    },
+    onSuccess: async () => {
+      setTestResults(current => ({ ...current, "heygen-video": { ok: true, detail: t("settings.authorization.heygen.updated") } }));
+      await queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
+    },
+    onError: async error => {
+      setTestResults(current => ({ ...current, "heygen-video": { ok: false, detail: error.message } }));
+      await queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
+    },
   });
 
   useEffect(() => {
@@ -261,6 +301,9 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
                 onConfigure={() => openEditor(service)}
                 onTest={() => testMutation.mutate(service.id)}
                 onOpenBrowserLogin={service.id === "openai-images" ? props.onOpenOpenAiLogin : undefined}
+                onHeygenAction={service.id === "heygen-video" ? action => heygenMutation.mutate(action) : undefined}
+                heygenBusy={heygenMutation.isPending}
+                heygenWaiting={heygenLoginExpiresAt > Date.now()}
               />
             ))}
           </div>
@@ -289,9 +332,14 @@ function AuthorizationServiceCard(props: {
   onConfigure: () => void;
   onTest: () => void;
   onOpenBrowserLogin?: () => void;
+  onHeygenAction?: (action: "connect" | "disconnect" | "use-subscription" | "use-api-key") => void;
+  heygenBusy?: boolean;
+  heygenWaiting?: boolean;
 }) {
   const presentation = SERVICES[props.service.id];
   const Icon = presentation.icon;
+  const subscription = props.service.subscription;
+  const ready = subscription?.mode === "subscription" ? subscription.connected : props.service.configured || props.service.browserLogin?.connected;
   const requiredFields = presentation.fields.filter((field) => field.required !== false).length;
   const configuredFields = props.service.fields.filter((field) =>
     field.configured && presentation.fields.find((presentationField) => presentationField.key === field.key)?.required !== false,
@@ -305,8 +353,8 @@ function AuthorizationServiceCard(props: {
             <Icon className="size-4" />
           </span>
           <SettingsStatusBadge
-            tone={props.service.configured || props.service.browserLogin?.connected ? "ready" : "neutral"}
-            label={props.service.configured || props.service.browserLogin?.connected ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
+            tone={ready ? "ready" : "neutral"}
+            label={ready ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
             className="min-h-7 px-0 text-[11px]"
           />
         </div>
@@ -318,6 +366,22 @@ function AuthorizationServiceCard(props: {
         </div>
       </CardHeader>
       <CardContent className="flex-1">
+        {props.onHeygenAction ? (
+          <div className="mb-3 space-y-3">
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("settings.authorization.heygen.billing")}>
+              <Button size="sm" variant={subscription?.mode === "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-subscription")} aria-pressed={subscription?.mode === "subscription"}>{t("settings.authorization.heygen.subscription")}</Button>
+              <Button size="sm" variant={subscription?.mode !== "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-api-key")} aria-pressed={subscription?.mode !== "subscription"}>{t("settings.authorization.heygen.api")}</Button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SettingsStatusBadge tone={subscription?.connected ? "ready" : "neutral"} label={t(subscription?.connected ? "settings.authorization.heygen.connected" : "settings.authorization.heygen.disconnected")} />
+              <Button variant="outline" size="sm" disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.(subscription?.connected ? "disconnect" : "connect")}>
+                {props.heygenBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Globe className="size-3.5" />}
+                {t(subscription?.connected ? "settings.authorization.heygen.disconnect" : "settings.authorization.heygen.connect")}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">{t(props.heygenWaiting ? "settings.authorization.heygen.waiting" : "settings.authorization.heygen.hint")}</p>
+          </div>
+        ) : null}
         {props.onOpenBrowserLogin ? (
           <div className="mb-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -334,7 +398,7 @@ function AuthorizationServiceCard(props: {
           </div>
         ) : null}
         <p className="text-xs text-muted-foreground">
-          {props.onOpenBrowserLogin ? "API Key · " : null}
+          {props.onOpenBrowserLogin || props.onHeygenAction ? "API Key · " : null}
           {t("settings.authorization.fields_configured", {
             configured: configuredFields,
             total: requiredFields,
@@ -350,13 +414,13 @@ function AuthorizationServiceCard(props: {
       <CardFooter className="justify-between gap-2 border-t border-border">
         <Button variant="ghost" size="sm" onClick={props.onConfigure} disabled={!props.canEdit}>
           <KeyRound className="size-3.5" />
-          {props.onOpenBrowserLogin ? t("settings.authorization.api_key") : props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
+          {props.onOpenBrowserLogin || props.onHeygenAction ? t("settings.authorization.api_key") : props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={props.onTest}
-          disabled={!props.canEdit || !props.service.configured || props.testing}
+          disabled={!props.canEdit || !ready || props.testing}
         >
           {props.testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
           {props.testing ? t("settings.authorization.testing") : props.onOpenBrowserLogin ? t("settings.authorization.test_api") : t("settings.authorization.test")}

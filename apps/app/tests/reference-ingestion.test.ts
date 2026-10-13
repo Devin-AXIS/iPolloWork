@@ -866,13 +866,15 @@ describe("reference ingestion router", () => {
 
 
 describe("local-only reference limits and completeness", () => {
-  test.each(["pdf", "docx", "pptx", "md", "txt", "csv", "json"])("%s accepts 50,000,000 bytes and rejects one byte more", async (extension) => {
+  test.each(["pdf", "docx", "pptx", "md", "txt", "csv", "json"])("%s accepts 200 MB and rejects one byte more", async (extension) => {
     const file = new File(["fixture"], `source.${extension}`);
     Object.defineProperty(file, "size", { value: REFERENCE_MAX_BYTES, configurable: true });
-    expect((await prepareOriginalReferenceAttachment(file)).size).toBe(50_000_000);
+    expect((await prepareOriginalReferenceAttachment(file)).size).toBe(200 * 1024 * 1024);
     Object.defineProperty(file, "size", { value: REFERENCE_MAX_BYTES + 1 });
-    expect((await ingestReferenceFile(file)).quality).toBe("failed");
-    await expect(prepareOriginalReferenceAttachment(file)).rejects.toThrow("50 MB");
+    const rejected = await ingestReferenceFile(file);
+    expect(rejected.quality).toBe("failed");
+    expect(rejected.warnings.join(" ")).toContain("200 MB");
+    await expect(prepareOriginalReferenceAttachment(file)).rejects.toThrow("200 MB");
   });
   test.each(["png", "jpg", "jpeg", "webp", "mp3", "wav", "mp4"])("rejects %s even with a misleading text MIME", async (extension) => {
     const file = new File(["not a document"], `source.${extension}`, { type: "text/plain" });

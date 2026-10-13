@@ -69,10 +69,11 @@ async function fixture(type: string, size: number): Promise<File> {
   return new File([await zip.generateAsync({ type: "uint8array", compression: "STORE" })], `boundary.${type}`);
 }
 
-// Run each real 50 MB format in a fresh process to avoid accumulating parser heaps:
+// Run each real large format in a fresh process to avoid accumulating parser heaps:
 // IPOLLOWORK_REFERENCE_LARGE_TYPE=docx bun test tests/reference-roundtrip.test.ts
+// Set IPOLLOWORK_REFERENCE_LARGE_BYTES to exercise a different transport boundary.
 const type = process.env.IPOLLOWORK_REFERENCE_LARGE_TYPE ?? "json";
-const size = process.env.IPOLLOWORK_REFERENCE_LARGE_TYPE ? 50_000_000 : 2_000;
+const size = process.env.IPOLLOWORK_REFERENCE_LARGE_TYPE ? Number(process.env.IPOLLOWORK_REFERENCE_LARGE_BYTES ?? 50_000_000) : 2_000;
 test(`reference ${type}: ${size} real bytes upload, parse, persist, reconstruct and read back`, async () => {
   const root = await mkdtemp(join(tmpdir(), "ipw-reference-roundtrip-"));
   const server = await startServer({ host: "127.0.0.1", port: 0, configPath: join(root, "server.json"), token: "test-token", hostToken: "host-token", approval: { mode: "auto", timeoutMs: 1000 }, corsOrigins: ["*"], workspaces: [{ id: "ws", name: "Reference test", path: root, preset: "starter", workspaceType: "local" }], authorizedRoots: [root], readOnly: false, startedAt: Date.now(), tokenSource: "cli", hostTokenSource: "cli", logFormat: "pretty", logRequests: false });

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const REFERENCE_MAX_BYTES = 50_000_000;
+export const REFERENCE_MAX_BYTES = 200 * 1024 * 1024;
 export const REFERENCE_CONTEXT_MAX_BYTES = 500_000_000;
 export const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const size = z.number().int().nonnegative();

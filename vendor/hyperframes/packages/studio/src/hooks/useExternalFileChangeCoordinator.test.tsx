@@ -49,6 +49,43 @@ async function mountCoordinator(overrides: Partial<CoordinatorOptions> = {}) {
 }
 
 describe("external file change coordinator", () => {
+  it("shows the first base change immediately, coalesces AI writes and flushes the last update on completion", async () => {
+    const { options, rerender } = await mountCoordinator({ aiEditing: true });
+    await act(async () => handler?.({ path: "index.html", version: "base", affectsPreview: true }));
+    expect(options.reloadPreview).toHaveBeenCalledOnce();
+    for (let i = 0; i < 20; i++) await act(async () => handler?.({ path: "index.html", version: `ai-${i}`, affectsPreview: true }));
+    expect(options.reloadPreview).toHaveBeenCalledOnce();
+    expect(options.reloadSdkSession).toHaveBeenCalledOnce();
+    await rerender({ aiEditing: false });
+    expect(options.reloadPreview).toHaveBeenCalledTimes(2);
+    expect(options.reloadSdkSession).toHaveBeenCalledTimes(2);
+  });
+  it("refreshes only the file tree for analysis metadata without restarting the SDK or preview", async () => {
+    const refreshFileTree = vi.fn(async () => undefined);
+    const { options } = await mountCoordinator({ refreshFileTree });
+    await act(async () => handler?.({ path: "enhancement/job.json", version: "metadata", affectsPreview: false }));
+    expect(refreshFileTree).toHaveBeenCalledOnce();
+    expect(options.reloadPreview).not.toHaveBeenCalled();
+    expect(options.reloadSdkSession).not.toHaveBeenCalled();
+  });
+  it("holds a deferred AI refresh behind a newer save conflict until the user resolves it", async () => {
+    vi.useFakeTimers();
+    try {
+      const conflict = new StudioFileConflictError({ filePath: "index.html", currentVersion: "conflict", currentContent: "agent", attemptedContent: "manual draft" });
+      const drainPendingChanges = vi.fn<CoordinatorOptions["drainPendingChanges"]>()
+        .mockResolvedValueOnce({ status: "clean" })
+        .mockResolvedValueOnce({ status: "clean" })
+        .mockResolvedValue({ status: "conflict", error: conflict });
+      const { captured, options } = await mountCoordinator({ aiEditing: true, drainPendingChanges });
+      for (const version of ["base", "queued", "conflict"]) await act(async () => handler?.({ path: "index.html", version, affectsPreview: true }));
+      expect(captured.handle?.blocked?.status).toBe("conflict");
+      await act(async () => { vi.advanceTimersByTime(1000); });
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      await act(async () => captured.handle?.useExternalFile());
+      expect(options.reloadPreview).toHaveBeenCalledTimes(2);
+      expect(captured.handle?.blocked).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
   beforeEach(() => {
     handler = null;
     resetStudioWriteTokens();
@@ -566,7 +603,7 @@ describe("external file change coordinator", () => {
     await act(async () =>
       handler?.({ path: "notes.md", content: "notes", version: "v1", affectsPreview: false }),
     );
-    expect(order).toEqual(["sdk", "tree"]);
+    expect(order).toEqual(["tree"]);
   });
 
   it("still reloads Preview when a notes change replaces a waiting film change", async () => {

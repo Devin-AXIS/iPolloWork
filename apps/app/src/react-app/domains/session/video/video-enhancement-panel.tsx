@@ -17,18 +17,20 @@ import { videoProjectDirectory } from "./video-project";
 
 const maxSizeMB = VIDEO_ENHANCEMENT_MAX_BYTES / 1024 / 1024;
 const kindLabels: Record<VideoEnhancementCue["kind"], string> = {
-  keyword: "重点标题", number: "数字强调", list: "行动要点", steps: "步骤流程", comparison: "对比卡片", quote: "金句", summary: "总结",
+  keyword: "重点标题", number: "数字强调", list: "行动要点", steps: "步骤流程", comparison: "对比卡片", quote: "金句", summary: "总结", chart: "数据图",
 };
-const editableCue = ({ id, kind, text, detail, items, start, end, enabled, placement }: VideoEnhancementCue) =>
-  ({ id, kind, text, detail, items: items?.map(item => item.trim()).filter(Boolean), start, end, enabled, placement });
+const editableCue = ({ id, kind, text, detail, items, start, end, enabled, placement, anchor, chart }: VideoEnhancementCue) =>
+  ({ id, kind, text, detail, items: items?.map(item => item.trim()).filter(Boolean), start, end, enabled, placement, anchor, chart });
 const clock = (seconds: number) => Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0");
 const selectClass = "h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 type Props = {
   client: iPolloWorkServerClient; workspaceId: string; sessionId: string;
-  previewAssetUrl: (path: string) => string; onApplied: () => void;
+  previewAssetUrl: (path: string) => string;
+  onPreparingChange?: (preparing: boolean) => void;
   onGenerate?: (request: VideoEnhancementWorkflow) => Promise<void>;
+  aiEditing?: boolean;
 };
-export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewAssetUrl, onApplied, onGenerate }: Props) {
+export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewAssetUrl, onPreparingChange, onGenerate, aiEditing = false }: Props) {
   const [open, setOpen] = React.useState(false);
   const [model, setModel] = React.useState({ ready: false, gesturesReady: false, segmentationReady: false, message: "正在检查本地模型…" });
   const [useGestures, setUseGestures] = React.useState(true);
@@ -76,7 +78,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
     void Promise.all([call("status"), call("read", { sessionId })]).then(([status, saved]) => {
       if (!active) return;
       setModel(videoEnhancementStatusSchema.parse(status));
-      if (saved) acceptJob(videoEnhancementJobSchema.parse(saved));
+      if (saved && !job) acceptJob(videoEnhancementJobSchema.parse(saved));
     }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "无法读取本地状态。"); });
     return () => { active = false; };
   }, [open, call, sessionId]);
@@ -131,7 +133,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
     return () => window.removeEventListener("message", receive);
   }, [open]);
   const previewDocument = React.useMemo(() => {
-    if (!preview || !job) return "";
+    if (!open || !preview || !job) return "";
     const doc = new DOMParser().parseFromString(preview.html, "text/html");
     const media = doc.querySelector("#original-video");
     const url = previewAssetUrl("video/" + sessionId + "/enhancement/" + job.id + "/original.mp4");
@@ -141,7 +143,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
     policy.content = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src " + new URL(url, window.location.href).origin + ";";
     doc.head.prepend(policy);
     return "<!doctype html>" + doc.documentElement.outerHTML;
-  }, [preview, job?.id, previewAssetUrl, sessionId]);
+  }, [open, preview, job?.id, previewAssetUrl, sessionId]);
   React.useEffect(() => { setPreviewReady(false); setPaused(true); }, [previewDocument]);
   const seek = (value: number) => {
     timeRef.current = value; setTime(value);
@@ -169,16 +171,25 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
     const latest = videoEnhancementJobSchema.parse(await call("start", { sessionId, sourcePath: path, language, useGestures, useSegmentation }));
     if (mounted.current) setJob(latest);
   });
-  const apply = () => perform(async () => {
-    if (!job) return;
-    const latest = videoEnhancementJobSchema.parse(await call("apply", { sessionId, jobId: job.id, cues: draft.map(editableCue), layout }));
-    if (mounted.current) { setJob(latest); setDraft(latest.result?.cues.map(editableCue) ?? []); onApplied(); }
-  });
+  const applyBase = async (prepareForWorkflow = false) => {
+    if (!job || aiEditing) throw new Error("AI 正在修改视频，请等待当前编排完成。");
+    const latest = videoEnhancementJobSchema.parse(await call("apply", { sessionId, jobId: job.id, cues: draft.map(editableCue), layout, prepareForWorkflow }));
+    if (mounted.current) { setJob(latest); setDraft(latest.result?.cues.map(editableCue) ?? []); }
+  };
+  const apply = () => perform(() => applyBase());
   const generate = () => perform(async () => {
-    if (!job || !onGenerate) return;
-    const request = videoEnhancementWorkflowResultSchema.parse(await call("workflow", { sessionId, jobId: job.id, layout, cues: draft.map(editableCue) }));
-    await onGenerate(request);
-    if (mounted.current) setOpen(false);
+    if (!job || !onGenerate || aiEditing) return;
+    // Unmount the second decoder before applying files or starting the agent.
+    frame.current?.contentWindow?.postMessage({ type: "enhancement-play", playing: false }, "*");
+    if (mounted.current) { setOpen(false); setPreview(null); }
+    onPreparingChange?.(true);
+    try {
+      await applyBase(true);
+      const request = videoEnhancementWorkflowResultSchema.parse(await call("workflow", { sessionId, jobId: job.id, layout, cues: draft.map(editableCue) }));
+      await onGenerate(request);
+    }
+    catch (reason) { if (mounted.current) setOpen(true); throw reason; }
+    finally { onPreparingChange?.(false); }
   });
   const upload = <div className="flex flex-wrap items-end gap-3">
     <label className="min-w-48 flex-1 space-y-1.5 text-sm"><span className="font-medium">上传口播视频</span>
@@ -191,7 +202,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
       {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}开始本地分析</Button>
   </div>;
   return <>
-    <div className="flex shrink-0 items-center justify-end border-b bg-background px-3 py-1.5"><Button variant="ghost" size="sm" data-testid="video-enhancement-open" onClick={() => { setJob(null); setPreview(null); setPreviewReady(false); setOpen(true); }}><Sparkles className="size-4" />视频智能增强</Button></div>
+    <div className="flex shrink-0 items-center justify-end border-b bg-background px-3 py-1.5"><Button variant="ghost" size="sm" disabled={busy} data-testid="video-enhancement-open" onClick={() => { setJob(null); setPreview(null); setPreviewReady(false); setOpen(true); }}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}{busy && !open ? "正在准备 AI 编排…" : "视频智能增强"}</Button></div>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="flex h-[min(820px,calc(100dvh-40px))] max-h-[calc(100dvh-40px)] w-[calc(100%-48px)] max-w-6xl flex-col gap-0 rounded-2xl p-0" data-testid="video-enhancement-panel">
         <DialogHeader className="shrink-0 border-b px-5 py-4 pr-16">
@@ -243,7 +254,7 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
                 {layout.mode !== "background" && <div className="grid grid-cols-2 gap-3"><label className="space-y-2 text-xs"><span>原视频位置</span><select className={selectClass} aria-label="原视频位置" value={layout.sourcePosition} onChange={event => editLayout("sourcePosition", event.target.value)}><option value="bottom-left">{layout.mode === "split" ? "左栏" : "左下角"}</option><option value="bottom-right">{layout.mode === "split" ? "右栏" : "右下角"}</option>{layout.mode === "pip" && <><option value="top-left">左上角</option><option value="top-right">右上角</option></>}</select></label>
                   {layout.mode === "pip" && <label className="space-y-2 text-xs"><span>原视频大小</span><select className={selectClass} aria-label="原视频大小" value={layout.sourceSize} onChange={event => editLayout("sourceSize", event.target.value)}><option value="small">小</option><option value="medium">中</option><option value="large">大</option></select></label>}</div>}
                 <label className="block space-y-2 text-xs"><span>生成内容位置</span><select className={selectClass} aria-label="生成内容位置" value={layout.contentPosition} onChange={event => editLayout("contentPosition", event.target.value)}><option value="auto">自动安排</option><option value="left">画面左侧</option><option value="right">画面右侧</option><option value="top">画面上方</option><option value="bottom">画面下方</option><option value="center">画面中央</option></select></label>
-                <p className="text-xs leading-relaxed text-muted-foreground">{layout.mode === "background" ? "内容会避让人物与手部；空间不足的片段会跳过。" : "原视频完整保留，生成内容会避开原视频区域。"}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">{layout.mode === "background" ? "优先按手势定位；无手势时避让人物，空间不足的片段会跳过。" : "原视频完整保留，生成内容会避开原视频区域。"}</p>
               </fieldset>
             </TabsContent>
             <TabsContent value="content" className="min-h-0 overflow-y-auto p-5">
@@ -257,10 +268,26 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
                 <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">编辑当前片段</span><button type="button" className="text-xs text-muted-foreground underline" onClick={() => seek(selected.start + .25)}>定位片段</button></div>
                 <label className="block space-y-1.5 text-xs"><span>呈现方式</span><select className={selectClass} aria-label={selected.id + " 呈现方式"} value={selected.kind} onChange={event => { const kind = videoEnhancementCueSchema.shape.kind.safeParse(event.target.value); if (kind.success) edit(selected.id, { kind: kind.data }); }}>{Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 <label className="block space-y-1.5 text-xs"><span>标题 / 重点</span><Textarea className="min-h-16 py-2 text-sm" aria-label={selected.id + " 元素文字"} value={selected.text} maxLength={160} onChange={event => edit(selected.id, { text: event.target.value })} /></label>
+                {selected.kind === "chart" && <div className="space-y-2 text-xs" data-testid="enhancement-chart-editor">
+                  <p>图表数据（使用同一单位，最多 4 项）</p>
+                  {!selected.chart?.length && <p className="text-muted-foreground">当前显示占位图，请补充真实数据。</p>}
+                  {selected.chart?.map((point, index) => <div key={index} className="flex items-center gap-2">
+                    <Input aria-label={selected.id + " 数据标签 " + (index + 1)} value={point.label} maxLength={80} onChange={event => edit(selected.id, { chart: selected.chart?.map((item, i) => i === index ? { ...item, label: event.target.value } : item) })} />
+                    <Input aria-label={selected.id + " 数据值 " + (index + 1)} type="number" value={point.value} onChange={event => edit(selected.id, { chart: selected.chart?.map((item, i) => i === index ? { ...item, value: Number(event.target.value) } : item) })} />
+                    <Button variant="ghost" size="sm" aria-label={"删除数据 " + (index + 1)} onClick={() => { const chart = selected.chart?.filter((_, i) => i !== index); edit(selected.id, { chart: chart?.length ? chart : undefined }); }}>删除</Button>
+                  </div>)}
+                  <Button variant="outline" size="sm" disabled={(selected.chart?.length ?? 0) >= 4} onClick={() => edit(selected.id, { chart: [...(selected.chart ?? []), { label: "数据项", value: 0 }] })}>添加数据</Button>
+                </div>}
                 {(selected.kind === "steps" || selected.kind === "comparison" || selected.kind === "list") ? <label className="block space-y-1.5 text-xs"><span>内容条目（每行一项，最多 4 项）</span><Textarea className="py-2 text-sm" aria-label={selected.id + " 内容条目"} value={selected.items?.join("\n") ?? ""} maxLength={644} onChange={event => edit(selected.id, { items: event.target.value.split("\n").slice(0, 4) })} /></label>
                   : <label className="block space-y-1.5 text-xs"><span>补充说明</span><Textarea className="py-2 text-sm" aria-label={selected.id + " 补充说明"} value={selected.detail ?? ""} maxLength={480} onChange={event => edit(selected.id, { detail: event.target.value })} /></label>}
                 <div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs"><span>开始（秒）</span><Input aria-label={selected.id + " 开始秒数"} type="number" min={0} max={result.duration} step={.1} value={selected.start} onChange={event => edit(selected.id, { start: Number(event.target.value) })} /></label><label className="space-y-1.5 text-xs"><span>结束（秒）</span><Input aria-label={selected.id + " 结束秒数"} type="number" min={0} max={result.duration} step={.1} value={selected.end} onChange={event => edit(selected.id, { end: Number(event.target.value) })} /></label></div>
                 <label className="block space-y-1.5 text-xs"><span>此片段位置</span><select className={selectClass} aria-label={selected.id + " 元素位置"} value={selected.placement ?? "auto"} onChange={event => { const placement = videoEnhancementCueSchema.shape.placement.safeParse(event.target.value); if (placement.success) edit(selected.id, { placement: placement.data }); }}><option value="auto">跟随画面布局</option><option value="left">左侧</option><option value="right">右侧</option><option value="top">上方</option><option value="bottom">下方</option><option value="center">中央</option>{layout.mode === "background" && <option value="gesture">手势位置</option>}</select></label>
+                {selectedPlacement?.binding && <p className="text-xs text-muted-foreground" data-testid="enhancement-binding">{selectedPlacement.binding.precision === "word" ? "词语" : "语句"}“{selectedPlacement.binding.phrase || "手势"}” · {selectedPlacement.binding.time.toFixed(2)} 秒 · {{ locked: "指向锁定", follow: "托举跟随", reveal: "引导展开", frame: "双手展示" }[selectedPlacement.binding.behavior]} · {selectedPlacement.binding.space === "source" ? "原视频位置" : "内容区域"}</p>}
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" aria-label={selected.id + " 锁定位置"} checked={Boolean(selected.anchor)} onChange={event => edit(selected.id, { anchor: event.target.checked ? selectedPlacement?.binding?.anchor ?? { x: .5, y: .4 } : undefined })} />手动校正并锁定位置</label>
+                {selected.anchor && <div className="grid grid-cols-2 gap-3">
+                  {(["x", "y"] satisfies (keyof NonNullable<VideoEnhancementCue["anchor"]>)[]).map(axis => <label key={axis} className="space-y-1.5 text-xs"><span>{axis === "x" ? "水平位置（%）" : "垂直位置（%）"}</span><Input aria-label={selected.id + " 位置 " + axis} type="number" min={0} max={100} step={1} value={Math.round(selected.anchor![axis] * 100)} onChange={event => edit(selected.id, { anchor: { ...selected.anchor!, [axis]: Math.max(0, Math.min(100, Number(event.target.value))) / 100 } })} /></label>)}
+                  <p className="col-span-2 text-muted-foreground">{layout.mode === "background" ? "对应原视频中的位置。" : "对应生成内容区域中的位置。"}</p>
+                </div>}
                 {selectedPlacement?.reason && !selectedPlacement.rect && <p className="text-xs text-amber-600">{selectedPlacement.reason}</p>}
               </fieldset>}
             </TabsContent>
@@ -268,9 +295,9 @@ export function VideoEnhancementPanel({ client, workspaceId, sessionId, previewA
         </div> : !running && <div className="px-5 py-10 text-center text-sm text-muted-foreground">上传视频后，选择版式并校对生成内容。</div>}
         {result && <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t px-5 py-3" data-testid="enhancement-actions">
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="size-3.5" />{job.status === "applied" ? "已应用到时间轴 · 原视频和备份已保留" : job.message.startsWith("已恢复") ? "已恢复增强前时间轴" : "应用后可在时间轴继续编辑"}</p>
-          <div className="flex flex-wrap items-center gap-2">{job.status === "applied" && <Button variant="ghost" size="sm" disabled={busy} data-testid="enhancement-restore" onClick={() => void perform(async () => { const latest = videoEnhancementJobSchema.parse(await call("undo", { sessionId, jobId: job.id })); setJob(latest); onApplied(); })}>恢复增强前时间轴</Button>}
-            <Button variant="outline" disabled={busy || previewing || Boolean(previewError) || !preview?.cues.some(cue => cue.enabled && cue.rect)} onClick={() => void apply()} data-testid="enhancement-apply">{job.status === "applied" ? "更新基础版" : "应用基础版"}</Button>
-            {onGenerate && <Button disabled={busy || previewing} onClick={() => void generate()} data-testid="enhancement-generate">{busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}AI 编排生成</Button>}</div>
+          <div className="flex flex-wrap items-center gap-2">{job.status === "applied" && <Button variant="ghost" size="sm" disabled={busy} data-testid="enhancement-restore" onClick={() => void perform(async () => { const latest = videoEnhancementJobSchema.parse(await call("undo", { sessionId, jobId: job.id })); setJob(latest); })}>恢复增强前时间轴</Button>}
+            <Button variant="outline" disabled={aiEditing || busy || previewing || Boolean(previewError) || !preview?.cues.some(cue => cue.enabled && cue.rect)} onClick={() => void apply()} data-testid="enhancement-apply">{job.status === "applied" ? "更新基础版" : "应用基础版"}</Button>
+            {onGenerate && <Button disabled={aiEditing || busy || previewing || Boolean(previewError) || !preview?.cues.some(cue => cue.enabled && cue.rect)} onClick={() => void generate()} data-testid="enhancement-generate">{busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}AI 编排生成</Button>}</div>
         </div>}
       </DialogContent>
     </Dialog>

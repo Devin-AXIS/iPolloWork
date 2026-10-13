@@ -65,6 +65,14 @@ test("exposes measured audio cues as a built-in Video Studio action", () => {
   });
 });
 
+test("discovers preview acceptance separately from MP4 export and enforces workspace context", async () => {
+  const action = MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_preview_check");
+  expect(action?.inputSchema).toMatchObject({ required: ["sourcePath"], additionalProperties: false });
+  expect(action?.description).toContain("No MP4, encoder job or review recording");
+  expect(MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_render_start")?.description).toContain("Explicitly requested MP4 export");
+  await expect(callMediaExtensionAction(config, env({}), "video_preview_check", { sourcePath: "video/proof/index.html" }, {})).rejects.toThrow();
+});
+
 test("exposes one revision-aware read/write contract for component JSON", () => {
   const read = MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_component_read");
   const write = MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_component_write");

@@ -2,7 +2,9 @@
 
 # iPolloWork Video Acceptance
 
-Load applicable checks for delivery/delegated review; small edits check affected claims plus playback. Batch independent source and temporal checks; repair issues and repeat affected checks until the requested result is complete or a concrete blocker is identified. The native main Agent calls the existing component/project/voice and rendering tools, reads their real results and repairs defects; reuse the existing Studio service. Technical health and actual expression are separate verdicts.
+Load applicable checks for delivery/delegated review; small edits check affected claims plus playback. Batch independent source and temporal checks; repair issues and repeat affected checks until the requested result is complete or a concrete blocker is identified. The native main Agent calls the existing component/project/voice and preview-check tools, reads their real results and repairs defects; reuse the existing Studio service. Technical health and actual expression are separate verdicts.
+
+Default generation/editing acceptance is `acceptance=studio-preview`, including direct conversation and uploaded-video enhancement. Run `media/video_component_check` for source structure and `media/video_preview_check` with the exact `sourcePath` for executed timing/layout, continuity and direct/reverse seek. Then seek and play changed scenes and seams in the current built-in Studio canvas, listening to required audio. These checks replace rendered temporal samples, motion-audition clips, contact sheets and exported audio/video review. Do not render, export, record, start another browser/service or require an MP4 receipt for validation. Return the editable project and the checks actually observed; `playback=unverified` from the technical tool is not a watched/listened verdict. Only explicit MP4/file delivery or authorized publication enables the separate export stage. Legacy `reviewOnly:true` also performs preview inspection without creating a video.
 
 ## Source and timeline
 
@@ -12,7 +14,7 @@ Load applicable checks for delivery/delegated review; small edits check affected
 
 ## Content, recipe fit and sequence
 
-Review the approved source/brief, latest native storyboard, actual selected card/variant/source and mounted implementation against rendered evidence, without assuming construction succeeded.
+Review the approved source/brief, latest native storyboard, actual selected card/variant/source and mounted implementation against current Studio evidence or the separately requested export, without assuming construction succeeded.
 
 - Required facts, names, units and qualifiers are spoken or visibly explained in the correct order. Each scene has purposeful primary content at its reading state; blank/placeholders fail except an explicitly approved blank beat. Branding, captions/transcripts and persistent chrome alone are not scene content. Corrected subjects must appear in actual speech/text/pictures/captions, not merely replacement imagery.
 - Check final-font fit, hierarchy, contrast, safe margins, crop and scale at output dimensions. Preserve supported editable data/variables, theme inheritance and selection hooks. Label illustrative imagery and retain factual evidence attribution.
@@ -23,15 +25,15 @@ Review the approved source/brief, latest native storyboard, actual selected card
 
 ## Temporal samples and continuity
 
-Render Establish, Develop, and Land samples through the existing media tools for acceptance. Preserve scene/time/frame identities; time ranges, visual focus, visual action, and result or hold plus targets/references cover relevant speech/reading without gaps/overlaps. Speech uses measured provider timing/project FPS; silent work uses its real driver. Purposeful teaching, subtitle reading and final holds remain valid.
+Seek Establish, Develop, and Land states in Studio for default acceptance. Render Establish, Develop, and Land samples only from an already requested export when native-size file review is required; never generate a second review movie. Preserve scene/time/frame identities; time ranges, visual focus, visual action, and result or hold plus targets/references cover relevant speech/reading without gaps/overlaps. Speech uses measured provider timing/project FPS; silent work uses its real driver. Purposeful teaching, subtitle reading and final holds remain valid.
 
 Samples show actual focus/state/evidence/path/framing progression, with information readable when discussed. Generic entrance followed by an unintentionally static long explanation fails. Check the selected pattern's real development: montage states, camera waypoints/subject-follow, dialogue responses, kinetic meaning or measured audio-driven accents. A component name, metadata label or tiny continuous easing cannot substitute for these events.
 
 Inspect outgoing Land + seam + incoming Establish at changed/flagged boundaries. Confirm real cut/preset/custom handoff execution and recognizable continuity or intended reset. Windows meet; incoming motion consumes Establish. Outgoing meaning, non-empty incoming state and fixed captions/identity/audio survive. Reject empty fades, hidden qualifiers or replayed entrances that restart continuing action.
 
-Watch current host `pixelReview.evidence.videoPath` at ordinary speed, not only contact-sheet stills. Evaluate short action → useful result → next event, late-window dead time, repeated tails, focus handoffs and subject-follow against genre; long tracking/micro-scale drift is not development. Use timed frame paths/scene IDs/absolute frames for defects and targeted missing samples. Technical pixel success cannot certify rhythm/expression; unavailable playback stays unverified. Draft frames cannot certify export sharpness: inspect requested native-size output and dense text/texture regions.
+Play the current Studio canvas at ordinary speed. If an export was separately requested and already exists, also watch its `pixelReview.evidence.videoPath`; do not create one merely for validation. Evaluate short action → useful result → next event, late-window dead time, repeated tails, focus handoffs and subject-follow against genre; long tracking/micro-scale drift is not development. Use timed frame paths/scene IDs/absolute frames for defects and targeted missing samples. Technical pixel success cannot certify rhythm/expression; unavailable playback stays unverified. Draft frames cannot certify export sharpness: inspect requested native-size output and dense text/texture regions.
 
-For initial generation or substantial motion redesign, review Compose's continuous motion audition before expanding/full export, then replay the completed sequence after measured retiming. Judge the artifact against the storyboard's actual verbs: arrangement changes for organize, original-object bounds change for morph, inputs contribute to synthesis, subject/focus transfers for handoff, and framing follows a moving subject for a follow shot. A tagged entrance with correct timing can pass technical checks while failing expression. Keep the verdict and observed event/time in existing frame notes; unresolved required development keeps the film in draft. No global effect count, camera quota or pixel-activity percentage establishes quality.
+For initial generation or substantial motion redesign, review Compose's continuous motion audition in Studio before expanding, then replay the completed sequence after measured retiming. Judge the artifact against the storyboard's actual verbs: arrangement changes for organize, original-object bounds change for morph, inputs contribute to synthesis, subject/focus transfers for handoff, and framing follows a moving subject for a follow shot. A tagged entrance with correct timing can pass technical checks while failing expression. Keep the verdict and observed event/time in existing frame notes; unresolved required development keeps the film in draft. No global effect count, camera quota or pixel-activity percentage establishes quality.
 
 ## Media, narration and soundtrack
 
@@ -51,7 +53,7 @@ Requested export needs its completed host-render receipt and separate file check
 
 ## Artifact-first verdict and bounded repair
 
-An available authorized independent reviewer receives only approved brief/script, selected card/variant/source/reference, current rendered artifact and timed frame evidence, without maker verdict/debugging explanations. Otherwise record that review was not independent; never invent or spawn unavailable/unauthorized agents.
+An available authorized independent reviewer receives only approved brief/script, selected card/variant/source/reference, current Studio preview and timed evidence (or the explicitly requested existing export), without maker verdict/debugging explanations. Otherwise record that review was not independent; never invent or spawn unavailable/unauthorized agents.
 
 Report **technical health**, **expression/recipe fit**, and **ordinary-speed audiovisual/export review** separately in existing outputs. Automatic receipt leaves `expression` and `audibleSync` unverified; only observed current-version evidence supports those claims. Failures/unverified claims retain scene ID, frame/time, issue/missing evidence and next action. Separate must-fix, optional and unverified findings.
 

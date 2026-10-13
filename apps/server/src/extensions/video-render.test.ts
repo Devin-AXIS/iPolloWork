@@ -6,7 +6,58 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { analyzeVideoReference, renderedSceneWindows, reviewRenderedPixels, reviewRenderedAudio, videoProjectFingerprint, videoRenderAction, videoRenderInput } from "./video-render.js";
+import { analyzeVideoReference, renderedSceneWindows, reviewRenderedPixels, reviewRenderedAudio, videoProjectFingerprint, videoRenderAction, videoPreviewCheck, videoRenderInput } from "./video-render.js";
+
+test("preview acceptance and legacy reviewOnly inspect current runtime without creating exports", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-preview-acceptance-"));
+  const previous = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY, nativeFetch = globalThis.fetch;
+  const sourcePath = "video/preview/index.html", directory = join(root, "video/preview"), html = "<div>preview source</div>";
+  let mode = "valid", inspections = 0;
+  const calls: string[] = [];
+  await mkdir(directory, { recursive: true });
+  const discovery = join(root, "bridge.json");
+  await writeFile(discovery, JSON.stringify({ baseUrl: "http://127.0.0.1:54321", token: "test-token" }));
+  process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
+  globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+    const url = String(input); calls.push(url);
+    if (url.endsWith("/video/ensure-studio")) return Response.json({ ok: true, port: 54322 });
+    if (url === "http://127.0.0.1:54322/api/projects/preview/thumbnail/index.html?review=runtime") {
+      inspections++;
+      if (mode === "unavailable") return new Response("offline", { status: 503 });
+      if (mode === "changed-source") await writeFile(join(root, sourcePath), html + "<!-- changed during check -->");
+      return Response.json({ valid: mode !== "invalid", scope: "runtime-timing-and-layout-not-semantic-approval", sampledFrameCount: mode === "malformed" ? 0 : 3,
+        issues: mode === "invalid" ? [{ sceneId: "scene-1", time: 1.5, code: "executed-event-end-mismatch", detail: "expected 2, observed 1.5" }] : [],
+        deterministicSeek: { checkedSceneCount: 1, valid: true } });
+    }
+    throw new Error(`Preview must not start rendering: ${url}`);
+  }, nativeFetch);
+  try {
+    for (mode of ["valid", "invalid", "unavailable", "malformed", "changed-source", "legacy"]) {
+      await writeFile(join(root, sourcePath), html);
+      const workspace = { id: "preview-workspace", path: root };
+      const promise = mode === "legacy" ? videoRenderAction(workspace, "video_render_start", { sourcePath, operationKey: "old-review", reviewOnly: true, review: true })
+        : videoPreviewCheck(workspace, { sourcePath });
+      if (mode === "unavailable" || mode === "malformed") await expect(promise).rejects.toThrow("runtime-review-unavailable");
+      else {
+        const result = await promise;
+        expect(result).toMatchObject({ acceptance: "studio-preview", exported: false, playback: "unverified", status: mode === "invalid" || mode === "changed-source" ? "failed" : "complete" });
+        expect(result.jobId).toBeUndefined(); expect(result.outputPath).toBeUndefined(); expect(result.pixelReview).toBeUndefined();
+        if (mode === "invalid") expect(result.error).toContain("executed-event-end-mismatch");
+        if (mode === "changed-source") expect(result.error).toContain("source changed");
+      }
+      expect(await fs.readdir(directory)).toEqual(["index.html"]);
+    }
+    expect(inspections).toBe(6);
+    expect(calls.every(url => url.endsWith("/video/ensure-studio") || url.endsWith("?review=runtime"))).toBe(true);
+    const before = calls.length;
+    await expect(videoPreviewCheck({ id: "preview-workspace", path: root }, { sourcePath: "../other/index.html" })).rejects.toThrow();
+    expect(calls).toHaveLength(before);
+  } finally {
+    globalThis.fetch = nativeFetch;
+    if (previous === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY; else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("render review reads standard timed HTML attributes and skips incomplete or invalid scene windows", () => {
   for (const timing of ['data-start="0" data-duration="3"', "data-start = 0 data-duration=3", 'data-start="&#48;" data-duration="&#x33;"']) {
@@ -385,8 +436,8 @@ test("reviewed exports preflight runtime before rendering and fingerprint normal
     throw new Error(`Unexpected URL ${url}`);
   }, nativeFetch);
   try {
-    for (mode of ["invalid", "unavailable", "malformed", "normalized", "review-only"]) {
-      const args = { sourcePath, operationKey: mode, review: mode !== "review-only", reviewOnly: mode === "review-only" };
+    for (mode of ["invalid", "unavailable", "malformed", "normalized"]) {
+      const args = { sourcePath, operationKey: mode, review: true };
       const beforeHash = await videoProjectFingerprint(directory), beforeStarts = starts, beforeInspections = inspections;
       await videoRenderAction(workspace, "video_render_start", args);
       let result = await videoRenderAction(workspace, "video_render_status", args);
@@ -395,7 +446,7 @@ test("reviewed exports preflight runtime before rendering and fingerprint normal
         result = await videoRenderAction(workspace, "video_render_status", args);
       }
       expect(inspections).toBe(beforeInspections + 1);
-      if (mode === "normalized" || mode === "review-only") {
+      if (mode === "normalized") {
         expect(result.status).toBe("rendering");
         expect(starts).toBe(beforeStarts + 1);
         expect(result.sourceHash).toBe(await videoProjectFingerprint(directory));
@@ -409,7 +460,7 @@ test("reviewed exports preflight runtime before rendering and fingerprint normal
       }
       await videoRenderAction(workspace, "video_render_start", args);
       expect(inspections).toBe(beforeInspections + 1);
-      expect(starts).toBe(beforeStarts + (mode === "normalized" || mode === "review-only" ? 1 : 0));
+      expect(starts).toBe(beforeStarts + (mode === "normalized" ? 1 : 0));
     }
     expect(releases).toBe(3);
   } finally {
@@ -440,10 +491,10 @@ test("runtime acceptance failures and changed source cannot become completed del
   }, nativeFetch);
   const workspace = { id: "ws_review", path: root };
   try {
-    for (const mode of ["failed-runtime", "valid-runtime", "valid-runtime-metadata", "review-only", "changed-dependency", "changed-source"]) {
+    for (const mode of ["failed-runtime", "valid-runtime", "valid-runtime-metadata", "changed-dependency", "changed-source"]) {
       const validRuntime = mode.startsWith("valid-runtime");
       valid = true;
-      const args = { sourcePath, operationKey: mode, review: true, reviewOnly: mode === "review-only" };
+      const args = { sourcePath, operationKey: mode, review: true };
       await videoRenderAction(workspace, "video_render_start", args);
       for (let attempt = 0; attempt < 100; attempt++) {
         const receipt = JSON.parse(await readFile(join(directory, "renders", `.export-${createHash("sha256").update(mode).digest("hex")}.json`), "utf8"));
@@ -457,15 +508,11 @@ test("runtime acceptance failures and changed source cannot become completed del
       if (mode === "changed-source") await writeFile(join(root, sourcePath), html + "<!-- edited during rendering -->");
       if (mode === "changed-dependency") await writeFile(join(directory, "design-tokens.css"), "body{color:red}");
       const result = await videoRenderAction(workspace, "video_render_status", args);
-      expect(result.status).toBe(validRuntime || mode === "review-only" ? "complete" : "failed");
+      expect(result.status).toBe(validRuntime ? "complete" : "failed");
       if (!validRuntime) expect(result.outputPath).toBeUndefined();
       if (mode === "failed-runtime") expect(result.pixelReview?.runtimeReview?.issues[0]?.code).toBe("executed-event-time-mismatch");
       if (mode === "changed-source") expect(result.error).toContain("source changed");
       if (mode === "changed-dependency") expect(result.error).toContain("dependencies");
-      if (mode === "review-only") {
-        expect(result.pixelReview?.evidence?.resolution).toBe("draft");
-        expect(await readFile(join(root, result.pixelReview!.evidence!.videoPath))).not.toBeEmpty();
-      }
       if (validRuntime) {
         expect(result.pixelReview?.evidence?.expression).toBe("unverified");
         expect(result.pixelReview?.evidence?.audibleSync).toBe("unverified");

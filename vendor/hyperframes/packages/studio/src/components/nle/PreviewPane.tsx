@@ -20,7 +20,6 @@ import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 import { LoaderCircle } from "lucide-react";
 import { useStudioI18n } from "../../i18n";
-import { parseHostAiEditingMessage } from "../../utils/studioHelpers";
 import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
 
 function subscribeFullscreen(cb: () => void) {
@@ -67,9 +66,8 @@ export function PreviewPane({
     previewCompositionSize,
     setPreviewCompositionSize,
   } = useNLEContext();
-  const { compositionLoading: studioCompositionLoading } = useStudioPlaybackContext();
+  const { compositionLoading: studioCompositionLoading, hostAiEditing } = useStudioPlaybackContext();
   const { t } = useStudioI18n();
-  const [hostAiEditing, setHostAiEditing] = useState(false);
   const { avatarCutoutProgress } = useDomEditActionsContext();
   const aiEditing = hostAiEditing || avatarCutoutProgress !== null;
   const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
@@ -83,17 +81,6 @@ export function PreviewPane({
   const selectedImage = window.parent !== window && domEditSelection
     ? resolveEditableVideoImage(domEditSelection, projectId)
     : null;
-
-  useEffect(() => {
-    setHostAiEditing(false);
-    const handleHostMessage = (event: MessageEvent<unknown>) => {
-      if (event.source !== window.parent) return;
-      const nextAiEditing = parseHostAiEditingMessage(event.data, projectId);
-      if (nextAiEditing !== null) setHostAiEditing(nextAiEditing);
-    };
-    window.addEventListener("message", handleHostMessage);
-    return () => window.removeEventListener("message", handleHostMessage);
-  }, [projectId]);
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {

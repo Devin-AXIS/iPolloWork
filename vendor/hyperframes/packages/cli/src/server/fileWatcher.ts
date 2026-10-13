@@ -1,12 +1,24 @@
-import { lstatSync, readdirSync, watch, type Dirent, type FSWatcher } from "node:fs";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { lstatSync, readFileSync, readdirSync, watch, type Dirent, type FSWatcher } from "node:fs";
+import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import {
   affectsProjectSignature,
   STUDIO_SIGNATURE_MANIFEST_PATHS,
+  DELETED_VERSION, fileContentVersion,
 } from "@hyperframes/studio-server";
 
 export type FileChangeListener = (relativePath: string) => void;
+
+/** Watch events may describe a growing 500 MB movie. Never hash media on the SSE thread. */
+export function readWatchedFileVersion(path: string): string | null {
+  try {
+    const info = lstatSync(path);
+    if (!info.isFile() || info.size > 2_000_000 || !/\.(?:html|css|[cm]?js|json|svg|tsx?|jsx|md)$/i.test(extname(path))) return null;
+    return fileContentVersion(readFileSync(path));
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "ENOENT" ? DELETED_VERSION : null;
+  }
+}
 
 export interface ProjectWatcher {
   addListener(fn: FileChangeListener): void;

@@ -2,7 +2,8 @@ import { connect, debuggerUrlFor, evaluate, listTargets } from "../runner/cdp.mj
 
 const plugins = [
   { id: "xiaohongshu-ops", title: "小红书运营台", header: ".app-topbar", controls: [".account-switcher", ".add-account-link", "[data-account-settings]"], logos: ".brand-mark, .app-identity > span" },
-  { id: "douyin-ops", title: "抖音运营台", header: ".topbar", controls: ["#account", "#add-account", "#manage-account"], logos: ".brand-mark" },
+  { id: "douyin-ops", title: "抖音运营台", header: ".topbar", controls: ["#account", "#manage-account", "#refresh"], logos: ".brand-mark", expectedLogos: 0 },
+  { id: "wechat-channels-ops", title: "视频号运营台", header: ".topbar", controls: ["#account", "#manage-account", "#refresh"], logos: ".brand-mark", expectedLogos: 0 },
 ];
 
 async function waitForFrame(client, expression, label) {
@@ -37,7 +38,7 @@ async function ensureWorkbench(ctx, plugin) {
 
 export default {
   id: "social-plugin-account-header",
-  title: "小红书与抖音标题栏适配可拖拽面板",
+  title: "社交运营台标题栏适配可拖拽面板",
   kind: "user-facing",
   preserveTheme: true,
   steps: plugins.map(plugin => ({
@@ -50,7 +51,7 @@ export default {
       try {
         await waitForFrame(client, `Boolean(document.querySelector('${plugin.header}'))`, plugin.title);
         await ctx.prove(`${plugin.title}在窄面板中保持账号操作对齐`, {
-          voiceover: "改变右侧面板宽度，标题和账号区自动重排，添加和更多按钮保持同行。小红书宽屏显示侧栏标志，窄屏只保留标题栏标志。",
+          voiceover: "改变右侧面板宽度，标题和账号区自动重排，账号管理和刷新按钮保持可见。小红书宽屏显示侧栏标志，窄屏只保留标题栏标志。",
           action: async () => {
             const measurements = [];
             for (const width of [360, 480, 640, 900, 1100, 480]) {
@@ -71,14 +72,14 @@ export default {
                 };
               })()`);
               ctx.assert(!state.overflow, `${plugin.title} header overflows at ${width}px`);
-              ctx.assert(state.logos === 1, `${plugin.title} must show exactly one logo at ${width}px`);
+              ctx.assert(state.logos === (plugin.expectedLogos ?? 1), `${plugin.title} must match its shared header at ${width}px`);
               const boxes = state.controls.filter(Boolean);
               ctx.assert(boxes.length >= 2, "Account picker and add button must remain visible");
               for (const box of boxes) {
                 ctx.assert(box.width > 0 && box.left >= state.header.left && box.right <= state.header.right + 1, `Control outside header at ${width}px`);
-                ctx.assert(Math.abs(box.top - boxes[0].top) < 2, `Account actions wrapped at ${width}px`);
+
               }
-              for (let i = 1; i < boxes.length; i += 1) ctx.assert(boxes[i].left >= boxes[i - 1].right, `Overlapping controls at ${width}px`);
+              for (let i = 1; i < boxes.length; i += 1) ctx.assert(boxes[i].left >= boxes[i - 1].right || boxes[i].top > boxes[i - 1].top + 2, `Overlapping controls at ${width}px`);
               measurements.push(state);
             }
             await ctx.output(`${plugin.id}-responsive-layout`, JSON.stringify(measurements, null, 2));

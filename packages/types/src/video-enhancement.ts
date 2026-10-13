@@ -3,6 +3,8 @@ import { z } from "zod";
 export const VIDEO_ENHANCEMENT_MAX_SECONDS = 180;
 export const VIDEO_ENHANCEMENT_MAX_BYTES = 500 * 1024 * 1024;
 export const VIDEO_ENHANCEMENT_MASK_SIZE = 64;
+export const VIDEO_ENHANCEMENT_GESTURE_FPS = 12;
+export const VIDEO_ENHANCEMENT_MAX_GESTURES = 360;
 export const videoEnhancementSessionSchema = z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
 export const videoEnhancementRectSchema = z.object({
   x: z.number().min(0).max(1), y: z.number().min(0).max(1),
@@ -20,23 +22,40 @@ export const videoEnhancementLayoutSchema = z.object({
   contentPosition: z.enum(["auto", "left", "right", "top", "bottom", "center"]).default("auto"),
 }).strict();
 export const videoEnhancementGestureSchema = z.object({
-  id: z.string().regex(/^gesture-[0-9]+$/), kind: z.enum(["point", "open_palm"]),
+  id: z.string().regex(/^gesture-[0-9]+$/), kind: z.enum(["point", "two_finger_point", "three_finger_point", "thumb_point", "open_palm"]),
   start: z.number().nonnegative(), end: z.number().positive(),
   confidence: z.number().min(0).max(1), target: pointSchema,
-}).strict().refine(value => value.end > value.start);
+  handId: z.string().regex(/^hand-[0-9]+$/).optional(),
+  handedness: z.enum(["left", "right", "unknown"]).optional(),
+  motion: z.enum(["hold", "support", "guide", "frame"]).optional(),
+  // Four samples/second retain the measured trajectory without storing model tensors.
+  path: z.array(pointSchema.extend({ time: z.number().nonnegative() }).strict()).max(721).optional(),
+  region: videoEnhancementRectSchema.optional(),
+}).strict().refine(value => value.end > value.start && (!value.path || value.path.every((point, index) =>
+  point.time >= value.start && point.time <= value.end && (index === 0 || point.time > value.path![index - 1]!.time))));
 export const videoEnhancementCueSchema = z.object({
   id: z.string().regex(/^enhance-[0-9]+$/),
-  kind: z.enum(["keyword", "number", "list", "steps", "comparison", "quote", "summary"]),
+  kind: z.enum(["keyword", "number", "list", "steps", "comparison", "quote", "summary", "chart"]),
   text: z.string().trim().min(1).max(160),
   detail: z.string().trim().max(480).optional(),
   items: z.array(z.string().trim().min(1).max(160)).max(4).optional(),
   start: z.number().nonnegative(), end: z.number().positive(), enabled: z.boolean(),
   placement: z.enum(["auto", "gesture", "left", "right", "top", "bottom", "center"]).optional(),
+  // Explicit correction in source (background) or content (PiP/split) coordinates.
+  anchor: pointSchema.optional(),
+  chart: z.array(z.object({ label: z.string().trim().min(1).max(80), value: z.number().finite() }).strict()).min(1).max(4).optional(),
 }).strict().refine(value => value.end > value.start && value.end - value.start >= .5);
 export const videoEnhancementPlacedCueSchema = videoEnhancementCueSchema.safeExtend({
   rect: videoEnhancementRectSchema.nullable(), reason: z.string().optional(),
   gesture: videoEnhancementGestureSchema.optional(),
-  avoidance: z.enum(["contour", "box", "source"]).optional(),
+  binding: z.object({
+    time: z.number().nonnegative(), precision: z.enum(["word", "segment"]),
+    phrase: z.string().max(160), behavior: z.enum(["locked", "follow", "reveal", "frame"]),
+    space: z.enum(["source", "content"]),
+    anchor: pointSchema.optional(),
+    path: z.array(pointSchema.extend({ time: z.number().nonnegative() }).strict()).max(721),
+  }).strict().optional(),
+  avoidance: z.enum(["contour", "box", "source", "gesture"]).optional(),
 });
 // Fixed 64x64 occupancy bitmap, four horizontal cells per hex digit.
 // Null marks an unreliable frame; callers must retain box protection.
@@ -48,9 +67,10 @@ export const videoEnhancementResultSchema = z.object({
   width: z.number().int().positive().max(4096), height: z.number().int().positive().max(4096),
   layout: videoEnhancementLayoutSchema.optional(),
   segments: z.array(videoEnhancementSegmentSchema).max(600),
+  words: z.array(videoEnhancementSegmentSchema).max(6000).optional(),
   people: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(20) }).strict()).max(400),
-  hands: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(2) }).strict()).max(721).default([]),
-  gestures: z.array(videoEnhancementGestureSchema).max(120).default([]),
+  hands: z.array(z.object({ time: z.number().nonnegative(), boxes: z.array(videoEnhancementRectSchema).max(2) }).strict()).max(VIDEO_ENHANCEMENT_MAX_SECONDS * VIDEO_ENHANCEMENT_GESTURE_FPS + 1).default([]),
+  gestures: z.array(videoEnhancementGestureSchema).max(VIDEO_ENHANCEMENT_MAX_GESTURES).default([]),
   masks: z.array(videoEnhancementMaskSchema).max(721).default([]),
   timings: z.object({ totalMs: z.number().int().nonnegative(), speechMs: z.number().int().nonnegative(), visionMs: z.number().int().nonnegative() }).strict().optional(),
   cues: z.array(videoEnhancementPlacedCueSchema).max(60),
@@ -63,6 +83,7 @@ export const videoEnhancementJobSchema = z.object({
   baseRevision: z.string().regex(/^[a-f0-9]{64}$/),
   createdAt: z.number(), result: videoEnhancementResultSchema.optional(),
   appliedRevision: z.string().optional(),
+  workflowBeforeFile: z.string().regex(/^before-compose-[a-f0-9-]{36}\.html$/).optional(),
 });
 export const videoEnhancementStatusSchema = z.object({ ready: z.boolean(), message: z.string(), gesturesReady: z.boolean().default(false), segmentationReady: z.boolean().default(false) });
 export const videoEnhancementStartSchema = z.object({
@@ -76,6 +97,7 @@ export const videoEnhancementReadSchema = z.object({ sessionId: videoEnhancement
 export const videoEnhancementApplySchema = videoEnhancementJobInputSchema.extend({
   cues: z.array(videoEnhancementCueSchema).min(1).max(60),
   layout: videoEnhancementLayoutSchema.optional(),
+  prepareForWorkflow: z.boolean().default(false),
 }).strict();
 export const videoEnhancementPreviewSchema = videoEnhancementJobInputSchema.extend({
   cues: z.array(videoEnhancementCueSchema).max(60).optional(),

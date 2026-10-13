@@ -32,6 +32,31 @@ async function recipeFixture(componentId = "media-hero") {
 }
 
 const roots: string[] = [];
+test("holds allow zero motion, active beats report exact fields without cascading stillness failures", async () => {
+  const { root, project } = await fixture();
+  const beat = { start: 0, end: 3, intent: "Read", focus: "Result", action: "Keep readable", result: "Visible result", targets: ["#scene"], animation: "hold:reading", motion: { start: 0, end: 0 } };
+  const save = (animation: string) => writeFile(join(project, "index.html"), `<main data-composition-id="main" data-duration="3"><section id="scene" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:reading" data-motion-pattern="reading" data-ipw-timing-source="estimated-reading" data-start="0" data-duration="3" data-track-index="0" data-ipw-beats='${JSON.stringify([{ ...beat, animation }])}'></section></main>`);
+  await save("hold:reading");
+  expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).issues.map(i => i.code)).not.toContain("invalid_scene_beats");
+  await save("custom:reveal");
+  const result = await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" });
+  expect(result.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: "invalid_scene_beats", message: expect.stringContaining("0.motion.end") })]));
+  expect(result.issues.map(i => i.code)).not.toContain("scene_still_interval_too_long");
+  expect(result.repairPlan).toEqual(expect.arrayContaining([expect.objectContaining({ code: "invalid_scene_beats", action: "repair-metadata" })]));
+});
+
+test("continuous original video permits media holds without encouraging cuts or artificial overlay motion", async () => {
+  const { root, project } = await fixture();
+  const beat = { start: 0, end: 12, intent: "Watch", focus: "Speaker", action: "Keep original shot", result: "Complete speech", targets: ["#original"], animation: "hold:media", motion: { start: 0, end: 0 } };
+  const save = (length: number, target = "#original") => writeFile(join(project, "index.html"), `<main data-composition-id="main" data-duration="12"><video id="original" src="assets/original.mp4" data-start="0" data-duration="${length}"></video><section id="scene" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:source-preservation" data-motion-pattern="source-video" data-ipw-timing-source="media" data-start="0" data-duration="12" data-track-index="1" data-ipw-beats='${JSON.stringify([{ ...beat, targets: [target] }])}'></section></main>`);
+  const check = () => checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" });
+  await save(12);
+  expect((await check()).issues.filter(i => ["invalid_scene_beats", "scene_hold_too_long", "scene_still_interval_too_long"].includes(i.code))).toEqual([]);
+  await save(3);
+  expect((await check()).issues.map(i => i.code)).toContain("scene_hold_too_long");
+  await save(12, "#missing");
+  expect((await check()).issues.map(i => i.code)).toContain("scene_still_interval_too_long");
+});
 const originalRegistryRoot = process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
 const originalCatalogRoot = process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT;
 const originalComponentLibrary = process.env.HYPERFRAMES_COMPONENT_LIBRARY;
