@@ -8,6 +8,16 @@ export const videoLiveGenerationSchema = z.object({
 });
 export type VideoLiveGeneration = z.infer<typeof videoLiveGenerationSchema>;
 
+/** Host-owned text opening; publication is restricted to an untouched video scaffold. */
+export const videoLiveOpeningInputSchema = z.object({
+  sourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/),
+  generationId: videoLiveGenerationSchema.shape.id,
+  title: z.string().trim().min(1).max(32),
+  supporting: z.string().trim().min(1).max(56),
+  duration: z.number().min(4).max(6).default(4),
+}).strict();
+export type VideoLiveOpeningInput = z.infer<typeof videoLiveOpeningInputSchema>;
+
 export function readVideoLiveGeneration(root: { getAttribute(name: string): string | null } | null): VideoLiveGeneration | null {
   if (!root) return null;
   const parsed = videoLiveGenerationSchema.safeParse({

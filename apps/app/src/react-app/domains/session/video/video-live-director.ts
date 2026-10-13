@@ -14,7 +14,7 @@ type Direction = {
 
 const openingAdvice = {
   template: "Use the selected template's existing opening and installed components; change only the requested content before publishing the first complete scene.",
-  typography: "Build the first complete scene with editable typography and installed motion components; avoid unnecessary external media generation. Preserve all explicitly requested media and narration.",
+  typography: "Prefer editable typography for the first complete scene. When the host fast-opening contract permits, call media/video_live_opening with real copy before authoring HTML or reading catalogs; otherwise use installed motion components. Preserve all explicitly requested media and narration.",
   diagram: "Build the first complete scene as a simple editable diagram using installed components, then expand it in subsequent scenes. Preserve all explicitly requested media and narration.",
   custom: "The opening needs bespoke content or specific media. Prepare only the first scene's required assets before publishing; defer later scenes' assets.",
   unclear: "",

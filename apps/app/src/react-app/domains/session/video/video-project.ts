@@ -266,6 +266,9 @@ export function videoTaskSystemContext(
   const projectPath = videoProjectPath(sessionId, workspaceRoot);
   return [
     "Video task contract:",
+    ...(options.liveGenerationId && !options.requireStoryboardReview ? [
+      `FIRST PLAYABLE SCENE takes priority over the normal stage order in video guides. Before reading full storyboard, component catalogs or whole-film music guides, read the current entry. If it is the untouched app scaffold and a text opening fits the request, publish it with media/video_live_opening: sourcePath="${projectDirectory}/index.html", generationId="${options.liveGenerationId}", title=<real subject, max 32 characters>, supporting=<real supporting phrase, max 56 characters>, duration=4..6. The host assembles and atomically saves the editable opening with local assets. Do not write HTML or install components for that opening. This is optional: preserve selected templates, no-intro/scene-specific requests, recipes-only restrictions, and required first-scene speech/captions/music/media; use normal first-scene production for those. A 409 means preserve existing content and continue normally, never reset the file to force this tool.`,
+    ] : []),
     "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once; it owns creative planning and routes to only the specialist needed now. Do not preload unrelated stages.",
     `Own only \`${projectPath}\`. Video Studio displays \`${projectPath}/index.html\` at http://localhost:${hyperframesStudioPort(sessionId)} and hot-reloads saves. Keep STORYBOARD.md, optional SCRIPT.md, assets and renders in this project. Never create or inspect another session's project.`,
     `For Video Studio tools that accept sessionId, use exactly "${sessionId}" when the engine does not forward native conversation context.`,

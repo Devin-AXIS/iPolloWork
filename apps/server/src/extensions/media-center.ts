@@ -16,6 +16,8 @@ import { z } from "zod";
 import { analyzeVideoMusic, prepareVideoSoundtrack, prepareVideoLanguageTiming, videoSoundtrackInput, videoLanguageTimingInput } from "./video-audio-analysis.js";
 import { videoRenderAction, videoPreviewCheck, analyzeVideoReference, videoRenderInput, videoPreviewInput, videoReferenceInput } from "./video-render.js";
 import { queryVideoRecipeCatalog } from "../hyperframes-catalog.js";
+import { videoLiveOpeningInputSchema } from "@ipollowork/types/hyperframes";
+import { publishVideoLiveOpening } from "../templates.js";
 
 // The Alibaba adapter stays internal to this module. The public action
 // contract is provider-neutral so Media Center can add providers without
@@ -964,6 +966,12 @@ export const MEDIA_EXTENSION_ACTIONS = [
       required: ["sourcePath"],
       additionalProperties: false,
     },
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID, action: "video_live_opening", effect: "write",
+    title: "Publish a fast editable video opening",
+    description: "Publish a complete 4–6 second text opening from the app's local scaffold with one call. Supply real title and supporting copy, not HTML. Only an untouched blank video scaffold can be replaced; existing content returns 409. Use only when a text opening fits the request and no first-scene narration, captions, music, specific media or recipes-only restriction is required. Then append scenes normally while it plays.",
+    inputSchema: z.toJSONSchema(videoLiveOpeningInputSchema, { io: "input" }),
   },
   ...[
     { action: "video_component_read", title: "Read editable video component JSON", description: "Read an installed component's current {content,copy,timing,look}, revision, schema and guide. elementId is the exact data-composition-src host id in the video source. Read before editing; retain stable ids.", schema: videoComponentReadInput },
@@ -2271,6 +2279,10 @@ export async function callMediaExtensionAction(
   args: JsonRecord,
   context: JsonRecord,
 ) {
+  if (action === "video_live_opening") {
+    const output = await publishVideoLiveOpening(config, workspaceForContext(config, context), args);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
   if (action === "video_recipe_catalog") {
     const output = await queryVideoRecipeCatalog(args);
     return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };

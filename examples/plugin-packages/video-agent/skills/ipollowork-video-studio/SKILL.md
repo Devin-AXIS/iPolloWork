@@ -7,6 +7,8 @@ description: Route the active iPolloWork video request to its current storyboard
 
 Read the active task contract and identify this turn's requested scope. Use [shared session boundaries](references/video.md) when not already known. Load only the matching professional Skill; their metadata is a menu, not a preload checklist.
 
+Live production overrides the saved-storyboard-first stage order below. Follow the task's fast-opening contract before loading specialist guides when eligible; otherwise publish one complete 3–6 second scene with its required assets/audio first. That scene is the motion audition. Build and save the remaining storyboard, media and soundtrack incrementally while appending complete scenes; preserve the published prefix. Script-review/script-only requests retain their normal stop point.
+
 | Actual work now | Skill |
 | --- | --- |
 | Script, source coverage or narrative plan | `ipollowork-video-storyboard` |

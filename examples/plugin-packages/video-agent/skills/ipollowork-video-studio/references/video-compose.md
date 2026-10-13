@@ -1,5 +1,7 @@
 # iPolloWork Video Compose
 
+Live production uses the first complete 3–6 second scene as its motion audition, including a host-assembled text opening when the task permits `media/video_live_opening`. Publish before whole-film planning/catalog/media work and before full-film checks; the usual 8–15 second audition below is for non-live production. Preserve every published scene while appending. Required first-scene audio/media must be ready before publication.
+
 Use the saved storyboard, current entry and design/media/audio constraints. Before initial generation or substantial motion redesign read [motion principles](video-motion-principles.md); small edits read affected sections and preserve unrelated choreography. Storyboard, Voiceover and Soundtrack own their phases; existing artifacts do not request reloading them. Boundaries are in [video.md](video.md).
 
 ## Recipes and components

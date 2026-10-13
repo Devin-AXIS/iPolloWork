@@ -42,6 +42,10 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("one complete 3–6 second scene FIRST");
     expect(contract).toContain("ONLY the complete playable prefix");
     expect(contract).toContain("direct mid-generation feedback changes only unpublished content");
+    expect(contract).toContain("media/video_live_opening");
+    expect(contract.indexOf("FIRST PLAYABLE SCENE")).toBeLessThan(contract.indexOf("Read ipollowork-video-studio"));
+    expect(contract).toContain("never reset the file to force this tool");
+    expect(videoTaskSystemContext("review", undefined, null, { liveGenerationId: "generation-1", requireStoryboardReview: true })).not.toContain("media/video_live_opening");
     expect(videoTaskSystemContext("review", undefined, null, { liveGenerationId: "generation-1", requireStoryboardReview: true })).not.toContain('data-ipw-live-id="generation-1"');
   });
   test("validates playable publications and attaches a bounded prefix to steering", () => {

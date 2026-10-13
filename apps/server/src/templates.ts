@@ -33,6 +33,9 @@ import {
 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ApiError, isApiError } from "./errors.js";
+import { videoLiveOpeningInputSchema, type VideoLiveOpeningInput } from "@ipollowork/types/hyperframes";
+import { resolveWorkspaceFile } from "./extensions/storage.js";
+import { resolveWithinRoot } from "./paths.js";
 import pkg from "../package.json" with { type: "json" };
 
 const MAX_EXPANDED_BYTES = 200 * 1024 * 1024;
@@ -800,12 +803,24 @@ function sessionScaffoldManifest(
 function sessionScaffoldEntry(
   manifest: TemplateManifestV1,
   purpose: NonNullable<TemplateAuthoringInput["purpose"]>,
+  opening?: VideoLiveOpeningInput,
 ) {
   const authoring = purpose === "template-authoring";
-  const videoTitle = authoring ? "Untitled video template" : "Untitled video";
+  const videoTitle = opening ? escapeSvgText(opening.title) : authoring ? "Untitled video template" : "Untitled video";
   if (manifest.surface === "video") {
+    const duration = opening?.duration ?? 8;
+    const selector = opening ? "#live-opening " : "";
+    const sceneSelector = opening ? "#live-opening" : ".scene";
+    const beats = opening ? [
+      { start: 0, end: 1.4, intent: "Introduce the subject", focus: opening.title, action: "Reveal the title", result: "Subject is readable", targets: ["#live-opening h1"], animation: "custom:opening-title", motion: { start: .2, end: 1.3 } },
+      { start: 1.4, end: duration, intent: "Explain the subject", focus: opening.supporting, action: "Reveal the supporting phrase and move the frame", result: "Opening thought is complete", targets: ["#live-opening .eyebrow", "#live-opening .accent-orbit"], animation: "custom:opening-supporting", motion: { start: 1.4, end: duration - .7 } },
+    ] : [];
+    const customEvidence = { candidates: [{ componentId: "media-hero", limitation: "This text-only opening has no image subject; the media hero requires a real image asset." }], splitOrCombine: "Splitting or combining an image-based hero cannot preserve a text-only opening without introducing an unrelated image.", minimalScope: "Reuse the app's existing scaffold title reveal for one opening scene; subsequent scenes use the normal recipe workflow." };
+    const sceneMetadata = opening ? ` id="live-opening" data-ipw-scene="true" data-track-index="0" data-motion-pattern="progressive-build" data-ipw-timing-source="estimated-reading" data-ipw-component-decision="custom:asset-free title reveal from the app scaffold" data-ipw-custom-recipe-evidence="${escapeSvgText(JSON.stringify(customEvidence))}" data-ipw-beats="${escapeSvgText(JSON.stringify(beats))}"` : "";
+    const liveMetadata = opening ? ` data-ipw-live-id="${escapeSvgText(opening.generationId)}" data-ipw-live-status="generating" data-ipw-live-opening="${createHash("sha256").update(JSON.stringify(opening)).digest("hex")}"` : "";
+    const variables = opening ? escapeSvgText(JSON.stringify([{ id: "title", type: "string", label: "Title", default: opening.title }, { id: "accent", type: "color", label: "Accent", default: "#2563eb" }])) : `[{"id":"title","type":"string","label":"Title","default":"${videoTitle}"},{"id":"accent","type":"color","label":"Accent","default":"#2563eb"}]`;
     return `<!doctype html>
-<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"${videoTitle}"},{"id":"accent","type":"color","label":"Accent","default":"#2563eb"}]'>
+<html lang="en" data-composition-variables='${variables}'>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -825,12 +840,12 @@ function sessionScaffoldEntry(
   <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
 </head>
 <body>
-  <main data-composition-id="main" data-start="0" data-duration="8" data-width="1920" data-height="1080">
-    <section class="scene" data-track="visual" data-clip="intro" data-start="0" data-duration="8">
+  <main data-composition-id="main" data-start="0" data-duration="${duration}" data-width="1920" data-height="1080"${liveMetadata}>
+    <section class="scene${opening ? " clip" : ""}" data-track="visual" data-clip="intro" data-start="0" data-duration="${duration}"${sceneMetadata}>
       <div class="accent-orbit" aria-hidden="true"></div>
       <div class="title-wrap">
-        <p class="eyebrow">Reusable motion system</p>
-        <h1 data-var-text="title">${videoTitle}</h1>
+        <p class="eyebrow"${opening ? ' data-ipw-animation-reference="opening-supporting"' : ""}>${opening ? escapeSvgText(opening.supporting) : "Reusable motion system"}</p>
+        <h1 data-var-text="title"${opening ? ' data-ipw-animation-reference="opening-title"' : ""}>${videoTitle}</h1>
         <div class="rule" aria-hidden="true"></div>
       </div>
     </section>
@@ -839,13 +854,13 @@ function sessionScaffoldEntry(
   <script>
     const timeline = gsap.timeline({ paused: true });
     timeline
-      .fromTo(".scene", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power2.out" })
-      .fromTo(".title-wrap", { y: 72, opacity: 0 }, { y: 0, opacity: 1, duration: 1.1, ease: "power3.out" }, 0.2)
-      .fromTo(".rule", { scaleX: 0, transformOrigin: "left center" }, { scaleX: 1, duration: 0.8, ease: "power2.out" }, 0.7)
-      .fromTo(".accent-orbit", { scale: 0.84, rotate: -10, opacity: 0 }, { scale: 1, rotate: 0, opacity: 1, duration: 1.5, ease: "power3.out" }, 0.15)
-      .to(".accent-orbit", { scale: 1.06, rotate: 9, duration: 4.2, ease: "sine.inOut" }, 1.45)
-      .to(".title-wrap", { y: -18, duration: 4.2, ease: "sine.inOut" }, 1.45)
-      .to(".scene", { opacity: 0, duration: 0.7, ease: "power2.in" }, 7.3);
+      .fromTo("${sceneSelector}", { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power2.out" })
+      .fromTo("${selector}.title-wrap", { y: 72, opacity: 0 }, { y: 0, opacity: 1, duration: 1.1, ease: "power3.out" }, 0.2)
+      .fromTo("${selector}.rule", { scaleX: 0, transformOrigin: "left center" }, { scaleX: 1, duration: 0.8, ease: "power2.out" }, 0.7)
+      .fromTo("${selector}.accent-orbit", { scale: 0.84, rotate: -10, opacity: 0 }, { scale: 1, rotate: 0, opacity: 1, duration: 1.5, ease: "power3.out" }, 0.15)
+      ${opening ? '.fromTo("#live-opening .eyebrow", { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: .8, ease: "power2.out" }, 1.4)\n      ' : ""}.to("${selector}.accent-orbit", { scale: 1.06, rotate: 9, duration: ${opening ? duration - 2.15 : 4.2}, ease: "sine.inOut" }, 1.45)
+      .to("${selector}.title-wrap", { y: -18, duration: ${opening ? duration - 2.15 : 4.2}, ease: "sine.inOut" }, 1.45)
+      ${opening ? `.to({}, { duration: .001 }, ${duration - .001})` : `.to("${sceneSelector}", { opacity: 0, duration: 0.7, ease: "power2.in" }, ${duration - .7})`};
     window.__timelines = window.__timelines || {};
     window.__timelines.main = timeline;
   </script>
@@ -916,6 +931,41 @@ function sessionScaffoldEntry(
 </body>
 </html>
 `;
+}
+
+/** Publish an actual opening without a model-authored document or remote assets. */
+export async function publishVideoLiveOpening(config: ServerConfig, workspace: WorkspaceInfo, raw: unknown) {
+  if (config.readOnly) throw new ApiError(403, "read_only", "Workspace is read-only");
+  const input = videoLiveOpeningInputSchema.parse(raw);
+  const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
+  await resolveWithinRoot(workspace.path, input.sourcePath);
+  return withTemplateLock(`video-opening:${source.absolutePath}`, async () => {
+    const original = await readFile(source.absolutePath, "utf8");
+    const receipt = { sourcePath: input.sourcePath, generationId: input.generationId, openingDuration: input.duration,
+      next: "Opening published. Read index.html and append complete scenes after this frozen prefix; retain its scoped timeline, metadata, tokens and local GSAP. Finish storyboard and whole-film audio/checks before marking complete." };
+    const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+    if (original.includes(`data-ipw-live-opening="${fingerprint}"`)) return { ...receipt, reused: true };
+    const manifest = await readManifest(dirname(source.absolutePath));
+    const purpose = isTemplateAuthoringManifest(manifest) ? "template-authoring" : "artifact-delivery";
+    if (manifest.surface !== "video" || original !== sessionScaffoldEntry(manifest, purpose)) {
+      throw new ApiError(409, "video_opening_source_changed", "Fast opening requires the untouched app video scaffold. Preserve this project's existing content and use normal scene authoring.");
+    }
+    // Both assets are local and must exist before the publication becomes visible.
+    for (const path of ["assets/gsap.min.js", "design-tokens.css"]) {
+      const asset = resolveWorkspaceFile(workspace.path, `${input.sourcePath.slice(0, -10)}${path}`);
+      await resolveWithinRoot(workspace.path, asset.relativePath);
+      if (!(await stat(asset.absolutePath)).isFile()) throw new ApiError(409, "video_opening_asset_missing", `Missing ${path}`);
+    }
+    const staged = `${source.absolutePath}.${randomUUID()}.publication`;
+    try {
+      await writeFile(staged, sessionScaffoldEntry(manifest, "artifact-delivery", input), { flag: "wx" });
+      if (await readFile(source.absolutePath, "utf8") !== original) throw new ApiError(409, "video_opening_source_changed", "The video changed during publication; read it again and preserve those edits.");
+      await rename(staged, source.absolutePath);
+    } finally {
+      await rm(staged, { force: true });
+    }
+    return { ...receipt, reused: false };
+  });
 }
 
 async function writeSessionScaffoldPackage(
