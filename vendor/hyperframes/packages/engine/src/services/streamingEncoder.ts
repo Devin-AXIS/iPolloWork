@@ -36,7 +36,7 @@ import {
   formatFfmpegError,
   isExternalFfmpegInterruption,
 } from "../utils/runFfmpeg.js";
-import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import { ffmpegPathArgument, getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { SDR_CAPTURE_TO_BT709_FILTER, SDR_RGB_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
@@ -518,7 +518,7 @@ export async function spawnStreamingEncoder(
 
   const args = buildStreamingArgs(options, outputPath, gpuEncoder);
 
-  const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
+  const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args.map(ffmpegPathArgument), {
     stdio: ["pipe", "pipe", "pipe"],
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,

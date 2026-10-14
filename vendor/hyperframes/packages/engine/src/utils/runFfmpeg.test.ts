@@ -1,18 +1,48 @@
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   formatFfmpegError,
   isExternalFfmpegInterruption,
   runFfmpegPipeline,
+  runFfmpeg,
   ffmpegStatsReader,
 } from "./runFfmpeg.js";
+import { validJpeg } from "../services/__fixtures__/jpeg.js";
 
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
+
+it.skipIf(!HAS_FFMPEG || process.platform !== "win32")(
+  "extracts frames from a real long Windows input into a long output path",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "hf-long-path-"));
+    try {
+      const nested = join(directory, "media-".repeat(20), "renders-".repeat(16));
+      mkdirSync(nested, { recursive: true });
+      const input = join(nested, "source.jpg");
+      writeFileSync(input, validJpeg);
+      expect(input.length).toBeGreaterThanOrEqual(260);
+      const result = await runFfmpeg([
+        "-v",
+        "error",
+        "-i",
+        input,
+        "-frames:v",
+        "1",
+        "-y",
+        join(nested, "frame_%05d.png"),
+      ]);
+      expect(result.success, result.stderr).toBe(true);
+      expect(statSync(join(nested, "frame_00001.png")).size).toBeGreaterThan(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 describe("isExternalFfmpegInterruption", () => {
   const base = {
@@ -23,13 +53,23 @@ describe("isExternalFfmpegInterruption", () => {
   };
 
   it("recognizes a direct external termination signal", () => {
-    expect(isExternalFfmpegInterruption({ ...base, exitCode: null, signal: "SIGTERM" })).toBe(true);
+    expect(
+      isExternalFfmpegInterruption({
+        ...base,
+        exitCode: null,
+        signal: "SIGTERM",
+      }),
+    ).toBe(true);
   });
 
   it("does not broaden the retry signal to SIGKILL", () => {
-    expect(isExternalFfmpegInterruption({ ...base, exitCode: null, signal: "SIGKILL" })).toBe(
-      false,
-    );
+    expect(
+      isExternalFfmpegInterruption({
+        ...base,
+        exitCode: null,
+        signal: "SIGKILL",
+      }),
+    ).toBe(false);
   });
 
   it("recognizes ffmpeg's handled SIGTERM exit-255 signature", () => {
@@ -42,9 +82,12 @@ describe("isExternalFfmpegInterruption", () => {
   });
 
   it("does not classify an ordinary exit 255", () => {
-    expect(isExternalFfmpegInterruption({ ...base, stderr: "Encoder initialization failed" })).toBe(
-      false,
-    );
+    expect(
+      isExternalFfmpegInterruption({
+        ...base,
+        stderr: "Encoder initialization failed",
+      }),
+    ).toBe(false);
   });
 
   it("requires exit 255 when classification relies on ffmpeg stderr", () => {
@@ -77,7 +120,10 @@ describe("formatFfmpegError", () => {
   const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
 
   afterEach(() => {
-    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      configurable: true,
+    });
     if (originalFfmpegPath === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
     else process.env.HYPERFRAMES_FFMPEG_PATH = originalFfmpegPath;
   });
@@ -124,7 +170,10 @@ describe("formatFfmpegError", () => {
   });
 
   it("maps Windows invalid-image exit codes to an actionable architecture hint", () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
 
     expect(formatFfmpegError(3221225595, "")).toContain("wrong architecture");
   });
@@ -132,7 +181,10 @@ describe("formatFfmpegError", () => {
   it.each([3221225781, -1073741515])(
     "maps Windows DLL-not-found exit code %s to selected-path guidance",
     (exitCode) => {
-      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "platform", {
+        value: "win32",
+        configurable: true,
+      });
       process.env.HYPERFRAMES_FFMPEG_PATH = "/tools/ffmpeg.exe";
 
       const message = formatFfmpegError(exitCode, "");
@@ -164,12 +216,32 @@ function createSpawnSpy() {
 
 describe("runFfmpeg binary resolution", () => {
   const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
+  const originalPlatform = process.platform;
 
   afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform });
     vi.resetModules();
     vi.doUnmock("child_process");
     if (originalFfmpegPath === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
     else process.env.HYPERFRAMES_FFMPEG_PATH = originalFfmpegPath;
+  });
+
+  it("passes long source and frame output paths to the Windows executable", async () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    process.env.HYPERFRAMES_FFMPEG_PATH = "C:/tools/ffmpeg.exe";
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { runFfmpeg } = await import("./runFfmpeg.js");
+    const source = `C:/video/${"nested/".repeat(40)}avatar.webm`;
+    const output = `C:/video/${"nested/".repeat(40)}frame_%05d.png`;
+    expect((await runFfmpeg(["-i", source, "-y", output])).success).toBe(true);
+    expect(calls[0]?.args).toEqual([
+      "-i",
+      win32.toNamespacedPath(source),
+      "-y",
+      win32.toNamespacedPath(output),
+    ]);
   });
 
   it("spawns the configured absolute FFmpeg path when HYPERFRAMES_FFMPEG_PATH is set", async () => {
@@ -182,7 +254,10 @@ describe("runFfmpeg binary resolution", () => {
     const result = await runFfmpeg(["-version"]);
 
     expect(result.success).toBe(true);
-    expect(calls[0]).toEqual({ command: resolve("/tools/ffmpeg.exe"), args: ["-version"] });
+    expect(calls[0]).toEqual({
+      command: resolve("/tools/ffmpeg.exe"),
+      args: ["-version"],
+    });
   });
 });
 
@@ -283,7 +358,9 @@ describe("runFfmpegPipeline start failure", () => {
     const { runFfmpegPipeline: pipeline } = await import("./runFfmpeg.js");
 
     const startedAt = Date.now();
-    const pending = pipeline(["-i", "in"], ["-i", "pipe:0"], { timeout: 5_000 });
+    const pending = pipeline(["-i", "in"], ["-i", "pipe:0"], {
+      timeout: 5_000,
+    });
     consumer.emit("spawn");
     producer.emit("error", Object.assign(new Error("spawn EMFILE"), { code: "EMFILE" }));
     const result = await pending;

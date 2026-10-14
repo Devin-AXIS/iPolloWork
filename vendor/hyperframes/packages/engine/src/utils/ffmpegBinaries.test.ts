@@ -1,10 +1,51 @@
-import { resolve } from "node:path";
+import { resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertConfiguredFfmpegBinariesExist,
   getFfmpegBinary,
   getFfprobeBinary,
+  ffmpegPathArgument,
 } from "./ffmpegBinaries.js";
+
+describe("FFmpeg Windows long paths", () => {
+  const originalPlatform = process.platform;
+  const source = `C:/用户/video/${"nested/".repeat(36)}avatar-transparent.webm`;
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform });
+  });
+
+  it("extends long input, output sequence and UNC paths on Windows", () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    for (const value of [
+      source,
+      source.replace("avatar-transparent.webm", "frame_%05d.png"),
+      `\\\\server\\share\\${"nested\\".repeat(40)}out.mp4`,
+    ]) {
+      expect(ffmpegPathArgument(value)).toBe(win32.toNamespacedPath(value));
+      expect(ffmpegPathArgument(ffmpegPathArgument(value))).toBe(ffmpegPathArgument(value));
+    }
+  });
+
+  it("preserves options, filters, pipes, URLs and short paths", () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    for (const value of [
+      "-i",
+      "pipe:0",
+      "C:/video/out.mp4",
+      "renders/out.mp4",
+      `https://example.com/${"video/".repeat(50)}`,
+      `scale=1280:720,${"null,".repeat(60)}`,
+    ]) {
+      expect(ffmpegPathArgument(value)).toBe(value);
+    }
+  });
+
+  it("preserves paths on other platforms", () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
+    expect(ffmpegPathArgument(source)).toBe(source);
+  });
+});
 
 describe("ffmpeg binary env resolution", () => {
   const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
