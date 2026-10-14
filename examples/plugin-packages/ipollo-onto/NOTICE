@@ -23,3 +23,5 @@ contract; it includes this notice and the project's license. It does not
 contain the iPolloWork runtime or another product's application core.
 
 Modified distribution, 14 October 2026: imported from commit c209c8b8ebdb36773232632e83a02de52360882f. The host collection adds a bundled local server and PostgreSQL launcher, encrypted optional connection settings, and independent signed cloud packaging. Original business UI, PostgreSQL schema, project MCP permission boundaries, branding, and license are retained.
+
+- Distribution 0.1.6: run Electron-hosted SQLite services in Node mode using the bundled executable; no external runtime is required.

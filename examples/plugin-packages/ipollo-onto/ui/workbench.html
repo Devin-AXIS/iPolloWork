@@ -450,7 +450,7 @@
           if (!hostReady) {
             const host = await request('ui/initialize', {
               protocolVersion: '2025-11-21',
-              appInfo: { name: 'iPollo Onto', version: '0.1.5' },
+              appInfo: { name: 'iPollo Onto', version: '0.1.6' },
               appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] },
             })
             if (disposed) return

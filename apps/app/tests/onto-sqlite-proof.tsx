@@ -22,7 +22,7 @@ function Proof() {
     try {
       const response = await fetch('http://127.0.0.1:5399/' + kind, { method: 'POST' });
       if (!response.ok) throw new Error('验证操作失败');
-      setStatus(kind === 'update' ? '已通过宿主更新至 0.1.5，检查项目和数据仍在。' : '已重启插件服务，检查项目和数据仍在。');
+      setStatus(kind === 'update' ? '已通过宿主更新，检查项目和数据仍在。' : '已重启插件服务，检查项目和数据仍在。');
       setRevision(value => value + 1);
     } catch (error) { setStatus(error instanceof Error ? error.message : '验证操作失败'); }
     finally { setBusy(false); }

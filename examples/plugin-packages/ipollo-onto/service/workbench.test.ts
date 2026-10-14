@@ -1,14 +1,18 @@
 import { expect, test } from 'bun:test'
 import { mkdtemp, access } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import createService from './workbench.mjs'
 
 test('closed package starts without PostgreSQL or package managers and preserves exact data on restart', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ipollowork-onto-runtime-'))
-  const runtime = { storage: { dataDir }, plugin: { id: 'ipollo-onto', version: '0.1.5' } }
+  const runtime = { storage: { dataDir }, plugin: { id: 'ipollo-onto', version: '0.1.6' } }
   const originalPath = process.env.PATH
   process.env.PATH = ''
   let service = createService(runtime)
@@ -56,3 +60,37 @@ test('closed package starts without PostgreSQL or package managers and preserves
     expect(html).toContain('iPollo Onto')
   } finally { await service.dispose(); process.env.PATH = originalPath }
 }, 30000)
+
+const desktopRequire = createRequire(resolve(import.meta.dir, '../../../../apps/desktop/package.json'))
+let electron = process.env.IPOLLOWORK_ONTO_TEST_ELECTRON ?? ''
+if (!electron) { try { electron = desktopRequire('electron') } catch {} }
+test.skipIf(!electron || !existsSync(electron))('Electron host starts the closed SQLite package with an empty PATH', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ipollowork-onto-electron-'))
+  const serviceUrl = pathToFileURL(resolve(import.meta.dir, '../dist/package/service/workbench.mjs')).href
+  const script = `
+    import createService from ${JSON.stringify(serviceUrl)};
+    delete process.env.ELECTRON_RUN_AS_NODE;
+    const service = createService({storage:{dataDir:${JSON.stringify(dataDir)}}});
+    try {
+      const opened = await service.actions['open-workbench']();
+      const health = await fetch(opened.url + 'api/health').then(r => r.json());
+      const page = await fetch(opened.url).then(r => r.text());
+      if (!health.ok || !health.database.startsWith('SQLite ') || !page.includes('iPollo Onto')) throw new Error('Workbench not ready');
+      console.log('electron-sqlite-ready');
+    } finally { await service.dispose(); }
+  `
+  const result = await new Promise<{ code: number | null; output: string }>((resolveRun, reject) => {
+    const child = spawn(electron, ['--input-type=module', '-e', script], {
+      windowsHide: true, env: { ...process.env, PATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let output = ''
+    const timer = setTimeout(() => { child.kill(); reject(new Error('Electron test timed out')); }, 15000)
+    child.stdout.on('data', chunk => { output += chunk })
+    child.stderr.on('data', chunk => { output += chunk })
+    child.once('error', error => { clearTimeout(timer); reject(error) })
+    child.once('exit', code => { clearTimeout(timer); resolveRun({ code, output }) })
+  })
+  expect(result.output).toContain('electron-sqlite-ready')
+  expect(result.code).toBe(0)
+  await access(join(dataDir, 'onto.sqlite'))
+}, 20000)

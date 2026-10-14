@@ -1,6 +1,6 @@
 # iPollo Onto
 
-Version **0.1.5**, integrated in the iPolloWork plugin source collection from [upstream commit c209c8b](https://github.com/Devin-AXIS/iPollo-Onto/tree/c209c8b8ebdb36773232632e83a02de52360882f). Original branding, copyright, [LICENSE](LICENSE) and [NOTICE](NOTICE) are preserved.
+Version **0.1.6**, integrated in the iPolloWork plugin source collection from [upstream commit c209c8b](https://github.com/Devin-AXIS/iPollo-Onto/tree/c209c8b8ebdb36773232632e83a02de52360882f). Original branding, copyright, [LICENSE](LICENSE) and [NOTICE](NOTICE) are preserved.
 
 Install the complete cloud package, enable it, and open the workbench. It uses the host's built-in SQLite runtime and its own data file: no PostgreSQL server, Node.js or pnpm installation is required. Projects, typed tables, relations, graphs, documents, views, import, automation, and scoped MCP remain available. Connect project MCP through the host's native settings using the real project URL.
 

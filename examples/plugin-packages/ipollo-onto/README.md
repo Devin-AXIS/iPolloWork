@@ -2,7 +2,7 @@
 
 **iPollo 业务本体 · AI 原生企业业务底座**
 
-本目录是 iPolloWork 插件源码集合中的完整 Onto 应用，基于 [Devin-AXIS/iPollo-Onto](https://github.com/Devin-AXIS/iPollo-Onto/tree/c209c8b8ebdb36773232632e83a02de52360882f) 导入。当前分发版本 **0.1.5**。原作者、品牌、版权和 [LICENSE](LICENSE) 保留；修改内容记录在 [NOTICE](NOTICE)。
+本目录是 iPolloWork 插件源码集合中的完整 Onto 应用，基于 [Devin-AXIS/iPollo-Onto](https://github.com/Devin-AXIS/iPollo-Onto/tree/c209c8b8ebdb36773232632e83a02de52360882f) 导入。当前分发版本 **0.1.6**。原作者、品牌、版权和 [LICENSE](LICENSE) 保留；修改内容记录在 [NOTICE](NOTICE)。
 
 ## 用户安装
 

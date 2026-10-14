@@ -19,7 +19,9 @@ The host's generic launcher proof accepts `IPOLLOWORK_EVAL_WORKBENCHES` as a JSO
 
 ## Onto complete cloud package
 
-Client 0.50.18 adds explicit per-resource ui.sandbox forms/downloads/modals flags for embedded business apps. Other UI resources keep their existing sandbox unless they opt in; popup and top-navigation permissions remain unavailable.\n\nThe authoritative Onto source is examples/plugin-packages/ipollo-onto, imported from upstream commit c209c8b8ebdb36773232632e83a02de52360882f. Version 0.1.5 adds the complete frontend/backend and uses the host's built-in SQLite runtime by default. Its closed dist/package distribution requires no PostgreSQL installation, Node.js or package manager. Optional independent PostgreSQL projects retain the upstream connection path.
+Client 0.50.18 adds explicit per-resource ui.sandbox forms/downloads/modals flags for embedded business apps. Other UI resources keep their existing sandbox unless they opt in; popup and top-navigation permissions remain unavailable.
+
+The authoritative Onto source is examples/plugin-packages/ipollo-onto, imported from upstream commit c209c8b8ebdb36773232632e83a02de52360882f. Version 0.1.6 includes the complete frontend/backend and uses the host's built-in SQLite runtime by default. Its closed dist/package distribution requires no PostgreSQL installation, Node.js or package manager. Electron runs this service in Node mode using its bundled SQLite; Bun hosts use their bundled Bun executable. Optional independent PostgreSQL projects retain the upstream connection path.
 
 Onto's plugin-owned database, documents, encryption key and imported extensions are outside the versioned artifact. The same local workspace service is shared across host projects; conversation binding and MCP project/table scopes remain separate. Build with the package's locked dependencies and run both its domain tests and packaged Bun service test before signing a collection. Preserve the upstream license, attribution and compiled dependency notices.
 

@@ -35,7 +35,8 @@ export default function createService(runtime) {
     let failure = '';
     child = spawn(process.execPath, [resolve(root, 'runtime/src/server/index.mjs'), '--web'], {
       cwd: data, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
-      env: { ...process.env, BUN_BE_BUN: '1', PORT: '5711', DATABASE_URL: '', ONTO_DATA_SCOPE: scope,
+      env: { ...process.env, BUN_BE_BUN: '1', ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+        PORT: '5711', DATABASE_URL: '', ONTO_DATA_SCOPE: scope,
         ONTO_SQLITE_PATH: resolve(data, 'onto.sqlite'), DATA_SECRET_FILE: resolve(data, 'database.key'),
         DOCUMENT_FILES_DIR: resolve(data, 'document-files'), DATA_PLUGIN_DIR: resolve(data, 'extensions') },
     });

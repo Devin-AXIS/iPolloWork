@@ -39,6 +39,7 @@ const hostRequire = createRequire(resolve(repo, 'apps/app/package.json'));
 const { build } = createRequire(hostRequire.resolve('vite/package.json'))('esbuild');
 await build({ entryPoints: [resolve(root, 'src/server/index.ts')], bundle: true, format: 'esm', platform: 'node',
   target: 'node22', minify: true, external: ['bun:sqlite', 'pg-native'],
+  banner: { js: "import { createRequire as ontoCreateRequire } from 'node:module'; const require = ontoCreateRequire(import.meta.url);" },
   alias: { 'node:sqlite': resolve(root, 'scripts/sqlite-runtime.mjs') },
   outfile: resolve(output, 'runtime/src/server/index.mjs') });
 await mkdir(resolve(output, 'runtime/dist'), { recursive: true });
@@ -62,4 +63,4 @@ for (const pkg of await readdir(resolve(root, 'node_modules/.pnpm'), { withFileT
 }
 await writeFile(resolve(output, 'THIRD-PARTY-LICENSES.txt'), notices.join('\n'));
 await cp(resolve(root, 'ipollowork.plugin.json'), resolve(output, 'ipollowork.plugin.json'));
-console.log(JSON.stringify({ pluginId: 'ipollo-onto', version: '0.1.5', database: 'sqlite', output }));
+console.log(JSON.stringify({ pluginId: 'ipollo-onto', version: '0.1.6', database: 'sqlite', output }));
