@@ -10,7 +10,7 @@ import {
   projectExecutionSystemContext,
 } from "@ipollowork/types/work-items";
 
-import { readiPolloWorkWorkspaceConfig, writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
+import { disposeiPolloWorkWorkspaceConfigStore, readiPolloWorkWorkspaceConfig, writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import type { ServerConfig } from "./types.js";
 import { startServer } from "./server.js";
 import {
@@ -75,11 +75,52 @@ async function testContext(): Promise<{ root: string; config: ServerConfig }> {
 
 afterEach(async () => {
   for (const root of temporaryRoots.splice(0)) {
+    await disposeWorkItemStore(serverConfig(root));
+    await disposeiPolloWorkWorkspaceConfigStore(serverConfig(root));
+    // Bun retains prepared SQLite statements until collection on Windows.
+    if (process.platform === "win32") Bun.gc(true);
     await rm(root, { recursive: true, force: true });
   }
 });
 
 describe("work item store", () => {
+  test("agent presets remain reusable while edited conversation roles persist and reach execution", async () => {
+    const { config } = await testContext();
+    const workspace = config.workspaces[0];
+    const runtime = { engineId: DEFAULT_ENGINE_ID, model: null, mode: null, modelVariant: null };
+    const library = await listWorkTemplates(config, workspace);
+    const ids = ["content-operations", "data-analysis", "presentation-assistant", "product-planning", "knowledge-organizer"];
+    const presets = library.agentPresets.filter((preset) => ids.includes(preset.id));
+    expect(presets).toHaveLength(5);
+    expect(new Set(library.agentPresets.map((preset) => preset.id)).size).toBe(library.agentPresets.length);
+    const team = createDefaultProjectWorkspaceConfig();
+    team.agents.push(...presets.map((preset) => ({ ...preset, prompt: `${preset.prompt}\nConversation-specific delivery marker: ${preset.id}` })));
+    const saved = await writeConversationWorkflow(config, workspace, "preset_session", { runtime, expectedVersion: 0, config: team });
+    expect(saved.execution?.workflow?.source).toBe("custom");
+    await disposeWorkItemStore(config);
+    const reopened = await readProjectSessionWorkItem(config, workspace.id, "preset_session");
+    expect(reopened?.execution?.workflow?.config).toEqual(saved.execution?.workflow?.config);
+    if (!reopened?.execution) throw new Error("Persisted execution required");
+    const context = projectExecutionSystemContext(reopened.execution);
+    for (const id of ids) {
+      expect(context).toContain(`[project-agent:${id}]`);
+      expect(context).toContain(`Conversation-specific delivery marker: ${id}`);
+    }
+    expect(context).toContain("Skills: ipollowork-presentations");
+    expect(context).toContain("Plugins: design-agent");
+    expect((await listWorkTemplates(config, workspace)).agentPresets).toEqual(library.agentPresets);
+    const presentation = presets.find((preset) => preset.id === "presentation-assistant");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url)).json();
+    for (const skillId of presentation?.skillIds ?? []) {
+      const resource = manifest.resources.find((entry: { id: string }) => entry.id === skillId.split(":")[1]);
+      expect(resource?.type).toBe("skill");
+      expect(await Bun.file(new URL(`../../../examples/plugin-packages/design-agent/${resource.path}`, import.meta.url)).exists()).toBe(true);
+    }
+    const running = await bindProjectSessionExecution(config, workspace, "preset_session", { title: "Plan content", runtime });
+    await expect(writeConversationWorkflow(config, workspace, "preset_session", { runtime, expectedVersion: running.version, config: team })).rejects.toBeInstanceOf(WorkItemConflictError);
+    await disposeWorkItemStore(config);
+  });
+
   test("conversation work owns its method and engine while project supplies shared context", async () => {
     const { config } = await testContext();
     const workspace = config.workspaces[0];

@@ -45,6 +45,7 @@ type ProjectAgentInspectorProps = {
   projectModel: ModelRef;
   engineId: string | null | undefined;
   saving: boolean;
+  readOnly?: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (agent: ProjectAgent, primary: boolean) => void;
   onDelete: () => void;
@@ -81,7 +82,8 @@ function PluginIcon({ item }: { item: iPolloWorkPluginPackageItem }) {
 export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
   const [draft, setDraft] = React.useState<ProjectAgent | null>(props.agent);
   const [primary, setPrimary] = React.useState(props.isPrimary);
-  const [editing, setEditing] = React.useState(props.isNew);
+  const [isEditing, setEditing] = React.useState(props.isNew);
+  const editing = isEditing && !props.readOnly;
 
   React.useEffect(() => {
     if (!props.open) return;
@@ -193,7 +195,7 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
               <SheetTitle className="truncate">{draft.name}</SheetTitle>
               <SheetDescription className="mt-0.5 line-clamp-1">{draft.role || t("project_overview.agent_no_role")}</SheetDescription>
             </div>
-            {!editing ? (
+            {!editing && !props.readOnly ? (
               <Button
                 type="button"
                 variant="outline"
@@ -324,7 +326,7 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
           </div>
         </div>
 
-        {editing ? (
+        {editing && !props.readOnly ? (
           <SheetFooter className="flex-row items-center justify-between border-t border-dls-border/70 bg-dls-surface/72 px-6 py-4 backdrop-blur-xl">
             {props.canDelete ? <Button type="button" variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={props.saving} onClick={props.onDelete}><Trash2 className="size-4" />{t("common.delete")}</Button> : <span />}
             <div className="flex items-center gap-2">

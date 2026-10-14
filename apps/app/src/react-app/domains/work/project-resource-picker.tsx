@@ -22,13 +22,15 @@ export type ProjectResourceOption = {
   icon: React.ReactNode;
 };
 
-export function ProjectResourcePicker({ label, searchLabel, emptyLabel, testId, items, onAdd }: {
+export function ProjectResourcePicker({ label, searchLabel, emptyLabel, testId, items, onAdd, disabled = false, contentClassName }: {
   label: string;
   searchLabel: string;
   emptyLabel: string;
   testId: string;
   items: ProjectResourceOption[];
   onAdd: (ids: string[]) => void;
+  disabled?: boolean;
+  contentClassName?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
@@ -49,12 +51,13 @@ export function ProjectResourcePicker({ label, searchLabel, emptyLabel, testId, 
     <Popover open={open} onOpenChange={setPickerOpen}>
       <PopoverTrigger
         type="button"
+        disabled={disabled}
         data-testid={testId}
-        className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-[11px] font-medium text-dls-secondary transition-colors hover:bg-dls-hover hover:text-dls-text"
+        className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-[11px] font-medium text-dls-secondary transition-colors hover:bg-dls-hover hover:text-dls-text disabled:pointer-events-none disabled:opacity-50"
       >
         <Plus className="size-3.5" />{label}
       </PopoverTrigger>
-      <PopoverContent align="end" side="bottom" sideOffset={6} className="h-80 w-[min(22rem,calc(100vw-2rem))] gap-0 overflow-hidden p-px">
+      <PopoverContent align="end" side="bottom" sideOffset={6} className={cn("h-80 w-[min(22rem,calc(100vw-2rem))] gap-0 overflow-hidden p-px", contentClassName)}>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <Command items={items}>
             <CommandHeader>
