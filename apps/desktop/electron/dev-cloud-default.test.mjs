@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
+import { buildIfChanged } from "../scripts/dev-build-cache.mjs";
 
 const devScript = readFileSync(fileURLToPath(new URL("../scripts/electron-dev.mjs", import.meta.url)), "utf8");
 const iconScript = readFileSync(fileURLToPath(new URL("../scripts/generate-icons.mjs", import.meta.url)), "utf8");
@@ -16,6 +18,63 @@ const electronBuilderConfig = readFileSync(
   "utf8",
 );
 const workspacePackage = JSON.parse(readFileSync(fileURLToPath(new URL("../../../package.json", import.meta.url)), "utf8"));
+
+test("development build cache reuses outputs and invalidates edits, deletions, missing artifacts and failed builds", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "ipollowork-dev-cache-"));
+  const input = path.join(root, "src");
+  const output = path.join(root, "dist");
+  const source = path.join(input, "index.js");
+  const artifact = path.join(output, "index.js");
+  const lock = path.join(root, "lock.yaml");
+  let builds = 0;
+  const options = {
+    name: "fixture",
+    cacheFile: path.join(root, "cache.json"),
+    inputs: [input, lock],
+    outputs: [output],
+    build() {
+      builds++;
+      mkdirSync(output, { recursive: true });
+      writeFileSync(artifact, readFileSync(source));
+    },
+  };
+  try {
+    mkdirSync(input);
+    writeFileSync(source, "old");
+    writeFileSync(lock, "lock-1");
+    assert.equal(buildIfChanged(options), true);
+    assert.equal(buildIfChanged(options), false);
+    assert.equal(builds, 1);
+
+    const originalTime = statSync(source);
+    writeFileSync(source, "new");
+    utimesSync(source, originalTime.atime, originalTime.mtime);
+    assert.equal(buildIfChanged(options), true, "same-sized edits with preserved timestamps must rebuild");
+    assert.equal(readFileSync(artifact, "utf8"), "new");
+
+    const extra = path.join(input, "extra.js");
+    writeFileSync(extra, "extra");
+    assert.equal(buildIfChanged(options), true);
+    rmSync(extra);
+    assert.equal(buildIfChanged(options), true, "deleted inputs must invalidate the cache");
+    rmSync(artifact);
+    assert.equal(buildIfChanged(options), true, "missing nested artifacts must rebuild");
+    writeFileSync(lock, "lock-2");
+    assert.equal(buildIfChanged(options), true, "dependency changes must rebuild");
+
+    writeFileSync(source, "bad");
+    const previousStamp = readFileSync(options.cacheFile, "utf8");
+    assert.throws(() => buildIfChanged({ ...options, build() { throw new Error("failed"); } }), /failed/);
+    assert.equal(readFileSync(options.cacheFile, "utf8"), previousStamp, "failed builds must not be cached");
+    assert.equal(buildIfChanged(options), true);
+    writeFileSync(options.cacheFile, "invalid JSON");
+    assert.equal(buildIfChanged(options), true, "corrupt cache files are rebuilt");
+    assert.equal(buildIfChanged(options), false);
+    assert.equal(buildIfChanged({ ...options, force: true }), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("Electron development defaults to the configured iPolloCloud URL", () => {
   assert.match(devScript, /process\.env\.VITE_DEN_BASE_URL\?\.trim\(\) \|\| "http:\/\/i\.ipollo\.ai"/);

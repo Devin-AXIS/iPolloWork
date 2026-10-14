@@ -1,4 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { LoaderCircle } from "lucide-react";
+import { useStudioI18n } from "../../i18n";
 import { type DomEditSelection } from "./domEditing";
 import type {
   PreviewMouseDownOptions,
@@ -7,7 +9,7 @@ import type {
 import type { ApplyDomSelectionOptions } from "../../hooks/useDomSelection";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
-import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
+import { orientedOverlayRect, resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFlash";
 import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 import {
@@ -37,7 +39,6 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { STUDIO_MULTI_SELECTION_ENABLED } from "./manualEditingAvailability";
-import { getEditableUnitSelectionTarget } from "./domEditingElement";
 
 declare global {
   interface Window {
@@ -69,7 +70,8 @@ interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
-  onCanvasMouseDown: (event: PreviewSelectionPressEvent, options?: PreviewMouseDownOptions) => void;
+  onCanvasMouseDown: (event: PreviewSelectionPressEvent, options?: PreviewMouseDownOptions) =>
+    Promise<DomEditSelection | null | undefined> | void;
   onCanvasPointerMove: (
     event: React.PointerEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
@@ -145,6 +147,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onDeleteSelection,
   onApplyZIndex,
 }: DomEditOverlayProps) {
+  const { t } = useStudioI18n();
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const saveGesture = async (save: () => Promise<void> | void) => {
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await save();
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
@@ -187,13 +202,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const hoverSelectionRef = useRef(hoverSelection);
   hoverSelectionRef.current = hoverSelection;
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
-  onPathOffsetCommitRef.current = onPathOffsetCommit;
+  onPathOffsetCommitRef.current = (...args) => saveGesture(() => onPathOffsetCommit(...args));
   const onGroupPathOffsetCommitRef = useRef(onGroupPathOffsetCommit);
-  onGroupPathOffsetCommitRef.current = onGroupPathOffsetCommit;
+  onGroupPathOffsetCommitRef.current = (...args) => saveGesture(() => onGroupPathOffsetCommit(...args));
   const onBoxSizeCommitRef = useRef(onBoxSizeCommit);
-  onBoxSizeCommitRef.current = onBoxSizeCommit;
+  onBoxSizeCommitRef.current = (...args) => saveGesture(() => onBoxSizeCommit(...args));
   const onRotationCommitRef = useRef(onRotationCommit);
-  onRotationCommitRef.current = onRotationCommit;
+  onRotationCommitRef.current = (...args) => saveGesture(() => onRotationCommit(...args));
   const onStyleCommitRef = useRef(onStyleCommit);
   onStyleCommitRef.current = onStyleCommit;
   const onBlockedMoveRef = useRef(onBlockedMove);
@@ -305,7 +320,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const { flushNudge } = useDomEditNudge({
     selection,
     groupSelections,
-    allowCanvasMovement,
+    allowCanvasMovement: allowCanvasMovement && !saving,
     selectionRef,
     overlayRectRef,
     groupOverlayItemsRef,
@@ -392,11 +407,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
-    // A resolved hover target can begin moving on the SAME pointer press that
-    // selects it. This is especially important for inserted-effect children:
-    // requiring a completed click before their selection chrome exists makes
-    // the first drag look like it was ignored. Confirm the cached hover against
-    // a fresh synchronous hit so a stale hover never moves the wrong element.
+    // Resolve the press itself: the async hover cache may still describe the
+    // previous element, or be empty when the first drag starts.
     const iframe = iframeRef.current;
     const freshTarget = iframe
       ? getPreviewTargetFromPointer(
@@ -406,21 +418,17 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           activeCompositionPathRef.current,
         )
       : null;
-    const effectiveFreshTarget = freshTarget
-      ? (getEditableUnitSelectionTarget(freshTarget) ?? freshTarget)
-      : null;
-    const candidate = hoverSelectionRef.current;
-    if (
-      candidate &&
-      hoverRect &&
-      effectiveFreshTarget === candidate.element &&
-      candidate.capabilities.canApplyManualOffset
-    ) {
-      onSelectionChangeRef.current(candidate, {
-        revealPanel: false,
-        previewInteraction: "primary",
-      });
-      gestures.startGesture("drag", event, { selection: candidate, rect: hoverRect });
+    if (freshTarget && iframe) {
+      const canvas = event.currentTarget;
+      event.preventDefault();
+      event.stopPropagation();
+      canvas.setPointerCapture(event.pointerId);
+      void Promise.resolve(onCanvasMouseDown(event, { preferClipAncestor: false })).then((candidate) => {
+        if (!candidate) return;
+        if (!canvas.hasPointerCapture(event.pointerId) || savingRef.current || !candidate.capabilities.canApplyManualOffset) return;
+        const rect = orientedOverlayRect(canvas, iframe, candidate.element);
+        gestures.startGesture("drag", event, { selection: candidate, rect, captureTarget: canvas });
+      }).catch((error) => console.warn("[Studio] Canvas selection failed", error));
       return;
     }
 
@@ -517,6 +525,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
+        if (savingRef.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
         // Selection chrome owns pointer-down so an already-selected child can
         // drag immediately. A stationary press is retargeted on pointer-up by
@@ -546,7 +559,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         <DomEditGroupChrome
           groupOverlayItems={groupOverlayItems}
           groupBounds={groupBounds}
-          allowCanvasMovement={allowCanvasMovement}
+          allowCanvasMovement={allowCanvasMovement && !saving}
           groupCanMove={groupCanMove}
           gestures={gestures}
           onBoxMouseDown={suppressBoxMouseDown}
@@ -557,7 +570,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         <DomEditSelectionChrome
           selection={selection}
           overlayRect={overlayRect}
-          allowCanvasMovement={allowCanvasMovement}
+          allowCanvasMovement={allowCanvasMovement && !saving}
           cropOutlineInsetPx={cropOutlineInsetPx ?? undefined}
           boxRef={boxRef}
           boxChromeClass={boxChromeClass}
@@ -632,6 +645,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         compositionWidth={compRect.width}
         compositionHeight={compRect.height}
       />
+      {saving && (
+        <div role="status" data-canvas-save-state="saving"
+          className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 rounded-md bg-panel-bg px-3 py-2 text-xs text-panel-text shadow">
+          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+          {t("animation.saving")}
+        </div>
+      )}
     </div>
   );
 });

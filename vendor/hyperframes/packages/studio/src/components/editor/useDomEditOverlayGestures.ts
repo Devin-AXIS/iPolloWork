@@ -89,6 +89,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       selection?: DomEditSelection;
       rect?: OverlayRect | null;
       resizeHandle?: ResizeHandle;
+      captureTarget?: HTMLElement;
     },
   ) => _startGesture(kind, e, opts, options);
 
@@ -188,6 +189,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     if (g.kind === "drag") {
+      if (g.lastSnappedDx === undefined && Math.hypot(dx, dy) < BLOCKED_MOVE_THRESHOLD_PX) return;
       const sc = g.snapContext;
       // Bypass edge-snapping for rotated elements — the snap targets and the
       // snapped rect are axis-aligned, so snapping a rotated box's AABB shifts it

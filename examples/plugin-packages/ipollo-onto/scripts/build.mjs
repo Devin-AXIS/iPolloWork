@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,4 +63,6 @@ for (const pkg of await readdir(resolve(root, 'node_modules/.pnpm'), { withFileT
 }
 await writeFile(resolve(output, 'THIRD-PARTY-LICENSES.txt'), notices.join('\n'));
 await cp(resolve(root, 'ipollowork.plugin.json'), resolve(output, 'ipollowork.plugin.json'));
+// Windows copies preserve source timestamps; freshness must reflect build completion.
+await utimes(resolve(output, 'ipollowork.plugin.json'), new Date(), new Date());
 console.log(JSON.stringify({ pluginId: 'ipollo-onto', version: '0.1.6', database: 'sqlite', output }));

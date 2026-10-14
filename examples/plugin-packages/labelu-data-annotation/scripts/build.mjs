@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,4 +42,6 @@ await mkdir(output, { recursive: true });
 for (const name of ["app/dist", "service/dist", "ui", "skills", "LICENSE-THIRD-PARTY.txt", "NOTICE.txt", "ipollowork.plugin.json"]) {
   await cp(resolve(root, name), resolve(output, name), { recursive: true });
 }
+// Windows copies preserve source timestamps; freshness must reflect build completion.
+await utimes(resolve(output, "ipollowork.plugin.json"), new Date(), new Date());
 process.stdout.write(`Built bundled plugin: ${output}\n`);

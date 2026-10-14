@@ -264,7 +264,7 @@ describe("timeline manifest translation", () => {
     document.body.innerHTML = `
       <main data-composition-id="main" data-composition-file="index.html">
         <section id="scene-hook" data-start="0" data-duration="3.2">
-          <div class="hero-copy">
+          <div class="hero-copy" data-hidden>
             <div class="eyebrow">Introducing</div>
             <h1>Launch what matters</h1>
             <p>Move work forward.</p>
@@ -285,9 +285,26 @@ describe("timeline manifest translation", () => {
     const title = hierarchy.children.find((child) => child.selector === "h1");
 
     expect(hero).toBeDefined();
+    expect(hero?.hidden).toBe(true);
     expect(title).toBeDefined();
     expect(hierarchy.parentMap.get(hero!.id)).toBe("scene-hook");
     expect(hierarchy.parentMap.get(title!.id)).toBe(hero!.id);
+  });
+
+  test("keeps timed children under their actual untimed parent group", () => {
+    document.body.innerHTML = `<main data-composition-id="main" data-composition-file="index.html">
+      <section id="scene" data-start="0" data-duration="10">
+        <div data-hf-id="panel" class="panel"><p id="animated" data-start="0" data-duration="10">Animated caption</p></div>
+      </section></main>`;
+    const scene: ClipManifestClip = { ...MANIFEST_CLIP, id: "scene" };
+    const animated: ClipManifestClip = { ...MANIFEST_CLIP, id: "animated" };
+    const hierarchy = collectDomClipChildren(document, [scene, animated], new Map([
+      [scene, document.getElementById("scene")!],
+      [animated, document.getElementById("animated")!],
+    ]));
+    expect(hierarchy.parentMap.get("panel")).toBe("scene");
+    expect(hierarchy.parentMap.get("animated")).toBe("panel");
+    expect(hierarchy.children.some((child) => child.id === "animated")).toBe(false);
   });
 
   test("keeps descendants under their nearest resolved timed host", () => {

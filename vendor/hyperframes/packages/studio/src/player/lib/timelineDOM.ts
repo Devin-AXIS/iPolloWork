@@ -303,14 +303,21 @@ export function collectDomClipChildren(
       return sourceFile ? [[clip.id, sourceFile] as const] : [];
     }),
   );
-  const resolvedHostElements = new Set(resolvedClipHosts.values());
+  const resolvedHostIds = new Map<Element, string>();
+  for (const [clip, element] of resolvedClipHosts) {
+    if (clip.id) resolvedHostIds.set(element, clip.id);
+  }
 
   const collect = (parentEl: Element, parentId: string, hostId: string) => {
     for (const child of Array.from(parentEl.children)) {
       // A resolved timed host owns its own descendant tree. Crossing this
       // boundary would attach those descendants to an earlier outer clip; the
       // global identity de-duplication would then keep the wrong timing forever.
-      if (resolvedHostElements.has(child)) continue;
+      const timedChildId = resolvedHostIds.get(child);
+      if (timedChildId) {
+        if (timedChildId !== parentId) parentMap.set(timedChildId, parentId);
+        continue;
+      }
       let childParentId = parentId;
       try {
         const selector = getTimelineElementSelector(child);
@@ -345,6 +352,7 @@ export function collectDomClipChildren(
               id: treeId,
               domId,
               hfId,
+              hidden: child.hasAttribute("data-hidden"),
               selector,
               selectorIndex,
               sourceFile,
