@@ -489,6 +489,7 @@ electronChild = run(developmentElectronExecutable ?? pnpmCmd, developmentElectro
   env: {
     ...process.env,
     IPOLLOWORK_NODE_BIN: process.env.IPOLLOWORK_NODE_BIN?.trim() || process.execPath,
+    IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: resolve(repoRoot, "examples/plugin-packages"),
     IPOLLOWORK_DEV_MODE: process.env.IPOLLOWORK_DEV_MODE ?? "1",
     IPOLLOWORK_DATA_DIR: process.env.IPOLLOWORK_DATA_DIR ?? defaultDevDataDir,
     IPOLLOWORK_ELECTRON_START_URL: resolvedStartUrl,

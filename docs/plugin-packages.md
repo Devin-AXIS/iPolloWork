@@ -4,16 +4,16 @@ For the complete Chinese developer handbook, see [`specs/plugin-developer-guide.
 
 iPolloWork plugin packages combine portable skills, MCP servers, services, UI contributions, authorization, and optional engine-native capabilities. Engine-specific behavior stays inside `engineBindings`; the package's portable capabilities do not depend on an engine directory layout.
 
-## Bundled operations plugins
+## Local development and cloud distribution
 
-The operations plugins below are maintained in the main iPolloWork plugin collection and shipped with desktop builds:
+The operations plugins below are maintained in the main iPolloWork source collection and distributed as independent cloud downloads:
 
 | Plugin | Authoritative source | Stable plugin ID |
 | --- | --- | --- |
 | Xiaohongshu Operations | `examples/plugin-packages/xiaohongshu-ops` | `xiaohongshu-ops` |
 | Douyin Operations | `examples/plugin-packages/douyin-ops` | `douyin-ops` |
 
-Their services, skills, UI, platform adapters and plugin-specific tests live beside the other built-in packages. The host still owns the generic installer, authorization, browser, scheduling and workbench integration. Stable plugin IDs and data directories let existing installations keep their accounts, drafts and private data when updating from the bundled catalog.
+Their services, skills, UI, platform adapters and plugin-specific tests live beside the other plugin sources. The host still owns the generic installer, authorization, browser, scheduling and workbench integration. Stable plugin IDs and data directories let existing installations keep their accounts, drafts and private data when updating from the cloud marketplace.
 
 The host's generic launcher proof accepts `IPOLLOWORK_EVAL_WORKBENCHES` as a JSON array of `{ pluginId, resourceId, label, requireText, external? }` objects. Run `plugin-workbench-launcher` against an app with those plugins installed. Plugin-specific proof flows live inside each package's `evals/flows` directory.
 
@@ -283,24 +283,49 @@ Public uses the existing Cloud extension resource API. Personal lists installed/
 
 Personal has a Check for updates button and checks the cloud directory when opened/refreshed, when focused after a minute, and every five minutes while open and signed in. Update appears only for a strictly newer semantic version of the same manifest ID. Public, Personal, and enterprise downloads share the verified archive parser and host import lifecycle. Updates retain enabled state, resource switches, authorization and user data. Checksum, identity, signature or compatibility failures preserve the installation.
 
-Build the closed distributions and prepare the inventory:
+### Development versus production
+
+- `pnpm dev` builds local closed packages, sets `IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR` to this checkout, and prepares local plugins in the existing development profile. Services, UI and Skills all use the same immutable local snapshot. Its version ends in `+dev.<content-hash>`; changing source and restarting dev refreshes it even without a release version bump. Disabled plugins/resources stay disabled; deliberately uninstalled development plugins stay absent. Reinstall one through the development catalog to restore it.
+- A headless developer can opt in with both `IPOLLOWORK_DEV_MODE=1` and `IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR=<absolute-source-collection>`. Local code is trusted as developer-owned code only in this explicit environment. Cloud imports cannot overwrite a source-owned development plugin. To test cloud installation, use a production profile or omit the local source directory flag. No source watching or mid-session module reload is promised.
+- Packaged desktops remove both development source variables. They ship only internal `reference-context`, do not build/embed business plugins, and return an empty local catalog. Public downloads and Personal updates continue through the existing signature-verified installation lifecycle. Existing installed plugins and data are retained; the source checkout never overrides them.
+- Desktop development and production keep their existing separate app/config/data profiles. Changing a source version for development does not mutate the source manifest or a production installed artifact. Restarting uses a new content-addressed snapshot; only the current and previous development snapshots are retained.
+
+### One-command cloud packages
+
+From the repository root:
 
 ```powershell
-pnpm --filter @ipollowork/types build
-pnpm --dir examples/plugin-packages/labelu-data-annotation build
-pnpm --dir examples/plugin-packages/operation-recorder build
-pnpm --dir examples/plugin-packages/short-video-studio build
-pnpm --dir examples/plugin-packages/xiaohongshu-ops build
-bun scripts/package-plugin-collection.mjs --out .ipollowork-dev/plugin-releases
+# All twenty public plugins: build closed runtimes, sign and verify.
+pnpm plugins:package
+# Only the edited plugin:
+pnpm plugins:package --plugin ipollo-onto
+# Choose a NEW output directory:
+pnpm plugins:package --plugin xiaohongshu-ops --out C:/releases/xhs-0.4.20
+# Inventory only; never generates unsigned release archives:
+pnpm plugins:package --plugin figma --inventory
 ```
 
-Without keys this writes a readiness inventory, not installable release archives. To create twenty individually installable signed archives, add `--keyring <private-local-json>`. This file maps each manifest publisher ID to `{ "privateKey": "<absolute-Ed25519-PEM-path>", "keyId": "<trusted-publisher-key-id>" }`. Keep it and the private keys outside the repository. Publisher identities, update IDs and host trust keys are preserved; this command does not publish or upload anything.
+The default output is `.ipollowork-dev/plugin-releases/<timestamp>/`. Each ready release contains individual `.ipollowork-plugin` files, `collection.json`, `SHA256SUMS`, `plugins-collection.zip` and its SHA-256 sidecar. The outer ZIP is for transport; upload the individual plugin files through the existing cloud import. An existing output directory is rejected. `collection.json` is written only after every signed package passes the real archive parser, host signature policy, identity check and original business-file hash comparison. Build/sign/validation failures stop the command and do not produce a ready collection or transport ZIP.
+
+Configure signing once in `~/.ipollowork/plugin-signing/release.json` (outside Git):
+
+```json
+{
+  "publisher": { "id": "zjy-web222", "name": "zjy-web222" },
+  "privateKey": "C:/Users/31939/.ipollowork/plugin-signing/social-plugins-2026.pem",
+  "keyId": "social-plugins-2026"
+}
+```
+
+This machine already has that config pointing at its existing Ed25519 private key. The script does not generate, export or upload the key. Other developers use their own host-trusted publisher/key, or `--config <private-local-release.json>`. Release config explicitly re-signs distribution under that publisher and includes original attribution/licenses while preserving plugin ID, version, update ID and business files. Alternatively `--keyring <private-local-json>` maps each original publisher ID to `{ "privateKey": "<absolute-PEM-path>", "keyId": "<trusted-key-id>" }` and preserves the original publisher.
+
+Before publishing changed code, increment the source manifest's `package.version` and any plugin-owned synchronized version fields as its AGENTS.md requires. The script never silently bumps a version: a released version is immutable and Personal only offers strictly newer versions. Build native plugins on each declared OS/architecture. This command prepares files locally; it never publishes or uploads.
 
 Upload each signed archive through the existing Cloud resource release process. Match `latestArtifact.manifestId` and `version` to its manifest. Cloud SHA-256 is the **archive byte digest** (`artifact.sha256` in collection.json / `archiveSha256` from the single-package signer), not the manifest's package-file checksum. Downloads retain the existing extension type and digest headers.
 
 Shared limits: 32 MiB expanded files, 40 MiB archive, 48 MiB base64 JSON upload, 512 files. Plugin Workshop retains its separate 10 MiB source-editing limit. Native distributions declare `package.compatibility.platforms` with OS and architecture; incompatible targets are rejected before installation. Xiaohongshu includes Sharp and its native dependencies for the build platform, complete UI assets and icon font, and runs with host Bun without a customer pnpm install. Build on each supported target before publishing that target's artifact.
 
-Data annotation is aligned with data-label (0.4.19 features plus distribution fixes, versioned here as 0.4.20). Its LabelU audio/video/interface and Word dependencies come from that branch and retain third-party notices. Onto remains an external-service connector: the unavailable data-service source is not bundled. Remote integrations require normal service/account authorization; host workflow packages require the corresponding host capabilities.
+Data annotation is aligned with data-label (0.4.19 features plus distribution fixes, versioned here as 0.4.20). Its LabelU audio/video/interface and Word dependencies come from that branch and retain third-party notices. Onto includes its imported frontend/backend and defaults to host-owned SQLite; no PostgreSQL setup is required (see the Onto section above). Remote integrations require normal service/account authorization; host workflow packages require the corresponding host capabilities.
 
 Verification: `bun evals/support/plugin-collection-verifier.mjs` signs all packages with a temporary test key, round-trips them through the production archive parser and host integrity checks, and verifies that this untrusted test key is rejected for installation. Test archives are deleted; they are not release packages.
 

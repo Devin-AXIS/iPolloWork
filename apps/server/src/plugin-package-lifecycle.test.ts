@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { beforeEach, afterEach, describe, expect, spyOn, test } from "bun:test";
 import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -29,6 +29,8 @@ import type { ServerConfig } from "./types.js";
 const WORKSPACE_ID = "ws_plugin_package";
 const ENGINE_ID = "opencode";
 const roots: string[] = [];
+const previousDevMode = process.env.IPOLLOWORK_DEV_MODE;
+beforeEach(() => { process.env.IPOLLOWORK_DEV_MODE = "1"; });
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledPackagesDir = process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
 
@@ -183,6 +185,8 @@ async function removeTestRoot(root: string): Promise<void> {
 }
 
 afterEach(async () => {
+  if (previousDevMode === undefined) delete process.env.IPOLLOWORK_DEV_MODE;
+  else process.env.IPOLLOWORK_DEV_MODE = previousDevMode;
   for (const root of roots) {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const config = serverConfig(root);

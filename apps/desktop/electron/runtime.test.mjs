@@ -287,3 +287,12 @@ describe("resolveiPolloWorkServerConfigPath", () => {
     );
   });
 });
+
+it("removes development plugin overrides from an embedded production environment", () => {
+  const target = { IPOLLOWORK_DEV_MODE: "1", IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR: "C:/old/source", IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: "C:/source" };
+  applyEmbeddedServerEnvironment(target, {});
+  assert.deepEqual(target, {});
+  applyEmbeddedServerEnvironment(target, { IPOLLOWORK_DEV_MODE: "1", IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: "C:/dev/source" });
+  assert.equal(target.IPOLLOWORK_DEV_MODE, "1");
+  assert.equal(target.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR, "C:/dev/source");
+});

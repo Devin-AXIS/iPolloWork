@@ -30,6 +30,21 @@ export const bundledPluginPackageIds = [
 
 export const defaultBundledPluginPackageIds = ["reference-context"] as const;
 
+// Only the development launcher enables repository packages. Release hosts
+// resolve user extensions exclusively through the signed installation store.
+export function usesLocalPluginPackages(): boolean {
+  return process.env.IPOLLOWORK_DEV_MODE === "1";
+}
+
+export function localPluginPackageRoot(): string | null {
+  const root = process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR?.trim();
+  return usesLocalPluginPackages() && root ? resolve(root) : null;
+}
+
+export function runtimeCatalogPluginPackageIds(): readonly string[] {
+  return usesLocalPluginPackages() ? catalogPluginPackageIds : [];
+}
+
 // Core Skills use the package projection machinery, but are not user extensions.
 export function isInternalPluginPackage(pluginId: string): boolean {
   return pluginId === "reference-context";
@@ -38,6 +53,9 @@ export function isInternalPluginPackage(pluginId: string): boolean {
 export const catalogPluginPackageIds = bundledPluginPackageIds.filter(id => !isInternalPluginPackage(id));
 
 export async function withPluginPackageCatalogRoot<T>(pluginId: string, operation: (root: string, source: string) => Promise<T>): Promise<T> {
+  if (!usesLocalPluginPackages() && !isInternalPluginPackage(pluginId)) {
+    throw new ApiError(404, "plugin_package_catalog_not_found", "Install this plugin from the cloud marketplace");
+  }
   return operation(await resolveBundledPluginPackageRoot(pluginId), `bundled:${pluginId}`);
 }
 
@@ -45,7 +63,9 @@ const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 
 export function bundledPluginPackageRoots(): string[] {
   const configured = process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR?.trim();
+  const local = localPluginPackageRoot();
   return [
+    ...(local ? [local] : []),
     ...(configured ? [resolve(configured)] : []),
     resolve(moduleDirectory, "../../plugin-packages"),
     resolve(moduleDirectory, "../../../plugin-packages"),

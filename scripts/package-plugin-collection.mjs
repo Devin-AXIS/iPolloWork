@@ -1,53 +1,142 @@
-// Release preparation only. Publication remains the existing cloud resource workflow.
+// Build, sign and verify cloud releases. Nothing is uploaded by this command.
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { catalogPluginPackageIds, resolveBundledPluginPackageRoot } from "../apps/server/src/plugin-package-catalog.ts";
-import { previewPluginPackage } from "../apps/server/src/plugin-package-lifecycle.ts";
-import { PLUGIN_PACKAGE_MAX_BYTES, PLUGIN_PACKAGE_MAX_FILES } from "../packages/types/src/plugins.ts";
+import { previewPluginPackage, assertPluginPackageSafeForImport } from "../apps/server/src/plugin-package-lifecycle.ts";
+import { withMaterializedPluginPackageUpload } from "../apps/server/src/plugin-package-upload.ts";
+import { readPluginPackageArchive } from "../apps/app/src/app/lib/plugin-package-archive.ts";
 
-const args = process.argv.slice(2);
+const repo = fileURLToPath(new URL("../", import.meta.url));
+const requireFromApp = createRequire(new URL("../apps/app/package.json", import.meta.url));
+const JSZip = requireFromApp("jszip");
+const usage = "pnpm plugins:package [--plugin <id>] [--out <new-directory>] [--config <release.json> | --keyring <publisher-keys.json>] [--inventory]";
 const options = new Map();
-for (let index = 0; index < args.length; index += 2) {
-  if (!["--out", "--keyring"].includes(args[index]) || !args[index + 1]) throw new Error("Usage: bun scripts/package-plugin-collection.mjs --out <directory> [--keyring <publisher-keys.json>]");
-  options.set(args[index], args[index + 1]);
+const args = process.argv.slice(2);
+for (let index = 0; index < args.length; index++) {
+  const flag = args[index];
+  if (flag === "--help") { console.log(usage); process.exit(0); }
+  if (flag === "--inventory") { options.set(flag, true); continue; }
+  if (!["--plugin", "--out", "--config", "--keyring"].includes(flag) || !args[index + 1] || args[index + 1].startsWith("--") || options.has(flag)) throw new Error(usage);
+  options.set(flag, args[++index]);
 }
-if (!options.has("--out")) throw new Error("--out is required");
-const output = resolve(options.get("--out"));
-const keys = options.has("--keyring") ? JSON.parse(await readFile(resolve(options.get("--keyring")), "utf8")) : null;
+if (options.has("--config") && options.has("--keyring")) throw new Error("Choose --config or --keyring");
+const ids = options.has("--plugin") ? [options.get("--plugin")] : [...catalogPluginPackageIds];
+if (ids.some(id => !catalogPluginPackageIds.includes(id))) throw new Error("Unknown plugin ID. Available: " + catalogPluginPackageIds.join(", "));
+const inventoryOnly = Boolean(options.get("--inventory"));
+const configPath = resolve(options.get("--config") ?? join(homedir(), ".ipollowork/plugin-signing/release.json"));
+const release = !inventoryOnly && !options.has("--keyring") ? JSON.parse(await readFile(configPath, "utf8").catch(error => {
+  if (error.code === "ENOENT") throw new Error(`Create local signing config at ${configPath}; see docs/plugin-packages.md. Private keys must stay outside the repository.`);
+  throw error;
+})) : null;
+const keys = !inventoryOnly && options.has("--keyring") ? JSON.parse(await readFile(resolve(options.get("--keyring")), "utf8")) : null;
+if (release && (!release.privateKey || !release.keyId || !release.publisher?.id || !release.publisher?.name)) throw new Error("Release config requires privateKey, keyId and publisher {id, name}");
+const output = resolve(options.get("--out") ?? join(repo, ".ipollowork-dev/plugin-releases", new Date().toISOString().replace(/[:.]/g, "-")));
+if (await stat(output).catch(error => { if (error.code === "ENOENT") return null; throw error; })) throw new Error("EEXIST: output directory already exists: " + output);
+const closed = new Set(["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]);
+function run(script, scriptArgs = []) {
+  const result = spawnSync(process.execPath, [script, ...scriptArgs], {
+    cwd: repo, encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024,
+    env: { ...process.env, BUN_BE_BUN: "1" },
+  });
+  if (result.status !== 0) throw new Error(`Failed: ${basename(script)}\n${result.stderr || result.stdout || result.error?.message}`);
+  return result.stdout;
+}
+// Preflight key paths before expensive builds. Installer verification remains
+// authoritative; an unknown publisher key cannot produce a ready collection.
+if (!inventoryOnly) {
+  for (const key of release ? [release] : Object.values(keys)) {
+    if (!key?.privateKey || !key?.keyId || !(await stat(resolve(key.privateKey))).isFile()) throw new Error("Signing config requires an existing privateKey file and keyId");
+  }
+}
+for (const id of ids) {
+  if (!inventoryOnly && closed.has(id)) {
+    console.error(`[plugins] Building ${id}`);
+    run(join(repo, "examples/plugin-packages", id, "scripts/build.mjs"));
+  }
+}
+// Bun on Windows can report EEXIST for an existing redirected Desktop root.
+await stat(dirname(output)).catch(async error => {
+  if (error.code !== "ENOENT") throw error;
+  await mkdir(dirname(output), { recursive: true });
+});
+await mkdir(output); // Never mix versions or overwrite a previous release.
+const stage = await mkdtemp(join(tmpdir(), "ipollowork-plugin-release-"));
 const entries = [];
-for (const pluginId of catalogPluginPackageIds) {
-  const root = await resolveBundledPluginPackageRoot(pluginId);
-  if (["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"].includes(pluginId) && !root.replaceAll("\\", "/").endsWith("/dist/package")) {
-    throw new Error("Build the closed distribution first: " + pluginId);
+const zip = new JSZip();
+try {
+  for (const id of ids) {
+    const source = await resolveBundledPluginPackageRoot(id, [join(repo, "examples/plugin-packages")]);
+    if (closed.has(id) && !source.replaceAll("\\", "/").endsWith("/dist/package")) throw new Error("Build the closed distribution first: " + id);
+    const original = await previewPluginPackage({ packageRoot: source });
+    const manifest = JSON.parse(await readFile(join(source, "ipollowork.plugin.json"), "utf8"));
+    const entry = { pluginId: id, name: manifest.name, version: manifest.package.version,
+      publisher: manifest.package.publisher?.id, updateId: manifest.package.updateId,
+      platforms: manifest.package.compatibility?.platforms ?? null, minimumHost: manifest.package.compatibility?.ipollowork ?? null };
+    if (inventoryOnly) { entries.push({ ...entry, files: original.files.length + 1 }); continue; }
+    const key = release ?? keys?.[entry.publisher];
+    if (!key?.privateKey || !key?.keyId) throw new Error("Missing signing configuration for publisher: " + entry.publisher);
+    const root = join(stage, id);
+    for (const file of original.files) {
+      const target = join(root, file.path); // Paths already validated by the host preview.
+      await mkdir(dirname(target), { recursive: true });
+      await copyFile(join(source, file.path), target);
+    }
+    // Carry legal files even when the source manifest does not declare them.
+    for (const [index, name] of ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE-THIRD-PARTY.txt", "NOTICE", "NOTICE.md", "NOTICE.txt"].entries()) {
+      if (original.files.some(file => file.path === name)) continue;
+      const legal = await stat(join(source, name)).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+      if (!legal?.isFile()) continue;
+      const path = "distribution/legal/" + name;
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await copyFile(join(source, name), join(root, path));
+      manifest.resources.push({ type: "file", id: "distribution-legal-" + index, path, required: true });
+    }
+    if (release) {
+      entry.originalPublisher = manifest.package.publisher;
+      await mkdir(join(root, "distribution"), { recursive: true });
+      await writeFile(join(root, "distribution/NOTICE.md"), `# Distribution attribution\n\nOriginal publisher: ${JSON.stringify(manifest.package.publisher)}\n\nOriginal source: ${JSON.stringify(manifest.source)}\n\nRepackaged and signed by ${release.publisher.name}. Original licenses and attribution continue to apply. Plugin ID, version, update ID and business files are preserved.\n`);
+      manifest.resources.push({ type: "file", id: "distribution-attribution", path: "distribution/NOTICE.md", required: true });
+      manifest.package.publisher = release.publisher;
+      entry.publisher = release.publisher.id;
+    }
+    delete manifest.package.signature;
+    delete manifest.package.checksum;
+    await writeFile(join(root, "ipollowork.plugin.json"), JSON.stringify(manifest, null, 2) + "\n");
+    const file = `${id}-${entry.version}.ipollowork-plugin`;
+    const packaged = JSON.parse(run(join(repo, "scripts/package-plugin.mjs"), ["--root", root, "--out", join(output, file), "--private-key", resolve(key.privateKey), "--key-id", key.keyId]).trim());
+    const bytes = await readFile(join(output, file));
+    const upload = await readPluginPackageArchive(new File([bytes], file), "install");
+    await withMaterializedPluginPackageUpload(upload, "install", async ({ packageRoot }) => {
+      const preview = await previewPluginPackage({ packageRoot });
+      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
+      if (safety.level !== "signed" || preview.manifest.id !== id || preview.manifest.package.version !== entry.version || preview.manifest.package.updateId !== entry.updateId) throw new Error("Release identity/signature verification failed: " + id);
+      for (const sourceFile of original.files) {
+        if (!preview.files.some(file => file.path === sourceFile.path && file.sha256 === sourceFile.sha256)) throw new Error("Business resource changed: " + id + "/" + sourceFile.path);
+      }
+    });
+    entry.artifact = { file, sha256: packaged.archiveSha256, bytes: packaged.archiveBytes };
+    entry.verification = "host-signature-and-original-files-verified";
+    entries.push(entry);
+    zip.file(file, bytes);
+    console.error(`[plugins] Verified ${id} ${entry.version}`);
   }
-  const preview = await previewPluginPackage({ packageRoot: root });
-  const metadata = preview.manifest.package;
-  const files = preview.files.length + 1;
-  const bytes = (await stat(join(root, "ipollowork.plugin.json"))).size
-    + (await Promise.all(preview.files.map(file => stat(join(root, file.path))))).reduce((sum, file) => sum + file.size, 0);
-  if (files > PLUGIN_PACKAGE_MAX_FILES || bytes + 2048 > PLUGIN_PACKAGE_MAX_BYTES) throw new Error("Package exceeds upload bounds: " + pluginId);
-  const publisher = metadata.publisher?.id;
-  if (keys && (!publisher || !keys[publisher]?.privateKey || !keys[publisher]?.keyId)) throw new Error("Missing release signing key for publisher: " + publisher);
-  entries.push({ pluginId, name: preview.manifest.name, version: metadata.version, publisher, updateId: metadata.updateId,
-    platforms: metadata.compatibility?.platforms ?? null, minimumHost: metadata.compatibility?.ipollowork ?? null,
-    externalService: null,
-    files, bytes, root });
-}
-await mkdir(output, { recursive: true });
-const packager = fileURLToPath(new URL("./package-plugin.mjs", import.meta.url));
-for (const entry of entries) {
-  if (keys) {
-    const key = keys[entry.publisher];
-    const archive = join(output, entry.pluginId + "-" + entry.version + ".ipollowork-plugin");
-    const result = spawnSync(process.execPath, [packager, "--root", entry.root, "--out", archive, "--private-key", resolve(key.privateKey), "--key-id", key.keyId],
-      { encoding: "utf8", windowsHide: true, env: { ...process.env, BUN_BE_BUN: "1" } });
-    if (result.status !== 0) throw new Error("Cannot package " + entry.pluginId + ": " + result.stderr);
-    const packaged = JSON.parse(result.stdout.trim());
-    entry.artifact = { file: archive, sha256: packaged.archiveSha256, bytes: packaged.archiveBytes };
+  const collection = JSON.stringify({ schemaVersion: 1, signed: !inventoryOnly, cloudPublished: false, plugins: entries }, null, 2) + "\n";
+  await writeFile(join(output, "collection.json"), collection);
+  if (!inventoryOnly) {
+    const sums = entries.map(entry => entry.artifact.sha256 + "  " + entry.artifact.file).join("\n") + "\n";
+    await writeFile(join(output, "SHA256SUMS"), sums);
+    zip.file("collection.json", collection); zip.file("SHA256SUMS", sums);
+    const bytes = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+    await writeFile(join(output, "plugins-collection.zip"), bytes);
+    await writeFile(join(output, "plugins-collection.zip.sha256"), createHash("sha256").update(bytes).digest("hex") + "  plugins-collection.zip\n");
   }
-  delete entry.root;
+  console.log(JSON.stringify({ output, plugins: entries.length, signed: !inventoryOnly }));
+} finally {
+  // mkdtemp creates this exact owned directory; no caller-controlled delete path.
+  await rm(stage, { recursive: true, force: true });
 }
-await writeFile(join(output, "collection.json"), JSON.stringify({ schemaVersion: 1, signed: Boolean(keys), plugins: entries }, null, 2) + "\n");
-console.log(JSON.stringify({ output, plugins: entries.length, signed: Boolean(keys), bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0) }));

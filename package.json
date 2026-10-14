@@ -10,6 +10,7 @@
     "document:video": "node scripts/document-to-design-compiler.mjs --target video",
     "readme:zh-hant": "node scripts/sync-readme-zh-hant.mjs",
     "readme:zh-hant:check": "node scripts/sync-readme-zh-hant.mjs --check",
+    "plugins:package": "bun scripts/package-plugin-collection.mjs",
     "package": "node scripts/ipollowork.mjs package",
     "package:dir": "node scripts/ipollowork.mjs package:dir",
     "package:windows": "cross-env IPOLLOWORK_WINDOWS_INSTALLER=1 pnpm --filter @ipollowork/desktop package:windows",
