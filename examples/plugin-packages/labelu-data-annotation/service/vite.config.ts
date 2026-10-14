@@ -17,18 +17,18 @@ export default defineConfig({
       await mkdir(target, { recursive: true });
       await cp(resolve(pdfjsRoot, "cmaps"), resolve(target, "cmaps"), { recursive: true });
       await cp(resolve(pdfjsRoot, "standard_fonts"), resolve(target, "standard_fonts"), { recursive: true });
-      await cp(resolve(pdfjsRoot, "legacy/build/pdf.worker.mjs"), resolve(serviceDist, "pdf.worker.mjs"));
+      await cp(resolve(pdfjsRoot, "legacy/build/pdf.worker.min.mjs"), resolve(serviceDist, "pdf.worker.mjs"));
     },
   }],
   ssr: {
-    noExternal: ["pdfjs-dist"],
+    noExternal: ["pdfjs-dist", "word-extractor", "yauzl", "saxes", "xmlchars", "fd-slicer", "buffer-crc32", "pend"],
   },
   build: {
     emptyOutDir: true,
-    minify: false,
+    minify: "esbuild",
     outDir: serviceDist,
     rollupOptions: {
-      external: [...builtinModules, ...builtinModules.map(name => `node:${name}`), "canvas", "path2d"],
+      external: [...builtinModules, /^node:/, "canvas", "path2d"],
       input: resolve(serviceRoot, "data-annotation.ts"),
       output: {
         entryFileNames: "data-annotation.mjs",

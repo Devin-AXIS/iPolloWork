@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { readActiveWorkContextId, type WorkContextId } from "@/app/lib/work-context";
 import {
-  downloadEnterpriseResource,
+  installCloudPluginResource,
   listEnterpriseResources,
   type EnterpriseResource,
 } from "@/app/lib/enterprise-connections";
@@ -74,10 +74,8 @@ export function ExtensionsView(props: ExtensionsViewProps) {
     if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
     setEnterpriseBusyId(resource.id);
     try {
-      const file = await downloadEnterpriseResource(resource, { connection: activeEnterprise });
-      const upload = await readPluginPackageArchive(file, "install");
-      await props.client.validatePluginPackageUpload(props.workspaceId, upload);
-      const result = await props.client.importPluginPackage(props.workspaceId, upload);
+      const result = await installCloudPluginResource(resource, props.client, props.workspaceId, { connection: activeEnterprise });
+      if (!result) return;
       setInstalledEnterpriseExtensionVersions((versions) => new Map(versions).set(result.result.pluginId, result.result.version));
       toast.success(`${resource.name} v${result.result.version}`);
     } catch (error) {

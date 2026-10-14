@@ -37,10 +37,12 @@ export default function createWorkbench(runtime) {
   async function start() {
     if (disposed) throw new Error('插件已关闭，请重新打开工作台。');
     if (await healthy()) return { url: `${origin}/accounts` };
-    await mkdir(appRoot, { recursive: true });
-    await cp(resolve(packageRoot, 'skills/xhs-ops-worker/app'), appRoot, { recursive: true });
+    const packagedRoot = resolve(packageRoot, 'runtime');
+    const packaged = await access(resolve(packagedRoot, 'dist/server.mjs')).then(() => true, () => false);
+    if (!packaged) await mkdir(appRoot, { recursive: true });
+    if (!packaged) await cp(resolve(packageRoot, 'skills/xhs-ops-worker/app'), appRoot, { recursive: true });
     const ready = resolve(appRoot, '.dependencies-ready');
-    if (!await access(ready).then(() => true, () => false)) {
+    if (!packaged && !await access(ready).then(() => true, () => false)) {
       // Install into the plugin's private runtime, never into the host workspace.
       await new Promise((resolveInstall, reject) => {
         const command = 'pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts --registry=https://registry.npmjs.org';
@@ -56,9 +58,10 @@ export default function createWorkbench(runtime) {
     }
     if (disposed) throw new Error('插件已关闭。');
     let failure = '';
-    child = spawn(node, [resolve(packageRoot, 'skills/xhs-ops-worker/scripts/start.mjs')], {
-      cwd: appRoot, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
-      env: { ...process.env, XHS_OPS_APP_ROOT: appRoot,
+    child = spawn(packaged && process.versions.bun ? process.execPath : node,
+      [packaged ? resolve(packagedRoot, 'dist/server.mjs') : resolve(packageRoot, 'skills/xhs-ops-worker/scripts/start.mjs')], {
+      cwd: packaged ? packagedRoot : appRoot, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
+      env: { ...process.env, ...(packaged && process.versions.bun ? { BUN_BE_BUN: '1' } : {}), XHS_OPS_APP_ROOT: packaged ? packagedRoot : appRoot,
         XHS_OPS_DATA_DIR: dataDir,
         XHS_OPS_HOST: new URL(origin).hostname, XHS_OPS_PORT: new URL(origin).port || '4790', XHS_OPS_ORIGIN: origin,
         XHS_OPS_EMBED_ORIGINS: 'http://localhost:* http://127.0.0.1:* file:',
@@ -73,7 +76,7 @@ export default function createWorkbench(runtime) {
       await new Promise(resolveWait => setTimeout(resolveWait, 200));
     }
     stopChild(child);
-    throw new Error('运营台启动超时，请确认 Node.js 22.22 或更新版本可用。');
+    throw new Error('运营台启动超时，请关闭后重试；如持续失败，请检查插件运行日志。');
   }
 
   function ensureStarted() {

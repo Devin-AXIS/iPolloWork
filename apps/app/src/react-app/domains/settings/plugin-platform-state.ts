@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type {
   iPolloWorkExtensionLocalization,
   iPolloWorkExtensionManifest,
@@ -219,6 +220,7 @@ export function formatPluginPlatformError(cause: unknown, localizedSummary: stri
   const conflictPaths = pluginConflictPaths(cause);
   if (localizedConflict && conflictPaths.length > 0) return `${localizedConflict} ${conflictPaths.join(", ")}`;
   const detail = cause instanceof Error ? cause.message.trim() : "";
+  if (["enterprise_resource_digest_mismatch", "cloud_plugin_package_identity_mismatch", "enterprise_resource_type_mismatch"].includes(detail)) return t("plugin_platform.error.cloud_package_mismatch");
   return detail && detail !== localizedSummary ? `${localizedSummary} ${detail}` : localizedSummary;
 }
 

@@ -7,7 +7,7 @@
  */
 
 import { spawn, type ChildProcess } from "child_process";
-import { getFfmpegBinary } from "./ffmpegBinaries.js";
+import { ffmpegPathArgument, getFfmpegBinary } from "./ffmpegBinaries.js";
 import { trackChildProcess } from "./processTracker.js";
 import {
   ManagedChildProcess,
@@ -143,7 +143,9 @@ function spawnFfmpeg(args: string[]): ChildProcess {
   // this Node opens a visible console window per spawn on Windows. A render
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
-  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
+  const ffmpeg = spawn(getFfmpegBinary(), args.map(ffmpegPathArgument), {
+    windowsHide: true,
+  });
   trackChildProcess(ffmpeg);
   return ffmpeg;
 }

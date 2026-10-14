@@ -154,6 +154,7 @@ function buildChildElements(
     });
     result.push({
       ...base,
+      hidden: domChild?.hidden ?? base.hidden,
       clipLabel: domChild?.clipLabel ?? base.clipLabel,
       key,
       start: clamped.start,
@@ -313,6 +314,7 @@ export function buildExpandedElementTree(
   domClipChildren: DomClipChild[] = [],
 ): TimelineElement[] {
   const topLevelElements = filterToTopLevel(elements, parentMap);
+  const authoredElements = new Map(elements.map((element) => [element.domId ?? element.id, element]));
 
   return topLevelElements.flatMap((topLevelElement) => {
     const topLevelId = topLevelElement.domId ?? topLevelElement.id;
@@ -362,6 +364,7 @@ export function buildExpandedElementTree(
         const childId = child.domId ?? child.id;
         const nestedChild = {
           ...child,
+          hidden: authoredElements.get(childId)?.hidden ?? child.hidden,
           compositionAncestors: nextAncestors,
           expandedDisplayHostKey: topLevelKey,
         };
@@ -387,10 +390,18 @@ export function applyTimelineLayerStateOverrides(
   elements: TimelineElement[],
   overrides: ReadonlyMap<string, Partial<Pick<TimelineElement, "hidden" | "timelineLocked">>>,
 ): TimelineElement[] {
-  return elements.map((element) => {
+  const resolved = elements.map((element) => {
     const override = overrides.get(element.key ?? element.id);
     return override ? { ...element, ...override } : element;
   });
+  const hiddenParents = new Set(
+    resolved.filter((element) => element.hidden).map((element) => element.domId ?? element.id),
+  );
+  return resolved.map((element) =>
+    element.compositionAncestors?.some((ancestor) => hiddenParents.has(ancestor))
+      ? { ...element, hidden: true }
+      : element,
+  );
 }
 
 export function useExpandedTimelineElements(): TimelineElement[] {

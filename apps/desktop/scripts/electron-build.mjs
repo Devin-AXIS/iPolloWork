@@ -258,10 +258,6 @@ run(nodeCmd, [resolve(__dirname, "package-video-resources.mjs"), "--bundled"], d
 run(nodeCmd, [resolve(repoRoot, "apps/server/script/prepare-video-models.mjs")], repoRoot, {
   IPOLLOWORK_VIDEO_MODELS_PATH: resolve(repoRoot, "apps/server/models"),
 });
-run(nodeCmd, [resolve(repoRoot, "examples/plugin-packages/operation-recorder/scripts/build.mjs")], repoRoot);
-for (const pluginId of ["labelu-data-annotation", "short-video-studio"]) {
-  run(nodeCmd, [resolve(repoRoot, `examples/plugin-packages/${pluginId}/scripts/build.mjs`)], repoRoot);
-}
 run(pnpmCmd, ["--filter", "ipollowork-server", "build"], repoRoot);
 stageBundledOpenCodeRuntime();
 // IPOLLOWORK_ELECTRON_BUILD tells Vite to emit relative asset paths so

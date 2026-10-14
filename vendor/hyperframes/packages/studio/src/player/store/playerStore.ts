@@ -363,6 +363,8 @@ interface ElementDeleteTarget {
 /** A DOM-only timeline child (no data-start) and its nesting context. */
 export interface DomClipChild {
   id: string;
+  /** Own authored eye state; ancestor hiding is derived by the expanded tree. */
+  hidden?: boolean;
   /** Actual DOM id when `id` is a selector/hf-id backed tree identity. */
   domId?: string;
   hfId?: string;

@@ -240,3 +240,17 @@ describe("plugin UI contributions", () => {
     });
   });
 });
+
+test("embedded form/download/print permissions are explicit and cannot enable navigation or arbitrary sandbox flags", () => {
+  const resource = { type: "ui", id: "workbench", path: "ui/workbench.html",
+    ui: { uri: "ui://sandbox/workbench", mimeType: "text/html;profile=mcp-app" } };
+  const manifest = { schemaVersion: 2, id: "sandbox-test", name: "Sandbox test", description: "Test",
+    source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+    package: { version: "1.0.0", updateId: "test/sandbox" }, resources: [resource] };
+  expect(parsePluginPackageManifest(manifest).resources[0].ui?.sandbox).toBeUndefined();
+  const allowed = { ...resource, ui: { ...resource.ui, sandbox: { forms: true, downloads: true, modals: true } } };
+  expect(parsePluginPackageManifest({ ...manifest, resources: [allowed] }).resources[0].ui?.sandbox)
+    .toEqual({ forms: true, downloads: true, modals: true });
+  expect(() => parsePluginPackageManifest({ ...manifest, resources: [{ ...allowed,
+    ui: { ...allowed.ui, sandbox: { topNavigation: true } } }] })).toThrow();
+});

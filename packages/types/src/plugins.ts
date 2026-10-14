@@ -1,6 +1,52 @@
 import { z } from "zod";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+function compareSemverIdentifiers(left: string, right: string): number {
+  const leftNumeric = /^\d+$/.test(left);
+  const rightNumeric = /^\d+$/.test(right);
+  if (leftNumeric && rightNumeric) return Number(left) - Number(right);
+  if (leftNumeric) return -1;
+  if (rightNumeric) return 1;
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+/** Semantic precedence ignores build metadata; invalid catalog versions are not upgrades. */
+export function comparePluginPackageVersions(left: string, right: string): number | null {
+  if (!SEMVER_RE.test(left) || !SEMVER_RE.test(right)) return null;
+  const leftWithoutBuild = left.split("+", 1)[0] ?? "";
+  const rightWithoutBuild = right.split("+", 1)[0] ?? "";
+  const leftPrereleaseIndex = leftWithoutBuild.indexOf("-");
+  const rightPrereleaseIndex = rightWithoutBuild.indexOf("-");
+  const leftVersion = leftPrereleaseIndex < 0 ? leftWithoutBuild : leftWithoutBuild.slice(0, leftPrereleaseIndex);
+  const rightVersion = rightPrereleaseIndex < 0 ? rightWithoutBuild : rightWithoutBuild.slice(0, rightPrereleaseIndex);
+  const leftPrerelease = leftPrereleaseIndex < 0 ? undefined : leftWithoutBuild.slice(leftPrereleaseIndex + 1);
+  const rightPrerelease = rightPrereleaseIndex < 0 ? undefined : rightWithoutBuild.slice(rightPrereleaseIndex + 1);
+  const leftCore = leftVersion.split(".").map(Number);
+  const rightCore = rightVersion.split(".").map(Number);
+  let coreComparison = 0;
+  for (let index = 0; index < 3; index += 1) {
+    coreComparison = (leftCore[index] ?? 0) - (rightCore[index] ?? 0);
+    if (coreComparison !== 0) break;
+  }
+  if (coreComparison !== 0) return coreComparison;
+  if (!leftPrerelease && !rightPrerelease) return 0;
+  if (!leftPrerelease) return 1;
+  if (!rightPrerelease) return -1;
+  const leftIdentifiers = leftPrerelease.split(".");
+  const rightIdentifiers = rightPrerelease.split(".");
+  const identifierCount = Math.max(leftIdentifiers.length, rightIdentifiers.length);
+  for (let index = 0; index < identifierCount; index += 1) {
+    const leftIdentifier = leftIdentifiers[index];
+    const rightIdentifier = rightIdentifiers[index];
+    if (leftIdentifier === undefined) return -1;
+    if (rightIdentifier === undefined) return 1;
+    const comparison = compareSemverIdentifiers(leftIdentifier, rightIdentifier);
+    if (comparison !== 0) return comparison;
+  }
+  return 0;
+}
+
 const COMPATIBILITY_RE = /^(?:\*|(?:\^|~|>=|<=|>|<)?\s*\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\s+(?:\|\||-)\s+(?:\^|~|>=|<=|>|<)?\s*\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)?$/;
 const LOCALE_RE = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 const ID_RE = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
@@ -25,6 +71,11 @@ export const imageSelectionSnapshotSchema = z.object({
   previewDataUrl: z.string().startsWith("data:image/png;base64,").max(35 * 1024 * 1024),
 });
 export type ImageSelectionSnapshot = z.infer<typeof imageSelectionSnapshotSchema>;
+// Native plugin payloads remain bounded; source-workshop limits are separate.
+export const PLUGIN_PACKAGE_MAX_BYTES = 32 * 1024 * 1024;
+export const PLUGIN_PACKAGE_MAX_ARCHIVE_BYTES = 40 * 1024 * 1024;
+export const PLUGIN_PACKAGE_MAX_UPLOAD_BYTES = 48 * 1024 * 1024;
+export const PLUGIN_PACKAGE_MAX_FILES = 512;
 export const PLUGIN_INSTALL_PACKAGE_EXTENSION = ".ipollowork-plugin";
 export const PLUGIN_SOURCE_ARCHIVE_EXTENSION = ".zip";
 export const pluginPackageArchiveFormatSchema = z.enum(["install", "source"]);
@@ -145,6 +196,13 @@ const uiResourceMetadataSchema = z.object({
     microphone: z.object({}).strict().optional(),
     geolocation: z.object({}).strict().optional(),
     clipboardWrite: z.object({}).strict().optional(),
+  }).strict().optional(),
+  // Explicit per-resource sandbox opt-in for embedded business applications.
+  // Script/origin isolation stays the same; no popup or navigation permission.
+  sandbox: z.object({
+    forms: z.boolean().optional(),
+    downloads: z.boolean().optional(),
+    modals: z.boolean().optional(),
   }).strict().optional(),
   prefersBorder: z.boolean().optional(),
 }).strict();
@@ -319,6 +377,10 @@ const packageSchema = z.object({
     name: z.string().min(1),
   }).strict().optional(),
   compatibility: z.object({
+    platforms: z.array(z.object({
+      os: z.enum(["win32", "darwin", "linux"]),
+      arch: z.enum(["x64", "arm64"]),
+    }).strict()).min(1).max(6).optional(),
     ipollowork: z.string().regex(COMPATIBILITY_RE, "must be a supported semantic-version range").optional(),
   }).strict().optional(),
   engines: z.array(z.string().regex(SIMPLE_ID_RE)).min(1).optional(),

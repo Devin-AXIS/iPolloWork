@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
+import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import type {
   PluginPromptCapabilitySummary,
   PluginUiResource,
@@ -31,6 +32,7 @@ import {
 } from "./plugin-package-manifest.js";
 import { parsePluginWorkshopDraftManifest, preparePluginWorkshopSourceBundle } from "./plugin-workshop-package.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
+import { localPluginPackageRoot, resolveBundledPluginPackageRoot, runtimeCatalogPluginPackageIds } from "./plugin-package-catalog.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 import { listBoundSessionEngines } from "./work-items.js";
 import serverPackage from "../package.json" with { type: "json" };
@@ -378,6 +380,11 @@ function satisfiesRange(version: string, range: string): boolean {
 
 function assertRuntimeCompatibility(manifest: PluginPackageManifest, engineAdapter?: PluginEngineAdapter): void {
   const compatibility = manifest.package?.compatibility;
+  if (compatibility?.platforms && !compatibility.platforms.some(target => target.os === process.platform && target.arch === process.arch)) {
+    throw new ApiError(409, "plugin_package_incompatible", "Plugin native runtime does not support this platform", {
+      os: process.platform, arch: process.arch, supportedPlatforms: compatibility.platforms,
+    });
+  }
   const supportedEngines = manifest.package?.engines;
   if (
     engineAdapter
@@ -749,10 +756,11 @@ async function snapshotPackage(
   config: ServerConfig,
   packageRoot: string,
   preview: PluginPackagePreview,
+  manifestOverride?: PluginPackageManifest,
 ): Promise<InstalledVersion> {
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const destinationRoot = artifactRoot(config, preview.manifest.id, preview.manifest.package.version);
-  const sourceManifest: unknown = JSON.parse(await readFile(resolveWithin(packageRoot, MANIFEST_FILE), "utf8"));
+  const sourceManifest: unknown = manifestOverride ?? JSON.parse(await readFile(resolveWithin(packageRoot, MANIFEST_FILE), "utf8"));
   const destinationManifestPath = join(destinationRoot, MANIFEST_FILE);
   if (await fileExists(destinationManifestPath)) {
     const existingManifest: unknown = JSON.parse(await readFile(destinationManifestPath, "utf8"));
@@ -1091,50 +1099,13 @@ function hasExecutableCapabilities(manifest: PluginPackageManifest): boolean {
     || Boolean(manifest.engineBindings?.some((binding) => binding.capabilities.some((capability) => capability.path || capability.packageName)));
 }
 
-function compareSemverIdentifiers(left: string, right: string): number {
-  const leftNumeric = /^\d+$/.test(left);
-  const rightNumeric = /^\d+$/.test(right);
-  if (leftNumeric && rightNumeric) return Number(left) - Number(right);
-  if (leftNumeric) return -1;
-  if (rightNumeric) return 1;
-  if (left === right) return 0;
-  return left < right ? -1 : 1;
-}
-
-function comparePackageVersions(left: string, right: string): number {
-  const leftWithoutBuild = left.split("+", 1)[0] ?? "";
-  const rightWithoutBuild = right.split("+", 1)[0] ?? "";
-  const leftPrereleaseIndex = leftWithoutBuild.indexOf("-");
-  const rightPrereleaseIndex = rightWithoutBuild.indexOf("-");
-  const leftVersion = leftPrereleaseIndex < 0 ? leftWithoutBuild : leftWithoutBuild.slice(0, leftPrereleaseIndex);
-  const rightVersion = rightPrereleaseIndex < 0 ? rightWithoutBuild : rightWithoutBuild.slice(0, rightPrereleaseIndex);
-  const leftPrerelease = leftPrereleaseIndex < 0 ? undefined : leftWithoutBuild.slice(leftPrereleaseIndex + 1);
-  const rightPrerelease = rightPrereleaseIndex < 0 ? undefined : rightWithoutBuild.slice(rightPrereleaseIndex + 1);
-  const coreComparison = compareVersions(versionTuple(leftVersion), versionTuple(rightVersion));
-  if (coreComparison !== 0) return coreComparison;
-  if (!leftPrerelease && !rightPrerelease) return 0;
-  if (!leftPrerelease) return 1;
-  if (!rightPrerelease) return -1;
-  const leftIdentifiers = leftPrerelease.split(".");
-  const rightIdentifiers = rightPrerelease.split(".");
-  const identifierCount = Math.max(leftIdentifiers.length, rightIdentifiers.length);
-  for (let index = 0; index < identifierCount; index += 1) {
-    const leftIdentifier = leftIdentifiers[index];
-    const rightIdentifier = rightIdentifiers[index];
-    if (leftIdentifier === undefined) return -1;
-    if (rightIdentifier === undefined) return 1;
-    const comparison = compareSemverIdentifiers(leftIdentifier, rightIdentifier);
-    if (comparison !== 0) return comparison;
-  }
-  return 0;
-}
-
 export function pluginPackageVersionChange(
   installedVersion: string | null,
   incomingVersion: string,
 ): PluginPackageVersionChange {
   if (!installedVersion) return "install";
-  const comparison = comparePackageVersions(incomingVersion, installedVersion);
+  const comparison = comparePluginPackageVersions(incomingVersion, installedVersion);
+  if (comparison === null) throw new ApiError(400, "plugin_package_version_invalid", "Plugin versions must use semantic versioning");
   if (comparison === 0) return "same";
   return comparison > 0 ? "upgrade" : "downgrade";
 }
@@ -1766,6 +1737,51 @@ export async function resolveInstalledPluginService(input: {
   };
 }
 
+/** Refresh local development code without weakening immutable cloud versions.
+ * Content-addressed dev snapshots also invalidate the existing service cache.
+ * Runs once per server startup; source edits take effect after restarting dev.
+ */
+export function prepareDevelopmentPluginPackage(config: ServerConfig, pluginId: string): Promise<void> {
+  return enqueueLifecycleMutation(config, async () => {
+    if (!runtimeCatalogPluginPackageIds().includes(pluginId)) {
+      throw new ApiError(403, "plugin_development_only", "Local plugin preparation is development-only");
+    }
+    const root = await resolveBundledPluginPackageRoot(pluginId);
+    const preview = await previewPluginPackage({ packageRoot: root });
+    assertGlobalRuntimeCompatibility(config, preview.manifest);
+    const state = await readState(config);
+    const current = state.packages[pluginId] ?? null;
+    if (!current && state.suppressedDefaultPluginIds.includes(pluginId)) return;
+    const manifest = structuredClone(preview.manifest);
+    if (!manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Development package metadata is required");
+    delete manifest.package.checksum;
+    delete manifest.package.signature;
+    manifest.package.version = `${manifest.package.version.split("+")[0]}+dev.${preview.integrity.sha256.slice(0, 20)}`;
+    manifest.defaultEnabled = true;
+    if (current?.currentVersion === manifest.package.version) return;
+    const version = await snapshotPackage(config, root, { ...preview, manifest }, manifest);
+    const next: InstalledPackage = {
+      pluginId, enabled: current?.enabled ?? true,
+      disabledResourceIds: current?.disabledResourceIds ?? [],
+      currentVersion: version.version, previousVersion: current?.currentVersion ?? null,
+      versions: { ...current?.versions, [version.version]: version },
+    };
+    const obsolete = Object.keys(next.versions).filter(key => key.includes("+dev.") && key !== next.currentVersion && key !== next.previousVersion);
+    for (const key of obsolete) delete next.versions[key];
+    await commitPackageTransition({ config, state, pluginId, current, next,
+      updateState() { state.packages[pluginId] = next; },
+    });
+    for (const key of obsolete) await rm(artifactRoot(config, pluginId, key), { recursive: true, force: true });
+  });
+}
+
+async function assertDevelopmentPackageSource(pluginId: string, packageRoot: string): Promise<void> {
+  if (!localPluginPackageRoot() || !runtimeCatalogPluginPackageIds().includes(pluginId)) return;
+  if (resolve(packageRoot) !== resolve(await resolveBundledPluginPackageRoot(pluginId))) {
+    throw new ApiError(409, "plugin_development_source_owned", "This development plugin uses local source. Test cloud installation in a production profile or without IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR.");
+  }
+}
+
 async function installPluginPackageUnlocked(input: {
   serverConfig: ServerConfig;
   packageRoot: string;
@@ -1774,6 +1790,7 @@ async function installPluginPackageUnlocked(input: {
     packageRoot: input.packageRoot,
   });
   assertGlobalRuntimeCompatibility(input.serverConfig, preview.manifest);
+  await assertDevelopmentPackageSource(preview.manifest.id, input.packageRoot);
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const state = await readState(input.serverConfig);
   const existing = state.packages[preview.manifest.id];
@@ -1821,6 +1838,7 @@ async function updatePluginPackageUnlocked(input: {
     packageRoot: input.packageRoot,
   });
   assertGlobalRuntimeCompatibility(input.serverConfig, preview.manifest);
+  await assertDevelopmentPackageSource(preview.manifest.id, input.packageRoot);
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const state = await readState(input.serverConfig);
   const installed = state.packages[preview.manifest.id];

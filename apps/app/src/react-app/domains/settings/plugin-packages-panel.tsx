@@ -1,4 +1,6 @@
 /** @jsxImportSource react */
+import { cloudPluginUpdate, installCloudPluginResource, listEnterpriseResources, type EnterpriseResource } from "@/app/lib/enterprise-connections";
+import { useCloudSession } from "./cloud/cloud-session-provider";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AppWindow,
@@ -10,6 +12,7 @@ import {
   KeyRound,
   Loader2,
   Package,
+  RefreshCw,
   Plug,
   ShieldCheck,
   Sparkles,
@@ -46,6 +49,7 @@ import { PluginPackageImportModal } from "./plugin-package-import-modal";
 import { PluginPackageListItem } from "./plugin-package-list-item";
 import {
   MARKETPLACE_CATEGORY_IDS,
+  type CloudPluginCatalog,
   type MarketplaceCategoryFilter,
   type MarketplaceStatusFilter,
 } from "./pages/cloud-marketplaces-view";
@@ -73,6 +77,7 @@ type PluginPackagesPanelProps = {
     search: string,
     filters: { category: MarketplaceCategoryFilter; status: MarketplaceStatusFilter },
     installedPackages: iPolloWorkPluginPackageItem[],
+    catalog: CloudPluginCatalog,
   ) => ReactNode;
 };
 
@@ -175,7 +180,10 @@ function pluginPackageBadges(
 export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginPackagesPanelProps>(function PluginPackagesPanel(props, ref) {
   const locale = currentLocale();
   const [items, setItems] = useState<iPolloWorkPluginPackageItem[]>([]);
-  const [catalogItems, setCatalogItems] = useState<iPolloWorkBundledPluginPackageItem[]>([]);
+  const cloud = useCloudSession();
+  const [cloudResources, setCloudResources] = useState<EnterpriseResource[]>([]);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const lastCloudCheck = useRef(0);
   const [authorizations, setAuthorizations] = useState<Record<string, iPolloWorkPluginAuthorizationState>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -199,7 +207,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     const workspaceId = props.workspaceId;
     if (!client || !workspaceId) {
       setItems([]);
-      setCatalogItems([]);
+      setCloudResources([]);
       setAuthorizations({});
       setLoaded(true);
       setLoading(false);
@@ -208,9 +216,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     setError(null);
     setLoading(true);
     try {
-      const [packagesResult, catalogResult] = await Promise.allSettled([
+      const [packagesResult, cloudResult] = await Promise.allSettled([
         loadPluginPackageData(() => client.listPluginPackages(workspaceId)),
-        loadPluginPackageData(() => client.listBundledPluginPackages(workspaceId)),
+        cloud.isSignedIn ? listEnterpriseResources("extension") : Promise.resolve([]),
       ]);
 
       if (generation !== refreshGeneration.current) return;
@@ -233,15 +241,14 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           return previous ? [[item.pluginId, previous]] : [];
         })));
       }
-      if (catalogResult.status === "fulfilled") {
-        setCatalogItems(catalogResult.value.items);
-        if (catalogResult.value.errors?.length) setError(catalogResult.value.errors.join("\n"));
+      if (cloudResult.status === "fulfilled") {
+        setCloudResources(cloudResult.value);
+        setCloudError(null);
+      } else {
+        setCloudError(t("plugin_library.update_check_failed"));
       }
-
-      const failedResult = [packagesResult, catalogResult].find((result) => result.status === "rejected");
-      if (failedResult?.status === "rejected") {
-        setError(formatPluginPlatformError(failedResult.reason, t("plugin_platform.error.load")));
-      }
+      lastCloudCheck.current = Date.now();
+      if (packagesResult.status === "rejected") setError(formatPluginPlatformError(packagesResult.reason, t("plugin_platform.error.load")));
     } catch (cause) {
       if (generation === refreshGeneration.current) setError(formatPluginPlatformError(cause, t("plugin_platform.error.load")));
     } finally {
@@ -250,7 +257,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         setLoading(false);
       }
     }
-  }, [props.client, props.workspaceId]);
+  }, [props.client, props.workspaceId, cloud.isSignedIn, cloud.authToken, cloud.baseUrl]);
 
   useImperativeHandle(ref, () => ({
     refresh: () => void refresh(),
@@ -258,26 +265,30 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   }), [refresh]);
 
   useEffect(() => {
+    setCloudResources([]);
+    setCloudError(null);
     void refresh();
     return () => { refreshGeneration.current++; };
   }, [refresh]);
+  useEffect(() => {
+    if (!cloud.isSignedIn || source !== "personal") return;
+    const check = () => { if (Date.now() - lastCloudCheck.current >= 60_000) void refresh(); };
+    window.addEventListener("focus", check);
+    const timer = window.setInterval(check, 300_000);
+    return () => { window.removeEventListener("focus", check); window.clearInterval(timer); };
+  }, [cloud.isSignedIn, refresh, source]);
 
-  const availableCatalogItems = useMemo(
-    () => catalogItems.filter((item) => item.installedVersion === null || item.updateAvailable),
-    [catalogItems],
-  );
   const relationships = useMemo(
-    () => collectPluginPackageRelationships(items, catalogItems),
-    [catalogItems, items],
+    () => collectPluginPackageRelationships(items, []),
+    [items],
   );
   const localizedItems = useMemo(() => items.map((sourceItem) => {
     const manifest = localizePluginPackageManifest(
       sourceItem.manifest,
       locale,
-      catalogItems.find((catalogItem) => catalogItem.pluginId === sourceItem.pluginId)?.manifest.localization,
     );
     return { ...sourceItem, name: manifest.name, manifest };
-  }), [catalogItems, items, locale]);
+  }), [items, locale]);
   const installedPreviewItems = installedExpanded
     ? localizedItems
     : localizedItems.slice(0, installedPreviewLimit);
@@ -291,16 +302,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     return localizedItems.filter((item) => [item.name, item.manifest.description, item.manifest.category ?? ""]
       .some((value) => value.toLocaleLowerCase().includes(query)));
   }, [localizedItems, search]);
-  const filteredCatalogItems = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    return availableCatalogItems.flatMap((item) => {
-      const manifest = localizePluginPackageManifest(item.manifest, locale);
-      if (query && ![manifest.name, manifest.description, manifest.category ?? ""]
-        .some((value) => value.toLocaleLowerCase().includes(query))) return [];
-      return [{ ...item, manifest }];
-    });
-  }, [availableCatalogItems, locale, search]);
-
   useEffect(() => {
     props.onRelationshipsChange(relationships);
   }, [props.onRelationshipsChange, relationships]);
@@ -372,10 +373,11 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     }
   };
 
-  const installBundledPackage = (item: iPolloWorkBundledPluginPackageItem) => run(`catalog:${item.pluginId}`, async () => {
+  const updateCloudPackage = (resource: EnterpriseResource) => run(`cloud:${resource.id}`, async () => {
     if (!props.client || !props.workspaceId) return;
-    await props.client.installBundledPluginPackage(props.workspaceId, item.pluginId);
+    await installCloudPluginResource(resource, props.client, props.workspaceId);
     await refresh();
+    notifyPluginUiContributionsChanged();
   });
 
   if (!props.client || !props.workspaceId) return null;
@@ -395,11 +397,10 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     );
   }
   if (selectedSourceItem) {
-    const catalogItem = catalogItems.find((item) => item.pluginId === selectedSourceItem.pluginId);
+    const cloudUpdate = cloudPluginUpdate(cloudResources, selectedSourceItem);
     const localizedManifest = localizePluginPackageManifest(
       selectedSourceItem.manifest,
       locale,
-      catalogItem?.manifest.localization,
     );
     const item = { ...selectedSourceItem, name: localizedManifest.name, manifest: localizedManifest };
     // This plugin manages multiple accounts in its Studio; keep its manifest
@@ -469,14 +470,15 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                 {t("plugin_platform.status.installed")}
                 <span>v{item.version}</span>
               </div>
-              {catalogItem?.updateAvailable ? (
+              {cloudUpdate ? (
                 <Button
                   size="sm"
                   disabled={busyKey !== null}
-                  onClick={() => void installBundledPackage(catalogItem)}
+                  aria-busy={busyKey === `cloud:${cloudUpdate.id}`}
+                  onClick={() => void updateCloudPackage(cloudUpdate)}
                 >
-                  {busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {t("plugin_platform.action.update")} · v{catalogItem.version}
+                  {busyKey === `cloud:${cloudUpdate.id}` ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {t("plugin_platform.action.update")} · v{cloudUpdate.latestVersion?.version}
                 </Button>
               ) : null}
               <label className="flex items-center gap-2 text-xs font-medium text-dls-secondary">
@@ -966,6 +968,15 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
               onValueChange={setSource}
             />
 
+            {source === "personal" && cloud.isSignedIn ? (
+              <Button variant="ghost" size="sm" data-testid="plugin-check-updates"
+                disabled={loading || busyKey !== null} aria-busy={loading}
+                onClick={() => void refresh()}>
+                <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
+                {t("plugin_library.check_updates")}
+              </Button>
+            ) : null}
+
             {source === "marketplace" ? (
               <div role="group" aria-label={t("plugin_library.source_label")} className="flex min-w-0 flex-wrap items-center gap-2">
                 <Select value={marketplaceCategory} onValueChange={(value) => { if (value) setMarketplaceCategory(value); }}>
@@ -1006,6 +1017,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           </p>
         </div>
 
+        {source === "personal" && cloudError ? <p role="status" className="text-ui-meta text-dls-secondary">{cloudError}</p> : null}
         {source === "personal" && loading ? (
           <div role="status" aria-live="polite" data-testid="plugin-library-loading" className="flex items-center gap-2 text-ui-control text-dls-secondary">
             <Loader2 size={16} className="animate-spin" aria-hidden="true" />
@@ -1014,24 +1026,13 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         ) : null}
 
         {source === "marketplace" ? (
-          props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items)
-        ) : (filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
+          props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items, {
+            items: cloudResources, loading, error: cloudError, onRefresh: refresh,
+          })
+        ) : filteredItems.length > 0 ? (
           <div className="grid gap-x-8 gap-y-2 lg:grid-cols-2">
-            {filteredCatalogItems.map((item) => (
-              <PluginPackageListItem
-                key={`catalog:${item.pluginId}`}
-                manifest={item.manifest}
-                version={item.version}
-                compact
-                featured
-                badge={pluginPackageBadges(item)}
-                actionBusy={busyKey === `catalog:${item.pluginId}`}
-                actionDisabled={loading || busyKey !== null}
-                actionLabel={item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}
-                onAction={() => void installBundledPackage(item)}
-              />
-            ))}
             {filteredItems.map((item) => {
+              const cloudUpdate = cloudPluginUpdate(cloudResources, item);
               const auth = authorizations[item.pluginId];
               const authorization = packageAuthorization(item, auth, props.mcpStatuses);
               const connected = authorization.connected;
@@ -1039,7 +1040,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                 installed: true,
                 authorizationRequired: authorization.required,
                 connected,
-                updateAvailable: false,
+                updateAvailable: Boolean(cloudUpdate),
                 broken: !item.enabled,
               });
               return (
@@ -1050,11 +1051,15 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                   compact
                   badge={pluginPackageBadges(item, !item.enabled)}
                   status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
-                  actionBusy={busyKey === `${item.pluginId}:enable`}
+                  actionBusy={busyKey === `${item.pluginId}:enable` || Boolean(cloudUpdate && busyKey === `cloud:${cloudUpdate.id}`)}
                   actionDisabled={loading || busyKey !== null}
-                  actionLabel={t(primaryAction.labelKey)}
+                  actionLabel={cloudUpdate ? `${t("plugin_platform.action.update")} · v${cloudUpdate.latestVersion?.version}` : t(primaryAction.labelKey)}
                   onOpen={() => props.onSelectPlugin(item.pluginId)}
                   onAction={() => {
+                    if (cloudUpdate) {
+                      void updateCloudPackage(cloudUpdate);
+                      return;
+                    }
                     if (primaryAction.kind === "repair") {
                       void run(`${item.pluginId}:enable`, async () => {
                         await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, true);
@@ -1070,7 +1075,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           </div>
         ) : !loading ? (
           <div className="rounded-2xl border border-dashed border-dls-border px-6 py-10 text-center text-ui-control leading-5 text-dls-secondary">
-            {search ? t("settings.marketplace.no_match") : t("plugin_library.personal_empty")}
+            <p>{search ? t("settings.marketplace.no_match") : t("plugin_library.personal_empty")}</p>
+            {!search ? <Button variant="outline" size="sm" className="mt-3" onClick={() => setSource("marketplace")}>{t("plugin_library.browse_public")}</Button> : null}
           </div>
         ) : null}
       </section>

@@ -7,12 +7,12 @@ description: Execute authorized Xiaohongshu publishing, comments and replies fro
 
 - 首选右侧加号的小红书运营台入口，或调用本插件 open-workbench 操作。宿主会直接启动服务并嵌入页面，不需要向 AI 发送启动任务。
 
-- 运营台源码随本插件提供，位于 xhs-ops-worker 技能目录下的 app/，不要使用其他电脑的绝对路径。
+- 云端安装包已包含运营台服务、页面、数据库适配和原生图片处理依赖。调用插件 open-workbench 使用宿主运行时启动，不要求用户安装 Node.js、pnpm 或开发依赖。
 - 用户要求打开运营台时，使用对话右侧「＋」→「小红书运营台」的插件面板。open-workbench 可启动服务，但返回的本机地址不能用 browser_open_url 打开后冒充插件面板：普通浏览器页面没有 ui/message 对话连接。浏览器工具只用于小红书平台页面。若工具无法打开插件面板，明确告知用户上述入口，不要求用户寻找不存在的“验证”按钮。
-- 首次启动需要 Node.js 22.22+ 和 pnpm。在 app/ 运行 `pnpm install --ignore-workspace --frozen-lockfile --registry=https://registry.npmjs.org`，然后用 Node.js 22.22+ 运行该技能的 `scripts/start.mjs`，保持服务在后台运行。
-- 优先使用当前宿主提供的 Node 运行时和 Codex 可执行文件；通过 XHS_OPS_CODEX_PATH 指定实际 Codex 路径，不猜测平台安装目录。未配置 Codex 时仍可打开页面进行账号和任务管理。
+- 打开失败时读取本插件返回的具体错误；客户端版本或平台不兼容时提示更新客户端或安装相应平台包，不运行 pnpm 安装来修补生产包。
+- 复用宿主运行时和浏览器工具。未配置 Codex 时仍可打开页面进行账号和任务管理，不猜测可执行文件安装目录。
 - 数据保存在用户主目录下 .ipollowork/plugin-data/xiaohongshu-ops，独立于插件版本和安装目录。
-- 文中的 `xhs-ops` 命令使用 `node --import tsx src/cli.ts`，工作目录为 app/，并将 XHS_OPS_DATA_DIR 设为上述数据目录。
+- 使用本文声明的插件动作执行操作；源码开发命令只供维护者使用，不是安装后的操作步骤。
 - 安装或打开运营台不代表授权发布、评论或创建调度；仅执行用户明确要求的操作。
 
 

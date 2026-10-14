@@ -5,6 +5,7 @@ import {
   projectAgentModelSchema,
   projectAgentSchema,
   projectWorkspaceConfigSchema,
+  type ProjectAgent,
 } from "./project-workspace.js";
 
 export const WORK_ITEM_TITLE_MAX_LENGTH = 80;
@@ -159,7 +160,7 @@ export type WorkTemplateStats = {
   byTemplate: Array<{ templateId: string; runs: number; reviewedCompletions: number }>;
   byWorkKind: Array<{ workKind: ConversationWorkKind; runs: number; reviewedCompletions: number }>;
 };
-export type WorkTemplateListResponse = { templates: WorkTemplate[]; stats: WorkTemplateStats };
+export type WorkTemplateListResponse = { templates: WorkTemplate[]; agentPresets: ProjectAgent[]; stats: WorkTemplateStats };
 export type ConversationWorkflowResponse = { item: WorkItem | null };
 
 export const projectSessionExecutionSchema = z.object({
@@ -207,6 +208,7 @@ export function projectExecutionSystemContext(execution: ProjectSessionExecution
     // reusable native role shared with another conversation.
     workflow.source === "custom" ? agent.prompt : null,
     workflow.source === "custom" && agent.skillIds.length ? `Skills: ${agent.skillIds.map((id) => id.split(":").at(-1)).join(", ")}` : null,
+    workflow.source === "custom" && agent.pluginIds.length ? `Plugins: ${agent.pluginIds.join(", ")}` : null,
   ].filter(Boolean).join("\n")).join("\n\n") : undefined;
   return [
     `You are ${execution.agent.name}.`,

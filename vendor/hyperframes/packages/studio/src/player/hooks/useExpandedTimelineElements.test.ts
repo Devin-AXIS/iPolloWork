@@ -9,6 +9,26 @@ import {
 } from "./useExpandedTimelineElements";
 
 describe("expanded timeline hierarchy", () => {
+  test("inherits parent hiding without overwriting independently hidden descendants", () => {
+    const elements: TimelineElement[] = [
+      { id: "panel", tag: "div", start: 0, duration: 8, track: 0 },
+      { id: "caption", tag: "p", start: 0, duration: 8, track: 0.25, compositionAncestors: ["panel"] },
+      { id: "badge", tag: "span", start: 0, duration: 8, track: 0.5, hidden: true, compositionAncestors: ["panel"] },
+      { id: "dot", tag: "span", start: 0, duration: 8, track: 0.75, compositionAncestors: ["panel", "badge"] },
+      { id: "sibling", tag: "div", start: 0, duration: 8, track: 1 },
+    ];
+    const hidden = applyTimelineLayerStateOverrides(elements, new Map([["panel", { hidden: true }]]));
+    expect(hidden.slice(0, 4).every((element) => element.hidden)).toBe(true);
+    expect(hidden[4]?.hidden).not.toBe(true);
+
+    const shown = applyTimelineLayerStateOverrides(elements, new Map([["panel", { hidden: false }]]));
+    expect(shown[0]?.hidden).toBe(false);
+    expect(shown[1]?.hidden).not.toBe(true);
+    expect(shown[2]?.hidden).toBe(true);
+    expect(shown[3]?.hidden).toBe(true);
+    expect(elements[1]?.hidden).toBeUndefined();
+  });
+
   test("applies session visibility and lock state to runtime-generated children", () => {
     const dynamicChild: TimelineElement = {
       id: "gl-w-3",

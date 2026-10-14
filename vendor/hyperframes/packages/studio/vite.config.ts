@@ -285,9 +285,9 @@ export default defineConfig({
       ...Object.entries({
         react: resolve(sharedUiRoot, "node_modules/react"),
         "react-dom": resolve(sharedUiRoot, "node_modules/react-dom"),
-        ...Object.fromEntries(["controls", "select", "alert", "tabs", "field", "radio-group", "tooltip", "dropdown-menu"].map(name => [
-          `@ipollowork/ui/${name}`, resolve(sharedUiRoot, sharedUiPackage.exports[`./${name}`]),
-        ])),
+        ...Object.fromEntries(Object.entries(sharedUiPackage.exports).flatMap(([subpath, target]) =>
+          typeof target === "string" ? [[`@ipollowork/ui/${subpath.slice(2)}`, resolve(sharedUiRoot, target)]] : [],
+        )),
         // The embedded Studio consumes the host's source contract in both dev
         // and release builds; Bun file dependencies may omit ignored dist files.
         "@ipollowork/types/hyperframes": resolve(

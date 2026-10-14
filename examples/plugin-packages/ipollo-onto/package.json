@@ -1,0 +1,71 @@
+{
+  "name": "@ipollowork/onto",
+  "version": "0.1.6",
+  "private": true,
+  "type": "module",
+  "description": "iPollo Onto — a lightweight, AI-ready workspace for connected business data.",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devin-AXIS/iPollo-Onto.git"
+  },
+  "homepage": "https://github.com/Devin-AXIS/iPollo-Onto#readme",
+  "bugs": {
+    "url": "https://github.com/Devin-AXIS/iPollo-Onto/issues"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "dev": "concurrently -k -n api,web 'pnpm dev:api' 'pnpm dev:web'",
+    "dev:api": "tsx watch --env-file-if-exists=.env src/server/index.ts",
+    "dev:web": "vite --host 127.0.0.1",
+    "db:migrate": "tsx --env-file-if-exists=.env src/server/migrate.ts",
+    "typecheck": "tsc --noEmit",
+    "build:app": "tsc --noEmit && vite build",
+    "build": "node scripts/build.mjs",
+    "start": "tsx --env-file-if-exists=.env src/server/index.ts --web",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test:service": "bun test service/workbench.test.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@radix-ui/react-icons": "1.3.2",
+    "@radix-ui/themes": "3.3.0",
+    "@tanstack/react-table": "8.21.3",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-image": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-table": "3.31.3",
+    "@tiptap/extension-task-item": "^3.31.3",
+    "@tiptap/extension-task-list": "^3.31.3",
+    "@tiptap/extension-unique-id": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "@xyflow/react": "12.11.6",
+    "docx": "9.7.1",
+    "fflate": "0.8.3",
+    "hono": "4.13.7",
+    "pg": "8.23.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "concurrently": "^9.2.1",
+    "prettier": "^3.9.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "8.2.2"
+  }
+}

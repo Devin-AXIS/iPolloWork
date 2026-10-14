@@ -76,12 +76,15 @@ export function prioritizeWorkspacePaths(preferredPath, workspacePaths = []) {
 export function resolveiPolloWorkServerConfigPath(env = process.env) {
   const override = String(env.IPOLLOWORK_SERVER_CONFIG ?? "").trim();
   if (override) return path.resolve(override);
+  const xdgConfigHome = String(env.XDG_CONFIG_HOME ?? "").trim();
+  // buildChildEnv supplies a profile-local XDG root in development, including
+  // Windows. Falling through to APPDATA would reopen the production registry.
+  if (env.IPOLLOWORK_DEV_MODE === "1" && xdgConfigHome) return path.join(xdgConfigHome, "ipollowork", "server.json");
   if (process.platform === "win32") {
     const appData = String(env.APPDATA ?? "").trim();
     const root = appData || path.join(os.homedir(), "AppData", "Roaming");
     return path.join(root, "ipollowork", "server.json");
   }
-  const xdgConfigHome = String(env.XDG_CONFIG_HOME ?? "").trim();
   const root = xdgConfigHome || path.join(os.homedir(), ".config");
   return path.join(root, "ipollowork", "server.json");
 }
@@ -101,7 +104,7 @@ export function applyEmbeddedServerEnvironment(targetEnv, sourceEnv) {
     "OPENCODE_CONFIG_DIR",
     "OPENCODE_TEST_HOME",
   ]);
-  for (const key of RUNTIME_PROXY_ENV_KEYS) {
+  for (const key of [...RUNTIME_PROXY_ENV_KEYS, "IPOLLOWORK_DEV_MODE", "IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR", "IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR"]) {
     if (!Object.prototype.hasOwnProperty.call(sourceEnv ?? {}, key)) delete targetEnv[key];
   }
   for (const [key, value] of Object.entries(sourceEnv ?? {})) {
@@ -990,6 +993,12 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       if (bundledOpencodeRuntimeStaged) {
         env.OPENCODE_CONFIG_DIR = opencodeConfigDir;
       }
+    }
+    // Packaged desktops cannot enable repository plugin loading via inherited env.
+    if (app.isPackaged) {
+      delete env.IPOLLOWORK_DEV_MODE;
+      delete env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
+      delete env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR;
     }
     return env;
   }

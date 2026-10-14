@@ -100,9 +100,9 @@ describe("preview editing interactions", () => {
       "onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current })",
     );
     expect(overlaySource).toContain('gestures.startGesture("drag", event, { selection: candidate');
-    expect(overlaySource).toContain("effectiveFreshTarget === candidate.element");
+    expect(overlaySource).toContain("onCanvasMouseDown(event, { preferClipAncestor: false })");
+    expect(overlaySource).toContain("captureTarget: canvas");
     expect(overlaySource).not.toContain("Retarget before that surface starts a drag");
-    expect(overlaySource).toContain('previewInteraction: "primary"');
     expect(contextMenuSource).toContain("onSelectionChangeRef.current(activeSelection, {");
     expect(contextMenuSource).toContain('previewInteraction: "context-menu"');
     expect(contextMenuSource).toContain(

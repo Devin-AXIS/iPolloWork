@@ -272,6 +272,12 @@ describe("embeddedServerImportUrl", () => {
 });
 
 describe("resolveiPolloWorkServerConfigPath", () => {
+  it("uses the developer profile even when Windows APPDATA points at production", () => {
+    assert.equal(resolveiPolloWorkServerConfigPath({ IPOLLOWORK_DEV_MODE: "1", XDG_CONFIG_HOME: "/isolated/dev/xdg", APPDATA: "/production/appdata" }), path.join("/isolated/dev/xdg", "ipollowork", "server.json"));
+    if (process.platform === "win32") {
+      assert.equal(resolveiPolloWorkServerConfigPath({ XDG_CONFIG_HOME: "/isolated/dev/xdg", APPDATA: "/production/appdata" }), path.join("/production/appdata", "ipollowork", "server.json"));
+    }
+  });
   it("respects explicit server config path", () => {
     assert.equal(
       resolveiPolloWorkServerConfigPath({ IPOLLOWORK_SERVER_CONFIG: "/tmp/ipollowork/server.json" }),
@@ -286,4 +292,13 @@ describe("resolveiPolloWorkServerConfigPath", () => {
       "/tmp/xdg/ipollowork/server.json",
     );
   });
+});
+
+it("removes development plugin overrides from an embedded production environment", () => {
+  const target = { IPOLLOWORK_DEV_MODE: "1", IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR: "C:/old/source", IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: "C:/source" };
+  applyEmbeddedServerEnvironment(target, {});
+  assert.deepEqual(target, {});
+  applyEmbeddedServerEnvironment(target, { IPOLLOWORK_DEV_MODE: "1", IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: "C:/dev/source" });
+  assert.equal(target.IPOLLOWORK_DEV_MODE, "1");
+  assert.equal(target.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR, "C:/dev/source");
 });

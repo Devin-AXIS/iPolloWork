@@ -1,3 +1,4 @@
+import { PLUGIN_PACKAGE_MAX_UPLOAD_BYTES } from "@ipollowork/types/plugins";
 import { existsSync } from "node:fs";
 import { startVideoJobWorker } from "./extensions/video-generation.js";
 import { readFile, writeFile, rm } from "node:fs/promises";
@@ -53,6 +54,7 @@ import {
   assertPluginPackageSafeForImport,
   installPluginPackage,
   listInstalledPluginPackages,
+  prepareDevelopmentPluginPackage,
   listSuppressedDefaultPluginIds,
   pluginPackageVersionChange,
 
@@ -66,7 +68,7 @@ import {
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
 import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
-import { catalogPluginPackageIds, defaultBundledPluginPackageIds, isInternalPluginPackage, resolveBundledPluginPackageRoot, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
+import { defaultBundledPluginPackageIds, isInternalPluginPackage, localPluginPackageRoot, resolveBundledPluginPackageRoot, runtimeCatalogPluginPackageIds, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
 import {
   cancelPluginAuthorizationFlow,
   completePluginBrowserAuthorization,
@@ -695,6 +697,16 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
     (await listInstalledPluginPackages({ serverConfig: config })).map((item) => [item.pluginId, item]),
   );
   const suppressed = new Set(await listSuppressedDefaultPluginIds({ serverConfig: config }));
+
+  for (const pluginId of localPluginPackageRoot() ? runtimeCatalogPluginPackageIds() : []) {
+    try {
+      await prepareDevelopmentPluginPackage(config, pluginId);
+    } catch (error) {
+      logger.log("warn", `Local development plugin could not be prepared: ${pluginId}`, {
+        pluginId, error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   for (const pluginId of defaultBundledPluginPackageIds) {
     try {
@@ -1640,7 +1652,7 @@ function createRoutes(
   const prepareDefaultPlugins = () => {
     if (!defaultPluginPreparation) {
       defaultPluginPreparation = (async () => {
-        // Read only the four manifest versions/roots on refresh. Package scans
+        // Read only internal manifest versions/roots on refresh. Package scans
         // and global projection run again only when bundled versions change.
         const manifests = await Promise.all(defaultBundledPluginPackageIds.map(async (pluginId) => {
           try {
@@ -2079,7 +2091,7 @@ function createRoutes(
     await prepareDefaultPlugins();
     const installed = await listInstalledPluginPackages({ serverConfig: config });
     const installedById = new Map(installed.map((item) => [item.pluginId, item]));
-    const results = await Promise.allSettled(catalogPluginPackageIds.map(pluginId => withPluginPackageCatalogRoot(pluginId, async packageRoot => {
+    const results = await Promise.allSettled(runtimeCatalogPluginPackageIds().map(pluginId => withPluginPackageCatalogRoot(pluginId, async packageRoot => {
       const preview = await previewPluginPackage({ packageRoot });
       const current = installedById.get(pluginId);
       return {
@@ -2095,7 +2107,7 @@ function createRoutes(
     })));
     return jsonResponse({
       items: results.flatMap(result => result.status === "fulfilled" ? [result.value] : []),
-      errors: results.flatMap((result, index) => result.status === "rejected" ? [`${catalogPluginPackageIds[index]}: ${result.reason instanceof Error ? result.reason.message.slice(0, 200) : "Plugin catalog unavailable"}`] : []),
+      errors: results.flatMap((result, index) => result.status === "rejected" ? [`${runtimeCatalogPluginPackageIds()[index]}: ${result.reason instanceof Error ? result.reason.message.slice(0, 200) : "Plugin catalog unavailable"}`] : []),
     });
   });
 
@@ -2120,6 +2132,7 @@ function createRoutes(
       const result = current && current.version !== preview.manifest.package?.version
         ? await updatePluginPackage({ serverConfig: config, packageRoot })
         : await installPluginPackage({ serverConfig: config, packageRoot });
+      if (localPluginPackageRoot()) await prepareDevelopmentPluginPackage(config, pluginId);
       await disposePluginServicesEverywhere(config, pluginId);
       await reconcilePluginAuthorization({ config, pluginId });
       await recordAudit(workspace.path, {
@@ -3426,9 +3439,9 @@ async function readJsonBody(request: Request): Promise<Record<string, unknown>> 
 }
 
 async function readPluginPackageUploadBody(request: Request): Promise<unknown> {
-  const bytes = await readLimitedRequestBody(request, 15 * 1024 * 1024, {
+  const bytes = await readLimitedRequestBody(request, PLUGIN_PACKAGE_MAX_UPLOAD_BYTES, {
     code: "plugin_package_upload_too_large",
-    message: "Plugin package upload exceeds 15 MB",
+    message: "Plugin package upload exceeds 48 MB",
   });
   try {
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));

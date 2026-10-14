@@ -1,7 +1,15 @@
 import { existsSync } from "fs";
+import { win32 } from "node:path";
 import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV };
+
+/** Older bundled Windows FFmpeg builds require extended paths beyond MAX_PATH. */
+export function ffmpegPathArgument(value: string): string {
+  return process.platform === "win32" && value.length >= 260 && win32.isAbsolute(value)
+    ? win32.toNamespacedPath(value)
+    : value;
+}
 
 // The engine hands spawn a bare binary name as the last resort so the spawn
 // error names what the user must install; a configured-but-missing override

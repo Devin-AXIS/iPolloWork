@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ async function modifiedAt(path) {
 
 if (process.argv.includes("--if-stale")) {
   try {
-    const inputs = ["app/src", "app/public", "app/index.html", "app/vite.config.ts", "service/data-annotation.ts", "service/vite.config.ts", "ui", "skills", "ipollowork.plugin.json", "LICENSE-THIRD-PARTY.txt", "NOTICE.txt", "scripts/build.mjs", "package.json", "pnpm-lock.yaml"];
+    const inputs = ["types.ts", "app/src", "app/public", "app/index.html", "app/vite.config.ts", "service/data-annotation.ts", "service/vite.config.ts", "ui", "skills", "ipollowork.plugin.json", "LICENSE-THIRD-PARTY.txt", "NOTICE.txt", "scripts/build.mjs", "package.json", "pnpm-lock.yaml"];
     const [built, latestInput] = await Promise.all([
       stat(resolve(output, "ipollowork.plugin.json")),
       Promise.all(inputs.map(name => modifiedAt(resolve(root, name)))).then(values => Math.max(...values)),
@@ -42,4 +42,6 @@ await mkdir(output, { recursive: true });
 for (const name of ["app/dist", "service/dist", "ui", "skills", "LICENSE-THIRD-PARTY.txt", "NOTICE.txt", "ipollowork.plugin.json"]) {
   await cp(resolve(root, name), resolve(output, name), { recursive: true });
 }
+// Windows copies preserve source timestamps; freshness must reflect build completion.
+await utimes(resolve(output, "ipollowork.plugin.json"), new Date(), new Date());
 process.stdout.write(`Built bundled plugin: ${output}\n`);

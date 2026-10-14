@@ -2448,6 +2448,38 @@ describe("initSandboxRuntimeModular", () => {
     expect(hiddenClip.style.display).toBe("");
   });
 
+  it("hides untimed layer subtrees while preserving their authored display and child visibility", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080">
+        <div id="hidden-panel" data-hidden style="display:flex">
+          <span id="visible-child" style="visibility:visible">Caption</span>
+          <span id="independent-child" data-hidden>Independently hidden</span>
+          <div id="timed-child" data-start="0" data-duration="10" style="visibility:visible">Animated child</div>
+        </div>
+        <p id="unrelated-layer">Unrelated layer</p>
+      </main>`;
+    window.__timelines = { main: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+    const panel = document.getElementById("hidden-panel")!;
+    const child = document.getElementById("visible-child")!;
+    const independentChild = document.getElementById("independent-child")!;
+
+    window.__player?.seek(3);
+    expect(getComputedStyle(panel).display).toBe("none");
+    expect(getComputedStyle(document.getElementById("unrelated-layer")!).display).not.toBe("none");
+    window.__player?.play();
+    window.__player?.seek(6);
+    window.__player?.pause();
+    expect(getComputedStyle(panel).display).toBe("none");
+
+    panel.removeAttribute("data-hidden");
+    window.__player?.seek(3);
+    expect(getComputedStyle(panel).display).toBe("flex");
+    expect(getComputedStyle(child).display).not.toBe("none");
+    expect(independentChild.hasAttribute("data-hidden")).toBe(true);
+    expect(getComputedStyle(independentChild).display).toBe("none");
+  });
+
   describe("a clip the visibility pass hides gets the author's inline display back", () => {
     // A relative clip under a plain wrapper stays in flow (applyClipLayout only touches
     // root children), so the pass hides it with display:none rather than visibility.

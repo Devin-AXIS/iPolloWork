@@ -202,7 +202,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
 
   function ipolloworkRuntimeStorageRoot() {
     const runtimeDbPath = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
-    return runtimeDbPath ? path.dirname(path.resolve(runtimeDbPath)) : path.dirname(resolveiPolloWorkServerConfigPath());
+    return runtimeDbPath ? path.dirname(path.resolve(runtimeDbPath)) : path.dirname(ipolloworkServerConfigPath());
   }
 
   // Earlier Electron alpha builds copied Tauri's ipollowork-workspaces.json into
@@ -1051,7 +1051,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     const runtimeStorageRoot = ipolloworkRuntimeStorageRoot();
     // Upload authorization must use the running server's registry, not the
     // development-only registry used for desktop workspace migration.
-    const serverWorkspaces = (await recoverWorkspacesFromServerConfig(resolveiPolloWorkServerConfigPath()))
+    const serverWorkspaces = (await recoverWorkspacesFromServerConfig())
       .filter((entry) => entry?.workspaceType !== "remote")
       .map((entry) => ({ ...entry, runtimeStorageRoot }));
     const byPath = new Map();

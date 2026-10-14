@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
+  assertCloudPluginIdentity,
+  cloudPluginUpdate,
+  installCloudPluginResource,
   discoverEnterpriseConnection,
   downloadEnterpriseResource,
   joinEnterpriseWithCode,
@@ -13,6 +16,7 @@ import {
   type EnterpriseConnection,
   type EnterpriseResource,
 } from "../src/app/lib/enterprise-connections";
+import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import { IPOLLOWORK_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
 
 const originalWindow = globalThis.window;
@@ -538,5 +542,47 @@ describe("enterprise connections", () => {
     await expect(downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "extension", "b".repeat(64), "application/zip")
     ) })).rejects.toThrow("enterprise_resource_digest_mismatch");
+  });
+});
+
+describe("cloud plugin lifecycle", () => {
+  function resource(version: string, manifestId = "sample-plugin"): EnterpriseResource {
+    return { id: "cloud-" + version, type: "extension", slug: "display-slug", manifestId, name: "Sample",
+      description: "", category: "", enterpriseCategory: "", iconPath: null, featured: false, updatedAt: "",
+      latestVersion: { version, digest: "a".repeat(64), downloadPath: "/api/v1/enterprise-resources/sample/download" } };
+  }
+  test.each([
+    ["1.10.0", "1.9.0", 1], ["1.0.0", "1.0.0-rc.2", 1],
+    ["1.0.0-rc.10", "1.0.0-rc.2", 1], ["1.0.0+build.2", "1.0.0+build.1", 0],
+    ["0.3.1", "0.4.19", -1], ["2.0.0-beta.1", "2.0.0", -1],
+  ])("compares %s against %s by semantic precedence", (left, right, direction) => {
+    expect(Math.sign(comparePluginPackageVersions(left, right) ?? NaN)).toBe(direction);
+  });
+  test("selects the newest matching manifest ID and ignores older or invalid metadata", () => {
+    const current = { pluginId: "sample-plugin", version: "1.2.0" };
+    const newest = resource("1.10.0");
+    expect(cloudPluginUpdate([resource("1.1.0"), resource("9.0.0", "another-plugin"), resource("invalid"), resource("1.3.0"), newest], current)).toBe(newest);
+    expect(cloudPluginUpdate([resource("0.3.1")], { pluginId: "sample-plugin", version: "0.4.19" })).toBeUndefined();
+    expect(cloudPluginUpdate([resource("1.2.0+build.9")], current)).toBeUndefined();
+  });
+  test("rejects a downloaded package for another plugin or version", () => {
+    const selected = resource("1.2.0");
+    expect(() => assertCloudPluginIdentity(selected, { id: "another-plugin", package: { version: "1.2.0" } })).toThrow("identity_mismatch");
+    expect(() => assertCloudPluginIdentity(selected, { id: "sample-plugin", package: { version: "1.1.0" } })).toThrow("identity_mismatch");
+    expect(() => assertCloudPluginIdentity(selected, { id: "sample-plugin", package: { version: "1.2.0" } })).not.toThrow();
+  });
+  test("rechecks the installed version before downloading so a stale Update cannot downgrade", async () => {
+    let downloaded = false;
+    const result = await installCloudPluginResource(resource("1.0.0"), {
+      listPluginPackages: async () => ({ items: [{
+        pluginId: "sample-plugin", name: "Sample", version: "1.2.0", enabled: true, disabledResourceIds: [], previousVersion: null, integrity: { status: "unsigned", sha256: "a".repeat(64) },
+        manifest: { schemaVersion: 2, id: "sample-plugin", name: "Sample", description: "",
+          source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false }, resources: [] },
+      }] }),
+      validatePluginPackageUpload: async () => { throw new Error("Validation must not run"); },
+      importPluginPackage: async () => { throw new Error("Installation must not run"); },
+    }, "workspace", { fetcher: async () => { downloaded = true; throw new Error("Download must not run"); } });
+    expect(result).toBeNull();
+    expect(downloaded).toBe(false);
   });
 });

@@ -60,7 +60,7 @@ it("packages runtime modules without compiled tests, test support or stale stage
     await copyFiles([matcher]);
     const archive = path.join(root, "app.asar");
     await createPackage(matcher.to, archive);
-    const entries = listPackage(archive, { isPack: false });
+    const entries = listPackage(archive, { isPack: false }).map(name => name.replaceAll("\\", "/"));
     for (const name of ["/electron/main.mjs", "/electron/test-tools.mjs", "/server/dist/server.js", "/server/dist/routes/video.js", "/server/dist/routes/test-tools.js", "/server/dist/fixtures/runtime.json"]) {
       assert.ok(entries.includes(name), `Runtime entry is preserved: ${name}`);
     }
@@ -74,6 +74,7 @@ it("copies bundled plugin manifests, Skills and services while excluding test-on
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-plugin-release-"));
   const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));
   const resources = config.extraResources.filter((resource) => resource.to.startsWith("plugin-packages/"));
+  assert.deepEqual(resources.map(resource => resource.to), ["plugin-packages/reference-context"]);
   const runtimeFiles = ["ipollowork.plugin.json", "service/test-tools.mjs", "skills/worker/SKILL.md", "skills/worker/app/src/simulation.ts"];
   const testFiles = ["service/worker.test.mjs", "service/worker.spec.mjs", "skills/worker/app/tsconfig.test.json", "skills/worker/app/tests/fixtures/server.ts", "service/__tests__/helper.mjs"];
   try {
@@ -124,12 +125,7 @@ it("publishes Harness CLIs as verified cloud packages without bundling their arc
     readFile(new URL("../../../patches/@electron__osx-sign@1.3.1.patch", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
-  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
-  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/xiaohongshu-ops\s+to: plugin-packages\/xiaohongshu-ops/);
-  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/douyin-ops\s+to: plugin-packages\/douyin-ops/);
-  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/wechat-channels-ops\s+to: plugin-packages\/wechat-channels-ops/);
-  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/operation-recorder\/dist\/package\s+to: plugin-packages\/operation-recorder/);
-  assert.match(buildSource, /operation-recorder\/scripts\/build\.mjs/);
+  assert.doesNotMatch(buildSource, /examples\/plugin-packages\/.*scripts\/build/);
   assert.match(devSource, /operation-recorder\/scripts\/build\.mjs.*--host.*--if-stale/);
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
   const macConfig = builderConfig.match(/\r?\nmac:\r?\n[\s\S]*?\r?\nlinux:\r?\n/)?.[0] ?? "";

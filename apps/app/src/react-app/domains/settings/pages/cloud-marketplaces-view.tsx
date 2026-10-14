@@ -4,7 +4,8 @@ import { Cloud, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { iPolloWorkExtensionManifest } from "@/app/extensions";
 import {
-  downloadEnterpriseResource,
+  cloudPluginUpdate,
+  installCloudPluginResource,
   listEnterpriseResources,
   type EnterpriseResource,
 } from "@/app/lib/enterprise-connections";
@@ -14,7 +15,6 @@ import { t, translationKey } from "@/i18n";
 import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { PluginPackageListItem } from "@/react-app/domains/settings/plugin-package-list-item";
-import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
 import { formatPluginPlatformError } from "@/react-app/domains/settings/plugin-platform-state";
 import { SettingsListEmptyState, SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsPill } from "@/react-app/domains/settings/settings-section";
@@ -54,7 +54,10 @@ const categoryResolutionOrder: Exclude<MarketplaceCategoryId, "other">[] = [
   "development-operations",
 ];
 
+export type CloudPluginCatalog = { items: EnterpriseResource[]; loading: boolean; error: string | null; onRefresh: () => Promise<void> };
+
 export type CloudMarketplacesViewProps = {
+  catalog?: CloudPluginCatalog;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   installedPackages?: iPolloWorkPluginPackageItem[];
@@ -112,12 +115,13 @@ function resourceManifest(resource: EnterpriseResource): iPolloWorkExtensionMani
 }
 
 function actionLabel(resource: EnterpriseResource, installed: iPolloWorkPluginPackageItem | undefined) {
-  if (installed?.version === resource.latestVersion?.version) return t("settings.marketplace.installed");
+  if (installed && !cloudPluginUpdate([resource], installed)) return t("settings.marketplace.installed");
   if (installed) return t("plugin_platform.action.update");
   return t("plugin_platform.action.install");
 }
 
 export function CloudMarketplacesView({
+  catalog,
   client,
   workspaceId,
   installedPackages,
@@ -130,17 +134,22 @@ export function CloudMarketplacesView({
   statusFilter = "all",
 }: CloudMarketplacesViewProps) {
   const cloud = useCloudSession();
-  const [items, setItems] = React.useState<EnterpriseResource[]>([]);
-  const [installed, setInstalled] = React.useState<Record<string, iPolloWorkPluginPackageItem>>({});
+  const [fetchedItems, setItems] = React.useState<EnterpriseResource[]>([]);
+  const [fetchedInstalled, setInstalled] = React.useState<Record<string, iPolloWorkPluginPackageItem>>({});
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [localSearch, setLocalSearch] = React.useState("");
-  const [loading, setLoading] = React.useState(true);
+  const [fetchedLoading, setLoading] = React.useState(true);
   const refreshGeneration = React.useRef(0);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const search = controlledSearch ?? localSearch;
+  const items = catalog?.items ?? fetchedItems;
+  const loading = catalog?.loading ?? fetchedLoading;
+  const installed = React.useMemo(() => installedPackages
+    ? Object.fromEntries(installedPackages.map(item => [item.pluginId, item])) : fetchedInstalled, [installedPackages, fetchedInstalled]);
 
   const refresh = React.useCallback(async () => {
+    if (catalog) return catalog.onRefresh();
     const generation = ++refreshGeneration.current;
     if (!cloud.isSignedIn) {
       setItems([]);
@@ -173,23 +182,22 @@ export function CloudMarketplacesView({
     } finally {
       if (generation === refreshGeneration.current) setLoading(false);
     }
-  }, [client, cloud.isSignedIn, installedPackages, workspaceId]);
+  }, [catalog, client, cloud.isSignedIn, cloud.authToken, cloud.baseUrl, installedPackages, workspaceId]);
 
   React.useEffect(() => {
+    if (catalog) return;
+    setItems([]);
     void refresh();
     return () => { refreshGeneration.current++; };
-  }, [refresh]);
+  }, [catalog, refresh]);
 
   const install = React.useCallback(async (resource: EnterpriseResource) => {
     const pluginId = resourcePluginId(resource);
-    if (!client || !workspaceId || !resource.latestVersion || installed[pluginId]?.version === resource.latestVersion.version) return;
+    if (!client || !workspaceId || !resource.latestVersion || Boolean(installed[pluginId] && !cloudPluginUpdate([resource], installed[pluginId]))) return;
     setBusyId(resource.id);
     setError(null);
     try {
-      const file = await downloadEnterpriseResource(resource);
-      const upload = await readPluginPackageArchive(file, "install");
-      await client.validatePluginPackageUpload(workspaceId, upload);
-      await client.importPluginPackage(workspaceId, upload);
+      await installCloudPluginResource(resource, client, workspaceId);
       await refresh();
       notifyPluginUiContributionsChanged();
       await onInstalled?.(pluginId);
@@ -211,13 +219,13 @@ export function CloudMarketplacesView({
         manifest: {},
       }) !== categoryFilter) return false;
       const localPackage = installed[resourcePluginId(item)];
-      const version = item.latestVersion?.version;
       if (statusFilter === "installed" && !localPackage) return false;
-      if (statusFilter === "update" && (!localPackage || !version || localPackage.version === version)) return false;
+      if (statusFilter === "update" && (!localPackage || !cloudPluginUpdate([item], localPackage))) return false;
       if (statusFilter === "available" && localPackage) return false;
       return true;
     });
   }, [categoryFilter, installed, items, search, statusFilter]);
+  const visibleError = error ?? catalog?.error;
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const featuredItems = filteredItems.filter((item) => item.featured);
   const categorySections = MARKETPLACE_CATEGORY_IDS.map((categoryId) => ({
@@ -251,7 +259,7 @@ export function CloudMarketplacesView({
         description={selected.description}
         onBack={() => setSelectedId(null)}
         action={(
-          <Button disabled={!client || !workspaceId || !selected.latestVersion || busyId !== null || localPackage?.version === selected.latestVersion.version} onClick={() => void install(selected)}>
+          <Button disabled={!client || !workspaceId || !selected.latestVersion || busyId !== null || Boolean(localPackage && !cloudPluginUpdate([selected], localPackage))} onClick={() => void install(selected)}>
             {busyId === selected.id ? <Loader2 size={14} className="animate-spin" /> : null}
             {actionLabel(selected, localPackage)}
           </Button>
@@ -270,7 +278,7 @@ export function CloudMarketplacesView({
             {selected.latestVersion ? <div className="break-all font-mono text-[10px]">{selected.latestVersion.digest}</div> : null}
           </div>
         </div>
-        {error ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{error}</div> : null}
+        {visibleError ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{visibleError}</div> : null}
       </PluginPackageDetail>
     );
   }
@@ -337,7 +345,7 @@ export function CloudMarketplacesView({
         />
       )) : null}
 
-      {error ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{error}</div> : null}
+      {visibleError ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{visibleError}</div> : null}
     </section>
   );
 }
@@ -380,9 +388,9 @@ function MarketplaceRows(props: Omit<MarketplaceSectionProps, "title">) {
             badge={item.featured
               ? <span className="inline-flex h-4 items-center rounded-full bg-green-9 px-[5px] text-[10px] leading-none text-white">{t("plugin_platform.official_bundle")}</span>
               : null}
-            status={localPackage ? (localPackage.version === version ? t("settings.marketplace.installed") : t("extensions.update_available")) : item.enterpriseCategory}
+            status={localPackage ? (cloudPluginUpdate([item], localPackage) ? t("extensions.update_available") : t("settings.marketplace.installed")) : item.enterpriseCategory}
             actionBusy={props.busyId === item.id}
-            actionDisabled={!props.client || !props.workspaceId || !version || props.busyId !== null || localPackage?.version === version}
+            actionDisabled={!props.client || !props.workspaceId || !version || props.busyId !== null || Boolean(localPackage && !cloudPluginUpdate([item], localPackage))}
             actionLabel={actionLabel(item, localPackage)}
             onOpen={() => localPackage && props.onOpenInstalled
               ? props.onOpenInstalled(pluginId)

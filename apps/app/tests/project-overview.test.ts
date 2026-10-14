@@ -589,6 +589,13 @@ describe("conversation work, runtime metrics and tasks", () => {
     expect(actualOnly).not.toContain('data-testid="project-orchestration-graph"');
     expect(actualOnly).not.toContain(t("project_overview.add_agent"));
     expect(actualOnly).not.toContain(t("project_overview.health_setup"));
+    const withPresetAction = renderToStaticMarkup(createElement(ProjectDashboard, {
+      ...dashboardProps, showPresets: false, mainSessionId: "Root",
+      agentActions: createElement("button", { "data-testid": "project-agent-add-preset" }, t("project_overview.add_from_presets")),
+    }));
+    expect(withPresetAction).toContain('data-testid="project-agent-add-preset"');
+    expect(withPresetAction).toContain('data-testid="project-primary-agent"');
+    expect(withPresetAction).not.toContain('data-testid="project-agent-tab"');
   });
 
   test("runtime data meters actual main and temporary children without collapsing unknown roles", () => {

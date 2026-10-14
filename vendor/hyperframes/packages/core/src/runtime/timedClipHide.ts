@@ -11,6 +11,7 @@ const SKIP_ATTR = "data-hf-skip-hidden-images";
 export const SKIPPED_CLIP = `[data-start]:not(video, audio, img, [${STUDIO_PREVIEW_UPCOMING_ATTR}])[style*="visibility: hidden"]`;
 const SKIP_HIDDEN_IMAGES = `${SKIPPED_CLIP} img { display: none !important; }`;
 const STUDIO_PREVIEW_MARK = `meta[name="${STUDIO_PREVIEW_MARK_META}"]`;
+const HIDDEN_LAYER_STYLE_ATTR = "data-hf-hidden-layer-style";
 
 type FirstPassWindow = Window & {
   __hfFirstPassHidden?: boolean;
@@ -18,10 +19,18 @@ type FirstPassWindow = Window & {
 };
 
 function appendStyle(parent: Element, attr: string, css: string): void {
-  const style = document.createElement("style");
+  const style = parent.ownerDocument.createElement("style");
   style.setAttribute(attr, "");
   style.textContent = css;
   parent.appendChild(style);
+}
+
+/** An eye toggle hides the whole subtree, including layers without authored timing. */
+export function ensureHiddenLayerStyle(doc: Document): void {
+  const parent = doc.head ?? doc.documentElement;
+  if (parent && !doc.querySelector(`style[${HIDDEN_LAYER_STYLE_ATTR}]`)) {
+    appendStyle(parent, HIDDEN_LAYER_STYLE_ATTR, "[data-hidden] { display: none !important; }");
+  }
 }
 
 /** True in Studio's preview, where hidden clips' images are neither fetched nor decoded until due. */
@@ -31,6 +40,7 @@ export function skipsHiddenImages(): boolean {
 
 export function hideTimedClipsUntilFirstPass(): void {
   if (typeof document === "undefined") return;
+  ensureHiddenLayerStyle(document);
   const parent = document.head ?? document.documentElement;
   if (!parent) return;
   const preview = document.querySelector(STUDIO_PREVIEW_MARK) !== null;
