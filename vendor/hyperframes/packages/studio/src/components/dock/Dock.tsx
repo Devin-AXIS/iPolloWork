@@ -7,6 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ChevronDown } from "lucide-react";
+import { Button } from "@ipollowork/ui/controls";
 import { createPortal } from "react-dom";
 import {
   DockviewReact,
@@ -146,8 +148,8 @@ function createController(
       direction: reopen.direction,
     };
     const panel = addRegisteredPanel(api, id,
-      zone === "right" && options.fullHeightRight
-        ? { direction: "right" }
+      zone !== "center" && options.fullHeightRight
+        ? { direction: zone }
         : hasAnchor ? position : undefined);
     if (zone !== "center") {
       panel.group.api.setSize({ width: defaultSideWidths(options.dockWidth())[zone] });
@@ -199,6 +201,14 @@ function restoreOrBuild(
     try {
       api.fromJSON(stored);
       if (options.fullHeightRight) {
+        const script = api.getPanel("compositions")?.group;
+        if (script && script.height !== api.height) {
+          const width = script.width;
+          const visible = script.api.isVisible;
+          script.api.moveTo({ position: "left", skipSetActive: true });
+          api.getPanel("compositions")?.group.api.setSize({ width });
+          api.getPanel("compositions")?.group.api.setVisible(visible);
+        }
         // Move the saved inspector column to the root edge, retaining its width,
         // contents and visibility while freeing the timeline's right-hand space.
         const group = api.getPanel("design")?.group;
@@ -214,6 +224,12 @@ function restoreOrBuild(
           movedGroup?.api.setVisible(visible);
           if (timelineHeight) api.getPanel("timeline")?.group.api.setSize({ height: timelineHeight });
         }
+      }
+      const scriptColumn = api.getPanel("compositions")?.group;
+      // A visible column can collapse to zero in an older saved inline layout.
+      // Restore only that invalid size; preserve intentional hides and custom widths.
+      if (scriptColumn?.api.isVisible && scriptColumn.width === 0) {
+        scriptColumn.api.setSize({ width: defaultSideWidths(options.dockWidth()).left });
       }
       return;
     } catch {
@@ -287,7 +303,8 @@ function Root({
       );
       if (root) resizeObserver.observe(root);
       const store = useDockLayoutStore.getState();
-      store.attach(createController(api, options), panels);
+      const controller = createController(api, options);
+      store.attach(controller, panels);
       const pending = store.takePendingActivation();
       if (pending) store.activatePanel(pending);
       store.sync(snapshot(api));
@@ -391,12 +408,9 @@ function WindowMenu({ label = "Workspace", visibilityOnly = false }: { label?: s
       aria-label={tx(label)}
       className={menuClasses.panel}
       trigger={
-        <button
-          type="button"
-          className="h-7 shrink-0 rounded-md px-2.5 text-xs font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-0"
-        >
-          {tx(label)}
-        </button>
+        <Button variant="ghost" type="button" className="h-8 shrink-0 rounded-lg px-2.5 text-ui-control">
+          <ChevronDown className="size-4" aria-hidden="true" />{tx(label)}
+        </Button>
       }
     >
       {panels.map((id) => (
@@ -411,11 +425,11 @@ function WindowMenu({ label = "Workspace", visibilityOnly = false }: { label?: s
           }}
           className={`${menuClasses.row} ${menuClasses.rowEnabled}`}
         >
-          {tx(visibilityOnly && id === "design" ? "Properties" : PANEL_DEFINITIONS[id].title)}
+          {tx(visibilityOnly && id === "design" ? "Properties" : id === "compositions" ? "Script table" : PANEL_DEFINITIONS[id].title)}
         </MenuCheckboxItem>
       ))}
       <MenuSeparator />
-      {[
+      {!visibilityOnly && [
         { label: "Write script", visible: ["compositions", "preview"] },
         { label: "Refine animation", visible: ["preview", "timeline", "design"] },
       ].filter((preset) => preset.visible.every((id) => panels.some((panel) => panel === id))).map((preset) => (

@@ -120,7 +120,7 @@ function addSideColumn(
   return first;
 }
 
-/** Default timeline spans the dock; embedded Studio can reserve a full-height inspector column. */
+/** Default timeline spans the dock; embedded Studio reserves full-height side columns. */
 export function buildEditLayout(
   api: DockviewApi,
   viewportWidth: number,
@@ -134,10 +134,10 @@ export function buildEditLayout(
     referencePanel: "preview",
     direction: "below",
   });
-  const left = addSideColumn(api, DEFAULT_LEFT, panels, "left");
+  const left = addSideColumn(api, DEFAULT_LEFT, panels, "left", fullHeightRight);
   const right = addSideColumn(api, DEFAULT_RIGHT, panels, "right", fullHeightRight);
   applySideMinimums(api, viewportWidth);
-  if (left) api.getPanel(left)?.group.api.setSize({ width: widths.left });
+  if (left) api.getPanel(left)?.group.api.setSize({ width: fullHeightRight ? Math.min(240, widths.left) : widths.left });
   if (right) api.getPanel(right)?.group.api.setSize({ width: widths.right });
-  api.getPanel("timeline")?.group.api.setSize({ height: DEFAULT_TIMELINE_H });
+  api.getPanel("timeline")?.group.api.setSize({ height: fullHeightRight ? 240 : DEFAULT_TIMELINE_H });
 }

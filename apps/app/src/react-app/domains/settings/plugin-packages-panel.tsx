@@ -495,7 +495,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
               </label>
             </div>
             {!managesAccountsInWorkbench && authorization.required && !connected ? (
-              <div className="flex items-center gap-1.5 rounded-lg border border-amber-6 bg-amber-2 px-2.5 py-1.5 text-xs font-medium text-amber-11">
+              <div className="flex items-center gap-1.5 rounded-lg bg-feedback-warning px-2.5 py-1.5 text-xs font-medium text-amber-11">
                 <KeyRound size={13} />
                 {t("plugin_platform.status.needs_authorization")}
               </div>
@@ -504,7 +504,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         )}
       >
         {engineLimitations.length > 0 ? (
-          <div className="mt-6 rounded-2xl border border-amber-6 bg-amber-2/70 p-4 sm:p-5">
+          <div className="mt-6 rounded-2xl bg-feedback-warning p-4 sm:p-5">
             <div className="flex items-center gap-2 text-sm font-semibold text-amber-11">
               <ShieldCheck size={16} />
               {t("plugin_platform.engine.compatibility_title")}
@@ -656,7 +656,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                               ? "border-green-6 bg-green-2 text-green-11"
                               : connectionFeedback?.status === "connecting"
                                 ? "border-dls-border bg-dls-hover text-dls-secondary"
-                                : "border-amber-6 bg-amber-2 text-amber-11"}`}
+                                : "border-border bg-feedback-warning text-amber-11"}`}
                             role="status"
                             title={connectionFeedback?.error}
                           >
@@ -860,10 +860,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         </div>
         <SettingsListSearchInput
           value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
+          onValueChange={setSearch}
           placeholder={t("plugin_library.search")}
           aria-label={t("plugin_library.search")}
-          containerClassName="h-[34px] rounded-lg border-transparent bg-[#f5f6f9] shadow-none hover:bg-[#f1f2f5] dark:bg-white/[0.06] dark:hover:bg-white/[0.09]"
         />
       </div>
 
@@ -968,9 +967,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             />
 
             {source === "marketplace" ? (
-              <div className="flex flex-wrap items-center gap-3">
+              <div role="group" aria-label={t("plugin_library.source_label")} className="flex min-w-0 flex-wrap items-center gap-2">
                 <Select value={marketplaceCategory} onValueChange={(value) => { if (value) setMarketplaceCategory(value); }}>
-                  <SelectTrigger data-testid="plugin-category-filter" className="w-[132px]">
+                  <SelectTrigger data-testid="plugin-category-filter" aria-label={t("plugin_library.all_categories")} className="w-[132px]">
                     <SelectValue>
                       {marketplaceCategory === "all"
                         ? t("plugin_library.all_categories")
@@ -985,7 +984,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                   </SelectContent>
                 </Select>
                 <Select value={marketplaceStatus} onValueChange={(value) => { if (value) setMarketplaceStatus(value); }}>
-                  <SelectTrigger data-testid="plugin-status-filter" className="w-[132px]">
+                  <SelectTrigger data-testid="plugin-status-filter" aria-label={t("plugin_library.all_statuses")} className="w-[132px]">
                     <SelectValue>
                       {marketplaceStatus === "all"
                         ? t("plugin_library.all_statuses")

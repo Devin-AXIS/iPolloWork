@@ -35,7 +35,7 @@
   --dv-drag-over-border-color: var(--hf-animation-preview-primary);
   --dv-tab-font-size: 12.5px;
   --dv-tabs-and-actions-container-font-size: 12.5px;
-  background-color: var(--hf-studio-surface);
+  background-color: var(--hf-studio-bg);
 }
 
 .hf-dock .dv-sash:focus-visible {
@@ -44,18 +44,20 @@
 }
 
 .hf-dock .dv-dockview {
-  background-color: var(--hf-studio-surface);
+  background-color: var(--hf-studio-bg);
 }
 
-/* Cards on the shell: 3px around each group's view makes a 6px gutter. The card owns the only border. */
+/* Four rounded modules on the workspace; 6px on each side makes a 12px gutter. */
 .hf-dock .dv-view:has(> .dv-groupview) {
   box-sizing: border-box;
-  padding: 3px;
+  padding: 6px;
 }
 
 .hf-dock .dv-groupview {
-  border: 1px solid var(--hf-panel-border);
-  border-radius: 10px;
+  border: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--hf-studio-controls-bg);
 }
 
 .hf-dock .dv-tabs-and-actions-container {

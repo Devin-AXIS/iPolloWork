@@ -57,6 +57,17 @@ describe("defaultSideWidths", () => {
 });
 
 describe("applySideMinimums", () => {
+  it("reserves both full-height sides and keeps the timeline in the centre column", () => {
+    const { api } = mountBareDockview();
+    api.layout(1440, 800);
+    buildEditLayout(api, 1440, ["preview", "timeline", "compositions", "design"], true);
+    expect(api.getPanel("compositions")?.group.height).toBe(api.height);
+    expect(api.getPanel("design")?.group.height).toBe(api.height);
+    expect(api.getPanel("preview")?.group.width).toBe(api.getPanel("timeline")?.group.width);
+    expect(api.getPanel("compositions")?.group.width).toBe(240);
+    expect(api.groups).toHaveLength(4);
+    api.dispose();
+  });
   let api: DockviewApi;
   beforeEach(() => {
     ({ api } = mountBareDockview());
@@ -75,7 +86,7 @@ describe("applySideMinimums", () => {
     expect(inspector?.height).toBe(api.height);
     expect(timeline?.width).toBe(preview?.width);
     expect(timeline?.width).toBeLessThan(api.width);
-    expect(timeline?.height).toBe(360);
+    expect(timeline?.height).toBe(240);
     expect(inspector?.width).toBe(defaultSideWidths(1280).right);
   });
 

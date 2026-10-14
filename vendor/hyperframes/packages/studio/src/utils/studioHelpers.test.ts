@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "vitest";
 import type { TimelineElement } from "../player";
-import { findMatchingTimelineElementId, findTimelineIdByAncestor } from "./studioHelpers";
+import { findMatchingTimelineElementId, findTimelineIdByAncestor, replaceVideoDocumentTitle } from "./studioHelpers";
 
 test("matches a deleted timeline row by stable hf-id before a duplicated DOM id", () => {
   const elements: TimelineElement[] = [
@@ -83,5 +83,21 @@ describe("findTimelineIdByAncestor", () => {
     ];
 
     expect(findTimelineIdByAncestor(headline, timelineElements, "index.html")).toBeNull();
+  });
+});
+
+describe("video document name", () => {
+  test("changes only metadata and escapes markup", () => {
+    const body = '<body><script>const x="$&";</script><div data-start="12">Original scene</div></body>';
+    const source = '<html><head><title>Old</title><meta charset="utf-8"></head>' + body + '</html>';
+    expect(replaceVideoDocumentTitle(source, " New <name> & $& ")).toBe('<html><head><title>New &lt;name&gt; &amp; $&amp;</title><meta charset="utf-8"></head>' + body + '</html>');
+  });
+  test("inserts absent title without replacing content", () => {
+    expect(replaceVideoDocumentTitle("<head><style>x{}</style></head><body>keep</body>", "新名称")).toBe("<head><title>新名称</title><style>x{}</style></head><body>keep</body>");
+  });
+  test("rejects blank, overlong or malformed documents", () => {
+    expect(() => replaceVideoDocumentTitle("<head></head>", "")).toThrow();
+    expect(() => replaceVideoDocumentTitle("<head></head>", "x".repeat(121))).toThrow();
+    expect(() => replaceVideoDocumentTitle("<body>keep</body>", "Name")).toThrow();
   });
 });

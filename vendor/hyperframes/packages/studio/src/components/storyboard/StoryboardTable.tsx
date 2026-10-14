@@ -1,12 +1,7 @@
-import { usePlayerStore, type TimelineElement } from "../../player";
-import { buildExpandedElementTree } from "../../player/hooks/useExpandedTimelineElements";
-import { collectTimelineAncestorIds, resolveStoryboardTimelineTarget } from "../../player/lib/timelineTreeSelection";
-import { STUDIO_PREVIEW_FPS } from "../../player/lib/time";
-import { resolveTimelineClipLabel, resolveTimelineKind } from "../../player/components/timelineLayerPresentation";
-import { useDockLayoutStore } from "../dock/dockLayoutStore";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines,
+  ChevronDown,
   GripVertical,
   Plus,
   RefreshCw,
@@ -37,7 +32,9 @@ import { useViewMode } from "../../contexts/ViewModeContext";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
 import type { StoryboardResponse } from "../../hooks/useStoryboard";
 import { useStudioI18n } from "../../i18n";
-import { Button } from "../ui/Button";
+import { Button, IconButton } from "../ui/Button";
+import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@ipollowork/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ipollowork/ui/select";
 import { useDialogBehavior } from "../ui/useDialogBehavior";
 import { FramePoster } from "./FramePoster";
 import { StoryboardTableLayout } from "./StoryboardTableLayout";
@@ -53,14 +50,18 @@ export function StoryboardTable({
   projectId,
   data,
   onSaved,
+  compact = false,
 }: {
   projectId: string;
   data: StoryboardResponse;
   onSaved: () => void;
+  compact?: boolean;
 }) {
   const { tx, locale } = useStudioI18n();
+  const [compactShot, setCompactShot] = useState<number | null>(null);
   const { writeProjectFile, assets, uploadProjectFiles } = useFileManagerContext();
   const { sections: componentSections } = useBlockCatalog();
+  const pictureRecipes = componentSections.flatMap(section => section.items);
   const spatialRecipes = useMemo(() => {
     const component = componentSections.flatMap((section) => section.items)
       .find((item) => item.name === SPATIAL_CAMERA_COMPONENT);
@@ -70,7 +71,7 @@ export function StoryboardTable({
       return { value: option.value, label: locale === "zh" ? labels.at(-1)! : labels[0]! };
     });
   }, [componentSections, locale]);
-  const { registerViewModeGuard, setViewMode } = useViewMode();
+  const { registerViewModeGuard } = useViewMode();
   const format = data.globals.format?.match(/(\d+)\s*[x×]\s*(\d+)/i);
   const aspectRatio =
     format && Number(format[1]) > 0 && Number(format[2]) > 0
@@ -134,27 +135,6 @@ export function StoryboardTable({
   const changedOnDisk = data.source !== draft.base;
   const manifest = useMemo(() => parseStoryboard(draft.text), [draft.text]);
   const total = manifest.frames.reduce((sum, frame) => sum + (frame.durationSeconds ?? 0), 0);
-  const elements = usePlayerStore(state => state.elements);
-  const clipManifest = usePlayerStore(state => state.clipManifest);
-  const parentMap = usePlayerStore(state => state.clipParentMap);
-  const domChildren = usePlayerStore(state => state.domClipChildren);
-  // Expand for lookup only. Rendering still obeys the user's actual collapsed tree.
-  const timelineElements = useMemo(() => buildExpandedElementTree(
-    elements, clipManifest ?? [], parentMap, new Set(parentMap.values()), domChildren,
-  ), [elements, clipManifest, parentMap, domChildren]);
-
-  function locateClip(clip: TimelineElement) {
-    if (dirty || saving || !setViewMode("timeline")) return;
-    const state = usePlayerStore.getState();
-    state.setIsPlaying(false);
-    state.expandTimelineElementIds(collectTimelineAncestorIds(clip.domId ?? clip.id, state.clipParentMap));
-    state.setSelectedElementId(clip.key ?? clip.id);
-    state.requestClipReveal(clip.key ?? clip.id);
-    state.requestSeek(clip.start);
-    const dock = useDockLayoutStore.getState();
-    dock.activatePanel("timeline");
-    dock.activatePanel("preview");
-  }
 
   function projectAssets(paths: string[]): StoryboardSettingsAsset[] {
     return paths.flatMap(path => {
@@ -283,6 +263,21 @@ export function StoryboardTable({
       }),
     );
   }
+  function selectPictureStructure(index: number, value: string) {
+    const frame = manifest.frames.find(item => item.index === index);
+    if (!frame) return;
+    edit(source => {
+      let next = setFrameField(source, index, "recipe", value === "auto" || value === "custom" ? "" : value, { quote: value !== "auto" && value !== "custom" });
+      next = setFrameField(next, index, "recipe_intent", "");
+      next = setFrameField(next, index, "scene_id", "");
+      next = setFrameField(next, index, "custom_reason", value === "custom" ? frame.extra.custom_reason?.trim() || "User-selected custom graphics" : "", { quote: value === "custom" });
+      // Legacy component hints must not override the newly selected recipe.
+      if (frame.camera?.match(/(?:^|\s)component:[a-z0-9-]+/)) {
+        next = setFrameField(next, index, "camera", frame.camera.replace(/(?:^|\s)component:[a-z0-9-]+/g, "").trim(), { quote: true });
+      }
+      return next;
+    });
+  }
   function musicPrompt(value: string) {
     edit((source) => setStoryboardGlobal(source, "music_prompt", value));
   }
@@ -389,23 +384,8 @@ export function StoryboardTable({
     setSaved(false);
   }
 
-  return (
-    <section
-      className="hf-script-table relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--hf-workspace-bg)] text-[var(--hf-panel-text-0)]"
-      aria-label={tx("Script table")}
-      data-playback-shortcuts="off"
-    >
-      <div className="hf-script-overview flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-5 pb-4 pt-5">
-        <div className="min-w-0 flex-1 basis-80">
-          <h2 className="max-w-3xl text-sm font-semibold leading-6">
-            {manifest.globals.message || tx("Plan the picture first")}
-          </h2>
-          <p className="mt-1.5 text-xs tabular-nums text-[var(--hf-panel-text-3)]">
-            {manifest.frames.length} {tx("shots")} · {Number(total.toFixed(2))}s ·{" "}
-            {tx("Visuals, voice and materials in one plan")}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+  const actions = (
+    <div className="hf-script-actions flex flex-wrap items-center justify-end gap-2" role="group" aria-label={tx("Script table")}>
           <span role="status" className="text-xs text-[var(--hf-panel-text-3)]">
             {tx(saving ? "Saving…" : dirty ? "Unsaved changes" : saved ? "Saved" : "")}
           </span>
@@ -416,14 +396,14 @@ export function StoryboardTable({
           )}
           <Button
             size="sm"
-            variant="secondary"
+            variant="ghost"
             className="hf-script-save text-[var(--hf-panel-text-1)]"
             icon={<Save size={14} />}
             disabled={!dirty || saving || generating || (changedOnDisk && dirty)}
             loading={saving}
             onClick={() => void save()}
           >
-            {tx("Save script")}
+            {tx(compact ? "Save" : "Save script")}
           </Button>
           {embeddedInWork && hostRegenerationAvailable === true ? (
             <Button
@@ -434,7 +414,7 @@ export function StoryboardTable({
               loading={saving}
               onClick={() => void regenerate()}
             >
-              {tx("Save and regenerate video")}
+              {tx(compact ? "Regenerate video" : "Save and regenerate video")}
             </Button>
           ) : embeddedInWork && <Button size="sm" variant="primary" className="hf-script-generate" icon={<Play size={14} />}
             disabled={saving || generating || productionRequested || aiActive || changedOnDisk || manifest.frames.length === 0}
@@ -442,6 +422,25 @@ export function StoryboardTable({
             {tx(aiActive ? "Video production in progress" : productionRequested ? "Production requested" : generating ? "Starting video…" : "Confirm script & generate video")}
           </Button>}
         </div>
+  );
+
+  return (
+    <TooltipProvider delay={400}><section
+      className="hf-script-table relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--hf-workspace-bg)] text-[var(--hf-panel-text-0)]"
+      data-compact={compact}
+      aria-label={tx("Script table")}
+      data-playback-shortcuts="off"
+    >
+      <div className="hf-script-overview flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-5 pb-4 pt-5">
+        <div className="min-w-0 flex-1 basis-80">
+          <h2 className="max-w-3xl text-sm font-semibold leading-6">
+            {manifest.globals.message || tx("Plan the picture first")}
+          </h2>
+          <p className="mt-1.5 text-xs tabular-nums text-[var(--hf-panel-text-3)]">
+              {manifest.frames.length} {tx("shots")} · {tx("Estimated")} {Number(total.toFixed(2))}s
+          </p>
+        </div>
+        {!compact && actions}
       </div>
       {(productionRequested || aiActive) && <p role="status" className="mx-5 mb-3 text-xs text-[var(--hf-panel-text-2)]">
         {tx("Follow production progress in this conversation.")}
@@ -488,43 +487,38 @@ export function StoryboardTable({
                 </p>
               </div>
             )}
-            <button
+            <div className="flex justify-center px-4 py-3">
+            <Button
+              variant="ghost"
+              size="md"
               type="button"
               disabled={saving}
               onClick={() => edit((source) => appendStoryboardFrame(source, tx("New shot")))}
-              className="flex w-full items-center justify-center gap-2 border-b border-dashed border-[var(--hf-workspace-border)] py-4 text-xs text-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Plus size={14} />
               {tx("Add shot")}
-            </button>
+            </Button>
+            </div>
           </>
         }
       >
         <tbody className="bg-[var(--hf-panel-bg)]">
           {manifest.frames.map((frame) => {
-            const clip = resolveStoryboardTimelineTarget(frame, manifest.frames, timelineElements, STUDIO_PREVIEW_FPS);
-            const related = clip ? timelineElements.filter(item =>
-              item.start < clip.start + clip.duration - 0.001 && item.start + item.duration > clip.start + 0.001 &&
-              (item.timingSource !== "implicit" || ["image", "video", "audio", "voiceover", "music"].includes(resolveTimelineKind(item))),
-            ) : [];
             const diskFrame = data.frames.find((item) => item.src === frame.src && item.srcExists);
             const recipeId = frame.extra.recipe?.trim() || frame.camera?.match(/(?:^|\s)component:([a-z0-9-]+)/)?.[1] || "";
-            const recipeIntent = frame.extra.recipe_intent?.trim() || "";
             const customReason = frame.extra.custom_reason?.trim() || "";
-            const recipeTitle = componentSections.flatMap(section => section.items).find(item => item.name === recipeId)?.title || recipeId;
-            const recipeEvidence = data.frames.find(item => frame.extra.scene_id
-              ? item.extra.scene_id === frame.extra.scene_id
-              : Boolean(frame.src && item.src === frame.src))?.recipeMount;
-            const recipeMounted = Boolean(recipeId && recipeEvidence?.componentId === recipeId && !customReason);
             // Older drafts used `search`; surface those as the current AI-source
             // decision while preserving the original value until the user changes it.
             const assetSource = frame.assetSource === "search" || frame.assetSource === "auto"
               ? "auto"
               : frame.assetSource || "generate";
+            const structureValue = customReason ? "custom" : recipeId || "auto";
+            const selectedRecipe = pictureRecipes.find(item => item.name === recipeId);
             return (
               <Fragment key={frame.index}>
                 <tr
                   data-shot={frame.index}
+                  data-expanded={compactShot === frame.index}
                   className={`group ${expandedShot === frame.index ? "bg-[var(--hf-panel-hover)]" : ""} border-b border-[var(--hf-workspace-hairline)] align-top ${dropTarget === frame.index ? "bg-[var(--hf-panel-hover)] outline outline-1 outline-studio-accent" : ""}`}
                   onDragOver={(event) => {
                     if (dragging !== null) {
@@ -541,11 +535,10 @@ export function StoryboardTable({
                   }}
                 >
                   <td className="px-2 py-3">
-                    <button
+                    <Tooltip><TooltipTrigger render={<Button size="sm" variant="ghost"
                       type="button"
                       draggable
                       aria-label={`${tx("Move shot")} ${frame.index}`}
-                      title={tx("Drag to reorder. Use arrow keys to move.")}
                       onDragStart={(event) => {
                         setDragging(frame.index);
                         event.dataTransfer.setData("text/plain", String(frame.index));
@@ -565,21 +558,11 @@ export function StoryboardTable({
                           move(frame.index, frame.index + 1);
                         }
                       }}
-                      className="flex h-8 w-full cursor-grab items-center justify-center gap-1 rounded text-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)] focus-visible:outline-studio-accent disabled:cursor-not-allowed disabled:opacity-40"
-                    >
+                      className="hf-script-reorder cursor-grab gap-1 px-1.5 text-[var(--hf-panel-text-3)] active:cursor-grabbing"
+                    />} >
                       <GripVertical size={12} />
                       <span className="tabular-nums">{String(frame.index).padStart(2, "0")}</span>
-                    </button>
-                        <button
-                          type="button"
-                          aria-label={`定位镜头 ${frame.index}`}
-                          disabled={!clip || dirty || saving}
-                          title={tx(dirty ? "Save script before locating clips" : clip ? resolveTimelineClipLabel(clip) : "This shot has no corresponding timeline clip yet.")}
-                          className="mt-1 w-full rounded bg-panel-input px-1 py-1 text-[10px] text-panel-text-2 disabled:cursor-not-allowed disabled:opacity-40"
-                          onClick={() => { if (clip) locateClip(clip); }}
-                        >
-                          {tx("Locate clip")}
-                        </button>
+                    </TooltipTrigger><TooltipContent>{tx("Drag to reorder. Use arrow keys to move.")}</TooltipContent></Tooltip>
                   </td>
                   <td className="px-1 py-3">
                     <label
@@ -591,20 +574,7 @@ export function StoryboardTable({
                     <div className="[&_input]:font-semibold [&_input]:text-sm">
                       <PlanField label={`${tx("Shot title")} ${frame.index}`} value={frame.title ?? ""}
                         onChange={(value) => edit((source) => setFrameTitle(source, frame.index, value))} />
-                      {clip && <details className="my-2 text-[11px] text-panel-text-2" data-testid={`storyboard-timeline-links-${frame.index}`}>
-                        <summary className="cursor-pointer">{tx("Picture and audio tracks")} · {related.length}</summary>
-                        <div className="mt-1 max-h-48 space-y-1 overflow-auto">
-                          {related.map(item => <button key={item.key ?? item.id} type="button"
-                            aria-label={`${tx("Locate clip")} ${frame.index} · ${resolveTimelineClipLabel(item)}`}
-                            disabled={dirty || saving} onClick={() => locateClip(item)}
-                            className="flex w-full items-center gap-2 rounded bg-panel-input px-2 py-1 text-left hover:bg-panel-hover disabled:opacity-40">
-                            <span>{tx(resolveTimelineKind(item))}</span>
-                            <span className="min-w-0 flex-1 truncate">{resolveTimelineClipLabel(item)}</span>
-                            {item.start < clip.start - 0.001 || item.start + item.duration > clip.start + clip.duration + 0.001
-                              ? <span className="shrink-0">{tx("Shared across shots")}</span> : null}
-                          </button>)}
-                        </div>
-                      </details>}
+
                     </div>
                     <PlanField
                       id={`storyboard-shot-content-${frame.index}`}
@@ -631,19 +601,21 @@ export function StoryboardTable({
                     )}
                   </td>
                   <td className="px-1 py-3">
-                    <div className="space-y-1.5 px-2">
-                      <div className="flex min-w-0 items-center justify-between gap-1">
+                    <div className="hf-script-narration flex flex-col gap-1.5 px-2">
+                      <div className="hf-script-narration-heading flex min-w-0 items-center justify-between gap-1">
                         <label htmlFor={`storyboard-narration-${frame.index}`} className="shrink-0 text-[10px] text-[var(--hf-panel-text-3)]">
                           {tx("Narration")}
                         </label>
-                        <button
+                        {!compact && <Button
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           data-testid={`storyboard-voice-picker-${frame.index}`}
                           aria-label={`${tx("Choose voice for narration")} ${frame.index}`}
                           title={tx("Choose and audition a narration voice")}
                           aria-haspopup="dialog"
                           onClick={() => chooseFrameVoice(frame)}
-                          className="inline-flex min-w-0 max-w-[72%] items-center gap-1 rounded-lg border border-[var(--hf-workspace-border)] px-2 py-1 text-[10px] text-[var(--hf-panel-text-2)] hover:bg-[var(--hf-panel-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-studio-accent"
+                          className="min-w-0 max-w-[72%] gap-1 px-1 text-[10px] text-[var(--hf-panel-text-2)]"
                         >
                           <AudioLines size={11} className="shrink-0" />
                           <span className="truncate">
@@ -655,7 +627,7 @@ export function StoryboardTable({
                                   : tx("Project default voice"))}
                           </span>
                           <Pencil size={11} className="shrink-0" />
-                        </button>
+                        </Button>}
                       </div>
                       <PlanField
                         id={`storyboard-narration-${frame.index}`}
@@ -675,39 +647,56 @@ export function StoryboardTable({
                       className="mb-0.5 block px-2 text-[10px] text-[var(--hf-panel-text-3)]"
                       htmlFor={`storyboard-duration-${frame.index}`}
                     >
-                      {tx("Duration")}
+                      {tx("Estimated duration")}
                     </label>
                     <PlanField
                       id={`storyboard-duration-${frame.index}`}
-                      label={`${tx("Duration")} ${frame.index}`}
+                      label={`${tx("Estimated duration")} ${frame.index}`}
                       placeholder={tx("For example, 5s")}
                       value={frame.duration ?? ""}
                       onChange={(value) => field(frame.index, "duration", value)}
                     />
                   </td>
-                  <td className="px-3 py-3"><div className="space-y-2">
-                    <div data-testid={`storyboard-recipe-${frame.index}`} className="space-y-1 rounded-lg border border-[var(--hf-workspace-border)] px-2.5 py-2 text-xs">
-                      <div className="text-[10px] text-[var(--hf-panel-text-3)]">{tx("Recipe")}</div>
-                      <div className="font-medium break-words">{customReason ? tx("Custom graphics") : recipeTitle || tx("Not selected")}</div>
-                      {recipeId && !customReason && <><div className="break-all text-[10px] text-[var(--hf-panel-text-3)]">{recipeId}</div><div className="text-[var(--hf-panel-text-2)]">{tx(recipeMounted ? "Mounted in source" : "Planned recipe")}</div></>}
-                      {recipeId && recipeIntent && !customReason && <p className="whitespace-pre-wrap break-words text-[var(--hf-panel-text-2)]"><span className="font-medium">{tx("Selection intent")}：</span>{recipeIntent}</p>}
-                      {customReason && <p className="whitespace-pre-wrap break-words text-[var(--hf-panel-text-2)]">{customReason}</p>}
+                  <td id={`storyboard-structure-cell-${frame.index}`} className="hf-script-structure-cell px-3 py-3"><div className="space-y-2">
+                    <div className="hf-script-structure-control space-y-1.5">
+                      <label htmlFor={`storyboard-structure-${frame.index}`} className="hf-script-setting-label text-ui-caption text-muted-foreground">{tx("Picture structure")}</label>
+                      <Select value={structureValue} disabled={saving || aiActive || changedOnDisk} onValueChange={value => {
+                        if (value !== null && value !== structureValue) selectPictureStructure(frame.index, value);
+                      }}>
+                        <SelectTrigger id={`storyboard-structure-${frame.index}`} data-testid={`storyboard-structure-${frame.index}`} className="w-full">
+                          <SelectValue>{structureValue === "custom" ? tx("Custom graphics") : structureValue === "auto" ? tx("Automatic layout") : tx(selectedRecipe?.title || recipeId)}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">{tx("Automatic layout")}</SelectItem>
+                          {pictureRecipes.map(item => <SelectItem key={item.name} value={item.name} data-recipe-id={item.name}>{tx(item.title)}</SelectItem>)}
+                          {recipeId && !selectedRecipe ? <SelectItem value={recipeId}>{recipeId}</SelectItem> : null}
+                          <SelectItem value="custom">{tx("Custom graphics")}</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <button type="button" data-testid={`storyboard-picture-picker-${frame.index}`} aria-haspopup="dialog" aria-controls="storyboard-shot-settings"
-                      onClick={() => openSettings(frame.index, "picture")} className="hf-script-edit inline-flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--hf-workspace-border)] px-2.5 py-2 text-left text-xs hover:bg-[var(--hf-panel-hover)] focus-visible:ring-2 focus-visible:ring-studio-accent">
-                      <span>{tx(assetSource === "code" ? "No external media" : assetSource === "existing" ? "Use project media" : assetSource === "generate" ? "Generate visual media" : "AI chooses the source")}</span><Pencil size={12} className="shrink-0" />
-                    </button>
-                    <button type="button" data-testid={`storyboard-sound-picker-${frame.index}`} aria-haspopup="dialog"
-                      onClick={() => openSettings(frame.index, "sound")} className="hf-script-edit inline-flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--hf-workspace-border)] px-2.5 py-2 text-left text-xs hover:bg-[var(--hf-panel-hover)] focus-visible:ring-2 focus-visible:ring-studio-accent">
-                      <span className="truncate">{tx("Sound effects")}: {tx(frame.soundEffects?.trim() || frame.soundEffectReference?.trim() ? "Configured" : "Not set")}</span><Pencil size={12} className="shrink-0" />
-                    </button>
                   </div></td>
-                  <td className="px-1 py-3">
-                    <button
+                  <td id={`storyboard-material-cell-${frame.index}`} className="hf-script-material-cell px-3 py-3">
+                    <p className="hf-script-setting-label mb-1.5 text-ui-caption text-muted-foreground">{tx("Materials")}</p>
+                    <Button variant="ghost" type="button" data-testid={`storyboard-picture-picker-${frame.index}`} aria-haspopup="dialog" aria-controls="storyboard-shot-settings"
+                      aria-label={`${tx("Picture & materials")} ${frame.index}`}
+                      onClick={() => openSettings(frame.index, "picture")} className="hf-script-edit w-full justify-between text-left">
+                      <span className="min-w-0 truncate">{tx(assetSource === "code" ? "No external media" : assetSource === "existing" ? "Use project media" : assetSource === "generate" ? "Generate visual media" : "AI chooses the source")}</span><Pencil size={12} className="shrink-0" />
+                    </Button>
+                  </td>
+                  <td id={`storyboard-sound-cell-${frame.index}`} className="hf-script-sound-cell px-3 py-3">
+                    <p className="hf-script-setting-label mb-1.5 text-ui-caption text-muted-foreground">{tx("Sound effects")}</p>
+                    <Button variant="ghost" type="button" data-testid={`storyboard-sound-picker-${frame.index}`} aria-haspopup="dialog" aria-label={`${tx("Sound effects")} ${frame.index}`}
+                      onClick={() => openSettings(frame.index, "sound")} className="hf-script-edit w-full justify-between text-left">
+                      <span className="truncate">{tx(frame.soundEffects?.trim() || frame.soundEffectReference?.trim() ? "Configured" : "Not set")}</span><Pencil size={12} className="shrink-0" />
+                    </Button>
+                  </td>
+                  <td className="hf-script-action-cell px-1 py-3">
+                    <Tooltip><TooltipTrigger render={<IconButton
+                      size="sm"
+                      icon={<Trash2 size={14} />}
                       type="button"
                       aria-label={`${tx("Delete shot")} ${frame.index}`}
-                      title={tx("Delete shot")}
-                      className="flex h-8 w-8 items-center justify-center rounded text-[var(--hf-panel-text-3)] hover:bg-red-500/10 hover:text-red-500 disabled:opacity-30"
+                      className="text-[var(--hf-panel-text-3)] hover:text-destructive"
                       onClick={() => {
                         if (
                           window.confirm(
@@ -718,10 +707,17 @@ export function StoryboardTable({
                           edit((source) => removeStoryboardFrame(source, frame.index));
                         }
                       }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    />} /><TooltipContent>{tx("Delete shot")}</TooltipContent></Tooltip>
                   </td>
+                  {compact && <td className="hf-script-settings-toggle-cell">
+                    <Button variant="ghost" size="sm" className="w-full justify-between"
+                      data-testid={`storyboard-settings-toggle-${frame.index}`}
+                      aria-expanded={compactShot === frame.index}
+                      aria-controls={`storyboard-structure-cell-${frame.index} storyboard-material-cell-${frame.index} storyboard-sound-cell-${frame.index}`}
+                      onClick={() => setCompactShot(value => value === frame.index ? null : frame.index)}>
+                      {tx("Shot settings")}<ChevronDown size={14} className={compactShot === frame.index ? "rotate-180" : undefined} />
+                    </Button>
+                  </td>}
                 </tr>
 
               </Fragment>
@@ -858,7 +854,8 @@ export function StoryboardTable({
       })}
       </div>
 
-      <div className="border-t border-[var(--hf-workspace-border)] px-5 py-3 text-xs text-[var(--hf-panel-text-3)]">
+      <footer className="hf-script-footer shrink-0 border-t border-[var(--hf-workspace-border)] px-3 py-3 text-xs text-[var(--hf-panel-text-3)]">
+        <div>
         {tx(
           hostRegenerationAvailable === true
             ? "The first script version produces the video automatically. Save and regenerate after editing this table."
@@ -874,7 +871,9 @@ export function StoryboardTable({
             ))}
           </details>
         )}
-      </div>
-    </section>
+        </div>
+        {compact && actions}
+      </footer>
+    </section></TooltipProvider>
   );
 }

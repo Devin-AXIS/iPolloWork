@@ -236,7 +236,7 @@ function ContextHealth({
           </div>
         </dl>
         {health.compressionWarning ? (
-          <div className="mt-4 rounded-xl bg-amber-3 px-3 py-2 text-xs leading-5 text-amber-11">
+          <div className="mt-4 rounded-xl bg-feedback-warning px-3 py-2 text-xs leading-5 text-amber-11">
             {t("composer.context_compression_warning")}
           </div>
         ) : null}

@@ -3,7 +3,9 @@ import { Loader2, Upload } from "lucide-react";
 import type { StoryboardSettingsAsset, StoryboardSettingsFields, StoryboardSettingsRequest } from "@ipollowork/types/hyperframes";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Empty, EmptyDescription, EmptyContent } from "@/components/ui/empty";
+import { FileUploadItem } from "@/components/ui/file-upload";
+import { SearchField } from "@/components/ui/search-field";
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +27,9 @@ export function VideoStoryboardSettingsDialog({
   const [query, setQuery] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [importing, setImporting] = React.useState(false);
+  const [importError, setImportError] = React.useState("");
   const input = React.useRef<HTMLInputElement>(null);
   const feedbackId = React.useId();
   const feedbackProps = { "aria-describedby": feedbackId, "aria-invalid": Boolean(error) };
@@ -39,6 +44,7 @@ export function VideoStoryboardSettingsDialog({
     : asset.kind !== "audio" && (!fields?.asset_kind || fields.asset_kind === asset.kind))
     && asset.path.toLowerCase().includes(query.toLowerCase())).slice(0, 40);
   async function importFile(file: File) {
+    setPendingFile(file); setImporting(true); setImportError("");
     setBusy(true); setError("");
     try {
       const imported = await onImport(file);
@@ -46,25 +52,26 @@ export function VideoStoryboardSettingsDialog({
       if (!compatible[0]) throw new Error(t("video.script.import_failed"));
       setAssets(current => [...current.filter(asset => !imported.some(item => item.path === asset.path)), ...imported]);
       update(referenceKey, compatible[0].path);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t("video.script.import_failed")); }
-    finally { setBusy(false); }
+    } catch (cause) { setImportError(cause instanceof Error ? cause.message : t("video.script.import_failed")); }
+    finally { setBusy(false); setImporting(false); }
   }
   function assetPicker() {
-    return <Field className="gap-3">
+    return <Field className="gap-3" aria-busy={importing}>
       <div className="flex items-center justify-between gap-3">
-        <FieldLabel>{t("video.script.project_assets")}</FieldLabel>
+        <FieldLabel htmlFor={feedbackId + "-search"}>{t("video.script.project_assets")}</FieldLabel>
         <Button variant="outline" size="sm" disabled={busy || disabled} onClick={() => input.current?.click()}><Upload className="size-3.5" />{t("video.script.import")}</Button>
         <input ref={input} type="file" hidden accept={kind === "sound" ? "audio/*" : "image/*,video/*"} onChange={event => {
           const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file);
         }} />
       </div>
-      <Input {...feedbackProps} aria-label={t("video.script.search_assets")} placeholder={t("video.script.search_assets")} value={query} onChange={event => setQuery(event.target.value)} />
+      <SearchField {...feedbackProps} id={feedbackId + "-search"} aria-label={t("video.script.search_assets")} clearLabel={t("help.clear_search")} placeholder={t("video.script.search_assets")} value={query} onValueChange={setQuery} />
+      {pendingFile ? <FileUploadItem name={pendingFile.name} status={importing ? "uploading" : importError ? "error" : "success"} statusLabel={t(importing ? "video.script.importing" : "video.script.imported")} error={importError} retryLabel={t("common.retry")} onRetry={busy || disabled ? undefined : () => void importFile(pendingFile)} /> : null}
       <div className="grid grid-cols-2 gap-2">
         {candidates.map(asset => <Button key={asset.path} variant={selected === asset.path ? "secondary" : "outline"} className="h-auto min-h-10 justify-start overflow-hidden px-3 py-2 text-left text-xs" aria-pressed={selected === asset.path} onClick={() => update(referenceKey, asset.path)}>
           <span className="truncate">{asset.path.split("/").at(-1)}</span>
         </Button>)}
       </div>
-      {candidates.length === 0 && <p className="text-xs text-muted-foreground">{t("video.script.no_assets")}</p>}
+      {candidates.length === 0 && !importing && <Empty variant="ghost"><EmptyDescription>{t(query ? "video.script.no_matches" : "video.script.no_assets")}</EmptyDescription><EmptyContent>{query ? <Button type="button" variant="outline" size="sm" onClick={() => setQuery("")}>{t("help.clear_search")}</Button> : <Button type="button" variant="outline" size="sm" disabled={busy || disabled} onClick={() => input.current?.click()}>{t("video.script.import")}</Button>}</EmptyContent></Empty>}
       {selected && <div className="space-y-2 rounded-lg bg-muted/40 p-3">
         <div className="flex items-center justify-between gap-3"><p className="truncate text-xs" title={selected}>{selected}</p>
           <Button variant="ghost" size="sm" onClick={() => update(referenceKey, "")}>{t("video.script.clear")}</Button></div>
@@ -104,30 +111,15 @@ export function VideoStoryboardSettingsDialog({
             {source !== "code" && <Field><FieldLabel htmlFor="shot-source-origin">{t("video.script.origin")}</FieldLabel>
               <Textarea {...feedbackProps} id="shot-source-origin" rows={2} value={fields.asset_origin} onChange={event => update("asset_origin", event.target.value)} /></Field>}
             {source === "existing" && assetPicker()}
-            <details className="border-t border-border pt-4"><summary className="cursor-pointer text-ui-control font-medium">{t("video.script.more")}</summary>
-              <div className="mt-4 space-y-4">
-                <Field><FieldLabel htmlFor="shot-camera">{t("video.script.camera")}</FieldLabel>
-                  <Select value={request?.cameras.some(camera => camera.value === fields.camera) ? fields.camera : "custom"}
-                    onValueChange={value => { if (value !== null && value !== "custom") update("camera", value); }}>
-                    <SelectTrigger {...feedbackProps} id="shot-camera" className="w-full" aria-label={t("video.script.camera")}><SelectValue>{request?.cameras.find(camera => camera.value === fields.camera)?.label ?? t("video.script.custom_camera")}</SelectValue></SelectTrigger><SelectContent>
-                      <SelectItem value="custom">{t("video.script.custom_camera")}</SelectItem>
-                      {request?.cameras.map(camera => <SelectItem key={camera.value} value={camera.value}>{camera.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Input {...feedbackProps} aria-label={t("video.script.camera_direction")} value={fields.camera} onChange={event => update("camera", event.target.value)} />
-                </Field>
-                <Field><FieldLabel htmlFor="shot-transition">{t("video.script.transition")}</FieldLabel>
-                  <Input {...feedbackProps} id="shot-transition" value={fields.transition_in} onChange={event => update("transition_in", event.target.value)} /></Field>
-              </div>
-            </details>
+            {source === "code" && <FieldDescription>{t("video.script.source_code_help")}</FieldDescription>}
           </>}
           {kind === "sound" && fields && <><Field><FieldLabel htmlFor="shot-sound-effects">{t("video.script.sound_cue")}</FieldLabel>
             <Textarea {...feedbackProps} id="shot-sound-effects" rows={4} value={fields.sound_effects} placeholder={t("video.script.sound_placeholder")} onChange={event => update("sound_effects", event.target.value)} /></Field>{assetPicker()}</>}
         </fieldset>
       </div>}
-      <footer className="flex shrink-0 items-center justify-between gap-4 border-t border-border px-6 py-4">
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t border-border px-6 py-4">
         {error ? <FieldError id={feedbackId}>{error}</FieldError> : <FieldDescription id={feedbackId}>{t("video.voice.apply_help")}</FieldDescription>}
-        <div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
+        <div role="group" aria-label={t("video.voice.apply_script")} className="ml-auto flex shrink-0 flex-wrap gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={onClose}>{t("common.cancel")}</Button>
           <Button size="sm" disabled={disabled || busy} onClick={async () => {
             setBusy(true); setError("");
             try { if (await onApply(fields)) onClose(); else setError(t("video.script.stale")); }

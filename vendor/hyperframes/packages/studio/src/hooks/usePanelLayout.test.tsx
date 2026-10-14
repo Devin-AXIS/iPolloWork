@@ -48,6 +48,18 @@ describe("canonical dock navigation", () => {
     act(() => layout.setRightPanelTab("code"));
     expect(layout.rightPanelTab).toBe("design");
   });
+
+  it("expands the script without changing the selected inspector or dock visibility", () => {
+    useDockLayoutStore.getState().attach(controller);
+    act(() => root.render(<Probe initial={{ rightPanelTab: "voice" }} />));
+    act(() => layout.setScriptExpanded(true));
+    expect(layout.scriptExpanded).toBe(true);
+    expect(layout.rightPanelTab).toBe("voice");
+    expect(controller.close).not.toHaveBeenCalled();
+    act(() => layout.setScriptExpanded(false));
+    expect(layout.scriptExpanded).toBe(false);
+    expect(layout.rightPanelTab).toBe("voice");
+  });
   it("reveals assets in the right sidebar without opening a second dock panel", () => {
     useDockLayoutStore.getState().attach(controller);
     act(() => root.render(<Probe initial={{ rightPanelTab: "voice" }} />));

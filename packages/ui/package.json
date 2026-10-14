@@ -52,7 +52,13 @@
     "./separator": "./src/react/separator.tsx",
     "./command": "./src/react/command.tsx",
     "./descriptive-button": "./src/react/descriptive-button.tsx",
-    "./core": "./src/react/core.ts"
+    "./core": "./src/react/core.ts",
+    "./search-field": "./src/react/search-field.tsx",
+    "./number-field": "./src/react/number-field.tsx",
+    "./slider": "./src/react/slider.tsx",
+    "./calendar": "./src/react/calendar.tsx",
+    "./date-picker": "./src/react/date-picker.tsx",
+    "./file-upload": "./src/react/file-upload.tsx"
   },
   "files": [
     "dist",
@@ -70,7 +76,8 @@
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.5.0",
     "@paper-design/shaders": "0.0.72",
-    "@paper-design/shaders-react": "0.0.72"
+    "@paper-design/shaders-react": "0.0.72",
+    "@daypicker/react": "10.0.2"
   },
   "peerDependencies": {
     "react-dom": "^18 || ^19",

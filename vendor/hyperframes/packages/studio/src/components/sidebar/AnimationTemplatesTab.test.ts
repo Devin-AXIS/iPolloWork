@@ -134,11 +134,9 @@ describe("AnimationTemplatesTab catalog", () => {
     expect(source).toContain("absolute inset-0 rounded-[8px] border-2 border-[#1FBAC0] opacity-0");
     expect(source).toContain('data-testid="animation-card-hover-border"');
     expect(source).toContain("hf-animation-category-filter");
-    expect(source).toContain('? "bg-black text-white');
-    expect(source).toContain(': "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:');
-    expect(styles).toContain(
-      '.hf-animation-category-filter[aria-pressed="true"] {\n  color: #ffffff !important;',
-    );
+    expect(source).toContain('import { Button } from "@ipollowork/ui/controls"');
+    expect(source).toContain("aria-pressed:bg-muted aria-pressed:text-foreground");
+    expect(styles).not.toContain('.hf-animation-category-filter[aria-pressed="true"] {\n  color: #ffffff !important;');
     expect(removeAction).toBeGreaterThan(-1);
     expect(source.slice(removeAction, removeAction + 350)).not.toContain("border border-[#5a6774]");
   });

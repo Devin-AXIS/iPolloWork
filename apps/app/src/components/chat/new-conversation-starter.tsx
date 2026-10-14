@@ -2,6 +2,7 @@
 
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Ref } from "react";
+import { Slider } from "@/components/ui/slider";
 import { createPortal } from "react-dom";
 import { LazyMotion, domAnimation, m, useReducedMotion, type Transition } from "motion/react";
 import {
@@ -539,16 +540,15 @@ function AnimationVariableControl({
       ) : null}
       {variable.type === "number" ? (
         <div className="flex items-center gap-3">
-          <input
+          <Slider
             id={inputId}
-            type="range"
             min={variable.min}
             max={variable.max}
             step={variable.step}
             value={typeof value === "number" ? value : variable.default}
-            aria-label={variable.label}
-            className="min-w-0 flex-1 accent-primary"
-            onChange={(event) => onChange(Number(event.target.value))}
+            thumbLabels={[variable.label]}
+            className="min-w-0 flex-1"
+            onValueChange={onChange}
           />
           <output htmlFor={inputId} className="w-14 text-right text-[11px] tabular-nums text-foreground">
             {value}{variable.unit ?? ""}

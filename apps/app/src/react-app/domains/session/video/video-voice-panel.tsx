@@ -1,13 +1,17 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Check, ChevronDown, Loader2, Play, RefreshCw, Search, SlidersHorizontal, Sparkles, Mic, KeyRound, Plus } from "lucide-react";
+import { AudioLines, Check, ChevronDown, Loader2, Play, RefreshCw, SlidersHorizontal, Sparkles, Mic, KeyRound, Plus } from "lucide-react";
 
 import { Link } from "react-router-dom";
 import { workspaceSettingsRoute, globalSettingsRoute } from "@/react-app/shell/workspace-routes";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertAction } from "@/components/ui/alert";
+import { Empty, EmptyDescription, EmptyContent } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/ui/search-field";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
@@ -186,6 +190,8 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
   );
   const [mineDataLoaded, setMineDataLoaded] = React.useState(false);
   const [loadingMineData, setLoadingMineData] = React.useState(false);
+  const [mineError, setMineError] = React.useState("");
+  const mineRequestRef = React.useRef(false);
   const [cloning, setCloning] = React.useState(false);
   const [cloneOpen, setCloneOpen] = React.useState(false);
   const [cloneName, setCloneName] = React.useState("");
@@ -299,16 +305,18 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
   }, [client, context, mediaReady]);
 
   const loadMineData = React.useCallback(async () => {
-    if (!client || !mediaReady) return;
+    if (!client || !mediaReady || mineRequestRef.current) return;
+    mineRequestRef.current = true;
     setLoadingMineData(true);
-    setMessage("");
+    setMineError("");
     try {
       await loadCustomVoices();
       setMineDataLoaded(true);
     } catch (error) {
       setMineDataLoaded(true);
-      setMessage(readableError(error));
+      setMineError(readableError(error));
     } finally {
+      mineRequestRef.current = false;
       setLoadingMineData(false);
     }
   }, [client, loadCustomVoices, mediaReady]);
@@ -595,11 +603,8 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                         <span className="min-w-0 flex-1"><span className="block text-ui-control font-medium">{selectionTarget ? t("video.voice.auto_role") : t("video.voice.auto_title")}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{selectionTarget ? t("video.voice.auto_role_help") : t("video.voice.auto_help")}</span></span>
                         {(selectionTarget ? targetVoiceIsAuto : activeVoice?.source === "preset" && activeVoice.selectionMode === "auto") ? <Check aria-hidden="true" className="size-3.5 text-primary" /> : null}
                       </Button>
-                      <div className="flex shrink-0 items-center gap-2" data-testid="voice-search-toolbar">
-                        <div className="relative min-w-0 flex-1">
-                          <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                          <Input value={voiceQuery} onChange={(event) => setVoiceQuery(event.currentTarget.value)} aria-label={t("video.voice.search_placeholder")} placeholder={t("video.voice.search_placeholder")} className="pl-8" />
-                        </div>
+                      <div role="group" aria-label={t("video.voice.search_placeholder")} className="flex min-w-0 flex-wrap items-center gap-2" data-testid="voice-search-toolbar">
+                        <SearchField value={voiceQuery} onValueChange={setVoiceQuery} clearLabel={t("help.clear_search")} aria-label={t("video.voice.search_placeholder")} placeholder={t("video.voice.search_placeholder")} containerClassName="min-w-32 flex-1" />
                         <Popover>
                           <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label={t("video.voice.filters")} className={`relative size-8 shrink-0 rounded-lg bg-muted/60 ${filterCount ? "text-primary" : "text-muted-foreground"}`} />}>
                             <SlidersHorizontal aria-hidden="true" className="size-4" />
@@ -625,11 +630,13 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                             <VoicePreviewButton label={presetVoiceLabel(voice.id)} previewing={previewingVoiceId === voice.id} disabled={!mediaReady || previewing} onPreview={() => void previewVoice({ voiceId: voice.id, source: "preset", model: DEFAULT_COSYVOICE_MODEL })} />
                           </div>;
                         })}
-                        {filteredPresetVoices.length === 0 ? <p className="rounded-xl bg-muted/40 px-3 py-5 text-center text-[11px] text-muted-foreground">{t("video.voice.no_matches")}</p> : null}
+                        {filteredPresetVoices.length === 0 ? <Empty variant="ghost"><EmptyDescription>{t("video.voice.no_matches")}</EmptyDescription><EmptyContent><Button type="button" variant="outline" size="sm" onClick={() => { setVoiceQuery(""); setLanguageFilter("all"); setGenderFilter("all"); setAgeFilter("all"); }}>{t("common.reset")}</Button></EmptyContent></Empty> : null}
                       </div>
                     </TabsContent>
-                    <TabsContent value="mine" data-testid="my-voice-picker" className="min-h-0 space-y-2">
-                      {loadingMineData ? <p className="flex items-center gap-2 text-[11px] text-muted-foreground" role="status"><Loader2 className="size-3.5 animate-spin" />{t("video.voice.loading_my_voices")}</p> : null}
+                    <TabsContent value="mine" data-testid="my-voice-picker" aria-busy={loadingMineData} className="min-h-0 space-y-2">
+                      {loadingMineData ? <div className="space-y-2"><p className="flex items-center gap-2 text-ui-meta text-muted-foreground" role="status"><Loader2 aria-hidden="true" className="size-3.5 animate-spin" />{t("video.voice.loading_my_voices")}</p>{!customVoices.length ? <Skeleton aria-hidden="true" className="h-8 w-full" /> : null}</div> : null}
+                      {mineError ? <Alert variant="destructive" data-testid="voice-library-error"><AlertDescription>{mineError}</AlertDescription><AlertAction><Button type="button" variant="link" size="sm" disabled={loadingMineData} onClick={() => void loadMineData()}>{t("common.retry")}</Button></AlertAction></Alert> : null}
+                      {mineDataLoaded && !loadingMineData && !mineError && customVoices.length > 0 ? <p role="status" className="text-ui-meta text-muted-foreground">{t("video.voice.list_updated")}</p> : null}
                       {customVoices.length ? <>
                   <div className="flex items-center justify-between gap-2 px-2 py-1">
                     <h4 className="text-ui-control font-medium">{t("video.voice.my_voices_tab")}<span className="ml-1.5 text-ui-caption font-normal text-muted-foreground">{customVoices.length}</span></h4>
@@ -645,11 +652,12 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                     </div>;
                   })}</div>
                   <Button type="button" variant="ghost" data-testid="voice-clone-entry" onClick={openClone} className="mt-1 justify-start"><Plus aria-hidden="true" className="size-3.5" />{t("video.voice.clone_new")}</Button>
-                      </> : !loadingMineData ? <div data-testid="voice-library-empty" className="space-y-3 rounded-lg bg-muted/45 px-4 py-6 text-center">
-                <p className="text-ui-control text-muted-foreground">{t("video.voice.no_cloned")}</p>
+                      </> : !loadingMineData && !mineError && mineDataLoaded ? <Empty variant="ghost" data-testid="voice-library-empty">
+                <EmptyDescription>
+                {t("video.voice.no_cloned")}</EmptyDescription><EmptyContent>
                 <Button variant="outline" data-testid="voice-clone-entry"  onClick={openClone}><Plus className="size-3.5" />{t("video.voice.clone_new")}</Button>
-                <Button type="button" variant="ghost" size="xs" className="mx-auto" onClick={() => void loadMineData()}>{t("video.voice.refresh_my_voices")}</Button>
-                      </div> : null}
+                <Button type="button" variant="ghost" size="xs" className="mx-auto" onClick={() => void loadMineData()}>{t("video.voice.refresh_my_voices")}</Button></EmptyContent>
+                      </Empty> : null}
                     </TabsContent>
                   </Tabs>
                   {previewUrl ? <Button type="button" variant="ghost" size="sm" onClick={() => {

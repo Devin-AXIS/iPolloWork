@@ -27,6 +27,17 @@ function functionBody(source: string, start: string, end: string) {
 }
 
 describe("workspace resize performance", () => {
+  test("snaps only the video workspace after intentional overshoot and keeps pointer cancellation safe", () => {
+    const dragBody = functionBody(sessionPageSource, "const startRightPanelResize =", "const handleDesignAskAi =");
+    expect(dragBody).toContain("requestedWidth >= maximumWidth + 48");
+    expect(dragBody).toContain("videoTabActive && !rightWorkspaceExpanded");
+    expect(dragBody).toContain('stopEvent.type === "pointerup"');
+    expect(dragBody).toContain("moveEvent.clientX - event.clientX >= 48");
+    expect(dragBody).toContain("if (expandPending) setRightPanelExpanded(true)");
+    expect(dragBody).toContain("if (collapsePending) setRightPanelExpanded(false)");
+    expect(dragBody).not.toContain("setSessionPanelView");
+    expect(sessionPageSource).toContain("group-data-[snap-pending=true]:block");
+  });
   test("updates the left sidebar DOM per frame and commits store state on release", () => {
     const dragBody = functionBody(
       layoutSource,
@@ -54,7 +65,7 @@ describe("workspace resize performance", () => {
     const moveBody = functionBody(
       dragBody,
       "const handleMove = (moveEvent: PointerEvent) => {",
-      "const handleStop = () => {",
+      "const handleStop = (stopEvent: PointerEvent) => {",
     );
 
     expect(moveBody).toContain("window.requestAnimationFrame(applyPendingWidth)");

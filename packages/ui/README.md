@@ -92,7 +92,7 @@ See `.codex/skills/ipollowork-plugin-ui/references/plugin-contract.md` for
 the canonical v1 public-entry, build/injection and major-version contract,
 including current limitations, and `evals/flows/shared-ui-runtime.flow.mjs`
 for proof. `plugin-runtime` is an implementation entrypoint, not the production
-plugin business-script API. Runtime `1.5.0` is distinct from client/plugin
+plugin business-script API. Runtime `1.7.0` is distinct from client/plugin
 package versions; `requireRuntime(1, required, 3)` enforces minor >= 3 in major 1.
 Older two-argument callers remain compatible. There is no semver range negotiation.
 The built-in production plugin was installed in a dedicated Electron dev
@@ -132,7 +132,9 @@ Electron/native browser-zoom acceptance test. Latest twelve-frame proof:
 
 Alert and Toast use soft semantic backgrounds with no border or shadow.
 `tokens.css` maps `--feedback-{info,success,warning,error}-background` to the
-shared palette's `sky/green/amber/red-2`, including dark theme values. Alert
+shared palette's `sky/green/red-2` for information, success and errors. Warning
+uses `--project-dialog-notice`: warm gray `#f4f4ee` in light theme and
+`--gray-3` in dark theme. Warning icons retain their semantic accent. Alert
 variants remain `default/success/warning/destructive`; Toast keeps its existing
 default/info/success/warning/error API. The core flow checks all variants in
 both themes and runtime modes, readable description contrast, dismiss and retry.
@@ -184,3 +186,162 @@ import { Button, Icon } from '@ipollowork/ui/core';
 <Button onClick={save}><Icon name="Save" data-icon="inline-start" />保存</Button>
 <Button size="icon" aria-label="搜索"><Icon name="Search" /></Button>
 ```
+
+## Compact high-frequency controls (runtime 1.6)
+
+Public entries: `/search-field`, `/number-field`, `/slider`, `/calendar`,
+`/date-picker` (also TimeInput), `/file-upload` (also FileUploadItem).
+Use `requireRuntime(1, required, 6)`. Search composes existing InputGroup;
+NumberField/Slider reuse Base UI. All reuse compact 32px controls, 13px roles and
+host theme tokens. Input composition follows [shadcn Base InputGroup](https://ui.shadcn.com/docs/components/base/input-group);
+calendar follows its [DayPicker-based pattern](https://ui.shadcn.com/docs/components/base/calendar).
+
+Calendar adds pinned `@daypicker/react@10.0.2` (MIT), rather than a bespoke
+calendar navigation/accessibility implementation. It transitively uses
+react-day-picker, date-fns and @date-fns/tz. DatePicker values are local
+YYYY-MM-DD strings, not UTC timestamps. TimeInput uses native local time.
+Range/multi-date props remain DayPicker-owned; this batch verifies single dates.
+
+Search consumers own filtering. NumberField reports invalid bounds without
+silently accepting a commit; Slider exposes native accessible range inputs.
+FileUpload validates empty/type/size selections atomically. Upload transport,
+progress, errors and retry are caller-owned; never invent a progress percentage
+or cancellation capability. FileUploadItem only offers actions with callbacks.
+
+Host adopters include settings searches, plugin custom ratio fields, template
+numeric sliders, work-item dates and avatar image upload. Professional editing
+layouts remain unchanged. See `shared-ui-compact-controls.flow.mjs`: both runtime
+modes plus real host components; work-item persistence callbacks and upload HTTP
+responses are isolated, not a proof of production server writes.
+
+Measured host runtime 1.6.0 on 2026-10-12: 1,115,281 bytes raw / 303,026 gzip,
+versus 981,023 / 260,820 before this batch (+134,258 raw / +42,206 gzip).
+This full-core cost is paid only by opted-in plugins; production business
+scripts still do not bundle a second copy.
+
+## Standard compositions (runtime 1.6.1)
+
+Reuse primitives rather than inventing a component for each arrangement.
+Field supports vertical, horizontal and responsive layouts. Responsive layouts
+use the surrounding FieldGroup container query, not the viewport. FieldContent
+groups a label and description; each editable control still needs its own
+label association and explicit hint/error IDs. Required, disabled and invalid
+states remain caller-owned; saving failures must not replace the draft.
+
+```tsx
+<FieldGroup>
+  <Field data-invalid={Boolean(error)}>
+    <FieldLabel htmlFor="name">名称</FieldLabel>
+    <Input id="name" required aria-invalid={Boolean(error)}
+      aria-describedby={error ? "name-help name-error" : "name-help"} />
+    <FieldDescription id="name-help">填写可辨认的名称</FieldDescription>
+    {error && <FieldError id="name-error">{error}</FieldError>}
+  </Field>
+  <Field orientation="horizontal">
+    <Switch id="enabled" />
+    <FieldContent>
+      <FieldLabel htmlFor="enabled">启用</FieldLabel>
+      <FieldDescription>即时生效的开关</FieldDescription>
+    </FieldContent>
+  </Field>
+</FieldGroup>
+```
+
+InputGroup composes icons, text units, buttons and multiline footers. Keep addons
+after the editable control in DOM order, use align to position them, and use
+tabIndex=-1 for noninteractive text addons. Interactive buttons retain normal
+Tab behavior and localized names. Clicking an addon focuses either input or
+textarea without hijacking a child button. Counts are outside editable content
+and referenced by aria-describedby; do not announce every keystroke as an alert.
+
+```tsx
+<Field>
+  <FieldLabel htmlFor="description">描述</FieldLabel>
+  <InputGroup>
+    <InputGroupTextarea id="description" rows={3} maxLength={3000}
+      value={draft} onChange={event => setDraft(event.currentTarget.value)}
+      aria-describedby="description-count" />
+    <InputGroupAddon align="block-end" tabIndex={-1}>
+      <InputGroupText id="description-count">{draft.length} / 3000</InputGroupText>
+    </InputGroupAddon>
+  </InputGroup>
+</Field>
+```
+
+Action groups compose Button with DropdownMenu, or SearchField with Popover/
+Select filters. Use a named role=group, flex-wrap and a shrinkable search area.
+Do not declare role=toolbar unless implementing its keyboard navigation.
+Keep primary actions visible, disabled items non-executable, and Escape focus
+restoration owned by the existing overlay. Domain-specific timelines, canvases
+and property layouts are not replaced by these recipes.
+
+Adopters: avatar name/description/action group, voice search/filter, storyboard
+asset search/footer and plugin-library search/filters. `shared-ui-compositions`
+checks labels, linked errors, draft retention, multiline counts/addon focus,
+menus, dark/narrow containers and real components with isolated service data.
+
+## Async feedback recipes
+
+Compose existing Skeleton, Empty, Alert/AlertAction, Button and FileUploadItem;
+there is no new generic async state machine or runtime API.
+
+- Initial loading: announce status and aria-busy; skeleton only if nothing usable
+  exists. A refresh retains last confirmed content, selection and input.
+- Empty: show only after a successful empty response. Filtered no-match uses a
+  clear/reset action; genuinely empty data offers import/create, not retry.
+- Failure: show a scoped persistent Alert with the request's cause and real retry.
+  Never reinterpret a failed request as an empty list. Keep the draft and files.
+- Retry: reuse the same operation/file, guard duplicate in-flight requests, and
+  do not clear old successful data before receiving a new response.
+- Success: update with actual returned data and release busy state. Inline
+  status is sufficient; do not invent percentages or equate a toast to acceptance.
+- Upload: FileUploadItem shows only real available actions/progress. Failed
+  storyboard imports keep the same File for retry and preserve current assets.
+
+Adopters: voice library refresh/loading/empty/retry and preset no-match reset;
+storyboard asset no-match/import recovery; avatar upload uses the existing
+same-file recovery. Providers and file services stay in their current owners.
+Proof flow: `shared-ui-async-feedback`; delayed/failing service responses in
+its fixture are explicit simulations, not proof of paid provider or disk writes.
+
+## Controlled table compositions (runtime 1.7)
+
+The existing `/table` and `/core` now export TableSortHead, TablePagination,
+TablePageSelection and TableBulkActions. Use `requireRuntime(1, required, 7)`.
+Existing Table markup/density remains unchanged. No additional dependency or
+data-fetching/state-machine implementation is introduced.
+
+TableSortHead takes direction (none/ascending/descending) and a next-direction
+callback, applies aria-sort to its th and uses a compact keyboard button.
+TablePagination takes zero-based pageIndex, positive pageSize, nonnegative total,
+localized labels and controlled callbacks. The caller must provide valid page
+bounds and available page sizes, clamp after total changes, and reset pageIndex
+when changing page size or filters. Unknown cursor totals need a separate caller
+pagination presentation; do not invent exact page counts.
+
+TablePageSelection receives counts only for the selectable current page.
+It shows mixed state and disables an empty page; it never selects unseen rows.
+Selection must use stable IDs, persist across pages and clear when the filter
+scope changes. Sorting does not invalidate stable-ID selections.
+TableBulkActions renders selected count/actions; business callbacks, confirmation,
+busy state and partial failure handling are caller-owned. Compose AlertDialog,
+snapshot selected IDs on confirmation, disable conflicting controls while busy,
+remove successful IDs and retain failed IDs for retry. Never retry successes.
+
+Compose SearchField/Select for filters, Empty for confirmed no-match with reset,
+and Alert for retryable reads. Remote queries must sort/filter before pagination
+on their owning server; sorting a fetched page is not full-collection sorting.
+During a page request, retain the last confirmed rows and page metadata; accept
+only the latest request. Small bounded local collections can use local processing.
+
+The executable sample in `shared-ui-core-fixture.mjs` simulates a complete
+23-item service in memory; it is not a production data engine. Its standard
+controls are the real public implementations. Open the current dev client's
+`/@fs/<repository>/evals/support/shared-ui-core.html?mode=host&table=1`.
+Batch changes affect only this isolated sample, never user files or tasks.
+`shared-ui-table` proves bundled/host sorting, filters, pages, selection,
+confirmation/cancel, read failure and partial batch recovery.
+
+Measured 1.7 host runtime: 1,117,754 raw / 304,119 gzip bytes, versus
+1.6.1's 1,115,327 / 303,032 (+2,427 raw / +1,087 gzip); no dependency added.
+Proof: `evals/results/2026-10-12T05-18-08-985Z/fraimz.html` (16 frames).

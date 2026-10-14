@@ -48,7 +48,7 @@
 | 品牌强调 / 链接 | `--primary` / `--primary-foreground`；`--primary-text` | 品牌青色与配套深色前景；文字链接使用primary-text，不能把品牌青色直接铺在白底小字上 |
 | 边框 / 输入 / 焦点 | `--border`、`--input`、`--ring` | 常规分隔、输入表面/边框、键盘焦点按组件定义使用；焦点不能只靠 hover |
 | 错误 / 风险 | `--destructive`、`--warning` | 保留具体原因与恢复动作；持续反馈背景使用下列专用 Token |
-| 信息 / 成功 / 警告 / 错误背景 | `--feedback-info-background` / `--feedback-success-background` / `--feedback-warning-background` / `--feedback-error-background` | 分别关联 sky/green/amber/red 第2档；Alert/Toast 无边框、无投影；图标与文字采用共享实现 |
+| 信息 / 成功 / 警告 / 错误背景 | `--feedback-info-background` / `--feedback-success-background` / `--feedback-warning-background` / `--feedback-error-background` | 信息、成功、错误关联 sky/green/red 第2档，警告关联 project-dialog-notice 浅暖灰；Alert/Toast 无边框、无投影；图标与文字采用共享实现 |
 | 数据图表 | `--chart-1` 至 `--chart-5` | 用于数据系列，不能借来表达任务成功/失败；搭配系列名称和图例 |
 
 运行时1.3：共享 `--primary` 已映射 `--brand-accent:#1FBAC0`，宿主不再覆盖为蓝色；Progress、设置Select及项目强调引用语义变量。品牌强调与文字链接分开：`--primary-text` 浅色为#087B82、暗色为#1FBAC0，避免浅色背景上的品牌青色文字对比度不足。图表蓝色仍属于数据系列，不要求替换为品牌色。
@@ -161,7 +161,7 @@ root.render(ui.React.createElement(ui.Button, { onClick: save }, '保存'));
 
 Alert 和 Toast 共用无边框、无投影的语义浅背景。Alert 的 `default / success / warning / destructive` 分别对应信息 / 成功 / 警告 / 错误；Toast 使用 `toast()` 或 `toast.info / success / warning / error`，不要把展示名 Error 当作 Alert 的 variant。
 
-背景 Token 在 `packages/ui/src/common/tokens.css` 维护：`--feedback-info-background → --sky-2`、`--feedback-success-background → --green-2`、`--feedback-warning-background → --amber-2`、`--feedback-error-background → --red-2`。亮暗值沿用共享 palette；Figma 的 `IPW Feedback Theme` 同名变量绑定主组件，WEB codeSyntax 对应上述 CSS 变量。Figma 当前记录 sRGB 值，代码在支持 Display-P3 的设备上沿用 palette 的广色域值；不声称所有屏幕逐像素一致。
+背景 Token 在 `packages/ui/src/common/tokens.css` 维护：`--feedback-info-background → --sky-2`、`--feedback-success-background → --green-2`、`--feedback-warning-background → --project-dialog-notice`、`--feedback-error-background → --red-2`。警告浅色为 #F4F4EE，暗色使用 --gray-3；其余亮暗值沿用共享 palette。Figma 的 `IPW Feedback Theme` 同名变量绑定主组件，WEB codeSyntax 对应上述 CSS 变量。Figma 当前记录 sRGB 值，代码在支持 Display-P3 的设备上沿用 palette 的广色域值；不声称所有屏幕逐像素一致。
 
 宿主旧 Alert 入口保留翻译适配、Toaster 保留主题适配，但都复用共享实现；基础调用无需逐页重写。迁移必须查调用方的 border / bg 覆盖、Figma 实例覆盖、旧规范和验收断言。字段错误边框、Badge、确认弹窗不属于此卡片样式迁移。关闭按钮继续使用共享 Button；问题不只靠背景色表达。
 
@@ -193,7 +193,7 @@ Select 保存中禁用并关联字段错误；风格提示失败恢复持久化�
 
 ## 版本兼容规则
 
-当前 `UI_RUNTIME_VERSION = '1.5.0'`（1.5新增Badge的info/success/warning语义变体，使用时调用 `requireRuntime(1, ['Badge', 'Icon'], 5)`；1.4新增公共Icon；1.3规范保持兼容）；独立于客户端与插件版本。1.3增加公共颜色/字体变量、保证七档字号类生成并增加最低minor检查；保留原v1组件入口与Props。短片包0.1.3采用新规范，插件ID和数据路径不变。生产业务脚本不包含组件实现；旧体积统计属于1.2快照，不当作本轮产物实测。
+当前 `UI_RUNTIME_VERSION = '1.7.0'`（1.7新增四个受控表格组合控件，要求最低minor7；1.6新增SearchField、NumberField、Slider、Calendar、DatePicker/TimeInput和FileUpload/FileUploadItem，要求最低minor6；1.5新增Badge的info/success/warning语义变体，使用时调用 `requireRuntime(1, ['Badge', 'Icon'], 5)`；1.4新增公共Icon；1.3规范保持兼容）；独立于客户端与插件版本。1.3增加公共颜色/字体变量、保证七档字号类生成并增加最低minor检查；保留原v1组件入口与Props。短片包0.1.3采用新规范，插件ID和数据路径不变。生产业务脚本不包含组件实现；旧体积统计属于1.2快照，不当作本轮产物实测。
 
 | 运行时情况 | 当前代码行为 | 插件要求 |
 | --- | --- | --- |
