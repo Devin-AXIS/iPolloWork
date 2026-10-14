@@ -136,6 +136,34 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("reads fragmented UTF-8 speech events and stops at DONE without waiting for EOF", async () => {
+    const workspace = await workspaceConfig();
+    const text = "逐块读取";
+    const frame = Buffer.alloc(417); frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const audio = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    const bytes = new TextEncoder().encode(`data: ${JSON.stringify({ output: { audio: { data: audio.toString("base64") }, sentence: {
+      words: [{ text, begin_index: 0, end_index: text.length, begin_time: 100, end_time: 2200 }],
+    } } })}\r\n\r\ndata: [DONE]\r\n\r\n`);
+    let offset = 0, cancelled = false;
+    Reflect.set(globalThis, mediaProviderFetchKey, () => {
+      const response = new Response(new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (offset === bytes.length) return;
+          const next = Math.min(bytes.length, offset + 317);
+          controller.enqueue(bytes.slice(offset, next)); offset = next;
+        },
+        cancel() { cancelled = true; },
+      }), { headers: { "content-type": "text/event-stream" } });
+      response.text = () => { throw new Error("Must not buffer the full response as text"); };
+      return Promise.resolve(response);
+    });
+    await callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-stream-test" }), "speech_synthesize_workspace_file", {
+      compositionPath: "video/session/index.html", text, sceneText: text, sceneId: "stream-test",
+      sceneStart: 0, sceneDuration: 4, outputPath: "assets/stream.mp3",
+    }, { directory: workspace.root });
+    expect(cancelled).toBe(true);
+    expect(await readFile(join(workspace.root, "video/session/assets/stream.mp3"))).toEqual(audio);
+  });
   test("rejects a missing bound video project before a paid synthesis request", async () => {
     const workspace = await workspaceConfig();
     let requests = 0;
@@ -251,6 +279,18 @@ describe("Media Center extension", () => {
       shiftFollowingBySeconds: 0,
       readingBufferSeconds: 0.25,
     });
+  });
+
+  test("matches storyboard speech by scene id after a silent visual opening", () => {
+    const html = `<main data-composition-id="main" data-duration="9">
+      <section id="live-opening" class="scene clip" data-start="0" data-duration="4">iPolloWork</section>
+      <section id="details" class="scene clip" data-start="4" data-duration="5">Product details</section>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="details" data-ipw-scene-text="Product details" data-ipw-narration-text="Product details" data-start="4" data-duration="4"></audio>
+    </main>`;
+    const storyboardFrames = [{ durationSeconds: 4, voiceover: "" }, { durationSeconds: 5, voiceover: "Product details" }];
+    expect(validateVoiceoverTimelineHtml(html, { storyboardFrames, requirements: { voiceover: true } })).toMatchObject({ valid: true });
+    expect(validateVoiceoverTimelineHtml(html.replace('data-ipw-scene-id="details"', 'data-ipw-scene-id="wrong"'), { storyboardFrames }).issues)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ code: "storyboard_voiceover_mismatch" })]));
   });
 
   test("rejects composition timing and narration that drift from STORYBOARD.md", () => {

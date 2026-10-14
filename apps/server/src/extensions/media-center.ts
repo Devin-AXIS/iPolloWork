@@ -659,15 +659,13 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
     }));
   const storyboardFrames = options.storyboardFrames;
   if (storyboardFrames) {
+    const voiceoversByScene = new Map(voiceovers.map(voiceover => [voiceover.sceneId, voiceover]));
     if (storyboardFrames.length !== orderedScenes.length) {
       issues.push({
         code: "storyboard_scene_count_mismatch",
         message: `STORYBOARD.md defines ${storyboardFrames.length} frames, but index.html contains ${orderedScenes.length} timed scenes. Rebuild the composition from the current storyboard.`,
       });
     }
-    const orderedVoiceovers = [...voiceovers]
-      .filter((voiceover): voiceover is typeof voiceover & { start: number } => voiceover.start != null)
-      .sort((left, right) => left.start - right.start);
     for (let index = 0; index < Math.min(storyboardFrames.length, orderedScenes.length); index += 1) {
       const frame = storyboardFrames[index]!;
       const scene = orderedScenes[index]!;
@@ -681,7 +679,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
           ...(scene.id ? { sceneId: scene.id } : {}),
         });
       }
-      const voiceover = orderedVoiceovers[index];
+      const voiceover = voiceoversByScene.get(scene.id);
       if (frame.voiceover && (!voiceover || normalizeSceneText(decodeHtmlText(voiceover.sceneText)) !== normalizeSceneText(frame.voiceover))) {
         issues.push({
           code: "storyboard_voiceover_mismatch",
@@ -1491,13 +1489,15 @@ function synthesizedAudioUrl(payload: unknown): string {
   return url.toString();
 }
 
-async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
+async function downloadSynthesizedAudio(url: string, signal?: AbortSignal): Promise<Buffer> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  const downloadSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
   let response: Response;
   try {
-    response = await providerFetch(url, { signal: controller.signal, redirect: "error" });
+    response = await providerFetch(url, { signal: downloadSignal, redirect: "error" });
   } catch (error) {
+    clearTimeout(timeout);
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
     }
@@ -1516,15 +1516,22 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
     const chunks: Uint8Array[] = [];
     let bytes = 0;
     const reader = response.body.getReader();
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      bytes += chunk.value.byteLength;
-      if (bytes > MAX_SYNTHESIZED_AUDIO_BYTES) {
-        await reader.cancel();
-        throw new ApiError(413, "bailian_audio_too_large", "Synthesized audio exceeded the local file size limit.");
+    const cancelStream = () => { void reader.cancel().catch(() => undefined); };
+    downloadSignal.addEventListener("abort", cancelStream, { once: true });
+    try {
+      while (true) {
+        downloadSignal.throwIfAborted();
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(413, "bailian_audio_too_large", "Synthesized audio exceeded the local file size limit.");
+        chunks.push(chunk.value);
       }
-      chunks.push(chunk.value);
+      downloadSignal.throwIfAborted();
+    } finally {
+      downloadSignal.removeEventListener("abort", cancelStream);
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
     }
     if (!bytes) throw new ApiError(502, "bailian_audio_download_failed", "Synthesized audio response was empty.");
     return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), bytes);
@@ -1621,14 +1628,80 @@ async function requestStreamingVoiceover(input: {
 }): Promise<CachedVoiceover> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
-  let response: Response;
+  const signal = controller.signal;
   try {
-    response = await providerFetch(input.url, {
+    const response = await providerFetch(input.url, {
       method: "POST",
       headers: { Authorization: `Bearer ${input.apiKey}`, "Content-Type": "application/json", "X-DashScope-SSE": "enable" },
       body: JSON.stringify(input.body),
-      signal: controller.signal,
+      signal,
     });
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("text/event-stream")) {
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", providerMessage(payload) || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
+      signal.throwIfAborted();
+      const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(payload), signal);
+      signal.throwIfAborted();
+      const alignment = reconcileVoiceoverWordTimings([payload], input.text, mp3DurationSeconds(audio));
+      return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
+    }
+    if (!response.ok || !response.body) throw new ApiError(response.status || 502, "bailian_request_failed", "Alibaba Model Studio did not return a speech stream.");
+    const reader = response.body.getReader();
+    const cancelStream = () => { void reader.cancel().catch(() => undefined); };
+    signal.addEventListener("abort", cancelStream, { once: true });
+    const decoder = new TextDecoder();
+    const chunks: Buffer[] = [];
+    const payloads: unknown[] = [];
+    let pending = "", receivedBytes = 0, audioBytes = 0, done = false;
+    const consume = (event: string) => {
+      const data = event.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("\n");
+      if (!data) return;
+      if (data === "[DONE]") { done = true; return; }
+      let payload: unknown;
+      try { payload = JSON.parse(data); }
+      catch { throw new ApiError(502, "bailian_audio_invalid", "Invalid speech stream event."); }
+      const output = readRecord(payload, "output");
+      const audio = readRecord(output, "audio");
+      const encoded = readStringField(audio, "data");
+      if (encoded) {
+        const chunk = Buffer.from(encoded, "base64");
+        audioBytes += chunk.byteLength;
+        if (audioBytes > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(413, "bailian_audio_invalid", "Speech stream exceeded the local audio limit.");
+        chunks.push(chunk);
+      }
+      // Keep timing/receipt metadata, not a second copy of every base64 audio chunk.
+      const { data: _audioData, ...audioMetadata } = audio;
+      payloads.push({ ...readRecord({ payload }, "payload"), output: { ...output, audio: audioMetadata } });
+      if (payloads.length > 20_000) throw new ApiError(413, "bailian_audio_invalid", "Too many speech stream events.");
+      const code = readStringField(payload, "code");
+      if (code) throw new ApiError(502, "bailian_request_failed", providerMessage(payload) || "Speech synthesis failed.");
+    };
+    try {
+      while (!done) {
+        signal.throwIfAborted();
+        const next = await reader.read();
+        if (next.done) { pending += decoder.decode(); break; }
+        receivedBytes += next.value.byteLength;
+        if (receivedBytes > MAX_SYNTHESIZED_AUDIO_BYTES * 2) throw new ApiError(413, "bailian_audio_invalid", "Speech stream exceeded the local response limit.");
+        pending += decoder.decode(next.value, { stream: true });
+        let boundary: RegExpExecArray | null;
+        while (!done && (boundary = /\r?\n\r?\n/.exec(pending))) {
+          consume(pending.slice(0, boundary.index));
+          pending = pending.slice(boundary.index + boundary[0].length);
+        }
+      }
+      if (!done && pending.trim()) consume(pending);
+    } finally {
+      signal.removeEventListener("abort", cancelStream);
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+    signal.throwIfAborted();
+    const audio = chunks.length ? Buffer.concat(chunks, audioBytes) : await downloadSynthesizedAudio(synthesizedAudioUrl(payloads.at(-1)), signal);
+    if (!audio.byteLength || audio.byteLength > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(502, "bailian_audio_invalid", "Alibaba Model Studio returned invalid streaming audio.");
+    const alignment = reconcileVoiceoverWordTimings(payloads, input.text, mp3DurationSeconds(audio));
+    return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw new ApiError(504, "bailian_timeout", "Alibaba Model Studio did not respond before the request timed out.");
     if (isApiError(error)) throw error;
@@ -1636,32 +1709,6 @@ async function requestStreamingVoiceover(input: {
   } finally {
     clearTimeout(timeout);
   }
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("text/event-stream")) {
-    const payload: unknown = await response.json().catch(() => null);
-    if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", providerMessage(payload) || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
-    const audio = await downloadSynthesizedAudio(synthesizedAudioUrl(payload));
-    const alignment = reconcileVoiceoverWordTimings([payload], input.text, mp3DurationSeconds(audio));
-    return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
-  }
-  const stream = await response.text();
-  if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", `Alibaba Model Studio request failed (HTTP ${response.status}).`);
-  const payloads = stream.split(/\r?\n\r?\n/).flatMap((event) => {
-    const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("");
-    if (!data || data === "[DONE]") return [];
-    try { return [JSON.parse(data) as unknown]; } catch { return []; }
-  });
-  const chunks = payloads.flatMap((payload) => {
-    if (!isRecord(payload) || !isRecord(payload.output) || !isRecord(payload.output.audio)) return [];
-    const data = readStringField(payload.output.audio, "data");
-    return data ? [Buffer.from(data, "base64")] : [];
-  });
-  const audio = chunks.length
-    ? Buffer.concat(chunks)
-    : await downloadSynthesizedAudio(synthesizedAudioUrl(payloads.at(-1)));
-  if (!audio.byteLength || audio.byteLength > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(502, "bailian_audio_invalid", "Alibaba Model Studio returned invalid streaming audio.");
-  const alignment = reconcileVoiceoverWordTimings(payloads, input.text, mp3DurationSeconds(audio));
-  return { audio, wordTimings: alignment.words, alignmentIssues: alignment.issues };
 }
 
 function mp3DurationSeconds(bytes: Uint8Array): number {
@@ -1834,6 +1881,8 @@ async function synthesizeWorkspaceVoiceover(input: {
   const workspace = workspaceForContext(input.config, input.context);
   const destination = resolveWorkspaceFile(workspace.path, input.scene.outputPath);
   const timingDestination = resolveWorkspaceFile(workspace.path, input.scene.outputPath.replace(/\.mp3$/i, ".timings.json"));
+  await resolveWithinRoot(workspace.path, destination.relativePath);
+  await resolveWithinRoot(workspace.path, timingDestination.relativePath);
   const existingAudio = await readFile(destination.absolutePath).catch((error: unknown) => {
     if (isRecord(error) && error.code === "ENOENT") return null;
     throw error;

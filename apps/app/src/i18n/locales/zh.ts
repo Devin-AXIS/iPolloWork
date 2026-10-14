@@ -3181,6 +3181,8 @@ export default {
   "composer.steer_queued": "引导",
   "composer.steer_queued_hint": "将这条消息加入当前任务，智能体会在安全边界调整执行方向",
   "composer.steer_sent": "已加入当前任务",
+  "video.live.steer": "引导后续视频",
+  "video.live.direction_placeholder": "输入指令，调整后续生成方向…",
   "composer.steer_failed": "无法引导当前任务",
   "connect.connected_to_cloud": "已连接到 iPolloWork Cloud",
   "connect.connected_to_org": "已连接到 {name}",

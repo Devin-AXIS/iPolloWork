@@ -6,7 +6,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { CompositionRefreshLoadingOverlay, PlayerControls, usePlayerStore } from "../../player";
+import { CompositionRefreshLoadingOverlay, PlayerControls, usePlayerStore, liveTime } from "../../player";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -70,6 +70,26 @@ export function PreviewPane({
   const { t } = useStudioI18n();
   const { avatarCutoutProgress } = useDomEditActionsContext();
   const aiEditing = hostAiEditing || avatarCutoutProgress !== null;
+  const publication = usePlayerStore(state => state.liveGeneration);
+  const waitingForScene = usePlayerStore(state => Boolean(state.liveGenerationActive && state.liveGeneration?.status === "generating"
+    && state.isPlaying && state.currentTime >= state.liveGeneration.readyDuration - 1e-6));
+  const liveGenerating = hostAiEditing && publication?.status === "generating";
+  useEffect(() => {
+    if (window.parent === window) return;
+    let lastSent = -Infinity;
+    const publish = (playhead: number, force = false) => {
+      if (!force && performance.now() - lastSent < 500) return;
+      lastSent = performance.now();
+      window.parent.postMessage({
+        type: "ipollowork:video-live-preview", projectId,
+        generation: hostAiEditing || publication?.status === "complete" ? publication : null,
+        playhead: Math.max(0, Math.min(7200, playhead)),
+      }, "*");
+    };
+    publish(usePlayerStore.getState().currentTime, true);
+    const unsubscribe = liveTime.subscribe(time => publish(time));
+    return () => { unsubscribe(); };
+  }, [hostAiEditing, publication, projectId, waitingForScene]);
   const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
   const handlePreviewRefreshSettled = useCallback(() => {
     const playerState = usePlayerStore.getState();
@@ -227,16 +247,18 @@ export function PreviewPane({
             role="status"
             aria-live="polite"
             data-testid="studio-ai-editing-status"
-            className="flex h-[34px] min-w-[241px] max-w-[calc(100%_-_32px)] items-center rounded-[6px] bg-[#087b82] px-4 py-2 text-[#a9e7ea]"
+            className="flex min-h-[34px] min-w-0 max-w-[calc(100%_-_32px)] items-center rounded-[6px] bg-[#087b82] px-4 py-2 text-[#a9e7ea]"
           >
-            <span className="flex min-w-[207px] items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center justify-between gap-2">
               <LoaderCircle
                 className="size-4 shrink-0 animate-spin text-[#a9e7ea] motion-reduce:animate-none"
                 aria-hidden="true"
               />
-              <span className="whitespace-nowrap text-[12px] font-normal leading-normal">
+              <span className="text-[12px] font-normal leading-normal">
                 {avatarCutoutProgress === null
-                  ? t("preview.aiEditingWarning")
+                  ? liveGenerating
+                    ? t(waitingForScene ? "preview.liveWaiting" : "preview.liveGenerating").replace("{seconds}", String(Math.round(publication.readyDuration * 10) / 10))
+                    : t("preview.aiEditingWarning")
                   : avatarCutoutProgress === 0
                     ? t("preview.avatarCutoutPreparing")
                     : t("preview.avatarCutoutProgress").replace("{progress}", String(avatarCutoutProgress))}

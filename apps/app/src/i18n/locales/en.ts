@@ -1929,6 +1929,8 @@ export default {
   "composer.steer_queued": "Guide",
   "composer.steer_queued_hint": "Add this message to the active task so the agent can adjust at a safe boundary",
   "composer.steer_sent": "Added to the active task",
+  "video.live.steer": "Guide remaining video",
+  "video.live.direction_placeholder": "Guide what happens next…",
   "composer.steer_failed": "Could not guide the active task",
   "composer.queue": "Send when agent finishes",
   "composer.queue_hint": "Send once the agent finishes the current task",

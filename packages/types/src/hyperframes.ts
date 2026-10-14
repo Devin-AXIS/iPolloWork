@@ -1,5 +1,31 @@
 import { z } from "zod";
 
+/** A publication contains only complete, playable scenes, never a target duration. */
+export const videoLiveGenerationSchema = z.object({
+  id: z.string().min(1).max(100),
+  status: z.enum(["generating", "complete"]),
+  readyDuration: z.number().finite().positive().max(7200),
+});
+export type VideoLiveGeneration = z.infer<typeof videoLiveGenerationSchema>;
+
+export function readVideoLiveGeneration(root: { getAttribute(name: string): string | null } | null): VideoLiveGeneration | null {
+  if (!root) return null;
+  const parsed = videoLiveGenerationSchema.safeParse({
+    id: root.getAttribute("data-ipw-live-id"),
+    status: root.getAttribute("data-ipw-live-status"),
+    readyDuration: Number(root.getAttribute("data-duration")),
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+export const videoLivePreviewMessageSchema = z.object({
+  type: z.literal("ipollowork:video-live-preview"),
+  projectId: z.string().min(1).max(200),
+  generation: videoLiveGenerationSchema.nullable(),
+  playhead: z.number().finite().nonnegative().max(7200),
+});
+export type VideoLivePreviewMessage = z.infer<typeof videoLivePreviewMessageSchema>;
+
 /** Visible dock content, normalized to the embedded Studio viewport. */
 export const videoStudioPanelBoundsSchema = z.object({
   left: z.number().finite().min(0).max(1),

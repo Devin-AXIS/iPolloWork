@@ -1,4 +1,5 @@
 import { frameAlignedDurationSeconds } from "@hyperframes/core/runtime/protocol";
+import { readVideoLiveGeneration } from "@ipollowork/types/hyperframes";
 /**
  * React callbacks for synchronising the player store from iframe runtime data.
  *
@@ -274,10 +275,19 @@ export function useTimelineSyncCallbacks({
     // time is authoritative for this first-load race because the store playhead
     // intentionally does not re-render on every animation frame.
     const playerState = usePlayerStore.getState();
-    const shouldResumePlayback = playerState.isPlaying;
+    const publication = readVideoLiveGeneration(iframeRef.current?.contentDocument?.querySelector("[data-composition-id]") ?? null);
+    const firstPublication = playerState.liveGenerationActive && publication?.status === "generating" && publication.id !== playerState.liveGeneration?.id;
+    if (firstPublication) pendingSeekRef.current = 0;
+    if (playerState.liveGenerationActive || playerState.liveGeneration) usePlayerStore.setState({ liveGeneration: publication });
+    const finalPublication = publication?.status === "complete" && publication.id === playerState.liveGeneration?.id;
+    if (finalPublication && playerState.liveGenerationResumePending) pendingSeekRef.current = playerState.currentTime;
+    const shouldResumePlayback = firstPublication || playerState.isPlaying || (finalPublication && playerState.liveGenerationResumePending);
+    if (firstPublication || finalPublication) usePlayerStore.setState({ liveGenerationResumePending: false });
+    if (firstPublication) setIsPlaying(true);
     const adapterTime = adapter.getTime();
     const currentPlaybackTime =
-      shouldResumePlayback && Number.isFinite(adapterTime) ? adapterTime : playerState.currentTime;
+      firstPublication ? 0 : publication && (isRefreshingRef.current || playerState.liveGenerationResumePending) ? playerState.currentTime
+        : shouldResumePlayback && Number.isFinite(adapterTime) ? adapterTime : playerState.currentTime;
     adapter.pause();
     // Honor a seek requested before the adapter was ready. It may sit in either
     // place: `pendingSeekRef` if the store subscription was mounted when requestSeek

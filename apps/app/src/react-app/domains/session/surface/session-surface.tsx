@@ -59,6 +59,7 @@ import { ReactSessionComposer, type ComposerPlusMenuData } from "./composer/comp
 import { encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import {
   parseComposerParts,
+  canSteerActiveDraft,
   shouldPreserveComposerDraftAfterSendFailure,
 } from "./composer/composer-draft";
 import { desktopBridge } from "@/app/lib/desktop";
@@ -71,7 +72,8 @@ import {
   videoVoiceDisplayMetadata,
   type VideoVoiceAiReference,
 } from "../video/video-voice";
-import { videoProjectEntryPath } from "../video/video-project";
+import { VIDEO_LIVE_PREVIEW_EVENT, videoProjectEntryPath } from "../video/video-project";
+import { videoLivePreviewMessageSchema, type VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
@@ -196,7 +198,8 @@ export type SessionSurfaceProps = {
     sessionId: string,
     options?: PromptDispatchOptions,
   ) => PromptDispatchOutcome | Promise<PromptDispatchOutcome>;
-  onSteerDraft?: (draft: ComposerDraft, sessionId: string) => boolean | Promise<boolean>;
+  onSteerDraft?: (draft: ComposerDraft, sessionId: string, readPreview?: () => VideoLivePreviewMessage | undefined) => boolean | Promise<boolean>;
+  liveVideoGeneration?: boolean;
   onDraftChange: (draft: ComposerDraft) => void;
   supportsNativeAttachments: boolean;
   modelVariantLabel: string;
@@ -731,6 +734,22 @@ export function SessionSurface(props: SessionSurfaceProps) {
     props.onOpenTarget?.(target, options, props.sessionId);
   }, [props.onOpenTarget, props.sessionId]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
+  const liveVideoPreviewRef = useRef<VideoLivePreviewMessage | null>(null);
+  useEffect(() => {
+    liveVideoPreviewRef.current = null;
+    const receive = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail;
+      if (detail?.sessionId !== props.sessionId || detail?.workspaceId !== props.workspaceId) return;
+      const parsed = videoLivePreviewMessageSchema.safeParse(detail.preview);
+      liveVideoPreviewRef.current = parsed.success ? parsed.data : null;
+    };
+    window.addEventListener(VIDEO_LIVE_PREVIEW_EVENT, receive);
+    return () => {
+      liveVideoPreviewRef.current = null;
+      window.removeEventListener(VIDEO_LIVE_PREVIEW_EVENT, receive);
+    };
+  }, [props.sessionId, props.workspaceId]);
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [animationCatalog, setAnimationCatalog] = useState<HyperframesCatalogItem[]>([]);
   const [animationCatalogLoading, setAnimationCatalogLoading] = useState(false);
@@ -1540,13 +1559,26 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const text = draft.trim();
     if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedImageReference) return;
     const nextDraft = buildDraft(text, attachments);
+    if (props.liveVideoGeneration && props.onSteerDraft && canSteerActiveDraft(nextDraft)) {
+      const submittedComposerState = { draft, attachments, mentions, pasteParts };
+      clearComposer();
+      try {
+        const accepted = await props.onSteerDraft(nextDraft, props.sessionId, () => liveVideoPreviewRef.current ?? undefined);
+        if (!accepted) { restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState); return; }
+        toast.success(t("composer.steer_sent"));
+      } catch (error) {
+        restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState);
+        toast.error(t("composer.steer_failed"), { description: error instanceof Error ? error.message : undefined });
+      }
+      return;
+    }
     appendQueuedDraft(props.sessionId, nextDraft);
     clearComposer();
     setStarterCapability(null);
     setSelectedAnimations([]);
     setSelectedVoiceReference(null);
     setSelectedImageReference(null);
-  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId, selectedAnimations.length, selectedImageReference, selectedVoiceReference]);
+  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, mentions, pasteParts, restoreComposerSessionIfEmpty, props.sessionId, props.liveVideoGeneration, props.onSteerDraft, selectedAnimations.length, selectedImageReference, selectedVoiceReference]);
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
   }, [props.sessionId, removeQueuedDraftFromStore]);
@@ -1554,7 +1586,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const queuedDraft = queuedDrafts[index];
     if (!queuedDraft || !props.onSteerDraft) return;
     try {
-      const accepted = await props.onSteerDraft(queuedDraft, props.sessionId);
+      const accepted = await props.onSteerDraft(queuedDraft, props.sessionId, () => liveVideoPreviewRef.current ?? undefined);
       if (!accepted) return;
       removeQueuedDraftFromStore(props.sessionId, index);
       toast.success(t("composer.steer_sent"));
@@ -1578,13 +1610,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     [queuedDrafts],
   );
   const steerableQueuedDrafts = useMemo(
-    () => queuedDrafts.map((draftItem) => (
-      draftItem.mode === "prompt"
-      && !draftItem.command
-      && !draftItem.capability
-      && !draftItem.attachments.some((attachment) => attachment.delivery === "workspace")
-      && !draftItem.parts.some((part) => part.type === "agent" || part.type === "design-selection")
-    )),
+    () => queuedDrafts.map(canSteerActiveDraft),
     [queuedDrafts],
   );
   const hasOpenTodos = !runSettled
@@ -2247,6 +2273,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onDraftChange={handleComposerDraftChange}
           onSend={handleSend}
           onQueue={handleQueue}
+          busySubmitLabel={props.liveVideoGeneration && props.onSteerDraft ? t("video.live.steer") : undefined}
           onStop={handleAbort}
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
@@ -2309,7 +2336,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onCompact={handleCompact}
           compactionResult={compactionResult}
           modelContextWindow={props.modelContextWindow}
-          placeholder={isEmptyConversation ? newConversationPlaceholder() : undefined}
+          placeholder={chatStreaming && props.liveVideoGeneration && props.onSteerDraft
+            ? t("video.live.direction_placeholder") : isEmptyConversation ? newConversationPlaceholder() : undefined}
           compactTopSpacing={composerTopAccessoryVisible}
           topAccessory={
             composerTopAccessoryVisible ? (

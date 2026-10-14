@@ -156,6 +156,36 @@ test("builds Studio against the current iPolloWork runtime contracts", () => {
   assert.match(studioViteSource, /"@ipollowork\/types\/video-image-workbench": resolve\(/);
 });
 
+test("starts Electron's HyperFrames child for a long Windows project from the workspace cwd", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipw-hyperframes-long-cwd-"));
+  const project = path.join(root, "project-".repeat(12), "scene-".repeat(15), "assets-".repeat(12));
+  const script = path.join(root, "probe.mjs");
+  assert.ok(project.length > 260);
+  const source = electronMainSource.slice(electronMainSource.indexOf("function spawnLocalHyperframes("), electronMainSource.indexOf("async function readHyperframesServerConfig("));
+  try {
+    await mkdir(project, { recursive: true });
+    await writeFile(script, 'import fs from "node:fs"; console.log(JSON.stringify({ ready: fs.existsSync(process.argv[3]) }));');
+    const harness = path.join(root, "electron-parent.mjs");
+    await writeFile(harness, `import { spawnSync } from "node:child_process"; import path from "node:path";
+      const start = new Function("spawn", "process", "path", "resolveLocalHyperframesCli", "resolveSystemChromiumBinary", "inheritedPathEnv", ${JSON.stringify(`${source}\nreturn spawnLocalHyperframes;`)})(
+        (exe, args, options) => spawnSync(exe, args, { ...options, timeout: 10000 }), process, path,
+        () => ${JSON.stringify(script)}, () => null, () => process.env.PATH);
+      const result = start(["preview", ${JSON.stringify(project)}], ${JSON.stringify(root)});
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(result.stderr.toString());
+      process.stdout.write(result.stdout);`);
+    const result = spawnSync(createRequire(import.meta.url)("electron"), [harness], {
+      cwd: root, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, timeout: 15_000, windowsHide: true,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr?.toString());
+    assert.deepEqual(JSON.parse(result.stdout.toString()), { ready: true });
+  } finally {
+    assert.equal(path.dirname(root), os.tmpdir());
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("keeps a recently closed Studio process warm for a bounded same-session reopen", () => {
   assert.match(electronMainSource, /HYPERFRAMES_IDLE_STOP_DELAY_MS = 60_000/);
   assert.match(electronMainSource, /scheduleHyperframesStopForKey/);
@@ -182,7 +212,7 @@ function previewLifecycleFixture(init = async () => {}) {
     ensureProcessCleanupForWebContents() {}, runHyperframesInit: init,
     reserveHyperframesPort: async () => nextPort++, releaseHyperframesPortReservation() {},
     HYPERFRAMES_START_TIMEOUT_MS: 1000,
-    spawnLocalHyperframes(args) {
+    spawnLocalHyperframes(args, cwd) {
       const child = Object.assign(new EventEmitter(), {
         stdout: new EventEmitter(), stderr: new EventEmitter(), exitCode: null,
       });
@@ -190,7 +220,7 @@ function previewLifecycleFixture(init = async () => {}) {
       let ready;
       const promise = new Promise(resolve => { ready = resolve; });
       readiness.set(port, promise);
-      spawned.push({ child, args, port, ready });
+      spawned.push({ child, args, cwd, port, ready });
       return child;
     },
     waitForHyperframesServer: port => readiness.get(port),
@@ -207,6 +237,22 @@ function previewLifecycleFixture(init = async () => {}) {
   const event = { sender: { id: 7 } };
   return { ...lifecycle, spawned, processes, starts, open: changes => lifecycle.start(event, { ...options, ...changes }), close: () => lifecycle.stop("7:reopen") };
 }
+
+test("passes an absolute long project while keeping the preview child in its workspace", async () => {
+  const fixture = previewLifecycleFixture();
+  const workspaceRoot = os.tmpdir();
+  const projectDirectory = `video/${"scene".repeat(25)}/${"scene".repeat(25)}`;
+  assert.ok(path.resolve(workspaceRoot, projectDirectory).length > 260);
+  const opening = fixture.open({ workspaceRoot, projectDirectory });
+  await waitForPreview(() => fixture.spawned.length > 0);
+  const child = fixture.spawned[0];
+  child.ready({ isHyperframes: true });
+  try {
+    await opening;
+    assert.equal(child.cwd, workspaceRoot);
+    assert.equal(child.args[1], path.resolve(workspaceRoot, projectDirectory));
+  } finally { fixture.close(); }
+});
 
 test("owns an official foreground preview across readiness, reuse, close and reopen", async () => {
   const fixture = previewLifecycleFixture();

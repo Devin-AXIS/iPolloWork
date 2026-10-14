@@ -141,11 +141,15 @@ import {
   videoDeliveryIntentForPrompt,
   videoProjectEntryPath,
   videoPromptRequiresStoryboardReview,
+  videoPromptRequestsFinishedVideo,
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
   type VideoDeliveryRequirements,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
+import type { VideoLivePreviewMessage } from "@ipollowork/types/hyperframes";
+import { createVideoLiveDirector } from "@/react-app/domains/session/video/video-live-director";
+import { useUiStateStore } from "./ui-state-store";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -388,6 +392,15 @@ export function SessionRoute() {
     [opencodeBaseUrl, activeEngineId, selectedSessionId, selectedConversation?.id, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
   );
   const conversationConnectionKey = `${activeEngineId}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
+  const videoLiveDirector = useMemo(() => createVideoLiveDirector({
+    client: selectedWorkspaceEndpoint?.client ?? null,
+    context: { workspaceId: selectedWorkspaceEndpoint?.workspaceId ?? "", sessionId: selectedSessionId ?? "" },
+    send: (parts) => {
+      if (!conversation?.steerPrompt || !selectedSessionId) throw new Error("Video steering is unavailable");
+      return conversation.steerPrompt({ sessionId: selectedSessionId, parts });
+    },
+  }), [conversation, selectedSessionId, selectedWorkspaceEndpoint?.client, selectedWorkspaceEndpoint?.workspaceId]);
+  useEffect(() => () => videoLiveDirector.cancel(), [videoLiveDirector]);
   const readConversationSnapshot = useCallback(async (sessionId: string) => {
     if (!conversation || !selectedWorkspaceEndpoint) {
       throw new Error("Conversation runtime is unavailable");
@@ -1151,6 +1164,7 @@ export function SessionRoute() {
 
   const handleSessionStatus = useCallback((update: { sessionId: string; status: ConversationStatus }) => {
     if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
+    if (update.sessionId === selectedSessionId) videoLiveDirector.cancel();
     invalidateProjectExecutionQueries();
     const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
     const runningContexts = Object.values(contexts).filter((context) => (
@@ -1177,7 +1191,7 @@ export function SessionRoute() {
         }
       })();
     }
-  }, [invalidateProjectExecutionQueries, selectedWorkspaceEndpoint]);
+  }, [invalidateProjectExecutionQueries, selectedWorkspaceEndpoint, selectedSessionId, videoLiveDirector]);
 
   const handleSessionError = useCallback(() => {
     invalidateProjectExecutionQueries();
@@ -1250,7 +1264,7 @@ export function SessionRoute() {
         });
       },
       onSteerDraft: conversation.steerPrompt
-        ? async (draft: ComposerDraft, sessionId: string) => {
+        ? async (draft: ComposerDraft, sessionId: string, readPreview?: () => VideoLivePreviewMessage | undefined) => {
             const targetSessionId = sessionId.trim() || selectedSessionId;
             if (!targetSessionId) return false;
             const parts = await draftToParts(
@@ -1260,10 +1274,11 @@ export function SessionRoute() {
               undefined,
               { supportsNativeAttachments: selectedModelSupportsAttachments },
             );
-            await conversation.steerPrompt?.({
-              sessionId: targetSessionId,
-              parts,
-            });
+            if (readPreview && targetSessionId === selectedSessionId && readPreview()?.generation?.status === "generating") {
+              return videoLiveDirector.steer(parts, readPreview,
+                draft.attachments.length === 0 && draft.parts.every(part => part.type === "text" && !part.synthetic) ? draft.text : null);
+            }
+            await conversation.steerPrompt?.({ sessionId: targetSessionId, parts });
             return true;
           }
         : undefined,
@@ -1282,6 +1297,7 @@ export function SessionRoute() {
         if (!targetSessionId) return false;
         const dispatchSignal = dispatchOptions?.signal;
         if (dispatchSignal?.aborted) return false;
+        videoLiveDirector.cancel();
         const projectBuilderActive = isProjectBuilderSession(selectedWorkspaceId, targetSessionId);
         if (projectBuilderActive) {
           if (!selectedWorkspaceEndpoint) throw new Error(t("work.project_unavailable"));
@@ -1582,15 +1598,14 @@ export function SessionRoute() {
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
-        const [envSystemContext, workspaceTemplateSessions] = await Promise.all([
-          buildiPolloWorkEnvSystemContext(client, {
+        // Environment discovery is needed only by the model; it must not delay project/Studio preparation.
+        const envSystemContextTask = buildiPolloWorkEnvSystemContext(client, {
             cacheKey: targetSessionId,
             runtimeKey: environmentRuntimeKey,
-          }),
-          selectedWorkspaceEndpoint
+          }).then(value => ({ value }), (error: unknown) => ({ error }));
+        const workspaceTemplateSessions = await (selectedWorkspaceEndpoint
             ? selectedWorkspaceEndpoint.client.listTemplateSessions(selectedWorkspaceEndpoint.workspaceId).catch(() => ({ items: [] }))
-            : Promise.resolve({ items: [] as TemplateSessionSnapshot[] }),
-        ]);
+            : Promise.resolve({ items: [] as TemplateSessionSnapshot[] }));
         if (await stopDispatchIfRequested()) return false;
         const conversationTemplates = workspaceTemplateSessions.items.filter((template) =>
           !workspaceAppRequest
@@ -1650,8 +1665,7 @@ export function SessionRoute() {
               templateScope,
             );
             const occupiedTemplateSessionIds = conversationTemplates.map((template) => template.sessionId);
-            for (const intent of automaticTemplateIntents) {
-              if (await stopDispatchIfRequested()) return false;
+            const artifactTemplates = await Promise.all(automaticTemplateIntents.map(async intent => {
               const artifactSessionId = nextConversationArtifactSessionId(
                 targetSessionId,
                 intent.category,
@@ -1688,7 +1702,12 @@ export function SessionRoute() {
                   },
                 );
               }
+              return artifactTemplate;
+            }));
+            if (await stopDispatchIfRequested()) return false;
+            for (const artifactTemplate of artifactTemplates) {
               sessionTemplates.push(artifactTemplate);
+              const artifactSessionId = artifactTemplate.sessionId;
               setSessionType(artifactSessionId, sessionTypeForTemplate(artifactTemplate.manifest));
               templateInstructions.push(templateBriefPrompt({
                 template: artifactTemplate.manifest,
@@ -1746,28 +1765,41 @@ export function SessionRoute() {
           promptText: videoPromptText,
           hasReferenceAttachments: draft.attachments.length > 0,
         });
+        if (videoTasks.length === 1) {
+          const videoTask = videoTasks[0];
+          const panelStore = usePanelTabStore.getState();
+          panelStore.openTab(targetSessionId, { id: `video:${videoTask.sessionId}`, type: "video",
+            sessionId: videoTask.sessionId, label: pendingTitlePersist || targetSession?.title || t("video.title"),
+            ...(requiresStoryboardReview ? { view: "storyboard" } : {}) });
+          if (videoTask.sessionId !== targetSessionId && !conversationTemplates.some(template => template.sessionId === targetSessionId)) {
+            panelStore.closeTab(targetSessionId, `video:${targetSessionId}`);
+          }
+          useUiStateStore.getState().setSidePanelState(targetSessionId, "panel");
+        }
+        const liveVideoRequest = !requiresStoryboardReview && (videoPromptRequestsFinishedVideo(videoPromptText)
+          || draft.capability?.id === "video-storyboard-regeneration");
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
-          const voiceover = selectedWorkspaceEndpoint
-            ? await readVideoVoiceoverAvailability(
+          const liveGenerationId = liveVideoRequest ? crypto.randomUUID() : undefined;
+          const [voiceover, originalBriefText] = await Promise.all([
+            selectedWorkspaceEndpoint ? readVideoVoiceoverAvailability(
               selectedWorkspaceEndpoint.client,
               selectedWorkspaceEndpoint.workspaceId,
               sessionId,
               selectedWorkspaceRoot,
-            )
-            : { configured: false, enabled: false };
+            ) : Promise.resolve({ configured: false, enabled: false }),
+            selectedWorkspaceEndpoint ? readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId)) : Promise.resolve(undefined),
+          ]);
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
             capabilityId: draft.capability?.id,
             promptText: videoPromptText,
-            originalBriefText: selectedWorkspaceEndpoint
-              ? await readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId))
-              : undefined,
+            originalBriefText,
             voiceoverAvailable: voiceover.configured,
             voiceoverEnabled: voiceover.enabled,
           });
           const includeVoiceoverContext = !requiresStoryboardReview && videoPromptRequestsVoiceoverContext(
             draft.capability?.id, videoPromptText, videoDeliveryRequirements,
           );
-          return videoTaskSystemContext(
+          const systemContext = videoTaskSystemContext(
             sessionId,
             selectedWorkspaceRoot,
             template?.manifest ?? null,
@@ -1775,8 +1807,10 @@ export function SessionRoute() {
               includeVoiceover: includeVoiceoverContext,
               deliveryRequirements: videoDeliveryRequirements,
               requireStoryboardReview: requiresStoryboardReview,
+              ...(liveGenerationId ? { liveGenerationId } : {}),
             },
           );
+          return systemContext;
         }));
         const designSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "design");
         const designSystemContexts = designSessionTemplates.map((template) => designHtmlThemeSystemContext({
@@ -1804,6 +1838,9 @@ export function SessionRoute() {
           return templateAuthoringSystemContext(template, selectedDesignSystemGuide);
         }));
         const languageSystemContext = responseLanguageSystemContext(currentLocale());
+        const environment = await envSystemContextTask;
+        if ("error" in environment) throw environment.error;
+        const envSystemContext = environment.value;
         const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, languageSystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
@@ -2023,6 +2060,7 @@ export function SessionRoute() {
   }, [
     client,
     conversation,
+    videoLiveDirector,
     activeEngineId,
     modelPicker.compactOpen,
     handleOpenSettings,
