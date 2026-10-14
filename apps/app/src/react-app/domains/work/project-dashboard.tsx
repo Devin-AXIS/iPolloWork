@@ -57,6 +57,7 @@ type ProjectDashboardProps = {
   mainEngineName?: string;
   executionHref?: (record: ProjectRuntimeExecutionRecord) => string;
   onAddAgent?: () => void;
+  agentActions?: ReactNode;
   onOpenTasks: () => void;
   healthContent?: ReactNode;
   footerContent?: ReactNode;
@@ -304,6 +305,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                   <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.agents")}</h2>
                   <span className="text-[11px] leading-[15px] tabular-nums text-dls-text/45">{(showPresets ? props.config.agents.length : props.mainSessionId ? 1 : 0) + nativeAgents.length}</span>
                 </div>
+                {props.agentActions}
                 {showPresets && props.onAddAgent ? <Button type="button" variant="ghost" size="icon-sm" className="size-7 rounded-lg" aria-label={t("project_overview.add_agent")} onClick={props.onAddAgent}>
                   <Plus className="size-3.5" />
                 </Button> : null}
