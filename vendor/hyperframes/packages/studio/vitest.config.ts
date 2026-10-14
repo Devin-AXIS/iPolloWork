@@ -15,9 +15,9 @@ export default defineConfig({
     alias: {
       react: join(sharedUiRoot, "node_modules/react"),
       "react-dom": join(sharedUiRoot, "node_modules/react-dom"),
-      ...Object.fromEntries(["controls", "select", "alert", "tabs", "field", "radio-group", "tooltip", "dropdown-menu"].map(name => [
-        `@ipollowork/ui/${name}`, join(sharedUiRoot, sharedUiPackage.exports[`./${name}`]),
-      ])),
+      ...Object.fromEntries(Object.entries(sharedUiPackage.exports).flatMap(([subpath, target]) =>
+        typeof target === "string" ? [[`@ipollowork/ui/${subpath.slice(2)}`, join(sharedUiRoot, target)]] : [],
+      )),
       "@ipollowork/types/hyperframes": fileURLToPath(new URL("../../../../packages/types/src/hyperframes.ts", import.meta.url)),
       "@ipollowork/types/video-image-workbench": fileURLToPath(
         new URL("../../../../packages/types/src/video-image-workbench.ts", import.meta.url),

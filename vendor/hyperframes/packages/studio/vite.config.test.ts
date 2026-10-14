@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { build } from "vite";
 import config, { stableStylesCssPlugin } from "./vite.config";
 
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8")) as {
@@ -29,6 +30,24 @@ function callWriteBundle(dir: string, bundle: Record<string, unknown>): void {
 }
 
 describe("build.rollupOptions", () => {
+  it("bundles host input-group and empty components in a production build", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "studio-shared-ui-build-"));
+    try {
+      const entry = join(dir, "entry.ts");
+      writeFileSync(entry, `import { InputGroup } from "@ipollowork/ui/input-group";
+        import { Empty } from "@ipollowork/ui/empty";
+        console.log(InputGroup, Empty);`);
+      const result = await build({
+        ...config, configFile: false, logLevel: "silent",
+        build: { write: false, rollupOptions: { input: entry } },
+      });
+      expect(result).toHaveProperty("output");
+    } finally {
+      expect(resolve(dir).startsWith(resolve(tmpdir()) + sep)).toBe(true);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
   it("does not override assetFileNames, so every asset stays content-hashed", () => {
     // Regression for the cache bug this PR fixed: /assets/* is served with a
     // one-year immutable Cache-Control by filename convention alone
