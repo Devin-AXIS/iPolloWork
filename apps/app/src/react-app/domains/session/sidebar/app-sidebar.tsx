@@ -473,6 +473,10 @@ export type AppSidebarProps = {
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
   onStartResize?: React.PointerEventHandler<HTMLButtonElement>;
+  onResizeKeyDown?: React.KeyboardEventHandler<HTMLButtonElement>;
+  resizeWidth?: number;
+  minResizeWidth?: number;
+  maxResizeWidth?: number;
 };
 
 type SidebarSectionHeaderProps = {
@@ -968,12 +972,20 @@ export function AppSidebar(props: AppSidebarProps) {
           </SidebarMenu>
         </SidebarFooter>
         <SidebarRail
+          className="group/sidebar-rail focus-visible:outline-2 focus-visible:outline-primary"
+          role={props.onStartResize ? "separator" : undefined}
+          tabIndex={props.onStartResize ? 0 : -1}
+          aria-orientation={props.onStartResize ? "vertical" : undefined}
+          aria-valuenow={props.resizeWidth}
+          aria-valuemin={props.minResizeWidth}
+          aria-valuemax={props.maxResizeWidth}
           aria-label={props.onStartResize ? t("session.resize_workspace_column") : undefined}
           title={props.onStartResize ? t("session.resize_workspace_column") : undefined}
           onClick={props.onStartResize ? (event) => {
             event.preventDefault();
           } : undefined}
           onPointerDown={props.onStartResize}
+          onKeyDown={props.onResizeKeyDown}
         />
       </Sidebar>
     </SidebarContext.Provider>
