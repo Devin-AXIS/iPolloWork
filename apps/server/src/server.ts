@@ -1,3 +1,4 @@
+import { PLUGIN_PACKAGE_MAX_UPLOAD_BYTES } from "@ipollowork/types/plugins";
 import { existsSync } from "node:fs";
 import { startVideoJobWorker } from "./extensions/video-generation.js";
 import { readFile, writeFile, rm } from "node:fs/promises";
@@ -1640,7 +1641,7 @@ function createRoutes(
   const prepareDefaultPlugins = () => {
     if (!defaultPluginPreparation) {
       defaultPluginPreparation = (async () => {
-        // Read only the four manifest versions/roots on refresh. Package scans
+        // Read only internal manifest versions/roots on refresh. Package scans
         // and global projection run again only when bundled versions change.
         const manifests = await Promise.all(defaultBundledPluginPackageIds.map(async (pluginId) => {
           try {
@@ -3426,9 +3427,9 @@ async function readJsonBody(request: Request): Promise<Record<string, unknown>> 
 }
 
 async function readPluginPackageUploadBody(request: Request): Promise<unknown> {
-  const bytes = await readLimitedRequestBody(request, 15 * 1024 * 1024, {
+  const bytes = await readLimitedRequestBody(request, PLUGIN_PACKAGE_MAX_UPLOAD_BYTES, {
     code: "plugin_package_upload_too_large",
-    message: "Plugin package upload exceeds 15 MB",
+    message: "Plugin package upload exceeds 48 MB",
   });
   try {
     const value: unknown = JSON.parse(new TextDecoder().decode(bytes));

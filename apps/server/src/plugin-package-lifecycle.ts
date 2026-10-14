@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
+import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import type {
   PluginPromptCapabilitySummary,
   PluginUiResource,
@@ -378,6 +379,11 @@ function satisfiesRange(version: string, range: string): boolean {
 
 function assertRuntimeCompatibility(manifest: PluginPackageManifest, engineAdapter?: PluginEngineAdapter): void {
   const compatibility = manifest.package?.compatibility;
+  if (compatibility?.platforms && !compatibility.platforms.some(target => target.os === process.platform && target.arch === process.arch)) {
+    throw new ApiError(409, "plugin_package_incompatible", "Plugin native runtime does not support this platform", {
+      os: process.platform, arch: process.arch, supportedPlatforms: compatibility.platforms,
+    });
+  }
   const supportedEngines = manifest.package?.engines;
   if (
     engineAdapter
@@ -1091,50 +1097,13 @@ function hasExecutableCapabilities(manifest: PluginPackageManifest): boolean {
     || Boolean(manifest.engineBindings?.some((binding) => binding.capabilities.some((capability) => capability.path || capability.packageName)));
 }
 
-function compareSemverIdentifiers(left: string, right: string): number {
-  const leftNumeric = /^\d+$/.test(left);
-  const rightNumeric = /^\d+$/.test(right);
-  if (leftNumeric && rightNumeric) return Number(left) - Number(right);
-  if (leftNumeric) return -1;
-  if (rightNumeric) return 1;
-  if (left === right) return 0;
-  return left < right ? -1 : 1;
-}
-
-function comparePackageVersions(left: string, right: string): number {
-  const leftWithoutBuild = left.split("+", 1)[0] ?? "";
-  const rightWithoutBuild = right.split("+", 1)[0] ?? "";
-  const leftPrereleaseIndex = leftWithoutBuild.indexOf("-");
-  const rightPrereleaseIndex = rightWithoutBuild.indexOf("-");
-  const leftVersion = leftPrereleaseIndex < 0 ? leftWithoutBuild : leftWithoutBuild.slice(0, leftPrereleaseIndex);
-  const rightVersion = rightPrereleaseIndex < 0 ? rightWithoutBuild : rightWithoutBuild.slice(0, rightPrereleaseIndex);
-  const leftPrerelease = leftPrereleaseIndex < 0 ? undefined : leftWithoutBuild.slice(leftPrereleaseIndex + 1);
-  const rightPrerelease = rightPrereleaseIndex < 0 ? undefined : rightWithoutBuild.slice(rightPrereleaseIndex + 1);
-  const coreComparison = compareVersions(versionTuple(leftVersion), versionTuple(rightVersion));
-  if (coreComparison !== 0) return coreComparison;
-  if (!leftPrerelease && !rightPrerelease) return 0;
-  if (!leftPrerelease) return 1;
-  if (!rightPrerelease) return -1;
-  const leftIdentifiers = leftPrerelease.split(".");
-  const rightIdentifiers = rightPrerelease.split(".");
-  const identifierCount = Math.max(leftIdentifiers.length, rightIdentifiers.length);
-  for (let index = 0; index < identifierCount; index += 1) {
-    const leftIdentifier = leftIdentifiers[index];
-    const rightIdentifier = rightIdentifiers[index];
-    if (leftIdentifier === undefined) return -1;
-    if (rightIdentifier === undefined) return 1;
-    const comparison = compareSemverIdentifiers(leftIdentifier, rightIdentifier);
-    if (comparison !== 0) return comparison;
-  }
-  return 0;
-}
-
 export function pluginPackageVersionChange(
   installedVersion: string | null,
   incomingVersion: string,
 ): PluginPackageVersionChange {
   if (!installedVersion) return "install";
-  const comparison = comparePackageVersions(incomingVersion, installedVersion);
+  const comparison = comparePluginPackageVersions(incomingVersion, installedVersion);
+  if (comparison === null) throw new ApiError(400, "plugin_package_version_invalid", "Plugin versions must use semantic versioning");
   if (comparison === 0) return "same";
   return comparison > 0 ? "upgrade" : "downgrade";
 }

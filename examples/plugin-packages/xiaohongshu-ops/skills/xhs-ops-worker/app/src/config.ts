@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { loadEnvFile } from 'node:process'
+import nodeProcess from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const envPath = resolve(projectRoot, '.env')
-if (existsSync(envPath)) loadEnvFile(envPath)
+if (existsSync(envPath)) nodeProcess.loadEnvFile(envPath)
 
 const dataDir = resolve(process.env.XHS_OPS_DATA_DIR ?? resolve(projectRoot, 'data'))
 mkdirSync(dataDir, { recursive: true, mode: 0o700 })

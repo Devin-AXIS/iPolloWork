@@ -3,14 +3,16 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import {
   pluginPackageArchiveExtension,
+  PLUGIN_PACKAGE_MAX_BYTES,
+  PLUGIN_PACKAGE_MAX_FILES,
   type PluginPackageArchiveFormat,
 } from "@ipollowork/types/plugins";
 import { z } from "zod";
 
 import { ApiError } from "./errors.js";
 
-const MAX_PLUGIN_PACKAGE_FILES = 512;
-const MAX_PLUGIN_PACKAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PLUGIN_PACKAGE_FILES = PLUGIN_PACKAGE_MAX_FILES;
+const MAX_PLUGIN_PACKAGE_BYTES = PLUGIN_PACKAGE_MAX_BYTES;
 
 const uploadSchema = z.object({
   archiveName: z.string().trim().min(1).max(255),
@@ -64,7 +66,7 @@ export function parsePluginPackageUpload(value: unknown): PluginPackageUpload {
     seen.add(path);
     totalBytes += decodeBase64(file.contentBase64).byteLength;
     if (totalBytes > MAX_PLUGIN_PACKAGE_BYTES) {
-      throw new ApiError(413, "plugin_package_upload_too_large", "Plugin package exceeds 10 MB");
+      throw new ApiError(413, "plugin_package_upload_too_large", "Plugin package exceeds 32 MB");
     }
   }
   if (!seen.has("ipollowork.plugin.json")) {

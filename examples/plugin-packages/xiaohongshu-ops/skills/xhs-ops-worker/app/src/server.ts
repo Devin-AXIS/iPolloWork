@@ -531,6 +531,9 @@ export function startServer(): { close: () => Promise<void>; service: OpsService
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
-  startServer()
+  const running = startServer()
+  for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
+    void running.close().then(() => process.exit(0))
+  })
   console.log(`小红书运营台已启动：${config.origin}`)
 }

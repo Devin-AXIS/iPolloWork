@@ -51,13 +51,15 @@ extraResources:
   - from: ../../examples/plugin-packages/wechat-official
     to: plugin-packages/wechat-official
     filter: *runtimeFiles
-  - from: ../../examples/plugin-packages/xiaohongshu-ops
+  - from: ../../examples/plugin-packages/xiaohongshu-ops/dist/package
     to: plugin-packages/xiaohongshu-ops
     filter:
       - "ipollowork.plugin.json"
       - "LICENSE"
       - "LICENSES/**/*"
       - "service/**/*"
+      - "runtime/**/*"
+      - "licenses/**/*"
       - "skills/**/*"
       - "!**/*.{test,spec}.*"
       - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"

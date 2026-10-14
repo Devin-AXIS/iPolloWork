@@ -1,3 +1,6 @@
+import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
+import { readPluginPackageArchive } from "./plugin-package-archive";
+import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "./ipollowork-server";
 import { desktopFetchBinaryViaMain, desktopFetchViaMain } from "./desktop";
 import { readDenSettings } from "./den";
 import { isDesktopRuntime } from "./runtime-env";
@@ -520,4 +523,53 @@ export async function leaveEnterpriseConnection(
     headers: { Authorization: `Bearer ${connection.session.token}` },
   }, enterpriseFetcher(fetcher));
   removeEnterpriseConnection(connection.id);
+}
+
+/** Match manifest identity and select semantic upgrades, never a different or older package. */
+export function cloudPluginResourceId(resource: EnterpriseResource): string {
+  return resource.manifestId ?? resource.slug;
+}
+
+export function cloudPluginUpdate(
+  resources: readonly EnterpriseResource[],
+  installed: Pick<iPolloWorkPluginPackageItem, "pluginId" | "version">,
+): EnterpriseResource | undefined {
+  let selected: EnterpriseResource | undefined;
+  for (const resource of resources) {
+    const version = resource.latestVersion?.version;
+    if (resource.type !== "extension" || cloudPluginResourceId(resource) !== installed.pluginId || !version
+      || (comparePluginPackageVersions(version, installed.version) ?? -1) <= 0) continue;
+    if (!selected || (comparePluginPackageVersions(version, selected.latestVersion?.version ?? "") ?? -1) > 0) selected = resource;
+  }
+  return selected;
+}
+
+export function assertCloudPluginIdentity(
+  resource: EnterpriseResource,
+  manifest: { id: string; package?: { version: string } },
+): void {
+  if (manifest.id !== cloudPluginResourceId(resource)
+    || manifest.package?.version !== resource.latestVersion?.version) {
+    throw new Error("cloud_plugin_package_identity_mismatch");
+  }
+}
+
+/** Public, Personal and enterprise downloads share the verified installation path. */
+export async function installCloudPluginResource(
+  resource: EnterpriseResource,
+  client: Pick<iPolloWorkServerClient, "listPluginPackages" | "validatePluginPackageUpload" | "importPluginPackage">,
+  workspaceId: string,
+  options: EnterpriseResourceRequestOptions = {},
+) {
+  const latest = resource.latestVersion;
+  if (resource.type !== "extension" || !latest
+    || comparePluginPackageVersions(latest.version, latest.version) === null) throw new Error("enterprise_resource_version_unavailable");
+  const current = (await client.listPluginPackages(workspaceId)).items
+    .find(item => item.pluginId === cloudPluginResourceId(resource));
+  if (current && (comparePluginPackageVersions(latest.version, current.version) ?? -1) <= 0) return null;
+  const file = await downloadEnterpriseResource(resource, options);
+  const upload = await readPluginPackageArchive(file, "install");
+  const { preview } = await client.validatePluginPackageUpload(workspaceId, upload);
+  assertCloudPluginIdentity(resource, preview.manifest);
+  return client.importPluginPackage(workspaceId, upload);
 }

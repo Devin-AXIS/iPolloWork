@@ -1,6 +1,6 @@
 {
   "name": "xiaohongshu-ops",
-  "version": "0.4.17",
+  "version": "0.4.18",
   "private": true,
   "type": "module",
   "engines": {
@@ -15,9 +15,9 @@
     "setup": "pnpm --dir skills/xhs-ops-worker/app install --ignore-workspace --frozen-lockfile --ignore-scripts",
     "dev": "pnpm --dir skills/xhs-ops-worker/app dev",
     "start": "pnpm --dir skills/xhs-ops-worker/app start",
-    "build": "pnpm --dir skills/xhs-ops-worker/app build",
+    "build": "node scripts/build.mjs",
     "check": "node --check service/workbench.mjs && node --check skills/xhs-ops-worker/scripts/start.mjs && node --check skills/xhs-ops-worker/app/public/app.js && pnpm --dir skills/xhs-ops-worker/app typecheck",
-    "test": "pnpm --dir skills/xhs-ops-worker/app test"
+    "test": "pnpm --dir skills/xhs-ops-worker/app test && node --test tests/*.test.mjs"
   },
   "packageManager": "pnpm@11.13.0"
 }

@@ -57,7 +57,7 @@ describe("plugin developer and user flow", () => {
     expect(source).toContain("PLUGIN_PACKAGE_LOAD_RETRY_DELAY_MS");
     expect(source).toContain("Promise.allSettled([");
     expect(source).toContain('if (packagesResult.status === "fulfilled")');
-    expect(source).toContain('if (catalogResult.status === "fulfilled")');
+    expect(source).toContain('if (cloudResult.status === "fulfilled")');
     expect(source).toContain("const previous = current[item.pluginId]");
   });
 
@@ -427,6 +427,25 @@ describe("plugin developer and user flow", () => {
       new File([archive], "acme-research.ipollowork-plugin", { type: "application/zip" }),
       "install",
     )).resolves.toMatchObject({ archiveName: "acme-research.ipollowork-plugin" });
+  });
+
+  test("accepts closed native payloads above the old limit and enforces the shared expanded limit", async () => {
+    const { readPluginPackageArchive } = await import("../src/app/lib/plugin-package-archive");
+    const { PLUGIN_PACKAGE_MAX_BYTES } = await import("@ipollowork/types/plugins");
+    const { parsePluginPackageUpload } = await import("../../server/src/plugin-package-upload");
+    const zip = new JSZip();
+    zip.file("ipollowork.plugin.json", JSON.stringify({ schemaVersion: 2 }));
+    zip.file("runtime/native.bin", new Uint8Array(11 * 1024 * 1024));
+    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    const upload = await readPluginPackageArchive(new File([bytes], "native.ipollowork-plugin"), "install");
+    expect(parsePluginPackageUpload(upload).files).toHaveLength(2);
+    zip.file("runtime/native.bin", new Uint8Array(PLUGIN_PACKAGE_MAX_BYTES));
+    const oversized = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    await expect(readPluginPackageArchive(new File([oversized], "native.ipollowork-plugin"), "install")).rejects.toThrow("32 MB");
+    expect(() => parsePluginPackageUpload({ archiveName: "native.ipollowork-plugin", files: [
+      { path: "ipollowork.plugin.json", contentBase64: Buffer.from("{}").toString("base64") },
+      { path: "runtime/native.bin", contentBase64: Buffer.alloc(PLUGIN_PACKAGE_MAX_BYTES).toString("base64") },
+    ] })).toThrow("32 MB");
   });
 
   test("routes migrated services through the existing MCP directory", async () => {

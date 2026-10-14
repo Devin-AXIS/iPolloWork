@@ -17,7 +17,7 @@ async function modifiedAt(path) {
 
 if (process.argv.includes("--if-stale")) {
   try {
-    const inputs = ["app/src", "app/public", "app/index.html", "app/vite.config.ts", "service/data-annotation.ts", "service/vite.config.ts", "ui", "skills", "ipollowork.plugin.json", "LICENSE-THIRD-PARTY.txt", "NOTICE.txt", "scripts/build.mjs", "package.json", "pnpm-lock.yaml"];
+    const inputs = ["types.ts", "app/src", "app/public", "app/index.html", "app/vite.config.ts", "service/data-annotation.ts", "service/vite.config.ts", "ui", "skills", "ipollowork.plugin.json", "LICENSE-THIRD-PARTY.txt", "NOTICE.txt", "scripts/build.mjs", "package.json", "pnpm-lock.yaml"];
     const [built, latestInput] = await Promise.all([
       stat(resolve(output, "ipollowork.plugin.json")),
       Promise.all(inputs.map(name => modifiedAt(resolve(root, name)))).then(values => Math.max(...values)),

@@ -1,14 +1,17 @@
 import {
   pluginPackageArchiveExtension,
+  PLUGIN_PACKAGE_MAX_BYTES,
+  PLUGIN_PACKAGE_MAX_ARCHIVE_BYTES,
+  PLUGIN_PACKAGE_MAX_FILES,
   type PluginPackageArchiveFormat,
 } from "@ipollowork/types/plugins";
 
 import type { iPolloWorkPluginPackageUpload } from "./ipollowork-server";
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
-const MAX_ARCHIVE_BYTES = 12 * 1024 * 1024;
-const MAX_PACKAGE_BYTES = 10 * 1024 * 1024;
-const MAX_PACKAGE_FILES = 512;
+const MAX_ARCHIVE_BYTES = PLUGIN_PACKAGE_MAX_ARCHIVE_BYTES;
+const MAX_PACKAGE_BYTES = PLUGIN_PACKAGE_MAX_BYTES;
+const MAX_PACKAGE_FILES = PLUGIN_PACKAGE_MAX_FILES;
 
 function decodedBase64Bytes(value: string): number {
   if (!value) return 0;
@@ -30,7 +33,7 @@ export async function readPluginPackageArchive(
   if (!file.name.toLowerCase().endsWith(expectedExtension)) {
     throw new Error(invalidExtensionMessage ?? `请选择 ${expectedExtension} 文件。`);
   }
-  if (file.size > MAX_ARCHIVE_BYTES) throw new Error("插件压缩包不能超过 12 MB。");
+  if (file.size > MAX_ARCHIVE_BYTES) throw new Error("插件压缩包不能超过 40 MB。");
   const { default: JSZip } = await import("jszip");
   const archive = await JSZip.loadAsync(new Uint8Array(await file.arrayBuffer()));
   const entries = Object.values(archive.files).filter((entry) =>
@@ -50,7 +53,7 @@ export async function readPluginPackageArchive(
     if (!safeRelativePath(path)) throw new Error(`插件包包含不安全路径：${path}`);
     const contentBase64 = await entry.async("base64");
     totalBytes += decodedBase64Bytes(contentBase64);
-    if (totalBytes > MAX_PACKAGE_BYTES) throw new Error("插件解压后的文件不能超过 10 MB。");
+    if (totalBytes > MAX_PACKAGE_BYTES) throw new Error("插件解压后的文件不能超过 32 MB。");
     files.push({ path, contentBase64 });
   }
   files.sort((left, right) => left.path.localeCompare(right.path));

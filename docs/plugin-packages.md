@@ -268,3 +268,32 @@ Only server-allowlisted bundle IDs can use these routes. Reviewed bundles are co
 The Xiaohongshu and Douyin catalog entries resolve the reviewed package directories under `examples/plugin-packages` during development and under the desktop `plugin-packages` resource directory after packaging. Catalog refresh and installation do not read `~/.ipollowork/local-plugin-packages` and do not fetch source from GitHub. A plugin change must bump its manifest and package versions, pass the package checks, and then be installed or updated through the normal catalog lifecycle. Publishing remains a separate, explicit release action.
 
 A hosted marketplace can use the same validated manifest and immutable artifact. A release record should contain `updateId`, version, publisher identity, artifact URL, SHA-256 checksum, signature/review status, compatibility ranges, release notes, and rollout channel. The desktop must download to a temporary directory, verify identity and checksum, preview the exact writes and permissions, and then call the canonical package lifecycle. This keeps hosted distribution behind one lifecycle and avoids a second installer format.
+
+## Cloud collection and installed plugins
+
+Public uses the existing Cloud extension resource API. Personal lists installed/imported packages only; uninstalled bundled packages are no longer advertised there. New workspaces automatically install only the internal reference-context capability. Existing installations are retained.
+
+Personal has a Check for updates button and checks the cloud directory when opened/refreshed, when focused after a minute, and every five minutes while open and signed in. Update appears only for a strictly newer semantic version of the same manifest ID. Public, Personal, and enterprise downloads share the verified archive parser and host import lifecycle. Updates retain enabled state, resource switches, authorization and user data. Checksum, identity, signature or compatibility failures preserve the installation.
+
+Build the closed distributions and prepare the inventory:
+
+```powershell
+pnpm --filter @ipollowork/types build
+pnpm --dir examples/plugin-packages/labelu-data-annotation build
+pnpm --dir examples/plugin-packages/operation-recorder build
+pnpm --dir examples/plugin-packages/short-video-studio build
+pnpm --dir examples/plugin-packages/xiaohongshu-ops build
+bun scripts/package-plugin-collection.mjs --out .ipollowork-dev/plugin-releases
+```
+
+Without keys this writes a readiness inventory, not installable release archives. To create twenty individually installable signed archives, add `--keyring <private-local-json>`. This file maps each manifest publisher ID to `{ "privateKey": "<absolute-Ed25519-PEM-path>", "keyId": "<trusted-publisher-key-id>" }`. Keep it and the private keys outside the repository. Publisher identities, update IDs and host trust keys are preserved; this command does not publish or upload anything.
+
+Upload each signed archive through the existing Cloud resource release process. Match `latestArtifact.manifestId` and `version` to its manifest. Cloud SHA-256 is the **archive byte digest** (`artifact.sha256` in collection.json / `archiveSha256` from the single-package signer), not the manifest's package-file checksum. Downloads retain the existing extension type and digest headers.
+
+Shared limits: 32 MiB expanded files, 40 MiB archive, 48 MiB base64 JSON upload, 512 files. Plugin Workshop retains its separate 10 MiB source-editing limit. Native distributions declare `package.compatibility.platforms` with OS and architecture; incompatible targets are rejected before installation. Xiaohongshu includes Sharp and its native dependencies for the build platform, complete UI assets and icon font, and runs with host Bun without a customer pnpm install. Build on each supported target before publishing that target's artifact.
+
+Data annotation is aligned with data-label (0.4.19 features plus distribution fixes, versioned here as 0.4.20). Its LabelU audio/video/interface and Word dependencies come from that branch and retain third-party notices. Onto remains an external-service connector: the unavailable data-service source is not bundled. Remote integrations require normal service/account authorization; host workflow packages require the corresponding host capabilities.
+
+Verification: `bun evals/support/plugin-collection-verifier.mjs` signs all packages with a temporary test key, round-trips them through the production archive parser and host integrity checks, and verifies that this untrusted test key is rejected for installation. Test archives are deleted; they are not release packages.
+
+The UI journey is `plugin-cloud-lifecycle`: start `bun evals/support/plugin-cloud-fixture.ts`, serve `apps/app` on port 5188, open `/tests/plugin-cloud-proof.html` in a CDP-enabled test browser, then run `pnpm fraimz --flow plugin-cloud-lifecycle`. Use a fresh fixture per run; all state stays in a temporary workspace. It replaces the obsolete bundled-catalog update-loading fixture. The cloud registry is simulated; the host installation and update routes are real.

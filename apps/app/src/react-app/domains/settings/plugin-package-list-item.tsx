@@ -60,6 +60,7 @@ export function PluginPackageListItem({
               {badge}
             </span>
             <span className="line-clamp-2 text-ui-caption leading-[15px] text-dls-secondary">{manifest.description}</span>
+            <span className="flex flex-wrap items-center gap-2 text-ui-caption text-dls-secondary"><span>v{version}</span>{status}</span>
           </span>
         </button>
         <Button size="sm" variant="outline" className="shrink-0" aria-busy={actionBusy} disabled={actionBusy || actionDisabled} onClick={onAction}>
