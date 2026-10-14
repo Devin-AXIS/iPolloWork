@@ -2,21 +2,22 @@
   "schemaVersion": 2,
   "id": "ipollo-onto",
   "name": "iPollo Onto",
-  "description": "在工作台直接管理项目、业务表、关系图和文档；通过项目 MCP 复用 iPolloWork AI。数据服务独立运行。",
+  "description": "安装即用的业务数据工作台：内置 SQLite，管理项目、业务表、关系图和文档；项目 MCP 复用 iPolloWork AI。可选连接 PostgreSQL 独立项目。",
   "category": "数据与分析",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "local",
-    "trusted": false
+    "trusted": false,
+    "reference": "https://github.com/Devin-AXIS/iPollo-Onto/tree/c209c8b8ebdb36773232632e83a02de52360882f"
   },
   "package": {
-    "version": "0.1.4",
+    "version": "0.1.5",
     "publisher": {
       "id": "smart-future-school",
       "name": "智慧未来学校"
     },
     "compatibility": {
-      "ipollowork": ">=0.50.12"
+      "ipollowork": ">=0.50.18"
     },
     "updateId": "devin-axis/ipollo-onto"
   },
@@ -24,9 +25,36 @@
     {
       "id": "network",
       "reason": "在工作台显示本机 Onto 页面，仅连接 127.0.0.1 的 5710、5711 端口。"
+    },
+    {
+      "id": "process",
+      "reason": "通过主软件已有运行时启动随插件打包的本地数据服务，仅监听 127.0.0.1。"
     }
   ],
   "resources": [
+    {
+      "type": "local-service",
+      "id": "onto-service",
+      "label": "Onto 本地数据服务",
+      "path": "service/workbench.mjs",
+      "required": true,
+      "provides": [
+        "action:open-workbench"
+      ],
+      "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开 Onto 工作台",
+          "description": "启动内置 SQLite 工作台，保留已有项目和文档。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
     {
       "type": "ui",
       "id": "workbench",
@@ -38,7 +66,15 @@
         "mimeType": "text/html;profile=mcp-app",
         "prefersBorder": false,
         "csp": {
-          "frameDomains": ["http://127.0.0.1:5710", "http://127.0.0.1:5711"]
+          "frameDomains": [
+            "http://127.0.0.1:5710",
+            "http://127.0.0.1:5711"
+          ]
+        },
+        "sandbox": {
+          "forms": true,
+          "downloads": true,
+          "modals": true
         }
       }
     },
@@ -48,7 +84,33 @@
       "label": "iPollo Onto 业务工作流",
       "path": "skills/ipollo-onto",
       "required": true,
-      "provides": ["workflow:business-data"]
+      "provides": [
+        "workflow:business-data"
+      ]
+    },
+    {
+      "id": "onto-runtime",
+      "type": "file",
+      "path": "runtime",
+      "required": true
+    },
+    {
+      "id": "onto-license",
+      "type": "file",
+      "path": "LICENSE",
+      "required": true
+    },
+    {
+      "id": "onto-notice",
+      "type": "file",
+      "path": "NOTICE",
+      "required": true
+    },
+    {
+      "id": "onto-dependency-licenses",
+      "type": "file",
+      "path": "THIRD-PARTY-LICENSES.txt",
+      "required": true
     }
   ],
   "contributions": [
@@ -71,7 +133,7 @@
     "translations": {
       "en": {
         "name": "iPollo Onto",
-        "description": "Manage projects, business tables, relationships, and documents directly in the workbench. Use project MCP connections with iPolloWork AI. The data service runs independently.",
+        "description": "Ready-to-use business workspace with built-in SQLite: projects, tables, relationships, documents, and scoped project MCP. External PostgreSQL projects are optional.",
         "category": "Data & Analytics",
         "resources": {
           "workbench": {
@@ -85,8 +147,15 @@
           "network": {
             "reason": "Show the local Onto workbench, connecting only to ports 5710 and 5711 on 127.0.0.1."
           }
+        },
+        "setup": {
+          "instructions": "Open the installed workbench to create its own local SQLite database. No PostgreSQL server, Node.js or pnpm installation is required. Updates preserve projects, documents and settings. Connect project MCP separately for AI access; external PostgreSQL projects are optional."
         }
       }
     }
+  },
+  "setup": {
+    "instructions": "安装后直接打开工作台，插件自动创建独立的本地 SQLite 数据文件，无需 PostgreSQL、Node.js 或 pnpm。更新保留项目、文档和设置。需要 AI 读写时，在项目连接页添加该项目的 MCP。独立 PostgreSQL 连接为可选高级功能。",
+    "testActionRef": "open-workbench"
   }
 }

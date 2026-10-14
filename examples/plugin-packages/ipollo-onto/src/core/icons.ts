@@ -1,0 +1,28 @@
+// Stable identifiers only; SVG components stay in the browser bundle.
+export const entityIconIds = [
+  'folder',
+  'table',
+  'building',
+  'people',
+  'briefcase',
+  'chart',
+  'globe',
+  'cube',
+  'rocket',
+  'target',
+  'calendar',
+  'document',
+  'layers',
+  'lightning',
+  'star',
+  'heart',
+  'gear',
+  'bookmark',
+  'camera',
+  'code',
+  'dashboard',
+  'link',
+  'archive',
+  'reader',
+] as const
+export type EntityIconId = (typeof entityIconIds)[number]

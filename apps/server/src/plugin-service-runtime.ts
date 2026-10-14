@@ -66,7 +66,7 @@ type CachedPluginService = {
 };
 
 const serviceCacheByConfig = new WeakMap<ServerConfig, Map<string, CachedPluginService>>();
-const globalPluginServiceDataIds = new Set(["douyin-ops", "wechat-channels-ops"]);
+const globalPluginServiceDataIds = new Set(["douyin-ops", "wechat-channels-ops", "ipollo-onto"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

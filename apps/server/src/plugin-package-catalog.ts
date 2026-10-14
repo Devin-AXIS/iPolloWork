@@ -61,7 +61,7 @@ export async function resolveBundledPluginPackageRoot(pluginId: string, roots = 
     const sourceRoot = join(root, pluginId);
     // Native recorder helpers are built into this package; source remains usable
     // for portable Chrome workflows when no native build has been prepared.
-    const candidates = ["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops"].includes(pluginId) ? [join(sourceRoot, "dist/package"), sourceRoot] : [sourceRoot];
+    const candidates = ["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"].includes(pluginId) ? [join(sourceRoot, "dist/package"), sourceRoot] : [sourceRoot];
     for (const packageRoot of candidates) {
       try {
         await access(join(packageRoot, "ipollowork.plugin.json"));

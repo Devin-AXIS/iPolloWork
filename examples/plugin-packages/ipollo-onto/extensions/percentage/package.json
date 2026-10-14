@@ -1,0 +1,29 @@
+{
+  "name": "@ipollo-data/percentage",
+  "version": "1.0.0",
+  "type": "module",
+  "files": [
+    "shared.js"
+  ],
+  "ipolloData": {
+    "id": "percentage",
+    "name": "百分比字段",
+    "description": "带范围校验的百分比",
+    "protocol": 1,
+    "categories": [
+      "fields"
+    ],
+    "defaultInstalled": true,
+    "dependencies": [
+      "core"
+    ],
+    "contributes": {
+      "fields": [
+        "percentage"
+      ]
+    },
+    "entrypoints": {
+      "shared": "shared.js"
+    }
+  }
+}

@@ -215,7 +215,7 @@
         origin = candidates.shift()
         if (!origin) {
           frame.removeAttribute('src')
-          failed('Onto 数据服务尚未运行。启动独立服务后，点击重试。')
+          failed('未能连接 Onto 工作台，请重试或检查 5711 端口是否被占用。')
           return
         }
         const hash = currentHash
@@ -225,12 +225,21 @@
         timer = setTimeout(next, 12000)
         pingTimer = setInterval(ping, 250)
       }
-      function open() {
+      async function open() {
         connected = false
         frame.hidden = true
         status.hidden = false
         retry.hidden = true
         message.textContent = '正在连接业务数据…'
+        try {
+          const response = await request('tools/call', { name: 'open-workbench', arguments: {} })
+          if (response?.isError) throw new Error(response.content?.find(c => c.type === 'text')?.text || '工作台启动失败')
+          if (disposed) return
+        } catch (error) {
+          if (disposed) return
+          failed(error.message || '工作台启动失败，请重新安装插件后重试。')
+          return
+        }
         const previous = stored('origin')
         candidates = origins.includes(previous)
           ? [previous, ...origins.filter((o) => o !== previous)]
@@ -441,7 +450,7 @@
           if (!hostReady) {
             const host = await request('ui/initialize', {
               protocolVersion: '2025-11-21',
-              appInfo: { name: 'iPollo Onto', version: '0.1.4' },
+              appInfo: { name: 'iPollo Onto', version: '0.1.5' },
               appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] },
             })
             if (disposed) return

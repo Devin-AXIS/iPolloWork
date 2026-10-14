@@ -1205,7 +1205,12 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
           "h-full min-w-0 border-0 bg-background",
           inspectorBelowAppToolbar ? "w-full flex-1 min-h-0 bg-transparent" : "flex-1",
         )}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox={[
+          "allow-scripts", "allow-same-origin",
+          ...(resource.resource.ui.sandbox?.forms ? ["allow-forms"] : []),
+          ...(resource.resource.ui.sandbox?.downloads ? ["allow-downloads"] : []),
+          ...(resource.resource.ui.sandbox?.modals ? ["allow-modals"] : []),
+        ].join(" ")}
         allow={buildAllowAttribute(resource.resource.ui.permissions)}
         data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}
         data-preview-revision={props.developmentPreview?.revision}

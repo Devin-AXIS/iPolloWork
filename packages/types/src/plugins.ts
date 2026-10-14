@@ -197,6 +197,13 @@ const uiResourceMetadataSchema = z.object({
     geolocation: z.object({}).strict().optional(),
     clipboardWrite: z.object({}).strict().optional(),
   }).strict().optional(),
+  // Explicit per-resource sandbox opt-in for embedded business applications.
+  // Script/origin isolation stays the same; no popup or navigation permission.
+  sandbox: z.object({
+    forms: z.boolean().optional(),
+    downloads: z.boolean().optional(),
+    modals: z.boolean().optional(),
+  }).strict().optional(),
   prefersBorder: z.boolean().optional(),
 }).strict();
 

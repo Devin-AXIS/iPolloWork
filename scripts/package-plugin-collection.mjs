@@ -19,7 +19,7 @@ const keys = options.has("--keyring") ? JSON.parse(await readFile(resolve(option
 const entries = [];
 for (const pluginId of catalogPluginPackageIds) {
   const root = await resolveBundledPluginPackageRoot(pluginId);
-  if (["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops"].includes(pluginId) && !root.replaceAll("\\", "/").endsWith("/dist/package")) {
+  if (["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"].includes(pluginId) && !root.replaceAll("\\", "/").endsWith("/dist/package")) {
     throw new Error("Build the closed distribution first: " + pluginId);
   }
   const preview = await previewPluginPackage({ packageRoot: root });
@@ -32,7 +32,7 @@ for (const pluginId of catalogPluginPackageIds) {
   if (keys && (!publisher || !keys[publisher]?.privateKey || !keys[publisher]?.keyId)) throw new Error("Missing release signing key for publisher: " + publisher);
   entries.push({ pluginId, name: preview.manifest.name, version: metadata.version, publisher, updateId: metadata.updateId,
     platforms: metadata.compatibility?.platforms ?? null, minimumHost: metadata.compatibility?.ipollowork ?? null,
-    externalService: pluginId === "ipollo-onto" ? "Onto service source is not included; connect an existing service." : null,
+    externalService: null,
     files, bytes, root });
 }
 await mkdir(output, { recursive: true });

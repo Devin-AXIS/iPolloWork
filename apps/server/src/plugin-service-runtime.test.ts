@@ -659,7 +659,7 @@ describe("plugin service runtime", () => {
     await expect(access(dataDir)).rejects.toThrow();
   });
 
-  test("shares social account data across projects without sharing other plugin data", async () => {
+  test("shares social and Onto data across projects without sharing other plugin data", async () => {
     const runtimeRoot = await temporaryRoot("ipollowork-plugin-data-scope-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
     const serverConfig = config(await temporaryRoot("ipollowork-plugin-data-workspace-"));
@@ -668,6 +668,8 @@ describe("plugin service runtime", () => {
       .toBe(pluginServiceDataDirectory(serverConfig, "workspace-b", "douyin-ops"));
     expect(pluginServiceDataDirectory(serverConfig, "workspace-a", "wechat-channels-ops"))
       .toBe(pluginServiceDataDirectory(serverConfig, "workspace-b", "wechat-channels-ops"));
+    expect(pluginServiceDataDirectory(serverConfig, "workspace-a", "ipollo-onto"))
+      .toBe(pluginServiceDataDirectory(serverConfig, "workspace-b", "ipollo-onto"));
     expect(pluginServiceDataDirectory(serverConfig, "workspace-a", "runtime-capability"))
       .not.toBe(pluginServiceDataDirectory(serverConfig, "workspace-b", "runtime-capability"));
   });

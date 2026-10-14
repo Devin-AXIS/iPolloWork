@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#fafafa" />
+    <script>
+      // Apply saved appearance before the first paint; React owns subsequent changes.
+      try {
+        const mode = localStorage.getItem('ipollo-data.appearance')
+        const dark =
+          mode === 'dark' ||
+          (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.appearance = dark ? 'dark' : 'light'
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        const saved = localStorage.getItem('ipollo-data.locale')
+        document.documentElement.lang =
+          saved === 'en' || saved === 'zh-CN'
+            ? saved
+            : navigator.language.toLowerCase().startsWith('zh')
+              ? 'zh-CN'
+              : 'en'
+      } catch {}
+    </script>
+    <title>iPollo Onto · 项目与数据</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/ui/main.tsx"></script>
+  </body>
+</html>
