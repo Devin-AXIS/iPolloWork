@@ -725,19 +725,19 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     ).replaceAll("\r\n", "\n");
 
-    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded");
+    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded || (compactWorkspace && !mainWorkspaceExpanded)");
     expect(sessionPageSource).toContain(
-      'rightWorkspaceExpanded && "invisible pointer-events-none"',
+      'rightWorkspaceExpanded && "pointer-events-none"',
     );
     expect(sessionPageSource).toContain("onOpenSession={handleSidebarOpenSession}");
     expect(sessionPageSource).toContain(
       "onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}",
     );
     expect(sessionPageSource).toContain(
-      'left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"',
+      'rightWorkspaceExpanded ? workspaceWidthAfterLeftSidebar : effectiveBrowserPanelWidth',
     );
     expect(sessionPageSource).toContain(
-      "rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)",
+      "rightWorkspaceExpanded && (!shellConfig.sidebar || !sidebarOpen)",
     );
     expect(sessionPageSource).toContain(
       "!rightWorkspaceExpanded &&\n      (showWorkspaceSetupEmptyState",
@@ -774,28 +774,28 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(sessionPageSource).not.toContain('orientation="horizontal"');
-    expect(sessionPageSource).toContain('aria-label="Resize right panel"');
+    expect(sessionPageSource).toContain('data-testid="workspace-resize-handle"');
     expect(sessionPageSource).toContain("onPointerDown={startRightPanelResize}");
     expect(sessionPageSource).toContain("setBrowserPanelWidth(nextWidth)");
-    expect(sessionPageSource).toContain("width: sidePanelOpen ? effectiveBrowserPanelWidth : 0");
+    expect(sessionPageSource).toContain("width: !sidePanelOpen || mainWorkspaceExpanded ? 0");
   });
 
-  test("allows expanded video dragging while freezing other expanded work surfaces", () => {
+  test("allows every expanded work surface to restore through the shared separator", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded");
+    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded || (compactWorkspace && !mainWorkspaceExpanded)");
     expect(sessionPageSource).toContain(
-      '(!sidePanelOpen || (rightWorkspaceExpanded && !videoTabActive)) && "pointer-events-none',
+      '!sidePanelOpen && "pointer-events-none',
     );
     expect(sessionPageSource).not.toContain("disabled={!sidePanelOpen || rightWorkspaceExpanded}");
     expect(sessionPageSource).not.toContain(
       'rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"',
     );
     expect(sessionPageSource).toContain(
-      "if (event.button !== 0 || !sidePanelOpen || (rightWorkspaceExpanded && !videoTabActive)) return",
+      "if (event.button !== 0 || !sidePanelOpen) return",
     );
   });
 
@@ -1270,13 +1270,14 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("const SESSION_SHELL_TRANSITION_MS = 220");
+    expect(sessionPageSource).toContain("duration: WORKSPACE_TRANSITION_MS");
     expect(sessionPageSource).toContain(
-      'const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"',
+      "easing: WORKSPACE_TRANSITION_EASING",
     );
-    expect(sessionPageSource).toContain("const sessionShellTransition =");
+    expect(sessionPageSource).toContain("right.animate([{ width:");
+    expect(sessionPageSource).not.toContain("rightContent.animate([");
     expect(sessionPageSource).toContain("rightPanelTransitionStyle");
-    expect(sessionPageSource).toContain('rightPanelResizing ? "none" : sessionShellTransition');
+    expect(sessionPageSource).toContain('transition: "none"');
     expect(sessionPageSource).toContain("transition-[width,min-width,opacity]");
     expect(sessionPageSource).toContain("**:data-[slot=sidebar-container]:duration-[220ms]");
     expect(sessionPageSource).not.toContain(

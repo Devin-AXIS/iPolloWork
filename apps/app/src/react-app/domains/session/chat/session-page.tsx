@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import type { CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
@@ -7,7 +8,7 @@ import { videoProjectIdFromStoryboardPath } from "../video/video-storyboard";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Check, ChevronDown, CircleAlert, Download, Ellipsis, Eye, FileText, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Palette, Pencil, Plus, Presentation, Trash2, Upload, X, Zap } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Download, Ellipsis, Eye, FileText, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Minimize2, Palette, Pencil, Plus, Presentation, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   CODEX_HARNESS_ENGINE_ID,
@@ -172,7 +173,7 @@ import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt
 import { SidePanel, SidePanelLauncherMenu, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { browserTabsForSession, useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
-import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
+import { getWorkspaceSnapIntent, WORKSPACE_SNAP_DISTANCE, WORKSPACE_TRANSITION_MS, WORKSPACE_TRANSITION_EASING, useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
@@ -214,8 +215,6 @@ const MIN_DESIGN_PANEL_WIDTH = 420;
 const MIN_RIGHT_PANEL_WIDTH = 320;
 const NARROW_LAYOUT_WIDTH = 960;
 const VIDEO_PANEL_DEFAULT_WIDTH = 1120;
-const SESSION_SHELL_TRANSITION_MS = 220;
-const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const ENGINE_STARTUP_TRANSITION_MS = 900;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateApplyMode = "market" | "new-conversation" | "current-conversation";
@@ -2937,16 +2936,37 @@ export function SessionPage(props: SessionPageProps) {
     rightSidebarExpandedWidth: browserPanelWidth,
     setRightSidebarExpandedWidth: setBrowserPanelWidth,
     startLeftSidebarResize,
+    handleLeftSidebarResizeKeyDown,
+    minLeftWidth,
+    maxLeftWidth,
   } = useWorkspaceShellLayout({
     expandedRightWidth: 520,
     minRightWidth: MIN_RIGHT_PANEL_WIDTH,
+    onLeftExpand: () => {
+      userOpenedSidebarWhileNarrowRef.current = true;
+      autoCollapsedSidebarRef.current = false;
+      setSidebarOpen(true);
+    },
+    onLeftCollapse: () => {
+      autoCollapsedSidebarRef.current = false;
+      userOpenedSidebarWhileNarrowRef.current = false;
+      setSidebarOpen(false);
+    },
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
   const [rightPanelManuallyResized, setRightPanelManuallyResized] = useState(false);
-  const [rightPanelResizing, setRightPanelResizing] = useState(false);
+  const rightPanelResizingRef = useRef(false);
+  const rightPanelResizing = rightPanelResizingRef.current;
   const rightPanelElementRef = useRef<HTMLElement>(null);
+  const mainWorkspaceElementRef = useRef<HTMLDivElement>(null);
+  const mainWorkspaceContentRef = useRef<HTMLElement>(null);
+  const rightWorkspaceContentRef = useRef<HTMLDivElement>(null);
+  const workspaceModeAnimatingRef = useRef(false);
+  const panelMotionCleanupRef = useRef<(() => void) | null>(null);
+  const retainedContentWidthsRef = useRef({ main: MAIN_WORKSPACE_MIN_WIDTH, right: MIN_RIGHT_PANEL_WIDTH });
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
-  const rightWorkspaceExpanded = rightPanelExpanded;
+  const [mainWorkspaceExpanded, setMainWorkspaceExpanded] = useState(false);
+  const rightResizeCleanupRef = useRef<(() => void) | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
@@ -2968,6 +2988,11 @@ export function SessionPage(props: SessionPageProps) {
     workspaceWidthAfterLeftSidebar - mainWorkspaceMinWidth,
   );
   const effectiveRightPanelMinWidth = Math.min(availableRightPanelWidth, desiredRightPanelWidth);
+  const compactWorkspace = sidePanelOpen && availableRightPanelWidth < desiredRightPanelWidth;
+  const rightWorkspaceExpanded = rightPanelExpanded || (compactWorkspace && !mainWorkspaceExpanded);
+  const restoreWorkspaceLabel = compactWorkspace
+    ? t(mainWorkspaceExpanded ? "workspace.show_operations" : "workspace.show_conversation")
+    : t("workspace.restore_split");
   const preferredVideoPanelWidth = rightPanelManuallyResized
     ? browserPanelDefaultWidth
     : Math.max(browserPanelDefaultWidth, VIDEO_PANEL_DEFAULT_WIDTH);
@@ -2990,14 +3015,9 @@ export function SessionPage(props: SessionPageProps) {
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
     "--sidebar-width": `${effectiveLeftSidebarWidth}px`,
   };
-  const sessionShellTransition = [
-    `width ${SESSION_SHELL_TRANSITION_MS}ms ${SESSION_SHELL_TRANSITION_EASING}`,
-    `min-width ${SESSION_SHELL_TRANSITION_MS}ms ${SESSION_SHELL_TRANSITION_EASING}`,
-    `opacity ${Math.round(SESSION_SHELL_TRANSITION_MS * 0.75)}ms ease-out`,
-  ].join(", ");
   const rightPanelTransitionStyle: CSSProperties = {
-    transition: rightPanelResizing ? "none" : sessionShellTransition,
-    opacity: sidePanelOpen ? 1 : 0,
+    transition: "none",
+    opacity: sidePanelOpen && !mainWorkspaceExpanded ? 1 : 0,
   };
   const availableMainWorkspaceWidth = viewportWidth
     - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
@@ -3019,7 +3039,7 @@ export function SessionPage(props: SessionPageProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
   useEffect(() => {
-    if (!shellConfig.sidebar) return;
+    if (!shellConfig.sidebar || leftSidebarResizing || rightPanelResizing || rightWorkspaceExpanded || mainWorkspaceExpanded) return;
     if (
       requestedMainWorkspaceWidth < AUTO_COLLAPSE_WORKSPACE_WIDTH &&
       sidebarOpen &&
@@ -3039,6 +3059,10 @@ export function SessionPage(props: SessionPageProps) {
       setSidebarOpen(true);
     }
   }, [
+    leftSidebarResizing,
+    rightPanelResizing,
+    rightWorkspaceExpanded,
+    mainWorkspaceExpanded,
     requestedMainWorkspaceWidth,
     expandedMainWorkspaceWidth,
     setSidebarOpen,
@@ -3068,15 +3092,77 @@ export function SessionPage(props: SessionPageProps) {
   useEffect(() => {
     props.onAccessibleTargetsChange?.(accessibleTargets);
   }, [accessibleTargets, props.onAccessibleTargetsChange]);
-  const setRightPanelExpandedState = useCallback((expanded: boolean) => {
-    if (expanded) {
-      setRightPanelExpanded(true);
+  const animateWorkspaceMode = useCallback((mode: "split" | "main" | "right", commit: () => void, fromWidth?: number, toWidth?: number) => {
+    const main = mainWorkspaceElementRef.current;
+    const right = rightPanelElementRef.current;
+    const mainContent = mainWorkspaceContentRef.current;
+    const rightContent = rightWorkspaceContentRef.current;
+    if (!main || !right || !mainContent || !rightContent || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      panelMotionCleanupRef.current?.();
+      commit();
       return;
     }
-    setRightPanelExpanded(false);
-  }, []);
+    const beforeRightWidth = fromWidth ?? right.getBoundingClientRect().width;
+    panelMotionCleanupRef.current?.();
+    const targetRight = toWidth ?? (mode === "right" ? workspaceWidthAfterLeftSidebar : mode === "main" ? 0 : effectiveBrowserPanelWidth);
+    mainContent.style.removeProperty("width");
+    rightContent.style.removeProperty("width");
+    right.style.width = `${beforeRightWidth}px`;
+    right.style.maxWidth = "100%";
+    main.style.minWidth = "0px";
+    main.style.opacity = "1";
+    right.style.opacity = "1";
+    const options: KeyframeAnimationOptions = { duration: WORKSPACE_TRANSITION_MS, easing: WORKSPACE_TRANSITION_EASING, fill: "both" };
+    const animations = [right.animate([{ width: `${beforeRightWidth}px` }, { width: `${targetRight}px` }], options)];
+    // Mounting a tool can block the current frame. Start from the next frame
+    // using the current clock so mounting cannot consume the motion's duration.
+    for (const animation of animations) animation.pause();
+    let frameId: number | null = null;
+    let committed = false;
+    workspaceModeAnimatingRef.current = true;
+    const cleanup = () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      for (const animation of animations) animation.cancel();
+      right.style.width = `${committed ? targetRight : rightWorkspaceExpanded ? workspaceWidthAfterLeftSidebar : mainWorkspaceExpanded ? 0 : effectiveBrowserPanelWidth}px`;
+      right.style.maxWidth = (committed ? mode === "right" : rightWorkspaceExpanded) ? "100%" : `max(0px, calc(100% - ${mainWorkspaceMinWidth}px))`;
+      main.style.minWidth = (committed ? mode === "right" : rightWorkspaceExpanded) ? "0px" : `${mainWorkspaceMinWidth}px`;
+      main.style.opacity = (committed ? mode === "right" : rightWorkspaceExpanded) ? "0" : "1";
+      right.style.opacity = (committed ? mode === "main" : mainWorkspaceExpanded) ? "0" : "1";
+      if (!(mode === "right" && committed)) mainContent.style.removeProperty("width");
+      if (!(mode === "main" && committed)) rightContent.style.removeProperty("width");
+      workspaceModeAnimatingRef.current = false;
+      panelMotionCleanupRef.current = null;
+    };
+    panelMotionCleanupRef.current = cleanup;
+    frameId = window.requestAnimationFrame(() => {
+      frameId = null;
+      for (const animation of animations) {
+        animation.play();
+        animation.startTime = performance.now();
+      }
+    });
+    void Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+      if (panelMotionCleanupRef.current !== cleanup) return;
+      const mainRect = main.getBoundingClientRect();
+      const rightRect = right.getBoundingClientRect();
+      if (mainRect.width > 0) retainedContentWidthsRef.current.main = mainRect.width;
+      if (rightRect.width > 0) retainedContentWidthsRef.current.right = rightRect.width;
+      committed = true;
+      workspaceModeAnimatingRef.current = false;
+      flushSync(commit);
+      if (panelMotionCleanupRef.current === cleanup) cleanup();
+    });
+  }, [effectiveBrowserPanelWidth, mainWorkspaceExpanded, mainWorkspaceMinWidth, rightWorkspaceExpanded, workspaceWidthAfterLeftSidebar]);
+  const setRightPanelExpandedState = useCallback((expanded: boolean) => {
+    const focusMain = compactWorkspace && !expanded;
+    animateWorkspaceMode(expanded ? "right" : focusMain ? "main" : "split", () => {
+      setMainWorkspaceExpanded(focusMain);
+      setRightPanelExpanded(expanded);
+    });
+  }, [animateWorkspaceMode, compactWorkspace]);
   const closeExpandedWorkSurface = useCallback(() => {
     if (rightPanelExpanded) setRightPanelExpanded(false);
+    setMainWorkspaceExpanded(false);
   }, [rightPanelExpanded]);
   const handleSidebarOpenSession = useCallback((workspaceId: string, sessionId: string) => {
     closeExpandedWorkSurface();
@@ -3097,87 +3183,149 @@ export function SessionPage(props: SessionPageProps) {
     closeExpandedWorkSurface();
     props.sidebar.onOpenSessionSearch?.();
   }, [closeExpandedWorkSurface, props.sidebar.onOpenSessionSearch]);
+  useLayoutEffect(() => {
+    if (workspaceModeAnimatingRef.current) return;
+    const main = mainWorkspaceElementRef.current;
+    const right = rightPanelElementRef.current;
+    const mainContent = mainWorkspaceContentRef.current;
+    const rightContent = rightWorkspaceContentRef.current;
+    if (!main || !right || !mainContent || !rightContent) return;
+    panelMotionCleanupRef.current?.();
+    const mainWidth = main.getBoundingClientRect().width;
+    const rightWidth = right.getBoundingClientRect().width;
+    if (mainWidth > 0) retainedContentWidthsRef.current.main = mainWidth;
+    if (rightWidth > 0) retainedContentWidthsRef.current.right = rightWidth;
+    if (rightPanelResizing) return;
+    if (rightWorkspaceExpanded) mainContent.style.width = `${retainedContentWidthsRef.current.main}px`;
+    else mainContent.style.removeProperty("width");
+    if (mainWorkspaceExpanded || !sidePanelOpen) rightContent.style.width = `${retainedContentWidthsRef.current.right}px`;
+    else rightContent.style.removeProperty("width");
+  }, [effectiveBrowserPanelWidth, mainWorkspaceExpanded, rightWorkspaceExpanded, sidebarOpen, sidePanelOpen, leftSidebarResizing, rightPanelResizing]);
+  useEffect(() => () => panelMotionCleanupRef.current?.(), []);
+  const restoreWorkspaceSplit = useCallback(() => {
+    const focusMain = compactWorkspace && !mainWorkspaceExpanded;
+    animateWorkspaceMode(focusMain ? "main" : compactWorkspace ? "right" : "split", () => {
+      setRightPanelExpanded(false);
+      setMainWorkspaceExpanded(focusMain);
+    });
+  }, [animateWorkspaceMode, compactWorkspace, mainWorkspaceExpanded]);
   const startRightPanelResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !sidePanelOpen || (rightWorkspaceExpanded && !videoTabActive)) return;
-    setRightPanelResizing(true);
-    const workspaceWidth = viewportWidth - visibleLeftSidebarWidth;
-    const maximumWidth = Math.max(
-      effectiveRightPanelMinWidth,
-      Math.min(
-        workspaceWidth - mainWorkspaceMinWidth,
-        workspaceWidth * (videoTabActive ? 0.82 : 0.7),
-      ),
-    );
-    let nextWidth = effectiveBrowserPanelWidth;
-    let expandPending = false;
-    let collapsePending = false;
-    let frameId: number | null = null;
-    const resizeHandle = event.currentTarget;
+    if (event.button !== 0 || !sidePanelOpen) return;
+    rightResizeCleanupRef.current?.();
+    panelMotionCleanupRef.current?.();
     const rightPanel = rightPanelElementRef.current;
+    if (!rightPanel) return;
+    const resizeHandle = event.currentTarget;
+    const initialWidth = rightPanel.getBoundingClientRect().width;
+    const maximumWidth = Math.max(effectiveRightPanelMinWidth, workspaceWidthAfterLeftSidebar - mainWorkspaceMinWidth);
+    let nextWidth = initialWidth;
+    let mode: "split" | "main" | "right" = rightWorkspaceExpanded ? "right" : mainWorkspaceExpanded ? "main" : "split";
+    const initialMode = mode;
+    let anchorX = event.clientX;
+    let anchorWidth = initialWidth;
+    let frameId: number | null = null;
+    let snapped = false;
+    rightPanel.style.transition = "none";
+    rightPanel.style.width = `${initialWidth}px`;
+    rightWorkspaceContentRef.current?.style.removeProperty("width");
+    mainWorkspaceContentRef.current?.style.removeProperty("width");
+    rightPanelResizingRef.current = true;
     const applyPendingWidth = () => {
       frameId = null;
-      if (rightPanel) rightPanel.style.width = `${nextWidth}px`;
+      rightPanel.style.width = `${nextWidth}px`;
+    };
+    const changeMode = (target: "split" | "main" | "right") => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      frameId = null;
+      mode = target;
+      snapped = true;
+      rightPanelResizingRef.current = false;
+      animateWorkspaceMode(target, () => {
+        setRightPanelExpanded(target === "right");
+        setMainWorkspaceExpanded(target === "main");
+      });
     };
     const handleMove = (moveEvent: PointerEvent) => {
-      const requestedWidth = window.innerWidth - moveEvent.clientX;
-      expandPending = videoTabActive && !rightWorkspaceExpanded && requestedWidth >= maximumWidth + 48;
-      collapsePending = rightWorkspaceExpanded && moveEvent.clientX - event.clientX >= 48;
-      resizeHandle.dataset.snapPending = expandPending || collapsePending ? "true" : "false";
-      nextWidth = Math.round(Math.min(maximumWidth, Math.max(
-        effectiveRightPanelMinWidth,
-        requestedWidth,
-      )));
+      if (moveEvent.pointerId !== event.pointerId) return;
+      const requestedWidth = anchorWidth + anchorX - moveEvent.clientX;
+      if (mode !== "split") {
+        const reverseDistance = mode === "right" ? moveEvent.clientX - anchorX : anchorX - moveEvent.clientX;
+        if (reverseDistance >= WORKSPACE_SNAP_DISTANCE) {
+          changeMode("split");
+          anchorX = moveEvent.clientX;
+          anchorWidth = effectiveBrowserPanelWidth;
+          nextWidth = anchorWidth;
+          resizeHandle.dataset.snapPending = "restore";
+        }
+        return;
+      }
+      const intent = getWorkspaceSnapIntent(requestedWidth, effectiveRightPanelMinWidth, maximumWidth, null);
+      if (intent) {
+        resizeHandle.dataset.snapPending = intent;
+        changeMode(intent === "expand" ? "right" : "main");
+        anchorX = moveEvent.clientX;
+        return;
+      }
+      if (workspaceModeAnimatingRef.current) return;
+      nextWidth = Math.min(maximumWidth, Math.max(effectiveRightPanelMinWidth, requestedWidth));
+      rightPanelResizingRef.current = true;
+      delete resizeHandle.dataset.snapPending;
       if (frameId === null) frameId = window.requestAnimationFrame(applyPendingWidth);
     };
-    const handleStop = (stopEvent: PointerEvent) => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-        applyPendingWidth();
-      }
+    const cleanup = () => {
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleStop);
       window.removeEventListener("pointercancel", handleStop);
       document.body.style.removeProperty("cursor");
       document.body.style.removeProperty("user-select");
-      rightPanel?.style.removeProperty("will-change");
-      rightPanel?.style.removeProperty("pointer-events");
-      setRightPanelResizing(false);
+      rightPanel.style.removeProperty("will-change");
+      rightPanel.style.removeProperty("pointer-events");
+      rightPanel.style.removeProperty("transition");
       delete resizeHandle.dataset.snapPending;
-      if (resizeHandle.hasPointerCapture(event.pointerId)) {
-        resizeHandle.releasePointerCapture(event.pointerId);
+      if (resizeHandle.hasPointerCapture(event.pointerId)) resizeHandle.releasePointerCapture(event.pointerId);
+      rightResizeCleanupRef.current = null;
+    };
+    const handleStop = (stopEvent: PointerEvent) => {
+      if (stopEvent.pointerId !== event.pointerId) return;
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+        applyPendingWidth();
       }
-      if (!rightWorkspaceExpanded || (collapsePending && stopEvent.type === "pointerup")) {
+      cleanup();
+      rightPanelResizingRef.current = false;
+      if (stopEvent.type === "pointercancel") {
+        if (snapped) animateWorkspaceMode(initialMode, () => {
+          setRightPanelExpanded(initialMode === "right");
+          setMainWorkspaceExpanded(initialMode === "main");
+        });
+        else rightPanel.style.width = `${initialWidth}px`;
+        return;
+      }
+      if (mode === "split" && !workspaceModeAnimatingRef.current) {
         setBrowserPanelWidth(nextWidth);
         setBrowserPanelDefaultWidth(nextWidth);
         setRightPanelManuallyResized(true);
       }
-      if (videoTabActive && stopEvent.type === "pointerup") {
-        if (expandPending) setRightPanelExpanded(true);
-        if (collapsePending) setRightPanelExpanded(false);
-      }
+
     };
+    rightResizeCleanupRef.current = cleanup;
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleStop);
     window.addEventListener("pointercancel", handleStop);
     resizeHandle.setPointerCapture(event.pointerId);
-    if (rightPanel) {
-      rightPanel.style.willChange = "width";
-      rightPanel.style.pointerEvents = "none";
-    }
+    rightPanel.style.willChange = "width";
+    rightPanel.style.pointerEvents = "none";
     Object.assign(document.body.style, { cursor: "ew-resize", userSelect: "none" });
     event.preventDefault();
-  }, [
-    effectiveBrowserPanelWidth,
-    effectiveRightPanelMinWidth,
-    mainWorkspaceMinWidth,
-    rightWorkspaceExpanded,
-    setBrowserPanelWidth,
-    setRightPanelManuallyResized,
-    sidePanelOpen,
-    videoTabActive,
-    viewportWidth,
-    visibleLeftSidebarWidth,
-  ]);
+  }, [effectiveRightPanelMinWidth, mainWorkspaceMinWidth, mainWorkspaceExpanded,
+    animateWorkspaceMode, restoreWorkspaceSplit, setRightPanelExpandedState, rightWorkspaceExpanded, setBrowserPanelWidth,
+    sidePanelOpen, workspaceWidthAfterLeftSidebar]);
+  useEffect(() => () => rightResizeCleanupRef.current?.(), []);
+  useEffect(() => {
+    // A newly selected tool should remain reachable after conversation focus.
+    setMainWorkspaceExpanded(false);
+  }, [effectiveSidePanelView, activePanelTab?.id]);
   const handleDesignAskAi = useCallback(async (context: DesignAiSelectionContext, instruction?: string) => {
     if (context.sessionId !== props.selectedSessionId || context.workspaceId !== props.runtimeWorkspaceId) {
       throw new Error("当前对话已切换，请在当前视频页重新提交需求");
@@ -3494,16 +3642,20 @@ export function SessionPage(props: SessionPageProps) {
       userOpenedSidePanelWhileNarrowRef.current = false;
       autoCollapsedSidePanelRef.current = null;
     }
-    setRightPanelExpanded(false);
-    setSessionPanelView(null);
-    setCurrentSidePanel(null);
-  }, [setCurrentSidePanel]);
+    animateWorkspaceMode("main", () => {
+      setRightPanelExpanded(false);
+      setMainWorkspaceExpanded(false);
+      setSessionPanelView(null);
+      setCurrentSidePanel(null);
+    });
+  }, [animateWorkspaceMode, setCurrentSidePanel]);
   const openLeftSidebar = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = true;
     autoCollapsedSidebarRef.current = false;
     setSidebarOpen(true);
   }, [setSidebarOpen]);
   useEffect(() => {
+    if (leftSidebarResizing || rightPanelResizing || rightWorkspaceExpanded || mainWorkspaceExpanded) return;
     if (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) return;
     if (
       (
@@ -3537,6 +3689,10 @@ export function SessionPage(props: SessionPageProps) {
       }
     }
   }, [
+    leftSidebarResizing,
+    rightPanelResizing,
+    rightWorkspaceExpanded,
+    mainWorkspaceExpanded,
     availableMainWorkspaceWidth,
     closeRightPane,
     effectiveSidePanelView,
@@ -3566,12 +3722,12 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
     const restoredPanel = lastRightPanelViewRef.current;
-    if (!props.selectedSessionId || restoredPanel === "launcher") {
-      setSessionPanelView("launcher");
-      return;
-    }
-    setCurrentSidePanel(restoredPanel);
-  }, [closeRightPane, effectiveSidePanelView, props.selectedSessionId, setCurrentSidePanel, sidePanelOpen]);
+    flushSync(() => {
+      if (!props.selectedSessionId || restoredPanel === "launcher") setSessionPanelView("launcher");
+      else setCurrentSidePanel(restoredPanel);
+    });
+    animateWorkspaceMode("split", () => {}, 0, rightPanelElementRef.current?.getBoundingClientRect().width);
+  }, [animateWorkspaceMode, closeRightPane, effectiveSidePanelView, props.selectedSessionId, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     openDesignTab();
@@ -4396,6 +4552,7 @@ export function SessionPage(props: SessionPageProps) {
         onOpenChange={handleSidebarOpenChange}
         className={cn(
           "relative min-h-0 flex-1 mac:bg-transparent **:data-[slot=sidebar-container]:duration-[220ms] **:data-[slot=sidebar-gap]:duration-[220ms] **:data-[slot=sidebar-container]:ease-[cubic-bezier(0.22,1,0.36,1)] **:data-[slot=sidebar-gap]:ease-[cubic-bezier(0.22,1,0.36,1)]",
+          "motion-reduce:**:data-[slot=sidebar-container]:!transition-none motion-reduce:**:data-[slot=sidebar-gap]:!transition-none",
           leftSidebarResizing &&
             "**:data-[slot=sidebar-container]:transition-none **:data-[slot=sidebar-gap]:transition-none",
           !shellConfig.sidebar && "**:data-[slot=sidebar-container]:hidden **:data-[slot=sidebar-gap]:hidden",
@@ -4461,21 +4618,40 @@ export function SessionPage(props: SessionPageProps) {
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}
+          onResizeKeyDown={handleLeftSidebarResizeKeyDown}
+          resizeWidth={leftSidebarWidth}
+          minResizeWidth={minLeftWidth}
+          maxResizeWidth={maxLeftWidth}
         />
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
           <div className="flex min-h-0 flex-1">
-          <div className="relative flex min-h-0 min-w-0 flex-1">
+          <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
             <div
               className={cn(
-                "min-w-0 flex-1 transition-[width,min-width,opacity]",
-                rightWorkspaceExpanded && "invisible pointer-events-none",
+                "relative min-w-0 overflow-hidden flex-1 transition-[width,min-width,opacity] motion-reduce:!transition-none",
+                rightWorkspaceExpanded && "pointer-events-none",
               )}
+              ref={mainWorkspaceElementRef}
+              data-testid="main-workspace"
+              aria-hidden={rightWorkspaceExpanded}
+              inert={rightWorkspaceExpanded}
               style={{
                 minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth,
-                transition: sessionShellTransition,
+                opacity: rightWorkspaceExpanded ? 0 : 1,
+                transition: "none",
               }}
             >
-              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
+              {mainWorkspaceExpanded && sidePanelOpen && mainHeaderHidden ? (
+                <Tooltip>
+                  <TooltipTrigger render={
+                    <Button variant="secondary" size="icon-sm" className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground absolute right-2 top-1 z-30 mac:titlebar-no-drag" data-testid="workspace-restore-split" aria-label={restoreWorkspaceLabel} aria-pressed onClick={restoreWorkspaceSplit}>
+                      <Minimize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />
+                    </Button>
+                  } />
+                  <TooltipContent>{restoreWorkspaceLabel}</TooltipContent>
+                </Tooltip>
+              ) : null}
+              <main ref={mainWorkspaceContentRef} style={{ minWidth: mainWorkspaceMinWidth }} className="flex h-full w-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center bg-background/80 px-4 backdrop-blur-2xl backdrop-saturate-150 dark:bg-background/72 md:px-6 mac:titlebar-drag @container/titlebar",
             mainHeaderHidden ? "hidden!" : "grid",
@@ -4486,6 +4662,7 @@ export function SessionPage(props: SessionPageProps) {
                 variant="ghost"
                 size="icon-sm"
                 className="absolute left-6 top-1/2 z-20 size-8 -translate-y-1/2 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:left-20 mac:titlebar-no-drag"
+                data-testid="workspace-expand-sidebar"
                 aria-label={t("sidebar.expand")}
                 title={t("sidebar.expand")}
                 onClick={openLeftSidebar}
@@ -4500,6 +4677,7 @@ export function SessionPage(props: SessionPageProps) {
                 ? "ml-12 md:ml-10 mac:ml-28 mac:md:ml-[104px]"
                 : "",
             )} data-testid="session-header-project-region">
+
               {showMainHeaderTitle ? (
                 <>
                   {showSelectedProjectNavigation ? (
@@ -4602,6 +4780,16 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
 
             <div data-testid="session-header-actions" className="relative z-10 col-start-3 flex items-center gap-1.5 justify-self-end text-gray-10 mac:titlebar-no-drag">
+              {mainWorkspaceExpanded && sidePanelOpen ? (
+                <Tooltip>
+                  <TooltipTrigger render={
+                    <Button variant="secondary" size="icon-sm" className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground" data-testid="workspace-restore-split" aria-label={restoreWorkspaceLabel} aria-pressed onClick={restoreWorkspaceSplit}>
+                      <Minimize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />
+                    </Button>
+                  } />
+                  <TooltipContent>{restoreWorkspaceLabel}</TooltipContent>
+                </Tooltip>
+              ) : null}
               {sidePanelOpen && activeSidePanel !== "outputs" ? (
                 <ConversationOutputPopover
                   open={outputFilesPopoverOpen}
@@ -5027,28 +5215,61 @@ export function SessionPage(props: SessionPageProps) {
             </div>
                 <div
                   role="separator"
-                  aria-label="Resize right panel"
+                  aria-label={t("session.resize_workspace_column")}
+                  data-testid="workspace-resize-handle"
+                  tabIndex={sidePanelOpen ? 0 : -1}
+                  aria-valuemin={0}
+                  aria-valuemax={Math.round(workspaceWidthAfterLeftSidebar)}
+                  aria-valuenow={Math.round(rightWorkspaceExpanded ? workspaceWidthAfterLeftSidebar : mainWorkspaceExpanded ? 0 : effectiveBrowserPanelWidth)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" || event.key === "Enter") restoreWorkspaceSplit();
+                    else if (event.key === "Home") animateWorkspaceMode("main", () => { setRightPanelExpanded(false); setMainWorkspaceExpanded(true); });
+                    else if (event.key === "End") setRightPanelExpandedState(true);
+                    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                      restoreWorkspaceSplit();
+                      const width = Math.min(availableRightPanelWidth, Math.max(effectiveRightPanelMinWidth, effectiveBrowserPanelWidth + (event.key === "ArrowLeft" ? 24 : -24)));
+                      setBrowserPanelWidth(width);
+                      setBrowserPanelDefaultWidth(width);
+                      setRightPanelManuallyResized(true);
+                    } else return;
+                    event.preventDefault();
+                  }}
                   aria-orientation="vertical"
                   onPointerDown={startRightPanelResize}
                   className={cn(
                     "group relative z-30 -mr-2 hidden w-2 shrink-0 cursor-ew-resize touch-none lg:block",
-                    (!sidePanelOpen || (rightWorkspaceExpanded && !videoTabActive)) && "pointer-events-none mr-0 w-0",
-                    rightWorkspaceExpanded && videoTabActive && "fixed inset-y-0 z-[70] mr-0",
+                    !sidePanelOpen && "pointer-events-none mr-0 w-0",
+                    (rightWorkspaceExpanded || mainWorkspaceExpanded) && "absolute inset-y-0 z-[70] mr-0",
                   )}
-                  style={rightWorkspaceExpanded && videoTabActive ? { left: visibleLeftSidebarWidth } : undefined}
+                  style={rightWorkspaceExpanded ? { left: 0 } : mainWorkspaceExpanded ? { right: 0 } : undefined}
                 >
-                  <span className="pointer-events-none absolute left-3 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-popover px-3 py-2 text-ui-meta text-popover-foreground shadow-md group-data-[snap-pending=true]:block">
-                    {t(rightWorkspaceExpanded ? "video.release_to_restore" : "video.release_to_expand")}
-                  </span>
+
                 </div>
                 <aside
                   ref={rightPanelElementRef}
-                  className="min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col"
+                  data-testid="right-workspace"
+                  aria-hidden={mainWorkspaceExpanded || !sidePanelOpen}
+                  inert={mainWorkspaceExpanded || !sidePanelOpen}
+                  className="relative min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col motion-reduce:!transition-none"
                   style={{
-                    width: sidePanelOpen ? effectiveBrowserPanelWidth : 0,
+                    width: !sidePanelOpen || mainWorkspaceExpanded ? 0 : rightWorkspaceExpanded ? workspaceWidthAfterLeftSidebar : effectiveBrowserPanelWidth,
+                    maxWidth: rightWorkspaceExpanded ? "100%" : `max(0px, calc(100% - ${mainWorkspaceMinWidth}px))`,
                     ...rightPanelTransitionStyle,
                   }}
                 >
+                  <div ref={rightWorkspaceContentRef} data-testid="workspace-panel-content" style={{ minWidth: desiredRightPanelWidth }} className="flex h-full min-h-0 w-full shrink-0 flex-col bg-background">
+                  {rightWorkspaceExpanded && (compactWorkspace || activeSidePanel !== "panel") ? (
+                    <div className="flex h-10 shrink-0 items-center justify-end border-b px-2 mac:titlebar-drag">
+                      <Tooltip>
+                  <TooltipTrigger render={
+                    <Button variant="secondary" size="icon-sm" className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag" data-testid="workspace-restore-split" aria-label={restoreWorkspaceLabel} aria-pressed onClick={restoreWorkspaceSplit}>
+                      <Minimize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />
+                    </Button>
+                  } />
+                  <TooltipContent>{restoreWorkspaceLabel}</TooltipContent>
+                </Tooltip>
+                    </div>
+                  ) : null}
                   {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
                     <div className="flex h-full flex-col bg-background">
                       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
@@ -5082,11 +5303,8 @@ export function SessionPage(props: SessionPageProps) {
                     <div
                       className={cn(
                         "h-full min-h-0",
-                        rightPanelExpanded && "fixed inset-y-0 right-0 z-[60] bg-background",
+                        rightPanelExpanded && "bg-background",
                       )}
-                      style={rightPanelExpanded ? {
-                        left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0",
-                      } : undefined}
                     >
                       <SidePanel
                         sessionId={props.selectedSessionId}
@@ -5104,13 +5322,14 @@ export function SessionPage(props: SessionPageProps) {
                         onSwitchMedia={kind => openWorkspaceAppForPlugin(kind === "image" ? "image-studio" : "video-console", {intent:`generate-${kind}`,requestId:crypto.randomUUID()})}
                         onOpenMedia={(path,kind) => void openTarget({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:kind === "image" ? "image" : "external",confidence:1,reason:"media-studio-import"})}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
-                        expanded={rightPanelExpanded}
-                        titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
+                        expanded={rightWorkspaceExpanded}
+                        titlebarInset={rightWorkspaceExpanded && (!shellConfig.sidebar || !sidebarOpen)}
                         onExpandedChange={setRightPanelExpandedState}
                         onClose={closeRightPane}
                       />
                     </div>
                   ) : null}
+                  </div>
                 </aside>
           </div>
           </div>
