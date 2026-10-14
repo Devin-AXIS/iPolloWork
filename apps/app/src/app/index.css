@@ -31,6 +31,50 @@ img[src$="/ext-video-console.png"] {
   scale: 1.2;
 }
 
+/* Normalize the visible bounds and centers of the transparent plugin marks. */
+img[src$="/ext-xiaohongshu.png"] {
+  scale: 1.2;
+  translate: 0 -3.2%;
+}
+
+img[src$="/ext-douyin.png"] {
+  scale: 1.455;
+  translate: 0 -4%;
+}
+
+img[src$="/ext-wechat-channels.png"] {
+  scale: 1.25;
+  translate: 0 -2.2%;
+}
+
+img[src$="/ext-operation-recorder.png"] {
+  scale: 1.4;
+  translate: -3.7% -5.5%;
+}
+
+img[src$="/ext-onto.png"] {
+  scale: 1.25;
+  translate: 0 -4%;
+}
+
+img[src$="/ext-short-video.png"] {
+  scale: 1.35;
+  translate: 0 -1.1%;
+}
+
+/* Keep monochrome plugin marks readable on both dark and light icon tiles. */
+:is(.dark, [data-theme="dark"]) img:is(
+  [src$="/ext-xiaohongshu.png"],
+  [src$="/ext-douyin.png"],
+  [src$="/ext-wechat-channels.png"],
+  [src$="/ext-operation-recorder.png"],
+  [src$="/ext-onto.png"],
+  [src$="/ext-short-video.png"]
+) {
+  filter: invert(1);
+  mix-blend-mode: difference;
+}
+
 @custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @custom-variant electron {
   html.ipollowork-electron & {
