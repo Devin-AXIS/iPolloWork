@@ -70,6 +70,7 @@ import { VideoEnhancementPanel } from "./video-enhancement-panel";
 
 type VideoPanelProps = {
   title: string;
+  onVideoTitleChange?: (title: string) => void;
   sessionId: string;
   view?: "storyboard";
   conversationId?: string;
@@ -163,6 +164,7 @@ export function VideoPanel({
   onAskAi,
   onRegenerateFromStoryboard,
   onSaveAsTemplate,
+  onVideoTitleChange,
   onGenerateVideo,
 }: VideoPanelProps) {
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
@@ -188,10 +190,14 @@ export function VideoPanel({
   const [studioPanelWidth, setStudioPanelWidth] = React.useState(DEFAULT_STUDIO_PANEL_WIDTH);
   const [studioPanelBounds, setStudioPanelBounds] = React.useState<VideoStudioPanelBounds | null>(null);
   const studioPanelStyle: React.CSSProperties = studioPanelBounds ? {
-    left: `${studioPanelBounds.left * 100}%`,
+    left: `calc(${studioPanelBounds.left * 100}% + 1px)`,
     top: `${studioPanelBounds.top * 100}%`,
-    width: `${studioPanelBounds.width * 100}%`,
-    height: `${studioPanelBounds.height * 100}%`,
+    width: `calc(${studioPanelBounds.width * 100}% - 2px)`,
+    height: `calc(${studioPanelBounds.height * 100}% - 1px)`,
+    borderRadius: "0 0 15px 15px",
+    overflow: "hidden",
+    border: 0,
+    boxSizing: "border-box",
     right: "auto",
     bottom: "auto",
   } : { width: studioPanelWidth };
@@ -963,6 +969,7 @@ export function VideoPanel({
         })),
         actions: {
           reload: true,
+          openEnhancement: !isRemoteWorkspace && Boolean(workspaceId) && isIPolloWorkServerClient(client),
           saveAsTemplate: Boolean(onSaveAsTemplate),
           openTemplates: templatesAvailable,
           openDesignSystem: features.designSystem,
@@ -980,6 +987,8 @@ export function VideoPanel({
     client,
     features.designSystem,
     features.voice,
+    isRemoteWorkspace,
+    workspaceId,
     onSaveAsTemplate,
     onRegenerateFromStoryboard,
     sessionId,
@@ -1103,8 +1112,8 @@ export function VideoPanel({
           target: {
             tag,
             label: summary
-              ? `VIDEO ${tag.toUpperCase()} · ${summary}`
-              : `VIDEO ${tag.toUpperCase()}`,
+              ? `${t("video.ai_annotation")} · ${summary}`
+              : t("video.ai_annotation"),
             locator: target.locator,
             text,
             src,
@@ -1326,6 +1335,8 @@ export function VideoPanel({
     syncStudioTheme();
   }, [resolvedTheme, syncStudioTheme]);
 
+  const [enhancementOpen, setEnhancementOpen] = React.useState(false);
+
   const reloadStudio = React.useCallback(() => {
     if (studioReadyFallbackRef.current != null) {
       window.clearTimeout(studioReadyFallbackRef.current);
@@ -1344,8 +1355,13 @@ export function VideoPanel({
     const handleStudioHostAction = (event: MessageEvent) => {
       if (event.source !== studioFrameRef.current?.contentWindow) return;
       if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type === "ipollowork:studio-video-title" && event.data.projectId === videoProjectId(sessionId) && typeof event.data.title === "string" && event.data.title.trim() && event.data.title.length <= 120) {
+        onVideoTitleChange?.(event.data.title.trim());
+        return;
+      }
       if (event.data?.type !== "ipollowork:studio-host-action") return;
       if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if (event.data.action === "open-enhancement" && !isRemoteWorkspace && workspaceId && isIPolloWorkServerClient(client)) { setEnhancementOpen(true); return; }
       if (event.data.action === "reload") {
         reloadStudio();
         return;
@@ -1356,7 +1372,7 @@ export function VideoPanel({
     };
     window.addEventListener("message", handleStudioHostAction);
     return () => window.removeEventListener("message", handleStudioHostAction);
-  }, [branding, onSaveAsTemplate, reloadStudio, sessionId, studioUrl, templatesAvailable]);
+  }, [branding, client, isRemoteWorkspace, workspaceId, onSaveAsTemplate, onVideoTitleChange, reloadStudio, sessionId, studioUrl, templatesAvailable]);
 
   React.useEffect(() => {
     setStudioHostPanel(null);
@@ -1416,13 +1432,13 @@ export function VideoPanel({
 
   return (
     <div
-      className="relative flex h-full min-h-0 flex-col bg-background"
+      className="hf-video-workbench-host relative flex h-full min-h-0 flex-col bg-background"
       data-testid="video-panel"
       data-expanded={expanded ? "true" : "false"}
     >
       {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) && (
         <VideoEnhancementPanel key={`${workspaceId}:${sessionId}`} client={client} workspaceId={workspaceId}
-          sessionId={sessionId} previewAssetUrl={avatarPreviewUrl} onPreparingChange={setEnhancementPreparing} aiEditing={aiEditing}
+          sessionId={sessionId} open={enhancementOpen} onOpenChange={setEnhancementOpen} previewAssetUrl={avatarPreviewUrl} onPreparingChange={setEnhancementPreparing} aiEditing={aiEditing}
           onGenerate={onAskAi ? async request => {
             const current = await client.readWorkspaceFile(workspaceId, request.sourcePath);
             await onAskAi({
@@ -1579,7 +1595,7 @@ export function VideoPanel({
             ) : null}
             {features.designSystem ? (
               <div
-                className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background"
+                className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden bg-background"
                 style={{ ...studioPanelStyle, display: studioHostPanel === "style" ? undefined : "none" }}
                 data-testid="video-style-tab-content"
               >

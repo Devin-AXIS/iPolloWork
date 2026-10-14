@@ -6,11 +6,19 @@ import { useDialogBehavior } from "./ui/useDialogBehavior";
 import { useStudioI18n } from "../i18n";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { ArrowUp, LoaderCircle, Sparkles } from "lucide-react";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@ipollowork/ui/input-group";
 
 function getAgentModalPositionStyle(
   anchorPoint: AgentModalAnchorPoint | null,
+  compact: boolean,
 ): CSSProperties | undefined {
-  if (!anchorPoint || typeof window === "undefined") return undefined;
+  if (typeof window === "undefined") return undefined;
+  if (!anchorPoint) return compact ? { left: "50%", bottom: 24, transform: "translateX(-50%)" } : undefined;
+  if (compact) return {
+    left: `clamp(min(336px, 50vw), ${anchorPoint.x}px, max(50vw, calc(100vw - 336px)))`,
+    top: `clamp(16px, ${anchorPoint.y + 12}px, max(16px, calc(100vh - 176px)))`,
+    maxHeight: "calc(100vh - 32px)", transform: "translateX(-50%)",
+  };
 
   const modalWidth = Math.min(480, window.innerWidth - 32);
   const estimatedModalHeight = Math.min(440, window.innerHeight - 32);
@@ -31,18 +39,22 @@ function getAgentModalPositionStyle(
 
 export function AskAgentModal({
   selectionLabel,
+  selectionTime,
   contextPreview,
   anchorPoint = null,
   allowEmptyInstruction = false,
   copyInstruction = false,
+  compact = false,
   onSubmit,
   onClose,
 }: {
   selectionLabel: string;
+  selectionTime?: { start: number; end: number };
   contextPreview?: string;
   anchorPoint?: AgentModalAnchorPoint | null;
   allowEmptyInstruction?: boolean;
   copyInstruction?: boolean;
+  compact?: boolean;
   onSubmit: (instruction: string) => void | Promise<void>;
   onClose: () => void;
 }) {
@@ -55,13 +67,14 @@ export function AskAgentModal({
   const submittingRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const modalPositionStyle = getAgentModalPositionStyle(anchorPoint);
+  const modalPositionStyle = getAgentModalPositionStyle(anchorPoint, compact);
   // Keep a draft and in-flight request visible until the host accepts it.
   const { requestClose } = useDialogBehavior({
     open: true,
     onClose,
     containerRef,
-    canClose: () => !value.trim() && !submittingRef.current,
+    trapFocus: !compact,
+    canClose: () => (compact || !value.trim()) && !submittingRef.current,
   });
 
   useMountEffect(() => {
@@ -81,6 +94,41 @@ export function AskAgentModal({
       setSubmitting(false);
     }
   };
+
+  if (compact) return createPortal(
+    <div ref={containerRef} role="dialog" aria-modal="false" aria-label={tx("Ask AI")}
+      aria-busy={submitting} data-preserve-studio-selection="true" data-testid="ai-annotation-composer"
+      className="fixed z-[100] w-[640px] max-w-[calc(100vw-32px)] overflow-auto rounded-2xl bg-panel-bg p-2 text-panel-text-1 shadow-lg"
+      style={modalPositionStyle}
+      onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}>
+      <InputGroup className="!h-auto !min-h-12 !rounded-xl !border-0 !bg-transparent" style={{ boxShadow: "none" }}>
+        <InputGroupAddon className="!max-w-[42%] !ps-1">
+          <span title={selectionLabel} aria-label={selectionLabel} className="max-h-20 overflow-auto whitespace-nowrap rounded-full bg-studio-accent/10 px-3 py-1.5 text-xs text-panel-text-1">
+            {selectionTime ? `${tx("Selected range")} ${selectionTime.start.toFixed(1)}s${selectionTime.start !== selectionTime.end ? `—${selectionTime.end.toFixed(1)}s` : ""}` : selectionLabel}
+          </span>
+        </InputGroupAddon>
+        <InputGroupTextarea ref={inputRef} rows={1} value={value} maxLength={4000} disabled={submitting}
+          className="!min-h-10 !max-h-28 !min-w-0 !text-sm"
+          placeholder={tx("Describe what you want to change…")} aria-label={tx("Describe what you want to change…")}
+          onChange={(event) => {
+            setValue(event.target.value); setError(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault(); void handleSubmit();
+            }
+          }} />
+        <InputGroupAddon align="inline-end" className="!pe-1 !gap-1">
+          <InputGroupButton variant="default" size="icon-sm" aria-label={tx(submitting ? "Sending…" : window.parent === window ? "Copy prompt" : "Ask AI")}
+            disabled={(!value.trim() && !allowEmptyInstruction) || submitting} onClick={() => void handleSubmit()}>
+            {submitting ? <LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : <ArrowUp size={16} aria-hidden="true" />}
+          </InputGroupButton>
+        </InputGroupAddon>
+      </InputGroup>
+      {error && <p role="alert" className="px-2 pt-1 text-xs text-panel-danger">{error}</p>}
+    </div>, document.body,
+  );
 
   return createPortal(
     <div

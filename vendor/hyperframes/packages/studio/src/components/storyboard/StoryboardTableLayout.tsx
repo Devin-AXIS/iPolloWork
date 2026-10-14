@@ -2,11 +2,13 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { useStudioI18n } from "../../i18n";
 
 const COLUMNS = [
-  { label: "#", width: 56, min: 48, max: 96 },
+  { label: "#", width: 72, min: 56, max: 120 },
   { label: "Picture & scene", width: 340, min: 180, max: 900 },
   { label: "Narration", width: 300, min: 180, max: 900 },
-  { label: "Duration", width: 100, min: 80, max: 240 },
-  { label: "Shot settings", width: 150, min: 100, max: 240 },
+  { label: "Estimated duration", width: 100, min: 80, max: 240 },
+  { label: "Picture structure", width: 160, min: 140, max: 320 },
+  { label: "Materials", width: 170, min: 140, max: 320 },
+  { label: "Sound effects", width: 140, min: 120, max: 280 },
   { label: "Actions", width: 48, min: 48, max: 48 },
 ];
 
@@ -76,7 +78,7 @@ export function StoryboardTableLayout({
             ))}
           </colgroup>
           <thead className="sticky top-0 z-10 bg-[var(--hf-workspace-surface)] text-[var(--hf-panel-text-3)]">
-            <tr className="border-y border-[var(--hf-workspace-border)]">
+            <tr className="border-b border-[var(--hf-workspace-border)]">
               {COLUMNS.map((column, index) => (
                 <th
                   key={column.label}

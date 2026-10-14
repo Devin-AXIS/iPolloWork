@@ -48,6 +48,7 @@ export function StoryboardPlanField({
     id,
     "aria-label": label,
     placeholder: placeholder ?? label,
+    title: multiline ? undefined : value,
     value: text,
     disabled,
     className: INPUT,

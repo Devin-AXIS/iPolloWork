@@ -2,8 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
-import magnetIconSrc from "../../icons/figmaToolbarMagnet.svg?url";
-import gridIconSrc from "../../icons/figmaToolbarGrid.svg?url";
+import { Magnet, Grid2X2 } from "lucide-react";
 import { useStudioI18n } from "../../i18n";
 
 const SNAP_TOOLBAR_SLOT_ID = "hf-canvas-snap-toolbar-slot";
@@ -123,19 +122,18 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
     return () => group.removeEventListener("toggle", closeWithGroup);
   }, [toolbarSlots.grid]);
 
-  const iconButton =
-    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35";
+  const iconButton = "hf-timeline-toolbutton";
   const snapControls = (
     <div className="flex items-center gap-2" onPointerDown={(event) => event.stopPropagation()}>
       <button
         type="button"
-        className={`${iconButton} ${prefs.snapEnabled ? "bg-[#f2f2f0]" : ""}`}
+        className={iconButton}
         onClick={toggleSnap}
         title={tx(prefs.snapEnabled ? "Snapping enabled" : "Snapping disabled")}
         aria-label={tx("Toggle snapping")}
         aria-pressed={prefs.snapEnabled}
       >
-        <img src={magnetIconSrc} width="16" height="16" alt="" aria-hidden="true" />
+        <Magnet size={16} aria-hidden="true" />
       </button>
     </div>
   );
@@ -144,7 +142,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
     <button
       ref={gridButtonRef}
       type="button"
-      className={`${iconButton} ${prefs.gridVisible ? "bg-[#f2f2f0]" : ""}`}
+      className={iconButton}
       onClick={toggleGrid}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -154,7 +152,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
       aria-label={tx("Toggle grid")}
       aria-pressed={prefs.gridVisible}
     >
-      <img src={gridIconSrc} width="16" height="16" alt="" aria-hidden="true" />
+      <Grid2X2 size={16} aria-hidden="true" />
     </button>
   );
 

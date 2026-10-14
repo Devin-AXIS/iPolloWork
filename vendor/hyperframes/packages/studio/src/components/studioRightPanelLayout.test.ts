@@ -8,6 +8,21 @@ import {
 import { parseHostAiEditingMessage } from "../utils/studioHelpers";
 
 describe("Studio right panel layout", () => {
+  it("uses the shared primary action for rename saving and a ghost cancel action", () => {
+    const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+    expect(header).toContain('<Button variant="default" disabled={!titleDraft.trim() || titleSaving} onClick={() => void saveTitle()}>{tx("Save")}</Button>');
+    expect(header).toContain('<Button variant="ghost" disabled={titleSaving} onClick={closeTitleEditor}>{tx("Cancel")}</Button>');
+  });
+  it("keeps the warm header and flat inspector separate from compact script metadata", () => {
+    const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
+    const dock = readFileSync(new URL("./dock/Dock.tsx", import.meta.url), "utf8");
+    expect(styles).toContain("--muted: color-mix(in srgb, var(--hf-workspace-warm-sand) 55%, var(--hf-panel-bg))");
+    expect(styles).toContain("grid-template-columns: 40px minmax(0, 1fr) 68px");
+    expect(styles).toContain("background: var(--hf-panel-input)");
+    expect(styles).not.toContain("box-shadow: inset 3px 0 0 #1fbac0");
+    expect(dock).not.toContain("Focus preview");
+    expect(dock).not.toContain("setPreviewFocus");
+  });
   it("keeps a newly inserted component selected and reveals it after project refresh", () => {
     const handlers = readFileSync(new URL("../hooks/useBlockHandlers.ts", import.meta.url), "utf8");
 
@@ -65,7 +80,7 @@ describe("Studio right panel layout", () => {
 
   it("places the Figma AI editing status directly below the video canvas", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
-    expect(header).toContain('<Dock.WindowMenu label="Control tools" visibilityOnly />');
+    expect(header).toContain('<Dock.WindowMenu label="Panels" visibilityOnly />');
     const shell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");
     const preview = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
 
@@ -74,7 +89,7 @@ describe("Studio right panel layout", () => {
     expect(shell).not.toContain("avatarCutoutProgress !== null");
     expect(preview).toContain('data-testid="studio-ai-editing-status"');
     expect(preview).toContain("hostAiEditing || avatarCutoutProgress !== null");
-    expect(preview).toContain("h-[34px] min-w-[241px]");
+    expect(preview).toContain("min-h-[34px] min-w-0 max-w-[calc(100%_-_32px)]");
     expect(preview).toContain("justify-center bg-transparent pb-2");
     expect(preview).toContain("rounded-[6px] bg-[#087b82]");
     expect(preview).toContain("text-[#a9e7ea]");
@@ -184,7 +199,7 @@ describe("Studio right panel layout", () => {
     );
     const studioStyles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
-    expect(header).toContain("min-h-[69px]");
+    expect(header).toContain("px-4 pb-4");
     expect(header).toContain('aria-label={tx("Ask AI about selected element")}');
     expect(header).toContain("h-7 flex-shrink-0");
     expect(header).toContain("figmaAskAiSparkle.svg?url");
@@ -299,7 +314,7 @@ describe("Studio right panel layout", () => {
     expect(selects).toContain("focus-visible:ring-panel-accent/50");
     expect(layout).toContain("dark:hover:bg-panel-hover dark:hover:text-panel-text-1");
     expect(layout).not.toContain("dark:hover:text-[#24262b]");
-    expect(animations).toContain("bg-black text-white dark:bg-panel-accent/20");
+    expect(animations).toContain("aria-pressed:bg-muted aria-pressed:text-foreground");
     expect(animations).toContain("dark:hover:bg-panel-hover dark:hover:text-panel-text-1");
   });
 
@@ -578,8 +593,9 @@ describe("Studio right panel layout", () => {
 
   it("matches compact Tabs spacing without active shadows or borders", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
-    expect(header).toContain('from "@ipollowork/ui/tabs"');
-    expect(header.match(/<TabsTrigger value=/g)).toHaveLength(3);
+    expect(header).not.toContain('from "@ipollowork/ui/tabs"');
+    expect(header).toContain("Dock.WindowMenu");
+    expect(header).toContain("studio-video-title");
     expect(header).not.toContain('h-[26px]');
   });
 
@@ -637,7 +653,8 @@ describe("Studio right panel layout", () => {
     expect(app).not.toContain('setRightPanelTab("code")');
     expect(shell).not.toContain('<Dock.Panel id="assets"');
     expect(shell).not.toContain('<Dock.Panel id="code"');
-    expect(shell).not.toContain('<Dock.Panel id="compositions"');
+    expect(shell).toContain('<Dock.Panel id="compositions"');
+    expect(shell).toContain('projectId={projectId} compact');
     expect(shell).toContain('panels={WORKBENCH_PANELS}');
     expect(shell).toContain('requiredPanels={REQUIRED_WORKBENCH_PANELS} fullHeightRight hideHeaders');
     expect(panel).not.toContain('selectStudioPanel("catalog")');
@@ -656,7 +673,7 @@ describe("Studio right panel layout", () => {
     expect(tabButton).toContain("text-current");
     expect(header).not.toContain('aria-disabled="true"');
     expect(header).toContain("onPreviewModeChange");
-    expect(header).toContain('<TabsTrigger value="preview">');
+    expect(header).not.toContain("<TabsTrigger");
     expect(app).toContain("previewOnly={previewMode}");
     expect(app).toContain("onToggleRecording: undefined");
     expect(app).toContain("const recordingToggle = undefined");
@@ -664,27 +681,26 @@ describe("Studio right panel layout", () => {
     expect(app).toContain("const StudioRightPanel = lazy(loadStudioRightPanel)");
     expect(app).toContain("window.requestIdleCallback");
     expect(app).toContain("module.preloadStudioPropertyPanel()");
-    expect(shell).toContain("previewOnly ? (");
-    expect(shell).toContain("<PreviewPane editingEnabled={false} />");
+    expect(shell).not.toContain("setPreviewFocus");
+    expect(shell).toContain("editingEnabled={!previewOnly}");
     expect(shell).toContain("!previewOnly && <StudioFeedbackBar />");
     expect(header).toContain('from "lucide-react"');
     expect(header).not.toContain('@phosphor-icons/react');
     expect(header).not.toContain('../icons/SystemIcons');
-    expect(header).toContain('<SlidersHorizontal className="h-4 w-4 shrink-0" strokeWidth={1.75}');
+    expect(header).toContain("studio-rename-video");
     expect(header).toContain('<Download className="h-4 w-4 shrink-0" strokeWidth={1.75}');
     expect(header).toContain('variant="ghost"');
     expect(header).not.toContain("hover:border-[var(--hf-panel-border-input)]");
-    const propertiesAction = header.match(/className="hf-studio-header-action hf-studio-properties-action"[\s\S]*?aria-label=/)?.[0];
-    expect(propertiesAction).toBeDefined();
-    expect(propertiesAction).not.toContain("border-[var(--hf-panel-border-input)]");
+    expect(header).not.toContain("toggleProperties");
     expect(header).toContain('from "@ipollowork/ui/controls"');
     expect(header).toContain("hf-studio-header-export");
-    expect(header).toContain("hf-studio-properties-action");
+    expect(header).not.toContain("hf-studio-properties-action");
     expect(header).not.toContain("hf-studio-header-title-text");
-    expect(header).toContain("hf-studio-header-views");
+    expect(header).toContain("studio-video-title");
     expect(header).toContain("hf-studio-header-actions");
-    expect(header).toContain("hf-studio-header-utilities");
-    expect(header).toContain("hf-studio-header-actions-divider");
+    expect(header).not.toContain("studio-more-actions");
+    expect(header).toContain("studio-reload");
+    expect(header).not.toContain("DropdownMenuSeparator");
     expect(header).toContain("hf-studio-header-action-label");
     expect(header).toContain(
       'aria-label={isRendering ? t("header.rendering") : t("header.export")}',
@@ -692,11 +708,11 @@ describe("Studio right panel layout", () => {
     expect(styles).not.toContain(".hf-studio-header-export {");
     expect(styles).toContain("--hf-header-primary-bg:");
     expect(header).toContain("<Button");
-    expect(header).toContain("<TabsList");
-    expect(styles).toContain(".hf-studio-header-actions-divider {");
+    expect(header).not.toContain("<TabsList");
+    expect(styles).toContain(".hf-history-notice {");
     expect(styles).toContain("@media (max-width: 720px)");
-    expect(styles).toContain("width: 28px;");
-    expect(styles).toContain("gap: 8px;");
+    expect(styles).toContain("width: 32px;");
+    expect(styles).toContain("padding: 6px 8px;");
     expect(styles).toContain("gap: 4px;");
     expect(styles).toContain("container-name: hf-flat-inspector");
     expect(styles).toContain("@container hf-flat-inspector (max-width: 280px)");
@@ -720,9 +736,9 @@ describe("Studio right panel layout", () => {
     expect(header).toContain('from "lucide-react"');
     expect(header).not.toContain('@phosphor-icons/react');
     expect(header).not.toContain('../icons/SystemIcons');
-    expect(header).toContain('<Save className="h-4 w-4" strokeWidth={1.75}');
-    expect(header).toContain('<RefreshCw className="h-4 w-4" strokeWidth={1.75}');
-    expect(header).toContain('<SlidersHorizontal className="h-4 w-4 shrink-0" strokeWidth={1.75}');
+    expect(header).toContain("<Pencil");
+    expect(header).toContain("<RefreshCw");
+    expect(header).toContain("studio-rename-video");
     expect(header).toContain('<Download className="h-4 w-4 shrink-0" strokeWidth={1.75}');
     expect(header).not.toContain("hover:border-[var(--hf-panel-border-input)]");
     expect(header).toContain('from "@ipollowork/ui/controls"');
@@ -793,12 +809,12 @@ describe("Studio right panel layout", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
-    expect(layout).toContain("export const DEFAULT_TIMELINE_GUTTER_WIDTH = 255");
-    expect(layout).toContain("export const MIN_TIMELINE_GUTTER_WIDTH = 220");
+    expect(layout).toContain("export const DEFAULT_TIMELINE_GUTTER_WIDTH = 220");
+    expect(layout).toContain("export const MIN_TIMELINE_GUTTER_WIDTH = 180");
     expect(layout).toContain("export const MAX_TIMELINE_GUTTER_WIDTH = 420");
     expect(layout).toContain("export function clampTimelineGutterWidth");
-    expect(layout).toContain("export const TRACK_H = 47");
-    expect(layout).toContain("export const RULER_H = 32");
+    expect(layout).toContain("export const TRACK_H = 40");
+    expect(layout).toContain("export const RULER_H = 28");
     expect(layout).toContain("export const TRACKS_TOP_PAD = 0");
     expect(layerHeader).toContain("data-layer-depth={depth}");
     expect(layerHeader).toContain("depth * 19");
@@ -827,7 +843,7 @@ describe("Studio right panel layout", () => {
     expect(toolbar).toContain("bg-[var(--hf-studio-toolbar-bg)]");
     expect(header).toContain("bg-[var(--hf-studio-header-bg)]");
     expect(styles).not.toContain(".hf-studio-properties-icon");
-    expect(styles).toContain(".hf-timeline-toolbar-icon");
+    expect(styles).toContain(".hf-timeline-toolbutton");
     expect(styles).toContain("--hf-timeline-clip-bg: #18181b");
     expect(styles).toContain("--hf-timeline-clip-bg: #f5f6f9");
     expect(styles).toContain(".hf-timeline-layer-header.is-selected");
@@ -867,9 +883,9 @@ describe("Studio right panel layout", () => {
     expect(toolbar).toContain("enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe");
     expect(toolbar).toContain("!canToggleKeyframe");
     expect(toolbar).toContain(': "Add keyframe at playhead"');
-    expect(toolbar).toContain("figmaToolbarUndo.svg?url");
-    expect(toolbar).toContain("figmaToolbarRedo.svg?url");
-    expect(toolbar).toContain("figmaToolbarFit.svg?url");
+    expect(toolbar).toContain("<Undo2 size={16}");
+    expect(toolbar).toContain("<Redo2 size={16}");
+    expect(toolbar).toContain("<Scan size={16}");
     expect(toolbar).toContain('data-testid="preview-fit-reset"');
     expect(toolbar).toContain("aria-busy={capturing}");
     expect(toolbar).toContain("animate-spin rounded-full");
@@ -916,19 +932,25 @@ describe("Studio right panel layout", () => {
     expect(canvasContextMenu).toContain('tx("Saving…")');
   });
 
-  it("renders the timeline toolbar SVG resources at their exact Figma dimensions", () => {
+  it("unifies timeline tools with semantic colors, hover states and Lucide stroke weight", () => {
     const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
-    const dividerIcon = readFileSync(
-      new URL("../icons/figmaToolbarDivider.svg", import.meta.url),
-      "utf8",
-    );
-
-    expect(toolbar).toMatch(/width = 16,\s+height = width,/);
-    expect(toolbar).toContain("<ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />");
-    expect(toolbar).toContain("<ToolbarIcon src={diamondIconSrc} width={24} />");
-    expect(toolbar).toContain("<ToolbarIcon src={trashIconSrc} width={24} />");
-    expect(dividerIcon).toContain('width="6" height="16.6667"');
-    expect(dividerIcon).toContain('stroke="#EBEBEB" stroke-width="1.33333"');
+    const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
+    const snap = readFileSync(new URL("./editor/SnapToolbar.tsx", import.meta.url), "utf8");
+    const shortcuts = readFileSync(new URL("../player/components/ShortcutsPanel.tsx", import.meta.url), "utf8");
+    for (const source of [toolbar, snap, shortcuts]) {
+      expect(source).toContain("hf-timeline-toolbutton");
+      expect(source).not.toContain("figmaToolbar");
+    }
+    expect(toolbar).toContain("<Diamond size={16}");
+    expect(toolbar).toContain("<Trash2 size={16}");
+    expect(snap).toContain("<Magnet size={16}");
+    expect(shortcuts).toContain("<Keyboard size={16}");
+    expect(styles).toContain("stroke-width: 1.75;");
+    expect(styles).toContain("color: var(--hf-panel-text-2);");
+    expect(styles).toContain(".hf-timeline-toolbutton:hover:not(:disabled):not([aria-disabled=");
+    expect(styles).toContain("background: var(--hf-panel-hover);");
+    expect(styles).toContain('opacity: 0.35;');
+    expect(styles).not.toContain("filter: invert(1) brightness(1.25);");
   });
 
   it("routes visible-element deletes through one immediate guarded transaction", () => {
@@ -1203,7 +1225,7 @@ describe("Studio right panel layout", () => {
   it("keeps component, animation and asset search headers at the same spacing", () => {
     for (const file of ["BlocksTab", "AnimationTemplatesTab", "AssetsTab"]) {
       const source = readFileSync(new URL(`./sidebar/${file}.tsx`, import.meta.url), "utf8");
-      expect(source).toContain("border-b border-panel-border px-4 py-3");
+      expect(source).toContain("border-b border-panel-border px-4 pb-3");
       expect(source).toContain("<SearchInput");
     }
   });

@@ -10,6 +10,7 @@ export interface InitialPanelLayoutState {
 export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   // Measured dock width for host narration/theme overlays, never a second resizer.
   const [rightWidth, setRightWidth] = useState(400);
+  const [scriptExpanded, setScriptExpanded] = useState(false);
   const rightCollapsed = useDockLayoutStore(state => !state.visiblePanels.has("design"));
   const setRightCollapsed = useCallback((collapsed: boolean) => {
     const dock = useDockLayoutStore.getState();
@@ -30,5 +31,6 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     trackStudioEvent("tab_switch", { panel: "right_panel", tab });
   }, []);
   return { rightWidth, setRightWidth, rightCollapsed, setRightCollapsed,
+    scriptExpanded, setScriptExpanded,
     rightPanelTab, setRightPanelTab: trackedSetRightPanelTab };
 }

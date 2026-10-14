@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useStudioI18n } from "../../i18n";
 import { ContextMenu } from "./AssetContextMenu";
 import { basename, getAudioSubtype } from "./assetHelpers";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
@@ -28,6 +29,7 @@ export function AudioRow({
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAssetToTimeline?: (path: string) => void;
 }) {
+  const { tx } = useStudioI18n();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [bars, setBars] = useState<number[]>([]);
@@ -181,6 +183,8 @@ export function AudioRow({
         }`}
       >
         <button
+          aria-label={`${tx(playing ? "Pause" : "Play")} ${basename(asset)}`}
+          aria-pressed={playing}
           className={`w-7 h-7 rounded-md flex-shrink-0 flex items-center justify-center transition-all ${
             playing
               ? "bg-panel-accent/15 text-panel-accent"

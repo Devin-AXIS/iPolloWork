@@ -130,6 +130,7 @@ export function StudioRightPanel({
   const {
     rightWidth,
     rightCollapsed,
+    scriptExpanded,
     setRightWidth,
     setRightCollapsed,
     rightPanelTab,
@@ -402,7 +403,7 @@ export function StudioRightPanel({
 
   const animationPanel = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 gap-1 border-b border-neutral-800 p-2">
+      <div className="flex shrink-0 gap-1 border-b border-neutral-800 px-4 pb-3">
         {(["animation", "animation-properties"] as const).map((tab) => (
           <button key={tab} type="button" aria-pressed={rightPanelTab === tab}
             className={`rounded px-3 py-1 text-[11px] ${rightPanelTab === tab ? "bg-neutral-700 text-white" : "text-neutral-400 hover:bg-neutral-800"}`}
@@ -523,7 +524,7 @@ export function StudioRightPanel({
   }, [projectId]);
 
   useEffect(() => {
-    if (!rightCollapsed && (rightPanelTab === "voice" || rightPanelTab === "style")) {
+    if (!scriptExpanded && !rightCollapsed && (rightPanelTab === "voice" || rightPanelTab === "style")) {
       let frame = 0;
       const publish = () => {
         cancelAnimationFrame(frame);
@@ -542,7 +543,7 @@ export function StudioRightPanel({
       };
     }
     closeHostPanel();
-  }, [closeHostPanel, roleTab, postHostPanel, rightPanelTab, rightCollapsed]);
+  }, [closeHostPanel, roleTab, postHostPanel, rightPanelTab, rightCollapsed, scriptExpanded]);
 
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
@@ -648,7 +649,7 @@ export function StudioRightPanel({
                 </div>
               )}
             </div>
-            <div className="min-h-0 min-w-0 flex-1 overflow-hidden pt-3">
+            <div data-testid="inspector-tab-content" className="min-h-0 min-w-0 flex-1 overflow-hidden pt-3">
               <Suspense
                 fallback={
                   <div className="h-full animate-pulse bg-panel-bg motion-reduce:animate-none" />

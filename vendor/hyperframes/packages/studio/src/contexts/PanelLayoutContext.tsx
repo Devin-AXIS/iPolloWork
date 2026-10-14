@@ -8,8 +8,8 @@ export function usePanelLayoutContext(): PanelLayoutValue {
   return ctx;
 }
 export function PanelLayoutProvider({ value, children }: { value: PanelLayoutValue; children: ReactNode }) {
-  const { rightWidth, setRightWidth, rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab } = value;
-  const stable = useMemo(() => ({ rightWidth, setRightWidth, rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab }),
-    [rightWidth, setRightWidth, rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab]);
+  const { rightWidth, setRightWidth, rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab, scriptExpanded, setScriptExpanded } = value;
+  const stable = useMemo(() => ({ rightWidth, setRightWidth, rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab, scriptExpanded, setScriptExpanded }),
+    [rightWidth, setRightWidth, rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab, scriptExpanded, setScriptExpanded]);
   return <PanelLayoutContext value={stable}>{children}</PanelLayoutContext>;
 }

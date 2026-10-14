@@ -451,6 +451,22 @@ html:lang(zh) [data-testid="work-center"] :where(
   background-color: #c7c7ca;
 }
 
+/* Video Studio's host-owned inspectors share the embedded workspace scrollbars. */
+.hf-video-workbench-host * {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent;
+}
+.hf-video-workbench-host *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.hf-video-workbench-host *::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+
 .ow-soft-shell {
   border: 1px solid var(--dls-border);
   background: var(--dls-surface);

@@ -458,3 +458,17 @@ export function cssPropertyName(property: string): string {
   const css = property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
   return css.startsWith("ms-") ? `-${css}` : css;
 }
+
+/** Change document metadata only; preserve scene markup, scripts, paths and timing byte-for-byte. */
+export function replaceVideoDocumentTitle(source: string, name: string): string {
+  const title = name.trim();
+  if (!title || title.length > 120) throw new Error("Video name must contain 1–120 characters.");
+  const escaped = title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  const head = /(<head\b[^>]*>)([\s\S]*?)(<\/head\s*>)/i;
+  if (!head.test(source)) throw new Error("The video document has no head; its name cannot be changed safely.");
+  return source.replace(head, (_match, open: string, contents: string, close: string) => {
+    const tag = /<title\b[^>]*>[\s\S]*?<\/title\s*>/i;
+    const next = tag.test(contents) ? contents.replace(tag, () => "<title>" + escaped + "</title>") : "<title>" + escaped + "</title>" + contents;
+    return open + next + close;
+  });
+}

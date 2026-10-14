@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, memo } from "react";
 import { createPortal } from "react-dom";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
-import keyboardIconSrc from "../../icons/figmaToolbarKeyboard.svg?url";
+import { Keyboard } from "lucide-react";
 import { useStudioI18n } from "../../i18n";
 import { useDockLayoutStore } from "../../components/dock/dockLayoutStore";
 
@@ -199,15 +199,11 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
         <button
           type="button"
           onClick={() => setShowShortcuts((v) => !v)}
-          className={`flex h-6 w-6 items-center justify-center rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#858a94]/35 ${
-            showShortcuts
-              ? "bg-[#f2f2f0]"
-              : "hover:bg-[#f2f2f0]"
-          }`}
+          className="hf-timeline-toolbutton"
           aria-label={tx("Shortcuts and tools")}
           aria-expanded={showShortcuts}
         >
-          <img src={keyboardIconSrc} width="16" height="16" alt="" aria-hidden="true" />
+          <Keyboard size={16} aria-hidden="true" />
         </button>
       </Tooltip>
       {showShortcuts && (

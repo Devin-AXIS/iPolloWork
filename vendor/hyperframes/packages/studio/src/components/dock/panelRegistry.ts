@@ -42,6 +42,7 @@ export const PANEL_DEFINITIONS = {
   compositions: {
     title: "Script",
     zone: "left",
+    keepMounted: true,
     reopen: { near: "preview", direction: "left" },
   },
   assets: {

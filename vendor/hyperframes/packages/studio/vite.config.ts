@@ -46,7 +46,7 @@ function sharedUiStyles(): Plugin {
         });
         if (layer.params === "utilities") layer.each(node => {
           if (node.type === "rule") node.selectors = node.selectors.map(selector =>
-            `${selector}:where([data-slot="input"], [data-slot="textarea"], [data-slot="button"], [data-slot^="select-"], [data-slot="alert"], [data-slot^="alert-"], [data-slot="button"] *, [data-slot^="select-"] *, [data-slot="alert"] *, [data-slot^="tabs-"], [data-slot^="tabs-"] *, [data-slot="tabs"], [data-slot="field"], [data-slot^="field-"], [data-slot^="radio-group"], [data-slot^="radio-group"] *, [data-slot^="tooltip-"], [data-slot^="dropdown-menu-"], [data-slot^="dropdown-menu-"] *)`);
+            `${selector}:where([data-slot="input"], [data-slot="textarea"], [data-slot="button"], [data-slot^="input-group"], [data-slot^="select-"], [data-slot="alert"], [data-slot^="alert-"], [data-slot="button"] *, [data-slot^="select-"] *, [data-slot="alert"] *, [data-slot^="tabs-"], [data-slot^="tabs-"] *, [data-slot="tabs"], [data-slot="field"], [data-slot^="field-"], [data-slot^="radio-group"], [data-slot^="radio-group"] *, [data-slot^="tooltip-"], [data-slot^="dropdown-menu-"], [data-slot^="dropdown-menu-"] *)`);
         });
         if (layer.nodes) layer.replaceWith(layer.nodes);
         else layer.remove();

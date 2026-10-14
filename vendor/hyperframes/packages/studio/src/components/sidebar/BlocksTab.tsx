@@ -193,7 +193,7 @@ export const BlocksTab = memo(function BlocksTab({
   }, [activeSection, sections]);
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-shrink-0 border-b border-panel-border px-4 py-3">
+      <div className="flex-shrink-0 border-b border-panel-border px-4 pb-3">
         <div className="flex items-center gap-2" data-testid="component-catalog-toolbar">
             <SearchInput
               value={search}
@@ -384,10 +384,10 @@ function CatalogSectionGrid({
       aria-label={locale === "zh" ? "组件列表" : "Component list"}
     >
       {itemCount === 0 ? (
-        <div className="flex h-full min-h-16 items-center justify-center px-3 text-center text-[10px] text-neutral-600">
+        <div role="status" className="flex h-full min-h-16 items-center justify-center px-3 text-center text-ui-body text-panel-text-2">
           {locale === "zh"
-            ? "此分类暂无组件"
-            : "No components in this category yet"}
+            ? search ? "没有匹配的组件" : "此分类暂无组件"
+            : search ? "No matching components" : "No components in this category yet"}
         </div>
       ) : (
         <div>

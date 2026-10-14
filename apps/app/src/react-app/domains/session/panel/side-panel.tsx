@@ -1059,6 +1059,7 @@ export function SidePanel({
             key={`${workspaceId}:${workspaceRoot}:${activeTab.id}`}
             conversationId={sessionId}
             title={activeTab.label}
+            onVideoTitleChange={title => { if (title !== activeTab.label) usePanelTabStore.getState().openTab(sessionId, { ...activeTab, label: title }); }}
             sessionId={activeTab.sessionId}
             onGenerateVideo={onSendWorkspaceAppMessage ? async () => {
               const result = await onSendWorkspaceAppMessage({
