@@ -8,11 +8,28 @@ await (async function buildXhsPackage() {
   const repo = process.env.IPOLLOWORK_PLUGIN_HOST_ROOT || resolve(root, "../../..");
   const appRoot = resolve(root, "skills/xhs-ops-worker/app");
   const appRequire = createRequire(resolve(appRoot, "package.json"));
-  try { appRequire.resolve("sharp"); appRequire.resolve("hono"); }
-  catch {
+  const { dependencies } = JSON.parse(await readFile(resolve(appRoot, "package.json"), "utf8"));
+  async function dependenciesReady() {
+    // These dependencies are pinned; ancestor/global modules do not satisfy the plugin's lockfile.
+    const ready = await Promise.all(Object.entries(dependencies).map(async ([name, version]) => {
+      try {
+        const installed = JSON.parse(await readFile(resolve(appRoot, "node_modules", name, "package.json"), "utf8"));
+        return installed.name === name && installed.version === version;
+      } catch (error) {
+        if (error.code === "ENOENT" || error.code === "ENOTDIR") return false;
+        throw error;
+      }
+    }));
+    return ready.every(Boolean);
+  }
+  if (!await dependenciesReady()) {
+    console.log("Preparing locked Xiaohongshu build dependencies...");
     const result = spawnSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-      ["--dir", root, "run", "setup"], { cwd: root, stdio: "inherit", windowsHide: true, shell: process.platform === "win32" });
-    if (result.status !== 0) throw new Error("Install the plugin's locked build dependencies before packaging");
+      ["install", "--ignore-workspace", "--frozen-lockfile", "--ignore-scripts"],
+      { cwd: appRoot, stdio: "inherit", windowsHide: true, shell: process.platform === "win32" });
+    if (result.error || result.status !== 0 || !await dependenciesReady()) {
+      throw new Error("Could not prepare the plugin's locked build dependencies", { cause: result.error });
+    }
   }
   const hostRequire = createRequire(resolve(repo, "apps/app/package.json"));
   const viteRequire = createRequire(hostRequire.resolve("vite/package.json"));

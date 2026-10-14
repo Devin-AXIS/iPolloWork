@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createServer } from "node:net";
@@ -8,6 +8,42 @@ import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+
+test("build prepares all local locked dependencies even when ancestor modules are available", { timeout: 120000 }, async () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const sandbox = await mkdtemp(join(tmpdir(), "ipollowork-xhs-build-"));
+  const fixture = join(sandbox, "plugin");
+  const app = join(fixture, "skills/xhs-ops-worker/app");
+  try {
+    await cp(root, fixture, { recursive: true, filter: path => !["node_modules", "dist"].includes(path.split(sep).at(-1)) });
+    for (const name of ["hono", "sharp"]) {
+      const directory = join(sandbox, "node_modules", name);
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, "package.json"), JSON.stringify({ name, version: "0.0.0", main: "index.js" }));
+      await writeFile(join(directory, "index.js"), "module.exports = {};\n");
+      assert.ok(createRequire(join(app, "package.json")).resolve(name).startsWith(sandbox));
+    }
+    const built = spawnSync(process.execPath, [resolve(fixture, "scripts/build.mjs")], {
+      cwd: fixture, encoding: "utf8", windowsHide: true, timeout: 110000,
+      env: { ...process.env, IPOLLOWORK_PLUGIN_HOST_ROOT: resolve(root, "../../..") },
+    });
+    assert.equal(built.status, 0, built.stdout + built.stderr);
+    assert.match(built.stdout, /Preparing locked Xiaohongshu build dependencies/);
+    const { dependencies } = JSON.parse(await readFile(join(app, "package.json"), "utf8"));
+    for (const [name, version] of Object.entries(dependencies)) {
+      assert.equal(JSON.parse(await readFile(join(app, "node_modules", name, "package.json"), "utf8")).version, version);
+    }
+    const rebuilt = spawnSync(process.execPath, [resolve(fixture, "scripts/build.mjs")], {
+      cwd: fixture, encoding: "utf8", windowsHide: true, timeout: 10000,
+      env: { ...process.env, IPOLLOWORK_PLUGIN_HOST_ROOT: resolve(root, "../../..") },
+    });
+    assert.equal(rebuilt.status, 0, rebuilt.stderr);
+    assert.doesNotMatch(rebuilt.stdout, /Preparing locked Xiaohongshu build dependencies/);
+  } finally {
+    assert.ok(resolve(sandbox).startsWith(resolve(tmpdir()) + sep));
+    await rm(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
 
 test("the closed cloud package starts and processes images with no Node or pnpm on PATH", { timeout: 30000 }, async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
