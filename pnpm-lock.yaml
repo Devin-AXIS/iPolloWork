@@ -599,6 +599,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@daypicker/react':
+        specifier: 10.0.2
+        version: 10.0.2(@types/react@19.2.14)(react@19.2.4)
       '@base-ui/react':
         specifier: ^1.4.1
         version: 1.4.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -662,6 +665,10 @@ importers:
         version: link:../types
 
 packages:
+  "@date-fns/tz@1.5.0": {"resolution":{"integrity":"sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg=="}}
+  "@daypicker/react@10.0.2": {"resolution":{"integrity":"sha512-Z/gvGXnc/xjRr5Z6l9OhIey00C7kwbIyJ85Pff9B9EWDkjTlkTQztB3qeylmGJDQ9xmxRJUV1W+02rskqarUBw=="},"engines":{"node":">=18"},"peerDependencies":{"@types/react":">=16.8.0","react":">=16.8.0"},"peerDependenciesMeta":{"@types/react":{"optional":true}}}
+  "date-fns@4.4.0": {"resolution":{"integrity":"sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w=="}}
+  "react-day-picker@10.0.2": {"resolution":{"integrity":"sha512-QetiKtZWE9Uaw/pM/SYNv6WPYOTRnSJ2puL0GgwkmUFMIwiY0dtjH1W4B7DOVXVNQM0ZOClGpH/heOfBSzWeiA=="},"engines":{"node":">=18"},"peerDependencies":{"@types/react":">=16.8.0","react":">=16.8.0"},"peerDependenciesMeta":{"@types/react":{"optional":true}}}
 
   7zip-bin@5.2.0:
     resolution: {integrity: sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A==}
@@ -7958,6 +7965,10 @@ packages:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
 
 snapshots:
+  "@date-fns/tz@1.5.0": {}
+  "@daypicker/react@10.0.2(@types/react@19.2.14)(react@19.2.4)": {"dependencies":{"react":"19.2.4","react-day-picker":"10.0.2(@types/react@19.2.14)(react@19.2.4)"},"optionalDependencies":{"@types/react":"19.2.14"}}
+  "date-fns@4.4.0": {}
+  "react-day-picker@10.0.2(@types/react@19.2.14)(react@19.2.4)": {"dependencies":{"@date-fns/tz":"1.5.0","date-fns":"4.4.0","react":"19.2.4"},"optionalDependencies":{"@types/react":"19.2.14"}}
 
   7zip-bin@5.2.0: {}
 

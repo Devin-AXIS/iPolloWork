@@ -6,6 +6,7 @@ import { buildAgentContextPreview } from "./editor/domEditingAgentPrompt";
 import type { useDomEditSession } from "../hooks/useDomEditSession";
 import type { useToast } from "../hooks/useToast";
 import { useStudioI18n } from "../i18n";
+import { usePlayerStore } from "../player";
 
 type LintFindings = ComponentProps<typeof LintModal>["findings"];
 
@@ -41,6 +42,7 @@ export function StudioOverlays({
   dismissToast,
 }: StudioOverlaysProps) {
   const { tx } = useStudioI18n();
+  const currentTime = usePlayerStore((state) => state.currentTime);
   return (
     <>
       {lintModal !== null && (
@@ -65,6 +67,8 @@ export function StudioOverlays({
       )}
       {domEditSession.agentModalOpen && domEditSession.domEditSelection && (
         <AskAgentModal
+          compact
+          selectionTime={{ start: currentTime, end: currentTime }}
           selectionLabel={domEditSession.domEditSelection.label}
           contextPreview={buildAgentContextPreview(domEditSession.domEditSelection, activeCompPath)}
           anchorPoint={domEditSession.agentModalAnchorPoint}

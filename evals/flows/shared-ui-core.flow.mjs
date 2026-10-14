@@ -6,11 +6,11 @@ import { loadVoiceoverParagraphs } from '../runner/voiceover.mjs';
 const vo = await loadVoiceoverParagraphs('shared-ui-core');
 const origin = process.env.IPOLLOWORK_UI_PREVIEW_ORIGIN || 'http://127.0.0.1:5193';
 const preview = origin+'/@fs'+new URL('../support/shared-ui-core.html',import.meta.url).pathname;
-async function key(parent,name) {
+export async function key(parent,name) {
   const code=name===' '?'Space':name;
-  for(const type of ['keyDown','keyUp'])await parent.send('Input.dispatchKeyEvent',{type,key:name,code,windowsVirtualKeyCode:name==='Escape'?27:name===' '?32:name==='ArrowDown'?40:13,...(type==='keyDown'&&(name==='Enter'||name===' ')?{text:name==='Enter'?'\r':' '}:{})});
+  for(const type of ['keyDown','keyUp'])await parent.send('Input.dispatchKeyEvent',{type,key:name,code,windowsVirtualKeyCode:name==='Escape'?27:name===' '?32:({ArrowDown:40,ArrowUp:38,ArrowLeft:37,ArrowRight:39,Home:36,End:35,PageUp:33,PageDown:34})[name]??13,...(type==='keyDown'&&(name==='Enter'||name===' ')?{text:name==='Enter'?'\r':' '}:{})});
 }
-async function click(parent,frame,selector) {
+export async function click(parent,frame,selector) {
   for(let attempt=0;attempt<100;attempt++) {
     if(await evaluate(frame,`Boolean(document.querySelector(${JSON.stringify(selector)}))`))break;
     if(attempt===99)throw Error('Missing interaction target: '+selector);
@@ -19,7 +19,7 @@ async function click(parent,frame,selector) {
   await evaluate(frame,`document.querySelector(${JSON.stringify(selector)}).focus()`);
   await key(parent,'Enter');
 }
-async function findFrame(ctx,mode) {
+export async function findFrame(ctx,mode) {
   for(let attempt=0;attempt<80;attempt++) {
     for(const target of (await listTargets(ctx.cdpBaseUrl)).filter(t=>t.type==='iframe' && t.parentId===ctx.client.targetId)) {
       const c=await connect(target.webSocketDebuggerUrl);

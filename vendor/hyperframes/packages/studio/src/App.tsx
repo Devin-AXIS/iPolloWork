@@ -39,7 +39,7 @@ import { useToast } from "./hooks/useToast";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import { buildStudioContextValue, useInspectorState } from "./hooks/useStudioContextValue";
 import type { DomEditSelection } from "./components/editor/domEditing";
-import { StudioHeader } from "./components/StudioHeader";
+import { StudioHeader, HistoryMigrationNotice } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
 import { EditorShell } from "./components/EditorShell";
 import { TimelineToolbar } from "./components/TimelineToolbar";
@@ -63,11 +63,6 @@ const loadStudioRightPanelModule = () => import("./components/StudioRightPanel")
 const loadStudioRightPanel = () =>
   loadStudioRightPanelModule().then((module) => ({ default: module.StudioRightPanel }));
 const StudioRightPanel = lazy(loadStudioRightPanel);
-const StoryboardView = lazy(() =>
-  import("./components/storyboard/StoryboardView").then((module) => ({
-    default: module.StoryboardView,
-  })),
-);
 
 function RightPanelLoadingFallback({ width }: { width: number }) {
   const { t } = useStudioI18n();
@@ -87,6 +82,9 @@ export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   const viewModeValue = useViewModeState();
+  useEffect(() => {
+    if (viewModeValue.viewMode === "storyboard") viewModeValue.setViewMode("timeline");
+  }, [viewModeValue.viewMode, viewModeValue.setViewMode]);
 
   // Warm the inspector shell and the default Properties chunk only while the
   // browser is idle. Optional tabs remain on-demand, while the first Properties
@@ -624,7 +622,6 @@ export function StudioApp() {
         <StudioSplash waiting={waitingForServer} />
       </StudioI18nProvider>
     );
-  const activeViewMode = viewModeValue.viewMode;
   return (
     <StudioI18nProvider>
       <StudioShellProvider value={studioCtxValue}>
@@ -659,17 +656,9 @@ export function StudioApp() {
                       </div>
                     )}
                     {editHistory.migrationError && (
-                      <div role="alert" className="px-4 py-2 text-sm">{editHistory.migrationError}</div>
-                    )}
-                    {activeViewMode === "storyboard" && (
-                      <Suspense fallback={<StudioSplash />}>
-                        <StoryboardView
-                          projectId={projectId}
-                        />
-                      </Suspense>
+                      <HistoryMigrationNotice message={editHistory.migrationError} />
                     )}
                     <EditorShell
-                      hidden={activeViewMode === "storyboard"}
                       previewOnly={previewMode}
                       right={
                         <div style={{ display: panelLayout.rightCollapsed ? "none" : "contents" }}>

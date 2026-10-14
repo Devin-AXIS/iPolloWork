@@ -99,7 +99,7 @@ async function startDrawing(withDom = false) {
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
   expect(context.deliver).not.toHaveBeenCalled();
   const submit = [...document.querySelectorAll("button")].find(
-    (button) => button.textContent === "Copy prompt",
+    (button) => button.getAttribute("aria-label") === "Copy prompt",
   );
   if (!submit) throw new Error("AI submit missing");
   return { root, host, submit };
@@ -177,7 +177,7 @@ it("retains a rejected annotation and shares the pending, duplicate protection a
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
   });
   expect(context.deliver).toHaveBeenCalledOnce();
-  expect(submit.textContent).toBe("Sending…");
+  expect(submit.getAttribute("aria-label")).toBe("Sending…");
   expect(submit.disabled).toBe(true);
   expect(input.disabled).toBe(true);
   await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));

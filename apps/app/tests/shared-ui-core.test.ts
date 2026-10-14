@@ -53,11 +53,14 @@ test("settings buttons keep typography and decoration out of flex spacing across
   }
 });
 
-test("all feedback background tokens use palette level two", () => {
+test("feedback backgrounds share palette tokens with a neutral warning notice", () => {
   const tokens = readFileSync(new URL("../../../packages/ui/src/common/tokens.css", import.meta.url), "utf8");
-  for (const [semantic, palette] of [["info", "sky"], ["success", "green"], ["warning", "amber"], ["error", "red"]]) {
+  for (const [semantic, palette] of [["info", "sky"], ["success", "green"], ["error", "red"]]) {
     expect(tokens).toContain(`--feedback-${semantic}-background: var(--${palette}-2)`);
   }
+  expect(tokens).toContain("--feedback-warning-background: var(--project-dialog-notice)");
+  expect(tokens).toContain("--project-dialog-notice: #f4f4ee");
+  expect(tokens).toMatch(/\[data-theme="dark"\]\s*\{[^}]*--project-dialog-notice: var\(--gray-3\)/);
 });
 
 test("every public Alert variant uses a soft semantic background without a border", () => {

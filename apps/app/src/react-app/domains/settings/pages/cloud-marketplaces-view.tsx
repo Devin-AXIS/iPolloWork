@@ -296,7 +296,7 @@ export function CloudMarketplacesView({
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />{t("common.refresh")}
             </Button>
           </div>
-          <SettingsListSearchInput value={localSearch} onChange={(event) => setLocalSearch(event.currentTarget.value)} placeholder={t("settings.marketplace.search")} />
+          <SettingsListSearchInput value={localSearch} onValueChange={setLocalSearch} placeholder={t("settings.marketplace.search")} />
         </>
       ) : null}
 

@@ -2,18 +2,14 @@
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 import { SettingsInset } from "./settings-section";
-import { SearchIcon } from "lucide-react"
+import { t } from "@/i18n";
+import { SearchField, type SearchFieldProps } from "@/components/ui/search-field";
 
 import {
   Field,
   FieldDescription,
   FieldLabel,
 } from "@/components/ui/field"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group"
 
 export interface SettingsListProps {
   children: React.ReactNode;
@@ -100,16 +96,9 @@ export function SettingsListItemDescription({ children, className }: SettingsLis
 }
 
 export function SettingsListSearchInput({
-  containerClassName,
   placeholder = "Search...",
+  clearLabel = t("help.clear_search"),
   ...props
-}: React.ComponentProps<"input"> & { containerClassName?: string }) {
-  return (
-    <InputGroup className={containerClassName}>
-      <InputGroupInput placeholder={placeholder} {...props} />
-      <InputGroupAddon align="inline-start">
-        <SearchIcon className="text-muted-foreground" />
-      </InputGroupAddon>
-    </InputGroup>
-  )
+}: Omit<SearchFieldProps, "clearLabel"> & { clearLabel?: string }) {
+  return <SearchField placeholder={placeholder} clearLabel={clearLabel} {...props} />;
 }

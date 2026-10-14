@@ -5,12 +5,12 @@ import type { ZoomMode } from "../store/playerStore";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 /** User-resizable layer-control column. Time zero begins immediately after this header. */
-export const DEFAULT_TIMELINE_GUTTER_WIDTH = 255;
-export const MIN_TIMELINE_GUTTER_WIDTH = 220;
+export const DEFAULT_TIMELINE_GUTTER_WIDTH = 220;
+export const MIN_TIMELINE_GUTTER_WIDTH = 180;
 export const MAX_TIMELINE_GUTTER_WIDTH = 420;
 export const MIN_TIMELINE_CONTENT_WIDTH = 360;
-export const TRACK_H = 47;
-export const RULER_H = 32;
+export const TRACK_H = 40;
+export const RULER_H = 28;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
 /**

@@ -1,22 +1,17 @@
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const vo = await loadVoiceoverParagraphs("video-local-enhancement");
 const frameExpression = "(() => { const html=document.querySelector('[data-testid=enhancement-preview]')?.srcdoc; if(!html)return null; const doc=new DOMParser().parseFromString(html,'text/html'),root=doc.querySelector('[data-composition-id]'),v=doc.querySelector('video'); const rect=e=>({x:parseFloat(e.style.left)/100,y:parseFloat(e.style.top)/100,width:parseFloat(e.style.width)/100,height:parseFloat(e.style.height)/100}); return {mode:root.dataset.enhancementLayout,width:Number(root.dataset.width),height:Number(root.dataset.height),source:rect(v),cards:[...doc.querySelectorAll('.enhancement-card')].map(e=>({id:e.id,kind:e.dataset.kind,text:e.textContent,rect:rect(e)}))}; })()";
-const key = (ctx, key, code, value) => ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: value, ...(key === "Enter" ? { text: "\r", unmodifiedText: "\r" } : key === " " ? { text: " ", unmodifiedText: " " } : {}) }).then(() => ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: value }));
 async function activate(ctx, selector) {
   await ctx.waitFor("(() => { const e=document.querySelector("+JSON.stringify(selector)+");return e && !e.disabled; })()");
   await ctx.eval("document.querySelector("+JSON.stringify(selector)+").scrollIntoView({block:'nearest'});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))", { awaitPromise: true });
   await ctx.trustedClick(selector);
 }
 async function choose(ctx, selector, value) {
-  const index = await ctx.eval("Array.from(document.querySelector(" + JSON.stringify(selector) + ").options).findIndex(o=>o.value===" + JSON.stringify(value) + ")");
-  ctx.assert(index >= 0, "Requested choice exists: " + value);
-  await ctx.eval("document.querySelector(" + JSON.stringify(selector) + ").focus()");
-  await key(ctx, " ", "Space", 32);
-  await ctx.waitFor("document.activeElement===document.querySelector(" + JSON.stringify(selector) + ")", { label: "focused native select" });
-  await key(ctx, "Home", "Home", 36);
-  for (let i = 0; i < index; i++) await key(ctx, "ArrowDown", "ArrowDown", 40);
-  await key(ctx, "Enter", "Enter", 13);
-  await ctx.waitFor("document.querySelector(" + JSON.stringify(selector) + ").value===" + JSON.stringify(value));
+  await activate(ctx, selector);
+  const option = '[role="option"][data-value=' + JSON.stringify(value) + ']';
+  await ctx.waitFor("!!document.querySelector(" + JSON.stringify(option) + ")");
+  await activate(ctx, option);
+  await ctx.waitFor("document.querySelector(" + JSON.stringify(selector) + ").dataset.value===" + JSON.stringify(value));
 }
 async function changed(ctx, action) {
   await ctx.eval("window.__fraimzPreviousPreview=document.querySelector('[data-testid=enhancement-preview]')?.srcdoc;true");
@@ -41,7 +36,7 @@ export default { id: "video-local-enhancement", title: "视频智能增强 · �
       const saved = await ctx.eval("fetch('http://127.0.0.1:5288/witness').then(r=>r.ok?r.json():null).catch(()=>null)", { awaitPromise: true });
       if (!saved?.job?.result) {
         const doc = await ctx.client.send("DOM.getDocument");
-        const node = await ctx.client.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: '[data-testid="enhancement-file"]' });
+        const node = await ctx.client.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: '[data-testid="enhancement-file"] input[type=file]' });
         await ctx.client.send("DOM.setFileInputFiles", { nodeId: node.nodeId, files: [setup.source] });
         await ctx.waitFor("!document.querySelector('[data-testid=enhancement-start]').disabled");
         await activate(ctx, '[data-testid="enhancement-start"]');
@@ -57,7 +52,7 @@ export default { id: "video-local-enhancement", title: "视频智能增强 · �
         if ((await ctx.eval(frameExpression)).mode !== "pip") await changed(ctx, () => activate(ctx, '[data-testid="enhancement-mode-pip"]'));
         for (const [label, value] of [["画布比例", "16:9"], ["原视频位置", "bottom-left"], ["原视频大小", "medium"], ["生成内容位置", "auto"]]) {
           const selector = `[aria-label="${label}"]`;
-          if (await ctx.eval("document.querySelector("+JSON.stringify(selector)+").value!=="+JSON.stringify(value))) await changed(ctx, () => choose(ctx, selector, value));
+          if (await ctx.eval("document.querySelector("+JSON.stringify(selector)+").dataset.value!=="+JSON.stringify(value))) await changed(ctx, () => choose(ctx, selector, value));
         }
         await activate(ctx, '[data-testid="enhancement-content-tab"]');
         await changed(ctx, () => activate(ctx, '[data-testid="enhancement-regenerate"]'));
@@ -112,7 +107,7 @@ export default { id: "video-local-enhancement", title: "视频智能增强 · �
       await changed(ctx, () => ctx.fill('[aria-label="enhance-1 内容条目"]', "想法进入\n"));
       ctx.assert(await ctx.eval("document.querySelector('[aria-label=\"enhance-1 内容条目\"]').value.endsWith('\\n')"), "A new line stays editable before the next item is typed");
       await changed(ctx, () => ctx.fill('[aria-label="enhance-1 内容条目"]', "想法进入\n清晰目标与可执行步骤"));
-      await activate(ctx, '[data-testid="enhancement-cue"] button');
+      await activate(ctx, '[data-testid="enhancement-cue-select"]');
       await ctx.waitFor("!document.querySelector('[data-testid=enhancement-apply]').disabled");
       await activate(ctx, '[data-testid="enhancement-apply"]');
       await ctx.waitForText("已应用到时间轴");

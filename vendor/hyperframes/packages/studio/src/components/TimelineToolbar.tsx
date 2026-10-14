@@ -1,5 +1,4 @@
-import { MousePointer2, Image, Scissors, Pencil, TextSelect } from "lucide-react";
-import { ArrowsOutLineHorizontal } from "@phosphor-icons/react";
+import { MousePointer2, Image, Scissors, Pencil, TextSelect, ArrowLeftRight, Undo2, Redo2, Diamond, Trash2, ZoomOut, Scan, Camera } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Ellipsis, ZoomIn, type LucideIcon } from "lucide-react";
 import {
@@ -36,15 +35,6 @@ import { useStudioShellContext } from "../contexts/StudioContext";
 import { useStudioI18n } from "../i18n";
 import { requestPreviewZoomReset } from "./nle/previewZoom";
 import { resolveFloatingPanelPosition } from "./editor/floatingPanel";
-import undoIconSrc from "../icons/figmaToolbarUndo.svg?url";
-import redoIconSrc from "../icons/figmaToolbarRedo.svg?url";
-import dividerIconSrc from "../icons/figmaToolbarDivider.svg?url";
-import diamondIconSrc from "../icons/figmaToolbarDiamond.svg?url";
-import trashIconSrc from "../icons/figmaToolbarTrash.svg?url";
-import zoomOutIconSrc from "../icons/figmaToolbarZoomOut.svg?url";
-import zoomInIconSrc from "../icons/figmaToolbarZoomIn.svg?url";
-import fitIconSrc from "../icons/figmaToolbarFit.svg?url";
-import cameraIconSrc from "../icons/figmaToolbarCamera.svg?url";
 
 export const CANVAS_SNAP_TOOLBAR_SLOT_ID = "hf-canvas-snap-toolbar-slot";
 export const CANVAS_GRID_TOOLBAR_SLOT_ID = "hf-canvas-grid-toolbar-slot";
@@ -96,27 +86,6 @@ function useKeyframeToggle(
   return { state, onToggle };
 }
 
-function ToolbarIcon({
-  src,
-  width = 16,
-  height = width,
-}: {
-  src: string;
-  width?: number;
-  height?: number;
-}) {
-  return (
-    <img
-      className="hf-timeline-toolbar-icon"
-      src={src}
-      width={width}
-      height={height}
-      alt=""
-      aria-hidden="true"
-    />
-  );
-}
-
 // Keep the same controls and portal slots mounted when they move into a popover.
 function ToolbarGroup({ collapsed, label, icon: Icon, toolbarWidth, children, value }: {
   collapsed: boolean;
@@ -166,7 +135,7 @@ function ToolbarGroup({ collapsed, label, icon: Icon, toolbarWidth, children, va
             aria-label={label}
             aria-haspopup="dialog"
             aria-expanded={open}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-panel-text-3 hover:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/40"
+            className="hf-timeline-toolbutton"
           >
             <Icon size={16} strokeWidth={1.75} />
           </button>
@@ -265,8 +234,7 @@ export function TimelineToolbar({
     waitForPendingDomEditSaves,
   });
 
-  const iconButton =
-    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-white/10";
+  const iconButton = "hf-timeline-toolbutton";
   const playheadIsInsideSelectedElement = Boolean(
     selectedElement &&
       isSplitTimeWithinBounds(currentTime, selectedElement.start, selectedElement.duration),
@@ -348,7 +316,7 @@ export function TimelineToolbar({
         <Tooltip label={tx("Selection tool (V)")}>
           <button
             type="button"
-            className={`${iconButton} ${activeTool === "select" ? "bg-panel-input" : ""}`}
+            className={iconButton}
             aria-label={tx("Selection tool")}
             aria-pressed={activeTool === "select"}
             onClick={() => setActiveTool("select")}
@@ -359,7 +327,7 @@ export function TimelineToolbar({
         <Tooltip label={tx("Razor tool (B)")}>
           <button
             type="button"
-            className={`${iconButton} ${activeTool === "razor" ? "bg-panel-input" : ""}`}
+            className={iconButton}
             aria-label={tx("Razor tool")}
             aria-pressed={activeTool === "razor"}
             onClick={() => setActiveTool("razor")}
@@ -370,7 +338,7 @@ export function TimelineToolbar({
         <Tooltip label={tx("Drag across the timeline to annotate a time range")}>
           <button
             type="button"
-            className={`${iconButton} ${activeTool === "annotate" ? "bg-panel-input text-studio-accent" : ""}`}
+            className={iconButton}
             aria-label={tx("Annotate time range")}
             aria-pressed={activeTool === "annotate"}
             onClick={(event) => {
@@ -383,7 +351,7 @@ export function TimelineToolbar({
         </Tooltip>
         <Tooltip label={tx("Draw around timeline clips to annotate them")}>
           <button type="button"
-            className={`${iconButton} ${activeTool === "annotate-lasso" ? "bg-panel-input text-studio-accent" : ""}`}
+            className={iconButton}
             aria-label={tx("Lasso clips for AI")}
             aria-pressed={activeTool === "annotate-lasso"}
             onClick={(event) => {
@@ -401,7 +369,7 @@ export function TimelineToolbar({
             disabled={!editHistory.canUndo}
             aria-label={tx("Undo")}
           >
-            <ToolbarIcon src={undoIconSrc} />
+            <Undo2 size={16} aria-hidden="true" />
           </button>
         </Tooltip>
         <Tooltip label={tx(editHistory.redoLabel ? `Redo ${editHistory.redoLabel}` : "Redo")}>
@@ -412,10 +380,10 @@ export function TimelineToolbar({
             disabled={!editHistory.canRedo}
             aria-label={tx("Redo")}
           >
-            <ToolbarIcon src={redoIconSrc} />
+            <Redo2 size={16} aria-hidden="true" />
           </button>
         </Tooltip>
-        <ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />
+        <span className="h-4 w-px shrink-0 bg-panel-border" aria-hidden="true" />
         <div id={CANVAS_SNAP_TOOLBAR_SLOT_ID} className="flex shrink-0 items-center" />
         {STUDIO_KEYFRAMES_ENABLED && (
           <Tooltip
@@ -429,7 +397,7 @@ export function TimelineToolbar({
           >
             <button
               type="button"
-              className={`${iconButton} ${keyframeState === "active" ? "bg-[#f2f2f0]" : ""}`}
+            className={iconButton}
               disabled={!canToggleKeyframe || pendingAction !== null}
               onClick={() => {
                 if (canToggleKeyframe && onToggleKeyframe) {
@@ -446,7 +414,7 @@ export function TimelineToolbar({
               aria-pressed={keyframeState === "active"}
               aria-busy={pendingAction === "keyframe"}
             >
-            <ToolbarIcon src={diamondIconSrc} width={24} />
+            <Diamond size={16} aria-hidden="true" />
             </button>
           </Tooltip>
         )}
@@ -469,7 +437,7 @@ export function TimelineToolbar({
               }
             }}
           >
-            <ToolbarIcon src={trashIconSrc} width={24} />
+            <Trash2 size={16} aria-hidden="true" />
           </button>
         </Tooltip>
         </ToolbarGroup>
@@ -496,12 +464,12 @@ export function TimelineToolbar({
           : "Show the entire timeline from 00:00 without changing clip durations")}>
           <button
             type="button"
-            className={`${iconButton} ${zoomMode === "fit" ? "bg-panel-input" : ""}`}
+            className={iconButton}
             aria-label={tx("Fit timeline")}
             aria-pressed={zoomMode === "fit"}
             onClick={() => setZoomMode("fit")}
           >
-            <ArrowsOutLineHorizontal size={16} aria-hidden="true" />
+            <ArrowLeftRight size={16} aria-hidden="true" />
           </button>
         </Tooltip>
         <ToolbarGroup
@@ -521,7 +489,7 @@ export function TimelineToolbar({
                 setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
               }}
             >
-              <ToolbarIcon src={zoomOutIconSrc} />
+              <ZoomOut size={16} aria-hidden="true" />
             </button>
           </Tooltip>
           <input
@@ -547,7 +515,7 @@ export function TimelineToolbar({
                 setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
               }}
             >
-              <ToolbarIcon src={zoomInIconSrc} />
+              <ZoomIn size={16} aria-hidden="true" />
             </button>
           </Tooltip>
         </ToolbarGroup>
@@ -559,7 +527,7 @@ export function TimelineToolbar({
             data-testid="preview-fit-reset"
             onClick={requestPreviewZoomReset}
           >
-            <ToolbarIcon src={fitIconSrc} />
+            <Scan size={16} aria-hidden="true" />
           </button>
         </Tooltip>
         <ToolbarGroup
@@ -573,7 +541,7 @@ export function TimelineToolbar({
               href={captureFrameHref}
               download={captureFrameFilename}
               onClick={handleCaptureFrameClick}
-              className={`${iconButton} ${capturing ? "pointer-events-none cursor-wait bg-[#f2f2f0]" : ""}`}
+              className={`${iconButton} ${capturing ? "pointer-events-none cursor-wait" : ""}`}
               aria-label={tx(capturing ? "Capturing current frame" : "Capture current frame")}
               aria-disabled={capturing}
               aria-busy={capturing}
@@ -584,7 +552,7 @@ export function TimelineToolbar({
                   aria-hidden="true"
                 />
               ) : (
-                <ToolbarIcon src={cameraIconSrc} />
+                <Camera size={16} aria-hidden="true" />
               )}
             </a>
           </Tooltip>

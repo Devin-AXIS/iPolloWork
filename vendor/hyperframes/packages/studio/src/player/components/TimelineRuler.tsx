@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useStudioI18n } from "../../i18n";
 import type { TimelineTheme } from "./timelineTheme";
 import {
   RULER_H,
@@ -37,6 +38,7 @@ export const TimelineRuler = memo(function TimelineRuler({
   visibleWindow,
   gutterWidth,
 }: TimelineRulerProps) {
+  const { tx } = useStudioI18n();
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const beatTimes = beatAnalysis?.beatTimes ?? [];
   const beatStrengths = beatAnalysis?.beatStrengths ?? [];
@@ -100,7 +102,7 @@ export const TimelineRuler = memo(function TimelineRuler({
             // rows below, not the ruler).
             background: theme.shellBackground,
           }}
-        />
+        ><span className="flex h-full items-center px-3 text-[11px] text-[var(--hf-panel-text-3)]">{tx("Layers")}</span></div>
         {/* Left breathing pad — scrolls with the content, so 00:00 starts a
             beat right of the gutter (see TRACKS_LEFT_PAD). */}
         <div

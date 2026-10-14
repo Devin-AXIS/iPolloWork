@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as dockLayout from "./dockLayout";
 import { Dock } from "./Dock";
+import { HistoryMigrationNotice } from "../StudioHeader";
 import { parseDockLayout } from "./dockLayoutSchema";
 import { useDockLayoutStore } from "./dockLayoutStore";
 import { PANEL_IDS } from "./panelRegistry";
@@ -220,7 +221,7 @@ describe("Dock on React 19", () => {
     assertColumn();
     act(() => useDockLayoutStore.getState().resetLayout());
     assertColumn();
-    expect(dockApi?.getPanel("timeline")?.group.height).toBe(360);
+    expect(dockApi?.getPanel("timeline")?.group.height).toBe(240);
   });
 
   it("recovers closed essential panels while preserving a collapsed timeline on reload", () => {
@@ -647,4 +648,22 @@ it("keeps the live dock controller through StrictMode effect replay", () => {
   expect(useDockLayoutStore.getState().openPanels.has("timeline")).toBe(false);
   act(() => useDockLayoutStore.getState().activatePanel("timeline"));
   expect(useDockLayoutStore.getState().visiblePanels.has("timeline")).toBe(true);
+});
+
+it("history migration notice keeps the failure visible and hides raw details until requested", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<HistoryMigrationNotice message="Legacy private diagnostic" />));
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    expect(host.textContent).not.toContain("Legacy private diagnostic");
+    const button = host.querySelector("button");
+    expect(button?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => button?.click());
+    expect(host.textContent).toContain("Legacy private diagnostic");
+    expect(button?.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => button?.click());
+    expect(host.textContent).not.toContain("Legacy private diagnostic");
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });

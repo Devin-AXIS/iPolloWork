@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { CalendarClock, CalendarDays, ChevronDown, LockKeyhole, Timer, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronDown, LockKeyhole, Timer, Trash2 } from "lucide-react";
 import {
   WORK_ITEM_TITLE_MAX_LENGTH,
   type WorkBoardConfig,
@@ -20,6 +20,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -149,10 +150,6 @@ type DateTimePickerFieldProps = {
   onChange: (timestamp: number | null) => void;
 };
 
-function openNativePicker(event: React.MouseEvent<HTMLInputElement>) {
-  event.currentTarget.showPicker();
-}
-
 type TimePicker24HourProps = {
   id: string;
   label: string;
@@ -224,27 +221,18 @@ function DateTimePickerField(props: DateTimePickerFieldProps) {
       </legend>
       <div className="grid grid-cols-2 gap-2">
         <div className="relative min-w-0">
-          <Input
+          <DatePicker
             ref={props.inputRef}
             id={`${props.id}-date`}
-            type="date"
             required={props.required}
             min={minimumDate || undefined}
             value={toDateInput(props.timestamp)}
-            className={cn(
-              compactInputClassName,
-              "rounded-[8px] border-[#EBEBEB] pe-10 leading-[18px] dark:border-border [&::-webkit-calendar-picker-indicator]:opacity-0",
-            )}
+            calendarLabel={`${props.label} · ${t("work.time.date_picker")}`}
+            clearLabel={t("work.time.clear_date")}
             aria-label={`${props.label} · ${t("work.time.date_picker")}`}
             aria-invalid={props.invalid || undefined}
             aria-describedby={props.describedBy}
-            onClick={openNativePicker}
-            onChange={(event) => props.onChange(updateDatePart(props.timestamp, event.currentTarget.value))}
-          />
-          <CalendarDays
-            aria-hidden="true"
-            strokeWidth={1}
-            className="pointer-events-none absolute end-4 top-1/2 size-3.5 -translate-y-1/2 text-black dark:text-dls-text"
+            onValueChange={value => props.onChange(updateDatePart(props.timestamp, value))}
           />
         </div>
         <TimePicker24Hour

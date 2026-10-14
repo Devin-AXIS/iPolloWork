@@ -18,6 +18,7 @@ export function CanvasAnnotation() {
   const [points, setPoints] = useState<Point[]>([]);
   const [annotation, setAnnotation] = useState<{
     label: string;
+    anchorPoint: { x: number; y: number };
     context: Parameters<typeof buildTimelineAgentPrompt>[0];
   } | null>(null);
   const stroke = useRef<Point[]>([]);
@@ -153,6 +154,7 @@ export function CanvasAnnotation() {
       prompt: "",
     };
     setAnnotation({
+      anchorPoint: { x: overlay.left + overlay.width / 2, y: overlay.bottom - 120 },
       context,
       label: `画面圈选 · ${region.timeSeconds.toFixed(3)} 秒\n位置 ${region.x.toFixed(1)}%, ${region.y.toFixed(1)}% · 大小 ${region.width.toFixed(1)}% × ${region.height.toFixed(1)}%\n${region.targets.length ? `已定位 ${region.targets.length} 个圈内对象` : "已记录画面范围，AI 将结合源文件定位"}`,
     });
@@ -237,6 +239,9 @@ export function CanvasAnnotation() {
         </div>
       )}
       {annotation && <AskAgentModal
+        compact
+        selectionTime={{ start: annotation.context.rangeStart, end: annotation.context.rangeEnd }}
+        anchorPoint={annotation.anchorPoint}
         selectionLabel={annotation.label}
         contextPreview={buildTimelineAgentPrompt(annotation.context)}
         allowEmptyInstruction

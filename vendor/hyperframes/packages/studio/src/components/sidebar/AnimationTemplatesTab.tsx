@@ -30,6 +30,7 @@ import {
 } from "../editor/SemanticMotionPanel";
 import type { DomEditSelection } from "../editor/domEditing";
 import { SearchInput } from "../ui/SearchInput";
+import { Button } from "@ipollowork/ui/controls";
 import { ChevronDown } from "../../icons/SystemIcons";
 
 const StructuredMotionThumbnail = lazy(() =>
@@ -1203,7 +1204,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
       className="flex h-full min-h-0 flex-col overflow-hidden"
       data-testid="animation-templates-tab"
     >
-      <div className="flex-shrink-0 space-y-3 border-b border-panel-border px-4 py-3">
+      <div className="flex-shrink-0 space-y-3 border-b border-panel-border px-4 pb-3">
           <SearchInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -1228,21 +1229,19 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
               ["transition", t("animation.filterTransition")],
             ] satisfies Array<[AnimationLibraryCategory, string]>
           ).map(([id, label]) => (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               key={id}
               type="button"
               data-testid="animation-category-filter"
               data-category={id}
               aria-pressed={category === id}
               onClick={() => setCategory(id)}
-              className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg ${
-                category === id
-                  ? "bg-black text-white dark:bg-panel-accent/20 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/45"
-                  : "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:bg-panel-input dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
-              }`}
+              className="hf-animation-category-filter aria-pressed:bg-muted aria-pressed:text-foreground"
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
 

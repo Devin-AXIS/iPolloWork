@@ -26,7 +26,7 @@ vi.mock("../../contexts/ViewModeContext", () => ({
   useViewMode: () => ({ registerViewModeGuard: () => () => undefined, setViewMode: mocks.setViewMode }),
 }));
 vi.mock("../../hooks/useBlockCatalog", () => ({
-  useBlockCatalog: () => ({ sections: [{ items: [{
+  useBlockCatalog: () => ({ sections: [{ items: [{ name: "flowchart", title: "Flowchart", variables: [] }, {
     name: "spatial-camera-suite",
     variables: [{ id: "shotStyle", type: "enum", options: [{ value: "depth-layer-moves", label: "Depth Layer Moves · 景深层移" }] }],
   }] }] }),
@@ -81,24 +81,15 @@ describe("StoryboardTable interactions", () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  it("shows recipe plans, source mounts and custom reasons without trusting Markdown status", async () => {
-    const plan = source + '- recipe: "sample-loop"\n- recipe_intent: "让观众看清结果如何返回下一次行动"\n- scene_id: "opening"\n- recipe_status: "mounted"\n';
+  it("shows self-drawn graphics in the structure field without exposing production internals", async () => {
+    const plan = source + '- custom_reason: "Draw the explanation directly"\n- asset_source: "code"\n';
     const parsed = parseStoryboard(plan);
     const data = { ...response(), source: plan, ...parsed, frames: parsed.frames.map(frame => ({ ...frame, srcExists: false })) };
-    await act(async () => root.render(<StoryboardTable projectId="project-1" data={data} onSaved={vi.fn()} />));
-    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Planned recipe");
-    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("让观众看清结果如何返回下一次行动");
-    const mounted = { ...data, frames: data.frames.map(frame => ({ ...frame, recipeMount: { componentId: "sample-loop", source: "compositions/sample-loop.html" } })) };
-    await act(async () => root.render(<StoryboardTable projectId="project-1" data={mounted} onSaved={vi.fn()} />));
-    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Mounted in source");
-    const mismatch = { ...mounted, frames: mounted.frames.map(frame => ({ ...frame, recipeMount: { componentId: "sample-opener", source: "compositions/sample-opener.html" } })) };
-    await act(async () => root.render(<StoryboardTable projectId="project-1" data={mismatch} onSaved={vi.fn()} />));
-    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Planned recipe");
-    const custom = plan + '- custom_reason: "Existing recipes cannot preserve the branching condition"\n';
-    const customParsed = parseStoryboard(custom);
-    await act(async () => root.render(<StoryboardTable projectId="project-1" data={{ ...mounted, source: custom, ...customParsed, frames: customParsed.frames.map(frame => ({ ...frame, srcExists: false })) }} onSaved={vi.fn()} />));
-    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Custom graphics");
-    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("branching condition");
+    await act(async () => root.render(<StoryboardTable key="custom-graphics" projectId="project-1" data={data} onSaved={vi.fn()} />));
+    expect(container.querySelector('[data-testid="storyboard-structure-1"]')?.textContent).toContain("Custom graphics");
+    expect(container.textContent).not.toContain("Production details");
+    expect(container.textContent).not.toContain("Draw the explanation directly");
+    expect(mocks.writeProjectFile).not.toHaveBeenCalled();
   });
 
   beforeEach(() => {
@@ -140,13 +131,119 @@ describe("StoryboardTable interactions", () => {
     if (container.querySelector("#storyboard-shot-settings")) click("Apply to script");
   }
 
+  it("keeps one picture entry in compact mode and presents recipes as read-only information", async () => {
+    await act(async () => root.render(<StoryboardTable projectId="project-1" data={response()} onSaved={vi.fn()} compact />));
+    expect(container.textContent).not.toContain("Visuals, voice and materials in one plan");
+    expect(container.querySelector('[data-testid="storyboard-picture-picker-1"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="storyboard-voice-picker-1"]')).toBeNull();
+    expect(container.querySelector(".hf-script-recipe-action")).toBeNull();
+    const recipe = container.querySelector('[data-testid="storyboard-recipe-1"]');
+    expect(recipe).toBeNull();
+    expect(container.querySelector('[data-testid="storyboard-structure-1"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="storyboard-sound-picker-1"]')).not.toBeNull();
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid="storyboard-settings-toggle-1"]');
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    flushSync(() => toggle?.click());
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("tr[data-shot]")?.getAttribute("data-expanded")).toBe("true");
+    expect(container.querySelector("#storyboard-shot-content-1")).not.toBeNull();
+    const picture = container.querySelector<HTMLButtonElement>('[data-testid="storyboard-picture-picker-1"]');
+    expect(picture).not.toBeNull();
+    flushSync(() => picture?.click());
+    expect(container.querySelector("#storyboard-settings-title")?.textContent).toBe("Picture & materials");
+    click("Cancel");
+    expect(mocks.writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  it("saves picture structure through the existing recipe field and restores it on reload", async () => {
+    click("Cancel");
+    const trigger = container.querySelector<HTMLButtonElement>('[data-testid="storyboard-structure-1"]');
+    if (!trigger) throw new Error("Picture structure prototype missing");
+    flushSync(() => trigger.click());
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent === "Flowchart");
+    if (!option) throw new Error("Flowchart prototype option missing");
+    flushSync(() => option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    flushSync(() => option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    flushSync(() => option.click());
+    expect(trigger.textContent).toContain("Flowchart");
+    expect(container.textContent).not.toContain("Preview only.");
+    expect(container.querySelector('label[for="storyboard-structure-1"]')?.textContent).toBe("Picture structure");
+    expect(container.querySelector('[aria-label="Estimated duration 1"]')).not.toBeNull();
+    expect(container.textContent).toContain("Unsaved changes");
+    expect(mocks.writeProjectFile).not.toHaveBeenCalled();
+    await act(async () => click("Save script"));
+    const savedSource = mocks.writeProjectFile.mock.calls[0]?.[1];
+    if (!savedSource) throw new Error("Saved storyboard missing");
+    expect(parseStoryboard(savedSource).frames[0]?.extra.recipe).toBe("flowchart");
+    expect(mocks.writeProjectFile.mock.calls[0]?.[2]).toBe(source);
+    const parsed = parseStoryboard(savedSource);
+    await act(async () => root.render(<StoryboardTable key="reloaded" projectId="project-1" data={{ ...response(), ...parsed, source: savedSource, frames: parsed.frames.map(frame => ({ ...frame, srcExists: false })) }} onSaved={vi.fn()} />));
+    expect(container.querySelector('[data-testid="storyboard-structure-1"]')?.textContent).toContain("Flowchart");
+    expect(container.textContent).not.toContain("Unsaved changes");
+  });
+
+  it("clears stale scene metadata when changing the existing recipe and keeps source media", async () => {
+    const plan = source + '- recipe: "previous-structure"\n- scene_id: "old-scene"\n- recipe_intent: "Old intent"\n';
+    const parsed = parseStoryboard(plan);
+    await act(async () => root.render(<StoryboardTable key="existing-recipe" projectId="project-1" data={{ ...response(), ...parsed, source: plan, frames: parsed.frames.map(frame => ({ ...frame, srcExists: false })) }} onSaved={vi.fn()} />));
+    const trigger = container.querySelector<HTMLButtonElement>('[data-testid="storyboard-structure-1"]');
+    expect(trigger?.textContent).toContain("previous-structure");
+    flushSync(() => trigger?.click());
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent === "Flowchart");
+    if (!option) throw new Error("Installed recipe missing");
+    flushSync(() => option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    flushSync(() => option.click());
+    await act(async () => click("Save script"));
+    const savedSource = mocks.writeProjectFile.mock.calls[0]?.[1];
+    if (!savedSource) throw new Error("Saved storyboard missing");
+    const frame = parseStoryboard(savedSource).frames[0];
+    expect(frame?.extra.recipe).toBe("flowchart");
+    expect(frame?.extra.scene_id).toBeUndefined();
+    expect(frame?.extra.recipe_intent).toBeUndefined();
+    expect(frame?.assetReference).toBe("media/cover.png");
+    expect(frame?.voiceover).toBe("Welcome");
+  });
+
+  it("keeps the chosen structure as an unsaved draft after a failed save", async () => {
+    click("Cancel");
+    const trigger = container.querySelector<HTMLButtonElement>('[data-testid="storyboard-structure-1"]');
+    flushSync(() => trigger?.click());
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent === "Flowchart");
+    if (!option) throw new Error("Installed recipe missing");
+    flushSync(() => option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    flushSync(() => option.click());
+    mocks.writeProjectFile.mockRejectedValueOnce(new Error("Save conflict"));
+    await act(async () => click("Save script"));
+    expect(container.textContent).toContain("Save conflict");
+    expect(container.textContent).toContain("Unsaved changes");
+    expect(trigger?.textContent).toContain("Flowchart");
+    await act(async () => click("Save script"));
+    const savedSource = mocks.writeProjectFile.mock.calls[1]?.[1];
+    if (!savedSource) throw new Error("Retried draft missing");
+    expect(parseStoryboard(savedSource).frames[0]?.extra.recipe).toBe("flowchart");
+  });
+
+  it("separates picture structure, materials and sound into their own table columns", () => {
+    click("Cancel");
+    expect([...container.querySelectorAll("thead th")].map(cell => cell.querySelector("span")?.textContent)).toEqual([
+      "#", "Picture & scene", "Narration", "Estimated duration", "Picture structure", "Materials", "Sound effects", "Actions",
+    ]);
+    const row = container.querySelector("tr[data-shot]");
+    expect(row?.children).toHaveLength(8);
+    expect(row?.children[4].querySelector('[data-testid="storyboard-structure-1"]')).not.toBeNull();
+    expect(row?.children[5].querySelector('[data-testid="storyboard-picture-picker-1"]')).not.toBeNull();
+    expect(row?.children[6].querySelector('[data-testid="storyboard-sound-picker-1"]')).not.toBeNull();
+    expect(row?.children[7].querySelector('[aria-label="Delete shot 1"]')).not.toBeNull();
+    expect(mocks.writeProjectFile).not.toHaveBeenCalled();
+  });
+
   afterEach(() => {
     flushSync(() => root.unmount());
     container.remove();
     vi.restoreAllMocks();
   });
 
-  it("locates legacy shots and their nested narration using the official selection, expansion and seek requests", async () => {
+  it("removes redundant timeline navigation and keeps the shared reorder control", async () => {
     click("Cancel");
     const shot = { id: "opening", domId: "opening", key: "index.html#opening", tag: "section", start: 0, duration: 5, track: 0, timingSource: "authored" as const };
     await act(async () => usePlayerStore.setState({
@@ -155,29 +252,27 @@ describe("StoryboardTable interactions", () => {
       clipParentMap: new Map([["voice", "opening"]]),
       clipManifest: [{ id: "voice", label: "Opening narration", tagName: "audio", kind: "audio", start: 1, duration: 3, track: 1, sourceFile: "index.html", timelineRole: "voiceover", assetUrl: "media/voice.mp3", compositionId: null, parentCompositionId: null, compositionSrc: null }],
     }));
-    const locate = container.querySelector<HTMLButtonElement>('[aria-label="定位镜头 1"]');
-    expect(locate?.disabled).toBe(false);
-    await act(async () => locate?.click());
-    expect(mocks.setViewMode).toHaveBeenCalledWith("timeline");
-    expect(usePlayerStore.getState()).toMatchObject({ isPlaying: false, selectedElementId: shot.key, requestedSeekTime: 0 });
+    expect(container.querySelector('[aria-label="定位镜头 1"]')).toBeNull();
+    const reorder = container.querySelector<HTMLButtonElement>('button[draggable]');
+    expect(reorder?.classList.contains("hf-script-reorder")).toBe(true);
+    expect(reorder?.getAttribute("title")).toBeNull();
+    expect(mocks.setViewMode).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
     const narration = container.querySelector<HTMLButtonElement>('[aria-label="Locate clip 1 · Opening narration"]');
-    expect(narration).not.toBeNull();
-    await act(async () => narration?.click());
-    expect(usePlayerStore.getState()).toMatchObject({ selectedElementId: "index.html#voice", requestedSeekTime: 1, clipRevealRequest: { elementId: "index.html#voice" } });
-    expect(usePlayerStore.getState().expandedTimelineElementIds.has("opening")).toBe(true);
+    expect(narration).toBeNull();
     expect(mocks.writeProjectFile).not.toHaveBeenCalled();
   });
 
-  it("keeps unmatched or unsaved scripts from navigating to a stale clip", async () => {
+  it("keeps narration editing local without a stale locator", async () => {
     click("Cancel");
     const locate = () => container.querySelector<HTMLButtonElement>('[aria-label="定位镜头 1"]');
-    expect(locate()?.disabled).toBe(true);
+    expect(locate()).toBeNull();
     await act(async () => usePlayerStore.setState({ elements: [{ id: "opening", tag: "section", start: 0, duration: 5, track: 0 }] }));
-    expect(locate()?.disabled).toBe(false);
+    expect(locate()).toBeNull();
     const narration = container.querySelector<HTMLTextAreaElement>("#storyboard-narration-1");
     expect(narration).not.toBeNull();
     setControlValue(narration!, "Revised narration");
-    expect(locate()?.disabled).toBe(true);
+    expect(locate()).toBeNull();
     expect(mocks.setViewMode).not.toHaveBeenCalled();
     expect(mocks.writeProjectFile).not.toHaveBeenCalled();
   });
@@ -460,6 +555,15 @@ describe("StoryboardTable interactions", () => {
     const saved = parseStoryboard(savedText);
     expect(saved.frames).toHaveLength(2);
     expect(saved.frames[1]?.title).toBe("New shot");
+  });
+
+  it("uses a compact shared add-shot button in the empty script", async () => {
+    const data = response();
+    await act(async () => root.render(<StoryboardTable key="empty" projectId="project-1" data={{ ...data, source: source.split("## Frame")[0], frames: [] }} onSaved={vi.fn()} compact />));
+    const add = [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Add shot"));
+    expect(add?.getAttribute("data-slot")).toBe("button");
+    expect(add?.className).not.toMatch(/w-full|border-dashed|py-4|hf-panel-hover/);
+    expect(container.textContent).toContain("Start with the first shot");
   });
 
   it("reorders shots from the keyboard and persists the new order", async () => {

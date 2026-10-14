@@ -1,9 +1,12 @@
 {
   "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
-  "runtimeVersion": "1.4.0",
+  "runtimeVersion": "1.7.0",
   "foundations": {
     "figmaCollectionId": "VariableCollectionId:237:1443",
-    "modes": { "Light": "237:0", "Dark": "237:1" },
+    "modes": {
+      "Light": "237:0",
+      "Dark": "237:1"
+    },
     "variables": {
       "--brand-accent": "VariableID:237:1444",
       "--brand-strong": "VariableID:237:1445",
@@ -28,14 +31,30 @@
       "text-ui-micro": "S:06f422bfdfe3e4eb638dc42a72605725c1cfe53a,"
     },
     "figmaPreviewFont": "Inter; client uses shared system sans with Chinese fallback",
-    "boundMainIds": ["6:120", "6:15", "6:20", "6:37", "6:70", "6:209", "6:219", "6:277", "6:283", "6:289", "6:295", "6:301", "21:456"],
+    "boundMainIds": [
+      "6:120",
+      "6:15",
+      "6:20",
+      "6:37",
+      "6:70",
+      "6:209",
+      "6:219",
+      "6:277",
+      "6:283",
+      "6:289",
+      "6:295",
+      "6:301",
+      "21:456"
+    ],
     "scope": "public foundations and bound samples; remaining instance overrides need audit"
   },
   "tokenSource": "packages/ui/src/common/tokens.css",
   "components": [
     {
       "export": "Icon",
-      "relatedExports": ["ICON_NAMES"],
+      "relatedExports": [
+        "ICON_NAMES"
+      ],
       "package": "@ipollowork/ui/icon",
       "source": "packages/ui/src/react/icon.tsx",
       "figmaMainId": null,
@@ -148,7 +167,11 @@
         "TableFooter",
         "TableHead",
         "TableHeader",
-        "TableRow"
+        "TableRow",
+        "TableSortHead",
+        "TablePagination",
+        "TablePageSelection",
+        "TableBulkActions"
       ],
       "package": "@ipollowork/ui/table",
       "source": "packages/ui/src/react/table.tsx",
@@ -796,6 +819,67 @@
       "htmlMarker": null,
       "integration": "React island",
       "mappingStatus": "catalog source matched; shared public export; main identity not verified"
+    },
+    {
+      "export": "SearchField",
+      "relatedExports": [],
+      "package": "@ipollowork/ui/search-field",
+      "source": "packages/ui/src/react/search-field.tsx",
+      "figmaMainId": null,
+      "htmlMarker": null,
+      "scope": "Runtime 1.6; compact React controls; bundled and host runtime interaction proof; Figma identity not verified"
+    },
+    {
+      "export": "NumberField",
+      "relatedExports": [],
+      "package": "@ipollowork/ui/number-field",
+      "source": "packages/ui/src/react/number-field.tsx",
+      "figmaMainId": null,
+      "htmlMarker": null,
+      "scope": "Runtime 1.6; compact React controls; bundled and host runtime interaction proof; Figma identity not verified"
+    },
+    {
+      "export": "Slider",
+      "relatedExports": [],
+      "package": "@ipollowork/ui/slider",
+      "source": "packages/ui/src/react/slider.tsx",
+      "figmaMainId": null,
+      "htmlMarker": null,
+      "scope": "Runtime 1.6; compact React controls; bundled and host runtime interaction proof; Figma identity not verified"
+    },
+    {
+      "export": "Calendar",
+      "relatedExports": [],
+      "package": "@ipollowork/ui/calendar",
+      "source": "packages/ui/src/react/calendar.tsx",
+      "figmaMainId": null,
+      "htmlMarker": null,
+      "scope": "Runtime 1.6; compact React controls; bundled and host runtime interaction proof; Figma identity not verified"
+    },
+    {
+      "export": "DatePicker",
+      "relatedExports": [
+        "TimeInput",
+        "parseCalendarDate",
+        "formatCalendarDate"
+      ],
+      "package": "@ipollowork/ui/date-picker",
+      "source": "packages/ui/src/react/date-picker.tsx",
+      "figmaMainId": null,
+      "htmlMarker": null,
+      "scope": "Runtime 1.6; compact React controls; bundled and host runtime interaction proof; Figma identity not verified"
+    },
+    {
+      "export": "FileUpload",
+      "relatedExports": [
+        "FileUploadItem",
+        "validateFileSelection"
+      ],
+      "package": "@ipollowork/ui/file-upload",
+      "source": "packages/ui/src/react/file-upload.tsx",
+      "figmaMainId": null,
+      "htmlMarker": null,
+      "scope": "Runtime 1.6; compact React controls; bundled and host runtime interaction proof; Figma identity not verified"
     }
   ],
   "publicBarrel": "@ipollowork/ui/core"

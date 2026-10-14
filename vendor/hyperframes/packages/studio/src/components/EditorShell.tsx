@@ -4,6 +4,8 @@ import {
   useMemo,
   useRef,
   useState,
+  lazy,
+  Suspense,
   type ReactNode,
 } from "react";
 import { PreviewPane } from "./nle/PreviewPane";
@@ -34,12 +36,15 @@ import { findTimelineElementInIframe } from "../hooks/timelineEditingHelpers";
 import { CanvasContextMenu } from "./editor/CanvasContextMenu";
 import type { DomEditSelection } from "./editor/domEditing";
 
+const StoryboardView = lazy(() => import("./storyboard/StoryboardView").then(module => ({ default: module.StoryboardView })));
+
 const WORKBENCH_PANELS = [
   "preview",
   "timeline",
+  "compositions",
   "design",
 ] as const;
-const REQUIRED_WORKBENCH_PANELS = ["preview", "timeline"] as const;
+const REQUIRED_WORKBENCH_PANELS = ["preview", "timeline", "compositions"] as const;
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -91,7 +96,7 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   gestureOverlay?: ReactNode;
 }
 
-// Official dock workspace with a full-width timeline. Owns the shared player +
+// Dock workspace with full-height sides and a centre-column timeline. Owns the shared player +
 // composition-stack state via NLEProvider so both rows share one player.
 export function EditorShell({
   right,
@@ -441,22 +446,22 @@ function EditorShellBody({
   return (
     <div
       ref={containerRef}
-      // Shell canvas is a step LIGHTER than the near-black panel cards so the
-      // gaps between panels read as visible seams (CapCut-style).
-      className="flex flex-col flex-1 min-h-0 bg-[#18181B]"
+      // Shared theme background separates the four rounded modules with whitespace.
+      className="hf-module-workspace flex flex-col flex-1 min-h-0"
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
       {/* Native dock owns placement, resizing, panel visibility and persistence. */}
-      {previewOnly ? (
-        <div className="flex min-h-0 flex-1 p-px">
-          <PreviewPane editingEnabled={false} />
-        </div>
-      ) : (
         <Dock.Root projectId={projectId} panels={WORKBENCH_PANELS} requiredPanels={REQUIRED_WORKBENCH_PANELS} fullHeightRight hideHeaders>
+          <Dock.Panel id="compositions" title={tx("Script")}>
+            <Suspense fallback={<div role="status" className="p-3 text-ui-body">{tx("Loading storyboard…")}</div>}>
+              <StoryboardView projectId={projectId} compact />
+            </Suspense>
+          </Dock.Panel>
           <Dock.Panel id="preview" title={tx("Preview")}>
             <div className="flex h-full min-h-0 flex-col">
               <PreviewPane
+                editingEnabled={!previewOnly}
                 previewOverlay={previewOverlay}
                 onPreviewBlockDrop={onPreviewBlockDrop}
                 onPreviewAssetDrop={handlePreviewAssetDrop}
@@ -525,7 +530,6 @@ function EditorShellBody({
             />
           )}
         </Dock.Root>
-      )}
     </div>
   );
 }

@@ -39,6 +39,8 @@ const proofVoices = voiceProofParams.has("mine") ? [{ id: "proof-ready", name: "
 let configured = longProof || voiceProofParams.has("profiles"), hasNarration = longProof || voiceProofParams.has("audio");
 let audioVersion = 1;
 let failUpload = false;
+let voiceListMode = voiceProofParams.has("voiceListFail") ? "failure" : "ready";
+let failImport = voiceProofParams.has("importFail");
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (input, init) => {
   const url = String(input);
@@ -51,7 +53,12 @@ window.fetch = async (input, init) => {
     const { action, extensionId, args } = body;
     if (extensionId === "media") {
       if (action === "status") return json({ ok: true, result: { output: { configured: voiceProofParams.get("auth") !== "off" } } });
-      if (action === "voice_list") return json({ ok: true, result: { output: { items: proofVoices } } });
+      if (action === "voice_list") {
+        const mode = voiceListMode;
+        if (voiceProofParams.has("voiceListDelay")) await new Promise(resolve => setTimeout(resolve, 1000));
+        if (mode === "failure") return json({ok: false, message: "模拟声音列表读取失败"});
+        return json({ ok: true, result: { output: { items: mode === "empty" ? [] : proofVoices } } });
+      }
       if (action === "voice_clone_workspace_file") {
         if (voiceProofParams.has("cloneDelay")) await new Promise(resolve => setTimeout(resolve, 1800));
         if (voiceProofParams.has("cloneFail")) return json({ ok: false, message: "模拟复刻失败，请重试。" });
@@ -127,7 +134,7 @@ window.fetch = async (input, init) => {
   }
   throw new Error(`Unhandled proof route ${path}`);
 };
-Reflect.set(window, "avatarProof", { requests, jobs, profiles, setAudioVersion: () => { audioVersion++; window.dispatchEvent(new Event("focus")); }, finishCurrent: () => { const job = jobs[0]; if (!job?.avatarSequence) return; const segment = job.avatarSequence.segments.find(item => item.status === "pending" || item.status === "running"); if (segment) { segment.status = "succeeded"; segment.path = "saved-current.mp4"; } job.status = "paused"; job.message = "已暂停。继续生成会保留已完成片段。"; window.dispatchEvent(new Event("focus")); } });
+Reflect.set(window, "avatarProof", { requests, jobs, profiles, setVoiceListMode: (mode: "ready" | "failure" | "empty") => { voiceListMode = mode; }, setImportFailure: (value: boolean) => { failImport = value; }, setAudioVersion: () => { audioVersion++; window.dispatchEvent(new Event("focus")); }, finishCurrent: () => { const job = jobs[0]; if (!job?.avatarSequence) return; const segment = job.avatarSequence.segments.find(item => item.status === "pending" || item.status === "running"); if (segment) { segment.status = "succeeded"; segment.path = "saved-current.mp4"; } job.status = "paused"; job.message = "已暂停。继续生成会保留已完成片段。"; window.dispatchEvent(new Event("focus")); } });
 const client = createiPolloWorkServerClient({ baseUrl: "https://avatar-proof.invalid" });
 client.writeWorkspaceBinaryFile = async (_workspaceId, payload) => ({ path: payload.path });
 client.deleteWorkspaceFiles = async () => ({ deleted: [] });
@@ -272,6 +279,11 @@ createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParam
   <button onClick={() => { failUpload = !failUpload; }}>切换上传失败</button>
   <pre id="submission-receipt" className="max-w-xl whitespace-pre-wrap break-all text-xs" />
   <div style={{ position: "relative", width: 440, height: 1150, marginTop: 20 }}>
-    {voiceProofParams.get("panel") === "storyboard" ? <VideoStoryboardSettingsDialog frameIndex={1} title="分镜素材" kind="picture" disabled={false} onClose={() => {}} onApply={async () => false} onImport={async () => []} request={{type:"ipollowork:video-studio-settings-open",projectId:"proof",requestId:"proof",frameIndex:1,title:"分镜素材",kind:"picture",fields:{asset_source:"generate",asset_kind:"image",asset_brief:"保留这个描述",asset_reference:"",asset_origin:"",camera:"固定镜头",transition_in:"",sound_effects:"",sound_effect_reference:""},assets:[],cameras:[{value:"固定镜头",label:"固定镜头"}]}} /> : voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path, timelineStart, timelineDuration) => { requests.push({ action: `asset-${action}`, path, start: timelineStart, duration: timelineDuration }); }} /></div> : <VoiceProofPanel />}
+    {voiceProofParams.get("panel") === "storyboard" ? <VideoStoryboardSettingsDialog frameIndex={1} title="分镜素材" kind="picture" disabled={false} onClose={() => {}} onApply={async () => false} onImport={async file => {
+      if (!voiceProofParams.has("asyncAssets")) return [];
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (failImport) throw new Error("模拟素材导入失败");
+      return [{path: "assets/" + file.name, kind: "image", url: ""}];
+    }} request={{type:"ipollowork:video-studio-settings-open",projectId:"proof",requestId:"proof",frameIndex:1,title:"分镜素材",kind:"picture",fields:{asset_source:voiceProofParams.has("asyncAssets") ? "existing" : "generate",asset_kind:"image",asset_brief:"保留这个描述",asset_reference:"",asset_origin:"",camera:"固定镜头",transition_in:"",sound_effects:"",sound_effect_reference:""},assets:[],cameras:[{value:"固定镜头",label:"固定镜头"}]}} /> : voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path, timelineStart, timelineDuration) => { requests.push({ action: `asset-${action}`, path, start: timelineStart, duration: timelineDuration }); }} /></div> : <VoiceProofPanel />}
   </div>
 </div>}</HashRouter>);

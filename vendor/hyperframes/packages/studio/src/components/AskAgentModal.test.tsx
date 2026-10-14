@@ -127,7 +127,7 @@ it("does not forward dialog clicks to the underlying canvas or timeline and keep
   expect(textarea().value).toBe("尚未发送的修改要求");
 });
 
-it("uses the same dialog for a timeline range and carries only its overlapping clips", async () => {
+it("uses a non-modal input bar for a timeline range and carries only its overlapping clips", async () => {
   usePlayerStore.setState({ elements: [
     { id: "inside", tag: "div", start: 1, duration: 2, track: 1 },
     { id: "outside", tag: "div", start: 8, duration: 1, track: 2 },
@@ -135,6 +135,8 @@ it("uses the same dialog for a timeline range and carries only its overlapping c
   const close = vi.fn();
   await act(async () => root.render(<EditPopover rangeStart={3} rangeEnd={1} anchorX={20} anchorY={20} onClose={close} />));
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(document.querySelector('[role="dialog"]')?.getAttribute("aria-modal")).toBe("false");
+  expect(document.querySelector('[data-testid="ai-annotation-composer"]')).not.toBeNull();
   await fill("这段画面提亮");
   bridge.deliver.mockRejectedValueOnce(new Error("左侧对话拒绝接收"));
   await act(async () => button("Copy prompt").click());
@@ -150,6 +152,30 @@ it("uses the same dialog for a timeline range and carries only its overlapping c
   expect(bridge.showToast).toHaveBeenCalledExactlyOnceWith("已复制提示词", "info");
 });
 
+it("compact input supports multiline and IME without sending prematurely", async () => {
+  const submit = vi.fn();
+  await act(async () => root.render(<AskAgentModal compact selectionLabel="标题 · 3.0s — 4.8s" onSubmit={submit} onClose={() => {}} />));
+  expect(button("Copy prompt").disabled).toBe(true);
+  await fill("调整标题");
+  await act(async () => {
+    textarea().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }));
+    textarea().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }));
+  });
+  expect(submit).not.toHaveBeenCalled();
+  await act(async () => textarea().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(submit).toHaveBeenCalledExactlyOnceWith("调整标题");
+});
+
+it("shows only a short selected time tag without a close button or focus border", async () => {
+  await act(async () => root.render(<AskAgentModal compact selectionLabel="选中片段 · Ambient Layer" selectionTime={{ start: 3, end: 6 }} onSubmit={() => {}} onClose={() => {}} />));
+  const composer = document.querySelector('[data-testid="ai-annotation-composer"]');
+  expect(composer?.textContent).toContain("Selected range 3.0s—6.0s");
+  expect(composer?.textContent).not.toContain("Ambient Layer");
+  expect(composer?.querySelector('[aria-label="Close"]')).toBeNull();
+  expect(composer?.querySelector<HTMLElement>('[data-slot="input-group"]')?.style.boxShadow).toBe("none");
+  expect(composer?.querySelector('[title]')?.getAttribute("title")).toBe("选中片段 · Ambient Layer");
+});
+
 it("preserves the existing default range instruction for an empty request", async () => {
   await act(async () => root.render(<EditPopover rangeStart={1} rangeEnd={3} anchorX={20} anchorY={20} onClose={() => {}} />));
   await act(async () => button("Copy prompt").click());
@@ -162,7 +188,8 @@ it("sends only selected clips, excluding simultaneous unselected tracks, without
   usePlayerStore.setState({ elements: [selected, unselected] });
   const before = JSON.stringify(usePlayerStore.getState().elements);
   await act(async () => root.render(<EditPopover rangeStart={1.25} rangeEnd={3.75} selectedElements={[selected]} onClose={() => {}} />));
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("选中片段 · 标题");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Selected range 1.3s—3.8s");
+  expect(document.querySelector('[title]')?.getAttribute("title")).toContain("选中片段 · 标题");
   await fill("只放大选中的标题");
   await act(async () => button("Copy prompt").click());
   const [prompt, file, options] = bridge.deliver.mock.calls[0];

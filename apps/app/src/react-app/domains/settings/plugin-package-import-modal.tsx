@@ -247,7 +247,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
                   </div>
                 ))}
               </div>
-              <div className={`flex items-start gap-2 border-t px-4 py-3 text-xs leading-5 ${signedSafety ? "border-amber-6 bg-amber-2 text-amber-11" : "border-green-6 bg-green-2 text-green-11"}`}>
+              <div className={`flex items-start gap-2 border-t px-4 py-3 text-xs leading-5 ${signedSafety ? "border-border bg-feedback-warning text-amber-11" : "border-green-6 bg-green-2 text-green-11"}`}>
                 <ShieldCheck size={16} className="mt-0.5 shrink-0" />
                 <span>
                   {signedSafety
@@ -268,7 +268,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
 
           {error ? <div role="alert" className="rounded-xl border-0 bg-feedback-error px-3 py-2 text-xs leading-5 text-red-11">{error}</div> : null}
           {sourceWarnings.length > 0 ? (
-            <div className="rounded-xl border border-amber-6 bg-amber-2 px-3 py-2 text-xs leading-5 text-amber-11">
+            <div className="rounded-xl border border-border bg-feedback-warning px-3 py-2 text-xs leading-5 text-amber-11">
               {sourceWarnings.map((warning) => <div key={warning}>{warning}</div>)}
             </div>
           ) : null}

@@ -15,7 +15,7 @@ interface EditPopoverProps {
   onClose: () => void;
 }
 
-export function EditPopover({ rangeStart, rangeEnd, selectedElements, selectionKind, onClose }: EditPopoverProps) {
+export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, selectedElements, selectionKind, onClose }: EditPopoverProps) {
   const { activeCompPath, showToast } = useStudioShellContext();
   const elements = usePlayerStore((state) => state.elements);
   const start = Math.min(rangeStart, rangeEnd);
@@ -26,6 +26,9 @@ export function EditPopover({ rangeStart, rangeEnd, selectedElements, selectionK
 
   return (
     <AskAgentModal
+      compact
+      selectionTime={{ start, end }}
+      anchorPoint={anchorX !== undefined && anchorY !== undefined ? { x: anchorX, y: anchorY } : null}
       selectionLabel={`${selectionKind === "clip-range" ? "片段内范围 · " : selectionKind === "timeline-lasso" ? "圈选片段 · " : ""}${selectedElements ? `选中片段 · ${selectedElements.map((element) => element.label || element.id).join("、")}\n` : "时间范围 · "}${formatTime(start)} — ${formatTime(end)} (${(end - start).toFixed(3)} 秒)`}
       contextPreview={buildTimelineAgentPrompt({
         sourceFile: activeCompPath || "index.html", rangeStart: start, rangeEnd: end,

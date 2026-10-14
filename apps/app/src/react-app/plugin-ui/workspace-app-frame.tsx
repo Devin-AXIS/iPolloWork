@@ -23,6 +23,7 @@ import type {
 } from "@/app/lib/ipollowork-server";
 import { currentLocale, localeChangedEvent, t, translationKey } from "@/i18n";
 import { Button } from "@/components/ui/button";
+import { NumberField } from "@/components/ui/number-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -623,9 +624,9 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
                 {field.customRatio ? <div className="mt-3 space-y-2">
                   <p className="text-xs text-muted-foreground">{t("media.parameters.custom_ratio_hint")}</p>
                   <div className="flex items-center gap-2">
-                    <input aria-label={t("media.parameters.width")} type="number" min="1" max="999" value={customWidth} onChange={event=>setCustomWidth(event.target.value)} className="h-7 w-20 min-w-0 rounded-md bg-muted px-2 text-xs" />
+                    <NumberField label={t("media.parameters.width")} min={1} max={999} step={1} value={customWidth === "" ? null : Number(customWidth)} onValueChange={value=>setCustomWidth(value === null ? "" : String(value))} className="min-w-0 flex-1" />
                     <span>:</span>
-                    <input aria-label={t("media.parameters.height")} type="number" min="1" max="999" value={customHeight} onChange={event=>setCustomHeight(event.target.value)} className="h-7 w-20 min-w-0 rounded-md bg-muted px-2 text-xs" />
+                    <NumberField label={t("media.parameters.height")} min={1} max={999} step={1} value={customHeight === "" ? null : Number(customHeight)} onValueChange={value=>setCustomHeight(value === null ? "" : String(value))} className="min-w-0 flex-1" />
                     <Button type="button" variant="secondary" className="h-7 px-2 text-xs" disabled={!/^[1-9]\d{0,2}$/.test(customWidth)||!/^[1-9]\d{0,2}$/.test(customHeight)} onClick={()=>void updateLiveField(field.id,`${customWidth}x${customHeight}`)}>{t("media.parameters.apply")}</Button>
                   </div>
                 </div> : null}

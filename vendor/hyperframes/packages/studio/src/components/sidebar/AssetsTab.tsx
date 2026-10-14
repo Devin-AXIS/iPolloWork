@@ -1,6 +1,8 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Upload } from "lucide-react";
+import { Button } from "@ipollowork/ui/controls";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@ipollowork/ui/empty";
 import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -14,7 +16,6 @@ import {
 import { AudioRow } from "./AudioRow";
 import { AssetCard, FontRow } from "./AssetCard";
 import { useStudioI18n } from "../../i18n";
-import importIconSrc from "../../icons/figmaAssetsImport.svg?url";
 import { SearchInput } from "../ui/SearchInput";
 import { resolveGeneratedAvatarMaterialPath } from "../../utils/timelineAssetDrop";
 
@@ -392,7 +393,7 @@ export const AssetsTab = memo(function AssetsTab({
         </div>
       )}
       {/* Search and import share the same compact row. */}
-      <div className="flex-shrink-0 border-b border-panel-border px-4 py-3">
+      <div className="flex-shrink-0 border-b border-panel-border px-4 pb-3">
         <div className="flex h-8 items-center gap-2">
             <SearchInput
               value={searchQuery}
@@ -404,14 +405,15 @@ export const AssetsTab = memo(function AssetsTab({
           {/* Import */}
           {onImport && (
             <>
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-8 w-auto flex-none items-center justify-center gap-1 whitespace-nowrap rounded-[8px] border border-panel-border-input bg-panel-bg px-2 text-xs font-medium text-panel-text-1 transition-colors hover:bg-panel-input"
+                className="flex-none"
               >
-                <img src={importIconSrc} alt="" className="h-4 w-4" />
+                <Upload aria-hidden="true" className="size-4" />
                 {tx("Import")}
-              </button>
+              </Button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -430,39 +432,17 @@ export const AssetsTab = memo(function AssetsTab({
         </div>
 
         <div className="mt-[10px] flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setUsageFilter("all")}
-            className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
-              usageFilter === "all"
-                ? "bg-[#171816] text-[#ffffff] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
-                : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
-            }`}
-          >
-            {tx("All")} {allMediaAssets.length}
-          </button>
-          <button
-            type="button"
-            onClick={() => setUsageFilter("used")}
-            className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
-              usageFilter === "used"
-                ? "bg-[#171816] text-[#ffffff] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
-                : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
-            }`}
-          >
-            {tx("In use")} {usageCounts.used}
-          </button>
-          <button
-            type="button"
-            onClick={() => setUsageFilter("unused")}
-            className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
-              usageFilter === "unused"
-                ? "bg-[#171816] text-[#ffffff] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
-                : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
-            }`}
-          >
-            {tx("Unused")} {usageCounts.unused}
-          </button>
+          {[
+            { id: "all", label: tx("All"), count: allMediaAssets.length },
+            { id: "used", label: tx("In use"), count: usageCounts.used },
+            { id: "unused", label: tx("Unused"), count: usageCounts.unused },
+          ].map(({ id, label, count }) => (
+            <Button key={id} variant="ghost" size="sm" aria-pressed={usageFilter === id}
+              className="aria-pressed:bg-muted aria-pressed:text-foreground"
+              onClick={() => { if (id === "all" || id === "used" || id === "unused") setUsageFilter(id); }}>
+              {label} {count}
+            </Button>
+          ))}
         </div>
       </div>
 
@@ -472,28 +452,13 @@ export const AssetsTab = memo(function AssetsTab({
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
         {mediaAssets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="text-neutral-700"
-            >
-              <path
-                d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
-            </svg>
-            <p className="text-[11px] text-neutral-600 text-center">
-              {tx("Drop media files here")}
-            </p>
-          </div>
+          <Empty variant="ghost" className="h-full">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Upload aria-hidden="true" /></EmptyMedia>
+              <EmptyTitle>{tx(searchQuery || usageFilter !== "all" ? "No matching assets" : "Drop media files here")}</EmptyTitle>
+            </EmptyHeader>
+            {(searchQuery || usageFilter !== "all") && <Button variant="ghost" onClick={() => { setSearchQuery(""); setUsageFilter("all"); }}>{tx("Clear filters")}</Button>}
+          </Empty>
         ) : (
           visibleCategories.map((cat) => (
             <section key={cat} className="border-b border-panel-border">
