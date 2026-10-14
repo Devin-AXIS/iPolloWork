@@ -76,12 +76,15 @@ export function prioritizeWorkspacePaths(preferredPath, workspacePaths = []) {
 export function resolveiPolloWorkServerConfigPath(env = process.env) {
   const override = String(env.IPOLLOWORK_SERVER_CONFIG ?? "").trim();
   if (override) return path.resolve(override);
+  const xdgConfigHome = String(env.XDG_CONFIG_HOME ?? "").trim();
+  // buildChildEnv supplies a profile-local XDG root in development, including
+  // Windows. Falling through to APPDATA would reopen the production registry.
+  if (env.IPOLLOWORK_DEV_MODE === "1" && xdgConfigHome) return path.join(xdgConfigHome, "ipollowork", "server.json");
   if (process.platform === "win32") {
     const appData = String(env.APPDATA ?? "").trim();
     const root = appData || path.join(os.homedir(), "AppData", "Roaming");
     return path.join(root, "ipollowork", "server.json");
   }
-  const xdgConfigHome = String(env.XDG_CONFIG_HOME ?? "").trim();
   const root = xdgConfigHome || path.join(os.homedir(), ".config");
   return path.join(root, "ipollowork", "server.json");
 }

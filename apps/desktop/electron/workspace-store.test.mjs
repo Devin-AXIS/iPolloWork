@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import { createWorkspaceStore } from "./workspace-store.mjs";
 
-test("development browser uploads read the embedded server registry without a config override", async () => {
+test("development browser uploads use the developer registry and storage without exposing production", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ipollowork-upload-dev-"));
   const keys = ["IPOLLOWORK_DEV_MODE", "IPOLLOWORK_SERVER_CONFIG", "IPOLLOWORK_RUNTIME_DB", "APPDATA", "XDG_CONFIG_HOME"];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
@@ -20,6 +20,11 @@ test("development browser uploads read the embedded server registry without a co
     await mkdir(workspacePath, { recursive: true });
     await mkdir(path.join(root, "ipollowork"));
     await writeFile(path.join(root, "ipollowork", "server.json"), JSON.stringify({
+      workspaces: [{ id: "production-video", path: workspacePath, workspaceType: "local" }],
+    }));
+    const runtimeRoot = path.join(root, "desktop", "ipollowork-dev-data", "xdg", "config", "ipollowork");
+    await mkdir(runtimeRoot, { recursive: true });
+    await writeFile(path.join(runtimeRoot, "server.json"), JSON.stringify({
       workspaces: [{ id: "server-video", path: workspacePath, workspaceType: "local" }],
     }));
     const store = createWorkspaceStore({
@@ -30,7 +35,8 @@ test("development browser uploads read the embedded server registry without a co
     });
     const workspaces = await store.listLocalBrowserWorkspaces();
     assert.equal(workspaces.find(entry => entry.id === "server-video")?.path, await realpath(workspacePath));
-    assert.equal(workspaces.find(entry => entry.id === "server-video")?.runtimeStorageRoot, path.join(root, "ipollowork"));
+    assert.equal(workspaces.find(entry => entry.id === "server-video")?.runtimeStorageRoot, runtimeRoot);
+    assert.equal(workspaces.some(entry => entry.id === "production-video"), false);
   } finally {
     for (const key of keys) restoreEnv(key, previous[key]);
     await rm(root, { recursive: true, force: true });

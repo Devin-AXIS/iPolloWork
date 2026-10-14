@@ -29,7 +29,7 @@ export default {
     { name: "Production desktop and twenty signed artifacts", run: async ctx => {
       await ctx.prove("Only internal core ships, and every exported business plugin has an independently verified artifact", {
         voiceover: vo[2], assert: async () => {
-          command(ctx, process.execPath, ["--test", "apps/desktop/electron/runtime.test.mjs", "apps/desktop/electron/sidecar-packaging.test.mjs"]);
+          command(ctx, process.execPath, ["--test", "apps/desktop/electron/runtime.test.mjs", "apps/desktop/electron/workspace-store.test.mjs", "apps/desktop/electron/sidecar-packaging.test.mjs"]);
           const output = process.env.IPOLLOWORK_PLUGIN_RELEASE_PROOF_DIR;
           ctx.assert(Boolean(output), "Set IPOLLOWORK_PLUGIN_RELEASE_PROOF_DIR to the completed twenty-plugin release directory");
           const collection = JSON.parse(await readFile(join(output, "collection.json"), "utf8"));
@@ -40,6 +40,11 @@ export default {
             ctx.assert(createHash("sha256").update(bytes).digest("hex") === plugin.artifact.sha256, "Unmodified signed archive: " + plugin.pluginId);
           }
           ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "All twenty release archives match their host-verified collection digests" });
+          if (process.env.IPOLLOWORK_PLUGIN_DESKTOP_WITNESS) {
+            const desktop = JSON.parse(await readFile(process.env.IPOLLOWORK_PLUGIN_DESKTOP_WITNESS, "utf8"));
+            ctx.assert(desktop.count === 20 && desktop.allDevelopment && desktop.legacyProductionHasNoDevelopmentSnapshots, "Real Electron backend uses twenty local development snapshots without replacing production installations");
+            ctx.output("Real Electron profile", JSON.stringify(desktop, null, 2));
+          }
           ctx.output("Verified release inventory", JSON.stringify(collection.plugins.map(plugin => ({ pluginId: plugin.pluginId, version: plugin.version, sha256: plugin.artifact.sha256 })), null, 2));
         },
       });

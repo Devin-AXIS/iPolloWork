@@ -272,6 +272,12 @@ describe("embeddedServerImportUrl", () => {
 });
 
 describe("resolveiPolloWorkServerConfigPath", () => {
+  it("uses the developer profile even when Windows APPDATA points at production", () => {
+    assert.equal(resolveiPolloWorkServerConfigPath({ IPOLLOWORK_DEV_MODE: "1", XDG_CONFIG_HOME: "/isolated/dev/xdg", APPDATA: "/production/appdata" }), path.join("/isolated/dev/xdg", "ipollowork", "server.json"));
+    if (process.platform === "win32") {
+      assert.equal(resolveiPolloWorkServerConfigPath({ XDG_CONFIG_HOME: "/isolated/dev/xdg", APPDATA: "/production/appdata" }), path.join("/production/appdata", "ipollowork", "server.json"));
+    }
+  });
   it("respects explicit server config path", () => {
     assert.equal(
       resolveiPolloWorkServerConfigPath({ IPOLLOWORK_SERVER_CONFIG: "/tmp/ipollowork/server.json" }),
