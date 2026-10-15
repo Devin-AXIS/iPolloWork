@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pluginPackageIconFiles } from "../apps/desktop/scripts/plugin-package-icons.mjs";
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const script = fileURLToPath(new URL("./package-plugin-collection.mjs", import.meta.url));
 function run(args) { return spawnSync("bun", [script, ...args], { cwd: repo, encoding: "utf8", windowsHide: true, timeout: 60000 }); }
@@ -50,4 +51,56 @@ test("an untrusted signing key cannot produce a ready cloud collection", async (
     await assert.rejects(readFile(join(output, "collection.json")), { code: "ENOENT" });
     await assert.rejects(readFile(join(output, "plugins-collection.zip")), { code: "ENOENT" });
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("collection includes a multi-resolution plugin icon and portable Windows enable/restore tools", async () => {
+  const files = await pluginPackageIconFiles();
+  const ico = files.get("plugin-package.ico");
+  assert.equal(ico.readUInt32LE(0), 65536);
+  assert.equal(ico.readUInt16LE(4), 7);
+  for (let index = 0; index < 7; index++) {
+    const offset = ico.readUInt32LE(6 + index * 16 + 12);
+    assert.equal(ico.subarray(offset, offset + 8).toString("hex"), "89504e470d0a1a0a");
+  }
+  assert.match(files.get("Enable-plugin-icons.cmd").toString(), /%~dp0plugin-package-icons\.ps1.*-Action Enable/);
+  assert.match(files.get("Restore-plugin-icons.cmd").toString(), /-Action Restore/);
+  assert.ok(files.has("plugin-package-icons.ps1"));
+  assert.ok(files.has("README-icons.txt"));
+});
+
+test("Windows icon registration is repeatable and restores the original icon without changing open commands", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-icon-test-"));
+  const classes = `Software\\iPolloWorkIconTests\\${process.pid}`;
+  const script = join(repo, "apps/desktop/scripts/plugin-package-icons.ps1");
+  const icon = join(root, "插件 package.ico");
+  const state = join(root, "icon state");
+  const env = { ...process.env, ICON_TEST_ROOT: classes };
+  function ps(args) {
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", ...args], { env, encoding: "utf8", windowsHide: true, timeout: 30000 });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  }
+  function action(value) { ps(["-File", script, "-Action", value, "-IconPath", icon, "-StateDirectory", state, "-ClassesRoot", classes]); }
+  function query() {
+    return JSON.parse(ps(["-Command", "$r = [Microsoft.Win32.Registry]::CurrentUser; $k = $r.OpenSubKey($env:ICON_TEST_ROOT + '\\.ipollowork-plugin\\DefaultIcon'); $o = $r.OpenSubKey($env:ICON_TEST_ROOT + '\\.ipollowork-plugin\\shell\\open\\command'); @{ icon = $(if ($k) { $k.GetValue('', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) } else { $null }); kind = $(if ($k) { $k.GetValueKind('').ToString() } else { $null }); command = $o.GetValue('') } | ConvertTo-Json -Compress; if ($k) { $k.Dispose() }; $o.Dispose()"]));
+  }
+  try {
+    await writeFile(icon, (await pluginPackageIconFiles()).get("plugin-package.ico"));
+    ps(["-Command", "$r = [Microsoft.Win32.Registry]::CurrentUser; $k = $r.CreateSubKey($env:ICON_TEST_ROOT + '\\.ipollowork-plugin\\DefaultIcon'); $k.SetValue('', '%SystemRoot%\\old.ico,2', [Microsoft.Win32.RegistryValueKind]::ExpandString); $k.Dispose(); $k = $r.CreateSubKey($env:ICON_TEST_ROOT + '\\.ipollowork-plugin\\shell\\open\\command'); $k.SetValue('', 'original-open-command'); $k.Dispose()"]);
+    const before = query();
+    action("Enable");
+    assert.equal(query().icon, `"${join(state, "plugin-package.ico")}",0`);
+    action("Enable");
+    assert.deepEqual(await readFile(join(state, "plugin-package.ico")), await readFile(icon));
+    action("Restore");
+    assert.deepEqual(query(), before);
+    action("Restore");
+    assert.deepEqual(query(), before);
+    ps(["-Command", "[Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey($env:ICON_TEST_ROOT + '\\.ipollowork-plugin\\DefaultIcon')"]);
+    action("Enable"); action("Restore");
+    assert.deepEqual(query(), { icon: null, kind: null, command: "original-open-command" });
+  } finally {
+    ps(["-Command", "[Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($env:ICON_TEST_ROOT, $false)"]);
+    await rm(root, { recursive: true, force: true });
+  }
 });

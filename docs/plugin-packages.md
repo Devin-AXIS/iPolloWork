@@ -308,6 +308,8 @@ pnpm plugins:package --plugin figma --inventory
 
 The default output is `.ipollowork-dev/plugin-releases/<timestamp>/`. Each ready release contains individual `.ipollowork-plugin` files, `collection.json`, `SHA256SUMS`, `plugins-collection.zip` and its SHA-256 sidecar. The outer ZIP is for transport; upload the individual plugin files through the existing cloud import. An existing output directory is rejected. `collection.json` is written only after every signed package passes the real archive parser, host signature policy, identity check and original business-file hash comparison. Build/sign/validation failures stop the command and do not produce a ready collection or transport ZIP.
 
+The collection also contains `plugin-package.ico`, generated from the app's existing sidebar plugin SVG, and Windows enable/restore scripts. After extracting the collection, run `Enable-plugin-icons.cmd` once per Windows user to assign this icon to all `.ipollowork-plugin` files. It requires no administrator access, copies the icon to `%LOCALAPPDATA%/iPolloWork/file-icons`, preserves file open commands, and backs up the previous per-user icon value for `Restore-plugin-icons.cmd`. Moving the collection afterwards is safe. Explorer may need a folder refresh. Other computers need the same one-time registration: an archive cannot carry its Windows file association to another computer. Upload only the signed plugin archives; these transport assets neither change their bytes/signatures nor belong in the cloud import.
+
 Configure signing once in `~/.ipollowork/plugin-signing/release.json` (outside Git):
 
 ```json
