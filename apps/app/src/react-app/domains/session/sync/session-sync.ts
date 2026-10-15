@@ -1621,10 +1621,8 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     : existingRaw;
   const preserveOptimisticBusy = safeSnapshot.status.type === "idle"
     && existingRaw?.some(isOptimisticUserMessage) === true;
-  const preserveLiveBusy = safeSnapshot.status.type === "idle"
-    && liveActivityBeforeSeed
-    && !snapshotAcknowledgesRun;
-  const preserveBusy = preserveOptimisticBusy || preserveLiveBusy;
+  // An older snapshot may fill history, but cannot settle or fail a newer turn.
+  const preserveRunState = preserveOptimisticBusy || !snapshotAcknowledgesRun;
   const reconciledMessages = applyRevertCursor(
     reconcileTranscriptMessages({
       currentMessages: existing ?? [],
@@ -1638,14 +1636,14 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   const assistantOutput = assistantOutputAfterLatestUser(reconciledMessages);
   const finalAssistantOutput = finalAssistantOutputAfterLatestUser(reconciledMessages);
   const terminalWithoutOutput = safeSnapshot.status.type === "idle"
-    && !preserveBusy
+    && !preserveRunState
     && liveActivityBeforeSeed
     && snapshotAcknowledgesRun
     && latestUserMessage(incoming) !== null
     && !snapshotErrorText
     && !finalAssistantOutput;
 
-  if (!preserveBusy) {
+  if (!preserveRunState) {
     useSessionActivityStore.getState().seedSessionRun(
       workspaceId,
       safeSnapshot.session.id,
@@ -1661,7 +1659,7 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   queryClient.setQueryData(key, recovered.messages);
   settleRecoveredNoFinalOutputError(workspaceId, safeSnapshot.session.id, recovered.turnId);
 
-  if (snapshotErrorText) {
+  if (snapshotErrorText && snapshotAcknowledgesRun) {
     useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, snapshotErrorText, latestUserMessage(incoming)?.id);
   } else if (terminalWithoutOutput) {
     const latestUser = latestUserMessage(incoming);
@@ -1673,7 +1671,7 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
         ...(latestUser ? { parentUserMessageId: latestUser.id } : {}),
       }),
     ));
-  } else if (safeSnapshot.status.type === "idle" && !preserveBusy && snapshotAcknowledgesRun) {
+  } else if (safeSnapshot.status.type === "idle" && !preserveRunState && snapshotAcknowledgesRun) {
     const latestAssistant = incoming.findLast((message) => message.role === "assistant");
     const metadata = latestAssistant?.metadata;
     const ipollowork = metadata && typeof metadata === "object" && "ipollowork" in metadata
@@ -1688,7 +1686,7 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     }
   }
 
-  if (!preserveBusy) {
+  if (!preserveRunState) {
     queryClient.setQueryData(statusKey(workspaceId, safeSnapshot.session.id), safeSnapshot.status);
   }
   queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);

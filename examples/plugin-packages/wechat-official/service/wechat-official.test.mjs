@@ -51,6 +51,13 @@ test('Studio remains available before account authorization and reports an empty
   assert.equal(state.connection.connected, false);
   assert.deepEqual(state.drafts, { totalCount: 0, itemCount: 0, items: [] });
   assert.match((await service.actions['open-workbench']({}, {})).url, /^http:\/\/127\.0\.0\.1:\d+\/#token=/);
+  const studio = new URL((await service.actions['open-workbench']({}, {})).url);
+  const page = await fetch(studio);
+  const html = await page.text();
+  const nonce = html.match(/name="ipollowork-ui-nonce" content="([^"]+)"/)?.[1];
+  assert.ok(nonce, 'the local service provides its own CSP nonce');
+  assert.ok(page.headers.get('content-security-policy').includes(`'nonce-${nonce}'`));
+  assert.doesNotMatch(html, /ipollowork-ui-runtime\.js|__UI_NONCE__/);
 });
 
 test('Studio reuses declared service actions behind a protected local-only HTTP bridge', async t => {

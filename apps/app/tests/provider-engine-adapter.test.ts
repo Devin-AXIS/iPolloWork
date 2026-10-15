@@ -55,7 +55,16 @@ function createOpenCodeProviderClient() {
         env: [],
         models: {
           ...Object.fromEntries([
-            "big-pickle", "mimo-v2.5-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free",
+            "big-pickle",
+            "space-bunny-free",
+            "cat-jam-free",
+            "longcat-2.5-preview-free",
+            "step-5-preview-free",
+            "mimo-v2.6-flash-free",
+            "nemotron-3.5-lightning-free",
+            "muse-spark-1.3-contributor-free",
+            "mimo-v2.5-free",
+            "nemotron-3-ultra-free",
           ].map((id) => [id, {
             id,
             name: id,
@@ -1235,9 +1244,13 @@ describe("model runtime adapters", () => {
     const providers = await fetchProviderList({ client, engineId: DEFAULT_ENGINE_ID });
     expect(Object.keys(providers.all[0]?.models ?? {})).toEqual([
       "big-pickle",
-      "mimo-v2.5-free",
-      "nemotron-3-ultra-free",
+      "space-bunny-free",
+      "cat-jam-free",
+      "longcat-2.5-preview-free",
+      "step-5-preview-free",
+      "mimo-v2.6-flash-free",
       "nemotron-3.5-lightning-free",
+      "muse-spark-1.3-contributor-free",
     ]);
     expect(providers.all[0]?.models["x-preview-f-free"]).toBeUndefined();
     expect(providers.connected).toEqual(["opencode"]);
@@ -1472,6 +1485,8 @@ describe("model runtime adapters", () => {
           "tools-unsupported": { ...free, id: "tools-unsupported", capabilities: { ...free.capabilities, toolcall: false } },
           "x-preview-f-free": { ...free, id: "x-preview-f-free" },
           "hy3-free": { ...free, id: "hy3-free" },
+          "mimo-v2.5-free": { ...free, id: "mimo-v2.5-free" },
+          "nemotron-3-ultra-free": { ...free, id: "nemotron-3-ultra-free" },
           retired: { ...free, id: "retired", status: "deprecated" },
         },
       }],

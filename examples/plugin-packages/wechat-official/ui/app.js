@@ -1,6 +1,7 @@
-(() => {
+(async () => {
   const launch = new URLSearchParams(location.hash.slice(1));
-  const token = launch.get('token') || '';
+  let token = launch.get('token') || '';
+  try { if (token) sessionStorage.setItem('wechat-official-token', token); else token = sessionStorage.getItem('wechat-official-token') || ''; } catch { /* The launch token is sufficient. */ }
   const launchedAccountId = launch.get('accountId') || '';
   history.replaceState(null, '', location.pathname);
   const $ = selector => document.querySelector(selector);
@@ -9,10 +10,51 @@
   let selectedIndex = 0;
   let dirty = false;
   let followersCursor = '';
+  let activeView = 'overview', renderNavigation = () => {};
+  let hostPromise, hostRequestId = 0;
+  const hostRequests = new Map();
+  window.addEventListener('message', event => {
+    if (event.source !== parent || event.data?.jsonrpc !== '2.0') return;
+    if (event.data.method === 'ui/notifications/host-context-changed') { applyTheme(event.data.params); return; }
+    if (event.data.method) return;
+    const pending = hostRequests.get(event.data.id); if (!pending) return;
+    hostRequests.delete(event.data.id); clearTimeout(pending.timer);
+    event.data.error ? pending.reject(new Error(event.data.error.message)) : pending.resolve(event.data.result);
+  });
+  function hostRequest(method, params) {
+    if (window === parent) return Promise.reject(new Error('请从 iPolloWork 对话打开公众号运营台。'));
+    return new Promise((resolve, reject) => {
+      const id = ++hostRequestId, timer = setTimeout(() => { hostRequests.delete(id); reject(new Error('当前对话未响应，请重试。')); }, 15000);
+      hostRequests.set(id, { resolve, reject, timer }); parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+    });
+  }
+  function getHost() {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '微信公众号', version: '0.3.2' }, appCapabilities: {} }).then(host => {
+      applyTheme(host.hostContext); parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); return host;
+    }).catch(error => { hostPromise = undefined; throw error; });
+    return hostPromise;
+  }
+  async function askAI(kind) {
+    const host = await getHost();
+    if (!host.hostCapabilities?.message || !host.hostContext?.['ai.ipollo/workspace']?.sessionId) throw new Error('请先打开一个可对话的会话。');
+    if (!state.activeAccountId) throw new Error('请先添加公众号账号。');
+    const labels = { article: '撰写当前图文草稿', polish: '润色当前图文', reply: '拟一条客服回复', menu: '设计公众号菜单' };
+    const context = { extensionId: 'wechat-official', accountId: state.activeAccountId, kind,
+      ...(kind === 'article' || kind === 'polish' ? { mediaId: selectedMediaId, article: articleInput() } : {}),
+      ...(kind === 'reply' ? { openId: $('#message-open-id').value.trim(), content: $('#message-content').value } : {}),
+      ...(kind === 'menu' ? { menu: $('#menu-json').value } : {}),
+      instruction: '根据当前内容准备建议。缺少主题时简短询问用户；不发布、不发送消息、不覆盖菜单。' };
+    const updated = await hostRequest('ui/update-model-context', { content: [], structuredContent: context });
+    if (updated?.isError) throw new Error('上下文未送达，请重试。');
+    const sent = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: `公众号：${labels[kind]}。` }] });
+    if (sent?.isError) throw new Error('当前对话未接收任务，请稍后重试。');
+    notify('已发送到 AI 对话。');
+  }
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
       ...options,
+      signal: AbortSignal.timeout(60000),
       headers: { Authorization: `Bearer ${token}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
     });
     let payload;
@@ -33,20 +75,22 @@
   function notify(message, error = false) {
     const feedback = $('#feedback');
     feedback.textContent = message; feedback.classList.toggle('error', error); feedback.hidden = false;
-    clearTimeout(notify.timer); notify.timer = setTimeout(() => { feedback.hidden = true; }, error ? 9000 : 4500);
+    feedback.setAttribute('role', error ? 'alert' : 'status');
+    clearTimeout(notify.timer); if (!error) notify.timer = setTimeout(() => { feedback.hidden = true; }, 4500);
   }
   async function run(task, success) {
+    if (document.body.dataset.busy === 'true') return;
     document.body.dataset.busy = 'true';
+    const enabled = [...document.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)')];
+    enabled.forEach(control => { control.disabled = true; }); syncControls();
     try { const value = await task(); if (success && value !== false) notify(success); return value; }
     catch (error) { notify(error instanceof Error ? error.message : '操作失败，请稍后重试。', true); }
-    finally { document.body.dataset.busy = 'false'; }
+    finally { document.body.dataset.busy = 'false'; enabled.forEach(control => { control.disabled = false; }); $('#publish-draft').disabled = !selectedMediaId; $('#account-select').value = state.activeAccountId || ''; $('#account-select').disabled = state.accounts.length < 2; $('#manage-account').disabled = !state.activeAccountId; enhanceControls(); }
   }
   function view(name) {
     document.querySelectorAll('.view').forEach(item => { item.hidden = item.id !== `view-${name}`; });
-    document.querySelectorAll('[data-view]').forEach(button => {
-      if (button.closest('nav')) button.setAttribute('aria-current', button.dataset.view === name ? 'page' : 'false');
-    });
-    document.querySelector('main')?.scrollIntoView({ block: 'start' });
+    activeView = name;
+    renderNavigation();
   }
   function date(value) {
     if (!value) return '时间未知';
@@ -63,7 +107,7 @@
   function renderDrafts(target, items, limit) {
     const list = $(target); list.replaceChildren();
     for (const item of items.slice(0, limit)) {
-      const button = node('button', `draft-item${mediaId(item) === selectedMediaId ? ' selected' : ''}`);
+      const button = node('button', `draft-item h-auto items-start justify-start whitespace-normal${mediaId(item) === selectedMediaId ? ' selected' : ''}`);
       button.type = 'button';
       button.append(node('strong', '', titleOf(item)), node('span', '', mediaId(item) || '未返回 Media ID'), node('small', '', date(item.update_time || item.updatedAt)));
       button.addEventListener('click', () => run(async () => { view('drafts'); await loadDraft(mediaId(item)); }));
@@ -83,8 +127,6 @@
     if (!accounts.length) { const option = node('option', '', '尚未添加账号'); option.value = ''; accountSelect.append(option); }
     accountSelect.value = state.activeAccountId || '';
     accountSelect.disabled = accounts.length < 2;
-    $('#account-id').textContent = state.activeAccountId || '未连接';
-    $('#account-app-id').textContent = state.connection?.account?.appId || '当前公众号';
     $('#manage-account').disabled = !state.activeAccountId;
     $('#draft-total').textContent = String(state.drafts.totalCount ?? 0);
     $('#draft-count').textContent = String(state.drafts.itemCount ?? state.drafts.items.length);
@@ -92,6 +134,12 @@
     $('#plugin-version').textContent = `插件 ${state.connection?.pluginVersion || '—'}`;
     renderDrafts('#recent-drafts', state.drafts.items, 4);
     renderDrafts('#draft-list', state.drafts.items, 20);
+    enhanceControls();
+    if (state.draftsError) {
+      for (const target of ['#recent-drafts', '#draft-list']) $(target).replaceChildren(node('p', 'empty', '草稿读取失败，请点击刷新重试。'));
+      notify(state.draftsError, true);
+    }
+    if (state.connection?.message) notify(state.connection.message, true);
   }
   async function refresh(accountId = state.activeAccountId) {
     const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
@@ -107,6 +155,8 @@
     $('#followers-summary').textContent = '尚未读取'; $('#more-followers').hidden = true;
     $('#menu-json').value = '{\n  "button": []\n}'; renderMenuPreview();
     $('#publish-status-result').hidden = true;
+    $('#editor-mode').textContent = '新图文'; $('#save-state').textContent = '尚未保存'; $('#publish-draft').disabled = true; $('#content-count').textContent = '0 字符';
+    syncControls();
   }
   async function switchAccount(accountId) {
     if (!accountId || accountId === state.activeAccountId) return;
@@ -147,7 +197,7 @@
     closeAccountDialog(); clearAccountData(); Object.assign(state, result); renderState();
   }
 
-  function setChecked(selector, value) { $(selector).checked = value === true || value === 1; }
+  function setChecked(selector, value) { $(selector).checked = value === true || value === 1; syncControls(); }
   function resetEditor() {
     selectedMediaId = ''; selectedIndex = 0; dirty = false; $('#article-form').reset();
     $('#editor-mode').textContent = '新图文'; $('#save-state').textContent = '尚未保存'; $('#publish-draft').disabled = true;
@@ -271,7 +321,7 @@
   function renderMenuPreview() {
     const preview = $('#menu-preview'); preview.replaceChildren();
     let menu; try { menu = menuValue(); } catch { preview.append(node('span', '', 'JSON 待修正')); return; }
-    for (const item of menu.button.slice(0, 3)) preview.append(node('button', '', item.name || '未命名'));
+    for (const item of menu.button.slice(0, 3)) preview.append(node('span', '', item.name || '未命名'));
     if (!preview.childElementCount) preview.append(node('span', '', '暂无菜单'));
   }
   async function loadMenu() {
@@ -293,7 +343,7 @@
   }
   async function loadFollowers(append = false) { renderFollowers(await action('list-followers', append ? { nextOpenId: followersCursor } : {}), append); }
 
-  document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => view(button.dataset.view)));
+  document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => { if (button.textContent.trim() === '新建图文') { if (dirty && !confirm('放弃当前未保存修改并新建图文吗？')) return; view('drafts'); resetEditor(); } else view(button.dataset.view); }));
   $('#account-select').addEventListener('change', event => run(() => switchAccount(event.target.value), '已切换公众号账号。'));
   $('#add-account').addEventListener('click', () => openAccountDialog(false));
   $('#manage-account').addEventListener('click', () => openAccountDialog(true));
@@ -301,7 +351,7 @@
   $('#cancel-account').addEventListener('click', closeAccountDialog);
   $('#account-form').addEventListener('submit', event => { event.preventDefault(); run(saveAccount, '公众号账号已保存。'); });
   $('#delete-account').addEventListener('click', () => run(deleteAccount, '公众号账号绑定已删除。'));
-  $('#refresh').addEventListener('click', () => run(refresh, '数据已刷新。'));
+  $('#refresh').addEventListener('click', () => run(() => refresh(), '数据已刷新。'));
   $('#refresh-drafts').addEventListener('click', () => run(refresh, '草稿箱已刷新。'));
   $('#new-draft').addEventListener('click', () => { if (!dirty || confirm('放弃当前未保存修改并新建图文吗？')) resetEditor(); });
   $('#article-form').addEventListener('input', () => { dirty = true; $('#save-state').textContent = '有未保存修改'; });
@@ -309,12 +359,14 @@
   $('#article-form').addEventListener('submit', event => { event.preventDefault(); run(saveArticle, '草稿已保存到公众号。'); });
   $('#upload-cover').addEventListener('click', () => run(() => uploadImage('cover'), '封面已上传并填入 Media ID。'));
   $('#upload-body-image').addEventListener('click', () => run(() => uploadImage('body'), '正文图片已上传并插入。'));
-  $('#publish-draft').addEventListener('click', () => run(async () => {
+  $('#publish-draft').addEventListener('click', () => {
+    if (!$('#article-form').reportValidity()) return;
+    return run(async () => {
     if (!confirm(`确定将“${$('#article-title').value.trim() || '当前图文'}”提交到公众号发布队列吗？`)) return false;
     const id = await saveArticle(); const result = await action('submit-publish', { mediaId: id });
     if (result.publishId) $('#publish-id').value = result.publishId;
     view('overview'); renderResult('#publish-status-result', `已提交发布。Publish ID：${result.publishId || '平台未返回，请到公众号后台核对'}`);
-  }, '图文已提交发布，请继续核对发布状态。'));
+  }, '图文已提交发布，请继续核对发布状态。'); });
   $('#publish-status-form').addEventListener('submit', event => { event.preventDefault(); run(async () => {
     const result = await action('get-publish-status', { publishId: $('#publish-id').value.trim() });
     renderResult('#publish-status-result', { 状态: publishStatusLabel(result.publishStatus), ...result });
@@ -336,6 +388,114 @@
     await action('send-customer-text', { openId, content }); $('#message-content').value = '';
   }, '客服消息已发送。'); });
   window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
+  document.querySelectorAll('[data-ai]').forEach(button => button.addEventListener('click', () => run(() => askAI(button.dataset.ai))));
   renderMenuPreview();
-  run(refresh);
+  queueMicrotask(() => run(() => refresh()));
+
+  let ui;
+  const controlRoots = new Map();
+  function applyTheme(context) {
+    if (!context?.theme) return;
+    document.documentElement.dataset.theme = context.theme;
+    document.documentElement.classList.toggle('dark', context.theme === 'dark');
+  }
+  async function initializeUi() {
+    if (!window.ipolloworkUi) {
+      const host = await getHost();
+      applyTheme(host.hostContext);
+      const source = host.hostContext?.['ai.ipollo/ui-runtime'];
+      if (typeof source !== 'string' || source.length > 8_000_000) throw new Error('请更新 iPolloWork 后重新打开运营台。');
+      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = url; script.nonce = document.querySelector('meta[name="ipollowork-ui-nonce"]').content;
+          script.onload = resolve; script.onerror = () => reject(new Error('组件加载失败，请重新打开运营台。'));
+          document.head.append(script);
+        });
+      } finally { URL.revokeObjectURL(url); }
+    }
+    ui = window.ipolloworkUi.requireRuntime(1, ['createRoot', 'Button', 'Input', 'Textarea', 'Select', 'SelectTrigger', 'SelectValue', 'SelectContent', 'SelectItem', 'Checkbox', 'Icon', 'Tabs', 'TabsList', 'TabsTrigger', 'TabsContent', 'Dialog', 'DialogContent', 'DialogTitle', 'Toaster', 'toast', 'enhance'], 5);
+    enhanceControls();
+    installNavigation();
+    document.addEventListener('change', syncControls);
+    document.addEventListener('reset', () => queueMicrotask(syncControls));
+    const toaster = document.createElement('div'); document.body.append(toaster);
+    ui.createRoot(toaster).render(ui.React.createElement(ui.Toaster, { closeButton: true }));
+    document.querySelectorAll('dialog').forEach(installDialog);
+  }
+  function syncControls() { for (const render of controlRoots.values()) render(); }
+  function enhanceControls() {
+    if (!ui) return;
+    const h = ui.React.createElement;
+    for (const element of document.querySelectorAll('button:not([data-slot]), input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), textarea')) {
+      if (element.dataset.ipwReady) continue;
+      element.dataset.ipwControl = element.tagName.toLowerCase();
+      if (element.tagName === 'BUTTON') {
+        const classes = element.classList;
+        element.dataset.ipwVariant = classes.contains('button-danger') || classes.contains('danger') ? 'destructive' : classes.contains('button-primary') || classes.contains('primary') ? 'default' : element.closest('nav') || classes.contains('button-ghost') || classes.contains('quiet') || classes.contains('icon') || classes.contains('icon-button') ? 'ghost' : 'outline';
+        if (classes.contains('icon') || classes.contains('icon-button')) element.dataset.ipwSize = 'icon';
+      }
+    }
+    ui.enhance(document.body);
+    for (const icon of document.querySelectorAll('[data-ui-icon]:not([data-icon-ready])')) {
+      icon.dataset.iconReady = 'true'; ui.createRoot(icon).render(h(ui.Icon, { name: icon.dataset.uiIcon }));
+    }
+    for (const original of document.querySelectorAll('select, input[type=checkbox]')) {
+      if (controlRoots.has(original) || original.closest('.shared-control')) continue;
+      const mount = document.createElement('span'); mount.className = 'shared-control'; original.after(mount);
+      original.hidden = true; original.tabIndex = -1;
+      const root = ui.createRoot(mount);
+      const fieldLabel = document.querySelector('label[for="' + original.id + '"]') || original.closest('label');
+      const label = original.getAttribute('aria-label') || [...(fieldLabel?.childNodes || [])].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join('').trim() || original.name || '选择';
+      const render = () => {
+        const disabled = original.disabled || Boolean(original.closest('fieldset:disabled'));
+        if (original.tagName === 'SELECT') {
+          root.render(h(ui.Select, { value: original.value, disabled, onValueChange: value => { original.value = value; original.dispatchEvent(new Event('change', { bubbles: true })); syncControls(); } },
+            h(ui.SelectTrigger, { 'aria-label': label.trim(), className: 'shared-select' }, h(ui.SelectValue, null, original.selectedOptions[0]?.textContent)),
+            h(ui.SelectContent, null, [...original.options].map(option => h(ui.SelectItem, { key: option.value, value: option.value, disabled: option.disabled }, option.textContent)))));
+        } else {
+          root.render(h(ui.Checkbox, { checked: original.checked, disabled, 'aria-label': label.trim(), onCheckedChange: checked => { original.checked = checked; original.dispatchEvent(new Event('input', { bubbles: true })); original.dispatchEvent(new Event('change', { bubbles: true })); syncControls(); } }));
+        }
+      };
+      controlRoots.set(original, render); render();
+    }
+    syncControls();
+  }
+
+  function installNavigation() {
+    const h = ui.React.createElement, mount = document.querySelector('#workbench-tabs'), content = document.querySelector('main'), root = ui.createRoot(mount);
+    const sections = [['overview', '概览'], ['drafts', '图文'], ['comments', '评论'], ['menu', '菜单'], ['audience', '粉丝与消息']];
+    function Content() {
+      const ref = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => { ref.current.append(content); return () => document.querySelector('.app-shell').append(content); }, []);
+      return h('div', { ref });
+    }
+    renderNavigation = () => root.render(h(ui.Tabs, { value: activeView, onValueChange: view },
+      h(ui.TabsList, { className: 'navigation', 'aria-label': '运营功能' }, ...sections.map(([value, label]) => h(ui.TabsTrigger, { key: value, value }, label))),
+      h(ui.TabsContent, { value: activeView, 'aria-label': sections.find(([value]) => value === activeView)[1] }, h(Content))));
+    renderNavigation();
+  }
+
+  function installDialog(dialog) {
+    const h = ui.React.createElement, mount = document.createElement('div'); document.body.append(mount);
+    const root = ui.createRoot(mount); let opener;
+    function Body() {
+      const ref = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => { ref.current.append(dialog); return () => { document.body.append(dialog); }; }, []);
+      return h('div', { ref });
+    }
+    function paint(open) {
+      root.render(h(ui.Dialog, { open, onOpenChange: value => { if (!value && !dialog.querySelector('button:disabled') && document.body.dataset.busy !== 'true') dialog.close(); } },
+        h(ui.DialogContent, { className: 'shared-dialog', closeLabel: '关闭' },
+          h(ui.DialogTitle, { className: 'sr-only' }, dialog.getAttribute('aria-label') || dialog.querySelector('h2,h3')?.textContent || '账号管理'), h(Body))));
+    }
+    dialog.showModal = () => { if (dialog.open) return; opener = document.activeElement; dialog.open = true; paint(true); };
+    dialog.close = () => { if (!dialog.open) return; dialog.open = false; paint(false); dialog.dispatchEvent(new Event('close')); queueMicrotask(() => opener?.focus()); };
+    dialog.addEventListener('submit', event => { if (event.submitter?.value === 'cancel') { event.preventDefault(); dialog.close(); } });
+    dialog.querySelectorAll('button[aria-label^="关闭"]').forEach(button => { button.hidden = true; });
+    if (dialog.open) paint(true);
+  }
+
+  try { await initializeUi(); } catch (error) { document.querySelector("main").prepend(Object.assign(document.createElement("p"), { className: "ui-error", textContent: error.message, role: "alert" })); }
 })();

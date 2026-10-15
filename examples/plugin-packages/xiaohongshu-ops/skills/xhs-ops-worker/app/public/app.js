@@ -1,4 +1,4 @@
-(() => {
+(async () => {
   const workbenchEntryHint = '当前是浏览器页面，尚未连接对话。请打开 iPolloWork 对话，点击右侧「＋」→「小红书运营台」使用 AI、同步和发布功能；无需手动验证账号。'
   const entryNotice = document.querySelector('[data-workbench-entry-notice]')
   if (window === parent && entryNotice) { entryNotice.textContent = workbenchEntryHint; entryNotice.hidden = false }
@@ -12,7 +12,9 @@
   const hostRequests = new Map()
   let hostRequestId = 0
   window.addEventListener('message', event => {
-    if (event.source !== parent || event.data?.jsonrpc !== '2.0' || event.data.method) return
+    if (event.source !== parent || event.data?.jsonrpc !== '2.0') return
+    if (event.data.method === 'ui/notifications/host-context-changed') { applyTheme(event.data.params); return }
+    if (event.data.method) return
     const pending = hostRequests.get(event.data.id)
     if (!pending) return
     hostRequests.delete(event.data.id)
@@ -29,7 +31,8 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.19' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.21' }, appCapabilities: {} }).then(host => {
+      applyTheme(host.hostContext)
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -52,18 +55,6 @@
     } catch (error) { toast(error.message, true) }
     finally { loginPending = false }
   }))
-  const accountPicker = document.querySelector('.account-picker')
-  if (accountPicker) {
-    document.addEventListener('click', event => {
-      if (!accountPicker.contains(event.target)) accountPicker.open = false
-    })
-    document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && accountPicker.open) {
-        accountPicker.open = false
-        accountPicker.querySelector('summary').focus()
-      }
-    })
-  }
   document.querySelector('[data-analytics-import]')?.addEventListener('submit', async event => {
     event.preventDefault()
     const form = event.currentTarget
@@ -85,10 +76,12 @@
     const node = document.querySelector('#page-data')
     if (!node) return {}
     try { return JSON.parse(node.textContent || '{}') } catch { return {} }
-  })()
+
+})()
   previousState = pageData.state
 
   function toast(message, error = false) {
+    if (ui) { ui.toast[error ? 'error' : 'success'](message); return }
     if (!toastRegion) return
     const item = document.createElement('div')
     item.className = `toast${error ? ' is-error' : ''}`
@@ -179,7 +172,7 @@
     newAccountProfileId = null
     document.querySelector('#account-form')?.reset()
   })
-  if (new URLSearchParams(window.location.search).get('connect') === '1') startAccountLogin()
+
 
   const accountForm = document.querySelector('#account-form')
   accountForm?.addEventListener('submit', async (event) => {
@@ -249,7 +242,9 @@
       if (verification.prompt) {
         if (verification.browserTarget.browserProfileId && !host.hostCapabilities?.experimental?.['ai.ipollo/browser-profiles']) throw new Error('请更新并重启软件后使用多账号同步')
         // Send while the workbench is active; opening the browser switches the host panel.
-        const sent = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: verification.prompt }] })
+        const context = await hostRequest('ui/update-model-context', { content: [], structuredContent: { extensionId: 'xiaohongshu-ops', instructions: verification.prompt } })
+        if (context?.isError) throw new Error('同步上下文未送达，请重试')
+        const sent = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: button.hasAttribute('data-sync-analytics') ? '同步当前小红书账号的数据。' : '核对当前小红书账号的登录状态。' }] })
         if (sent?.isError) throw new Error('任务已准备好，但当前会话未接收；请在会话空闲后重新点击同步或验证')
         const opened = await hostRequest('ui/open-link', verification.browserTarget)
         if (opened?.isError) throw new Error('任务已发起，但无法打开所选账号的浏览器；请重新打开运营台后重试')
@@ -271,6 +266,7 @@
   })
   window.addEventListener('beforeunload', event => { if (studioDirty) { event.preventDefault(); event.returnValue = '' } })
   function updateSelection() {
+    syncControls()
     const count = document.querySelectorAll('[data-post-selected]:checked').length
     document.querySelector('[data-selection-count]')?.replaceChildren(document.createTextNode(`已选 ${count} 篇`))
   }
@@ -435,7 +431,10 @@
     }
     try {
       previousState = (await request('/api/state')).state
-      const result = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: prompt }] })
+      const context = await hostRequest('ui/update-model-context', { content: [], structuredContent: { extensionId: 'xiaohongshu-ops', instructions: prompt } })
+      if (context?.isError) throw new Error('任务上下文未送达，请重试')
+      const labels = { draft: '重新生成文案', image: '生成图片素材', video: '生成视频素材', publish: '发布当前帖子', search: '搜索帖子', 'resume-search': '继续搜索帖子', select: '筛选帖子并拟评论', polish: '润色选中评论', comment: '发送选中评论', 'auto-comment': '搜索并评论' }
+      const result = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: '小红书：' + labels[kind] + '。' }] })
       if (result?.isError) throw new Error('当前会话未接收任务，请在会话空闲后重试')
     } catch (error) {
       if (['search', 'resume-search', 'auto-comment'].includes(kind)) await studioApi('set-search-error', { searchId: pageData.search.id, error: error.message })
@@ -474,4 +473,122 @@
       window.location.reload()
     } catch (error) { toast(error.message, true); restore() }
   }))
+
+  let ui;
+  const controlRoots = new Map();
+  function applyTheme(context) {
+    if (!context?.theme) return;
+    document.documentElement.dataset.theme = context.theme;
+    document.documentElement.classList.toggle('dark', context.theme === 'dark');
+  }
+  async function initializeUi() {
+    if (!window.ipolloworkUi) {
+      const host = await getHost();
+      applyTheme(host.hostContext);
+      const source = host.hostContext?.['ai.ipollo/ui-runtime'];
+      if (typeof source !== 'string' || source.length > 8_000_000) throw new Error('请更新 iPolloWork 后重新打开运营台。');
+      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = url; script.nonce = document.querySelector('meta[name="ipollowork-ui-nonce"]').content;
+          script.onload = resolve; script.onerror = () => reject(new Error('组件加载失败，请重新打开运营台。'));
+          document.head.append(script);
+        });
+      } finally { URL.revokeObjectURL(url); }
+    }
+    ui = window.ipolloworkUi.requireRuntime(1, ['createRoot', 'Button', 'Input', 'Textarea', 'Select', 'SelectTrigger', 'SelectValue', 'SelectContent', 'SelectItem', 'Checkbox', 'Icon', 'Tabs', 'TabsList', 'TabsTrigger', 'TabsContent', 'Dialog', 'DialogContent', 'DialogTitle', 'Toaster', 'toast', 'enhance'], 5);
+    enhanceControls();
+    installNavigation();
+    document.addEventListener('change', syncControls);
+    document.addEventListener('reset', () => queueMicrotask(syncControls));
+    const toaster = document.createElement('div'); document.body.append(toaster);
+    ui.createRoot(toaster).render(ui.React.createElement(ui.Toaster, { closeButton: true }));
+    document.querySelectorAll('dialog').forEach(installDialog);
+  }
+  function syncControls() { for (const render of controlRoots.values()) render(); }
+  function enhanceControls() {
+    if (!ui) return;
+    const h = ui.React.createElement;
+    for (const element of document.querySelectorAll('button:not([data-slot]), input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), textarea')) {
+      if (element.dataset.ipwReady) continue;
+      element.dataset.ipwControl = element.tagName.toLowerCase();
+      if (element.tagName === 'BUTTON') {
+        const classes = element.classList;
+        element.dataset.ipwVariant = classes.contains('button-danger') || classes.contains('danger') ? 'destructive' : classes.contains('button-primary') || classes.contains('primary') ? 'default' : element.closest('nav') || classes.contains('button-ghost') || classes.contains('quiet') || classes.contains('icon') || classes.contains('icon-button') ? 'ghost' : 'outline';
+        if (classes.contains('icon') || classes.contains('icon-button')) element.dataset.ipwSize = 'icon';
+      }
+    }
+    ui.enhance(document.body);
+    const newDraft = document.querySelector('[data-new-draft]');
+    if (newDraft) {
+      const mount = document.createElement('span'); newDraft.replaceWith(mount);
+      ui.createRoot(mount).render(h(ui.Button, { variant:'ghost', size:'sm', render:h('a', {href:newDraft.href}) }, newDraft.textContent));
+    }
+    for (const icon of document.querySelectorAll('[data-ui-icon]:not([data-icon-ready])')) {
+      icon.dataset.iconReady = 'true'; ui.createRoot(icon).render(h(ui.Icon, { name: icon.dataset.uiIcon }));
+    }
+    for (const original of document.querySelectorAll('select, input[type=checkbox]')) {
+      if (controlRoots.has(original) || original.closest('.shared-control')) continue;
+      const mount = document.createElement('span'); mount.className = 'shared-control'; original.after(mount);
+      original.hidden = true; original.tabIndex = -1;
+      const root = ui.createRoot(mount);
+      const fieldLabel = document.querySelector('label[for="' + original.id + '"]') || original.closest('label');
+      const label = original.getAttribute('aria-label') || [...(fieldLabel?.childNodes || [])].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join('').trim() || original.name || '选择';
+      const render = () => {
+        const disabled = original.disabled || Boolean(original.closest('fieldset:disabled'));
+        if (original.tagName === 'SELECT') {
+          root.render(h(ui.Select, { value: original.value, disabled, onValueChange: value => { original.value = value; original.dispatchEvent(new Event('change', { bubbles: true })); syncControls(); } },
+            h(ui.SelectTrigger, { 'aria-label': label.trim(), className: 'shared-select' }, h(ui.SelectValue, null, original.selectedOptions[0]?.textContent)),
+            h(ui.SelectContent, null, [...original.options].map(option => h(ui.SelectItem, { key: option.value, value: option.value, disabled: option.disabled }, option.textContent)))));
+        } else {
+          root.render(h(ui.Checkbox, { checked: original.checked, disabled, 'aria-label': label.trim(), onCheckedChange: checked => { original.checked = checked; original.dispatchEvent(new Event('input', { bubbles: true })); original.dispatchEvent(new Event('change', { bubbles: true })); syncControls(); } }));
+        }
+      };
+      controlRoots.set(original, render); render();
+    }
+    syncControls();
+  }
+
+  function installNavigation() {
+    const h = ui.React.createElement, mount = document.querySelector('#workbench-tabs'), content = document.querySelector('main');
+    const links = [...mount.querySelectorAll('a')].map(link => ({ value: link.dataset.tab, label: link.textContent, href: link.href }));
+    const active = document.body.dataset.page, root = ui.createRoot(mount);
+    function Content() {
+      const ref = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => { ref.current.append(content); return () => document.querySelector('.app-shell').append(content); }, []);
+      return h('div', { ref });
+    }
+    function navigate(href, rollback) {
+      if (studioBusy) return;
+      runStudio(null, async () => { try { if (draftForm && studioDirty) await saveDraft(); location.assign(href); } catch (error) { rollback?.(); throw error; } });
+    }
+    const picker = document.querySelector('[data-account-picker]'), previous = picker.value;
+    picker.addEventListener('change', () => navigate(picker.value, () => { picker.value = previous; syncControls(); }));
+    root.render(h(ui.Tabs, { value: active, onValueChange: value => { if (value !== active) navigate(links.find(link => link.value === value).href); } },
+      h(ui.TabsList, { className: 'navigation', 'aria-label': '运营功能', activateOnFocus: false }, ...links.map(link => h(ui.TabsTrigger, { key: link.value, value: link.value }, link.label))),
+      h(ui.TabsContent, { value: active, 'aria-label': links.find(link => link.value === active)?.label || '运营内容' }, h(Content))));
+  }
+
+  function installDialog(dialog) {
+    const h = ui.React.createElement, mount = document.createElement('div'); document.body.append(mount);
+    const root = ui.createRoot(mount); let opener;
+    function Body() {
+      const ref = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => { ref.current.append(dialog); return () => { document.body.append(dialog); }; }, []);
+      return h('div', { ref });
+    }
+    function paint(open) {
+      root.render(h(ui.Dialog, { open, onOpenChange: value => { if (!value && !dialog.querySelector('button:disabled') && document.body.dataset.busy !== 'true') dialog.close(); } },
+        h(ui.DialogContent, { className: 'shared-dialog', closeLabel: '关闭' },
+          h(ui.DialogTitle, { className: 'sr-only' }, dialog.getAttribute('aria-label') || dialog.querySelector('h2,h3')?.textContent || '账号管理'), h(Body))));
+    }
+    dialog.showModal = () => { if (dialog.open) return; opener = document.activeElement; dialog.open = true; paint(true); };
+    dialog.close = () => { if (!dialog.open) return; dialog.open = false; paint(false); dialog.dispatchEvent(new Event('close')); queueMicrotask(() => opener?.focus()); };
+    dialog.addEventListener('submit', event => { if (event.submitter?.value === 'cancel') { event.preventDefault(); dialog.close(); } });
+    dialog.querySelectorAll('button[aria-label^="关闭"]').forEach(button => { button.hidden = true; });
+    if (dialog.open) paint(true);
+  }
+
+  try { await initializeUi(); if (new URLSearchParams(location.search).get('connect') === '1') startAccountLogin(); } catch (error) { document.querySelector("main").prepend(Object.assign(document.createElement("p"), { className: "ui-error", textContent: error.message, role: "alert" })); }
 })()

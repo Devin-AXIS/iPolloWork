@@ -19,7 +19,7 @@ import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import { loadProjectRuntimeMetrics } from "./project-runtime-metrics";
-import { engineLabel } from "./project-overview-shared";
+import { engineLabel, readProjectWorkspaceConfig } from "./project-overview-shared";
 import { ProjectDashboard } from "./project-dashboard";
 import { listEndpointWorkItems } from "./work-endpoints";
 import { WorkCenterError } from "./work-center-states";
@@ -100,6 +100,15 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
     setAuthorizingPluginId(null);
   }, [props.workspaceId, props.sessionId]);
   const workflowQueryKey = ["conversation-workflow", props.client?.baseUrl, props.workspaceId, props.sessionId];
+  const projectQueryKey = ["project-workspace-config", props.client?.baseUrl, props.workspaceId];
+  const projectQuery = useQuery({
+    queryKey: projectQueryKey,
+    enabled: Boolean(props.client && props.workspaceId && !props.sessionId),
+    queryFn: async () => {
+      if (!props.client || !props.workspaceId) throw new Error(t("work.project_unavailable"));
+      return readProjectWorkspaceConfig((await props.client.getConfig(props.workspaceId)).ipollowork, props.engineId);
+    },
+  });
   const workflowQuery = useQuery({
     queryKey: workflowQueryKey,
     enabled: Boolean(props.client && props.workspaceId && props.sessionId),
@@ -112,10 +121,10 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const workflowItem = workflowQuery.data?.item;
   const tasksQuery = useQuery({
     queryKey: ["work-items", props.client?.baseUrl, props.workspaceId, props.sessionId],
-    enabled: Boolean(props.client && props.workspaceId && props.sessionId),
+    enabled: Boolean(props.client && props.workspaceId),
     queryFn: async () => {
-      if (!props.client || !props.workspaceId || !props.sessionId) throw new Error(t("work.project_unavailable"));
-      return listEndpointWorkItems(props.client, { workspaceIds: [props.workspaceId], sessionId: props.sessionId });
+      if (!props.client || !props.workspaceId) throw new Error(t("work.project_unavailable"));
+      return listEndpointWorkItems(props.client, { workspaceIds: [props.workspaceId], sessionId: props.sessionId ?? undefined });
     },
     refetchInterval: workflowItem?.status === "running" ? 5_000 : 30_000,
   });
@@ -128,7 +137,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const item = workflowItem ? itemsById.get(workflowItem.id)
     : scopedItems.find((entry) => entry.execution?.sessionId === props.sessionId && entry.execution.workflow);
   const workflow = item?.execution?.workflow;
-  const baseConfig = workflow?.config ?? createDefaultProjectWorkspaceConfig({ engineId: props.engineId });
+  const baseConfig = workflow?.config ?? projectQuery.data ?? createDefaultProjectWorkspaceConfig({ engineId: props.engineId });
   const config = { ...baseConfig, goal: workflow?.goal ?? baseConfig.goal };
   const presetsQuery = useQuery({
     queryKey: ["work-templates", props.client?.baseUrl, props.workspaceId],
@@ -183,9 +192,9 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       runtimeAgents.map((agent) => agent.id).join("|"),
       scopedItems.map((entry) => `${entry.id}:${entry.version}`).join("|"),
     ],
-    enabled: Boolean(props.client && props.workspaceId && item?.execution),
+    enabled: Boolean(props.client && props.workspaceId && (item?.execution || !props.sessionId)),
     queryFn: async () => {
-      if (!props.client || !props.workspaceId || !item?.execution) throw new Error(t("work.project_unavailable"));
+      if (!props.client || !props.workspaceId) throw new Error(t("work.project_unavailable"));
       return loadProjectRuntimeMetrics({
         client: props.client,
         workspaceId: props.workspaceId,
@@ -199,12 +208,17 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const invalidateWork = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: workflowQueryKey }),
+      queryClient.invalidateQueries({ queryKey: projectQueryKey }),
       queryClient.invalidateQueries({ queryKey: ["work-items"] }),
     ]);
   };
   const saveAgentsMutation = useMutation({
     mutationFn: async (nextConfig: ProjectWorkspaceConfig) => {
-      if (!props.client || !props.workspaceId || !props.sessionId) throw new Error(t("work.project_unavailable"));
+      if (!props.client || !props.workspaceId) throw new Error(t("work.project_unavailable"));
+      if (!props.sessionId) {
+        await props.client.patchConfig(props.workspaceId, { ipollowork: { project: nextConfig } });
+        return null;
+      }
       return props.client.setConversationWorkflow(props.workspaceId, props.sessionId, {
         expectedVersion: item?.version ?? 0,
         runtime: item?.execution?.runtime ?? props.runtime,
@@ -214,7 +228,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       });
     },
     onSuccess: async (saved) => {
-      queryClient.setQueryData(workflowQueryKey, { item: saved });
+      if (saved) queryClient.setQueryData(workflowQueryKey, { item: saved });
       setSelectedAgent(null);
       await invalidateWork();
     },
@@ -249,14 +263,15 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   });
 
   if (!props.client || !props.workspaceId) return <WorkCenterError onRetry={() => undefined} />;
-  if (workflowQuery.isLoading || boardQuery.isLoading) {
+  if (workflowQuery.isLoading || boardQuery.isLoading || projectQuery.isLoading) {
     return <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-8" aria-busy="true">
       <Skeleton className="h-7 w-44" /><Skeleton className="h-16 w-full" /><Skeleton className="h-32 w-full" />
     </div>;
   }
-  if (workflowQuery.isError || boardQuery.isError || !boardQuery.data) {
+  if (workflowQuery.isError || projectQuery.isError || boardQuery.isError || !boardQuery.data) {
     return <WorkCenterError onRetry={() => {
       void workflowQuery.refetch();
+      if (!props.sessionId) void projectQuery.refetch();
       void boardQuery.refetch();
     }} />;
   }
@@ -264,13 +279,13 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   return (
     <div className="h-full min-h-0" data-testid="conversation-workspace">
       <ProjectDashboard
-        projectName={props.title || t("conversation_work.title")}
+        projectName={props.title || t(props.sessionId ? "conversation_work.title" : "project_overview.title")}
         config={config}
         items={scopedItems}
         board={boardQuery.data}
         plugins={plugins}
         authorizations={authorizations}
-        showPresets={workflow?.source === "custom"}
+        showPresets={!props.sessionId || workflow?.source === "custom" || (workflow?.config.revision ?? 0) > 0}
         selectedAgent={selectedAgent ?? undefined}
         onOpenAgent={setSelectedAgent}
         agentActions={<div className="flex items-center gap-1">
@@ -295,6 +310,9 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
         executionHref={(record) => `#/workspace/${props.workspaceId}/session/${record.sessionId}`}
         onOpenTasks={props.onOpenTasks}
         healthContent={<>
+          {!props.sessionId ? <p className="mt-4 border-t border-dls-border/60 pt-3 text-xs text-dls-secondary" data-testid="project-agent-defaults-hint">
+            {t("project_overview.new_conversations_inherit")}
+          </p> : null}
           {item?.status === "review" ? <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-dls-border/60 pt-3" data-testid="conversation-review">
             <p className="min-w-0 flex-1 text-xs leading-5 text-dls-secondary">{t("conversation_work.review_hint")}</p>
             <Button size="sm" disabled={acceptMutation.isPending} onClick={() => acceptMutation.mutate()}>

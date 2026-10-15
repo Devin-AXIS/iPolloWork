@@ -15,6 +15,7 @@ type PluginPackageListItemProps = {
   actionLabel: ReactNode;
   actionBusy?: boolean;
   actionDisabled?: boolean;
+  secondaryAction?: ReactNode;
   featured?: boolean;
   compact?: boolean;
   onOpen?: () => void;
@@ -29,6 +30,7 @@ export function PluginPackageListItem({
   actionLabel,
   actionBusy = false,
   actionDisabled = false,
+  secondaryAction,
   featured = false,
   compact = false,
   onOpen,
@@ -44,7 +46,7 @@ export function PluginPackageListItem({
 
   if (compact) {
     return (
-      <div data-testid="plugin-package-list-item" className="flex h-[74px] min-w-0 items-center gap-4 rounded-[8px] bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb] focus-within:bg-[#f6f7fb] dark:hover:bg-dls-hover dark:focus-within:bg-dls-hover">
+      <div data-testid="plugin-package-list-item" className="flex min-h-[74px] min-w-0 items-center gap-4 rounded-[8px] bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb] focus-within:bg-[#f6f7fb] dark:hover:bg-dls-hover dark:focus-within:bg-dls-hover">
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
@@ -55,18 +57,22 @@ export function PluginPackageListItem({
             {iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
           </span>
           <span data-testid="plugin-package-card-copy" className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-ui-section-title font-semibold leading-5 tracking-[0.1px] text-dls-text">{manifest.name}</span>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span title={manifest.name} className="max-w-full truncate text-ui-section-title font-semibold leading-5 tracking-[0.1px] text-dls-text">{manifest.name}</span>
               {badge}
             </span>
             <span className="line-clamp-2 text-ui-caption leading-[15px] text-dls-secondary">{manifest.description}</span>
-            <span className="flex flex-wrap items-center gap-2 text-ui-caption text-dls-secondary"><span>v{version}</span>{status}</span>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-ui-caption text-dls-secondary">
+              <span title={`v${version}`} className="min-w-0 max-w-full truncate">v{version}</span>
+              {status ? <span className="inline-flex shrink-0 items-center whitespace-nowrap">{status}</span> : null}
+            </span>
           </span>
         </button>
         <Button size="sm" variant="outline" className="shrink-0" aria-busy={actionBusy} disabled={actionBusy || actionDisabled} onClick={onAction}>
           {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
           {actionLabel}
         </Button>
+        {secondaryAction}
       </div>
     );
   }
@@ -94,6 +100,7 @@ export function PluginPackageListItem({
         {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
         {actionLabel}
       </Button>
+      {secondaryAction}
     </div>
   );
 }

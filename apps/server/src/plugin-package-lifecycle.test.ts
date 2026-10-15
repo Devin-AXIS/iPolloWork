@@ -2192,7 +2192,6 @@ describe("plugin package lifecycle", () => {
           { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
           { pluginId: "operation-recorder", version: "0.3.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "labelu-data-annotation", version: "0.3.1", installedVersion: null, updateAvailable: false },
           { pluginId: "short-video-studio", version: "0.1.0", installedVersion: null, updateAvailable: false },
           { pluginId: "jev-decision-model", version: "0.1.2", installedVersion: null, updateAvailable: false },
           { pluginId: "ipollo-onto", version: "0.1.4", installedVersion: null, updateAvailable: false },

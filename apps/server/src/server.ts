@@ -8,6 +8,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
 import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
+import { projectWorkspaceConfigSchema } from "@ipollowork/types/project-workspace";
 import { REFERENCE_MAX_BYTES } from "@ipollowork/types/reference-context";
 import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
@@ -2107,7 +2108,9 @@ function createRoutes(
     })));
     return jsonResponse({
       items: results.flatMap(result => result.status === "fulfilled" ? [result.value] : []),
-      errors: results.flatMap((result, index) => result.status === "rejected" ? [`${runtimeCatalogPluginPackageIds()[index]}: ${result.reason instanceof Error ? result.reason.message.slice(0, 200) : "Plugin catalog unavailable"}`] : []),
+      errors: results.flatMap((result, index) => result.status === "rejected"
+        && !(result.reason instanceof ApiError && result.reason.code === "plugin_package_catalog_unavailable")
+        ? [`${runtimeCatalogPluginPackageIds()[index]}: ${result.reason instanceof Error ? result.reason.message.slice(0, 200) : "Plugin catalog unavailable"}`] : []),
     });
   });
 
@@ -2673,6 +2676,9 @@ function createRoutes(
     const body = await readJsonBody(ctx.request);
     const opencode = body.opencode as Record<string, unknown> | undefined;
     const ipollowork = body.ipollowork as Record<string, unknown> | undefined;
+    const projectUpdate = ipollowork && Object.hasOwn(ipollowork, "project")
+      ? projectWorkspaceConfigSchema.safeParse(ipollowork.project) : undefined;
+    if (projectUpdate && !projectUpdate.success) throw new ApiError(400, "invalid_project_config", "Project configuration is invalid");
     let runtimeChanged = false;
 
     if (!opencode && !ipollowork) {
@@ -2740,10 +2746,13 @@ function createRoutes(
       }
     }
     if (ipollowork) {
-      await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => ({
-        ...current,
-        ...ipollowork,
-      }));
+      await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => {
+        if (!projectUpdate?.success) return { ...current, ...ipollowork };
+        const stored = projectWorkspaceConfigSchema.safeParse(current.project);
+        const revision = stored.success ? stored.data.revision : 0;
+        if (projectUpdate.data.revision !== revision) throw new ApiError(409, "project_config_conflict", "Project settings changed; refresh before saving again");
+        return { ...current, ...ipollowork, project: { ...projectUpdate.data, revision: revision + 1 } };
+      });
     }
 
     await recordAudit(workspace.path, {

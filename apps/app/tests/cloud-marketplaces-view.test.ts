@@ -19,10 +19,8 @@ describe("Cloud marketplace row visibility", () => {
     expect(source).toContain("Promise.allSettled");
     expect(source).toContain('marketplaceResult.status === "rejected"');
     expect(source).toContain('localPackagesResult.status === "fulfilled"');
-    expect(source).toContain("downloadEnterpriseResource(resource)");
-    expect(source).toContain('readPluginPackageArchive(file, "install")');
-    expect(source).toContain("validatePluginPackageUpload(workspaceId, upload)");
-    expect(source).toContain("importPluginPackage(workspaceId, upload)");
+    expect(source).toContain("installCloudPluginResource(resource, client, workspaceId)");
+    expect(source).toContain("client.uninstallPluginPackage(workspaceId, resourcePluginId(resource))");
     expect(source).toContain("<PluginPackageListItem");
     expect(source).toContain("<PluginPackageDetail");
     expect(source).toContain("onOpenInstalled");
@@ -96,7 +94,7 @@ describe("Cloud marketplace row visibility", () => {
     expect(panelSource).toContain('settingsSectionTitleClass,');
     expect(panelSource).toContain('data-testid="plugin-library-description" className={settingsPageDescriptionClass}');
     expect(panelSource).toContain('<h2 className={settingsSectionTitleClass}>');
-    expect(panelSource).toContain('containerClassName="h-[34px] rounded-lg');
+    expect(panelSource).toContain('aria-label={t("plugin_library.search")}');
     expect(panelSource).toContain('t("plugin_library.installed_description")');
     expect(panelSource).not.toContain('t("plugin_library.manage")');
     expect(panelSource).toContain('data-testid="plugin-installed-expand"');
@@ -117,10 +115,10 @@ describe("Cloud marketplace row visibility", () => {
     expect(panelSource).toContain('pluginId: item.pluginId');
     expect(panelSource).not.toContain('data-testid="plugin-installed-status-card"');
     expect(segmentedTabsSource).toContain('inline-flex h-7 items-center gap-0.5');
-    expect(segmentedTabsSource).toContain('h-7 items-center justify-center rounded-[8px] px-3');
-    expect(segmentedTabsSource).toContain('bg-[#f3f3f4] text-[#161e24]');
-    expect(segmentedTabsSource).toContain('hover:bg-[#f6f7fb] active:bg-[#e7e7e9] active:text-[#161e24]');
-    expect(segmentedTabsSource).toContain('disabled:pointer-events-none disabled:opacity-50');
+    expect(segmentedTabsSource).toContain('role="tab"');
+    expect(segmentedTabsSource).toContain('variant={value === item.value ? "secondary" : "ghost"}');
+    expect(segmentedTabsSource).toContain('aria-selected={value === item.value}');
+    expect(segmentedTabsSource).toContain('disabled={item.disabled}');
     expect(segmentedTabsSource).not.toContain('variant?:');
     expect(panelSource).not.toContain('variant="standalone"');
     expect(panelSource).toContain('useState<"marketplace" | "personal">("personal")');
@@ -133,11 +131,11 @@ describe("Cloud marketplace row visibility", () => {
       'hideShellHeader={route.tab === "cloud-account" || Boolean(route.pluginPackageId)}',
     );
     expect(panelSource).toContain('MARKETPLACE_CATEGORY_IDS.map');
-    expect(panelSource).toContain('props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items)');
+    expect(panelSource).toContain('props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items, {');
     expect(marketplaceSource).toContain('statusFilter === "installed"');
     expect(marketplaceSource).toContain('statusFilter === "update"');
     expect(marketplaceSource).toContain('categoryFilter !== "all"');
-    expect(listItemSource).toContain('h-[74px]');
+    expect(listItemSource).toContain('min-h-[74px]');
     expect(listItemSource).toContain('bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb]');
     expect(listItemSource).not.toContain('rounded-lg border border-dls-border bg-dls-surface px-4 py-2');
     expect(listItemSource).toContain('size-12 shrink-0');

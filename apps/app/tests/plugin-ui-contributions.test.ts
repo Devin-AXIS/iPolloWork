@@ -122,10 +122,13 @@ describe("plugin UI contributions", () => {
       }],
     };
 
+    item.manifest = { ...manifest, icon: { src: "/canvas.svg", simpleIconSlug: "figma" } };
     const result = resolveInstalledPluginContributions([item]);
 
     expect(result.workspaceApps).toHaveLength(1);
     expect(result.settingsPages).toHaveLength(1);
+    expect(result.workspaceApps[0]).toMatchObject({ iconSrc: "/canvas.svg", iconSlug: "figma" });
+    expect(result.settingsPages[0]).toMatchObject({ iconSrc: "/canvas.svg", iconSlug: "figma" });
     expect(result.conversationTemplates).toMatchObject([{ mode: "work", label: "Plan on a canvas" }]);
     expect(resolveInstalledPluginContributions([{ ...item, enabled: false }])).toEqual({
       workspaceApps: [],
@@ -178,6 +181,7 @@ describe("plugin UI contributions", () => {
     const canvas = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json());
     const manifest = parsePluginPackageManifest({
       ...canvas, id: "labelu-data-annotation", name: "数据标注实训云", contributions: [],
+      icon: { simpleIconSlug: "labelstudio" },
       resources: [{ type: "local-service", id: "annotation-service", path: "service/dist/data-annotation.mjs",
         actions: [{ id: "open-workbench", title: "打开工作台", description: "启动工作台并返回地址", effect: "read", inputSchema: { type: "object", properties: {} } }] }],
     });
@@ -188,6 +192,7 @@ describe("plugin UI contributions", () => {
     };
     expect(resolveInstalledPluginContributions([item]).workspaceApps).toMatchObject([{
       pluginId: manifest.id, label: "数据标注实训云", action: "open-workbench",
+      iconSlug: "labelstudio",
       resource: { type: "local-service", id: "annotation-service" },
     }]);
     expect(resolveInstalledPluginContributions([{ ...item, enabled: false }]).workspaceApps).toEqual([]);

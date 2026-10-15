@@ -70,8 +70,8 @@ test("development refreshes same-version local service, UI and skills while pres
     // Production ignores the checkout even if the configured source path leaks.
     delete process.env.IPOLLOWORK_DEV_MODE;
     await writeRevision(3);
-    expect(runtimeCatalogPluginPackageIds()).toEqual([]);
-    await expect(withPluginPackageCatalogRoot("figma", async () => true)).rejects.toMatchObject({ code: "plugin_package_catalog_not_found" });
+    expect(runtimeCatalogPluginPackageIds()).toEqual(catalogPluginPackageIds);
+    expect(await withPluginPackageCatalogRoot("figma", async () => true)).toBe(true);
     await expect(prepareDevelopmentPluginPackage(config, "figma")).rejects.toMatchObject({ code: "plugin_development_only" });
     expect((await ping()).result).toBe(2);
     process.env.IPOLLOWORK_DEV_MODE = "1";
@@ -119,3 +119,50 @@ test("real server startup keeps local development inventory separate from a fres
     } finally { await server.stop(); }
   }
 }, 60000);
+
+test("production local catalog installs, updates and uninstalls independently of online plugins", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-local-catalog-")); roots.push(root);
+  delete process.env.IPOLLOWORK_DEV_MODE;
+  delete process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR;
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = join(root, "packages");
+  const packageRoot = join(root, "packages/figma");
+  await mkdir(join(packageRoot, "skills/local"), { recursive: true });
+  const manifest = { schemaVersion: 2, id: "figma", name: "Local fixture", description: "Local collection test",
+    source: { format: "ipollowork-extension-manifest", origin: "builtin", trusted: true },
+    package: { version: "1.0.0", updateId: "fixture/local-figma" }, resources: [{ id: "local", type: "skill", path: "skills/local/SKILL.md" }] };
+  const writeVersion = async (version: string) => {
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({ ...manifest, package: { ...manifest.package, version } }));
+    await writeFile(join(packageRoot, "skills/local/SKILL.md"), "# Local\n" + version + "\n");
+  };
+  await writeVersion("1.0.0");
+  // A package left on disk by another checkout must not join this branch's catalog.
+  const branchPackageRoot = join(root, "packages/labelu-data-annotation");
+  await cp(packageRoot, branchPackageRoot, { recursive: true });
+  await writeFile(join(branchPackageRoot, "ipollowork.plugin.json"), JSON.stringify({
+    ...manifest, id: "labelu-data-annotation", name: "Data-label workbenches", package: { version: "1.0.0" },
+  }));
+  const workspace = join(root, "workspace"); await mkdir(workspace);
+  const config: ServerConfig = { host: "127.0.0.1", port: 0, token: "token", hostToken: "host", configPath: join(root, "server.json"),
+    approval: { mode: "auto", timeoutMs: 0 }, corsOrigins: [], workspaces: [{ id: "ws_local", name: "Local", path: workspace, preset: "starter", workspaceType: "local", engineId: "opencode" }],
+    authorizedRoots: [root], readOnly: false, startedAt: Date.now(), tokenSource: "generated", hostTokenSource: "generated", logFormat: "pretty", logRequests: false };
+  const server = await startServer(config);
+  const base = `http://127.0.0.1:${server.port}/workspace/ws_local/plugin-packages`;
+  const headers = { authorization: "Bearer token" };
+  try {
+    const catalog = await (await fetch(base + "/catalog", { headers })).json();
+    expect(catalog.errors).toEqual([]);
+    expect(catalog.items).toEqual([expect.objectContaining({ pluginId: "figma", installedVersion: null })]);
+    const branchInstall = await fetch(base + "/catalog/labelu-data-annotation/install", { method: "POST", headers });
+    expect(branchInstall.status).toBe(404);
+    expect(await branchInstall.json()).toMatchObject({ code: "plugin_package_catalog_not_found" });
+    expect((await fetch(base + "/catalog/figma/install", { method: "POST", headers })).status).toBe(200);
+    await writeVersion("1.1.0");
+    expect((await (await fetch(base + "/catalog", { headers })).json()).items[0].updateAvailable).toBe(true);
+    expect((await fetch(base + "/catalog/figma/install", { method: "POST", headers })).status).toBe(200);
+    expect((await (await fetch(base, { headers })).json()).items[0].version).toBe("1.1.0");
+    expect((await fetch(base + "/figma", { method: "DELETE", headers })).status).toBe(200);
+    expect((await (await fetch(base, { headers })).json()).items).toEqual([]);
+    expect((await (await fetch(base + "/catalog", { headers })).json()).items[0].installedVersion).toBeNull();
+  } finally { await server.stop(); }
+});

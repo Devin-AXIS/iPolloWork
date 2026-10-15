@@ -1308,9 +1308,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(providers.map((provider) => provider.id)).toEqual(["opencode"]);
     expect(providers[0]?.models.map((model) => model.id)).toEqual([
       "big-pickle",
-      "mimo-v2.5-free",
-      "nemotron-3-ultra-free",
+      "space-bunny-free",
+      "cat-jam-free",
+      "longcat-2.5-preview-free",
+      "step-5-preview-free",
+      "mimo-v2.6-flash-free",
       "nemotron-3.5-lightning-free",
+      "muse-spark-1.3-contributor-free",
     ]);
   });
 
@@ -1542,13 +1546,20 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(providers.map((provider) => provider.id)).toEqual(["opencode", "openai", "chat-only"]);
     expect(providers[0]?.models.map((model) => model.id)).toEqual([
       "big-pickle",
-      "mimo-v2.5-free",
-      "nemotron-3-ultra-free",
+      "space-bunny-free",
+      "cat-jam-free",
+      "longcat-2.5-preview-free",
+      "step-5-preview-free",
+      "mimo-v2.6-flash-free",
       "nemotron-3.5-lightning-free",
+      "muse-spark-1.3-contributor-free",
     ]);
     expect(providers[0]?.models.find((model) => model.id === "x-preview-f-free"))
       .toBeUndefined();
-    expect(providers[0]?.upstream).toMatchObject({ protocol: "openai-completions" });
+    expect(providers[0]?.upstream).toMatchObject({
+      protocol: "openai-completions",
+      baseURL: "https://opencode.ai/inference/v1",
+    });
     expect(providers[0]?.upstream?.httpHeaders).toEqual({ "User-Agent": "opencode/ipollowork" });
     expect(providers[1]).toMatchObject({
       api: "openai-responses",

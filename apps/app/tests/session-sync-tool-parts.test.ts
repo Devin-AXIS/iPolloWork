@@ -137,6 +137,28 @@ describe("tool part mapper", () => {
     expect(describeConversationSessionError("Unexpected server error")).toBe("操作未完成，请稍后重试。");
   });
 
+  test("explains OpenCode free-tier and regional restrictions instead of an account entitlement failure", () => {
+    const restriction = "OpenCode's free tier can only be used from within OpenCode";
+    for (const error of [
+      restriction,
+      new Error(restriction),
+      { name: "APIError", data: { statusCode: 403, message: restriction } },
+      { name: "APIError", data: { statusCode: 403, message: "Forbidden", responseBody: JSON.stringify({ error: { type: "FreeTierError", message: restriction, requestId: "private-provider-trace" } }) } },
+    ]) {
+      const message = describeConversationSessionError(error);
+      expect(message).toContain("OpenCode 免费服务拒绝");
+      expect(message).toContain("刷新模型配置");
+      expect(message).toContain("切换其他已授权的模型");
+      expect(message).not.toContain("请使用官方客户端");
+      expect(message).not.toContain("账号无权");
+      expect(message).not.toContain("private-provider-trace");
+    }
+    expect(describeConversationSessionError({ name: "APIError", data: { statusCode: 403, message: "This model is not available in your country" } }))
+      .toContain("当前地区");
+    expect(describeConversationSessionError({ name: "APIError", data: { statusCode: 403, message: "Forbidden" } }))
+      .toContain("当前账号无权");
+  });
+
   test("defers in-progress tools with empty input", () => {
     // shouldDeferInProgressTool left with the legacy message list (#2016);
     // the deferral behavior itself is still pinned here via the parser and
@@ -449,6 +471,41 @@ describe("tool part mapper", () => {
           parts: [expect.objectContaining({ type: "text", text: "Final result" })],
         }),
       ]);
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("reconciles an OpenCode-generated message ID with the local optimistic prompt", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+    const localId = "msg_ipollowork_49303380-cc7d-43cd-8348-de598df3722f";
+    const nativeId = "msg_13e862d260019lxchaQmkHyKGl";
+
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "当前是什么模型", localId);
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: { id: nativeId, role: "user", parts: [] },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: nativeId,
+        partId: "native-user-text",
+        messageRole: "user",
+        parts: [{ type: "text", text: "当前是什么模型", state: "done" }],
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript).toHaveLength(1);
+      expect(transcript?.[0]).toMatchObject({
+        id: nativeId, role: "user", parts: [{ type: "text", text: "当前是什么模型" }],
+      });
+      expect(transcript?.some((message) => message.id === localId)).toBe(false);
     } finally {
       release();
       cleanup();

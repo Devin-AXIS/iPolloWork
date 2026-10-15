@@ -59,19 +59,19 @@ export default {
       await ctx.eval("new Promise((resolve) => setTimeout(resolve, 1200))", { awaitPromise: true });
       if (engine.engineId === 'opencode') {
         await openEngineModelDirectory(ctx, engine);
-        await ctx.clickText('MiMo-V2.5 Free', { selector: '[data-slot="command-item"]' });
+        await ctx.clickText('MiMo-V2.6-Flash Free', { selector: '[data-slot="command-item"]' });
       }
       await ctx.waitFor(`Array.from(document.querySelectorAll('button')).some((button) =>
         /切换模型|Change model/.test(button.getAttribute('aria-label') ?? '')
-        && button.textContent?.includes('MiMo-V2.5 Free'))`, {
-        timeoutMs: 70_000, label: `${engine.label} has MiMo-V2.5 Free selected`,
+        && button.textContent?.includes('MiMo-V2.6-Flash Free'))`, {
+        timeoutMs: 70_000, label: `${engine.label} has MiMo-V2.6-Flash Free selected`,
       });
       let token;
       await ctx.prove(`${engine.label} returns a real free-model reply`, {
         voiceover: `在 ${engine.label} 中向已选择的 MiMo 免费模型发送消息，只有助手真实回复才算通过，报错和限流都算失败。`,
         action: async () => { token = await selectAndInvokeFreeModel(ctx, engine); },
         assert: async () => { await assertFreeModelInvocation(ctx, engine, token); },
-        screenshot: { name: `${engine.project}-real-free-reply`, requireText: ["MiMo-V2.5 Free"] },
+        screenshot: { name: `${engine.project}-real-free-reply`, requireText: ["MiMo-V2.6-Flash Free"] },
       });
       const sessionHash = await ctx.eval("location.hash");
       const toolToken = `FREE_${engine.project.toUpperCase()}_TOOL_42`;

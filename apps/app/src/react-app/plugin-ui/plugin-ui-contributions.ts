@@ -14,6 +14,7 @@ export type PluginUiSurface = {
   label: string;
   description: string;
   iconSrc: string | null;
+  iconSlug?: string;
   action: string | null;
   resource: PluginUiResource | (PluginResource & { type: "local-service" });
 };
@@ -97,6 +98,7 @@ function uiSurface(
     label: contribution.label?.trim() || resource.label?.trim() || item.name,
     description: contribution.description?.trim() || resource.description?.trim() || item.manifest.description,
     iconSrc: item.manifest.icon?.src?.trim() || null,
+    iconSlug: item.manifest.icon?.simpleIconSlug,
     action: contribution.action?.trim() || null,
     resource: resource as PluginUiResource,
   };
@@ -152,6 +154,7 @@ export function resolveInstalledPluginContributions(
           id: `${item.pluginId}:workspace-app:${service.id}`,
           pluginId: item.pluginId, pluginName: item.name, label: item.name,
           description: item.manifest.description, iconSrc: item.manifest.icon?.src?.trim() || null,
+          iconSlug: item.manifest.icon?.simpleIconSlug,
           action: "open-workbench", resource: { ...service, type: "local-service" },
         });
       }
@@ -171,13 +174,17 @@ export function useInstalledPluginContributions(
   workspaceId: string | null | undefined,
 ) {
   const [contributions, setContributions] = useState(EMPTY_CONTRIBUTIONS);
+  const [isLoading, setIsLoading] = useState(Boolean(client && workspaceId));
 
   useEffect(() => {
     if (!client || !workspaceId) {
       setContributions(EMPTY_CONTRIBUTIONS);
+      setIsLoading(false);
       return;
     }
     let active = true;
+    setContributions(EMPTY_CONTRIBUTIONS);
+    setIsLoading(true);
     const load = () => {
       void client.listPluginPackages(workspaceId)
         .then(({ items }) => {
@@ -185,7 +192,10 @@ export function useInstalledPluginContributions(
             setContributions(resolveInstalledPluginContributions(items));
           }
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
     };
     load();
     window.addEventListener(PLUGIN_UI_CONTRIBUTIONS_CHANGED, load);
@@ -197,5 +207,5 @@ export function useInstalledPluginContributions(
     };
   }, [client, workspaceId]);
 
-  return contributions;
+  return { ...contributions, isLoading };
 }

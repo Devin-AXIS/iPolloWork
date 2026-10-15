@@ -38,7 +38,7 @@ const keys = !inventoryOnly && options.has("--keyring") ? JSON.parse(await readF
 if (release && (!release.privateKey || !release.keyId || !release.publisher?.id || !release.publisher?.name)) throw new Error("Release config requires privateKey, keyId and publisher {id, name}");
 const output = resolve(options.get("--out") ?? join(repo, ".ipollowork-dev/plugin-releases", new Date().toISOString().replace(/[:.]/g, "-")));
 if (await stat(output).catch(error => { if (error.code === "ENOENT") return null; throw error; })) throw new Error("EEXIST: output directory already exists: " + output);
-const closed = new Set(["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]);
+const closed = new Set(["operation-recorder", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]);
 function run(script, scriptArgs = []) {
   const result = spawnSync(process.execPath, [script, ...scriptArgs], {
     cwd: repo, encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024,

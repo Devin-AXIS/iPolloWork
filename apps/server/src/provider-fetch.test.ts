@@ -41,6 +41,40 @@ test("transport errors are safe and timeouts do not turn into auth failures", as
   }
 });
 
+test("OpenCode free usage exhaustion preserves free-only guidance through provider boundaries", async () => {
+  const message = "Free usage exceeded, subscribe to Go";
+  for (const error of [message, { status: 429, message }, { name: "APIError", data: { statusCode: 429, message } }]) {
+    expect(classifyProviderFailure(error)).toMatchObject({
+      code: "provider_quota_exhausted",
+      message: expect.stringContaining("其他免费模型"),
+    });
+    expect(serviceErrorMessage(error)).not.toContain("subscribe to Go");
+  }
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => Response.json({ error: { message } }, { status: 429 }));
+  await expect(providerFetch("https://mock.invalid")).rejects.toMatchObject({
+    status: 429,
+    code: "provider_quota_exhausted",
+    message: expect.stringContaining("其他免费模型"),
+  });
+  expect(formatError(toApiError({ status: 429, message })).message).toContain("等待额度恢复");
+});
+
+test("OpenCode client and region restrictions survive provider fetch as distinct safe failures", async () => {
+  for (const [message, code] of [
+    ["OpenCode's free tier can only be used from within OpenCode", "provider_client_restricted"],
+    ["This model is not available in your country", "provider_region_restricted"],
+  ] as const) {
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => Response.json({
+      error: { message, requestId: "private-provider-trace" },
+    }, { status: 403 }));
+    await expect(providerFetch("https://mock.invalid")).rejects.toMatchObject({ status: 403, code });
+    expect(toApiError({ status: 403, message })).toMatchObject({ status: 403, code });
+    const safeMessage = serviceErrorMessage({ status: 403, message });
+    expect(safeMessage).not.toContain("账号无权");
+    expect(safeMessage).not.toContain("private-provider-trace");
+  }
+});
+
 test("successful and domain-validation responses remain consumable; caller cancellation propagates", async () => {
   const controller = new AbortController();
   Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (_url: unknown, init: RequestInit) => {

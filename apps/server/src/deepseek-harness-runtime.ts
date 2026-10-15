@@ -14,7 +14,7 @@ import {
   sharedProviderProfiles,
   type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
-import { openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
+import { OPENCODE_ZEN_PUBLIC_API_URL, openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
 import {
   DEEPSEEK_HARNESS_ENGINE_ID,
   deepSeekHarnessRuntimeProviderRouteId,
@@ -141,7 +141,7 @@ const OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   providerId: "opencode",
   displayName: "iPolloWork Built-in Models",
   api: "openai-completions",
-  baseURL: "https://opencode.ai/zen/v1",
+  baseURL: OPENCODE_ZEN_PUBLIC_API_URL,
   models: openCodeZenPublicModels(),
 };
 
@@ -664,7 +664,7 @@ export class DeepSeekHarnessRuntime {
     const gatewayRoutes = await this.#providerGateway.configure([{
       providerId: OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId,
       protocol: "openai-completions",
-      baseURL: OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.baseURL ?? "https://opencode.ai/zen/v1",
+      baseURL: OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.baseURL ?? OPENCODE_ZEN_PUBLIC_API_URL,
       apiKey: sharedApiCredentials.get(OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId)
         ?? OPENCODE_ZEN_PUBLIC_API_KEY,
       httpHeaders: { "x-opencode-project": this.#workspace.id },

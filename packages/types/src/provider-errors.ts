@@ -4,6 +4,8 @@ export const providerFailureMessages = {
   provider_timeout: "第三方服务响应超时，请稍后重试。",
   provider_network_error: "网络连接失败，请检查网络或代理设置后重试。",
   provider_auth_failed: "第三方服务授权已失效，请检查 API Key 或重新登录授权。",
+  provider_client_restricted: "OpenCode 免费服务拒绝了当前请求（403）。请刷新模型配置后重试；若仍失败，可切换其他已授权的模型。",
+  provider_region_restricted: "该模型暂不在当前地区提供服务，请切换其他模型或向服务商确认支持范围。",
   provider_access_denied: "当前账号无权使用该第三方服务或模型，请检查权限和服务开通情况。",
   provider_quota_exhausted: "第三方服务余额或额度不足，请检查余额、用量限制或等待额度恢复。",
   provider_rate_limited: "第三方服务请求过于频繁，请稍后重试。",
@@ -38,9 +40,19 @@ export function classifyProviderFailure(value: unknown): ProviderFailure | null 
   }
   if (status === 504 || status === 408 || /TimeoutError|AbortError/.test(info.name) || /\b(?:timed? out|timeout)\b/i.test(text)) return failure("provider_timeout");
   if (status >= 500 && status <= 599) return failure("provider_unavailable");
+  if (/free[_\s-]*usage[_\s-]*(?:exceeded|exhausted|limit(?:[_\s-]*(?:exceeded|reached))?)/i.test(text)) {
+    return {
+      code: "provider_quota_exhausted",
+      message: "当前免费模型的可用额度暂时已用尽。请等待额度恢复，或手动选择其他免费模型后重试。",
+    };
+  }
   // A billing-related 429 is not a request-rate limit; waiting seconds will not fix it.
   if (status === 402 || /insufficient[_\s-]*(?:quota|balance|credit)|quota[_\s-]*(?:exceeded|exhausted)|usageLimitExceeded|(?:free[_\s-]*)?usage[_\s-]*limit(?:[_\s-]*(?:exceeded|reached))?|billing[_\s-]*(?:hard[_\s-]*)?limit|(?:余额|额度)不足|额度已用完/i.test(text)) return failure("provider_quota_exhausted");
   if (status === 401 || /invalid[_\s-]*(?:api[_\s-]*)?key|unauthorized|authentication[_\s-]*(?:failed|error)|(?:token|credential)[_\s-]*(?:expired|invalid)/i.test(text)) return failure("provider_auth_failed");
+  // OpenCode reports free-tier and region rejections as 403 too; neither
+  // alone establishes that the account is missing a model entitlement.
+  if (/FreeTierError|OpenCode(?:['’]s)? free tier can only be used (?:from within|within|in) OpenCode/i.test(text)) return failure("provider_client_restricted");
+  if (/RegionError|(?:model|service) is not available in your (?:country|region)|unsupported[_\s-]*(?:country|region)/i.test(text)) return failure("provider_region_restricted");
   if (status === 403 || /ModelNotOpen|model[_\s-]*not[_\s-]*(?:activated|enabled)|has not activated (?:the )?model/i.test(text)) return failure("provider_access_denied");
   if (status === 429 || /too many requests|rate[_\s-]*limit/i.test(text)) return failure("provider_rate_limited");
   if (/ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed|failed to fetch|network(?:error| error)|socket hang up|could not reach/i.test(text)) return failure("provider_network_error");

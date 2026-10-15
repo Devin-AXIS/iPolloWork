@@ -11,7 +11,7 @@ import {
   type SharedProviderModelProfile,
   type SharedProviderProtocol,
 } from "@ipollowork/types/provider-credentials";
-import { openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
+import { OPENCODE_ZEN_PUBLIC_API_URL, openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
 import { CODEX_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { EnvService } from "./env-file.js";
@@ -73,7 +73,7 @@ const OPENCODE_PROVIDER: Omit<CodexHarnessProvider, "models"> = {
   id: "opencode",
   name: "iPolloWork Built-in Models",
   api: "openai-responses",
-  baseURL: "https://opencode.ai/zen/v1",
+  baseURL: OPENCODE_ZEN_PUBLIC_API_URL,
   apiKey: "public",
 };
 

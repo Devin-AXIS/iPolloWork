@@ -441,6 +441,64 @@ describe("session transcript sync", () => {
     ]);
   });
 
+  test.each(["optimistic", "completed", "failed"])("isolates a previous turn's stale error snapshot from a %s follow-up", (phase) => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    const staleSnapshot = snapshotWithMessages([
+      { id: "user-previous", role: "user", text: "first", created: 1 },
+      { id: "session-error:user-previous", role: "assistant", text: "The run was interrupted before it finished.", created: 2, parentUserMessageId: "user-previous" },
+    ]);
+    const finishFollowUp = () => {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a",
+        message: uiMessage("user-current", "user", "second", { created: 3 }),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a",
+        message: {
+          ...uiMessage("assistant-current", "assistant", "second completed"),
+          metadata: { ipollowork: { created: 4, completed: 5, parentUserMessageId: "user-current" } },
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, { type: "session.idle", sessionId: "session-a" });
+    };
+    try {
+      seedSessionState("workspace-a", staleSnapshot);
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "second", "user-current");
+      if (phase === "completed") finishFollowUp();
+      if (phase === "failed") {
+        __applySessionSyncEventForTest(syncInput, {
+          type: "message.upsert", sessionId: "session-a",
+          message: uiMessage("user-current", "user", "second", { created: 3 }),
+        });
+        __applySessionSyncEventForTest(syncInput, {
+          type: "session.error", sessionId: "session-a",
+          parentUserMessageId: "user-current", errorText: "second failed",
+        });
+      }
+
+      seedSessionState("workspace-a", staleSnapshot);
+
+      const activity = useSessionActivityStore.getState();
+      expect(activity.getSessionError("workspace-a", "session-a")).toBe(phase === "failed" ? "second failed" : null);
+      expect(activity.getRunOutcome("workspace-a", "session-a")).toBe(
+        phase === "optimistic" ? "running" : phase === "failed" ? "failed" : "completed",
+      );
+      if (phase === "optimistic") {
+        expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "busy" });
+        finishFollowUp();
+        expect(useSessionActivityStore.getState().getRunOutcome("workspace-a", "session-a")).toBe("completed");
+      }
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(transcript.find(message => message.id === "session-error:user-previous")?.parts)
+        .toEqual(expect.arrayContaining([expect.objectContaining({ text: "The run was interrupted before it finished." })]));
+      if (phase !== "failed") expect(transcript.some(message => message.id === "session-error:user-current")).toBe(false);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
   test("keeps an acknowledged live prompt busy when an older snapshot omits that turn", () => {
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");

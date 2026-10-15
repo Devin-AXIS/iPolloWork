@@ -84,6 +84,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
+import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { useDenAuth } from "../../cloud/den-auth-provider";
 import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connections/provider-auth/provider-auth-modal";
 import { RenameSessionModal } from "../modals/rename-session-modal";
@@ -1706,7 +1707,7 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
-  const { workspaceApps } = useInstalledPluginContributions(
+  const { workspaceApps, isLoading: pluginsLoading } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   );
@@ -4074,6 +4075,7 @@ export function SessionPage(props: SessionPageProps) {
       label: isMediaStudioPlugin(surface.pluginId) ? t("media.studio.title") : surface.label,
       group: "studio",
       icon: mediaStudioEngine(surface) === "image-studio" ? "image-studio" : mediaStudioEngine(surface) === "video-console" ? "video-console" : "workspace-app",
+      iconSrc: resolveExtensionIconUrl({ pluginId: surface.pluginId, iconSrc: surface.iconSrc ?? undefined, iconSlug: surface.iconSlug }),
       onClick: () => openWorkspaceApp(surface),
       disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.id === workspaceAppTabId(surface)),
     })),
@@ -5273,7 +5275,7 @@ export function SessionPage(props: SessionPageProps) {
                   {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
                     <div className="flex h-full flex-col bg-background">
                       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
-                        <SidePanelLauncherMenu launcherItems={sidePanelLauncherItems} />
+                        <SidePanelLauncherMenu launcherItems={sidePanelLauncherItems} pluginsLoading={pluginsLoading} />
                         {launcherBusy ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" role="status" aria-label={t("templates.starter.loading")} /> : null}
                       </div>
                     </div>
@@ -5313,6 +5315,7 @@ export function SessionPage(props: SessionPageProps) {
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
+                        pluginsLoading={pluginsLoading}
                         aiEditing={selectedSessionStatus ? selectedSessionStatus.type === "busy" || selectedSessionStatus.type === "retry" : isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
