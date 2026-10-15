@@ -173,7 +173,7 @@ describe("Composer model and reasoning menu", () => {
     ]);
   });
 
-  test("keeps unsupported binary media out of provider history", async () => {
+  test("requires native support before serializing video attachments", async () => {
     const attachment = new File(["binary-video"], "reference.mp4", { type: "video/mp4" });
     const draft: ComposerDraft = {
       mode: "prompt",
@@ -189,13 +189,13 @@ describe("Composer model and reasoning menu", () => {
       }],
     };
 
-    expect(await draftToParts(draft, "", undefined, undefined, { supportsNativeAttachments: true })).toEqual([
-      { type: "text", text: "Use this reference" },
-    ]);
+    await expect(draftToParts(draft, "", undefined, undefined, { supportsNativeAttachments: false }))
+      .rejects.toThrow("selected model cannot read image, video, or PDF attachments");
   });
 
-  test("requires native model support only for images and PDFs", () => {
+  test("requires native model support for image, video, and PDF attachments", () => {
     expect(attachmentRequiresNativeModelSupport("image/png")).toBe(true);
+    expect(attachmentRequiresNativeModelSupport("video/mp4")).toBe(true);
     expect(attachmentRequiresNativeModelSupport("application/pdf")).toBe(true);
     expect(attachmentRequiresNativeModelSupport("text/plain")).toBe(false);
     expect(attachmentRequiresNativeModelSupport("application/json")).toBe(false);
