@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 
 import {
   DEFAULT_WORKSPACE_LEFT_SIDEBAR_WIDTH,
@@ -24,8 +25,8 @@ type WorkspaceShellLayoutOptions = {
   maxRightWidth?: number;
 };
 
-export const WORKSPACE_SNAP_DISTANCE = 48;
-export const WORKSPACE_SNAP_RELEASE_DISTANCE = 24;
+export const WORKSPACE_SNAP_DISTANCE = 80;
+export const WORKSPACE_SNAP_RELEASE_DISTANCE = 40;
 export const WORKSPACE_TRANSITION_MS = 220;
 export const WORKSPACE_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 
@@ -34,11 +35,12 @@ export function getWorkspaceSnapIntent(
   minWidth: number,
   maxWidth: number,
   previous: "collapse" | "expand" | null,
+  boundaryWidth?: number,
 ): "collapse" | "expand" | null {
-  if (requestedWidth <= minWidth - (previous === "collapse" ? WORKSPACE_SNAP_RELEASE_DISTANCE : WORKSPACE_SNAP_DISTANCE)) {
+  if (requestedWidth <= (boundaryWidth ?? minWidth) - (previous === "collapse" ? WORKSPACE_SNAP_RELEASE_DISTANCE : WORKSPACE_SNAP_DISTANCE)) {
     return "collapse";
   }
-  if (requestedWidth >= maxWidth + (previous === "expand" ? WORKSPACE_SNAP_RELEASE_DISTANCE : WORKSPACE_SNAP_DISTANCE)) {
+  if (requestedWidth >= (boundaryWidth ?? maxWidth) + (previous === "expand" ? WORKSPACE_SNAP_RELEASE_DISTANCE : WORKSPACE_SNAP_DISTANCE)) {
     return "expand";
   }
   return null;
@@ -83,11 +85,12 @@ export function useWorkspaceShellLayout(options: WorkspaceShellLayoutOptions) {
   const setRightSidebarExpandedWidth = useUiStateStore((state) => state.setWorkspaceRightSidebarExpandedWidth);
   const toggleRightSidebar = useUiStateStore((state) => state.toggleWorkspaceRightSidebar);
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  const leftMotionCleanupRef = useRef<(() => void) | null>(null);
 
   const stopLeftSidebarResize = useCallback(() => {
     dragCleanupRef.current?.();
     dragCleanupRef.current = null;
-    setLeftSidebarResizing(false);
+    if (!leftMotionCleanupRef.current) setLeftSidebarResizing(false);
     if (typeof document === "undefined") return;
     document.body.style.removeProperty("cursor");
     document.body.style.removeProperty("user-select");
@@ -106,51 +109,99 @@ export function useWorkspaceShellLayout(options: WorkspaceShellLayoutOptions) {
       let nextWidth = initialWidth;
       let frameId: number | null = null;
       let snapPending: "collapse" | null = null;
+      let boundaryWidth: number | undefined;
 
       const applyPendingWidth = () => {
         frameId = null;
         sidebarWrapper?.style.setProperty("--sidebar-width", `${nextWidth}px`);
       };
 
-      let collapseAnimation: Animation | null = null;
+      const animateLeftSidebar = (open: boolean) => {
+        const gap = sidebarWrapper?.querySelector<HTMLElement>('[data-slot="sidebar-gap"]');
+        const container = sidebarWrapper?.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+        const gapWidth = gap?.getBoundingClientRect().width ?? nextWidth;
+        const rect = container?.getBoundingClientRect();
+        leftMotionCleanupRef.current?.();
+        const commit = () => {
+          sidebarWrapper?.style.setProperty("--sidebar-width", `${initialWidth}px`);
+          setLeftSidebarResizing(false);
+          if (open) options.onLeftExpand?.();
+          else options.onLeftCollapse?.();
+        };
+        if (!gap || !container || !rect || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          commit();
+          return;
+        }
+        // Keep the visible sidebar at its current width while it retreats.
+        // The remembered width is restored only once the sidebar is offscreen.
+        gap.style.transition = "none";
+        container.style.transition = "none";
+        container.style.width = `${rect.width}px`;
+        const animationOptions: KeyframeAnimationOptions = {
+          duration: WORKSPACE_TRANSITION_MS, easing: WORKSPACE_TRANSITION_EASING, fill: "both",
+        };
+        const animations = [
+          gap.animate([{ width: `${gapWidth}px` }, { width: `${open ? initialWidth : 0}px` }], animationOptions),
+          container.animate([
+            { left: `${rect.left}px`, width: `${rect.width}px` },
+            { left: `${open ? 0 : -rect.width}px`, width: `${open ? initialWidth : rect.width}px` },
+          ], animationOptions),
+        ];
+        for (const animation of animations) animation.pause();
+        let motionFrame: number | null = null;
+        const cleanup = () => {
+          if (motionFrame !== null) window.cancelAnimationFrame(motionFrame);
+          for (const animation of animations) animation.cancel();
+          container.style.removeProperty("width");
+          // Settle the committed CSS layout before re-enabling button transitions.
+          container.getBoundingClientRect();
+          gap.style.removeProperty("transition");
+          container.style.removeProperty("transition");
+          leftMotionCleanupRef.current = null;
+        };
+        leftMotionCleanupRef.current = cleanup;
+        motionFrame = window.requestAnimationFrame(() => {
+          motionFrame = null;
+          const startTime = performance.now();
+          for (const animation of animations) {
+            animation.play();
+            animation.startTime = startTime;
+          }
+        });
+        void Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+          if (leftMotionCleanupRef.current !== cleanup) return;
+          flushSync(commit);
+          if (leftMotionCleanupRef.current === cleanup) cleanup();
+        });
+      };
       const handleMove = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== event.pointerId) return;
         const requestedWidth = initialWidth + moveEvent.clientX - initialX;
-        const intent = getWorkspaceSnapIntent(requestedWidth, minLeftWidth, maxLeftWidth, snapPending);
+        if (snapPending !== "collapse") {
+          if (requestedWidth > minLeftWidth) boundaryWidth = undefined;
+          else boundaryWidth ??= requestedWidth;
+        }
+        const intent = frameId === null
+          ? getWorkspaceSnapIntent(requestedWidth, minLeftWidth, maxLeftWidth, snapPending, boundaryWidth)
+          : null;
         if (options.onLeftCollapse && intent === "collapse") {
           if (snapPending === "collapse") return;
           if (frameId !== null) window.cancelAnimationFrame(frameId);
           frameId = null;
-          const renderedWidth = sidebarWrapper?.querySelector<HTMLElement>('[data-slot="sidebar-gap"]')?.getBoundingClientRect().width ?? nextWidth;
           snapPending = "collapse";
           resizeHandle?.setAttribute("data-snap-pending", "collapse");
-          sidebarWrapper?.style.setProperty("--sidebar-width", `${initialWidth}px`);
-          setLeftSidebarResizing(false);
-          if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-            collapseAnimation = sidebarWrapper?.querySelector<HTMLElement>('[data-slot="sidebar-gap"]')?.animate(
-              [{ width: `${renderedWidth}px` }, { width: "0px" }],
-              { duration: WORKSPACE_TRANSITION_MS, easing: WORKSPACE_TRANSITION_EASING },
-            ) ?? null;
-          }
-          options.onLeftCollapse();
+          animateLeftSidebar(false);
           return;
         }
         if (snapPending === "collapse") {
-          const gap = sidebarWrapper?.querySelector<HTMLElement>('[data-slot="sidebar-gap"]');
-          const renderedWidth = gap?.getBoundingClientRect().width ?? 0;
-          collapseAnimation?.cancel();
+          boundaryWidth = undefined;
           snapPending = null;
           resizeHandle?.removeAttribute("data-snap-pending");
-          options.onLeftExpand?.();
-          if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-            collapseAnimation = gap?.animate(
-              [{ width: `${renderedWidth}px` }, { width: `${initialWidth}px` }],
-              { duration: WORKSPACE_TRANSITION_MS, easing: WORKSPACE_TRANSITION_EASING },
-            ) ?? null;
-          }
+          animateLeftSidebar(true);
           nextWidth = initialWidth;
           return;
         }
+        if (leftMotionCleanupRef.current) return;
         nextWidth = clampNumber(requestedWidth, minLeftWidth, maxLeftWidth);
         setLeftSidebarResizing(true);
         if (frameId === null) frameId = window.requestAnimationFrame(applyPendingWidth);
@@ -167,10 +218,7 @@ export function useWorkspaceShellLayout(options: WorkspaceShellLayoutOptions) {
         sidebarWrapper?.style.setProperty("--sidebar-width", `${finalWidth}px`);
         setLeftSidebarWidth(finalWidth);
         stopLeftSidebarResize();
-        if (canceled) {
-          collapseAnimation?.cancel();
-          if (snapPending === "collapse") options.onLeftExpand?.();
-        }
+        if (canceled && (snapPending === "collapse" || leftMotionCleanupRef.current)) animateLeftSidebar(true);
       };
 
       window.addEventListener("pointermove", handleMove);
@@ -219,6 +267,7 @@ export function useWorkspaceShellLayout(options: WorkspaceShellLayoutOptions) {
 
   useEffect(() => {
     return () => {
+      leftMotionCleanupRef.current?.();
       stopLeftSidebarResize();
     };
   }, [stopLeftSidebarResize]);

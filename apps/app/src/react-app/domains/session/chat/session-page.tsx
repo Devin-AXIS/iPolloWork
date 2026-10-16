@@ -3225,6 +3225,7 @@ export function SessionPage(props: SessionPageProps) {
     let anchorWidth = initialWidth;
     let frameId: number | null = null;
     let snapped = false;
+    let boundary: { edge: "collapse" | "expand"; width: number } | null = null;
     rightPanel.style.transition = "none";
     rightPanel.style.width = `${initialWidth}px`;
     rightWorkspaceContentRef.current?.style.removeProperty("width");
@@ -3255,11 +3256,18 @@ export function SessionPage(props: SessionPageProps) {
           anchorX = moveEvent.clientX;
           anchorWidth = effectiveBrowserPanelWidth;
           nextWidth = anchorWidth;
+          boundary = null;
           resizeHandle.dataset.snapPending = "restore";
         }
         return;
       }
-      const intent = getWorkspaceSnapIntent(requestedWidth, effectiveRightPanelMinWidth, maximumWidth, null);
+      const edge = requestedWidth <= effectiveRightPanelMinWidth ? "collapse"
+        : requestedWidth >= maximumWidth ? "expand" : null;
+      if (edge === null) boundary = null;
+      else if (boundary?.edge !== edge) boundary = { edge, width: requestedWidth };
+      const intent = frameId === null && edge !== null
+        ? getWorkspaceSnapIntent(requestedWidth, effectiveRightPanelMinWidth, maximumWidth, null, boundary?.width)
+        : null;
       if (intent) {
         resizeHandle.dataset.snapPending = intent;
         changeMode(intent === "expand" ? "right" : "main");
