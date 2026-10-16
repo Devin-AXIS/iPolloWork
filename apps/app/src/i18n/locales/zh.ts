@@ -1862,7 +1862,7 @@ export default {
   "composer.agent_label": "智能体",
   "composer.any_file_type_supported": "支持任何文件类型。",
   "composer.attach_files": "附加文件",
-  "composer.attachments_require_multimodal": "当前模型可添加文本和代码文件；图片和 PDF 请切换到多模态模型。",
+  "composer.attachments_require_multimodal": "当前模型可添加文本和代码文件；图片、视频和 PDF 请切换到多模态模型。",
   "composer.behavior_label": "行为",
   "composer.configure": "配置",
   "composer.default_agent": "默认智能体",

@@ -332,7 +332,7 @@ export async function draftToParts(
       draft.attachments.filter((attachment) => attachment.delivery !== "workspace" && isModelReadableAttachment(attachment.mimeType)).map(async (attachment) => {
         if (options.supportsNativeAttachments === false) {
           if (composerAttachmentRequiresNativeModelSupport(attachment)) {
-            throw new Error("The selected model cannot read image or PDF attachments.");
+            throw new Error("The selected model cannot read image, video, or PDF attachments.");
           }
           return {
             type: "text" as const,
