@@ -47,6 +47,7 @@ export interface CaptureSceneOptions {
   forceVisible?: boolean;
   preferBrowserPaint?: boolean;
   scale?: number;
+  requestAnimationFrame?: Window["requestAnimationFrame"];
 }
 
 function showSceneAndClips(scene: HTMLElement): void {
@@ -132,7 +133,8 @@ async function captureSceneWithHtmlInCanvas(
   document.body.appendChild(canvas);
 
   try {
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    const requestFrame = options.requestAnimationFrame ?? window.requestAnimationFrame.bind(window);
+    await new Promise<void>((r) => requestFrame(() => requestFrame(() => r())));
     const ctx = canvas.getContext("2d") as CanvasRenderingContext2DWithDrawElement;
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, width, height);

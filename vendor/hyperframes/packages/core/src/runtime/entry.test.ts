@@ -103,6 +103,8 @@ describe("runtime entry", () => {
     window.__timelines = {};
     Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
     await evaluateRuntime();
+    const sharedData = await import("../registry/componentData");
+    expect(window.__hyperframes!.parseVisualComponentData).toBe(sharedData.parseVisualComponentData);
     expect(window.__hyperframes!.createFilmBridge).toEqual(expect.any(Function));
     let finish!: () => void;
     const first = new Promise<void>((resolve) => {

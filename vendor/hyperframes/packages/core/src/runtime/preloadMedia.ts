@@ -1,5 +1,6 @@
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
 import { skipsHiddenImages } from "./timedClipHide";
+import { readStudioPreviewTime } from "../studioPreviewMark";
 
 type PreloadableMedia = Pick<
   HTMLMediaElement,
@@ -40,9 +41,11 @@ export function deferMediaUntilDue(): void {
   win.__hfMediaDeferral?.disconnect();
   win.__hfMediaDeferral = undefined;
   if (!skipsHiddenImages()) return;
+  const currentTime = readStudioPreviewTime(window.location.search);
   const defer = (el: Element) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
-    if (start != null && start > 0 && lengthIsAuthored(el))
+    const duration = parseStrictFiniteTimingNumber(el.getAttribute("data-duration"));
+    if (start != null && duration != null && (start > currentTime || start + duration <= currentTime))
       (el as HTMLMediaElement).preload = "none";
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {

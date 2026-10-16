@@ -558,6 +558,27 @@ describe("Video Studio registry component integration", () => {
     expect(result.instances[0]!.snippet).toContain("legacy field retained");
   });
 
+  test("JSON-encoded component lists preserve punctuation and Unicode while rejecting invalid items before writing", async () => {
+    const { root, project, document, instance } = await jsonRecipeFixture();
+    const values = (leaves: string) => ({ ...instance.values, branches: JSON.stringify({
+      ...document, rows: document.rows.map(row => ({ ...row, leaves })),
+    }) });
+    for (const leaves of ["[", '["valid",1]', JSON.stringify(Array(5).fill("item")), JSON.stringify(["😀".repeat(13)])]) {
+      await expect(installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+        instances: [{ ...instance, values: values(leaves) }],
+      })).rejects.toMatchObject({ code: "invalid_video_recipe_data" });
+    }
+    expect(await readdir(project)).toEqual(["index.html"]);
+    const leaves = JSON.stringify(["输入,处理", "中文，标点", "😀".repeat(12)]);
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+      instances: [{ ...instance, values: values(leaves) }],
+    });
+    const mounted = z.object({ branches: z.string() }).parse(JSON.parse(attribute(result.instances[0]!.snippet, "data-variable-values")));
+    expect(JSON.parse(mounted.branches).rows[0].leaves).toBe(leaves);
+  });
+
   test("bounded scalar inputs allow declared empty defaults and count Unicode characters", async () => {
     const { root, project, manifest, manifestPath, instance } = await jsonRecipeFixture();
     await writeFile(manifestPath, JSON.stringify({ ...manifest, motionRecipe: { ...manifest.motionRecipe, textLimits: { title: { maxLines: 2, maxLineLength: 7 } } } }));

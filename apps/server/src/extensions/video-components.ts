@@ -221,7 +221,13 @@ function validateJsonRecipeData(contract: z.infer<typeof hyperframesVisualCompon
         }
         if (column.list) {
           const list = column.list;
-          const items = Array.from(list.separators).reduce((parts, separator) => parts.flatMap(part => part.split(separator)), [normalized]).map(item => item.trim()).filter(Boolean);
+          let items: string[];
+          if (normalized.startsWith("[")) {
+            try { items = z.array(z.string()).parse(JSON.parse(normalized)); }
+            catch { throw new ApiError(400, "invalid_video_recipe_data", `${field} must be a JSON array of texts.`); }
+          } else {
+            items = Array.from(list.separators).reduce((parts, separator) => parts.flatMap(part => part.split(separator)), [normalized]).map(item => item.trim()).filter(Boolean);
+          }
           if (items.length > list.maxItems || items.some(item => Array.from(item).length > list.itemMaxLength)) {
             throw new ApiError(400, "invalid_video_recipe_data", `${field} supports ${list.maxItems} items of at most ${list.itemMaxLength} characters.`);
           }

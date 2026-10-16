@@ -263,8 +263,11 @@ function isGsapAnimationOnlyScript(text: string): boolean {
 }
 
 function getDocumentScriptSignature(doc: Document): string {
+  const cacheSignatures = doc.querySelectorAll<HTMLMetaElement>('meta[name="hyperframes-shader-cache-signature"]');
   const projectSignature = Array.from(
-    doc.querySelectorAll<HTMLMetaElement>('meta[name="hyperframes-project-signature"]'),
+    cacheSignatures.length > 0
+      ? cacheSignatures
+      : doc.querySelectorAll<HTMLMetaElement>('meta[name="hyperframes-project-signature"]'),
   )
     .map((meta) => meta.getAttribute("content") || "")
     .join("\n");
@@ -273,7 +276,9 @@ function getDocumentScriptSignature(doc: Document): string {
       if (script.src) return true;
       const text = script.textContent || "";
       if (!text.trim()) return false;
-      return !isGsapAnimationOnlyScript(text);
+      // Without the full HTML signature, authored animation code must remain
+      // part of cache identity even when its scene's static markup is unchanged.
+      return cacheSignatures.length > 0 || !isGsapAnimationOnlyScript(text);
     })
     .map((script) => {
       const attrs = [
@@ -1029,17 +1034,20 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     canvas.height = 0;
   };
 
+  // Studio freezes authored rAF callbacks on pause; capture still needs paints.
+  const requestCaptureFrame = window.requestAnimationFrame.bind(window);
   const captureLiveScene = (scene: HTMLElement): Promise<HTMLCanvasElement> => {
     return captureScene(scene, bgColor, compWidth, compHeight, {
       forceVisible: true,
       scale: previewCaptureScale,
+      requestAnimationFrame: requestCaptureFrame,
     });
   };
 
   const waitForPaint = (): Promise<void> => {
     return new Promise((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => resolve());
+      requestCaptureFrame(() => {
+        requestCaptureFrame(() => resolve());
       });
     });
   };
@@ -1128,6 +1136,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     paintScenePairState(cache.fromId, cache.toId, String(1 - eased), String(eased));
   };
 
+  let prepareCurrentTransition: ((time: number) => void) | undefined;
   const tickShader = () => {
     if (prewarming) {
       return;
@@ -1162,6 +1171,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     const cache = cachedTransitions[activeIndex];
     if (!cache || cache.dirty || !cache.ready) {
       canvasEl.style.display = "none";
+      prepareCurrentTransition?.(currentTime);
       return;
     }
     // CSS-only transitions (prog === null) MUST take the fallback path. The
@@ -1987,14 +1997,15 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   let transitionCachePromise: Promise<void> | null = null;
 
-  const ensureTransitionCachesReady = (): Promise<void> => {
+  const ensureTransitionCachesReady = (frameTime?: number): Promise<void> => {
     if (transitionCachePromise) return transitionCachePromise;
 
     transitionCachePromise = (async () => {
       // CSS-only transitions (prog === null) never need prewarming — they
       // are always ready and route through applyFallbackTransition().
       const work = cachedTransitions.filter(
-        (cache) => !isCssOnlyTransition(cache) && (cache.dirty || !cache.ready),
+        (cache) => !isCssOnlyTransition(cache) && (cache.dirty || !cache.ready)
+          && (frameTime === undefined || (frameTime >= cache.time && frameTime < cache.time + cache.duration)),
       );
       const workItems = work.map((cache) => ({
         cache,
@@ -2043,7 +2054,6 @@ export function init(config: HyperShaderConfig): GsapTimeline {
             publicTimelineTime = readActualTimelineTime();
           }
         }
-        transitionCachePromise = null;
         return;
       }
 
@@ -2159,7 +2169,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
           compId,
           new Set(cachedTransitions.map((cache) => cache.cacheKey).filter(Boolean)),
         );
-        shaderCacheReady = areAllCachesReady();
+        shaderCacheReady = frameTime === undefined ? areAllCachesReady() : work.every(cache => cache.ready && !cache.dirty);
         const finalItem = workItems[workItems.length - 1];
         setShaderReadyState({
           ready: shaderCacheReady,
@@ -2174,7 +2184,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
         });
       } catch (e) {
         console.warn("[HyperShader] Pre-capture failed, keeping DOM fallback visible:", e);
-        shaderCacheReady = areAllCachesReady();
+        shaderCacheReady = frameTime === undefined ? areAllCachesReady() : work.every(cache => cache.ready && !cache.dirty);
         setShaderReadyState({
           ready: shaderCacheReady,
           progress: completed,
@@ -2216,14 +2226,20 @@ export function init(config: HyperShaderConfig): GsapTimeline {
           item.scene.style.opacity = item.opacity;
           item.scene.style.pointerEvents = item.pointerEvents;
         }
+        transitionCachePromise = null;
         tickShader();
         window.dispatchEvent(
           new CustomEvent("hyperShader:ready", {
             detail: { compositionId: compId, progress: completed, total },
           }),
         );
-        transitionCachePromise = null;
         if (shouldResume) {
+          if (!areAllCachesReady()) {
+            pendingPlay = true;
+            pendingPlayArgs = resumeArgs;
+            void ensureTransitionCachesReady();
+            return;
+          }
           pendingPlay = false;
           pendingPlayArgs = [];
           cancelResumeAfterPrewarm = false;
@@ -2238,7 +2254,12 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       }
     })();
 
-    return transitionCachePromise;
+    // Even a zero-work frame settles asynchronously. Clear the stored promise
+    // after assignment so a later Play can prepare the still-cold transitions.
+    const pending = transitionCachePromise;
+    const clearPending = () => { if (transitionCachePromise === pending) transitionCachePromise = null; };
+    void pending.then(clearPending, clearPending);
+    return pending;
   };
 
   const sceneEditObservers = observeSceneEdits();
@@ -2252,7 +2273,19 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     { once: true },
   );
 
-  const prewarmPromise = Promise.resolve().then(() => ensureTransitionCachesReady());
+  const requestedFrame = Number(readPlayerOption("__HF_PREVIEW_TIME", "__hf_preview_time"));
+  const frameOnly = readPlayerOption("__HF_PREVIEW_FRAME_ONLY", "__hf_preview_frame_only") === "1"
+    && Number.isFinite(requestedFrame) && requestedFrame >= 0 && requestedFrame <= 7200;
+  if (frameOnly) {
+    prepareCurrentTransition = time => {
+      void ensureTransitionCachesReady(time).then(tickShader, error => {
+        console.warn("[HyperShader] Could not prepare the requested preview frame:", error);
+      });
+    };
+  }
+  // A paused Studio refresh needs only this frame. Play still prepares the full
+  // transition set before advancing, so an unprepared cut cannot flash or skip.
+  const prewarmPromise = Promise.resolve().then(() => ensureTransitionCachesReady(frameOnly ? requestedFrame : undefined));
   const hfWin = window as unknown as { __hf?: { shaderTransitionsReady?: Promise<void> } };
   hfWin.__hf = hfWin.__hf || {};
   hfWin.__hf.shaderTransitionsReady = prewarmPromise;

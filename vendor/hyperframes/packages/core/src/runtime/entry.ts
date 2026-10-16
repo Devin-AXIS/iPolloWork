@@ -9,6 +9,7 @@ import { deferMediaUntilDue } from "./preloadMedia";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
+import { parseVisualComponentData } from "../registry/componentData";
 import { assetUrl } from "./assetUrl";
 import { getVariables } from "./getVariables";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
@@ -24,6 +25,7 @@ type HyperframeWindow = Window & {
     fitTextFontSize: typeof fitTextFontSize;
     getVariables: typeof getVariables;
     pretext: typeof pretext;
+    parseVisualComponentData: typeof parseVisualComponentData;
     registerRuntimeDataHandler: typeof registerRuntimeDataHandler;
     setRuntimeData: typeof setRuntimeData;
     clearRuntimeData: typeof clearRuntimeData;
@@ -55,6 +57,7 @@ deferMediaUntilDue();
   fitTextFontSize,
   getVariables,
   pretext,
+  parseVisualComponentData,
   registerRuntimeDataHandler,
   setRuntimeData,
   clearRuntimeData,

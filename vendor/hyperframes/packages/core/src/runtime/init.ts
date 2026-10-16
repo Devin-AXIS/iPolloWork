@@ -6,7 +6,7 @@ import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps 
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
 import { ensureHiddenLayerStyle, revealTimedClipsAfterFirstPass, SKIPPED_CLIP, skipsHiddenImages } from "./timedClipHide";
-import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studioPreviewMark";
+import { readStudioPreviewTime, STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studioPreviewMark";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
@@ -401,6 +401,8 @@ function loadPreviewImagesIn(root: Element): void {
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  if (skipsHiddenImages()) state.currentTime = readStudioPreviewTime(window.location.search);
+  let initialPreviewSeekPending = state.currentTime > 0;
   authoredMediaObserver?.disconnect();
   authoredMediaObserver = null;
   if (readSceneParts(document)) recordAuthoredMedia(document.documentElement);
@@ -496,7 +498,7 @@ export function initSandboxRuntimeModular(): void {
   // Transport resources are initialized before any player or media closures.
   // This removes the old temporal-dead-zone fallback and lets the public player
   // be constructed once with its final clock-backed behavior.
-  const clock = new TransportClock();
+  const clock = new TransportClock({ initialTime: state.currentTime });
   state.transportClock = clock;
   const webAudio = new WebAudioTransport();
   let webAudioReady = false;
@@ -3311,7 +3313,7 @@ export function initSandboxRuntimeModular(): void {
         if (state.tornDown) return;
         assetsSettled = true;
         postRuntimeMessage({ source: "hf-preview", type: "assets-ready", timedOut });
-      });
+      }, { currentTime: state.currentTime });
     }
     scheduleRootStageLayoutDiagnostics();
   };
@@ -4105,6 +4107,14 @@ export function initSandboxRuntimeModular(): void {
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (boundDuration > 0) {
       clock.setDuration(boundDuration);
+    }
+    if (initialPreviewSeekPending) {
+      initialPreviewSeekPending = false;
+      // The seek owners below are initialized by the end of this bootstrap.
+      // Run before the posted ready message reaches the parent, after setup.
+      queueMicrotask(() => {
+        if (!state.tornDown) transport.seek(state.currentTime, { keepPlaying: false });
+      });
     }
     runAdapters("discover", state.currentTime);
     // Loud, specific diagnostic for the #1 "looks fine, ships broken" trap:
