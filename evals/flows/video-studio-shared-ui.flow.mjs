@@ -1,14 +1,70 @@
 import workbench from "./video-workbench-toolbar.flow.mjs";
+import {evaluate} from "../runner/cdp.mjs";
 const studioOrigin = process.env.IPOLLOWORK_VIDEO_STUDIO_ORIGIN || "http://127.0.0.1:5198";
 const appOrigin = process.env.IPOLLOWORK_VIDEO_APP_ORIGIN || "http://127.0.0.1:5197";
 const consoleOrigin = process.env.IPOLLOWORK_VIDEO_CONSOLE_ORIGIN || "http://127.0.0.1:5278";
+// Opt-in isolated Studio regression. Host panels and all persistence are outside
+// this matrix; the bootstrap supplies a read-only fixture and blocks writes.
+const p0InspectorStep = {
+  name: "P0 isolated inspector state matrix",
+  async run(ctx) {
+    ctx.assert(await ctx.eval("window.__p0ReadOnlyProof === true"), "Explicit isolated fixture required");
+    await ctx.waitFor("Boolean(document.querySelector('iframe')?.contentDocument?.querySelector('.hf-script-sidebar'))", {timeoutMs:90000});
+    const tree = await ctx.client.send("Page.getFrameTree");
+    const entry = tree.frameTree.childFrames.find(item => item.frame.url.startsWith(studioOrigin));
+    ctx.assert(entry, "Actual Studio iframe required");
+    const world = await ctx.client.send("Page.createIsolatedWorld", {frameId:entry.frame.id,worldName:"p0-inspector-proof"});
+    const frame = {send:(method,params)=>ctx.client.send(method,method==="Runtime.evaluate"?{...params,contextId:world.executionContextId}:params)};
+    const read = expression => evaluate(frame,expression,{awaitPromise:true});
+    const wait = async expression => {
+      for(let i=0;i<100;i++){if(await read(expression))return;await new Promise(resolve=>setTimeout(resolve,100));}
+      throw Error("P0 state did not settle: "+expression);
+    };
+    await wait("document.querySelectorAll('.hf-inspector-tabs-scroll button').length===6 && !!document.querySelector('[data-testid=script-expand-table]')");
+    await read("window.postMessage({type:'ipollowork:studio-locale',locale:'zh'},location.origin)");
+    await wait("document.documentElement.lang==='zh-CN'");
+    const fields=()=>read("Array.from(document.querySelectorAll('.hf-script-sidebar input,.hf-script-sidebar textarea')).map(e=>e.value)");
+    const before=await fields();
+    for(const theme of ["light","dark"])for(const width of [1440,900]){
+      await ctx.client.send("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:false});
+      await read("window.postMessage({type:'ipollowork:studio-theme',theme:"+JSON.stringify(theme)+"},location.origin)");
+      await wait("document.documentElement.dataset.ipolloworkTheme==="+JSON.stringify(theme));
+      await wait("document.documentElement.scrollWidth<=innerWidth && document.querySelector('.hf-studio-inspector').getBoundingClientRect().right<=innerWidth+1");
+      for(const label of ["图层","主题","组件","动画","素材","讲解"]){
+        await read("Array.from(document.querySelectorAll('.hf-inspector-tabs-scroll button')).find(e=>e.textContent==="+JSON.stringify(label)+").click()");
+        await wait("document.querySelector('[data-testid=inspector-tab-content]')?.getBoundingClientRect().height>0");
+        await ctx.prove(theme+" · "+width+" · "+label+" 标签与首模块",{
+          voiceover:"隔离开发版Studio检查六个标签的共享选中状态、首模块间距和容器边界；宿主配音、主题面板另行验收，不提交任何修改。",
+          assert:async()=>{
+            const g=await read(`(()=>{const panel=document.querySelector('.hf-studio-inspector'),p=panel.getBoundingClientRect(),content=panel.querySelector('[data-testid=inspector-tab-content]'),button=Array.from(panel.querySelectorAll('.hf-inspector-tabs-scroll button')).find(e=>e.getAttribute('aria-pressed')==='true'),s=getComputedStyle(button),r=button.getBoundingClientRect();return{label:button.textContent,slot:button.dataset.slot,height:r.height,font:s.fontSize,padding:getComputedStyle(content).paddingTop,theme:document.documentElement.dataset.theme,bounds:p.left>=0&&p.right<=innerWidth+1&&p.bottom<=innerHeight+1,overflow:document.documentElement.scrollWidth>innerWidth};})()`);
+            ctx.assert(g.label===label&&g.slot==="button"&&g.height===28&&g.font==="13px"&&g.padding==="12px"&&g.theme===theme&&g.bounds&&!g.overflow,JSON.stringify(g));
+            ctx.assert(JSON.stringify(await fields())===JSON.stringify(before),"Script values unchanged");
+          },screenshot:{name:theme+"-"+width+"-"+label}
+        });
+      }
+      await ctx.prove(theme+" · "+width+" · 脚本展开隐藏属性，收起恢复标签",{
+        voiceover:"只展开、收起脚本，检查属性面板不重叠并恢复讲解标签；所有脚本内容保持原样。",
+        action:async()=>{await read("document.querySelector('[data-testid=script-expand-table]').click()");await wait("document.querySelector('.hf-script-sidebar').dataset.expanded==='true'");},
+        assert:async()=>{
+          ctx.assert(await read("(()=>{const e=document.querySelector('.hf-studio-inspector');return !e||getComputedStyle(e).visibility==='hidden'&&e.inert&&e.getAttribute('aria-hidden')==='true';})()"),"Expanded script hides and disables inspector");
+          ctx.assert(JSON.stringify(await fields())===JSON.stringify(before),"Expansion preserves draft");
+        },screenshot:{name:theme+"-"+width+"-script-expanded"}
+      });
+      await read("document.querySelector('[data-testid=script-expand-table]').click()");
+      await wait("document.querySelector('.hf-script-sidebar').dataset.expanded==='false'");
+      ctx.assert(await read("Array.from(document.querySelectorAll('.hf-inspector-tabs-scroll button')).some(e=>e.textContent==='讲解'&&e.getAttribute('aria-pressed')==='true')"),"Collapse restores original inspector tab");
+    }
+    ctx.assert(await ctx.eval("window.__p0ContentWrites===0"),"No content writes or task submission");
+    await ctx.client.send("Emulation.clearDeviceMetricsOverride");
+  }
+};
 export default {
   id: "video-studio-shared-ui",
   title: "Video Studio shared UI migration",
   kind: "user-facing",
   cdpTarget: { urlIncludes: studioOrigin },
   preserveTheme: true,
-  steps: [{
+  steps: process.env.IPOLLOWORK_VIDEO_UI_P0_ONLY === "1" ? [p0InspectorStep] : [{
     name: "Shared export controls preserve format behavior",
     run: async ctx => {
       if (!String(await ctx.eval("location.href")).startsWith(studioOrigin)) {
@@ -253,3 +309,33 @@ export default {
     },
   }],
 };
+
+// Reproducible isolated bootstrap; start Studio Vite on 5198 first.
+export async function runIsolatedP0Proof() {
+const [{default:puppeteer},{parseStoryboard},{spawn}]=await Promise.all([
+ import('../../vendor/hyperframes/packages/studio/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js'),
+ import('../../vendor/hyperframes/packages/core/dist/storyboard/index.js'),
+ import('node:child_process')
+]);
+const source='---\nmessage: UI验收隔离脚本\nvisual_style: Film\n---\n\n'+Array.from({length:5},(_,i)=>'## Frame '+(i+1)+' — 镜头 '+(i+1)+' · 标题与长文案验收\n- duration: 5s\n- voiceover: "这是一段隔离旁白，只用于布局验收，不会提交或保存。Long English description remains readable."\n- scene: "文字与图形解释流程，内容保持可编辑。注意区分共享控件与作品画面。"\n- asset_source: "code"\n').join('\n');
+const parsed=parseStoryboard(source),story={exists:true,path:'STORYBOARD.md',source,...parsed,frames:parsed.frames.map(f=>({...f,srcExists:false}))};
+const browser=await puppeteer.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+try{
+const page=await browser.newPage();await page.setViewport({width:1440,height:1000});
+await page.setRequestInterception(true);
+page.on('request',async r=>{
+ if(r.url().endsWith('/p0-proof'))return r.respond({contentType:'text/html',body:'<!doctype html><title>P0 UI隔离验收</title><style>body{margin:0}iframe{width:100vw;height:100vh;border:0}</style><iframe src="/#project/video-layer-accordion-icons-proof?tab=design"></iframe><script>window.__p0ReadOnlyProof=true;window.__p0ContentWrites=0;</script>'});
+ if(r.url().endsWith('/storyboard'))return r.respond({contentType:'application/json',body:JSON.stringify(story)});
+ if(!['GET','HEAD'].includes(r.method())){
+  if(!r.url().endsWith('/selection'))await page.evaluate(()=>window.__p0ContentWrites++);
+  return r.respond({status:r.url().endsWith('/selection')?200:403,contentType:'application/json',body:r.url().endsWith('/selection')?'{}':'{"error":"Read-only proof"}'});
+ }
+ r.continue();
+});
+await page.goto('http://127.0.0.1:5198/p0-proof');
+const endpoint=new URL(browser.wsEndpoint()),cdp='http://'+endpoint.host;
+const child=spawn(process.execPath,['evals/runner/run.mjs','--flow','video-studio-shared-ui','--cdp-url',cdp],{env:{...process.env,IPOLLOWORK_VIDEO_UI_P0_ONLY:'1'},stdio:'inherit'});
+const code=await new Promise(resolve=>child.on('exit',resolve));
+if(code!==0)throw Error('P0 inspector acceptance failed; inspect the generated fraimz report.');
+}finally{await browser.close();}
+}

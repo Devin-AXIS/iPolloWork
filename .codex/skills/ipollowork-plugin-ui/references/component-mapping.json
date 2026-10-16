@@ -1,6 +1,8 @@
 {
   "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
   "runtimeVersion": "1.7.0",
+  "statusDimensions": ["code", "adoption", "design", "interaction", "release"],
+  "statusPolicy": "Evaluate dimensions independently using component-catalog.md evidence. Figma IDs verify identity only; null is unverified. No implied release or complete state acceptance.",
   "foundations": {
     "figmaCollectionId": "VariableCollectionId:237:1443",
     "modes": {
