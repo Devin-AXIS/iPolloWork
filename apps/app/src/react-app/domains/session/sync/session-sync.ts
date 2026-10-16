@@ -150,11 +150,12 @@ type InterruptedUserMessageDisposition = "normal" | "stopped" | "resumed" | "ign
 function observeInterruptedUserMessage(
   run: InterruptedRun,
   message: Pick<UIMessage, "id" | "role" | "parts" | "metadata">,
+  previous?: UIMessage,
 ): InterruptedUserMessageDisposition {
   if (message.role !== "user") return "normal";
   const text = messageVisibleText(message);
   if (run.blockedUserMessageIds.has(message.id)) {
-    if (text) consumePendingBlockedUserText(run, text);
+    if (text && run.protectedOptimisticUserMessageIds.has(message.id)) consumePendingBlockedUserText(run, text);
     run.observedUserMessageIds.add(message.id);
     return "stopped";
   }
@@ -166,9 +167,9 @@ function observeInterruptedUserMessage(
     run.resumeStartedAt = null;
     return "resumed";
   }
-  if (run.observedUserMessageIds.has(message.id)) return "normal";
+  if (run.observedUserMessageIds.has(message.id) && (!previous || messageVisibleText(previous))) return "normal";
   if (text && (run.pendingBlockedUserTextCounts.get(text) ?? 0) > 0) {
-    const createdAt = conversationMessageCreatedAt(message);
+    const createdAt = conversationMessageCreatedAt(message) ?? (previous ? conversationMessageCreatedAt(previous) : null);
     if (run.interrupted && run.resumeUserMessageId && run.resumeStartedAt && createdAt !== null && createdAt >= run.resumeStartedAt) {
       run.observedUserMessageIds.add(message.id);
       run.interrupted = false;
@@ -194,6 +195,29 @@ function observeInterruptedUserMessage(
   }
   run.observedUserMessageIds.add(message.id);
   return run.interrupted ? "ignore" : "normal";
+}
+
+function reconcileInterruptedUserMessage(workspaceId: string, sessionId: string, run: InterruptedRun, message: UIMessage) {
+  const queryClient = getReactQueryClient();
+  const key = transcriptKey(workspaceId, sessionId);
+  const current = queryClient.getQueryData<UIMessage[]>(key) ?? [];
+  const previous = current.find(item => item.id === message.id);
+  const disposition = observeInterruptedUserMessage(run, message, previous);
+  if (disposition !== "stopped" || isOptimisticUserMessage(message)) return disposition;
+  const text = messageVisibleText(message);
+  if (!text || (previous && !isOptimisticUserMessage(previous) && messageVisibleText(previous))) return disposition;
+  const optimistic = current.find(item => isOptimisticUserMessage(item)
+    && run.protectedOptimisticUserMessageIds.has(item.id)
+    && messageVisibleText(item) === text);
+  if (!optimistic) return disposition;
+  // Stop freezes assistant output, not the engine's acknowledgment of the
+  // submitted user row. Replace that row before a snapshot reaches rendering.
+  const acknowledged = { ...(previous && !isOptimisticUserMessage(previous) ? previous : {}), ...message };
+  queryClient.setQueryData<UIMessage[]>(key, current.flatMap(item => item.id === optimistic.id
+    ? [acknowledged] : item.id === message.id ? [] : [item]));
+  run.protectedOptimisticUserMessageIds.delete(optimistic.id);
+  useSessionActivityStore.getState().markMessageRole(workspaceId, sessionId, message.id, "user");
+  return disposition;
 }
 
 function assistantMessageBelongsToStoppedRun(
@@ -1184,7 +1208,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
 
   if (event.type === "message.upsert") {
     if (event.message.role === "user" && interrupted) {
-      const disposition = observeInterruptedUserMessage(interrupted, event.message);
+      const disposition = reconcileInterruptedUserMessage(workspaceId, event.sessionId, interrupted, event.message);
       if (disposition === "ignore") return;
     } else if (event.message.role === "assistant" && interrupted) {
       const parentUserMessageId = conversationMessageParentUserMessageId(event.message);
@@ -1253,7 +1277,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     if (interrupted) {
       const eventRole = event.messageRole;
       if (eventRole === "user") {
-        const disposition = observeInterruptedUserMessage(interrupted, {
+        const disposition = reconcileInterruptedUserMessage(workspaceId, event.sessionId, interrupted, {
           id: event.messageId,
           role: "user",
           parts: event.parts,
@@ -1571,7 +1595,7 @@ export function sanitizeInterruptedSessionSnapshot(
   const messages: UIMessage[] = [];
   for (const message of snapshot.messages) {
     if (message.role === "user") {
-      const disposition = observeInterruptedUserMessage(run, message);
+      const disposition = reconcileInterruptedUserMessage(workspaceId, snapshot.session.id, run, message);
       if (disposition === "ignore") {
         changed = true;
         continue;
