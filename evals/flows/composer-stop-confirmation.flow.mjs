@@ -1,6 +1,6 @@
 export default {
   id: "composer-stop-confirmation",
-  title: "暂停后的迟到消息确认不会产生重复对话（隔离传输）",
+  title: "首次发送的空消息声明不会在暂停后变成重复对话（隔离传输）",
   kind: "user-facing",
   cdpTarget: { urlIncludes: "composer-stop-confirmation-proof.html" },
   steps: [{ name: "连续发送并暂停", async run(ctx) {
@@ -14,6 +14,7 @@ export default {
           await ctx.waitFor('Boolean(document.querySelector(\'button[aria-label="停止"]\'))');
           await ctx.trustedClick('button[aria-label="停止"]');
           await ctx.waitForText(`服务端确认 ${turn} 条`);
+          ctx.assert(await ctx.eval('document.querySelectorAll(\'[data-testid="user-message-bubble"]\').length') === turn, `one visible user bubble per send after stop ${turn}`);
         }
         await ctx.clickText("回放服务端确认");
       },

@@ -789,6 +789,41 @@ describe("session transcript sync", () => {
     expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
   });
 
+  test.each(["local-stopped", "native-stopped", undefined])("stop reconciles an already cached native confirmation when its active id is %s", (activeId) => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "first prompt", "local-stopped");
+    const snapshot = snapshotWithMessages([{ id: "native-stopped", role: "user", text: "first prompt", created: Date.now() }]);
+    // The snapshot may reach the display cache before its effect reconciles
+    // the optimistic transcript. Stop must reconcile this existing echo too.
+    getReactQueryClient().setQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"), (current = []) => [...current, ...snapshot.messages]);
+    settleInterruptedSessionRun("workspace-a", "session-a", activeId);
+    const sanitized = sanitizeInterruptedSessionSnapshot("workspace-a", snapshot);
+    seedSessionState("workspace-a", sanitized);
+    const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+    expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot: sanitized }).map(message => message.id))
+      .toEqual(["native-stopped"]);
+  });
+
+  test.each(["native-stopped", undefined])("a first-task stop with active id %s binds the visible prompt instead of its empty native shell", (activeId) => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "first prompt", "local-stopped");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a", message: { id: "native-stopped", role: "user", parts: [] },
+      });
+      // Initial project drafts are dispatched by the route, so the surface
+      // can Stop without owning the optimistic id. Native text arrives later.
+      settleInterruptedSessionRun("workspace-a", "session-a", activeId);
+      const snapshot = sanitizeInterruptedSessionSnapshot("workspace-a", snapshotWithMessages([
+        { id: "native-stopped", role: "user", text: "first prompt" },
+      ]));
+      seedSessionState("workspace-a", snapshot);
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot }).map(message => message.id))
+        .toEqual(["native-stopped"]);
+    } finally { release(); cleanup(); }
+  });
+
   test.each([false, true])("acknowledges late stopped user parts with an existing native shell: %s", (shellBeforeStop) => {
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const release = trackWorkspaceSessionSync(syncInput, "session-a");

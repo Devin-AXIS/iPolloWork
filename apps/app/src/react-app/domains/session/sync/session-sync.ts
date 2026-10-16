@@ -872,14 +872,22 @@ export function settleInterruptedSessionRun(
   run.resumeUserMessageId = null;
   run.resumeUserText = "";
   run.resumeStartedAt = null;
-  const messages = queryClient.getQueryData<UIMessage[]>(transcriptKey(workspace, session)) ?? [];
+  const cached = queryClient.getQueryData<UIMessage[]>(transcriptKey(workspace, session)) ?? [];
+  // A native echo can already be cached when Stop beats snapshot hydration.
+  // Reconcile it before freezing the run; preserve earlier unacknowledged stops.
+  const messages = removeAcknowledgedOptimisticUserMessages(cached, run.protectedOptimisticUserMessageIds);
+  if (messages.length !== cached.length) queryClient.setQueryData(transcriptKey(workspace, session), messages);
+  // First-project prompts are owned by the route. Without its client id,
+  // an empty native shell must not displace the visible optimistic prompt.
+  const submittedUserMessage = (message: UIMessage) => message.role === "user"
+    && (message.parts.length > 0 || isOptimisticUserMessage(message));
   const requestedStoppedUserMessageId = stoppedUserMessageId?.trim() ?? "";
   const requestedStoppedUserIndex = requestedStoppedUserMessageId
-    ? messages.findIndex((message) => message.role === "user" && message.id === requestedStoppedUserMessageId)
+    ? messages.findIndex((message) => submittedUserMessage(message) && message.id === requestedStoppedUserMessageId)
     : -1;
   const stoppedUserIndex = requestedStoppedUserIndex >= 0
     ? requestedStoppedUserIndex
-    : messages.findLastIndex((message) => message.role === "user");
+    : messages.findLastIndex(submittedUserMessage);
   const stoppedUserMessage = stoppedUserIndex >= 0 ? messages[stoppedUserIndex] : undefined;
   if (stoppedUserMessage?.role === "user") {
     run.blockedUserMessageIds.add(stoppedUserMessage.id);
