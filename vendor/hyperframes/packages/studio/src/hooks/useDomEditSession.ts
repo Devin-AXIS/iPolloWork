@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
@@ -9,6 +9,7 @@ import type { Composition } from "@hyperframes/sdk";
 import { sdkCutoverPersist, sdkDeletePersist, type PublishSdkSession } from "../utils/sdkCutover";
 import { runResolverShadow, recordResolverParity } from "../utils/sdkResolverShadow";
 import { useAskAgentModal } from "./useAskAgentModal";
+import { collectTimelineTreeElements } from "../player/lib/timelineTreeSelection";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
@@ -81,7 +82,7 @@ export function useDomEditSession({
   captionEditMode,
   compositionLoading,
   previewIframeRef,
-  timelineElements,
+  timelineElements: authoredTimelineElements,
   setSelectedTimelineElementId,
   setRightCollapsed,
   setRightPanelTab,
@@ -111,6 +112,10 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
+  const clipManifest = usePlayerStore((state) => state.clipManifest);
+  const domClipChildren = usePlayerStore((state) => state.domClipChildren);
+  const timelineElements = useMemo(() => collectTimelineTreeElements(authoredTimelineElements,
+    clipManifest ?? [], domClipChildren), [authoredTimelineElements,clipManifest,domClipChildren]);
   const openImageWorkbench = useImageWorkbench({
     projectId,
     showToast,
@@ -647,5 +652,6 @@ export function useDomEditSession({
     invalidateGsapCache: bumpGsapCache,
     previewIframeRef,
     commitMutation,
+    commitGsapMutationForSelection: gsapCommitMutation,
   };
 }

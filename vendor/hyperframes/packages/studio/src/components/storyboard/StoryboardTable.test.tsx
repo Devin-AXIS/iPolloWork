@@ -32,6 +32,8 @@ vi.mock("../../hooks/useBlockCatalog", () => ({
   }] }] }),
 }));
 
+vi.mock("../nle/NLEContext", () => ({ useNLEContextOptional: () => null }));
+
 import { StoryboardTable } from "./StoryboardTable";
 import { usePlayerStore } from "../../player/store/playerStore";
 
@@ -243,37 +245,34 @@ describe("StoryboardTable interactions", () => {
     vi.restoreAllMocks();
   });
 
-  it("removes redundant timeline navigation and keeps the shared reorder control", async () => {
+  it("locates the matching visual scene without writing the script", async () => {
     click("Cancel");
-    const shot = { id: "opening", domId: "opening", key: "index.html#opening", tag: "section", start: 0, duration: 5, track: 0, timingSource: "authored" as const };
-    await act(async () => usePlayerStore.setState({
-      isPlaying: true,
-      elements: [shot],
-      clipParentMap: new Map([["voice", "opening"]]),
-      clipManifest: [{ id: "voice", label: "Opening narration", tagName: "audio", kind: "audio", start: 1, duration: 3, track: 1, sourceFile: "index.html", timelineRole: "voiceover", assetUrl: "media/voice.mp3", compositionId: null, parentCompositionId: null, compositionSrc: null }],
-    }));
-    expect(container.querySelector('[aria-label="定位镜头 1"]')).toBeNull();
-    const reorder = container.querySelector<HTMLButtonElement>('button[draggable]');
-    expect(reorder?.classList.contains("hf-script-reorder")).toBe(true);
-    expect(reorder?.getAttribute("title")).toBeNull();
-    expect(mocks.setViewMode).not.toHaveBeenCalled();
-    expect(usePlayerStore.getState().isPlaying).toBe(true);
-    const narration = container.querySelector<HTMLButtonElement>('[aria-label="Locate clip 1 · Opening narration"]');
-    expect(narration).toBeNull();
+    const shot = { id: "opening", domId: "opening", key: "index.html#opening", tag: "section", start: 0, duration: 5, track: 0 };
+    await act(async () => usePlayerStore.setState({ isPlaying: true, elements: [shot] }));
+    const locate = container.querySelector<HTMLButtonElement>('[data-testid="storyboard-locate-1"]');
+    expect(locate?.disabled).toBe(false);
+    expect(locate?.textContent).toBe("01");
+    expect(locate?.getAttribute("draggable")).not.toBe("true");
+    expect(container.querySelector('.hf-script-reorder')?.textContent).not.toContain("01");
+    await act(async () => locate?.click());
+    expect(usePlayerStore.getState().selectedElementId).toBe("index.html#opening");
+    expect(usePlayerStore.getState().requestedSeekTime).toBe(0);
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
+    expect(mocks.setViewMode).toHaveBeenCalledWith("timeline");
     expect(mocks.writeProjectFile).not.toHaveBeenCalled();
+    expect(container.querySelector('.hf-script-reorder')).not.toBeNull();
   });
 
-  it("keeps narration editing local without a stale locator", async () => {
+  it("keeps the locator visible but disabled for missing clips or unsaved edits", async () => {
     click("Cancel");
-    const locate = () => container.querySelector<HTMLButtonElement>('[aria-label="定位镜头 1"]');
-    expect(locate()).toBeNull();
+    const locate = () => container.querySelector<HTMLButtonElement>('[data-testid="storyboard-locate-1"]');
+    expect(locate()?.disabled).toBe(true);
     await act(async () => usePlayerStore.setState({ elements: [{ id: "opening", tag: "section", start: 0, duration: 5, track: 0 }] }));
-    expect(locate()).toBeNull();
+    expect(locate()?.disabled).toBe(false);
     const narration = container.querySelector<HTMLTextAreaElement>("#storyboard-narration-1");
-    expect(narration).not.toBeNull();
     setControlValue(narration!, "Revised narration");
-    expect(locate()).toBeNull();
-    expect(mocks.setViewMode).not.toHaveBeenCalled();
+    expect(locate()?.disabled).toBe(true);
+    expect(narration?.value).toBe("Revised narration");
     expect(mocks.writeProjectFile).not.toHaveBeenCalled();
   });
 

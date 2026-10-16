@@ -24,6 +24,7 @@ import {
   type TimelineSegmentsByElement,
 } from "./gsapTimelineSegmentCache";
 import { buildTimelineElementKey } from "../player/lib/timelineElementHelpers";
+import { collectTimelineTreeElements, resolveTimelineTreeSelectionKey } from "../player/lib/timelineTreeSelection";
 
 function extractIdFromSelector(selector: string): string | null {
   const match = selector.match(/^#([\w-]+)/);
@@ -106,19 +107,16 @@ export function getAnimationsForElement(
     ) {
       return true;
     }
+    if (element) {
+      try { return element.matches(a.targetSelector); }
+      catch { return false; }
+    }
     return a.targetSelector.split(",").some((part) => {
       const trimmed = part.trim();
       if (!trimmed) return false;
       if (matchers.has(trimmed)) return true;
       const lastSimple = trimmed.split(/\s+/).pop();
       if (lastSimple && matchers.has(lastSimple)) return true;
-      if (element) {
-        try {
-          if (element.matches(trimmed)) return true;
-        } catch {
-          /* tween selector isn't a valid CSS selector for matches() — skip */
-        }
-      }
       return false;
     });
   });
@@ -374,18 +372,30 @@ export function useGsapAnimationsForElement(
   // Key format must match timeline element keys: "sourceFile#domId".
   // Merges keyframes from ALL animations targeting this element and synthesizes
   // flat tweens so the cache is never downgraded vs the bulk populate.
-  const elementId = target?.id ?? null;
+  const elementId = useMemo(() => {
+    if (!targetId && !targetHfId && !targetSelector) return null;
+    const { elements, clipManifest, domClipChildren } = usePlayerStore.getState();
+    return resolveTimelineTreeSelectionKey({
+      elementId: targetId ?? undefined,
+      hfId: targetHfId ?? undefined,
+      selector: targetHfId ? undefined : targetSelector ?? undefined,
+      sourceFile,
+      elements,
+      manifest: clipManifest ?? [],
+      domClipChildren,
+    });
+  }, [targetId, targetHfId, targetSelector, sourceFile, domClipChildrenKey]);
   // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!elementId) return;
 
     // Resolve the element's time range from the player store so we can
     // convert tween-relative keyframe percentages to clip-relative ones.
-    const { elements, domClipChildren } = usePlayerStore.getState();
+    const { elements, domClipChildren, clipManifest } = usePlayerStore.getState();
     const { elStart, elDuration } = resolveClipTimingBasis(
       elementId,
       sourceFile,
-      elements,
+      collectTimelineTreeElements(elements, clipManifest ?? [], domClipChildren),
       domClipChildren,
     );
     const animationSegments = buildTimelineAnimationSegments(animations, {
@@ -442,7 +452,7 @@ export function useGsapAnimationsForElement(
       if (kf.ease) ease = kf.ease;
       if (kf.easeEach) easeEach = kf.easeEach;
     }
-    if (allKeyframes.length === 0 && animationSegments.length === 0) {
+    if (allKeyframes.length === 0 && animationSegments.length === 0 && animations.length === 0) {
       // The per-element parsed-animation match can transiently miss class /
       // selector tweens (e.g. `.dot`) that the file-wide populate or runtime
       // scan already cached. Only clear when no source cached this element —
@@ -455,6 +465,7 @@ export function useGsapAnimationsForElement(
     }
     const dedupedKeyframes = deduplicateKeyframes(allKeyframes);
     const merged: KeyframeCacheEntry = {
+      propertyAnimations: animations,
       format,
       keyframes: dedupedKeyframes,
       ...(ease ? { ease } : {}),
@@ -509,19 +520,21 @@ export function usePopulateKeyframeCacheForFile(
     if (!projectId) return;
 
     const sf = sourceFile;
+    let canceled = false;
     // fallow-ignore-next-line complexity
     fetchParsedAnimations(projectId, sf).then((parsed) => {
-      if (!parsed) return;
-      const { setKeyframeCacheEntries } = usePlayerStore.getState();
-      clearKeyframeCacheForFile(sf);
-      const { elements, domClipChildren } = usePlayerStore.getState();
+      if (!parsed || canceled || lastFetchKeyRef.current !== fetchKey) return;
+      const { elements, domClipChildren, clipManifest } = usePlayerStore.getState();
+      const timelineElements = collectTimelineTreeElements(elements, clipManifest ?? [], domClipChildren);
+      const timelineTargets = [...timelineElements, ...domClipChildren];
       const doc = iframeRef?.current?.contentDocument;
       const mergedByElement = new Map<string, KeyframeCacheEntry>();
       const animationSegmentsByElement: TimelineSegmentsByElement = new Map();
+      const propertyAnimationsByElement = new Map<string, GsapAnimation[]>();
       for (const anim of parsed.animations) {
         const motion = readMotionInstanceFromExtras(anim.extras);
         const motionTargetKeys = motion
-          ? resolveMotionTimelineTargetKeys(motion.target, sf, [...elements, ...domClipChildren])
+          ? resolveMotionTimelineTargetKeys(motion.target, sf, timelineTargets)
           : [];
         const targetIds =
           motionTargetKeys.length > 0
@@ -531,11 +544,12 @@ export function usePopulateKeyframeCacheForFile(
               : resolveGsapTimelineTargetKeys(
                   anim.targetSelector,
                   sf,
-                  [...elements, ...domClipChildren],
+                  timelineTargets,
                   doc,
                 );
+        for (const id of targetIds) propertyAnimationsByElement.set(id, [...(propertyAnimationsByElement.get(id) ?? []), anim]);
         appendTimelineAnimationSegments(animationSegmentsByElement, anim, targetIds, (id) => {
-          const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
+          const { elStart, elDuration } = resolveClipTimingBasis(id, sf, timelineElements, domClipChildren);
           return { start: elStart, duration: elDuration };
         });
         if (anim.hasUnresolvedKeyframes) continue;
@@ -557,7 +571,7 @@ export function usePopulateKeyframeCacheForFile(
         // Attribute the tween to every element it animates (handles class /
         // group / descendant selectors, not just `#id`).
         for (const id of targetIds) {
-          const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
+          const { elStart, elDuration } = resolveClipTimingBasis(id, sf, timelineElements, domClipChildren);
           const clipKeyframes = kfData.keyframes.map((kf) => {
             const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
             // 0.001% precision (matching useGsapAnimationsForElement above) so a
@@ -583,9 +597,18 @@ export function usePopulateKeyframeCacheForFile(
         }
       }
       attachTimelineAnimationSegments(mergedByElement, animationSegmentsByElement);
-      setKeyframeCacheEntries(buildTimelineCacheUpdates(sf, mergedByElement));
+      for (const [id, propertyAnimations] of propertyAnimationsByElement) {
+        const entry = mergedByElement.get(id) ?? {format:"percentage",keyframes:[]};
+        entry.propertyAnimations = propertyAnimations;
+        mergedByElement.set(id,entry);
+      }
+      clearKeyframeCacheForFile(sf, buildTimelineCacheUpdates(sf, mergedByElement));
       astFetchDoneRef.current = fetchKey;
     });
+    return () => {
+      canceled = true;
+      if (lastFetchKeyRef.current === fetchKey) lastFetchKeyRef.current = "";
+    };
     // elementCount is in the deps because new timeline elements (e.g. after a
     // sub-composition expand) need their keyframe cache populated immediately;
     // without it the effect won't re-run when elements appear/disappear.

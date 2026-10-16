@@ -4,6 +4,12 @@
  * from here without creating circular dependencies.
  */
 
+/** A transient editor window in the source composition's unchanged global clock. */
+export interface PlaybackRange {
+  start: number;
+  end: number;
+}
+
 export interface PlaybackAdapter {
   play: () => void;
   pause: () => void;

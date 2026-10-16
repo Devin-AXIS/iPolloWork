@@ -22,11 +22,13 @@ description: 为 iPolloWork 新插件或插件工作区复用 UI 组件、颜色
 - 开发构建显式选择 `buildPluginRuntime('bundled')`，将运行时放在业务脚本之前；生产包不包含运行时，保留契约中的固定 meta 标记，由宿主注入。不能仅凭 `NODE_ENV` 推断加载方式。
 - 当前运行时版本为 `1.7.0`。使用本轮颜色与字体规范时调用 `requireRuntime(1, required, 3)`，第三参数检查最低 minor；使用公共 Icon 时调用 `requireRuntime(1, ['Button', 'Icon'], 4)`，尺寸 S/M/L 为14/16/20px，Button 前后图标直接作为 children 组合，纯图标按钮必须有 aria-label。required 列出实际使用的全部函数导出（包括子组件）。共享 Badge 的 info/success/warning 语义变体和前置图标组合要求 `requireRuntime(1, ['Badge', 'Icon'], 5)`。SearchField、NumberField、Slider、Calendar、DatePicker / TimeInput、FileUpload / FileUploadItem 要求 `requireRuntime(1, required, 6)`；日期使用本地年月日，上传状态由业务调用方提供，不伪造进度或取消能力。表格组合 TableSortHead / TablePagination / TablePageSelection / TableBulkActions 要求 `requireRuntime(1, required, 7)`。排序、过滤、分页与稳定ID选择由调用方管理；表头只选当前页，翻页保留选择，改变筛选清空选择；批量确认与部分失败恢复必须由实际业务处理。旧版本或缺组件时停止初始化并提示更新客户端。不支持完整 semver 范围、最低 patch 或 manifest UI 版本协商，也不自动下载另一份组件库。
 
-1.2 核心扩展及 Alert/Toast 浅背景已本地整合到 Carrie，未提交、推送或发布；隔离分支仍保留。核心样板以浏览器沙箱验证，真实客户端安装验证另记在接入契约，不把两者等同。签名包上传、打包客户端和跨客户端版本升级未验收。推荐目录的 62 个条目不等于运行时已提供 62 个独立组件。
+历史1.2整合记录不代表当前发布状态。当前core汇总43个模块；Figma推荐页的62个条目包含变体和内容示例，不能当作独立组件数量。按组件目录分别核对代码可用、业务采用、设计对齐、交互验收、发布验证五个维度。核心样板是浏览器隔离验证，真实客户端安装证据另记；签名包上传、打包客户端和跨客户端升级仍未完成全面验收。
 
 ## 选择顺序与证据
 
 读取 [组件目录](references/component-catalog.md) 中任务涉及的条目，然后打开真实源码、导出和调用场景。
+
+实施前按共享包README的固定验收矩阵列出本次适用状态。每条结果绑定动作、可观察断言与截图；未测状态记录Incomplete，不能由“推荐”或Figma身份自动升级为Passed。视频工作台保留专业布局，仅复用语义主题与基础控件；展开脚本隐藏属性、收起恢复原页签须单独验收。
 
 1. **推荐**：默认复用对应代码；推荐范围以清单中的证据为限。
 2. **待验证**：已有实现，先检查清单中的缺陷和边界。已复现缺陷不得默认采用；需要修复并重跑对应失败回归。没有已知缺陷时，场景匹配才可采用，并补齐本次使用的状态、主题、键盘和恢复验证。

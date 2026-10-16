@@ -46,6 +46,8 @@ export interface UseTimelineEditingOptions {
   publishSdkSession?: PublishSdkSession;
   /** Resync the SDK session after a server-authoritative timeline write. */
   forceReloadSdkSession?: () => void;
+  /** Refresh parsed inspector animations and timeline keyframes after the final timing rewrite. */
+  onAnimationTimingCommitted?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
 }
 

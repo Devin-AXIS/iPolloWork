@@ -16,15 +16,9 @@ import {
   FlatStrokeSection,
 } from "./propertyPanelFlatStyleSections";
 import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
-import {
-  FlatLayoutSection,
-  LayoutTransform3DBlock,
-} from "./propertyPanelFlatLayoutSection";
+import { FlatLayoutSection, LayoutTransform3DBlock } from "./propertyPanelFlatLayoutSection";
 import { GsapAnimationSection } from "./GsapAnimationSection";
-import {
-  FlatMotionSection,
-  FlatTimingRow,
-} from "./propertyPanelFlatMotionSection";
+import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
@@ -219,6 +213,8 @@ export function PropertyPanelFlat({
   onSetArcPath,
   onUpdateArcSegment,
   onUpdateKeyframeEase,
+  onEditPropertyKeyframe,
+  onEnablePropertyKeyframes,
   onSetAllKeyframeEases,
   onUnroll,
   onMutateMotion,
@@ -262,6 +258,8 @@ export function PropertyPanelFlat({
   | "onUpdateArcSegment"
   | "onUnroll"
   | "onUpdateKeyframeEase"
+  | "onEditPropertyKeyframe"
+  | "onEnablePropertyKeyframes"
   | "onSetAllKeyframeEases"
   | "recordingState"
   | "recordingDuration"
@@ -316,12 +314,10 @@ export function PropertyPanelFlat({
       : elementKind === "image" || elementKind === "video" || elementKind === "audio"
         ? "media"
         : "other";
-  const hasAnimationParameters =
-    STUDIO_GSAP_PANEL_ENABLED && Boolean(onMutateMotion);
+  const hasAnimationParameters = STUDIO_GSAP_PANEL_ENABLED && Boolean(onMutateMotion);
   const showMotionTiming = Boolean(sections.timing);
-  const gsapEffectHandlers =
-    hasAnimationParameters && onMutateMotion ? { onMutateMotion } : null;
-  const showMotionEffects = inspectorMode === "animation" && gsapEffectHandlers !== null;
+  const gsapEffectHandlers = hasAnimationParameters && onMutateMotion ? { onMutateMotion } : null;
+  const showMotionEffects = gsapEffectHandlers !== null;
   const availableGroupIds =
     inspectorMode === "animation"
       ? [...(showMotionEffects ? ["animation"] : [])]
@@ -332,6 +328,7 @@ export function PropertyPanelFlat({
           ...(sections.layout ? ["layout", "transform-3d"] : []),
           ...(sections.colorGrading ? ["grade"] : []),
           ...(sections.media ? ["media"] : []),
+          ...(showMotionEffects ? ["animation"] : []),
         ];
   const orderedGroupIds = resolveInspectorGroupOrder({
     elementKind,
@@ -377,9 +374,7 @@ export function PropertyPanelFlat({
   const toggleOpen = (groupId: string) => {
     hasManualGroupSelectionRef.current = true;
     setOpenGroupIds((current) =>
-      current.includes(groupId)
-        ? current.filter((id) => id !== groupId)
-        : [...current, groupId],
+      current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId],
     );
     setJustToggledIds([groupId]);
     if (justToggledTimeoutRef.current) clearTimeout(justToggledTimeoutRef.current);
@@ -554,8 +549,8 @@ export function PropertyPanelFlat({
   if (showMotionEffects && gsapEffectHandlers) {
     groups.push({
       id: "animation",
-      title: "Animation",
-      summary: "出现 · 动作 · 消失",
+      title: "Animation parameters",
+      summary: "",
       content: (
         <div className="space-y-3">
           {onUpdateGsapProperty &&
@@ -565,9 +560,10 @@ export function PropertyPanelFlat({
             onRemoveGsapProperty &&
             onAddGsapAnimation && (
               <GsapAnimationSection
+                compact
                 animations={gsapAnimations}
                 ownerId={element.id}
-                ownerLocator={{ hfId: element.hfId }}
+                ownerLocator={{ hfId: element.hfId, root: element.element.ownerDocument }}
                 ownerRange={deriveElementTiming(element, gsapAnimations)}
                 multipleTimelines={gsapMultipleTimelines}
                 unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
@@ -582,12 +578,16 @@ export function PropertyPanelFlat({
                 onRemoveFromProperty={onRemoveGsapFromProperty}
                 onSetArcPath={onSetArcPath}
                 onUpdateArcSegment={onUpdateArcSegment}
+                onEnablePropertyKeyframes={onEnablePropertyKeyframes}
+                onEditPropertyKeyframe={onEditPropertyKeyframe}
                 onUpdateKeyframeEase={onUpdateKeyframeEase}
                 onSetAllKeyframeEases={onSetAllKeyframeEases}
                 onUnroll={onUnroll}
               />
             )}
           <FlatMotionSection
+            compact
+            onEditPropertyKeyframe={onEditPropertyKeyframe}
             element={element}
             animations={gsapAnimations}
             showTiming={false}

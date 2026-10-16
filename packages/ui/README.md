@@ -2,6 +2,45 @@
 
 Shared UI primitives for iPolloWork apps.
 
+## Acceptance status and required matrix
+
+Track five independent dimensions: public code availability, actual business
+adoption, Figma identity/visual alignment, scoped interaction acceptance, and
+packaged release verification. Recommended does not mean accepted in every
+state. A recorded Figma ID is identity evidence, not proof of every variant;
+null means unverified identity, not missing implementation. The current core
+barrel exports 43 modules, not 43 independent components. Current states and
+historical evidence live in the plugin-UI component catalog.
+
+| Area | Required observable assertions | Existing executable owner |
+| --- | --- | --- |
+| Foundation | Light/dark, 1280/390px, long Chinese/English text, contrast, stable selected geometry | shared-ui-core, shared-ui-compositions |
+| Controls | Normal/hover/pressed/focus/disabled/invalid; keyboard activation, disabled non-execution and linked errors | shared-ui-core, shared-ui-compact-controls |
+| Overlays | Open/close, Escape, focus restoration, bounded menu/dialog; cancel causes zero business writes | component-validation-matrix, shared-ui-overlays |
+| Async | Initial loading, refreshing retained data, confirmed empty/no-match, failure, same-draft retry and duplicate-submit guard | shared-ui-async-feedback |
+| Table | Sort/filter before paging, page-local mixed selection, stable cross-page IDs, failed subset recovery | shared-ui-table |
+| Video workbench | Six inspector tabs, shared first-module spacing, expanded script hides and disables inspector, collapse restores tab; light/dark and narrow bounds | video-studio-shared-ui (isolated P0), video-workbench-modules, video-script-inspector-readonly (native) |
+
+Only mark Passed when each claimed action has an observable assertion and a
+validated screenshot in fraimz.html. Unmeasured cells remain Incomplete; tests
+or mounting alone cannot certify the matrix. Use isolated callbacks for
+save/upload/retry/delete; actual user tasks and credentials are out of scope.
+Dialog-open-only checks do not certify submitting or real persistence.
+Native zoom and packaged Electron need separate acceptance from CSS zoom and
+isolated browser/component fixtures.
+
+For the read-only Studio P0 matrix, start Studio Vite on 127.0.0.1:5198 and run:
+```sh
+node --input-type=module -e "const m=await import('./evals/flows/video-studio-shared-ui.flow.mjs');await m.runIsolatedP0Proof()"
+```
+
+Run from the repository root. The bootstrap uses a temporary Chrome profile,
+five in-memory script shots and the existing isolated Studio proof project.
+All non-read requests are intercepted; selection callbacks are in-memory,
+content writes are rejected. It checks actual Studio navigation/layout, not
+the host's voice/style/avatar forms or packaged Electron integration. Those
+remain covered separately by host fixtures and native read-only flows.
+
 ## Public UI foundations (runtime 1.3)
 
 Brand `--primary` is teal; Button default uses `--action-background` / `--action-foreground`
@@ -45,7 +84,7 @@ Exports resolve to `src/` directly, so consumers need no build step.
 the main app. Host CSS and iframe runtime share `palette.css`, `tokens.css`
 and `theme.css`. Select, Dialog and Toaster/toast also have shared entries
 `@ipollowork/ui/select`, `/dialog` and `/sonner`. `@ipollowork/ui/core` is the
-typed core barrel, including 32 additional modules listed in package exports
+typed core barrel, currently aggregating 43 modules listed in package exports
 (forms, menus, overlays, feedback, data and layout). Each module also has its own
 entry, such as `/checkbox`, `/command`, `/sheet`, `/table` and `/tabs`.
 Host compatibility files point to this same implementation; Alert/Image retain

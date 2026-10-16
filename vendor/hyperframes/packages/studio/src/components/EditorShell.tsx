@@ -217,11 +217,14 @@ export function EditorShell({
   });
 
   const { setRightPanelTab, setRightCollapsed } = usePanelLayoutContext();
-  const inspectAnimation = useCallback((element: TimelineElement) => {
+  const inspectAnimation = useCallback(async (element: TimelineElement, animationId?: string, time?: number) => {
     const key = element.key ?? element.id;
-    usePlayerStore.getState().setSelection([key], key);
-    handleTimelineElementSelect(element);
-    setRightPanelTab("animation-properties");
+    const store = usePlayerStore.getState();
+    store.setSelection([key], key);
+    await handleTimelineElementSelect(element);
+    if (animationId) store.setSelectedTimelineEffect({ownerKey:key,animationId,time});
+    if (time !== undefined) store.requestSeek(time);
+    setRightPanelTab("design");
     setRightCollapsed(false);
   }, [handleTimelineElementSelect, setRightPanelTab, setRightCollapsed]);
   const audioEditCallbacks = useMemo(

@@ -1,7 +1,11 @@
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { clampPlaybackRate } from "@hyperframes/parsers/media-duration";
+import { parseRateLane } from "@hyperframes/core/speed-ramp";
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
 import { applyPatchByTarget, findTagByTarget, readAttributeByTarget } from "../utils/sourcePatcher";
 import {
   formatTimelineAttributeNumber,
+  resolveTimelineStretchedPlaybackRate,
   type TimelineStackingReorderIntent,
 } from "../player/components/timelineEditing";
 import { getElementZIndex } from "../player/lib/layerOrdering";
@@ -14,52 +18,134 @@ import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { readFileContent } from "./timelineTimingSync";
 import { findElementForSelection } from "../components/editor/domEditingElement";
+import { fetchParsedAnimations, getAnimationsForElement } from "./useGsapTweenCache";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
-export function componentStretchAttributes(
-  sourceDuration: number,
-  duration: number,
+/** Same-file scene moves carry authored child windows and only wholly contained literal tweens. */
+export function buildInlineSceneMoveChanges(
+  doc: Document, element: TimelineElement, start: number, animations: readonly GsapAnimation[],
+): Array<{element: TimelineElement; start: number}> {
+  const root = element.domId ? doc.getElementById(element.domId) : null;
+  if (!root || !Number.isFinite(start) || start < 0)
+    throw new Error("This scene has no stable source target to move.");
+  const delta = start - element.start;
+  const nodes = [root, ...root.querySelectorAll("[data-start]")];
+  const changes = nodes.map((node): {element: TimelineElement; start: number} => {
+    const id = node.id;
+    const nodeStart = Number(node.getAttribute("data-start"));
+    const duration = Number(node.getAttribute("data-duration"));
+    if (!id || doc.querySelectorAll(`[id=${JSON.stringify(id)}]`).length !== 1 ||
+        !node.hasAttribute("data-start") || !Number.isFinite(nodeStart) ||
+        !Number.isFinite(duration) || duration <= 0 || nodeStart + delta < 0)
+      throw new Error("This scene has unresolved child timing. Its original animation was preserved.");
+    return {element: node === root ? element : {
+      id, domId: id, hfId: node.getAttribute("data-hf-id") ?? undefined,
+      sourceFile: element.sourceFile, tag: node.tagName.toLowerCase(), start: nodeStart,
+      duration, track: Number(node.getAttribute("data-track-index") ?? element.track),
+      timingSource: "authored",
+    }, start: nodeStart + delta};
+  });
+  if (Math.abs(changes[0].start - start) > 0.001)
+    throw new Error("The scene timing changed. Reopen the scene before moving it.");
+  for (const animation of animations) {
+    if (animation.hasUnresolvedSelector || animation.hasPartialSelector)
+      throw new Error("This scene has dynamic animation targets. Its original animation was preserved.");
+    let targets: Element[];
+    try { targets = [...doc.querySelectorAll(animation.targetSelector)]; }
+    catch { continue; }
+    const inside = targets.filter(target => root.contains(target));
+    if (!inside.length) continue;
+    if (inside.length !== targets.length)
+      throw new Error("This scene shares animation with another scene. Move was cancelled to preserve both.");
+    if (animation.global || typeof animation.position !== "number" || animation.implicitPosition ||
+        animation.durationUnresolved || animation.hasUnresolvedKeyframes ||
+        (animation.provenance && animation.provenance.kind !== "literal") || animation.position + delta < 0)
+      throw new Error("This scene has unresolved animation timing. Its original animation was preserved.");
+  }
+  return changes;
+}
+
+/** Trim changes the playback window; stretch changes its speed without resetting its in-point. */
+export function timelineResizePlaybackAttributes(
+  element: TimelineElement,
+  updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+  mode: "trim" | "stretch" = "trim",
 ): Record<string, string | null> {
-  if (!(sourceDuration > 0) || !(duration > 0))
-    throw new Error("Component duration must be positive");
+  const media = element.compositionSrc || ["video", "audio"].includes(element.tag.toLowerCase());
+  if (!media) return {};
+  const rate = element.playbackRate ?? 1;
+  const startAttribute =
+    element.compositionSrc || element.playbackStartAttr === "playback-start"
+      ? "playback-start"
+      : "media-start";
+  if (mode === "stretch") {
+    const stretchedRate = resolveTimelineStretchedPlaybackRate(
+      rate,
+      element.duration,
+      updates.duration,
+    );
+    if (clampPlaybackRate(stretchedRate) !== stretchedRate) {
+      throw new Error("Stretch exceeds the supported playback speed (0.1–10×).");
+    }
+    return {
+      "playback-rate": formatTimelineAttributeNumber(stretchedRate),
+      [startAttribute]: formatTimelineAttributeNumber(element.playbackStart ?? 0),
+    };
+  }
   return {
-    "source-duration": String(sourceDuration),
-    "playback-rate": String(sourceDuration / duration),
-    "playback-start": "0",
-    "media-start": null,
+    [startAttribute]: formatTimelineAttributeNumber(
+      updates.playbackStart ??
+        Math.max(0, (element.playbackStart ?? 0) + (updates.start - element.start) * rate),
+    ),
   };
 }
 
-export async function readComponentSourceDuration(
+/** The server scale mutation is id-addressed; shared/class selectors cannot be rewritten safely. */
+export async function assertTimelineStretchIsSafe(
   projectId: string,
-  compositionSrc: string,
-  knownDuration?: number,
-): Promise<number> {
-  if (knownDuration != null && Number.isFinite(knownDuration) && knownDuration > 0)
-    return knownDuration;
-  const source = await readFileContent(projectId, compositionSrc);
-  const doc = new DOMParser().parseFromString(source, "text/html");
-  const root = doc.querySelector("[data-composition-id]") ??
-    doc.querySelector("template")?.content.querySelector("[data-composition-id]");
-  const duration = Number(
-    root?.getAttribute("data-duration") ?? root?.getAttribute("data-composition-duration"),
-  );
-  if (!Number.isFinite(duration) || duration <= 0)
-    throw new Error("Component source has no declared duration");
-  return duration;
-}
-
-export async function prepareTimelineComponentResize(
-  projectId: string,
+  path: string,
   element: TimelineElement,
-): Promise<TimelineElement> {
-  if (!element.compositionSrc) return element;
-  const sourceDuration = await readComponentSourceDuration(
-    projectId,
-    element.compositionSrc,
-    element.sourceDuration,
+  iframe: HTMLIFrameElement | null,
+): Promise<void> {
+  if (element.compositionSrc || ["video", "audio"].includes(element.tag.toLowerCase())) {
+    const live = findTimelineElementInIframe(iframe, element, path);
+    if (parseRateLane(live?.getAttribute("data-automation"))) {
+      throw new Error("This clip has a speed ramp; preserve it by trimming instead of stretching.");
+    }
+    return;
+  }
+  if (!element.domId)
+    throw new Error("This layer has no stable animation target; trim it instead.");
+  const parsed = await fetchParsedAnimations(projectId, path);
+  if (!parsed) throw new Error("Unable to inspect animations before stretching this layer.");
+  if (
+    parsed.animations.some(
+      (animation) => animation.hasUnresolvedSelector || animation.hasPartialSelector,
+    )
+  ) {
+    throw new Error("This scene has dynamic animation targets; stretch the scene instead.");
+  }
+  const live = iframe?.contentDocument?.getElementById(element.domId);
+  if (!live) throw new Error("Open this scene before stretching its layers.");
+  const animations = getAnimationsForElement(
+    parsed.animations,
+    { id: element.domId, hfId: element.hfId, selector: element.selector },
+    live,
   );
-  return { ...element, sourceDuration };
+  if (
+    animations.some(
+      (animation) =>
+        animation.targetSelector !== `#${element.domId}` ||
+        animation.hasUnresolvedKeyframes ||
+        animation.hasUnresolvedSelector ||
+        animation.durationUnresolved ||
+        (animation.provenance != null && animation.provenance.kind !== "literal"),
+    )
+  ) {
+    throw new Error(
+      "This layer shares animation code with other layers; stretch its scene instead.",
+    );
+  }
 }
 
 function isHTMLElement(element: Element | null): element is HTMLElement {
@@ -192,10 +278,7 @@ export type TimelinePatchResolution =
  */
 export function resolveTimelinePatch(
   original: string,
-  element: Pick<
-    TimelineElement,
-    "id" | "domId" | "hfId" | "selector" | "selectorIndex"
-  >,
+  element: Pick<TimelineElement, "id" | "domId" | "hfId" | "selector" | "selectorIndex">,
   buildPatches: TimelinePatchBuilder,
 ): TimelinePatchResolution {
   const target = buildPatchTarget(element);
@@ -349,10 +432,10 @@ export function buildTimelineResizeTimingPatch(
   target: PatchTarget,
   element: TimelineElement,
   updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+  mode: "trim" | "stretch" = "trim",
 ): string {
-  const pbs = element.compositionSrc
-    ? null
-    : resolveResizePlaybackStart(original, target, element, updates);
+  const pbs =
+    mode === "trim" ? resolveResizePlaybackStart(original, target, element, updates) : null;
   let patched = applyPatchByTarget(original, target, {
     type: "attribute",
     property: "start",
@@ -378,23 +461,10 @@ export function buildTimelineResizeTimingPatch(
       });
     }
   }
-  if (element.compositionSrc && element.sourceDuration) {
-    for (const [property, value] of Object.entries(
-      componentStretchAttributes(element.sourceDuration, updates.duration),
-    )) {
-      patched = applyPatchByTarget(patched, target, {
-        type: "attribute",
-        property,
-        value,
-      });
-    }
-  }
-  if (pbs) {
-    patched = applyPatchByTarget(patched, target, {
-      type: "attribute",
-      property: pbs.attrName,
-      value: formatTimelineAttributeNumber(pbs.value),
-    });
+  const playbackAttributes = timelineResizePlaybackAttributes(element, updates, mode);
+  if (pbs) playbackAttributes[pbs.attrName] = formatTimelineAttributeNumber(pbs.value);
+  for (const [property, value] of Object.entries(playbackAttributes)) {
+    patched = applyPatchByTarget(patched, target, { type: "attribute", property, value });
   }
   // Content-driven duration from the PATCHED SOURCE (raw data-duration) —
   // grows/shrinks to the furthest clip end. Not from the store, whose

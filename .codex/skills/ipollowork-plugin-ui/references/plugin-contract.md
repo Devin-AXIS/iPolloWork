@@ -1,6 +1,6 @@
 # 插件工作区接入契约
 
-适用于独立 HTML、iframe 和插件自己的 React 构建。核对日期：2026-10-10。
+适用于独立 HTML、iframe 和插件自己的 React 构建。当前状态核对日期：2026-10-14；以下历史证据保留各自日期和验证范围。
 
 ## 公共入口 · v1
 
@@ -11,7 +11,7 @@
 | 宿主 React | `@/components/ui/button`、`input`、`textarea` | 原入口兼容重导出；不要强制业务调用方迁移私有路径 |
 | 共享源码消费者 | `@ipollowork/ui/core` 或单模块入口 | 全部已迁移基础组件及 TypeScript Props；`controls` 继续兼容 Button、Input、Textarea |
 | 共享浮层与反馈 | `@ipollowork/ui/select`、`dialog`、`sonner` | 原宿主组件同源实现；宿主原入口保留翻译、主题适配。iframe 业务仍从运行时对象取得组件，不静态导入实现 |
-| iframe 插件业务脚本 | `@ipollowork/ui/runtime-contract` | `requireRuntime(major = 1, required = [])`；轻量主版本和函数能力检查，不导入 React |
+| iframe 插件业务脚本 | `@ipollowork/ui/runtime-contract` | `requireRuntime(major = 1, required = [], minimumMinor = 0)`；轻量主版本、最低minor和函数能力检查，不导入 React |
 | 宿主/插件的 Node 构建脚本 | `@ipollowork/ui/build-plugin-runtime` | `buildPluginRuntime('host' \| 'bundled') → { script, dependencies }`；不是浏览器接口 |
 | 主题构建 | `@ipollowork/ui/palette.css`、`tokens.css`、`theme.css` | 共同 Token 源；单独导入不等于已有完整控件样式 |
 

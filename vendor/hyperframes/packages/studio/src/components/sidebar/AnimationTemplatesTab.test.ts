@@ -95,12 +95,9 @@ describe("AnimationTemplatesTab catalog", () => {
     ).toBe("legacy-fade");
   });
 
-  it("exposes stable hooks for grouped card states and the anchored editor", () => {
+  it("exposes grouped card states and routes exact effects to Layers", () => {
     const source = readFileSync(new URL("./AnimationTemplatesTab.tsx", import.meta.url), "utf8");
-    const editor = readFileSync(
-      new URL("../editor/SemanticMotionPanel.tsx", import.meta.url),
-      "utf8",
-    );
+
 
     expect(source).toContain('data-testid="animation-category-filter"');
     expect(source).toContain('testId="animation-used-section"');
@@ -111,7 +108,11 @@ describe("AnimationTemplatesTab catalog", () => {
     expect(source).toContain("applyDisabled={!domEditSelection}");
     expect(source).toContain('data-animation-action="edit"');
     expect(source).toContain('data-animation-action="remove"');
-    expect(editor).toContain('data-testid="animation-editor-popover"');
+    expect(source).not.toContain("AnimationPropertiesPanel");
+    expect(source).not.toContain("editorPosition");
+    expect(source).toContain("onClick={() => void onEdit(applied)}");
+    expect(source).toContain("store.setSelectedTimelineEffect({ ownerKey, animationId: motion.animation.id, time })");
+    expect(source).toContain('setRightPanelTab("design")');
     expect(source).toContain(
       'type AnimationMutationStatus = "applied" | "updated" | "removed" | "selection-required";',
     );

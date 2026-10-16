@@ -44,6 +44,7 @@ const AUTO_SCROLL_EDGE_ZONE = 40;
 const AUTO_SCROLL_MAX_SPEED = 12;
 
 export interface TimelineMoveInput {
+  minStart?: number;
   start: number;
   track: number;
   duration: number;
@@ -127,8 +128,8 @@ export function resolveTimelineMove(
   const deltaTrack = Math.round(trackDeltaRaw);
   const nextStart = clamp(
     roundToCentiseconds(input.start + deltaTime),
-    0,
-    Math.max(0, input.maxStart),
+    input.minStart ?? 0,
+    Math.max(input.minStart ?? 0, input.maxStart),
   );
 
   // Stacking mode: the two axes never fight. Horizontal movement writes time
@@ -264,11 +265,18 @@ export interface TimelinePromptElement {
 export interface CanvasRegionContext {
   timeSeconds: number;
   unit: "percent-of-frame";
-  x: number; y: number; width: number; height: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
   frameSize: { width: number; height: number };
   outline: Point[];
   targets: Array<{
-    sourceFile?: string; id?: string; hfId?: string; selector?: string; selectorIndex?: number;
+    sourceFile?: string;
+    id?: string;
+    hfId?: string;
+    selector?: string;
+    selectorIndex?: number;
     text: string;
     bounds: { x: number; y: number; width: number; height: number };
   }>;
@@ -450,12 +458,21 @@ export function buildTimelineAgentPrompt({
   const scope = {
     kind: selectionKind,
     unit: "seconds",
-    rangeStart: start, rangeEnd: end,
+    rangeStart: start,
+    rangeEnd: end,
     clips: elements.map((el) => ({
-      id: el.id, key: el.key, domId: el.domId, hfId: el.hfId, selector: el.selector,
-      selectorIndex: el.selectorIndex, sourceFile: el.sourceFile || sourceFile,
-      track: el.track, clipStart: el.start, clipEnd: el.start + el.duration,
-      selectedStart: Math.max(start, el.start), selectedEnd: Math.min(end, el.start + el.duration),
+      id: el.id,
+      key: el.key,
+      domId: el.domId,
+      hfId: el.hfId,
+      selector: el.selector,
+      selectorIndex: el.selectorIndex,
+      sourceFile: el.sourceFile || sourceFile,
+      track: el.track,
+      clipStart: el.start,
+      clipEnd: el.start + el.duration,
+      selectedStart: Math.max(start, el.start),
+      selectedEnd: Math.min(end, el.start + el.duration),
       clipLocalStart: Math.max(start, el.start) - el.start,
       clipLocalEnd: Math.min(end, el.start + el.duration) - el.start,
       sourceStart: Math.max(start, el.start) - (el.expandedParentStart ?? 0),
@@ -594,4 +611,13 @@ export interface TimelineDragEscapeInput {
   drag: { started: boolean } | null;
   resize: { started: boolean } | null;
   blocked: { started: boolean } | null;
+}
+
+/** Preserve the currently selected source window when changing its playback length. */
+export function resolveTimelineStretchedPlaybackRate(
+  rate: number | undefined,
+  duration: number,
+  nextDuration: number,
+): number {
+  return ((rate ?? 1) * duration) / nextDuration;
 }

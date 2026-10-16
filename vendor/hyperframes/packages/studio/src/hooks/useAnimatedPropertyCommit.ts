@@ -18,7 +18,7 @@ import {
   readGsapProperty,
 } from "./gsapRuntimeBridge";
 import type { SetPatchProps } from "./gsapRuntimePatch";
-import { selectorFromSelection, computeElementPercentage, isInstantHold } from "./gsapShared";
+import { selectorFromSelection, computeElementPercentage, isInstantHold, getOwnedAnimationSelectors } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
@@ -400,8 +400,13 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   } = deps;
 
   const commitAnimatedProperties = useCallback(
-    async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
+    async (
+      selection: DomEditSelection,
+      props: Record<string, number | string>,
+      options?: { positionDelta: number },
+    ): Promise<void> => {
       if (!gsapCommitMutation) return;
+      if (options && (!Number.isFinite(options.positionDelta) || options.positionDelta === 0)) return;
       const propEntries = Object.entries(props);
       if (propEntries.length === 0) return;
       const primaryProp = propEntries[0]![0];
@@ -426,6 +431,22 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         );
         const workingAnimations = isolation.animations;
         const persistMutation = isolation.commitMutation;
+        // Layout edits translate the whole path. They never promote a static
+        // axis to keyframes or use the currently selected animation point.
+        if (options && selector && (primaryProp === "x" || primaryProp === "y")) {
+          await persistMutation(
+            selection,
+            {
+              type: "offset-position-paths",
+              targetSelector: selector,
+              ownedSelectors: getOwnedAnimationSelectors(selection, workingAnimations),
+              deltaX: primaryProp === "x" ? options.positionDelta : 0,
+              deltaY: primaryProp === "y" ? options.positionDelta : 0,
+            },
+            { label: "Move layer", softReload: true },
+          );
+          return;
+        }
         const anim: GsapAnimation | undefined = pickBestAnimation(
           workingAnimations,
           selector,
@@ -561,8 +582,12 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   );
 
   const commitAnimatedProperty = useCallback(
-    (selection: DomEditSelection, property: string, value: number | string) =>
-      commitAnimatedProperties(selection, { [property]: value }),
+    (
+      selection: DomEditSelection,
+      property: string,
+      value: number | string,
+      options?: { positionDelta: number },
+    ) => commitAnimatedProperties(selection, { [property]: value }, options),
     [commitAnimatedProperties],
   );
 

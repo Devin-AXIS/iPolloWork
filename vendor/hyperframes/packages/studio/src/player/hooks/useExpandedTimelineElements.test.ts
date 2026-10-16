@@ -5,6 +5,7 @@ import {
   applyTimelineLayerStateOverrides,
   buildExpandedElementTree,
   buildExpandedElements,
+  buildInlineScopeElements,
   resolveTimelineExpansionRawId,
 } from "./useExpandedTimelineElements";
 
@@ -476,4 +477,42 @@ describe("expanded timeline hierarchy", () => {
       "panel",
     ]);
   });
+});
+
+ test("inline scopes preserve source times and show only their own direct children", () => {
+   const scene: TimelineElement={id:"alpha",domId:"alpha",key:"index.html#alpha",tag:"section",start:2,duration:6,track:10,inlineScopeKind:"scene",sourceFile:"index.html"};
+   const logo: TimelineElement={id:"logo",domId:"logo",tag:"div",start:0,duration:18,track:20};
+   const children: import("../store/playerStore").DomClipChild[] = [{id:"group",domId:"group",parentId:"alpha",hostId:"alpha",label:"Group",tagName:"div",stackingContextId:"root",inlineScopeKind:"group"},{id:"title",domId:"title",parentId:"group",hostId:"alpha",label:"Title",tagName:"h1",stackingContextId:"root"}];
+   const map=new Map([["group","alpha"],["title","group"]]);
+   const result=buildInlineScopeElements([scene,logo],[],map,children,scene);
+   expect(result.map((row)=>row.id)).toEqual(["alpha","group"]);
+   expect(result[1]).toMatchObject({start:2,duration:6,key:"index.html#group",inlineScopeKind:"group",sourceFile:"index.html",expandedParentStart:undefined,compositionSrc:undefined});
+   const nested=buildInlineScopeElements([scene,logo],[],map,children,result[1]);
+   expect(nested.map((row)=>row.id)).toEqual(["group","title"]);
+   expect(nested[1]).toMatchObject({start:2,duration:6,expandedParentStart:undefined});
+   expect(scene.track).toBe(10);
+ });
+
+
+test("flat scene descendants preserve stable source keys, authored timing and external boundaries", () => {
+  const scene: TimelineElement = { id: "alpha", domId: "alpha", key: "index.html#alpha",
+    tag: "section", start: 8, duration: 8, track: 3, sourceFile: "index.html", inlineScopeKind: "scene" };
+  const title: TimelineElement = { id: "title", domId: "title", key: "index.html#title",
+    tag: "h1", start: 10, duration: 2, track: 9, authoredTrack: 9, sourceFile: "index.html" };
+  const children = [
+    { id: "layout", parentId: "alpha", hostId: "alpha", label: "Layout", tagName: "div", stackingContextId: "root" },
+    { id: "card", parentId: "layout", hostId: "alpha", label: "Card", tagName: "div", stackingContextId: "root" },
+    { id: "title", parentId: "card", hostId: "alpha", label: "Title", tagName: "h1", stackingContextId: "root" },
+    { id: "other", parentId: "beta", hostId: "beta", label: "Other", tagName: "h1", stackingContextId: "root" },
+  ];
+  const map = new Map(children.map(child => [child.id, child.parentId]));
+  const snapshot = JSON.stringify({ scene, title, children });
+  const rows = buildInlineScopeElements([scene, title], [], map, children, scene, true);
+  expect(rows.map(row => row.id)).toEqual(["alpha", "layout", "card", "title"]);
+  expect(rows.at(-1)).toMatchObject({ key: "index.html#title", start: 10, duration: 2,
+    authoredTrack: 9, expandedParentStart: undefined, sourceFile: "index.html" });
+  expect(rows[2]).toMatchObject({ start: 8, duration: 8 });
+  expect(JSON.stringify({ scene, title, children })).toBe(snapshot);
+  map.set("layout", "title");
+  expect(buildInlineScopeElements([scene], [], map, children, scene, true).length).toBeLessThanOrEqual(4);
 });

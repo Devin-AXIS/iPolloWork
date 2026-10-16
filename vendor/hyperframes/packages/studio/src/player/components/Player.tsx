@@ -276,6 +276,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
       let revealRaf = 0;
+      let revealTimer: ReturnType<typeof setTimeout> | null = null;
 
       // Dynamic import registers the custom element in the browser only.
       import("@hyperframes/player").then(() => {
@@ -353,10 +354,16 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           onLoad();
           let visibleAt = 0;
           let readyPaints = 0;
+          // Background documents suspend RAF. Keep the same readiness checks
+          // progressing so a saved edit can replace its stale preview there too.
+          const scheduleRevealCheck = () => {
+            if (document.hidden) revealTimer = setTimeout(notifyWhenRestored, 50);
+            else revealRaf = requestAnimationFrame(notifyWhenRestored);
+          };
           const notifyWhenRestored = () => {
             if (canceled) return;
             if (iframe.style.visibility === "hidden") {
-              revealRaf = requestAnimationFrame(notifyWhenRestored);
+              scheduleRevealCheck();
               return;
             }
             if (visibleAt === 0) visibleAt = performance.now();
@@ -377,7 +384,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               onReadyToReveal?.();
               return;
             }
-            revealRaf = requestAnimationFrame(notifyWhenRestored);
+            scheduleRevealCheck();
           };
           notifyWhenRestored();
         };
@@ -434,6 +441,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           if (revealRaf) cancelAnimationFrame(revealRaf);
+          if (revealTimer) clearTimeout(revealTimer);
           container.removeChild(player);
           // Clear the forwarded ref only if it still points to THIS iframe.
           // During crossfade refreshes the retiring Player unmounts after the

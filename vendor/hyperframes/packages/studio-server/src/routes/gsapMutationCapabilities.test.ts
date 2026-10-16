@@ -82,6 +82,7 @@ describe("GSAP writer capability matrix", () => {
         ...sharedOperations,
         "materialize-keyframes",
         "move-keyframe",
+        "edit-property-keyframe",
         "remove-all-keyframes",
         "remove-arc-path",
         "replace-with-keyframes",

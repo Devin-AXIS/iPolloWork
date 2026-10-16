@@ -17,6 +17,7 @@ interface UseTimelinePlayheadInput {
   durationRef: React.RefObject<number>;
   isDragging: React.RefObject<boolean>;
   currentTime: number;
+  timeOffset?: number;
   zoomMode: ZoomMode;
   manualZoomPercent: number;
   zoomModeRef: React.RefObject<ZoomMode>;
@@ -40,6 +41,7 @@ export function useTimelinePlayhead({
   durationRef,
   isDragging,
   currentTime,
+  timeOffset = 0,
   zoomMode,
   zoomModeRef,
   manualZoomPercentRef,
@@ -55,6 +57,8 @@ export function useTimelinePlayhead({
   onSeek,
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
+  const timeOffsetRef = useRef(timeOffset);
+  timeOffsetRef.current = timeOffset;
   const gutterWidthRef = useRef(gutterWidth);
   gutterWidthRef.current = gutterWidth;
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
@@ -90,12 +94,12 @@ export function useTimelinePlayhead({
     (time: number) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
       playheadRef.current.style.left = `${getTimelinePlayheadLeft(
-        time,
+        time - timeOffset,
         ppsRef.current,
         gutterWidth,
       )}px`;
     },
-    [playheadRef, durationRef, ppsRef, gutterWidth],
+    [playheadRef, durationRef, ppsRef, gutterWidth, timeOffset],
   );
 
   useEffect(() => {
@@ -128,7 +132,7 @@ export function useTimelinePlayhead({
       // Playback deliberately does NOT scroll the viewport to chase the playhead —
       // the user's scroll position is theirs; the playhead may run off-screen.
       playheadRef.current.style.left = `${getTimelinePlayheadLeft(
-        t,
+        t - timeOffsetRef.current,
         ppsRef.current,
         gutterWidthRef.current,
       )}px`;
@@ -143,11 +147,11 @@ export function useTimelinePlayhead({
       const rect = el.getBoundingClientRect();
       const x = clientX - rect.left + el.scrollLeft - gutterWidth - TRACKS_LEFT_PAD;
       if (x < 0) return;
-      const time = Math.max(0, Math.min(effectiveDuration, x / pps));
+      const time = timeOffset + Math.max(0, Math.min(effectiveDuration, x / pps));
       liveTime.notify(time);
       onSeek?.(time);
     },
-    [scrollRef, effectiveDuration, pps, onSeek, gutterWidth],
+    [scrollRef, effectiveDuration, pps, onSeek, gutterWidth, timeOffset],
   );
 
   const autoScrollDuringDrag = useCallback(

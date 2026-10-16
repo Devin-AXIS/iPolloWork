@@ -21,10 +21,27 @@ export async function click(parent,frame,selector) {
 }
 export async function findFrame(ctx,mode) {
   for(let attempt=0;attempt<80;attempt++) {
-    for(const target of (await listTargets(ctx.cdpBaseUrl)).filter(t=>t.type==='iframe' && t.parentId===ctx.client.targetId)) {
+    const tree=await ctx.client.send('Page.getFrameTree');
+    const childIds=new Set((tree.frameTree.childFrames??[]).map(item=>item.frame.id));
+    for(const target of (await listTargets(ctx.cdpBaseUrl)).filter(t=>t.type==='iframe' && (t.parentId===ctx.client.targetId||childIds.has(t.id)))) {
       const c=await connect(target.webSocketDebuggerUrl);
       if(await evaluate(c,`window.ipolloworkUi?.mode===${JSON.stringify(mode)} && Boolean(document.querySelector('#receipt')) && Boolean(document.querySelector('#name'))`).catch(()=>false))return c;
       c.close();
+    }
+    // Some Chrome versions keep sandboxed srcdoc in the parent's process and
+    // do not expose a separate iframe target. Resolve its own document realm;
+    // never search unrelated tabs or run the fixture in the parent window.
+    for(const item of tree.frameTree.childFrames??[]) {
+      if(item.frame.url!=='about:srcdoc')continue;
+      const owner=await ctx.client.send('DOM.getFrameOwner',{frameId:item.frame.id});
+      const {node}=await ctx.client.send('DOM.describeNode',{backendNodeId:owner.backendNodeId,depth:1,pierce:true});
+      if(!node.contentDocument)continue;
+      const {object}=await ctx.client.send('DOM.resolveNode',{backendNodeId:node.contentDocument.backendNodeId});
+      const parent=ctx.client;
+      const frame={targetId:parent.targetId,close:()=>{void parent.send('Runtime.releaseObject',{objectId:object.objectId}).catch(()=>{});},send:(method,params)=>method==='Runtime.evaluate'
+        ? parent.send('Runtime.callFunctionOn',{objectId:object.objectId,functionDeclaration:'function(expression){return this.defaultView.eval(expression)}',arguments:[{value:params.expression}],returnByValue:params.returnByValue,awaitPromise:params.awaitPromise})
+        : parent.send(method,params)};
+      if(await evaluate(frame,`window.ipolloworkUi?.mode===${JSON.stringify(mode)} && Boolean(document.querySelector('#receipt')) && Boolean(document.querySelector('#name'))`).catch(()=>false))return frame;
     }
     await new Promise(resolve=>setTimeout(resolve,250));
   }

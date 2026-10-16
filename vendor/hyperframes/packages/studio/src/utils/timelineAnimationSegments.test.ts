@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, test } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { compileMotionInstance, createMotionInstance } from "@hyperframes/core/motion-presets";
@@ -12,6 +13,7 @@ import {
   resolveLocalTimelineAnimationOwnerRange,
   resolveTimelineAnimationMoveUpdate,
   resolveTimelineAnimationPhase,
+  resolveTimelineAnimationLabel,
 } from "./timelineAnimationSegments";
 
 const OWNER = { start: 2, duration: 8 };
@@ -325,4 +327,20 @@ test("recognizes a private stable-id tween while preserving protection for share
   expect(isAnimationSharedForOwner(privateTween, undefined, { hfId: "hf-other" })).toBe(true);
   expect(isAnimationSharedForOwner(animation({ targetSelector: ".card" }), "card", { hfId: "hf-card" })).toBe(true);
   expect(isAnimationSharedForOwner(animation({ targetSelector: '#card, .card' }), "card")).toBe(true);
+});
+
+test("only actual repeated playback is labeled Loop, not an ordinary middle phase or generated loop", () => {
+  expect(resolveTimelineAnimationLabel(animation(), OWNER)).toBe("Property animation");
+  expect(resolveTimelineAnimationLabel(animation({extras:{repeat:2}}), OWNER)).toBe("Loop");
+  expect(resolveTimelineAnimationLabel(animation({extras:{repeat:"__raw:-1"}}), OWNER)).toBe("Loop");
+  expect(resolveTimelineAnimationLabel(animation({method:"set"}), OWNER)).toBe("Static properties");
+  expect(resolveTimelineAnimationLabel(animation({method:"fromTo",position:2}), OWNER)).toBe("Entrance");
+});
+
+test("unlocks a uniquely scoped selector only with live owner proof", () => {
+ const root=new DOMParser().parseFromString('<section id="scene"><p class="copy" data-hf-id="text"></p><p class="shared" data-hf-id="one"></p><p class="shared" data-hf-id="two"></p></section>',"text/html");
+ expect(isAnimationSharedForOwner(animation({targetSelector:"#scene .copy"}),null,{hfId:"text",root})).toBe(false);
+ expect(isAnimationSharedForOwner(animation({targetSelector:"#scene .copy"}),null,{hfId:"other",root})).toBe(true);
+ expect(isAnimationSharedForOwner(animation({targetSelector:".shared"}),null,{hfId:"one",root})).toBe(true);
+ expect(isAnimationSharedForOwner(animation({targetSelector:"#scene .copy"}),null,{hfId:"text"})).toBe(true);
 });

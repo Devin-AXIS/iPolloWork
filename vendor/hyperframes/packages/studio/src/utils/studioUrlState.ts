@@ -29,7 +29,6 @@ const VALID_TABS: RightPanelTab[] = [
   "style",
   "components",
   "animation",
-  "animation-properties",
   "renders",
   "slideshow",
   "variables",
@@ -83,7 +82,8 @@ function parseNumber(value: string | null): number | null {
 }
 
 function parseTab(value: string | null): RightPanelTab | null {
-  return VALID_TABS.includes(value as RightPanelTab) ? (value as RightPanelTab) : null;
+  if (value === "animation-properties") return "design";
+  return VALID_TABS.find((tab) => tab === value) ?? null;
 }
 
 function normalizeSelection(params: URLSearchParams): StudioUrlSelectionState | null {

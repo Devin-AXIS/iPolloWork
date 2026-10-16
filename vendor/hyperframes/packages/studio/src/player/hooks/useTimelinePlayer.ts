@@ -5,7 +5,7 @@ import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerS
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
-import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
+import { resolveForwardPlaybackWindow, useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 
 export type { ClipManifestClip } from "../lib/playbackTypes";
 export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
@@ -24,7 +24,7 @@ export {
   shouldIgnorePlaybackShortcutTarget,
 } from "../lib/playbackShortcuts";
 
-import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
+import type { PlaybackAdapter, IframeWindow, PlaybackRange } from "../lib/playbackTypes";
 import {
   getAdapterDuration,
   shouldUseStudioClockForLegacyFrames,
@@ -53,7 +53,10 @@ import { stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
-import { wrapAdapterWithTimedClipVisibility } from "../lib/timedClipVisibility";
+import {
+  syncPreviewSceneScope,
+  wrapAdapterWithTimedClipVisibility,
+} from "../lib/timedClipVisibility";
 
 /**
  * Whether the derived elements differ from the current ones in any field that
@@ -78,13 +81,20 @@ function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[
       el.src !== p.src ||
       el.playbackStart !== p.playbackStart ||
       el.playbackRate !== p.playbackRate ||
+      el.inlineScopeKind !== p.inlineScopeKind ||
       el.label !== p.label ||
       el.clipLabel !== p.clipLabel
     );
   });
 }
 
-export function useTimelinePlayer() {
+export function useTimelinePlayer({
+  playbackRangeRef,
+  sceneScopeRef,
+}: {
+  playbackRangeRef?: React.RefObject<PlaybackRange | null>;
+  sceneScopeRef?: React.RefObject<TimelineElement | null>;
+} = {}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
   const probeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -163,7 +173,10 @@ export function useTimelinePlayer() {
       const playerAdapter =
         win.__player && typeof win.__player.play === "function" ? win.__player : null;
       const fps = acceptedRuntimeMessageFps(win.__clipManifest);
-      const docDuration = frameAlignedDurationSeconds(readTimelineDurationFromDocument(iframe.contentDocument), fps);
+      const docDuration = frameAlignedDurationSeconds(
+        readTimelineDurationFromDocument(iframe.contentDocument),
+        fps,
+      );
       const adapterDur = getAdapterDuration(playerAdapter);
       const requiredDuration = Math.max(docDuration, usePlayerStore.getState().duration);
       const withTimedVisibility = (adapter: PlaybackAdapter) =>
@@ -171,6 +184,7 @@ export function useTimelinePlayer() {
           docDuration > 0 ? wrapAdapterWithDurationLimit(adapter, docDuration) : adapter,
           () => iframe.contentDocument,
           fps,
+          () => sceneScopeRef?.current ?? null,
         );
 
       if (shouldUseDirectRuntimeAdapter(adapterDur, requiredDuration, fps)) {
@@ -250,7 +264,7 @@ export function useTimelinePlayer() {
     } catch {
       return null;
     }
-  }, []);
+  }, [sceneScopeRef]);
 
   const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
     rafRef,
@@ -258,6 +272,7 @@ export function useTimelinePlayer() {
     getAdapter,
     setCurrentTime,
     setIsPlaying,
+    playbackRangeRef,
   });
 
   const applyPlaybackRate = useCallback((rate: number) => {
@@ -286,6 +301,11 @@ export function useTimelinePlayer() {
       iframeRef.current,
       shouldMutePreviewAudio(audioMuted, effectivePlaybackRate),
     );
+    syncPreviewSceneScope(
+      iframeRef.current?.contentDocument,
+      sceneScopeRef?.current ?? null,
+      shouldMutePreviewAudio(audioMuted, effectivePlaybackRate),
+    );
   }, []);
   const stopPreviewMedia = useCallback(() => {
     stopScrubPreviewAudio();
@@ -298,13 +318,24 @@ export function useTimelinePlayer() {
     const adapter = getAdapter();
     if (!adapter) return;
     const state = usePlayerStore.getState();
-    if (state.liveGenerationActive && state.liveGeneration?.status === "generating"
+    if (!playbackRangeRef?.current && state.liveGenerationActive && state.liveGeneration?.status === "generating"
       && state.currentTime >= state.liveGeneration.readyDuration - 1e-6) {
       setIsPlaying(true);
       return;
     }
-    if (adapter.getTime() >= adapter.getDuration()) {
-      adapter.seek(usePlayerStore.getState().inPoint ?? 0);
+    const window = resolveForwardPlaybackWindow({
+      adapterDuration: adapter.getDuration(),
+      storeDuration: usePlayerStore.getState().duration,
+      inPoint: usePlayerStore.getState().inPoint,
+      outPoint: usePlayerStore.getState().outPoint,
+      playbackRange: playbackRangeRef?.current,
+    });
+    if (
+      window &&
+      (adapter.getTime() >= window.loopEnd - (playbackRangeRef?.current ? 1 / 30 : 0) ||
+        adapter.getTime() < window.loopStart)
+    ) {
+      adapter.seek(window.loopStart);
     }
     applyPlaybackRate(usePlayerStore.getState().playbackRate);
     applyPreviewAudioState();
@@ -329,7 +360,11 @@ export function useTimelinePlayer() {
       const adapter = getAdapter();
       if (!adapter) return;
       const duration = Math.max(0, adapter.getDuration());
-      const initialTime = adapter.getTime() <= 0 && duration > 0 ? duration : adapter.getTime();
+      const range = playbackRangeRef?.current;
+      const initialTime =
+        adapter.getTime() <= (range?.start ?? 0) && duration > 0
+          ? (range?.end ?? duration)
+          : adapter.getTime();
       adapter.pause();
       if (initialTime !== adapter.getTime()) adapter.seek(initialTime);
       const speed = Math.max(0.1, Math.min(4, rate));
@@ -342,10 +377,15 @@ export function useTimelinePlayer() {
         const elapsed = ((now - startedAt) / 1000) * speed;
         let nextTime = startTime - elapsed;
         const { inPoint, outPoint } = usePlayerStore.getState();
-        const rawLoopEnd = outPoint !== null ? Math.min(outPoint, duration) : duration;
-        const rawLoopStart = inPoint !== null ? inPoint : 0;
-        const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : duration;
-        const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
+        const window = resolveForwardPlaybackWindow({
+          adapterDuration: duration,
+          storeDuration: duration,
+          inPoint,
+          outPoint,
+          playbackRange: playbackRangeRef?.current,
+        });
+        const loopEnd = window?.loopEnd ?? duration;
+        const loopStart = window?.loopStart ?? 0;
         if (nextTime <= loopStart) {
           if (usePlayerStore.getState().loopEnabled && duration > 0) {
             startTime = loopEnd;
@@ -410,11 +450,19 @@ export function useTimelinePlayer() {
       stopReverseLoop();
       const adapter = getAdapter();
       if (!adapter) {
-        pendingSeekRef.current = Math.max(0, time);
+        const range = playbackRangeRef?.current;
+        pendingSeekRef.current = Math.max(range?.start ?? 0, Math.min(range?.end ?? time, time));
         return false;
       }
       const duration = Math.max(0, adapter.getDuration());
-      const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+      const range = playbackRangeRef?.current;
+      const nextTime = Math.max(
+        range?.start ?? 0,
+        Math.min(
+          range ? Math.max(range.start, range.end - 1 / 30) : duration > 0 ? duration : time,
+          time,
+        ),
+      );
       // A user seek during a staged refresh supersedes the position saved by
       // the edit. The replacement iframe must restore this newer playhead.
       if (isRefreshingRef.current) pendingSeekRef.current = nextTime;

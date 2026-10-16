@@ -1,3 +1,4 @@
+import { resolveTimelineStretchedPlaybackRate } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { TimelineGroupResizeSession } from "./timelineGroupEditing";
@@ -22,6 +23,17 @@ export function commitTimelineGroupResize(
       start: change.start,
       duration: change.duration,
       playbackStart: change.playbackStart,
+      ...(session.resizeMode === "stretch" &&
+      (change.element.compositionSrc ||
+        ["video", "audio"].includes(change.element.tag.toLowerCase()))
+        ? {
+            playbackRate: resolveTimelineStretchedPlaybackRate(
+              change.element.playbackRate,
+              change.element.duration,
+              change.duration,
+            ),
+          }
+        : {}),
     });
   }
   if (!persist) {
@@ -40,6 +52,7 @@ export function commitTimelineGroupResize(
         start: change.start,
         duration: change.duration,
         playbackStart: change.playbackStart,
+        resizeMode: session.resizeMode,
       })),
       { coalesceKey },
     ),

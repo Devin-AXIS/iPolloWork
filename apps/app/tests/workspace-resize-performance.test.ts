@@ -144,17 +144,25 @@ describe("workspace resize performance", () => {
 
 
 describe("workspace snap hysteresis", () => {
+  test("a fast boundary crossing arms a stop before additional travel can snap", () => {
+    expect(getWorkspaceSnapIntent(100, 320, 800, null, 100)).toBeNull();
+    expect(getWorkspaceSnapIntent(21, 320, 800, null, 100)).toBeNull();
+    expect(getWorkspaceSnapIntent(20, 320, 800, null, 100)).toBe("collapse");
+    expect(getWorkspaceSnapIntent(1000, 320, 800, null, 1000)).toBeNull();
+    expect(getWorkspaceSnapIntent(1079, 320, 800, null, 1000)).toBeNull();
+    expect(getWorkspaceSnapIntent(1080, 320, 800, null, 1000)).toBe("expand");
+  });
   test("requires intentional overshoot to enter a snap candidate", () => {
     expect(getWorkspaceSnapIntent(320, 320, 800, null)).toBeNull();
-    expect(getWorkspaceSnapIntent(273, 320, 800, null)).toBeNull();
-    expect(getWorkspaceSnapIntent(272, 320, 800, null)).toBe("collapse");
-    expect(getWorkspaceSnapIntent(847, 320, 800, null)).toBeNull();
-    expect(getWorkspaceSnapIntent(848, 320, 800, null)).toBe("expand");
+    expect(getWorkspaceSnapIntent(241, 320, 800, null)).toBeNull();
+    expect(getWorkspaceSnapIntent(240, 320, 800, null)).toBe("collapse");
+    expect(getWorkspaceSnapIntent(879, 320, 800, null)).toBeNull();
+    expect(getWorkspaceSnapIntent(880, 320, 800, null)).toBe("expand");
   });
   test("keeps a candidate stable until the pointer returns across its release threshold", () => {
-    expect(getWorkspaceSnapIntent(296, 320, 800, "collapse")).toBe("collapse");
-    expect(getWorkspaceSnapIntent(297, 320, 800, "collapse")).toBeNull();
-    expect(getWorkspaceSnapIntent(824, 320, 800, "expand")).toBe("expand");
-    expect(getWorkspaceSnapIntent(823, 320, 800, "expand")).toBeNull();
+    expect(getWorkspaceSnapIntent(280, 320, 800, "collapse")).toBe("collapse");
+    expect(getWorkspaceSnapIntent(281, 320, 800, "collapse")).toBeNull();
+    expect(getWorkspaceSnapIntent(840, 320, 800, "expand")).toBe("expand");
+    expect(getWorkspaceSnapIntent(839, 320, 800, "expand")).toBeNull();
   });
 });

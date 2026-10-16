@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  collectTimelineTreeElements,
   resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
   resolveStoryboardTimelineTarget,
@@ -188,4 +189,48 @@ describe("timeline tree selection", () => {
       }),
     ).toBe("index.html:.logo-wrap:0::index.html:.absolute:1");
   });
+});
+
+ test("same-file inline descendants keep one canonical selectable key and global host bounds", () => {
+   const host:TimelineElement={id:"alpha",key:"index.html#alpha",domId:"alpha",tag:"section",start:2,duration:6,track:10,sourceFile:"index.html",inlineScopeKind:"scene"};
+   const children:import("../store/playerStore").DomClipChild[]=[{id:"group",domId:"group",hostId:"alpha",parentId:"alpha",tagName:"div",label:"Group",sourceFile:"index.html",stackingContextId:"root"},
+     {id:"title",domId:"title",selector:"#title",selectorIndex:0,hostId:"alpha",parentId:"group",tagName:"h1",label:"Title",sourceFile:"index.html",stackingContextId:"root"}];
+   const authored=[host];const before=JSON.stringify(authored);
+   const selectable=collectTimelineTreeElements(authored,[],children);
+   const title=selectable.find((element)=>element.id==="title");
+   expect(title).toMatchObject({key:"index.html#title",sourceFile:"index.html",start:2,duration:6,authoredTrack:10,previewHostId:undefined,timingSource:"implicit"});
+   const identity={elementId:"title",sourceFile:"index.html",selector:"#title",selectorIndex:0,manifest:[],domClipChildren:children};
+   expect(resolveTimelineTreeSelectionKey({...identity,elements:authored})).toBe("index.html#title");
+   expect(resolveTimelineTreeSelectionKey({...identity,elements:selectable})).toBe("index.html#title");
+   expect(JSON.stringify(authored)).toBe(before);expect(authored).toHaveLength(1);
+ });
+ test("collision-qualified same-file descendants remain distinct by source selector index", () => {
+   const host:TimelineElement={id:"alpha",domId:"alpha",tag:"section",start:0,duration:6,track:10,sourceFile:"index.html",inlineScopeKind:"scene"};
+   const children:import("../store/playerStore").DomClipChild[]=[{id:"title",domId:"title",selector:"#title",selectorIndex:0,hostId:"alpha",parentId:"alpha",label:"Title",sourceFile:"index.html",stackingContextId:"root"},
+     {id:"alpha::index.html:title:1",domId:"title",selector:"#title",selectorIndex:1,hostId:"alpha",parentId:"alpha",label:"Title",sourceFile:"index.html",stackingContextId:"root"}];
+   const identity={elementId:"title",sourceFile:"index.html",selector:"#title",selectorIndex:1,elements:[host],manifest:[],domClipChildren:children};
+   expect(resolveTimelineTreeSelectionId(identity)).toBe("alpha::index.html:title:1");
+   expect(resolveTimelineTreeSelectionKey(identity)).toBe("alpha::index.html:#title:1");
+   const rows=collectTimelineTreeElements([host],[],children);
+   expect(new Set(rows.map((row)=>row.key))).toHaveProperty("size",3);
+ });
+
+
+test("id-less flat scene layers keep one key through row, canvas and inspector selection", () => {
+  const host: TimelineElement = { id: "scene", domId: "scene", key: "index.html#scene",
+    tag: "section", start: 8, duration: 7, track: 2, inlineScopeKind: "scene" };
+  const child = { id: "hf-title", hfId: "hf-title", hostId: "scene", parentId: "layout",
+    label: "Title", tagName: "h1", selector: "h1", selectorIndex: 1,
+    sourceFile: "index.html", stackingContextId: "root" };
+  const snapshot = JSON.stringify([host, child]);
+  const input = { hfId: child.hfId, sourceFile: "index.html", selector: "h1", selectorIndex: 1,
+    manifest: [], domClipChildren: [child] };
+  const row = collectTimelineTreeElements([host], [], [child])[1];
+  expect(row.key).toBe("index.html#hf-title");
+  expect(resolveTimelineTreeSelectionKey({ ...input, elements: [host] })).toBe(row.key);
+  expect(resolveTimelineTreeSelectionKey({ ...input, elements: [host, row] })).toBe(row.key);
+  const runtimeRow: TimelineElement = { ...row, selector: undefined, sourceFile: undefined };
+  expect(resolveTimelineTreeSelectionKey({ ...input, elements: [host, runtimeRow] })).toBe(row.key);
+  expect(row).toMatchObject({ hfId: child.hfId, start: 8, duration: 7, domId: undefined });
+  expect(JSON.stringify([host, child])).toBe(snapshot);
 });

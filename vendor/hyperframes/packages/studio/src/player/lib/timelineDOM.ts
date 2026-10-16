@@ -166,9 +166,11 @@ export function createTimelineElementFromManifestClip(params: {
 
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
+    entry.timelinePaint = readTimelinePaint(hostEl);
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    entry.inlineScopeKind = readInlineScopeKind(hostEl);
     const timelineKind = hostEl.getAttribute("data-timeline-kind");
     if (isTimelineKind(timelineKind)) entry.timelineKind = timelineKind;
     const timelineGroupId = hostEl.getAttribute("data-timeline-group");
@@ -273,6 +275,8 @@ export function createImplicitTimelineLayersFromDOM(
       timingSource: "implicit",
       track: maxTrack + 1 + layers.length,
     };
+    layer.inlineScopeKind = readInlineScopeKind(child);
+    layer.timelinePaint = readTimelinePaint(child);
     const timelineKind = child.getAttribute("data-timeline-kind");
     if (isTimelineKind(timelineKind)) layer.timelineKind = timelineKind;
     const timelineRole = child.getAttribute("data-timeline-role");
@@ -285,7 +289,44 @@ export function createImplicitTimelineLayersFromDOM(
   return layers;
 }
 
-/** Collect addressable untimed descendants without coupling them to runtime tree parsing. */
+/** Author-declared grouping only; labels are never structural metadata. */
+export function readInlineScopeKind(element: Element): TimelineElement["inlineScopeKind"] {
+  if (element.classList.contains("scene") || element.getAttribute("data-timeline-kind") === "scene" ||
+      element.getAttribute("data-timeline-role") === "scene") return "scene";
+  if (element.hasAttribute("data-hf-group") || element.getAttribute("data-timeline-kind") === "group") return "group";
+  return undefined;
+}
+
+/** A leaf fill swatch stays readable even when its authored geometry is only a few pixels. */
+function readTimelinePaint(element: Element): string | undefined {
+  if (element.children.length || element.textContent?.trim()) return undefined;
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  if (!style) return undefined;
+  if (style.backgroundImage && style.backgroundImage !== "none") {
+    // Image-backed layers retain real captured thumbnails; only CSS gradients are swatches.
+    return style.backgroundImage.includes("url(") ? undefined : style.backgroundImage;
+  }
+  const color = style.backgroundColor;
+  return color && color !== "transparent" && !/rgba\([^)]*,\s*0(?:\.0*)?\s*\)$/.test(color)
+    ? color : undefined;
+}
+
+/** Only the node's own content counts; a container does not inherit its children's visuals. */
+function hasOwnTimelineVisual(element: Element): boolean {
+  if (["img", "video", "svg", "canvas", "audio"].includes(element.tagName.toLowerCase())) return true;
+  if (Array.from(element.childNodes).some(node => node.nodeType === 3 && node.textContent?.trim())) return true;
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  if (!style) return false;
+  const painted = (color: string) => Boolean(color && color !== "transparent" &&
+    !/rgba\([^)]*,\s*0(?:\.0*)?\s*\)$/.test(color));
+  return painted(style.backgroundColor) || Boolean(style.backgroundImage && style.backgroundImage !== "none") ||
+    ["Top", "Right", "Bottom", "Left"].some(side =>
+      !["none", "hidden", ""].includes(style.getPropertyValue(`border-${side.toLowerCase()}-style`)) &&
+      parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 &&
+      painted(style.getPropertyValue(`border-${side.toLowerCase()}-color`))) ||
+    Boolean(style.boxShadow && style.boxShadow !== "none");
+}
+
 export function collectDomClipChildren(
   doc: Document,
   clips: readonly ClipManifestClip[],
@@ -350,6 +391,9 @@ export function collectDomClipChildren(
             const isGroup = child.hasAttribute("data-hf-group");
             children.push({
               id: treeId,
+              hasVisualContent: hasOwnTimelineVisual(child),
+              timelinePaint: readTimelinePaint(child),
+              inlineScopeKind: readInlineScopeKind(child),
               domId,
               hfId,
               hidden: child.hasAttribute("data-hidden"),
@@ -499,6 +543,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
 
     const timelineRole = el.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    entry.inlineScopeKind = readInlineScopeKind(el);
     const timelineKind = el.getAttribute("data-timeline-kind");
     if (isTimelineKind(timelineKind)) entry.timelineKind = timelineKind;
     const timelineGroupId = el.getAttribute("data-timeline-group");

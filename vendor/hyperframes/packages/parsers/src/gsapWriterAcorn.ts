@@ -1575,6 +1575,135 @@ export function moveKeyframeInScript(
   return ms.toString();
 }
 
+/** Isolate a literal property channel only when the user edits it. Untouched
+ * channels retain their authored timing, values and easing; loading is inert. */
+export function editPropertyKeyframeInScript(
+  script: string,
+  animationId: string,
+  property: string,
+  percentage: number,
+  edit: { action: "add" | "update" | "remove" | "move" | "ease"; value?: number | string; toPercentage?: number; ease?: string; resolvedFromValues?: Record<string, number | string> },
+): string {
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100 ||
+      (edit.toPercentage !== undefined && (!Number.isFinite(edit.toPercentage) || edit.toPercentage < 0 || edit.toPercentage > 100)) ||
+      (typeof edit.value === "number" && !Number.isFinite(edit.value))) throw new Error("Keyframe time and value must be finite and inside the animation");
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((entry) => entry.id === animationId);
+  if (!parsed || !target) throw new Error("Animation is no longer available");
+  const animation = target.animation;
+  const statement = findEnclosingExpressionStatement(target.call.ancestors);
+  const kfNode = keyframesObjectNode(target.call.varsArg);
+  if (animation.hasUnresolvedKeyframes || animation.hasUnresolvedSelector ||
+      (animation.provenance && animation.provenance.kind !== "literal") || animation.arcPath?.enabled || !["to", "from", "fromTo"].includes(target.call.method) ||
+      statement?.expression !== target.call.node || !inBlock(target.call, statement) ||
+      typeof animation.position !== "number") {
+    throw new Error("This computed or nested animation is read-only for property keyframes");
+  }
+  if (!animation.keyframes) {
+    if (Object.values(animation.properties).some((value) => typeof value !== "number") ||
+        Object.values(animation.fromProperties ?? {}).some((value) => typeof value !== "number") ||
+        (animation.method !== "fromTo" && !edit.resolvedFromValues))
+      throw new Error("The flat animation endpoint must be captured before property editing");
+    const index = parsed.located.indexOf(target);
+    const converted = convertToKeyframesFromScript(script, animationId, edit.resolvedFromValues);
+    const next = parseGsapScriptAcornForWrite(converted)?.located[index];
+    if (!next?.animation.keyframes) throw new Error("Unable to convert the animation safely");
+    return editPropertyKeyframeInScript(converted,next.id,property,percentage,edit);
+  }
+  if (!kfNode || animation.keyframes.format !== "percentage" || target.call.method !== "to")
+    throw new Error("This animation is read-only for property keyframes");
+  const propertyChannels = (value: GsapAnimation) => new Set([...collectPropertyKeys(value)].filter((key) => key !== "_auto"));
+  const channels = propertyChannels(animation);
+  if (!channels.has(property) || isTweenConfigKey(property)) throw new Error("Unknown animated property");
+  if (edit.action !== "add" && !animation.keyframes?.keyframes.some((frame) =>
+      property in frame.properties && Math.abs(frame.percentage - percentage) <= 0.001))
+    throw new Error("This property keyframe is no longer available");
+  if (edit.action === "add" && animation.keyframes?.keyframes.some((frame) =>
+      property in frame.properties && Math.abs(frame.percentage - percentage) <= 0.001)) return script;
+  let source = script;
+  let channelId = animationId;
+  if (channels.size > 1) {
+    const makeVars = (selected: boolean): string => {
+      const entries = target.call.varsArg.properties.map((node: Node) => {
+        const key = propKeyName(node);
+        if (key !== "keyframes") {
+          if (key && channels.has(key) && (key === property) !== selected) return null;
+          if (key?.startsWith("on")) throw new Error("Animations with callbacks are read-only for property keyframes");
+          return script.slice(node.start, node.end);
+        }
+        const frames = kfNode.properties.map((frame: Node) => {
+          if (Number.isNaN(percentageFromKey(propKeyName(frame) ?? ""))) return script.slice(frame.start, frame.end);
+          const values = frame.value.properties.filter((value: Node) => {
+            const name = propKeyName(value);
+            return name === "ease" || name === "_auto" || ((name === property) === selected);
+          });
+          if (!values.some((value: Node) => !["ease", "_auto"].includes(propKeyName(value) ?? ""))) return null;
+          return `${script.slice(frame.key.start, frame.key.end)}: { ${values.map((value: Node) => script.slice(value.start, value.end)).join(", ")} }`;
+        }).filter((value: string | null) => value !== null);
+        return `keyframes: { ${frames.join(", ")} }`;
+      }).filter((value: string | null) => value !== null);
+      return `{ ${entries.join(", ")} }`;
+    };
+    const args = target.call.node.arguments.map((arg: Node) => script.slice(arg.start, arg.end));
+    const varsIndex = target.call.node.arguments.indexOf(target.call.varsArg);
+    args[varsIndex] = makeVars(true);
+    const ms = new MagicString(script);
+    const remainingVars = makeVars(false);
+    const receiver = script.slice(target.call.node.callee.object.start, target.call.node.callee.object.end);
+    ms.overwrite(target.call.varsArg.start, target.call.varsArg.end, remainingVars);
+    ms.appendRight(statement.end, `\n${receiver}.to(${args.join(", ")});`);
+    const insertedStart = statement.end + remainingVars.length - (target.call.varsArg.end - target.call.varsArg.start) + 1;
+    source = ms.toString();
+    const isolated = parseGsapScriptAcornForWrite(source)?.located.find((entry) =>
+      entry.call.node.start === insertedStart &&
+      entry.animation.targetSelector === animation.targetSelector &&
+      entry.animation.position === animation.position &&
+      propertyChannels(entry.animation).size === 1 && propertyChannels(entry.animation).has(property));
+    if (!isolated) throw new Error("Unable to isolate the property without changing the animation");
+    channelId = isolated.id;
+  }
+  if (edit.action === "remove") return removeKeyframeFromScript(source, channelId, percentage);
+  if (edit.action === "move") {
+    const toPercentage = edit.toPercentage ?? percentage;
+    if (Math.abs(toPercentage - percentage) <= 0.001) return script;
+    const located = parseGsapScriptAcornForWrite(source)?.located.find((entry) => entry.id === channelId);
+    const keyframes = located && keyframesObjectNode(located.call.varsArg);
+    if (!keyframes) throw new Error("Unable to find property keyframes");
+    const nodes = percentagePropsOf(keyframes);
+    const moving = nodes.find((node: Node) => Math.abs(percentageFromKey(propKeyName(node) ?? "") - percentage) <= 0.001);
+    if (!moving) throw new Error("This property keyframe is no longer available");
+    if (nodes.some((node: Node) => node !== moving && Math.abs(percentageFromKey(propKeyName(node) ?? "") - toPercentage) <= 0.001))
+      throw new Error("A keyframe for this property already exists at that time");
+    const entries = nodes.map((node: Node) => ({
+      pct: node === moving ? toPercentage : percentageFromKey(propKeyName(node) ?? ""),
+      value: source.slice(node.value.start, node.value.end),
+    })).sort((a, b) => a.pct - b.pct);
+    const percentageNodes = new Set(nodes);
+    const config = keyframes.properties.filter((node: Node) => !percentageNodes.has(node)).map((node: Node) => source.slice(node.start, node.end));
+    const ms = new MagicString(source);
+    ms.overwrite(keyframes.start, keyframes.end, `{ ${[
+      ...entries.map((entry) => `${JSON.stringify(plainPercentKey(entry.pct))}: ${entry.value}`), ...config,
+    ].join(", ")} }`);
+    return ms.toString();
+  }
+  if (edit.action === "ease") return updateKeyframeInScript(source, channelId, percentage, {}, edit.ease);
+  if (edit.value === undefined) throw new Error("A keyframe value is required");
+  if (edit.action === "update") return updateKeyframeInScript(source, channelId, percentage, { [property]: edit.value });
+  const located = parseGsapScriptAcornForWrite(source)?.located.find((entry) => entry.id === channelId);
+  const keyframes = located && keyframesObjectNode(located.call.varsArg);
+  if (!keyframes) throw new Error("Unable to find property keyframes");
+  const entries = percentagePropsOf(keyframes).map((node: Node) => ({
+    pct: percentageFromKey(propKeyName(node) ?? ""), code: source.slice(node.start, node.end),
+  }));
+  entries.push({ pct: percentage, code: `${JSON.stringify(plainPercentKey(percentage))}: ${recordToCode({ [property]: edit.value })}` });
+  entries.sort((a, b) => a.pct - b.pct);
+  const percentageNodes = new Set(percentagePropsOf(keyframes));
+  const config = keyframes.properties.filter((node: Node) => !percentageNodes.has(node)).map((node: Node) => source.slice(node.start, node.end));
+  const ms = new MagicString(source);
+  ms.overwrite(keyframes.start, keyframes.end, `{ ${[...entries.map((entry) => entry.code), ...config].join(", ")} }`);
+  return ms.toString();
+}
+
 /**
  * Resize a keyframed tween's window (boundary drag-to-retime): set the tween's
  * `position` (trailing position arg) + `duration`, and RE-KEY each existing

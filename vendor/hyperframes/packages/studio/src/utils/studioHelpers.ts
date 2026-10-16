@@ -32,7 +32,6 @@ export type RightPanelTab =
   | "assets"
   | "code"
   | "animation"
-  | "animation-properties"
   | "renders"
   | "block-params"
   | "slideshow"
@@ -305,7 +304,7 @@ export type ToggleHiddenHandler = (
 ) => Promise<void> | void;
 
 type TimelineSelectionRange = Pick<TimelineElement, "start" | "duration"> &
-  Partial<Pick<TimelineElement, "id" | "timelineKind" | "compositionSrc" | "sourceFile">>;
+  Partial<Pick<TimelineElement, "id" | "timelineKind" | "compositionSrc" | "sourceFile" | "inlineScopeKind">>;
 
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
@@ -318,6 +317,8 @@ export function resolveTimelineSelectionSeekTime(
   const end = Math.max(start, start + Math.max(0, element.duration));
   const time = Number.isFinite(currentTime) ? currentTime : start;
   if (end === start) return start;
+  if (element.inlineScopeKind)
+    return clampNumber(time, start, Math.max(start, end - 0.001));
   // Animated layers commonly begin/end on a deliberately transparent frame.
   // Timeline rows represent the whole authored layer, so selecting one at an
   // end-exclusive boundary should inspect a representative frame inside it.

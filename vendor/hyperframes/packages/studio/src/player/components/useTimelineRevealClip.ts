@@ -11,19 +11,14 @@
  */
 import { useEffect } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import {
-  CLIP_Y,
-  RULER_H,
-  TRACK_H,
-  TRACKS_LEFT_PAD,
-  getTimelineRowTop,
-} from "./timelineLayout";
+import { CLIP_Y, RULER_H, TRACK_H, TRACKS_LEFT_PAD, getTimelineRowTop } from "./timelineLayout";
 import { computeRevealScroll } from "./timelineRevealScroll";
 
 interface TimelineRevealGeometry {
   elements: TimelineElement[];
   displayTrackOrder: number[];
   pps: number;
+  timeOffset?: number;
   gutterWidth: number;
 }
 
@@ -51,7 +46,10 @@ export function useTimelineRevealClip(
     const rowIndex = geometry.displayTrackOrder.indexOf(element.track);
     if (rowIndex < 0) return;
 
-    const clipLeft = geometry.gutterWidth + TRACKS_LEFT_PAD + element.start * geometry.pps;
+    const clipLeft =
+      geometry.gutterWidth +
+      TRACKS_LEFT_PAD +
+      (element.start - (geometry.timeOffset ?? 0)) * geometry.pps;
     const clipTop = getTimelineRowTop(rowIndex) + CLIP_Y;
     const clipWidth = Math.max(element.duration * geometry.pps, 4);
 

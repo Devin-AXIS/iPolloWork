@@ -14,6 +14,12 @@ before making product changes.
 
 Keep changes focused, preserve the iPolloWork/OpenCode boundary, and include the checks used to validate the change.
 
+`pnpm install` installs the repository's Lefthook pre-commit checks. Run
+`pnpm run prepare` to repair the installation, or `pnpm exec lefthook run pre-commit`
+to check it manually. The hook checks staged whitespace and runs the canonical
+maintainability audit over local changes; owning-package tests and type checks
+still need to run before submission.
+
 ## Issue tracker
 
 Use GitHub Issues for public bug reports, feature requests, documentation

@@ -146,4 +146,18 @@ describe("timeline drag commit intent", () => {
       undefined,
     );
   });
+  test("explicit track insertion shifts following tracks without compacting sparse identities", () => {
+    const first = { ...CLIP, track: 4, authoredTrack: 4 };
+    const later = { ...SECOND_CLIP, track: 8, authoredTrack: 8 };
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn(() => Promise.resolve());
+    commitDraggedClipMove({ ...drag("layer-order"), element: first, insertRow: 0 }, {
+      elements: [first, later], trackOrder: [4, 8], updateElement, onMoveElements,
+    });
+    expect(onMoveElements).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ element: later, updates: { start: later.start, track: 9 } }),
+    ]), expect.any(String), "track-insert", undefined);
+    expect(updateElement).toHaveBeenCalledWith("scene-title", { start: later.start, track: 9, authoredTrack: 9 });
+  });
+
 });

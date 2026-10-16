@@ -1,6 +1,11 @@
 import { resolveTimelineMove, resolveTimelineResize } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
-import { TRACK_H, getTimelineRowFromY, INSERT_BOUNDARY_BAND } from "./timelineLayout";
+import {
+  TRACK_H,
+  getTimelineLogicalRowFromY,
+  type TimelinePresentationRow,
+  INSERT_BOUNDARY_BAND,
+} from "./timelineLayout";
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
   TIMELINE_SNAP_PX,
@@ -26,7 +31,9 @@ export interface DragPreviewContext {
   scroll: HTMLDivElement | null;
   pps: number;
   duration: number;
+  timeOffset?: number;
   trackOrder: number[];
+  presentationRows?: readonly TimelinePresentationRow[];
   elements: TimelineElement[];
   buildSnapTargets: BuildSnapTargets;
   /**
@@ -85,7 +92,11 @@ function resolveDropPlacement(
   // near-boundary hover requests a deliberate new-track insert. Uses the
   // shared row→y inverse so the top breathing pad is subtracted consistently.
   const rowFloat = scroll
-    ? getTimelineRowFromY(clientY - scroll.getBoundingClientRect().top + scroll.scrollTop)
+    ? getTimelineLogicalRowFromY(
+        clientY - scroll.getBoundingClientRect().top + scroll.scrollTop,
+        ctx.presentationRows ?? [],
+        trackOrder,
+      )
     : 0;
   // Geometry-exact band (the clip inset) so an insert only arms in the visible
   // gutter BETWEEN clip bodies — dragging over a clip body is a lane move, never a
@@ -133,12 +144,22 @@ export function computeDragPreview(
       pixelsPerSecond: pps,
       trackHeight: TRACK_H,
       maxStart: dragMaxStart,
+      minStart: ctx.timeOffset ?? 0,
       trackOrder,
     },
     drag.mode === "layer-order" ? drag.originClientX : clientX,
     drag.mode === "time" ? drag.originClientY : clientY,
   );
   if (drag.mode === "layer-order") {
+    if (ctx.presentationRows?.length && scroll) {
+      const row = getTimelineLogicalRowFromY(
+        clientY - scroll.getBoundingClientRect().top + scroll.scrollTop,
+        ctx.presentationRows,
+        trackOrder,
+      );
+      const index = Math.max(0, Math.min(trackOrder.length - 1, Math.floor(row)));
+      nextMove.track = trackOrder[index] ?? drag.element.track;
+    }
     const { track: previewTrack, insertRow } = resolveDropPlacement(
       drag,
       clientY,
@@ -187,12 +208,9 @@ export function computeDragPreview(
     dragMaxStart + drag.element.duration,
   );
   const dragKey = drag.element.key ?? drag.element.id;
-  const previewStart = resolveGroupClampedStart(
-    snap.start,
-    drag.element,
-    dragKey,
-    elements,
-    drag.selectionKeys,
+  const previewStart = Math.max(
+    ctx.timeOffset ?? 0,
+    resolveGroupClampedStart(snap.start, drag.element, dragKey, elements, drag.selectionKeys),
   );
   return {
     ...drag,
@@ -212,6 +230,7 @@ export interface ResizePreviewContext {
   scroll: HTMLDivElement | null;
   pps: number;
   buildSnapTargets: BuildSnapTargets;
+  timeOffset?: number;
 }
 
 export interface ResizePreviewResult {
@@ -236,7 +255,7 @@ export function computeResizePreview(
   const effectiveClientX = clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft);
 
   const sourceRemaining =
-    !resize.element.compositionSrc && resize.element.sourceDuration != null
+    resize.resizeMode !== "stretch" && resize.element.sourceDuration != null
       ? Math.max(
           0,
           (resize.element.sourceDuration - (resize.element.playbackStart ?? 0)) /
@@ -245,7 +264,9 @@ export function computeResizePreview(
       : Number.POSITIVE_INFINITY;
   const normalizedTag = resize.element.tag.toLowerCase();
   const canSeedPlaybackStart =
-    !resize.element.compositionSrc && (normalizedTag === "audio" || normalizedTag === "video");
+    Boolean(resize.element.compositionSrc) ||
+    normalizedTag === "audio" ||
+    normalizedTag === "video";
   const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
   // Trim limit = available source media only — NOT the composition length.
   // Duration is content-driven (the comp grows/shrinks to fit on commit), so
@@ -260,13 +281,14 @@ export function computeResizePreview(
       duration: resize.element.duration,
       originClientX: resize.originClientX,
       pixelsPerSecond: pps,
-      minStart: 0,
+      minStart: ctx.timeOffset ?? 0,
       maxEnd,
-      playbackStart: resize.element.compositionSrc
-        ? undefined
-        : resize.edge === "start" && canSeedPlaybackStart
-          ? (resize.element.playbackStart ?? 0)
-          : resize.element.playbackStart,
+      playbackStart:
+        resize.resizeMode === "stretch"
+          ? undefined
+          : resize.edge === "start" && canSeedPlaybackStart
+            ? (resize.element.playbackStart ?? 0)
+            : resize.element.playbackStart,
       playbackRate: resize.element.playbackRate,
     },
     resize.edge,
@@ -328,7 +350,8 @@ export function computeResizePreview(
     originScrollLeft,
     previewStart: nextResize.start,
     previewDuration: nextResize.duration,
-    previewPlaybackStart: nextResize.playbackStart,
+    previewPlaybackStart:
+      resize.resizeMode === "stretch" ? resize.element.playbackStart : nextResize.playbackStart,
   };
 }
 
