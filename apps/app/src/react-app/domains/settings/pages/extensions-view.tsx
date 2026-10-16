@@ -12,8 +12,9 @@ import {
   type EnterpriseResource,
 } from "@/app/lib/enterprise-connections";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
-import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
-import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise/work-resource-scope-switch";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise";
+import { EnterpriseResourceControls } from "@/react-app/domains/enterprise";
 import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
 
 export type ExtensionsSection = "all" | "mcp" | "skills" | "plugins";
@@ -94,6 +95,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
         <div className="flex justify-end">
           <div className="flex items-center gap-2">
             <WorkResourceScopeSwitch enterprise={activeEnterprise} value={resourceScope} onChange={setResourceScope} />
+            <EnterpriseResourceControls key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" onChanged={() => setEnterpriseRefreshRevision((revision) => revision + 1)} />
             {resourceScope !== "personal" ? (
               <Button
                 variant="ghost"

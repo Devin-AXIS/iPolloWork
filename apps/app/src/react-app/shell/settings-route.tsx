@@ -138,7 +138,7 @@ import {
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
-import { conversationEngineAdapters } from "@/react-app/domains/session/engine/conversation-engines";
+import { conversationEngineAdapters, withEnterpriseShareContext } from "@/react-app/domains/session/engine/conversation-engines";
 import { notifyAlert } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { buildFeedbackUrl } from "@/app/lib/feedback";
@@ -911,7 +911,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [selectedWorkspace?.engineId, selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
   const conversation = useMemo(
     () => opencodeBaseUrl && selectedWorkspaceEndpoint?.token
-      ? conversationEngineAdapters.get(selectedWorkspace?.engineId).connect({
+      ? withEnterpriseShareContext(conversationEngineAdapters.get(selectedWorkspace?.engineId)).connect({
           baseUrl: opencodeBaseUrl,
           token: selectedWorkspaceEndpoint.token,
           directory: selectedWorkspaceRoot || undefined,

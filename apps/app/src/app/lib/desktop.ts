@@ -396,7 +396,7 @@ export async function desktopFetchViaMain(
   let url: string;
   let method: string | undefined;
   let headers: Record<string, string> | undefined;
-  let body: string | undefined;
+  let body: string | ArrayBuffer | undefined;
 
   if (typeof Request !== "undefined" && input instanceof Request) {
     url = input.url;
@@ -416,7 +416,11 @@ export async function desktopFetchViaMain(
     body = typeof init?.body === "string" ? init.body : undefined;
   }
 
-  const result = await invokeElectronHelper("__fetch", url, { method, headers, body, timeoutMs, responseType });
+  if (init?.body instanceof Blob) body = await init.body.arrayBuffer();
+  else if (init?.body instanceof ArrayBuffer) body = init.body;
+  init?.signal?.throwIfAborted();
+  const result = await invokeElectronHelper("__fetch", url, { method, headers, body, timeoutMs, responseType, ...(init?.redirect === "error" ? { redirect: "error" } : {}) });
+  init?.signal?.throwIfAborted();
   if (responseType === "arrayBuffer" && typeof result.body === "string") {
     throw new Error("desktop_binary_fetch_requires_restart");
   }

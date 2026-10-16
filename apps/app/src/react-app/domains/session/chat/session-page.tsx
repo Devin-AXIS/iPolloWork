@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { UIMessage } from "ai";
 import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
 import { videoProjectIdFromStoryboardPath } from "../video/video-storyboard";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { Check, ChevronDown, CircleAlert, Download, Ellipsis, Eye, FileText, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Minimize2, Palette, Pencil, Plus, Presentation, Trash2, Upload, X, Zap } from "lucide-react";
@@ -170,6 +170,7 @@ import {
 } from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
+import { EnterpriseSnapshotNotice } from "@/react-app/domains/enterprise";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, SidePanelLauncherMenu, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -1774,6 +1775,7 @@ export function SessionPage(props: SessionPageProps) {
   const templateCoverCacheRef = useRef(new Map<string, Promise<Awaited<ReturnType<TemplateCoverLoader>>>>());
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
+  const [enterpriseEntryParams, setEnterpriseEntryParams] = useSearchParams();
   const [templateMarketTarget, setTemplateMarketTarget] = useState<"new-session" | "current-session">("new-session");
   const [pendingTemplateApplication, setPendingTemplateApplication] = useState<PendingTemplateApplication | null>(null);
   const [pendingCustomTemplateApplication, setPendingCustomTemplateApplication] = useState<PendingCustomTemplateApplication | null>(null);
@@ -1801,6 +1803,13 @@ export function SessionPage(props: SessionPageProps) {
     setTemplateCatalogSource(source);
     clearTemplateCatalog();
   }, [activeEnterprise, clearTemplateCatalog, denAuth.isSignedIn, templateCatalogSource]);
+  useEffect(() => {
+    if (!activeEnterprise || enterpriseEntryParams.get("enterpriseTemplates") !== activeEnterprise.id) return;
+    selectTemplateCatalogSource("enterprise");
+    setTemplateMarketTarget("new-session");
+    setTemplateMarketOpen(true);
+    setEnterpriseEntryParams((current) => { const next = new URLSearchParams(current); next.delete("enterpriseTemplates"); return next; }, { replace: true });
+  }, [activeEnterprise, enterpriseEntryParams, selectTemplateCatalogSource, setEnterpriseEntryParams]);
   useEffect(() => {
     const sourceUnavailable = (templateCatalogSource === "cloud" && !denAuth.isSignedIn)
       || (templateCatalogSource === "enterprise" && !activeEnterprise);
@@ -4662,6 +4671,7 @@ export function SessionPage(props: SessionPageProps) {
                 </Tooltip>
               ) : null}
               <main ref={mainWorkspaceContentRef} style={{ minWidth: mainWorkspaceMinWidth }} className="flex h-full w-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
+          {activeEnterprise?.features?.sessionSharing && props.ipolloworkServerClient && props.runtimeWorkspaceId && props.selectedSessionId ? <EnterpriseSnapshotNotice connection={activeEnterprise} client={props.ipolloworkServerClient} workspaceId={props.runtimeWorkspaceId} sessionId={props.selectedSessionId} /> : null}
           <header className={cn(
             "relative z-10 h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center bg-background/80 px-4 backdrop-blur-2xl backdrop-saturate-150 dark:bg-background/72 md:px-6 mac:titlebar-drag @container/titlebar",
             mainHeaderHidden ? "hidden!" : "grid",
@@ -5370,6 +5380,7 @@ export function SessionPage(props: SessionPageProps) {
         remoteResources={remoteTemplateResources}
         cloudAvailable={denAuth.isSignedIn}
         enterpriseAvailable={Boolean(activeEnterprise)}
+        enterpriseConnection={activeEnterprise}
         source={templateCatalogSource}
         onSelectSource={selectTemplateCatalogSource}
         onInstallRemote={(resource) => void installRemoteTemplate(resource)}

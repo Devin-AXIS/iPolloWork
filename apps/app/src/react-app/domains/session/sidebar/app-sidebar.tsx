@@ -18,6 +18,7 @@ import {
   PinOff,
   Plus,
   Search,
+  Share2,
   SquarePen,
   Trash2,
   RefreshCw,
@@ -126,7 +127,8 @@ import { MarbleAvatar } from "../../../design-system/marble-avatar";
 import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../status/session-activity-store";
 import { NotificationBell } from "../../../shell/notification-center";
 import { useShellConfig } from "../../../shell/shell-config";
-import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { requestEnterpriseSessionShare } from "@/app/lib/enterprise-client";
 import { NAVIGATION_ICON_STROKE_WIDTH, ProjectFolderIcon } from "@/components/navigation-icons";
 
 const SIDEBAR_ICON_STROKE_WIDTH = NAVIGATION_ICON_STROKE_WIDTH;
@@ -214,6 +216,7 @@ function SessionMenuContent({ variant, sessionId, workspaceId, isPinned, isArchi
   if (variant === "dropdown") {
     return (
       <>
+        {ctx.onShareSession ? <DropdownMenuItem disabled={!ctx.enterpriseSharingAvailable} title={!ctx.enterpriseSharingAvailable ? "企业服务尚未开放会话分享，请联系管理员升级" : undefined} onClick={() => ctx.onShareSession?.(workspaceId, sessionId)}><Share2 className="size-4" />分享会话</DropdownMenuItem> : null}
         <DropdownMenuItem onClick={() => store.getState().togglePin(sessionId)}>
           {isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
           {isPinned ? t("session_management.unpin_session") : t("session_management.pin_session")}
@@ -245,6 +248,7 @@ function SessionMenuContent({ variant, sessionId, workspaceId, isPinned, isArchi
 
   return (
     <>
+      {ctx.onShareSession ? <ContextMenuItem disabled={!ctx.enterpriseSharingAvailable} title={!ctx.enterpriseSharingAvailable ? "企业服务尚未开放会话分享，请联系管理员升级" : undefined} onClick={() => ctx.onShareSession?.(workspaceId, sessionId)}><Share2 className="size-4" />分享会话</ContextMenuItem> : null}
       <ContextMenuItem onClick={() => store.getState().togglePin(sessionId)}>
         {isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
         {isPinned ? t("session_management.unpin_session") : t("session_management.pin_session")}
@@ -725,6 +729,8 @@ export function AppSidebar(props: AppSidebarProps) {
     onCreateTaskInWorkspace: props.onCreateTaskInWorkspace,
     onOpenRenameSession: props.onOpenRenameSession,
     onOpenDeleteSession: props.onOpenDeleteSession,
+    onShareSession: activeEnterprise ? requestEnterpriseSessionShare : undefined,
+    enterpriseSharingAvailable: Boolean(activeEnterprise?.features?.sessionSharing && activeEnterprise?.features?.directory),
     onArchiveSession: props.onArchiveSession,
     onRecoverWorkspace: props.onRecoverWorkspace,
     onTestWorkspaceConnection: props.onTestWorkspaceConnection,

@@ -97,6 +97,12 @@
       "bun": "./src/project-workspace.ts",
       "default": "./dist/project-workspace.js"
     },
+    "./enterprise": {
+      "types": "./src/enterprise.ts",
+      "development": "./src/enterprise.ts",
+      "bun": "./src/enterprise.ts",
+      "default": "./dist/enterprise.js"
+    },
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",

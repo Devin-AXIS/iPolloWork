@@ -24,6 +24,9 @@ import { useControlAction, type iPolloWorkControlAction } from "./control/contro
 import { openNotificationCenterEvent, requestOpenMarketplacePlugin } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { useShellConfig } from "./shell-config";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { EnterpriseMessageList, useEnterpriseMessages } from "@/react-app/domains/enterprise";
+import { enterpriseIdentity } from "@/app/lib/enterprise-client";
 
 const SEVERITY_ICONS: Record<NotificationSeverity, LucideIcon> = {
   info: Info,
@@ -64,6 +67,8 @@ export function NotificationBell({ className }: { className?: string }) {
   const clearAll = useNotificationStore((state) => state.clearAll);
   const reloadCoordinator = useReloadCoordinator();
   const navigate = useNavigate();
+  const enterprise = useActiveEnterpriseConnection();
+  const enterpriseInbox = useEnterpriseMessages(enterprise);
 
   const notificationsListAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "notifications.list",
@@ -85,8 +90,8 @@ export function NotificationBell({ className }: { className?: string }) {
   useControlAction(notificationsListAction);
 
   const unreadCount = useMemo(
-    () => notifications.filter((notification) => notification.readAt === null).length,
-    [notifications],
+    () => notifications.filter((notification) => notification.readAt === null).length + enterpriseInbox.unread,
+    [notifications, enterpriseInbox.unread],
   );
 
   useEffect(() => {
@@ -166,7 +171,8 @@ export function NotificationBell({ className }: { className?: string }) {
             </Button>
           ) : null}
         </div>
-        {notifications.length === 0 ? (
+        {enterprise ? <EnterpriseMessageList key={enterpriseIdentity(enterprise)} connection={enterprise} inbox={enterpriseInbox} onExit={() => setOpen(false)} /> : null}
+        {notifications.length === 0 && !enterprise ? (
           <div className="flex flex-col items-center gap-1 px-6 py-10 text-center">
             <Bell className="mb-2 size-5 text-muted-foreground/60" />
             <p className="text-sm font-medium">{t("notifications.empty")}</p>

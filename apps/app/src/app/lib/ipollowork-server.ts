@@ -1,5 +1,6 @@
 import { VerifiedInboxReceiptSchema, type InboxUploadOptions } from "@ipollowork/types/reference-context";
 import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
+import type { EnterpriseSnapshot, EnterpriseSummary } from "@ipollowork/types/enterprise";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { desktopFetch } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
@@ -1383,6 +1384,16 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}/adopt-video`, { token, hostToken, method: "POST", body: {}, timeoutMs: timeouts.workspaceImport }),
     listTemplateSessions: (workspaceId: string) =>
       requestJson<{ items: TemplateSessionSnapshot[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions`, { token, hostToken }),
+    summarizeSessionForEnterprise: (workspaceId: string, sessionId: string, model?: { providerID: string; modelID: string }) =>
+      requestJson<{ item: EnterpriseSummary }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/share-summary`, {
+        token, hostToken, method: "POST", body: { model }, timeoutMs: 130_000,
+      }),
+    importEnterpriseSnapshot: (workspaceId: string, snapshot: EnterpriseSnapshot, model?: { providerID: string; modelID: string }, engineId?: string) =>
+      requestJson<{ item: iPolloWorkSession; workspaceId: string }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/enterprise-shares/import`, {
+        token, hostToken, method: "POST", body: { snapshot, model, engineId }, timeoutMs: timeouts.sessionRead,
+      }),
+    getEnterpriseSnapshot: (workspaceId: string, sessionId: string) =>
+      requestJson<{ snapshot: EnterpriseSnapshot | null }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/enterprise-share`, { token, hostToken, timeoutMs: timeouts.sessionRead }),
     createSession: (
       workspaceId: string,
       title?: string,

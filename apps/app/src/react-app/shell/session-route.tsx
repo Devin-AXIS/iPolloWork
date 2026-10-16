@@ -152,7 +152,8 @@ import { createVideoLiveDirector } from "@/react-app/domains/session/video/video
 import { useUiStateStore } from "./ui-state-store";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
-import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { EnterpriseSessionSharing } from "@/react-app/domains/enterprise";
 import { IPolloWorkModelsStartupDialog } from "@/react-app/domains/cloud/ipollowork-models-startup-dialog";
 import { IPOLLOWORK_MODEL_PREVIEWS } from "@/react-app/domains/cloud/ipollowork-models-promo";
 import { FirstRunLoader } from "@/react-app/domains/onboarding/first-run-loader";
@@ -192,7 +193,7 @@ import {
 import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
 import { useSessionControlActions } from "@/react-app/domains/session/control/session-control-actions";
 import type { ConversationStatus } from "@/react-app/domains/session/engine/conversation-engine";
-import { conversationEngineAdapters } from "@/react-app/domains/session/engine/conversation-engines";
+import { conversationEngineAdapters, withEnterpriseShareContext } from "@/react-app/domains/session/engine/conversation-engines";
 import { workspaceSessionRoute, workspaceSettingsRoute } from "./workspace-routes";
 import { WorkspaceProvider } from "./workspace-provider";
 import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -381,7 +382,7 @@ export function SessionRoute() {
   useEffect(() => setNewConversationEngineId(null), [selectedWorkspaceId]);
   const conversation = useMemo(
     () => opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError && (!selectedSessionId || selectedConversation)
-      ? conversationEngineAdapters.get(activeEngineId).connect({
+      ? withEnterpriseShareContext(conversationEngineAdapters.get(activeEngineId)).connect({
           baseUrl: opencodeBaseUrl,
           token: selectedWorkspaceServerToken,
           directory: selectedWorkspaceRoot || undefined,
@@ -2916,6 +2917,27 @@ export function SessionRoute() {
         onSessionError={handleSessionError}
       />
     ) : null}
+    {activeEnterprise ? <EnterpriseSessionSharing
+      key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`}
+      connection={activeEnterprise}
+      currentWorkspaceId={selectedWorkspaceId}
+      model={activeSelectedModel}
+      engineId={activeEngineId}
+      resolveWorkspace={(workspaceId) => {
+        const workspace = workspaces.find((item) => item.id === workspaceId);
+        if (!workspace || workspace.workContextId !== `enterprise:${activeEnterprise.id}`) return null;
+        return resolveWorkspaceEndpoint(workspace, { baseUrl, token, hostToken: ipolloworkServerHostInfoState?.hostToken });
+      }}
+      onImported={(workspaceId, sessionId) => {
+        const workspace = workspaces.find((item) => item.workContextId === `enterprise:${activeEnterprise.id}` && (item.id === workspaceId || resolveWorkspaceEndpoint(item, { baseUrl, token, hostToken: ipolloworkServerHostInfoState?.hostToken })?.workspaceId === workspaceId));
+        if (!workspace) return;
+        setLegacySelectedWorkspaceId(workspace.id);
+        writeActiveWorkspaceId(workspace.id);
+        writeLastSessionFor(workspace.id, sessionId);
+        void loadWorkspaceSessionsInBackground([workspace]);
+        navigateToWorkspaceSession(workspace.id, sessionId);
+      }}
+    /> : null}
     <SessionPage
       selectedSessionId={selectedSessionId}
       selectedSessionKnown={selectedSessionKnown}

@@ -1,4 +1,6 @@
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
+import { enterpriseFeaturesSchema, enterpriseMemberSchema, enterpriseMembershipResponseSchema, type EnterpriseFeatures, type EnterpriseMember } from "@ipollowork/types/enterprise";
+import { enterpriseRequest } from "./enterprise-client";
 import { readPluginPackageArchive } from "./plugin-package-archive";
 import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "./ipollowork-server";
 import { desktopFetchBinaryViaMain, desktopFetchViaMain } from "./desktop";
@@ -36,12 +38,15 @@ export type EnterpriseServer = {
   logoUrl: string | null;
   accent: "blue" | "neutral";
   authMode: "bootstrap" | "ipollo_oidc";
+  features?: EnterpriseFeatures;
 };
 
 export type EnterpriseConnection = EnterpriseServer & {
   membership: {
     id: string;
     role: EnterpriseMemberRole;
+    status?: EnterpriseMember["status"];
+    departmentId?: string | null;
   };
   session: {
     token: string;
@@ -83,6 +88,7 @@ type EnterpriseManifest = {
   shortName: string;
   logoUrl: string | null;
   accent: EnterpriseServer["accent"];
+  features?: EnterpriseFeatures;
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -137,7 +143,8 @@ function parseManifest(value: unknown): EnterpriseManifest | null {
   const accentValue = readString(enterprise, "accent");
   const accent = accentValue === "neutral" ? "neutral" : accentValue === "blue" ? "blue" : null;
   if (!id.startsWith("ent_") || !name || !shortName || !accent) return null;
-  return { id, name, shortName, logoUrl, accent };
+  const features = enterpriseFeaturesSchema.safeParse(value.features);
+  return { id, name, shortName, logoUrl, accent, ...(features.success ? { features: features.data } : {}) };
 }
 
 function endpoint(origin: string, path: string) {
@@ -206,6 +213,7 @@ export async function discoverEnterpriseConnection(
     logoUrl: manifest.logoUrl,
     accent: manifest.accent,
     authMode: discovery.authMode,
+    ...(manifest.features ? { features: manifest.features } : {}),
   };
 }
 
@@ -213,10 +221,20 @@ export async function refreshEnterpriseConnection(
   connection: EnterpriseConnection,
   fetcher?: typeof fetch,
 ): Promise<EnterpriseConnection> {
+  const storedAtStart = readEnterpriseConnections().find((item) => item.id === connection.id);
   const server = await discoverEnterpriseConnection(connection.origin, fetcher);
   if (server.id !== connection.id) throw new Error("enterprise_manifest_mismatch");
   const current = readEnterpriseConnections().find((item) => item.id === connection.id) ?? connection;
-  const refreshed = { ...current, ...server };
+  let refreshed = { ...current, ...server };
+  if (!server.features) delete refreshed.features;
+  if (server.features?.membership) {
+    const result = await enterpriseRequest(refreshed, "/api/v1/membership", enterpriseMembershipResponseSchema, {}, fetcher);
+    if (result.membership.id !== connection.membership.id) throw new Error("enterprise_manifest_mismatch");
+    refreshed = { ...refreshed, membership: { id: result.membership.id, role: result.membership.role, status: result.membership.status, departmentId: result.membership.departmentId } };
+  }
+  const latest = readEnterpriseConnections().find((item) => item.id === connection.id);
+  if (storedAtStart && !latest) return refreshed;
+  if (latest && (latest.membership.id !== current.membership.id || latest.session.token !== current.session.token)) return latest;
   if (
     current.name !== refreshed.name
     || current.shortName !== refreshed.shortName
@@ -224,6 +242,8 @@ export async function refreshEnterpriseConnection(
     || current.accent !== refreshed.accent
     || current.origin !== refreshed.origin
     || current.authMode !== refreshed.authMode
+    || JSON.stringify(current.features) !== JSON.stringify(refreshed.features)
+    || JSON.stringify(current.membership) !== JSON.stringify(refreshed.membership)
   ) {
     saveEnterpriseConnection(refreshed);
   }
@@ -463,7 +483,7 @@ export async function joinEnterpriseWithCode(
 
 function parseStoredConnection(value: unknown): EnterpriseConnection | null {
   if (!isRecord(value)) return null;
-  const server = parseManifest({ enterprise: value });
+  const server = parseManifest({ enterprise: value, features: value.features });
   const origin = normalizeEnterpriseOrigin(readString(value, "origin"));
   const authModeValue = readString(value, "authMode");
   const authMode = authModeValue === "bootstrap" || authModeValue === "ipollo_oidc" ? authModeValue : null;
@@ -473,7 +493,9 @@ function parseStoredConnection(value: unknown): EnterpriseConnection | null {
   const token = readString(value.session, "token");
   const expiresAt = readString(value.session, "expiresAt");
   if (!memberId || !role || !token || !expiresAt) return null;
-  return { ...server, origin, authMode, membership: { id: memberId, role }, session: { token, expiresAt } };
+  const status = enterpriseMemberSchema.shape.status.safeParse(value.membership.status);
+  const departmentId = value.membership.departmentId;
+  return { ...server, origin, authMode, membership: { id: memberId, role, ...(status.success ? { status: status.data } : {}), ...(departmentId === null || typeof departmentId === "string" ? { departmentId } : {}) }, session: { token, expiresAt } };
 }
 
 function dispatchConnectionsChanged() {

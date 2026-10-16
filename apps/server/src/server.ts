@@ -40,6 +40,7 @@ import { sanitizeCommandName, validateMcpName } from "./validators.js";
 import { TokenService } from "./tokens.js";
 import { engineHostMcp } from "./engine-host-mcp.js";
 import { EnvService } from "./env-file.js";
+import { disposeEnterpriseSnapshots } from "./enterprise-session-snapshots.js";
 import { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
 import { CodexHarnessRuntimePool } from "./codex-harness-runtime.js";
 import { WorkspaceSessionRuntime } from "./workspace-session-runtime.js";
@@ -1081,6 +1082,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           disposeRuntimeOpencodeConfigStore(config),
           disposeiPolloWorkWorkspaceConfigStore(config),
           disposeWorkItemStore(config),
+          disposeEnterpriseSnapshots(config),
           disposeTemplateStore(config),
         ]);
         // Bun releases Windows SQLite file handles on the following event-loop

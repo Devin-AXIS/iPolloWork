@@ -18,6 +18,7 @@ import {
 } from "../src/app/lib/enterprise-connections";
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import { IPOLLOWORK_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
+import { enterpriseFeaturesSchema } from "@ipollowork/types/enterprise";
 
 const originalWindow = globalThis.window;
 
@@ -192,6 +193,25 @@ describe("enterprise connections", () => {
       session: connectedEnterprise.session,
     });
     expect(readEnterpriseConnections()[0]).toEqual(refreshed);
+  });
+
+  test("refreshes role and member status, then clears capabilities when the service is downgraded", async () => {
+    const connected = { ...connectedEnterprise, session: { token: "synthetic-session", expiresAt: "2099-01-01T00:00:00.000Z" }, membership: { id: "member-1", role: "owner", status: "active" }, features: enterpriseFeaturesSchema.parse({ sessionSharing: true }) } satisfies EnterpriseConnection;
+    saveEnterpriseConnection(connected);
+    let upgraded = true;
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/.well-known/ipollo-enterprise")) return Response.json({ serverId: connected.id, name: connected.name, origin: connected.origin, authMode: connected.authMode });
+      if (url.endsWith("/membership")) return Response.json({ membership: { id: connected.membership.id, role: "member", status: "suspended", displayName: "Employee", email: "employee@example.com", departmentId: "department-1" } });
+      return Response.json({ enterprise: connected, ...(upgraded ? { features: { membership: true, sessionSharing: true } } : {}) });
+    };
+    const refreshed = await refreshEnterpriseConnection(connected, fetcher);
+    expect(refreshed.membership).toEqual({ id: "member-1", role: "member", status: "suspended", departmentId: "department-1" });
+    expect(readEnterpriseConnections()[0].membership.role).toBe("member");
+    upgraded = false;
+    const downgraded = await refreshEnterpriseConnection(refreshed, fetcher);
+    expect(downgraded.features).toBeUndefined();
+    expect(readEnterpriseConnections()[0].features).toBeUndefined();
   });
 
   test("joins the configured Enterprise with a Cloud-issued identity token", async () => {

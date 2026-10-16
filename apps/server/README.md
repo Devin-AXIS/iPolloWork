@@ -111,6 +111,16 @@ Sessions (the same API works for OpenCode and DeepSeek Harness workspaces):
 - `GET /workspace/:id/sessions/:sessionId/messages`
 - `POST /workspace/:id/sessions/:sessionId/prompt` (body: `{ "text": string, "model"?: { "providerID": string, "modelID": string }, "mode"?: string, "reasoningEffort"?: string, "clientTimeZone"?: string }`)
 
+Enterprise summary snapshots:
+
+- `POST /workspace/:id/sessions/:sessionId/share-summary` requires a collaborator token, an enterprise workspace, and a connected `{ model: { providerID, modelID } }`. It summarizes completed conversation text without running tools or modifying the original conversation.
+- `POST /workspace/:id/enterprise-shares/import` accepts `{ snapshot, model?, engineId? }`, creates an independent conversation, and returns `{ item, workspaceId }`. Repeated accepts for the same enterprise/member/share return the original conversation, including after a server restart. An interrupted creation returns `enterprise_import_pending` instead of blindly creating a duplicate.
+- `GET /workspace/:id/sessions/:sessionId/enterprise-share` reads the locally stored reference snapshot. Importing does not start a model turn; the app supplies the snapshot as user reference text on the first question.
+
+The local server owns summary generation and local conversation storage. iPolloEnterprise must own recipient authorization, departments, message delivery/read/accept state, resource permissions, review, and package storage. Client role checks only control presentation. The enterprise service must enforce tenant/member permissions for every endpoint, including downloads. Shared contracts are in `packages/types/src/enterprise.ts`; enterprise request paths and pagination/search parameters are in `apps/app/src/app/lib/enterprise-client.ts`.
+
+New enterprise features are enabled only when `/api/v1/client-manifest` advertises the corresponding flags (`membership`, `directory`, `messaging`, `sessionSharing`, `resourceManagement`, `resourcePermissions`, `templatePublishing`, `extensionPublishing`). Missing flags keep new actions unavailable. Snapshot messages retain independent read, accept, ignore, and revoke timestamps; access updates use a revision to reject concurrent changes.
+
 Token management (host/owner auth):
 
 - `GET /tokens`

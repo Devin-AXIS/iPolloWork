@@ -11,11 +11,12 @@ import { readActiveEnterpriseConnection, workContextChangedEvent } from "@/app/l
 let pendingRefresh: { connectionId: string; promise: Promise<EnterpriseConnection> } | null = null;
 
 function refreshConnection(connection: EnterpriseConnection) {
-  if (pendingRefresh?.connectionId === connection.id) return pendingRefresh.promise;
+  const connectionId = `${connection.id}:${connection.membership.id}:${connection.session.token}`;
+  if (pendingRefresh?.connectionId === connectionId) return pendingRefresh.promise;
   const promise = refreshEnterpriseConnection(connection).finally(() => {
     if (pendingRefresh?.promise === promise) pendingRefresh = null;
   });
-  pendingRefresh = { connectionId: connection.id, promise };
+  pendingRefresh = { connectionId, promise };
   return promise;
 }
 
@@ -37,11 +38,15 @@ export function useActiveEnterpriseConnection(): EnterpriseConnection | null {
     };
     window.addEventListener(enterpriseConnectionsChangedEvent, readStoredConnection);
     window.addEventListener(workContextChangedEvent, refreshActiveConnection);
+    window.addEventListener("focus", refreshActiveConnection);
+    const interval = window.setInterval(refreshActiveConnection, 60_000);
     refreshActiveConnection();
     return () => {
       disposed = true;
       window.removeEventListener(enterpriseConnectionsChangedEvent, readStoredConnection);
       window.removeEventListener(workContextChangedEvent, refreshActiveConnection);
+      window.removeEventListener("focus", refreshActiveConnection);
+      window.clearInterval(interval);
     };
   }, []);
 
