@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Two-zone explanation</title>
+<link rel="stylesheet" href="shared.css">
+<style data-layout-styles="two-zone">.ipw-layout-two-zone{box-sizing:border-box;width:100%;height:100%;padding:7%;display:grid;grid-template-rows:auto 1fr;gap:8%;background:var(--ipw-color-bg);color:var(--ipw-color-text);font-family:var(--ipw-font-body)}
+.ipw-layout-two-zone *{box-sizing:border-box;margin:0}
+.ipw-layout-two-zone h2{font:500 72px/1.18 var(--ipw-font-display);text-wrap:balance}
+.ipw-layout-two-zone .zones{display:grid;grid-template-columns:1fr 1fr;gap:7%;align-items:center}
+.ipw-layout-two-zone article{min-width:0;border-top:3px solid var(--ipw-color-primary);padding-top:36px}
+.ipw-layout-two-zone h3{font:500 56px/1.2 var(--ipw-font-display);text-wrap:balance}
+.ipw-layout-two-zone p{font-size:32px;line-height:1.5;margin-top:24px;color:var(--ipw-color-muted);text-wrap:balance;overflow-wrap:anywhere}</style></head><body>
+<aside data-layout-preview-only>Two-zone explanation — static scene-body preview. No timeline, duration or audio is included.</aside>
+<template data-ipw-layout="two-zone" data-layout-description="Two alternatives compared on common criteria." data-layout-capacity="Two titles and concise supporting descriptions.">
+<div class="ipw-layout-two-zone ipw-video-layout">
+<h2 data-slot="title">两种选择，一个共同问题</h2>
+<div class="zones"><article data-slot="left-zone"><h3 data-slot="left-title">选择 A</h3><p data-slot="left-description">先说明它适合的具体条件。</p></article>
+<article data-slot="right-zone"><h3 data-slot="right-title">选择 B</h3><p data-slot="right-description">再说明差异，使用相同的比较口径。</p></article></div>
+</div>
+</template>
+<main data-layout-preview-only></main>
+<script data-layout-preview-only>document.querySelector('main').append(document.querySelector('template').content.cloneNode(true));</script>
+</body></html>

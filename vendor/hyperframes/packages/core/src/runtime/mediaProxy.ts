@@ -1,7 +1,12 @@
 import { postRuntimeMessage } from "./bridge";
 import { swallow } from "./diagnostics";
-import { evictMediaSyncState } from "./media";
+import { evictMediaSyncState, HOLD_CAP_MS } from "./media";
+import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
+import { isVideoElement } from "./domRealm";
+import { swappedElements } from "./proxySrc";
+import { waitForServedProxy } from "./proxyWait";
+import { registerSeekCompletion } from "./adapters/seek-dispatch";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -15,9 +20,8 @@ export type MediaCodecMapEntry = {
   codecName: string;
   browserHostile: boolean;
   representativeMime: string | null;
-  /** Source carries an alpha channel — never proxy it (H.264 would destroy
-   * the transparency, e.g. ProRes 4444 alpha). Optional so pre-alpha-aware
-   * maps stay assignable; absent means "no alpha detected". */
+  /** Source carries an alpha channel and therefore needs a VP8/WebM proxy.
+   * Optional so pre-alpha-aware maps stay assignable; absent means "no alpha detected". */
   hasAlpha?: boolean;
 };
 
@@ -28,9 +32,8 @@ declare global {
 }
 
 const PROXY_QUERY_PARAM = "hf-proxy";
-const PROXY_QUERY_VALUE = "h264";
 
-/** Fired whenever an element is swapped to its H.264 proxy (any trigger). */
+/** Fired whenever an element is swapped to its authoring proxy (any trigger). */
 const DIAGNOSTIC_FALLBACK_CODE = "runtime_media_proxy_fallback";
 /** Fired when the runtime detects an undecodable video but cannot (or already
  *  did) proxy it — a remote asset, or the proxy URL itself failing. */
@@ -38,15 +41,17 @@ const DIAGNOSTIC_UNAVAILABLE_CODE = "runtime_media_proxy_unavailable";
 
 type ProxyTrigger = "proactive" | "reactive" | "tertiary";
 
-// Elements already swapped to their proxy src. Gates every trigger so a
-// second undecodable-video signal (another zero-width metadata tick, a
-// stray error event) never re-swaps or loops.
-const swappedElements = new WeakSet<HTMLMediaElement>();
+// `swappedElements` gates every trigger, so a second undecodable-video signal never re-swaps.
+
 // Elements that already got the "can't help you" diagnostic (cross-origin,
 // or the proxy itself failing) — one-shot per element, independent of
 // `swappedElements` so the proxy-failed case (which fires AFTER a real swap)
 // still gets its own single diagnostic.
 const unavailableDiagnosedElements = new WeakSet<HTMLMediaElement>();
+
+// Elements whose swap has started, with the src it started for. Until the copy is served they
+// keep that src, so nothing that reads it (timeline, player mirror) loads a copy still being made.
+const proxyRequested = new WeakMap<HTMLMediaElement, string | null>();
 
 function currentSrcValue(el: HTMLMediaElement): string {
   return el.currentSrc || el.src;
@@ -64,11 +69,7 @@ function currentSrcValue(el: HTMLMediaElement): string {
  */
 function isRenderMode(el: HTMLMediaElement): boolean {
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return true;
-  return (
-    el instanceof HTMLVideoElement &&
-    !!el.id &&
-    !!document.getElementById(`__render_frame_${el.id}__`)
-  );
+  return isVideoElement(el) && !!findInjectedRenderFrame(el);
 }
 
 /**
@@ -163,9 +164,9 @@ function lookupCodecMapEntry(
   );
 }
 
-function appendProxyParam(src: string): string {
+function appendProxyParam(src: string, entry: MediaCodecMapEntry | null): string {
   const url = new URL(src, document.baseURI);
-  url.searchParams.set(PROXY_QUERY_PARAM, PROXY_QUERY_VALUE);
+  url.searchParams.set(PROXY_QUERY_PARAM, entry ? (entry.hasAlpha ? "vp8" : "h264") : "auto");
   return url.href;
 }
 
@@ -173,17 +174,14 @@ type UnavailableReason =
   | "cross_origin"
   | "proxy_playback_failed"
   | "browser_safe_codec"
-  | "alpha_source"
   | "invalid_source_url";
 
 const UNAVAILABLE_NOTES: Record<UnavailableReason, string> = {
   cross_origin:
     "video reports zero decodable width but its source is cross-origin; no local proxy can be served for it",
-  proxy_playback_failed: "the H.264 proxy itself failed to decode; render output is unaffected",
+  proxy_playback_failed: "the authoring proxy itself failed to decode; render output is unaffected",
   browser_safe_codec:
-    "the file errored but its codec is browser-decodable; an H.264 proxy cannot help (the file itself is likely corrupt)",
-  alpha_source:
-    "the source carries an alpha channel; an H.264 proxy would destroy the transparency, so it is never proxied",
+    "the file errored but its codec is browser-decodable; a proxy cannot help (the file itself is likely corrupt)",
   invalid_source_url: "the media source URL is malformed and cannot be proxied",
 };
 
@@ -213,7 +211,7 @@ function emitUnavailableDiagnostic(
 }
 
 /**
- * Swap `el` to its H.264 proxy URL, evict stale per-source sync state, and
+ * Swap `el` to its alpha-aware proxy URL, evict stale per-source sync state, and
  * emit the one-time diagnostic + console line. Safe to call from any of the
  * three triggers (proactive/reactive/tertiary); a no-op if already swapped.
  */
@@ -223,30 +221,46 @@ export function swapToProxy(
   trigger: ProxyTrigger = "reactive",
 ): void {
   if (swappedElements.has(el)) return;
+  if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);
   let proxiedSrc: string;
   try {
-    proxiedSrc = appendProxyParam(originalSrc);
+    proxiedSrc = appendProxyParam(originalSrc, entry);
   } catch (err) {
     swallow("runtime.mediaProxy.swap", err);
     emitUnavailableDiagnostic(el, "invalid_source_url", originalSrc);
     return;
   }
-  swappedElements.add(el);
-  // The swapped src points at a different file — sync state (drift offsets,
-  // seek-retry latches, volume tracking) computed against the original
-  // source must not carry over, or the next tick misreads a fresh file's
-  // buffering as drift. Evict before `load()` so the very next sync tick
-  // treats this element as a first tick.
-  evictMediaSyncState(el);
-  el.src = proxiedSrc;
-  el.load();
+  const originalAttr = el.getAttribute("src");
+  proxyRequested.set(el, originalAttr);
+  const live = () => el.isConnected && el.getAttribute("src") === originalAttr;
+  const swap = waitForServedProxy(proxiedSrc, live).then((served) => {
+    if (!live()) {
+      if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
+      return;
+    }
+    if (!served) {
+      emitUnavailableDiagnostic(el, "proxy_playback_failed", originalSrc);
+      return;
+    }
+    swappedElements.set(el, originalAttr);
+    // Sync state measured on the original would read the new file's buffering as drift.
+    evictMediaSyncState(el);
+    el.src = proxiedSrc;
+    el.load();
+    return new Promise((landed) => {
+      el.addEventListener("loadeddata", landed, { once: true });
+      el.addEventListener("error", landed, { once: true });
+    });
+  });
+  // A frame capture holds for the copy as it held for a loading video before, up to the same cap.
+  registerSeekCompletion(Promise.race([swap, new Promise((cap) => setTimeout(cap, HOLD_CAP_MS))]));
   const codecName = entry?.codecName ?? null;
   const details: Record<string, RuntimeJson> = {
     asset: originalSrc,
     codecName,
     trigger,
-    note: "render output is unaffected; only this preview element was swapped to an H.264 proxy",
+    note: "render output is unaffected; only this preview element was swapped to an authoring proxy",
   };
   postRuntimeMessage({
     source: "hf-preview",
@@ -258,7 +272,7 @@ export function swapToProxy(
   // matches on (packages/cli/src/utils/checkBrowser.ts); keep it in the text.
   console.info(
     `[hyperframes] ${DIAGNOSTIC_FALLBACK_CODE}: "${originalSrc}" uses a codec (${codecName ?? "unknown"}) this browser can't decode; ` +
-      "auto-swapped to an H.264 proxy for this preview only. Render output is unaffected.",
+      "auto-swapped to an authoring proxy for this preview only. Render output is unaffected.",
   );
 }
 
@@ -271,7 +285,7 @@ export function swapToProxy(
  */
 export function maybeProxyProactively(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
-  if (!(el instanceof HTMLVideoElement)) return;
+  if (!isVideoElement(el)) return;
   if (swappedElements.has(el)) return;
   const map = window.__HF_MEDIA_CODEC_MAP__;
   if (!map) return;
@@ -279,12 +293,6 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   if (key === null) return;
   const entry = lookupCodecMapEntry(key, map);
   if (!entry || !entry.browserHostile) return;
-  if (entry.hasAlpha) {
-    // Alpha sources are never proxied (transparency would be destroyed);
-    // say so instead of silently leaving a possibly-undecodable element.
-    emitUnavailableDiagnostic(el, "alpha_source", currentSrcValue(el));
-    return;
-  }
   const canPlay = entry.representativeMime ? el.canPlayType(entry.representativeMime) : "";
   if (canPlay === "probably" || canPlay === "maybe") return;
   swapToProxy(el, entry, "proactive");
@@ -302,11 +310,11 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
  * auto-proxying is enabled and served, so its absence means a `?hf-proxy=`
  * request would 404 — never swap there. When the map is present but has no
  * entry for this key, swapping stays allowed (unlisted-asset rescue). A
- * mapped entry with alpha is never proxied.
+ * mapped alpha entries select the VP8/WebM proxy variant.
  */
 export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
-  if (!(el instanceof HTMLVideoElement)) return;
+  if (!isVideoElement(el)) return;
   if (el.videoWidth !== 0) return;
   const src = currentSrcValue(el);
   if (swappedElements.has(el)) {
@@ -325,10 +333,6 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
     emitUnavailableDiagnostic(el, "browser_safe_codec", src);
     return;
   }
-  if (entry?.hasAlpha) {
-    emitUnavailableDiagnostic(el, "alpha_source", src);
-    return;
-  }
   swapToProxy(el, entry, "reactive");
 }
 
@@ -338,11 +342,11 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
  * it and `loadedmetadata` never fires. Same guards and once-per-element
  * behavior as the reactive path, plus one extra skip: an entry the scan
  * mapped as browser-SAFE that still errors is a corrupt-but-safe file — an
- * H.264 proxy of a broken source can't help, so only diagnose.
+ * proxy of a broken source can't help, so only diagnose.
  */
 export function handleErrorForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
-  if (!(el instanceof HTMLVideoElement)) return;
+  if (!isVideoElement(el)) return;
   const src = currentSrcValue(el);
   if (swappedElements.has(el)) {
     emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
@@ -358,10 +362,6 @@ export function handleErrorForProxy(el: HTMLMediaElement): void {
   const entry = lookupCodecMapEntry(key, map);
   if (entry && !entry.browserHostile) {
     emitUnavailableDiagnostic(el, "browser_safe_codec", src);
-    return;
-  }
-  if (entry?.hasAlpha) {
-    emitUnavailableDiagnostic(el, "alpha_source", src);
     return;
   }
   swapToProxy(el, entry, "tertiary");

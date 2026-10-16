@@ -11,6 +11,10 @@ ipollowork-server --workspace /path/to/workspace --approval auto
 
 `ipollowork-server` ships as a compiled binary, so Bun is not required at runtime.
 
+Exact selected-region image editing requires the native `sharp` processor. Use the desktop app or the Node-based server (`node dist/cli.js`) with optional dependencies enabled for this feature. The standalone Bun executable currently cannot load this processor: it still starts normally, but selected-image editing fails explicitly with `image_processor_unavailable` before contacting a model. Desktop builds include and unpack the native dependencies.
+
+The implementation reuses the repository's already locked `sharp` 0.34.5 (Apache-2.0) for PNG/JPEG/WebP decoding and pixel composition instead of maintaining custom codecs. It adds platform-specific native binaries to the server/desktop installation, is loaded only for selected edits, and bounds input bytes and decoded pixels before processing.
+
 Or from source:
 
 ```bash
@@ -86,9 +90,7 @@ Sandbox advertisement (for capability discovery):
 - `PATCH /workspace/:id/config`
 - `GET /workspace/:id/events`
 - `POST /workspace/:id/engine/reload`
-- `GET /workspace/:id/plugins`
-- `POST /workspace/:id/plugins`
-- `DELETE /workspace/:id/plugins/:name`
+- `GET /w/:id/capabilities` (includes engine-specific session write support)
 - `GET /workspace/:id/skills`
 - `POST /workspace/:id/skills`
 - `GET /workspace/:id/mcp`
@@ -101,6 +103,13 @@ Sandbox advertisement (for capability discovery):
 - `GET /workspace/:id/export`
 - `POST /workspace/:id/import/preview`
 - `POST /workspace/:id/import`
+
+Sessions (the same API works for OpenCode and DeepSeek Harness workspaces):
+
+- `GET /workspace/:id/sessions`
+- `POST /workspace/:id/sessions` (body: `{ "title"?: string }`)
+- `GET /workspace/:id/sessions/:sessionId/messages`
+- `POST /workspace/:id/sessions/:sessionId/prompt` (body: `{ "text": string, "model"?: { "providerID": string, "modelID": string }, "mode"?: string, "reasoningEffort"?: string, "clientTimeZone"?: string }`)
 
 Token management (host/owner auth):
 

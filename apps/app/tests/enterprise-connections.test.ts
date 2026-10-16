@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
+  assertCloudPluginIdentity,
+  cloudPluginUpdate,
+  installCloudPluginResource,
   discoverEnterpriseConnection,
   downloadEnterpriseResource,
   joinEnterpriseWithCode,
@@ -13,6 +16,7 @@ import {
   type EnterpriseConnection,
   type EnterpriseResource,
 } from "../src/app/lib/enterprise-connections";
+import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import { IPOLLOWORK_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
 
 const originalWindow = globalThis.window;
@@ -46,19 +50,29 @@ async function sha256Hex(bytes: Uint8Array) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function artifactResponse(bytes: Uint8Array, type: EnterpriseResource["type"], digest: string, contentType: string) {
+function artifactResponse(
+  bytes: Uint8Array,
+  type: EnterpriseResource["type"],
+  digest: string,
+  contentType: string,
+  digestHeader = "x-ipollowork-sha256",
+  typeHeader = "x-ipollowork-resource-type",
+) {
   return new Response(bytes, { headers: {
     "content-type": contentType,
-    "x-ipollo-artifact-sha256": digest,
-    "x-ipollo-resource-type": type,
+    [digestHeader]: digest,
+    [typeHeader]: type,
   } });
 }
 
 describe("enterprise connections", () => {
   beforeEach(() => {
+    const localStorage = memoryStorage();
+    localStorage.setItem("ipollowork.den.baseUrl", "http://i.ipollo.ai");
+    localStorage.setItem("ipollowork.den.authToken", "cloud-session");
     Object.defineProperty(globalThis, "window", {
       configurable: true,
-      value: { localStorage: memoryStorage(), dispatchEvent: () => true },
+      value: { localStorage, dispatchEvent: () => true },
     });
   });
 
@@ -273,31 +287,31 @@ describe("enterprise connections", () => {
     expect(readEnterpriseConnections().map((connection) => connection.id)).toEqual(["ent_medical"]);
   });
 
-  test("loads every page and only valid resources from the active Enterprise catalog", async () => {
+  test("keeps the Cloud resource catalog compatible with its existing contract", async () => {
     const digest = "a".repeat(64);
     const requested: string[] = [];
     const fetcher: typeof fetch = async (input, init) => {
       requested.push(String(input));
-      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
-      if (!String(input).includes("cursor=")) return Response.json({ items: [{
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer cloud-session");
+      return Response.json({ resources: [{
         id: "resource-1",
         type: "template",
         slug: "medical-report",
-        sourceTemplateId: "personal.medical-report",
         name: "Medical report",
         description: "Approved report format",
         category: "report",
         enterpriseCategory: "Clinical",
-        iconPath: null,
+        iconUrl: "/api/v1/enterprise-resources/resource-1/icon",
         featured: true,
+        status: "published",
         updatedAt: "2026-07-28T00:00:00.000Z",
-        latestVersion: {
+        latestArtifact: {
           version: "1.2.0",
-          digest,
-          downloadPath: "/api/v1/resources/resource-1/versions/1.2.0/download",
+          manifestId: "personal.medical-report",
+          sha256: digest,
+          downloadPath: "/api/v1/enterprise-resources/resource-1/versions/1.2.0/download",
         },
-      }, { id: "wrong-type", type: "extension" }], nextCursor: "resource-1" });
-      return Response.json({ items: [{
+      }, {
         id: "resource-2",
         type: "template",
         slug: "medical-slides",
@@ -305,27 +319,100 @@ describe("enterprise connections", () => {
         description: "Approved presentation",
         category: "slides",
         enterpriseCategory: "Clinical",
-        iconPath: null,
+        iconUrl: null,
         featured: false,
         updatedAt: "2026-07-29T00:00:00.000Z",
-        latestVersion: null,
-      }], nextCursor: null });
+        latestArtifact: null,
+      }, { id: "wrong-type", type: "extension" }] });
     };
 
-    await expect(listEnterpriseResources(connectedEnterprise, "template", fetcher)).resolves.toMatchObject([
-      { id: "resource-1", type: "template", sourceTemplateId: "personal.medical-report", latestVersion: { version: "1.2.0" } },
+    await expect(listEnterpriseResources("template", { fetcher })).resolves.toMatchObject([
+      { id: "resource-1", type: "template", manifestId: "personal.medical-report", latestVersion: { version: "1.2.0" } },
       { id: "resource-2", type: "template", latestVersion: null },
     ]);
     expect(requested).toEqual([
-      "https://enterprise.example.com/api/v1/resources?type=template&limit=50",
-      "https://enterprise.example.com/api/v1/resources?type=template&limit=50&cursor=resource-1",
+      "http://i.ipollo.ai/api/v1/enterprise-resources?type=template&limit=50",
     ]);
   });
 
-  test("downloads an explicitly selected Enterprise resource with its session", async () => {
+  test("loads resources from the active Enterprise Server with its member session", async () => {
+    const digest = "b".repeat(64);
+    const requested: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      requested.push(url);
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
+      if (!url.includes("cursor=")) {
+        return Response.json({
+          items: [{
+            id: "enterprise-template",
+            type: "template",
+            slug: "brand-deck",
+            name: "Brand deck",
+            description: "Approved enterprise deck",
+            category: "slides",
+            enterpriseCategory: "Brand",
+            access: "all",
+            featured: true,
+            status: "published",
+            sourceTemplateId: "enterprise.brand-deck",
+            ownerMemberId: null,
+            updatedAt: "2026-08-31T00:00:00.000Z",
+            iconPath: "/api/v1/resources/enterprise-template/icon",
+            latestVersion: {
+              version: "1.0.0",
+              digest,
+              downloadPath: "/api/v1/resources/enterprise-template/versions/1.0.0/download",
+            },
+          }],
+          nextCursor: "page-2",
+        });
+      }
+      return Response.json({
+        items: [{
+          id: "enterprise-template-2",
+          type: "template",
+          slug: "brand-site",
+          name: "Brand site",
+          description: "Approved enterprise site",
+          category: "site",
+          enterpriseCategory: "Brand",
+          access: "all",
+          featured: false,
+          status: "published",
+          sourceTemplateId: null,
+          ownerMemberId: null,
+          updatedAt: "2026-08-31T01:00:00.000Z",
+          iconPath: null,
+          latestVersion: null,
+        }, { id: "draft-template", type: "template", status: "draft" }],
+        nextCursor: null,
+      });
+    };
+
+    await expect(listEnterpriseResources("template", {
+      connection: connectedEnterprise,
+      fetcher,
+    })).resolves.toMatchObject([
+      {
+        id: "enterprise-template",
+        name: "Brand deck",
+        manifestId: "enterprise.brand-deck",
+        iconPath: "/api/v1/resources/enterprise-template/icon",
+        latestVersion: { version: "1.0.0", digest },
+      },
+      { id: "enterprise-template-2", name: "Brand site", latestVersion: null },
+    ]);
+    expect(requested).toEqual([
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50",
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50&cursor=page-2",
+    ]);
+  });
+
+  test("downloads an explicitly selected Enterprise resource with the Cloud session", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const digest = await sha256Hex(bytes);
-    const resource = (await listEnterpriseResources(connectedEnterprise, "extension", async () => Response.json({ items: [{
+    const resource = (await listEnterpriseResources("extension", { fetcher: async () => Response.json({ resources: [{
       id: "resource-2",
       type: "extension",
       slug: "github-tools",
@@ -335,21 +422,65 @@ describe("enterprise connections", () => {
       enterpriseCategory: "Engineering",
       featured: false,
       updatedAt: "2026-07-28T00:00:00.000Z",
-      latestVersion: {
+      latestArtifact: {
         version: "2.0.0",
-        digest,
-        downloadPath: "/api/v1/resources/resource-2/versions/2.0.0/download",
+        manifestId: "github-tools",
+        sha256: digest,
+        downloadPath: "/api/v1/enterprise-resources/resource-2/versions/2.0.0/download",
       },
-    }] })))[0];
+    }] }) }))[0];
     if (!resource) throw new Error("Expected an Enterprise extension resource");
     const fetcher: typeof fetch = async (input, init) => {
-      expect(String(input)).toContain("/api/v1/resources/resource-2/versions/2.0.0/download");
-      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
+      expect(String(input)).toContain("/api/v1/enterprise-resources/resource-2/versions/2.0.0/download");
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer cloud-session");
       return artifactResponse(bytes, "extension", digest, "application/zip");
     };
-    const file = await downloadEnterpriseResource(connectedEnterprise, resource, fetcher);
+    const file = await downloadEnterpriseResource(resource, { fetcher });
     expect(file.name).toBe("github-tools-2.0.0.ipollowork-plugin");
     expect(file.size).toBe(3);
+  });
+
+  test("downloads an Enterprise Server resource with its member session", async () => {
+    const bytes = new Uint8Array([4, 5, 6]);
+    const digest = await sha256Hex(bytes);
+    const resource: EnterpriseResource = {
+      id: "enterprise-template",
+      type: "template",
+      slug: "brand-deck",
+      manifestId: "enterprise.brand-deck",
+      name: "Brand deck",
+      description: "Approved enterprise deck",
+      category: "slides",
+      enterpriseCategory: "Brand",
+      iconPath: null,
+      featured: true,
+      updatedAt: "2026-08-31T00:00:00.000Z",
+      latestVersion: {
+        version: "1.0.0",
+        digest,
+        downloadPath: "/api/v1/resources/enterprise-template/versions/1.0.0/download",
+      },
+    };
+    const fetcher: typeof fetch = async (input, init) => {
+      expect(String(input)).toBe(
+        "https://enterprise.example.com/api/v1/resources/enterprise-template/versions/1.0.0/download",
+      );
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
+      return artifactResponse(
+        bytes,
+        "template",
+        digest,
+        IPOLLOWORK_PACKAGE_MEDIA_TYPE,
+        "x-ipollo-artifact-sha256",
+        "x-ipollo-resource-type",
+      );
+    };
+
+    const file = await downloadEnterpriseResource(resource, {
+      connection: connectedEnterprise,
+      fetcher,
+    });
+    expect(file.name).toBe("brand-deck-1.0.0.ipwp");
   });
 
   test("keeps legacy Enterprise templates importable and names canonical packages .ipwp", async () => {
@@ -359,7 +490,7 @@ describe("enterprise connections", () => {
       id: "resource-template",
       type: "template",
       slug: "clinical-report",
-      sourceTemplateId: null,
+      manifestId: "personal.clinical-report",
       name: "Clinical report",
       description: "Approved report format",
       category: "report",
@@ -370,15 +501,15 @@ describe("enterprise connections", () => {
       latestVersion: {
         version: "1.2.0",
         digest,
-        downloadPath: "/api/v1/resources/resource-template/versions/1.2.0/download",
+        downloadPath: "/api/v1/enterprise-resources/resource-template/versions/1.2.0/download",
       },
     };
-    const legacy = await downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+    const legacy = await downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "template", digest, "application/octet-stream")
-    ));
-    const canonical = await downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+    ) });
+    const canonical = await downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "template", digest, IPOLLOWORK_PACKAGE_MEDIA_TYPE)
-    ));
+    ) });
 
     expect(legacy.name).toBe("clinical-report-1.2.0.ipwt");
     expect(canonical.name).toBe("clinical-report-1.2.0.ipwp");
@@ -391,7 +522,7 @@ describe("enterprise connections", () => {
       id: "resource-extension",
       type: "extension",
       slug: "approved-tools",
-      sourceTemplateId: null,
+      manifestId: "approved-tools",
       name: "Approved tools",
       description: "Approved extension",
       category: "developer",
@@ -402,14 +533,56 @@ describe("enterprise connections", () => {
       latestVersion: {
         version: "1.0.0",
         digest,
-        downloadPath: "/api/v1/resources/resource-extension/versions/1.0.0/download",
+        downloadPath: "/api/v1/enterprise-resources/resource-extension/versions/1.0.0/download",
       },
     };
-    await expect(downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+    await expect(downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "template", digest, "application/zip")
-    ))).rejects.toThrow("enterprise_resource_type_mismatch");
-    await expect(downloadEnterpriseResource(connectedEnterprise, resource, async () => (
+    ) })).rejects.toThrow("enterprise_resource_type_mismatch");
+    await expect(downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "extension", "b".repeat(64), "application/zip")
-    ))).rejects.toThrow("enterprise_resource_digest_mismatch");
+    ) })).rejects.toThrow("enterprise_resource_digest_mismatch");
+  });
+});
+
+describe("cloud plugin lifecycle", () => {
+  function resource(version: string, manifestId = "sample-plugin"): EnterpriseResource {
+    return { id: "cloud-" + version, type: "extension", slug: "display-slug", manifestId, name: "Sample",
+      description: "", category: "", enterpriseCategory: "", iconPath: null, featured: false, updatedAt: "",
+      latestVersion: { version, digest: "a".repeat(64), downloadPath: "/api/v1/enterprise-resources/sample/download" } };
+  }
+  test.each([
+    ["1.10.0", "1.9.0", 1], ["1.0.0", "1.0.0-rc.2", 1],
+    ["1.0.0-rc.10", "1.0.0-rc.2", 1], ["1.0.0+build.2", "1.0.0+build.1", 0],
+    ["0.3.1", "0.4.19", -1], ["2.0.0-beta.1", "2.0.0", -1],
+  ])("compares %s against %s by semantic precedence", (left, right, direction) => {
+    expect(Math.sign(comparePluginPackageVersions(left, right) ?? NaN)).toBe(direction);
+  });
+  test("selects the newest matching manifest ID and ignores older or invalid metadata", () => {
+    const current = { pluginId: "sample-plugin", version: "1.2.0" };
+    const newest = resource("1.10.0");
+    expect(cloudPluginUpdate([resource("1.1.0"), resource("9.0.0", "another-plugin"), resource("invalid"), resource("1.3.0"), newest], current)).toBe(newest);
+    expect(cloudPluginUpdate([resource("0.3.1")], { pluginId: "sample-plugin", version: "0.4.19" })).toBeUndefined();
+    expect(cloudPluginUpdate([resource("1.2.0+build.9")], current)).toBeUndefined();
+  });
+  test("rejects a downloaded package for another plugin or version", () => {
+    const selected = resource("1.2.0");
+    expect(() => assertCloudPluginIdentity(selected, { id: "another-plugin", package: { version: "1.2.0" } })).toThrow("identity_mismatch");
+    expect(() => assertCloudPluginIdentity(selected, { id: "sample-plugin", package: { version: "1.1.0" } })).toThrow("identity_mismatch");
+    expect(() => assertCloudPluginIdentity(selected, { id: "sample-plugin", package: { version: "1.2.0" } })).not.toThrow();
+  });
+  test("rechecks the installed version before downloading so a stale Update cannot downgrade", async () => {
+    let downloaded = false;
+    const result = await installCloudPluginResource(resource("1.0.0"), {
+      listPluginPackages: async () => ({ items: [{
+        pluginId: "sample-plugin", name: "Sample", version: "1.2.0", enabled: true, disabledResourceIds: [], previousVersion: null, integrity: { status: "unsigned", sha256: "a".repeat(64) },
+        manifest: { schemaVersion: 2, id: "sample-plugin", name: "Sample", description: "",
+          source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false }, resources: [] },
+      }] }),
+      validatePluginPackageUpload: async () => { throw new Error("Validation must not run"); },
+      importPluginPackage: async () => { throw new Error("Installation must not run"); },
+    }, "workspace", { fetcher: async () => { downloaded = true; throw new Error("Download must not run"); } });
+    expect(result).toBeNull();
+    expect(downloaded).toBe(false);
   });
 });

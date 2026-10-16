@@ -7,7 +7,7 @@ import { STUDIO_MULTI_SELECTION_ENABLED } from "../../components/editor/manualEd
 // ---------------------------------------------------------------------------
 
 const GROUP_COLORS = [
-  "#3CE6AC",
+  "#1FBAC0",
   "#FF6B6B",
   "#4ECDC4",
   "#FFE66D",

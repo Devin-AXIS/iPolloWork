@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { createRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +8,8 @@ import { GeometryStepper } from "./propertyPanelFlatLayoutSection";
 import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
 import { FlatRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatDropdown } from "./propertyPanelFlatSelectRow";
+import { SearchInput } from "../ui/SearchInput";
+import { Input, Textarea } from "@ipollowork/ui/controls";
 
 describe("FlatDropdown", () => {
   let container: HTMLDivElement;
@@ -21,6 +24,29 @@ describe("FlatDropdown", () => {
   afterEach(() => {
     flushSync(() => root.unmount());
     container.remove();
+  });
+
+  it("reuses an accessible controlled search field with a Lucide icon", () => {
+    const ref = createRef<HTMLInputElement>();
+    flushSync(() => root.render(<SearchInput ref={ref} aria-label="Search components" value="Map" onChange={() => {}} />));
+    expect(ref.current?.type).toBe("search");
+    expect(ref.current?.value).toBe("Map");
+    expect(ref.current?.getAttribute("aria-label")).toBe("Search components");
+    expect(container.querySelector("svg.lucide-search")).not.toBeNull();
+    expect(container.querySelector('[data-slot="studio-search"]')).not.toBeNull();
+    expect(ref.current?.getAttribute("data-slot")).toBe("input");
+    expect(ref.current?.style.paddingInlineStart).toBe("32px");
+    expect(ref.current?.style.fontSize).toBe("var(--ui-meta-size)");
+  });
+
+  it("keeps shared text fields on a single focus border", () => {
+    flushSync(() => root.render(<><Input aria-label="Voice name" /><Textarea aria-label="Action description" /></>));
+    for (const field of container.querySelectorAll('[data-slot="input"], [data-slot="textarea"]')) {
+      expect(field.className).toContain("focus-visible:border-ring");
+      expect(field.className).toContain("focus-visible:ring-0");
+      expect(field.className).not.toContain("focus-visible:ring-3");
+      expect(field.className).not.toContain("focus-visible:ring-[3px]");
+    }
   });
 
   it("opens a Design System-styled listbox and commits the selected option", () => {
@@ -71,6 +97,34 @@ describe("FlatDropdown", () => {
     trigger.click();
     expect(document.body.querySelector('[role="listbox"]')).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps unavailable options visible but skips them for pointer and keyboard selection", () => {
+    const onChange = vi.fn();
+    flushSync(() =>
+      root.render(
+        <FlatDropdown
+          ariaLabel="Resolution"
+          value="720p"
+          options={[
+            { value: "720p", label: "720p" },
+            { value: "auto", label: "Auto", disabled: true },
+            { value: "1080p", label: "1080p" },
+          ]}
+          onChange={onChange}
+        />,
+      ),
+    );
+    const trigger = container.querySelector('[aria-label="Resolution"]');
+    if (!(trigger instanceof HTMLButtonElement)) throw new Error("Dropdown trigger missing");
+    flushSync(() => trigger.click());
+    const unavailable = document.body.querySelector('[role="option"][disabled]');
+    expect(unavailable?.textContent).toContain("Auto");
+    if (!(unavailable instanceof HTMLButtonElement)) throw new Error("Disabled option missing");
+    flushSync(() => unavailable.click());
+    expect(onChange).not.toHaveBeenCalled();
+    flushSync(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    expect(onChange).toHaveBeenCalledWith("1080p");
   });
 });
 

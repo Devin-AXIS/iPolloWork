@@ -1,0 +1,89 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "screenshot-zoom",
+  "version": "1.1.0",
+  "type": "hyperframes:block",
+  "title": "Screenshot Zoom",
+  "description": "Reveal a screenshot in perspective, push into a chosen detail, hold, and pull back.",
+  "tags": [
+    "component",
+    "media",
+    "camera",
+    "screenshot",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "media",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "imageUrl",
+        "focusX",
+        "focusY"
+      ],
+      "instructions": "Supply a real project-local screenshot through imageUrl. Blank imageUrl shows clearly marked illustrative content. focusX/focusY are percentages of the displayed screenshot; use a 1660:692 crop to avoid object-fit cropping. This 8s scene establishes the view, pushes to the detail, holds and pulls back. Keep captions outside its camera world; do not apply another camera transform to the same world."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "screenshot-zoom.html",
+      "target": "compositions/screenshot-zoom.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "Focus on what matters",
+      "maxLength": 76,
+      "update": "live"
+    },
+    {
+      "id": "imageUrl",
+      "label": "Screenshot URL",
+      "type": "string",
+      "default": "",
+      "maxLength": 2000,
+      "update": "live"
+    },
+    {
+      "id": "focusX",
+      "label": "Focus X (%)",
+      "type": "number",
+      "default": 52,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "update": "live"
+    },
+    {
+      "id": "focusY",
+      "label": "Focus Y (%)",
+      "type": "number",
+      "default": 27,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "update": "live"
+    }
+  ]
+}

@@ -253,54 +253,11 @@ export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: bo
   } catch {}
 }
 
-function enforceSynchronizedVoiceovers(doc: Document | null | undefined): void {
-  if (!doc) return;
-  const voiceovers = doc.querySelectorAll<HTMLAudioElement>(
-    'audio[data-ipw-voiceover="true"], audio[id^="vo-"], audio[src*="/audio/voice/"], audio[src*="voiceover-"]',
-  );
-  let previousEnd = Number.NEGATIVE_INFINITY;
-  const ordered = Array.from(voiceovers).sort(
-    (left, right) => Number(left.getAttribute("data-start")) - Number(right.getAttribute("data-start")),
-  );
-  for (const voiceover of ordered) {
-    const sceneId = voiceover.getAttribute("data-ipw-scene-id")?.trim() ?? "";
-    const sceneText = voiceover.getAttribute("data-ipw-scene-text")?.trim() ?? "";
-    const narrationText = voiceover.getAttribute("data-ipw-narration-text")?.trim() ?? "";
-    const start = Number(voiceover.getAttribute("data-start"));
-    const duration = Number(voiceover.getAttribute("data-duration"));
-    const scene = sceneId ? doc.getElementById(sceneId) : null;
-    const sceneStart = Number(scene?.getAttribute("data-start"));
-    const overlapsPrevious = Number.isFinite(start) && start < previousEnd - 0.001;
-    const valid = Boolean(
-      scene?.matches(".scene, [data-scene]") &&
-      sceneText &&
-      narrationText === sceneText &&
-      Number.isFinite(start) &&
-      Number.isFinite(duration) &&
-      duration > 0 &&
-      Number.isFinite(sceneStart) &&
-      Math.abs(start - sceneStart) < 0.001 &&
-      !overlapsPrevious,
-    );
-    if (valid) {
-      voiceover.removeAttribute("data-ipw-sync-invalid");
-      previousEnd = Math.max(previousEnd, start + duration);
-      continue;
-    }
-    voiceover.setAttribute("data-ipw-sync-invalid", "true");
-    voiceover.muted = true;
-    voiceover.pause();
-  }
-}
-
 export function setPreviewPlaybackActive(iframe: HTMLIFrameElement | null, active: boolean): void {
   if (!iframe) return;
   setPreviewAnimationsActive(iframe, active);
   try {
     stopLegacyFrameCarousel(iframe.contentDocument);
-  } catch {}
-  try {
-    enforceSynchronizedVoiceovers(iframe.contentDocument);
   } catch {}
   if (active) return;
   try {

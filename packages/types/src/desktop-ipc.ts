@@ -14,6 +14,32 @@
  */
 import type { WorkspaceWire } from "./workspace.js";
 
+export type BrowserController = "agent" | "human";
+export type BrowserDecisionEngine = "agent" | "jev";
+export type BrowserActivity = {
+  status: "idle" | "acting" | "executed" | "verified" | "paused" | "failed";
+  actionCount: number;
+  message?: string;
+};
+
+/** Browser identity is profile-scoped; page control and progress are task-scoped. */
+export type BrowserPanelTab = {
+  id: string;
+  type: "browser";
+  label: string;
+  url: string;
+  sessionId?: string | null;
+  profileId?: string | null;
+  controller?: BrowserController;
+  decisionEngine?: BrowserDecisionEngine;
+  decisionStatus?: "pending" | "ready" | "unavailable";
+  activity?: BrowserActivity;
+  favicon: string | null;
+  status: "loading" | "ready";
+  canGoBack: boolean;
+  canGoForward: boolean;
+};
+
 // ---------------------------------------------------------------------------
 // Payload shapes (moved from apps/app/src/app/lib/desktop-types.ts, which
 // re-exports them — keep that file as the app-side import path).
@@ -91,6 +117,40 @@ export type EngineDoctorResult = {
   serveHelpStatus: number | null;
   serveHelpStdout: string | null;
   serveHelpStderr: string | null;
+};
+
+export type EnginePackageStatus =
+  | "not-installed"
+  | "downloading"
+  | "verifying"
+  | "installing"
+  | "uninstalling"
+  | "ready"
+  | "failed";
+
+export type EnginePackageSource =
+  | "bundled"
+  | "downloaded"
+  | "official"
+  | "system"
+  | "custom"
+  | "none";
+
+/** Machine-global Agent engine package state. Project and conversation data live elsewhere. */
+export type EnginePackageInfo = {
+  id: string;
+  name: string;
+  version: string;
+  status: EnginePackageStatus;
+  source: EnginePackageSource;
+  installed: boolean;
+  builtIn: boolean;
+  canInstall: boolean;
+  canUninstall: boolean;
+  installedBytes: number | null;
+  downloadedBytes: number | null;
+  totalBytes: number | null;
+  error: string | null;
 };
 
 export type WorkspaceList = {
@@ -305,10 +365,11 @@ export type DesktopFetchResult = {
 };
 
 export type WorkspaceCreateInput = {
-  folderPath: string;
+  folderPath?: string | null;
   name?: string | null;
   preset?: string | null;
   workContextId?: `enterprise:${string}` | null;
+  engineId?: string | null;
 };
 
 export type WorkspaceCreateRemoteInput = {
@@ -411,6 +472,10 @@ export type DesktopCommandMap = {
   engineInfo: { args: []; result: EngineInfo };
   engineDoctor: { args: [projectDir?: string]; result: EngineDoctorResult };
   engineInstall: { args: []; result: unknown };
+  enginePackagesList: { args: []; result: EnginePackageInfo[] };
+  enginePackageInstall: { args: [engineId: string, cloudBaseUrl?: string]; result: EnginePackageInfo };
+  enginePackageUninstall: { args: [engineId: string]; result: EnginePackageInfo };
+  videoResourceInfo: { args: []; result: EnginePackageInfo };
   orchestratorStatus: { args: []; result: unknown };
   orchestratorWorkspaceActivate: { args: [input?: Record<string, unknown>]; result: unknown };
   orchestratorInstanceDispose: { args: [instanceId: string]; result: unknown };
@@ -516,7 +581,6 @@ export type DesktopCommandMap = {
    */
   resetiPolloWorkState: { args: [mode?: "onboarding" | "all"]; result: unknown };
   resetOpencodeCache: { args: []; result: CacheResetResult };
-  opencodeMcpAuth: { args: [action: string, name: string]; result: ExecResult };
   setWindowDecorations: { args: [decorated: boolean]; result: unknown };
 
   // Window / OS utilities (dunder commands)

@@ -1,0 +1,314 @@
+{
+  "schemaVersion": 2,
+  "id": "operation-recorder",
+  "name": "操作录制",
+  "description": "统一 Node.js 录制器，记录页面、区域和控件，将详细操作步骤编译成可复用 Skill。",
+  "category": "效率工具",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false
+  },
+  "package": {
+    "version": "0.4.2",
+    "publisher": {
+      "id": "smart-future-school",
+      "name": "Smart Future School"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.50.13"
+    },
+    "updateId": "smart-future-school/operation-recorder"
+  },
+  "permissions": [
+    {
+      "id": "process",
+      "reason": "通过 Node.js 启动三端共用的采集器及其内置原生模块，停用时释放监听和线程。"
+    },
+    {
+      "id": "network",
+      "reason": "仅在 127.0.0.1 提供带独立访问令牌的插件工作台。"
+    }
+  ],
+  "resources": [
+    {
+      "type": "local-service",
+      "id": "recorder-service",
+      "label": "操作录制工作台",
+      "path": "service/recorder.ts",
+      "required": true,
+      "provides": [
+        "service:operation-recorder",
+        "action:open-workbench",
+        "action:capabilities",
+        "action:status",
+        "action:start",
+        "action:pause",
+        "action:resume",
+        "action:stop",
+        "action:review",
+        "action:import-chrome",
+        "action:compile",
+        "action:request-permissions"
+      ],
+      "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开操作录制",
+          "description": "Open the independent recording workbench.",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "capabilities",
+          "title": "检查录制能力",
+          "description": "Check platform and recording permissions.",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "request-permissions",
+          "title": "申请录制权限",
+          "description": "Request macOS recording permissions or refresh platform capabilities after an explicit user action.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "status",
+          "title": "查看录制",
+          "description": "List recent recordings or inspect one recording.",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sessionId": {
+                "type": "string",
+                "maxLength": 100
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "start",
+          "title": "开始录制",
+          "description": "Start a passive semantic desktop recording.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "pause",
+          "title": "暂停录制",
+          "description": "Suspend recording while private or irrelevant work is performed.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "resume",
+          "title": "继续录制",
+          "description": "Resume the active recording.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "stop",
+          "title": "停止录制",
+          "description": "Stop capture and keep the recording for review.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "review",
+          "title": "整理录制",
+          "description": "Review operations, variable inputs and the final success check.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sessionId": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "steps": {
+                "type": "array",
+                "maxItems": 500,
+                "items": {
+                  "type": "object"
+                }
+              },
+              "approved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sessionId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "import-chrome",
+          "title": "导入网页录制",
+          "description": "Import a Chrome DevTools Recorder UserFlow as semantic steps.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "flow": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "flow"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "compile",
+          "title": "生成 Skill",
+          "description": "Export a stopped recording as a portable Skill draft with automatic names and optional success checks.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sessionId": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "skillName": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "skillContent": {
+                "type": "string",
+                "maxLength": 131072
+              }
+            },
+            "required": [
+              "sessionId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "record-operations",
+      "label": "操作示范转 Skill",
+      "path": "skills/record-operations",
+      "required": true,
+      "requires": [
+        "service:recorder-service"
+      ],
+      "provides": [
+        "workflow:record-operations"
+      ]
+    },
+    {
+      "type": "file",
+      "id": "recorder-ui",
+      "label": "录制工作台界面",
+      "path": "ui",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "recorder-native",
+      "label": "统一 Node.js 桌面采集器",
+      "path": "native",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "recorder-service-files",
+      "label": "录制服务模块",
+      "path": "service",
+      "required": true
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Operation Recorder",
+        "description": "Turn a demonstration into an editable, parameterized, portable Skill.",
+        "category": "Productivity",
+        "resources": {
+          "recorder-service": {
+            "label": "Operation recording workbench"
+          },
+          "record-operations": {
+            "label": "Demonstration to Skill"
+          },
+          "recorder-ui": {
+            "label": "Recording workbench UI"
+          },
+          "recorder-native": {
+            "label": "Unified Node.js desktop collector"
+          },
+          "recorder-service-files": {
+            "label": "Recording service modules"
+          }
+        },
+        "permissions": {
+          "process": {
+            "reason": "Run the shared Node.js collector and bundled N-API modules; release listeners and workers when disabled."
+          },
+          "network": {
+            "reason": "Serve the authenticated plugin workbench only on 127.0.0.1."
+          }
+        }
+      }
+    }
+  }
+}

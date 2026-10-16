@@ -1,0 +1,26 @@
+@layer plugin, theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "../common/palette.css";
+@import "../common/tokens.css";
+@import "../common/theme.css";
+@custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
+@source "../common/control-styles.ts";
+@source "../react/*.tsx";
+@source "../react/select.tsx";
+@source "../react/dialog.tsx";
+@source "../react/sonner.tsx";
+@source "../common/menu-styles.ts";
+/* Public typography classes must also exist for non-Tailwind iframe consumers. */
+@source inline("text-ui-page-title text-ui-section-title text-ui-control text-ui-body text-ui-meta text-ui-caption text-ui-micro font-normal font-medium font-semibold");
+/* No global reset: isolated plugin layouts and exported artwork stay untouched. */
+[data-ipw-control], [data-slot], [data-sonner-toaster] { --spacing: 4px; box-sizing: border-box; font-family: var(--ipollowork-font-sans); }
+[data-slot="toast-card"] p { margin: 0; }
+[data-slot="field-description"], [data-slot="field-error"] { margin: 0; }
+@layer base {
+  /* Shared buttons also run without the host's global Preflight. */
+  [data-slot][class~="group/button"] { appearance: none; padding: 0; background-color: transparent; border-style: solid; font: inherit; }
+  /* Browser table defaults do not inherit dark text without host Preflight. */
+  [data-slot="table"] { color: inherit; border-collapse: collapse; text-indent: 0; }
+  [data-slot^="table-"] { border-color: var(--border); }
+}

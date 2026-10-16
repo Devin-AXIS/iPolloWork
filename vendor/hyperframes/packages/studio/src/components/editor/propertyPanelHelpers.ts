@@ -186,7 +186,7 @@ const BOX_SHADOW_PRESETS = {
   none: "none",
   soft: "0 12px 36px rgba(0, 0, 0, 0.28)",
   lift: "0 18px 54px rgba(0, 0, 0, 0.38)",
-  glow: "0 0 0 1px rgba(60, 230, 172, 0.34), 0 18px 56px rgba(60, 230, 172, 0.2)",
+  glow: "0 0 0 1px rgba(31, 186, 192, 0.34), 0 18px 56px rgba(31, 186, 192, 0.2)",
 } as const;
 
 export type BoxShadowPreset = keyof typeof BOX_SHADOW_PRESETS | "custom";

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">AI 热点拆解视频模板</title>
+  <desc id="desc">干净、清晰的 iPollo VI 风格 AI 热点科普视频封面</desc>
+  <rect width="960" height="540" fill="#ffffff"/>
+  <g font-family="Syne, 'Noto Sans SC', sans-serif">
+    <g fill="#050505">
+      <text x="48" y="46" font-size="16" font-weight="700">✱ iPolloWork Briefing</text>
+      <text x="755" y="44" font-size="11" font-weight="700" letter-spacing="1.4">VIDEO TEMPLATE · 60S</text>
+      <path d="M48 64H912" stroke="#050505" stroke-width="2"/>
+    </g>
+    <path d="M48 146H104" stroke="#168388" stroke-width="4"/>
+    <text x="120" y="153" fill="#168388" font-size="17" font-weight="700" letter-spacing="1.8">AI WATCH · 热点科普</text>
+    <text x="48" y="257" fill="#050505" font-size="74" font-weight="700" letter-spacing="-3">AI 热点拆解</text>
+    <text x="48" y="305" fill="#5a6774" font-family="Poppins, 'Noto Sans SC', sans-serif" font-size="21">从事件到判断，用 10 个页面快速讲清一个 AI 热点</text>
+    <g transform="translate(48 382)">
+      <rect width="116" height="40" rx="20" fill="#ffffff" stroke="#050505" stroke-width="2"/>
+      <rect x="128" width="116" height="40" rx="20" fill="#ffffff" stroke="#050505" stroke-width="2"/>
+      <rect x="256" width="116" height="40" rx="20" fill="#ffffff" stroke="#050505" stroke-width="2"/>
+      <g fill="#050505" font-family="Poppins, sans-serif" font-size="13" font-weight="700" text-anchor="middle">
+        <text x="58" y="25">WHAT</text>
+        <text x="186" y="25">WHY NOW</text>
+        <text x="314" y="25">WHAT NEXT</text>
+      </g>
+    </g>
+  </g>
+  <g transform="translate(690 116)">
+    <rect width="222" height="260" rx="20" fill="#d0e9fc"/>
+    <text x="26" y="52" fill="#168388" font-family="Poppins, sans-serif" font-size="13" font-weight="700" letter-spacing="1.5">10 SCENES</text>
+    <text x="22" y="170" fill="#050505" font-family="Syne, sans-serif" font-size="112" font-weight="700" letter-spacing="-8">60</text>
+    <text x="28" y="205" fill="#050505" font-family="Poppins, 'Noto Sans SC', sans-serif" font-size="20" font-weight="700">秒看懂</text>
+    <path d="M28 218H194" stroke="#050505" stroke-width="2"/>
+    <text x="28" y="244" fill="#050505" font-family="Poppins, 'Noto Sans SC', sans-serif" font-size="16" font-weight="600">事实 · 成因 · 影响</text>
+  </g>
+  <path d="M48 492H912" stroke="#d7dcdd" stroke-width="2"/>
+  <path d="M48 492H256" stroke="#1fbac0" stroke-width="4"/>
+  <g font-family="Poppins, sans-serif" font-size="10" font-weight="700" letter-spacing="1.5">
+    <text x="48" y="518" fill="#5a6774">IPOLLO VI · EDITORIAL SERIES</text>
+    <text x="776" y="518" fill="#050505">10 SCENES / 60 SEC</text>
+  </g>
+</svg>

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-ember-table",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "restaurant",
@@ -10,7 +10,8 @@
     "restaurant",
     "editorial",
     "responsive",
-    "themeable"
+    "themeable",
+    "topic:lifestyle"
   ],
   "surface": "design",
   "title": "Ember Table",

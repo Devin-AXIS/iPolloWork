@@ -58,7 +58,11 @@ const LEADING_INT_RE = /^(\d+)/;
 /** First numeric token in a duration string, e.g. `6` in `6s`, `6.5` in `6.5 sec`. */
 const DURATION_NUM_RE = /(\d+(?:\.\d+)?)/;
 /** Metadata keys that all map to the transition-in field. */
-const TRANSITION_KEYS = new Set(["transition_in", "transitionin", "transition"]);
+const TRANSITION_KEYS = new Set([
+  "transition_in",
+  "transitionin",
+  "transition",
+]);
 /** Metadata keys that all map to the one-line scene description. */
 const SCENE_KEYS = new Set(["scene", "description", "summary", "caption"]);
 /**
@@ -66,8 +70,21 @@ const SCENE_KEYS = new Set(["scene", "description", "summary", "caption"]);
  * truth — `editStoryboard.ts` imports this so the read and write sides can't
  * drift (one would silently fail to match the other's field name).
  */
-export const VOICEOVER_ALIASES = ["voiceover", "vo", "voice_over", "narration"] as const;
+export const VOICEOVER_ALIASES = [
+  "voiceover",
+  "vo",
+  "voice_over",
+  "narration",
+] as const;
 const VOICEOVER_KEYS = new Set<string>(VOICEOVER_ALIASES);
+/** Aliases for the character / voice identity attached to a narration line. */
+export const SPEAKER_ALIASES = [
+  "speaker",
+  "character",
+  "voice_role",
+  "voice_character",
+] as const;
+const SPEAKER_KEYS = new Set<string>(SPEAKER_ALIASES);
 
 interface FrontmatterResult {
   globals: StoryboardGlobals;
@@ -99,7 +116,8 @@ function findFrontmatterRange(
     if ((lines[i] ?? "").trim() === "---") return { start, end: i };
   }
   warnings.push({
-    message: "Frontmatter opening '---' has no closing '---'; treating whole file as body.",
+    message:
+      "Frontmatter opening '---' has no closing '---'; treating whole file as body.",
     line: start + 1,
   });
   return null;
@@ -129,17 +147,30 @@ function parseFrontmatterEntries(
   return globals;
 }
 
-function parseFrontmatter(source: string, warnings: StoryboardWarning[]): FrontmatterResult {
+function parseFrontmatter(
+  source: string,
+  warnings: StoryboardWarning[],
+): FrontmatterResult {
   const lines = source.split(/\r?\n/);
   const range = findFrontmatterRange(lines, warnings);
-  if (!range) return { globals: emptyGlobals(), bodyStartLine: 1, body: source };
+  if (!range)
+    return { globals: emptyGlobals(), bodyStartLine: 1, body: source };
 
-  const globals = parseFrontmatterEntries(lines, range.start, range.end, warnings);
+  const globals = parseFrontmatterEntries(
+    lines,
+    range.start,
+    range.end,
+    warnings,
+  );
   const body = lines.slice(range.end + 1).join("\n");
   return { globals, bodyStartLine: range.end + 2, body };
 }
 
-function assignGlobal(globals: StoryboardGlobals, key: string, value: string): void {
+function assignGlobal(
+  globals: StoryboardGlobals,
+  key: string,
+  value: string,
+): void {
   switch (key) {
     case "format":
       globals.format = value;
@@ -152,6 +183,28 @@ function assignGlobal(globals: StoryboardGlobals, key: string, value: string): v
       break;
     case "audience":
       globals.audience = value;
+      break;
+    case "theme":
+      globals.theme = value;
+      break;
+    case "visual_style":
+    case "visualstyle":
+      globals.visualStyle = value;
+      break;
+    case "music_prompt":
+    case "musicprompt":
+      globals.musicPrompt = value;
+      break;
+    case "music_asset":
+    case "musicasset":
+      globals.musicAsset = value;
+      break;
+    case "template":
+      globals.template = value;
+      break;
+    case "align_to_template":
+    case "aligntotemplate":
+      globals.alignToTemplate = value.toLowerCase() === "true";
       break;
     default:
       globals.extra[key] = value;
@@ -169,11 +222,22 @@ interface FrameSection {
 }
 
 /** Open a new frame section if `line` is a frame heading, else null. */
-function openFrameSection(line: string, headingLine: number): FrameSection | null {
+function openFrameSection(
+  line: string,
+  headingLine: number,
+): FrameSection | null {
   const match = FRAME_HEADING_RE.exec(line);
   if (!match) return null;
-  const headingText = line.slice(match[0].length).replace(FRAME_TITLE_SEP_RE, "").trim();
-  return { headingText, headingLine, level: (match[1] ?? "##").length, lines: [] };
+  const headingText = line
+    .slice(match[0].length)
+    .replace(FRAME_TITLE_SEP_RE, "")
+    .trim();
+  return {
+    headingText,
+    headingLine,
+    level: (match[1] ?? "##").length,
+    lines: [],
+  };
 }
 
 /**
@@ -217,7 +281,12 @@ function buildFrame(
   index: number,
   warnings: StoryboardWarning[],
 ): StoryboardFrame {
-  const frame: StoryboardFrame = { index, status: DEFAULT_FRAME_STATUS, narrative: "", extra: {} };
+  const frame: StoryboardFrame = {
+    index,
+    status: DEFAULT_FRAME_STATUS,
+    narrative: "",
+    extra: {},
+  };
 
   const { number, title } = parseHeading(section.headingText);
   if (number !== undefined) frame.number = number;
@@ -235,6 +304,12 @@ function buildFrame(
         warnings,
       );
     } else {
+      if (/^\s*(?:scene|duration|voiceover|camera|asset_source|status)\s*:/.test(line)) {
+        warnings.push({
+          message: "Write each script field on a separate '- key: value' line; this paragraph is not editable field metadata.",
+          line: section.headingLine,
+        });
+      }
       narrativeLines.push(line);
     }
   }
@@ -269,23 +344,80 @@ const META_SETTERS = new Map<string, MetaSetter>([
   ["status", applyStatus],
   ["poster", applyPoster],
   [
+    "camera",
+    (frame, value) => {
+      frame.camera = stripQuotes(value);
+    },
+  ],
+  [
+    "asset_source",
+    (frame, value) => {
+      frame.assetSource = stripQuotes(value);
+    },
+  ],
+  [
+    "asset_brief",
+    (frame, value) => {
+      frame.assetBrief = stripQuotes(value);
+    },
+  ],
+  ["asset_kind", (frame, value) => { frame.assetKind = stripQuotes(value); }],
+  ["asset_origin", (frame, value) => { frame.assetOrigin = stripQuotes(value); }],
+  [
+    "asset_reference",
+    (frame, value) => {
+      frame.assetReference = stripQuotes(value);
+    },
+  ],
+  [
+    "music",
+    (frame, value) => {
+      frame.music = stripQuotes(value);
+    },
+  ],
+  [
+    "sound_effects",
+    (frame, value) => {
+      frame.soundEffects = stripQuotes(value);
+    },
+  ],
+  [
+    "sound_effect_reference",
+    (frame, value) => {
+      frame.soundEffectReference = stripQuotes(value);
+    },
+  ],
+  ...keyedSetters(SPEAKER_KEYS, (frame, value) => {
+    frame.speaker = stripQuotes(value);
+  }),
+  ["voice_id", (frame, value) => { frame.voiceId = stripQuotes(value); }],
+  ["voice_model", (frame, value) => { frame.voiceModel = stripQuotes(value); }],
+  ["voice_name", (frame, value) => { frame.voiceName = stripQuotes(value); }],
+  ["recipe", (frame, value) => { frame.extra.recipe = stripQuotes(value); }],
+  ["recipe_intent", (frame, value) => { frame.extra.recipe_intent = stripQuotes(value); }],
+  ["scene_id", (frame, value) => { frame.extra.scene_id = stripQuotes(value); }],
+  ["custom_reason", (frame, value) => { frame.extra.custom_reason = stripQuotes(value); }],
+  [
     "src",
     (frame, value) => {
       frame.src = value;
     },
   ],
   ...keyedSetters(TRANSITION_KEYS, (frame, value) => {
-    frame.transitionIn = value;
+    frame.transitionIn = stripQuotes(value);
   }),
   ...keyedSetters(SCENE_KEYS, (frame, value) => {
-    frame.scene = value;
+    frame.scene = stripQuotes(value);
   }),
   ...keyedSetters(VOICEOVER_KEYS, (frame, value) => {
     frame.voiceover = stripQuotes(value);
   }),
 ]);
 
-function keyedSetters(keys: Set<string>, setter: MetaSetter): Array<[string, MetaSetter]> {
+function keyedSetters(
+  keys: Set<string>,
+  setter: MetaSetter,
+): Array<[string, MetaSetter]> {
   return [...keys].map((key) => [key, setter]);
 }
 

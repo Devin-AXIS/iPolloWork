@@ -1,4 +1,14 @@
-import type { WorkspaceWire } from "@ipollowork/types/workspace";
+import { DEFAULT_ENGINE_ID, type WorkspaceWire } from "@ipollowork/types/workspace";
+
+declare global {
+  namespace NodeJS {
+    interface Process {
+      resourcesPath?: string;
+    }
+  }
+}
+
+export { DEFAULT_ENGINE_ID };
 
 export type WorkspaceType = "local" | "remote";
 
@@ -21,6 +31,7 @@ export interface WorkspaceConfig {
   preset?: string;
   workContextId?: `enterprise:${string}`;
   workspaceType?: WorkspaceType;
+  engineId?: string;
   remoteType?: RemoteType;
   baseUrl?: string;
   directory?: string;
@@ -43,6 +54,7 @@ export interface WorkspaceInfo {
   preset: string;
   workContextId?: `enterprise:${string}`;
   workspaceType: WorkspaceType;
+  engineId?: string;
   remoteType?: RemoteType;
   baseUrl?: string;
   directory?: string;
@@ -93,6 +105,8 @@ export interface ServerConfig {
   opencodeDirectory?: string;
   opencodeUsername?: string;
   opencodePassword?: string;
+  /** Runtime-only credential path owned by the managed OpenCode child. */
+  opencodeAuthPath?: string;
   approval: ApprovalConfig;
   corsOrigins: string[];
   workspaces: WorkspaceInfo[];
@@ -117,11 +131,15 @@ export interface Capabilities {
       repo: { owner: string; name: string; ref: string };
     };
   };
-  plugins: { read: boolean; write: boolean };
   mcp: { read: boolean; write: boolean };
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
   templates: { read: boolean; install: boolean; import: boolean; uninstall: boolean };
+  work: { read: boolean; write: boolean; board: boolean; schedule: boolean };
+  engine?: {
+    id: string;
+    sessions: { read: true; create: boolean; prompt: boolean; delete: boolean };
+  };
 
   approvals: { mode: ApprovalMode; timeoutMs: number };
   sandbox: { enabled: boolean; backend: SandboxBackend };
@@ -168,13 +186,6 @@ export interface ApiErrorBody {
   code: string;
   message: string;
   details?: unknown;
-}
-
-export interface PluginItem {
-  spec: string;
-  source: "config" | "dir.project" | "dir.global";
-  scope: "project" | "global";
-  path?: string;
 }
 
 export interface McpItem {

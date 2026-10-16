@@ -33,6 +33,7 @@ interface GeometryRowsProps {
   commitManualSize: (dimension: "width" | "height", value: string) => void;
   commitManualRotation: (value: string) => void;
   gsapAnimId: string | null;
+  gsapRuntimeValues: Record<string, number>;
   navKeyframes: KeyframeEntry;
   currentPct: number;
   seekFromKfPct: (pct: number) => void;
@@ -104,7 +105,7 @@ export function GeometryStepper({
         aria-label={tx(`Decrease ${label}`)}
         disabled={disabled || (min != null && valueRef.current <= min)}
         onClick={() => step(-1)}
-        className="flex h-5 w-4 items-center justify-center rounded-sm text-[#858a94] transition-colors hover:bg-black/5 hover:text-[#24262b] disabled:cursor-default disabled:opacity-25"
+        className="flex h-5 w-4 items-center justify-center rounded-sm text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 disabled:cursor-default disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
       >
         <ChevronRight size={10} className="rotate-180" />
       </button>
@@ -113,7 +114,7 @@ export function GeometryStepper({
         aria-label={tx(`Increase ${label}`)}
         disabled={disabled}
         onClick={() => step(1)}
-        className="flex h-5 w-4 items-center justify-center rounded-sm text-[#858a94] transition-colors hover:bg-black/5 hover:text-[#24262b] disabled:cursor-default disabled:opacity-25"
+        className="flex h-5 w-4 items-center justify-center rounded-sm text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 disabled:cursor-default disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
       >
         <ChevronRight size={10} />
       </button>
@@ -135,6 +136,7 @@ export function LayoutGeometryRows({
   commitManualSize,
   commitManualRotation,
   gsapAnimId,
+  gsapRuntimeValues,
   onLivePreviewProps,
   large,
 }: GeometryRowsProps) {
@@ -156,13 +158,29 @@ export function LayoutGeometryRows({
     };
   }, [displayH, displayR, displayW, displayX, displayY]);
 
+  const positionPreviewBase = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    positionPreviewBase.current = null;
+  }, [element, displayX, displayY]);
+
   const previewGeometry = (
     property: "x" | "y" | "width" | "height" | "rotation",
     value: number,
   ) => {
     valuesRef.current = { ...valuesRef.current, [property]: value };
     if (gsapAnimId) {
-      onLivePreviewProps?.(element, { [property]: value });
+      if (property === "x" || property === "y") {
+        positionPreviewBase.current ??= {
+          x: gsapRuntimeValues?.x ?? 0,
+          y: gsapRuntimeValues?.y ?? 0,
+        };
+        const base = property === "x" ? displayX : displayY;
+        onLivePreviewProps?.(element, {
+          [property]: positionPreviewBase.current[property] + value - base,
+        });
+      } else {
+        onLivePreviewProps?.(element, { [property]: value });
+      }
       return;
     }
     const values = valuesRef.current;
@@ -533,7 +551,7 @@ export function FlatLayoutSection(props: FlatLayoutSectionProps) {
           aria-label={tx("Rotate clockwise")}
           disabled={props.manualRotationEditingDisabled}
           onClick={rotateClockwise}
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
         >
           <RotateCw size={16} />
         </button>
@@ -542,7 +560,7 @@ export function FlatLayoutSection(props: FlatLayoutSectionProps) {
           aria-label={tx("Flip horizontally")}
           disabled={props.disabled}
           onClick={() => commitFlip("x")}
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
         >
           <FlipHorizontal size={16} />
         </button>
@@ -551,7 +569,7 @@ export function FlatLayoutSection(props: FlatLayoutSectionProps) {
           aria-label={tx("Flip vertically")}
           disabled={props.disabled}
           onClick={() => commitFlip("y")}
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
         >
           <FlipVertical size={16} />
         </button>

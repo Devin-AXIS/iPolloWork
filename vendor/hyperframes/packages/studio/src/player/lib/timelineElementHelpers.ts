@@ -7,6 +7,7 @@
  * both the React hook and test environments.
  */
 
+import { readElementFades } from "@hyperframes/core/audio-fade";
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
@@ -90,6 +91,7 @@ export function isTimelineIgnoredElement(el: Element): boolean {
         "[data-hyperframes-picker-ignore]",
         "[data-hf-ignore]",
         "[data-hf-color-grading-canvas]",
+        "[data-avatar-source]",
       ].join(","),
     ),
   );
@@ -169,10 +171,21 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   }
   if (mediaStartAttr) entry.playbackStartAttr = mediaStartAttr;
 
+  if (entry.compositionSrc || el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file")) {
+    const sourceDuration = Number(el.getAttribute("data-source-duration"));
+    const playbackRate = Number(el.getAttribute("data-playback-rate"));
+    if (sourceDuration > 0) entry.sourceDuration = sourceDuration;
+    if (playbackRate > 0) entry.playbackRate = playbackRate;
+    return;
+  }
   const mediaEl = resolveMediaElement(el);
   if (!mediaEl) return;
 
   entry.tag = mediaEl.tagName.toLowerCase();
+  Object.assign(entry, readElementFades(el));
+  entry.hasAudio = el.hasAttribute("data-has-audio");
+  const volume = Number(el.getAttribute("data-volume") ?? "1");
+  if (Number.isFinite(volume)) entry.volume = volume;
   const src = mediaEl.getAttribute("src");
   if (src) entry.src = src;
 
@@ -393,13 +406,43 @@ function findTimelineDomNode(doc: Document, id: string): Element | null {
   );
 }
 
+/**
+ * Runtime avatar cutouts keep a transparent foreground video beside the
+ * authored source so graphics can sit between the background and the person.
+ * That foreground is an implementation detail: the editor must expose only
+ * the authored source as the single draggable/selectable timeline element.
+ */
+export function filterEditableTimelineManifestClips(
+  doc: Document | null,
+  clips: readonly ClipManifestClip[],
+): ClipManifestClip[] {
+  if (!doc) return [...clips];
+  return clips.filter((clip) => {
+    const host = clip.id ? findTimelineDomNode(doc, clip.id) : null;
+    return !host || !isTimelineIgnoredElement(host);
+  });
+}
+
 export function findTimelineDomNodeForClip(
   doc: Document,
   clip: ClipManifestClip,
   fallbackIndex: number,
   usedNodes = new Set<Element>(),
 ): Element | null {
+  // A sibling template may preserve the authored id before its real mount in
+  // DOM order. Bind composition rows to the compiled host before using that
+  // ambiguous id, so their edit/source identity stays in the host file.
+  if (clip.kind === "composition" && clip.compositionId) {
+    const mounts = doc.querySelectorAll(`[data-composition-id="${CSS.escape(clip.compositionId)}"]`);
+    const mounted = Array.from(mounts).find((node) =>
+      !usedNodes.has(node) && !isTimelineIgnoredElement(node) &&
+      (node.hasAttribute("data-composition-file") || node.hasAttribute("data-composition-src")) &&
+      nodeMatchesManifestClip(node, clip),
+    );
+    if (mounted) return mounted;
+  }
   const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
+  if (byIdentity && isTimelineIgnoredElement(byIdentity)) return null;
   // A loaded sub-composition can contain an inner root with the same authored
   // id as its outer timed host. Identity alone may therefore select the inner
   // root and make timeline edits persist into the child file instead of the

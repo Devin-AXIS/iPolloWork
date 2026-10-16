@@ -121,6 +121,18 @@ function testGsapAdapterFallsBackToSeek(): void {
   );
 }
 
+function testRenderSubframesPreserveExactShutterTime(): void {
+  const { calls, timeline } = createTimeline(true);
+  const { player, deterministicSeekCalls } = createPlayer(timeline);
+  player.renderSeek(2.017, { subframe: true, suppressEvents: true });
+  assert.equal(calls.at(-1)?.time, 2.017, "shutter subframes must not collapse to the nearest 30fps frame");
+  assert.equal(calls.at(-1)?.suppressEvents, true);
+  assert.deepEqual(deterministicSeekCalls, [2.017]);
+  player.renderSeek(2.017);
+  assert.equal(calls.at(-1)?.time, 2, "ordinary rendering keeps the existing frame boundary contract");
+}
+
+testRenderSubframesPreserveExactShutterTime();
 testSeekUsesDeterministicGsapPath();
 testGsapAdapterPreservesTotalTime();
 testGsapAdapterFallsBackToSeek();
@@ -128,6 +140,6 @@ testGsapAdapterFallsBackToSeek();
 console.log(
   JSON.stringify({
     event: "hyperframe_runtime_seek_verified",
-    assertions: 3,
+    assertions: 4,
   }),
 );

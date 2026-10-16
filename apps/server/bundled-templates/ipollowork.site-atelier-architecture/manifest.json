@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-atelier-architecture",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "kind": "design",
   "category": "article",
   "subcategory": "architecture",
@@ -10,7 +10,8 @@
     "architecture",
     "studio",
     "portfolio",
-    "minimal"
+    "minimal",
+    "topic:culture"
   ],
   "surface": "design",
   "title": "Atelier North",

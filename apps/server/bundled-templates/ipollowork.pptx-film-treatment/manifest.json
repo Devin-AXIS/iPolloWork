@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-film-treatment",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "media",
@@ -10,7 +10,8 @@
     "media",
     "cinematic",
     "pptx-compatible",
-    "themeable"
+    "themeable",
+    "topic:culture"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

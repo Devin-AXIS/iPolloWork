@@ -72,6 +72,7 @@ export function usePreviewInteraction({
   const hoverFrameRef = useRef<number | null>(null);
   const pendingHoverRef = useRef<PreviewHoverRequest | null>(null);
   const hoverSequenceRef = useRef(0);
+  const selectionSequenceRef = useRef(0);
 
   const cancelPendingHover = useCallback(() => {
     hoverSequenceRef.current += 1;
@@ -102,7 +103,9 @@ export function usePreviewInteraction({
         e.stopPropagation();
         return;
       }
-      if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
+      if (e.button !== 0 || !STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
+      const sequence = ++selectionSequenceRef.current;
+      cancelPendingHover();
 
       const wasPlaying = usePlayerStore.getState().isPlaying;
       pausePreviewPlayback();
@@ -118,9 +121,11 @@ export function usePreviewInteraction({
         const nextSelection =
           (await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
             preferClipAncestor: options?.preferClipAncestor ?? false,
+            skipSourceProbe: true,
           })) ??
           options?.hoverSelection ??
           null;
+        if (sequence !== selectionSequenceRef.current) return;
         if (!nextSelection) {
           resumeIfNothingSelected();
           return;
@@ -128,13 +133,15 @@ export function usePreviewInteraction({
         e.preventDefault();
         e.stopPropagation();
         applyDomSelection(nextSelection, { additive: true });
-        return;
+        return nextSelection;
       }
 
       // Every click resolves the deepest authored child at this point.
       const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? false,
+        skipSourceProbe: true,
       });
+      if (sequence !== selectionSequenceRef.current) return;
       // The fresh point hit-test is authoritative for a plain click. Falling
       // back to the prior hover cache here makes a direct click on blank space
       // reselect the element the pointer just left instead of clearing it.
@@ -145,7 +152,7 @@ export function usePreviewInteraction({
         updateDomEditHoverSelection(null);
         applyDomSelection(null, { revealPanel: false });
         resumeIfNothingSelected();
-        return;
+        return null;
       }
       e.preventDefault();
       e.stopPropagation();
@@ -157,9 +164,11 @@ export function usePreviewInteraction({
       if (!e.shiftKey && e.altKey && onClickToSource) {
         onClickToSource(resolvedSelection);
       }
+      return resolvedSelection;
     },
     [
       applyDomSelection,
+      cancelPendingHover,
       captionEditMode,
       compositionLoading,
       onClickToSource,

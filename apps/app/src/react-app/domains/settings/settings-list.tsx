@@ -2,18 +2,14 @@
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 import { SettingsInset } from "./settings-section";
-import { SearchIcon } from "lucide-react"
+import { t } from "@/i18n";
+import { SearchField, type SearchFieldProps } from "@/components/ui/search-field";
 
 import {
   Field,
   FieldDescription,
   FieldLabel,
 } from "@/components/ui/field"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group"
 
 export interface SettingsListProps {
   children: React.ReactNode;
@@ -31,7 +27,7 @@ interface SettingsListEmptyStateProps {
 
 export function SettingsListEmptyState({ children, className }: SettingsListEmptyStateProps) {
   return (
-    <SettingsInset className={cn("border-dashed py-6 text-center text-sm text-muted-foreground", className)}>
+    <SettingsInset className={cn("border-dashed py-6 text-center text-ui-control leading-5 text-muted-foreground", className)}>
       {children}
     </SettingsInset>
   );
@@ -63,7 +59,7 @@ export function SettingsListItem({ children, className }: SettingsListItemProps)
   return (
     <div
       className={cn(
-        "flex items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-muted/10 hover:border-border border border-transparent",
+        "flex items-center justify-between rounded-xl px-3 py-2 text-left text-ui-control transition-colors hover:bg-muted/10 hover:border-border border border-transparent",
         className,
       )}
     >
@@ -96,19 +92,13 @@ interface SettingsListItemDescriptionProps {
 }
 
 export function SettingsListItemDescription({ children, className }: SettingsListItemDescriptionProps) {
-  return <div className={cn("mt-0.5 text-muted-foreground text-xs truncate", className)}>{children}</div>;
+  return <div className={cn("mt-0.5 truncate text-ui-compact text-muted-foreground", className)}>{children}</div>;
 }
 
 export function SettingsListSearchInput({
   placeholder = "Search...",
+  clearLabel = t("help.clear_search"),
   ...props
-}: React.ComponentProps<"input">) {
-  return (
-    <InputGroup>
-      <InputGroupInput placeholder={placeholder} {...props} />
-      <InputGroupAddon align="inline-start">
-        <SearchIcon className="text-muted-foreground" />
-      </InputGroupAddon>
-    </InputGroup>
-  )
+}: Omit<SearchFieldProps, "clearLabel"> & { clearLabel?: string }) {
+  return <SearchField placeholder={placeholder} clearLabel={clearLabel} {...props} />;
 }

@@ -39,6 +39,8 @@ export interface StoryboardFrameFocusProps {
   onSaveFeedback: () => void;
   /** Project signature the board was loaded with (busts the poster cache). */
   posterVersion?: string;
+  /** Authored storyboard aspect ratio. */
+  aspectRatio: number;
 }
 
 /**
@@ -71,6 +73,7 @@ export function StoryboardFrameFocus({
   onFeedbackMessageCopied,
   onSaveFeedback,
   posterVersion,
+  aspectRatio,
 }: StoryboardFrameFocusProps) {
   const { readProjectFile, writeProjectFile } = useFileManagerContext();
   const { setViewMode, registerViewModeGuard } = useViewMode();
@@ -217,7 +220,15 @@ export function StoryboardFrameFocus({
 
       <div className="flex flex-1 min-h-0 flex-col overflow-auto lg:flex-row lg:overflow-hidden">
         <div className="flex w-full shrink-0 items-center justify-center bg-neutral-900/40 p-4 sm:p-8 lg:h-full lg:w-3/5">
-          <div className="aspect-video w-full max-w-[900px] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+          <div
+            className="max-w-[900px] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900"
+            style={{
+              aspectRatio,
+              width: aspectRatio < 1
+                ? `min(100%, calc((100vh - 132px) * ${aspectRatio}))`
+                : "100%",
+            }}
+          >
             {canOpenPreview && frame.src ? (
               <FramePoster
                 projectId={projectId}

@@ -6,10 +6,10 @@
   <title>Reach every country 鈥?Charlotte &amp; Vine</title>
   <style>
     :root {
-      --paper: #f3eee5;
-      --ink: #1a1816;
-      --muted: #7a766c;
-      --accent: #c0563b;
+      --paper: var(--ipw-color-bg, #080b12);
+      --ink: var(--ipw-color-text, #edf4ff);
+      --muted: var(--ipw-color-muted, #91a1b8);
+      --accent: var(--ipw-color-primary, #6ee7ff);
       --serif: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
       --mono: ui-monospace, 'JetBrains Mono', monospace;
     }
@@ -21,8 +21,8 @@
       width: 100vw;
       height: 100vh;
       background:
-        radial-gradient(circle at 50% 50%, rgba(26,24,22,0.04), transparent 70%),
-        radial-gradient(circle, rgba(26,24,22,0.10) 1px, transparent 1.4px) 0 0 / 28px 28px,
+        radial-gradient(circle at 50% 50%, rgba(110,231,255,0.10), transparent 70%),
+        radial-gradient(circle, rgba(145,161,184,0.14) 1px, transparent 1.4px) 0 0 / 28px 28px,
         var(--paper);
       overflow: hidden;
     }
@@ -49,28 +49,24 @@
       position: absolute;
       inset: 0;
       border-radius: 50%;
-      border: 1px solid rgba(26,24,22,0.45);
-      animation: spin 60s linear infinite;
+      border: 1px solid rgba(145,161,184,0.45);
+      /* Motion is authored by the finite HyperFrames timeline, never by a wall-clock loop. */
     }
     .ring.r2 {
       inset: 4%;
-      border-color: rgba(26,24,22,0.30);
-      animation-duration: 90s;
-      animation-direction: reverse;
+      border-color: rgba(145,161,184,0.30);
     }
     .ring.r3 {
       inset: 10%;
-      border-color: rgba(26,24,22,0.22);
+      border-color: rgba(145,161,184,0.22);
       border-style: dashed;
-      animation-duration: 180s;
     }
     .ring.r4 {
       inset: 18%;
-      border-color: rgba(26,24,22,0.12);
-      animation-duration: 36s;
+      border-color: rgba(145,161,184,0.12);
     }
 
-    .ring-labels { position: absolute; inset: 0; animation: spin 60s linear infinite; }
+    .ring-labels { position: absolute; inset: 0; }
     .ring-labels span {
       position: absolute;
       left: 50%; top: 50%;
@@ -95,7 +91,6 @@
       position: absolute;
       inset: 22%;
       border-radius: 50%;
-      animation: spin 38s linear infinite reverse;
       transform-style: preserve-3d;
     }
     .globe svg { width: 100%; height: 100%; display: block; }
@@ -107,8 +102,7 @@
       background: var(--accent);
       border-radius: 50%;
       transform: translate(-50%,-50%);
-      animation: pulse 2.6s ease-in-out infinite;
-      box-shadow: 0 0 0 0 rgba(192,86,59,0.35);
+      box-shadow: 0 0 0 0 rgba(110,231,255,0.35);
     }
 
     .meta-tl { position: absolute; top: 96px; left: 56px; font: 10px/1.5 var(--mono); color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; }
@@ -134,7 +128,7 @@
     }
     @keyframes pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(192,86,59,0.45); transform: translate(-50%,-50%) scale(1); }
-      50% { box-shadow: 0 0 0 18px rgba(192,86,59,0); transform: translate(-50%,-50%) scale(1.25); }
+      50% { box-shadow: 0 0 0 18px rgba(110,231,255,0); transform: translate(-50%,-50%) scale(1.25); }
     }
     @keyframes type-in {
       from { opacity: 0; letter-spacing: 0.06em; }
@@ -175,13 +169,13 @@
           <svg viewBox="0 0 200 200" aria-hidden="true">
             <defs>
               <radialGradient id="globeShade" cx="35%" cy="32%" r="78%">
-                <stop offset="0%" stop-color="#fffaf0"/>
-                <stop offset="60%" stop-color="#ece6da"/>
-                <stop offset="100%" stop-color="#cfc8b9"/>
+                <stop offset="0%" stop-color="#dff8ff"/>
+                <stop offset="60%" stop-color="#24415b"/>
+                <stop offset="100%" stop-color="#0c1625"/>
               </radialGradient>
             </defs>
-            <circle cx="100" cy="100" r="92" fill="url(#globeShade)" stroke="rgba(26,24,22,0.35)" stroke-width="0.7"/>
-            <g fill="none" stroke="rgba(26,24,22,0.40)" stroke-width="0.7">
+            <circle cx="100" cy="100" r="92" fill="url(#globeShade)" stroke="rgba(110,231,255,0.5)" stroke-width="0.7"/>
+            <g fill="none" stroke="rgba(145,161,184,0.40)" stroke-width="0.7">
               <ellipse cx="100" cy="100" rx="92" ry="20"/>
               <ellipse cx="100" cy="100" rx="92" ry="48"/>
               <ellipse cx="100" cy="100" rx="92" ry="78"/>
@@ -189,7 +183,7 @@
               <ellipse cx="100" cy="100" rx="48" ry="92"/>
               <ellipse cx="100" cy="100" rx="78" ry="92"/>
             </g>
-            <g fill="rgba(26,24,22,0.28)" stroke="rgba(26,24,22,0.55)" stroke-width="0.6">
+            <g fill="rgba(110,231,255,0.20)" stroke="rgba(110,231,255,0.55)" stroke-width="0.6">
               <path d="M 64 70 Q 78 58 96 64 L 110 78 Q 102 92 88 96 L 70 92 Q 60 84 64 70 Z"/>
               <path d="M 116 70 Q 138 64 156 80 Q 152 96 138 100 Q 124 96 116 86 Z"/>
               <path d="M 54 110 Q 72 110 84 124 Q 80 142 64 150 Q 50 138 54 110 Z"/>

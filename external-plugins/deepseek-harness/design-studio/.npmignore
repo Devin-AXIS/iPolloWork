@@ -1,0 +1,10 @@
+node_modules/
+src/
+studio/src/
+studio/index.html
+studio/tsconfig.json
+studio/vite.config.ts
+tsconfig.json
+tsdown.config.ts
+pnpm-lock.yaml
+pnpm-workspace.yaml

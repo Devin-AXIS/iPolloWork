@@ -1,0 +1,246 @@
+# iPolloWork
+
+<p align="center">
+  <a href="../../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · <a href="./README_ZH_hk.md">繁體中文</a> · 日本語
+</p>
+
+<p align="center">
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/latest"><img src="https://img.shields.io/github/v/release/Devin-AXIS/iPolloWork?display_name=tag&amp;sort=semver" alt="Latest release" /></a>
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases"><img src="https://img.shields.io/github/downloads/Devin-AXIS/iPolloWork/total" alt="GitHub downloads" /></a>
+  <a href="https://github.com/Devin-AXIS/iPolloWork/stargazers"><img src="https://img.shields.io/github/stars/Devin-AXIS/iPolloWork?style=flat" alt="GitHub stars" /></a>
+  <a href="https://x.com/iPolloWork"><img src="https://img.shields.io/badge/X%20Global-%40iPolloWork%20%C2%B7%207.9K%20followers-000000?logo=x&amp;logoColor=white" alt="Follow iPolloWork on X" /></a>
+  <a href="https://x.com/iPolloCN"><img src="https://img.shields.io/badge/X%20%E4%B8%AD%E6%96%87-%40iPolloCN%20%C2%B7%203.4K%20followers-000000?logo=x&amp;logoColor=white" alt="Follow iPolloCN on X" /></a>
+  <a href="https://www.bestpractices.dev/projects/14127"><img src="https://www.bestpractices.dev/projects/14127/badge" alt="OpenSSF Best Practices" /></a>
+  <a href="https://www.cloudflare.com/startups/"><img src="https://img.shields.io/badge/Cloudflare-for%20Startups-F38020?logo=cloudflare&amp;logoColor=white" alt="Cloudflare for Startups" /></a>
+  <a href="https://github.com/opea-project"><img src="https://img.shields.io/badge/OPEA-Open%20Platform%20for%20Enterprise%20AI-ff7a00" alt="OPEA: Open Platform for Enterprise AI" /></a>
+</p>
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/daily?language=TypeScript" alt="#22 TypeScript Repository Of The Day | Trendshift" width="250" height="55" /></a>
+  <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/weekly?language=TypeScript" alt="#24 TypeScript Repository Of The Week | Trendshift" width="250" height="55" /></a>
+</p>
+
+**人とエージェントチームのための、エンタープライズ対応・ローカルファーストの Agent Workbench。複数エンジンと統一されたプラグイン／Skill システム、マルチエージェントのプロジェクトとタスク、コード・文書・プレゼン・Webサイト・デザイン・動画の編集可能な制作を一つのワークスペースに統合します。**
+
+https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
+
+iPolloWork は、次世代のエージェントネイティブな働き方を支える統一ワークスペースレイヤーです。ランタイムごとにプロジェクトや拡張機能を分断せず、エージェント、タスク、スケジュール、プラグイン、Skills、ツール、実行状況、編集可能な成果物を一つの操作画面に統合します。目的を伝えるとエージェントが計画して実行し、チームは進捗を確認し、操作を承認し、同じ場所で成果物を編集し続けられます。
+
+iPolloWork は、特定のコーディングエージェントの代替を目指す製品ではありません。明確な互換境界を通じて [Codex](https://github.com/openai/codex)、[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、OpenCode、そして将来のエージェントランタイムを接続しながら、それぞれのエコシステム固有の強みを保ちます。コーディングは出発点にすぎず、スライド、Web ページ、ビジュアルデザイン、動画も、完成ファイルやチャット記録で終わらず編集可能なまま残ります。
+
+<div align="center">
+  <h3>iPolloWork 公式 WeChat コミュニティに参加</h3>
+  <p>WeChat で下の QR コードをスキャンすると、製品情報やコミュニティでの交流を目的とした公式グループに参加できます。</p>
+  <img src="../assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 公式 WeChat コミュニティの QR コード" width="220" />
+</div>
+
+## iPolloWork の違い
+
+- **複数エンジン、一つのワークベンチ** — Codex、DeepSeek Harness、OpenCode、将来のランタイムに対応し、エンジンごとにプロジェクト体験を作り直す必要がありません。
+- **統一されたグローバル拡張システム** — ポータブルなプラグイン、Skills、エージェント、コマンド、サービス、認証を一度だけインストール・有効化・更新・削除し、任意のエンジン固有バインディングも同じライフサイクルで管理します。
+- **プロジェクト中心の人とエージェントの共同作業** — 役割、タスク、スケジュール、実行状態、成果物を同じプロジェクト画面で共有し、孤立したチャットに作業を分散させません。
+- **一つの編集可能な制作ループ** — コードから文書、Web サイト、プレゼン、デザイン、動画まで、生成後もテキスト、画像、レイアウト、タイムライン、シーンを変更できます。
+- **ローカルとエンタープライズの管理** — ローカル実行、モデル選択、権限と実行の確認を保ち、チームで本当に必要なときだけ組織サービスへ接続できます。
+
+## エージェントランタイムの互換性
+
+OpenCode は現在の標準ローカル実行ランタイムです。[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) は任意のピアランタイム兼サブエージェント委任先として統合され、[Codex](https://github.com/openai/codex) は [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) 制御インターフェースから接続します。MCP はこの接続経路で使うプロトコルであり、Codex、DSH、OpenCode と並ぶ別のエージェントエンジンではありません。すべてが同じワークベンチを利用しますが、各ランタイムのネイティブ機能が同一であるとは扱いません。
+
+連携モデルはシンプルです。iPolloWork をプロジェクトワークベンチとして維持し、必要に応じて範囲を限定した作業を DSH サブエージェントに委任し、構造化された進捗と結果を同じプロジェクトへ戻します。各ランタイムは独自のエージェント、Skills、プラグイン、実行モデルを維持します。
+
+### DeepSeek Harness で iPolloWork の制作プラグインを直接起動する
+
+DeepSeek Harness の Web UI に、iPolloWork のネイティブ Design、PPT、Video ビューをインストールし、任意のプロジェクトディレクトリから起動できます。
+
+<p>
+  <a href="https://www.npmjs.com/package/deepseek-idesign"><img src="https://img.shields.io/npm/v/deepseek-idesign?label=DeepSeek%20Design&amp;logo=npm&amp;color=CB3837" alt="deepseek-idesign npm version" /></a>
+  <a href="https://www.npmjs.com/package/deepseek-ivideo"><img src="https://img.shields.io/npm/v/deepseek-ivideo?label=DeepSeek%20Video&amp;logo=npm&amp;color=CB3837" alt="deepseek-ivideo npm version" /></a>
+</p>
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt deepseek-ivideo
+npx @deepseek-ai/dsh web
+```
+
+[http://127.0.0.1:3080](http://127.0.0.1:3080) を開き、会話を開始して **Design**、**PPT**、**Video** のいずれかを選択します。`dsh` コマンドをインストール済みの場合は、`npx @deepseek-ai/dsh` を `dsh` に置き換えられます。DeepSeek Harness は現在デベロッパープレビューのため、プラグイン互換性はその最新リリース系列に追従します。
+
+## iPolloWork のインストール
+
+### デスクトップ版をダウンロードする
+
+公開インストーラーが提供されると、[GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases) に掲載されます。現在、このリポジトリには公開リリースがないため、現時点では下記のソースからのインストール方法を利用してください。将来リリース版をダウンロードする際は、オペレーティングシステムと CPU の両方に合ったファイルを選択してください。
+
+| システム | CPU | 使用するインストーラー |
+| --- | --- | --- |
+| macOS | Apple Silicon（M シリーズ） | `ipollowork-mac-arm64-<version>.dmg` |
+| macOS | Intel | `ipollowork-mac-x64-<version>.dmg` |
+| Windows | Intel/AMD 64 ビット | `ipollowork-win-x64-<version>.exe` |
+| Windows | ARM64 | `ipollowork-win-arm64-<version>.exe` |
+| Linux | Intel/AMD 64 ビット | `ipollowork-linux-x64-<version>.AppImage` |
+| Linux | ARM64 | `ipollowork-linux-arm64-<version>.AppImage` |
+
+macOS の `.zip` と Linux の `.tar.gz` は、ポータブル実行や更新用のアーティファクトです。通常は `.dmg`、`.exe`、または `.AppImage` を選択してください。Releases ページにお使いのシステム向けのインストーラーがまだない場合は、下記の手順でソースから実行するか、自分でパッケージ化してください。
+
+インストール後の手順：
+
+- **macOS：** `.dmg` を開き、**iPolloWork** を「アプリケーション」フォルダーへドラッグします。
+- **Windows：** `.exe` インストーラーを実行します。ローカルでビルドした署名なしのインストーラーでは、Microsoft Defender SmartScreen が表示される場合があります。
+- **Linux：** `chmod +x ipollowork-*.AppImage` で AppImage に実行権限を付与してから起動します。`.tar.gz` パッケージは展開して、インストールせずに実行することもできます。
+
+### ソース開発とパッケージ化の要件
+
+- [Git](https://git-scm.com/downloads)
+- [Node.js](https://nodejs.org/en/download) 22 以降
+- pnpm 11（`corepack enable` で Corepack を有効化）
+- [Bun](https://bun.sh/docs/installation) 1.3.10 以降（ローカルの Orchestrator サイドカーのビルドに使用）
+- macOS：Xcode Command Line Tools（`xcode-select --install` を実行）
+- Windows：[Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) の **Desktop development with C++** と Windows SDK。PowerShell またはコマンドプロンプトを使用してください。
+- Linux：C/C++ ツールチェーン、Python 3、`pkg-config`、Electron に必要なデスクトップライブラリを含む標準的な Electron ビルド環境。リリースビルドでは Ubuntu 22.04 を使用します。
+
+OpenCode は、最初のデスクトップビルド時に独立したサイドカーとしてダウンロード・準備されます。iPolloWork は OpenCode をフォークしたり書き換えたりせず、OpenCode は独立してアップグレードを続けられます。
+
+## ソースから起動する
+
+### macOS と Linux
+
+```bash
+git clone https://github.com/Devin-AXIS/iPolloWork.git
+cd iPolloWork
+corepack enable
+./ipollowork setup
+./ipollowork dev
+```
+
+### Windows PowerShell
+
+```powershell
+git clone https://github.com/Devin-AXIS/iPolloWork.git
+Set-Location iPolloWork
+corepack enable
+.\ipollowork.cmd setup
+.\ipollowork.cmd dev
+```
+
+`setup` コマンドはロックされたワークスペース依存関係をインストールします。`dev` コマンドは OpenCode と Orchestrator のサイドカーを準備し、UI を起動して Electron デスクトップクライアントを開きます。開発モードでは iPolloWork と OpenCode の状態を分離して使用するため、普段使っている OpenCode の設定を上書きしません。
+
+### 開発コマンド
+
+| 目的 | macOS / Linux | Windows |
+| --- | --- | --- |
+| デスクトップアプリを起動 | `./ipollowork dev` | `.\ipollowork.cmd dev` |
+| ブラウザー UI のみ起動 | `./ipollowork dev:ui` | `.\ipollowork.cmd dev:ui` |
+| ローカル Cloud に接続 | `./ipollowork dev:cloud http://localhost:3100` | `.\ipollowork.cmd dev:cloud http://localhost:3100` |
+| 型チェックとデスクトップテスト | `./ipollowork check` | `.\ipollowork.cmd check` |
+| 本番ビルド | `./ipollowork build` | `.\ipollowork.cmd build` |
+
+Windows の開発ビルドでは、本番用の `ipollowork://` ハンドラーは自動登録されません。外部ブラウザーから Cloud サインインをテストする場合は、リポジトリにあるプロトコル切り替えツールを使用し、終了後に本番用ハンドラーへ戻してください。詳しくは [Windows プロトコル切り替え](../windows-protocol-switcher.md) を参照してください。
+
+## ビルドとパッケージ化
+
+ビルドには、次の3つのレベルがあります。
+
+| コマンド | 結果 |
+| --- | --- |
+| `build` | 本番用 UI、server、Electron シェル、サイドカーをコンパイルします。インストーラーは作成しません。 |
+| `package:dir` | ローカル確認用に、最も短時間で展開済みデスクトップアプリを作成します。リリースバージョンは変更しません。 |
+| `package` | チェックを実行し、クライアントバージョンを更新した後、現在のシステムと CPU 向けのネイティブインストーラーおよびポータブル／更新用アーティファクトを公開せずに作成します。 |
+
+### macOS と Linux
+
+```bash
+./ipollowork check
+./ipollowork package:dir
+./ipollowork package
+```
+
+### Windows PowerShell
+
+```powershell
+.\ipollowork.cmd check
+.\ipollowork.cmd package:dir
+.\ipollowork.cmd package
+```
+
+すべての成果物は `apps/desktop/dist-electron/` に出力されます。
+
+`package` はローカルリリース用のコマンドです。App、Desktop、Orchestrator、Server のバージョンを同期し、`0.1.0` から `0.99.0`、続いて `1.0.0` へ進むバージョン系列を使用します（ソースチェックアウトの開始点は、未出荷のベースライン `0.0.0` です）。次のバージョンを確認するには `./ipollowork package --dry-run` を使用してください。`--skip-check` はチェックがすでに通過している場合にのみ使用してください。ローカルのパッケージ化で、コミット、タグ作成、プッシュ、リリース公開が自動的に行われることはありません。
+
+- **macOS：** `.dmg`、`.zip`、展開済みの `.app`
+- **Windows：** NSIS `.exe` と `win-unpacked/`
+- **Linux：** `.AppImage`、`.tar.gz`、`linux-unpacked/`
+
+ローカルのパッケージ化では、現在のオペレーティングシステムと CPU アーキテクチャのみが対象になります。macOS ARM64/x64、Windows ARM64/x64、Linux ARM64/x64 の完全な署名・公証済みマトリクスを作成するには、GitHub のリリースワークフローを使用してください。適切な Apple または Windows の署名資格情報がない場合、ローカルパッケージには署名されません。これらは開発テスト用であり、公式リリースとして扱わないでください。
+
+## iPolloCloud に接続する
+
+まずローカルの iPolloCloud コントロールプレーンを起動し、次を実行します。
+
+```bash
+./ipollowork dev:cloud http://localhost:3100
+```
+
+このコマンドは分離された開発プロファイルを作成し、認証と Cloud API を指定された URL に向け、Cloud へのサインインを必要とします。通常のローカル iPolloWork プロファイルは変更しません。リモートまたはセルフホストの Cloud URL でも同じように動作します。
+
+```bash
+./ipollowork dev:cloud https://cloud.example.com
+```
+
+## アーキテクチャの境界
+
+```text
+Codex / MCP clients ── ipollowork-ui-mcp ──> iPolloWork desktop/UI
+                                                   │
+                                                   ├── local API ──> Engine Protocol ──> OpenCode (default)
+                                                   │                               └──> DeepSeek Harness (optional)
+                                                   └── optional account/control requests ──> iPolloCloud
+```
+
+- エージェント実行、タスク状態、ストリーミングは共通エンジン境界で正規化し、エンジン固有の挙動は各アダプター内に保持します。
+- ポータブルな Skills、プラグイン、MCP サーバー、プロジェクト機能は一つのライフサイクルを使い、エンジン固有の拡張は任意です。
+- Codex 互換性は現在 MCP 制御インターフェース経由であり、ネイティブ Codex エンジンアダプターが存在すると誤認させません。
+- iPolloCloud は、ID、組織、権限、ホスト型 Worker のライフサイクル、管理機能、商用アプリを担当します。
+- OpenCode と DeepSeek Harness は独立コンポーネントのまま進化でき、iPolloWork がどちらかのフォークになることはありません。
+- Cloud 接続は任意です。ローカルの iPolloWork は、アカウントや商用サービスなしで動作します。
+
+## リポジトリ構成
+
+- `apps/app` — 共有 React ユーザーインターフェース
+- `apps/desktop` — Electron デスクトップシェルとパッケージ化
+- `apps/server` — iPolloWork サーバー API
+- `apps/orchestrator` — ヘッドレスランタイムオーケストレーション
+- `packages` — 共有型、コンポーネント、ドキュメント、インテグレーション
+
+## コントリビューション
+
+プロダクトを変更する前に、`AGENTS.md`、`docs/governance.md`、`CONTRIBUTING.md`、`SECURITY.md`、`apps/app/src/react-app/ARCHITECTURE.md` を読んでください。まず関連する範囲のテストを実行し、その後に次を実行します。
+
+```bash
+./ipollowork check
+git diff --check
+```
+
+コントリビューション、コミュニティ、セキュリティに関する方針は、`CONTRIBUTING.md`、`CODE_OF_CONDUCT.md`、`SECURITY.md` を参照してください。
+
+## Star の推移
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=Devin-AXIS%2FiPolloWork&amp;type=date&amp;legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" />
+      <img alt="iPolloWork Star の推移" src="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" width="900" />
+    </picture>
+  </a>
+</p>
+
+## ライセンス
+
+iPolloWork は **iPolloWork Source Available License 1.0** を使用します。
+
+- 個人による自己利用、および合計3人未満の小規模な社内利用に限り無料です。
+- 個人・社内・商用・非商用・個人事業・組織利用のいずれであるかを問わず、3人以上による利用には事前の書面による許可が必要です。
+- 個人または企業によるものかを問わず、販売、再販、有料サービス、SaaS、ホスティング、ホワイトラベル配布、マーケットプレイスでの利用、顧客向け利用には、事前の書面による許可が必要です。
+- 事前の書面による許可で別のブランディングが明示的に認められていない限り、ユーザー向けフロントエンド表示には iPolloWork の名称、ロゴ、製品帰属表示を残す必要があります。
+- 個別にライセンスされたサードパーティコンポーネント、および過去に MIT ライセンスで公開されたコードには、それぞれの元のライセンスと既存の権利が引き続き適用されます。
+
+適用される条項は [`LICENSE`](../../LICENSE) を参照してください。これはソースアベイラブルライセンスであり、OSI が承認するオープンソースライセンスではありません。

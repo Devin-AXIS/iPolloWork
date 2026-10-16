@@ -1,23 +1,18 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  realpathSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  utimesSync,
-} from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { existsSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { hdrToSdrToneMapFilter } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { probeMediaMetadata } from "./mediaMetadata.js";
+import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
+import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
+import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
- * cached, seekable H.264 authoring proxy. Consumed by the preview/play/static
- * project routes (U3/U4) to serve a `?hf-proxy=h264` request; never used on
+ * cached, seekable authoring proxy. Consumed by the preview/play/static
+ * project routes (U3/U4) to serve a `?hf-proxy=` request; never used on
  * the render path (render always sees the original file).
  *
  * IMPORTANT — request-lifecycle detachment: nothing here accepts or wires an
@@ -31,9 +26,9 @@ import { cleanupProxyCache } from "./proxyCache.js";
  * entry still lands for the next request.
  */
 
-export const PROXY_PARAMS_VERSION = "v2";
+export const PROXY_PARAMS_VERSION = "v5";
 
-const CACHE_DIR_NAME = ".transcode-cache";
+export const CACHE_DIR_NAME = ".transcode-cache";
 
 function boundedEnvInteger(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name]?.trim();
@@ -51,6 +46,8 @@ const MAX_QUEUED_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_QUEUE", 8
 const STDERR_TAIL_MAX_CHARS = 4000;
 export const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
+export const PROXY_PENDING_RETRY_AFTER_SECONDS = 2;
+const ENVIRONMENT_FAILURE_TTL_MS = 5 * PROXY_PENDING_RETRY_AFTER_SECONDS * 1000;
 const MAX_FAILURE_CACHE_ENTRIES = 128;
 export const DEFAULT_PROXY_WAIT_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -67,7 +64,7 @@ export class ProxyTranscodeError extends Error {
 }
 
 /** "ffmpeg isn't installed" — an environment condition, not a per-source
- * failure, so it is deliberately NOT remembered by the negative cache below
+ * failure, so the negative cache below keeps it only briefly
  * (installing ffmpeg mid-session must recover without a server restart). */
 class FfmpegUnavailableError extends ProxyTranscodeError {
   constructor() {
@@ -95,7 +92,7 @@ export class ProxyCapacityError extends ProxyTranscodeError {
 
 export class ProxySourceOutsideProjectError extends ProxyTranscodeError {
   constructor() {
-    super("media proxy source must be inside the project", null, "");
+    super("media proxy source must be addressed through the project", null, "");
     this.name = "ProxySourceOutsideProjectError";
   }
 }
@@ -128,46 +125,71 @@ export async function waitForProxy<T>(
 }
 
 /**
- * Cache key inputs per the plan: source path relative to the project (so the
- * cache is portable across checkouts at different absolute locations), mtime
- * and file size (mtime alone can collide on same-second re-exports on
- * coarse-timestamp filesystems; size catches nearly all such cases at zero
- * cost), and a params version token so changing the ffmpeg recipe below
- * invalidates every cached proxy cleanly.
+ * Cache key inputs per the plan: project-relative source path (portable across
+ * checkouts), canonical source identity (so retargeted external symlinks do
+ * not reuse a proxy), mtime and file size (mtime alone can collide on
+ * same-second re-exports on coarse-timestamp filesystems; size catches nearly
+ * all such cases at zero cost), and a params version token so changing the
+ * ffmpeg recipe below invalidates every cached proxy cleanly.
  */
 type CanonicalProxySource = {
   projectDir: string;
   sourcePath: string;
   relativePath: string;
+  cacheIdentity: string;
 };
 
 function canonicalizeProxySource(
   projectDir: string,
   absoluteSourcePath: string,
 ): CanonicalProxySource {
-  const canonicalProjectDir = realpathSync(projectDir);
-  const canonicalSourcePath = realpathSync(absoluteSourcePath);
-  const relPath = relative(canonicalProjectDir, canonicalSourcePath);
-  if (relPath === ".." || relPath.startsWith(`..${sep}`) || isAbsolute(relPath)) {
+  const requestedProjectDir = resolve(projectDir);
+  const requestedSourcePath = resolve(absoluteSourcePath);
+  const requestedRelativePath = relative(requestedProjectDir, requestedSourcePath);
+  if (
+    requestedRelativePath === ".." ||
+    requestedRelativePath.startsWith(`..${sep}`) ||
+    isAbsolute(requestedRelativePath)
+  ) {
     throw new ProxySourceOutsideProjectError();
   }
+
+  const canonicalProjectDir = realProjectRoot(projectDir);
+  const canonicalSourcePath = realpath(absoluteSourcePath);
+  const canonicalRelativePath = relative(canonicalProjectDir, canonicalSourcePath);
+  const sourceIsInsideCanonicalProject =
+    canonicalRelativePath !== ".." &&
+    !canonicalRelativePath.startsWith(`..${sep}`) &&
+    !isAbsolute(canonicalRelativePath);
   return {
     projectDir: canonicalProjectDir,
     sourcePath: canonicalSourcePath,
-    relativePath: relPath.normalize("NFC"),
+    relativePath: requestedRelativePath.normalize("NFC"),
+    // An external target needs a stable identity in addition to its project-local
+    // symlink path, otherwise retargeting the link can reuse an unrelated proxy.
+    cacheIdentity: (sourceIsInsideCanonicalProject
+      ? canonicalRelativePath
+      : canonicalSourcePath
+    ).normalize("NFC"),
   };
 }
 
-function buildProxyCacheKey(source: CanonicalProxySource): string {
+function buildProxyCacheKey(source: CanonicalProxySource, variant: ProxyVariant): string {
   const stat = statSync(source.sourcePath);
   return createHash("sha256")
-    .update(`${source.relativePath}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}`)
+    .update(
+      `${source.relativePath}\0${source.cacheIdentity}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}`,
+    )
     .digest("hex");
 }
 
-function getCanonicalProxyCachePath(source: CanonicalProxySource): string {
-  const key = buildProxyCacheKey(source);
-  return join(source.projectDir, CACHE_DIR_NAME, `${key}.mp4`);
+function getCanonicalProxyCachePath(source: CanonicalProxySource, variant: ProxyVariant): string {
+  const key = buildProxyCacheKey(source, variant);
+  return join(
+    source.projectDir,
+    CACHE_DIR_NAME,
+    `${key}${PROXY_VARIANT_CONFIG[variant].extension}`,
+  );
 }
 
 /**
@@ -175,8 +197,15 @@ function getCanonicalProxyCachePath(source: CanonicalProxySource): string {
  * transcoding anything. Route handlers use this to check cache state (e.g.
  * for ETag/If-None-Match) before deciding whether to await a transcode.
  */
-export function getProxyCachePath(projectDir: string, absoluteSourcePath: string): string {
-  return getCanonicalProxyCachePath(canonicalizeProxySource(projectDir, absoluteSourcePath));
+export function getProxyCachePath(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant = "h264",
+): string {
+  return getCanonicalProxyCachePath(
+    canonicalizeProxySource(projectDir, absoluteSourcePath),
+    variant,
+  );
 }
 
 // --- global concurrency limiter -------------------------------------------
@@ -243,7 +272,7 @@ function markCacheEntryUsed(cachePath: string): void {
 // requests for a broken asset rethrow instantly instead of respawning ffmpeg
 // on every retry the browser makes.
 interface RememberedFailure {
-  error: ProxyTranscodeError;
+  error: unknown;
   expiresAt: number;
 }
 
@@ -256,6 +285,7 @@ function ensureHdrFilters(ffmpegPath: string): Promise<void> {
   const promise = new Promise<void>((resolveCheck, rejectCheck) => {
     const proc = spawn(ffmpegPath, ["-hide_banner", "-filters"], {
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     let stdout = "";
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -274,9 +304,13 @@ function ensureHdrFilters(ffmpegPath: string): Promise<void> {
   return promise;
 }
 
-function rememberFailure(cachePath: string, error: ProxyTranscodeError): void {
+function rememberFailure(cachePath: string, error: unknown): void {
+  const ttlMs =
+    error instanceof FfmpegUnavailableError || error instanceof FfmpegMissingFilterError
+      ? ENVIRONMENT_FAILURE_TTL_MS
+      : FAILURE_CACHE_TTL_MS;
   failedTranscodes.delete(cachePath);
-  failedTranscodes.set(cachePath, { error, expiresAt: Date.now() + FAILURE_CACHE_TTL_MS });
+  failedTranscodes.set(cachePath, { error, expiresAt: Date.now() + ttlMs });
   while (failedTranscodes.size > MAX_FAILURE_CACHE_ENTRIES) {
     const oldest = failedTranscodes.keys().next().value;
     if (oldest === undefined) break;
@@ -290,31 +324,35 @@ export function clearFailedTranscodesForTest(): void {
   failedTranscodes.clear();
 }
 
-async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> {
+async function runFfmpeg(
+  sourcePath: string,
+  outputPath: string,
+  variant: ProxyVariant,
+): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) {
     throw new FfmpegUnavailableError();
   }
-  if (metadata.color.isHdr) await ensureHdrFilters(ffmpegPath);
+  const keepsAlpha = variant === "vp8";
+  const { hdrTransfer } = metadata.color;
+  const toneMap = (hdrTransfer === "pq" || hdrTransfer === "hlg") && !keepsAlpha;
+  if (toneMap) await ensureHdrFilters(ffmpegPath);
+  const firstFrame = toneMap ? await probeFirstFrameColour(sourcePath) : {};
   const evenScale = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
-  const videoFilter = metadata.color.isHdr
+  const pixelFormat = keepsAlpha ? "yuva420p" : "yuv420p";
+  // The tone map ends in RGB; older ffmpeg (seen on 5.1) converts it with BT.601 unless the matrix is named.
+  const videoFilter = toneMap
     ? [
-        "zscale=t=linear:npl=100",
-        "tonemap=hable:desat=0",
-        "zscale=p=bt709:t=bt709:m=bt709:r=tv",
-        evenScale,
-        "format=yuv420p",
+        hdrToSdrToneMapFilter(metadata.color, firstFrame),
+        `${evenScale}:out_color_matrix=bt709:out_range=tv`,
+        `format=${pixelFormat}`,
       ].join(",")
-    : [evenScale, "format=yuv420p"].join(",");
+    : [evenScale, `format=${pixelFormat}`].join(",");
 
   return new Promise((resolvePromise, reject) => {
-    const args = [
-      "-y",
-      "-i",
-      sourcePath,
-      "-vf",
-      videoFilter,
+    const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
+    const h264Args = [
       "-c:v",
       "libx264",
       "-profile:v",
@@ -335,8 +373,36 @@ async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> 
       "aac",
       "-movflags",
       "+faststart",
-      outputPath,
     ];
+    const vp8Args = [
+      "-c:v",
+      "libvpx",
+      "-b:v",
+      "0",
+      "-crf",
+      "23",
+      "-deadline",
+      "good",
+      "-pix_fmt",
+      "yuva420p",
+      "-colorspace",
+      "bt709",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
+      "-cpu-used",
+      "4",
+      "-auto-alt-ref",
+      "0",
+      "-metadata:s:v:0",
+      "alpha_mode=1",
+      "-ac",
+      "2",
+      "-c:a",
+      "libopus",
+    ];
+    const args = [...commonArgs, ...(variant === "vp8" ? vp8Args : h264Args), outputPath];
 
     // Hard ceiling so a hung ffmpeg can never permanently occupy one of the
     // global transcode slots: the child is killed and the slot released via
@@ -346,6 +412,7 @@ async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> 
       stdio: ["ignore", "ignore", "pipe"],
       timeout: TRANSCODE_TIMEOUT_MS,
       killSignal: "SIGKILL",
+      windowsHide: true,
     });
     let stderrTail = "";
     proc.stderr?.on("data", (chunk: Buffer) => {
@@ -372,17 +439,22 @@ async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> 
   });
 }
 
-async function transcodeToCache(absoluteSourcePath: string, cachePath: string): Promise<string> {
+async function transcodeToCache(
+  projectDir: string,
+  absoluteSourcePath: string,
+  cachePath: string,
+  variant: ProxyVariant,
+): Promise<string> {
   await acquireSlot();
   try {
     // Another caller may have finished (or a pre-warm beat us) while queued.
     if (existsSync(cachePath)) return cachePath;
 
     const cacheDir = dirname(cachePath);
-    mkdirSync(cacheDir, { recursive: true });
+    mkdirWithinProject(projectDir, cacheDir);
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      await runFfmpeg(absoluteSourcePath, tempPath);
+      await runFfmpeg(absoluteSourcePath, tempPath, variant);
       renameSync(tempPath, cachePath);
       maintainProxyCache(cacheDir);
       return cachePath;
@@ -396,8 +468,18 @@ async function transcodeToCache(absoluteSourcePath: string, cachePath: string): 
   }
 }
 
+let settledProxyCount = 0;
+
+/** Null while a copy for this project is being made; otherwise a mark that moves when any copy finishes. */
+export function proxyActivityMark(projectDir: string): string | null {
+  if (!existsSync(projectDir)) return String(settledProxyCount);
+  const cacheDir = join(realpath(projectDir), CACHE_DIR_NAME) + sep;
+  for (const cachePath of inFlight.keys()) if (cachePath.startsWith(cacheDir)) return null;
+  return String(settledProxyCount);
+}
+
 /**
- * Resolves the cached H.264 proxy for `absoluteSourcePath`, transcoding it at
+ * Resolves the cached proxy variant for `absoluteSourcePath`, transcoding it at
  * most once per cache key. Concurrent calls for the same key (including a
  * pre-warm call racing an element-triggered one) share one ffmpeg child and
  * one promise; calls for different keys queue through the global concurrency
@@ -407,9 +489,10 @@ async function transcodeToCache(absoluteSourcePath: string, cachePath: string): 
 export async function resolveProxy(
   projectDir: string,
   absoluteSourcePath: string,
+  variant: ProxyVariant = "h264",
 ): Promise<string> {
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const cachePath = getCanonicalProxyCachePath(source);
+  const cachePath = getCanonicalProxyCachePath(source, variant);
   if (existsSync(cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
@@ -425,21 +508,14 @@ export async function resolveProxy(
   const existing = inFlight.get(cachePath);
   if (existing) return existing;
 
-  const promise = transcodeToCache(source.sourcePath, cachePath)
+  const promise = transcodeToCache(source.projectDir, source.sourcePath, cachePath, variant)
     .catch((err: unknown) => {
-      if (
-        err instanceof ProxyTranscodeError &&
-        !(err instanceof FfmpegUnavailableError) &&
-        !(err instanceof FfmpegMissingFilterError) &&
-        !(err instanceof ProxyCapacityError) &&
-        !(err instanceof ProxySourceOutsideProjectError)
-      ) {
-        rememberFailure(cachePath, err);
-      }
+      if (!(err instanceof ProxyCapacityError)) rememberFailure(cachePath, err);
       throw err;
     })
     .finally(() => {
       inFlight.delete(cachePath);
+      settledProxyCount += 1;
     });
   inFlight.set(cachePath, promise);
   return promise;

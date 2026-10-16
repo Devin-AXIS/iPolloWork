@@ -10,15 +10,15 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 
   const element = target as EditableTargetLike;
   const tagName = element.tagName?.toLowerCase();
-  if (tagName === "input" || tagName === "textarea" || tagName === "select") return true;
+  if (tagName === "input" || tagName === "textarea" || tagName === "select" || tagName === "button") return true;
   if (element.isContentEditable) return true;
 
   const role = element.getAttribute?.("role");
-  if (role === "textbox" || role === "searchbox" || role === "combobox") return true;
+  if (role === "textbox" || role === "searchbox" || role === "combobox" || role === "slider" || role === "spinbutton") return true;
 
   return Boolean(
     element.closest?.(
-      "input, textarea, select, [contenteditable='true'], [role='textbox'], .cm-editor",
+      "input, textarea, select, [contenteditable='true'], [role='textbox'], [role='slider'], [role='spinbutton'], button, [role='menu'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='listbox'], [role='option'], [role='tab'], .cm-editor",
     ),
   );
 }

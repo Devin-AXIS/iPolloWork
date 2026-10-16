@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import {
   copyFileSync,
   existsSync,
@@ -16,6 +17,7 @@ import {
   parseCubeLut,
   serializeHfColorGrading,
 } from "@hyperframes/core";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "citty";
 import sharp from "sharp";
 import type { Example } from "./_examples.js";
@@ -343,7 +345,7 @@ export function buildGradeCompareHtml(options: GradeCompareHtmlOptions): string 
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${metrics.width}, height=${metrics.height}" />
     <title>HyperFrames Grade Compare</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="${gsapCdnDist()}gsap.min.js"></script>
     <style>
       html,
       body {
@@ -688,7 +690,7 @@ export default defineCommand({
       } else {
         console.error(`\n${c.error("✗")} Grade compare failed: ${message}`);
       }
-      process.exit(1);
+      failCommand();
     } finally {
       if (preparedDir) {
         rmSync(preparedDir, { recursive: true, force: true });

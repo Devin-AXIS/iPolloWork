@@ -12,6 +12,7 @@ export type BackgroundRemovalProgressEvent =
 export type BackgroundRemovalRender = (options: {
   inputPath: string;
   outputPath: string;
+  foregroundPath?: string;
   backgroundOutputPath?: string;
   device?: BackgroundRemovalJobOptions["device"];
   quality?: BackgroundRemovalJobOptions["quality"];
@@ -46,6 +47,7 @@ export function createBackgroundRemovalJob(
       const result = await render({
         inputPath: opts.inputPath,
         outputPath: opts.outputPath,
+        foregroundPath: opts.foregroundPath,
         backgroundOutputPath: opts.backgroundOutputPath,
         device: opts.device,
         quality: opts.quality,

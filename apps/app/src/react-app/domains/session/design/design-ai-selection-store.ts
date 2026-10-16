@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { DesignAiSelectionContext, DesignAiUndoCheckpoint } from "./design-ai-selection";
+import type { DesignAiSelectionContext, DesignAiUndoCheckpoint } from "@ipollowork/design-studio";
 
 type DesignAiSelectionStatus = "pending" | "running" | "completing" | "completed" | "failed";
 

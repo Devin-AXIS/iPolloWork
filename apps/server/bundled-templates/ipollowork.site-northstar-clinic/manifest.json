@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-northstar-clinic",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "healthcare",
@@ -10,7 +10,8 @@
     "healthcare",
     "soft",
     "responsive",
-    "themeable"
+    "themeable",
+    "topic:lifestyle"
   ],
   "surface": "design",
   "title": "Northstar Clinic",

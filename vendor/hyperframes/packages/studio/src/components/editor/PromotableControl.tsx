@@ -46,7 +46,8 @@ export function PromotableControl({
   // fallback that leaves a dev wondering why "their binding isn't showing".
   // Surface it in the console so the dangling reference is discoverable.
   const danglingId =
-    enabled && promote && promote.boundId != null && promote.declaration == null
+    enabled && promote && promote.boundId != null && promote.declaration == null &&
+    !/^(ipw-|component-)/.test(promote.boundId)
       ? promote.boundId
       : null;
   useEffect(() => {
@@ -71,8 +72,10 @@ export function PromotableControl({
       ? {
           // Only string defaults render inline; a FontValue/ImageValue object
           // falls back to the element's real value instead of "[object Object]".
-          value: typeof defaultValue === "string" ? defaultValue : undefined,
-          onCommit: promote.setDefault,
+          // Canvas text uses the native edit transaction, including its data/default
+          // binding. The schema editor must not reload this live text edit.
+          value: channel.kind !== "text" && typeof defaultValue === "string" ? defaultValue : undefined,
+          onCommit: channel.kind === "text" ? undefined : promote.setDefault,
           bound: true,
         }
       : { bound: false },

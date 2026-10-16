@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "device-mockup",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Device Mockup",
+  "description": "A lightweight themed phone or laptop mockup with optional screen media.",
+  "tags": ["component", "media", "device", "mockup", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "media", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["headline", "caption", "screenUrl", "device"], "instructions": "Choose phone or laptop based on the product context. Supply an optional screenshot URL and keep the headline concise." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "device-mockup.html", "target": "compositions/device-mockup.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "headline", "label": "Headline", "type": "string", "default": "Show the product in context", "maxLength": 72, "update": "live" },
+    { "id": "caption", "label": "Caption", "type": "string", "default": "A focused interface moment, ready to narrate.", "maxLength": 96, "update": "live" },
+    { "id": "screenUrl", "label": "Screen image URL", "type": "string", "default": "", "placeholder": "https://example.com/screen.png", "maxLength": 2048, "update": "live" },
+    { "id": "device", "label": "Device", "type": "enum", "default": "phone", "options": [{ "value": "phone", "label": "Phone" }, { "value": "laptop", "label": "Laptop" }], "update": "live" }
+  ]
+}

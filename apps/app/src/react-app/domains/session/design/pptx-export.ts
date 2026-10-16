@@ -1,3 +1,5 @@
+import { pptxCssPixels, pptxEffectiveOpacity } from "./pptx-dom";
+
 export const PPTX_SLIDE_WIDTH_INCHES = 13.333;
 export const PPTX_SLIDE_HEIGHT_INCHES = 7.5;
 export const PPTX_BACKGROUND_IMAGE_FORMAT = "image/png";
@@ -118,7 +120,7 @@ function round(value: number) {
   return Number(value.toFixed(3));
 }
 
-function parseColor(value: string) {
+export function parsePptxColor(value: string, fallback = { color: "111827", transparency: 0 }) {
   if (!value || value === "transparent") return { color: "000000", transparency: 100 };
   const hexadecimal = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
   if (hexadecimal) {
@@ -131,7 +133,7 @@ function parseColor(value: string) {
   }
 
   const match = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!match) return { color: "111827", transparency: 0 };
+  if (!match) return fallback;
   const channels = match.slice(1, 4).map((channel) => Math.max(0, Math.min(255, Number(channel))));
   const alpha = match[4] == null ? 1 : Math.max(0, Math.min(1, Number(match[4])));
   return {
@@ -173,10 +175,6 @@ function pointValue(value: string, slideWidthPixels?: number) {
     : round(pixels / slideWidthPixels * PPTX_SLIDE_WIDTH_INCHES * 72);
 }
 
-function cssPixels(value: string) {
-  const pixels = Number.parseFloat(value);
-  return Number.isFinite(pixels) ? pixels : 0;
-}
 
 function shapeCoordinates(slide: PptxRectangle, box: PptxRectangle) {
   return {
@@ -196,7 +194,7 @@ export function createPptxVisualShadow(value: string): PptxVisualShadow | undefi
   const values = remaining.match(/-?\d*\.?\d+px/g)?.map((part) => Number.parseFloat(part));
   if (!values || values.length < 3) return undefined;
   const [offsetX, offsetY, blur] = values;
-  const shadowColor = parseColor(color);
+  const shadowColor = parsePptxColor(color);
   const offset = Math.hypot(offsetX, offsetY) * 0.75;
   const angle = (Math.atan2(-offsetY, offsetX) * 180 / Math.PI + 360) % 360;
   return {
@@ -210,10 +208,10 @@ export function createPptxVisualShadow(value: string): PptxVisualShadow | undefi
 }
 
 export function createPptxShapeOverlay(input: CreatePptxShapeOverlayInput): PptxShapeOverlay {
-  const fill = parseColor(input.style.backgroundColor);
-  const line = parseColor(input.style.borderColor);
+  const fill = parsePptxColor(input.style.backgroundColor);
+  const line = parsePptxColor(input.style.borderColor);
   const opacity = Math.max(0, Math.min(1, input.style.opacity));
-  const borderRadius = cssPixels(input.style.borderRadius);
+  const borderRadius = pptxCssPixels(input.style.borderRadius);
   const dimensions = shapeCoordinates(input.slide, input.box);
   const size = Math.max(1, Math.min(input.box.width, input.box.height));
   return {
@@ -240,7 +238,7 @@ export function deckPptxFileName(baseName: string) {
 
 export function createPptxTextOverlay(input: CreatePptxTextOverlayInput): PptxTextOverlay {
   const { slide, box, style } = input;
-  const color = parseColor(style.color);
+  const color = parsePptxColor(style.color);
   const lineSpacing = pointValue(style.lineHeight, slide.width);
   const charSpacing = pointValue(style.letterSpacing, slide.width);
   return {
@@ -311,12 +309,12 @@ type PptxShapeStyleCompatibilityInput = Pick<
 >;
 
 export function isPptxShapeStyleCompatible(style: PptxShapeStyleCompatibilityInput) {
-  const hasVisibleFill = parseColor(style.backgroundColor).transparency < 100;
+  const hasVisibleFill = parsePptxColor(style.backgroundColor).transparency < 100;
   const borderWidths = [
-    cssPixels(style.borderTopWidth),
-    cssPixels(style.borderRightWidth),
-    cssPixels(style.borderBottomWidth),
-    cssPixels(style.borderLeftWidth),
+    pptxCssPixels(style.borderTopWidth),
+    pptxCssPixels(style.borderRightWidth),
+    pptxCssPixels(style.borderBottomWidth),
+    pptxCssPixels(style.borderLeftWidth),
   ];
   const hasBorder = borderWidths.every((width) => width > 0);
   const hasShadow = createPptxVisualShadow(style.boxShadow) != null;
@@ -361,21 +359,13 @@ export function collectPptxShapeOverlays(slide: HTMLElement): PptxShapeOverlayEl
             borderWidth: style.borderTopWidth,
             borderRadius: style.borderTopLeftRadius,
             boxShadow: style.boxShadow,
-            opacity: effectiveOpacity(element, slide),
+            opacity: pptxEffectiveOpacity(element, slide),
           },
         }),
       };
     });
 }
 
-function effectiveOpacity(element: HTMLElement, slide: HTMLElement) {
-  let opacity = 1;
-  for (let current: HTMLElement | null = element; current && current !== slide; current = current.parentElement) {
-    const value = Number.parseFloat(current.ownerDocument.defaultView?.getComputedStyle(current).opacity ?? "1");
-    opacity *= Number.isFinite(value) ? value : 1;
-  }
-  return opacity;
-}
 
 export function collectPptxTextOverlays(slide: HTMLElement): PptxTextOverlayElement[] {
   const slideBox = slide.getBoundingClientRect();
@@ -417,7 +407,7 @@ export function collectPptxTextOverlays(slide: HTMLElement): PptxTextOverlayElem
             textAlign: style.textAlign,
             lineHeight: style.lineHeight,
             letterSpacing: style.letterSpacing,
-            opacity: effectiveOpacity(element, slide),
+            opacity: pptxEffectiveOpacity(element, slide),
           },
         }),
       };

@@ -1,11 +1,19 @@
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@ipollowork/ui/collapsible";
+import { Card, CardContent } from "@ipollowork/ui/card";
+import { Alert, AlertDescription, AlertAction } from "@ipollowork/ui/alert";
+import { Button } from "@ipollowork/ui/controls";
+import { PropertyKeyframeRows } from "./AnimationCardParts";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import { usePlayerStore } from "../../player/store/playerStore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
-  compileMotionInstance,
-  createMotionInstance,
   defaultMotionDuration,
   getMotionPreset,
   readMotionInstanceFromExtras,
+  hasManualMotionKeyframes,
+  motionSourceMatchesPreset,
+  readAuthoredMotionPositionBase,
   type MotionInstance,
   type MotionMutationInput,
   type MotionParameter,
@@ -13,23 +21,13 @@ import {
   type MotionPreset,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
-import type { AnimationTemplateDraft } from "../sidebar/AnimationTemplatesTab";
 import { Trash } from "../../icons/SystemIcons";
-import {
-  rebaseMotionPresetKeyframes,
-  resolveSemanticMotionTiming,
-  resolveMotionTimelineSpan,
-  resolveStructuredTextMotionTiming,
-} from "../../utils/motionPreset";
+import { useStudioI18n } from "../../i18n";
+import { resolveMotionTimelineSpan } from "../../utils/motionPreset";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
 import { ColorField } from "./propertyPanelColor";
 import { FlatRow, FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
-import {
-  driveMotionPreviewTimeline,
-  materializeMotionTextPreviewParts,
-  previewStructuredMotion,
-} from "./structuredMotionPreview";
 
 const PHASES: Array<{ id: MotionPhase; label: string }> = [
   { id: "enter", label: "出现" },
@@ -69,145 +67,6 @@ export function resolveMotionInstances(animations: GsapAnimation[]): ResolvedMot
   });
 }
 
-type MotionPreviewTarget = HTMLElement | HTMLElement[];
-
-interface MotionPreviewTimeline {
-  to?: (
-    target: MotionPreviewTarget,
-    vars: Record<string, unknown>,
-    position: number,
-  ) => MotionPreviewTimeline;
-  set?: (
-    target: MotionPreviewTarget,
-    vars: Record<string, unknown>,
-    position: number,
-  ) => MotionPreviewTimeline;
-  play?: (position?: number) => MotionPreviewTimeline;
-  progress?: (value: number) => MotionPreviewTimeline;
-  eventCallback?: (type: "onComplete", callback: () => void) => MotionPreviewTimeline;
-  kill?: () => void;
-}
-
-type MotionPreviewWindow = Window & {
-  gsap?: {
-    timeline?: (options: Record<string, unknown>) => MotionPreviewTimeline;
-    getProperty?: (target: Element, property: string) => number | string;
-  };
-};
-
-function finiteGsapPosition(value: number | string | undefined): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const parsed = Number.parseFloat(value ?? "");
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function keyframesForPreview(
-  keyframes: Array<{
-    percentage: number;
-    properties: Record<string, number | string>;
-    ease?: string;
-  }>,
-): Record<string, Record<string, number | string>> {
-  return Object.fromEntries(
-    keyframes.map((frame) => [
-      `${frame.percentage}%`,
-      { ...frame.properties, ...(frame.ease ? { ease: frame.ease } : {}) },
-    ]),
-  );
-}
-
-function previewMotionDraft(
-  draft: AnimationTemplateDraft,
-  duration: number,
-  loop: boolean,
-): (() => void) | undefined {
-  const target = draft.selection.element;
-  const win = target.ownerDocument.defaultView as MotionPreviewWindow | null;
-  const structuredPreview = win?.gsap
-    ? previewStructuredMotion({
-        target,
-        presetId: draft.presetId,
-        targetKind: draft.targetKind,
-        parameters: draft.parameters,
-        duration,
-        loop,
-        gsap: win.gsap,
-      })
-    : undefined;
-  if (structuredPreview) return structuredPreview.cleanup;
-
-  let compiled: ReturnType<typeof compileMotionInstance>;
-  try {
-    compiled = compileMotionInstance(
-      createMotionInstance({
-        presetId: draft.presetId,
-        templateId: draft.templateId,
-        target: { selector: "[data-ipw-motion-preview]" },
-        targetKind: draft.targetKind,
-        applicationKind: draft.applicationKind,
-        start: 0,
-        duration,
-        parameters: draft.parameters,
-      }),
-      target.textContent ?? "",
-    );
-  } catch {
-    return undefined;
-  }
-  const timeline = win?.gsap?.timeline?.({ paused: true });
-  if (!timeline?.to) return undefined;
-  const originalStyle = target.getAttribute("style");
-  const previewParts =
-    draft.targetKind === "text"
-      ? materializeMotionTextPreviewParts(target, String(draft.parameters.unit ?? "whole"))
-      : { targets: [target], restore: () => undefined };
-  const previewTarget =
-    previewParts.targets.length === 1 && previewParts.targets[0] === target
-      ? target
-      : previewParts.targets;
-  const previewKeyframes =
-    previewTarget === target
-      ? rebaseMotionPresetKeyframes(compiled.keyframes, {
-          x: finiteGsapPosition(win?.gsap?.getProperty?.(target, "x")),
-          y: finiteGsapPosition(win?.gsap?.getProperty?.(target, "y")),
-        })
-      : compiled.keyframes;
-  const keyframes = keyframesForPreview(previewKeyframes);
-  let restored = false;
-  let stopDriving: () => void = () => undefined;
-  const restoreCurrentFrame = () => {
-    if (restored) return;
-    restored = true;
-    stopDriving();
-    timeline.kill?.();
-    previewParts.restore();
-    if (originalStyle === null) target.removeAttribute("style");
-    else target.setAttribute("style", originalStyle);
-  };
-  timeline.to(
-    previewTarget,
-    {
-      keyframes,
-      duration,
-      ease: compiled.ease,
-      ...(typeof compiled.extras.stagger === "number" ? { stagger: compiled.extras.stagger } : {}),
-    },
-    0,
-  );
-  stopDriving = driveMotionPreviewTimeline({
-    timeline,
-    duration,
-    loop,
-    view: win,
-    onComplete: loop ? undefined : restoreCurrentFrame,
-  });
-  return restoreCurrentFrame;
-}
-
-function speedForDuration(preset: MotionPreset, duration: number): number {
-  return Math.max(0.25, Math.min(2, defaultMotionDuration(preset) / duration));
-}
-
 function clampMotionTime(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Number(Math.min(max, Math.max(min, value)).toFixed(3));
@@ -215,285 +74,6 @@ function clampMotionTime(value: number, min: number, max: number): number {
 
 function motionInstanceEnd(instance: MotionInstance, start: number): number {
   return instance.end ?? start + instance.duration * (instance.repeat + 1);
-}
-
-export function AnimationPropertiesPanel({
-  draft,
-  element,
-  animations,
-  onMutate,
-  onApplied,
-}: {
-  draft: AnimationTemplateDraft | null;
-  element: DomEditSelection | null;
-  animations: GsapAnimation[];
-  onMutate: (
-    targetKind: MotionTargetKind,
-    mutation: MotionMutationInput,
-    selectionOverride?: DomEditSelection | null,
-  ) => Promise<boolean>;
-  onApplied: () => void;
-}) {
-  const existing = useMemo(() => resolveMotionInstances(animations).at(-1), [animations]);
-  const selection = draft?.selection ?? element;
-  const presetId = draft?.presetId ?? existing?.instance.presetId;
-  const templateId = draft?.templateId ?? existing?.instance.templateId;
-  const preset = presetId ? getMotionPreset(presetId) : undefined;
-  const targetKind = draft?.targetKind ?? existing?.instance.targetKind;
-  const applicationKind = draft?.applicationKind ?? existing?.instance.applicationKind;
-  const parameters = draft?.parameters ?? existing?.instance.parameters;
-  const initialDuration = preset
-    ? !draft && existing?.instance.presetId === preset.id
-      ? existing.instance.duration
-      : defaultMotionDuration(preset)
-    : 0.65;
-  const initialLoop =
-    !draft &&
-    existing !== undefined &&
-    existing.instance.presetId === presetId &&
-    existing.instance.loop;
-  const timelineSpan = selection
-    ? resolveMotionTimelineSpan(selection, initialDuration)
-    : { start: 0, end: initialDuration, duration: initialDuration, constrained: false };
-  const initialTiming =
-    selection && preset
-      ? preset.structuredText
-        ? resolveStructuredTextMotionTiming(selection, preset.phase, initialDuration)
-        : resolveSemanticMotionTiming(selection, preset.phase, initialDuration)
-      : { position: 0, duration: initialDuration };
-  const initialStart =
-    !draft && existing
-      ? displayStart(existing.animation, existing.instance)
-      : initialTiming.position;
-  const initialEnd =
-    !draft && existing
-      ? motionInstanceEnd(existing.instance, initialStart)
-      : Math.min(timelineSpan.end, initialStart + initialTiming.duration);
-  const [speed, setSpeed] = useState(() =>
-    preset ? speedForDuration(preset, initialDuration) : 1,
-  );
-  const [loop, setLoop] = useState(Boolean(initialLoop));
-  const [startTime, setStartTime] = useState(initialStart);
-  const [endTime, setEndTime] = useState(initialEnd);
-  const [applying, setApplying] = useState(false);
-  const [applyFailed, setApplyFailed] = useState(false);
-  const speedRef = useRef(speed);
-  const loopRef = useRef(loop);
-  const startTimeRef = useRef(startTime);
-  const endTimeRef = useRef(endTime);
-  const activePreviewCleanupRef = useRef<(() => void) | null>(null);
-  useEffect(
-    () => () => {
-      activePreviewCleanupRef.current?.();
-      activePreviewCleanupRef.current = null;
-    },
-    [],
-  );
-  const signature = `${selection?.sourceFile ?? ""}:${selection?.id ?? selection?.hfId ?? selection?.selector ?? ""}:${templateId ?? presetId ?? ""}`;
-  const previewSignature =
-    selection && preset && targetKind && applicationKind && parameters
-      ? JSON.stringify({
-          templateId: templateId ?? `applied:${preset.id}`,
-          sourceFile: selection.sourceFile,
-          compositionPath: selection.compositionPath,
-          locator: selection.hfId ?? selection.id ?? selection.selector,
-          presetId: preset.id,
-          targetKind,
-          applicationKind,
-          parameters,
-        })
-      : "";
-
-  useEffect(() => {
-    const nextSpeed = preset ? speedForDuration(preset, initialDuration) : 1;
-    const nextLoop = Boolean(initialLoop);
-    speedRef.current = nextSpeed;
-    loopRef.current = nextLoop;
-    startTimeRef.current = initialStart;
-    endTimeRef.current = initialEnd;
-    setSpeed(nextSpeed);
-    setLoop(nextLoop);
-    setStartTime(initialStart);
-    setEndTime(initialEnd);
-    setApplyFailed(false);
-  }, [initialDuration, initialEnd, initialLoop, initialStart, preset, signature]);
-
-  const duration = preset ? Number((defaultMotionDuration(preset) / speed).toFixed(2)) : 0.65;
-  // Selection geometry is refreshed while its overlay is visible. The
-  // structural signature keeps that harmless refresh from restarting the
-  // same autoplay preview on every render.
-  const previewDraft = useMemo<AnimationTemplateDraft | null>(() => {
-    if (draft) return draft;
-    if (!selection || !preset || !targetKind || !applicationKind || !parameters) return null;
-    return {
-      templateId: templateId ?? `applied:${preset.id}`,
-      presetId: preset.id,
-      targetKind,
-      applicationKind,
-      selection,
-      parameters,
-    };
-  }, [previewSignature, selection?.element]);
-  useEffect(() => {
-    if (!previewDraft || !preset) return;
-    const cleanup = previewMotionDraft(previewDraft, duration, loop);
-    activePreviewCleanupRef.current = cleanup ?? null;
-    return () => {
-      cleanup?.();
-      if (activePreviewCleanupRef.current === cleanup) {
-        activePreviewCleanupRef.current = null;
-      }
-    };
-  }, [duration, loop, preset, previewDraft]);
-
-  if (!selection || !preset || !targetKind || !applicationKind || !parameters) {
-    return (
-      <div className="grid h-full place-items-center px-6 text-center text-[11px] leading-5 text-panel-text-3">
-        请先选择一个动画，或在视频播放区选择已有动画的元素。
-      </div>
-    );
-  }
-
-  const confirm = async () => {
-    if (applying) return;
-    setApplying(true);
-    setApplyFailed(false);
-    const confirmedDuration = Number((defaultMotionDuration(preset) / speedRef.current).toFixed(2));
-    try {
-      const applied = await onMutate(
-        targetKind,
-        {
-          operation: "upsert",
-          phase: preset.phase,
-          presetId: preset.id,
-          templateId,
-          applicationKind,
-          start: startTimeRef.current,
-          end: endTimeRef.current,
-          duration: confirmedDuration,
-          loop: loopRef.current,
-          parameters,
-        },
-        selection,
-      );
-      if (!applied) {
-        setApplyFailed(true);
-        return;
-      }
-      onApplied();
-    } catch {
-      setApplyFailed(true);
-    } finally {
-      setApplying(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4 px-4 py-3" data-testid="animation-properties-panel">
-      <div className="rounded-[8px] bg-[#20bbc0]/10 px-3 py-2 text-[10px] leading-4 text-[#168e92]">
-        {selection.label} · {preset.label}
-      </div>
-      <FlatSlider
-        label="动画速度"
-        value={speed}
-        min={0.25}
-        max={2}
-        step={0.05}
-        tier="explicitCustom"
-        displayValue={`${speed.toFixed(2)}×`}
-        commitMode="release"
-        onCommit={(value) => {
-          speedRef.current = value;
-          setSpeed(value);
-          if (!loopRef.current && preset) {
-            const nextDuration = defaultMotionDuration(preset) / value;
-            const nextEnd = clampMotionTime(
-              startTimeRef.current + nextDuration,
-              startTimeRef.current + 0.1,
-              timelineSpan.end,
-            );
-            endTimeRef.current = nextEnd;
-            setEndTime(nextEnd);
-          }
-        }}
-      />
-      <div className="grid grid-cols-2 gap-2">
-        <FlatRow
-          label="开始时间"
-          value={startTime.toFixed(2)}
-          tier="explicitCustom"
-          inputType="number"
-          suffix={<span className="text-[10px] text-panel-text-3">s</span>}
-          onCommit={(value) => {
-            const next = clampMotionTime(
-              Number(value),
-              timelineSpan.start,
-              Math.max(timelineSpan.start, endTimeRef.current - 0.1),
-            );
-            startTimeRef.current = next;
-            setStartTime(next);
-          }}
-        />
-        <FlatRow
-          label="结束时间"
-          value={endTime.toFixed(2)}
-          tier="explicitCustom"
-          inputType="number"
-          suffix={<span className="text-[10px] text-panel-text-3">s</span>}
-          onCommit={(value) => {
-            const next = clampMotionTime(
-              Number(value),
-              startTimeRef.current + 0.1,
-              timelineSpan.end,
-            );
-            endTimeRef.current = next;
-            setEndTime(next);
-          }}
-        />
-      </div>
-      <div className="flex h-[38px] items-center justify-between rounded-[7px] bg-panel-input px-3">
-        <span className="text-[11px] text-panel-text-2">循环播放</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={loop}
-          aria-label="循环播放"
-          onClick={() => {
-            const next = !loopRef.current;
-            loopRef.current = next;
-            setLoop(next);
-            const nextEnd = next
-              ? timelineSpan.end
-              : clampMotionTime(
-                  startTimeRef.current + duration,
-                  startTimeRef.current + 0.1,
-                  timelineSpan.end,
-                );
-            endTimeRef.current = nextEnd;
-            setEndTime(nextEnd);
-          }}
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/40 ${loop ? "bg-[#20bbc0]" : "bg-panel-border"}`}
-        >
-          <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${loop ? "translate-x-4" : "translate-x-0"}`}
-          />
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={() => void confirm()}
-        disabled={applying}
-        className="h-9 w-full rounded-[7px] bg-[#20bbc0] text-[12px] font-semibold text-white transition-colors hover:bg-[#18a9ae] disabled:cursor-wait disabled:opacity-70"
-      >
-        {applying ? "正在应用…" : "确定应用"}
-      </button>
-      {applyFailed ? (
-        <p role="alert" className="text-[10px] leading-4 text-red-400">
-          动画未能保存，请重新选择元素后再试。
-        </p>
-      ) : null}
-    </div>
-  );
 }
 
 function displayStart(animation: GsapAnimation, instance: MotionInstance): number {
@@ -518,14 +98,17 @@ function ParameterControl({
   parameter,
   value,
   onChange,
+  disabled = false,
 }: {
   parameter: MotionParameter;
   value: string | number | boolean | undefined;
   onChange: (value: string | number) => void;
+  disabled?: boolean;
 }) {
   if (parameter.kind === "select") {
     return (
       <FlatSelectRow
+        disabled={disabled}
         label={parameter.label}
         value={String(value ?? "")}
         options={parameter.options ?? []}
@@ -537,6 +120,7 @@ function ParameterControl({
   if (parameter.kind === "color") {
     return (
       <ColorField
+        disabled={disabled}
         flat
         label={parameter.label}
         value={String(value ?? "#7c3aed")}
@@ -546,6 +130,7 @@ function ParameterControl({
   }
   return (
     <FlatSlider
+      disabled={disabled}
       label={parameter.label}
       value={Number(value ?? 0)}
       min={parameter.min ?? 0}
@@ -564,7 +149,11 @@ function AppliedMotionEditor({
   element,
   targetKind,
   onMutate,
+  compact = false,
+  disabled = false,
 }: {
+  compact?: boolean;
+  disabled?: boolean;
   resolved: ResolvedMotionInstance;
   element: DomEditSelection;
   targetKind: MotionTargetKind;
@@ -576,25 +165,8 @@ function AppliedMotionEditor({
   const start = displayStart(animation, instance);
   const timelineSpan = resolveMotionTimelineSpan(element, instance.duration);
   const end = clampMotionTime(motionInstanceEnd(instance, start), start + 0.1, timelineSpan.end);
-  const persistedStart =
-    typeof animation.position === "number" ? animation.position : instance.start;
-  const [previewRun, setPreviewRun] = useState(0);
-  useEffect(() => {
-    if (previewRun === 0) return;
-    return previewMotionDraft(
-      {
-        templateId: instance.templateId ?? `applied:${instance.presetId}`,
-        presetId: instance.presetId,
-        targetKind,
-        applicationKind: instance.applicationKind,
-        selection: element,
-        parameters: instance.parameters,
-      },
-      instance.duration,
-      instance.loop,
-    );
-  }, [element.element, instance, previewRun, targetKind]);
   const apply = (updates: Partial<MotionMutationInput>) => {
+    if (disabled) return;
     onMutate(targetKind, {
       operation: "upsert",
       phase: instance.phase,
@@ -607,21 +179,12 @@ function AppliedMotionEditor({
       ...updates,
     });
   };
-  const preview = async () => {
-    const timing = resolveSemanticMotionTiming(element, instance.phase, instance.duration, start);
-    if (timing.position !== persistedStart || timing.duration !== instance.duration) {
-      await onMutate(targetKind, {
-        operation: "upsert",
-        phase: instance.phase,
-        presetId: instance.presetId,
-        templateId: instance.templateId,
-        applicationKind: instance.applicationKind,
-        start: timing.position,
-        duration: timing.duration,
-        parameters: instance.parameters,
-      });
-    }
-    setPreviewRun((run) => run + 1);
+  const preview = () => {
+    const store = usePlayerStore.getState();
+    const ownerKey = store.selectedElementId ?? element.id ?? element.hfId ?? "";
+    store.setSelectedTimelineEffect({ ownerKey, animationId: animation.id, time: start });
+    store.requestSeek(start);
+    store.requestClipReveal(ownerKey);
   };
   const updateParameter = (parameter: MotionParameter, value: string | number) => {
     apply({
@@ -636,29 +199,32 @@ function AppliedMotionEditor({
   };
   const selectedSpeed = closestSpeed(preset, instance.duration);
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(0,1fr)_34px] gap-2">
-        <div className="flex h-[34px] min-w-0 items-center rounded-[6px] bg-panel-input px-3 text-[11px] font-medium text-panel-text-1">
-          <span className="truncate">{preset.label}</span>
+    <div className={compact ? "space-y-3 text-[13px] leading-[18px]" : "space-y-3"}>
+      {!compact && (
+        <div className="grid grid-cols-[minmax(0,1fr)_34px] gap-2">
+          <div className="flex h-[34px] min-w-0 items-center rounded-[6px] bg-panel-input px-3 text-[11px] font-medium text-panel-text-1">
+            <span className="truncate">{preset.label}</span>
+          </div>
+          <button
+            type="button"
+            aria-label="删除动画"
+            onClick={() =>
+              onMutate(targetKind, {
+                operation: "remove",
+                phase: instance.phase,
+                templateId: instance.templateId,
+                applicationKind: instance.applicationKind,
+              })
+            }
+            className="flex h-[34px] items-center justify-center rounded-[6px] text-panel-text-3 transition-colors hover:bg-panel-input hover:text-panel-text-1"
+          >
+            <Trash size={17} />
+          </button>
         </div>
-        <button
-          type="button"
-          aria-label="删除动画"
-          onClick={() =>
-            onMutate(targetKind, {
-              operation: "remove",
-              phase: instance.phase,
-              templateId: instance.templateId,
-              applicationKind: instance.applicationKind,
-            })
-          }
-          className="flex h-[34px] items-center justify-center rounded-[6px] text-panel-text-3 transition-colors hover:bg-panel-input hover:text-panel-text-1"
-        >
-          <Trash size={17} />
-        </button>
-      </div>
+      )}
 
       <FlatSlider
+        disabled={disabled}
         label="时长"
         value={instance.duration}
         min={0.2}
@@ -670,35 +236,37 @@ function AppliedMotionEditor({
         onCommit={(duration) => apply({ duration })}
       />
 
-      <div className="grid grid-cols-2 gap-2">
-        <FlatRow
-          label="开始时间"
-          value={start.toFixed(2)}
-          tier="explicitCustom"
-          inputType="number"
-          suffix={<span className="text-[10px] text-panel-text-3">s</span>}
-          onCommit={(value) => {
-            const nextStart = clampMotionTime(
-              Number(value),
-              timelineSpan.start,
-              Math.max(timelineSpan.start, end - 0.1),
-            );
-            apply({ start: nextStart, end });
-          }}
-        />
-        <FlatRow
-          label="结束时间"
-          value={end.toFixed(2)}
-          tier="explicitCustom"
-          inputType="number"
-          suffix={<span className="text-[10px] text-panel-text-3">s</span>}
-          onCommit={(value) =>
-            apply({
-              end: clampMotionTime(Number(value), start + 0.1, timelineSpan.end),
-            })
-          }
-        />
-      </div>
+      {!compact && (
+        <div className="grid grid-cols-2 gap-2">
+          <FlatRow
+            label="开始时间"
+            value={start.toFixed(2)}
+            tier="explicitCustom"
+            inputType="number"
+            suffix={<span className="text-[12px] leading-[18px] text-panel-text-3">s</span>}
+            onCommit={(value) => {
+              const nextStart = clampMotionTime(
+                Number(value),
+                timelineSpan.start,
+                Math.max(timelineSpan.start, end - 0.1),
+              );
+              apply({ start: nextStart, end });
+            }}
+          />
+          <FlatRow
+            label="结束时间"
+            value={end.toFixed(2)}
+            tier="explicitCustom"
+            inputType="number"
+            suffix={<span className="text-[10px] text-panel-text-3">s</span>}
+            onCommit={(value) =>
+              apply({
+                end: clampMotionTime(Number(value), start + 0.1, timelineSpan.end),
+              })
+            }
+          />
+        </div>
+      )}
 
       <div className="flex h-[38px] items-center justify-between rounded-[7px] bg-panel-input px-3">
         <span className="text-[11px] text-panel-text-2">循环播放</span>
@@ -715,7 +283,7 @@ function AppliedMotionEditor({
                 : Math.min(timelineSpan.end, start + instance.duration),
             })
           }
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/40 ${instance.loop ? "bg-[#20bbc0]" : "bg-panel-border"}`}
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/40 ${instance.loop ? "bg-[#1FBAC0]" : "bg-panel-border"}`}
         >
           <span
             className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${instance.loop ? "translate-x-4" : "translate-x-0"}`}
@@ -723,31 +291,34 @@ function AppliedMotionEditor({
         </button>
       </div>
 
-      <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
-        <span className="text-[10px] text-panel-text-3">速度</span>
-        <div className="grid grid-cols-3 rounded-[7px] bg-panel-input p-1">
-          {SPEEDS.map((speed) => (
-            <button
-              key={speed.id}
-              type="button"
-              aria-pressed={selectedSpeed === speed.id}
-              onClick={() => apply({ duration: speedDuration(preset, speed.durationScale) })}
-              className={`h-7 rounded-[5px] text-[10px] font-medium transition-colors ${
-                selectedSpeed === speed.id
-                  ? "bg-panel-bg text-panel-text-0 shadow-sm"
-                  : "text-panel-text-3 hover:text-panel-text-1"
-              }`}
-            >
-              {speed.label}
-            </button>
-          ))}
+      {!compact && (
+        <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+          <span className="text-[10px] text-panel-text-3">速度</span>
+          <div className="grid grid-cols-3 rounded-[7px] bg-panel-input p-1">
+            {SPEEDS.map((speed) => (
+              <button
+                key={speed.id}
+                type="button"
+                aria-pressed={selectedSpeed === speed.id}
+                onClick={() => apply({ duration: speedDuration(preset, speed.durationScale) })}
+                className={`h-7 rounded-[5px] text-[10px] font-medium transition-colors ${
+                  selectedSpeed === speed.id
+                    ? "bg-panel-bg text-panel-text-0 shadow-sm"
+                    : "text-panel-text-3 hover:text-panel-text-1"
+                }`}
+              >
+                {speed.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="space-y-2">
         {preset.parameterSchema.map((parameter) => {
           return (
             <ParameterControl
+              disabled={disabled}
               key={parameter.id}
               parameter={parameter}
               value={instance.parameters[parameter.id]}
@@ -762,7 +333,7 @@ function AppliedMotionEditor({
         onClick={() => void preview()}
         className="h-[32px] w-full rounded-[6px] border border-[var(--hf-studio-divider)] text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-input hover:text-panel-text-0"
       >
-        预览动画
+        在时间轴中定位
       </button>
     </div>
   );
@@ -772,11 +343,20 @@ export function SemanticMotionPanel({
   element,
   animations,
   onMutate,
+  compact = false,
+  onEditPropertyKeyframe,
 }: {
   element: DomEditSelection;
   animations: GsapAnimation[];
+  compact?: boolean;
+  onEditPropertyKeyframe?: GsapAnimationEditCallbacks["onEditPropertyKeyframe"];
   onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => Promise<boolean>;
 }) {
+  const { tx } = useStudioI18n();
+  const selectedEffect = usePlayerStore((state) => state.selectedTimelineEffect);
+  const selectedPoint = usePlayerStore((state) => state.selectedPropertyKeyframe);
+  const ownerKey =
+    usePlayerStore((state) => state.selectedElementId) ?? element.id ?? element.hfId ?? "";
   const targetKind = resolveMotionTargetKind(element);
   const instances = useMemo(() => resolveMotionInstances(animations), [animations]);
   const [phase, setPhase] = useState<MotionPhase>(
@@ -798,6 +378,160 @@ export function SemanticMotionPanel({
   // the duplicate up server-side.
   const current = instances.filter((item) => item.instance.phase === phase).at(-1);
 
+  const groups = useMemo(() => {
+    const grouped = new Map<string, ResolvedMotionInstance[]>();
+    for (const item of instances)
+      grouped.set(item.instance.id, [...(grouped.get(item.instance.id) ?? []), item]);
+    let sourceText = element.textContent ?? "";
+    const encoded = element.element.getAttribute("data-ipw-motion-source");
+    if (encoded) {
+      try {
+        const decoded: unknown = JSON.parse(encoded);
+        if (typeof decoded === "string") sourceText = decoded;
+      } catch {}
+    }
+    return Array.from(grouped.values()).map((items) => ({
+      items,
+      manual:
+        items.some((item) => hasManualMotionKeyframes(item.animation)) ||
+        !motionSourceMatchesPreset(
+          items.map((item) => item.animation),
+          sourceText,
+          readAuthoredMotionPositionBase(animations, items[0].instance.target.selector),
+        ),
+    }));
+  }, [instances, element.element, element.textContent]);
+  if (compact)
+    return (
+      <div data-testid="semantic-motion-panel" className="space-y-3">
+        {groups.map(({ items, manual }) => {
+          const scope = selectedPoint ?? selectedEffect;
+          const matchesPoint = (item: ResolvedMotionInstance) =>
+            !!scope?.property &&
+            scope.time !== undefined &&
+            item.animation.keyframes?.keyframes.some(
+              (key) =>
+                scope.property &&
+                scope.property in key.properties &&
+                Math.abs(
+                  displayStart(item.animation, item.instance) +
+                    ((item.animation.duration ?? item.instance.duration) * key.percentage) / 100 -
+                    (scope.time ?? 0),
+                ) < 0.001,
+            );
+          const targeted =
+            items.find(matchesPoint) ??
+            items.find((item) => item.animation.id === scope?.animationId) ??
+            items[items.length - 1];
+          const active =
+            scope?.ownerKey === ownerKey &&
+            (items.some((item) => item.animation.id === scope.animationId) ||
+              items.some(matchesPoint));
+          const preset = getMotionPreset(targeted.instance.presetId);
+          return (
+            <Card variant="outline" size="sm"
+              key={targeted.instance.id}
+              data-semantic-motion-id={targeted.instance.id}
+              data-animation-id={targeted.animation.id}
+              data-selected={active ? "true" : "false"}
+              className="gap-0 rounded-xl"
+              style={active ? { borderColor: "var(--hf-panel-accent)" } : undefined}
+            >
+              <CardContent>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm"
+                  type="button"
+                  aria-label="Locate effect in timeline"
+                  className="h-auto min-w-0 flex-1 justify-start px-0 text-left text-[14px] leading-5 font-medium"
+                  onClick={() => {
+                    const store = usePlayerStore.getState();
+                    const time = displayStart(targeted.animation, targeted.instance);
+                    store.setSelectedTimelineEffect({
+                      ownerKey,
+                      animationId: targeted.animation.id,
+                      time,
+                    });
+                    store.requestSeek(time);
+                    store.requestClipReveal(ownerKey);
+                  }}
+                >
+                  {preset?.label ?? "已应用动画"}
+                </Button>
+                <span className="text-[10px] text-panel-text-3">
+                  {PHASES.find((item) => item.id === targeted.instance.phase)?.label}
+                </span>
+                <Button variant="ghost" size="sm"
+                  type="button"
+                  aria-label="删除动画"
+                  className="size-7 shrink-0 p-0 text-muted-foreground"
+                  onClick={() =>
+                    onMutate(targetKind, {
+                      operation: "remove",
+                      phase: targeted.instance.phase,
+                      templateId: targeted.instance.templateId,
+                      applicationKind: targeted.instance.applicationKind,
+                    })
+                  }
+                >
+                  <Trash size={14} />
+                </Button>
+              </div>
+              {targeted.animation.keyframes && onEditPropertyKeyframe && (
+                <PropertyKeyframeRows
+                  compact
+                  ownerKey={ownerKey}
+                  animation={targeted.animation}
+                  onEdit={onEditPropertyKeyframe}
+                />
+              )}
+              {manual ? (
+                <Alert role="status" data-testid="manual-motion-preserved" className="mt-3">
+                  <AlertDescription>
+                    {tx("Manual editing · Template parameters are locked to preserve your keyframes. Continue editing values and timing in the timeline.")}
+                  </AlertDescription>
+                  <AlertAction>
+                    <Button variant="link" size="sm" data-testid="continue-manual-keyframes" onClick={() => {
+                      const store = usePlayerStore.getState();
+                      const point = store.selectedPropertyKeyframe;
+                      if (!point || point.ownerKey !== ownerKey ||
+                        !items.some((item) => item.animation.id === point.animationId || matchesPoint(item)))
+                        store.setSelectedTimelineEffect({ownerKey, animationId: targeted.animation.id});
+                      store.requestClipReveal(ownerKey);
+                    }}>{tx("Continue editing in timeline")}</Button>
+                  </AlertAction>
+                </Alert>
+              ) : (
+                <p data-testid="preset-keyframe-guidance" className="mt-3 text-ui-caption text-muted-foreground">
+                  {tx("Editing a keyframe switches this effect to manual editing and locks its template parameters.")}
+                </p>
+              )}
+              <Collapsible className="mt-3 border-t border-border pt-2">
+                <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="px-0 text-ui-caption text-muted-foreground" />}>{tx("Template parameters")}</CollapsibleTrigger>
+                <CollapsibleContent>
+                <fieldset disabled={manual} className="pt-3 text-[13px] leading-[18px] [&_input]:!text-[13px] [&_select]:!text-[13px] [&_span]:!text-[13px] [&_button]:!text-[13px] [&_div]:!text-[13px]">
+                  <AppliedMotionEditor
+                    compact
+                    disabled={manual}
+                    resolved={targeted}
+                    element={element}
+                    targetKind={targetKind}
+                    onMutate={onMutate}
+                  />
+                </fieldset>
+                </CollapsibleContent>
+              </Collapsible>
+              <Collapsible className="mt-2 text-ui-caption text-muted-foreground">
+                <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="px-0 text-ui-caption text-muted-foreground" />}>{tx("Advanced")}</CollapsibleTrigger>
+                <CollapsibleContent>
+                <code className="block break-all text-ui-caption">{targeted.instance.id}</code>
+                </CollapsibleContent>
+              </Collapsible>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    );
   return (
     <div className="space-y-3" data-testid="semantic-motion-panel">
       <div className="grid grid-cols-3 rounded-[8px] bg-panel-input p-1">

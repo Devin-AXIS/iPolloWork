@@ -297,8 +297,10 @@ if [ "$RECORD_VIDEO" -eq 1 ]; then
   echo "  Validate recording duration before using it as evidence."
 fi
 echo ""
-echo "  Connect browser tools:"
-echo "    browser_list({ browser_url: \"$CDP_URL\" })"
+echo "  Verify CDP:"
+echo "    curl -fsS \"$CDP_URL/json/list\""
+echo "  Run coded UI proof:"
+echo "    pnpm evals --flow app-smoke --cdp-url \"$CDP_URL\""
 echo ""
 echo "  Cleanup:"
 echo "    daytona delete $SANDBOX"

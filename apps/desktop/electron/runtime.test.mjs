@@ -7,17 +7,31 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   applyEmbeddedServerEnvironment,
+  binaryFileNames,
   commandMatchesPackagedSidecar,
   devModeHomeDirectoryPaths,
   embeddedServerImportUrl,
   managedOpencodeEnvironment,
   prioritizeWorkspacePaths,
   resolveiPolloWorkServerConfigPath,
+  runtimeProxyEnvironmentFingerprint,
   seedWorkspacePathsForEmbeddedServer,
   selectStickyiPolloWorkPortWorkspace,
   stageBundledOpencodeRuntime,
   windowsProxyEnvFromServer,
 } from "./runtime.mjs";
+
+describe("binaryFileNames", () => {
+  it("prefers the canonical packaged alias before the target-specific fallback", () => {
+    const extension = process.platform === "win32" ? ".exe" : "";
+    const names = binaryFileNames("opencode");
+
+    assert.equal(names[0], `opencode${extension}`);
+    if (names.length > 1) {
+      assert.match(names[1], new RegExp(`^opencode-.+${extension.replace(".", "\\.")}$`));
+    }
+  });
+});
 
 describe("windowsProxyEnvFromServer", () => {
   it("maps a Windows system proxy to child-process proxy variables", () => {
@@ -60,6 +74,32 @@ describe("applyEmbeddedServerEnvironment", () => {
     assert.equal(desktopEnv.XDG_CONFIG_HOME, "C:\\Users\\Lenovo\\.config");
     assert.equal(desktopEnv.OPENCODE_CONFIG_DIR, undefined);
     assert.equal(desktopEnv.OPENAI_API_KEY, "test-key");
+  });
+
+  it("replaces and removes stale proxy values after a VPN change", () => {
+    const desktopEnv = {
+      HTTP_PROXY: "http://127.0.0.1:7890",
+      HTTPS_PROXY: "http://127.0.0.1:7890",
+      NODE_USE_ENV_PROXY: "1",
+      KEEP_ME: "desktop",
+    };
+
+    applyEmbeddedServerEnvironment(desktopEnv, {
+      HTTP_PROXY: "http://127.0.0.1:7891",
+      HTTPS_PROXY: "http://127.0.0.1:7891",
+      NODE_USE_ENV_PROXY: "1",
+      KEEP_ME: "child",
+    });
+    assert.equal(desktopEnv.HTTP_PROXY, "http://127.0.0.1:7891");
+    assert.equal(desktopEnv.HTTPS_PROXY, "http://127.0.0.1:7891");
+    assert.equal(desktopEnv.KEEP_ME, "child");
+
+    const beforeDisable = runtimeProxyEnvironmentFingerprint(desktopEnv);
+    applyEmbeddedServerEnvironment(desktopEnv, { KEEP_ME: "without-proxy" });
+    assert.equal(desktopEnv.HTTP_PROXY, undefined);
+    assert.equal(desktopEnv.HTTPS_PROXY, undefined);
+    assert.equal(desktopEnv.NODE_USE_ENV_PROXY, undefined);
+    assert.notEqual(runtimeProxyEnvironmentFingerprint(desktopEnv), beforeDisable);
   });
 });
 
@@ -232,6 +272,12 @@ describe("embeddedServerImportUrl", () => {
 });
 
 describe("resolveiPolloWorkServerConfigPath", () => {
+  it("uses the developer profile even when Windows APPDATA points at production", () => {
+    assert.equal(resolveiPolloWorkServerConfigPath({ IPOLLOWORK_DEV_MODE: "1", XDG_CONFIG_HOME: "/isolated/dev/xdg", APPDATA: "/production/appdata" }), path.join("/isolated/dev/xdg", "ipollowork", "server.json"));
+    if (process.platform === "win32") {
+      assert.equal(resolveiPolloWorkServerConfigPath({ XDG_CONFIG_HOME: "/isolated/dev/xdg", APPDATA: "/production/appdata" }), path.join("/production/appdata", "ipollowork", "server.json"));
+    }
+  });
   it("respects explicit server config path", () => {
     assert.equal(
       resolveiPolloWorkServerConfigPath({ IPOLLOWORK_SERVER_CONFIG: "/tmp/ipollowork/server.json" }),
@@ -246,4 +292,13 @@ describe("resolveiPolloWorkServerConfigPath", () => {
       "/tmp/xdg/ipollowork/server.json",
     );
   });
+});
+
+it("removes development plugin overrides from an embedded production environment", () => {
+  const target = { IPOLLOWORK_DEV_MODE: "1", IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR: "C:/old/source", IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: "C:/source" };
+  applyEmbeddedServerEnvironment(target, {});
+  assert.deepEqual(target, {});
+  applyEmbeddedServerEnvironment(target, { IPOLLOWORK_DEV_MODE: "1", IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: "C:/dev/source" });
+  assert.equal(target.IPOLLOWORK_DEV_MODE, "1");
+  assert.equal(target.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR, "C:/dev/source");
 });

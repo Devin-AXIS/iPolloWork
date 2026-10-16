@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import type { EditHistoryKind } from "../utils/editHistory";
-import { trackStudioEvent } from "../utils/studioTelemetry";
-import { addStudioPendingEditFlushListener } from "../utils/studioPendingEdits";
+import {
+  StudioFileConflictError,
+  buildStudioSaveFailureProperties,
+  trackStudioSaveFailure,
+  type StudioSaveDrainResult,
+} from "../utils/studioSaveDiagnostics";
+
+const FAILURE_BURST_MS = 5_000;
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -17,9 +21,27 @@ interface UseEditorSaveOptions {
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   showToast: (message: string, tone?: "error" | "info") => void;
+}
+
+export interface EditorSaveCandidate {
+  projectId: string;
+  path: string;
+  content: string;
+}
+
+export type EditorSaveDrainResult = StudioSaveDrainResult;
+
+export interface EditorSaveHandle {
+  saveRafRef: React.MutableRefObject<number | null>;
+  handleContentChange: (content: string) => void;
+  /** Read by the external-reload reconciliation introduced in stack PR #2993. */
+  getPendingCandidate: () => EditorSaveCandidate | null;
+  /** Wired into the external-reload drain by stack PR #2993. */
+  flushPendingSave: () => Promise<EditorSaveDrainResult>;
+  /** Used by PR #2993 when the external version wins. */
+  discardPendingSave: () => void;
 }
 
 export function useEditorSave({
@@ -28,91 +50,139 @@ export function useEditorSave({
   readProjectFile,
   writeProjectFile,
   recordEdit,
-  domEditSaveTimestampRef,
   setRefreshKey,
   showToast,
-}: UseEditorSaveOptions) {
-  // Kept as saveRafRef in the returned contract because FileManager exposes the
-  // ref, but it now owns a real debounce timer rather than a next-frame save.
+}: UseEditorSaveOptions): EditorSaveHandle {
   const saveRafRef = useRef<number | null>(null);
   const refreshRafRef = useRef<number | null>(null);
-  const pendingSaveRef = useRef<{ projectId: string; path: string; content: string } | null>(null);
-  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
-  const lastFailureToastAtRef = useRef(0);
-  const mountedRef = useRef(true);
+  // One error toast per burst of failures — every keystroke retries the save,
+  // and error toasts persist until dismissed, so don't stack duplicates.
+  const lastFailureToastAtRef = useRef<number | null>(null);
+  const lastFailureReportRef = useRef<{ fingerprint: string; emittedAt: number } | null>(null);
+  const pendingCandidateRef = useRef<EditorSaveCandidate | null>(null);
+  const inFlightRef = useRef<Promise<EditorSaveDrainResult> | null>(null);
+  const inFlightCandidateRef = useRef<EditorSaveCandidate | null>(null);
 
-  const flushPendingSave = useCallback((): Promise<void> => {
-    if (saveRafRef.current != null) {
-      window.clearTimeout(saveRafRef.current);
-      saveRafRef.current = null;
-    }
-    const pending = pendingSaveRef.current;
-    pendingSaveRef.current = null;
-    if (!pending) return saveChainRef.current;
-
-    const save = saveChainRef.current.catch(() => {}).then(async () => {
-      const { projectId, path, content } = pending;
-      try {
-        domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId,
-          label: "Edit source",
-          kind: "source",
-          coalesceKey: `source:${path}`,
-          files: { [path]: content },
-          readFile: readProjectFile,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
-        if (mountedRef.current) {
-          if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
-          refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((key) => key + 1));
-        }
-      } catch (error) {
-        trackStudioEvent("save_failure", {
-          source: "code_editor",
-          error_message: error instanceof Error ? error.message : "unknown",
-        });
-        const now = Date.now();
-        if (now - lastFailureToastAtRef.current > 5000) {
-          lastFailureToastAtRef.current = now;
-          showToast(
-            `Couldn't save ${path} — your latest edits are not persisted. Check the preview server; editing again retries the save.`,
-            "error",
-          );
-        }
+  const reportFailure = useCallback(
+    (path: string, error: unknown) => {
+      const now = Date.now();
+      const properties = buildStudioSaveFailureProperties({
+        source: "code_editor",
+        error,
+        filePath: path,
+      });
+      const errorName = error instanceof Error ? error.name : typeof error;
+      const fingerprint = JSON.stringify([
+        path,
+        errorName,
+        properties.error_message,
+        properties.status_code,
+      ]);
+      const previous = lastFailureReportRef.current;
+      if (
+        previous === null ||
+        previous.fingerprint !== fingerprint ||
+        now - previous.emittedAt >= FAILURE_BURST_MS
+      ) {
+        trackStudioSaveFailure({ source: "code_editor", error, filePath: path });
+        lastFailureReportRef.current = { fingerprint, emittedAt: now };
       }
-    });
-    saveChainRef.current = save;
-    return save;
-  }, [domEditSaveTimestampRef, readProjectFile, recordEdit, setRefreshKey, showToast, writeProjectFile]);
+      if (
+        lastFailureToastAtRef.current === null ||
+        now - lastFailureToastAtRef.current >= FAILURE_BURST_MS
+      ) {
+        lastFailureToastAtRef.current = now;
+        showToast(
+          `Couldn't save ${path} — your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
+          "error",
+        );
+      }
+    },
+    [showToast],
+  );
 
-  useEffect(() => {
-    const removeFlushListener = addStudioPendingEditFlushListener(flushPendingSave);
-    return () => {
-      removeFlushListener();
-      void flushPendingSave();
-      mountedRef.current = false;
-      if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
-    };
-  }, [flushPendingSave]);
+  const persistCandidate = useCallback(
+    (candidate: EditorSaveCandidate): Promise<EditorSaveDrainResult> => {
+      const task = saveProjectFilesWithHistory({
+        projectId: candidate.projectId,
+        label: "Edit source",
+        coalesceKey: `source:${candidate.path}`,
+        files: { [candidate.path]: () => candidate.content },
+        readFile: readProjectFile,
+        writeFile: writeProjectFile,
+        recordEdit,
+      })
+        .then<EditorSaveDrainResult>(() => {
+          if (pendingCandidateRef.current === candidate) pendingCandidateRef.current = null;
+          lastFailureReportRef.current = null;
+          if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
+          refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((k) => k + 1));
+          return { status: "clean" };
+        })
+        .catch<EditorSaveDrainResult>((error: unknown) => {
+          reportFailure(candidate.path, error);
+          return error instanceof StudioFileConflictError
+            ? { status: "conflict", error }
+            : { status: "failed", error };
+        })
+        .finally(() => {
+          if (inFlightRef.current === task) {
+            inFlightRef.current = null;
+            inFlightCandidateRef.current = null;
+          }
+        });
+      inFlightRef.current = task;
+      inFlightCandidateRef.current = candidate;
+      return task;
+    },
+    [readProjectFile, recordEdit, reportFailure, setRefreshKey, writeProjectFile],
+  );
 
   const handleContentChange = useCallback(
     (content: string) => {
-      const projectId = projectIdRef.current;
+      const pid = projectIdRef.current;
+      if (!pid) return;
       const path = editingPathRef.current;
-      if (!projectId || !path) return;
-      pendingSaveRef.current = { projectId, path, content };
-      if (saveRafRef.current != null) window.clearTimeout(saveRafRef.current);
-      saveRafRef.current = window.setTimeout(() => {
-        void flushPendingSave();
-      }, 350);
+      if (!path) return;
+
+      const candidate = { projectId: pid, path, content };
+      pendingCandidateRef.current = candidate;
+
+      if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);
+      saveRafRef.current = requestAnimationFrame(() => {
+        saveRafRef.current = null;
+        void persistCandidate(candidate);
+      });
     },
-    [editingPathRef, flushPendingSave, projectIdRef],
+    [editingPathRef, projectIdRef, persistCandidate],
   );
+
+  const flushPendingSave = useCallback(async (): Promise<EditorSaveDrainResult> => {
+    if (saveRafRef.current != null) {
+      cancelAnimationFrame(saveRafRef.current);
+      saveRafRef.current = null;
+    }
+    const candidate = pendingCandidateRef.current;
+    if (candidate && candidate === inFlightCandidateRef.current && inFlightRef.current) {
+      return inFlightRef.current;
+    }
+    if (candidate) {
+      return persistCandidate(candidate);
+    }
+    return (await inFlightRef.current) ?? { status: "clean" };
+  }, [persistCandidate]);
+
+  const discardPendingSave = useCallback(() => {
+    if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);
+    saveRafRef.current = null;
+    pendingCandidateRef.current = null;
+  }, []);
 
   return {
     saveRafRef,
     handleContentChange,
+    getPendingCandidate: () => pendingCandidateRef.current,
+    flushPendingSave,
+    discardPendingSave,
   };
 }

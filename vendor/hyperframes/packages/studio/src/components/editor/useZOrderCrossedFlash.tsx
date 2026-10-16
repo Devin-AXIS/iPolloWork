@@ -61,7 +61,7 @@ export function ZOrderCrossedFlash({ rect }: { rect: OverlayRect | null }) {
     <div
       aria-hidden="true"
       data-dom-edit-z-flash="true"
-      className="pointer-events-none absolute rounded-md border-2 border-studio-accent shadow-[0_0_0_2px_rgba(60,230,172,0.35)] animate-pulse"
+      className="pointer-events-none absolute rounded-md border-2 border-studio-accent shadow-[0_0_0_2px_rgba(31,186,192,0.35)] animate-pulse"
       style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
     />
   );

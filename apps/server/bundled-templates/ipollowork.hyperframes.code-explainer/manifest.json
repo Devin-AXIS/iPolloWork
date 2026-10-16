@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.code-explainer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "technical-explainer",
@@ -12,7 +12,8 @@
     "technical",
     "tutorial",
     "diff",
-    "developer"
+    "developer",
+    "topic:education"
   ],
   "surface": "video",
   "title": "Code Explainer",

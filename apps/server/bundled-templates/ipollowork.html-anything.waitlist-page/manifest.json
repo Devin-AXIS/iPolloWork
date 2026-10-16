@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.waitlist-page",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "site",
   "subcategory": "marketing",
@@ -9,7 +9,8 @@
   "tags": [
     "marketing",
     "waitlist",
-    "launch"
+    "launch",
+    "topic:product"
   ],
   "surface": "design",
   "title": "Waitlist Page",

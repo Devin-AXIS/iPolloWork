@@ -1,5 +1,12 @@
 const PROJECT_HASH_PREFIX = "#project/";
 
+/** Upstream's single-segment project ID contract, shared with the dev adapter. */
+export function isValidProjectId(value: string): boolean {
+  return value.length > 0 && value !== "." && value !== ".." && !/^[a-z]:/i.test(value)
+    && !value.includes("/") && !value.includes("\\")
+    && !Array.from(value).some(char => char.charCodeAt(0) < 32);
+}
+
 export interface ProjectHashRoute {
   projectId: string;
   params: URLSearchParams;

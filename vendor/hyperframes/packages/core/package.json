@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.60",
+  "version": "0.8.140",
   "description": "",
   "repository": {
     "type": "git",
@@ -264,7 +264,265 @@
       "types": "./src/figma/index.ts"
     },
     "./schemas/registry.json": "./schemas/registry.json",
-    "./schemas/registry-item.json": "./schemas/registry-item.json"
+    "./schemas/registry-item.json": "./schemas/registry-item.json",
+    "./canary": {
+      "bun": "./src/canary.ts",
+      "node": "./dist/canary.js",
+      "import": "./src/canary.ts",
+      "types": "./src/canary.ts"
+    },
+    "./canary-registry": {
+      "bun": "./src/canaryRegistry.ts",
+      "node": "./dist/canaryRegistry.js",
+      "import": "./src/canaryRegistry.ts",
+      "types": "./src/canaryRegistry.ts"
+    },
+    "./telemetry-redaction": {
+      "bun": "./src/telemetryRedaction.ts",
+      "node": "./dist/telemetryRedaction.js",
+      "import": "./src/telemetryRedaction.ts",
+      "types": "./src/telemetryRedaction.ts"
+    },
+    "./safe-path": {
+      "bun": "./src/safePath.ts",
+      "node": "./dist/safePath.js",
+      "import": "./src/safePath.ts",
+      "types": "./src/safePath.ts"
+    },
+    "./atomic-file": {
+      "bun": "./src/atomicFile.ts",
+      "node": "./dist/atomicFile.js",
+      "import": "./src/atomicFile.ts",
+      "types": "./src/atomicFile.ts"
+    },
+    "./asset-paths": {
+      "bun": "./src/compiler/rewriteSubCompPaths.ts",
+      "node": "./dist/compiler/rewriteSubCompPaths.js",
+      "import": "./src/compiler/rewriteSubCompPaths.ts",
+      "types": "./src/compiler/rewriteSubCompPaths.ts"
+    },
+    "./runtime-script": {
+      "bun": "./src/generated/runtime-inline.ts",
+      "node": "./dist/generated/runtime-inline.js",
+      "import": "./src/generated/runtime-inline.ts",
+      "types": "./src/generated/runtime-inline.ts"
+    },
+    "./rich-text-sanitize": {
+      "bun": "./src/utils/richTextSanitize.ts",
+      "node": "./dist/utils/richTextSanitize.js",
+      "import": "./src/utils/richTextSanitize.ts",
+      "types": "./src/utils/richTextSanitize.ts"
+    },
+    "./studio-preview-mark": {
+      "bun": "./src/studioPreviewMark.ts",
+      "node": "./dist/studioPreviewMark.js",
+      "import": "./src/studioPreviewMark.ts",
+      "types": "./src/studioPreviewMark.ts"
+    },
+    "./gsap-cdn": {
+      "bun": "./src/gsapCdn.ts",
+      "node": "./dist/gsapCdn.js",
+      "import": "./src/gsapCdn.ts",
+      "types": "./src/gsapCdn.ts"
+    },
+    "./media-timing": {
+      "bun": "./src/mediaTiming.ts",
+      "node": "./dist/mediaTiming.js",
+      "import": "./src/mediaTiming.ts",
+      "types": "./src/mediaTiming.ts"
+    },
+    "./composition-readiness": {
+      "bun": "./src/compositionReadiness.ts",
+      "node": "./dist/compositionReadiness.js",
+      "import": "./src/compositionReadiness.ts",
+      "types": "./src/compositionReadiness.ts"
+    },
+    "./editing/draft-markers": {
+      "bun": "./src/editing/draftMarkers.ts",
+      "node": "./dist/editing/draftMarkers.js",
+      "import": "./src/editing/draftMarkers.ts",
+      "types": "./src/editing/draftMarkers.ts"
+    },
+    "./projects": {
+      "bun": "./src/projects.ts",
+      "node": "./dist/projects.js",
+      "import": "./src/projects.ts",
+      "types": "./src/projects.ts"
+    },
+    "./audio-fx": {
+      "bun": "./src/audioFx.ts",
+      "node": "./dist/audioFx.js",
+      "import": "./src/audioFx.ts",
+      "types": "./src/audioFx.ts"
+    },
+    "./audio-fx-copy": {
+      "bun": "./src/audioFxCopy.ts",
+      "node": "./dist/audioFxCopy.js",
+      "import": "./src/audioFxCopy.ts",
+      "types": "./src/audioFxCopy.ts"
+    },
+    "./audio-fx-profiles": {
+      "bun": "./src/audioFxProfiles.ts",
+      "node": "./dist/audioFxProfiles.js",
+      "import": "./src/audioFxProfiles.ts",
+      "types": "./src/audioFxProfiles.ts"
+    },
+    "./audio-fx-jobs": {
+      "bun": "./src/audioFxJobs.ts",
+      "node": "./dist/audioFxJobs.js",
+      "import": "./src/audioFxJobs.ts",
+      "types": "./src/audioFxJobs.ts"
+    },
+    "./audio-fx-eq": {
+      "bun": "./src/audioFxEq.ts",
+      "node": "./dist/audioFxEq.js",
+      "import": "./src/audioFxEq.ts",
+      "types": "./src/audioFxEq.ts"
+    },
+    "./audio-leveller": {
+      "bun": "./src/audioLeveller.ts",
+      "node": "./dist/audioLeveller.js",
+      "import": "./src/audioLeveller.ts",
+      "types": "./src/audioLeveller.ts"
+    },
+    "./audio-fx-presets": {
+      "bun": "./src/audioFxPresets.ts",
+      "node": "./dist/audioFxPresets.js",
+      "import": "./src/audioFxPresets.ts",
+      "types": "./src/audioFxPresets.ts"
+    },
+    "./audio-fx-tail": {
+      "bun": "./src/audio/audioFxTail.ts",
+      "node": "./dist/audio/audioFxTail.js",
+      "import": "./src/audio/audioFxTail.ts",
+      "types": "./src/audio/audioFxTail.ts"
+    },
+    "./audio-fx-runtime": {
+      "bun": "./src/generated/audio-fx-runtime-inline.ts",
+      "node": "./dist/generated/audio-fx-runtime-inline.js",
+      "import": "./src/generated/audio-fx-runtime-inline.ts",
+      "types": "./src/generated/audio-fx-runtime-inline.ts"
+    },
+    "./audio-carve": {
+      "bun": "./src/audioCarve.ts",
+      "node": "./dist/audioCarve.js",
+      "import": "./src/audioCarve.ts",
+      "types": "./src/audioCarve.ts"
+    },
+    "./media-link": {
+      "bun": "./src/mediaLink.ts",
+      "node": "./dist/mediaLink.js",
+      "import": "./src/mediaLink.ts",
+      "types": "./src/mediaLink.ts"
+    },
+    "./audio-groups": {
+      "bun": "./src/audioGroups.ts",
+      "node": "./dist/audioGroups.js",
+      "import": "./src/audioGroups.ts",
+      "types": "./src/audioGroups.ts"
+    },
+    "./audio-automation": {
+      "bun": "./src/audioAutomation.ts",
+      "node": "./dist/audioAutomation.js",
+      "import": "./src/audioAutomation.ts",
+      "types": "./src/audioAutomation.ts"
+    },
+    "./clip-facts": {
+      "bun": "./src/clipFacts.ts",
+      "node": "./dist/clipFacts.js",
+      "import": "./src/clipFacts.ts",
+      "types": "./src/clipFacts.ts"
+    },
+    "./audible-video": {
+      "bun": "./src/audibleVideo.ts",
+      "node": "./dist/audibleVideo.js",
+      "import": "./src/audibleVideo.ts",
+      "types": "./src/audibleVideo.ts"
+    },
+    "./audio-gain": {
+      "bun": "./src/audioGain.ts",
+      "node": "./dist/audioGain.js",
+      "import": "./src/audioGain.ts",
+      "types": "./src/audioGain.ts"
+    },
+    "./audio-fade": {
+      "bun": "./src/audioFade.ts",
+      "node": "./dist/audioFade.js",
+      "import": "./src/audioFade.ts",
+      "types": "./src/audioFade.ts"
+    },
+    "./speed-ramp": {
+      "bun": "./src/speedRamp.ts",
+      "node": "./dist/speedRamp.js",
+      "import": "./src/speedRamp.ts",
+      "types": "./src/speedRamp.ts"
+    },
+    "./media-grade-analyzer": {
+      "bun": "./src/mediaGradeAnalyzer.ts",
+      "node": "./dist/mediaGradeAnalyzer.js",
+      "import": "./src/mediaGradeAnalyzer.ts",
+      "types": "./src/mediaGradeAnalyzer.ts"
+    },
+    "./runtime/dom-realm": {
+      "bun": "./src/runtime/domRealm.ts",
+      "node": "./dist/runtime/domRealm.js",
+      "import": "./src/runtime/domRealm.ts",
+      "types": "./src/runtime/domRealm.ts"
+    },
+    "./runtime/custom-ease": {
+      "bun": "./src/runtime/customEase.ts",
+      "node": "./dist/runtime/customEase.js",
+      "import": "./src/runtime/customEase.ts",
+      "types": "./src/runtime/customEase.ts"
+    },
+    "./runtime/start-resolver": {
+      "bun": "./src/runtime/startResolver.ts",
+      "node": "./dist/runtime/startResolver.js",
+      "import": "./src/runtime/startResolver.ts",
+      "types": "./src/runtime/startResolver.ts"
+    },
+    "./runtime/composition-length": {
+      "bun": "./src/runtime/compositionLength.ts",
+      "node": "./dist/runtime/compositionLength.js",
+      "import": "./src/runtime/compositionLength.ts",
+      "types": "./src/runtime/compositionLength.ts"
+    },
+    "./runtime/clip-window": {
+      "bun": "./src/runtime/clipWindow.ts",
+      "node": "./dist/runtime/clipWindow.js",
+      "import": "./src/runtime/clipWindow.ts",
+      "types": "./src/runtime/clipWindow.ts"
+    },
+    "./runtime/web-audio-route": {
+      "bun": "./src/runtime/webAudioRoute.ts",
+      "node": "./dist/runtime/webAudioRoute.js",
+      "import": "./src/runtime/webAudioRoute.ts",
+      "types": "./src/runtime/webAudioRoute.ts"
+    },
+    "./runtime/levelTap": {
+      "bun": "./src/runtime/levelTap.ts",
+      "node": "./dist/runtime/levelTap.js",
+      "import": "./src/runtime/levelTap.ts",
+      "types": "./src/runtime/levelTap.ts"
+    },
+    "./wiggle-ease": {
+      "bun": "./src/runtime/wiggleEase.ts",
+      "node": "./dist/runtime/wiggleEase.js",
+      "import": "./src/runtime/wiggleEase.ts",
+      "types": "./src/runtime/wiggleEase.ts"
+    },
+    "./fonts/embed": {
+      "bun": "./src/fonts/deterministicFonts.ts",
+      "node": "./dist/fonts/deterministicFonts.js",
+      "import": "./src/fonts/deterministicFonts.ts",
+      "types": "./src/fonts/deterministicFonts.ts"
+    },
+    "./fonts/embedded-data": {
+      "bun": "./src/fonts/fontData.generated.ts",
+      "node": "./dist/fonts/fontData.generated.js",
+      "import": "./src/fonts/fontData.generated.ts",
+      "types": "./src/fonts/fontData.generated.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -434,8 +692,8 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "build": "bun run build:hyperframes-runtime && bun run build:position-edits-render && tsc && tsx scripts/rewrite-esm-extensions.ts",
-    "test": "bun run check:position-edits-render && vitest run",
+    "build": "bun run build:fonts && bun run build:svg-selector-aliases && bun run build:hyperframes-runtime && bun run build:position-edits-render && bun run build:audio-fx-runtime && tsc && tsx scripts/rewrite-esm-extensions.ts",
+    "test": "bun run check:position-edits-render && bun run check:svg-selector-aliases && bun run build:audio-fx-runtime && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:runtime-coverage": "vitest run --coverage src/runtime",
@@ -457,7 +715,11 @@
     "test:hyperframe-runtime-ci": "bun run typecheck:runtime && bun run lint:runtime-preview-guards && bun run build:hyperframes-runtime && bun run test:hyperframe-runtime-contract && bun run test:hyperframe-runtime-behavior && bun run test:hyperframe-runtime-seek && bun run test:hyperframe-runtime-duration-guards && bun run test:hyperframe-runtime-parity && bun run test:hyperframe-runtime-security && bun run test:runtime-coverage && bun run test:hyperframe-linter",
     "check:hyperframe-html": "bun scripts/check-hyperframe-static.ts",
     "debug:timeline": "tsx scripts/debug-timeline.ts",
-    "prepublishOnly": "echo skip"
+    "prepublishOnly": "echo skip",
+    "build:fonts": "node scripts/build-fonts.mjs",
+    "build:audio-fx-runtime": "tsx scripts/build-audio-fx-runtime.ts",
+    "build:svg-selector-aliases": "tsx scripts/build-svg-selector-aliases.ts",
+    "check:svg-selector-aliases": "bun run build:svg-selector-aliases && git diff --exit-code -- src/generated/svg-selector-aliases-inline.ts"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.5",
@@ -466,18 +728,39 @@
     "@hyperframes/studio-server": "workspace:*",
     "bpm-detective": "^2.0.5",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.8"
+    "postcss": "^8.5.8",
+    "wawoff2": "^2.0.1"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.0.10",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^29.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11",
+    "@fontsource/archivo-black": "^5.2.8",
+    "@fontsource/eb-garamond": "^5.2.7",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/lato": "^5.2.7",
+    "@fontsource/league-gothic": "^5.2.8",
+    "@fontsource/montserrat": "^5.2.8",
+    "@fontsource/noto-sans-jp": "^5.2.9",
+    "@fontsource/nunito": "^5.2.7",
+    "@fontsource/open-sans": "^5.2.7",
+    "@fontsource/oswald": "^5.2.8",
+    "@fontsource/outfit": "^5.2.8",
+    "@fontsource/playfair-display": "^5.2.8",
+    "@fontsource/poppins": "^5.2.7",
+    "@fontsource/roboto": "^5.2.10",
+    "@fontsource/source-code-pro": "^5.2.7",
+    "@fontsource/space-mono": "^5.2.9",
+    "gsap": "^3.15.0"
   },
   "optionalDependencies": {
-    "esbuild": "^0.25.12"
-  }
+    "esbuild": "^0.28.2"
+  },
+  "peerDependencies": {}
 }

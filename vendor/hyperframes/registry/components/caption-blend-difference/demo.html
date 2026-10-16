@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Blend Difference</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #111;
+      }
+      #caption-blend-difference {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        isolation: isolate;
+      }
+      #bg {
+        position: absolute;
+        inset: 0;
+        width: 3840px;
+        background: linear-gradient(
+          90deg,
+          #f4efe6 0%,
+          #f4efe6 22%,
+          #1d3557 22%,
+          #1d3557 45%,
+          #e63946 45%,
+          #e63946 68%,
+          #f4efe6 68%,
+          #f4efe6 80%,
+          #111 80%,
+          #111 100%
+        );
+      }
+      .blend-difference {
+        mix-blend-mode: var(--blend-mode, difference);
+        color: var(--blend-caption-color, white);
+        pointer-events: none;
+      }
+      #caption {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        text-transform: uppercase;
+      }
+      .line {
+        font-size: 210px;
+        line-height: 1;
+        visibility: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="caption-blend-difference"
+      data-composition-id="caption-blend-difference"
+      data-start="0"
+      data-duration="6"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="bg"></div>
+      <div id="caption" class="blend-difference">
+        <div class="line" id="l1">Reads on</div>
+        <div class="line" id="l2">any color</div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        tl.fromTo("#bg", { x: 0 }, { x: -1920, duration: 6, ease: "none" }, 0);
+        tl.set("#l1", { visibility: "visible" }, 0.2);
+        tl.from("#l1", { y: 60, opacity: 0, duration: 0.6, ease: "expo.out" }, 0.2);
+        tl.set("#l2", { visibility: "visible" }, 1.0);
+        tl.from("#l2", { y: 60, opacity: 0, duration: 0.6, ease: "expo.out" }, 1.0);
+        tl.to(["#l1", "#l2"], { opacity: 0, duration: 0.4, ease: "power2.in" }, 5.5);
+        tl.seek(0);
+        window.__timelines["caption-blend-difference"] = tl;
+      })();
+    </script>
+  </body>
+</html>

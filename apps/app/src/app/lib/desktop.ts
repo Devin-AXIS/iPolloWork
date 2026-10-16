@@ -5,6 +5,9 @@ export const desktopResumeEvent = "ipollowork:desktop-resumed";
 export type * from "./desktop-types";
 export type {
   EngineInfo,
+  EnginePackageInfo,
+  EnginePackageSource,
+  EnginePackageStatus,
   iPolloWorkServerInfo,
   EngineDoctorResult,
   WorkspaceInfo,
@@ -39,7 +42,8 @@ import type {
   EvalRelaunchResult,
   WorkspaceList,
 } from "./desktop-types";
-import type { BrowserPanelTab } from "./desktop-types";
+import type { BrowserController, BrowserDecisionEngine, BrowserPanelTab } from "./desktop-types";
+import type { BrowserLoginUi } from "@ipollowork/types/plugins";
 
 export const LOCAL_IMAGE_FILE_EXTENSIONS = ["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"];
 export const LOCAL_IMAGE_FILE_FILTERS = [{ name: "图片文件", extensions: LOCAL_IMAGE_FILE_EXTENSIONS }];
@@ -67,6 +71,7 @@ declare global {
       shell?: {
         openExternal?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
         openAuth?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
+        clearAuthSession?: () => Promise<{ ok: boolean; error?: string } | void>;
         relaunch?: () => Promise<void>;
       };
       system?: {
@@ -126,32 +131,136 @@ declare global {
       browser?: {
         show?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         hide?: () => Promise<void>;
-        openUrl?: (url: string, provider?: "auto" | "builtin" | "external") => Promise<{
+        openUrl?: (url: string, options?: {
+          profileId?: string;
+          taskId?: string;
+          background?: boolean;
+          loginUi?: BrowserLoginUi & { origin: string };
+          sessionRecovery?: {
+            origin: string;
+            loginPath: string;
+            authenticatedPath: string;
+            cookieNames: string[];
+          };
+        }) => Promise<{
           provider: "builtin";
-          browser_url: string;
-          target_id: string;
-          tab_id: string;
+          tabId: string;
           url: string;
         }>;
+        snapshot?: (payload: {
+          tabId: string;
+          taskId?: string;
+          imageSelector?: string;
+          includeControls?: boolean;
+          mode?: "content" | "interactive" | "mixed";
+          scopeRef?: string;
+          delta?: boolean;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          snapshotId: string;
+          url: string;
+          title: string;
+          mode: "content" | "interactive" | "mixed";
+          scopeRef?: string;
+          tree: string;
+          change: "delta" | "full" | "unchanged";
+          delta?: { fromLine: number; removed: number; added: string[] };
+          imageUrl?: string | null;
+          elementCount: number;
+          controls?: Array<{ ref: string; role: string; name: string; operations: string[]; value?: string; checked?: boolean | string; disabled?: boolean; expanded?: boolean; selected?: boolean; options?: Array<{ label: string; value: string }> }>;
+          truncated: boolean;
+          metrics: { elapsedMs: number; characters: number; fullCharacters: number; savedCharacters: number };
+        }>;
+        read?: (payload: {
+          tabId: string;
+          taskId?: string;
+          mode?: "article" | "forms" | "links" | "page" | "tables";
+          maxChars?: number;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          title: string;
+          mode: "article" | "forms" | "links" | "page" | "tables";
+          content: string;
+          itemCount: number;
+          truncated: boolean;
+          metrics: { elapsedMs: number; characters: number };
+        }>;
+        screenshot?: (payload: {
+          tabId: string;
+          taskId?: string;
+          snapshotId?: string;
+          target?: "ref" | "region" | "viewport";
+          ref?: string;
+          region?: { x: number; y: number; width: number; height: number };
+          mode?: "annotated" | "auto" | "plain";
+          ifChanged?: boolean;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          target: "ref" | "region" | "viewport";
+          mode: "annotated" | "plain";
+          changed: boolean;
+          imagePath: string;
+          mimeType: "image/png";
+          hash?: string;
+          metrics: { elapsedMs: number; bytes: number; annotations: number };
+        }>;
+        act?: (payload: {
+          tabId: string;
+          taskId?: string;
+          snapshotId: string;
+          workspaceRoot?: string;
+          actions: Array<Record<string, unknown>>;
+          expect?: Record<string, unknown>;
+          observe?: {
+            mode?: "content" | "interactive" | "mixed";
+            scopeRef?: string;
+            delta?: boolean;
+            settleMs?: number;
+            waitForLoad?: "complete" | "interactive";
+            timeoutMs?: number;
+          };
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          status: "executed" | "verified";
+          verification?: Record<string, unknown>;
+          results: Array<Record<string, unknown>>;
+          snapshotRequired: boolean;
+          observation?: Record<string, unknown>;
+          metrics: { elapsedMs: number };
+        }>;
+        reportDecision?: (payload: { tabId: string; taskId?: string; status: "ready" | "unavailable" }) => Promise<BrowserPanelTab>;
+        setControl?: (tabId: string, controller: BrowserController) => Promise<BrowserPanelTab>;
+        setDecisionEngine?: (tabId: string, engine: BrowserDecisionEngine) => Promise<BrowserPanelTab>;
         navigate?: (url: string) => Promise<void>;
         back?: () => Promise<void>;
         forward?: () => Promise<void>;
         reload?: () => Promise<void>;
         setBounds?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         getState?: () => Promise<BrowserStatePayload | null>;
-        createTab?: (url?: string) => Promise<{ tabId: string }>;
+        createTab?: (url?: string, options?: { sessionId?: string | null }) => Promise<{ tabId: string }>;
         closeTab?: (tabId: string) => Promise<string | null>;
         closeAllTabs?: () => Promise<string[]>;
         selectTab?: (tabId: string) => Promise<string>;
-        reorderTabs?: (tabIds: string[]) => Promise<BrowserPanelTab[]>;
+        reorderTabs?: (tabIds: string[], options?: { sessionId?: string | null }) => Promise<BrowserPanelTab[]>;
         listTabs?: () => Promise<BrowserPanelTab[]>;
         setProxy?: (proxy?: string | null) => Promise<BrowserProxyState>;
         getProxy?: () => Promise<BrowserProxyState>;
         showTabContextMenu?: (tabId: string, point?: { x: number; y: number }) => Promise<void>;
         destroy?: () => Promise<void>;
         onStateChange?: (callback: (state: BrowserStatePayload) => void) => () => void;
-        onPanelOpened?: (callback: () => void) => () => void;
-        onPanelClosed?: (callback: () => void) => () => void;
+        onPanelOpened?: (callback: (payload?: { sessionId?: string | null; tabId?: string }) => void) => () => void;
+        onPanelClosed?: (callback: (payload?: { sessionId?: string | null }) => void) => () => void;
       };
       terminal?: {
         create?: (options: { cwd: string; cols: number; rows: number }) => Promise<{ terminalId: string }>;
@@ -273,47 +382,10 @@ export const desktopFetch: typeof globalThis.fetch = async (input, init) => {
     return globalThis.fetch(input, init);
   }
 
-  // Extract method/headers/body from either a Request object or the (input, init)
-  // pair. The OpenCode SDK calls fetch(request) (no init), so reading these only
-  // from `init` would silently drop the Authorization header and the POST body
-  // — the remote would then reject every request with "Invalid bearer token".
-  let url: string;
-  let method: string | undefined;
-  let headers: Record<string, string> | undefined;
-  let body: string | undefined;
-
-  if (typeof Request !== "undefined" && input instanceof Request) {
-    url = input.url;
-    method = init?.method ?? input.method;
-    const headersSource = init?.headers ? new Headers(init.headers) : input.headers;
-    headers = Object.fromEntries(headersSource.entries());
-    if (typeof init?.body === "string") {
-      body = init.body;
-    } else if (input.body) {
-      // Request body is a stream — buffer to text so it survives the IPC hop
-      // to the Electron main process.
-      body = await input.clone().text();
-    }
-  } else {
-    url = typeof input === "string" ? input : input.toString();
-    method = init?.method;
-    headers = init?.headers ? Object.fromEntries(new Headers(init.headers).entries()) : undefined;
-    body = typeof init?.body === "string" ? init.body : undefined;
-  }
-
-  const result = await invokeElectronHelper("__fetch", url, { method, headers, body });
-
-  // Response constructor rejects bodies for null-body status codes, so we
-  // must pass null instead of an empty string for those.
-  const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
-  const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : result.body;
-
-  return new Response(responseBody, {
-    status: result.status,
-    statusText: result.statusText,
-    headers: result.headers,
-  });
+  return desktopFetchViaMain(input, init);
 };
+
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
 export async function desktopFetchViaMain(
   input: RequestInfo | URL,
@@ -334,6 +406,7 @@ export async function desktopFetchViaMain(
     if (typeof init?.body === "string") {
       body = init.body;
     } else if (input.body) {
+      // Preserve SDK Request headers and buffer its body for the IPC hop.
       body = await input.clone().text();
     }
   } else {
@@ -348,7 +421,7 @@ export async function desktopFetchViaMain(
     throw new Error("desktop_binary_fetch_requires_restart");
   }
 
-  const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+  // These statuses require a null body, even when IPC returns an empty string.
   const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : result.body;
 
   return new Response(responseBody, {
@@ -399,6 +472,16 @@ export async function openDesktopAuthUrl(url: string): Promise<void> {
   }
   if (typeof window !== "undefined") {
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+export async function clearDesktopAuthSession(): Promise<void> {
+  const clearAuthSession = window.__IPOLLOWORK_ELECTRON__?.shell?.clearAuthSession;
+  if (!clearAuthSession) return;
+
+  const result = await clearAuthSession();
+  if (result && result.ok === false) {
+    throw new Error(result.error ?? "Failed to clear sign-in session");
   }
 }
 
@@ -551,6 +634,10 @@ const {
   runtimeBootstrap,
   engineInfo,
   engineDoctor,
+  enginePackagesList,
+  enginePackageInstall,
+  enginePackageUninstall,
+  videoResourceInfo,
   pickDirectory,
   pickFile,
   saveFile,
@@ -567,7 +654,6 @@ const {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 } = desktopBridge;
 
@@ -608,6 +694,10 @@ export {
   runtimeBootstrap,
   engineInfo,
   engineDoctor,
+  enginePackagesList,
+  enginePackageInstall,
+  enginePackageUninstall,
+  videoResourceInfo,
   pickDirectory,
   pickFile,
   saveFile,
@@ -624,6 +714,5 @@ export {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 };

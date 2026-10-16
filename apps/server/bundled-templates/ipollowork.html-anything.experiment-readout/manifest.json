@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.experiment-readout",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "report",
   "subcategory": "product",
@@ -11,7 +11,8 @@
     "experiment",
     "ab-test",
     "growth",
-    "data"
+    "data",
+    "topic:data"
   ],
   "surface": "design",
   "title": "Experiment Readout",

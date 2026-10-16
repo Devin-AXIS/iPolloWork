@@ -9,6 +9,7 @@ import {
   isPptxShapeStyleCompatible,
   deckPptxFileName,
   isPptxTextStyleCompatible,
+  parsePptxColor,
 } from "../src/react-app/domains/session/design/pptx-export";
 import {
   activateDeckExportSlide,
@@ -19,6 +20,20 @@ import {
 const panelUrl = new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url);
 
 describe("PPTX deck export", () => {
+  test("shares color conversion while preserving alpha and export-specific fallbacks", () => {
+    expect(parsePptxColor("#abc")).toEqual({ color: "AABBCC", transparency: 0 });
+    expect(parsePptxColor("#abcd")).toEqual({ color: "AABBCC", transparency: 13 });
+    expect(parsePptxColor("#11223380")).toEqual({ color: "112233", transparency: 50 });
+    expect(parsePptxColor("rgba(17, 24, 39, 0.75)")).toEqual({ color: "111827", transparency: 25 });
+    expect(parsePptxColor("rgba(999, 0, 4, 2)")).toEqual({ color: "FF0004", transparency: 0 });
+    for (const value of ["", "transparent"]) {
+      expect(parsePptxColor(value)).toEqual({ color: "000000", transparency: 100 });
+    }
+    expect(parsePptxColor("unsupported")).toEqual({ color: "111827", transparency: 0 });
+    expect(parsePptxColor("unsupported", { color: "000000", transparency: 100 }))
+      .toEqual({ color: "000000", transparency: 100 });
+  });
+
   test("uses a PowerPoint filename and editable-first confirmation copy", () => {
     expect(deckPptxFileName("Q2 launch")).toBe("Q2 launch.pptx");
     expect(deckPptxFileName("Q2 launch.pdf")).toBe("Q2 launch.pptx");

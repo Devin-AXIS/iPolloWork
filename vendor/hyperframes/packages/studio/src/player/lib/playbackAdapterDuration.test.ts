@@ -8,6 +8,21 @@ import {
 } from "./playbackAdapter";
 
 describe("shouldUseDirectRuntimeAdapter", () => {
+  it("preserves audible runtime playback across decimal clip boundary rounding", () => {
+    const lastClipEnd = 69.078 + 27.394;
+    expect(lastClipEnd).toBeGreaterThan(96.472);
+    expect(shouldUseDirectRuntimeAdapter(96.472, lastClipEnd)).toBe(true);
+    expect(shouldUseDirectRuntimeAdapter(96.472, 96.473)).toBe(true);
+    expect(shouldUseDirectRuntimeAdapter(96.472, 96.501)).toBe(false);
+  });
+
+  it.each([24, 30, 60, 120])("preserves audible playback when duration is rounded up at %i fps", (fps) => {
+    const exact = 37.22;
+    const aligned = Math.ceil(exact * fps) / fps;
+    expect(shouldUseDirectRuntimeAdapter(exact, aligned, fps)).toBe(true);
+    expect(shouldUseDirectRuntimeAdapter(exact, aligned + 1 / fps, fps)).toBe(false);
+  });
+
   it("rejects a partial runtime duration while Studio knows the full composition", () => {
     expect(shouldUseDirectRuntimeAdapter(1.8, 12)).toBe(false);
     expect(shouldUseDirectRuntimeAdapter(12, 12)).toBe(true);

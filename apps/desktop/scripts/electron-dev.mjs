@@ -15,6 +15,7 @@ import {
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildIfChanged } from "./dev-build-cache.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -98,6 +99,23 @@ function runSync(command, args, options = {}) {
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+}
+
+function prepareIfChanged(name, inputs, outputs, build, force = false) {
+  return buildIfChanged({
+    name,
+    cacheFile: resolve(repoRoot, ".ipollowork-dev", "build-cache", `${name}.json`),
+    inputs: [
+      fileURLToPath(import.meta.url),
+      resolve(repoRoot, "package.json"),
+      resolve(repoRoot, "pnpm-lock.yaml"),
+      resolve(repoRoot, "pnpm-workspace.yaml"),
+      ...inputs.map((path) => resolve(repoRoot, path)),
+    ],
+    outputs: outputs.map((path) => resolve(repoRoot, path)),
+    build,
+    force,
+  });
 }
 
 function prepareMacDevelopmentElectron() {
@@ -413,16 +431,53 @@ process.once("SIGINT", () => void stopAll(130));
 process.once("SIGTERM", () => void stopAll(143));
 
 if (process.env.IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE !== "1") {
-  runSync(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], { cwd: desktopRoot });
+  prepareIfChanged("sidecars", [
+    "constants.json",
+    "apps/orchestrator/src",
+    "apps/orchestrator/script",
+    "apps/orchestrator/package.json",
+    "apps/orchestrator/tsconfig.json",
+    "apps/server/package.json",
+    "apps/desktop/scripts/prepare-sidecar.mjs",
+  ], [electronSidecarDir], () => {
+    runSync(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], { cwd: desktopRoot });
+  }, process.env.IPOLLOWORK_SIDECAR_FORCE_BUILD === "1" || [
+    "TARGET", "TAURI_ENV_TARGET_TRIPLE", "CARGO_CFG_TARGET_TRIPLE", "OPENCODE_ASSET",
+    "IPOLLOWORK_SIDECAR_DIR", "OPENCODE_GITHUB_REPO", "IPOLLOWORK_OPENCODE_GITHUB_REPO",
+  ].some((name) => process.env[name]));
   runSync(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--outdir", electronHelperDir], { cwd: desktopRoot });
+  runSync(nodeCmd, [resolve(repoRoot, "examples/plugin-packages/operation-recorder/scripts/build.mjs"), "--host", "--if-stale"], { cwd: repoRoot });
+  for (const pluginId of ["labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]) {
+    const pluginRoot = `examples/plugin-packages/${pluginId}`;
+    const inputs = pluginId === "short-video-studio"
+      ? [pluginRoot, "packages/ui/src", "packages/ui/build-plugin-runtime.mjs", "packages/ui/package.json"]
+      : [pluginRoot];
+    prepareIfChanged(pluginId, inputs, [`${pluginRoot}/dist/package`], () => {
+      runSync(nodeCmd, [resolve(repoRoot, `${pluginRoot}/scripts/build.mjs`)], { cwd: repoRoot });
+    });
+  }
 }
 
 // Build the server TS → JS so Electron can import it in-process
 ensureHyperframesDevBuild();
 hyperframesChild = startHyperframesDevServer();
 
-console.log("[electron-dev] Building ipollowork-server (tsc)...");
-runSync(pnpmCmd, ["--filter", "ipollowork-server", "build"], { cwd: repoRoot });
+prepareIfChanged("server", [
+  "apps/server/src",
+  "apps/server/script",
+  "apps/server/bundled-templates",
+  "apps/server/package.json",
+  "apps/server/tsconfig.json",
+  "packages/types/src",
+  "packages/types/package.json",
+  "packages/types/tsconfig.json",
+  "examples/plugin-packages/design-agent/skills/ipollowork-presentations/references/layout.md",
+  "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/video-motion-principles.md",
+  "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/video-acceptance.md",
+], ["apps/server/dist", "packages/types/dist"], () => {
+  console.log("[electron-dev] Building ipollowork-server (tsc)...");
+  runSync(pnpmCmd, ["--filter", "ipollowork-server", "build"], { cwd: repoRoot });
+});
 
 const initialProbeUrls = [startUrl, ...viteProbeUrls].filter(Boolean);
 let viteReady = false;
@@ -454,7 +509,10 @@ if (!viteReady && (conflictingViteUrl || occupiedDevUrl)) {
 }
 
 if (!viteReady) {
-  uiChild = run(pnpmCmd, ["-w", "dev:ui"], {
+  // Start the app package directly instead of bouncing through the workspace
+  // dev:ui script. The extra pnpm process can consume the entire Vite startup
+  // timeout on Windows before it ever launches the package script.
+  uiChild = run(pnpmCmd, ["--filter", "@ipollowork/app", "dev"], {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -481,6 +539,8 @@ electronChild = run(developmentElectronExecutable ?? pnpmCmd, developmentElectro
   cwd: desktopRoot,
   env: {
     ...process.env,
+    IPOLLOWORK_NODE_BIN: process.env.IPOLLOWORK_NODE_BIN?.trim() || process.execPath,
+    IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR: resolve(repoRoot, "examples/plugin-packages"),
     IPOLLOWORK_DEV_MODE: process.env.IPOLLOWORK_DEV_MODE ?? "1",
     IPOLLOWORK_DATA_DIR: process.env.IPOLLOWORK_DATA_DIR ?? defaultDevDataDir,
     IPOLLOWORK_ELECTRON_START_URL: resolvedStartUrl,

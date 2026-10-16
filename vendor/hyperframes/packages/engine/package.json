@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.7.60",
+  "version": "0.8.140",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -15,9 +15,32 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./alpha-blit": "./src/utils/alphaBlit.ts",
-    "./shader-transitions": "./src/utils/shaderTransitions.ts"
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./alpha-blit": {
+      "bun": "./src/utils/alphaBlit.ts",
+      "import": "./src/utils/alphaBlit.ts",
+      "types": "./src/utils/alphaBlit.ts"
+    },
+    "./shader-transitions": {
+      "bun": "./src/utils/shaderTransitions.ts",
+      "import": "./src/utils/shaderTransitions.ts",
+      "types": "./src/utils/shaderTransitions.ts"
+    },
+    "./chrome-host-ceiling": {
+      "bun": "./src/services/chromeHostCeiling.ts",
+      "import": "./src/services/chromeHostCeiling.ts",
+      "types": "./src/services/chromeHostCeiling.ts"
+    },
+    "./system-memory": {
+      "bun": "./src/services/systemMemory.ts",
+      "import": "./src/services/systemMemory.ts",
+      "types": "./src/services/systemMemory.ts"
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",
@@ -45,21 +68,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^1.13.0",
+    "@hono/node-server": "^2.0.5",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
-    "puppeteer": "^25.2.1",
-    "puppeteer-core": "^25.2.1"
+    "puppeteer": "^25.8.0",
+    "puppeteer-core": "^25.8.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
     "typescript": "^5.7.2",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=22"
-  }
+  },
+  "peerDependencies": {}
 }

@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
-import { useEffect, useId, useState, type SetStateAction } from "react";
+import { useEffect, useId, useState, useRef, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 import {
@@ -21,6 +21,9 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { SearchField } from "@/components/ui/search-field";
+import { TablePagination, TablePageSelection, TableBulkActions, type TableSortDirection } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
@@ -31,6 +34,7 @@ import {
   type ApplyEnvironmentChangesResult,
   type EnvironmentEditorDraft,
   useEnvironmentVariableApplyChanges,
+  useEnvironmentVariableMarkChangesPending,
   useEnvironmentVariableList,
   useEnvironmentVariableModify,
   useEnvironmentVariableRemove,
@@ -128,7 +132,8 @@ type EnvironmentSettingsPanelProps = {
 function EnvironmentSettingsPanel(props: EnvironmentSettingsPanelProps) {
   const isPendingChanges = useIsEnvironmentVariableChangesPending();
   const queryClient = useQueryClient();
-  const { data, error, isLoading } = useEnvironmentVariableList({
+  const markChangesPending = useEnvironmentVariableMarkChangesPending();
+  const { data, error, isLoading, isFetching, refetch } = useEnvironmentVariableList({
     client: props.client,
     isRemoteWorkspace: props.isRemoteWorkspace,
     runtimeKey: props.runtimeKey,
@@ -215,7 +220,7 @@ function EnvironmentSettingsPanel(props: EnvironmentSettingsPanelProps) {
         <SettingsNotice>{t("settings.environment.remote_workspace_hint")}</SettingsNotice>
       ) : null}
 
-      {error ? <SettingsNotice tone="error">{error.message}</SettingsNotice> : null}
+      {error ? <Alert variant="destructive"><AlertDescription>{error.message}</AlertDescription><AlertAction><Button size="sm" onClick={() => void refetch()}>{t("common.retry")}</Button></AlertAction></Alert> : null}
 
       {isPendingChanges && !props.isRemoteWorkspace ? (
         <EnvironmentPendingChanges
@@ -228,6 +233,27 @@ function EnvironmentSettingsPanel(props: EnvironmentSettingsPanelProps) {
       {!props.isRemoteWorkspace ? (
         <EnvironmentItemsTable
           loading={isLoading}
+          refreshing={isFetching}
+          readError={Boolean(error)}
+          onRefresh={() => void refetch()}
+          onRemoveMany={async keys => {
+            const client = props.client;
+            if (!client || !props.canEdit) throw new Error(t("app.unknown_error"));
+            const failures: { key: string; message: string }[] = [];
+            let changed = false;
+            for (let start = 0; start < keys.length; start += 5) {
+              await Promise.all(keys.slice(start, start + 5).map(async key => {
+                try {
+                  await client.deleteUserEnv(key);
+                  changed = true;
+                  queryClient.setQueryData<{ items: EnvItem[] }>(environmentUserEnvQueryKey(props.runtimeKey), current => current ? { items: current.items.filter(item => item.key !== key) } : current);
+                } catch (error) { failures.push({ key, message: error instanceof Error ? error.message : t("app.unknown_error") }); }
+              }));
+            }
+            if (changed) markChangesPending();
+            await queryClient.invalidateQueries({ queryKey: environmentUserEnvQueryKey(props.runtimeKey) });
+            return failures;
+          }}
           items={data?.items ?? []}
           canEdit={props.canEdit}
           onAdd={openAdd}
@@ -311,6 +337,10 @@ function EnvironmentPendingChanges(props: EnvironmentPendingChangesProps) {
 
 type EnvironmentItemsTableProps = {
   loading: boolean;
+  refreshing: boolean;
+  readError: boolean;
+  onRefresh: () => void;
+  onRemoveMany: (keys: string[]) => Promise<{ key: string; message: string }[]>;
   items: EnvItem[];
   canEdit: boolean;
   onAdd: () => void;
@@ -319,6 +349,34 @@ type EnvironmentItemsTableProps = {
 };
 
 function EnvironmentItemsTable(props: EnvironmentItemsTableProps) {
+  const [search, setSearch] = useState("");
+  const [direction, setDirection] = useState<TableSortDirection>("none");
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(10);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirmation, setConfirmation] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const [receipt, setReceipt] = useState<{ success: number; failures: { key: string; message: string }[] } | null>(null);
+  const filtered = props.items.filter(item => item.key.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  if (direction !== "none") filtered.sort((a, b) => a.key.localeCompare(b.key) * (direction === "ascending" ? 1 : -1));
+  const pageIndex = Math.min(page, Math.max(0, Math.ceil(filtered.length / size) - 1));
+  const rows = filtered.slice(pageIndex * size, (pageIndex + 1) * size);
+  const itemKeys = new Set(props.items.map(item => item.key));
+  const selectedKeys = selected.filter(key => itemKeys.has(key));
+  const disabled = busy || props.refreshing || props.readError;
+  const execute = async () => {
+    if (!confirmation || lock.current || disabled || !props.canEdit) return;
+    lock.current = true; setBusy(true);
+    const keys = confirmation;
+    try {
+      const failures = await props.onRemoveMany(keys);
+      setSelected(failures.map(failure => failure.key));
+      setReceipt({ success: keys.length - failures.length, failures });
+    } catch (error) {
+      setReceipt({ success: 0, failures: keys.map(key => ({ key, message: error instanceof Error ? error.message : t("app.unknown_error") })) });
+    } finally { setConfirmation(null); lock.current = false; setBusy(false); }
+  };
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [revealing, setRevealing] = useState<Record<string, boolean>>({});
   const [deleteCandidate, setDeleteCandidate] = useState<EnvItem | null>(null);
@@ -345,20 +403,29 @@ function EnvironmentItemsTable(props: EnvironmentItemsTableProps) {
   if (props.loading && props.items.length === 0) {
     return <EnvironmentVariableTableLoading />;
   }
-  if (props.items.length === 0) {
+  if (props.items.length === 0 && !search && !receipt && !props.readError) {
     return <EnvironmentVariableTableEmpty canAdd={props.canEdit} onAdd={props.onAdd} />;
   }
   return (
     <>
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchField value={search} onValueChange={value => { setSearch(value); setPage(0); setSelected([]); setReceipt(null); }} clearLabel={t("client_list.reset")} aria-label={t("client_list.search")} placeholder={t("client_list.search")} disabled={busy} containerClassName="w-64 max-w-full" />
+        <Button variant="ghost" size="sm" disabled={busy || props.refreshing} onClick={props.onRefresh}>{t("client_list.refresh")}</Button>
+      </div>
+      {receipt ? <Alert variant={receipt.failures.length ? "destructive" : "success"}><AlertDescription>{t("client_list.result", { success: receipt.success, failed: receipt.failures.length })}{receipt.failures.length ? <p className="break-words">{receipt.failures[0]?.key}: {receipt.failures[0]?.message}</p> : null}</AlertDescription></Alert> : null}
+      {props.canEdit ? <TableBulkActions selectedCount={selectedKeys.length} label={t("client_list.selected", { count: selectedKeys.length })} clearLabel={t("client_list.clear")} busy={busy} onClear={() => { setSelected([]); setReceipt(null); }}>
+        <Button variant="destructive" size="sm" disabled={disabled || isRemoving} onClick={() => setConfirmation([...selectedKeys])}>{busy ? t("client_list.busy") : receipt?.failures.length ? t("client_list.retry_failed") : t("client_list.bulk_delete")}</Button>
+      </TableBulkActions> : null}
       <EnvironmentVariableTable>
-        <EnvironmentVariableTableHeader />
+        <EnvironmentVariableTableHeader direction={direction} onSort={value => { setDirection(value); setPage(0); }} selection={props.canEdit ? <TablePageSelection selectableCount={rows.length} selectedCount={rows.filter(item => selectedKeys.includes(item.key)).length} label={t("client_list.select_page")} disabled={disabled || isRemoving} onCheckedChange={checked => { setReceipt(null); setSelected(current => checked ? [...new Set([...current, ...rows.map(item => item.key)])] : current.filter(key => !rows.some(item => item.key === key))); }} /> : undefined} />
         <EnvironmentVariableTableBody>
-          {props.items.map((item) => (
+          {rows.map((item) => (
             <EnvironmentVariableTableItem
               key={item.key}
               item={item}
               isRevealed={Boolean(revealed[item.key]) && typeof item.value === "string"}
-              canEdit={props.canEdit}
+              selection={props.canEdit ? <Checkbox aria-label={t("client_list.select_row", { name: item.key })} checked={selectedKeys.includes(item.key)} disabled={disabled || isRemoving} onCheckedChange={checked => { setReceipt(null); setSelected(current => checked ? [...new Set([...current, item.key])] : current.filter(key => key !== item.key)); }} /> : undefined}
+              canEdit={props.canEdit && !busy}
               deleting={isRemoving && deleteCandidate?.key === item.key}
               revealing={Boolean(revealing[item.key])}
               onEdit={props.onEdit}
@@ -368,7 +435,9 @@ function EnvironmentItemsTable(props: EnvironmentItemsTableProps) {
           ))}
         </EnvironmentVariableTableBody>
       </EnvironmentVariableTable>
-
+      {!rows.length && !props.readError ? <div className="py-4 text-center"><p>{t("client_list.empty")}</p>{search ? <Button variant="ghost" onClick={() => { setSearch(""); setPage(0); setSelected([]); }}>{t("client_list.reset")}</Button> : null}</div> : null}
+      <TablePagination pageIndex={pageIndex} pageSize={size} total={filtered.length} disabled={busy} onPageChange={setPage} onPageSizeChange={value => { setSize(value); setPage(0); }} labels={{ navigation: t("client_list.pagination"), previous: t("client_list.previous"), next: t("client_list.next"), pageSize: t("client_list.page_size"), status: (page, pages, total) => t("client_list.page_status", { page, pages, total }) }} />
+      <ConfirmModal open={confirmation !== null} title={t("client_list.bulk_delete")} message={<><p>{t("client_list.confirm_delete", { count: confirmation?.length ?? 0 })}</p><p className="max-h-32 overflow-auto break-words font-mono">{confirmation?.join("、")}</p></>} variant="danger" confirmLabel={busy ? t("client_list.busy") : t("common.delete")} cancelLabel={t("common.cancel")} onConfirm={() => void execute()} onCancel={() => { if (!lock.current) setConfirmation(null); }} />
       <EnvironmentDeleteModal
         candidate={deleteCandidate}
         onCancel={() => setDeleteCandidate(null)}
@@ -468,8 +537,23 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
         }
       }}
     >
-      <DialogContent className="w-full max-w-md sm:max-w-md">
-        <DialogHeader>
+      <DialogContent
+        data-testid="environment-editor-dialog"
+        showCloseButton={false}
+        className="max-w-[520px] gap-0 ring-0 dark:ring-1 dark:ring-border sm:max-w-[520px]"
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute end-3 top-3"
+          aria-label={t("common.close")}
+          onClick={props.onClose}
+        >
+          <X className="size-4" />
+        </Button>
+
+        <DialogHeader className="pb-4 pe-8 text-left">
           <DialogTitle id={titleId}>
             {props.editor.mode === "add" ? t("settings.environment.add_title") : t("settings.environment.edit_title")}
           </DialogTitle>
@@ -487,7 +571,7 @@ function EnvironmentEditorModal(props: EnvironmentEditorModalProps) {
           error={error}
         />
 
-        <DialogFooter>
+        <DialogFooter className="mx-0 mb-0 flex-row gap-2 rounded-none border-0 bg-transparent p-0 pt-4 sm:justify-end">
           <DialogClose render={<Button variant="outline" size="sm" />}>
             {t("settings.environment.cancel")}
           </DialogClose>

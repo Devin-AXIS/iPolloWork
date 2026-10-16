@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.permission-vault",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "security",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "security"
+    "security",
+    "topic:business"
   ],
   "surface": "video",
   "title": "Permission Vault",

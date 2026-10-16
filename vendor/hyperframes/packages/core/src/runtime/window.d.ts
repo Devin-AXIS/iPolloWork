@@ -1,8 +1,15 @@
-import type { RuntimeSeekOptions, RuntimeTimelineMessage, RuntimeTimelineLike } from "./types";
+import type {
+  RuntimeSeekOptions,
+  RuntimeTimelineChildLike,
+  RuntimeTimelineMessage,
+  RuntimeTimelineLike,
+  SceneAnimation,
+} from "./types";
 import type { RuntimeColorGradingApi } from "./colorGrading";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
 import type { ClipTree } from "./clipTree";
+import type { SvgSelectorAliases } from "../compiler/svgSelectorAliases";
 
 type ThreeClockLike = {
   elapsedTime: number;
@@ -28,19 +35,68 @@ type ThreeLike = {
 
 declare global {
   interface Window {
+    __hfHasFrameSources?: () => boolean;
     __timelines: Record<string, RuntimeTimelineLike>;
     __player?: PlayerAPI;
+    __hyperframes?: {
+      registerFrameSource: typeof import("./frameSources").registerFrameSource;
+      createFilmBridge: typeof import("./filmBridge").createFilmBridge;
+      /** A path the calling composition wrote relative to its own file, as a URL the page can load. */
+      assetUrl?: (path: string) => string;
+      registerRuntimeDataHandler?: (
+        channel: string,
+        handler: (payload: unknown) => void,
+      ) => () => void;
+      setRuntimeData?: (channel: string, payload: unknown, requestId?: number) => void;
+      clearRuntimeData?: (channel: string) => void;
+      [key: string]: unknown;
+    };
     __clipManifest?: RuntimeTimelineMessage;
     __clipTree?: ClipTree;
+    __hfSvgSelectorAliases?: SvgSelectorAliases;
     __hf?: {
       colorGrading?: RuntimeColorGradingApi;
       onSwallowed?: (label: string, err: unknown) => void;
       seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
       duration?: number;
+      /** How a length that no timeline supplied was found: the render telemetry reads this. */
+      durationSource?: {
+        source: "authored" | "derived" | "unresolved";
+        seconds: number | null;
+        pendingClips: number;
+      };
+      /** Where each animation's FIRST cycle ends, latest wins, in seconds (root timeline, CSS and
+       *  Lottie; never script-created WAAPI, media or the declared length); repeats may run past it.
+       *  Null when unknown. Studio reads it. */
+      animationEnd?: () => number | null;
+      /** Borrow an element's playback while the transport clock is paused, so the
+       *  runtime's paused-side enforcement leaves it alone. Always release. */
+      leasePausedMedia?: (el: HTMLMediaElement) => void;
+      releasePausedMedia?: (el: HTMLMediaElement) => void;
+      /** Where Studio's loop wraps to while it plays, or null: the clips due there stay loaded. */
+      setLoopStart?: (seconds: number | null) => void;
+      /** Read-only level taps for the Studio meters: nothing exists until
+       *  `start()`, and `stop()` removes every tap. Peaks are linear per channel. */
+      audioMeter?: {
+        start(): void;
+        stop(): void;
+        read(): {
+          master: { l: number; r: number };
+          groups: Record<string, { l: number; r: number }>;
+        };
+      };
+      /** Declared-compute hold for setup no adapter can see (mesh building,
+       * shader compiles). Runtime and player hold until every promise
+       * registered here, under any key unique to your piece, resolves. */
+      buildReady?: Record<string, PromiseLike<unknown>>;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
+    /** What each composition's scripts started on gsap's global timeline, by composition id. */
+    __hfSceneAnimations?: Record<string, SceneAnimation[]> | null;
+    /** Swap edited scenes from a rebuilt preview document; refuses before changing anything when it cannot. */
+    __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;
       diagnostics?: boolean;
@@ -72,22 +128,49 @@ declare global {
      * freshly-injected `__render_frame__` images. See `forceDispatchSeekEvent`.
      */
     __hfReseekGpu?: (time: number) => void;
+    /**
+     * Await GPU work registered synchronously by `hf-seek` listeners through
+     * `event.detail.waitUntil(...)`.
+     */
+    __hfWaitForSeekCompletion?: () => Promise<void>;
+    /**
+     * Canonical root-timeline start for a media element. Snapshot capture uses
+     * this runtime-owned resolver so reference expressions, authored timing
+     * restoration, and arbitrary composition nesting cannot drift.
+     */
+    __hfResolveMediaStartSeconds?: (element: Element) => number;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
+      set?: (target: Element, vars: Record<string, unknown>) => unknown;
+      config?: (vars: Record<string, unknown>) => unknown;
+      parseEase?: (
+        ease: string | ((progress: number) => number),
+        ...args: unknown[]
+      ) => ((progress: number) => number) | null;
+      registerPlugin?: (plugin: unknown) => void;
+      globalTimeline?: {
+        getChildren?: (
+          nested?: boolean,
+          tweens?: boolean,
+          timelines?: boolean,
+        ) => RuntimeTimelineChildLike[];
+      };
       ticker?: {
         tick: () => void;
       };
     };
     THREE?: ThreeLike;
     /**
-     * Global anime.js instance (set by including the anime.iife.min.js script).
-     * The adapter uses `anime.running` for auto-discovery.
+     * Global Anime.js v4 namespace (set by the UMD or IIFE bundle).
+     * Register returned instances on `window.__hfAnime`; v4 has no
+     * `anime.running` auto-discovery registry.
      */
     anime?: {
-      (params: unknown): unknown;
-      timeline?: (params?: unknown) => unknown;
-      running: unknown[];
+      animate?: (targets: unknown, params?: unknown) => unknown;
+      createTimeline?: (params?: unknown) => unknown;
+      /** Legacy v3 registry retained for backward-compatible discovery. */
+      running?: unknown[];
     };
     /**
      * anime.js instances registered by compositions.

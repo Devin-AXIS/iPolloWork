@@ -4,20 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AudioLines,
   CheckCircle2,
-  Clapperboard,
   Cloud,
   FolderCog,
+  Globe,
   Image,
   KeyRound,
   Loader2,
   PlugZap,
-  RefreshCw,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
+import { openDesktopUrl } from "@/app/lib/desktop";
 
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,26 +33,15 @@ import type {
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
 import { t } from "@/i18n";
-import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { LayoutSection, LayoutSectionDescription, LayoutSectionHeader, LayoutSectionTitle, LayoutStack } from "@/react-app/domains/settings/settings-layout";
 import { SettingsNotice, SettingsStatusBadge, Spinner } from "@/react-app/domains/settings/settings-section";
-import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
-import {
-  EnvironmentVariableProvider,
-  environmentUserEnvQueryKey,
-  type ApplyEnvironmentChangesResult,
-  useEnvironmentVariableApplyChanges,
-  useEnvironmentVariableMarkChangesPending,
-  useIsEnvironmentVariableChangesPending,
-} from "./environment-variable-provider";
-
+import { AuthorizationFormDialog } from "@/components/authorization-form-dialog";
 type AuthorizationCenterViewProps = {
   client: iPolloWorkServerClient | null;
   isRemoteWorkspace: boolean;
-  onApplyChanges?: () => Promise<ApplyEnvironmentChangesResult>;
-  applyBlocked?: boolean;
-  applyBlockedReason?: string | null;
   runtimeKey?: string | null;
+  onOpenOpenAiLogin: () => void;
+  providerAuthOpen: boolean;
 };
 
 type ServicePresentation = {
@@ -72,6 +60,12 @@ type ServicePresentation = {
 };
 
 const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = {
+  "fal-images": {
+    icon: Image,
+    titleKey: "settings.authorization.service.fal_images.title",
+    descriptionKey: "settings.authorization.service.fal_images.description",
+    fields: [{ key: "FAL_KEY", label: "fal API key", placeholder: "Key ID:Key Secret", hintKey: "settings.authorization.fal_key_hint" }],
+  },
   "openai-images": {
     icon: Image,
     titleKey: "settings.authorization.service.openai_images.title",
@@ -82,13 +76,28 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     icon: AudioLines,
     titleKey: "settings.authorization.service.aliyun_bailian.title",
     descriptionKey: "settings.authorization.service.aliyun_bailian.description",
-    fields: [{ key: "DASHSCOPE_API_KEY", label: "DashScope API key", placeholder: "sk-..." }],
+    fields: [
+      { key: "DASHSCOPE_API_KEY", label: "DashScope API key", placeholder: "sk-..." },
+      { key: "DASHSCOPE_BASE_URL", label: "API base URL", placeholder: "https://dashscope.aliyuncs.com", secret: false, required: false },
+    ],
   },
   "volcengine-video": {
-    icon: Clapperboard,
+    icon: Image,
     titleKey: "settings.authorization.service.volcengine_video.title",
     descriptionKey: "settings.authorization.service.volcengine_video.description",
     fields: [{ key: "ARK_API_KEY", label: "Ark API key", placeholder: "your Ark API key" }],
+  },
+  "runninghub-video": {
+    icon: AudioLines,
+    titleKey: "settings.authorization.service.runninghub_video.title",
+    descriptionKey: "settings.authorization.service.runninghub_video.description",
+    fields: [{ key: "RUNNINGHUB_API_KEY", label: "RunningHub API key", placeholder: "Enterprise-Shared API key", hintKey: "settings.authorization.runninghub_key_hint" }],
+  },
+  "heygen-video": {
+    icon: AudioLines,
+    titleKey: "settings.authorization.service.heygen_video.title",
+    descriptionKey: "settings.authorization.service.heygen_video.description",
+    fields: [{ key: "HEYGEN_API_KEY", label: "HeyGen API key", placeholder: "HeyGen API key" }],
   },
   "aliyun-oss": {
     icon: Cloud,
@@ -144,26 +153,15 @@ function authorizationQueryKey(runtimeKey?: string | null) {
 }
 
 export function AuthorizationCenterView(props: AuthorizationCenterViewProps) {
-  return (
-    <EnvironmentVariableProvider
-      client={props.client}
-      runtimeKey={props.runtimeKey}
-      onApplyChanges={props.onApplyChanges}
-    >
-      <AuthorizationCenterContent {...props} />
-    </EnvironmentVariableProvider>
-  );
+  return <AuthorizationCenterContent {...props} />;
 }
 
 function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
   const canEdit = props.client !== null && !props.isRemoteWorkspace;
   const queryClient = useQueryClient();
-  const markChangesPending = useEnvironmentVariableMarkChangesPending();
-  const isPendingChanges = useIsEnvironmentVariableChangesPending();
-  const { applyAsync, isApplying, error: applyError } = useEnvironmentVariableApplyChanges();
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [applyOpen, setApplyOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, iPolloWorkAuthorizationServiceTestResult>>({});
+  const [heygenLoginExpiresAt, setHeygenLoginExpiresAt] = useState(0);
 
   const servicesQuery = useQuery({
     queryKey: authorizationQueryKey(props.runtimeKey),
@@ -172,12 +170,50 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
       return props.client.listAuthorizationServices();
     },
     enabled: canEdit,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: () => heygenLoginExpiresAt > Date.now() ? 2000 : false,
+  });
+
+  useEffect(() => {
+    if (servicesQuery.data?.items.some(service => service.id === "heygen-video" && service.subscription?.connected)) setHeygenLoginExpiresAt(0);
+  }, [servicesQuery.data]);
+
+  useEffect(() => {
+    if (!heygenLoginExpiresAt) return;
+    const timer = setTimeout(() => setHeygenLoginExpiresAt(0), Math.max(0, heygenLoginExpiresAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [heygenLoginExpiresAt]);
+
+  const heygenMutation = useMutation({
+    mutationFn: async (action: "connect" | "disconnect" | "use-subscription" | "use-api-key") => {
+      if (!props.client) throw new Error(t("app.unknown_error"));
+      const result = await props.client.updateHeygenSubscription(action);
+      if (result.authorizationUrl) {
+        const url = new URL(result.authorizationUrl);
+        if (url.protocol !== "https:" || !["api2.heygen.com", "app.heygen.com"].includes(url.hostname)) throw new Error(t("app.unknown_error"));
+        await openDesktopUrl(result.authorizationUrl);
+        setHeygenLoginExpiresAt(result.expiresAt ?? 0);
+      } else setHeygenLoginExpiresAt(0);
+    },
+    onSuccess: async () => {
+      setTestResults(current => ({ ...current, "heygen-video": { ok: true, detail: t("settings.authorization.heygen.updated") } }));
+      await queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
+    },
+    onError: async error => {
+      setTestResults(current => ({ ...current, "heygen-video": { ok: false, detail: error.message } }));
+      await queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
+    },
   });
 
   useEffect(() => {
     if (!canEdit) setEditor(null);
   }, [canEdit]);
+
+  useEffect(() => {
+    if (!props.providerAuthOpen && canEdit) {
+      void queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
+    }
+  }, [props.providerAuthOpen, props.runtimeKey, canEdit, queryClient]);
 
   const saveMutation = useMutation({
     mutationFn: async (draft: EditorState) => {
@@ -188,20 +224,16 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
       if (missing) {
         throw new Error(t("settings.authorization.validation_required", { field: missing.label }));
       }
-      const entries = fields
-        .map((field) => ({ key: field.key, value: draft.values[field.key]?.trim() ?? "" }))
-        .filter((entry) => entry.value.length > 0);
-      if (entries.length === 0) return;
-      await props.client.upsertUserEnv(entries);
+      const values = Object.fromEntries(fields
+        .map((field) => [field.key, draft.values[field.key]?.trim() ?? ""] as const)
+        .filter(([, value]) => value.length > 0));
+      if (Object.keys(values).length === 0) return;
+      await props.client.saveAuthorizationService(draft.service.id, values);
     },
     onSuccess: async () => {
-      markChangesPending();
       setEditor(null);
       toast.success(t("settings.authorization.saved"));
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) }),
-        queryClient.invalidateQueries({ queryKey: environmentUserEnvQueryKey(props.runtimeKey) }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
     },
   });
 
@@ -253,45 +285,6 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
         ) : null}
         {servicesQuery.error ? <SettingsNotice tone="error">{servicesQuery.error.message}</SettingsNotice> : null}
 
-        {isPendingChanges && !props.isRemoteWorkspace ? (
-          <>
-            <Alert variant="warning">
-              <RefreshCw />
-              <AlertTitle>{t("settings.authorization.apply_pending_title")}</AlertTitle>
-              <AlertDescription>{t("settings.authorization.apply_pending_body")}</AlertDescription>
-              {props.applyBlocked ? <AlertDescription>{props.applyBlockedReason}</AlertDescription> : null}
-              {applyError ? <AlertDescription>{applyError.message}</AlertDescription> : null}
-              {props.onApplyChanges ? (
-                <AlertAction>
-                  <Button
-                    size="sm"
-                    disabled={isApplying || props.applyBlocked}
-                    onClick={() => setApplyOpen(true)}
-                    title={props.applyBlockedReason ?? undefined}
-                  >
-                    <Spinner spinning={isApplying} />
-                    {isApplying ? t("settings.authorization.applying") : t("settings.authorization.apply")}
-                  </Button>
-                </AlertAction>
-              ) : null}
-            </Alert>
-            <ConfirmModal
-              open={applyOpen}
-              title={t("settings.authorization.apply_title")}
-              message={t("settings.authorization.apply_confirm")}
-              confirmLabel={isApplying ? t("settings.authorization.applying") : t("settings.authorization.apply")}
-              cancelLabel={t("settings.authorization.cancel")}
-              variant="warning"
-              onConfirm={() => {
-                void applyAsync(undefined, { onSuccess: () => setApplyOpen(false) });
-              }}
-              onCancel={() => {
-                if (!isApplying) setApplyOpen(false);
-              }}
-            />
-          </>
-        ) : null}
-
         {servicesQuery.isLoading ? (
           <div className="flex min-h-40 items-center justify-center rounded-2xl border border-dls-border bg-dls-hover/40">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -307,6 +300,10 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
                 testing={testMutation.isPending && testMutation.variables === service.id}
                 onConfigure={() => openEditor(service)}
                 onTest={() => testMutation.mutate(service.id)}
+                onOpenBrowserLogin={service.id === "openai-images" ? props.onOpenOpenAiLogin : undefined}
+                onHeygenAction={service.id === "heygen-video" ? action => heygenMutation.mutate(action) : undefined}
+                heygenBusy={heygenMutation.isPending}
+                heygenWaiting={heygenLoginExpiresAt > Date.now()}
               />
             ))}
           </div>
@@ -334,9 +331,15 @@ function AuthorizationServiceCard(props: {
   testResult?: iPolloWorkAuthorizationServiceTestResult;
   onConfigure: () => void;
   onTest: () => void;
+  onOpenBrowserLogin?: () => void;
+  onHeygenAction?: (action: "connect" | "disconnect" | "use-subscription" | "use-api-key") => void;
+  heygenBusy?: boolean;
+  heygenWaiting?: boolean;
 }) {
   const presentation = SERVICES[props.service.id];
   const Icon = presentation.icon;
+  const subscription = props.service.subscription;
+  const ready = subscription?.mode === "subscription" ? subscription.connected : props.service.configured || props.service.browserLogin?.connected;
   const requiredFields = presentation.fields.filter((field) => field.required !== false).length;
   const configuredFields = props.service.fields.filter((field) =>
     field.configured && presentation.fields.find((presentationField) => presentationField.key === field.key)?.required !== false,
@@ -350,8 +353,8 @@ function AuthorizationServiceCard(props: {
             <Icon className="size-4" />
           </span>
           <SettingsStatusBadge
-            tone={props.service.configured ? "ready" : "neutral"}
-            label={props.service.configured ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
+            tone={ready ? "ready" : "neutral"}
+            label={ready ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
             className="min-h-7 px-0 text-[11px]"
           />
         </div>
@@ -363,7 +366,39 @@ function AuthorizationServiceCard(props: {
         </div>
       </CardHeader>
       <CardContent className="flex-1">
+        {props.onHeygenAction ? (
+          <div className="mb-3 space-y-3">
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("settings.authorization.heygen.billing")}>
+              <Button size="sm" variant={subscription?.mode === "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-subscription")} aria-pressed={subscription?.mode === "subscription"}>{t("settings.authorization.heygen.subscription")}</Button>
+              <Button size="sm" variant={subscription?.mode !== "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-api-key")} aria-pressed={subscription?.mode !== "subscription"}>{t("settings.authorization.heygen.api")}</Button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SettingsStatusBadge tone={subscription?.connected ? "ready" : "neutral"} label={t(subscription?.connected ? "settings.authorization.heygen.connected" : "settings.authorization.heygen.disconnected")} />
+              <Button variant="outline" size="sm" disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.(subscription?.connected ? "disconnect" : "connect")}>
+                {props.heygenBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Globe className="size-3.5" />}
+                {t(subscription?.connected ? "settings.authorization.heygen.disconnect" : "settings.authorization.heygen.connect")}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">{t(props.heygenWaiting ? "settings.authorization.heygen.waiting" : "settings.authorization.heygen.hint")}</p>
+          </div>
+        ) : null}
+        {props.onOpenBrowserLogin ? (
+          <div className="mb-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SettingsStatusBadge
+                tone={props.service.browserLogin?.connected ? "ready" : "neutral"}
+                label={t(props.service.browserLogin?.connected ? "settings.authorization.browser_connected" : "settings.authorization.browser_disconnected")}
+              />
+              <Button variant="outline" size="sm" onClick={props.onOpenBrowserLogin} disabled={!props.canEdit}>
+                <Globe className="size-3.5" />
+                {t("settings.authorization.browser_login")}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">{t("settings.authorization.browser_hint")}</p>
+          </div>
+        ) : null}
         <p className="text-xs text-muted-foreground">
+          {props.onOpenBrowserLogin || props.onHeygenAction ? "API Key · " : null}
           {t("settings.authorization.fields_configured", {
             configured: configuredFields,
             total: requiredFields,
@@ -379,16 +414,16 @@ function AuthorizationServiceCard(props: {
       <CardFooter className="justify-between gap-2 border-t border-border">
         <Button variant="ghost" size="sm" onClick={props.onConfigure} disabled={!props.canEdit}>
           <KeyRound className="size-3.5" />
-          {props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
+          {props.onOpenBrowserLogin || props.onHeygenAction ? t("settings.authorization.api_key") : props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={props.onTest}
-          disabled={!props.canEdit || !props.service.configured || props.testing}
+          disabled={!props.canEdit || !ready || props.testing}
         >
           {props.testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
-          {props.testing ? t("settings.authorization.testing") : t("settings.authorization.test")}
+          {props.testing ? t("settings.authorization.testing") : props.onOpenBrowserLogin ? t("settings.authorization.test_api") : t("settings.authorization.test")}
         </Button>
       </CardFooter>
     </Card>

@@ -1,0 +1,117 @@
+import { execFile } from "node:child_process";
+import { mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { extname, join } from "node:path";
+import { promisify } from "node:util";
+import { env, pipeline, RawImage } from "@huggingface/transformers";
+import { z } from "zod";
+import { VIDEO_ENHANCEMENT_GESTURE_FPS, VIDEO_ENHANCEMENT_MAX_SECONDS, videoEnhancementLayoutSchema, videoEnhancementResultSchema, type VideoEnhancementRect, type VideoEnhancementMask, type VideoEnhancementResult } from "@ipollowork/types/video-enhancement";
+import { buildEnhancementCues, enhancementTranscriptSegments, enhancementTranscriptWords, enhancementTranscriptNeedsRecovery, mergeEnhancementTranscriptWords, enhancementScaleFilter, placeEnhancementCues } from "./video-enhancement-layout.js";
+import type { HandSample, createEnhancementHandDetector } from "./video-enhancement-gestures.js";
+import type { createEnhancementSegmenter } from "./video-enhancement-segmentation.js";
+import models from "./video-enhancement-models.json" with { type: "json" };
+
+// This child owns CPU models and media decoding. The only network-capable
+// primitive used by Transformers is disabled before any model is constructed.
+env.allowRemoteModels = false;
+env.allowLocalModels = true;
+env.useBrowserCache = false;
+env.useFSCache = false;
+globalThis.fetch = Object.assign(async () => { throw new Error("视频智能增强禁止联网。"); }, { preconnect: () => {} });
+const execute = promisify(execFile);
+const args = z.tuple([z.string(), z.string(), z.string(), z.enum(["zh", "en", "auto"]), z.enum(["gestures", "speech"]), z.enum(["contour", "boxes"])]).parse(process.argv.slice(2));
+const [input, directory, modelRoot, language, mode, protection] = args;
+env.localModelPath = modelRoot;
+const progress = (value: number, message: string) => process.stdout.write(JSON.stringify({ progress: value, message }) + "\n");
+const ffmpeg = process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg";
+const ffprobe = process.env.HYPERFRAMES_FFPROBE_PATH || "ffprobe";
+// Temporary frames/PCM must not enter the Studio watcher, file tree or project signature.
+const cache = join(directory, ".cache");
+try {
+  await mkdir(cache, { recursive: true });
+  const began = performance.now();
+  progress(3, "准备原视频与本地音频");
+  await execute(ffmpeg, ["-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe", "-f", extname(input).toLowerCase() === ".webm" ? "matroska" : "mov", "-i", input, "-map", "0:v:0", "-map", "0:a:0",
+    "-t", String(VIDEO_ENHANCEMENT_MAX_SECONDS), "-vf", enhancementScaleFilter(1280), "-c:v", "libx264", "-preset", "fast", "-force_key_frames", "expr:gte(t,n_forced*1)", "-crf", "20", "-threads", "2", "-c:a", "aac", "-movflags", "+faststart", join(directory, "original.mp4")], { windowsHide: true, timeout: 180_000 });
+  const { stdout } = await execute(ffprobe, ["-v", "error", "-show_entries", "stream=width,height:format=duration", "-of", "json", join(directory, "original.mp4")], { windowsHide: true, timeout: 15_000 });
+  const info = z.object({ streams: z.array(z.object({ width: z.number().optional(), height: z.number().optional() })), format: z.object({ duration: z.coerce.number() }) }).parse(JSON.parse(stdout));
+  const video = info.streams.find(stream => stream.width && stream.height);
+  if (!video?.width || !video.height) throw new Error("视频尺寸不可用。");
+  // AAC padding may extend the container slightly beyond the input limit.
+  const duration = Math.min(info.format.duration, VIDEO_ENHANCEMENT_MAX_SECONDS);
+  // Transcribe source audio directly, avoiding the AAC generation loss in the preview copy.
+  await execute(ffmpeg, ["-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe", "-i", input, "-t", String(duration), "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-af", "highpass=f=60,alimiter=level_in=2:level_out=1:level=false", "-f", "f32le", join(cache, "audio.f32")], { windowsHide: true, timeout: 60_000 });
+  progress(12, "加载本地 Whisper 语音模型");
+  const speechBegan = performance.now();
+  const speechModel = models.find(model => model.capability === "speech");
+  if (!speechModel) throw new Error("未配置本地语音模型。");
+  const transcriber = await pipeline("automatic-speech-recognition", speechModel.id, { device: "cpu", dtype: "q8", local_files_only: true, session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 } });
+  const bytes = await readFile(join(cache, "audio.f32"));
+  const audio = new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const transcriptSchema = z.object({ chunks: z.array(z.object({ text: z.string(), timestamp: z.tuple([z.number().nullable(), z.number().nullable()]) })) });
+  const speechOptions = { task: "transcribe", ...(language === "auto" ? {} : { language: language === "zh" ? "chinese" : "english" }) };
+  let words: NonNullable<VideoEnhancementResult["words"]>;
+  let recoveredSpeech = false;
+  try {
+    const parsed = transcriptSchema.parse(await transcriber(audio, { ...speechOptions, return_timestamps: "word", chunk_length_s: 20, stride_length_s: 4 }));
+    words = enhancementTranscriptWords(parsed.chunks, duration);
+    if (enhancementTranscriptNeedsRecovery(parsed.chunks, duration)) {
+      progress(35, "语音时间戳异常，使用短分段恢复遗漏的讲话");
+      const recovered = transcriptSchema.parse(await transcriber(audio, { ...speechOptions, return_timestamps: "word", chunk_length_s: 10, stride_length_s: 2 }));
+      words = mergeEnhancementTranscriptWords(words, enhancementTranscriptWords(recovered.chunks, duration));
+      recoveredSpeech = true;
+    }
+  } finally { await transcriber.dispose(); }
+  const speechMs = Math.round(performance.now() - speechBegan);
+  const segments = enhancementTranscriptSegments(words.map(word => ({ text: word.text, timestamp: [word.start, word.end] })), duration);
+  if (!segments.length) throw new Error("没有识别到带时间的有效讲话，请检查原音频或更换语言。");
+  progress(48, "分析人物与手势区域");
+  const visionBegan = performance.now();
+  const fps = mode === "gestures" ? VIDEO_ENHANCEMENT_GESTURE_FPS : protection === "contour" ? 4 : 2;
+  await execute(ffmpeg, ["-nostdin", "-v", "error", "-i", join(directory, "original.mp4"), "-vf", `fps=${fps},${enhancementScaleFilter(768)}`, "-threads", "1", join(cache, "frame-%04d.jpg")], { windowsHide: true, timeout: 60_000 });
+  const detector = await pipeline("object-detection", "Xenova/yolos-tiny", { device: "cpu", dtype: "q8", local_files_only: true, session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 } });
+  const frames = (await readdir(cache)).filter(file => /^frame-\d{4}\.jpg$/.test(file)).sort();
+  const people = [];
+  const handSamples: HandSample[] = [];
+  const masks: VideoEnhancementMask[] = [];
+  const handModule = mode === "gestures" ? await import("./video-enhancement-gestures.js") : null;
+  let handDetector: Awaited<ReturnType<typeof createEnhancementHandDetector>> | undefined;
+  let segmenter: Awaited<ReturnType<typeof createEnhancementSegmenter>> | undefined;
+  try {
+    handDetector = handModule ? await handModule.createEnhancementHandDetector(modelRoot) : undefined;
+    if (protection === "contour") segmenter = await (await import("./video-enhancement-segmentation.js")).createEnhancementSegmenter(modelRoot);
+    let boxes: VideoEnhancementRect[] = [];
+    for (let index = 0; index < frames.length; index++) {
+      const file = join(cache, frames[index]!);
+      if (index % (fps / 2) === 0) {
+        const image = await RawImage.read(file);
+        const detections = await detector(image, { threshold: .35, percentage: true });
+        const items = z.array(z.object({ label: z.string(), box: z.object({ xmin: z.number(), ymin: z.number(), xmax: z.number(), ymax: z.number() }) })).parse(detections);
+        boxes = items.filter(item => item.label === "person").slice(0, 20).flatMap(({ box }) => {
+          const x = Math.max(0, box.xmin), y = Math.max(0, box.ymin), right = Math.min(1, box.xmax), bottom = Math.min(1, box.ymax);
+          return right > x && bottom > y ? [{ x, y, width: right - x, height: bottom - y }] : [];
+        });
+        people.push({ time: index / fps, boxes });
+      }
+      if (segmenter && index % (fps / 4) === 0) masks.push({ time: index / fps, data: await segmenter.segment(file, boxes) });
+      if (handDetector) handSamples.push({ time: index / fps, hands: await handDetector.detect(file) });
+      progress(48 + Math.round((index + 1) / frames.length * 45), `分析人物${segmenter ? "轮廓" : ""}${handDetector ? "与手势" : ""} ${index + 1}/${frames.length}`);
+    }
+  } finally { try { await detector.dispose(); } finally { try { await handDetector?.dispose(); } finally { await segmenter?.dispose(); } } }
+  const gestures = handModule ? handModule.buildEnhancementGestures(handSamples, duration) : [];
+  const hands = handSamples.map(sample => ({ time: sample.time, boxes: sample.hands.map(hand => hand.box) }));
+  const timings = { totalMs: Math.round(performance.now() - began), speechMs, visionMs: Math.round(performance.now() - visionBegan) };
+  const base = { duration, width: video.width, height: video.height, segments, words, people, hands, gestures, masks, timings, layout: videoEnhancementLayoutSchema.parse({}) };
+  const cues = placeEnhancementCues(buildEnhancementCues(segments, base.duration, words), base);
+  const warnings = ["依据展示词语匹配手势：指向锁定、托举跟随、引导展开。背景叠加对应原视频位置，画中画与分栏对应内容区域。请预览校对。"];
+  if (recoveredSpeech) warnings.push("语音出现异常时间戳，已用短分段恢复并去除重复或越界词语；转写内容仍需结合原声校对。");
+  if (cues.some(cue => cue.kind === "chart" && !cue.chart?.length)) warnings.push("部分数据图未提供明确数据，暂显示占位图，请在生成内容中补充。 ");
+  if (masks.some(mask => !mask.data)) warnings.push("部分画面分割不可靠，相关展示时段已保留人物框保护。");
+  if (people.some(sample => !sample.boxes.length)) warnings.push("部分画面未可靠识别人物，已按保守保护区域处理。");
+  if (mode === "gestures" && !gestures.length) warnings.push("未识别到稳定指向或张掌手势，已依据音频和安全空白位置生成建议。");
+  const result = videoEnhancementResultSchema.parse({ ...base, cues, warnings });
+  process.stdout.write(JSON.stringify({ result }) + "\n");
+} catch (error) {
+  // Preserve the bounded local cause; the server keeps it in the task folder.
+  process.stderr.write((error instanceof Error ? error.message : String(error)).slice(-8192) + "\n");
+  process.exitCode = 1;
+} finally { await rm(cache, { recursive: true, force: true }).catch(() => undefined); }

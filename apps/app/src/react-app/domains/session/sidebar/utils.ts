@@ -1,12 +1,21 @@
 import type { WorkspaceInfo } from "../../../../app/lib/desktop";
-import type { WorkspaceSessionGroup } from "../../../../app/types";
+import type { ProjectSessionList } from "../../../../app/types";
 import { isSandboxWorkspace } from "../../../../app/utils";
 import { t } from "../../../../i18n";
+import type { SidebarLayoutSnapshot } from "./sidebar-layout-store";
+import { sessionLayoutKey } from "./sidebar-layout-store";
 
 export const MAX_SESSIONS_PREVIEW = 6;
 
-export type SessionListItem = WorkspaceSessionGroup["sessions"][number];
-export type FlattenedSessionRow = { session: SessionListItem; depth: number };
+export type SessionListItem = ProjectSessionList["sessions"][number];
+export type SidebarDisplaySession = SessionListItem & {
+  sourceWorkspaceId: string;
+  sidebarWorkspaceId: string;
+};
+export type SidebarDisplayProject = Omit<ProjectSessionList, "sessions"> & {
+  sessions: SidebarDisplaySession[];
+};
+export type FlattenedSessionRow = { session: SidebarDisplaySession | SessionListItem; depth: number };
 export type SessionTreeState = {
   childrenByParent: Map<string, SessionListItem[]>;
   ancestorIdsBySessionId: Map<string, string[]>;
@@ -15,8 +24,95 @@ export type SessionTreeState = {
   streamingIds: Set<string>;
 };
 
+export const visibleProjectSessionLists = (projects: ProjectSessionList[]) =>
+  projects.filter((project) => !project.workspace.isDefault || project.sessions.length > 0);
+
+function orderByPersistedIds<T>(items: T[], persistedIds: string[], getId: (item: T) => string): T[] {
+  const byId = new Map(items.map((item) => [getId(item), item]));
+  const ordered: T[] = [];
+  const used = new Set<string>();
+  for (const id of persistedIds) {
+    const item = byId.get(id);
+    if (!item || used.has(id)) continue;
+    ordered.push(item);
+    used.add(id);
+  }
+  for (const item of items) {
+    const id = getId(item);
+    if (used.has(id)) continue;
+    ordered.push(item);
+    used.add(id);
+  }
+  return ordered;
+}
+
+/**
+ * Build the sidebar-only view. Session placement changes are presentation
+ * metadata: sourceWorkspaceId remains the owner used for all engine actions.
+ */
+export function buildSidebarLayoutView(
+  projects: ProjectSessionList[],
+  layout: SidebarLayoutSnapshot,
+  contextId = "personal",
+): SidebarDisplayProject[] {
+  const visible = visibleProjectSessionLists(projects);
+  const projectIds = new Set(visible.map((project) => project.workspace.id));
+  const sessionsByProject = new Map<string, SidebarDisplaySession[]>();
+
+  for (const project of visible) {
+    for (const session of project.sessions) {
+      if (isSessionArchived(session)) continue;
+      const key = sessionLayoutKey(project.workspace.id, session.id);
+      const targetProjectId = layout.sessionProjectByKey[key];
+      const target = targetProjectId && projectIds.has(targetProjectId)
+        ? targetProjectId
+        : project.workspace.id;
+      const entries = sessionsByProject.get(target) ?? [];
+      entries.push({
+        ...session,
+        sourceWorkspaceId: project.workspace.id,
+        sidebarWorkspaceId: target,
+      });
+      sessionsByProject.set(target, entries);
+    }
+  }
+
+  const orderedProjects = orderByPersistedIds(
+    visible,
+    layout.projectOrderByContext[contextId] ?? [],
+    (project) => project.workspace.id,
+  );
+  return orderedProjects.map((project) => {
+    const sessions = orderByPersistedIds(
+      sessionsByProject.get(project.workspace.id) ?? [],
+      layout.sessionOrderByProject[project.workspace.id] ?? [],
+      (session) => sessionLayoutKey(session.sourceWorkspaceId, session.id),
+    );
+    return { ...project, sessions };
+  });
+}
+
 export const isSessionArchived = (session: SessionListItem): boolean =>
   typeof session.time?.archived === "number" && session.time.archived > 0;
+
+/**
+ * Collect archived sessions into one sidebar-only list. Archived sessions keep
+ * their source workspace so engine actions still target the owning project.
+ */
+export function buildSidebarArchivedSessions(projects: ProjectSessionList[]): SidebarDisplaySession[] {
+  const archived: SidebarDisplaySession[] = [];
+  for (const project of visibleProjectSessionLists(projects)) {
+    for (const session of project.sessions) {
+      if (!isSessionArchived(session)) continue;
+      archived.push({
+        ...session,
+        sourceWorkspaceId: project.workspace.id,
+        sidebarWorkspaceId: project.workspace.id,
+      });
+    }
+  }
+  return archived;
+}
 
 export const isStreamingSessionStatus = (status: string | undefined) =>
   status === "running" ||
@@ -25,14 +121,14 @@ export const isStreamingSessionStatus = (status: string | undefined) =>
   status === "streaming" ||
   status === "thinking" ||
   status === "responding" ||
-  status === "waiting";
+  status === "compacting";
 
 const normalizeSessionParentID = (session: SessionListItem) => {
   const parentID = session.parentID?.trim();
   return parentID || "";
 };
 
-export const getRootSessions = (sessions: WorkspaceSessionGroup["sessions"]) => {
+export const getRootSessions = (sessions: ProjectSessionList["sessions"]) => {
   const byID = new Set(sessions.map((session) => session.id));
   return sessions.filter((session) => {
     const parentID = normalizeSessionParentID(session);
@@ -41,7 +137,7 @@ export const getRootSessions = (sessions: WorkspaceSessionGroup["sessions"]) => 
 };
 
 /** Split sessions into active vs. archived. Archived sessions live in their own section. */
-export const partitionArchivedSessions = (sessions: WorkspaceSessionGroup["sessions"]) => {
+export const partitionArchivedSessions = (sessions: ProjectSessionList["sessions"]) => {
   const active: SessionListItem[] = [];
   const archived: SessionListItem[] = [];
   for (const session of sessions) {
@@ -81,7 +177,7 @@ export const orderRootSessions = (
 };
 
 export const buildSessionTreeState = (
-  sessions: WorkspaceSessionGroup["sessions"],
+  sessions: ProjectSessionList["sessions"],
   sessionStatusById: Record<string, string> | undefined,
 ): SessionTreeState => {
   const childrenByParent = new Map<string, SessionListItem[]>();
@@ -137,7 +233,7 @@ export const buildSessionTreeState = (
 };
 
 export const flattenSessionRows = (
-  sessions: WorkspaceSessionGroup["sessions"],
+  sessions: ProjectSessionList["sessions"],
   rootLimit: number,
   tree: SessionTreeState,
   expandedSessionIds: Set<string>,

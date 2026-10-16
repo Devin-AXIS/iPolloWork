@@ -1,7 +1,9 @@
+import type { TimelinePresentationRow } from "./timelineLayout";
 import { useRef, useState, useCallback, useMemo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import {
   applyTimelineAutoScrollStep,
+  resolveTimelineStretchedPlaybackRate,
   resolveTimelineAutoScrollLoopAction,
   resolveTimelineDragEscape,
 } from "./timelineEditing";
@@ -47,7 +49,10 @@ interface UseTimelineClipDragInput {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   ppsRef: React.RefObject<number>;
   durationRef: React.RefObject<number>;
+  timeOffsetRef?: React.RefObject<number>;
   trackOrderRef: React.RefObject<number[]>;
+  presentationRowsRef?: React.RefObject<TimelinePresentationRow[]>;
+  displayElementsRef?: React.RefObject<TimelineElement[]>;
   onMoveElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
@@ -60,7 +65,9 @@ interface UseTimelineClipDragInput {
   ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+    updates: Pick<TimelineElement, "start" | "duration" | "playbackStart"> & {
+      resizeMode?: "trim" | "stretch";
+    },
   ) => Promise<void> | void;
   onResizeElements?: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
@@ -88,7 +95,10 @@ export function useTimelineClipDrag({
   scrollRef,
   ppsRef,
   durationRef,
+  timeOffsetRef,
   trackOrderRef,
+  presentationRowsRef,
+  displayElementsRef,
   onMoveElement,
   onMoveElements,
   onResizeElement,
@@ -139,7 +149,7 @@ export function useTimelineClipDrag({
     enabled: timelineSnapEnabled,
   };
   const elementsRef = useRef(elements);
-  elementsRef.current = elements;
+  elementsRef.current = displayElementsRef?.current ?? elements;
 
   // Perf (frozen-per-gesture): the snap-target set and the audio-track set are
   // fixed for the duration of one drag/resize (the store is not re-authored mid
@@ -290,14 +300,16 @@ export function useTimelineClipDrag({
       return computeDragPreview(drag, clientX, clientY, {
         scroll: scrollRef.current,
         pps: ppsRef.current,
-        duration: durationRef.current,
+        duration: durationRef.current + (timeOffsetRef?.current ?? 0),
+        timeOffset: timeOffsetRef?.current ?? 0,
         trackOrder: trackOrderRef.current,
+        presentationRows: presentationRowsRef?.current,
         elements: elementsRef.current,
         buildSnapTargets,
         audioTracks: dragAudioTracksRef.current,
       });
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef, buildSnapTargets],
+    [scrollRef, ppsRef, durationRef, trackOrderRef, presentationRowsRef, buildSnapTargets],
   );
 
   // Recompute the trim preview for a pointer x. Shared by the pointermove resize
@@ -309,6 +321,7 @@ export function useTimelineClipDrag({
         scroll: scrollRef.current,
         pps: ppsRef.current,
         buildSnapTargets,
+        timeOffset: timeOffsetRef?.current ?? 0,
       });
       const setResizeState = (value: ResizePreviewResult) => {
         const current = resizingClipRef.current;
@@ -335,6 +348,8 @@ export function useTimelineClipDrag({
           ? {
               grabbedKey,
               edge: resize.edge,
+              resizeMode: resize.resizeMode,
+              minStart: timeOffsetRef?.current ?? 0,
               members,
               changes: [],
               hasChanged: false,
@@ -453,10 +468,7 @@ export function useTimelineClipDrag({
       clientY: number,
       blocked: BlockedClipState,
     ) => {
-      const distance = Math.hypot(
-        clientX - blocked.originClientX,
-        clientY - blocked.originClientY,
-      );
+      const distance = Math.hypot(clientX - blocked.originClientX, clientY - blocked.originClientY);
       const threshold = blocked.intent === "move" ? 4 : 2;
       if (!blocked.started && distance < threshold) return;
       if (!blocked.started) {
@@ -469,11 +481,7 @@ export function useTimelineClipDrag({
       }
     };
 
-    const handleDragPointerMove = (
-      clientX: number,
-      clientY: number,
-      drag: DraggedClipState,
-    ) => {
+    const handleDragPointerMove = (clientX: number, clientY: number, drag: DraggedClipState) => {
       const distance = Math.hypot(clientX - drag.originClientX, clientY - drag.originClientY);
       if (!drag.started && distance < 4) return;
 
@@ -548,6 +556,17 @@ export function useTimelineClipDrag({
         start: resize.previewStart,
         duration: resize.previewDuration,
         playbackStart: resize.previewPlaybackStart,
+        ...(resize.resizeMode === "stretch" &&
+        (resize.element.compositionSrc ||
+          ["video", "audio"].includes(resize.element.tag.toLowerCase()))
+          ? {
+              playbackRate: resolveTimelineStretchedPlaybackRate(
+                resize.element.playbackRate,
+                resize.element.duration,
+                resize.previewDuration,
+              ),
+            }
+          : {}),
       });
 
       Promise.resolve(
@@ -555,6 +574,7 @@ export function useTimelineClipDrag({
           start: resize.previewStart,
           duration: resize.previewDuration,
           playbackStart: resize.previewPlaybackStart,
+          resizeMode: resize.resizeMode,
         }),
       ).catch((error) => {
         rollbackLatestTimelineOptimisticGesture(updateElement, revision, [
@@ -564,6 +584,7 @@ export function useTimelineClipDrag({
               start: resize.element.start,
               duration: resize.element.duration,
               playbackStart: resize.element.playbackStart,
+              playbackRate: resize.element.playbackRate,
             },
           },
         ]);

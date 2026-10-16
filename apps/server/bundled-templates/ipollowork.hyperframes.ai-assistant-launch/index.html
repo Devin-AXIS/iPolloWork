@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="zh-CN" data-ipw-template="ai-assistant-launch" data-composition-variables='[{"id":"productName","type":"string","label":"产品名称","default":"Nova"},{"id":"kicker","type":"string","label":"开场引语","default":"认识一下"},{"id":"tagline","type":"string","label":"核心主张","default":"说出目标，剩下的交给它"},{"id":"subline","type":"string","label":"主张补充","default":"一个能理解、规划并执行任务的 AI 助手"},{"id":"labelChat","type":"string","label":"对话场景标题","default":"一句话\n开始工作"},{"id":"promptText","type":"string","label":"示例指令","default":"帮我整理本周的客户反馈，并生成改进计划"},{"id":"attachA","type":"string","label":"附件一","default":"反馈汇总.xlsx"},{"id":"attachB","type":"string","label":"附件二","default":"访谈记录.pdf"},{"id":"attachC","type":"string","label":"附件三","default":"产品截图.png"},{"id":"labelPlan","type":"string","label":"执行场景标题","default":"自动规划\n逐步执行"},{"id":"taskTitle","type":"string","label":"任务名称","default":"客户反馈改进计划"},{"id":"stepA","type":"string","label":"执行步骤一","default":"读取并理解全部反馈与附件"},{"id":"stepB","type":"string","label":"执行步骤二","default":"按主题聚类，标注优先级"},{"id":"stepC","type":"string","label":"执行步骤三","default":"生成改进方案与负责人"},{"id":"stepD","type":"string","label":"执行步骤四","default":"导出报告并同步给团队"},{"id":"featureA","type":"string","label":"能力一","default":"理解上下文"},{"id":"featureADesc","type":"string","label":"能力一说明","default":"读懂文件、对话与历史，不必反复解释"},{"id":"featureB","type":"string","label":"能力二","default":"连接你的工具"},{"id":"featureBDesc","type":"string","label":"能力二说明","default":"文档、表格、日历与协作软件随手调用"},{"id":"featureC","type":"string","label":"能力三","default":"可控且可追溯"},{"id":"featureCDesc","type":"string","label":"能力三说明","default":"每一步都可查看、确认与撤回"},{"id":"useCaseA","type":"string","label":"场景一","default":"产品经理"},{"id":"useCaseADesc","type":"string","label":"场景一说明","default":"从洞察到方案：需求文档、流程与原型"},{"id":"useCaseB","type":"string","label":"场景二","default":"数据分析"},{"id":"useCaseBDesc","type":"string","label":"场景二说明","default":"从数据到结论：清洗、可视化与报告"},{"id":"useCaseC","type":"string","label":"场景三","default":"设计创意"},{"id":"useCaseCDesc","type":"string","label":"场景三说明","default":"保持品牌一致：规范、素材与界面"},{"id":"useCaseD","type":"string","label":"场景四","default":"市场营销"},{"id":"useCaseDDesc","type":"string","label":"场景四说明","default":"从创意到落地：活动策划与执行清单"},{"id":"montageLine","type":"string","label":"能力汇总语","default":"从想法到交付，一个助手就够"},{"id":"availability","type":"string","label":"上线提示","default":"现已上线"},{"id":"platforms","type":"string","label":"可用平台","default":"Web · macOS · Windows · iOS"},{"id":"cta","type":"string","label":"行动号召","default":"立即免费体验"},{"id":"url","type":"string","label":"官网地址","default":"nova.example.com"},{"id":"brandName","type":"string","label":"品牌名称","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"品牌标识","default":"assets/ipollowork-logo.svg?v=20260729"},{"id":"primaryColor","type":"color","label":"主强调色","default":"#3ecf8e"},{"id":"secondaryColor","type":"color","label":"辅助强调色","default":"#8b7cf6"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>AI 助手发布宣传片</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --primaryColor: #3ecf8e;
+        --secondaryColor: #8b7cf6;
+        --k-dark: var(--ipw-color-bg, #070708);
+        --k-light: var(--ipw-color-surface, #f3f3f5);
+        --k-ink: var(--ipw-color-text, #0d0d10);
+        --k-mute: var(--ipw-color-muted, #73737c);
+        --k-line: var(--ipw-color-border, #e3e3e8);
+        --k-card: var(--ipw-card-bg, #ffffff);
+        --k-radius: var(--ipw-card-radius, 28px);
+        --k-display: var(--ipw-font-display, "Inter", "SF Pro Display", -apple-system, "PingFang SC", "Noto Sans SC", sans-serif);
+        --k-body: var(--ipw-font-body, "Inter", "SF Pro Text", -apple-system, "PingFang SC", "Noto Sans SC", sans-serif);
+        --k-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--k-dark); font-family: var(--k-body); -webkit-font-smoothing: antialiased; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--k-dark); }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .fill { position: absolute; inset: 0; }
+      .dark { background: var(--k-dark); color: #fff; }
+      .light { background: var(--k-light); color: var(--k-ink); }
+      .mono { font-family: var(--k-mono); letter-spacing: .16em; text-transform: uppercase; }
+
+      /* 01 intro */
+      .spot { position: absolute; left: 50%; top: 50%; width: 1500px; height: 900px; margin: -450px 0 0 -750px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--primaryColor) 32%, #ffffff 10%), color-mix(in srgb, var(--primaryColor) 10%, transparent) 55%, transparent 100%); filter: blur(30px); }
+      .guide { position: absolute; background: rgba(255,255,255,.07); }
+      .guide.v { top: 0; bottom: 0; width: 1px; }
+      .guide.h { left: 0; right: 0; height: 1px; }
+      .intro-stack { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+      .intro-inner { display: grid; justify-items: center; gap: 18px; }
+      .intro-kicker { color: rgba(255,255,255,.62); font: 500 34px/1.2 var(--k-display); letter-spacing: .08em; }
+      .intro-name { font: 800 236px/1 var(--k-display); letter-spacing: -.045em; padding: 0 .06em .08em; background: linear-gradient(100deg, var(--primaryColor) 0%, color-mix(in srgb, var(--primaryColor) 40%, #ffffff) 42%, var(--secondaryColor) 78%, var(--secondaryColor) 100%); background-size: 220% 100%; background-position: 100% 0; -webkit-background-clip: text; background-clip: text; color: transparent; white-space: nowrap; }
+
+      /* 02 promise */
+      .dots { position: absolute; right: 0; bottom: 0; width: 1040px; height: 620px; }
+      .dots i { position: absolute; width: 16px; height: 16px; border-radius: 3px; background: var(--primaryColor); }
+      .dots i.w { background: #ffffff; }
+      .promise-copy { position: absolute; left: 140px; top: 300px; width: 900px; }
+      .promise-copy .mono { color: var(--primaryColor); font-size: 20px; }
+      .promise-copy h2 { margin: 30px 0 30px; font: 760 104px/1.12 var(--k-display); letter-spacing: -.02em; text-wrap: balance; }
+      .promise-copy p { margin: 0; max-width: 760px; color: rgba(255,255,255,.62); font: 400 34px/1.45 var(--k-body); }
+
+      /* 03 chat */
+      .stage { position: absolute; inset: 0; transform-origin: 60% 50%; }
+      .side-label { position: absolute; left: 130px; top: 50%; transform: translateY(-50%); width: 560px; white-space: pre-line; font: 760 84px/1.16 var(--k-display); letter-spacing: -.02em; }
+      .prompt-card { position: absolute; left: 760px; top: 360px; width: 1040px; padding: 30px 34px 26px; border-radius: var(--k-radius); background: var(--k-card); border: 1px solid var(--k-line); box-shadow: 0 40px 90px rgba(20,20,40,.10), 0 6px 18px rgba(20,20,40,.06); }
+      .attach-row { display: flex; gap: 14px; height: 66px; margin-bottom: 20px; }
+      .chip { display: inline-flex; align-items: center; gap: 12px; padding: 12px 18px 12px 12px; border-radius: 16px; background: var(--k-light); border: 1px solid var(--k-line); font: 500 22px/1 var(--k-body); color: var(--k-ink); white-space: nowrap; }
+      .chip b { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; font: 700 13px/1 var(--k-mono); color: #fff; letter-spacing: .02em; }
+      .chip .x1 { background: #23a55a; } .chip .x2 { background: #e5484d; } .chip .x3 { background: var(--secondaryColor); }
+      .prompt-text { min-height: 120px; padding: 6px 0 0; font: 400 36px/1.4 var(--k-body); color: var(--k-ink); }
+      .typed { display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; vertical-align: bottom; border-right: 3px solid var(--k-ink); padding-right: 4px; }
+      .toolbar { display: flex; align-items: center; gap: 22px; margin-top: 12px; color: #6b6b75; }
+      .pill { display: inline-flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 14px; background: var(--k-light); font: 500 22px/1 var(--k-body); color: #45454f; }
+      .tool-icon { width: 28px; height: 28px; stroke: #6b6b75; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .toolbar .grow { flex: 1; }
+      .model { color: #73737c; font: 500 20px/1 var(--k-body); }
+      .send { position: relative; display: grid; place-items: center; width: 58px; height: 58px; border-radius: 16px; background: var(--primaryColor); }
+      .send svg { width: 28px; height: 28px; stroke: #fff; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+      .ripple { position: absolute; left: 50%; top: 50%; width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%; border: 3px solid var(--primaryColor); opacity: 0; }
+      .cursor { position: absolute; left: 0; top: 0; width: 44px; height: 44px; z-index: 20; filter: drop-shadow(0 6px 10px rgba(0,0,0,.25)); }
+      .reply { position: absolute; left: 760px; top: 700px; width: 1040px; display: grid; gap: 16px; }
+      .reply .line { height: 18px; border-radius: 9px; background: linear-gradient(90deg, color-mix(in srgb, var(--primaryColor) 55%, transparent), color-mix(in srgb, var(--secondaryColor) 35%, transparent)); transform-origin: left center; }
+
+      /* 04 agent */
+      .accent-bg { background: var(--primaryColor); }
+      .dot-pattern { position: absolute; inset: 0; opacity: .22; background-image: radial-gradient(rgba(0,0,0,.55) 1.5px, transparent 1.8px); background-size: 26px 26px; -webkit-mask-image: linear-gradient(100deg, #000 0%, transparent 55%); mask-image: linear-gradient(100deg, #000 0%, transparent 55%); }
+      .plan-label { position: absolute; left: 130px; top: 50%; transform: translateY(-50%); width: 620px; white-space: pre-line; font: 780 92px/1.14 var(--k-display); letter-spacing: -.02em; color: var(--k-ink); }
+      .panel { position: absolute; left: 860px; top: 170px; width: 940px; padding: 48px 54px 52px; border-radius: 34px; background: var(--k-card); box-shadow: 0 50px 120px rgba(0,0,0,.18); color: var(--k-ink); }
+      .panel-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 28px; border-bottom: 1px solid var(--k-line); }
+      .panel-head small { display: block; color: var(--k-mute); font: 500 20px/1 var(--k-body); margin-bottom: 14px; }
+      .panel-head strong { font: 720 40px/1.15 var(--k-display); }
+      .status { position: relative; width: 150px; height: 48px; }
+      .status span { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 24px; font: 600 20px/1 var(--k-body); }
+      .status .run { background: #fff4d6; color: #8f5a00; }
+      .status .done { background: color-mix(in srgb, var(--primaryColor) 18%, #fff); color: color-mix(in srgb, var(--primaryColor) 70%, #000); opacity: 0; }
+      .sec-title { margin: 30px 0 18px; color: var(--k-mute); font: 600 20px/1 var(--k-body); letter-spacing: .04em; }
+      .steps { display: grid; gap: 28px; }
+      .step { display: flex; align-items: center; gap: 24px; font: 500 33px/1.25 var(--k-body); }
+      .ico { position: relative; flex: none; width: 40px; height: 40px; }
+      .ico .ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--k-line); }
+      .ico .spin { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--primaryColor); border-right-color: var(--primaryColor); opacity: 0; }
+      .ico .ok { position: absolute; inset: 0; border-radius: 50%; background: var(--primaryColor); display: grid; place-items: center; transform: scale(0); }
+      .ico .ok svg { width: 22px; height: 22px; stroke: #fff; fill: none; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+      .step .t { color: #b4b4bc; }
+      .ctx { display: flex; align-items: center; gap: 22px; }
+      .bar { position: relative; flex: 1; height: 16px; border-radius: 8px; background: #ececf0; overflow: hidden; }
+      .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--primaryColor), var(--secondaryColor)); transform-origin: left center; transform: scaleX(0); }
+      .pct { width: 110px; text-align: right; font: 700 34px/1 var(--k-display); }
+      .legend { display: flex; gap: 26px; margin-top: 18px; color: var(--k-mute); font: 500 19px/1 var(--k-body); }
+      .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; background: var(--primaryColor); vertical-align: -1px; }
+      .legend span:nth-child(2)::before { background: color-mix(in srgb, var(--primaryColor) 50%, var(--secondaryColor)); }
+      .legend span:nth-child(3)::before { background: var(--secondaryColor); }
+
+      /* 05 features */
+      .feat-kicker { position: absolute; left: 0; right: 0; top: 130px; text-align: center; color: var(--k-mute); font-size: 22px; }
+      .feat-title { position: absolute; left: 0; right: 0; top: 178px; text-align: center; font: 760 72px/1.15 var(--k-display); letter-spacing: -.02em; }
+      .feat-row { position: absolute; left: 150px; right: 150px; top: 380px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 44px; }
+      .feat { position: relative; height: 520px; padding: 48px 44px; border-radius: var(--k-radius); background: var(--k-card); border: 1px solid var(--k-line); box-shadow: 0 30px 70px rgba(20,20,40,.07); overflow: hidden; }
+      .feat .tile { width: 92px; height: 92px; border-radius: 24px; display: grid; place-items: center; background: linear-gradient(140deg, var(--primaryColor), var(--secondaryColor)); }
+      .feat .tile svg { width: 46px; height: 46px; stroke: #fff; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+      .feat .no { position: absolute; right: 44px; top: 52px; color: #c4c4cc; font: 600 22px/1 var(--k-mono); }
+      .feat h3 { margin: 120px 0 22px; font: 740 50px/1.2 var(--k-display); letter-spacing: -.01em; }
+      .feat p { margin: 0; color: #6b6b75; font: 400 28px/1.5 var(--k-body); }
+      .feat .glow { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; background: linear-gradient(90deg, var(--primaryColor), var(--secondaryColor)); transform-origin: left center; transform: scaleX(0); }
+
+      /* 06 cases */
+      .case-head { position: absolute; left: 0; right: 0; top: 110px; height: 220px; text-align: center; }
+      .case { position: absolute; left: 0; right: 0; top: 0; opacity: 0; }
+      .case h2 { margin: 0 0 22px; font: 760 96px/1.1 var(--k-display); letter-spacing: -.02em; }
+      .case p { margin: 0; color: rgba(255,255,255,.58); font: 400 32px/1.4 var(--k-body); }
+      .win { position: absolute; width: 980px; height: 600px; border-radius: 22px; background: #16161b; border: 1px solid rgba(255,255,255,.1); box-shadow: 0 60px 120px rgba(0,0,0,.5); overflow: hidden; }
+      .win .bar-top { height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 22px; border-bottom: 1px solid rgba(255,255,255,.07); }
+      .win .bar-top i { width: 13px; height: 13px; border-radius: 50%; background: rgba(255,255,255,.18); }
+      .win .bar-top span { margin-left: 18px; width: 260px; height: 14px; border-radius: 7px; background: rgba(255,255,255,.1); }
+      .win.front { left: 470px; top: 400px; background: #fbfbfc; border-color: transparent; }
+      .win.front .bar-top { border-color: #ececf0; }
+      .win.front .bar-top i { background: #dcdce2; }
+      .win.front .bar-top span { background: #ececf0; }
+      .win.ghost { opacity: .5; }
+      .win.g1 { left: 140px; top: 470px; transform: perspective(1400px) rotateY(24deg) scale(.82); }
+      .win.g2 { left: 1300px; top: 470px; transform: perspective(1400px) rotateY(-24deg) scale(.82); }
+      .view { position: absolute; left: 0; right: 0; top: 52px; bottom: 0; padding: 46px 56px; opacity: 0; }
+      .doc .h { width: 52%; height: 30px; border-radius: 8px; background: #1d1d24; margin-bottom: 30px; }
+      .doc .l { height: 14px; border-radius: 7px; background: #dedee4; margin-bottom: 18px; transform-origin: left center; }
+      .doc .flow { display: flex; gap: 26px; margin-top: 34px; }
+      .doc .flow b { flex: 1; height: 86px; border-radius: 14px; border: 2px solid var(--primaryColor); background: color-mix(in srgb, var(--primaryColor) 10%, #fff); }
+      .chart { display: flex; align-items: flex-end; gap: 26px; height: 100%; padding-bottom: 66px; border-bottom: 2px solid #e6e6ea; }
+      .chart b { flex: 1; border-radius: 10px 10px 4px 4px; background: linear-gradient(180deg, var(--secondaryColor), color-mix(in srgb, var(--secondaryColor) 45%, #fff)); transform-origin: bottom center; }
+      .chart b:nth-child(3n) { background: linear-gradient(180deg, var(--primaryColor), color-mix(in srgb, var(--primaryColor) 45%, #fff)); }
+      .design { display: grid; grid-template-columns: 1.3fr 1fr; gap: 30px; }
+      .design .hero { border-radius: 18px; background: linear-gradient(135deg, var(--secondaryColor), var(--primaryColor)); }
+      .design .sw { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      .design .sw b { border-radius: 14px; }
+      .market { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+      .market svg { width: 100%; height: 420px; }
+      .market .list { display: grid; gap: 22px; }
+      .market .list b { height: 54px; border-radius: 12px; background: #f0f0f4; border-left: 6px solid var(--primaryColor); }
+
+      /* 07 montage */
+      .collage { position: absolute; inset: 0; transform-origin: 50% 50%; }
+      .m { position: absolute; border-radius: 26px; background: var(--k-card); border: 1px solid var(--k-line); box-shadow: 0 30px 70px rgba(20,20,40,.10); overflow: hidden; }
+      .m-cal { left: 160px; top: 110px; width: 250px; height: 270px; background: color-mix(in srgb, var(--secondaryColor) 70%, #fff); border: 0; display: grid; place-items: center; color: #fff; text-align: center; }
+      .m-cal small { display: block; font: 600 30px/1 var(--k-display); opacity: .85; }
+      .m-cal strong { display: block; font: 800 140px/1 var(--k-display); letter-spacing: -.04em; }
+      .m-doc { left: 1240px; top: 90px; width: 520px; height: 330px; padding: 40px; }
+      .m-doc .h { width: 70%; height: 24px; border-radius: 6px; background: #1d1d24; margin-bottom: 26px; }
+      .m-doc .l { height: 12px; border-radius: 6px; background: #e2e2e8; margin-bottom: 16px; }
+      .m-chart { left: 120px; top: 610px; width: 460px; height: 330px; padding: 40px; display: flex; align-items: flex-end; gap: 18px; }
+      .m-chart b { flex: 1; border-radius: 8px; background: var(--primaryColor); }
+      .m-chart b:nth-child(even) { background: var(--secondaryColor); }
+      .m-task { left: 1340px; top: 650px; width: 420px; height: 330px; padding: 36px; background: #111116; border: 0; color: #fff; }
+      .m-task small { color: rgba(255,255,255,.5); font: 500 22px/1 var(--k-body); }
+      .m-task strong { display: block; margin: 20px 0 30px; font: 760 64px/1 var(--k-display); }
+      .m-task .row { display: flex; gap: 12px; }
+      .m-task .row i { flex: 1; height: 12px; border-radius: 6px; background: var(--primaryColor); }
+      .m-folder { left: 520px; top: 150px; width: 170px; height: 140px; border: 0; background: transparent; box-shadow: none; overflow: visible; }
+      .m-folder svg { width: 170px; height: 140px; }
+      .m-bubble { left: 640px; top: 760px; width: 420px; padding: 26px 30px; border-radius: 26px 26px 26px 8px; font: 500 26px/1.4 var(--k-body); color: var(--k-ink); }
+      .m-grid { left: 1580px; top: 430px; width: 190px; height: 190px; padding: 22px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+      .m-grid b { border-radius: 4px; background: color-mix(in srgb, var(--primaryColor) 25%, #fff); }
+      .m-grid b.on { background: var(--primaryColor); }
+      .montage-line { position: absolute; left: 0; right: 0; top: 470px; text-align: center; font: 780 88px/1.15 var(--k-display); letter-spacing: -.02em; color: var(--k-ink); }
+
+      /* 08 end */
+      .end-white { background: #ffffff; color: var(--k-ink); }
+      .avail { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+      .avail small { display: block; margin-bottom: 26px; color: var(--k-mute); font: 500 34px/1 var(--k-body); letter-spacing: .1em; }
+      .avail strong { display: block; font: 700 76px/1.1 var(--k-display); letter-spacing: -.01em; }
+      .lockup { position: absolute; inset: 0; display: grid; place-items: center; }
+      .lockup-inner { display: grid; justify-items: center; gap: 46px; }
+      .mark { position: relative; display: flex; align-items: center; gap: 34px; padding: 26px 48px; }
+      .mark img { width: 130px; height: 130px; object-fit: contain; }
+      .mark span { font: 800 150px/1 var(--k-display); letter-spacing: -.04em; }
+      .corner { position: absolute; width: 46px; height: 46px; border-color: var(--k-ink); border-style: solid; border-width: 0; }
+      .corner.tl { left: 0; top: 0; border-left-width: 6px; border-top-width: 6px; }
+      .corner.br { right: 0; bottom: 0; border-right-width: 6px; border-bottom-width: 6px; }
+      .cta-row { display: flex; align-items: center; gap: 30px; }
+      .cta { padding: 22px 40px; border-radius: 999px; background: var(--k-ink); color: #fff; font: 600 32px/1 var(--k-body); }
+      .url { color: var(--k-mute); font: 500 32px/1 var(--k-body); }
+      .byline { position: absolute; left: 0; right: 0; bottom: 70px; text-align: center; color: #75757c; font: 500 22px/1 var(--k-body); letter-spacing: .06em; }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+  </head>
+  <body>
+    <main id="root" data-composition-id="ai-assistant-launch" data-start="0" data-width="1920" data-height="1080" data-duration="46">
+
+      <section class="scene clip dark" id="s-intro" data-ipw-scene="" data-start="0" data-duration="4.4" data-track-index="1">
+        <div class="spot" id="intro-spot"></div>
+        <i class="guide v" style="left:480px"></i><i class="guide v" style="left:1440px"></i><i class="guide h" style="top:270px"></i><i class="guide h" style="top:810px"></i>
+        <div class="intro-stack"><div class="intro-inner">
+          <div class="intro-kicker" id="intro-kicker" data-var-text="kicker">认识一下</div>
+          <div class="intro-name" id="intro-name" data-var-text="productName">Nova</div>
+        </div></div>
+      </section>
+
+      <section class="scene clip dark" id="s-promise" data-ipw-scene="" data-start="4.4" data-duration="4.4" data-track-index="2">
+        <div class="dots" id="dots"></div>
+        <div class="promise-copy">
+          <div class="mono" id="promise-tag">AI Assistant</div>
+          <h2 id="promise-title" data-var-text="tagline">说出目标，剩下的交给它</h2>
+          <p id="promise-sub" data-var-text="subline">一个能理解、规划并执行任务的 AI 助手</p>
+        </div>
+      </section>
+
+      <section class="scene clip light" id="s-chat" data-ipw-scene="" data-start="8.8" data-duration="6.6" data-track-index="3">
+        <div class="stage" id="chat-stage" data-layout-allow-overflow>
+          <div class="side-label" id="chat-label" data-var-text="labelChat">一句话
+开始工作</div>
+          <div class="prompt-card" id="prompt-card">
+            <div class="attach-row" id="attach-row">
+              <span class="chip"><b class="x1">XLS</b><span data-var-text="attachA">反馈汇总.xlsx</span></span>
+              <span class="chip"><b class="x2">PDF</b><span data-var-text="attachB">访谈记录.pdf</span></span>
+              <span class="chip"><b class="x3">IMG</b><span data-var-text="attachC">产品截图.png</span></span>
+            </div>
+            <div class="prompt-text"><span class="typed" id="typed" data-layout-allow-overflow data-var-text="promptText">帮我整理本周的客户反馈，并生成改进计划</span></div>
+            <div class="toolbar">
+              <span class="pill"><svg class="tool-icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>工作区</span>
+              <svg class="tool-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
+              <svg class="tool-icon" viewBox="0 0 24 24"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+              <span class="grow"></span>
+              <span class="model">Auto</span>
+              <span class="send" id="send"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg><i class="ripple" id="ripple"></i></span>
+            </div>
+          </div>
+          <div class="reply" id="reply"><b class="line" style="width:92%"></b><b class="line" style="width:78%"></b><b class="line" style="width:64%"></b></div>
+          <svg class="cursor" id="cursor" viewBox="0 0 24 24"><path d="M4 2l16 9.5-7 1.5 4 7.5-3 1.5-4-7.5-6 4.5z" fill="#111" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </div>
+      </section>
+
+      <section class="scene clip accent-bg" id="s-agent" data-ipw-scene="" data-start="15.4" data-duration="7.6" data-track-index="4">
+        <div class="dot-pattern"></div>
+        <div class="plan-label" id="plan-label" data-var-text="labelPlan">自动规划
+逐步执行</div>
+        <div class="panel" id="panel">
+          <div class="panel-head">
+            <div><small>任务</small><strong data-var-text="taskTitle">客户反馈改进计划</strong></div>
+            <div class="status"><span class="run" id="st-run">进行中</span><span class="done" id="st-done">已完成</span></div>
+          </div>
+          <div class="sec-title">执行进度</div>
+          <div class="steps">
+            <div class="step" id="step-1"><span class="ico"><i class="ring"></i><i class="spin"></i><i class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i></span><span class="t" data-var-text="stepA">读取并理解全部反馈与附件</span></div>
+            <div class="step" id="step-2"><span class="ico"><i class="ring"></i><i class="spin"></i><i class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i></span><span class="t" data-var-text="stepB">按主题聚类，标注优先级</span></div>
+            <div class="step" id="step-3"><span class="ico"><i class="ring"></i><i class="spin"></i><i class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i></span><span class="t" data-var-text="stepC">生成改进方案与负责人</span></div>
+            <div class="step" id="step-4"><span class="ico"><i class="ring"></i><i class="spin"></i><i class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i></span><span class="t" data-var-text="stepD">导出报告并同步给团队</span></div>
+          </div>
+          <div class="sec-title" style="margin-top:44px">上下文与工具</div>
+          <div class="ctx"><div class="bar"><i id="ctx-bar"></i></div><div class="pct" id="pct">0%</div></div>
+          <div class="legend"><span>文件</span><span>工具调用</span><span>记忆</span></div>
+        </div>
+      </section>
+
+      <section class="scene clip light" id="s-features" data-ipw-scene="" data-start="23" data-duration="6.6" data-track-index="5">
+        <div class="feat-kicker mono" id="feat-kicker">Capabilities</div>
+        <div class="feat-title" id="feat-title">不只是回答，而是把事做完</div>
+        <div class="feat-row">
+          <article class="feat" id="feat-1"><span class="tile"><svg viewBox="0 0 24 24"><path d="M4 5h16v10H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg></span><span class="no">01</span><h3 data-var-text="featureA">理解上下文</h3><p data-var-text="featureADesc">读懂文件、对话与历史，不必反复解释</p><i class="glow"></i></article>
+          <article class="feat" id="feat-2"><span class="tile"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.6l6.8-3.2M8.6 13.4l6.8 3.2"/></svg></span><span class="no">02</span><h3 data-var-text="featureB">连接你的工具</h3><p data-var-text="featureBDesc">文档、表格、日历与协作软件随手调用</p><i class="glow"></i></article>
+          <article class="feat" id="feat-3"><span class="tile"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></span><span class="no">03</span><h3 data-var-text="featureC">可控且可追溯</h3><p data-var-text="featureCDesc">每一步都可查看、确认与撤回</p><i class="glow"></i></article>
+        </div>
+      </section>
+
+      <section class="scene clip dark" id="s-cases" data-ipw-scene="" data-start="29.6" data-duration="7" data-track-index="6">
+        <div class="case-head">
+          <div class="case" id="case-1"><h2 data-var-text="useCaseA">产品经理</h2><p data-var-text="useCaseADesc">从洞察到方案：需求文档、流程与原型</p></div>
+          <div class="case" id="case-2"><h2 data-var-text="useCaseB">数据分析</h2><p data-var-text="useCaseBDesc">从数据到结论：清洗、可视化与报告</p></div>
+          <div class="case" id="case-3"><h2 data-var-text="useCaseC">设计创意</h2><p data-var-text="useCaseCDesc">保持品牌一致：规范、素材与界面</p></div>
+          <div class="case" id="case-4"><h2 data-var-text="useCaseD">市场营销</h2><p data-var-text="useCaseDDesc">从创意到落地：活动策划与执行清单</p></div>
+        </div>
+        <div class="win ghost g1" id="win-g1"><div class="bar-top"><i></i><i></i><i></i><span></span></div></div>
+        <div class="win ghost g2" id="win-g2" data-layout-allow-overflow><div class="bar-top"><i></i><i></i><i></i><span></span></div></div>
+        <div class="win front" id="win-front">
+          <div class="bar-top"><i></i><i></i><i></i><span></span></div>
+          <div class="view doc" id="view-1"><div class="h"></div><div class="l" style="width:94%"></div><div class="l" style="width:88%"></div><div class="l" style="width:72%"></div><div class="flow"><b></b><b></b><b></b><b></b></div></div>
+          <div class="view" id="view-2"><div class="chart"><b style="height:38%"></b><b style="height:62%"></b><b style="height:48%"></b><b style="height:80%"></b><b style="height:56%"></b><b style="height:92%"></b><b style="height:70%"></b></div></div>
+          <div class="view design" id="view-3"><div class="hero"></div><div class="sw"><b style="background:var(--primaryColor)"></b><b style="background:var(--secondaryColor)"></b><b style="background:#1d1d24"></b><b style="background:#e6e6ec"></b></div></div>
+          <div class="view market" id="view-4"><svg viewBox="0 0 200 200"><polygon points="100,20 176,75 147,165 53,165 24,75" fill="none" stroke="#e1e1e7" stroke-width="2"/><polygon points="100,50 150,82 130,140 70,148 46,84" fill="none" stroke="#e1e1e7" stroke-width="2"/><polygon id="radar" points="100,34 160,80 136,150 62,152 40,78" fill="var(--secondaryColor)" fill-opacity=".35" stroke="var(--secondaryColor)" stroke-width="3"/></svg><div class="list"><b></b><b></b><b></b><b></b></div></div>
+        </div>
+      </section>
+
+      <section class="scene clip light" id="s-montage" data-ipw-scene="" data-start="36.6" data-duration="4" data-track-index="7">
+        <div class="collage" id="collage" data-layout-allow-overflow>
+          <div class="m m-cal" id="m1"><div><small>OCT</small><strong>29</strong></div></div>
+          <div class="m m-folder" id="m2"><svg viewBox="0 0 170 140"><path d="M0 22a14 14 0 0 1 14-14h44l16 16h82a14 14 0 0 1 14 14v88a14 14 0 0 1-14 14H14A14 14 0 0 1 0 126z" fill="#f2b84b"/><path d="M0 46a14 14 0 0 1 14-14h142a14 14 0 0 1 14 14v80a14 14 0 0 1-14 14H14A14 14 0 0 1 0 126z" fill="#f7c95f"/></svg></div>
+          <div class="m m-doc" id="m3"><div class="h"></div><div class="l" style="width:96%"></div><div class="l" style="width:90%"></div><div class="l" style="width:84%"></div><div class="l" style="width:60%"></div></div>
+          <div class="m m-grid" id="m4"><b></b><b class="on"></b><b></b><b></b><b class="on"></b><b class="on"></b><b></b><b class="on"></b><b></b><b></b><b></b><b class="on"></b><b class="on"></b><b></b><b class="on"></b><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b class="on"></b><b class="on"></b></div>
+          <div class="m m-chart" id="m5"><b style="height:40%"></b><b style="height:70%"></b><b style="height:55%"></b><b style="height:90%"></b><b style="height:65%"></b></div>
+          <div class="m m-task" id="m6"><small>任务完成</small><strong>4 / 4</strong><div class="row"><i></i><i></i><i></i><i></i></div></div>
+          <div class="m m-bubble" id="m7" data-var-text="promptText">帮我整理本周的客户反馈，并生成改进计划</div>
+        </div>
+        <div class="montage-line" id="montage-line" data-var-text="montageLine">从想法到交付，一个助手就够</div>
+      </section>
+
+      <section class="scene clip end-white" id="s-end" data-ipw-scene="" data-start="40.6" data-duration="5.4" data-track-index="8">
+        <div class="avail" id="avail"><div><small data-var-text="availability">现已上线</small><strong data-var-text="platforms">Web · macOS · Windows · iOS</strong></div></div>
+        <div class="lockup" id="lockup"><div class="lockup-inner">
+          <div class="mark" id="mark"><i class="corner tl" id="corner-tl"></i><i class="corner br" id="corner-br"></i><img data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260729" alt="Brand logo" /><span data-var-text="productName">Nova</span></div>
+          <div class="cta-row" id="cta-row"><span class="cta" data-var-text="cta">立即免费体验</span><span class="url" data-var-text="url">nova.example.com</span></div>
+        </div></div>
+        <div class="byline" id="byline" data-var-text="brandName">iPolloWork</div>
+      </section>
+    </main>
+    <script>
+      (function buildDots() {
+        let seed = 7;
+        const rand = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+        const host = document.getElementById('dots');
+        const cell = 26, cols = 40, rows = 24;
+        for (let c = 0; c < cols; c++) {
+          const x = c / (cols - 1);
+          const ridge = 0.55 * Math.exp(-Math.pow((x - 0.62) / 0.2, 2)) + 0.35 * Math.exp(-Math.pow((x - 0.25) / 0.16, 2)) + 0.18;
+          const height = Math.round(rows * Math.min(1, ridge + rand() * 0.08));
+          for (let r = 0; r < height; r++) {
+            if (rand() < 0.28 + (r / height) * 0.35) continue;
+            const dot = document.createElement('i');
+            if (rand() < 0.16) dot.className = 'w';
+            dot.style.left = (c * cell) + 'px';
+            dot.style.bottom = (r * cell) + 'px';
+            dot.dataset.alpha = (0.25 + rand() * 0.75).toFixed(2);
+            dot.dataset.delay = ((c / cols) * 0.7 + (r / rows) * 0.5 + rand() * 0.25).toFixed(3);
+            host.appendChild(dot);
+          }
+        }
+      })();
+
+      const tl = gsap.timeline({ paused: true });
+
+      // 01 intro: spotlight, kicker, gradient product name
+      tl.fromTo('#intro-spot', { opacity: 0, scale: .6 }, { opacity: 1, scale: 1, duration: 1.6, ease: 'power2.out' }, 0);
+      tl.to('#intro-spot', { scale: 1.12, opacity: .7, duration: 2.4, ease: 'sine.inOut' }, 1.6);
+      tl.fromTo('.guide', { opacity: 0 }, { opacity: 1, duration: 1, ease: 'none' }, .2);
+      tl.fromTo('#intro-kicker', { opacity: 0, y: 24, filter: 'blur(8px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: .7, ease: 'power3.out' }, .35);
+      tl.fromTo('#intro-name', { opacity: 0, scale: 1.16, filter: 'blur(28px)' }, { opacity: 1, scale: 1, filter: 'blur(0px)', duration: 1.3, ease: 'expo.out' }, .9);
+      tl.to('#intro-name', { backgroundPosition: '0% 0', duration: 2.2, ease: 'power1.inOut' }, 1.2);
+      tl.to(['#intro-kicker', '#intro-name'], { opacity: 0, scale: .94, filter: 'blur(14px)', duration: .45, ease: 'power2.in' }, 3.9);
+
+      // 02 promise: pixel mountain rises behind the claim
+      document.querySelectorAll('#dots i').forEach((dot) => {
+        tl.fromTo(dot, { opacity: 0, y: 26 }, { opacity: Number(dot.dataset.alpha), y: 0, duration: .5, ease: 'power2.out' }, 4.5 + Number(dot.dataset.delay));
+      });
+      tl.fromTo('#promise-tag', { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: .6, ease: 'power3.out' }, 4.6);
+      tl.fromTo('#promise-title', { opacity: 0, y: 50, filter: 'blur(10px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: .9, ease: 'expo.out' }, 4.75);
+      tl.fromTo('#promise-sub', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: .7, ease: 'power3.out' }, 5.3);
+      tl.to('#dots', { y: -40, duration: 3.8, ease: 'none' }, 4.8);
+      tl.to('#s-promise .promise-copy', { opacity: 0, y: -30, duration: .4, ease: 'power2.in' }, 8.35);
+
+      // 03 chat: prompt box, typing, attachments, cursor sends
+      tl.fromTo('#chat-stage', { scale: 1.08 }, { scale: 1, duration: 6.6, ease: 'power1.out' }, 8.8);
+      tl.fromTo('#chat-label', { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: .7, ease: 'power3.out' }, 9);
+      tl.fromTo('#prompt-card', { opacity: 0, x: 220, scale: .96 }, { opacity: 1, x: 0, scale: 1, duration: .9, ease: 'expo.out' }, 9.2);
+      tl.fromTo('#typed', { maxWidth: '0%' }, { maxWidth: '100%', duration: 2.1, ease: 'steps(26)' }, 9.9);
+      tl.fromTo('#typed', { borderRightColor: 'rgba(13,13,16,1)' }, { borderRightColor: 'rgba(13,13,16,0)', duration: .45, ease: 'steps(1)', repeat: 7, yoyo: true }, 9.9);
+      tl.fromTo('#attach-row .chip', { opacity: 0, y: 18, scale: .9 }, { opacity: 1, y: 0, scale: 1, duration: .45, stagger: .14, ease: 'back.out(1.8)' }, 12.2);
+      tl.fromTo('#cursor', { opacity: 0, x: 1650, y: 900 }, { opacity: 1, x: 1700, y: 760, duration: .5, ease: 'power2.out' }, 12.8);
+      tl.to('#cursor', { x: 1736, y: 646, duration: .65, ease: 'power3.inOut' }, 13.3);
+      tl.to('#cursor', { scale: .82, duration: .1, ease: 'power2.in', yoyo: true, repeat: 1 }, 13.95);
+      tl.to('#send', { scale: .88, duration: .1, yoyo: true, repeat: 1, ease: 'power2.in' }, 13.95);
+      tl.fromTo('#ripple', { opacity: .9, scale: .3 }, { opacity: 0, scale: 1.4, duration: .7, ease: 'power2.out' }, 14.02);
+      tl.fromTo('#reply .line', { opacity: 0, scaleX: 0 }, { opacity: 1, scaleX: 1, duration: .5, stagger: .12, ease: 'power3.out' }, 14.25);
+      tl.to('#chat-stage', { opacity: 0, x: -120, duration: .35, ease: 'power2.in' }, 15.05);
+      tl.set('#chat-stage', { opacity: 0 }, 15.4);
+
+      // 04 agent: accent wipe, panel with live checklist
+      tl.fromTo('#s-agent', { clipPath: 'inset(0 0 0 100%)' }, { clipPath: 'inset(0 0 0 0%)', duration: .55, ease: 'expo.out' }, 15.4);
+      tl.fromTo('#plan-label', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: .7, ease: 'power3.out' }, 15.75);
+      tl.fromTo('#panel', { opacity: 0, x: 260, rotationY: -14, transformPerspective: 1600 }, { opacity: 1, x: 0, rotationY: 0, duration: 1, ease: 'expo.out' }, 15.9);
+      [16.9, 18.0, 19.1, 20.2].forEach((at, index) => {
+        const step = `#step-${index + 1}`;
+        tl.to(`${step} .spin`, { opacity: 1, duration: .1 }, at);
+        tl.fromTo(`${step} .spin`, { rotation: 0 }, { rotation: 720, duration: .9, ease: 'none' }, at);
+        tl.to(`${step} .t`, { color: '#0d0d10', duration: .3 }, at);
+        tl.to(`${step} .spin`, { opacity: 0, duration: .1 }, at + .9);
+        tl.to(`${step} .ok`, { scale: 1, duration: .35, ease: 'back.out(2.4)' }, at + .9);
+      });
+      const pct = { value: 0 };
+      tl.to('#ctx-bar', { scaleX: 1, duration: 4.3, ease: 'power1.inOut' }, 16.9);
+      tl.to(pct, { value: 100, duration: 4.3, ease: 'power1.inOut', onUpdate: () => { document.getElementById('pct').textContent = Math.round(pct.value) + '%'; } }, 16.9);
+      tl.to('#st-run', { opacity: 0, duration: .25 }, 21.3);
+      tl.fromTo('#st-done', { opacity: 0, scale: .8 }, { opacity: 1, scale: 1, duration: .35, ease: 'back.out(2)' }, 21.35);
+      tl.to('#panel', { scale: .9, opacity: 0, duration: .45, ease: 'power2.in' }, 22.55);
+      tl.to('#plan-label', { opacity: 0, x: -40, duration: .4, ease: 'power2.in' }, 22.55);
+      tl.set('#panel', { opacity: 0 }, 23);
+      tl.set('#plan-label', { opacity: 0 }, 23);
+
+      // 05 features: three cards, spotlight one at a time
+      tl.fromTo(['#feat-kicker', '#feat-title'], { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: .6, stagger: .1, ease: 'power3.out' }, 23.1);
+      tl.fromTo('.feat', { opacity: 0, y: 90 }, { opacity: 1, y: 0, duration: .8, stagger: .12, ease: 'expo.out' }, 23.35);
+      [24.6, 26.0, 27.4].forEach((at, index) => {
+        const active = `#feat-${index + 1}`;
+        const others = ['#feat-1', '#feat-2', '#feat-3'].filter((id) => id !== active);
+        tl.to(active, { scale: 1.05, opacity: 1, y: -14, duration: .45, ease: 'power3.out' }, at);
+        tl.to(others, { scale: .97, opacity: .42, y: 0, duration: .45, ease: 'power3.out' }, at);
+        tl.fromTo(`${active} .glow`, { scaleX: 0 }, { scaleX: 1, duration: 1.1, ease: 'power2.out' }, at);
+      });
+      tl.to('.feat', { scale: 1, opacity: 1, y: 0, duration: .4, ease: 'power2.out' }, 28.8);
+      tl.to(['.feat', '#feat-title', '#feat-kicker'], { opacity: 0, y: -40, duration: .35, stagger: .03, ease: 'power2.in' }, 29.2);
+
+      // 06 use cases: role titles cycle while the window content morphs
+      tl.fromTo(['#win-g1', '#win-g2'], { opacity: 0, y: 120 }, { opacity: .5, y: 0, duration: .9, ease: 'expo.out' }, 29.7);
+      tl.fromTo('#win-front', { opacity: 0, y: 160, scale: .94 }, { opacity: 1, y: 0, scale: 1, duration: 1, ease: 'expo.out' }, 29.8);
+      [29.9, 31.6, 33.3, 35.0].forEach((at, index) => {
+        const n = index + 1;
+        tl.fromTo(`#case-${n}`, { opacity: 0, y: 40, filter: 'blur(8px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: .5, ease: 'power3.out' }, at);
+        tl.fromTo(`#view-${n}`, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: .45, ease: 'power3.out' }, at + .1);
+        if (n < 4) {
+          tl.to(`#case-${n}`, { opacity: 0, y: -40, filter: 'blur(8px)', duration: .35, ease: 'power2.in' }, at + 1.35);
+          tl.to(`#view-${n}`, { opacity: 0, y: -24, duration: .3, ease: 'power2.in' }, at + 1.4);
+        }
+      });
+      tl.fromTo('#view-1 .l', { scaleX: 0 }, { scaleX: 1, duration: .6, stagger: .08, ease: 'power3.out' }, 30.1);
+      tl.fromTo('#view-2 .chart b', { scaleY: 0 }, { scaleY: 1, duration: .6, stagger: .06, ease: 'back.out(1.4)' }, 31.75);
+      tl.fromTo('#view-3 .sw b', { scale: 0 }, { scale: 1, duration: .45, stagger: .07, ease: 'back.out(2)' }, 33.5);
+      tl.fromTo('#radar', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: .7, ease: 'back.out(1.6)' }, 35.15);
+      tl.to(['#win-front', '#win-g1', '#win-g2', '#case-4'], { opacity: 0, y: 60, duration: .4, ease: 'power2.in' }, 36.2);
+      tl.set(['#win-front', '#win-g1', '#win-g2', '#case-4'], { opacity: 0 }, 36.6);
+
+      // 07 montage: artifacts converge around one line
+      tl.fromTo('#collage', { scale: 1.18 }, { scale: 1, duration: 4, ease: 'power2.out' }, 36.6);
+      tl.fromTo('#collage .m', { opacity: 0, scale: .7, y: 60 }, { opacity: 1, scale: 1, y: 0, duration: .7, stagger: .09, ease: 'back.out(1.5)' }, 36.65);
+      tl.to('#m1', { y: -18, rotation: -3, duration: 3, ease: 'sine.inOut' }, 37.3);
+      tl.to('#m3', { y: 16, rotation: 2, duration: 3, ease: 'sine.inOut' }, 37.3);
+      tl.to('#m5', { y: -14, duration: 3, ease: 'sine.inOut' }, 37.3);
+      tl.to('#m6', { y: 18, rotation: -2, duration: 3, ease: 'sine.inOut' }, 37.3);
+      tl.fromTo('#montage-line', { opacity: 0, scale: .9, filter: 'blur(10px)' }, { opacity: 1, scale: 1, filter: 'blur(0px)', duration: .8, ease: 'expo.out' }, 37.4);
+      tl.to('#collage .m', { opacity: 0, scale: .6, x: 0, duration: .45, stagger: .02, ease: 'power2.in' }, 40.0);
+      tl.to('#montage-line', { opacity: 0, duration: .3, ease: 'power2.in' }, 40.25);
+
+      // 08 end: availability, then logo lockup and call to action
+      tl.fromTo('#avail small', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: .5, ease: 'power3.out' }, 40.75);
+      tl.fromTo('#avail strong', { opacity: 0, scale: 1.12, filter: 'blur(10px)' }, { opacity: 1, scale: 1, filter: 'blur(0px)', duration: .9, ease: 'expo.out' }, 40.9);
+      tl.to('#avail', { opacity: 0, scale: .96, duration: .35, ease: 'power2.in' }, 42.6);
+      tl.fromTo(['#corner-tl', '#corner-br'], { opacity: 0, scale: 2.2 }, { opacity: 1, scale: 1, duration: .6, ease: 'expo.out' }, 42.95);
+      tl.fromTo('#mark img', { opacity: 0, scale: .6, rotation: -20 }, { opacity: 1, scale: 1, rotation: 0, duration: .7, ease: 'back.out(1.8)' }, 43.05);
+      tl.fromTo('#mark span', { opacity: 0, x: -30, filter: 'blur(10px)' }, { opacity: 1, x: 0, filter: 'blur(0px)', duration: .7, ease: 'expo.out' }, 43.2);
+      tl.fromTo('#cta-row', { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: .6, ease: 'power3.out' }, 43.7);
+      tl.fromTo('#byline', { opacity: 0 }, { opacity: 1, duration: .6, ease: 'none' }, 44.0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["ai-assistant-launch"] = tl;
+    </script>
+  </body>
+</html>

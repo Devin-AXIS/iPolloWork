@@ -8,9 +8,19 @@ export interface EditingFile {
   content: string | null;
 }
 
+export type ToastTone = "loading" | "success" | "error";
+export type ToastToneInput = ToastTone | "info" | "notice";
+
 export interface AppToast {
   message: string;
-  tone: "error" | "info";
+  tone: ToastTone;
+}
+
+export function parseHostAiEditingMessage(value: unknown, projectId: string): boolean | null {
+  if (typeof value !== "object" || value === null) return null;
+  if (!("type" in value) || value.type !== "ipollowork:studio-ai-editing") return null;
+  if (!("projectId" in value) || value.projectId !== projectId) return null;
+  return "active" in value && typeof value.active === "boolean" ? value.active : null;
 }
 
 export type RightPanelTab =
@@ -18,23 +28,14 @@ export type RightPanelTab =
   | "design"
   | "voice"
   | "style"
-  | "illustration"
+  | "components"
   | "assets"
+  | "code"
   | "animation"
-  | "animation-properties"
-  | "catalog"
-  | "effects"
   | "renders"
   | "block-params"
   | "slideshow"
   | "variables";
-export type RightInspectorPane = "layers" | "design";
-
-export interface RightInspectorPanes {
-  layers: boolean;
-  design: boolean;
-}
-
 export interface AgentModalAnchorPoint {
   x: number;
   y: number;
@@ -154,8 +155,7 @@ function matchesByHfId(
 ): boolean {
   if (!selection.hfId) return false;
   return (
-    element.hfId === selection.hfId &&
-    (element.sourceFile || "index.html") === selectionSourceFile
+    element.hfId === selection.hfId && (element.sourceFile || "index.html") === selectionSourceFile
   );
 }
 
@@ -304,7 +304,7 @@ export type ToggleHiddenHandler = (
 ) => Promise<void> | void;
 
 type TimelineSelectionRange = Pick<TimelineElement, "start" | "duration"> &
-  Partial<Pick<TimelineElement, "id" | "timelineKind" | "compositionSrc" | "sourceFile">>;
+  Partial<Pick<TimelineElement, "id" | "timelineKind" | "compositionSrc" | "sourceFile" | "inlineScopeKind">>;
 
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
@@ -317,6 +317,8 @@ export function resolveTimelineSelectionSeekTime(
   const end = Math.max(start, start + Math.max(0, element.duration));
   const time = Number.isFinite(currentTime) ? currentTime : start;
   if (end === start) return start;
+  if (element.inlineScopeKind)
+    return clampNumber(time, start, Math.max(start, end - 0.001));
   // Animated layers commonly begin/end on a deliberately transparent frame.
   // Timeline rows represent the whole authored layer, so selecting one at an
   // end-exclusive boundary should inspect a representative frame inside it.
@@ -345,7 +347,6 @@ export function collectHtmlIds(source: string): string[] {
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
   image: 3,
-  html: 5,
   video: 5,
   audio: 5,
 };
@@ -355,7 +356,7 @@ export async function resolveDroppedAssetDuration(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<number> {
-  if (kind === "image" || kind === "html") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
+  if (kind === "image") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
 
   const media = document.createElement(kind === "video" ? "video" : "audio");
   media.preload = "metadata";
@@ -395,7 +396,7 @@ export async function resolveDroppedAssetDimensions(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<{ width: number; height: number } | null> {
-  if (kind === "audio" || kind === "html") return null;
+  if (kind === "audio") return null;
   const src = `/api/projects/${projectId}/preview/${assetPath}`;
 
   if (kind === "image") {
@@ -449,5 +450,26 @@ export async function resolveDroppedAssetDimensions(
     );
     video.addEventListener("error", () => finalize(null), { once: true });
     video.src = src;
+  });
+}
+
+/** Normalize CSS names at the official style-commit boundary. */
+export function cssPropertyName(property: string): string {
+  if (property.startsWith("--")) return property;
+  const css = property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+  return css.startsWith("ms-") ? `-${css}` : css;
+}
+
+/** Change document metadata only; preserve scene markup, scripts, paths and timing byte-for-byte. */
+export function replaceVideoDocumentTitle(source: string, name: string): string {
+  const title = name.trim();
+  if (!title || title.length > 120) throw new Error("Video name must contain 1–120 characters.");
+  const escaped = title.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  const head = /(<head\b[^>]*>)([\s\S]*?)(<\/head\s*>)/i;
+  if (!head.test(source)) throw new Error("The video document has no head; its name cannot be changed safely.");
+  return source.replace(head, (_match, open: string, contents: string, close: string) => {
+    const tag = /<title\b[^>]*>[\s\S]*?<\/title\s*>/i;
+    const next = tag.test(contents) ? contents.replace(tag, () => "<title>" + escaped + "</title>") : "<title>" + escaped + "</title>" + contents;
+    return open + next + close;
   });
 }

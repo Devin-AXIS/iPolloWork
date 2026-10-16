@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.deck-blueprint",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "slides",
   "subcategory": "engineering",
@@ -9,7 +9,8 @@
   "tags": [
     "engineering",
     "blueprint",
-    "architecture"
+    "architecture",
+    "topic:education"
   ],
   "surface": "design",
   "title": "Knowledge Arch Blueprint",

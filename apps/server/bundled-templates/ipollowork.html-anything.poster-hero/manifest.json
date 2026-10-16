@@ -1,14 +1,15 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.poster-hero",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "poster",
   "subcategory": "marketing",
   "style": "bold",
   "tags": [
     "marketing",
-    "poster"
+    "poster",
+    "topic:brand"
   ],
   "surface": "design",
   "title": "Marketing Poster",

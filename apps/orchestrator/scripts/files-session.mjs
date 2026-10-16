@@ -59,7 +59,7 @@ async function fetchJson(url, init) {
 }
 
 async function runCli(args) {
-  const child = spawn("node", [cliPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, [cliPath, ...args], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
   let stdout = "";
   let stderr = "";
   child.stdout.setEncoding("utf8");
@@ -94,6 +94,8 @@ const server = spawn(
   "bun",
   [
     serverCliPath,
+    "--config",
+    join(root, "server.json"),
     "--host",
     "127.0.0.1",
     "--port",
@@ -107,9 +109,13 @@ const server = spawn(
     "--host-token",
     hostToken,
   ],
-  { stdio: ["ignore", "pipe", "pipe"] },
+  {
+    stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+    env: { ...process.env, IPOLLOWORK_RUNTIME_DB: join(root, "runtime.sqlite"), IPOLLOWORK_MANAGE_OPENCODE: "0" },
+  },
 );
 
+server.stdout.resume();
 let serverStderr = "";
 server.stderr.setEncoding("utf8");
 server.stderr.on("data", (chunk) => {
@@ -295,7 +301,7 @@ try {
     JSON.stringify(
       {
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.stack : String(error),
         stderr: serverStderr.trim() || undefined,
       },
       null,
