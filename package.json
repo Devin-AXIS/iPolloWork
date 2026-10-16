@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.18.0",
   "scripts": {
+    "prepare": "lefthook install",
     "setup": "node scripts/ipollowork.mjs setup",
     "dev:cloud": "node scripts/ipollowork.mjs dev:cloud",
     "check": "node scripts/ipollowork.mjs check",
@@ -70,6 +71,7 @@
   "devDependencies": {
     "cross-env": "^10.1.0",
     "knip": "6.29.0",
+    "lefthook": "2.1.6",
     "opencc-js": "^1.4.0"
   },
   "engines": {
