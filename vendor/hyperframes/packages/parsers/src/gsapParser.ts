@@ -1701,6 +1701,7 @@ export function offsetPositionPathsInScript(
   targetSelector: string,
   deltaX: number,
   deltaY: number,
+  ownedSelectors: string[] = [targetSelector],
 ): string {
   if ((!Number.isFinite(deltaX) || deltaX === 0) && (!Number.isFinite(deltaY) || deltaY === 0)) {
     return script;
@@ -1713,11 +1714,12 @@ export function offsetPositionPathsInScript(
     return script;
   }
 
+  const selectors = new Set([targetSelector, ...ownedSelectors]);
   let changed = false;
   let hasGlobalPositionBase = false;
   for (const entry of parsed.located) {
     const animation = entry.animation;
-    if (animation.targetSelector !== targetSelector || isStudioHoldSet(animation)) continue;
+    if (!selectors.has(animation.targetSelector) || isStudioHoldSet(animation)) continue;
 
     const isGlobalBase = animation.method === "set" && animation.global;
     if (isGlobalBase) {

@@ -26,7 +26,7 @@ import {
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import { isInstantHold, selectorFromSelection } from "./gsapShared";
+import { isInstantHold, selectorFromSelection, getOwnedAnimationSelectors } from "./gsapShared";
 import {
   findGsapPositionAnimation,
   pickClosestToPlayhead,
@@ -289,7 +289,14 @@ export async function tryGsapDragIntercept(
   const cbs = { commitMutation: persistMutation, fetchAnimations: fetchFallbackAnimations };
   const { activeKeyframePct } = usePlayerStore.getState();
   if (options?.altKey || !shouldCommitAnimationKeyframe(activeKeyframePct)) {
-    await commitAllPositionPathsOffset(selection, offset, gsapPos, selector, cbs);
+    await commitAllPositionPathsOffset(
+      selection,
+      offset,
+      gsapPos,
+      selector,
+      cbs,
+      getOwnedAnimationSelectors(selection, resolvedAnimations),
+    );
     return true;
   }
 

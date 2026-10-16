@@ -1,14 +1,18 @@
+// @vitest-environment happy-dom
 import { Window } from "happy-dom";
 import { describe, expect, test, vi } from "vitest";
 import type { TimelineElement } from "../player/store/playerStore";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import {
+  buildInlineSceneMoveChanges,
+  assertTimelineStretchIsSafe,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
-  readComponentSourceDuration,
+  timelineResizePlaybackAttributes,
   findTimelineElementInIframe,
   resolveTimelinePatch,
 } from "./timelineEditingHelpers";
+import { finishClipTimingFallback, rollbackTimelineStretchTiming } from "./timelineTimingSync";
 import { patchTimelineLayerStateInSource } from "./timelineTrackVisibility";
 import { getEditableUnitSelectionTarget } from "../components/editor/domEditingElement";
 import { resolveDomEditSelection } from "../components/editor/domEditingLayers";
@@ -298,34 +302,222 @@ describe("timeline edit patch resolution", () => {
 });
 
 describe("component resize source window", () => {
-  test("stretches its full declared animation and resets a legacy trim", () => {
+  test("trims the composition playback window without changing its authored speed or script", () => {
+    const script = '<script>tl.to("#title", {opacity:1, duration:1}, 2)</script>';
     const original =
-      '<main data-composition-id="root" data-duration="20"><div id="component" data-composition-src="scene.html" data-start="5" data-duration="5" data-playback-start="-2" data-media-start="4"></div></main>';
-    const element = {
+      '<main data-composition-id="root" data-duration="20"><div id="component" data-composition-src="scene.html" data-start="5" data-duration="5" data-playback-rate="2" data-playback-start="1"></div>' +
+      script +
+      "</main>";
+    const element: TimelineElement = {
       id: "component",
       tag: "div",
       compositionSrc: "scene.html",
       start: 5,
       duration: 5,
       track: 0,
-      sourceDuration: 10,
-      playbackStart: -2,
+      playbackRate: 2,
+      playbackStart: 1,
+      playbackStartAttr: "playback-start",
     };
-    const patched = buildTimelineResizeTimingPatch(original, { id: "component" }, element, {
-      start: 0,
-      duration: 20,
-      playbackStart: -7,
+    const trimmed = buildTimelineResizeTimingPatch(original, { id: "component" }, element, {
+      start: 6,
+      duration: 4,
     });
-    expect(patched).toContain('data-playback-rate="0.5"');
-    expect(patched).toContain('data-source-duration="10"');
-    expect(patched).toContain('data-playback-start="0"');
-    expect(patched).not.toContain("data-media-start");
+    expect(trimmed).toContain('data-playback-rate="2"');
+    expect(trimmed).toContain('data-playback-start="3"');
+    expect(trimmed).toContain(script);
+  });
+  test("explicit stretch preserves the existing trimmed source window", () => {
+    const original =
+      '<main data-composition-id="root" data-duration="20"><div id="component" data-composition-src="scene.html" data-start="5" data-duration="5" data-playback-rate="2" data-playback-start="1"></div></main>';
+    const element: TimelineElement = {
+      id: "component",
+      tag: "div",
+      compositionSrc: "scene.html",
+      start: 5,
+      duration: 5,
+      track: 0,
+      playbackRate: 2,
+      playbackStart: 1,
+    };
+    const stretched = buildTimelineResizeTimingPatch(
+      original,
+      { id: "component" },
+      element,
+      { start: 5, duration: 10 },
+      "stretch",
+    );
+    expect(stretched).toContain('data-playback-rate="1"');
+    expect(stretched).toContain('data-playback-start="1"');
+  });
+  test("ordinary layer duration edits leave animation source byte-for-byte intact", () => {
+    const script = '<script>tl.to("#title", {x:100,duration:1}, 2);</script>';
+    const original =
+      '<main data-composition-id="root" data-duration="6"><div id="title" data-start="2" data-duration="4"></div>' +
+      script +
+      "</main>";
+    const element: TimelineElement = {
+      id: "title",
+      domId: "title",
+      tag: "div",
+      start: 2,
+      duration: 4,
+      track: 0,
+    };
+    const extended = buildTimelineResizeTimingPatch(original, { id: "title" }, element, {
+      start: 2,
+      duration: 6,
+    });
+    expect(extended).toContain(script);
+    expect(extended).toContain('id="title" data-start="2" data-duration="6"');
   });
 });
 
- test("reads the declared source duration inside a registry template rather than native timeline overrun", async () => {
-  const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ content: '<html><body><template><div data-composition-id="stage-stack" data-duration="10"></div><script>tl.to({}, {duration:14})</script></template></body></html>' }) }));
-  vi.stubGlobal("fetch", fetchMock);
-  try { expect(await readComponentSourceDuration("project", "components/stack.html")).toBe(10); }
-  finally { vi.unstubAllGlobals(); vi.stubGlobal("DOMParser", new Window().DOMParser); }
+test("stretch rejects unsupported playback rates instead of changing the selected source window", () => {
+  const element: TimelineElement = {
+    id: "media",
+    tag: "video",
+    start: 0,
+    duration: 4,
+    track: 0,
+    playbackRate: 1,
+    playbackStart: 3,
+  };
+  expect(() =>
+    timelineResizePlaybackAttributes(element, { start: 0, duration: 100 }, "stretch"),
+  ).toThrow("supported playback speed");
 });
+
+describe("failed stretch timing rollback", () => {
+  test("restores only exact owned output and folds the inverse into the same undo", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      json: async () => ({ restored: true, conflict: false }),
+    }));
+    const recordEdit = vi.fn(async () => {});
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await rollbackTimelineStretchTiming({
+        projectId: "project",
+        files: { "scene.html": { before: "original", after: "timing" } },
+        label: "Stretch",
+        coalesceKey: "stretch-1",
+        recordEdit,
+      });
+      expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
+        expected: "timing",
+        restore: "original",
+      });
+      expect(recordEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          coalesceKey: "stretch-1",
+          files: { "scene.html": { before: "timing", after: "original" } },
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      vi.stubGlobal("DOMParser", new Window().DOMParser);
+    }
+  });
+  test("preserves a successor edit on an ownership conflict", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ restored: false, conflict: true }),
+    }));
+    const recordEdit = vi.fn(async () => {});
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await rollbackTimelineStretchTiming({
+        projectId: "project",
+        files: { "scene.html": { before: "original", after: "timing" } },
+        label: "Stretch",
+        recordEdit,
+      });
+      expect(recordEdit).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.stubGlobal("DOMParser", new Window().DOMParser);
+    }
+  });
+});
+
+describe("stretch source safety", () => {
+  test("blocks unresolved selectors before mutating timing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          animations: [
+            {
+              id: "dynamic",
+              method: "to",
+              targetSelector: "dynamic",
+              position: 0,
+              properties: {},
+              hasUnresolvedSelector: true,
+            },
+          ],
+        }),
+      })),
+    );
+    try {
+      await expect(
+        assertTimelineStretchIsSafe(
+          "project",
+          "scene.html",
+          { id: "title", domId: "title", tag: "div", start: 0, duration: 5, track: 0 },
+          null,
+        ),
+      ).rejects.toThrow("dynamic animation targets");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.stubGlobal("DOMParser", new Window().DOMParser);
+    }
+  });
+  test("propagates a rejected GSAP scale so the gesture can restore its owned timing write", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("gsap-mutation-capabilities")
+          ? { ok: true, json: async () => ({ atomicOwnershipPairs: true }) }
+          : { ok: false, json: async () => ({ error: "animation cannot be scaled safely" }) },
+      ),
+    );
+    const reloadPreview = vi.fn();
+    try {
+      await expect(
+        finishClipTimingFallback({
+          iframe: null,
+          reloadPreview,
+          projectId: "project",
+          targetPath: "scene.html",
+          domId: "title",
+          label: "Stretch",
+          recordEdit: vi.fn(async () => {}),
+          throwOnGsapError: true,
+          edit: { kind: "scale", from: { start: 0, duration: 4 }, to: { start: 0, duration: 8 } },
+        }),
+      ).rejects.toThrow("cannot be scaled safely");
+      expect(reloadPreview).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.stubGlobal("DOMParser", new Window().DOMParser);
+    }
+  });
+});
+
+ test("inline scene moves carry explicit child audio timing and reject shared targets", () => {
+  const source='<section id="scene" data-start="2" data-duration="4"><h1 class="copy">Title</h1><audio id="voice" data-start="2" data-duration="4" data-fade-in="0.3"></audio></section><p class="copy">Other scene</p>';
+  const doc=new DOMParser().parseFromString(source,"text/html");
+  const element: TimelineElement={id:"scene",domId:"scene",tag:"section",start:2,duration:4,track:1,inlineScopeKind:"scene"};
+  const animation={id:"a",targetSelector:"#scene .copy",method:"to",position:2,duration:1,properties:{opacity:1}};
+  const changes=buildInlineSceneMoveChanges(doc,element,4,[{...animation,method:"to"}]);
+  expect(changes.map(change=>[change.element.id,change.start])).toEqual([["scene",4],["voice",4]]);
+  expect(doc.querySelector('audio')?.getAttribute('data-fade-in')).toBe("0.3");
+  expect(()=>buildInlineSceneMoveChanges(doc,element,4,[{...animation,method:"to",targetSelector:".copy"}])).toThrow("shares animation");
+  expect(()=>buildInlineSceneMoveChanges(doc,element,4,[{...animation,method:"to",implicitPosition:true}])).toThrow("unresolved animation timing");
+  expect(()=>buildInlineSceneMoveChanges(doc,element,4,[{...animation,method:"to",global:true}])).toThrow("unresolved animation timing");
+  expect(doc.getElementById('scene')?.getAttribute('data-start')).toBe("2");
+ });

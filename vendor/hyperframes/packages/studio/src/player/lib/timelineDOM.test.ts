@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
+import { resolveTimelineEditingMode } from "../components/timelineLayerPresentation";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { ClipManifestClip } from "./playbackTypes";
 import {
   collectDomClipChildren,
+  readInlineScopeKind,
   createTimelineElementFromManifestClip,
   filterEditableTimelineManifestClips,
   findTimelineDomNodeForClip,
@@ -775,4 +777,42 @@ describe("timeline manifest translation", () => {
       ),
     ).toBe(stream);
   });
+});
+
+ test("identifies same-file scene and group metadata without inferring from labels", () => {
+   const scene=document.createElement("section");scene.className="scene clip";
+   const group=document.createElement("div");group.setAttribute("data-hf-group","TitleGroup");
+   const unrelated=document.createElement("div");unrelated.setAttribute("data-label","Scene Alpha");
+   expect(readInlineScopeKind(scene)).toBe("scene");expect(readInlineScopeKind(group)).toBe("group");expect(readInlineScopeKind(unrelated)).toBeUndefined();
+ });
+
+ test("a discovered .scene.clip in one HTML selects the compact total timeline", () => {
+   const host=document.createElement("section");host.id="headline";host.className="scene clip";document.body.append(host);
+   const scene=createTimelineElementFromManifestClip({clip:MANIFEST_CLIP,hostEl:host,doc:document,fallbackIndex:0});
+   expect(scene.inlineScopeKind).toBe("scene");expect(scene.compositionSrc).toBeUndefined();
+   expect(resolveTimelineEditingMode(1,[scene])).toBe("master");
+   expect(resolveTimelineEditingMode(2,[scene])).toBe("scene");
+ });
+
+
+test("scene discovery distinguishes own painted content from layout-only ancestors", () => {
+  document.body.innerHTML = `<section id="scene"><div id="layout"><div id="card" style="background-color:rgb(240,240,240)"><div id="text">Title</div></div><div id="border" style="border:1px solid black"></div></div></section>`;
+  const clip: ClipManifestClip = { ...MANIFEST_CLIP, id: "scene" };
+  const host = document.getElementById("scene");
+  if (!host) throw new Error("Missing scene");
+  const { children } = collectDomClipChildren(document, [clip], new Map([[clip, host]]));
+  expect(children.find(child => child.domId === "layout")?.hasVisualContent).toBe(false);
+  expect(children.find(child => child.domId === "card")?.hasVisualContent).toBe(true);
+  expect(children.find(child => child.domId === "text")?.hasVisualContent).toBe(true);
+  expect(children.find(child => child.domId === "border")?.hasVisualContent).toBe(true);
+});
+
+
+test("leaf fill previews retain white backgrounds and thin lines without capturing content groups", () => {
+  document.body.innerHTML = `<div id="paper" style="background:white"></div><i id="line" style="display:block;height:3px;background:rgb(31,186,192)"></i><div id="card" style="background:white"><p>Real content</p></div>`;
+  const read = (id: string) => createTimelineElementFromManifestClip({ clip: { ...MANIFEST_CLIP, id },
+    fallbackIndex: 0, doc: document, hostEl: document.getElementById(id) }).timelinePaint;
+  expect(read("paper")).toBe("rgb(255, 255, 255)");
+  expect(read("line")).toBe("rgb(31, 186, 192)");
+  expect(read("card")).toBeUndefined();
 });

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { usePlayerStore, type TimelineElement, type DomClipChild } from "../store/playerStore";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { createTimelineElementFromManifestClip } from "../lib/timelineDOM";
+import { resolveTimelineTreeSelectionKey } from "../lib/timelineTreeSelection";
 import { buildTimelineElementKey } from "../lib/timelineElementHelpers";
 
 function extractDomId(key: string): string {
@@ -156,6 +157,7 @@ function buildChildElements(
       ...base,
       hidden: domChild?.hidden ?? base.hidden,
       clipLabel: domChild?.clipLabel ?? base.clipLabel,
+      timelinePaint: domChild?.timelinePaint,
       key,
       start: clamped.start,
       duration: clamped.duration,
@@ -384,6 +386,68 @@ export function buildExpandedElementTree(
           },
     );
   });
+}
+
+/** Same-file scene rows keep authored global timing even when descendants are flattened. */
+export function buildInlineScopeElements(
+  elements: TimelineElement[], manifest: ClipManifestClip[], parentMap: Map<string, string>,
+  domChildren: DomClipChild[], scope: TimelineElement, flatten = false,
+): TimelineElement[] {
+  const sourceFile = scope.sourceFile ?? "index.html";
+  const parentIds = new Set(parentMap.values());
+  const elementsById = new Map(elements.map(element => [element.id, element]));
+  const domById = new Map(domChildren.map(child => [child.id, child]));
+  const authoredByParent = new Map<string, ExpandedClip[]>();
+  const domByParent = new Map<string, DomClipChild[]>();
+  for (const clip of manifest) {
+    const parentId = clip.id ? parentMap.get(clip.id) : undefined;
+    if (!parentId) continue;
+    const siblings = authoredByParent.get(parentId) ?? [];
+    siblings.push(clip);
+    authoredByParent.set(parentId, siblings);
+  }
+  for (const child of domChildren) {
+    const siblings = domByParent.get(child.parentId) ?? [];
+    siblings.push(child);
+    domByParent.set(child.parentId, siblings);
+  }
+  const result = [scope];
+  const visited = new Set([scope.id]);
+  const append = (parent: TimelineElement) => {
+    const authored = authoredByParent.get(parent.id) ?? [];
+    const authoredIds = new Set(authored.map(clip => clip.id));
+    const localDom = domByParent.get(parent.id) ?? [];
+    const siblings = [...authored, ...domSiblingClips(localDom, parent.id, parent)
+      .filter(clip => !authoredIds.has(clip.id))];
+    const children = buildChildElements(siblings,
+      { start: parent.start, end: parent.start + parent.duration, track: parent.track },
+      { start: 0, sourceFile }, localDom);
+    for (const child of children) {
+      if (visited.has(child.id)) continue;
+      visited.add(child.id);
+      const dom = domById.get(child.id);
+      const existing = elementsById.get(child.id);
+      const element: TimelineElement = {
+        ...child, ...existing,
+        inlineScopeKind: existing?.inlineScopeKind ?? dom?.inlineScopeKind ??
+          (parentIds.has(child.id) ? "group" : undefined),
+        key: existing?.key ?? resolveTimelineTreeSelectionKey({
+          elementId: child.id, sourceFile: child.sourceFile ?? sourceFile,
+          selector: child.selector, selectorIndex: child.selectorIndex,
+          elements, manifest, domClipChildren: domChildren,
+        }),
+        previewHostId: existing?.previewHostId,
+        expandedParentStart: undefined,
+        compositionSrc: existing?.compositionSrc ?? (child.timingSource === "authored" ? child.compositionSrc : undefined),
+        sourceFile: existing?.sourceFile ?? child.sourceFile ?? sourceFile,
+      };
+      result.push(element);
+      // Real external compositions retain their own navigation and edit-time basis.
+      if (flatten && !element.compositionSrc && parentIds.has(element.id)) append(element);
+    }
+  };
+  append(scope);
+  return result;
 }
 
 export function applyTimelineLayerStateOverrides(

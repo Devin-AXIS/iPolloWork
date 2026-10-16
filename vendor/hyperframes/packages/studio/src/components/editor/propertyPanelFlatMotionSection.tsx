@@ -1,3 +1,4 @@
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
@@ -70,9 +71,7 @@ export function FlatTimingRow({
 
   const cell = (label: string, value: string, onCommit: (next: string) => void) => (
     <div className="flex h-[34px] min-w-0 items-center justify-between gap-1.5 rounded-[6px] bg-panel-input px-[10px] py-px">
-      <span className="flex-shrink-0 text-xs font-normal text-panel-text-3">
-        {tx(label)}
-      </span>
+      <span className="flex-shrink-0 text-xs font-normal text-panel-text-3">{tx(label)}</span>
       <span className="min-w-0 font-sans text-xs font-normal text-panel-text-1">
         <CommitField
           className="text-xs font-normal text-panel-text-1"
@@ -111,11 +110,15 @@ export function FlatMotionSection({
   onSetAttributes,
   onSeekToTime,
   onMutateMotion,
+  compact = false,
+  onEditPropertyKeyframe,
 }: {
   element: DomEditSelection;
   animations: GsapAnimation[];
   showTiming: boolean;
   showEffects: boolean;
+  compact?: boolean;
+  onEditPropertyKeyframe?: GsapAnimationEditCallbacks["onEditPropertyKeyframe"];
   currentTime: number;
   multipleTimelines?: boolean;
   unsupportedTimelinePattern?: boolean;
@@ -157,6 +160,8 @@ export function FlatMotionSection({
           )}
           {!multipleTimelines && !unsupportedTimelinePattern && (
             <SemanticMotionPanel
+              compact={compact}
+              onEditPropertyKeyframe={onEditPropertyKeyframe}
               element={element}
               animations={animations}
               onMutate={(targetKind, mutation) => onMutateMotion(targetKind, mutation, element)}

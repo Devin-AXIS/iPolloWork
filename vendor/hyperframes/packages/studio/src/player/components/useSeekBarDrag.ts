@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { formatFrameTime, formatTime } from "../lib/time";
 import { usePlayerStore, liveTime } from "../store/playerStore";
@@ -25,6 +25,7 @@ interface SeekBarRefs {
   durationRef: React.MutableRefObject<number>;
   currentTimeRef: React.MutableRefObject<number>;
   timeDisplayModeRef: React.MutableRefObject<"time" | "frame">;
+  timeOffsetRef?: React.RefObject<number>;
 }
 
 function updateProgressUI(
@@ -132,7 +133,11 @@ export function useSeekBarDrag(
   );
 
   useMountEffect(() => {
-    const updateProgress = (t: number) => {
+    const updateProgress = (sourceTime: number) => {
+      const t = Math.max(
+        0,
+        Math.min(refs.durationRef.current, sourceTime - (refs.timeOffsetRef?.current ?? 0)),
+      );
       refs.currentTimeRef.current = t;
       const dur = refs.durationRef.current;
       const pct = dur > 0 ? Math.min(100, (t / dur) * 100) : 0;
@@ -147,23 +152,26 @@ export function useSeekBarDrag(
     const unsub = liveTime.subscribe(updateProgress);
     updateProgress(usePlayerStore.getState().currentTime);
 
-    const interval = setInterval(() => {
-      const t = usePlayerStore.getState().currentTime;
-      const dur = usePlayerStore.getState().duration;
-      if (dur > 0 && t > 0) {
-        updateProgressUI(
-          refs.progressFillRef,
-          refs.progressThumbRef,
-          Math.min(100, (t / dur) * 100),
-        );
-      }
-    }, 500);
+    const interval = setInterval(() => updateProgress(usePlayerStore.getState().currentTime), 500);
 
     return () => {
       unsub();
       clearInterval(interval);
     };
   });
+
+  useEffect(() => {
+    const t = Math.max(
+      0,
+      Math.min(
+        duration,
+        usePlayerStore.getState().currentTime - (refs.timeOffsetRef?.current ?? 0),
+      ),
+    );
+    const pct = duration > 0 ? (t / duration) * 100 : 0;
+    updateProgressUI(refs.progressFillRef, refs.progressThumbRef, pct);
+    refs.sliderRef.current?.setAttribute("aria-valuenow", String(Math.round(t)));
+  }, [duration, refs.timeOffsetRef?.current]);
 
   return { handlePointerDown };
 }

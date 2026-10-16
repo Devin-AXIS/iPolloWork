@@ -1,6 +1,7 @@
+import type { TimelinePropertyRowDefinition } from "../../hooks/gsapTimelineSegmentCache";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
-import { formatTime } from "../lib/time";
+import { formatTime, secondsToFrame } from "../lib/time";
 import type { ZoomMode } from "../store/playerStore";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
@@ -9,7 +10,7 @@ export const DEFAULT_TIMELINE_GUTTER_WIDTH = 220;
 export const MIN_TIMELINE_GUTTER_WIDTH = 180;
 export const MAX_TIMELINE_GUTTER_WIDTH = 420;
 export const MIN_TIMELINE_CONTENT_WIDTH = 360;
-export const TRACK_H = 40;
+export const TRACK_H = 32;
 export const RULER_H = 28;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
@@ -48,6 +49,49 @@ export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
  * (clip left = t·pps, beat lines, lane-menu time) is untouched.
  */
 export const TRACKS_LEFT_PAD = 8;
+
+/** Rows are presentation only: property rows never become clips or authored tracks. */
+export type TimelinePresentationRow = {
+  track: number;
+  elementKey: string;
+} & ({ kind: "layer"; key: string } | TimelinePropertyRowDefinition);
+
+export function getTimelinePresentationTrackOrder(rows: readonly TimelinePresentationRow[]): number[] {
+  return rows.map((row) => row.track);
+}
+
+/** Convert expanded-row y to the compact lane coordinate used by clip gestures.
+ * Property/group rows belong to their parent layer and cannot create a lane. */
+export function getTimelineLogicalRowFromY(
+  contentY: number,
+  rows: readonly TimelinePresentationRow[],
+  trackOrder: readonly number[],
+): number {
+  const physicalRow = getTimelineRowFromY(contentY);
+  if (rows.length === 0) return physicalRow;
+  if (physicalRow < 0) return physicalRow;
+  if (physicalRow >= rows.length) return trackOrder.length + physicalRow - rows.length;
+  const row = rows[Math.floor(physicalRow)];
+  const logicalRow = trackOrder.indexOf(row.track);
+  const fraction = physicalRow % 1;
+  const next = rows[Math.floor(physicalRow) + 1];
+  if (next?.track === row.track) {
+    return logicalRow + (row.kind === "layer" ? Math.min(fraction, 0.5) : 0.5);
+  }
+  return logicalRow + (fraction > 1 - INSERT_BOUNDARY_BAND ? fraction : row.kind === "layer" ? fraction : 0.5);
+}
+
+export function getTimelineInsertPresentationIndex(
+  insertRow: number,
+  rows: readonly TimelinePresentationRow[],
+  trackOrder: readonly number[],
+): number {
+  if (rows.length === 0) return insertRow;
+  if (insertRow >= trackOrder.length) return rows.length;
+  const track = trackOrder[Math.max(0, insertRow)];
+  const index = rows.findIndex((row) => row.kind === "layer" && row.track === track);
+  return Math.max(0, index);
+}
 
 export function getTimelineGutterMaxWidth(viewportWidth: number): number {
   if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return MAX_TIMELINE_GUTTER_WIDTH;
@@ -261,9 +305,13 @@ export function generateTicks(
   return { major, minor };
 }
 
-export function formatTimelineTickLabel(time: number, duration: number, majorInterval: number) {
+export function formatTimelineTickLabel(time: number, duration: number, majorInterval: number, frameRate?: number) {
   if (!Number.isFinite(time)) return "00:00";
   const safeTime = Math.max(0, time);
+  if (majorInterval < 1 && frameRate && frameRate > 0) {
+    const frame = secondsToFrame(safeTime, frameRate);
+    return `${formatTime(Math.floor(frame / frameRate))}:${String(frame % frameRate).padStart(2, "0")}`;
+  }
   if (majorInterval < 0.1) {
     const totalHundredths = Math.round(safeTime * 100);
     const wholeSeconds = Math.floor(totalHundredths / 100);

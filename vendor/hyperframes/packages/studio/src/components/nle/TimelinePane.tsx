@@ -1,10 +1,12 @@
 import { useCallback, type ReactNode } from "react";
-import { Timeline } from "../../player";
+import { Timeline, usePlayerStore } from "../../player";
+import { resolveTimelineEditingMode } from "../../player/components/timelineLayerPresentation";
 import type { TimelineElement } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { TimelineResizeDivider } from "./TimelineResizeDivider";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
+import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { useNLEContext } from "./NLEContext";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 
@@ -45,6 +47,7 @@ type TimelineResizeChange = {
   start: number;
   duration: number;
   playbackStart?: number;
+  resizeMode?: "trim" | "stretch";
 };
 
 export function forwardRebasedTimelineResizeElements(
@@ -122,6 +125,7 @@ export function TimelinePane({
   const {
     seek,
     compositionStack,
+    scenePlaybackRange,
     handleDrillDown,
     handleNavigateComposition,
     timelineH,
@@ -130,6 +134,10 @@ export function TimelinePane({
     containerRef,
     timelineDisabled,
   } = useNLEContext();
+
+  const editingMode = usePlayerStore((state) =>
+    resolveTimelineEditingMode(compositionStack.length, state.elements),
+  );
 
   // Move/resize/split come from the timeline edit context, not props — the
   // wrappers below intercept expanded clips and must call the *real* handlers.
@@ -192,7 +200,9 @@ export function TimelinePane({
   const handleResizeElement = useCallback(
     (
       element: TimelineElement,
-      updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+      updates: Pick<TimelineElement, "start" | "duration" | "playbackStart"> & {
+        resizeMode?: "trim" | "stretch";
+      },
     ) => {
       const basis = element.expandedParentStart;
       if (basis === undefined) return onResizeElement?.(element, updates);
@@ -212,6 +222,7 @@ export function TimelinePane({
         start: number;
         duration: number;
         playbackStart?: number;
+        resizeMode?: "trim" | "stretch";
       }>,
       options?: { coalesceKey?: string },
     ) => {
@@ -266,15 +277,27 @@ export function TimelinePane({
         <div
           className="hf-timeline-pane flex flex-col flex-1 min-h-0 overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-neutral-950"
           onDoubleClick={(e) => {
-            if ((e.target as HTMLElement).closest("[data-clip]")) return;
+            if (
+              e.target instanceof Element &&
+              e.target.closest("[data-clip], [data-timeline-property-row]")
+            )
+              return;
             if (timelineDisabled) return;
             if (compositionStack.length > 1) {
               handleNavigateComposition(compositionStack.length - 2);
             }
           }}
         >
-          <div className="flex-shrink-0">{timelineToolbar}</div>
+          <div className="hf-timeline-navigation-toolbar flex min-w-0 flex-shrink-0 items-stretch bg-[var(--hf-studio-toolbar-bg)]">
+            <div className="min-w-0 flex-1">{timelineToolbar}</div>
+          </div>
           <Timeline
+            navigation={<CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />}
+            key={compositionStack[compositionStack.length - 1].id}
+            editingMode={editingMode}
+            inlineScope={compositionStack[compositionStack.length - 1].inlineTarget}
+            timeOffset={scenePlaybackRange?.start ?? 0}
+            visibleDuration={scenePlaybackRange ? scenePlaybackRange.end - scenePlaybackRange.start : undefined}
             onSeek={seek}
             onDrillDown={handleDrillDown}
             renderClipContent={renderClipContent}

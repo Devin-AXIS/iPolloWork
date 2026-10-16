@@ -1,6 +1,7 @@
 import { lastVideoFrameTime } from "@hyperframes/core/runtime/protocol";
 import { parseNumeric, parseStartExpression } from "@hyperframes/core/runtime/start-expression";
 
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter } from "./playbackTypes";
 
 type InlineState = { display: string };
@@ -255,6 +256,7 @@ function activeNarratedScene(
 export function syncTimedClipVisibility(
   doc: Document | null | undefined,
   currentTime: number,
+  sceneScope?: Element | null,
 ): void {
   if (!doc || !Number.isFinite(currentTime)) return;
   const win = doc.defaultView;
@@ -305,8 +307,11 @@ export function syncTimedClipVisibility(
     const start = resolveStart(element);
     const winner = winningTopLevelClip.get(key);
     if (
+      element === sceneScope ||
       element === narratedScene ||
-      (key !== narratedSceneGroup && (!winner || start >= winner.start))
+      ((sceneScope == null || winner?.element !== sceneScope) &&
+        key !== narratedSceneGroup &&
+        (!winner || start >= winner.start))
     ) {
       winningTopLevelClip.set(key, { element, start });
     }
@@ -349,18 +354,93 @@ export function syncTimedClipVisibility(
   }
 }
 
+const SCENE_SELECTOR = '.scene, [data-timeline-kind="scene"], [data-timeline-role="scene"]';
+const scopedMediaState = new WeakMap<Document, Map<HTMLMediaElement, boolean>>();
+
+/** Preview-only isolation. Shared composition layers remain visible; no authored attributes change. */
+export function syncPreviewSceneScope(
+  doc: Document | null | undefined,
+  scope: TimelineElement | null,
+  audioMuted?: boolean,
+): Element | null {
+  if (!doc) return null;
+  let target: Element | null = null;
+  if (scope) {
+    target = scope.hfId ? doc.querySelector(`[data-hf-id="${CSS.escape(scope.hfId)}"]`) : null;
+    target ??= doc.getElementById(scope.domId ?? scope.id);
+    if (!target && scope.selector) {
+      try {
+        target = doc.querySelectorAll(scope.selector)[scope.selectorIndex ?? 0] ?? null;
+      } catch {
+        /* unsupported selector */
+      }
+    }
+  }
+  const scenes = Array.from(doc.querySelectorAll(SCENE_SELECTOR));
+  for (const scene of scenes) {
+    scene.toggleAttribute(
+      "data-hf-studio-scope-hidden",
+      Boolean(target && scene !== target && !scene.contains(target) && !target.contains(scene)),
+    );
+  }
+  let mask = doc.querySelector("style[data-hf-studio-scene-mask]");
+  if (target && !mask) {
+    mask = doc.createElement("style");
+    mask.setAttribute("data-hf-studio-scene-mask", "");
+    mask.textContent =
+      "[data-hf-studio-scope-hidden] { display: none !important; pointer-events: none !important; }";
+    (doc.head ?? doc.documentElement).append(mask);
+  } else if (!target) mask?.remove();
+  const mediaState = scopedMediaState.get(doc) ?? new Map<HTMLMediaElement, boolean>();
+  scopedMediaState.set(doc, mediaState);
+  for (const [media, muted] of mediaState) {
+    if (
+      !target ||
+      !media.isConnected ||
+      (!media.closest("[data-hf-studio-scope-hidden]") &&
+        (!media.getAttribute("data-ipw-scene-id") ||
+          media.getAttribute("data-ipw-scene-id") === (scope?.domId ?? scope?.id)))
+    ) {
+      media.muted = audioMuted ?? muted;
+      mediaState.delete(media);
+    }
+  }
+  if (target) {
+    for (const media of doc.querySelectorAll<HTMLMediaElement>("audio, video")) {
+      const relatedScene = media.getAttribute("data-ipw-scene-id");
+      const outsideScene =
+        media.closest("[data-hf-studio-scope-hidden]") ||
+        (relatedScene && relatedScene !== (scope?.domId ?? scope?.id));
+      if (!outsideScene) continue;
+      if (!mediaState.has(media)) mediaState.set(media, media.muted);
+      media.muted = true;
+      media.pause();
+    }
+  }
+  return target;
+}
+
 export function wrapAdapterWithTimedClipVisibility(
   adapter: PlaybackAdapter,
   getDocument: () => Document | null | undefined,
   fps = 30,
+  getSceneScope?: () => TimelineElement | null,
 ): PlaybackAdapter {
   const cached = visibilityAdapterCache.get(adapter);
   if (cached) return cached;
   const sync = (time = adapter.getTime()) => {
     const doc = getDocument();
-    const visualTime = lastVideoFrameTime(time, adapter.getDuration(), fps);
-    syncTimedClipVisibility(doc, visualTime);
+    const scope = getSceneScope?.() ?? null;
+    const visualTime = scope
+      ? Math.max(
+          scope.start,
+          lastVideoFrameTime(time - scope.start, scope.duration, fps) + scope.start,
+        )
+      : lastVideoFrameTime(time, adapter.getDuration(), fps);
+    const target = syncPreviewSceneScope(doc, scope, usePlayerStore.getState().audioMuted);
+    syncTimedClipVisibility(doc, visualTime, target);
     syncLegacyFrameCarousel(doc, visualTime, adapter.getDuration());
+    syncPreviewSceneScope(doc, scope, usePlayerStore.getState().audioMuted);
   };
   const wrapped: PlaybackAdapter = {
     play: () => {
@@ -369,8 +449,12 @@ export function wrapAdapterWithTimedClipVisibility(
     },
     pause: () => adapter.pause(),
     seek: (time, options) => {
-      adapter.seek(time, options);
-      sync(time);
+      const scope = getSceneScope?.() ?? null;
+      const seekTime = scope
+        ? Math.max(scope.start, Math.min(scope.start + scope.duration - 1 / fps, time))
+        : time;
+      adapter.seek(seekTime, options);
+      sync(seekTime);
     },
     getTime: () => {
       const time = adapter.getTime();

@@ -33,6 +33,7 @@ interface GeometryRowsProps {
   commitManualSize: (dimension: "width" | "height", value: string) => void;
   commitManualRotation: (value: string) => void;
   gsapAnimId: string | null;
+  gsapRuntimeValues: Record<string, number>;
   navKeyframes: KeyframeEntry;
   currentPct: number;
   seekFromKfPct: (pct: number) => void;
@@ -135,6 +136,7 @@ export function LayoutGeometryRows({
   commitManualSize,
   commitManualRotation,
   gsapAnimId,
+  gsapRuntimeValues,
   onLivePreviewProps,
   large,
 }: GeometryRowsProps) {
@@ -156,13 +158,29 @@ export function LayoutGeometryRows({
     };
   }, [displayH, displayR, displayW, displayX, displayY]);
 
+  const positionPreviewBase = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    positionPreviewBase.current = null;
+  }, [element, displayX, displayY]);
+
   const previewGeometry = (
     property: "x" | "y" | "width" | "height" | "rotation",
     value: number,
   ) => {
     valuesRef.current = { ...valuesRef.current, [property]: value };
     if (gsapAnimId) {
-      onLivePreviewProps?.(element, { [property]: value });
+      if (property === "x" || property === "y") {
+        positionPreviewBase.current ??= {
+          x: gsapRuntimeValues?.x ?? 0,
+          y: gsapRuntimeValues?.y ?? 0,
+        };
+        const base = property === "x" ? displayX : displayY;
+        onLivePreviewProps?.(element, {
+          [property]: positionPreviewBase.current[property] + value - base,
+        });
+      } else {
+        onLivePreviewProps?.(element, { [property]: value });
+      }
       return;
     }
     const values = valuesRef.current;

@@ -3,9 +3,12 @@
  * Extracted from useGsapScriptCommits to keep file sizes under the 600-line limit.
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
+import { usePlayerStore, type KeyframeCacheEntry, type KeyframeCacheUpdate } from "../player/store/playerStore";
 import { toAbsoluteTime } from "./gsapShared";
-import { buildTimelineAnimationSegments, timelineKeyframe } from "../utils/timelineAnimationSegments";
+import {
+  buildTimelineAnimationSegments,
+  timelineKeyframe,
+} from "../utils/timelineAnimationSegments";
 import {
   buildTimelineCacheUpdates,
   resolveGsapTimelineTargetKeys,
@@ -20,13 +23,13 @@ export function updateKeyframeCacheFromParsed(
   const { setKeyframeCacheEntries, elements } = usePlayerStore.getState();
   const idsWithTimelineData = new Set<string>();
   const merged = new Map<string, KeyframeCacheEntry>();
-  const segmentsByElement = new Map<
-    string,
-    NonNullable<KeyframeCacheEntry["animationSegments"]>
-  >();
+  const propertyAnimationsByElement = new Map<string, GsapAnimation[]>();
+  const segmentsByElement = new Map<string, NonNullable<KeyframeCacheEntry["animationSegments"]>>();
   for (const anim of animations) {
     const targetKeys = resolveGsapTimelineTargetKeys(anim.targetSelector, targetPath, elements);
     for (const id of targetKeys) {
+      propertyAnimationsByElement.set(id, [...(propertyAnimationsByElement.get(id) ?? []), anim]);
+      idsWithTimelineData.add(id);
       // Convert tween-relative percentages to clip-relative so diamonds
       // render at the correct position within the timeline clip.
       const timelineEl = elements.find(
@@ -77,18 +80,21 @@ export function updateKeyframeCacheFromParsed(
             byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
           }
         }
-        existing.keyframes = Array.from(byPct.values()).sort(
-          (a, b) => a.percentage - b.percentage,
-        );
+        existing.keyframes = Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
       } else {
         merged.set(id, { ...anim.keyframes, keyframes: clipKeyframes });
       }
     }
   }
-  const elementIds = new Set([...merged.keys(), ...segmentsByElement.keys()]);
+  const elementIds = new Set([
+    ...merged.keys(),
+    ...segmentsByElement.keys(),
+    ...propertyAnimationsByElement.keys(),
+  ]);
   const cacheEntries = new Map<string, KeyframeCacheEntry>();
   for (const id of elementIds) {
     const entry = merged.get(id) ?? { format: "percentage", keyframes: [] };
+    entry.propertyAnimations = propertyAnimationsByElement.get(id);
     const animationSegments = segmentsByElement.get(id);
     if (animationSegments) entry.animationSegments = animationSegments;
     cacheEntries.set(id, entry);
@@ -134,9 +140,13 @@ export function clearKeyframeCacheForElement(sourceFile: string, elementId: stri
  * it. Collects the element ids that currently have a prefixed or index.html
  * fallback key for the file and drops each through clearKeyframeCacheForElement
  * so the bare key goes too — an element whose keyframes were removed (and so is
- * absent from the re-scan) leaves no stale bare entry behind.
+ * absent from the re-scan) leaves no stale bare entry behind. A refresh supplies
+ * its replacement in the same store update so expanded rows never see an empty cache.
  */
-export function clearKeyframeCacheForFile(sourceFile: string): void {
+export function clearKeyframeCacheForFile(
+  sourceFile: string,
+  replacement: readonly KeyframeCacheUpdate[] = [],
+): void {
   const { keyframeCache, setKeyframeCacheEntries } = usePlayerStore.getState();
   const sfPrefix = `${sourceFile}#`;
   const fallbackPrefix = "index.html#";
@@ -155,9 +165,9 @@ export function clearKeyframeCacheForFile(sourceFile: string): void {
     if (sourceFile !== "index.html") keys.add(`index.html#${id}`);
   }
   setKeyframeCacheEntries(
-    Array.from(keys)
+    [...Array.from(keys)
       .filter((key) => keyframeCache.has(key))
-      .map((key) => ({ elementId: key, data: undefined })),
+      .map((key) => ({ elementId: key, data: undefined })), ...replacement],
   );
 }
 

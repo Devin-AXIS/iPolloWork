@@ -1,3 +1,4 @@
+import type { GsapAnimationEditCallbacks } from "../../components/editor/gsapAnimationCallbacks";
 // fallow-ignore-file code-duplication
 // fallow-ignore-file dead-code
 import type { TimelineElement } from "../store/playerStore";
@@ -25,6 +26,10 @@ export interface TimelineDropCallbacks {
 }
 
 export interface TimelineEditCallbacks {
+  onEditPropertyKeyframe?: (
+    element: TimelineElement, animationId: string, property: string, percentage: number,
+    edit: Parameters<NonNullable<GsapAnimationEditCallbacks["onEditPropertyKeyframe"]>>[3],
+  ) => Promise<boolean>;
   onSetElementAttributeLive?: (
     element: TimelineElement,
     attr: string,
@@ -36,10 +41,7 @@ export interface TimelineEditCallbacks {
     value: string | null,
     label: string,
   ) => Promise<void>;
-  onRevertElementAttributeLive?: (
-    element: TimelineElement,
-    attr: string,
-  ) => void;
+  onRevertElementAttributeLive?: (element: TimelineElement, attr: string) => void;
   onMoveElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
@@ -57,7 +59,9 @@ export interface TimelineEditCallbacks {
   ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+    updates: Pick<TimelineElement, "start" | "duration" | "playbackStart"> & {
+      resizeMode?: "trim" | "stretch";
+    },
   ) => Promise<void> | void;
   onResizeElements?: (
     changes: Array<{
@@ -65,6 +69,7 @@ export interface TimelineEditCallbacks {
       start: number;
       duration: number;
       playbackStart?: number;
+      resizeMode?: "trim" | "stretch";
     }>,
     options?: { coalesceKey?: string },
   ) => Promise<void> | void;
@@ -83,12 +88,6 @@ export interface TimelineEditCallbacks {
     fromClipPercentage: number,
     toClipPercentage: number,
   ) => void;
-  onInspectAnimation?: (element: TimelineElement) => void;
-  canMoveAnimationSegment?: (element: TimelineElement, animationId: string) => boolean;
-  onMoveAnimationSegment?: (
-    element: TimelineElement,
-    animationId: string,
-    deltaPercentage: number,
-  ) => void;
+  onInspectAnimation?: (element: TimelineElement, animationId?: string, time?: number) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
 }

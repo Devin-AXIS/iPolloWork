@@ -1,3 +1,8 @@
+import { usePlayerStore, type TimelineElement } from "../../player/store/playerStore";
+import { resolveStoryboardTimelineTarget } from "../../player/lib/timelineTreeSelection";
+import { STUDIO_PREVIEW_FPS } from "../../player/lib/time";
+import { useNLEContextOptional } from "../nle/NLEContext";
+import { useDockLayoutStore } from "../dock/dockLayoutStore";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines,
@@ -71,7 +76,10 @@ export function StoryboardTable({
       return { value: option.value, label: locale === "zh" ? labels.at(-1)! : labels[0]! };
     });
   }, [componentSections, locale]);
-  const { registerViewModeGuard } = useViewMode();
+  const { registerViewModeGuard, setViewMode } = useViewMode();
+  const nle = useNLEContextOptional();
+  const [pendingClip, setPendingClip] = useState<TimelineElement | null>(null);
+  const elements = usePlayerStore(state => state.elements);
   const format = data.globals.format?.match(/(\d+)\s*[x×]\s*(\d+)/i);
   const aspectRatio =
     format && Number(format[1]) > 0 && Number(format[2]) > 0
@@ -135,6 +143,33 @@ export function StoryboardTable({
   const changedOnDisk = data.source !== draft.base;
   const manifest = useMemo(() => parseStoryboard(draft.text), [draft.text]);
   const total = manifest.frames.reduce((sum, frame) => sum + (frame.durationSeconds ?? 0), 0);
+
+  function revealClip(clip: TimelineElement) {
+    const state = usePlayerStore.getState();
+    state.setIsPlaying(false);
+    state.setSelectedElementId(clip.key ?? clip.id);
+    state.requestClipReveal(clip.key ?? clip.id);
+    state.requestSeek(clip.start);
+    const dock = useDockLayoutStore.getState();
+    dock.activatePanel("timeline");
+    dock.activatePanel("preview");
+  }
+  useEffect(() => {
+    if (!pendingClip || (nle && (nle.compositionStack.length > 1 || nle.compositionLoading))) return;
+    // requestSeek is consumed synchronously. Wait for the root render to clear
+    // the previous scene's range before requesting this global position.
+    revealClip(pendingClip);
+    setPendingClip(null);
+  }, [pendingClip, nle?.compositionStack.length, nle?.compositionLoading]);
+  function locateClip(clip: TimelineElement) {
+    if (dirty || saving || !setViewMode("timeline")) return;
+    if (nle && nle.compositionStack.length > 1) {
+      setPendingClip(clip);
+      nle.handleNavigateComposition(0);
+      return;
+    }
+    revealClip(clip);
+  }
 
   function projectAssets(paths: string[]): StoryboardSettingsAsset[] {
     return paths.flatMap(path => {
@@ -504,6 +539,8 @@ export function StoryboardTable({
       >
         <tbody className="bg-[var(--hf-panel-bg)]">
           {manifest.frames.map((frame) => {
+            const clip = resolveStoryboardTimelineTarget(frame, manifest.frames, elements, STUDIO_PREVIEW_FPS);
+            const locateHint = dirty ? tx("Save the script before locating this shot") : clip ? tx("Locate clip") : tx("This shot has no matching timeline clip yet");
             const diskFrame = data.frames.find((item) => item.src === frame.src && item.srcExists);
             const recipeId = frame.extra.recipe?.trim() || frame.camera?.match(/(?:^|\s)component:([a-z0-9-]+)/)?.[1] || "";
             const customReason = frame.extra.custom_reason?.trim() || "";
@@ -535,6 +572,7 @@ export function StoryboardTable({
                   }}
                 >
                   <td className="px-2 py-3">
+                    <div className="flex items-start gap-1">
                     <Tooltip><TooltipTrigger render={<Button size="sm" variant="ghost"
                       type="button"
                       draggable
@@ -558,11 +596,19 @@ export function StoryboardTable({
                           move(frame.index, frame.index + 1);
                         }
                       }}
-                      className="hf-script-reorder cursor-grab gap-1 px-1.5 text-[var(--hf-panel-text-3)] active:cursor-grabbing"
+                      className="hf-script-reorder w-4 shrink-0 cursor-grab px-0 text-[var(--hf-panel-text-3)] active:cursor-grabbing"
                     />} >
                       <GripVertical size={12} />
-                      <span className="tabular-nums">{String(frame.index).padStart(2, "0")}</span>
                     </TooltipTrigger><TooltipContent>{tx("Drag to reorder. Use arrow keys to move.")}</TooltipContent></Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger render={<span className="inline-flex" tabIndex={!clip || dirty || saving ? 0 : -1} />}>
+                        <Button size="sm" variant="ghost" className="px-0.5 tabular-nums" aria-label={`${tx("Locate clip")} ${frame.index}`}
+                          data-testid={`storyboard-locate-${frame.index}`} disabled={!clip || dirty || saving}
+                          onClick={() => { if (clip) locateClip(clip); }}>{String(frame.index).padStart(2, "0")}</Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{locateHint}</TooltipContent>
+                    </Tooltip>
+                    </div>
                   </td>
                   <td className="px-1 py-3">
                     <label

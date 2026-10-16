@@ -1,3 +1,4 @@
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { create } from "zustand";
 import type { VideoLiveGeneration } from "@ipollowork/types/hyperframes";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
@@ -24,6 +25,8 @@ export interface KeyframeCacheEntry {
   easeEach?: string;
   /** Clip-local GSAP timing bars. Derived from existing tweens; never persisted separately. */
   animationSegments?: TimelineAnimationSegment[];
+  /** Unmerged source tweens, retaining exact IDs and per-property ownership. */
+  propertyAnimations?: GsapAnimation[];
 }
 
 export interface KeyframeCacheUpdate {
@@ -33,9 +36,7 @@ export interface KeyframeCacheUpdate {
 
 /** Ordinary edits affect the full animation; only an explicitly selected
  * timeline keyframe limits the edit to one point. */
-export function shouldCommitAnimationKeyframe(
-  activeKeyframePct: number | null,
-): boolean {
+export function shouldCommitAnimationKeyframe(activeKeyframePct: number | null): boolean {
   return activeKeyframePct != null;
 }
 
@@ -45,6 +46,8 @@ export interface TimelineElement {
   hasAudio?: boolean;
   id: string;
   label?: string;
+  /** Read-only fill preview for a leaf shape; never persisted into the artwork. */
+  timelinePaint?: string;
   /** Timeline clip caption, independent from the layer-tree label. */
   clipLabel?: string;
   key?: string;
@@ -56,8 +59,7 @@ export interface TimelineElement {
    * The data-track-index as written in the source file. Set at the manifest
    * translation boundary (createTimelineElementFromManifestClip) from the
    * runtime clip's verbatim track, and preserved through display-lane remaps
-   * (normalizeToZones packs sparse authored tracks onto contiguous display
-   * lanes; expanded sub-comp children get synthetic display rows). Lane edits
+   * (legacy overlaps and scene layers get synthetic display rows). Lane edits
    * must persist THIS space — writing a display-lane number into a sparse file
    * re-targets the wrong track. For an expanded child the value is in its OWN
    * source file's coordinate space, not the host timeline's.
@@ -110,6 +112,11 @@ export interface TimelineElement {
    * authored group share one timeline color; independent clips remain distinct.
    */
   timelineGroupId?: string;
+  /** Same-file scene/group navigation; source timing remains global. */
+  inlineScopeKind?: "scene" | "group";
+  sharedLayer?: boolean;
+  /** Scene-only display metadata; DOM ancestry and source timing stay unchanged. */
+  sceneLayer?: { role: "scene" | "group" | "element"; parentLabel?: string };
   /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child
@@ -140,7 +147,7 @@ export type TimelineKind =
   | "element";
 
 export type ZoomMode = "fit" | "manual";
-type TimelineTool = "select" | "razor" | "annotate" | "annotate-lasso";
+type TimelineTool = "select" | "stretch" | "razor" | "annotate" | "annotate-lasso";
 
 export interface SelectElementOptions {
   preserveSet?: boolean;
@@ -210,6 +217,24 @@ interface PlayerState {
 
   /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
+  selectedTimelineEffect: {
+    ownerKey: string;
+    animationId: string;
+    property?: string;
+    time?: number;
+  } | null;
+  setSelectedTimelineEffect: (
+    effect: { ownerKey: string; animationId: string; property?: string; time?: number } | null,
+  ) => void;
+  selectedPropertyKeyframe: {
+    ownerKey: string;
+    property: string;
+    animationId: string;
+    time: number;
+  } | null;
+  setSelectedPropertyKeyframe: (
+    point: { ownerKey: string; property: string; animationId: string; time: number } | null,
+  ) => void;
   activeKeyframePct: number | null;
   setActiveKeyframePct: (pct: number | null) => void;
   /** Motion-path "set destination" mode. Armed from the preview toolbar (replaces
@@ -363,6 +388,10 @@ interface ElementDeleteTarget {
 /** A DOM-only timeline child (no data-start) and its nesting context. */
 export interface DomClipChild {
   id: string;
+  /** Own text or painted surface, excluding descendants and layout-only wrappers. */
+  hasVisualContent?: boolean;
+  timelinePaint?: string;
+  inlineScopeKind?: "scene" | "group";
   /** Own authored eye state; ancestor hiding is derived by the expanded tree. */
   hidden?: boolean;
   /** Actual DOM id when `id` is a selector/hf-id backed tree identity. */
@@ -444,6 +473,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
   clearSelectedKeyframes: () => set({ selectedKeyframes: new Set() }),
 
+  selectedTimelineEffect: null,
+  setSelectedTimelineEffect: (effect) =>
+    set({
+      selectedTimelineEffect: effect,
+      selectedPropertyKeyframe: null,
+      selectedKeyframes: new Set(),
+      activeKeyframePct: null,
+    }),
+  selectedPropertyKeyframe: null,
+  setSelectedPropertyKeyframe: (point) =>
+    set({
+      selectedPropertyKeyframe: point,
+      ...(point ? { selectedTimelineEffect: point } : {}),
+      selectedKeyframes: new Set(),
+      activeKeyframePct: null,
+    }),
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
   motionPathArmed: false,
@@ -566,8 +611,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         if (target.domId) return candidate.domId === target.domId;
         return Boolean(
           target.selector &&
-            candidate.selector === target.selector &&
-            (candidate.selectorIndex ?? 0) === (target.selectorIndex ?? 0),
+          candidate.selector === target.selector &&
+          (candidate.selectorIndex ?? 0) === (target.selectorIndex ?? 0),
         );
       };
       const removedIds = new Set<string>();
@@ -727,6 +772,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         ? {
             selectedElementId: id,
             selectedElementIds,
+            selectedPropertyKeyframe: null,
+            selectedTimelineEffect: null,
             activeKeyframePct: null,
             motionPathArmed: false,
           }
@@ -785,6 +832,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       outPoint: null,
       activeTool: "select",
       selectedKeyframes: new Set(),
+      selectedPropertyKeyframe: null,
+      selectedTimelineEffect: null,
       selectedElementIds: new Set(),
       clipRevealRequest: null,
       keyframeCache: new Map(),

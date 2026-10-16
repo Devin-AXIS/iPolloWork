@@ -8,7 +8,7 @@ import {
   readGsapBorderRadiusForPanel,
   selectionIdentityKey,
 } from "./propertyPanelHelpers";
-import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
+import { createTransformCommitHandlers, readLayoutPosition } from "./propertyPanelTransformCommit";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { resolveEditingSections } from "@hyperframes/core/editing";
 import { domEditSelectionToFacts } from "./domEditingLayers";
@@ -157,11 +157,13 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   const gsapKeyframes = gsapKfAnim?.keyframes?.keyframes ?? null;
   const gsapAnimId = gsapKfAnim?.id ?? gsapAnimations?.[0]?.id ?? null;
   const hasGsapAnimation = !!(gsapAnimId || gsapAnimations.length > 0);
+  const layoutPosition = readLayoutPosition(gsapAnimations, manualOffset);
   const { commitManualOffset, commitManualSize, commitManualRotation } =
     createTransformCommitHandlers({
       element,
       styles,
       hasGsapAnimation,
+      layoutPosition,
       gsapAnimId,
       gsapKeyframes,
       currentPct,
@@ -181,8 +183,8 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     return gsapAnimId ?? "";
   };
 
-  const displayX = gsapRuntimeValues?.x ?? manualOffset.x;
-  const displayY = gsapRuntimeValues?.y ?? manualOffset.y;
+  const displayX = layoutPosition.x;
+  const displayY = layoutPosition.y;
   const displayW = gsapRuntimeValues?.width ?? resolvedWidth;
   const displayH = gsapRuntimeValues?.height ?? resolvedHeight;
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;

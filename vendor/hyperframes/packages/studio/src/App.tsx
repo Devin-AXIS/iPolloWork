@@ -262,6 +262,7 @@ export function StudioApp() {
     noteOutsideChange: editHistory.noteOutsideChange,
     aiEditing: hostAiEditing,
   });
+  const invalidateGsapCacheRef = useRef<() => void>(() => {});
   const timelineEditing = useTimelineEditing({
     projectId,
     activeCompPath,
@@ -280,6 +281,7 @@ export function StudioApp() {
     publishSdkSession: sdkHandle.publish,
     forceReloadSdkSession: sdkHandle.forceReload,
     handleDomZIndexReorderCommitRef,
+    onAnimationTimingCommitted: () => invalidateGsapCacheRef.current(),
   });
   const handleTimelineElementsMove = useCallback(
     async (
@@ -399,7 +401,6 @@ export function StudioApp() {
   const domEditDeleteBridge = (s: DomEditSelection) => handleDomEditElementDeleteRef.current(s);
   const resetKeyframesRef = useRef<() => boolean>(() => false);
   const deleteSelectedKeyframesRef = useRef<() => void>(() => {});
-  const invalidateGsapCacheRef = useRef<() => void>(() => {});
   const { handleCopy, handlePaste, handleCut } = useClipboard({
     projectId,
     activeCompPath,

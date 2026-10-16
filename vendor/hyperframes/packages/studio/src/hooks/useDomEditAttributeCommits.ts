@@ -1,5 +1,4 @@
 import { useCallback, useRef } from "react";
-import { componentStretchAttributes, readComponentSourceDuration } from "./timelineEditingHelpers";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
   findElementForSelection,
@@ -96,7 +95,6 @@ function captureAttributeElement(
 // both revert the optimistic write on persist failure, version-guarded per
 // target+attribute so a stale failure can't stomp a newer successful commit.
 export function useDomEditAttributeCommits({
-  projectId,
   activeCompPath,
   previewIframeRef,
   showToast,
@@ -262,20 +260,7 @@ export function useDomEditAttributeCommits({
         onSettled?: (ok: boolean) => void;
       },
     ) => {
-      let resolvedAttrs: Record<string, string | null> = attrs;
-      const duration = Number(attrs.duration ?? attrs["data-duration"]);
-      if (selection.isCompositionHost && selection.compositionSrc && duration > 0) {
-        const sourceDuration = await readComponentSourceDuration(
-          projectId ?? "",
-          selection.compositionSrc,
-          Number(selection.element.getAttribute("data-source-duration")) || undefined,
-        );
-        resolvedAttrs = {
-          ...attrs,
-          ...componentStretchAttributes(sourceDuration, duration),
-        };
-      }
-      await commitDataAttributes(selection, resolvedAttrs, {
+      await commitDataAttributes(selection, attrs, {
         label,
         coalescePrefix: "attrs",
         skipRefresh: behavior?.skipRefresh ?? false,
@@ -283,7 +268,7 @@ export function useDomEditAttributeCommits({
         onSettled: behavior?.onSettled,
       });
     },
-    [commitDataAttributes, projectId],
+    [commitDataAttributes],
   );
 
   const handleDomAttributeCommit = useCallback(

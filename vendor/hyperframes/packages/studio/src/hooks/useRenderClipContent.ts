@@ -172,6 +172,23 @@ export function useRenderClipContent({
         });
       }
 
+      if (kind === "element" && element.timelinePaint && !element.inlineScopeKind &&
+          element.sceneLayer?.role !== "group") {
+        return createElement(TimelineClipContent, {
+          label,
+          variant: "media",
+          body: createElement("div", {
+            "data-timeline-paint-preview": true,
+            role: "img",
+            "aria-label": label,
+            className: "absolute inset-0 bg-muted/40 p-1",
+          }, createElement("div", {
+            className: "h-full w-full rounded-sm border border-border",
+            style: { background: element.timelinePaint },
+          })),
+        });
+      }
+
       if (projectId) {
         const preview = resolveTimelineThumbnailPreview(element, projectId, activePreviewUrl);
         if (preview) {
@@ -185,7 +202,6 @@ export function useRenderClipContent({
               label: "",
               labelColor: style.label,
               loading: "lazy",
-              minLoadWidth: 52,
             }),
           });
         }

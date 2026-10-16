@@ -762,7 +762,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         if (opts.selector) {
           clip = await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex);
         }
-        const screenshot = (await withThumbnailTimeout(
+        const screenshot = await withThumbnailTimeout(
           page.screenshot(
             opts.format === "png"
               ? {
@@ -777,8 +777,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           ),
           THUMBNAIL_SCREENSHOT_TIMEOUT_MS,
           "Timed out while taking the screenshot",
-        )) as Buffer;
-        return screenshot;
+        );
+        // Puppeteer returns Uint8Array; the shared adapter contract requires Buffer.
+        return Buffer.from(screenshot);
       } catch (err) {
         console.warn(
           "[Studio] Thumbnail generation failed:",

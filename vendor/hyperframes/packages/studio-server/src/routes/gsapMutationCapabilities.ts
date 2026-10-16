@@ -39,6 +39,7 @@ export const GSAP_MUTATION_CAPABILITIES = {
   "add-keyframe": differential("keyframe"),
   "remove-keyframe": differential("keyframe"),
   "move-keyframe": behavioral("keyframe"),
+  "edit-property-keyframe": behavioral("keyframe"),
   "resize-keyframed-tween": behavioral("keyframe"),
   "update-keyframe": differential("keyframe"),
   "convert-to-keyframes": behavioral("keyframe"),

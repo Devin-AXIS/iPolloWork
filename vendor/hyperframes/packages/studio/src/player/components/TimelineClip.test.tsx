@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { TimelineClip } from "./TimelineClip";
+import { TimelineClipContent } from "./TimelineClipContent";
 
 const capabilities = {
   canMove: true,
@@ -60,7 +61,6 @@ function renderTimelineClip(
           isSelected={input.selected ?? false}
           isHovered={false}
           hasCustomContent={input.customContent ?? false}
-          hasAnimationRow={input.animationContent !== undefined}
           animationContent={input.animationContent}
           capabilities={capabilities}
           visualStyle={visualStyle}
@@ -104,24 +104,40 @@ describe("TimelineClip", () => {
     expect(clip?.classList.contains("is-micro")).toBe(false);
   });
 
-  it("folds only the Visual row, preserving the owner clip and its contents", async () => {
+  it("keeps animation summaries inside the thumbnail clip without a second row", () => {
     root = renderTimelineClip(container, {
       widthPx: 200, customContent: true,
-      animationContent: <span data-testid="native-animation">Native diamond</span>,
+      animationContent: <span data-testid="native-animation">Summary</span>,
     });
-    const toggle = container.querySelector('button[aria-expanded]');
-    if (!(toggle instanceof HTMLButtonElement)) throw new Error("Visual disclosure missing");
-    const clip = container.querySelector('[data-clip]');
-    expect(container.querySelector('[data-testid="native-animation"]')).not.toBeNull();
-    await act(async () => toggle.click());
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(container.querySelector('[data-testid="native-animation"]')).toBeNull();
+    const clip = container.querySelector<HTMLElement>("[data-clip]");
+    expect(clip?.style.top).toBe("3px");
+    expect(clip?.style.bottom).toBe("3px");
+    expect(clip?.style.height).toBe("");
+    expect(clip?.querySelector('[data-testid="native-animation"]')).not.toBeNull();
+    expect(clip?.querySelector('.hf-timeline-clip-content')?.textContent).toBe("Scene Title");
     expect(container.querySelector('[data-testid="timeline-visual-row"]')).toBeNull();
-    expect(container.querySelector('[data-clip]')).toBe(clip);
-    expect(container.querySelector('.hf-timeline-clip-content')?.textContent).toBe("Scene Title");
-    await act(async () => toggle.click());
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector('[data-testid="native-animation"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-expanded]')).toBeNull();
+  });
+
+  it("does not create an animation track for a static clip", () => {
+    root = renderTimelineClip(container, { widthPx: 200, customContent: true });
+    expect(container.querySelector('[data-testid="timeline-visual-row"]')).toBeNull();
+    expect(container.querySelector('[data-testid="native-animation"]')).toBeNull();
+  });
+
+  it("keeps clip identity accessible without repeating the layer caption", () => {
+    root = renderTimelineClip(container, { widthPx: 200 });
+    expect(container.querySelector(".timeline-clip__label")).toBeNull();
+    expect(container.querySelector(".timeline-clip__timecode")).toBeNull();
+    expect(container.querySelector("[data-clip]")?.getAttribute("aria-label")).toBe("Scene Title • 0.0s – 2.0s");
+  });
+
+  it("custom thumbnail content keeps its body and accessible timing without a caption overlay", () => {
+    root = createRoot(container);
+    flushSync(() => root?.render(<TimelineClipContent label="Scene Title" timecode="0–2s" variant="media" body={<img alt="Scene thumbnail" src="thumbnail.png" />} />));
+    expect(container.querySelector(".hf-timeline-clip-content__header")).toBeNull();
+    expect(container.querySelector("img")?.alt).toBe("Scene thumbnail");
+    expect(container.querySelector(".hf-timeline-clip-content")?.getAttribute("title")).toBe("Scene Title • 0–2s");
   });
 
   it("does not force labels into selected micro clips", () => {

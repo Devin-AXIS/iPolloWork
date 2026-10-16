@@ -94,8 +94,8 @@ export default {id:'video-workbench-modules',title:'统一视频工作台：紧�
  await evaluate(frame,"Array.from(document.querySelectorAll('header button')).find(e=>e.textContent==='取消').click()");
  await wait(frame,"!document.querySelector('header input')&&document.activeElement===document.querySelector('[data-testid=studio-rename-video]')");
  await choose('主题');await new Promise(r=>setTimeout(r,500));
- await ctx.prove('主题属性容器保留完整外框与滚动样式',{
- voiceover:'检查宿主属性容器和底部圆角；内容超出容器时滚动查看，不修改颜色或字体。',
+ await ctx.prove('主题面板滚动到下方仍保留完整外框',{
+ voiceover:'主题页只滚动查看现有设置，检查宿主面板尺寸与底部圆角，不修改颜色或字体。',
  action:async()=>{await ctx.eval("(()=>{const root=Array.from(document.querySelectorAll('[style]')).find(e=>e.matches('[data-testid=video-voice-panel],[data-testid=video-style-tab-content],[data-testid=video-avatar-tab-content]')&&e.getBoundingClientRect().width>0&&e.getBoundingClientRect().height>0);if(!root)return;const s=Array.from(root.querySelectorAll('*')).filter(e=>e.clientHeight>200&&e.scrollHeight>e.clientHeight+10&&['auto','scroll'].includes(getComputedStyle(e).overflowY)).sort((a,b)=>b.clientHeight-a.clientHeight)[0];if(s){s.dataset.proofScroll=String(s.scrollTop);s.scrollTop=s.scrollHeight;}})()");},
  assert:async()=>ctx.assert(await ctx.eval("Array.from(document.querySelectorAll('[style]')).some(e=>e.matches('[data-testid=video-voice-panel],[data-testid=video-style-tab-content],[data-testid=video-avatar-tab-content]')&&e.getBoundingClientRect().width>0&&e.getBoundingClientRect().height>0&&e.style.border==='0px'&&getComputedStyle(e).borderBottomLeftRadius==='15px'&&getComputedStyle(e).borderBottomRightRadius==='15px')"),'Inset bounds and rounded bottom'),
  screenshot:{name:'theme-panel-inset'}
@@ -103,8 +103,7 @@ export default {id:'video-workbench-modules',title:'统一视频工作台：紧�
  await ctx.eval("document.querySelectorAll('[data-proof-scroll]').forEach(e=>{e.scrollTop=Number(e.dataset.proofScroll);delete e.dataset.proofScroll;})");
  const embeddedScrollbar=await evaluate(frame,"(()=>{const s=getComputedStyle(document.querySelector('.hf-script-table-scroll'),'::-webkit-scrollbar-thumb');return {color:s.backgroundColor,border:s.borderTopWidth};})()");
  const timelineScrollbar=await evaluate(frame,"(()=>{const s=getComputedStyle(document.querySelector('.hf-timeline-scroll'),'::-webkit-scrollbar-thumb');return {color:s.backgroundColor,border:s.borderTopWidth};})()");
- await ctx.waitFor("Array.from(document.querySelectorAll('.hf-video-workbench-host *')).some(e=>e.clientHeight>0&&['auto','scroll'].includes(getComputedStyle(e).overflowY))");
- const hostScrollbar=await ctx.eval("(()=>{const e=Array.from(document.querySelectorAll('.hf-video-workbench-host *')).find(e=>e.clientHeight>0&&['auto','scroll'].includes(getComputedStyle(e).overflowY));const s=getComputedStyle(e,'::-webkit-scrollbar-thumb');return {color:s.backgroundColor,border:s.borderTopWidth};})()");
+ const hostScrollbar=await ctx.eval("(()=>{const e=Array.from(document.querySelectorAll('.hf-video-workbench-host *')).find(e=>e.clientHeight>200&&e.scrollHeight>e.clientHeight&&getComputedStyle(e).overflowY==='auto');const s=getComputedStyle(e,'::-webkit-scrollbar-thumb');return {color:s.backgroundColor,border:s.borderTopWidth};})()");
  ctx.assert(JSON.stringify(embeddedScrollbar)===JSON.stringify(timelineScrollbar)&&JSON.stringify(embeddedScrollbar)===JSON.stringify(hostScrollbar),'Script, timeline and host scrollbar colors and density match: '+JSON.stringify({embeddedScrollbar,timelineScrollbar,hostScrollbar}));
  await choose('讲解');await new Promise(r=>setTimeout(r,500));
  await ctx.prove('讲解面板完整边界和紧凑时间轴',{

@@ -191,12 +191,17 @@ describe("child text preview identity", () => {
 });
 
 describe("component Properties timing commits", () => {
-  it("retimes a component's full source atomically with its display slot", async () => {
+  it("changes the display window while preserving the component source animation and playback settings", async () => {
     const target = document.createElement("div");
     target.id = "properties-component";
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ content: '<template><div data-composition-id="scene" data-duration="10"></div></template>' }) }));
+    const source =
+      '<template><div data-composition-id="scene" data-duration="10" data-fps="30"></div><script>tl.to("#title", { opacity: 1, duration: 1 }, 2)</script></template>';
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ content: source }) }));
     vi.stubGlobal("fetch", fetchMock);
-    target.setAttribute("data-playback-start", "-2");
+    target.setAttribute("data-playback-start", "2");
+    target.setAttribute("data-playback-rate", "1.5");
+    target.setAttribute("data-source-duration", "10");
+    target.setAttribute("data-fps", "30");
     target.setAttribute("data-duration", "10");
     document.body.append(target);
     const selection = {
@@ -215,7 +220,7 @@ describe("component Properties timing commits", () => {
         applyDomSelection: vi.fn(),
         buildDomSelectionFromTarget: async () => selection,
         removeDomTextFieldElement: async () => {},
-        queueDomEditSave: <T,>(save: () => Promise<T>) => save(),
+        queueDomEditSave: <T>(save: () => Promise<T>) => save(),
         resolveImportedFontAsset: () => null,
         activeCompPath: "index.html",
         previewIframeRef: { current: iframe },
@@ -234,23 +239,23 @@ describe("component Properties timing commits", () => {
       start: "0",
       duration: "20",
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/projects/props-project/files/scene.html");
-    expect(target.getAttribute("data-playback-rate")).toBe("0.5");
-    expect(target.getAttribute("data-playback-start")).toBe("0");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(target.getAttribute("data-duration")).toBe("20");
+    expect(target.getAttribute("data-playback-rate")).toBe("1.5");
+    expect(target.getAttribute("data-playback-start")).toBe("2");
+    expect(target.getAttribute("data-source-duration")).toBe("10");
+    expect(target.getAttribute("data-fps")).toBe("30");
     expect(persist).toHaveBeenCalledOnce();
-    expect(persist.mock.calls[0][1]).toEqual(
-      expect.arrayContaining([
-        { type: "attribute", property: "duration", value: "20" },
-        { type: "attribute", property: "playback-rate", value: "0.5" },
-        { type: "attribute", property: "playback-start", value: "0" },
-      ]),
-    );
+    expect(persist.mock.calls[0][1]).toEqual([
+      { type: "attribute", property: "start", value: "0" },
+      { type: "attribute", property: "duration", value: "20" },
+    ]);
     persist.mockImplementationOnce(async () => {
       throw new Error("Save failed");
     });
     await result!.handleDomAttributeCommit("duration", "5");
     expect(target.getAttribute("data-duration")).toBe("20");
-    expect(target.getAttribute("data-playback-rate")).toBe("0.5");
+    expect(target.getAttribute("data-playback-rate")).toBe("1.5");
     flushSync(() => root.unmount());
     container.remove();
     target.remove();

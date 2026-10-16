@@ -30,6 +30,7 @@ export interface TimelineAnimationElementRange extends TimelineAnimationOwnerRan
 }
 
 export interface TimelineAnimationOwnerLocator {
+  root?: ParentNode;
   selector?: string;
   hfId?: string;
 }
@@ -50,6 +51,19 @@ export function isAnimationSharedForOwner(
       (ownerLocator.selector !== undefined && motion.target.selector === ownerLocator.selector) ||
       (Boolean(ownerId) && motion.target.selector === `#${ownerId}`);
     return !targetsOwner;
+  }
+  if (ownerLocator.root) {
+    if (animation.hasUnresolvedSelector || animation.hasPartialSelector) return true;
+    try {
+      const targets = ownerLocator.root.querySelectorAll(animation.targetSelector);
+      if (targets.length !== 1) return true;
+      const target = targets[0];
+      return ownerLocator.hfId
+        ? target.getAttribute("data-hf-id") !== ownerLocator.hfId
+        : target.id !== ownerId;
+    } catch {
+      return true;
+    }
   }
   const selectorParts = animation.targetSelector
     .split(",")
@@ -303,4 +317,13 @@ export function timelineKeyframe(
     properties,
     origin: data === MANUAL_KEYFRAME_MARKER ? "manual" : animationOrigin(animation),
   };
+}
+
+/** A middle-of-clip phase is not necessarily a repeating animation. */
+export function resolveTimelineAnimationLabel(animation: GsapAnimation, ownerRange?: TimelineAnimationOwnerRange): string {
+  if (animation.method === "set") return "Static properties";
+  if (resolveRepeatCount(animation) !== 0) return "Loop";
+  if (animation.keyframes || !ownerRange) return "Property animation";
+  const phase = resolveTimelineAnimationPhase(animation, ownerRange);
+  return phase === "entrance" ? "Entrance" : phase === "exit" ? "Exit" : "Property animation";
 }

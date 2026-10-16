@@ -44,6 +44,7 @@ export function getTimelineEditCapabilities(input: {
   timingSource?: "authored" | "implicit";
   timelineLocked?: boolean;
   expandedParentStart?: number;
+  inlineScopeKind?: "scene" | "group";
 }): TimelineEditCapabilities {
   if (input.timelineLocked) {
     return {
@@ -53,9 +54,12 @@ export function getTimelineEditCapabilities(input: {
       status: "locked",
     };
   }
-  if (input.expandedParentStart != null) {
+  // Same-file group retiming requires shifting global authored descendant tweens.
+  // Whole scene moves use the validated group writer; trimming remains blocked.
+  if (input.expandedParentStart != null || (input.inlineScopeKind && !input.compositionSrc)) {
+    const sceneMove = input.inlineScopeKind === "scene" && input.expandedParentStart == null && Boolean(input.domId) && input.duration > 0;
     return {
-      canMove: false,
+      canMove: sceneMove,
       canTrimStart: false,
       canTrimEnd: false,
       status: "nested-context",

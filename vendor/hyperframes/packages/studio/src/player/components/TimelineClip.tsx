@@ -1,13 +1,7 @@
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { clampAudioGain } from "@hyperframes/core/audio-gain";
 import { TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
-import {
-  memo,
-  useEffect,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { memo, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import {
   defaultTimelineTheme,
@@ -22,12 +16,12 @@ import { resolveTimelineClipLabel, resolveTimelineKind } from "./timelineLayerPr
 interface TimelineClipProps {
   el: TimelineElement;
   pps: number;
+  timeOffset?: number;
   clipY: number;
   isSelected: boolean;
   isHovered: boolean;
   isDragging?: boolean;
   hasCustomContent: boolean;
-  hasAnimationRow?: boolean;
   animationContent?: ReactNode;
   capabilities: TimelineEditCapabilities;
   theme?: TimelineTheme;
@@ -47,12 +41,12 @@ interface TimelineClipProps {
 export const TimelineClip = memo(function TimelineClip({
   el,
   pps,
+  timeOffset = 0,
   clipY,
   isSelected,
   isHovered,
   isDragging = false,
   hasCustomContent,
-  hasAnimationRow = false,
   animationContent,
   capabilities,
   theme = defaultTimelineTheme,
@@ -68,25 +62,18 @@ export const TimelineClip = memo(function TimelineClip({
   children,
 }: TimelineClipProps) {
   const fade = useClipFadeDraft(el);
-  const [animationsExpanded, setAnimationsExpanded] = useState(true);
   const hasFades = el.tag === "audio" || el.hasAudio;
-  const leftPx = el.start * pps;
+  const leftPx = (el.start - timeOffset) * pps;
   const widthPx = Math.max(el.duration * pps, 4);
   const isMicroClip = widthPx < 40;
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = resolveTimelineClipLabel(el);
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
-  const showLabel = !hasCustomContent && !isMicroClip;
-  const showDefaultText = !hasCustomContent && !isMicroClip;
-  const startLabel = el.start.toFixed(1);
-  const endLabel = (el.start + el.duration).toFixed(1);
   const timelineKind = resolveTimelineKind(el);
   const clipClassName = [
     "timeline-clip",
     "absolute",
-    hasCustomContent || hasAnimationRow
-      ? "overflow-visible"
-      : "overflow-hidden",
+    hasCustomContent || animationContent ? "overflow-visible" : "overflow-hidden",
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
@@ -109,8 +96,7 @@ export const TimelineClip = memo(function TimelineClip({
     left: leftPx,
     width: widthPx,
     top: clipY,
-    bottom: hasAnimationRow ? undefined : clipY,
-    height: hasAnimationRow ? 23 : undefined,
+    bottom: clipY,
     borderRadius: theme.clipRadius,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
     // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
@@ -133,12 +119,13 @@ export const TimelineClip = memo(function TimelineClip({
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
       data-timeline-kind={timelineKind}
+      aria-label={`${displayLabel} • ${(el.start - timeOffset).toFixed(1)}s – ${(el.start + el.duration - timeOffset).toFixed(1)}s`}
       className={clipClassName}
       style={style}
       title={
         isComposition
           ? el.compositionSrc
-          : `${displayLabel} • ${el.start.toFixed(1)}s – ${(el.start + el.duration).toFixed(1)}s`
+          : `${displayLabel} • ${(el.start - timeOffset).toFixed(1)}s – ${(el.start + el.duration - timeOffset).toFixed(1)}s`
       }
       onPointerEnter={onHoverStart}
       onPointerLeave={onHoverEnd}
@@ -207,40 +194,9 @@ export const TimelineClip = memo(function TimelineClip({
           />
         </div>
       )}
-      {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
-      {showDefaultText && (
-        <span className="timeline-clip__timecode">
-          {startLabel}-{endLabel}s
-        </span>
-      )}
-      {hasAnimationRow && (
-        <>
-          <button
-            type="button"
-            className="absolute right-3 top-0.5 z-[8] rounded bg-panel-input px-1 text-[8px] text-panel-text-2"
-            aria-label={`${animationsExpanded ? "收起" : "展开"} ${displayLabel} 动画行`}
-            aria-expanded={animationsExpanded}
-            onPointerDown={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              setAnimationsExpanded((expanded) => !expanded);
-            }}
-          >
-            {animationsExpanded ? "▾" : "▸"} Visual
-          </button>
-          {animationsExpanded && (
-            <>
-              <div data-testid="timeline-visual-row" className="pointer-events-none absolute inset-x-0 top-[25px] h-[16px] rounded-sm border border-panel-border bg-panel-input/40" />
-              {animationContent}
-            </>
-          )}
-        </>
-      )}
       {children}
-      {hasFades && isSelected && widthPx >= 100 && (
-        <ClipVolumeInput element={el} />
-      )}
+      {animationContent}
+      {hasFades && isSelected && widthPx >= 100 && <ClipVolumeInput element={el} />}
       {hasFades && (
         <TimelineClipFades
           el={el}
@@ -257,18 +213,12 @@ export const TimelineClip = memo(function TimelineClip({
 
 /** Clip gain shares the official attribute writer and preview/export gain contract. */
 function ClipVolumeInput({ element }: { element: TimelineElement }) {
-  const {
-    onSetElementAttributeLive,
-    onSetElementAttributeQuiet,
-    onRevertElementAttributeLive,
-  } = useTimelineEditContextOptional();
+  const { onSetElementAttributeLive, onSetElementAttributeQuiet, onRevertElementAttributeLive } =
+    useTimelineEditContextOptional();
   const authored = element.volume ?? 1;
   const [value, setValue] = useState(String(Math.round(authored * 100)));
   const [saving, setSaving] = useState(false);
-  useEffect(
-    () => setValue(String(Math.round(authored * 100))),
-    [element.key, authored],
-  );
+  useEffect(() => setValue(String(Math.round(authored * 100))), [element.key, authored]);
   const revert = () => {
     onRevertElementAttributeLive?.(element, "data-volume");
     setValue(String(Math.round(authored * 100)));
@@ -283,12 +233,7 @@ function ClipVolumeInput({ element }: { element: TimelineElement }) {
     if (saving || gain === authored || !onSetElementAttributeQuiet) return;
     setSaving(true);
     try {
-      await onSetElementAttributeQuiet(
-        element,
-        "data-volume",
-        String(gain),
-        "Change clip volume",
-      );
+      await onSetElementAttributeQuiet(element, "data-volume", String(gain), "Change clip volume");
     } catch {
       revert();
     } finally {

@@ -71,6 +71,41 @@ async function rollbackOwnedMutation(
   throw new Error(`Invalid restore response for ${targetPath}`);
 }
 
+/** Restore a failed stretch's timing write only while its exact bytes still own the file. */
+export async function rollbackTimelineStretchTiming(input: {
+  projectId: string;
+  files: Record<string, { before: string; after: string }>;
+  label: string;
+  coalesceKey?: string;
+  recordEdit: (edit: RecordEditInput) => Promise<void>;
+}): Promise<void> {
+  const restored: Record<string, { before: string; after: string }> = {};
+  const failures: unknown[] = [];
+  for (const [path, pair] of Object.entries(input.files).reverse()) {
+    if (pair.before === pair.after) continue;
+    try {
+      if (
+        (await rollbackOwnedMutation(input.projectId, path, pair.after, pair.before)) === "restored"
+      ) {
+        restored[path] = { before: pair.after, after: pair.before };
+      }
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (Object.keys(restored).length > 0) {
+    await input.recordEdit({
+      label: input.label,
+      kind: "timeline",
+      coalesceKey: input.coalesceKey,
+      coalesceMs: GSAP_HISTORY_COALESCE_MS,
+      files: restored,
+    });
+  }
+  if (failures.length > 0)
+    throw new AggregateError(failures, "Stretch timing rollback requires convergence");
+}
+
 /** Best-effort live-iframe wrapper for patchDocumentRootDuration (see timelineEditingGsap). */
 function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {
   try {
@@ -239,6 +274,7 @@ async function finishTimelineTimingFallback(input: {
   reloadPreview: () => void;
   gsapMutation?: () => Promise<GsapMutationStatus>;
   onGsapError: (error: unknown) => void;
+  throwOnGsapError?: boolean;
   /**
    * When the mutation produced no rewrite (mutated:false, no scriptText),
    * rebind the runtime timing in place (no script re-execution) instead of
@@ -257,6 +293,7 @@ async function finishTimelineTimingFallback(input: {
       // Protocol and ownership conflicts mean the live iframe may no longer
       // represent the bytes that won on disk. Converge explicitly by reloading.
       if (error instanceof GsapPreviewConvergenceError) input.reloadPreview();
+      if (input.throwOnGsapError) throw error;
       return;
     }
   }
@@ -535,6 +572,7 @@ export function finishClipTimingFallback(input: {
   coalesceKey?: string;
   recordEdit: (edit: RecordEditInput) => Promise<void>;
   edit: SingleClipGsapEdit;
+  throwOnGsapError?: boolean;
 }): Promise<void> {
   const { projectId, targetPath, domId, edit } = input;
   const timingChanged =
@@ -572,6 +610,7 @@ export function finishClipTimingFallback(input: {
             })
         : undefined,
     onGsapError,
+    throwOnGsapError: input.throwOnGsapError,
     rebindWhenUnmutated: true,
   });
 }
@@ -600,6 +639,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
   resolveChangePath: (element: TimelineElement) => string;
   /** Per-change GSAP mutation; return null to skip a change with no timing delta. */
   mutateChange: (change: C, changePath: string) => Promise<GsapMutationStatus> | null;
+  throwOnGsapError?: boolean;
 }): Promise<void> {
   const activePath = input.activeCompPath || "index.html";
   const otherFileChanged = input.changes.some(
@@ -633,6 +673,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
         onRollbackError: onGsapError,
       }),
     onGsapError,
+    throwOnGsapError: input.throwOnGsapError,
     // A batch where nothing needed rewriting (every change was zero-delta or
     // no-domId, e.g. closing a gap over caption clips) still needs the runtime
     // to re-derive clip windows — the in-place timing rebind covers that. But

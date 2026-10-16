@@ -1,6 +1,6 @@
 /**
  * Centralized "Enable keyframes" logic that handles ALL scenarios:
- * - Element has explicit keyframes → add/remove at seeked time
+ * - Element has explicit keyframes → add at seeked time
  * - Element has a flat tween → convert + add at seeked time + propagate to end
  * - Element has no animation (deleted) → create new tween with correct position + keyframes
  *
@@ -246,14 +246,8 @@ async function fetchAnimationsForElement(sel: DomEditSelection): Promise<GsapAni
   return (await tryFetchAnimationsForElement(sel)) ?? [];
 }
 
-/**
- * Apply "add keyframe at playhead" to a tween that already has x/y keyframes:
- * toggle off an existing stop, add one at the playhead's tween-relative %, or —
- * when the playhead sits outside the tween — extend the range to reach it (see
- * buildExtendedKeyframes). Shared by native keyframe tweens and flat tweens that
- * were just converted, so both behave identically.
- */
-async function applyKeyframeAtPlayhead(
+/** Add at the playhead without deleting existing points or extending the tween. */
+export async function applyKeyframeAtPlayhead(
   session: EnableKeyframesSession,
   sel: DomEditSelection,
   kfAnim: GsapAnimation,
@@ -261,35 +255,10 @@ async function applyKeyframeAtPlayhead(
   iframe: HTMLIFrameElement | null,
   commitOverrides?: Partial<CommitMutationOptions>,
 ): Promise<void> {
-  if (!isPlayheadWithinTween(kfAnim, t)) {
-    const position = readElementPosition(iframe, sel, kfAnim);
-    const selector = selectorFromSelection(sel);
-    if (selector && Object.keys(position).length > 0 && session.commitMutation) {
-      const extended = buildExtendedKeyframes(kfAnim, t, { ...position, data: MANUAL_KEYFRAME_MARKER });
-      await session.commitMutation(
-        {
-          type: "replace-with-keyframes",
-          animationId: kfAnim.id,
-          targetSelector: selector,
-          position: extended.position,
-          duration: extended.duration,
-          keyframes: extended.keyframes,
-          ease: kfAnim.ease,
-          easeEach: kfAnim.keyframes?.easeEach,
-        },
-        {
-          label: "Add keyframe",
-          softReload: true,
-          ...commitOverrides,
-        },
-      );
-    }
-    return;
-  }
+  if (!isPlayheadWithinTween(kfAnim, t)) return;
   const pct = computeElementPercentage(t, sel, kfAnim);
-  const existing = kfAnim.keyframes?.keyframes.find((k) => Math.abs(k.percentage - pct) <= 1);
+  const existing = kfAnim.keyframes?.keyframes.find((k) => Math.abs(k.percentage - pct) <= 0.001);
   if (existing) {
-    session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage, undefined, sel);
     return;
   }
   if (session.handleGsapAddKeyframeBatch) {
@@ -435,6 +404,10 @@ export function useEnableKeyframes(
     // (no projectId / request failed), preserving prior behavior offline.
     const fetched = await tryFetchAnimationsForElement(sel);
     let anims = fetched ?? session.selectedGsapAnimations;
+    const existingKeyframed = anims.find((animation) => animation.keyframes && !animation.arcPath);
+    if (existingKeyframed && (!isPlayheadWithinTween(existingKeyframed, t) || keyframeAtPlayhead(existingKeyframed, sel, t))) return;
+    const existingFlat = anims.find((animation) => !animation.keyframes && !animation.arcPath && !isInstantHold(animation));
+    if (!existingKeyframed && existingFlat && !isPlayheadWithinTween(existingFlat, t)) return;
     if (session.commitMutation) {
       const commitMutation = session.commitMutation;
       const isolation = await isolateSharedAnimationTargets(
@@ -463,8 +436,8 @@ export function useEnableKeyframes(
     } else if (flatAnim) {
       // Convert the flat tween (to/from/fromTo) to its natural keyframes — no
       // resolvedFromValues, so the 0%/100% stops keep the real start→end motion
-      // (passing the playhead value would flatten it). Then apply uniformly so an
-      // out-of-range playhead extends the range just like a keyframe tween.
+      // (passing the playhead value would flatten it). Out-of-range playheads
+      // have already returned above and never extend an authored animation.
       enableKeyframesTransactionCounter += 1;
       const coalesceKey = `enable-keyframes:${flatAnim.id}:${enableKeyframesTransactionCounter}`;
       const convertCommitOverrides: Partial<CommitMutationOptions> = {

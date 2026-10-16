@@ -8,7 +8,6 @@ import {
 } from "react";
 import { CompositionRefreshLoadingOverlay, PlayerControls, usePlayerStore, liveTime } from "../../player";
 import { NLEPreview } from "./NLEPreview";
-import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
@@ -59,7 +58,7 @@ export function PreviewPane({
     seek,
     onIframeLoad,
     compositionStack,
-    handleNavigateComposition,
+    scenePlaybackRange,
     setCompositionLoading,
     timelineDisabled,
     hasLoadedOnceRef,
@@ -191,7 +190,8 @@ export function PreviewPane({
   }, [toggleFullscreen]);
 
   const currentLevel = compositionStack[compositionStack.length - 1];
-  const directUrl = compositionStack.length > 1 ? currentLevel.previewUrl : undefined;
+  const fileLevel = compositionStack.findLast((level) => !level.inlineTarget);
+  const directUrl = fileLevel?.id !== "master" ? fileLevel?.previewUrl : undefined;
 
   return (
     <div
@@ -270,10 +270,9 @@ export function PreviewPane({
       {/* Transport row: no own background or border — the controls sit flat on
           the preview panel's surface (CapCut-style). */}
       <div className="flex-shrink-0">
-        {!isFullscreen && compositionStack.length > 1 && (
-          <CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />
-        )}
         <PlayerControls
+          timeOffset={scenePlaybackRange?.start ?? 0}
+          displayDuration={scenePlaybackRange ? scenePlaybackRange.end - scenePlaybackRange.start : undefined}
           onTogglePlay={togglePlay}
           onSeek={seek}
           disabled={timelineDisabled}

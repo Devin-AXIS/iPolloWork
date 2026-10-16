@@ -194,7 +194,7 @@ describe("preview editing interactions", () => {
     expect(source).toContain("playerState.setSelection(selectedKeys, anchorKey");
     expect(source).toContain("syncTimelineSelection(nextGroup, nextSelection)");
     expect(source).toContain('rightPanelTabRef.current !== "animation"');
-    expect(source).toContain('rightPanelTabRef.current !== "animation-properties"');
+    expect(source).not.toContain("animation-properties");
     expect(source).not.toContain("{ preserveSet: true }");
   });
 
@@ -249,7 +249,7 @@ describe("preview editing interactions", () => {
     expect(source).toContain("setSelectedElementId(elementKey)");
     expect(source).toContain("onSelectElement?.(el)");
     expect(source).toContain("resolveTimelineSelectionSeekTime(");
-    expect(source).toMatch(/selectionTime,\s+previewElement,/);
+    expect(source).toMatch(/resolveTimelineSelectionSeekTime\(\s*selectionTime,\s*previewElement\s*,?\s*\)/);
     expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
     expect(source).not.toContain("onSelectElement?.(nextElement)");
   });
@@ -662,3 +662,11 @@ describe("preview editing interactions", () => {
     expect(chromeSource).toContain("if (e.button !== 0)");
   });
 });
+
+ it("owns composition navigation beside timeline tools, outside the preview transport", () => {
+   const preview=readFileSync(new URL("./PreviewPane.tsx",import.meta.url),"utf8");
+   const timeline=readFileSync(new URL("./TimelinePane.tsx",import.meta.url),"utf8");
+   expect(preview).not.toContain("CompositionBreadcrumb");
+   expect(timeline).toContain("hf-timeline-navigation-toolbar");
+   expect(timeline).toContain("<CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />");
+ });
