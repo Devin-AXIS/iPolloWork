@@ -96,6 +96,26 @@ const neverDecodes = (clip: HTMLElement) => {
 describe("runtime entry", () => {
   afterEach(resetRuntimeGlobals);
 
+  it("exposes transactional component updates and native geometry subscriptions", async () => {
+    const root = mountRoot();
+    root.innerHTML = '<span data-var-text="value">Initial</span>';
+    await evaluateRuntime();
+    const api = window.__hyperframes;
+    if (!api) throw new Error("Missing public runtime");
+    const stop = api.onVariablesChange(root, values => {
+      if (Number(values.value) < 0) throw new Error("Invalid geometry");
+      root.setAttribute("data-geometry", String(values.value));
+    });
+    expect(api.updateVariables(root, { value: 5 })).toBe(true);
+    expect(root.textContent).toBe("5");
+    expect(() => api.updateVariables(root, { value: -1 })).toThrow("Invalid geometry");
+    expect(root.textContent).toBe("5");
+    expect(root.getAttribute("data-geometry")).toBe("5");
+    stop();
+    expect(api.updateVariables(root, { value: 6 })).toBe(true);
+    expect(root.getAttribute("data-geometry")).toBe("5");
+  });
+
   it("drives an async frame source without a GSAP timeline and waits before capture", async () => {
     const root = mountRoot();
     root.setAttribute("data-duration", "10");

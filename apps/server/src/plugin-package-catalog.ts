@@ -19,6 +19,7 @@ export const bundledPluginPackageIds = [
   "design-agent",
   "video-agent",
   "reference-context",
+  "plugin-workshop",
   "media-studio",
   "deepseek-harness",
   "operation-recorder",

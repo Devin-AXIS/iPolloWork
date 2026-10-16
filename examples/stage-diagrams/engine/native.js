@@ -260,7 +260,9 @@
         if (clamp) {
           const old = node.style.webkitLineClamp;
           node.style.webkitLineClamp = 'unset';
-          const height = node.scrollHeight;
+          // Glyph ink may extend beyond a single CSS line box (notably on Windows).
+          // The unclamped layout height measures wrapped lines, without counting that ink as another line.
+          const height = node.clientHeight;
           node.style.webkitLineClamp = old;
           if (height > parseFloat(cs.lineHeight) * clamp + 1) issues.push({ path, code: 'text_overflow', message: `“${raw}” exceeds ${clamp} lines; shorten it or split the scene.` });
         }

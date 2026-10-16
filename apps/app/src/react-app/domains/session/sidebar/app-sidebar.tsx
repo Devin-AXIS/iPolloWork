@@ -82,6 +82,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -461,14 +462,23 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "schedule" | "extensions" | "plugin-workshop" | null;
+  activePrimaryItem?: "template-market" | "schedule" | "extensions" | null;
+  pluginShortcuts: {
+    id: string;
+    label: string;
+    iconSrc?: string;
+    workshop: boolean;
+    active: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+  }[];
+  pluginsLoading?: boolean;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
   onOpenTemplateMarket: () => void;
   onOpenSchedule: () => void;
   onOpenExtensions: () => void;
-  onOpenPluginWorkshop: () => void;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -841,17 +851,54 @@ export function AppSidebar(props: AppSidebarProps) {
                 <span className="flex-1 truncate">{t("settings.tab_extensions")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {props.pluginShortcuts.filter(item => layout.pluginShortcutIds.includes(item.id)).map(item => (
+              <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton
+                  data-testid={`sidebar-plugin-shortcut-${item.id}`}
+                  onClick={item.onClick}
+                  isActive={item.active}
+                  disabled={item.disabled}
+                  title={item.label}
+                  className={primarySidebarActionClass}
+                >
+                  <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
+                    {item.iconSrc ? <img src={item.iconSrc} alt="" className="size-4 rounded-sm object-contain" />
+                      : item.workshop ? <ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
+                      : <ToyBrick className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />}
+                  </span>
+                  <span className="flex-1 truncate">{item.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
             <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={props.onOpenPluginWorkshop}
-                isActive={props.activePrimaryItem === "plugin-workshop"}
-                className={primarySidebarActionClass}
-              >
-                <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
-                  <ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
-                </span>
-                <span className="flex-1 truncate">{t("plugin_workshop.title")}</span>
-              </SidebarMenuButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<SidebarMenuButton className={primarySidebarActionClass} aria-label={t("sidebar.plugin_shortcuts")} data-testid="sidebar-plugin-shortcuts-menu" />}>
+                  <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
+                    <Plus className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
+                  </span>
+                  <span className="flex-1 truncate">{t("sidebar.plugin_shortcuts")}</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="right" className="w-60 max-w-[calc(100vw-2rem)]">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>{t("sidebar.plugin_shortcuts_hint")}</DropdownMenuLabel>
+                    {props.pluginShortcuts.map(item => (
+                      <DropdownMenuCheckboxItem
+                        key={item.id}
+                        data-testid={`sidebar-plugin-shortcut-option-${item.id}`}
+                        checked={layout.pluginShortcutIds.includes(item.id)}
+                        onCheckedChange={checked => layout.setPluginShortcut(item.id, checked)}
+                        className="min-w-0"
+                      >
+                        <span className="truncate" title={item.label}>{item.label}</span>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                  {props.pluginsLoading ? <div role="status" className="px-2 py-1.5 text-xs text-muted-foreground">{t("common.loading")}</div>
+                    : props.pluginShortcuts.length === 0 ? <div className="px-2 py-1.5 text-xs text-muted-foreground">{t("sidebar.plugin_shortcuts_empty")}</div> : null}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={props.onOpenExtensions}>{t("sidebar.manage_plugins")}</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>

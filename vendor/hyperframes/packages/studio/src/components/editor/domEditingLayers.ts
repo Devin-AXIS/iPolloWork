@@ -521,11 +521,12 @@ export function collectDomEditLayerItems(
   if (!root) return [];
 
   const items: DomEditLayerItem[] = [];
+  const selectorIndexes = new Map<string, Map<Element, number>>();
   // fallow-ignore-next-line complexity
   const visit = (el: HTMLElement, depth: number) => {
     if (items.length >= maxItems) return;
 
-    const target = getDomLayerPatchTarget(el, options.activeCompositionPath);
+    const target = getDomLayerPatchTarget(el, options.activeCompositionPath, selectorIndexes);
     if (target) {
       items.push({
         key: getDomEditLayerKey(target),
@@ -533,7 +534,7 @@ export function collectDomEditLayerItems(
         label: buildElementLabel(el),
         tagName: el.tagName.toLowerCase(),
         depth,
-        childCount: getDirectLayerChildren(el, options).length,
+        childCount: getDirectLayerChildren(el, options, selectorIndexes).length,
         id: target.id ?? undefined,
         hfId: target.hfId ?? undefined,
         selector: target.selector ?? undefined,

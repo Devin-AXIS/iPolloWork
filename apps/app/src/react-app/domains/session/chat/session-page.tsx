@@ -1707,7 +1707,7 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
-  const { workspaceApps, isLoading: pluginsLoading } = useInstalledPluginContributions(
+  const { workspaceApps, sessionPanels, isLoading: pluginsLoading } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   );
@@ -4070,14 +4070,14 @@ export function SessionPage(props: SessionPageProps) {
       onClick: showVideoRailPane,
       disabled: !props.selectedWorkspaceId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
     },
-    {
-      id: "plugin-workshop",
+    ...sessionPanels.map<SidePanelLauncherItem>(panel => ({
+      id: panel.id,
       label: t("plugin_workshop.title"),
       group: "studio",
       icon: "plugin-workshop",
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
-    },
+    })),
     ...workspaceAppLaunchers(workspaceApps).map<SidePanelLauncherItem>((surface) => ({
       id: workspaceAppTabId(surface),
       label: isMediaStudioPlugin(surface.pluginId) ? t("media.studio.title") : surface.label,
@@ -4087,7 +4087,7 @@ export function SessionPage(props: SessionPageProps) {
       onClick: () => openWorkspaceApp(surface),
       disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.id === workspaceAppTabId(surface)),
     })),
-  ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
+  ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, sessionPanels, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
   const sidePanelLauncherItems = rawSidePanelLauncherItems.map((item) => ({
     ...item,
     disabled: item.disabled || launcherBusy,
@@ -4612,9 +4612,7 @@ export function SessionPage(props: SessionPageProps) {
               ? "schedule"
             : mainWorkspaceView === "extensions"
               ? "extensions"
-              : activePanelTab?.type === "plugin-studio"
-                ? "plugin-workshop"
-                : null}
+              : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
@@ -4624,7 +4622,28 @@ export function SessionPage(props: SessionPageProps) {
           }}
           onOpenSchedule={openGlobalSchedule}
           onOpenExtensions={openExtensionsRailPane}
-          onOpenPluginWorkshop={openPluginWorkshop}
+          pluginsLoading={pluginsLoading}
+          pluginShortcuts={sidePanelLauncherItems.filter(item => item.group === "studio").map(item => ({
+            id: item.id,
+            label: item.label,
+            iconSrc: item.iconSrc,
+            workshop: item.icon === "plugin-workshop",
+            active: mainWorkspaceView === null && (item.icon === "plugin-workshop"
+              ? activePanelTab?.type === "plugin-studio"
+              : activePanelTab?.id === item.id),
+            // An already-open workbench remains selectable from its shortcut.
+            disabled: launcherBusy || !props.selectedWorkspaceId,
+            onClick: () => {
+              const existing = sessionPanelState.tabs.find(tab => item.icon === "plugin-workshop" ? tab.type === "plugin-studio" : tab.id === item.id);
+              setMainWorkspaceView(null);
+              if (existing && props.selectedSessionId) {
+                selectTab(props.selectedSessionId, existing.id);
+                setSidePanelState(props.selectedSessionId, "panel");
+              } else {
+                item.onClick();
+              }
+            },
+          }))}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}

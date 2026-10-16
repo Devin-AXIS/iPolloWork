@@ -41,6 +41,7 @@ allowBuilds:
   core-js: true
   electron: true
   esbuild: true
+  lefthook: true
   msgpackr-extract: false
   msw: false
   node-pty: true

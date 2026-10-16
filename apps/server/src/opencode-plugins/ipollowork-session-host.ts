@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { basename, dirname, resolve } from "node:path";
 import { ENGINE_HOST_TOOL_NAMES } from "../engine-host-tools.js";
 
 type OpenCodeToolContext = {
@@ -30,6 +31,17 @@ const callSchema = z.object({
 
 /** OpenCode supplies sessionID to native tools, unlike its shared workspace MCP connection. */
 export const iPolloWorkSessionHost = async () => ({
+  "tool.execute.before": async (input: { tool: string }, output: { args: Record<string, unknown> }) => {
+    if (input.tool !== "grep" || typeof output.args.path !== "string") return;
+    const dataHome = process.env.XDG_DATA_HOME?.trim();
+    if (!dataHome) return;
+    const roots = [resolve(dataHome), resolve(dataHome, "opencode")];
+    // Desktop's isolated xdg/data tree sits beside large caches and model files.
+    if (basename(dirname(dataHome)) === "xdg") roots.push(resolve(dataHome, "../.."));
+    if (roots.includes(resolve(output.args.path))) {
+      throw new Error("Search a specific project/source directory, not the entire runtime data tree. Use the component catalog/read tools for component contracts and bounded reads of exact files for diagnostics.");
+    }
+  },
   tool: {
     ipollowork_session_call: {
       description: "Call an iPolloWork conversation, work-template, publisher or browser host tool with this OpenCode task's own session identity. Use this for conversation work updates and social publishing so concurrent tasks remain independently scoped.",

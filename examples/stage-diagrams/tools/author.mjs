@@ -45,6 +45,7 @@ const FONT_URL = 'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;50
 
 const browser = await puppeteer.launch({ ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}), args: ['--no-sandbox'] });
 const page = await browser.newPage();
+await page.setViewport({ width: 640, height: 360 });
 await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${FONT_URL}"></head><body><script>${ALL}</script></body></html>`);
 await page.evaluate(() => document.fonts.ready);
 await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -187,6 +188,23 @@ for (const type of types) {
     } finally { stage.remove(); style.remove(); }
   }, { model: manifest.visualComponent.ai.model });
   if (checked.length) layoutProblems.push({ type, cases: checked });
+  if (!checked.length) {
+    await page.evaluate(({ model }) => {
+      const SD = window.StageDiagrams;
+      const prepared = SD.component.toData(SD.specs[model.type], model.defaults, (_, value) => JSON.parse(value).rows);
+      const drawing = SD.native.render(model.type, prepared.data, { skin: 'keynote', chrome: 'none' }, 'sd');
+      document.getElementById('component-poster')?.remove();
+      const poster = document.createElement('div');
+      poster.id = 'component-poster'; poster.className = 'sd-root'; poster.setAttribute('skin', 'keynote');
+      poster.style.cssText = 'position:absolute;left:0;top:0;width:1200px;height:675px;overflow:hidden;transform:scale(.5333333333);transform-origin:0 0';
+      poster.innerHTML = `<style>${SD.native.css('.sd-root')}</style><svg width="0" height="0">${drawing.defs}</svg>`;
+      poster.append(drawing.root, drawing.over); document.body.appendChild(poster);
+    }, { model: manifest.visualComponent.ai.model });
+    const poster = await page.screenshot({ type: 'webp', quality: 65 });
+    manifest.preview = { poster: `data:image/webp;base64,${Buffer.from(poster).toString('base64')}` };
+    writeFileSync(join(lib, 'src', manifest.name, 'registry-item.json'), JSON.stringify(manifest, null, 2) + '\n');
+    await page.evaluate(() => document.getElementById('component-poster')?.remove());
+  }
 }
 await browser.close();
 if (layoutProblems.length) { console.error(JSON.stringify(layoutProblems, null, 2)); process.exitCode = 1; }
