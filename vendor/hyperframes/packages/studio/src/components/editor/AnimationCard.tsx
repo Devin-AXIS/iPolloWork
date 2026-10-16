@@ -1,3 +1,8 @@
+import { Card, CardHeader, CardContent, CardFooter } from "@ipollowork/ui/card";
+import { Badge } from "@ipollowork/ui/badge";
+import { Button } from "@ipollowork/ui/controls";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@ipollowork/ui/collapsible";
+import { ChevronRight, LockKeyhole } from "lucide-react";
 import { memo, useCallback, useMemo, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { SUPPORTED_EASES, SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
@@ -13,6 +18,7 @@ import { ComputedTweenNotice } from "./ComputedTweenNotice";
 import { KeyframeEaseList } from "./KeyframeEaseList";
 import {
   PropertyRow,
+  PropertyKeyframeRows,
   AddPropertyTrigger,
   parseNumericOrString,
   BOOLEAN_PROPS,
@@ -22,16 +28,23 @@ import {
   clampAnimationMetaToOwner,
   isAnimationSharedForOwner,
   resolveTimelineAnimationPhase,
+  resolveTimelineAnimationLabel,
   type TimelineAnimationOwnerRange,
   type TimelineAnimationOwnerLocator,
   type TimelineAnimationPhase,
 } from "../../utils/timelineAnimationSegments";
+import { synthesizeFlatTweenKeyframes } from "../../hooks/gsapTweenSynth";
 import { useStudioI18n } from "../../i18n";
 
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
+  relatedAnimations?: GsapAnimation[];
   defaultExpanded: boolean;
   flat?: boolean;
+  compact?: boolean;
+  selected?: boolean;
+  ownerKey?: string;
+  onSelect?: () => void;
   ownerId?: string | null;
   ownerLocator?: TimelineAnimationOwnerLocator;
   ownerRange?: TimelineAnimationOwnerRange;
@@ -46,8 +59,13 @@ const PHASE_LABELS: Record<TimelineAnimationPhase, string> = {
 // fallow-ignore-next-line complexity
 export const AnimationCard = memo(function AnimationCard({
   animation,
+  relatedAnimations,
   defaultExpanded,
   flat,
+  compact = false,
+  selected = false,
+  ownerKey,
+  onSelect,
   ownerId,
   ownerLocator,
   ownerRange,
@@ -64,6 +82,8 @@ export const AnimationCard = memo(function AnimationCard({
   onSetArcPath,
   onUpdateArcSegment,
   onUpdateKeyframeEase,
+  onEditPropertyKeyframe,
+  onEnablePropertyKeyframes,
   onSetAllKeyframeEases,
   onUnroll,
 }: AnimationCardProps) {
@@ -125,11 +145,7 @@ export const AnimationCard = memo(function AnimationCard({
       if (Number.isFinite(num) && num >= 0)
         onUpdateMeta(
           animation.id,
-          clampAnimationMetaToOwner(
-            animation,
-            { duration: Math.max(0, num) },
-            ownerRange,
-          ),
+          clampAnimationMetaToOwner(animation, { duration: Math.max(0, num) }, ownerRange),
         );
     },
     [animation, onUpdateMeta, ownerRange],
@@ -141,11 +157,7 @@ export const AnimationCard = memo(function AnimationCard({
       if (Number.isFinite(num) && num >= 0)
         onUpdateMeta(
           animation.id,
-          clampAnimationMetaToOwner(
-            animation,
-            { position: Math.max(0, num) },
-            ownerRange,
-          ),
+          clampAnimationMetaToOwner(animation, { position: Math.max(0, num) }, ownerRange),
         );
     },
     [animation, onUpdateMeta, ownerRange],
@@ -170,6 +182,12 @@ export const AnimationCard = memo(function AnimationCard({
       ? null
       : resolveTimelineAnimationPhase(animation, ownerRange);
   const isShared = isAnimationSharedForOwner(animation, ownerId, ownerLocator);
+  const compactEntries = (relatedAnimations ?? [animation]).map(item => ({
+    animation: {...item, keyframes: item.keyframes ?? synthesizeFlatTweenKeyframes(item) ?? undefined},
+    readOnly: isAnimationSharedForOwner(item, ownerId, ownerLocator),
+  }));
+  const compactAnimation = compactEntries[0].animation;
+  const allShared = compactEntries.every(entry => entry.readOnly);
   const setKeys = Object.keys(animation.properties);
   if (
     animation.method === "set" &&
@@ -193,6 +211,71 @@ export const AnimationCard = memo(function AnimationCard({
       </div>
     );
 
+  if (compact)
+    return (
+      <Card
+        variant="outline"
+        size="sm"
+        data-layer-effect-card={animation.id}
+        data-selected={selected ? "true" : "false"}
+        className="gap-3 rounded-xl"
+        style={selected ? { borderColor: "var(--hf-panel-accent)" } : undefined}
+      >
+        <CardHeader className="gap-2">
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <Button variant="ghost" size="sm" className="h-auto min-w-0 justify-start px-0 py-1 text-[14px] leading-5 font-medium" onClick={onSelect} aria-label="Locate effect in timeline">
+              <span className="truncate">{tx(relatedAnimations && relatedAnimations.length > 1 ? "Property animation" : resolveTimelineAnimationLabel(animation, ownerRange))}</span>
+            </Button>
+            {allShared && <Badge variant="secondary" className="shrink-0 gap-1 font-normal"><LockKeyhole />{tx("Shared animation · Read-only")}</Badge>}
+          </div>
+          {compactEntries.some(entry => entry.readOnly) && <p className="text-ui-caption leading-[18px] text-muted-foreground" data-shared-animation-notice>
+            {tx(allShared ? "This animation is controlled by shared rules. Individual value edits are protected; locate it in the timeline to inspect keyframes." : "Shared segments are read-only. Other keyframes remain editable.")}
+          </p>}
+        </CardHeader>
+        <CardContent>
+        <fieldset disabled={allShared && !compactAnimation.keyframes}>
+          {compactAnimation.keyframes && onEditPropertyKeyframe ? (
+            <PropertyKeyframeRows
+              compact
+              ownerKey={ownerKey}
+              readOnly={isShared}
+              relatedAnimations={compactEntries}
+              runtimeSelector={ownerLocator?.hfId ? `[data-hf-id=${JSON.stringify(ownerLocator.hfId)}]` : undefined}
+              animation={compactAnimation}
+              onEdit={onEditPropertyKeyframe}
+            />
+          ) : (
+            <div className="space-y-1">
+              {Object.entries(animation.properties).map(([property, value]) => (
+                <PropertyRow
+                  key={property}
+                  prop={property}
+                  val={value}
+                  onCommit={(raw) => commitProperty(property, raw)}
+                  onRemove={() => onRemoveProperty(animation.id, property)}
+                  removeTitle={`Remove ${PROP_LABELS[property] ?? property}`}
+                />
+              ))}
+            </div>
+          )}
+        </fieldset>
+        </CardContent>
+        <CardFooter className="border-t">
+          <Collapsible className="w-full">
+            <CollapsibleTrigger className="group" render={<Button variant="ghost" size="sm" className="h-7 px-0 text-ui-caption text-muted-foreground" />}>
+              <ChevronRight className="size-3.5 transition-transform group-aria-expanded:rotate-90" />{tx("Advanced")}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-2 pt-2">
+              {compactEntries.map(entry => <div key={entry.animation.id} className="space-y-1 border-b border-border pb-2 text-ui-caption text-muted-foreground">
+                <span>{tx("Animation ID")}</span>
+                <code className="block break-all text-ui-caption">{entry.animation.id}</code>
+                {!entry.readOnly && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onDeleteAnimation(entry.animation.id)}>{tx("Remove animation")}</Button>}
+              </div>)}
+            </CollapsibleContent>
+          </Collapsible>
+        </CardFooter>
+      </Card>
+    );
   return (
     <div
       data-flat-effect-card={flat ? "true" : undefined}
@@ -304,6 +387,27 @@ export const AnimationCard = memo(function AnimationCard({
                 {tx(copied ? "Copied" : "Copy")}
               </button>
             </div>
+            {!animation.keyframes && onEnablePropertyKeyframes && (
+              <button
+                type="button"
+                className="rounded border border-panel-accent/40 px-2 py-1 text-[11px] text-panel-accent disabled:opacity-40"
+                disabled={
+                  animation.method === "set" ||
+                  animation.hasUnresolvedSelector ||
+                  animation.hasUnresolvedKeyframes ||
+                  !!animation.arcPath?.enabled ||
+                  !!(animation.provenance && animation.provenance.kind !== "literal") ||
+                  typeof animation.position !== "number" ||
+                  Object.values(animation.properties).some((value) => typeof value !== "number")
+                }
+                onClick={() => onEnablePropertyKeyframes(animation.id)}
+              >
+                {tx("Enable property keyframe editing")}
+              </button>
+            )}
+            {animation.keyframes && onEditPropertyKeyframe && (
+              <PropertyKeyframeRows animation={animation} onEdit={onEditPropertyKeyframe} />
+            )}
             <div className={RESPONSIVE_GRID}>
               {animation.method !== "set" && (
                 <MetricField
@@ -327,7 +431,7 @@ export const AnimationCard = memo(function AnimationCard({
               />
             </div>
 
-            {animation.method !== "set" && (
+            {animation.method !== "set" && !(animation.keyframes && onEditPropertyKeyframe) && (
               <>
                 {animation.keyframes && onUpdateKeyframeEase ? (
                   <KeyframeEaseList

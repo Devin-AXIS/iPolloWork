@@ -1,3 +1,4 @@
+import { InputGroupInput } from "@ipollowork/ui/input-group";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   DesignPanelInputProvider,
@@ -19,6 +20,7 @@ export function CommitField({
   liveCommit,
   align = "left",
   inputType = "text",
+  appearance = "plain",
   placeholder,
   maxLength,
   min,
@@ -38,6 +40,7 @@ export function CommitField({
    *  right-hand box instead of lining up with every other row's value. */
   align?: "left" | "right";
   inputType?: "text" | "number";
+  appearance?: "plain" | "group";
   placeholder?: string;
   maxLength?: number;
   min?: number;
@@ -116,8 +119,9 @@ export function CommitField({
   const scheduleCommitRef = useRef(scheduleCommit);
   scheduleCommitRef.current = scheduleCommit;
 
+  const InputComponent = appearance === "group" ? InputGroupInput : "input";
   return (
-    <input
+    <InputComponent
       ref={inputRef}
       type={inputType}
       inputMode={inputType === "number" ? "decimal" : undefined}
@@ -149,7 +153,7 @@ export function CommitField({
         scheduleCommit(nextDraft);
       }}
       title={parseNumericToken(value) ? tx("Scroll or use Arrow keys to adjust") : undefined}
-      className={`min-w-0 w-full bg-transparent outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${className ?? "text-[11px] font-medium text-neutral-100"} ${
+      className={`min-w-0 w-full bg-transparent outline-none disabled:cursor-not-allowed ${appearance === "plain" ? "disabled:text-neutral-600" : "disabled:opacity-100 disabled:text-foreground"} ${className ?? "text-[11px] font-medium text-neutral-100"} ${
         align === "right" ? "text-right" : "text-left"
       }`}
     />
@@ -162,6 +166,7 @@ export function CommitField({
 
 export function MetricField({
   label,
+  ariaLabel,
   value,
   disabled,
   liveCommit,
@@ -171,6 +176,7 @@ export function MetricField({
   onCommit,
 }: {
   label: string;
+  ariaLabel?: string;
   value: string;
   disabled?: boolean;
   liveCommit?: boolean;
@@ -230,7 +236,7 @@ export function MetricField({
     <div className={FIELD} title={tooltip ? tx(tooltip) : undefined}>
       <div className="flex min-w-0 items-center gap-3">
         <span {...scrubProps}>{tx(label)}</span>
-        <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
+        <CommitField ariaLabel={ariaLabel} value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
         {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
     </div>

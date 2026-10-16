@@ -1,3 +1,5 @@
+import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
+import { parseGsapScript } from "@hyperframes/parsers/gsap-parser";
 import { describe, expect, it } from "vitest";
 import { generateSpringEaseData, sampleSpringEase } from "@hyperframes/parsers/spring-ease";
 import {
@@ -6,6 +8,7 @@ import {
   createMotionInstance,
   defaultMotionDuration,
   listMotionPresets,
+  hasManualMotionKeyframes,
   readMotionInstanceFromExtras,
   validateMotionParameters,
 } from "./motionPresets";
@@ -961,4 +964,28 @@ describe("shared physical spring motion", () => {
       expect(motion.keyframes.slice(2).every((keyframe) => keyframe.ease === "none")).toBe(true);
     }
   });
+});
+
+describe("manual motion keyframe provenance", () => {
+  it.each([parseGsapScriptAcorn, parseGsapScript])(
+    "detects reserved per-point metadata in actual parsed source",
+    (parse) => {
+      const source =
+        'const tl = gsap.timeline(); tl.to("#title", {keyframes:{"0%":{x:0},"50%":{x:42,data:"hf-manual-keyframe"},"100%":{x:100}},duration:1},0);';
+      expect(hasManualMotionKeyframes(parse(source).animations[0]!)).toBe(true);
+    },
+  );
+  it.each([parseGsapScriptAcorn, parseGsapScript])(
+    "detects an explicitly manual tween while preserving unmarked source",
+    (parse) => {
+      const source =
+        'const tl = gsap.timeline(); tl.to("#title", {keyframes:{"0%":{x:0},"100%":{x:100}},duration:1,data:"hf-manual-keyframes"},0);';
+      expect(hasManualMotionKeyframes(parse(source).animations[0]!)).toBe(true);
+      expect(
+        hasManualMotionKeyframes(
+          parse(source.replace(',data:"hf-manual-keyframes"', "")).animations[0]!,
+        ),
+      ).toBe(false);
+    },
+  );
 });

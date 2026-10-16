@@ -1,5 +1,4 @@
 import { memo, useRef, useState } from "react";
-import { BEAT_BAND_H } from "./BeatStrip";
 import {
   KEYFRAME_DRAG_THRESHOLD_PX,
   previewClipPct,
@@ -26,9 +25,6 @@ interface TimelineClipDiamondsProps {
   keyframesData: KeyframeCacheEntry;
   clipWidthPx: number;
   clipHeightPx: number;
-  /** Beat-dot strip is shown on this track → shrink diamonds + drop them into
-   *  the bottom half so they clear the strip at the top. */
-  beatsActive?: boolean;
   isSelected: boolean;
   currentPercentage: number;
   elementId: string;
@@ -53,10 +49,8 @@ interface TimelineClipDiamondsProps {
   suppressClickRef?: React.RefObject<boolean>;
 }
 
-const DIAMOND_HIT_RATIO = 0.8;
-const DIAMOND_VISUAL_SCALE = 0.5;
 const KEYFRAME_SELECTED_COLOR = "#FED953";
-const KEYFRAME_IDLE_COLOR = "#D9DDE3";
+const KEYFRAME_IDLE_COLOR = "#19BAC2";
 // Percentage tolerance for rendering keyframes near clip boundaries. Keyframes
 // slightly outside [0, 100] (from rounding or stale cache during the async
 // persist → reload cycle) are still rendered (the clip is overflow-visible) at
@@ -75,7 +69,6 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   keyframesData,
   clipWidthPx,
   clipHeightPx,
-  beatsActive,
   isSelected,
   currentPercentage,
   elementId,
@@ -112,23 +105,21 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
 
   if (clipWidthPx < 20) return null;
 
-  // Keep the original hit target while rendering the diamond at 50% scale, so
-  // the smaller visual remains easy to click and drag.
-  const hitSize = Math.round(clipHeightPx * (beatsActive ? 0.45 : DIAMOND_HIT_RATIO));
-  const diamondSize = Math.max(4, Math.round(hitSize * DIAMOND_VISUAL_SCALE));
+  // Keep a larger hit target around the outlined mark at the thumbnail top.
+  const hitSize = Math.min(16, clipHeightPx);
+  const diamondSize = 12;
   const half = hitSize / 2;
-  const centerY = beatsActive ? BEAT_BAND_H + (clipHeightPx - BEAT_BAND_H) / 2 : clipHeightPx / 2;
   const sorted = keyframesData.keyframes
     .filter((kf) => kf.percentage >= KF_MIN_PCT && kf.percentage <= KF_MAX_PCT)
     .sort((a, b) => a.percentage - b.percentage);
   // Clip-%s of the sorted keyframes — the neighbour clamp (preview + drop) needs
   // the whole row to bound the dragged diamond between its immediate siblings.
   const sortedClipPcts = sorted.map((k) => k.percentage);
-  const baseOpacity = isSelected ? 0.7 : 0.5;
   const canDrag = isSelected && !!onMoveKeyframe;
 
   return (
     <div
+      data-testid="timeline-keyframe-overlay"
       className="absolute inset-0"
       style={{
         // Above the clip's trim-handle strips (TimelineClip.tsx, z-index 4) so
@@ -138,34 +129,9 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         // diamonds' own z-index (1/2) can't escape it on their own — the bump
         // has to happen here.
         zIndex: 7,
-        transform: "translateY(25px)",
         pointerEvents: "none",
       }}
     >
-      {sorted.map((kf, i) => {
-        if (i === 0) return null;
-        const prev = sorted[i - 1]!;
-        const x1 = Math.max(0, Math.min(clipWidthPx, (prev.percentage / 100) * clipWidthPx));
-        const x2 = Math.max(0, Math.min(clipWidthPx, (kf.percentage / 100) * clipWidthPx));
-        if (x2 - x1 < 1) return null;
-        return (
-          <div
-            key={`line-${i}-${prev.percentage}-${kf.percentage}`}
-            className="absolute"
-            style={{
-              left: x1,
-              top: centerY,
-              width: x2 - x1,
-              height: 2,
-              transform: "translateY(-1px)",
-              background: KEYFRAME_IDLE_COLOR,
-              opacity: baseOpacity,
-              borderRadius: 1,
-            }}
-          />
-        );
-      })}
-
       {sorted.map((kf, i) => {
         const kfKey = `${elementId}:${kf.percentage}`;
         // While dragging this diamond, render it at the live preview clip-%.
@@ -270,10 +236,9 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             className="absolute"
             style={{
               left: leftPx,
-              top: centerY,
-              transform: "translateY(-50%)",
+              top: 0,
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               justifyContent: "center",
               width: hitSize,
               height: hitSize,
@@ -296,20 +261,10 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             title={`${kf.origin === "manual" ? "手动关键帧" : kf.origin === "preset" ? "预设动画" : "原有动画"} · ${elementId} · ${Object.keys(kf.properties).join(", ")} · ${(clipStart + (kf.percentage / 100) * clipDuration).toFixed(3)}s`}
             aria-label={`Keyframe ${elementId} ${kf.percentage}% ${Object.keys(kf.properties).join(", ")}`}
           >
-            <svg width={diamondSize} height={diamondSize} viewBox="0 0 10 10">
-              {isKfSelected && (
-                <path
-                  d="M5 0L10 5L5 10L0 5Z"
-                  fill="none"
-                  stroke={KEYFRAME_SELECTED_COLOR}
-                  strokeWidth="0.8"
-                  opacity={0.5}
-                />
-              )}
+            <svg width={diamondSize} height={diamondSize} viewBox="0 0 10 10" style={{ transform: "translateY(-50%)" }}>
               <path
                 d="M5 1L9 5L5 9L1 5Z"
                 fill={color}
-                opacity={isKfSelected || atPlayhead ? 1 : 0.92}
               />
             </svg>
           </button>

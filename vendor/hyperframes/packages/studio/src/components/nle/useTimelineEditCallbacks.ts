@@ -10,14 +10,20 @@ import {
 } from "../../contexts/DomEditContext";
 import { resolveTweenStart, resolveTweenDuration } from "../../utils/globalTimeCompiler";
 import { resolveClipTimingBasis } from "../../hooks/useGsapTweenCache";
+import { fetchParsedAnimations, getAnimationsForElement } from "../../hooks/useGsapTweenCache";
+import { captureFlatTweenEndpoint } from "../../hooks/gsapDragPositionCommit";
+import {
+  isTimelinePropertyAnimationEditable,
+  canStartTimelinePropertyAnimation,
+  buildTimelinePropertyPoints,
+} from "../../hooks/gsapTimelineSegmentCache";
+import { selectorFromSelection } from "../../hooks/gsapShared";
+import { getStudioSaveErrorMessage } from "../../utils/studioSaveDiagnostics";
+import { readGsapProperty } from "../../hooks/gsapRuntimeReaders";
 import { resolveKeyframeRetime } from "../editor/keyframeRetime";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 import { normalizeTimelineCompositionSource } from "../editor/domEditingDom";
-import {
-  isTimelineAnimationDirectlyMovable,
-  resolveLocalTimelineAnimationOwnerRange,
-  resolveTimelineAnimationMoveUpdate,
-} from "../../utils/timelineAnimationSegments";
+
 
 export interface TimelineEditCallbackDeps {
   handleTimelineElementMove: (
@@ -50,13 +56,10 @@ export function timelineAnimationSourcesMatch(options: {
   isExpanded: boolean;
 }): boolean {
   const activeSource =
-    normalizeTimelineCompositionSource(options.activeCompPath ?? "index.html") ??
-    "index.html";
+    normalizeTimelineCompositionSource(options.activeCompPath ?? "index.html") ?? "index.html";
   const elementSource =
     normalizeTimelineCompositionSource(options.elementSourceFile) ?? activeSource;
-  const selectionSource = normalizeTimelineCompositionSource(
-    options.selectionSourceFile,
-  );
+  const selectionSource = normalizeTimelineCompositionSource(options.selectionSourceFile);
   if (options.isExpanded && selectionSource === undefined) return false;
   return elementSource === (selectionSource ?? activeSource);
 }
@@ -97,7 +100,7 @@ export function useTimelineEditCallbacks({
   handleRazorSplit,
   handleRazorSplitAll,
 }: TimelineEditCallbackDeps): TimelineEditCallbacks {
-  const { projectId, activeCompPath } = useStudioShellContext();
+  const { projectId, activeCompPath, previewIframeRef, showToast } = useStudioShellContext();
   const {
     domEditSelection,
     selectedGsapAnimations,
@@ -114,7 +117,133 @@ export function useTimelineEditCallbacks({
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     buildDomSelectionForTimelineElement,
+    commitGsapMutationForSelection,
   } = useDomEditActionsContext();
+
+  const onEditPropertyKeyframe = useCallback<
+    NonNullable<TimelineEditCallbacks["onEditPropertyKeyframe"]>
+  >(
+    async (element, animationId, property, percentage, edit) => {
+      if (!projectId || gsapMultipleTimelines || gsapUnsupportedTimelinePattern) return false;
+      const selection = await buildDomSelectionForTimelineElement(element);
+      if (!selection) return false;
+      const source = selection.sourceFile ?? element.sourceFile ?? activeCompPath ?? "index.html";
+      try {
+        const before = await fetchParsedAnimations(projectId, source);
+        if (!animationId && edit.action === "add") {
+          const selector = selectorFromSelection(selection);
+          const currentTime = usePlayerStore.getState().currentTime;
+          const localStart = element.start - (element.expandedParentStart ?? 0);
+          const targetAnimations = before
+            ? getAnimationsForElement(
+                before.animations,
+                { id: selection.id, hfId: selection.hfId, selector: selection.selector },
+                selection.element,
+              )
+            : [];
+          if (
+            !before ||
+            !selector ||
+            element.timelineLocked ||
+            element.duration <= 0 ||
+            currentTime < element.start ||
+            currentTime > element.start + element.duration ||
+            before.animations.some((animation) => animation.hasUnresolvedSelector) ||
+            !canStartTimelinePropertyAnimation(targetAnimations, element, property)
+          )
+            return false;
+          const value = readGsapProperty(previewIframeRef.current, selector, property, {
+            round: false,
+          });
+          if (value === null) return false;
+          await commitGsapMutationForSelection(
+            selection,
+            {
+              type: "add-with-keyframes",
+              targetSelector: selector,
+              position: localStart,
+              duration: element.duration,
+              ease: "none",
+              keyframes: [
+                {
+                  percentage: ((currentTime - element.start) / element.duration) * 100,
+                  properties: { [property]: value },
+                },
+              ],
+            },
+            { label: `Add ${property} keyframe`, softReload: true },
+          );
+          return true;
+        }
+        const index =
+          before?.animations.findIndex((animation) => animation.id === animationId) ?? -1;
+        const animation = before?.animations[index];
+        if (!animation || !isTimelinePropertyAnimationEditable(animation, element, selection.element.ownerDocument)) {
+          showToast("This animation is read-only here. Its existing motion was preserved.", "info");
+          return false;
+        }
+        if (edit.action === "add" && buildTimelinePropertyPoints([animation], element, property)
+          .some(point => Math.abs(point.percentage - percentage) < 0.001)) return true;
+        const operation = { ...edit };
+        if (operation.action === "add" && operation.value === undefined) {
+          const value = readGsapProperty(
+            previewIframeRef.current,
+            animation.targetSelector,
+            property,
+            { round: false },
+          );
+          if (value === null) return false;
+          operation.value = value;
+        }
+        const options = {
+          label: `${operation.action} ${property} keyframe`,
+          softReload: true,
+          coalesceKey: `property-keyframe:${animationId}:${property}:${Date.now()}`,
+          coalesceMs: Infinity,
+        };
+        if (!animation.keyframes) {
+          const endpoint = captureFlatTweenEndpoint(
+            animation,
+            previewIframeRef.current,
+            usePlayerStore.getState().currentTime,
+          );
+          if (endpoint === null) {
+            showToast(
+              "Could not capture the animation endpoint. Its existing motion was preserved.",
+              "info",
+            );
+            return false;
+          }
+          if (animation.method !== "fromTo") operation.resolvedFromValues = endpoint;
+        }
+        await commitGsapMutationForSelection(
+          selection,
+          {
+            type: "edit-property-keyframe",
+            animationId: animation.id,
+            property,
+            percentage,
+            edit: operation,
+          },
+          options,
+        );
+        return true;
+      } catch (error) {
+        showToast(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
+        return false;
+      }
+    },
+    [
+      activeCompPath,
+      buildDomSelectionForTimelineElement,
+      commitGsapMutationForSelection,
+      gsapMultipleTimelines,
+      gsapUnsupportedTimelinePattern,
+      previewIframeRef,
+      projectId,
+      showToast,
+    ],
+  );
 
   // Resolve a timeline-diamond callback's clip-% to the keyframe's anim id + its
   // tween-relative percentage (shared by the delete/move keyframe callbacks): the
@@ -134,69 +263,6 @@ export function useTimelineEditCallbacks({
     [domEditSelection?.id, selectedGsapAnimations],
   );
 
-  const resolveDirectAnimationSegment = useCallback(
-    (element: TimelineElement, animationId: string) => {
-      if (gsapMultipleTimelines || gsapUnsupportedTimelinePattern) return null;
-      const elementKey = element.key ?? element.id;
-      if (usePlayerStore.getState().selectedElementId !== elementKey) return null;
-
-      const selection = domEditSelection;
-      const ownerId = element.domId ?? element.id;
-      if (!selection || !timelineElementMatchesDomSelection(element, selection)) return null;
-
-      if (
-        !timelineAnimationSourcesMatch({
-          elementSourceFile: element.sourceFile,
-          selectionSourceFile: selection.sourceFile,
-          activeCompPath,
-          isExpanded: element.expandedParentStart !== undefined,
-        })
-      ) {
-        return null;
-      }
-
-      const animation = selectedGsapAnimations.find((candidate) => candidate.id === animationId);
-      if (
-        !animation ||
-        !isTimelineAnimationDirectlyMovable(animation, ownerId, {
-          selector: element.selector,
-          hfId: element.hfId,
-        })
-      ) {
-        return null;
-      }
-      return { animation, selection };
-    },
-    [
-      activeCompPath,
-      domEditSelection,
-      gsapMultipleTimelines,
-      gsapUnsupportedTimelinePattern,
-      selectedGsapAnimations,
-    ],
-  );
-
-  const canMoveAnimationSegment = useCallback(
-    (element: TimelineElement, animationId: string): boolean =>
-      resolveDirectAnimationSegment(element, animationId) !== null,
-    [resolveDirectAnimationSegment],
-  );
-
-  const onMoveAnimationSegment = useCallback(
-    (element: TimelineElement, animationId: string, deltaPercentage: number) => {
-      const target = resolveDirectAnimationSegment(element, animationId);
-      if (!target) return;
-      const updates = resolveTimelineAnimationMoveUpdate(
-        target.animation,
-        deltaPercentage,
-        resolveLocalTimelineAnimationOwnerRange(element),
-      );
-      if (!updates) return;
-      handleGsapUpdateMeta(animationId, updates, target.selection);
-    },
-    [handleGsapUpdateMeta, resolveDirectAnimationSegment],
-  );
-
   return useMemo(
     () => ({
       onMoveElement: handleTimelineElementMove,
@@ -209,8 +275,7 @@ export function useTimelineEditCallbacks({
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
       onRazorSplitAll: handleRazorSplitAll,
-      canMoveAnimationSegment,
-      onMoveAnimationSegment,
+      onEditPropertyKeyframe,
       onDeleteAllKeyframes: () => {
         // Hold the element where it is (collapse keyframes to a static set) rather
         // than deleting the whole animation — deleting strands a stale GSAP base
@@ -314,8 +379,7 @@ export function useTimelineEditCallbacks({
       handleTimelineElementSplit,
       handleRazorSplit,
       handleRazorSplitAll,
-      canMoveAnimationSegment,
-      onMoveAnimationSegment,
+      onEditPropertyKeyframe,
       handleGsapRemoveAllKeyframes,
       resolveKeyframeTarget,
       selectedGsapAnimations,

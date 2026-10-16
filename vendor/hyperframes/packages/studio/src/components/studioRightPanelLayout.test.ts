@@ -8,15 +8,34 @@ import {
 import { parseHostAiEditingMessage } from "../utils/studioHelpers";
 
 describe("Studio right panel layout", () => {
+  it("uses shared themed buttons for inspector navigation", () => {
+    const button = readFileSync(new URL("./PanelTabButton.tsx", import.meta.url), "utf8");
+    const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+    expect(button).toContain('import { Button } from "@ipollowork/ui/controls"');
+    expect(button).toContain('variant={active ? "default" : "ghost"}');
+    expect(button).toContain('size="sm"');
+    expect(button).not.toContain("#171816");
+    expect(button).not.toContain("active:scale");
+    expect(panel).not.toContain("bg-neutral-700 text-white");
+    expect(panel).toContain('data-testid="inspector-tab-content"');
+    expect(panel).toContain("inert={scriptExpanded}");
+    expect(panel).toContain('visibility: scriptExpanded ? "hidden" : undefined');
+  });
   it("uses the shared primary action for rename saving and a ghost cancel action", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
-    expect(header).toContain('<Button variant="default" disabled={!titleDraft.trim() || titleSaving} onClick={() => void saveTitle()}>{tx("Save")}</Button>');
-    expect(header).toContain('<Button variant="ghost" disabled={titleSaving} onClick={closeTitleEditor}>{tx("Cancel")}</Button>');
+    expect(header).toContain(
+      '<Button variant="default" disabled={!titleDraft.trim() || titleSaving} onClick={() => void saveTitle()}>{tx("Save")}</Button>',
+    );
+    expect(header).toContain(
+      '<Button variant="ghost" disabled={titleSaving} onClick={closeTitleEditor}>{tx("Cancel")}</Button>',
+    );
   });
   it("keeps the warm header and flat inspector separate from compact script metadata", () => {
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
     const dock = readFileSync(new URL("./dock/Dock.tsx", import.meta.url), "utf8");
-    expect(styles).toContain("--muted: color-mix(in srgb, var(--hf-workspace-warm-sand) 55%, var(--hf-panel-bg))");
+    expect(styles).toContain(
+      "--muted: color-mix(in srgb, var(--hf-workspace-warm-sand) 55%, var(--hf-panel-bg))",
+    );
     expect(styles).toContain("grid-template-columns: 40px minmax(0, 1fr) 68px");
     expect(styles).toContain("background: var(--hf-panel-input)");
     expect(styles).not.toContain("box-shadow: inset 3px 0 0 #1fbac0");
@@ -30,7 +49,9 @@ describe("Studio right panel layout", () => {
     expect(handlers).toContain("playerState.requestClipReveal(insertedSelectionId)");
     expect(handlers).toContain("clearDomSelection()");
     expect(handlers).toContain("usePlayerStore.getState().requestClipReveal(selectionId)");
-    expect(handlers).toContain("if (!compositionLoading) pendingInsertedSelectionRef.current = null");
+    expect(handlers).toContain(
+      "if (!compositionLoading) pendingInsertedSelectionRef.current = null",
+    );
     expect(handlers).not.toContain("clip.scrollIntoView");
     expect(handlers).not.toContain("remainingAttempts = 20");
   });
@@ -220,7 +241,7 @@ describe("Studio right panel layout", () => {
     expect(studioStyles).toContain('data-expanded="true"');
     expect(primitives).toContain("<ChevronDown size={16}");
     expect(selects).toContain('large ? "h-8 rounded-[8px] px-2.5"');
-    expect(selects).not.toContain('border border-panel-border-input');
+    expect(selects).not.toContain("border border-panel-border-input");
     expect(selects).toContain('role="listbox"');
     expect(selects).toContain("createPortal(");
     expect(colors).toContain("flex h-6 min-w-0");
@@ -547,11 +568,12 @@ describe("Studio right panel layout", () => {
     expect(source).toContain('label={t("right.animation")}');
     expect(source).not.toContain('label={t("right.catalog")}');
     expect(source).toContain('selectStudioPanel("animation");');
-    expect(source).toContain('inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}');
+    expect(source).toContain('inspectorMode="properties"');
     expect(source).toContain("showInspectorChrome");
     expect(source).not.toContain('role="tablist"');
     expect(source).not.toContain('t("right.animationTemplates")');
-    expect(source).toContain('rightPanelTab === "animation-properties"');
+    expect(source).not.toContain("Selected animation properties");
+    expect(source).not.toContain('rightPanelTab === "animation-properties"');
     expect(source).toContain("<AnimationTemplatesTab");
     expect(source).toContain("onMutate={handleMotionMutation}");
     expect(source).toContain("onStatus={(status) =>");
@@ -563,14 +585,16 @@ describe("Studio right panel layout", () => {
     expect(source).toContain('? "animation.selectElement"');
     expect(source).toContain('status === "selection-required" ? "error" : "success"');
     expect(toast).toContain('data-testid="studio-toast-surface"');
-    expect(toast).toContain('data-tone={resolvedTone}');
+    expect(toast).toContain("data-tone={resolvedTone}");
     expect(toast).toContain('from "@ipollowork/ui/alert"');
     expect(toast).toContain('from "lucide-react"');
-    expect(toast).toContain('LoaderCircle');
-    expect(toast).toContain('CircleCheck');
-    expect(toast).toContain('TriangleAlert');
-    expect(toast).toContain('<Alert');
-    expect(toast).toContain('variant={isError ? "destructive" : resolvedTone === "success" ? "success" : "default"}');
+    expect(toast).toContain("LoaderCircle");
+    expect(toast).toContain("CircleCheck");
+    expect(toast).toContain("TriangleAlert");
+    expect(toast).toContain("<Alert");
+    expect(toast).toContain(
+      'variant={isError ? "destructive" : resolvedTone === "success" ? "success" : "default"}',
+    );
     expect(source).not.toContain('setRightPanelTab("animation-properties")');
     expect(source).not.toContain("const showAnimationProperties =");
     expect(source).not.toContain('rightPanelTab === "catalog"');
@@ -596,7 +620,7 @@ describe("Studio right panel layout", () => {
     expect(header).not.toContain('from "@ipollowork/ui/tabs"');
     expect(header).toContain("Dock.WindowMenu");
     expect(header).toContain("studio-video-title");
-    expect(header).not.toContain('h-[26px]');
+    expect(header).not.toContain("h-[26px]");
   });
 
   it("uses property tabs and keeps export in its own drawer", () => {
@@ -634,7 +658,9 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"right.animationProperties": "动画属性"');
     expect(panel).toContain('label={t("right.role")}');
     expect(panel).toContain('useState<"avatar" | "voice">("voice")');
-    expect(panel).toContain('if (panel === "voice" && rightPanelTab !== "voice") setRoleTab("voice")');
+    expect(panel).toContain(
+      'if (panel === "voice" && rightPanelTab !== "voice") setRoleTab("voice")',
+    );
     expect(panel).toContain('{["voice", "avatar"].map(tab => (');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.components")}');
@@ -654,9 +680,11 @@ describe("Studio right panel layout", () => {
     expect(shell).not.toContain('<Dock.Panel id="assets"');
     expect(shell).not.toContain('<Dock.Panel id="code"');
     expect(shell).toContain('<Dock.Panel id="compositions"');
-    expect(shell).toContain('projectId={projectId} compact');
-    expect(shell).toContain('panels={WORKBENCH_PANELS}');
-    expect(shell).toContain('requiredPanels={REQUIRED_WORKBENCH_PANELS} fullHeightRight hideHeaders');
+    expect(shell).toContain("projectId={projectId} compact");
+    expect(shell).toContain("panels={WORKBENCH_PANELS}");
+    expect(shell).toContain(
+      "requiredPanels={REQUIRED_WORKBENCH_PANELS} fullHeightRight hideHeaders",
+    );
     expect(panel).not.toContain('selectStudioPanel("catalog")');
     expect(featureFlags).not.toContain("STUDIO_BLOCKS_PANEL_ENABLED");
     expect(panel).not.toContain('label={t("right.renders")}');
@@ -668,7 +696,7 @@ describe("Studio right panel layout", () => {
     expect(panel).not.toContain("handlePanelResizeStart");
     expect(panel).toContain('postHostPanel(rightPanelTab === "voice" ? roleTab : "style")');
     expect(panel).toContain("useEffect(() => () => closeHostPanel(), [closeHostPanel])");
-    expect(tabButton).toContain('style={active ? { color: "#ffffff" } : undefined}');
+    expect(tabButton).toContain('variant={active ? "default" : "ghost"}');
     expect(tabButton).not.toContain("!text-white");
     expect(tabButton).toContain("text-current");
     expect(header).not.toContain('aria-disabled="true"');
@@ -685,8 +713,8 @@ describe("Studio right panel layout", () => {
     expect(shell).toContain("editingEnabled={!previewOnly}");
     expect(shell).toContain("!previewOnly && <StudioFeedbackBar />");
     expect(header).toContain('from "lucide-react"');
-    expect(header).not.toContain('@phosphor-icons/react');
-    expect(header).not.toContain('../icons/SystemIcons');
+    expect(header).not.toContain("@phosphor-icons/react");
+    expect(header).not.toContain("../icons/SystemIcons");
     expect(header).toContain("studio-rename-video");
     expect(header).toContain('<Download className="h-4 w-4 shrink-0" strokeWidth={1.75}');
     expect(header).toContain('variant="ghost"');
@@ -734,8 +762,8 @@ describe("Studio right panel layout", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
 
     expect(header).toContain('from "lucide-react"');
-    expect(header).not.toContain('@phosphor-icons/react');
-    expect(header).not.toContain('../icons/SystemIcons');
+    expect(header).not.toContain("@phosphor-icons/react");
+    expect(header).not.toContain("../icons/SystemIcons");
     expect(header).toContain("<Pencil");
     expect(header).toContain("<RefreshCw");
     expect(header).toContain("studio-rename-video");
@@ -813,24 +841,24 @@ describe("Studio right panel layout", () => {
     expect(layout).toContain("export const MIN_TIMELINE_GUTTER_WIDTH = 180");
     expect(layout).toContain("export const MAX_TIMELINE_GUTTER_WIDTH = 420");
     expect(layout).toContain("export function clampTimelineGutterWidth");
-    expect(layout).toContain("export const TRACK_H = 40");
+    expect(layout).toContain("export const TRACK_H = 32");
     expect(layout).toContain("export const RULER_H = 28");
     expect(layout).toContain("export const TRACKS_TOP_PAD = 0");
     expect(layerHeader).toContain("data-layer-depth={depth}");
-    expect(layerHeader).toContain("depth * 19");
-    expect(layerHeader).toContain("timelineChevronDown.svg?url");
-    expect(layerHeader).toContain("figmaTimelineContainer.svg?url");
-    expect(layerHeader).toContain("figmaTimelineImage.svg?url");
-    expect(layerHeader).toContain("figmaTimelineEffect.svg?url");
-    expect(layerHeader).toContain("figmaTimelineText.svg?url");
-    expect(layerHeader).toContain("figmaTimelineLock.svg?url");
-    expect(layerHeader).toContain("figmaTimelineEye.svg?url");
-    expect(layerHeader).toContain("aria-expanded={expanded}");
+    expect(layerHeader).toContain("<KindIcon size={14}");
+    expect(layerHeader).toContain("<LockIcon size={14}");
+    expect(layerHeader).toContain("<EyeIcon size={14}");
+    expect(layerHeader).toContain("depth * 16");
+    expect(layerHeader).not.toContain("timelineChevronDown.svg?url");
+    expect(layerHeader).toContain("aria-expanded={expandable ? expanded : undefined}");
     expect(layerHeader).toContain("onToggleExpanded(first)");
-    expect(layerHeader).toContain("hf-timeline-layer-header__caret-spacer");
-    expect(layerHeader.indexOf('className="hf-timeline-layer-header__caret"')).toBeLessThan(
-      layerHeader.indexOf('className="hf-timeline-layer-header__select"'),
-    );
+    expect(layerHeader).not.toContain("hf-timeline-layer-header__caret");
+    expect(styles).not.toContain("hf-timeline-layer-header__caret");
+    expect(layerHeader).toContain('className="hf-timeline-layer-header__select"');
+    expect(layerHeader).toContain("selectName(false)");
+    expect(layerHeader).toContain("selectName(true)");
+    expect(layerHeader).toContain("onScheduleExpanded(first)");
+    expect(layerHeader).toContain("Control+Enter Meta+Enter");
     expect(layerHeader).not.toContain("<CaretDown");
     expect(layerHeader).not.toContain("<CaretRight");
     expect(layerHeader).toContain("hf-timeline-layer-header__status");
@@ -878,11 +906,11 @@ describe("Studio right panel layout", () => {
     expect(toolbar).toContain('aria-busy={pendingAction === "keyframe"}');
     expect(toolbar).toContain('aria-busy={pendingAction === "delete"}');
     expect(toolbar).toContain('aria-pressed={zoomMode === "fit"}');
-    expect(toolbar).toContain("Show the entire timeline from 00:00 without changing clip durations");
-    expect(toolbar).toContain("isSplitTimeWithinBounds(currentTime");
-    expect(toolbar).toContain("enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe");
-    expect(toolbar).toContain("!canToggleKeyframe");
-    expect(toolbar).toContain(': "Add keyframe at playhead"');
+    expect(toolbar).toContain(
+      "Show the entire timeline from 00:00 without changing clip durations",
+    );
+    expect(toolbar).toContain('data-testid="add-property-keyframe"');
+    expect(toolbar).toContain("addPropertyKeyframe(keyframeProperty)");
     expect(toolbar).toContain("<Undo2 size={16}");
     expect(toolbar).toContain("<Redo2 size={16}");
     expect(toolbar).toContain("<Scan size={16}");
@@ -936,7 +964,10 @@ describe("Studio right panel layout", () => {
     const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
     const snap = readFileSync(new URL("./editor/SnapToolbar.tsx", import.meta.url), "utf8");
-    const shortcuts = readFileSync(new URL("../player/components/ShortcutsPanel.tsx", import.meta.url), "utf8");
+    const shortcuts = readFileSync(
+      new URL("../player/components/ShortcutsPanel.tsx", import.meta.url),
+      "utf8",
+    );
     for (const source of [toolbar, snap, shortcuts]) {
       expect(source).toContain("hf-timeline-toolbutton");
       expect(source).not.toContain("figmaToolbar");
@@ -949,7 +980,7 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("color: var(--hf-panel-text-2);");
     expect(styles).toContain(".hf-timeline-toolbutton:hover:not(:disabled):not([aria-disabled=");
     expect(styles).toContain("background: var(--hf-panel-hover);");
-    expect(styles).toContain('opacity: 0.35;');
+    expect(styles).toContain("opacity: 0.35;");
     expect(styles).not.toContain("filter: invert(1) brightness(1.25);");
   });
 
@@ -980,8 +1011,7 @@ describe("Studio right panel layout", () => {
       toolbarDelete.indexOf("selectedElement && onDeleteElement"),
     );
     expect(toolbar).toContain("findMatchingTimelineElementId(domEditSelection, elements)");
-    expect(toolbar).toMatch(/useKeyframeToggle\(\s+domEditSession,\s+matchingDomSelection,/);
-    expect(toolbar).toContain("{ ...session, domEditSelection: selection }");
+    expect(toolbar).toContain("addPropertyKeyframe");
     expect(editorShell).not.toContain(
       "handleDomEditElementDelete(timelineClipContextMenu.selection)",
     );
@@ -1155,7 +1185,19 @@ describe("Studio right panel layout", () => {
     ]) {
       expect(catalog).toContain(`en: "${en}", zh: "${zh}"`);
     }
-    for (const title of ["开场与收尾", "产品展示", "流程与图解", "数据与图表", "文字与标注", "对比与背书", "知识讲解", "人物与观点", "社交媒体", "代码演示", "品牌与营销"]) {
+    for (const title of [
+      "开场与收尾",
+      "产品展示",
+      "流程与图解",
+      "数据与图表",
+      "文字与标注",
+      "对比与背书",
+      "知识讲解",
+      "人物与观点",
+      "社交媒体",
+      "代码演示",
+      "品牌与营销",
+    ]) {
       expect(catalog).not.toContain(title);
     }
     expect(catalog).toContain('const ALL_SECTIONS_FILTER = "all" as const');
@@ -1214,12 +1256,15 @@ describe("Studio right panel layout", () => {
 
   it("keeps header actions right aligned and domain accordions independent", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
-    const primitives = readFileSync(new URL("./editor/propertyPanelFlatPrimitives.tsx", import.meta.url), "utf8");
+    const primitives = readFileSync(
+      new URL("./editor/propertyPanelFlatPrimitives.tsx", import.meta.url),
+      "utf8",
+    );
     const blocks = readFileSync(new URL("./sidebar/BlocksTab.tsx", import.meta.url), "utf8");
-    expect(header).toContain('hf-studio-header-actions ml-auto flex min-w-0 items-center');
-    expect(primitives).not.toContain('@ipollowork/ui/controls');
-    expect(blocks).toContain('DropdownMenuTrigger');
-    expect(blocks).not.toContain('FlatDropdown');
+    expect(header).toContain("hf-studio-header-actions ml-auto flex min-w-0 items-center");
+    expect(primitives).not.toContain("@ipollowork/ui/controls");
+    expect(blocks).toContain("DropdownMenuTrigger");
+    expect(blocks).not.toContain("FlatDropdown");
   });
 
   it("keeps component, animation and asset search headers at the same spacing", () => {

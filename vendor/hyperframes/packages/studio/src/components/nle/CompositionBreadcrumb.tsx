@@ -1,3 +1,4 @@
+import type { TimelineElement } from "../../player/store/playerStore";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { useStudioI18n } from "../../i18n";
@@ -9,8 +10,12 @@ export interface CompositionLevel {
   label: string;
   /** Preview URL for this composition level */
   previewUrl: string;
+  /** Inline scopes share the current file and global runtime clock. */
+  inlineTarget?: TimelineElement;
   /** Parent-local playhead to restore when returning from a child. */
   seekTime?: number;
+  /** Child-local source time = offset + (parent time - start) * rate. */
+  parentTiming?: { start: number; offset: number; rate: number };
 }
 
 interface CompositionBreadcrumbProps {
@@ -20,15 +25,17 @@ interface CompositionBreadcrumbProps {
 
 export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcrumbProps) {
   const { tx } = useStudioI18n();
-  if (stack.length <= 1) return null;
+
 
   return (
     <nav
       aria-label={tx("Composition navigation")}
-      className="flex items-center gap-1 px-2 h-8 border-b border-neutral-800/50 bg-neutral-900/50 flex-shrink-0"
+      className="hf-timeline-breadcrumb flex h-full min-w-0 flex-1 items-center gap-1 text-ui-meta"
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
     >
       {/* Back button — always goes to parent */}
-      <button
+      {stack.length > 1 && <button
         type="button"
         onClick={() => {
           trackStudioEvent("navigation", {
@@ -37,21 +44,21 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
           });
           onNavigate(stack.length - 2);
         }}
-        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-[0.98] transition-colors"
+        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-panel-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent"
         title={tx("Back (Esc, or double-click empty timeline)")}
         aria-label={tx("Back to parent composition")}
       >
-        <ArrowLeft size={12} strokeWidth={2.5} />
-      </button>
+        <ArrowLeft size={14} strokeWidth={2.5} />
+      </button>}
 
       {/* Breadcrumb path */}
       {stack.map((level, i) => {
         const isLast = i === stack.length - 1;
         return (
-          <span key={level.id} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight size={10} className="text-neutral-600 flex-shrink-0" />}
+          <span key={level.id} className="flex min-w-0 items-center gap-1">
+            {i > 0 && <ChevronRight size={10} className="shrink-0 text-muted-foreground" />}
             {isLast ? (
-              <span className="text-xs text-neutral-200 font-medium">{level.label}</span>
+              <span aria-current="page" className="truncate text-ui-control font-semibold text-foreground">{i === 0 ? tx("Total timeline") : `${tx("Scene editing")} · ${level.label}`}</span>
             ) : (
               <button
                 type="button"
@@ -59,9 +66,9 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
                   trackStudioEvent("navigation", { action: "breadcrumb", target: level.label });
                   onNavigate(i);
                 }}
-                className="text-xs text-neutral-500 hover:text-neutral-200 transition-colors"
+                className="max-w-[110px] truncate text-ui-meta text-muted-foreground transition-colors hover:text-foreground"
               >
-                {level.label}
+                {i === 0 ? tx("Total timeline") : level.label}
               </button>
             )}
           </span>

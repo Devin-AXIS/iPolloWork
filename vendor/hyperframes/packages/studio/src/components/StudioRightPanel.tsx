@@ -1,3 +1,5 @@
+import { ArrowLeft } from "lucide-react";
+import { captureFlatTweenEndpoint } from "../hooks/gsapDragPositionCommit";
 import {
   lazy,
   Suspense,
@@ -135,6 +137,7 @@ export function StudioRightPanel({
     setRightCollapsed,
     rightPanelTab,
     setRightPanelTab,
+    returnFromExport,
   } = usePanelLayoutContext();
 
   const {
@@ -206,6 +209,7 @@ export function StudioRightPanel({
     handleGsapAddKeyframe,
     handleGsapRemoveKeyframe,
     handleGsapConvertToKeyframes,
+    commitMutation,
   } = useDomEditContext();
 
   const {
@@ -317,7 +321,7 @@ export function StudioRightPanel({
       projectDir={projectDir}
       assets={assets}
       element={singleDomEditSelection}
-      inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}
+      inspectorMode="properties"
       showInspectorChrome
       multiSelectCount={domEditGroupSelections.length}
       multiSelectedElements={domEditGroupSelections}
@@ -373,6 +377,22 @@ export function StudioRightPanel({
       onSetArcPath={handleSetArcPath}
       onUpdateArcSegment={handleUpdateArcSegment}
       onUnroll={handleUnroll}
+      onEnablePropertyKeyframes={(animationId) => {
+        const animation = selectedGsapAnimations.find((item) => item.id === animationId);
+        if (!animation) return;
+        const endpoint = captureFlatTweenEndpoint(animation, previewIframeRef.current, usePlayerStore.getState().currentTime);
+        if (endpoint === null) {
+          showToast(tx("Could not capture the animation endpoint. Its existing motion was preserved."), "info");
+          return;
+        }
+        void handleGsapConvertToKeyframes(animationId, animation.method === "fromTo" ? undefined : endpoint);
+      }}
+      onEditPropertyKeyframe={(animationId, property, percentage, edit) => {
+        if (!singleDomEditSelection) return;
+        void commitMutation(
+          { type: "edit-property-keyframe", animationId, property, percentage, edit },
+          { label: `${edit.action} ${property} keyframe`, softReload: true });
+      }}
       onUpdateKeyframeEase={handleUpdateKeyframeEase}
       onSetAllKeyframeEases={handleSetAllKeyframeEases}
       recordingState={recordingState}
@@ -398,40 +418,25 @@ export function StudioRightPanel({
   ) : (
     propertyPanelContent
   );
-  const animationPanelActive =
-    rightPanelTab === "animation" || rightPanelTab === "animation-properties";
-
+  const animationPanelActive = rightPanelTab === "animation";
   const animationPanel = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 gap-1 border-b border-neutral-800 px-4 pb-3">
-        {(["animation", "animation-properties"] as const).map((tab) => (
-          <button key={tab} type="button" aria-pressed={rightPanelTab === tab}
-            className={`rounded px-3 py-1 text-[11px] ${rightPanelTab === tab ? "bg-neutral-700 text-white" : "text-neutral-400 hover:bg-neutral-800"}`}
-            onClick={() => setRightPanelTab(tab)}>
-            {tx(tab === "animation" ? "Animation templates" : "Selected animation properties")}
-          </button>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
-      {rightPanelTab === "animation-properties" ? propertyPanel : <AnimationTemplatesTab
-        onMutate={handleMotionMutation}
-        onStatus={(status) =>
-          showToast(
-            t(
-              status === "applied"
-                ? "animation.applied"
-                : status === "selection-required"
-                  ? "animation.selectElement"
-                  : status === "updated"
-                    ? "animation.updated"
-                    : "animation.removed",
-            ),
-            status === "selection-required" ? "error" : "success",
-          )
-        }
-      />}
-      </div>
-    </div>
+    <AnimationTemplatesTab
+      onMutate={handleMotionMutation}
+      onStatus={(status) =>
+        showToast(
+          t(
+            status === "applied"
+              ? "animation.applied"
+              : status === "selection-required"
+                ? "animation.selectElement"
+                : status === "updated"
+                  ? "animation.updated"
+                  : "animation.removed",
+          ),
+          status === "selection-required" ? "error" : "success",
+        )
+      }
+    />
   );
 
   const renderQueuePanel = (
@@ -569,7 +574,7 @@ export function StudioRightPanel({
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
   const selectStudioPanel = (
-    panel: "design" | "animation" | "animation-properties" | "components" | "assets",
+    panel: "design" | "animation" | "components" | "assets",
   ) => {
     setRightPanelTab(panel);
   };
@@ -581,10 +586,13 @@ export function StudioRightPanel({
     <>
       <div
         ref={panelRef}
+        inert={scriptExpanded}
+        aria-hidden={scriptExpanded || undefined}
         className="hf-studio-inspector flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg"
         style={{
           width: "100%",
           minWidth: 0,
+          visibility: scriptExpanded ? "hidden" : undefined,
         }}
       >
         {captionEditMode ? (
@@ -599,9 +607,17 @@ export function StudioRightPanel({
           <>
             <div className="relative z-30 flex h-[49px] min-w-0 items-center overflow-hidden border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-2">
               {exportDrawer ? (
-                <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-panel-text-1">
-                  {t("right.renders")}
-                </h2>
+                <>
+                  <button type="button" data-testid="export-panel-back"
+                    aria-label={tx("Back to editing")} title={tx("Back to editing")}
+                    onClick={returnFromExport}
+                    className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded text-panel-text-2 hover:bg-panel-hover hover:text-panel-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent">
+                    <ArrowLeft size={16} />
+                  </button>
+                  <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-panel-text-1">
+                    {t("right.renders")}
+                  </h2>
+                </>
               ) : (
                 <div className="hf-inspector-tabs-scroll flex min-w-0 flex-1 items-center overflow-hidden">
                   <div className="grid w-full min-w-0 grid-flow-col auto-cols-fr items-center gap-1">
@@ -691,7 +707,7 @@ export function StudioRightPanel({
                     <div ref={hostPanelSlotRef} data-testid="host-panel-slot" className="min-h-0 flex-1" />
                     </div>
                   ) : rightPanelTab === "style" ? (
-                    <div ref={hostPanelSlotRef} data-testid="host-panel-slot" className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">{t("right.styleTooltip")}</div>
+                    <div ref={hostPanelSlotRef} data-testid="host-panel-slot" className="grid h-full place-items-center px-6 text-center text-ui-body text-panel-text-3">{t("right.styleTooltip")}</div>
                   ) : inspectorTabActive ? (
                     propertyPanel
                   ) : (

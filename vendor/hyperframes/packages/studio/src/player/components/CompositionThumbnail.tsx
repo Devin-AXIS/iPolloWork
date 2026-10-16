@@ -27,7 +27,6 @@ interface CompositionThumbnailProps {
   priority?: ThumbnailPriority;
   rich?: boolean;
   loading?: "eager" | "lazy";
-  minLoadWidth?: number;
 }
 
 const THUMBNAIL_URL_VERSION = "v3";
@@ -144,7 +143,6 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   sessionEpoch = 0,
   contentRevision = 0,
   priority = "visible",
-  minLoadWidth = 0,
 }: CompositionThumbnailProps) {
   const [container, setContainerRef, watchGap] = useThumbnailStripSize();
   const url = buildCompositionThumbnailUrl({
@@ -160,7 +158,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     () => compositionThumbnailRequest(url, projectId, { sessionEpoch, priority, rich: true }),
     [priority, projectId, sessionEpoch, url],
   );
-  const snapshot = useThumbnailLease(container.width >= minLoadWidth ? request : null);
+  const snapshot = useThumbnailLease(container.width > 0 ? request : null);
   const value =
     snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value : null;
   const { frameW, frameCount } = computeThumbnailStrip(

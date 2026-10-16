@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useTimelinePlayer, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
+import type { PlaybackRange } from "../../player/lib/playbackTypes";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { useCompositionStack } from "./useCompositionStack";
 import { MIN_TIMELINE_H, MIN_PREVIEW_H } from "./TimelineResizeDivider";
@@ -37,6 +38,7 @@ export interface NLEContextValue {
   onIframeLoad: () => void;
   // composition stack (from useCompositionStack)
   compositionStack: CompositionLevel[];
+  scenePlaybackRange: PlaybackRange | null;
   updateCompositionStack: React.Dispatch<React.SetStateAction<CompositionLevel[]>>;
   handleNavigateComposition: (index: number) => void;
   handleDrillDown: (element: TimelineElement) => void;
@@ -57,6 +59,10 @@ export interface NLEContextValue {
 }
 
 const NLEContext = createContext<NLEContextValue | null>(null);
+
+export function useNLEContextOptional(): NLEContextValue | null {
+  return useContext(NLEContext);
+}
 
 export function useNLEContext(): NLEContextValue {
   const ctx = useContext(NLEContext);
@@ -85,13 +91,15 @@ export function NLEProvider({
   onCompositionLoadingChange,
   children,
 }: NLEProviderProps) {
+  const sceneScopeRef = useRef<TimelineElement | null>(null);
+  const playbackRangeRef = useRef<PlaybackRange | null>(null);
   const {
     iframeRef,
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
     refreshPlayer,
-  } = useTimelinePlayer();
+  } = useTimelinePlayer({ playbackRangeRef, sceneScopeRef });
 
   // Reset timeline state when the project changes. Done in an effect, not during
   // render: reset() updates the player store, and updating another store/component
@@ -146,11 +154,51 @@ export function NLEProvider({
     onCompositionChange,
   });
 
+  const elements = usePlayerStore((state) => state.elements);
+  const capturedScene = compositionStack
+    .slice(compositionStack.findLastIndex((level) => !level.inlineTarget) + 1)
+    .findLast((level) => level.inlineTarget?.inlineScopeKind === "scene")?.inlineTarget;
+  const activeScene = capturedScene
+    ? (elements.find(
+        (element) => (element.key ?? element.id) === (capturedScene.key ?? capturedScene.id),
+      ) ?? capturedScene)
+    : null;
+  const scenePlaybackRange =
+    activeScene && activeScene.duration > 0
+      ? { start: activeScene.start, end: activeScene.start + activeScene.duration }
+      : null;
+  playbackRangeRef.current = scenePlaybackRange;
+  sceneScopeRef.current = activeScene;
+  const hadSceneScopeRef = useRef(false);
+  useLayoutEffect(() => {
+    const hadSceneScope = hadSceneScopeRef.current;
+    hadSceneScopeRef.current = activeScene != null;
+    // Root playback restoration owns initial seek; only scope transitions sync here.
+    if (!activeScene && !hadSceneScope) return;
+    const state = usePlayerStore.getState();
+    if (state.isPlaying) togglePlay();
+    const range = playbackRangeRef.current;
+    const time = range
+      ? Math.max(range.start, Math.min(range.end, state.currentTime))
+      : state.currentTime;
+    seek(time);
+  }, [
+    activeScene?.key,
+    activeScene?.id,
+    scenePlaybackRange?.start,
+    scenePlaybackRange?.end,
+    seek,
+    togglePlay,
+  ]);
+
   // Wrap handleDrillDown to also scan the iframe DOM for data-composition-src
   const iframeRef_ = iframeRef;
   const handleDrillDown = useCallback(
     (element: TimelineElement) => {
-      if (!element.compositionSrc) return;
+      if (!element.compositionSrc) {
+        if (element.inlineScopeKind) drillDown(element);
+        return;
+      }
       usePlayerStore.getState().setSelectedElementId(null);
       // Check compIdToSrc map first; then scan iframe DOM; then fall through to drillDown
       const compId = element.id;
@@ -174,6 +222,8 @@ export function NLEProvider({
       drillDown({
         id: compId,
         start: element.start,
+        playbackStart: element.playbackStart,
+        playbackRate: element.playbackRate,
         compositionSrc: resolvedPath ?? element.compositionSrc,
       });
     },
@@ -297,11 +347,12 @@ export function NLEProvider({
   );
   const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);
 
+  const activeFileLevelId = compositionStack.findLast((level) => !level.inlineTarget)?.id;
   const onIframeRefStable = useRef(onIframeRef);
   onIframeRefStable.current = onIframeRef;
   useEffect(() => {
     onIframeRefStable.current?.(iframeRef.current);
-  }, [compositionStack.length, refreshKey, iframeRef]);
+  }, [activeFileLevelId, refreshKey, iframeRef]);
 
   const value: NLEContextValue = {
     projectId,
@@ -312,6 +363,7 @@ export function NLEProvider({
     refreshPlayer,
     onIframeLoad,
     compositionStack,
+    scenePlaybackRange,
     updateCompositionStack,
     handleNavigateComposition,
     handleDrillDown,

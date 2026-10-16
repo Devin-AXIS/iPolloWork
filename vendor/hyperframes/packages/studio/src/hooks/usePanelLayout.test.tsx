@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { usePlayerStore } from "../player/store/playerStore";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +47,32 @@ describe("canonical dock navigation", () => {
     expect(useDockLayoutStore.getState().pendingActivation).toBe("design");
     act(() => layout.setRightPanelTab("assets"));
     act(() => layout.setRightPanelTab("code"));
+    expect(layout.rightPanelTab).toBe("design");
+  });
+
+  it("returns from Export to the previous tab without changing the selected editing state", () => {
+    act(() => root.render(<Probe initial={{rightPanelTab:"animation"}} />));
+    const point={ownerKey:"title",property:"opacity",animationId:"fade",time:2};
+    const effect={ownerKey:"title",animationId:"fade",time:2};
+    usePlayerStore.setState({selectedElementId:"title",currentTime:2,selectedPropertyKeyframe:point,selectedTimelineEffect:effect});
+    act(() => {layout.setRightPanelTab("renders");layout.setRightPanelTab("renders");});
+    expect(layout.rightPanelTab).toBe("renders");
+    act(() => layout.returnFromExport());
+    expect(layout.rightPanelTab).toBe("animation");
+    const player=usePlayerStore.getState();
+    expect(player.selectedElementId).toBe("title");
+    expect(player.currentTime).toBe(2);
+    expect(player.selectedPropertyKeyframe).toBe(point);
+    expect(player.selectedTimelineEffect).toBe(effect);
+    act(() => layout.setRightPanelTab("assets"));
+    act(() => layout.setRightPanelTab("renders"));
+    act(() => layout.returnFromExport());
+    expect(layout.rightPanelTab).toBe("assets");
+  });
+  it("uses Layers when opened directly in Export and preserves that fallback across repeated Export clicks", () => {
+    act(() => root.render(<Probe initial={{rightPanelTab:"renders"}} />));
+    act(() => layout.setRightPanelTab("renders"));
+    act(() => layout.returnFromExport());
     expect(layout.rightPanelTab).toBe("design");
   });
 

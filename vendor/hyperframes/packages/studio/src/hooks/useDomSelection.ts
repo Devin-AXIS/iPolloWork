@@ -264,8 +264,7 @@ export function useDomSelection({
           if (
             rightPanelTabRef.current !== "variables" &&
             rightPanelTabRef.current !== "code" &&
-            rightPanelTabRef.current !== "animation" &&
-            rightPanelTabRef.current !== "animation-properties"
+            rightPanelTabRef.current !== "animation"
           ) {
             setRightPanelTab("design");
           }

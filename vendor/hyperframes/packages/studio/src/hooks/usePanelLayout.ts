@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
@@ -21,16 +21,25 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(
     initialTab === "layers" || initialTab === "code" ? "design" : initialTab ?? "renders",
   );
+  const currentTabRef = useRef(rightPanelTab);
+  currentTabRef.current = rightPanelTab;
+  const exportReturnTabRef = useRef<RightPanelTab>("design");
   useEffect(() => {
     if (initialTab === "assets" || initialTab === "code") useDockLayoutStore.getState().activatePanel("design");
   }, [initialTab]);
   const trackedSetRightPanelTab = useCallback((tab: RightPanelTab) => {
     if (tab === "assets" || tab === "code") useDockLayoutStore.getState().activatePanel("design");
     // Preserve old Code deep links without reviving the removed sidebar page.
-    setRightPanelTab(tab === "layers" || tab === "code" ? "design" : tab);
+    const nextTab = tab === "layers" || tab === "code" ? "design" : tab;
+    if (nextTab === "renders" && currentTabRef.current !== "renders") {
+      exportReturnTabRef.current = currentTabRef.current;
+    }
+    currentTabRef.current = nextTab;
+    setRightPanelTab(nextTab);
     trackStudioEvent("tab_switch", { panel: "right_panel", tab });
   }, []);
+  const returnFromExport = useCallback(() => trackedSetRightPanelTab(exportReturnTabRef.current), [trackedSetRightPanelTab]);
   return { rightWidth, setRightWidth, rightCollapsed, setRightCollapsed,
     scriptExpanded, setScriptExpanded,
-    rightPanelTab, setRightPanelTab: trackedSetRightPanelTab };
+    rightPanelTab, setRightPanelTab: trackedSetRightPanelTab, returnFromExport };
 }

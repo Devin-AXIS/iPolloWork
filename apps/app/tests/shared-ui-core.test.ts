@@ -97,6 +97,22 @@ test("public mapping only names available runtime exports and existing public en
   }
 });
 
+test("catalog separates maturity dimensions and keeps its module count and matrix executable", () => {
+  const read = (path: string) => readFileSync(new URL("../../../" + path, import.meta.url), "utf8");
+  const mapping = JSON.parse(read(".codex/skills/ipollowork-plugin-ui/references/component-mapping.json"));
+  expect(mapping.statusDimensions).toEqual(["code", "adoption", "design", "interaction", "release"]);
+  const count = [...read("packages/ui/src/react/core.ts").matchAll(/export \* from/g)].length;
+  expect(read("packages/ui/README.md")).toContain(`exports ${count} modules`);
+  expect(read(".codex/skills/ipollowork-plugin-ui/references/component-catalog.md")).toContain(`汇总${count}个模块`);
+  for (const flow of ["shared-ui-core", "shared-ui-compositions", "shared-ui-compact-controls",
+    "component-validation-matrix", "shared-ui-overlays", "shared-ui-async-feedback", "shared-ui-table",
+    "video-workbench-modules", "video-script-inspector-readonly"]) {
+    expect(read("packages/ui/README.md")).toContain(flow);
+    expect(read(`evals/flows/${flow}.flow.mjs`)).toContain(flow);
+  }
+  expect(read("packages/ui/README.md")).toContain("Unmeasured cells remain Incomplete");
+});
+
 
 test("every curated public icon renders nonempty Lucide SVG with correct fixed pixel sizes and semantics", () => {
   expect(core.ICON_NAMES.length).toBe(32);

@@ -70,6 +70,7 @@ export function applyClipStartTrimDelta(
 }
 
 export interface TimelineGroupTimingMember {
+  sourceDuration?: number;
   start: number;
   duration: number;
   playbackStart?: number;
@@ -116,16 +117,29 @@ export function clampTimelineGroupResizeDelta(
   members: readonly TimelineGroupTimingMember[],
   edge: TimelineGroupResizeEdge,
   minDuration = resolveTimelineMinDuration(),
+  minStart = 0,
 ): number {
   if (members.length === 0) return 0;
 
   if (edge === "end") {
     const minDelta = Math.max(...members.map((member) => minDuration - member.duration));
-    return roundTimelineTime(Math.max(rawDelta, minDelta));
+    const maxDelta = Math.min(
+      ...members.map((member) =>
+        member.sourceDuration == null
+          ? Number.POSITIVE_INFINITY
+          : Math.max(
+              0,
+              (member.sourceDuration - (member.playbackStart ?? 0)) /
+                resolveTimelinePlaybackRate(member.playbackRate) -
+                member.duration,
+            ),
+      ),
+    );
+    return roundTimelineTime(clamp(rawDelta, minDelta, maxDelta));
   }
 
   // Rigid group: the applied delta is bounded by the most-constrained member.
-  const bounds = members.map((member) => clipStartTrimDeltaBounds(member, 0, minDuration));
+  const bounds = members.map((member) => clipStartTrimDeltaBounds(member, minStart, minDuration));
   const minDelta = Math.max(...bounds.map((b) => b.minDelta));
   const maxDelta = Math.min(...bounds.map((b) => b.maxDelta));
   return roundTimelineTime(clamp(rawDelta, minDelta, maxDelta));
@@ -136,8 +150,9 @@ export function resolveTimelineGroupResize(
   edge: TimelineGroupResizeEdge,
   rawDelta: number,
   minDuration = resolveTimelineMinDuration(),
+  minStart = 0,
 ): TimelineGroupResizeResult {
-  const delta = clampTimelineGroupResizeDelta(rawDelta, members, edge, minDuration);
+  const delta = clampTimelineGroupResizeDelta(rawDelta, members, edge, minDuration, minStart);
   return {
     delta,
     members: members.map((member) => {
@@ -228,12 +243,12 @@ export function buildTimelineGroupResizeMembers(
     key: elementKey(element),
     start: element.start,
     duration: element.duration,
-    playbackStart: element.compositionSrc
-      ? undefined
-      : edge === "start" && isMediaTimelineElement(element)
+    playbackStart:
+      edge === "start" && (element.compositionSrc || isMediaTimelineElement(element))
         ? (element.playbackStart ?? 0)
         : element.playbackStart,
     playbackRate: element.playbackRate,
+    sourceDuration: element.sourceDuration,
   }));
 }
 
@@ -247,8 +262,9 @@ export function resolveTimelineGroupResizeChanges(
   edge: TimelineGroupResizeEdge,
   rawDelta: number,
   minDuration = resolveTimelineMinDuration(),
+  minStart = 0,
 ): TimelineGroupResizeChange[] {
-  const result = resolveTimelineGroupResize(members, edge, rawDelta, minDuration);
+  const result = resolveTimelineGroupResize(members, edge, rawDelta, minDuration, minStart);
   return result.members.map((member, index) => ({
     element: members[index]!.element,
     key: members[index]!.key,
@@ -260,6 +276,8 @@ export function resolveTimelineGroupResizeChanges(
 
 /** In-flight multi-select group-resize gesture (owned by the drag hook). */
 export interface TimelineGroupResizeSession {
+  minStart?: number;
+  resizeMode?: "trim" | "stretch";
   grabbedKey: string;
   edge: TimelineGroupResizeEdge;
   members: TimelineGroupResizeMember[];
@@ -282,7 +300,25 @@ export function applyTimelineGroupResizePreview(
     session.edge === "start"
       ? grabbedPreview.previewStart - (grabbed?.start ?? grabbedPreview.previewStart)
       : grabbedPreview.previewDuration - (grabbed?.duration ?? grabbedPreview.previewDuration);
-  const changes = resolveTimelineGroupResizeChanges(session.members, session.edge, rawDelta);
+  const members =
+    session.resizeMode === "stretch"
+      ? session.members.map((member) => ({
+          ...member,
+          playbackStart: undefined,
+          sourceDuration: undefined,
+        }))
+      : session.members;
+  const changes = resolveTimelineGroupResizeChanges(
+    members,
+    session.edge,
+    rawDelta,
+    undefined,
+    session.minStart,
+  ).map((change, index) =>
+    session.resizeMode === "stretch"
+      ? { ...change, playbackStart: session.members[index]!.playbackStart }
+      : change,
+  );
   session.changes = changes;
   session.hasChanged = changes.some(
     (c, i) =>

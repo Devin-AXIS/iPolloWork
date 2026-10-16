@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addAnimationToScript,
+  editPropertyKeyframeInScript,
   addKeyframeToScript,
   convertToKeyframesFromScript,
   copyAnimationsInScript,
@@ -20,6 +21,86 @@ import {
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import { parseGsapScript } from "./gsapParser.js";
 import { validateCompositionGsap } from "./gsapSerialize.js";
+
+describe("property keyframe editing", () => {
+  const source = `const tl = gsap.timeline({paused:true});
+tl.to("#title", {duration:2, repeat:1, yoyo:true, ease:"none", keyframes:{
+  "0%":{x:0,opacity:0,ease:"none"},
+  "50%":{x:100,opacity:0.5,ease:"power2.out",_auto:1},
+  "100%":{x:200,opacity:1,ease:"power1.in"}, easeEach:"none"
+}}, 1);`;
+  const id = () => parseGsapScriptAcorn(source).animations[0].id;
+  const edit = (action: "update" | "move" | "remove" | "ease", extra = {}) =>
+    parseGsapScriptAcorn(editPropertyKeyframeInScript(source, id(), "opacity", 50, {action, ...extra})).animations;
+  it("updates only the requested channel and preserves sibling easing and timing", () => {
+    const animations = edit("update", {value:0.8});
+    const position = animations.find((animation) => animation.keyframes?.keyframes.some((frame) => "x" in frame.properties));
+    const opacity = animations.find((animation) => animation.keyframes?.keyframes.some((frame) => "opacity" in frame.properties));
+    expect(position?.keyframes).toEqual(parseGsapScriptAcorn(source).animations[0].keyframes && {
+      ...parseGsapScriptAcorn(source).animations[0].keyframes,
+      keyframes: parseGsapScriptAcorn(source).animations[0].keyframes?.keyframes.map((frame) => ({...frame,properties:{x:frame.properties.x,...("_auto" in frame.properties ? {_auto:frame.properties._auto} : {})}})),
+    });
+    expect(position?.position).toBe(1);
+    expect(position?.duration).toBe(2);
+    expect(position?.extras).toEqual(parseGsapScriptAcorn(source).animations[0].extras);
+    expect(opacity?.extras).toEqual(parseGsapScriptAcorn(source).animations[0].extras);
+    expect(opacity?.keyframes?.keyframes[1].properties.opacity).toBe(0.8);
+  });
+  it("moves and deletes only the requested channel", () => {
+    const moved = edit("move", {toPercentage:75});
+    expect(moved.find((animation) => animation.keyframes?.keyframes.some((frame) => "x" in frame.properties))?.keyframes?.keyframes[1].percentage).toBe(50);
+    const opacity = moved.find((animation) => animation.keyframes?.keyframes.some((frame) => "opacity" in frame.properties));
+    expect(opacity?.keyframes?.keyframes[1]).toMatchObject({percentage:75,properties:{opacity:0.5},ease:"power2.out"});
+    const removed = edit("remove");
+    expect(removed.find((animation) => animation.keyframes?.keyframes.some((frame) => "x" in frame.properties))?.keyframes?.keyframes).toHaveLength(3);
+    expect(removed.find((animation) => animation.keyframes?.keyframes.some((frame) => "opacity" in frame.properties))?.keyframes?.keyframes).toHaveLength(2);
+  });
+  it("edits easing independently and adding an existing keyframe is inert", () => {
+    const animations = edit("ease", {ease:"none"});
+    expect(animations.find((animation) => animation.keyframes?.keyframes.some((frame) => "x" in frame.properties))?.keyframes?.keyframes[1].ease).toBe("power2.out");
+    expect(animations.find((animation) => animation.keyframes?.keyframes.some((frame) => "opacity" in frame.properties))?.keyframes?.keyframes[1].ease).toBe("none");
+    expect(editPropertyKeyframeInScript(source,id(),"opacity",50,{action:"add",value:0.9})).toBe(source);
+  });
+  it("rejects array or callback animation shapes instead of rewriting them", () => {
+    const arrays = source.replace(/keyframes:\{[\s\S]*?easeEach:"none"\n\}/, 'keyframes:[{x:0,opacity:0},{x:100,opacity:1}]');
+    expect(() => editPropertyKeyframeInScript(arrays,parseGsapScriptAcorn(arrays).animations[0].id,"opacity",50,{action:"remove"})).toThrow("read-only");
+    const callback = source.replace('duration:2,','duration:2,onComplete:()=>{},');
+    expect(() => editPropertyKeyframeInScript(callback,parseGsapScriptAcorn(callback).animations[0].id,"opacity",50,{action:"remove"})).toThrow("callbacks");
+  });
+  it("selects the newly isolated call when another property tween shares its start", () => {
+    const overlapping = source + '\ntl.to("#title",{duration:2,keyframes:{"0%":{opacity:0.2},"100%":{opacity:0.4}}},1);';
+    const output = editPropertyKeyframeInScript(overlapping,id(),"opacity",50,{action:"update",value:0.8});
+    expect(output).toContain('tl.to("#title",{duration:2,keyframes:{"0%":{opacity:0.2},"100%":{opacity:0.4}}},1);');
+    expect(parseGsapScriptAcorn(output).animations.some((animation) => animation.keyframes?.keyframes.some((frame) => frame.percentage === 50 && frame.properties.opacity === 0.8))).toBe(true);
+  });
+  it("rejects nonfinite and outside-window retiming before changing source", () => {
+    for (const time of [NaN,Infinity,-1,101]) {
+      expect(() => editPropertyKeyframeInScript(source,id(),"opacity",50,{action:"move",toPercentage:time})).toThrow("finite");
+    }
+  });
+  it("keeps distinct keys less than two percent apart", () => {
+    const added = editPropertyKeyframeInScript(source,id(),"opacity",51,{action:"add",value:0.7});
+    const opacity = parseGsapScriptAcorn(added).animations.find((animation) => animation.keyframes?.keyframes.some((frame) => "opacity" in frame.properties));
+    if (!opacity) throw new Error("Opacity channel missing");
+    expect(opacity.keyframes?.keyframes.map((frame) => frame.percentage)).toEqual([0,50,51,100]);
+    const moved = editPropertyKeyframeInScript(added,opacity.id,"opacity",51,{action:"move",toPercentage:50.5});
+    expect(parseGsapScriptAcorn(moved).animations.find((animation) => animation.id === opacity.id)?.keyframes?.keyframes.map((frame) => frame.percentage)).toEqual([0,50,50.5,100]);
+  });
+  it("atomically converts a flat tween using captured endpoints before a property edit", () => {
+    const flat = 'const tl=gsap.timeline();tl.to("#title",{duration:2,x:200,opacity:1,ease:"power2.out"},1);';
+    const animation = parseGsapScriptAcorn(flat).animations[0];
+    const output = editPropertyKeyframeInScript(flat,animation.id,"opacity",100,{action:"update",value:0.8,resolvedFromValues:{x:40,opacity:0.3}});
+    const animations = parseGsapScriptAcorn(output).animations;
+    const position = animations.find((item) => item.keyframes?.keyframes.some((frame) => "x" in frame.properties));
+    expect(position?.keyframes?.keyframes.map((frame) => frame.properties.x)).toEqual([40,200]);
+    expect(position?.keyframes?.easeEach).toBe("power2.out");
+    expect(position?.position).toBe(1);
+    expect(position?.duration).toBe(2);
+    const opacity = animations.find((item) => item.keyframes?.keyframes.some((frame) => "opacity" in frame.properties));
+    expect(opacity?.keyframes?.keyframes.map((frame) => frame.properties.opacity)).toEqual([0.3,0.8]);
+    expect(() => editPropertyKeyframeInScript(flat,animation.id,"opacity",100,{action:"update",value:0.8})).toThrow("captured");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Fixture scripts

@@ -3,7 +3,6 @@ import {
   memo,
   Suspense,
   useCallback,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -21,6 +20,9 @@ import {
   useDomEditActionsContext,
   useDomEditSelectionContext,
 } from "../../contexts/DomEditContext";
+import { usePanelLayoutContext } from "../../contexts/PanelLayoutContext";
+import { usePlayerStore } from "../../player";
+import { resolveTweenStart } from "../../utils/globalTimeCompiler";
 import { useStudioI18n } from "../../i18n";
 import { resolveCaptionMotionTargetElement } from "../../utils/motionPreset";
 import {
@@ -36,11 +38,6 @@ import { ChevronDown } from "../../icons/SystemIcons";
 const StructuredMotionThumbnail = lazy(() =>
   import("./StructuredMotionThumbnail").then((module) => ({
     default: module.StructuredMotionThumbnail,
-  })),
-);
-const AnimationPropertiesPanel = lazy(() =>
-  import("../editor/SemanticMotionPanel").then((module) => ({
-    default: module.AnimationPropertiesPanel,
   })),
 );
 
@@ -146,7 +143,6 @@ const BOX_AUTOMATION_SECTION_LABEL = {
   },
 };
 
-const ANIMATION_EDITOR_WIDTH = 200;
 
 export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
   ...(
@@ -841,7 +837,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
   loading: boolean;
   applyDisabled: boolean;
   onApply: (template: AnimationTemplateDefinition) => void | Promise<void>;
-  onEdit: (template: AnimationTemplateDefinition, anchor: HTMLElement) => void | Promise<void>;
+  onEdit: (motion: ResolvedMotionInstance) => void | Promise<void>;
   onRemove: (
     template: AnimationTemplateDefinition,
     motion: ResolvedMotionInstance,
@@ -880,6 +876,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
       className="hf-animation-template-card group relative min-w-0"
       data-testid="animation-template-card"
       data-template-id={template.id}
+      data-animation-id={applied?.animation.id}
       data-state={state}
       data-applied={applied ? "true" : "false"}
       data-loading={loading ? "true" : "false"}
@@ -911,7 +908,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
             <button
               type="button"
               data-animation-action="edit"
-              onClick={(event) => void onEdit(template, event.currentTarget)}
+              onClick={() => void onEdit(applied)}
               className="h-5 rounded-[2px] px-1 text-[11px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
             >
               {t("animation.edit")}
@@ -964,13 +961,6 @@ function AnimationTemplateGroup({
   );
 }
 
-interface AnimationEditorState {
-  templateId: string;
-  animationId: string;
-  selection: DomEditSelection;
-  anchor: { top: number; right: number; bottom: number; left: number };
-}
-
 export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
   onMutate,
   onStatus,
@@ -979,7 +969,8 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
   onStatus?: (status: AnimationMutationStatus) => void;
 }) {
   const { locale, t } = useStudioI18n();
-  const { buildDomSelectionFromTarget } = useDomEditActionsContext();
+  const { buildDomSelectionFromTarget, applyDomSelection } = useDomEditActionsContext();
+  const { setRightPanelTab, setRightCollapsed } = usePanelLayoutContext();
   const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<AnimationLibraryCategory>("all");
@@ -987,7 +978,6 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
   const [unusedExpanded, setUnusedExpanded] = useState(true);
   const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
   const [applyFailed, setApplyFailed] = useState(false);
-  const [editor, setEditor] = useState<AnimationEditorState | null>(null);
   const captionMotionTarget = domEditSelection
     ? resolveCaptionMotionTargetElement(domEditSelection.element)
     : null;
@@ -1035,17 +1025,6 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
   );
   const usedTemplates = templateEntries.filter((entry) => entry.applied !== null);
   const unusedTemplates = templateEntries.filter((entry) => entry.applied === null);
-  const editorMotion = editor
-    ? (motions.find((motion) => motion.animation.id === editor.animationId) ?? null)
-    : null;
-  const editorTemplate = editor
-    ? (ANIMATION_TEMPLATES.find((template) => template.id === editor.templateId) ?? null)
-    : null;
-
-  useEffect(() => {
-    if (editor && !editorMotion) setEditor(null);
-  }, [editor, editorMotion]);
-
   const resolveSelection = useCallback(async () => {
     if (!domEditSelection) return null;
     if (!captionMotionTarget || captionMotionTarget === domEditSelection.element) {
@@ -1125,7 +1104,6 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
           setApplyFailed(true);
           return;
         }
-        if (editor?.animationId === motion.animation.id) setEditor(null);
         onStatus?.("removed");
       } catch {
         setApplyFailed(true);
@@ -1133,31 +1111,25 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
         setPendingTemplateId(null);
       }
     },
-    [editor?.animationId, onMutate, onStatus, pendingTemplateId, resolveSelection],
+    [onMutate, onStatus, pendingTemplateId, resolveSelection],
   );
 
-  const openEditor = useCallback(
-    async (template: AnimationTemplateDefinition, anchorElement: HTMLElement) => {
-      if (!targetKind) return;
-      const motion = resolveAppliedAnimationTemplate(template, targetKind, motions);
-      if (!motion) return;
-      const anchorRect = anchorElement.getBoundingClientRect();
-      const selection = await resolveSelection();
-      if (!selection) return;
-      setEditor({
-        templateId: template.id,
-        animationId: motion.animation.id,
-        selection,
-        anchor: {
-          top: anchorRect.top,
-          right: anchorRect.right,
-          bottom: anchorRect.bottom,
-          left: anchorRect.left,
-        },
-      });
-    },
-    [motions, resolveSelection, targetKind],
-  );
+  const inspectEffect = useCallback(async (motion: ResolvedMotionInstance) => {
+    const selection = await resolveSelection();
+    if (!selection) return;
+    applyDomSelection(selection, { revealPanel: false });
+    const store = usePlayerStore.getState();
+    const ownerKey = store.selectedElementId;
+    if (!ownerKey) return;
+    const owner = store.elements.find((element) => (element.key ?? element.id) === ownerKey);
+    const start = resolveTweenStart(motion.animation);
+    const time = start === null ? undefined : start + (owner?.expandedParentStart ?? 0);
+    store.setSelectedPropertyKeyframe(null);
+    store.setSelectedTimelineEffect({ ownerKey, animationId: motion.animation.id, time });
+    if (time !== undefined) store.requestSeek(time);
+    setRightPanelTab("design");
+    setRightCollapsed(false);
+  }, [applyDomSelection, resolveSelection, setRightCollapsed, setRightPanelTab]);
 
   const renderCards = (entries: typeof templateEntries) => (
     <div className="grid grid-cols-2 gap-x-[10px] gap-y-4 px-4 py-2">
@@ -1179,25 +1151,13 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
             loading={pendingTemplateId === template.id}
             applyDisabled={!domEditSelection}
             onApply={applyTemplate}
-            onEdit={openEditor}
+            onEdit={inspectEffect}
             onRemove={removeTemplate}
           />
         );
       })}
     </div>
   );
-
-  const editorPosition = editor
-    ? {
-        top: Math.max(8, Math.min(editor.anchor.top, window.innerHeight - 360)),
-        left: Math.max(
-          8,
-          editor.anchor.left >= ANIMATION_EDITOR_WIDTH + 16
-            ? editor.anchor.left - ANIMATION_EDITOR_WIDTH - 8
-            : editor.anchor.right + 8,
-        ),
-      }
-    : null;
 
   return (
     <div
@@ -1283,26 +1243,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
           )}
       </div>
 
-      {editor && editorMotion && editorTemplate && editorPosition ? (
-        <div className="fixed z-[80]" style={editorPosition}>
-          <Suspense
-            fallback={<div className="h-[320px] w-[200px] rounded-[8px] bg-white" />}
-          >
-            <AnimationPropertiesPanel
-              draft={null}
-              element={editor.selection}
-              animations={[editorMotion.animation]}
-              title={editorTemplate.title[locale]}
-              onMutate={onMutate}
-              onApplied={() => {
-                setEditor(null);
-                onStatus?.("updated");
-              }}
-              onClose={() => setEditor(null)}
-            />
-          </Suspense>
-        </div>
-      ) : null}
+
     </div>
   );
 });

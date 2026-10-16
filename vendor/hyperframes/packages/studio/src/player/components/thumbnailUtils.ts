@@ -10,8 +10,7 @@ export interface ThumbnailStripLayout {
 }
 
 /**
- * Compute the film-strip tile layout for a clip thumbnail: fixed-height tiles
- * sized by the media's aspect ratio, repeated to fill the clip width.
+ * Compute the film-strip tile layout for a clip thumbnail: tiles based on the media's aspect ratio, fitted to fill the clip width.
  * Degenerate aspects (0, negative, NaN, Infinity) fall back to 16:9.
  */
 export function computeThumbnailStrip(
@@ -24,10 +23,8 @@ export function computeThumbnailStrip(
   const naturalFrameCount =
     containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / naturalFrameWidth)) : 1;
   const frameCount = Math.min(naturalFrameCount, MAX_THUMBNAIL_TILES);
-  const frameW =
-    naturalFrameCount > MAX_THUMBNAIL_TILES
-      ? Math.max(1, Math.ceil(containerWidth / MAX_THUMBNAIL_TILES))
-      : naturalFrameWidth;
+  // Fit every visible tile to the clip, including a single poster in narrow clips.
+  const frameW = containerWidth > 0 ? containerWidth / frameCount : naturalFrameWidth;
   return { frameW, frameCount };
 }
 

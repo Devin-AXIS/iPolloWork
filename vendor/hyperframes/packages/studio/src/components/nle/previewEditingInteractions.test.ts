@@ -194,7 +194,7 @@ describe("preview editing interactions", () => {
     expect(source).toContain("playerState.setSelection(selectedKeys, anchorKey");
     expect(source).toContain("syncTimelineSelection(nextGroup, nextSelection)");
     expect(source).toContain('rightPanelTabRef.current !== "animation"');
-    expect(source).toContain('rightPanelTabRef.current !== "animation-properties"');
+    expect(source).not.toContain("animation-properties");
     expect(source).not.toContain("{ preserveSet: true }");
   });
 
@@ -249,7 +249,7 @@ describe("preview editing interactions", () => {
     expect(source).toContain("setSelectedElementId(elementKey)");
     expect(source).toContain("onSelectElement?.(el)");
     expect(source).toContain("resolveTimelineSelectionSeekTime(");
-    expect(source).toMatch(/selectionTime,\s+previewElement,/);
+    expect(source).toMatch(/resolveTimelineSelectionSeekTime\(\s*selectionTime,\s*previewElement\s*,?\s*\)/);
     expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
     expect(source).not.toContain("onSelectElement?.(nextElement)");
   });
@@ -539,19 +539,19 @@ describe("preview editing interactions", () => {
     expect(assetsSource).not.toContain("Source selection is not available yet");
     expect(assetsSource).not.toContain("Project 01");
     expect(assetsSource).toContain("<SearchInput");
-    expect(assetsSource).toContain("bg-[#171816] text-[#ffffff]");
-    expect(assetsSource).not.toContain("bg-[#2c2d2a] text-white");
+    expect(assetsSource).toContain('import { Button } from "@ipollowork/ui/controls"');
+    expect(assetsSource).toMatch(/<Button\s+variant="ghost"\s+type="button"\s+onClick=\{\(\) => fileInputRef\.current\?\.click\(\)\}/);
     expect(assetsSource).toContain("flex h-full min-h-0 flex-1 flex-col overflow-hidden");
     expect(assetsSource).toContain('data-testid="assets-virtual-scroll"');
     expect(assetsSource).toContain('className="min-h-0 flex-1 overflow-y-auto overscroll-contain"');
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("window.setInterval(refreshVisibleAssets, 2500)");
-    expect(assetsSource).toContain("figmaAssetsImport.svg?url");
+    expect(assetsSource).toContain('<Upload aria-hidden="true" className="size-4" />');
     const searchSource = readFileSync(new URL("../ui/SearchInput.tsx", import.meta.url), "utf8");
     expect(searchSource).toContain('from "@ipollowork/ui/controls"');
     expect(searchSource).toContain('type="search"');
     expect(assetsSource).not.toContain("<select");
-    expect(assetsSource).toContain('className="flex h-8 w-auto flex-none');
+    expect(assetsSource).toContain('<Button key={id} variant="ghost" size="sm" aria-pressed={usageFilter === id}');
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
     expect(assetsSource).toContain("visible ? (");
@@ -662,3 +662,11 @@ describe("preview editing interactions", () => {
     expect(chromeSource).toContain("if (e.button !== 0)");
   });
 });
+
+ it("owns composition navigation beside timeline tools, outside the preview transport", () => {
+   const preview=readFileSync(new URL("./PreviewPane.tsx",import.meta.url),"utf8");
+   const timeline=readFileSync(new URL("./TimelinePane.tsx",import.meta.url),"utf8");
+   expect(preview).not.toContain("CompositionBreadcrumb");
+   expect(timeline).toContain("hf-timeline-navigation-toolbar");
+   expect(timeline).toContain("<CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />");
+ });

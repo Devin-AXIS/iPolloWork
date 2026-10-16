@@ -61,6 +61,7 @@ import {
   addKeyframeToScript,
   removeKeyframeFromScript,
   moveKeyframeInScript,
+  editPropertyKeyframeInScript,
   resizeKeyframedTweenInScript,
   updateKeyframeInScript,
   convertToKeyframesFromScript,
@@ -108,6 +109,10 @@ import {
   createMotionInstance,
   defaultMotionDuration,
   getMotionPreset,
+  motionSourceMatchesPreset,
+  rebaseCompiledMotionKeyframes,
+  readAuthoredMotionPositionBase,
+  structuredTrackTargetCount,
   listMotionPresets,
   materializeStructuredText,
   readMotionInstanceFromExtras,
@@ -1210,6 +1215,8 @@ export type GsapMutationRequest =
       ease?: string;
       backfillDefaults?: Record<string, number | string>;
     }
+  | { type: "edit-property-keyframe"; animationId: string; property: string; percentage: number;
+      edit: { action: "add" | "update" | "remove" | "move" | "ease"; value?: number | string; toPercentage?: number; ease?: string; resolvedFromValues?: Record<string, number | string> } }
   | { type: "remove-keyframe"; animationId: string; percentage: number }
   | {
       type: "move-keyframe";
@@ -1355,6 +1362,7 @@ export type GsapMutationRequest =
       /** Move every position tween for one layer together, preserving its path shape. */
       type: "offset-position-paths";
       targetSelector: string;
+      ownedSelectors?: string[];
       deltaX: number;
       deltaY: number;
     }
@@ -1678,55 +1686,6 @@ function materializeStructuredMotionText(
   }
 }
 
-function structuredTrackTargetCount(
-  structured: NonNullable<ReturnType<typeof compileMotionInstance>["structured"]>,
-  role: NonNullable<
-    ReturnType<typeof compileMotionInstance>["structured"]
-  >["tracks"][number]["role"],
-): number {
-  if (role === "particle") return structured.particles?.length ?? 0;
-  const layer = structured.layers.find((candidate) => candidate.role === role);
-  return layer?.perUnit ? structured.units.length : 1;
-}
-
-function readAuthoredPositionBase(
-  animations: GsapAnimation[],
-  targetSelector: string,
-): { x: number; y: number } {
-  const base = { x: 0, y: 0 };
-  for (const animation of animations) {
-    if (
-      animation.targetSelector !== targetSelector ||
-      animation.method !== "set" ||
-      !animation.global ||
-      animation.extras?.data === "hf-hold"
-    ) {
-      continue;
-    }
-    const x = animation.properties.x ?? animation.properties.translateX;
-    const y = animation.properties.y ?? animation.properties.translateY;
-    if (typeof x === "number") base.x = x;
-    if (typeof y === "number") base.y = y;
-  }
-  return base;
-}
-
-function rebaseCompiledMotionKeyframes(
-  keyframes: ReturnType<typeof compileMotionInstance>["keyframes"],
-  base: { x: number; y: number },
-): ReturnType<typeof compileMotionInstance>["keyframes"] {
-  return keyframes.map((keyframe) => {
-    const properties = { ...keyframe.properties };
-    for (const property of ["x", "translateX"] as const) {
-      if (typeof properties[property] === "number") properties[property] += base.x;
-    }
-    for (const property of ["y", "translateY"] as const) {
-      if (typeof properties[property] === "number") properties[property] += base.y;
-    }
-    return { ...keyframe, properties };
-  });
-}
-
 function resolveMotionApplicationKind(
   requested: MotionApplicationKind | undefined,
   presetId: string,
@@ -1762,7 +1721,7 @@ function executeMotionMutation(
   }
 
   const parsed = parseGsapScriptAcorn(block.scriptText);
-  const authoredPositionBase = readAuthoredPositionBase(parsed.animations, body.targetSelector);
+  const authoredPositionBase = readAuthoredMotionPositionBase(parsed.animations, body.targetSelector);
   const targetMotions = parsed.animations.flatMap((animation) => {
     const instance = readMotionInstanceFromExtras(animation.extras);
     return instance && motionInstanceTargetsElement(block.document, target, instance)
@@ -1787,6 +1746,12 @@ function executeMotionMutation(
     const replaced = targetMotions.filter(({ instance }) =>
       shouldReplaceMotion(instance, applicationKind, preset.id, body.templateId, body.phase),
     );
+    if (!motionSourceMatchesPreset(replaced.map((entry) => entry.animation), readMotionSourceText(target), authoredPositionBase)) {
+      return respond({
+        error: "这个动画已有手动关键帧或时序调整，修改模板参数会覆盖这些编辑，已保留原动画。请在属性面板或时间轴中继续编辑。",
+        code: "manual-motion-preserved",
+      }, 409);
+    }
     for (const entry of [...replaced].reverse()) {
       script = removeAnimationFromScript(script, entry.animation.id);
     }
@@ -1993,6 +1958,7 @@ const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
   "update-keyframe",
   "remove-keyframe",
   "move-keyframe",
+  "edit-property-keyframe",
   "resize-keyframed-tween",
   "remove-all-keyframes",
   "add-with-keyframes",
@@ -2037,6 +2003,7 @@ async function executeGsapMutation(
       body.targetSelector,
       body.deltaX,
       body.deltaY,
+      body.ownedSelectors,
     );
   }
   // Selector isolation is an exact source splice shared by both writer modes.
@@ -2421,6 +2388,9 @@ function executeGsapMutationAcorn(
     case "remove-keyframe": {
       return removeKeyframeFromScript(block.scriptText, body.animationId, body.percentage);
     }
+    case "edit-property-keyframe": {
+      return editPropertyKeyframeInScript(block.scriptText, body.animationId, body.property, body.percentage, body.edit);
+    }
     case "move-keyframe": {
       return moveKeyframeInScript(
         block.scriptText,
@@ -2759,6 +2729,9 @@ async function executeGsapMutationRecast(
     }
     case "remove-keyframe": {
       return removeKeyframeFromScript(block.scriptText, body.animationId, body.percentage);
+    }
+    case "edit-property-keyframe": {
+      return editPropertyKeyframeInScript(block.scriptText, body.animationId, body.property, body.percentage, body.edit);
     }
     case "move-keyframe": {
       return moveKeyframeInScript(

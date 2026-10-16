@@ -88,3 +88,30 @@ describe("timeline element thumbnail previews", () => {
     expect(resolveTimelineThumbnailPreview(element(), "project-1", null)).toBeNull();
   });
 });
+
+
+test("thin leaf shapes show their fill instead of an empty screenshot and obey thumbnail visibility", () => {
+  const host = document.createElement("div");document.body.append(host);const root = createRoot(host);
+  const line = element({ tag: "i", label: "Progress", timelinePaint: "rgb(31, 186, 192)" });
+  const before = JSON.stringify(line);
+  function Preview() {
+    const projectIdRef = useRef("project-1");
+    const render = useRenderClipContent({ projectIdRef, activePreviewUrl: null });
+    return React.createElement("div", null, render(line, { clip: "", label: "" }));
+  }
+  try {
+    act(() => usePlayerStore.getState().setThumbnailMode("adaptive"));
+    act(() => root.render(React.createElement(Preview)));
+    const fill = host.querySelector<HTMLElement>('[role="img"] > div');
+    expect(fill?.style.backgroundColor).toBe("rgb(31, 186, 192)");
+    expect(host.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("Progress");
+    expect(host.querySelector("img")).toBeNull();
+    expect(host.textContent).toBe("");
+    act(() => usePlayerStore.getState().setThumbnailMode("hidden"));
+    expect(host.querySelector('[role="img"]')).toBeNull();
+    expect(JSON.stringify(line)).toBe(before);
+  } finally {
+    act(() => root.unmount());host.remove();
+    act(() => usePlayerStore.getState().setThumbnailMode("adaptive"));localStorage.clear();
+  }
+});

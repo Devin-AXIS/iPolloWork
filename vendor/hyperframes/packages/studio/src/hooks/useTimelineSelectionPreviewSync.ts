@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from "react";
 import type { TimelineElement } from "../player";
-import type { DomEditSelection } from "../components/editor/domEditing";
-import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveTimelineTreeSelectionKey } from "../player/lib/timelineTreeSelection";
+import type { DomEditSelection } from "../components/editor/domEditing";
+import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 
 interface UseTimelineSelectionPreviewSyncParams {
   selectedElementId: string | null;
@@ -77,18 +77,20 @@ export function useTimelineSelectionPreviewSync({
         : domEditSelection
           ? [domEditSelection]
           : [];
-    const store = usePlayerStore.getState();
-    const selectionKey = (selection: DomEditSelection) =>
-      resolveTimelineTreeSelectionKey({
-        elementId: selection.id ?? undefined, hfId: selection.hfId, sourceFile: selection.sourceFile,
-        selector: selection.selector, selectorIndex: selection.selectorIndex,
-        elements: timelineElements, manifest: store.clipManifest ?? [], domClipChildren: store.domClipChildren,
-      }) || resolveTimelineIdForSelection(selection, timelineElements, activeCompPath);
+    const tree = usePlayerStore.getState();
+    const resolveCurrentId = (selection: DomEditSelection) => {
+      const key = resolveTimelineTreeSelectionKey({elementId:selection.id ?? undefined,
+        hfId:selection.hfId,sourceFile:selection.sourceFile,selector:selection.selector,
+        selectorIndex:selection.selectorIndex,elements:timelineElements,
+        manifest:tree.clipManifest ?? [],domClipChildren:tree.domClipChildren});
+      return timelineElements.some((element) => (element.key ?? element.id) === key)
+        ? key : resolveTimelineIdForSelection(selection,timelineElements,activeCompPath);
+    };
     const currentIds = currentSelections
-      .map(selectionKey)
+      .map(resolveCurrentId)
       .filter((id): id is string => Boolean(id));
     const currentAnchor = domEditSelection
-      ? selectionKey(domEditSelection)
+      ? resolveCurrentId(domEditSelection)
       : null;
 
     if (selectedIds.length === 0) {

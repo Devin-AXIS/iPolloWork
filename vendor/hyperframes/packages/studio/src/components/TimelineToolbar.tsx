@@ -1,15 +1,6 @@
 import { MousePointer2, Image, Scissors, Pencil, TextSelect, ArrowLeftRight, Undo2, Redo2, Diamond, Trash2, ZoomOut, Scan, Camera } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Ellipsis, ZoomIn, type LucideIcon } from "lucide-react";
-import {
-  animatedProps,
-  useEnableKeyframes,
-  isPlayheadWithinTween,
-  keyframeAtPlayhead,
-  type EnableKeyframesSession,
-} from "../hooks/useEnableKeyframes";
-import { getAnimationsForElement, fetchParsedAnimations } from "../hooks/useGsapTweenCache";
-import { computeElementPercentage } from "../hooks/gsapShared";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, Ellipsis, ZoomIn, type LucideIcon } from "lucide-react";
 import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import { useFrameCapture } from "../hooks/useFrameCapture";
 import {
@@ -19,20 +10,27 @@ import {
   timelineSliderToZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
+import { collectTimelineTreeElements } from "../player/lib/timelineTreeSelection";
 import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { STUDIO_KEYFRAMES_ENABLED } from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup,
+  DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuItem,
+} from "@ipollowork/ui/dropdown-menu";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
-import { isSplitTimeWithinBounds } from "../utils/timelineElementSplit";
 import {
   findSelectedTimelineElement,
   rebaseExpandedTimelineEdit,
 } from "../utils/timelineToolbarSelection";
 import { findMatchingTimelineElementId } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
+import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useStudioI18n } from "../i18n";
+import { buildTimelinePropertyRows, resolveTimelinePropertyKeyframeTarget, TIMELINE_EMPTY_PROPERTY_ROWS } from "../hooks/gsapTimelineSegmentCache";
+import { useTimelineEditContextOptional } from "../contexts/TimelineEditContext";
 import { requestPreviewZoomReset } from "./nle/previewZoom";
 import { resolveFloatingPanelPosition } from "./editor/floatingPanel";
 
@@ -40,7 +38,7 @@ export const CANVAS_SNAP_TOOLBAR_SLOT_ID = "hf-canvas-snap-toolbar-slot";
 export const CANVAS_GRID_TOOLBAR_SLOT_ID = "hf-canvas-grid-toolbar-slot";
 export const SHORTCUTS_TOOLBAR_SLOT_ID = "hf-shortcuts-toolbar-slot";
 
-interface DomEditSessionSlice extends EnableKeyframesSession {
+interface DomEditSessionSlice {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
 }
@@ -49,41 +47,6 @@ interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
   onDeleteDomElement?: (selection: DomEditSelection) => Promise<void> | void;
-}
-
-function useKeyframeToggle(
-  session: DomEditSessionSlice | undefined,
-  selection: DomEditSelection | null,
-) {
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const sessionRef = useRef(session);
-  // Timeline selection updates immediately, while rebuilding its DOM selection
-  // is asynchronous. Scope the action to the DOM selection that has been
-  // confirmed to match the currently selected timeline row so a quick select +
-  // keyframe click can never mutate the previously selected element.
-  sessionRef.current = session && selection ? { ...session, domEditSelection: selection } : undefined;
-  const onToggle = useEnableKeyframes(
-    sessionRef as React.RefObject<EnableKeyframesSession | undefined>,
-  );
-
-  if (!session || !selection) return { state: "none" as const, onToggle: undefined };
-  const keyframeAnimation = session.selectedGsapAnimations.find((animation) => animation.keyframes);
-  let state: "active" | "inactive" | "none" = "none";
-
-  if (keyframeAnimation?.keyframes && selection) {
-    if (!isPlayheadWithinTween(keyframeAnimation, currentTime)) {
-      state = "inactive";
-    } else {
-      const percentage = computeElementPercentage(currentTime, selection, keyframeAnimation);
-      state = keyframeAnimation.keyframes.keyframes.some(
-        (keyframe) => Math.abs(keyframe.percentage - percentage) <= 1,
-      )
-        ? "active"
-        : "inactive";
-    }
-  }
-
-  return { state, onToggle };
 }
 
 // Keep the same controls and portal slots mounted when they move into a popover.
@@ -127,7 +90,7 @@ function ToolbarGroup({ collapsed, label, icon: Icon, toolbarWidth, children, va
   return (
     <div className="contents">
       {collapsed && (
-        <Tooltip label={label}>
+        <Tooltip label={value ? `${label} · ${value}` : label}>
           <button
             ref={triggerRef}
             type="button"
@@ -171,6 +134,9 @@ export function TimelineToolbar({
 }: TimelineToolbarProps) {
   const { tx } = useStudioI18n();
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const editingModeTriggerRef = useRef<HTMLButtonElement>(null);
+  const annotationTriggerRef = useRef<HTMLButtonElement>(null);
+  const propertyTriggerRef = useRef<HTMLButtonElement>(null);
   const [toolbarWidth, setToolbarWidth] = useState(0);
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
@@ -181,8 +147,8 @@ export function TimelineToolbar({
     observer.observe(toolbar);
     return () => observer.disconnect();
   }, []);
-  const layout = toolbarWidth >= 660 ? "full" : toolbarWidth >= 520 ? "compact" : "narrow";
-  const [pendingAction, setPendingAction] = useState<"keyframe" | "delete" | null>(
+  const layout = toolbarWidth >= 760 ? "full" : toolbarWidth >= 560 ? "compact" : "narrow";
+  const [pendingAction, setPendingAction] = useState<"delete" | "keyframe" | null>(
     null,
   );
   const activeTool = usePlayerStore((state) => state.activeTool);
@@ -192,7 +158,17 @@ export function TimelineToolbar({
   const currentTime = usePlayerStore((s) => s.currentTime);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
-  const elements = useExpandedTimelineElements();
+  const expandedElements = useExpandedTimelineElements();
+  const rawElements = usePlayerStore((state) => state.elements);
+  const clipManifest = usePlayerStore((state) => state.clipManifest);
+  const domClipChildren = usePlayerStore((state) => state.domClipChildren);
+  // Flat scene rows are not necessarily expanded in the legacy hierarchy.
+  // Keep its rebased elements authoritative, then include the remaining DOM rows.
+  const elements = useMemo(() => {
+    const keys = new Set(expandedElements.map((element) => element.key ?? element.id));
+    return [...expandedElements, ...collectTimelineTreeElements(rawElements, clipManifest ?? [], domClipChildren)
+      .filter((element) => !keys.has(element.key ?? element.id))];
+  }, [expandedElements, rawElements, clipManifest, domClipChildren]);
   const selectedElement = findSelectedTimelineElement(
     elements,
     selectedElementId,
@@ -209,10 +185,6 @@ export function TimelineToolbar({
       : null;
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const timelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
-  const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(
-    domEditSession,
-    matchingDomSelection,
-  );
   const {
     projectId,
     activeCompPath,
@@ -235,56 +207,67 @@ export function TimelineToolbar({
   });
 
   const iconButton = "hf-timeline-toolbutton";
-  const playheadIsInsideSelectedElement = Boolean(
-    selectedElement &&
-      isSplitTimeWithinBounds(currentTime, selectedElement.start, selectedElement.duration),
+  const { onEditPropertyKeyframe } = useTimelineEditContextOptional();
+  const [keyframeProperty, setKeyframeProperty] = useState<string | null>(null);
+  const keyframePending = useRef(false);
+  const selectedPoint = usePlayerStore(state => state.selectedPropertyKeyframe);
+  const canChooseProperty = Boolean(
+    projectId && matchingDomSelection && selectedElementKey && selectedElement &&
+    !selectedElement.timelineLocked && selectedElementIds.size <= 1 && onEditPropertyKeyframe,
   );
-  const canToggleKeyframe = Boolean(onToggleKeyframe && playheadIsInsideSelectedElement);
+  const animations = domEditSession?.selectedGsapAnimations ?? [];
+  const authoredProperties = new Set(buildTimelinePropertyRows(animations).map(row => row.key));
+  const resolveTarget = (property: string): ReturnType<typeof resolveTimelinePropertyKeyframeTarget> => selectedElement
+    ? resolveTimelinePropertyKeyframeTarget(animations, selectedElement, property, currentTime,
+        selectedPoint?.ownerKey === selectedElementKey && selectedPoint.property === property ? selectedPoint.animationId : undefined, domEditSession?.domEditSelection?.element.ownerDocument)
+    : { kind: "blocked" };
+  const propertyChoices = buildTimelinePropertyRows(
+    animations, TIMELINE_EMPTY_PROPERTY_ROWS.map(row => row.key),
+  ).map(row => ({ ...row, animated: authoredProperties.has(row.key), blocked: resolveTarget(row.key).kind === "blocked" }));
+  const activeProperty = propertyChoices.find(row => row.key === keyframeProperty);
+  const { setRightPanelTab, setRightCollapsed } = usePanelLayoutContext();
+  const addPropertyKeyframe = async (property: string) => {
+    if (!canChooseProperty || !selectedElement || !selectedElementKey || !onEditPropertyKeyframe ||
+      pendingAction || keyframePending.current) return;
+    const target = resolveTarget(property);
+    if (target.kind === "blocked") return;
+    setKeyframeProperty(property);
+    const store = usePlayerStore.getState();
+    store.setSelectedTimelineEffect({ ownerKey: selectedElementKey,
+      animationId: target.kind === "existing" ? target.point.animation.id : target.animationId, property });
+    store.requestClipReveal(selectedElementKey);
+    setRightPanelTab("design");
+    setRightCollapsed(false);
+    if (target.kind === "existing") {
+      store.setSelectedPropertyKeyframe({ ownerKey: selectedElementKey, property,
+        animationId: target.point.animation.id, time: target.point.time });
+      return;
+    }
+    keyframePending.current = true;
+    setPendingAction("keyframe");
+    try {
+      const changed = await onEditPropertyKeyframe(selectedElement, target.animationId, property, target.percentage, { action: "add" });
+      if (changed) store.setSelectedPropertyKeyframe({ ownerKey: selectedElementKey, property,
+        animationId: target.animationId, time: currentTime });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : tx("Could not add keyframe"), "error");
+    } finally {
+      keyframePending.current = false;
+      setPendingAction(null);
+    }
+  };
   const canDelete = Boolean(
     (matchingDomSelection && onDeleteDomElement) || (selectedElement && onDeleteElement),
   );
-
   useKeyframeKeyboard({
-    enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe,
+    enabled: STUDIO_KEYFRAMES_ENABLED && canChooseProperty,
     onAddKeyframe: () => {
-      void runSelectionAction("keyframe", recordKeyframe);
+      if (keyframeProperty) void addPropertyKeyframe(keyframeProperty);
+      else propertyTriggerRef.current?.click();
     },
   });
-  const recordKeyframe = async () => {
-    if (!projectId || !matchingDomSelection || !onToggleKeyframe) return;
-    const source =
-      matchingDomSelection.sourceFile || activeCompPath || "index.html";
-    const before = await fetchParsedAnimations(projectId, source);
-    const recordedAt = usePlayerStore.getState().currentTime;
-    await onToggleKeyframe();
-    await waitForPendingDomEditSaves();
-    const after = await fetchParsedAnimations(projectId, source);
-    if (
-      !before ||
-      !after ||
-      JSON.stringify(before.animations) === JSON.stringify(after.animations)
-    )
-      return;
-    const animations = getAnimationsForElement(
-      after.animations, matchingDomSelection, matchingDomSelection.element,
-    );
-    const recordedAnimation = animations.find(
-      (animation) => keyframeAtPlayhead(animation, matchingDomSelection, recordedAt),
-    );
-    if (keyframeState !== "active" && !recordedAnimation) return;
-    const props = animatedProps(recordedAnimation ?? null).join(", ");
-    const guidance = recordedAnimation?.keyframes?.keyframes.length === 1
-      ? ` ${tx("The first point records the current state; add a second point to create motion.")}`
-      : "";
-    showToast(
-      keyframeState === "active"
-        ? tx("Keyframe removed")
-        : `${tx("Keyframe recorded")} · ${matchingDomSelection.label ?? selectedElement?.id} · ${props} · ${recordedAt.toFixed(3)}s.${guidance}`,
-      "info",
-    );
-  };
   const runSelectionAction = async (
-    action: "keyframe" | "delete",
+    action: "delete",
     execute: () => Promise<void> | void,
   ) => {
     if (pendingAction) return;
@@ -304,63 +287,67 @@ export function TimelineToolbar({
       className="hf-timeline-toolbar flex h-11 items-center justify-between gap-4 border-y border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-toolbar-bg)] px-4"
       data-testid="figma-timeline-toolbar"
       data-toolbar-layout={layout}
+      data-toolbar-wrap={toolbarWidth > 0 && toolbarWidth < 340}
       data-preserve-studio-selection="true"
     >
       <div className="hf-timeline-toolbar-edit flex min-w-0 items-center gap-2">
-        <ToolbarGroup
-          collapsed={layout === "narrow"}
-          label={tx("Editing and AI annotations")}
-          icon={MousePointer2}
-          toolbarWidth={toolbarWidth}
-        >
-        <Tooltip label={tx("Selection tool (V)")}>
-          <button
-            type="button"
-            className={iconButton}
-            aria-label={tx("Selection tool")}
-            aria-pressed={activeTool === "select"}
-            onClick={() => setActiveTool("select")}
-          >
-            <MousePointer2 size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip label={tx("Razor tool (B)")}>
-          <button
-            type="button"
-            className={iconButton}
-            aria-label={tx("Razor tool")}
-            aria-pressed={activeTool === "razor"}
-            onClick={() => setActiveTool("razor")}
-          >
-            <Scissors size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip label={tx("Drag across the timeline to annotate a time range")}>
-          <button
-            type="button"
-            className={iconButton}
-            aria-label={tx("Annotate time range")}
-            aria-pressed={activeTool === "annotate"}
-            onClick={(event) => {
-              setActiveTool(activeTool === "annotate" ? "select" : "annotate");
-              event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
-            }}
-          >
-            <TextSelect size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip label={tx("Draw around timeline clips to annotate them")}>
-          <button type="button"
-            className={iconButton}
-            aria-label={tx("Lasso clips for AI")}
-            aria-pressed={activeTool === "annotate-lasso"}
-            onClick={(event) => {
-              setActiveTool(activeTool === "annotate-lasso" ? "select" : "annotate-lasso");
-              event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
-            }}>
-            <Pencil size={16} />
-          </button>
-        </Tooltip>
+        <DropdownMenu>
+          <Tooltip label={tx("Editing mode")}>
+            <DropdownMenuTrigger
+              ref={editingModeTriggerRef}
+              render={<button type="button" className="hf-timeline-toolbutton hf-timeline-tool-dropdown" />}
+              aria-label={tx("Editing mode")}
+              aria-pressed={["select", "stretch", "razor"].includes(activeTool)}
+            >
+              {activeTool === "razor" ? <Scissors size={16} /> : activeTool === "stretch" ? <ArrowLeftRight size={16} /> : <MousePointer2 size={16} />}
+              <ChevronDown size={10} aria-hidden="true" />
+            </DropdownMenuTrigger>
+          </Tooltip>
+          <DropdownMenuContent finalFocus={editingModeTriggerRef} aria-label={tx("Editing mode")}>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{tx("Editing mode")}</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={activeTool}>
+                <DropdownMenuRadioItem closeOnClick value="select" aria-label={tx("Selection tool")} onClick={() => setActiveTool("select")}>
+                  <MousePointer2 /><span>{tx("Select and trim")}</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem closeOnClick value="stretch" aria-label={tx("Stretch tool")} onClick={() => setActiveTool("stretch")}>
+                  <ArrowLeftRight /><span>{tx("Stretch tool")}</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem closeOnClick value="razor" aria-label={tx("Razor tool")} onClick={() => setActiveTool("razor")}>
+                  <Scissors /><span>{tx("Razor tool")}</span>
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <Tooltip label={tx("AI annotations")}>
+            <DropdownMenuTrigger
+              ref={annotationTriggerRef}
+              render={<button type="button" className="hf-timeline-toolbutton hf-timeline-tool-dropdown" />}
+              aria-label={tx("AI annotations")}
+              aria-pressed={activeTool === "annotate" || activeTool === "annotate-lasso"}
+            >
+              <Pencil size={16} /><ChevronDown size={10} aria-hidden="true" />
+            </DropdownMenuTrigger>
+          </Tooltip>
+          <DropdownMenuContent finalFocus={annotationTriggerRef} aria-label={tx("AI annotations")} className="w-max max-w-[calc(100vw-16px)]">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{tx("AI annotations")}</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={activeTool}>
+                <DropdownMenuRadioItem closeOnClick value="annotate" aria-label={tx("Annotate time range")}
+                  onClick={() => setActiveTool(activeTool === "annotate" ? "select" : "annotate")}>
+                  <TextSelect /><span>{tx("Annotate time range")}</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem closeOnClick value="annotate-lasso" aria-label={tx("Lasso clips for AI")}
+                  onClick={() => setActiveTool(activeTool === "annotate-lasso" ? "select" : "annotate-lasso")}>
+                  <Pencil /><span>{tx("Lasso clips for AI")}</span>
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ToolbarGroup collapsed={layout === "narrow"} label={tx("Edit actions")} icon={Ellipsis} toolbarWidth={toolbarWidth}>
         <Tooltip label={tx(editHistory.undoLabel ? `Undo ${editHistory.undoLabel}` : "Undo")}>
           <button
             type="button"
@@ -386,37 +373,46 @@ export function TimelineToolbar({
         <span className="h-4 w-px shrink-0 bg-panel-border" aria-hidden="true" />
         <div id={CANVAS_SNAP_TOOLBAR_SLOT_ID} className="flex shrink-0 items-center" />
         {STUDIO_KEYFRAMES_ENABLED && (
-          <Tooltip
-            label={tx(
-              !canToggleKeyframe
-                ? "Select a clip and place the playhead inside it"
-                : keyframeState === "active"
-                  ? "Remove keyframe at playhead (K)"
-                  : "Add keyframe at playhead"
-            )}
-          >
-            <button
-              type="button"
-            className={iconButton}
-              disabled={!canToggleKeyframe || pendingAction !== null}
-              onClick={() => {
-                if (canToggleKeyframe && onToggleKeyframe) {
-                  void runSelectionAction("keyframe", async () => {
-                    await recordKeyframe();
-                  });
-                }
-              }}
-              aria-label={tx(
-                keyframeState === "active"
-                  ? "Remove keyframe at playhead"
-                  : "Add keyframe at playhead",
-              )}
-              aria-pressed={keyframeState === "active"}
-              aria-busy={pendingAction === "keyframe"}
-            >
-            <Diamond size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
+          <div role="group" aria-label={tx("Add keyframe")} className="flex shrink-0 items-center">
+            <Tooltip label={activeProperty ? `${tx("Add keyframe")} · ${tx(activeProperty.label)}` : tx("Choose an animation property")}>
+              <button type="button" className={iconButton} data-testid="add-property-keyframe"
+                aria-busy={pendingAction === "keyframe"}
+                aria-label={activeProperty ? `${tx("Add keyframe")} · ${tx(activeProperty.label)}` : tx("Add keyframe")}
+                disabled={!canChooseProperty || pendingAction !== null || Boolean(activeProperty?.blocked)}
+                onClick={() => keyframeProperty ? void addPropertyKeyframe(keyframeProperty) : propertyTriggerRef.current?.click()}>
+                <Diamond size={16} aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <DropdownMenu>
+              <Tooltip label={tx("Choose an animation property")}>
+                <DropdownMenuTrigger ref={propertyTriggerRef}
+                  render={<button type="button" className="hf-timeline-toolbutton" style={{width:20,minWidth:20}} />}
+                  disabled={!canChooseProperty || pendingAction !== null}
+                  aria-label={tx("Choose an animation property")}>
+                  <ChevronDown size={12} aria-hidden="true" />
+                </DropdownMenuTrigger>
+              </Tooltip>
+              <DropdownMenuContent finalFocus={(closeType) => {
+                if (closeType === "keyboard") requestAnimationFrame(() => {
+                  if (document.activeElement === document.body) propertyTriggerRef.current?.focus();
+                });
+                return propertyTriggerRef.current;
+              }}>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{tx("Add keyframe")}</DropdownMenuLabel>
+                  {propertyChoices.map(row => (
+                    <DropdownMenuItem key={row.key} data-property-choice={row.key} disabled={row.blocked}
+                      onClick={() => void addPropertyKeyframe(row.key)}>
+                      <span className="flex-1">{tx("Add keyframe")} · {tx(row.label)}</span>
+                      <span className="text-ui-caption text-muted-foreground">
+                        {tx(row.blocked ? "Unavailable at current time" : row.animated ? "Animated" : "Not animated")}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
         <Tooltip label={tx("Delete selected element")}>
           <button
@@ -444,7 +440,7 @@ export function TimelineToolbar({
       </div>
 
       <div className="hf-timeline-toolbar-view flex shrink-0 items-center gap-2">
-        <Tooltip label={tx("Show thumbnails")}>
+        <Tooltip label={tx(thumbnailMode === "hidden" ? "Show thumbnails" : "Hide thumbnails")}>
           <button
             type="button"
             className={iconButton}

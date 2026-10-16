@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import {
   closeSync,
   existsSync,
@@ -2348,6 +2349,44 @@ const tl = gsap.timeline();
 tl.to("#box", { keyframes: { "0%": { x: 0 }, "50%": { x: 100, opacity: 0.5, ease: "power2.in" }, "100%": { x: 200 } }, duration: 1.5 }, 0);
 </script>
 </body></html>`;
+
+  it("edit-property-keyframe retimes opacity without changing sibling position or easing", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "property.html", KEYFRAME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const animation = await getFirstAnimation(app,"property.html");
+    const response = await app.request("http://localhost/projects/demo/gsap-mutations/property.html", {
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({type:"edit-property-keyframe",animationId:animation.id,property:"opacity",percentage:50,edit:{action:"move",toPercentage:75}}),
+    });
+    expect(response.status).toBe(200);
+    const saved = parseHTML(readFileSync(join(projectDir,"property.html"),"utf8")).document.querySelector("script")?.textContent;
+    expect(saved).toBeTruthy();
+    const animations = parseGsapScriptAcorn(saved ?? "").animations;
+    const position = animations.find((item) => item.keyframes?.keyframes.some((frame) => "x" in frame.properties));
+    expect(position?.keyframes?.keyframes).toEqual([
+      {percentage:0,properties:{x:0}},
+      {percentage:50,properties:{x:100},ease:"power2.in"},
+      {percentage:100,properties:{x:200}},
+    ]);
+    expect(animations.some((item) => item.keyframes?.keyframes.some((frame) => frame.percentage === 75 && frame.properties.opacity === 0.5 && frame.ease === "power2.in"))).toBe(true);
+  });
+
+  it("edit-property-keyframe keeps adding an existing point inert", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir,"property.html",KEYFRAME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app,createAdapter(projectDir));
+    const animation = await getFirstAnimation(app,"property.html");
+    const before = readFileSync(join(projectDir,"property.html"),"utf8");
+    const response = await app.request("http://localhost/projects/demo/gsap-mutations/property.html",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({type:"edit-property-keyframe",animationId:animation.id,property:"opacity",percentage:50,edit:{action:"add",value:0.8}}),
+    });
+    expect(response.status).toBe(200);
+    expect(readFileSync(join(projectDir,"property.html"),"utf8")).toBe(before);
+  });
 
   it("move-keyframe retimes a keyframe, preserving its value + ease", async () => {
     const projectDir = createProjectDir();

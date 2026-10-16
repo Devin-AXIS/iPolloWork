@@ -1,4 +1,9 @@
-import { durationToFrameCount, frameAlignedDurationSeconds, lastVideoFrameTime, runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import {
+  durationToFrameCount,
+  frameAlignedDurationSeconds,
+  lastVideoFrameTime,
+  runtimeProtocolMetadata,
+} from "@hyperframes/core/runtime/protocol";
 // @vitest-environment happy-dom
 import { createElement } from "react";
 import { flushSync } from "react-dom";
@@ -31,17 +36,37 @@ describe("shared video frame boundaries", () => {
 
 describe("manifest duration precision", () => {
   it.each([24, 30, 60])("aligns authored seconds to a complete frame at %i fps", (fps) => {
-    expect(resolveTimelineTotalDuration({
-      manifestDurationSeconds: Math.ceil(96.472 * fps) / fps,
-      authoredRootDurationSeconds: 96.472,
-      manifestFps: fps,
-    })).toBe(Math.ceil(96.472 * fps) / fps);
+    expect(
+      resolveTimelineTotalDuration({
+        manifestDurationSeconds: Math.ceil(96.472 * fps) / fps,
+        authoredRootDurationSeconds: 96.472,
+        manifestFps: fps,
+      }),
+    ).toBe(Math.ceil(96.472 * fps) / fps);
   });
 
   it("retains real longer timelines and the authored duration floor", () => {
-    expect(resolveTimelineTotalDuration({ manifestDurationSeconds: 97, authoredRootDurationSeconds: 96.472, manifestFps: 30 })).toBe(97);
-    expect(resolveTimelineTotalDuration({ manifestDurationSeconds: 95, authoredRootDurationSeconds: 96.472, manifestFps: 30 })).toBe(96.5);
-    expect(resolveTimelineTotalDuration({ manifestDurationSeconds: 96.5, authoredRootDurationSeconds: 0, manifestFps: 30 })).toBe(96.5);
+    expect(
+      resolveTimelineTotalDuration({
+        manifestDurationSeconds: 97,
+        authoredRootDurationSeconds: 96.472,
+        manifestFps: 30,
+      }),
+    ).toBe(97);
+    expect(
+      resolveTimelineTotalDuration({
+        manifestDurationSeconds: 95,
+        authoredRootDurationSeconds: 96.472,
+        manifestFps: 30,
+      }),
+    ).toBe(96.5);
+    expect(
+      resolveTimelineTotalDuration({
+        manifestDurationSeconds: 96.5,
+        authoredRootDurationSeconds: 0,
+        manifestFps: 30,
+      }),
+    ).toBe(96.5);
   });
 });
 
@@ -147,50 +172,70 @@ describe("authored audio metadata refresh", () => {
     ["volume", "volume", "0.45", 0.45],
     ["playback-rate", "playbackRate", "1.2", 1.2],
     ["media-start", "playbackStart", "0.4", 0.4],
-  ] as const)("refreshes %s without requiring a clip timing change and restores it on undo", (attribute, property, value, expected) => {
-    const frame = document.createElement("iframe");
-    document.body.append(frame);
-    const doc = frame.contentDocument!;
-    doc.body.innerHTML = `<main data-composition-id="main" data-duration="6"><audio id="music" data-start="0" data-duration="6" data-track-index="1" data-volume="0.6" data-fade-in="0.35" data-fade-out="0.4"></audio></main>`;
-    const adapter: PlaybackAdapter = {
-      play: vi.fn(), pause: vi.fn(), seek: vi.fn(), getTime: () => 0,
-      getDuration: () => 6, isPlaying: () => false,
-    };
-    Object.defineProperty(frame.contentWindow, "__player", { value: adapter });
-    const manifest = {
-      ...runtimeProtocolMetadata(30),
-      clips: [{ id: "music", label: "Music", start: 0, duration: 6, track: 1,
-        kind: "element", tagName: "audio", compositionId: null,
-        parentCompositionId: null, compositionSrc: null, assetUrl: null }],
-      durationInFrames: 180, fps: 30,
-    };
-    Object.defineProperty(frame.contentWindow, "__clipManifest", { value: manifest });
-    usePlayerStore.setState({ elements: [], duration: 6, currentTime: 0, projectId: null });
-    const harness = mountTimelinePlayerHarness();
-    harness.iframeRef.current = frame;
-    try {
-      harness.onIframeLoad();
-      const music = () => usePlayerStore.getState().elements.find((el) => el.id === "music");
-      expect(music()).toBeDefined();
-      const original = music()![property];
-      const media = doc.getElementById("music")! as HTMLMediaElement;
-      const previousAttribute = media.getAttribute(`data-${attribute}`);
-      const previousRate = media.defaultPlaybackRate;
-      media.setAttribute(`data-${attribute}`, value);
-      if (attribute === "playback-rate") media.defaultPlaybackRate = Number(value);
-      harness.onIframeLoad();
-      expect(music()![property]).toBe(expected);
-      expect(music()!.duration).toBe(6);
-      if (previousAttribute === null) media.removeAttribute(`data-${attribute}`);
-      else media.setAttribute(`data-${attribute}`, previousAttribute);
-      media.defaultPlaybackRate = previousRate;
-      harness.onIframeLoad();
-      expect(music()![property]).toBe(original);
-    } finally {
-      harness.unmount();
-      frame.remove();
-    }
-  });
+  ] as const)(
+    "refreshes %s without requiring a clip timing change and restores it on undo",
+    (attribute, property, value, expected) => {
+      const frame = document.createElement("iframe");
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.innerHTML = `<main data-composition-id="main" data-duration="6"><audio id="music" data-start="0" data-duration="6" data-track-index="1" data-volume="0.6" data-fade-in="0.35" data-fade-out="0.4"></audio></main>`;
+      const adapter: PlaybackAdapter = {
+        play: vi.fn(),
+        pause: vi.fn(),
+        seek: vi.fn(),
+        getTime: () => 0,
+        getDuration: () => 6,
+        isPlaying: () => false,
+      };
+      Object.defineProperty(frame.contentWindow, "__player", { value: adapter });
+      const manifest = {
+        ...runtimeProtocolMetadata(30),
+        clips: [
+          {
+            id: "music",
+            label: "Music",
+            start: 0,
+            duration: 6,
+            track: 1,
+            kind: "element",
+            tagName: "audio",
+            compositionId: null,
+            parentCompositionId: null,
+            compositionSrc: null,
+            assetUrl: null,
+          },
+        ],
+        durationInFrames: 180,
+        fps: 30,
+      };
+      Object.defineProperty(frame.contentWindow, "__clipManifest", { value: manifest });
+      usePlayerStore.setState({ elements: [], duration: 6, currentTime: 0, projectId: null });
+      const harness = mountTimelinePlayerHarness();
+      harness.iframeRef.current = frame;
+      try {
+        harness.onIframeLoad();
+        const music = () => usePlayerStore.getState().elements.find((el) => el.id === "music");
+        expect(music()).toBeDefined();
+        const original = music()![property];
+        const media = doc.getElementById("music")! as HTMLMediaElement;
+        const previousAttribute = media.getAttribute(`data-${attribute}`);
+        const previousRate = media.defaultPlaybackRate;
+        media.setAttribute(`data-${attribute}`, value);
+        if (attribute === "playback-rate") media.defaultPlaybackRate = Number(value);
+        harness.onIframeLoad();
+        expect(music()![property]).toBe(expected);
+        expect(music()!.duration).toBe(6);
+        if (previousAttribute === null) media.removeAttribute(`data-${attribute}`);
+        else media.setAttribute(`data-${attribute}`, previousAttribute);
+        media.defaultPlaybackRate = previousRate;
+        harness.onIframeLoad();
+        expect(music()![property]).toBe(original);
+      } finally {
+        harness.unmount();
+        frame.remove();
+      }
+    },
+  );
 });
 
 afterEach(() => {
@@ -402,9 +447,14 @@ describe("playback refresh races", () => {
     let visibleTime = 17.27;
     const nextSeek = vi.fn();
     const adapter: PlaybackAdapter = {
-      play: vi.fn(), pause: vi.fn(),
-      seek: (time) => { visibleTime = time; },
-      getTime: () => visibleTime, getDuration: () => 21.3, isPlaying: () => false,
+      play: vi.fn(),
+      pause: vi.fn(),
+      seek: (time) => {
+        visibleTime = time;
+      },
+      getTime: () => visibleTime,
+      getDuration: () => 21.3,
+      isPlaying: () => false,
     };
     Object.defineProperty(visibleFrame.contentWindow, "__player", { value: adapter });
     Object.defineProperty(replacementFrame.contentWindow, "__player", {
@@ -423,7 +473,9 @@ describe("playback refresh races", () => {
 
     expect(nextSeek).toHaveBeenLastCalledWith(3.219, undefined);
     expect(usePlayerStore.getState().currentTime).toBe(3.219);
-    harness.unmount(); visibleFrame.remove(); replacementFrame.remove();
+    harness.unmount();
+    visibleFrame.remove();
+    replacementFrame.remove();
   });
 
   it("preserves user playback intent while a staged refresh is loading", () => {
@@ -504,6 +556,36 @@ describe("playback refresh races", () => {
         outPoint: null,
       }),
     ).toEqual({ duration: 6, loopStart: 0, loopEnd: 6 });
+  });
+
+  it("intersects loop points with a scene without changing the global duration", () => {
+    expect(
+      resolveForwardPlaybackWindow({
+        adapterDuration: 24,
+        storeDuration: 24,
+        inPoint: 0,
+        outPoint: 24,
+        playbackRange: { start: 8, end: 16 },
+      }),
+    ).toEqual({ duration: 24, loopStart: 8, loopEnd: 16 });
+    expect(
+      resolveForwardPlaybackWindow({
+        adapterDuration: 24,
+        storeDuration: 24,
+        inPoint: 10,
+        outPoint: 12,
+        playbackRange: { start: 8, end: 16 },
+      }),
+    ).toEqual({ duration: 24, loopStart: 10, loopEnd: 12 });
+    expect(
+      resolveForwardPlaybackWindow({
+        adapterDuration: 24,
+        storeDuration: 24,
+        inPoint: 1,
+        outPoint: 4,
+        playbackRange: { start: 8, end: 16 },
+      }),
+    ).toEqual({ duration: 24, loopStart: 8, loopEnd: 16 });
   });
 
   it("still honours a deliberate out point", () => {

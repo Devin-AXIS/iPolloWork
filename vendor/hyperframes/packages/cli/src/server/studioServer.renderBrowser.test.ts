@@ -1,13 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { createStudioServer, closeThumbnailBrowser, type StudioServer } from "./studioServer.js";
 
 const mocks = vi.hoisted(() => ({
   resolveRenderBrowser: vi.fn(),
+  acquireBrowser: vi.fn(),
+  ensureBrowser: vi.fn(),
   createRenderJob: vi.fn(() => ({ id: "job", perfSummary: undefined })),
   executeRenderJob: vi.fn(async () => {}),
+}));
+
+vi.mock("@hyperframes/engine", () => ({
+  acquireBrowser: mocks.acquireBrowser,
+  buildChromeArgs: vi.fn(() => []),
+}));
+vi.mock("../browser/manager.js", async importOriginal => ({
+  ...(await importOriginal<typeof import("../browser/manager.js")>()),
+  ensureBrowser: mocks.ensureBrowser,
 }));
 
 vi.mock("../browser/preflight.js", async (importOriginal) => ({
@@ -35,7 +46,8 @@ vi.mock("./studioRenderTelemetry.js", () => ({
 const dirs: string[] = [];
 let server: StudioServer | undefined;
 
-afterEach(() => {
+afterEach(async () => {
+  await closeThumbnailBrowser();
   server?.watcher.close();
   server = undefined;
   delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
@@ -84,5 +96,27 @@ describe("Studio render browser resolution", () => {
     });
 
     expect(process.env.PRODUCER_HEADLESS_SHELL_PATH).toBe("/opt/chrome");
+  });
+});
+
+
+describe("Studio thumbnail screenshot boundary", () => {
+  it("serves Puppeteer's Uint8Array pixels through the Buffer thumbnail adapter contract", async () => {
+    const pixels=new Uint8Array([255,216,255,217]);
+    const page={setViewport:vi.fn(async()=>{}),goto:vi.fn(async()=>{}),
+      waitForFunction:vi.fn(async()=>{}),evaluate:vi.fn(async()=>{}),
+      screenshot:vi.fn(async()=>pixels),close:vi.fn(async()=>{})};
+    const release=vi.fn(async()=>{});
+    mocks.ensureBrowser.mockResolvedValue({executablePath:"/opt/chrome"});
+    mocks.acquireBrowser.mockResolvedValue({browser:{connected:true,newPage:vi.fn(async()=>page),on:vi.fn()},release});
+    const dir=mkdtempSync(join(tmpdir(),"hf-thumbnail-bytes-"));dirs.push(dir);
+    writeFileSync(join(dir,"index.html"),'<main data-width="1280" data-height="720"></main>');
+    server=createStudioServer({projectDir:dir,projectName:"workspace"});
+    const response=await server.app.request("http://localhost/api/projects/workspace/thumbnail/index.html");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(pixels);
+    expect(page.screenshot).toHaveBeenCalledOnce();expect(page.close).toHaveBeenCalledOnce();
+    await closeThumbnailBrowser();expect(release).toHaveBeenCalledOnce();
   });
 });

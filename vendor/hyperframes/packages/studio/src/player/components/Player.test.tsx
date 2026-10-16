@@ -45,6 +45,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 async function advanceOverlay() {
@@ -143,4 +144,17 @@ describe("official player readiness and iframe load ordering", () => {
     expect(container.querySelector('[data-testid="composition-loading-overlay"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="composition-error-overlay"]')).toBeNull();
   });
+});
+
+it("reveals a ready staged refresh in a background document whose animation frames are suspended", async () => {
+  vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  const frames = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+  const onReveal = vi.fn();
+  const iframeRef = createRef<HTMLIFrameElement>();
+  await act(async () => root.render(<Player key="staged" ref={iframeRef} projectId="proof" deferReveal suppressLoadingOverlay onReadyToReveal={onReveal} onLoad={() => { if (iframeRef.current) iframeRef.current.style.visibility = ""; }} />));
+  player = container.querySelector("hyperframes-player")! as typeof player;
+  await act(async () => { player.ready = true; player.dispatchEvent(new Event("ready")); });
+  await act(async () => vi.advanceTimersByTime(1000));
+  expect(onReveal).toHaveBeenCalledTimes(1);
+  expect(frames).not.toHaveBeenCalled();
 });
