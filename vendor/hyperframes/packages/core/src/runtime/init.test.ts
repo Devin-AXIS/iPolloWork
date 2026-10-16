@@ -5864,6 +5864,25 @@ describe("derived duration floor recomputation", () => {
   });
 
   describe("invariance across frames", () => {
+    it("ignores animated text and unchanged timing attributes without missing structural edits", async () => {
+      mountComposition(`<video data-start="0" data-duration="10"></video><span>0</span>`);
+      initSandboxRuntimeModular();
+      await runFrames(2);
+      const video = document.querySelector("video");
+      const label = document.querySelector("span");
+      if (!video || !label) throw new Error("Missing fixture");
+      const before = derivations;
+      for (let frame = 0; frame < 5; frame++) {
+        label.textContent = String(frame);
+        video.setAttribute("data-duration", "10");
+        expect(await runFrames(1)).toBe(10);
+      }
+      expect(derivations).toBe(before);
+      label.innerHTML = '<audio data-start="10" data-duration="5"></audio>';
+      expect(await runFrames(1)).toBe(15);
+      expect(derivations).toBeGreaterThan(before);
+    });
+
     /**
      * The load-bearing assertion, and it is INVARIANCE, not a threshold: a
      * threshold ("fewer than 10 derivations") passes on a small fixture and

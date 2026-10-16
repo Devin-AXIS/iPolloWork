@@ -1111,7 +1111,9 @@ export function SidePanel({
           />
         ) : activeTab?.type === "plugin-studio" && client && workspaceId ? (
           <div className="min-h-0 flex-1 overflow-hidden">
-            <PluginWorkshopPanel
+            {pluginsLoading ? <div role="status" className="p-4 text-sm text-muted-foreground">{t("common.loading")}</div>
+              : !launcherItems.some(item => item.id === "plugin-workshop") ? <PanelEmpty message={t("plugin_workshop.unavailable")} />
+              : <PluginWorkshopPanel
               key={`${activeTab.sessionId}:${activeTab.id}`}
               tab={activeTab}
               client={client}
@@ -1123,7 +1125,7 @@ export function SidePanel({
                 const result = await onSendWorkspaceAppMessage({ ...input, sourceTabId: activeTab.id });
                 return typeof result === "boolean" ? result : result.accepted;
               } : undefined}
-            />
+            />}
           </div>
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -1144,10 +1146,10 @@ export function SidePanel({
   );
 }
 
-function PanelEmpty() {
+function PanelEmpty({ message = t("side_panel.empty_state") }: { message?: string } = {}) {
   return (
     <div className="flex h-full items-center justify-center p-4 text-center">
-      <p className="text-sm text-muted-foreground">{t("side_panel.empty_state")}</p>
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }

@@ -335,6 +335,8 @@ export function collectDomClipChildren(
   const children: DomClipChild[] = [];
   const parentMap = new Map<string, string>();
   const collectedTreeIds = new Set<string>();
+  // Scoped to this scan: structural edits get fresh indexes on the next message.
+  const selectorIndexes = new Map<string, Map<Element, number>>();
   const manifestTreeIds = new Set(clips.flatMap((clip) => (clip.id ? [clip.id] : [])));
   const descendantSourceByHostId = new Map(
     clips.flatMap((clip) => {
@@ -369,7 +371,7 @@ export function collectDomClipChildren(
           // resolved manifest host is the authoritative owner for descendants.
           const sourceFile =
             descendantSourceByHostId.get(hostId) ?? getTimelineElementSourceFile(child);
-          const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
+          const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector, selectorIndexes);
           const domId = htmlChild.id || undefined;
           const hfId = child.getAttribute("data-hf-id") || undefined;
           const authoredTreeId =
@@ -434,7 +436,7 @@ export function collectDomClipChildren(
       if (!isImplicitTimelineLayerCandidate(compositionRoot, child)) continue;
       const selector = getTimelineElementSelector(child);
       if (!selector) continue;
-      const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
+      const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector, selectorIndexes);
       const sourceFile = getTimelineElementSourceFile(child);
       const identity = buildTimelineElementIdentity({
         preferredId: child.id || null,

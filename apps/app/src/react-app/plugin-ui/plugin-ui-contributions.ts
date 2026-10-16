@@ -6,6 +6,7 @@ import type {
 } from "@/app/lib/ipollowork-server";
 import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { PluginContribution, PluginResource, PluginUiResource } from "@ipollowork/types/plugins";
+import { PLUGIN_WORKSHOP_ID } from "@ipollowork/types/plugins";
 
 export type PluginUiSurface = {
   id: string;
@@ -55,12 +56,14 @@ export type PluginConversationTemplate = {
 };
 
 export type InstalledPluginContributions = {
+  sessionPanels: { id: string; pluginId: string; label: string }[];
   workspaceApps: PluginUiSurface[];
   settingsPages: PluginUiSurface[];
   conversationTemplates: PluginConversationTemplate[];
 };
 
 const EMPTY_CONTRIBUTIONS: InstalledPluginContributions = {
+  sessionPanels: [],
   workspaceApps: [],
   settingsPages: [],
   conversationTemplates: [],
@@ -107,6 +110,7 @@ function uiSurface(
 export function resolveInstalledPluginContributions(
   items: iPolloWorkPluginPackageItem[],
 ): InstalledPluginContributions {
+  const sessionPanels: InstalledPluginContributions["sessionPanels"] = [];
   const workspaceApps: PluginUiSurface[] = [];
   const settingsPages: PluginUiSurface[] = [];
   const conversationTemplates: PluginConversationTemplate[] = [];
@@ -117,6 +121,14 @@ export function resolveInstalledPluginContributions(
     if (!item.enabled) continue;
     if (activePluginEngineCompatibility(item)?.status === "unsupported") continue;
     item.manifest.contributions?.forEach((contribution, index) => {
+      if (item.pluginId === PLUGIN_WORKSHOP_ID && contribution.type === "session-side-panel" && contribution.ref === PLUGIN_WORKSHOP_ID) {
+        const resource = item.manifest.resources.find(entry => entry.id === contribution.ref);
+        if (resource?.type === "skill" && !sessionPanels.some(panel => panel.id === PLUGIN_WORKSHOP_ID) && !item.disabledResourceIds.includes(resource.id)
+          && !activePluginEngineCompatibility(item)?.unsupportedResourceIds.includes(resource.id)) {
+          sessionPanels.push({ id: PLUGIN_WORKSHOP_ID, pluginId: item.pluginId, label: contribution.label?.trim() || item.name });
+        }
+        return;
+      }
       if (contribution.type === "workspace-app" || contribution.type === "settings-page") {
         const surface = uiSurface(item, contribution, index);
         if (!surface) return;
@@ -163,6 +175,7 @@ export function resolveInstalledPluginContributions(
 
   const byLabel = <Value extends { label: string }>(left: Value, right: Value) => left.label.localeCompare(right.label);
   return {
+    sessionPanels,
     workspaceApps: workspaceApps.sort(byLabel),
     settingsPages: settingsPages.sort(byLabel),
     conversationTemplates: conversationTemplates.sort(byLabel),

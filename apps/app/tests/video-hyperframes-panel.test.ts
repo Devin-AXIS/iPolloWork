@@ -1035,7 +1035,8 @@ describe("HyperFrames Video Studio", () => {
       ),
     );
 
-    expect(sidebarSource).toContain("onOpenPluginWorkshop");
+    expect(sidebarSource).toContain("sidebar.plugin_shortcuts");
+    expect(sessionPageSource).toContain("sessionPanels.map<SidePanelLauncherItem>");
     expect(sessionPageSource).toContain("pluginWorkshopSystemInstruction");
     expect(sessionPageSource).toContain(
       'props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")',

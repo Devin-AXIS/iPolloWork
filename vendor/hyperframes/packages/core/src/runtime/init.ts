@@ -1283,6 +1283,17 @@ export function initSandboxRuntimeModular(): void {
     wakeTransport();
   };
 
+  const invalidateCompositionTimingMutations = (records: MutationRecord[]) => {
+    // Count-up/text animations replace text nodes, without changing clip timing.
+    // Publishing a fresh manifest for each one makes Studio rebuild every layer.
+    if (records.some(record => record.type === "attributes"
+      ? isElementNode(record.target) && record.attributeName !== null
+        && record.target.getAttribute(record.attributeName) !== record.oldValue
+      : [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1))) {
+      invalidateCompositionTimingCaches();
+    }
+  };
+
   const deriveDurationFloors = (): DurationFloors => ({
     media: resolveMediaDurationFloorSeconds(),
     authoredComposition: resolveAuthoredCompositionDurationFloorSeconds(),
@@ -1301,11 +1312,12 @@ export function initSandboxRuntimeModular(): void {
 
   const watchCompositionTimingInputs = () => {
     if (compositionTimingObserver || typeof MutationObserver === "undefined") return;
-    compositionTimingObserver = new MutationObserver(invalidateCompositionTimingCaches);
+    compositionTimingObserver = new MutationObserver(invalidateCompositionTimingMutations);
     compositionTimingObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
       attributes: true,
+      attributeOldValue: true,
       // Sizing inputs too: postTimeline applies them, and it runs when this revision moves.
       attributeFilter: [...DURATION_FLOOR_INPUT_ATTRIBUTES, "data-width", "data-height"],
     });
@@ -1338,9 +1350,7 @@ export function initSandboxRuntimeModular(): void {
     // here makes the caches correct within a task, not just across tasks.
     // Taking the records suppresses the callback for them, which is exactly
     // equivalent since the callback only bumps the revision.
-    if (compositionTimingObserver && compositionTimingObserver.takeRecords().length > 0) {
-      invalidateCompositionTimingCaches();
-    }
+    if (compositionTimingObserver) invalidateCompositionTimingMutations(compositionTimingObserver.takeRecords());
     // `window.__timelines` is a plain object: no MutationObserver and no event
     // can see a composition script registering into it or lengthening what it
     // already registered, so its shape is compared on every read.

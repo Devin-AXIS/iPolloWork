@@ -149,6 +149,7 @@ export function getStructuredMotionSelectionRoot(el: HTMLElement): HTMLElement |
 export function getDomLayerPatchTarget(
   el: HTMLElement,
   activeCompositionPath: string | null,
+  cache?: Map<string, Map<Element, number>>,
 ): Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile"> | null {
   if (!isInspectableLayerElement(el)) return null;
   if (el.hasAttribute("data-composition-id")) return null;
@@ -168,6 +169,7 @@ export function getDomLayerPatchTarget(
       selector,
       sourceFile,
       activeCompositionPath,
+      cache,
     ),
     sourceFile,
   };
@@ -476,9 +478,10 @@ export function findElementForTimelineElement(
 export function getDirectLayerChildren(
   el: HTMLElement,
   options: DomEditContextOptions,
+  cache?: Map<string, Map<Element, number>>,
 ): HTMLElement[] {
   return Array.from(el.children).filter(
     (child): child is HTMLElement =>
-      isHtmlElement(child) && getDomLayerPatchTarget(child, options.activeCompositionPath) !== null,
+      isHtmlElement(child) && getDomLayerPatchTarget(child, options.activeCompositionPath, cache) !== null,
   );
 }
