@@ -45,54 +45,48 @@ describe("MiniMax provider preset", () => {
     ]);
   });
 
-  test("keeps both current model fact sets without inventing an output limit", () => {
-    expect(MINIMAX_PROVIDER.models).toEqual([
-      {
-        id: "MiniMax-M3",
-        contextWindow: 1_000_000,
-        pricingUsdPerMillionTokens: {
-          input: 0.6,
-          output: 2.4,
-          cacheRead: 0.12,
-          cacheWrite: null,
-        },
-        inputModalities: ["text", "image", "video"],
-        thinking: ["adaptive", "disabled"],
-      },
-      {
-        id: "MiniMax-M2.7",
-        contextWindow: 204_800,
-        pricingUsdPerMillionTokens: {
-          input: 0.3,
-          output: 1.2,
-          cacheRead: 0.06,
-          cacheWrite: 0.375,
-        },
-        inputModalities: ["text"],
-        thinking: ["always_on"],
-      },
+  test("offers Flash first and carries verified limits and baseline prices", () => {
+    expect(MINIMAX_PROVIDER.models.map((model) => model.id)).toEqual([
+      "MiniMax-M3.1-Flash", "MiniMax-M3",
     ]);
-
     const models = buildMiniMaxProviderConfig("global-openai").models;
-    expect(models?.["MiniMax-M3"]).toMatchObject({
-      attachment: true,
-      reasoning: true,
-      cost: { input: 0.6, output: 2.4, cache_read: 0.12 },
-      modalities: { input: ["text", "image", "video"] },
-    });
-    expect(models?.["MiniMax-M3"]?.cost).not.toHaveProperty("cache_write");
-    expect(models?.["MiniMax-M3"]).not.toHaveProperty("limit");
-    expect(models?.["MiniMax-M2.7"]).toMatchObject({
-      attachment: false,
-      reasoning: true,
-      cost: {
-        input: 0.3,
-        output: 1.2,
-        cache_read: 0.06,
-        cache_write: 0.375,
-      },
-      modalities: { input: ["text"] },
-    });
+    expect(Object.keys(models)).toEqual(["MiniMax-M3.1-Flash", "MiniMax-M3"]);
+    for (const model of Object.values(models)) {
+      expect(model).toMatchObject({
+        attachment: true,
+        reasoning: true,
+        limit: { context: 1_000_000, output: 524_288 },
+        modalities: { input: ["text", "image", "video"] },
+      });
+      expect(model.cost).not.toHaveProperty("cache_write");
+    }
+    expect(models["MiniMax-M3.1-Flash"].cost).toEqual({ input: 0.15, output: 0.6, cache_read: 0.015 });
+    expect(models["MiniMax-M3"].cost).toEqual({ input: 0.3, output: 1.2, cache_read: 0.06 });
+    expect(MINIMAX_PROVIDER.models[1].pricingNote).toContain("above 512k");
+    expect(MINIMAX_PROVIDER.models[1].pricingNote).toContain("1.5x");
+  });
+
+  test("maps effort by protocol and suppresses inherited Flash off variants", () => {
+    for (const endpoint of MINIMAX_ENDPOINTS) {
+      const models = buildMiniMaxProviderConfig(endpoint.id).models;
+      const flash = models["MiniMax-M3.1-Flash"];
+      const effortField = endpoint.protocol === "anthropic" ? "effort" : "reasoningEffort";
+      expect(flash.options).toEqual({ thinking: { type: "adaptive" }, [effortField]: "max" });
+      expect(flash.variants.none).toEqual({ disabled: true });
+      expect(flash.variants.thinking).toEqual({ disabled: true });
+      for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
+        expect(flash.variants[effort]).toEqual({ thinking: { type: "adaptive" }, [effortField]: effort });
+      }
+      expect(models["MiniMax-M3"].options).toEqual({
+        thinking: { type: endpoint.protocol === "anthropic" ? "disabled" : "adaptive" },
+      });
+      expect(models["MiniMax-M3"].variants).toEqual({
+        none: { thinking: { type: "disabled" } },
+        thinking: { thinking: { type: "adaptive" } },
+      });
+      expect(JSON.stringify(models)).not.toContain("service_tier");
+      expect(JSON.stringify(models)).not.toContain("reasoning_split");
+    }
   });
 
   test("builds the selected OpenCode provider package and API endpoint", () => {
@@ -126,7 +120,8 @@ describe("MiniMax provider preset", () => {
       ref: "ipollowork.minimax.settings",
       location: "settings-detail",
     });
+    expect(isRecommendedModel("MiniMax-M3.1-Flash")).toBe(true);
     expect(isRecommendedModel("MiniMax-M3")).toBe(true);
-    expect(isRecommendedModel("MiniMax-M2.7")).toBe(true);
+    expect(isRecommendedModel("MiniMax-M2.7")).toBe(false);
   });
 });

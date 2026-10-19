@@ -63,7 +63,7 @@ function formatContextWindow(value: number) {
 export function MiniMaxConfig(props: MiniMaxConfigProps) {
   const [apiKey, setApiKey] = useState("");
   const [endpointId, setEndpointId] = useState<MiniMaxEndpointId>("global-openai");
-  const [defaultModelId, setDefaultModelId] = useState(MINIMAX_PROVIDER.models[0].id);
+  const [defaultModelId, setDefaultModelId] = useState<string>(MINIMAX_PROVIDER.models[0].id);
   const [setDefault, setSetDefault] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -192,7 +192,9 @@ export function MiniMaxConfig(props: MiniMaxConfigProps) {
               <div className="mt-1 text-muted-foreground">
                 Context: {formatContextWindow(model.contextWindow)} - Input: {model.inputModalities.join(", ")}
               </div>
+              <div className="mt-1 text-muted-foreground">Max output: {formatContextWindow(model.maxOutputTokens)}</div>
               <div className="mt-1 text-muted-foreground">Thinking: {model.thinking.join(", ")}</div>
+              <div className="mt-1 text-muted-foreground">{model.pricingNote}</div>
             </div>
           ))}
         </div>
