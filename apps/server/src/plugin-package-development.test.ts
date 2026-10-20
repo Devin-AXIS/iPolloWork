@@ -71,6 +71,8 @@ test("development refreshes same-version local service, UI and skills while pres
     delete process.env.IPOLLOWORK_DEV_MODE;
     await writeRevision(3);
     expect(runtimeCatalogPluginPackageIds()).toEqual(catalogPluginPackageIds);
+    expect(runtimeCatalogPluginPackageIds()).toContain("plugin-workshop");
+    expect(runtimeCatalogPluginPackageIds()).not.toContain("labelu-data-annotation");
     expect(await withPluginPackageCatalogRoot("figma", async () => true)).toBe(true);
     await expect(prepareDevelopmentPluginPackage(config, "figma")).rejects.toMatchObject({ code: "plugin_development_only" });
     expect((await ping()).result).toBe(2);

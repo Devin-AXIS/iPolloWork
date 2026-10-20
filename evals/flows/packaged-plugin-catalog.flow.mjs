@@ -12,6 +12,7 @@ export default {
       const collection = JSON.parse(readFileSync(join(process.env.IPOLLOWORK_EVAL_PACKAGED_PLUGIN_ROOT, "collection.json"), "utf8"));
       const expected = collection.plugins.map(item => item.pluginId).filter(id => id !== "reference-context").sort();
       ctx.assert(expected.length >= 20, "The installer must include the branch's full local collection");
+      ctx.assert(expected.includes("plugin-workshop") && !expected.includes("labelu-data-annotation"), "The current collection includes Plugin Workshop and excludes the retired data annotation default");
       const conflictFile = process.env.IPOLLOWORK_EVAL_PLUGIN_CONFLICT_FILE;
       let original;
       const customized = "# Customized workspace Skill retained during catalog refresh\n";
