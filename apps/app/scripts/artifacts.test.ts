@@ -12,6 +12,23 @@ import {
 } from "../src/lib/artifacts";
 
 describe("getArtifactsFromMessages", () => {
+  it("opens a uniquely verified nested Markdown file instead of a missing basename mention", () => {
+    const missing: OpenTarget = { id: "file:skill.md", kind: "file", value: "SKILL.md", name: "SKILL.md", preview: "markdown", confidence: 65, reason: "message", exists: false };
+    const written: OpenTarget = { ...missing, id: "file:exports/note-organizer/skill.md", value: "exports/note-organizer/SKILL.md", exists: true, confidence: 95 };
+    const messages: UIMessage[] = [{ id: "done", role: "assistant", parts: [{ type: "text", text: "已生成 SKILL.md" }] }];
+    const artifacts = getArtifactsFromMessages(messages, [missing, written], { includeTargetFallbacks: false });
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.target).toEqual(written);
+    expect(artifacts[0]?.path).toBe(written.value);
+  });
+
+  it("keeps an exact nested Markdown target ahead of a shorter basename match", () => {
+    const short: OpenTarget = { id: "file:skill.md", kind: "file", value: "SKILL.md", name: "SKILL.md", preview: "markdown", confidence: 95, reason: "write tool metadata", exists: true };
+    const nested = { ...short, id: "file:exports/skill.md", value: "exports/SKILL.md" };
+    const messages: UIMessage[] = [{ id: "done", role: "assistant", parts: [{ type: "text", text: "已生成 exports/SKILL.md" }] }];
+    expect(getArtifactsFromMessages(messages, [short, nested], { includeTargetFallbacks: false })[0]?.target).toEqual(nested);
+  });
+
   it("includes persisted Studio outputs without inserting chat messages or duplicating transcript images", () => {
     const messages: UIMessage[] = [{ id: "chat", role: "assistant", parts: [{ type: "text", text: "Generated artifacts/sun.png" }] }];
     const before = JSON.stringify(messages);

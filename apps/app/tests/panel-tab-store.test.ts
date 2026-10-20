@@ -34,6 +34,17 @@ describe("panel tab store", () => {
     usePanelTabStore.setState({ sessions: {}, transcriptArtifactTargets: {} });
   });
 
+  test("refreshes a generated Markdown target when its canonical path and disk state change", () => {
+    const pending: import("../src/react-app/domains/session/artifacts/open-target").OpenTarget = {
+      id: "file:reports/skill.md", kind: "file", value: "reports/skill.md", name: "skill.md",
+      preview: "markdown", confidence: 95, reason: "write tool metadata", exists: false,
+    };
+    const resolved = { ...pending, value: "reports/SKILL.md", name: "SKILL.md", exists: true, size: 42, updatedAt: 200 };
+    usePanelTabStore.getState().syncTranscriptArtifacts("session-md", [pending]);
+    usePanelTabStore.getState().syncTranscriptArtifacts("session-md", [resolved]);
+    expect(usePanelTabStore.getState().transcriptArtifactTargets["session-md"]).toEqual([resolved]);
+  });
+
   test("selects a browser tab newly opened by the host", () => {
     const store = usePanelTabStore.getState();
     store.openTab("session-1", {

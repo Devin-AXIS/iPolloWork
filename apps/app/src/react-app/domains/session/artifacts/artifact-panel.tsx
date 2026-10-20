@@ -372,6 +372,9 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   const visibleMarkdownRef = useRef<HTMLDivElement | null>(null);
   const pdfContentRef = useRef<HTMLDivElement | null>(null);
   const isDirectTextEdit = isTextContent(target) && (target.preview === "markdown" || isStylesheetArtifactTarget(target));
+  // Resolving a generated file may correct its path/case without changing its ID.
+  // A previously missing file must also be read again once the write completes.
+  const contentQueryKey = ["artifact-panel", workspaceId, target.id, target.value, target.exists, target.updatedAt];
   const externalPath = useMemo(() => {
     if (target.kind !== "file") return target.value;
     return isAbsoluteLocalPath(target.value)
@@ -388,7 +391,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
   });
 
   const { data, error, isError, isLoading } = useQuery<ArtifactQueryState>({
-    queryKey: ["artifact-panel", workspaceId, target.id] as const,
+    queryKey: contentQueryKey,
     queryFn: async () => {
       if (target.kind === "url") {
         throw new Error("URLs open in browser tabs.");
@@ -471,7 +474,7 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
     },
     onSuccess: (result, input) => {
       queryClient.setQueryData<ArtifactQueryState>(
-        ["artifact-panel", workspaceId, target.id] as const,
+        contentQueryKey,
         input.kind === "text"
           ? { kind: "text", data: input.data, updatedAt: result.updatedAt ?? null }
           : { kind: "binary", data: input.data, contentType: data?.kind === "binary" ? data.contentType : null, updatedAt: result.updatedAt ?? null },

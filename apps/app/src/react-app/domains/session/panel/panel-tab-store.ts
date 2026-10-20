@@ -198,10 +198,19 @@ function reconcileOpenArtifactTabs(
   };
 }
 
+function isSameOpenTarget(left: OpenTarget | undefined, right: OpenTarget | undefined) {
+  return left === right || Boolean(left && right
+    && left.id === right.id && left.kind === right.kind
+    && left.value === right.value && left.name === right.name
+    && left.preview === right.preview && left.exists === right.exists
+    && left.size === right.size && left.updatedAt === right.updatedAt
+    && left.confidence === right.confidence && left.reason === right.reason);
+}
+
 function isSameTranscriptArtifactTargets(left: OpenTarget[], right: OpenTarget[]) {
   return (
     left.length === right.length &&
-    left.every((target, index) => target.id === right[index]?.id)
+    left.every((target, index) => isSameOpenTarget(target, right[index]))
   );
 }
 
@@ -225,8 +234,7 @@ function isSameTab(left: PanelTab, right: PanelTab) {
     return (
       left.label === right.label &&
       left.preview === right.preview &&
-      left.target?.id === right.target?.id &&
-      left.target?.value === right.target?.value
+      isSameOpenTarget(left.target, right.target)
     );
   }
 
