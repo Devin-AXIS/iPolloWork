@@ -32,7 +32,7 @@ import {
 } from "./plugin-package-manifest.js";
 import { parsePluginWorkshopDraftManifest, preparePluginWorkshopSourceBundle } from "./plugin-workshop-package.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
-import { localPluginPackageRoot, resolveBundledPluginPackageRoot, runtimeCatalogPluginPackageIds } from "./plugin-package-catalog.js";
+import { localPluginPackageRoot, resolveBundledPluginPackageRoot, runtimeCatalogPluginPackageIds, usesLocalPluginPackages } from "./plugin-package-catalog.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 import { listBoundSessionEngines } from "./work-items.js";
 import serverPackage from "../package.json" with { type: "json" };
@@ -1743,7 +1743,7 @@ export async function resolveInstalledPluginService(input: {
  */
 export function prepareDevelopmentPluginPackage(config: ServerConfig, pluginId: string): Promise<void> {
   return enqueueLifecycleMutation(config, async () => {
-    if (!runtimeCatalogPluginPackageIds().includes(pluginId)) {
+    if (!usesLocalPluginPackages() || !runtimeCatalogPluginPackageIds().includes(pluginId)) {
       throw new ApiError(403, "plugin_development_only", "Local plugin preparation is development-only");
     }
     const root = await resolveBundledPluginPackageRoot(pluginId);

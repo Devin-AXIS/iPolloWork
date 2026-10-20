@@ -1347,7 +1347,7 @@ class HyperframesPlayer extends HTMLElement {
         if (timedOut) this._warnStuckAssets(doc);
         this._settleAssetsReady(generation);
       },
-      { timeoutMs: ASSETS_READY_TIMEOUT_MS },
+      { timeoutMs: ASSETS_READY_TIMEOUT_MS, currentTime: this._currentTime },
     );
     if (!this._assetsReady) this._startAssetsLoadingOverlayTimer(generation);
   }
@@ -1364,6 +1364,7 @@ class HyperframesPlayer extends HTMLElement {
   private _hasPendingFirstFrameAssets(doc: Document): boolean {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,
+      currentTime: this._currentTime,
     });
     return pendingMedia.length > 0 || pendingImages.length > 0 || fontsLoading;
   }
@@ -1375,6 +1376,7 @@ class HyperframesPlayer extends HTMLElement {
   private _warnStuckAssets(doc: Document): void {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,
+      currentTime: this._currentTime,
     });
     const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
     console.warn(

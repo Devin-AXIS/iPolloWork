@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { parseHTML } from "linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { Readable } from "node:stream";
-import { join, resolve } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
@@ -442,11 +442,17 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     signature: string,
   ): Promise<string | null> {
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
+    const bundledHtmlSources = new Set<string>([diskMain?.compositionPath ?? "index.html"]);
 
     try {
       let bundled = await adapter.bundle(project.dir, {
         stampHfIds: true,
-        onRead: (filePath) => recordPreviewRead(project.dir, filePath),
+        onRead: (filePath) => {
+          recordPreviewRead(project.dir, filePath);
+          if (extname(filePath).toLowerCase() === ".html") {
+            bundledHtmlSources.add(relative(project.dir, resolve(project.dir, filePath)).split(sep).join("/"));
+          }
+        },
       });
       let mainCompositionPath = "index.html";
       if (!bundled) {
@@ -476,6 +482,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         project.dir,
         mainCompositionPath,
         mediaCodecProbeCache,
+      );
+      // The bundled DOM already identifies each scene's markup. Only external inputs
+      // need a project-wide token, or editing one scene discards every transition.
+      bundled = injectTagsAtHeadStart(bundled,
+        `<meta name="hyperframes-shader-cache-signature" content="${createProjectSignature(project.dir, bundledHtmlSources)}">`,
       );
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
       if (createProjectSignature(project.dir) === signature) {

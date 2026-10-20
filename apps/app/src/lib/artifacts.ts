@@ -14,6 +14,7 @@ export type ArtifactItem = {
   messageId: string
   messageIndex: number
   updatedAt?: number
+  verifiedFromWrite?: boolean
   target: OpenTarget
 }
 
@@ -244,6 +245,8 @@ const INTERNAL_OUTPUT_NAME_PATTERN = /^(?:SKILL|AGENTS|CLAUDE|brief|template|man
 /** Only user-facing files belong in the conversation output list. */
 export function isConversationOutputArtifact(artifact: ArtifactItem) {
   if (artifact.type === "unknown") return false;
+  // Authored skills are deliverables too; merely loading a runtime skill isn't.
+  if (artifact.verifiedFromWrite && artifact.name.toLowerCase() === "skill.md") return true;
   if (INTERNAL_OUTPUT_PATH_PATTERN.test(artifact.path)) return false;
   if (INTERNAL_OUTPUT_NAME_PATTERN.test(artifact.name)) return false;
   return true;
@@ -526,6 +529,7 @@ function addArtifact(
   sequence: number,
   verifiedTargets: OpenTarget[],
   verifiedTarget?: OpenTarget,
+  verifiedFromWrite = false,
 ) {
   const requestedPath = normalizeArtifactPath(path);
   const requestedType = getArtifactType(requestedPath);
@@ -546,6 +550,7 @@ function addArtifact(
     messageIndex,
     sequence,
     updatedAt: target.updatedAt,
+    ...(verifiedFromWrite || artifacts.get(key)?.verifiedFromWrite ? { verifiedFromWrite: true } : {}),
     target,
   });
 }
@@ -563,7 +568,7 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
       const verifiedTarget = candidate.verifiedFromWrite
         ? markTargetExists(openTargetFromArtifactPath(candidate.path, getArtifactName(candidate.path), getArtifactType(candidate.path), openTargets))
         : undefined;
-      addArtifact(artifacts, candidate.path, message.id, messageIndex, sequence, openTargets, verifiedTarget);
+      addArtifact(artifacts, candidate.path, message.id, messageIndex, sequence, openTargets, verifiedTarget, candidate.verifiedFromWrite);
       sequence += 1;
     }
   });

@@ -352,7 +352,8 @@ export type CacheResetResult = {
 export type DesktopFetchInit = {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | ArrayBuffer;
+  redirect?: "follow" | "error";
   timeoutMs?: number;
   responseType?: "text" | "arrayBuffer";
 };

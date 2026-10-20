@@ -13,11 +13,14 @@ import {
   refreshEnterpriseConnection,
   removeEnterpriseConnection,
   saveEnterpriseConnection,
+  setEnterpriseConnectionAccount,
   type EnterpriseConnection,
   type EnterpriseResource,
 } from "../src/app/lib/enterprise-connections";
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import { IPOLLOWORK_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
+import { enterpriseFeaturesSchema } from "@ipollowork/types/enterprise";
+import { activateEnterpriseWorkContext, activatePersonalWorkContext, clearEnterpriseLoginState, readActiveEnterpriseConnection, readActiveWorkContextId } from "../src/app/lib/work-context";
 
 const originalWindow = globalThis.window;
 
@@ -42,7 +45,7 @@ const connectedEnterprise: EnterpriseConnection = {
   accent: "blue",
   authMode: "ipollo_oidc",
   membership: { id: "member-1", role: "member" },
-  session: { token: "enterprise-session", expiresAt: "2026-08-26T00:00:00.000Z" },
+  session: { token: "enterprise-session", expiresAt: "2099-01-01T00:00:00.000Z" },
 };
 
 async function sha256Hex(bytes: Uint8Array) {
@@ -72,8 +75,10 @@ describe("enterprise connections", () => {
     localStorage.setItem("ipollowork.den.authToken", "cloud-session");
     Object.defineProperty(globalThis, "window", {
       configurable: true,
-      value: { localStorage, dispatchEvent: () => true },
+      value: { localStorage, sessionStorage: memoryStorage(), dispatchEvent: () => true },
     });
+    setEnterpriseConnectionAccount(null);
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
   });
 
   afterEach(() => {
@@ -91,6 +96,119 @@ describe("enterprise connections", () => {
       "http://localhost:3200/team",
     );
     expect(normalizeEnterpriseOrigin("ipollowork://enterprise")).toBeNull();
+  });
+  test("retains both resource manager roles when saving and restoring a bound enterprise account", () => {
+    for (const role of ["template_admin", "extension_admin", "skill_admin"] as const) {
+      saveEnterpriseConnection({ ...connectedEnterprise, membership: { ...connectedEnterprise.membership, role } });
+      expect(readEnterpriseConnections()[0]?.membership.role).toBe(role);
+    }
+  });
+
+  test("enterprise features require the matching active enterprise context, not a saved connection", async () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    expect(readActiveEnterpriseConnection()).toBeNull();
+    await activateEnterpriseWorkContext(connectedEnterprise);
+    expect(readActiveEnterpriseConnection()?.membership.id).toBe(connectedEnterprise.membership.id);
+    await activatePersonalWorkContext();
+    expect(readActiveEnterpriseConnection()).toBeNull();
+    expect(readEnterpriseConnections()).toHaveLength(1);
+  });
+
+  test.each(["invited", "suspended", "left"] as const)("%s enterprise members have no active enterprise features", async (status) => {
+    const inactive = { ...connectedEnterprise, membership: { ...connectedEnterprise.membership, status } };
+    saveEnterpriseConnection(inactive);
+    window.localStorage.setItem("ipollowork.work-context.v1", `enterprise:${inactive.id}`);
+    expect(readActiveEnterpriseConnection()).toBeNull();
+    await expect(activateEnterpriseWorkContext(inactive)).rejects.toThrow("enterprise_signin_required");
+  });
+
+  test.each(["2020-01-01T00:00:00.000Z", "invalid-date"])("expired or malformed enterprise sessions hide all enterprise features (%s)", async (expiresAt) => {
+    const expired = { ...connectedEnterprise, session: { ...connectedEnterprise.session, expiresAt } };
+    saveEnterpriseConnection(expired);
+    window.localStorage.setItem("ipollowork.work-context.v1", `enterprise:${expired.id}`);
+    expect(readActiveEnterpriseConnection()).toBeNull();
+    await expect(activateEnterpriseWorkContext(expired)).rejects.toThrow("enterprise_signin_required");
+  });
+
+  test("signing out hides enterprise credentials and restores bindings only for the same account", async () => {
+    saveEnterpriseConnection({ ...connectedEnterprise, id: "ent_another" });
+    saveEnterpriseConnection(connectedEnterprise);
+    await activateEnterpriseWorkContext(connectedEnterprise);
+    clearEnterpriseLoginState();
+    expect(readEnterpriseConnections()).toEqual([]);
+    expect(readActiveEnterpriseConnection()).toBeNull();
+    expect(readActiveWorkContextId()).toBe("personal");
+    window.localStorage.setItem("ipollowork.den.authToken", "account-b-session");
+    setEnterpriseConnectionAccount({ userId: "account-b", baseUrl: "http://i.ipollo.ai", token: "account-b-session" });
+    expect(readEnterpriseConnections()).toEqual([]);
+    await expect(activateEnterpriseWorkContext(connectedEnterprise)).rejects.toThrow("enterprise_signin_required");
+    const other = { ...connectedEnterprise, membership: { id: "member-b", role: "admin" as const }, session: { ...connectedEnterprise.session, token: "enterprise-b" } };
+    saveEnterpriseConnection(other);
+    clearEnterpriseLoginState();
+    window.localStorage.setItem("ipollowork.den.authToken", "new-account-a-session");
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "new-account-a-session" });
+    expect(readEnterpriseConnections().map((item) => item.id)).toEqual(["ent_medical", "ent_another"]);
+    expect(readEnterpriseConnections()[0].membership.id).toBe("member-1");
+    expect(readActiveWorkContextId()).toBe("personal");
+    window.localStorage.setItem("ipollowork.den.authToken", "account-b-session");
+    expect(readEnterpriseConnections()).toEqual([]);
+    setEnterpriseConnectionAccount({ userId: "account-b", baseUrl: "http://i.ipollo.ai", token: "account-b-session" });
+    expect(readEnterpriseConnections()).toEqual([other]);
+  });
+
+  test("an explicit unbind persists across logout and returning to the account", () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    removeEnterpriseConnection(connectedEnterprise.id);
+    clearEnterpriseLoginState();
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([]);
+  });
+
+  test("isolates the same user ID on different login services and ignores stale verification", () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    window.localStorage.setItem("ipollowork.den.baseUrl", "https://another-account.example");
+    expect(readEnterpriseConnections()).toEqual([]);
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([]);
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "https://another-account.example", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([]);
+    window.localStorage.setItem("ipollowork.den.baseUrl", "http://i.ipollo.ai");
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([connectedEnterprise]);
+  });
+
+  test("migrates the legacy device bindings once after verifying the account", () => {
+    clearEnterpriseLoginState();
+    window.localStorage.setItem("ipollowork.enterprise-connections.v1", JSON.stringify([connectedEnterprise]));
+    expect(readEnterpriseConnections()).toEqual([]);
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([connectedEnterprise]);
+    expect(window.localStorage.getItem("ipollowork.enterprise-connections.v1")).toBeNull();
+    setEnterpriseConnectionAccount({ userId: "account-b", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([]);
+  });
+
+  test("a refresh started by the previous account cannot overwrite the next account's binding", async () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const pending = refreshEnterpriseConnection(connectedEnterprise, async (input) => {
+      if (String(input).includes(".well-known")) {
+        await gate;
+        return Response.json({ serverId: connectedEnterprise.id, name: "Updated", origin: connectedEnterprise.origin, authMode: connectedEnterprise.authMode });
+      }
+      return Response.json({ enterprise: { ...connectedEnterprise, name: "Updated" } });
+    });
+    window.localStorage.setItem("ipollowork.den.authToken", "account-b-session");
+    setEnterpriseConnectionAccount({ userId: "account-b", baseUrl: "http://i.ipollo.ai", token: "account-b-session" });
+    const other = { ...connectedEnterprise, membership: { id: "member-b", role: "member" as const } };
+    saveEnterpriseConnection(other);
+    release();
+    await pending;
+    expect(readEnterpriseConnections()).toEqual([other]);
+    window.localStorage.setItem("ipollowork.den.authToken", "cloud-session");
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([connectedEnterprise]);
   });
 
   test("verifies discovery and manifest identity before saving a server", async () => {
@@ -194,7 +312,28 @@ describe("enterprise connections", () => {
     expect(readEnterpriseConnections()[0]).toEqual(refreshed);
   });
 
+  test("refreshes role and member status, then clears capabilities when the service is downgraded", async () => {
+    const connected = { ...connectedEnterprise, session: { token: "synthetic-session", expiresAt: "2099-01-01T00:00:00.000Z" }, membership: { id: "member-1", role: "owner", status: "active" }, features: enterpriseFeaturesSchema.parse({ sessionSharing: true }) } satisfies EnterpriseConnection;
+    saveEnterpriseConnection(connected);
+    let upgraded = true;
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/.well-known/ipollo-enterprise")) return Response.json({ serverId: connected.id, name: connected.name, origin: connected.origin, authMode: connected.authMode });
+      if (url.endsWith("/membership")) return Response.json({ membership: { id: connected.membership.id, role: "member", status: "suspended", displayName: "Employee", email: "employee@example.com", departmentId: "department-1" } });
+      return Response.json({ enterprise: connected, ...(upgraded ? { features: { membership: true, sessionSharing: true } } : {}) });
+    };
+    const refreshed = await refreshEnterpriseConnection(connected, fetcher);
+    expect(refreshed.membership).toEqual({ id: "member-1", role: "member", status: "suspended", departmentId: "department-1" });
+    expect(readEnterpriseConnections()[0].membership.role).toBe("member");
+    upgraded = false;
+    const downgraded = await refreshEnterpriseConnection(refreshed, fetcher);
+    expect(downgraded.features).toBeUndefined();
+    expect(readEnterpriseConnections()[0].features).toBeUndefined();
+  });
+
   test("joins the configured Enterprise with a Cloud-issued identity token", async () => {
+    window.localStorage.setItem("ipollowork.den.baseUrl", "https://account.ipollo.ai");
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "https://account.ipollo.ai", token: "cloud-session" });
     const requested: string[] = [];
     const fetcher: typeof fetch = async (input, init) => {
       const url = String(input);

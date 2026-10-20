@@ -1,5 +1,7 @@
+import type { EnterpriseSkillContext, EnterpriseSkillInstallInput, InstalledEnterpriseSkill, SkillPackageExportInput, SkillPackageManifest } from "@ipollowork/types/skills";
 import { VerifiedInboxReceiptSchema, type InboxUploadOptions } from "@ipollowork/types/reference-context";
 import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
+import type { EnterpriseSessionMetadata, EnterpriseSnapshot, EnterpriseSnapshotImport, EnterpriseSummary } from "@ipollowork/types/enterprise";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { desktopFetch } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
@@ -164,7 +166,7 @@ export type iPolloWorkSessionMessage = {
   parts: Part[];
 };
 
-export type iPolloWorkSession = Session & SessionTokenMetering;
+export type iPolloWorkSession = Session & SessionTokenMetering & EnterpriseSessionMetadata;
 
 export type iPolloWorkSessionSnapshot = {
   session: iPolloWorkSession;
@@ -177,6 +179,8 @@ export type iPolloWorkSessionSnapshot = {
 };
 
 export type iPolloWorkResourceScope = "personal" | `enterprise:${string}`;
+
+export type StandaloneSkillPackage = iPolloWorkSkillItem & { pluginName: string | null; canExport: boolean; source: { origin: string; resourceId: string; version: string; digest: string } | null };
 
 export type iPolloWorkSkillItem = {
   name: string;
@@ -1383,6 +1387,16 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}/adopt-video`, { token, hostToken, method: "POST", body: {}, timeoutMs: timeouts.workspaceImport }),
     listTemplateSessions: (workspaceId: string) =>
       requestJson<{ items: TemplateSessionSnapshot[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions`, { token, hostToken }),
+    summarizeSessionForEnterprise: (workspaceId: string, sessionId: string, model?: { providerID: string; modelID: string }) =>
+      requestJson<{ item: EnterpriseSummary }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/share-summary`, {
+        token, hostToken, method: "POST", body: { model }, timeoutMs: 130_000,
+      }),
+    importEnterpriseSnapshot: (workspaceId: string, snapshot: EnterpriseSnapshotImport, model?: { providerID: string; modelID: string }, engineId?: string) =>
+      requestJson<{ item: iPolloWorkSession; workspaceId: string }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/enterprise-shares/import`, {
+        token, hostToken, method: "POST", body: { snapshot, model, engineId }, timeoutMs: timeouts.sessionRead,
+      }),
+    getEnterpriseSnapshot: (workspaceId: string, sessionId: string) =>
+      requestJson<{ snapshot: EnterpriseSnapshot | null }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/enterprise-share`, { token, hostToken, timeoutMs: timeouts.sessionRead }),
     createSession: (
       workspaceId: string,
       title?: string,
@@ -1909,6 +1923,13 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
       });
     },
+    listSkillPackages: (workspaceId: string) => requestJson<{ personal: StandaloneSkillPackage[]; enterprise: InstalledEnterpriseSkill[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/skill-packages`, { token, hostToken }),
+    setEnterpriseSkillContext: (workspaceId: string, context: EnterpriseSkillContext | null) => requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/skill-packages/context`, { token, hostToken, method: "PUT", body: { context } }),
+    installEnterpriseSkill: (workspaceId: string, input: EnterpriseSkillInstallInput) => requestJson<{ item: InstalledEnterpriseSkill }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/skill-packages/enterprise`, { token, hostToken, method: "POST", body: input, timeoutMs: 120000 }),
+    updateEnterpriseSkill: (workspaceId: string, resourceId: string, enabled: boolean | null) => requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/skill-packages/enterprise/${encodeURIComponent(resourceId)}`, { token, hostToken, method: enabled === null ? "DELETE" : "PATCH", ...(enabled === null ? {} : { body: { enabled } }) }),
+    getEnterpriseSkill: (workspaceId: string, resourceId: string) => requestJson<{ manifest: SkillPackageManifest; content: string; files: string[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/skill-packages/enterprise/${encodeURIComponent(resourceId)}`, { token, hostToken }),
+    exportSkillPackage: (workspaceId: string, input: SkillPackageExportInput) => requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/skill-packages/export`, { token, hostToken, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), timeoutMs: 120000 }),
+    importSkillPackage: (workspaceId: string, file: File, source: { origin: string; resourceId: string; digest: string }) => requestRawJson<{ name: string; version: string }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/skill-packages/import`, { token, hostToken, headers: { "Content-Type": file.name.toLowerCase().endsWith(".md") ? "text/markdown; charset=utf-8" : "application/vnd.ipollowork.skill+zip", "X-iPolloWork-Skill-Origin": source.origin, "X-iPolloWork-Skill-Id": source.resourceId, "X-iPolloWork-Skill-Digest": source.digest }, body: file, timeoutMs: 120000 }),
     installHubSkill: (
       workspaceId: string,
       name: string,

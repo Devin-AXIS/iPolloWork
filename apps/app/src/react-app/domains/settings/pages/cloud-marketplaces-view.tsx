@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { Cloud, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Cloud, Loader2, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 
 import type { iPolloWorkExtensionManifest } from "@/app/extensions";
 import {
@@ -208,6 +208,19 @@ export function CloudMarketplacesView({
     }
   }, [client, installed, onInstalled, refresh, workspaceId]);
 
+  const uninstall = async (resource: EnterpriseResource) => {
+    if (!client || !workspaceId || busyId !== null) return;
+    setBusyId(resource.id);
+    setError(null);
+    try {
+      await client.uninstallPluginPackage(workspaceId, resourcePluginId(resource));
+      await refresh();
+      notifyPluginUiContributionsChanged();
+    } catch (cause) {
+      setError(formatPluginPlatformError(cause, t("plugin_platform.error.operation")));
+    } finally { setBusyId(null); }
+  };
+
   const filteredItems = React.useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return items.filter((item) => {
@@ -259,10 +272,12 @@ export function CloudMarketplacesView({
         description={selected.description}
         onBack={() => setSelectedId(null)}
         action={(
-          <Button disabled={!client || !workspaceId || !selected.latestVersion || busyId !== null || Boolean(localPackage && !cloudPluginUpdate([selected], localPackage))} onClick={() => void install(selected)}>
+          <div className="flex items-center gap-2"><Button disabled={!client || !workspaceId || !selected.latestVersion || busyId !== null || Boolean(localPackage && !cloudPluginUpdate([selected], localPackage))} onClick={() => void install(selected)}>
             {busyId === selected.id ? <Loader2 size={14} className="animate-spin" /> : null}
             {actionLabel(selected, localPackage)}
           </Button>
+          {localPackage ? <Button variant="destructive" size="sm" disabled={!client || !workspaceId || busyId !== null}
+            onClick={() => void uninstall(selected)}>{t("plugin_platform.uninstall")}</Button> : null}</div>
         )}
       >
         <div className="mb-6 flex flex-wrap gap-2">
@@ -313,6 +328,7 @@ export function CloudMarketplacesView({
           onOpen={setSelectedId}
           onOpenInstalled={onOpenInstalled}
           onInstall={install}
+          onUninstall={uninstall}
         />
       ) : null}
 
@@ -327,6 +343,7 @@ export function CloudMarketplacesView({
           onOpen={setSelectedId}
           onOpenInstalled={onOpenInstalled}
           onInstall={install}
+          onUninstall={uninstall}
         />
       ) : null}
 
@@ -342,6 +359,7 @@ export function CloudMarketplacesView({
           onOpen={setSelectedId}
           onOpenInstalled={onOpenInstalled}
           onInstall={install}
+          onUninstall={uninstall}
         />
       )) : null}
 
@@ -360,6 +378,7 @@ type MarketplaceSectionProps = {
   onOpen: (resourceId: string) => void;
   onOpenInstalled?: (pluginId: string) => void;
   onInstall: (item: EnterpriseResource) => Promise<void>;
+  onUninstall: (item: EnterpriseResource) => Promise<void>;
 };
 
 function MarketplaceSection(props: MarketplaceSectionProps) {
@@ -391,10 +410,10 @@ function MarketplaceRows(props: Omit<MarketplaceSectionProps, "title">) {
             status={localPackage ? (cloudPluginUpdate([item], localPackage) ? t("extensions.update_available") : t("settings.marketplace.installed")) : item.enterpriseCategory}
             actionBusy={props.busyId === item.id}
             actionDisabled={!props.client || !props.workspaceId || !version || props.busyId !== null || Boolean(localPackage && !cloudPluginUpdate([item], localPackage))}
+            secondaryAction={localPackage ? <Button variant="ghost" size="sm" disabled={!props.client || !props.workspaceId || props.busyId !== null}
+              aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void props.onUninstall(item)}><Trash2 size={14} /></Button> : null}
             actionLabel={actionLabel(item, localPackage)}
-            onOpen={() => localPackage && props.onOpenInstalled
-              ? props.onOpenInstalled(pluginId)
-              : props.onOpen(item.id)}
+            onOpen={() => props.onOpen(item.id)}
             onAction={() => void props.onInstall(item)}
           />
         );

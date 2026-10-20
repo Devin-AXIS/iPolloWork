@@ -447,7 +447,7 @@ if (process.env.IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE !== "1") {
   ].some((name) => process.env[name]));
   runSync(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--outdir", electronHelperDir], { cwd: desktopRoot });
   runSync(nodeCmd, [resolve(repoRoot, "examples/plugin-packages/operation-recorder/scripts/build.mjs"), "--host", "--if-stale"], { cwd: repoRoot });
-  for (const pluginId of ["labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]) {
+  for (const pluginId of ["short-video-studio", "xiaohongshu-ops", "ipollo-onto"]) {
     const pluginRoot = `examples/plugin-packages/${pluginId}`;
     const inputs = pluginId === "short-video-studio"
       ? [pluginRoot, "packages/ui/src", "packages/ui/build-plugin-runtime.mjs", "packages/ui/package.json"]

@@ -14,7 +14,9 @@ const previewPlayers = vi.hoisted(() => new Map<number, {
 
 vi.mock("../../player", async () => {
   const { createElement, forwardRef, useEffect, useRef } = await import("react");
+  const { usePlayerStore, liveTime } = await import("../../player/store/playerStore");
   return {
+    usePlayerStore, liveTime,
     Player: forwardRef<HTMLIFrameElement, {
       refreshToken?: number;
       deferReveal?: boolean;

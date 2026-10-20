@@ -112,14 +112,19 @@ describe("ipollowork runtime config file", () => {
     });
     const providers = parsed.provider as Record<string, Record<string, unknown>>;
     const openCode = providers.opencode;
+    expect(openCode?.api).toBe("https://opencode.ai/inference/v1");
     const whitelist = Array.isArray(openCode?.whitelist)
       ? openCode.whitelist.filter((modelId): modelId is string => typeof modelId === "string")
       : [];
     expect(whitelist).toEqual([
       "big-pickle",
-      "mimo-v2.5-free",
-      "nemotron-3-ultra-free",
+      "space-bunny-free",
+      "cat-jam-free",
+      "longcat-2.5-preview-free",
+      "step-5-preview-free",
+      "mimo-v2.6-flash-free",
       "nemotron-3.5-lightning-free",
+      "muse-spark-1.3-contributor-free",
     ]);
     expect(Object.keys(openCode?.models as Record<string, unknown>)).toEqual(whitelist);
     const models = openCode?.models as Record<string, {
@@ -204,6 +209,10 @@ describe("ipollowork runtime config file", () => {
 
     await writeRuntimeProviderChannels(config, (current) => ({
       ...current,
+      opencode: {
+        api: "https://opencode.example/v1",
+        options: { apiKey: "account-key" },
+      },
       shared: {
         npm: "@ai-sdk/openai-compatible",
         options: { baseURL: "https://models.example/v1" },
@@ -220,6 +229,10 @@ describe("ipollowork runtime config file", () => {
     }
     expect(providers.shared).toMatchObject({
       options: { baseURL: "https://models.example/v1" },
+    });
+    expect(providers.opencode).toMatchObject({
+      api: "https://opencode.example/v1",
+      options: { apiKey: "account-key" },
     });
   });
 

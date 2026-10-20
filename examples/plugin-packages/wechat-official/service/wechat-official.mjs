@@ -185,7 +185,7 @@ function studioErrorMessage(error) {
         return "无法连接公众号接口，请检查网络后重试";
     return error.message;
 }
-export default async function createWeChatOfficialService(runtime) {
+export default async function createWeChatOfficialService(runtime, options = {}) {
     const cachedTokens = new Map();
     let studioServer = null;
     let studioStart = null;
@@ -526,17 +526,23 @@ export default async function createWeChatOfficialService(runtime) {
         },
     };
     async function startStudio() {
+        const nonce = randomBytes(24).toString('base64');
         const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../ui");
         const assets = new Map();
         await Promise.all([...STUDIO_ASSETS].map(async ([path, asset]) => {
-            assets.set(path, { body: await readFile(resolve(uiRoot, asset.fileName)), contentType: asset.contentType });
+            const body = await readFile(resolve(uiRoot, asset.fileName));
+            assets.set(path, { body: path === '/' ? body.toString('utf8').replace('__UI_NONCE__', nonce) : body, contentType: asset.contentType });
         }));
+        if (options.uiRuntime) {
+            assets.set('/ipollowork-ui-runtime.js', { body: options.uiRuntime, contentType: 'text/javascript; charset=utf-8' });
+            assets.get('/').body = assets.get('/').body.replace('</head>', `<script src="/ipollowork-ui-runtime.js" nonce="${nonce}"></script></head>`);
+        }
         let origin = "";
         const server = createServer(async (request, response) => {
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("X-Content-Type-Options", "nosniff");
             response.setHeader("Referrer-Policy", "no-referrer");
-            response.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors http://localhost:* http://127.0.0.1:* file:");
+            response.setHeader("Content-Security-Policy", `default-src 'none'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors http://localhost:* http://127.0.0.1:* file:`);
             const json = (status, body) => {
                 if (response.destroyed)
                     return;

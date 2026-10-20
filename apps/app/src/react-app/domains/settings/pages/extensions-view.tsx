@@ -12,8 +12,9 @@ import {
   type EnterpriseResource,
 } from "@/app/lib/enterprise-connections";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
-import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
-import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise/work-resource-scope-switch";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise";
+import { EnterpriseResourceControls } from "@/react-app/domains/enterprise";
 import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
 
 export type ExtensionsSection = "all" | "mcp" | "skills" | "plugins";
@@ -41,7 +42,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   }, [activeEnterprise?.id]);
 
   useEffect(() => {
-    if (!activeEnterprise || resourceScope === "personal") {
+    if (props.activeTab !== "plugins" || !activeEnterprise || resourceScope === "personal") {
       setEnterpriseResources([]);
       setInstalledEnterpriseExtensionVersions(new Map());
       setEnterpriseError(null);
@@ -68,7 +69,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
       if (current) setEnterpriseLoading(false);
     });
     return () => { current = false; };
-  }, [activeEnterprise, enterpriseRefreshRevision, props.client, props.workspaceId, resourceScope]);
+  }, [activeEnterprise, enterpriseRefreshRevision, props.client, props.workspaceId, resourceScope, props.activeTab]);
 
   const installEnterpriseExtension = async (resource: EnterpriseResource) => {
     if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
@@ -88,12 +89,15 @@ export function ExtensionsView(props: ExtensionsViewProps) {
     }
   };
 
+  if (props.activeTab === "skills") return props.skillsView;
+
   return (
     <section className="mx-auto w-full max-w-[1280px] animate-in space-y-5 fade-in duration-300">
       {activeEnterprise ? (
         <div className="flex justify-end">
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
             <WorkResourceScopeSwitch enterprise={activeEnterprise} value={resourceScope} onChange={setResourceScope} />
+            <EnterpriseResourceControls key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" onChanged={() => setEnterpriseRefreshRevision((revision) => revision + 1)} />
             {resourceScope !== "personal" ? (
               <Button
                 variant="ghost"
@@ -148,7 +152,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
             <Building2 className="mx-auto mb-3 size-5" />{t("enterprise_connection.enterprise_extensions_empty")}
           </div>
         )
-      ) : props.activeTab === "skills" ? props.skillsView : props.pluginPackagesView}
+      ) : props.pluginPackagesView}
     </section>
   );
 }

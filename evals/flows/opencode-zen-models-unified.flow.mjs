@@ -10,12 +10,18 @@ const ENGINES = ENGINE_FILTER
 
 const EXPECTED_MODELS = [
   "Big Pickle",
-  "MiMo-V2.5 Free",
-  "Nemotron 3 Ultra Free",
+  "Space Bunny Free",
+  "Cat Jam Free",
+  "LongCat 2.5 Preview Free",
+  "Step 5 Preview Free",
+  "MiMo-V2.6-Flash Free",
   "Nemotron 3.5 Lightning Free",
+  "Muse Spark 1.3 Contributor Free",
 ];
 
 const REMOVED_MODELS = [
+  "MiMo-V2.5 Free",
+  "Nemotron 3 Ultra Free",
   "Hy3 Free",
   "Ox Alpha Free",
   "DeepSeek V4 Flash Free",
@@ -25,7 +31,7 @@ const REMOVED_MODELS = [
   "North Mini Code Free",
 ];
 
-const INVOCATION_MODEL = "MiMo-V2.5 Free";
+const INVOCATION_MODEL = "MiMo-V2.6-Flash Free";
 const RATE_LIMIT_TEXTS = [
   "模型当前请求较多",
   "当前模型请求过于频繁",

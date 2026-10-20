@@ -13,7 +13,7 @@ describe("ordinary dialog close behavior", () => {
   test("renders portalled selects and popovers above dialog content and backdrop", () => {
     const dialog = readFileSync(join(import.meta.dir, "../../../packages/ui/src/react/dialog.tsx"), "utf8");
     const select = readFileSync(join(import.meta.dir, "../../../packages/ui/src/react/select.tsx"), "utf8");
-    const popover = readFileSync(join(appSourceRoot, "components/ui/popover.tsx"), "utf8");
+    const popover = readFileSync(join(import.meta.dir, "../../../packages/ui/src/react/popover.tsx"), "utf8");
     expect(dialog).toContain("z-[80]");
     expect(select).toContain('cn("isolate z-[90]", positionerClassName)');
     expect(popover).toContain('className="isolate z-[90] outline-none"');
@@ -31,11 +31,12 @@ describe("ordinary dialog close behavior", () => {
     expect(authorization).toContain('DialogClose render={<Button size="sm" variant="outline" />}');
   });
 
-  test("does not hide the close button on the custom skill repository dialog", () => {
+  test("keeps skill package dialogs dismissible without the retired repository dialog", () => {
     const skills = source("domains/settings/pages/skills-view.tsx");
 
     expect(skills).not.toContain("showCloseButton={false}");
-    expect(skills).toContain('<DialogClose render={<Button variant="outline" />}>');
+    expect(skills).toContain("导出独立技能 / 企业投稿");
+    expect(skills).not.toContain("customRepoOpen");
   });
 
   test("keeps forced permission approval separate from ordinary dialogs", () => {

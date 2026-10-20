@@ -80,6 +80,120 @@ function visibilityOf(ids: string[]): string[] {
 }
 
 describe("preview outside a transition", () => {
+  it.each([ [0, 0], [4.5, 1] ])("prepares only a paused frame at %ss and can still play afterward", async (time, transitionCount) => {
+    stubGsap();
+    stubWebGl();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const post = vi.spyOn(window, "postMessage");
+    window.history.replaceState({}, "", `?__hf_preview_time=${time}&__hf_preview_frame_only=1`);
+    try {
+      mountScenes(["s1", "s2", "s3", "s4"]);
+      const timeline = init({ bgColor: "#000", scenes: ["s1", "s2", "s3", "s4"], transitions: [
+        { time: 2, duration: 0.8, shader: "domain-warp" },
+        { time: 4, duration: 0.8, shader: "domain-warp" },
+        { time: 6, duration: 0.8, shader: "domain-warp" },
+      ] });
+      await prewarmDone();
+      expect(post).toHaveBeenLastCalledWith(expect.objectContaining({
+        type: "shader-transition-state", state: expect.objectContaining({ ready: true }),
+      }), "*");
+      expect(post).toHaveBeenCalledWith(expect.objectContaining({
+        type: "shader-transition-state", state: expect.objectContaining({ total: transitionCount * 25 }),
+      }), "*");
+      if (time === 0) {
+        // Studio parks authored animation frames while the preview is paused.
+        vi.stubGlobal("requestAnimationFrame", () => 0);
+        const sought = new Promise<void>(resolve => window.addEventListener("hyperShader:ready", () => resolve(), { once: true }));
+        timeline.time(4.5);
+        await sought;
+        expect(timeline.time()).toBe(4.5);
+        expect(post).toHaveBeenLastCalledWith(expect.objectContaining({
+          type: "shader-transition-state", state: expect.objectContaining({ ready: true }),
+        }), "*");
+        expect(post).toHaveBeenCalledWith(expect.objectContaining({
+          type: "shader-transition-state", state: expect.objectContaining({ total: 25 }),
+        }), "*");
+      }
+      const prepared = new Promise<void>(resolve => window.addEventListener("hyperShader:ready", () => resolve(), { once: true }));
+      timeline.play();
+      await prepared;
+      expect(timeline.paused()).toBe(false);
+    } finally {
+      window.dispatchEvent(new Event("beforeunload"));
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
+  it("reuses unaffected transition snapshots after a scene edit but invalidates external asset changes", async () => {
+    vi.resetModules();
+    const { init: initCached } = await import("./hyper-shader.js");
+    stubGsap();
+    stubWebGl();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const queries: string[] = [];
+    const db = {
+      objectStoreNames: { contains: () => true },
+      close: () => {},
+      transaction: () => ({ objectStore: () => ({
+        get: (key: string) => {
+          queries.push(key);
+          const request = { result: undefined, onsuccess: () => {} };
+          queueMicrotask(() => request.onsuccess());
+          return request;
+        },
+        getAll: () => {
+          const request = { result: [], onsuccess: () => {} };
+          queueMicrotask(() => request.onsuccess());
+          return request;
+        },
+      }) }),
+    };
+    vi.stubGlobal("indexedDB", { open: () => {
+      const request = { result: db, onsuccess: () => {} };
+      queueMicrotask(() => request.onsuccess());
+      return request;
+    } });
+    const projectMeta = document.createElement("meta");
+    projectMeta.name = "hyperframes-project-signature";
+    const assetsMeta = document.createElement("meta");
+    assetsMeta.name = "hyperframes-shader-cache-signature";
+    document.head.append(projectMeta, assetsMeta);
+    const keys = async (project: string, assets: string, firstText: string) => {
+      mountScenes(["s1", "s2", "s3", "s4"]);
+      projectMeta.content = project;
+      assetsMeta.content = assets;
+      document.getElementById("s1")!.textContent = firstText;
+      queries.length = 0;
+      initCached({ bgColor: "#000", scenes: ["s1", "s2", "s3", "s4"], transitions: [
+        { time: 2, duration: 0.8, shader: "domain-warp" },
+        { time: 4, duration: 0.8, shader: "domain-warp" },
+        { time: 6, duration: 0.8, shader: "domain-warp" },
+      ] });
+      await prewarmDone();
+      window.dispatchEvent(new Event("beforeunload"));
+      return queries.filter(key => key.endsWith(":sample:0:from"));
+    };
+    try {
+      const original = await keys("project-one", "assets-one", "s1");
+      const edited = await keys("project-two", "assets-one", "edited");
+      expect(original).toHaveLength(3);
+      expect(edited[0]).not.toBe(original[0]);
+      expect(edited.slice(1)).toEqual(original.slice(1));
+      const replacedAsset = await keys("project-three", "assets-two", "edited");
+      expect(replacedAsset.every((key, index) => key !== edited[index])).toBe(true);
+      const script = document.createElement("script");
+      script.type = "application/json";
+      script.textContent = 'gsap.timeline().to("#s1", { x: 10 })';
+      document.head.append(script);
+      const changedMotion = await keys("project-four", "assets-two", "edited");
+      expect(changedMotion.every((key, index) => key !== replacedAsset[index])).toBe(true);
+      script.remove();
+    } finally {
+      projectMeta.remove();
+      assetsMeta.remove();
+    }
+  });
+
   it("leaves the runtime's hide on shader scenes after the prewarm on a paused page", async () => {
     stubGsap();
     stubWebGl();

@@ -202,13 +202,14 @@ export function nativeWorkAgentType(templateId: string, agentId: string): string
 
 export function projectExecutionSystemContext(execution: ProjectSessionExecution): string {
   const workflow = execution.workflow;
-  const examples = workflow?.source !== "auto" ? workflow?.config.agents.filter((agent) => agent.id !== execution.agent.id).map((agent) => [
-    `${workflow.source === "custom" ? `[project-agent:${agent.id}]` : nativeWorkAgentType(workflow.templateId, agent.id)}: ${agent.name}${agent.role ? ` — ${agent.role}` : ""}`,
+  const customRoles = workflow?.source === "custom" || (workflow?.config.revision ?? 0) > 0;
+  const examples = workflow && (workflow.source !== "auto" || customRoles) ? workflow.config.agents.filter((agent) => agent.id !== execution.agent.id).map((agent) => [
+    `${customRoles ? `[project-agent:${agent.id}]` : nativeWorkAgentType(workflow.templateId, agent.id)}: ${agent.name}${agent.role ? ` — ${agent.role}` : ""}`,
     // A customized conversation remains task guidance, without overwriting a
     // reusable native role shared with another conversation.
-    workflow.source === "custom" ? agent.prompt : null,
-    workflow.source === "custom" && agent.skillIds.length ? `Skills: ${agent.skillIds.map((id) => id.split(":").at(-1)).join(", ")}` : null,
-    workflow.source === "custom" && agent.pluginIds.length ? `Plugins: ${agent.pluginIds.join(", ")}` : null,
+    customRoles ? agent.prompt : null,
+    customRoles && agent.skillIds.length ? `Skills: ${agent.skillIds.map((id) => id.split(":").at(-1)).join(", ")}` : null,
+    customRoles && agent.pluginIds.length ? `Plugins: ${agent.pluginIds.join(", ")}` : null,
   ].filter(Boolean).join("\n")).join("\n\n") : undefined;
   return [
     `You are ${execution.agent.name}.`,
@@ -217,7 +218,7 @@ export function projectExecutionSystemContext(execution: ProjectSessionExecution
     "Use your engine's native plan, tools, subagents and result collection; choose the actual workflow yourself. iPolloWork displays native execution and files; it does not run a second agent workflow after your turn.",
     execution.agent.prompt || execution.agent.role,
     examples ? `Available preset roles (optional):\n${examples}` : null,
-    examples ? workflow?.source === "custom"
+    examples ? customRoles
       ? "If a preset helps, use a built-in native worker and pass its current instructions, Skills and role label with the task inputs. These are conversation-specific definitions, not registered agent types; do not substitute shared named preset types for these edited roles. You may use other workers or complete the task yourself."
       : "If a preset helps, choose its native agent type above. Its role prompt and Skills are already configured. You may also use built-in workers or complete the task yourself." : null,
     workflow?.source !== "auto" && workflow?.stages.length ? `Suggested steps: ${workflow.stages.map((stage) => stage.title).join(" → ")}` : null,

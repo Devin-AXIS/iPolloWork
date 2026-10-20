@@ -121,6 +121,7 @@ describe("sidebar projects", () => {
 
   test("creates a clean empty layout snapshot", () => {
     expect(createSidebarLayoutSnapshot()).toEqual({
+      pluginShortcutIds: [],
       projectOrderByContext: {},
       sessionOrderByProject: {},
       sessionProjectByKey: {},

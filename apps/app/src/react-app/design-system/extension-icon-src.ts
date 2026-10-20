@@ -10,6 +10,7 @@ const featuredPluginIconSrc: Readonly<Record<string, string>> = {
   linear: "/ext-linear.svg",
   notion: "/ext-notion.svg",
   "operation-recorder": "/ext-operation-recorder.png",
+  "plugin-workshop": "/ext-plugin-workshop.svg",
   sentry: "/ext-sentry.svg",
   "short-video-studio": "/ext-short-video.png",
   stripe: "/ext-stripe.svg",

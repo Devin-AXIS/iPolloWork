@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { dirname, posix, resolve, sep } from "node:path";
 import { z } from "zod";
 import sharp from "sharp";
@@ -110,6 +111,7 @@ const registryManifestSchema = z.object({
 }).passthrough();
 
 const MAX_STILL_SECONDS = 4;
+const CUE_EPSILON_SECONDS = 1e-6;
 export const videoComponentInstallInput = z.object({
   sourcePath: videoSourcePathSchema,
   componentIds: z.array(componentIdSchema).min(1).max(12),
@@ -221,7 +223,13 @@ function validateJsonRecipeData(contract: z.infer<typeof hyperframesVisualCompon
         }
         if (column.list) {
           const list = column.list;
-          const items = Array.from(list.separators).reduce((parts, separator) => parts.flatMap(part => part.split(separator)), [normalized]).map(item => item.trim()).filter(Boolean);
+          let items: string[];
+          if (normalized.startsWith("[")) {
+            try { items = z.array(z.string()).parse(JSON.parse(normalized)); }
+            catch { throw new ApiError(400, "invalid_video_recipe_data", `${field} must be a JSON array of texts.`); }
+          } else {
+            items = Array.from(list.separators).reduce((parts, separator) => parts.flatMap(part => part.split(separator)), [normalized]).map(item => item.trim()).filter(Boolean);
+          }
           if (items.length > list.maxItems || items.some(item => Array.from(item).length > list.itemMaxLength)) {
             throw new ApiError(400, "invalid_video_recipe_data", `${field} supports ${list.maxItems} items of at most ${list.itemMaxLength} characters.`);
           }
@@ -344,10 +352,10 @@ async function resolveRecipeInstance(
     return { ...event, duration: event.duration * motionStyles[motionStyle].durationFactor, time: instance.cueTimes?.[event.id] ?? defaultTime };
   });
   const last = events.at(-1);
-  if (!last || last.time + last.duration > instance.duration - recipe.minHoldSeconds
-    || instance.duration - last.time - last.duration > MAX_STILL_SECONDS
-    || events.some((event, index) => index > 0 && (event.time < events[index - 1]!.time + events[index - 1]!.duration
-      || event.time - events[index - 1]!.time - events[index - 1]!.duration > MAX_STILL_SECONDS))) {
+  if (!last || last.time + last.duration > instance.duration - recipe.minHoldSeconds + CUE_EPSILON_SECONDS
+    || instance.duration - last.time - last.duration > MAX_STILL_SECONDS + CUE_EPSILON_SECONDS
+    || events.some((event, index) => index > 0 && (event.time + CUE_EPSILON_SECONDS < events[index - 1]!.time + events[index - 1]!.duration
+      || event.time - events[index - 1]!.time - events[index - 1]!.duration > MAX_STILL_SECONDS + CUE_EPSILON_SECONDS))) {
     throw new ApiError(400, "invalid_video_recipe_cues", `The measured cues for ${instance.componentId} do not fit this scene: ${events.map(event => `${event.id}@${event.time.toFixed(2)}s`).join(", ")}. Keep events ordered without overlap, leave ${recipe.minHoldSeconds}s for the final result, and avoid gaps over ${MAX_STILL_SECONDS}s. Split at a spoken boundary or choose another recipe; a cue failure is not a reason to draw a custom scene.`);
   }
   if (instance.transition !== "cut" || instance.transitionDuration !== 0) {
@@ -679,8 +687,15 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
   const stagedPath = `${source.absolutePath}.${randomUUID()}.mount`;
   try {
     await writeFile(stagedPath, updatedHtml, { flag: "wx" });
-    if (await readFile(source.absolutePath, "utf8") !== originalHtml) throw new ApiError(409, "video_source_changed", "The composition changed during installation; retry against its latest saved source.");
-    await rename(stagedPath, source.absolutePath);
+    for (let attempt = 0; ; attempt++) {
+      if (await readFile(source.absolutePath, "utf8") !== originalHtml) throw new ApiError(409, "video_source_changed", "The composition changed during installation; retry against its latest saved source.");
+      try { await rename(stagedPath, source.absolutePath); break; }
+      catch (error) {
+        if (attempt >= 4 || !error || typeof error !== "object" || !("code" in error)
+          || !["EPERM", "EACCES", "EBUSY"].includes(String(error.code))) throw error;
+        await delay(50 * (attempt + 1));
+      }
+    }
   } finally {
     await rm(stagedPath, { force: true });
   }

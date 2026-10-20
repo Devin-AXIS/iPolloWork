@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test, spyOn } from "bun:test";
+import * as fs from "node:fs/promises";
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -140,6 +141,40 @@ async function jsonRecipeFixture(count = 2) {
 }
 
 describe("Video Studio registry component integration", () => {
+  test("accepts decimal-adjacent recipe events while rejecting real overlaps", async () => {
+    const { root, manifest, manifestPath, instance } = await jsonRecipeFixture();
+    const events = manifest.motionRecipe.events.filter(event => ["step-1", "step-2", "resolve"].includes(event.id))
+      .map((event, index) => ({ ...event, time: [.1, .3, 1][index], duration: .2 }));
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, motionRecipe: { ...manifest.motionRecipe, events,
+      usage: { ...manifest.motionRecipe.usage, cueBindings: Object.fromEntries(events.map(event => [event.id, event.action])) } } }));
+    const run = (cueTimes?: Record<string, number>) => installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+      instances: [{ ...instance, duration: 1.7, ...(cueTimes ? { cueTimes } : {}) }],
+    });
+    expect(await run()).toBeDefined();
+    await expect(run({ "step-2": .29 })).rejects.toThrow("do not fit");
+  });
+
+  test("retries a transient rename lock and refuses to overwrite a concurrent edit", async () => {
+    const { root, project, instance } = await recipeFixture();
+    const run = () => installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [instance],
+    });
+    const rename = spyOn(fs, "rename");
+    try {
+      rename.mockImplementationOnce(async () => { throw Object.assign(new Error("locked"), { code: "EPERM" }); });
+      await expect(run()).resolves.toBeDefined();
+      expect(rename).toHaveBeenCalledTimes(2);
+      rename.mockImplementationOnce(async () => {
+        await writeFile(join(project, "index.html"), '<main data-composition-id="main">Concurrent edit</main>');
+        throw Object.assign(new Error("locked"), { code: "EBUSY" });
+      });
+      await expect(run()).rejects.toThrow("changed during installation");
+      expect(await readFile(join(project, "index.html"), "utf8")).toContain("Concurrent edit");
+      expect((await readdir(project)).some(name => name.endsWith(".mount"))).toBe(false);
+    } finally { rename.mockRestore(); }
+  });
+
   test("lists and installs imported components from the same library without replacing bundled resources", async () => {
     const { root, project } = await fixture();
     const componentId = "imported-timeline";
@@ -556,6 +591,27 @@ describe("Video Studio registry component integration", () => {
       sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, values: { ...instance.values, branches } }],
     });
     expect(result.instances[0]!.snippet).toContain("legacy field retained");
+  });
+
+  test("JSON-encoded component lists preserve punctuation and Unicode while rejecting invalid items before writing", async () => {
+    const { root, project, document, instance } = await jsonRecipeFixture();
+    const values = (leaves: string) => ({ ...instance.values, branches: JSON.stringify({
+      ...document, rows: document.rows.map(row => ({ ...row, leaves })),
+    }) });
+    for (const leaves of ["[", '["valid",1]', JSON.stringify(Array(5).fill("item")), JSON.stringify(["😀".repeat(13)])]) {
+      await expect(installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+        instances: [{ ...instance, values: values(leaves) }],
+      })).rejects.toMatchObject({ code: "invalid_video_recipe_data" });
+    }
+    expect(await readdir(project)).toEqual(["index.html"]);
+    const leaves = JSON.stringify(["输入,处理", "中文，标点", "😀".repeat(12)]);
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [instance.componentId],
+      instances: [{ ...instance, values: values(leaves) }],
+    });
+    const mounted = z.object({ branches: z.string() }).parse(JSON.parse(attribute(result.instances[0]!.snippet, "data-variable-values")));
+    expect(JSON.parse(mounted.branches).rows[0].leaves).toBe(leaves);
   });
 
   test("bounded scalar inputs allow declared empty defaults and count Unicode characters", async () => {

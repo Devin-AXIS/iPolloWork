@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { UIMessage } from "ai";
 import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
 import { videoProjectIdFromStoryboardPath } from "../video/video-storyboard";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { Check, ChevronDown, CircleAlert, Download, Ellipsis, Eye, FileText, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Minimize2, Palette, Pencil, Plus, Presentation, Trash2, Upload, X, Zap } from "lucide-react";
@@ -84,6 +84,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
+import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { useDenAuth } from "../../cloud/den-auth-provider";
 import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connections/provider-auth/provider-auth-modal";
 import { RenameSessionModal } from "../modals/rename-session-modal";
@@ -169,6 +170,7 @@ import {
 } from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
+import { EnterpriseSnapshotNotice } from "@/react-app/domains/enterprise";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, SidePanelLauncherMenu, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -1706,7 +1708,7 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
-  const { workspaceApps } = useInstalledPluginContributions(
+  const { workspaceApps, sessionPanels, isLoading: pluginsLoading } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   );
@@ -1773,6 +1775,7 @@ export function SessionPage(props: SessionPageProps) {
   const templateCoverCacheRef = useRef(new Map<string, Promise<Awaited<ReturnType<TemplateCoverLoader>>>>());
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
+  const [enterpriseEntryParams, setEnterpriseEntryParams] = useSearchParams();
   const [templateMarketTarget, setTemplateMarketTarget] = useState<"new-session" | "current-session">("new-session");
   const [pendingTemplateApplication, setPendingTemplateApplication] = useState<PendingTemplateApplication | null>(null);
   const [pendingCustomTemplateApplication, setPendingCustomTemplateApplication] = useState<PendingCustomTemplateApplication | null>(null);
@@ -1800,6 +1803,13 @@ export function SessionPage(props: SessionPageProps) {
     setTemplateCatalogSource(source);
     clearTemplateCatalog();
   }, [activeEnterprise, clearTemplateCatalog, denAuth.isSignedIn, templateCatalogSource]);
+  useEffect(() => {
+    if (!activeEnterprise || enterpriseEntryParams.get("enterpriseTemplates") !== activeEnterprise.id) return;
+    selectTemplateCatalogSource("enterprise");
+    setTemplateMarketTarget("new-session");
+    setTemplateMarketOpen(true);
+    setEnterpriseEntryParams((current) => { const next = new URLSearchParams(current); next.delete("enterpriseTemplates"); return next; }, { replace: true });
+  }, [activeEnterprise, enterpriseEntryParams, selectTemplateCatalogSource, setEnterpriseEntryParams]);
   useEffect(() => {
     const sourceUnavailable = (templateCatalogSource === "cloud" && !denAuth.isSignedIn)
       || (templateCatalogSource === "enterprise" && !activeEnterprise);
@@ -4069,23 +4079,24 @@ export function SessionPage(props: SessionPageProps) {
       onClick: showVideoRailPane,
       disabled: !props.selectedWorkspaceId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
     },
-    {
-      id: "plugin-workshop",
+    ...sessionPanels.map<SidePanelLauncherItem>(panel => ({
+      id: panel.id,
       label: t("plugin_workshop.title"),
       group: "studio",
       icon: "plugin-workshop",
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
-    },
+    })),
     ...workspaceAppLaunchers(workspaceApps).map<SidePanelLauncherItem>((surface) => ({
       id: workspaceAppTabId(surface),
       label: isMediaStudioPlugin(surface.pluginId) ? t("media.studio.title") : surface.label,
       group: "studio",
       icon: mediaStudioEngine(surface) === "image-studio" ? "image-studio" : mediaStudioEngine(surface) === "video-console" ? "video-console" : "workspace-app",
+      iconSrc: resolveExtensionIconUrl({ pluginId: surface.pluginId, iconSrc: surface.iconSrc ?? undefined, iconSlug: surface.iconSlug }),
       onClick: () => openWorkspaceApp(surface),
       disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.id === workspaceAppTabId(surface)),
     })),
-  ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
+  ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, sessionPanels, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
   const sidePanelLauncherItems = rawSidePanelLauncherItems.map((item) => ({
     ...item,
     disabled: item.disabled || launcherBusy,
@@ -4610,9 +4621,7 @@ export function SessionPage(props: SessionPageProps) {
               ? "schedule"
             : mainWorkspaceView === "extensions"
               ? "extensions"
-              : activePanelTab?.type === "plugin-studio"
-                ? "plugin-workshop"
-                : null}
+              : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
@@ -4622,7 +4631,28 @@ export function SessionPage(props: SessionPageProps) {
           }}
           onOpenSchedule={openGlobalSchedule}
           onOpenExtensions={openExtensionsRailPane}
-          onOpenPluginWorkshop={openPluginWorkshop}
+          pluginsLoading={pluginsLoading}
+          pluginShortcuts={sidePanelLauncherItems.filter(item => item.group === "studio").map(item => ({
+            id: item.id,
+            label: item.label,
+            iconSrc: item.iconSrc,
+            workshop: item.icon === "plugin-workshop",
+            active: mainWorkspaceView === null && (item.icon === "plugin-workshop"
+              ? activePanelTab?.type === "plugin-studio"
+              : activePanelTab?.id === item.id),
+            // An already-open workbench remains selectable from its shortcut.
+            disabled: launcherBusy || !props.selectedWorkspaceId,
+            onClick: () => {
+              const existing = sessionPanelState.tabs.find(tab => item.icon === "plugin-workshop" ? tab.type === "plugin-studio" : tab.id === item.id);
+              setMainWorkspaceView(null);
+              if (existing && props.selectedSessionId) {
+                selectTab(props.selectedSessionId, existing.id);
+                setSidePanelState(props.selectedSessionId, "panel");
+              } else {
+                item.onClick();
+              }
+            },
+          }))}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}
@@ -4660,6 +4690,7 @@ export function SessionPage(props: SessionPageProps) {
                 </Tooltip>
               ) : null}
               <main ref={mainWorkspaceContentRef} style={{ minWidth: mainWorkspaceMinWidth }} className="flex h-full w-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
+          {activeEnterprise?.features?.sessionSharing && props.ipolloworkServerClient && props.runtimeWorkspaceId && props.selectedSessionId ? <EnterpriseSnapshotNotice connection={activeEnterprise} client={props.ipolloworkServerClient} workspaceId={props.runtimeWorkspaceId} sessionId={props.selectedSessionId} /> : null}
           <header className={cn(
             "relative z-10 h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center bg-background/80 px-4 backdrop-blur-2xl backdrop-saturate-150 dark:bg-background/72 md:px-6 mac:titlebar-drag @container/titlebar",
             mainHeaderHidden ? "hidden!" : "grid",
@@ -5281,7 +5312,7 @@ export function SessionPage(props: SessionPageProps) {
                   {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
                     <div className="flex h-full flex-col bg-background">
                       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
-                        <SidePanelLauncherMenu launcherItems={sidePanelLauncherItems} />
+                        <SidePanelLauncherMenu launcherItems={sidePanelLauncherItems} pluginsLoading={pluginsLoading} />
                         {launcherBusy ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" role="status" aria-label={t("templates.starter.loading")} /> : null}
                       </div>
                     </div>
@@ -5321,6 +5352,7 @@ export function SessionPage(props: SessionPageProps) {
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
+                        pluginsLoading={pluginsLoading}
                         aiEditing={selectedSessionStatus ? selectedSessionStatus.type === "busy" || selectedSessionStatus.type === "retry" : isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
@@ -5367,6 +5399,7 @@ export function SessionPage(props: SessionPageProps) {
         remoteResources={remoteTemplateResources}
         cloudAvailable={denAuth.isSignedIn}
         enterpriseAvailable={Boolean(activeEnterprise)}
+        enterpriseConnection={activeEnterprise}
         source={templateCatalogSource}
         onSelectSource={selectTemplateCatalogSource}
         onInstallRemote={(resource) => void installRemoteTemplate(resource)}

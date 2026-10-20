@@ -13,6 +13,7 @@ import {
 import { disposeiPolloWorkWorkspaceConfigStore, readiPolloWorkWorkspaceConfig, writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import type { ServerConfig } from "./types.js";
 import { startServer } from "./server.js";
+import { createTemplateAuthoringSession, disposeTemplateStore } from "./templates.js";
 import {
   WorkItemConflictError,
   createWorkItem,
@@ -75,6 +76,7 @@ async function testContext(): Promise<{ root: string; config: ServerConfig }> {
 
 afterEach(async () => {
   for (const root of temporaryRoots.splice(0)) {
+    await disposeTemplateStore(serverConfig(root));
     await disposeWorkItemStore(serverConfig(root));
     await disposeiPolloWorkWorkspaceConfigStore(serverConfig(root));
     // Bun retains prepared SQLite statements until collection on Windows.
@@ -84,6 +86,71 @@ afterEach(async () => {
 });
 
 describe("work item store", () => {
+  test("new conversations inherit project presets while existing, forked and other-project conversations keep their snapshots", async () => {
+    const { config } = await testContext();
+    const workspace = config.workspaces[0];
+    const before = await bindConversationSession(config, workspace, "before_defaults", { title: "Before", engineId: DEFAULT_ENGINE_ID });
+    const project = createDefaultProjectWorkspaceConfig();
+    project.revision = 1;
+    const library = await listWorkTemplates(config, workspace);
+    const preset = library.agentPresets.find((agent) => agent.id === "content-operations");
+    if (!preset) throw new Error("Content preset required");
+    project.agents.push(preset);
+    await writeiPolloWorkWorkspaceConfig(config, workspace.id, (stored) => ({ ...stored, project }));
+    const fresh = await bindConversationSession(config, workspace, "after_defaults", { title: "After", engineId: DEEPSEEK_HARNESS_ENGINE_ID });
+    expect(fresh.execution?.workflow?.source).toBe("auto");
+    expect(fresh.execution?.workflow?.config.agents.map((agent) => agent.id)).toEqual(["project-lead", "content-operations"]);
+    if (!fresh.execution) throw new Error("Fresh execution required");
+    expect(projectExecutionSystemContext(fresh.execution)).toContain(preset.prompt);
+    expect(fresh.execution.projectRevision).toBe(1);
+    const video = await writeConversationWorkflow(config, workspace, "after_defaults", {
+      expectedVersion: fresh.version, templateId: "video", runtime: fresh.execution.runtime,
+    });
+    expect(video.execution?.workflow?.config.agents.some((agent) => agent.id === preset.id)).toBe(true);
+    expect(video.execution?.agent.skillIds).toContain("video-agent:ipollowork-video-studio");
+    const originalFresh = JSON.stringify(video.execution?.workflow);
+    project.agents[1] = { ...preset, prompt: "Updated project instructions" };
+    project.revision = 2;
+    await writeiPolloWorkWorkspaceConfig(config, workspace.id, (stored) => ({ ...stored, project }));
+    expect(await readProjectSessionWorkItem(config, workspace.id, "before_defaults")).toEqual(before);
+    expect(JSON.stringify((await readProjectSessionWorkItem(config, workspace.id, "after_defaults"))?.execution?.workflow)).toBe(originalFresh);
+    const next = await bindConversationSession(config, workspace, "latest_defaults", { title: "Latest", engineId: DEFAULT_ENGINE_ID });
+    expect(next.execution?.workflow?.config.agents[1]?.prompt).toBe("Updated project instructions");
+    if (!next.execution) throw new Error("Next execution required");
+    const started = await bindProjectSessionExecution(config, workspace, "latest_defaults", {
+      title: "Automatic video", goal: "Make a video", workKind: "video", runtime: next.execution.runtime,
+    });
+    expect(started.execution?.workflow?.templateId).toBe("video");
+    expect(started.execution?.workflow?.config.agents[1]?.prompt).toBe("Updated project instructions");
+    expect(started.execution?.agent.skillIds).toContain("video-agent:ipollowork-video-studio");
+    const fork = await bindConversationSession(config, workspace, "forked_defaults", { title: "Fork", engineId: DEFAULT_ENGINE_ID, parentSessionId: "before_defaults" });
+    expect(fork.execution?.workflow).toEqual(before.execution?.workflow);
+    const other = { ...workspace, id: "other_project" };
+    const unrelated = await bindConversationSession(config, other, "unrelated", { title: "Other", engineId: DEFAULT_ENGINE_ID });
+    expect(unrelated.execution?.workflow?.config.agents).toHaveLength(1);
+  });
+
+  test("project presets save without a conversation and reject stale or invalid project settings", async () => {
+    const { config } = await testContext();
+    const project = createDefaultProjectWorkspaceConfig();
+    const preset = (await listWorkTemplates(config, config.workspaces[0])).agentPresets[0];
+    project.agents.push(preset);
+    await writeiPolloWorkWorkspaceConfig(config, "project_one", () => ({ unrelatedSetting: "keep" }));
+    const server = await startServer(config);
+    try {
+      const url = `http://127.0.0.1:${server.port}/workspace/project_one/config`;
+      const headers = { authorization: `Bearer ${config.token}`, "content-type": "application/json" };
+      const save = () => fetch(url, { method: "PATCH", headers, body: JSON.stringify({ ipollowork: { project } }) });
+      expect((await save()).status).toBe(200);
+      const persisted = await readiPolloWorkWorkspaceConfig(config, "project_one");
+      expect(persisted).toMatchObject({ unrelatedSetting: "keep", project: { revision: 1, agents: [{ id: "project-lead" }, { id: preset.id }] } });
+      expect((await save()).status).toBe(409);
+      const invalid = await fetch(url, { method: "PATCH", headers, body: JSON.stringify({ ipollowork: { project: { ...project, agents: [] } } }) });
+      expect(invalid.status).toBe(400);
+      expect(await readiPolloWorkWorkspaceConfig(config, "project_one")).toEqual(persisted);
+    } finally { await server.stop(); }
+  });
+
   test("agent presets remain reusable while edited conversation roles persist and reach execution", async () => {
     const { config } = await testContext();
     const workspace = config.workspaces[0];
@@ -308,6 +375,29 @@ describe("work item store", () => {
     } finally {
       await disposeWorkItemStore(config);
     }
+  });
+
+  test("prepared PPT metadata owns automatic roles and repairs a failed video misclassification without changing manual methods", async () => {
+    const { config } = await testContext();
+    const workspace = config.workspaces[0];
+    const runtime = { engineId: DEFAULT_ENGINE_ID, model: null, mode: null, modelVariant: null };
+    const brief = { title: "路演模版", audience: "投资人", details: "做一个动画丰富，主题色简单高级，适合商业路演的模版" };
+    const prepareSlides = (sessionId: string) => createTemplateAuthoringSession(config, workspace, { sessionId, category: "slides", pptxCompatibility: "native-editable", purpose: "artifact-delivery", brief });
+    await prepareSlides("prepared_ppt");
+    const first = await bindProjectSessionExecution(config, workspace, "prepared_ppt", { title: brief.title, goal: brief.details, workKind: "video", runtime });
+    expect(first.execution?.workflow).toMatchObject({ workKind: "document", templateId: "document", source: "auto" });
+    expect(first.execution?.agent.pluginIds).not.toContain("video-agent");
+    await bindProjectSessionExecution(config, workspace, "failed_ppt", { title: brief.title, goal: brief.details, workKind: "video", runtime });
+    await finishProjectSessionExecution(config, workspace.id, "failed_ppt", { status: "failed", error: "Aborted" });
+    await prepareSlides("failed_ppt");
+    const repaired = await bindProjectSessionExecution(config, workspace, "failed_ppt", { title: brief.title, goal: brief.details, workKind: "video", runtime });
+    expect(repaired.execution?.workflow).toMatchObject({ workKind: "document", templateId: "document", source: "auto", goal: brief.details });
+    expect(repaired.execution?.agent.pluginIds).not.toContain("video-agent");
+    await prepareSlides("manual_ppt");
+    const manual = await writeConversationWorkflow(config, workspace, "manual_ppt", { runtime, templateId: "research" });
+    const selected = await bindProjectSessionExecution(config, workspace, "manual_ppt", { title: brief.title, workKind: "video", runtime });
+    expect(selected.execution?.workflow?.templateId).toBe(manual.execution?.workflow?.templateId);
+    expect(selected.execution?.workflow?.source).toBe("manual");
   });
 
   test("partial progress updates preserve existing context and allow explicit clearing", async () => {

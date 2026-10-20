@@ -58,6 +58,8 @@ const UI_URI_RE = /^ui:\/\/[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const CSP_SOURCE_RE = /^(?:https:\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::(?:\d+|\*))?)$/;
 const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "video-generation", "storage"]);
 export const PLUGIN_UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
+// This declarative contribution opens the existing host workshop; it cannot load native code.
+export const PLUGIN_WORKSHOP_ID = "plugin-workshop";
 export const PLUGIN_UI_HOST_CONTEXT_KEY = "ai.ipollo/workspace";
 export const PLUGIN_UI_INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
 export const imageSelectionSnapshotSchema = z.object({
@@ -575,6 +577,8 @@ const manifestSchema = z.object({
   manifest.contributions?.forEach((contribution, index) => {
     if (contribution.type === "session-side-panel"
       && manifest.package
+      && !(manifest.id === PLUGIN_WORKSHOP_ID && contribution.ref === PLUGIN_WORKSHOP_ID
+        && manifest.resources.some(resource => resource.id === PLUGIN_WORKSHOP_ID && resource.type === "skill"))
       && (manifest.source.origin !== "builtin" || !manifest.source.trusted)) {
       context.addIssue({
         code: "custom",

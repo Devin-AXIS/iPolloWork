@@ -2192,7 +2192,6 @@ describe("plugin package lifecycle", () => {
           { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
           { pluginId: "operation-recorder", version: "0.3.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "labelu-data-annotation", version: "0.3.1", installedVersion: null, updateAvailable: false },
           { pluginId: "short-video-studio", version: "0.1.0", installedVersion: null, updateAvailable: false },
           { pluginId: "jev-decision-model", version: "0.1.2", installedVersion: null, updateAvailable: false },
           { pluginId: "ipollo-onto", version: "0.1.4", installedVersion: null, updateAvailable: false },
@@ -2604,4 +2603,28 @@ test("rejects incompatible native platforms before projecting files or changing 
   });
   expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([]);
   await expectMissing(join(root, ".opencode/skills/acme-research/SKILL.md"));
+});
+
+test("Plugin Workshop imports as a declarative local package and follows the installed lifecycle", async () => {
+  const lifecycle = await import("./plugin-package-lifecycle.js");
+  const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+  const root = await createRoot("ipollowork-workshop-plugin-");
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  const config = serverConfig(root);
+  const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/plugin-workshop", import.meta.url));
+  const preview = await lifecycle.previewPluginPackage({ packageRoot });
+  expect(await lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" }))
+    .toMatchObject({ level: "declarative", localCode: false });
+  expect(validatePluginPackageManifest({ ...preview.manifest, id: "third-party-workshop" }).success).toBe(false);
+  expect(validatePluginPackageManifest({ ...preview.manifest, contributions: [{ type: "session-side-panel", ref: "ipollowork.design.panel" }] }).success).toBe(false);
+  expect(validatePluginPackageManifest({ ...preview.manifest, resources: [] }).success).toBe(false);
+  expect(await lifecycle.installPluginPackage({ serverConfig: config, packageRoot }))
+    .toMatchObject({ status: "installed", pluginId: "plugin-workshop" });
+  expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).find(item => item.pluginId === "plugin-workshop"))
+    .toMatchObject({ enabled: true, manifest: { contributions: [{ type: "session-side-panel", ref: "plugin-workshop" }] } });
+  await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "plugin-workshop", enabled: false });
+  expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).find(item => item.pluginId === "plugin-workshop")?.enabled).toBe(false);
+  await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "plugin-workshop", enabled: true });
+  await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "plugin-workshop" });
+  expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).some(item => item.pluginId === "plugin-workshop")).toBe(false);
 });

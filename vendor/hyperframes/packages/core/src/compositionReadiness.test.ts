@@ -8,7 +8,7 @@ import {
   settleFirstFrameCompositionReadiness,
 } from "./compositionReadiness.js";
 import { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
-import { STUDIO_PREVIEW_MARK_META } from "./studioPreviewMark.js";
+import { STUDIO_PREVIEW_MARK_META, readStudioPreviewTime } from "./studioPreviewMark.js";
 import { isRuntimeElementVisibleAt } from "./runtime/timeline.js";
 
 function docWith(bodyHtml: string): Document {
@@ -58,6 +58,21 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe("scanPendingCompositionAssets", () => {
+  it.each([ ["?__hf_preview_time=45.5", 45.5], ["?__hf_preview_time=-2", 0],
+    ["?__hf_preview_time=Infinity", 0], ["?__hf_preview_time=oops", 0], ["", 0],
+  ])("validates the initial Studio position %s", (search, expected) => {
+    expect(readStudioPreviewTime(search)).toBe(expected);
+  });
+
+  it("waits only on assets at the restored frame instead of the video's beginning", () => {
+    const doc = docWith('<video id="first" data-start="0" data-duration="10"></video>'
+      + '<video id="current" data-start="40" data-duration="10"></video>'
+      + '<img id="future" data-start="60" data-duration="10" src="future.png">');
+    const scan = scanPendingCompositionAssets(doc, { scope: "first-frame", currentTime: 45 });
+    expect(scan.pendingMedia.map(media => media.id)).toEqual(["current"]);
+    expect(scan.pendingImages).toEqual([]);
+  });
+
   it("reports nothing pending for an empty document", () => {
     const scan = scanPendingCompositionAssets(docWith(""));
     expect(scan).toEqual({ pendingMedia: [], pendingImages: [], fontsLoading: false });

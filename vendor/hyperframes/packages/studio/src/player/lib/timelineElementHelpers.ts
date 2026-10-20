@@ -284,6 +284,7 @@ export function getTimelineElementSelectorIndex(
   doc: Document,
   el: Element,
   selector: string | undefined,
+  cache?: Map<string, Map<Element, number>>,
 ): number | undefined {
   return getSourceScopedSelectorIndex(
     doc,
@@ -291,6 +292,7 @@ export function getTimelineElementSelectorIndex(
     selector,
     getTimelineElementSourceFile(el),
     getTimelineElementSourceFile,
+    cache,
   );
 }
 

@@ -150,11 +150,12 @@ type InterruptedUserMessageDisposition = "normal" | "stopped" | "resumed" | "ign
 function observeInterruptedUserMessage(
   run: InterruptedRun,
   message: Pick<UIMessage, "id" | "role" | "parts" | "metadata">,
+  previous?: UIMessage,
 ): InterruptedUserMessageDisposition {
   if (message.role !== "user") return "normal";
   const text = messageVisibleText(message);
   if (run.blockedUserMessageIds.has(message.id)) {
-    if (text) consumePendingBlockedUserText(run, text);
+    if (text && run.protectedOptimisticUserMessageIds.has(message.id)) consumePendingBlockedUserText(run, text);
     run.observedUserMessageIds.add(message.id);
     return "stopped";
   }
@@ -166,9 +167,9 @@ function observeInterruptedUserMessage(
     run.resumeStartedAt = null;
     return "resumed";
   }
-  if (run.observedUserMessageIds.has(message.id)) return "normal";
+  if (run.observedUserMessageIds.has(message.id) && (!previous || messageVisibleText(previous))) return "normal";
   if (text && (run.pendingBlockedUserTextCounts.get(text) ?? 0) > 0) {
-    const createdAt = conversationMessageCreatedAt(message);
+    const createdAt = conversationMessageCreatedAt(message) ?? (previous ? conversationMessageCreatedAt(previous) : null);
     if (run.interrupted && run.resumeUserMessageId && run.resumeStartedAt && createdAt !== null && createdAt >= run.resumeStartedAt) {
       run.observedUserMessageIds.add(message.id);
       run.interrupted = false;
@@ -194,6 +195,29 @@ function observeInterruptedUserMessage(
   }
   run.observedUserMessageIds.add(message.id);
   return run.interrupted ? "ignore" : "normal";
+}
+
+function reconcileInterruptedUserMessage(workspaceId: string, sessionId: string, run: InterruptedRun, message: UIMessage) {
+  const queryClient = getReactQueryClient();
+  const key = transcriptKey(workspaceId, sessionId);
+  const current = queryClient.getQueryData<UIMessage[]>(key) ?? [];
+  const previous = current.find(item => item.id === message.id);
+  const disposition = observeInterruptedUserMessage(run, message, previous);
+  if (disposition !== "stopped" || isOptimisticUserMessage(message)) return disposition;
+  const text = messageVisibleText(message);
+  if (!text || (previous && !isOptimisticUserMessage(previous) && messageVisibleText(previous))) return disposition;
+  const optimistic = current.find(item => isOptimisticUserMessage(item)
+    && run.protectedOptimisticUserMessageIds.has(item.id)
+    && messageVisibleText(item) === text);
+  if (!optimistic) return disposition;
+  // Stop freezes assistant output, not the engine's acknowledgment of the
+  // submitted user row. Replace that row before a snapshot reaches rendering.
+  const acknowledged = { ...(previous && !isOptimisticUserMessage(previous) ? previous : {}), ...message };
+  queryClient.setQueryData<UIMessage[]>(key, current.flatMap(item => item.id === optimistic.id
+    ? [acknowledged] : item.id === message.id ? [] : [item]));
+  run.protectedOptimisticUserMessageIds.delete(optimistic.id);
+  useSessionActivityStore.getState().markMessageRole(workspaceId, sessionId, message.id, "user");
+  return disposition;
 }
 
 function assistantMessageBelongsToStoppedRun(
@@ -848,14 +872,22 @@ export function settleInterruptedSessionRun(
   run.resumeUserMessageId = null;
   run.resumeUserText = "";
   run.resumeStartedAt = null;
-  const messages = queryClient.getQueryData<UIMessage[]>(transcriptKey(workspace, session)) ?? [];
+  const cached = queryClient.getQueryData<UIMessage[]>(transcriptKey(workspace, session)) ?? [];
+  // A native echo can already be cached when Stop beats snapshot hydration.
+  // Reconcile it before freezing the run; preserve earlier unacknowledged stops.
+  const messages = removeAcknowledgedOptimisticUserMessages(cached, run.protectedOptimisticUserMessageIds);
+  if (messages.length !== cached.length) queryClient.setQueryData(transcriptKey(workspace, session), messages);
+  // First-project prompts are owned by the route. Without its client id,
+  // an empty native shell must not displace the visible optimistic prompt.
+  const submittedUserMessage = (message: UIMessage) => message.role === "user"
+    && (message.parts.length > 0 || isOptimisticUserMessage(message));
   const requestedStoppedUserMessageId = stoppedUserMessageId?.trim() ?? "";
   const requestedStoppedUserIndex = requestedStoppedUserMessageId
-    ? messages.findIndex((message) => message.role === "user" && message.id === requestedStoppedUserMessageId)
+    ? messages.findIndex((message) => submittedUserMessage(message) && message.id === requestedStoppedUserMessageId)
     : -1;
   const stoppedUserIndex = requestedStoppedUserIndex >= 0
     ? requestedStoppedUserIndex
-    : messages.findLastIndex((message) => message.role === "user");
+    : messages.findLastIndex(submittedUserMessage);
   const stoppedUserMessage = stoppedUserIndex >= 0 ? messages[stoppedUserIndex] : undefined;
   if (stoppedUserMessage?.role === "user") {
     run.blockedUserMessageIds.add(stoppedUserMessage.id);
@@ -1184,7 +1216,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
 
   if (event.type === "message.upsert") {
     if (event.message.role === "user" && interrupted) {
-      const disposition = observeInterruptedUserMessage(interrupted, event.message);
+      const disposition = reconcileInterruptedUserMessage(workspaceId, event.sessionId, interrupted, event.message);
       if (disposition === "ignore") return;
     } else if (event.message.role === "assistant" && interrupted) {
       const parentUserMessageId = conversationMessageParentUserMessageId(event.message);
@@ -1253,7 +1285,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     if (interrupted) {
       const eventRole = event.messageRole;
       if (eventRole === "user") {
-        const disposition = observeInterruptedUserMessage(interrupted, {
+        const disposition = reconcileInterruptedUserMessage(workspaceId, event.sessionId, interrupted, {
           id: event.messageId,
           role: "user",
           parts: event.parts,
@@ -1571,7 +1603,7 @@ export function sanitizeInterruptedSessionSnapshot(
   const messages: UIMessage[] = [];
   for (const message of snapshot.messages) {
     if (message.role === "user") {
-      const disposition = observeInterruptedUserMessage(run, message);
+      const disposition = reconcileInterruptedUserMessage(workspaceId, snapshot.session.id, run, message);
       if (disposition === "ignore") {
         changed = true;
         continue;
@@ -1621,10 +1653,8 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     : existingRaw;
   const preserveOptimisticBusy = safeSnapshot.status.type === "idle"
     && existingRaw?.some(isOptimisticUserMessage) === true;
-  const preserveLiveBusy = safeSnapshot.status.type === "idle"
-    && liveActivityBeforeSeed
-    && !snapshotAcknowledgesRun;
-  const preserveBusy = preserveOptimisticBusy || preserveLiveBusy;
+  // An older snapshot may fill history, but cannot settle or fail a newer turn.
+  const preserveRunState = preserveOptimisticBusy || !snapshotAcknowledgesRun;
   const reconciledMessages = applyRevertCursor(
     reconcileTranscriptMessages({
       currentMessages: existing ?? [],
@@ -1638,14 +1668,14 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   const assistantOutput = assistantOutputAfterLatestUser(reconciledMessages);
   const finalAssistantOutput = finalAssistantOutputAfterLatestUser(reconciledMessages);
   const terminalWithoutOutput = safeSnapshot.status.type === "idle"
-    && !preserveBusy
+    && !preserveRunState
     && liveActivityBeforeSeed
     && snapshotAcknowledgesRun
     && latestUserMessage(incoming) !== null
     && !snapshotErrorText
     && !finalAssistantOutput;
 
-  if (!preserveBusy) {
+  if (!preserveRunState) {
     useSessionActivityStore.getState().seedSessionRun(
       workspaceId,
       safeSnapshot.session.id,
@@ -1661,7 +1691,7 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   queryClient.setQueryData(key, recovered.messages);
   settleRecoveredNoFinalOutputError(workspaceId, safeSnapshot.session.id, recovered.turnId);
 
-  if (snapshotErrorText) {
+  if (snapshotErrorText && snapshotAcknowledgesRun) {
     useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, snapshotErrorText, latestUserMessage(incoming)?.id);
   } else if (terminalWithoutOutput) {
     const latestUser = latestUserMessage(incoming);
@@ -1673,7 +1703,7 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
         ...(latestUser ? { parentUserMessageId: latestUser.id } : {}),
       }),
     ));
-  } else if (safeSnapshot.status.type === "idle" && !preserveBusy && snapshotAcknowledgesRun) {
+  } else if (safeSnapshot.status.type === "idle" && !preserveRunState && snapshotAcknowledgesRun) {
     const latestAssistant = incoming.findLast((message) => message.role === "assistant");
     const metadata = latestAssistant?.metadata;
     const ipollowork = metadata && typeof metadata === "object" && "ipollowork" in metadata
@@ -1688,7 +1718,7 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     }
   }
 
-  if (!preserveBusy) {
+  if (!preserveRunState) {
     queryClient.setQueryData(statusKey(workspaceId, safeSnapshot.session.id), safeSnapshot.status);
   }
   queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);

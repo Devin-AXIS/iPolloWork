@@ -168,12 +168,20 @@ test("DeepSeek Harness compaction rejects busy and unsupported native outcomes w
 
 test("OpenCode ends only long quota waits while preserving short and transient retries", () => {
   const now = 1_000;
-  expect(terminalOpenCodeRetryFailure({
-    type: "retry",
-    attempt: 1,
-    message: "Free usage limit reached. Please try again later.",
-    next: now + 29_503_000,
-  }, now)).toMatchObject({ code: "provider_quota_exhausted" });
+  for (const message of [
+    "Free usage limit reached. Please try again later.",
+    "Free usage exceeded, subscribe to Go",
+  ]) {
+    expect(terminalOpenCodeRetryFailure({
+      type: "retry",
+      attempt: 1,
+      message,
+      next: now + 53_189_000,
+    }, now)).toMatchObject({
+      code: "provider_quota_exhausted",
+      message: expect.stringContaining("手动选择其他免费模型"),
+    });
+  }
   expect(terminalOpenCodeRetryFailure({
     type: "retry",
     attempt: 1,
@@ -753,6 +761,7 @@ describe("conversation engine adapters", () => {
       });
       await connection.sendPrompt({
         sessionId: "session-model-switch",
+        clientUserMessageId: "msg_ipollowork_49303380-cc7d-43cd-8348-de598df3722f",
         parts: [{ type: "text", text: "Which model is running?" }],
         model: { providerID: "opencode", modelID: "big-pickle" },
         system: "Existing application instructions.",
@@ -763,6 +772,7 @@ describe("conversation engine adapters", () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0]?.url).toContain("/session/session-model-switch/prompt_async");
+    expect(requests[0]?.body).not.toHaveProperty("messageID");
     expect(requests[0]?.body).toEqual(expect.objectContaining({
       system: "Existing application instructions.\n\n"
         + "Authoritative iPolloWork runtime model selection for this turn: {\"providerID\":\"opencode\",\"modelID\":\"big-pickle\"}. "

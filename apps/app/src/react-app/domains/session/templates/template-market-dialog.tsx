@@ -42,6 +42,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { EnterpriseResource } from "@/app/lib/enterprise-connections";
+import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
+import { EnterpriseResourceControls } from "@/react-app/domains/enterprise";
 
 type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
 type TemplatePreviewSelection = { template: TemplateCatalogItem; remoteResourceId?: string };
@@ -195,6 +197,7 @@ export type TemplateMarketDialogProps = {
   remoteResources: EnterpriseResource[];
   cloudAvailable: boolean;
   enterpriseAvailable: boolean;
+  enterpriseConnection?: EnterpriseConnection | null;
   source: TemplateCatalogSource;
   onSelectSource: (source: TemplateCatalogSource) => void;
   onInstallRemote: (resource: EnterpriseResource) => void;
@@ -217,8 +220,9 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   const [previewSelection, setPreviewSelection] = React.useState<TemplatePreviewSelection | null>(null);
   const importRef = React.useRef<HTMLInputElement>(null);
   const remoteCatalogMode = props.source !== "builtin";
+  const enterpriseLabel = props.enterpriseConnection?.name ?? t("enterprise_connection.enterprise");
   const remoteSourceLabel = props.source === "enterprise"
-    ? t("enterprise_connection.enterprise")
+    ? enterpriseLabel
     : t("enterprise_connection.cloud");
 
   React.useEffect(() => { if (props.open) props.onRefresh(); }, [props.open, props.onRefresh]);
@@ -368,13 +372,14 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
                   <Cloud className="size-3.5" />
                   {t("enterprise_connection.cloud")}
                 </Button> : null}
-                {props.enterpriseAvailable ? <Button type="button" variant={props.source === "enterprise" ? "secondary" : "ghost"} size="sm" role="tab" aria-selected={props.source === "enterprise"} onClick={() => props.onSelectSource("enterprise")}>
+                {props.enterpriseAvailable ? <Button type="button" variant={props.source === "enterprise" ? "secondary" : "ghost"} size="sm" role="tab" aria-selected={props.source === "enterprise"} title={enterpriseLabel} onClick={() => props.onSelectSource("enterprise")}>
                   <Building2 className="size-3.5" />
-                  {t("enterprise_connection.enterprise")}
+                  <span className="max-w-48 truncate">{enterpriseLabel}</span>
                 </Button> : null}
               </div>
             </div>
           ) : null}
+          {props.enterpriseConnection ? <div className="mt-2 flex justify-end"><EnterpriseResourceControls key={`${props.enterpriseConnection.id}:${props.enterpriseConnection.membership.id}`} connection={props.enterpriseConnection} type="template" onChanged={props.onRefresh} /></div> : null}
           <div className="mt-2 flex h-9 items-center gap-4 overflow-x-auto">
             {view === "explore" ? <div className="flex min-w-max items-center gap-4">
             <Button type="button" size="sm" variant={category === "all" ? "secondary" : "ghost"} aria-pressed={category === "all"} onClick={() => setCategory("all")}>{t("template_market.all_types")}</Button>

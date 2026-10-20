@@ -41,9 +41,13 @@ import {
 
 const OPENCODE_ZEN_PUBLIC_MODELS = [
   { id: "big-pickle", name: "Big Pickle", contextWindow: 200_000, maxTokens: 32_000 },
-  { id: "mimo-v2.5-free", name: "MiMo-V2.5 Free", contextWindow: 200_000, maxTokens: 32_000 },
-  { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", contextWindow: 1_000_000, maxTokens: 128_000 },
+  { id: "space-bunny-free", name: "Space Bunny Free", contextWindow: 1_048_576, maxTokens: 524_288 },
+  { id: "cat-jam-free", name: "Cat Jam Free", contextWindow: 262_144, maxTokens: 131_072 },
+  { id: "longcat-2.5-preview-free", name: "LongCat 2.5 Preview Free", contextWindow: 1_000_000, maxTokens: 131_072 },
+  { id: "step-5-preview-free", name: "Step 5 Preview Free", contextWindow: 1_000_000, maxTokens: 65_536 },
+  { id: "mimo-v2.6-flash-free", name: "MiMo-V2.6-Flash Free", contextWindow: 200_000, maxTokens: 32_000 },
   { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free", contextWindow: 262_144, maxTokens: 262_144 },
+  { id: "muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 Contributor Free", contextWindow: 1_048_576, maxTokens: 131_072 },
 ];
 
 describe("DeepSeek Harness provider credential sync", () => {
@@ -350,7 +354,7 @@ describe("DeepSeek Harness provider credential sync", () => {
           providerId: "opencode",
           displayName: "iPolloWork Built-in Models",
           api: "openai-completions",
-          baseURL: "https://opencode.ai/zen/v1",
+          baseURL: "https://opencode.ai/inference/v1",
           models: OPENCODE_ZEN_PUBLIC_MODELS,
         },
       },
@@ -364,7 +368,7 @@ describe("DeepSeek Harness provider credential sync", () => {
         providerId: "opencode",
         displayName: "iPolloWork Built-in Models",
         api: "openai-completions",
-        baseURL: "https://opencode.ai/zen/v1",
+        baseURL: "https://opencode.ai/inference/v1",
         models: OPENCODE_ZEN_PUBLIC_MODELS,
       },
     });
@@ -444,14 +448,23 @@ describe("DeepSeek Harness provider credential sync", () => {
     expect(openCodeZenPublicModels()).toEqual(OPENCODE_ZEN_PUBLIC_MODELS);
     expect([
       "big-pickle",
-      "mimo-v2.5-free",
-      "nemotron-3-ultra-free",
+      "space-bunny-free",
+      "cat-jam-free",
+      "longcat-2.5-preview-free",
+      "step-5-preview-free",
+      "mimo-v2.6-flash-free",
       "nemotron-3.5-lightning-free",
+      "muse-spark-1.3-contributor-free",
     ].every(isOpenCodeZenPublicModel)).toBe(true);
     expect(isOpenCodeZenPublicModel("x-preview-f-free")).toBe(false);
     expect(isOpenCodeZenPublicModel("hy3-free")).toBe(false);
     expect(openCodeZenPublicModelName("hy3-free")).toBe("Hy3 Free");
+    expect(openCodeZenPublicModelName("mimo-v2.5-free")).toBe("MiMo-V2.5 Free");
+    expect(openCodeZenPublicModelName("nemotron-3-ultra-free")).toBe("Nemotron 3 Ultra Free");
     expect([
+      "mimo-v2.5-free",
+      "nemotron-3-ultra-free",
+      "jev-1.13-free",
       "deepseek-v4-flash-free",
       "laguna-s-2.1-free",
       "ling-3.0-flash-free",
@@ -600,7 +613,7 @@ describe("DeepSeek Harness provider credential sync", () => {
         providerId: "opencode",
         displayName: "iPolloWork Built-in Models",
         api: "openai-completions",
-        baseURL: "https://opencode.ai/zen/v1",
+        baseURL: "https://opencode.ai/inference/v1",
         models: OPENCODE_ZEN_PUBLIC_MODELS,
       },
     });

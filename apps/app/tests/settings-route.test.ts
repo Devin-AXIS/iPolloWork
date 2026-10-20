@@ -324,8 +324,10 @@ describe("settings route parsing", () => {
     expect(selectSource).toContain('menuSurfaceClassName');
     expect(selectSource).toContain('styleScope === "settings" && "text-[#1FBAC0]"');
     expect(skillsViewSource).not.toContain('SelectMenu');
-    expect(skillsViewSource).toContain('<SelectTrigger className="w-full" aria-labelledby="skills-share-hub-label">');
-    expect(skillsViewSource).toContain('disabled={shareTeamBusy || Boolean(shareTeamSuccess?.trim())}');
+    expect(skillsViewSource).toContain('aria-label="技能来源"');
+    expect(skillsViewSource).not.toContain("添加Git仓库");
+    expect(skillsViewSource).toContain('<Cloud className="size-4" />公开</Button>');
+    expect(skillsViewSource).not.toContain('公开（云端）');
     expect(skillsViewSource).toContain('data-testid="skills-status-filter"');
     expect(skillsViewSource).not.toContain('<select\n              data-testid="skills-status-filter"');
   });
@@ -350,32 +352,16 @@ describe("settings route parsing", () => {
     expect(chineseLocaleSource).toContain('"plugin_library.show_less": "收起"');
   });
 
-  test("matches the Figma skills library hierarchy and responsive card layout", () => {
+  test("separates personal, public and enterprise skills without a repository source", () => {
     expect(settingsRouteSource).toContain('data-testid="skills-library-navigation-actions"');
-    expect(skillsViewSource).toContain('data-testid="skills-library-search"');
-    expect(skillsViewSource).toContain('data-testid="skills-library-source"');
-    expect(skillsViewSource).toContain('<SettingsSegmentedTabs');
-    expect(skillsViewSource).toContain('ariaLabel={t("skills.source_label")}');
+    expect(skillsViewSource).toContain('aria-label="技能来源"');
+    expect(skillsViewSource).toContain('<Cloud className="size-4" />公开</Button>');
+    expect(skillsViewSource).toContain('setSource("personal")');
+    expect(skillsViewSource).toContain('setSource("enterprise")');
     expect(skillsViewSource).toContain('data-testid="skills-status-filter"');
-    expect(skillsViewSource).toContain('data-testid="skills-installed-section"');
-    expect(skillsViewSource).toContain('data-testid="skills-cloud-section"');
-    expect(skillsViewSource).toContain('data-testid="skills-hub-section"');
-    expect(skillsViewSource).toContain('data-testid="skills-hub-header-actions"');
-    expect(skillsViewSource).toContain('data-testid="skills-installed-grid" className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-x-8"');
-    expect(skillsViewSource).toContain('data-testid="skill-library-card"');
-    expect(skillsViewSource).toContain('hover:bg-[#f6f7fb]');
-    expect(skillsViewSource).not.toContain('aria-label={t("skills.uninstall")}');
-    expect(skillsViewSource).toContain('data-testid="skill-editor-actions"');
-    expect(skillsViewSource).toContain('data-testid="skill-editor-uninstall"');
-    expect(skillsViewSource).toContain('data-testid="skill-editor-save"');
-    expect(skillsViewSource).not.toContain('t("skills.cloud_refresh")');
-    expect(skillsViewSource).toContain('data-testid="skills-cloud-error"');
-    expect(skillsViewSource).toContain('data-testid="skills-hub-error"');
-    expect(skillsViewSource.match(/className={modalNoticeErrorClass}/g)).toHaveLength(3);
-    expect(skillsViewSource).not.toContain('t("skills.refresh_hub")');
-    expect(modalStylesSource).toContain('flex min-h-9 items-center rounded-[8px] bg-red-2/60');
-    expect(modalStylesSource).toContain('text-[#E5484D] dark:bg-red-2/20');
-    expect(skillsViewSource).toContain('void extensions.refreshCloudOrgSkills({ force: true });');
+    expect(skillsViewSource).not.toContain('skills-hub-section');
+    expect(skillsViewSource).not.toContain('extensions.installHubSkill(');
+    expect(skillsViewSource).toContain('type="skill"');
   });
 
   test("shows a localized team skills error instead of a raw request failure", () => {

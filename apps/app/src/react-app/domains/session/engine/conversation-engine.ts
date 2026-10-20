@@ -1,4 +1,5 @@
 import type { UIMessage, UIMessageChunk } from "ai";
+import type { EnterpriseSessionMetadata } from "@ipollowork/types/enterprise";
 
 import type { ModelRef, SlashCommandOption, TodoItem } from "@/app/types";
 
@@ -7,7 +8,7 @@ export type ConversationStatus =
   | { type: "busy" }
   | { type: "retry"; attempt: number; message: string; next: number };
 
-export type ConversationSession = {
+export type ConversationSession = EnterpriseSessionMetadata & {
   [key: string]: unknown;
   id: string;
   title: string;

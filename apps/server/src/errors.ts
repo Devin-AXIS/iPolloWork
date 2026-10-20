@@ -46,7 +46,7 @@ export function providerApiError(error: unknown, status = 502): ApiError {
 export function toApiError(error: unknown): ApiError {
   if (isApiError(error)) return error;
   const failure = classifyProviderFailure(error);
-  const statuses = { provider_unavailable: 503, provider_timeout: 504, provider_network_error: 502, provider_auth_failed: 401, provider_access_denied: 403, provider_quota_exhausted: 402, provider_rate_limited: 429 };
+  const statuses = { provider_unavailable: 503, provider_timeout: 504, provider_network_error: 502, provider_auth_failed: 401, provider_client_restricted: 403, provider_region_restricted: 403, provider_access_denied: 403, provider_quota_exhausted: 402, provider_rate_limited: 429 };
   return failure ? new ApiError(statuses[failure.code], failure.code, failure.message)
     : new ApiError(500, "internal_error", "操作未完成，请稍后重试。");
 }

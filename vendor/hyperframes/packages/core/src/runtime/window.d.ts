@@ -39,6 +39,8 @@ declare global {
     __timelines: Record<string, RuntimeTimelineLike>;
     __player?: PlayerAPI;
     __hyperframes?: {
+      onVariablesChange: typeof import("./applyVariableBindings").onVariablesChange;
+      updateVariables: typeof import("./applyVariableBindings").updateVariables;
       registerFrameSource: typeof import("./frameSources").registerFrameSource;
       createFilmBridge: typeof import("./filmBridge").createFilmBridge;
       /** A path the calling composition wrote relative to its own file, as a URL the page can load. */

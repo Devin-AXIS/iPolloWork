@@ -91,6 +91,26 @@ describe("per-seek media clip index", () => {
     mediaSpy.disableNarrowing = false;
   });
 
+  it("initializes a paused Studio refresh at the requested frame without preloading the opening clip", async () => {
+    const originalUrl = window.location.href;
+    const preview = document.createElement("style");
+    preview.setAttribute("data-hf-skip-hidden-images", "");
+    document.head.append(preview);
+    window.history.replaceState({}, "", "?__hf_preview_time=30");
+    try {
+      mountClips(40);
+      initSandboxRuntimeModular();
+      await Promise.resolve();
+      expect(window.__player?.getTime()).toBe(30);
+      expect(window.__timelines?.main?.time()).toBe(30);
+      expect(document.querySelector<HTMLVideoElement>("#clip0")?.preload).toBe("none");
+      expect(document.querySelector<HTMLVideoElement>("#clip30")?.preload).toBe("auto");
+    } finally {
+      preview.remove();
+      window.history.replaceState({}, "", originalUrl);
+    }
+  });
+
   /** Elements visited by ONE single-frame seek, after the transport has already
    *  settled at a time (so the sweep has a previous position to work from). */
   function visitsForOneFrameSeek(clipCount: number): number {

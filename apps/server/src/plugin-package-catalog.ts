@@ -19,10 +19,10 @@ export const bundledPluginPackageIds = [
   "design-agent",
   "video-agent",
   "reference-context",
+  "plugin-workshop",
   "media-studio",
   "deepseek-harness",
   "operation-recorder",
-  "labelu-data-annotation",
   "short-video-studio",
   "jev-decision-model",
   "ipollo-onto",
@@ -30,8 +30,8 @@ export const bundledPluginPackageIds = [
 
 export const defaultBundledPluginPackageIds = ["reference-context"] as const;
 
-// Only the development launcher enables repository packages. Release hosts
-// resolve user extensions exclusively through the signed installation store.
+// Repository source refresh is development-only. The local catalog also reads
+// packages already provided by the host, independently of the online catalog.
 export function usesLocalPluginPackages(): boolean {
   return process.env.IPOLLOWORK_DEV_MODE === "1";
 }
@@ -42,7 +42,7 @@ export function localPluginPackageRoot(): string | null {
 }
 
 export function runtimeCatalogPluginPackageIds(): readonly string[] {
-  return usesLocalPluginPackages() ? catalogPluginPackageIds : [];
+  return catalogPluginPackageIds;
 }
 
 // Core Skills use the package projection machinery, but are not user extensions.
@@ -53,9 +53,6 @@ export function isInternalPluginPackage(pluginId: string): boolean {
 export const catalogPluginPackageIds = bundledPluginPackageIds.filter(id => !isInternalPluginPackage(id));
 
 export async function withPluginPackageCatalogRoot<T>(pluginId: string, operation: (root: string, source: string) => Promise<T>): Promise<T> {
-  if (!usesLocalPluginPackages() && !isInternalPluginPackage(pluginId)) {
-    throw new ApiError(404, "plugin_package_catalog_not_found", "Install this plugin from the cloud marketplace");
-  }
   return operation(await resolveBundledPluginPackageRoot(pluginId), `bundled:${pluginId}`);
 }
 
@@ -69,7 +66,7 @@ export function bundledPluginPackageRoots(): string[] {
     ...(configured ? [resolve(configured)] : []),
     resolve(moduleDirectory, "../../plugin-packages"),
     resolve(moduleDirectory, "../../../plugin-packages"),
-    resolve(moduleDirectory, "../../../examples/plugin-packages"),
+    ...(usesLocalPluginPackages() ? [resolve(moduleDirectory, "../../../examples/plugin-packages")] : []),
   ];
 }
 
@@ -81,7 +78,7 @@ export async function resolveBundledPluginPackageRoot(pluginId: string, roots = 
     const sourceRoot = join(root, pluginId);
     // Native recorder helpers are built into this package; source remains usable
     // for portable Chrome workflows when no native build has been prepared.
-    const candidates = ["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"].includes(pluginId) ? [join(sourceRoot, "dist/package"), sourceRoot] : [sourceRoot];
+    const candidates = ["operation-recorder", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"].includes(pluginId) ? [join(sourceRoot, "dist/package"), sourceRoot] : [sourceRoot];
     for (const packageRoot of candidates) {
       try {
         await access(join(packageRoot, "ipollowork.plugin.json"));

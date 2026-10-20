@@ -17,6 +17,7 @@ import {
   type DenOrgSummary,
 } from "@/app/lib/den";
 import { clearDesktopAuthSession, clearDesktopBootstrapConfig } from "@/app/lib/desktop";
+import { clearEnterpriseLoginState } from "@/app/lib/work-context";
 import { exchangeHandoffAndSignIn } from "@/app/lib/den-handoff";
 import {
   denSessionUpdatedEvent,
@@ -165,6 +166,7 @@ export function useDenSession({
     ) => {
       const includeBaseUrls = options?.includeBaseUrls ?? !developerMode;
       clearDenSession({ includeBaseUrls });
+      clearEnterpriseLoginState();
       if (includeBaseUrls) {
         setBaseUrl(DEFAULT_DEN_BASE_URL);
         setBaseUrlDraft(DEFAULT_DEN_BASE_URL);

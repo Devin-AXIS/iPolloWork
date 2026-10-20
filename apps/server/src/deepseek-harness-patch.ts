@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 
 import { stringify as stringifyYaml } from "yaml";
 
@@ -41,7 +42,10 @@ export async function buildDeepSeekHarnessPatch(
   workspace: WorkspaceInfo,
 ): Promise<unknown[]> {
   const patches: unknown[] = [
-    { id: "skill-filesystem", disabled: false },
+    { id: "skill-filesystem", disabled: false, config: { customSkillDirs: [
+      join(workspace.path, ".dsh", "skills", "ipollowork-standalone"),
+      join(workspace.path, ".dsh", "skills", "ipollowork-enterprise"),
+    ] } },
     { id: "tool-skill", disabled: false },
   ];
   const hostPluginPath = process.env.IPOLLOWORK_DSH_HOST_PLUGIN?.trim();

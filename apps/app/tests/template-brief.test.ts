@@ -6,6 +6,7 @@ import {
   type TemplateCatalogItem,
   type TemplateCategory,
   type TemplateManifestV1,
+  type TemplateSessionSnapshot,
 } from "@ipollowork/types/templates";
 
 import { setLocale } from "../src/i18n";
@@ -21,6 +22,7 @@ import {
   isVideoStudioReady,
   nextConversationArtifactSessionId,
   requestsCustomTemplate,
+  resolveConversationTemplateRouting,
   selectConversationTemplate,
   shouldUseExistingTemplateContext,
   templateBriefConfigFor,
@@ -80,6 +82,10 @@ describe("template brief", () => {
         entryPath: "design/test/entry.html",
         briefPath: "design/test/brief.json",
       });
+      if (id.startsWith(ARTIFACT_DELIVERY_ID_PREFIX)) {
+        expect(prompt).toContain('Keep manifest.style unchanged or set it to "custom"');
+        expect(prompt).toContain("Preserve manifest.json identity, category, surface, version and PPTX compatibility");
+      }
       if (category === "slides") {
         expect(prompt).toContain("ipollowork-presentations for the current task");
         expect(prompt).not.toContain("design-slides.md");
@@ -265,6 +271,27 @@ describe("template brief", () => {
     expect(inferConversationTemplateIntent("Please create a website for my company")?.category).toBe("site");
     expect(inferConversationTemplateIntent("帮我写一个产品宣传视频脚本")).toBeNull();
     expect(inferConversationTemplateIntent("生成一份路演 PPT 大纲")).toBeNull();
+  });
+
+  test("PPT market briefs and retries keep their prepared slides even when animation is requested", () => {
+    const snapshot = (sessionId: string, category: TemplateCategory): TemplateSessionSnapshot => {
+      const manifest = catalogItem({ id: ARTIFACT_DELIVERY_ID_PREFIX + category, category, title: "Custom" }).manifest;
+      return { sessionId, surface: manifest.surface, authoring: false, manifest, state: {
+        schemaVersion: 1, template: { id: manifest.id, version: manifest.version, sourceType: "local" },
+        entry: `${manifest.surface}/${sessionId}/entry.html`, briefPath: `${manifest.surface}/${sessionId}/brief.json`, createdAt: 1,
+      } };
+    };
+    const ppt = snapshot("ppt-market", "slides");
+    const staleVideo = snapshot("ppt-market-artifact-video", "video");
+    const prompt = "已应用模板：自定义模板\n演示标题: 路演模版\n面向谁、希望推动什么决定: 投资人\n需要包含的信息或数据: 做一个动画丰富，主题色简单高级，适合商业路演的模版";
+    for (const targetedSessionIds of [new Set([ppt.sessionId]), new Set<string>()]) {
+      expect(resolveConversationTemplateRouting({ sessionId: ppt.sessionId, prompt, templates: [staleVideo, ppt], targetedSessionIds, activeTemplateSessionId: staleVideo.sessionId }))
+        .toEqual({ templates: [ppt], automaticIntents: [] });
+    }
+    expect(resolveConversationTemplateRouting({ sessionId: "chat", prompt: "制作一个PPT和视频", templates: [], targetedSessionIds: new Set(), activeTemplateSessionId: null }).automaticIntents.map((intent) => intent.category))
+      .toEqual(["slides", "video"]);
+    expect(resolveConversationTemplateRouting({ sessionId: ppt.sessionId, prompt: "修改这个视频", templates: [ppt, staleVideo], targetedSessionIds: new Set([staleVideo.sessionId]), activeTemplateSessionId: staleVideo.sessionId }))
+      .toEqual({ templates: [staleVideo], automaticIntents: [] });
   });
 
   test("keeps every explicitly requested creative deliverable in one conversation plan", () => {
@@ -453,14 +480,12 @@ describe("template brief", () => {
       "utf8",
     );
 
-    expect(routeSource).toContain("inferConversationTemplateIntents(text)");
+    expect(routeSource).toContain("resolveConversationTemplateRouting({");
     expect(routeSource).toContain("selectConversationTemplate(text, catalog.items, intent.category)");
     expect(routeSource).toContain("nextConversationArtifactSessionId(");
     expect(routeSource).toContain('setSessionType(targetSessionId, "work")');
     expect(routeSource).toContain("explicitlyTargetedTemplateSessionIds.size === 0");
-    expect(routeSource).toContain("shouldUseExistingTemplateContext(text)");
-    expect(routeSource).toContain("const continuingExistingTemplates = existingTemplateEdit && automaticTemplateIntents.length > 0");
-    expect(routeSource).toContain("&& !continuingExistingTemplates");
+    expect(routeSource).toContain("routing.automaticIntents");
     expect(routeSource).not.toContain("conversationTemplates.slice(0, 1)");
     expect(routeSource).not.toContain('sessionTypeBeforeRouting === "work"');
     expect(routeSource).toContain("Multi-artifact delivery contract");

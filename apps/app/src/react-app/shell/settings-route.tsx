@@ -40,6 +40,7 @@ import type {
 } from "@/app/types";
 import { currentLocale, t, setLocale, type Language } from "@/i18n";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
+import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
 import {
   type RouteWorkspace,
   type RouteSession,
@@ -138,12 +139,18 @@ import {
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
-import { conversationEngineAdapters } from "@/react-app/domains/session/engine/conversation-engines";
+import { conversationEngineAdapters, withEnterpriseShareContext } from "@/react-app/domains/session/engine/conversation-engines";
 import { notifyAlert } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { buildFeedbackUrl } from "@/app/lib/feedback";
 import { getDenInferenceUrl } from "@/app/lib/den";
-import { readActiveWorkspaceId, writeActiveWorkspaceId } from "./session-memory";
+import {
+  readActiveWorkspaceId,
+  readSessionDirectoryCache,
+  writeActiveWorkspaceId,
+  writeLastSessionFor,
+  writeSessionDirectoryCache,
+} from "./session-memory";
 import { workspaceSessionRoute, workspaceSettingsRoute } from "./workspace-routes";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import {
@@ -911,7 +918,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [selectedWorkspace?.engineId, selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
   const conversation = useMemo(
     () => opencodeBaseUrl && selectedWorkspaceEndpoint?.token
-      ? conversationEngineAdapters.get(selectedWorkspace?.engineId).connect({
+      ? withEnterpriseShareContext(conversationEngineAdapters.get(selectedWorkspace?.engineId)).connect({
           baseUrl: opencodeBaseUrl,
           token: selectedWorkspaceEndpoint.token,
           directory: selectedWorkspaceRoot || undefined,
@@ -1662,6 +1669,46 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     !isRemoteWorkspace || ipolloworkServerSnapshot.ipolloworkServerCanWriteSkills;
   const skillsAccessHint =
     isRemoteWorkspace && !canWriteWorkspaceSkills ? t("app.skills_hint_readonly") : null;
+  const creatingSkillSession = useRef(false);
+  const createSkillSessionAndOpen = useCallback(async (initialPrompt?: string): Promise<string | undefined> => {
+    if (busy || creatingSkillSession.current) return undefined;
+    if (!selectedWorkspaceEndpoint || !selectedWorkspaceId || !canWriteWorkspaceSkills) {
+      toast.error(skillsAccessHint ?? "请先选择已连接的项目，再创建技能。");
+      return undefined;
+    }
+    creatingSkillSession.current = true;
+    setBusy(true);
+    setBusyLabel("正在创建技能会话");
+    try {
+      const { item: session } = await selectedWorkspaceEndpoint.client.createSession(
+        selectedWorkspaceEndpoint.workspaceId,
+        "创建技能",
+        local.prefs.model,
+        activeEngineId,
+      );
+      useComposerStateStore.getState().setDraft(session.id, initialPrompt ?? "");
+      const cached = readSessionDirectoryCache();
+      writeSessionDirectoryCache({
+        ...cached,
+        [selectedWorkspaceId]: [session, ...(cached[selectedWorkspaceId] ?? []).filter((item) => item.id !== session.id)],
+      });
+      writeActiveWorkspaceId(selectedWorkspaceId);
+      writeLastSessionFor(selectedWorkspaceId, session.id);
+      props.onClose?.();
+      navigate(workspaceSessionRoute(selectedWorkspaceId, session.id));
+      return session.id;
+    } catch (cause) {
+      toast.error(`创建技能会话失败：${describeRouteError(cause)}`);
+      return undefined;
+    } finally {
+      creatingSkillSession.current = false;
+      setBusy(false);
+      setBusyLabel("");
+    }
+  }, [
+    activeEngineId, busy, canWriteWorkspaceSkills, local.prefs.model, navigate,
+    props.onClose, selectedWorkspaceEndpoint, selectedWorkspaceId, skillsAccessHint,
+  ]);
   const effectiveProviderConnectedIds = providerAuthSnapshot.connectedProviderIds;
   const effectiveProviderConnectedIdSet = new Set(effectiveProviderConnectedIds);
   const providerCatalog = new Map(
@@ -1962,6 +2009,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       case "skills":
         return (
           <SkillsView
+            client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+            workspaceId={runtimeWorkspaceId}
             workspaceName={selectedWorkspaceName}
             busy={busy}
             canInstallSkillCreator={canWriteWorkspaceSkills}
@@ -1969,16 +2018,14 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             accessHint={skillsAccessHint}
             extensions={extensionsStore}
             onOpenLink={(url) => platform.openLink(url)}
-            createSessionAndOpen={async (_command?: string): Promise<string | undefined> => {
-              props.onClose?.();
-              navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session");
-              return undefined;
-            }}
+            createSessionAndOpen={createSkillSessionAndOpen}
           />
         );
       case "extensions": {
         const skillsView = (
           <SkillsView
+            client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+            workspaceId={runtimeWorkspaceId}
             ref={skillsViewRef}
             workspaceName={selectedWorkspaceName}
             busy={busy}
@@ -1988,11 +2035,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             accessHint={skillsAccessHint}
             extensions={extensionsStore}
             onOpenLink={(url) => platform.openLink(url)}
-            createSessionAndOpen={async (_command?: string): Promise<string | undefined> => {
-              props.onClose?.();
-              navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session");
-              return undefined;
-            }}
+            createSessionAndOpen={createSkillSessionAndOpen}
           />
         );
         const pluginPackagesView = (

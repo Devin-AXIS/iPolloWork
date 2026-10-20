@@ -274,6 +274,58 @@ describe("video artifact entry routing", () => {
     }));
   });
 
+  test("shows an authored Skill card after the final answer and file resolution", () => {
+    const path = ".opencode/skills/note-organizer/SKILL.md";
+    const messages: UIMessage[] = [
+      {
+        id: "skill-write", role: "assistant", parts: [{
+          type: "dynamic-tool", toolName: "apply_patch", toolCallId: "skill-patch",
+          state: "output-available",
+          input: { patchText: `*** Begin Patch\n*** Add File: ${path}\n+# Notes\n*** End Patch` },
+          output: `Success. Updated the following files:\nA Users/31939/workspace/${path}`,
+        }],
+      },
+      textMessage("skill-result", "assistant", `已创建整理笔记 Skill：\n\`${path}\``),
+    ];
+    const target = {
+      id: `file:${path.toLowerCase()}`, kind: "file" as const, value: path,
+      name: "SKILL.md", preview: "markdown" as const, exists: true,
+      confidence: 100, reason: "resolved artifact",
+    };
+    const artifacts = getArtifactsFromMessages(messages, [target]);
+
+    expect(selectConversationArtifactCards(artifacts)).toEqual([
+      expect.objectContaining({ path, messageId: "skill-result", verifiedFromWrite: true, target }),
+    ]);
+    // The outputs panel also merges resolved file targets after the transcript.
+    expect(selectConversationArtifactCards(getArtifactsFromMessages(messages, [target], {
+      supplementalFiles: [path],
+    }))).toHaveLength(1);
+  });
+
+  test("keeps read-only skills and internal configuration out of output cards", () => {
+    const path = ".opencode/skills/existing/SKILL.md";
+    const target = {
+      id: `file:${path.toLowerCase()}`, kind: "file" as const, value: path,
+      name: "SKILL.md", preview: "markdown" as const, exists: true,
+      confidence: 100, reason: "resolved artifact",
+    };
+    const messages: UIMessage[] = [
+      {
+        id: "read-skill", role: "assistant", parts: [{
+          type: "dynamic-tool", toolName: "read", toolCallId: "read-skill",
+          state: "output-available", input: { filePath: path }, output: "# Existing skill",
+        }, {
+          type: "dynamic-tool", toolName: "write", toolCallId: "write-config",
+          state: "output-available", input: { filePath: ".opencode/config.md" }, output: "written",
+        }],
+      },
+      textMessage("read-result", "assistant", `已使用技能文件 \`${path}\``),
+    ];
+
+    expect(selectConversationArtifactCards(getArtifactsFromMessages(messages, [target]))).toEqual([]);
+  });
+
   test("keeps validated artifacts with the request that produced them while a follow-up is queued", () => {
     const presentationPath = "design/session-slides/entry.html";
     const websitePath = "design/session-site/entry.html";

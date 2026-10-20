@@ -11,7 +11,7 @@ import {
   type SharedProviderModelProfile,
   type SharedProviderProtocol,
 } from "@ipollowork/types/provider-credentials";
-import { openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
+import { OPENCODE_ZEN_PUBLIC_API_URL, openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
 import { CODEX_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { EnvService } from "./env-file.js";
@@ -73,7 +73,7 @@ const OPENCODE_PROVIDER: Omit<CodexHarnessProvider, "models"> = {
   id: "opencode",
   name: "iPolloWork Built-in Models",
   api: "openai-responses",
-  baseURL: "https://opencode.ai/zen/v1",
+  baseURL: OPENCODE_ZEN_PUBLIC_API_URL,
   apiKey: "public",
 };
 
@@ -82,7 +82,7 @@ type AccountProviderCatalog = Map<string, {
   models: SharedProviderModelProfile[];
 }>;
 
-const OPENAI_CODEX_OAUTH_BASE_URL = "https://chatgpt.com/backend-api/codex";
+export const OPENAI_CODEX_OAUTH_BASE_URL = "https://chatgpt.com/backend-api/codex";
 const LOOPBACK_PROXY_BYPASS_HOSTS: readonly string[] = ["127.0.0.1", "localhost", "::1"];
 
 function codexChildEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -303,6 +303,16 @@ export async function codexHarnessProviders(input: {
     });
   }
   return [...providers.values()];
+}
+
+async function readSourceProviders(config: ServerConfig, env: EnvService) {
+  const records = await env.list();
+  const disconnected = new Set(sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)));
+  const [openAiCodexOAuth, catalog] = await Promise.all([
+    resolveOpenAiCodexOAuthSession(config, { explicitlyDisconnected: disconnected.has("openai") }),
+    readAccountProviderCatalog(config).catch(() => new Map()),
+  ]);
+  return { records, catalog, providers: await codexHarnessProviders({ config, records, openAiCodexOAuth, catalog }) };
 }
 
 /**
@@ -976,26 +986,7 @@ export class CodexHarnessRuntime {
     providers: CodexHarnessProvider[];
     catalog: AccountProviderCatalog;
   }> {
-    const records = await this.#env.list();
-    const disconnected = new Set(
-      sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)),
-    );
-    const [openAiCodexOAuth, catalog] = await Promise.all([
-      resolveOpenAiCodexOAuthSession(this.#config, {
-        explicitlyDisconnected: disconnected.has("openai"),
-      }),
-      readAccountProviderCatalog(this.#config).catch(() => new Map()),
-    ]);
-    return {
-      records,
-      catalog,
-      providers: await codexHarnessProviders({
-        config: this.#config,
-        records,
-        openAiCodexOAuth,
-        catalog,
-      }),
-    };
+    return readSourceProviders(this.#config, this.#env);
   }
 
   async #start(prepared: {
@@ -1092,6 +1083,11 @@ export class CodexHarnessRuntimePool {
     this.#stopEnvironmentListener = this.#env.onChange(() => {
       void this.#closeAllRuntimes();
     });
+  }
+
+  /** Account provider discovery does not create or require a Codex workspace. */
+  async providers(): Promise<CodexHarnessProvider[]> {
+    return (await readSourceProviders(this.#config, this.#env)).providers;
   }
 
   forWorkspace(workspace: WorkspaceInfo): CodexHarnessRuntime {

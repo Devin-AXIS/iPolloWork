@@ -279,6 +279,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isUnstartedSession(session: RouteSession) {
+  if (session.enterpriseShare === true) return false;
   const title = session.title?.trim() ?? "";
   const hasDefaultTitle = isDefaultSessionTitle(title);
   const dsh = isRecord(session.dsh) ? session.dsh : null;

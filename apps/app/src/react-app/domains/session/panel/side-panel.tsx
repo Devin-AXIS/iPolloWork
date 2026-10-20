@@ -83,6 +83,7 @@ type SidePanelProps = {
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  pluginsLoading?: boolean;
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext, instruction?: string) => void | Promise<void>;
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null; sourceTabId?: string }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
@@ -104,12 +105,14 @@ export type SidePanelLauncherItem = {
   group: "content" | "studio";
   shortcut?: string;
   icon: "web" | "design" | "files" | "video" | "plugin-workshop" | "image-studio" | "video-console" | "workspace-app";
+  iconSrc?: string;
   disabled?: boolean;
   onClick: () => void;
 };
 
-export function SidePanelLauncherMenu({ launcherItems, expanded = false, isBrowserAvailable = false, onCreateBrowser }: {
+export function SidePanelLauncherMenu({ launcherItems, pluginsLoading = false, expanded = false, isBrowserAvailable = false, onCreateBrowser }: {
   launcherItems: SidePanelLauncherItem[];
+  pluginsLoading?: boolean;
   expanded?: boolean;
   isBrowserAvailable?: boolean;
   onCreateBrowser?: () => void;
@@ -139,6 +142,7 @@ export function SidePanelLauncherMenu({ launcherItems, expanded = false, isBrows
         align="end"
         positionerClassName={expanded ? "z-[70]" : undefined}
         className="w-56"
+        aria-busy={pluginsLoading}
       >
         {launcherItems.map((item, index) => {
           return (
@@ -157,6 +161,12 @@ export function SidePanelLauncherMenu({ launcherItems, expanded = false, isBrows
             </React.Fragment>
           );
         })}
+        {pluginsLoading ? (
+          <div role="status" aria-live="polite" data-testid="side-panel-plugins-loading" className="flex h-9 items-center gap-3 px-2.5 text-sm text-muted-foreground">
+            <span className="grid size-5 shrink-0 place-items-center"><Loader2 className="size-[18px] animate-spin motion-reduce:animate-none" aria-hidden="true" /></span>
+            <span>{t("common.loading")}</span>
+          </div>
+        ) : null}
         {launcherItems.length === 0 && isBrowserAvailable ? (
           <DropdownMenuItem
             onClick={onCreateBrowser}
@@ -172,6 +182,7 @@ export function SidePanelLauncherMenu({ launcherItems, expanded = false, isBrows
 }
 
 export function SidePanelLauncherIcon({ item }: { item: SidePanelLauncherItem }) {
+  const [failedIconSrc, setFailedIconSrc] = React.useState<string>();
   const icon = item.icon === "web"
     ? <Globe className="size-[18px]" />
     : item.icon === "design"
@@ -191,7 +202,9 @@ export function SidePanelLauncherIcon({ item }: { item: SidePanelLauncherItem })
       aria-hidden="true"
       className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:shrink-0"
     >
-      {React.cloneElement(icon, { strokeWidth: NAVIGATION_ICON_STROKE_WIDTH })}
+      {item.iconSrc && item.iconSrc !== failedIconSrc
+        ? <img src={item.iconSrc} alt="" className="size-[18px] rounded-sm object-contain" onError={() => setFailedIconSrc(item.iconSrc)} />
+        : React.cloneElement(icon, { strokeWidth: NAVIGATION_ICON_STROKE_WIDTH })}
     </span>
   );
 }
@@ -760,6 +773,7 @@ export function SidePanel({
   workspaceRoot,
   isRemoteWorkspace = false,
   launcherItems = [],
+  pluginsLoading = false,
   onAskAi,
   onSendWorkspaceAppMessage,
   onEditImage,
@@ -942,7 +956,7 @@ export function SidePanel({
                   ))}
                 </PanelTabList>
                 {isBrowserAvailable || launcherItems.length > 0 ? (
-                  <SidePanelLauncherMenu launcherItems={launcherItems} expanded={expanded} isBrowserAvailable={isBrowserAvailable} onCreateBrowser={() => createTab()} />
+                  <SidePanelLauncherMenu launcherItems={launcherItems} pluginsLoading={pluginsLoading} expanded={expanded} isBrowserAvailable={isBrowserAvailable} onCreateBrowser={() => createTab()} />
                 ) : null}
               </div>
             </div>
@@ -1097,7 +1111,9 @@ export function SidePanel({
           />
         ) : activeTab?.type === "plugin-studio" && client && workspaceId ? (
           <div className="min-h-0 flex-1 overflow-hidden">
-            <PluginWorkshopPanel
+            {pluginsLoading ? <div role="status" className="p-4 text-sm text-muted-foreground">{t("common.loading")}</div>
+              : !launcherItems.some(item => item.id === "plugin-workshop") ? <PanelEmpty message={t("plugin_workshop.unavailable")} />
+              : <PluginWorkshopPanel
               key={`${activeTab.sessionId}:${activeTab.id}`}
               tab={activeTab}
               client={client}
@@ -1109,7 +1125,7 @@ export function SidePanel({
                 const result = await onSendWorkspaceAppMessage({ ...input, sourceTabId: activeTab.id });
                 return typeof result === "boolean" ? result : result.accepted;
               } : undefined}
-            />
+            />}
           </div>
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -1130,10 +1146,10 @@ export function SidePanel({
   );
 }
 
-function PanelEmpty() {
+function PanelEmpty({ message = t("side_panel.empty_state") }: { message?: string } = {}) {
   return (
     <div className="flex h-full items-center justify-center p-4 text-center">
-      <p className="text-sm text-muted-foreground">{t("side_panel.empty_state")}</p>
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }

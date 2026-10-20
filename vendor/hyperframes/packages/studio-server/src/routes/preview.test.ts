@@ -102,6 +102,42 @@ async function getPreviewSignature(projectDir: string): Promise<string> {
 }
 
 describe("registerPreviewRoutes", () => {
+  it("keeps transition asset identity across bundled scene edits and invalidates replaced assets", async () => {
+    const projectDir = createProjectDir();
+    const main = join(projectDir, "index.html");
+    const scene = join(projectDir, "scene.html");
+    const asset = join(projectDir, "image.svg");
+    writeFileSync(main, '<html><head></head><body><section id="one">first</section>SCENE</body></html>');
+    writeFileSync(scene, '<section id="two">second</section>');
+    writeFileSync(asset, '<svg width="10"/>');
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, {
+      bundle: async (_dir, options) => {
+        options?.onRead?.(main);
+        options?.onRead?.(scene);
+        return readFileSync(main, "utf8").replace("SCENE", readFileSync(scene, "utf8"));
+      },
+    }));
+    const identities = async () => {
+      const response = await app.request("http://localhost/projects/demo/preview");
+      expect(response.status).toBe(200);
+      const doc = parseHTML(await response.text()).document;
+      return {
+        project: doc.querySelector('meta[name="hyperframes-project-signature"]')?.getAttribute("content"),
+        assets: doc.querySelector('meta[name="hyperframes-shader-cache-signature"]')?.getAttribute("content"),
+      };
+    };
+    const original = await identities();
+    expect(original.assets).toBeTruthy();
+    writeFileSync(main, readFileSync(main, "utf8").replace("first", "edited"));
+    writeFileSync(scene, '<section id="two">edited child</section>');
+    const edited = await identities();
+    expect(edited.project).not.toBe(original.project);
+    expect(edited.assets).toBe(original.assets);
+    writeFileSync(asset, '<svg width="20"/>');
+    expect((await identities()).assets).not.toBe(edited.assets);
+  });
+
   it("adds its <base> even when a script mentions one, and keeps an authored <base>", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

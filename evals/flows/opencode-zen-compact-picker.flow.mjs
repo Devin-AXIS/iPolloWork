@@ -1,13 +1,19 @@
 const EXPECTED_MODELS = [
   "Big Pickle",
-  "Hy3 Free",
-  "MiMo-V2.5 Free",
-  "Nemotron 3 Ultra Free",
+  "Space Bunny Free",
+  "Cat Jam Free",
+  "LongCat 2.5 Preview Free",
+  "Step 5 Preview Free",
+  "MiMo-V2.6-Flash Free",
   "Nemotron 3.5 Lightning Free",
-  "Ox Alpha Free",
+  "Muse Spark 1.3 Contributor Free",
 ];
 
 const REMOVED_MODELS = [
+  "Hy3 Free",
+  "Ox Alpha Free",
+  "MiMo-V2.5 Free",
+  "Nemotron 3 Ultra Free",
   "DeepSeek V4 Flash Free",
   "Laguna S 2.1 Free",
   "Ling-3.0-flash Free",
@@ -49,7 +55,7 @@ async function openCompactModelDirectory(ctx) {
   })()`);
   await ctx.waitFor(`Array.from(document.querySelectorAll('[role="dialog"][data-slot="popover-content"]'))
     .some((element) => element.innerText.includes("切换模型")
-      && element.innerText.includes("Ox Alpha Free"))`, {
+      && element.innerText.includes("Muse Spark 1.3 Contributor Free"))`, {
     timeoutMs: 30_000,
     label: "compact OpenCode Zen model directory",
   });
@@ -61,14 +67,14 @@ export default {
   kind: "user-facing",
   steps: [
     {
-      name: "The compact model directory includes the working Ox model",
+      name: "The compact model directory includes the current free models",
       run: async (ctx) => {
         await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 30_000,
           label: "window.__ipolloworkControl",
         });
-        await ctx.prove("The compact model directory shows all six supported OpenCode Zen models", {
-          voiceover: "切换模型列表现在包含 Ox Alpha Free，并与其他引擎使用同一份六模型名录。",
+        await ctx.prove("The compact model directory shows all eight current OpenCode Zen models", {
+          voiceover: "切换模型列表显示当前八个免费模型，已下线的旧模型不再出现在选项中。",
           action: async () => {
             await openCompactModelDirectory(ctx);
           },
@@ -89,7 +95,7 @@ export default {
                 : [];
               const lastExpectedModel = openCodeGroup
                 ? Array.from(openCodeGroup.querySelectorAll('[data-slot="command-item"]'))
-                    .find((item) => item.textContent?.includes("Ox Alpha Free"))
+                    .find((item) => item.textContent?.includes("Muse Spark 1.3 Contributor Free"))
                 : undefined;
               lastExpectedModel?.scrollIntoView({ block: "center" });
               const footerVisible = dialog
@@ -110,16 +116,16 @@ export default {
             ctx.assert(state.footerVisible, "The configure-model footer is still clipped.");
             await ctx.waitFor(`(() => {
               const model = Array.from(document.querySelectorAll('[data-slot="command-item"]'))
-                .find((item) => item.textContent?.includes("Ox Alpha Free"));
+                .find((item) => item.textContent?.includes("Muse Spark 1.3 Contributor Free"));
               if (!model) return false;
               const rect = model.getBoundingClientRect();
               return rect.height > 0 && rect.top >= 0 && rect.bottom <= window.innerHeight;
             })()`, { timeoutMs: 10_000, label: "visible final OpenCode Zen row" });
           },
           screenshot: {
-            name: "compact-opencode-zen-six-supported-models",
+            name: "compact-opencode-zen-current-free-models",
             fromSurface: true,
-            requireText: ["切换模型", "OpenCode Zen", "Ox Alpha Free", "配置模型"],
+            requireText: ["切换模型", "OpenCode Zen", "Muse Spark 1.3 Contributor Free", "配置模型"],
             rejectText: REMOVED_MODELS,
           },
         });

@@ -441,6 +441,64 @@ describe("session transcript sync", () => {
     ]);
   });
 
+  test.each(["optimistic", "completed", "failed"])("isolates a previous turn's stale error snapshot from a %s follow-up", (phase) => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    const staleSnapshot = snapshotWithMessages([
+      { id: "user-previous", role: "user", text: "first", created: 1 },
+      { id: "session-error:user-previous", role: "assistant", text: "The run was interrupted before it finished.", created: 2, parentUserMessageId: "user-previous" },
+    ]);
+    const finishFollowUp = () => {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a",
+        message: uiMessage("user-current", "user", "second", { created: 3 }),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a",
+        message: {
+          ...uiMessage("assistant-current", "assistant", "second completed"),
+          metadata: { ipollowork: { created: 4, completed: 5, parentUserMessageId: "user-current" } },
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, { type: "session.idle", sessionId: "session-a" });
+    };
+    try {
+      seedSessionState("workspace-a", staleSnapshot);
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "second", "user-current");
+      if (phase === "completed") finishFollowUp();
+      if (phase === "failed") {
+        __applySessionSyncEventForTest(syncInput, {
+          type: "message.upsert", sessionId: "session-a",
+          message: uiMessage("user-current", "user", "second", { created: 3 }),
+        });
+        __applySessionSyncEventForTest(syncInput, {
+          type: "session.error", sessionId: "session-a",
+          parentUserMessageId: "user-current", errorText: "second failed",
+        });
+      }
+
+      seedSessionState("workspace-a", staleSnapshot);
+
+      const activity = useSessionActivityStore.getState();
+      expect(activity.getSessionError("workspace-a", "session-a")).toBe(phase === "failed" ? "second failed" : null);
+      expect(activity.getRunOutcome("workspace-a", "session-a")).toBe(
+        phase === "optimistic" ? "running" : phase === "failed" ? "failed" : "completed",
+      );
+      if (phase === "optimistic") {
+        expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "busy" });
+        finishFollowUp();
+        expect(useSessionActivityStore.getState().getRunOutcome("workspace-a", "session-a")).toBe("completed");
+      }
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(transcript.find(message => message.id === "session-error:user-previous")?.parts)
+        .toEqual(expect.arrayContaining([expect.objectContaining({ text: "The run was interrupted before it finished." })]));
+      if (phase !== "failed") expect(transcript.some(message => message.id === "session-error:user-current")).toBe(false);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
   test("keeps an acknowledged live prompt busy when an older snapshot omits that turn", () => {
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
@@ -714,6 +772,117 @@ describe("session transcript sync", () => {
       "ipollowork-user-second",
     ]);
     expect(transcript.map(messageVisibleTextForTest)).toEqual(["123", "123"]);
+  });
+
+  test("acknowledges a stopped optimistic prompt before rendering its late native snapshot", () => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "当前是什么模型", "local-stopped");
+    settleInterruptedSessionRun("workspace-a", "session-a", "local-stopped");
+    const snapshot = snapshotWithMessages([
+      { id: "native-stopped", role: "user", text: "当前是什么模型" },
+      { id: "late-answer", role: "assistant", text: "late", parentUserMessageId: "native-stopped" },
+    ]);
+    const sanitized = sanitizeInterruptedSessionSnapshot("workspace-a", snapshot);
+    seedSessionState("workspace-a", sanitized);
+    const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+    expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot: sanitized }).map(message => message.id))
+      .toEqual(["native-stopped"]);
+    expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
+  });
+
+  test.each(["local-stopped", "native-stopped", undefined])("stop reconciles an already cached native confirmation when its active id is %s", (activeId) => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "first prompt", "local-stopped");
+    const snapshot = snapshotWithMessages([{ id: "native-stopped", role: "user", text: "first prompt", created: Date.now() }]);
+    // The snapshot may reach the display cache before its effect reconciles
+    // the optimistic transcript. Stop must reconcile this existing echo too.
+    getReactQueryClient().setQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"), (current = []) => [...current, ...snapshot.messages]);
+    settleInterruptedSessionRun("workspace-a", "session-a", activeId);
+    const sanitized = sanitizeInterruptedSessionSnapshot("workspace-a", snapshot);
+    seedSessionState("workspace-a", sanitized);
+    const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+    expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot: sanitized }).map(message => message.id))
+      .toEqual(["native-stopped"]);
+  });
+
+  test.each(["native-stopped", undefined])("a first-task stop with active id %s binds the visible prompt instead of its empty native shell", (activeId) => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "first prompt", "local-stopped");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a", message: { id: "native-stopped", role: "user", parts: [] },
+      });
+      // Initial project drafts are dispatched by the route, so the surface
+      // can Stop without owning the optimistic id. Native text arrives later.
+      settleInterruptedSessionRun("workspace-a", "session-a", activeId);
+      const snapshot = sanitizeInterruptedSessionSnapshot("workspace-a", snapshotWithMessages([
+        { id: "native-stopped", role: "user", text: "first prompt" },
+      ]));
+      seedSessionState("workspace-a", snapshot);
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot }).map(message => message.id))
+        .toEqual(["native-stopped"]);
+    } finally { release(); cleanup(); }
+  });
+
+  test.each([false, true])("acknowledges late stopped user parts with an existing native shell: %s", (shellBeforeStop) => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "当前是什么模型", "local-stopped");
+      if (shellBeforeStop) __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a", message: { id: "native-stopped", role: "user", parts: [] },
+      });
+      settleInterruptedSessionRun("workspace-a", "session-a", "local-stopped");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts", sessionId: "session-a", messageId: "native-stopped", partId: "native-text",
+        messageRole: "user", visibleAssistantOutput: false,
+        parts: [{ type: "text", text: "当前是什么模型", state: "done" }],
+      });
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map(message => message.id))
+        .toEqual(["native-stopped"]);
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a",
+        message: uiMessage("late-answer", "assistant", "late", { parentUserMessageId: "native-stopped" }),
+      });
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map(message => message.id))
+        .toEqual(["native-stopped"]);
+    } finally { release(); cleanup(); }
+  });
+
+  test("replayed stopped acknowledgments preserve a second identical submission and its final answer", () => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "local-first");
+    settleInterruptedSessionRun("workspace-a", "session-a", "local-first");
+    const first = snapshotWithMessages([{ id: "native-first", role: "user", text: "123", created: 100 }]);
+    seedSessionState("workspace-a", first);
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "local-second");
+    const snapshot = snapshotWithMessages([
+      { id: "native-first", role: "user", text: "123", created: 100 },
+      { id: "native-second", role: "user", text: "123", created: Date.now() + 1000 },
+      { id: "answer-second", role: "assistant", text: "second answer", parentUserMessageId: "native-second" },
+      { id: "answer-first-late", role: "assistant", text: "late", parentUserMessageId: "native-first" },
+    ]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const sanitized = sanitizeInterruptedSessionSnapshot("workspace-a", snapshot);
+      seedSessionState("workspace-a", sanitized);
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot: sanitized }).map(message => message.id))
+        .toEqual(["native-first", "native-second", "answer-second"]);
+    }
+  });
+
+  test("each immediate stop acknowledges only its own repeated prompt across full-history replay", () => {
+    const messages: Parameters<typeof snapshotWithMessages>[0] = [];
+    for (let turn = 1; turn <= 3; turn++) {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "123", `local-${turn}`);
+      settleInterruptedSessionRun("workspace-a", "session-a", `local-${turn}`);
+      messages.push({ id: `native-${turn}`, role: "user", text: "123", created: Date.now() });
+      const snapshot = sanitizeInterruptedSessionSnapshot("workspace-a", snapshotWithMessages(messages));
+      seedSessionState("workspace-a", snapshot);
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(transcript.map(message => message.id)).toEqual(messages.map(message => message.id));
+      expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot }).map(message => message.id))
+        .toEqual(messages.map(message => message.id));
+    }
   });
 
   test("keeps the stopped duplicate when a snapshot confirms only the newer identical prompt", () => {

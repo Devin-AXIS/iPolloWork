@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { Readable } from 'node:stream'
@@ -93,18 +93,28 @@ function state(service: OpsService): string {
   return JSON.stringify({ counts: db.counts(), accounts: db.listAccounts().map((item) => [item.id, item.sessionStatus, item.updatedAt]), campaigns: db.listCampaigns().map((item) => [item.id, item.status, item.updatedAt]), jobs: db.listJobs(100).map((item) => [item.id, item.status, item.updatedAt]), studio: db.database.prepare('SELECT max(updated_at) AS updated, count(*) AS count FROM post_drafts UNION ALL SELECT max(updated_at), count(*) FROM post_searches UNION ALL SELECT max(created_at), count(*) FROM assets').all() })
 }
 
-export function createApp(service: OpsService): Hono {
+export function createApp(service: OpsService, options: { uiRuntime?: string; origin?: string } = {}): Hono {
   const app = new Hono()
   const studio = new StudioService(service)
+  const nonce = randomBytes(24).toString('base64')
 
   app.use('*', secureHeaders({
     contentSecurityPolicy: {
-      defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https://*.xhscdn.com', 'https://*.xiaohongshu.com'], styleSrc: ["'self'"], scriptSrc: ["'self'"],
+      defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https://*.xhscdn.com', 'https://*.xiaohongshu.com'], styleSrc: ["'self'", `'nonce-${nonce}'`], scriptSrc: ["'self'", `'nonce-${nonce}'`],
       connectSrc: ["'self'"], frameAncestors: config.embedOrigins.length ? config.embedOrigins : ["'none'"], formAction: ["'self'"],
     },
     referrerPolicy: 'no-referrer',
     xFrameOptions: config.embedOrigins.length ? false : 'SAMEORIGIN',
   }))
+  app.use('*', async (c, next) => {
+    await next()
+    if (!c.res.headers.get('content-type')?.includes('text/html')) return
+    const html = (await c.res.text()).replace('</head>', `<meta name="ipollowork-ui-nonce" content="${nonce}">${options.uiRuntime ? `<script src="/ipollowork-ui-runtime.js" nonce="${nonce}"></script>` : ''}</head>`)
+    c.res = new Response(html, c.res)
+  })
+  // Only isolated development callers provide a bundled runtime. Production uses the host bridge.
+  const uiRuntime = options.uiRuntime
+  if (uiRuntime) app.get('/ipollowork-ui-runtime.js', c => c.body(uiRuntime, 200, { 'Content-Type': 'text/javascript' }))
   const uploadLimit = bodyLimit({ maxSize: 201 * 1024 * 1024, onError: c => c.json({ error: '素材文件过大' }, 413) })
   const jsonLimit = bodyLimit({ maxSize: 20 * 1024 * 1024, onError: c => c.json({ error: '请求内容过大' }, 413) })
   app.use('*', (c, next) => (c.req.path === '/api/assets' ? uploadLimit : jsonLimit)(c, next))
@@ -113,7 +123,8 @@ export function createApp(service: OpsService): Hono {
     if (hasApiToken(c.req.header('Authorization'))) return next()
     const origin = c.req.header('Origin')
     const referer = c.req.header('Referer')
-    if (origin !== config.origin && !referer?.startsWith(`${config.origin}/`)) return c.json({ error: '跨来源请求已拒绝' }, 403)
+    const expectedOrigin = options.origin ?? config.origin
+    if (origin !== expectedOrigin && !referer?.startsWith(`${expectedOrigin}/`)) return c.json({ error: '跨来源请求已拒绝' }, 403)
     return next()
   })
   app.use('/assets/*', serveStatic({ root: resolve(config.projectRoot, 'public'), rewriteRequestPath: (path) => path.replace(/^\/assets/, '') }))

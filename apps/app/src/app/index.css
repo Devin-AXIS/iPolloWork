@@ -64,10 +64,12 @@ img[src$="/ext-short-video.png"] {
 
 /* Keep monochrome plugin marks readable on both dark and light icon tiles. */
 :is(.dark, [data-theme="dark"]) img:is(
+  [src$="/ext-image-studio.png"],
   [src$="/ext-xiaohongshu.png"],
   [src$="/ext-douyin.png"],
   [src$="/ext-wechat-channels.png"],
   [src$="/ext-operation-recorder.png"],
+  [src$="/ext-plugin-workshop.svg"],
   [src$="/ext-onto.png"],
   [src$="/ext-short-video.png"]
 ) {

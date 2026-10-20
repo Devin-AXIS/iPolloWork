@@ -3,6 +3,8 @@ import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readin
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
+import { STUDIO_PREVIEW_TIME_PARAM, STUDIO_PREVIEW_FRAME_ONLY_PARAM } from "@hyperframes/core/studio-preview-mark";
+import { usePlayerStore } from "../store/playerStore";
 // NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
 // at module load, which throws under SSR. Defer the import to the mount effect
 // so it only runs in the browser.
@@ -27,6 +29,7 @@ interface PlayerProps {
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
   readonly ready: boolean;
+  currentTime: number;
 }
 
 const MEDIA_HAVE_CURRENT_DATA = 2;
@@ -192,7 +195,7 @@ function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
     if (!isVisuallyActive(childFrame)) continue;
     try {
       const childDoc = childFrame.contentDocument;
-      if (!childDoc || childDoc.readyState !== "complete") return true;
+      if (!childDoc || childDoc.readyState === "loading") return true;
       if (documentHasPendingVisualAssets(childDoc, depth + 1)) return true;
     } catch {
       // Cross-origin child frames cannot expose readiness. The two-paint gate
@@ -206,7 +209,9 @@ function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
 export function isDeferredFrameVisuallyReady(iframe: HTMLIFrameElement): boolean {
   try {
     const doc = iframe.contentDocument;
-    return Boolean(doc && doc.readyState === "complete" && !documentHasPendingVisualAssets(doc));
+    // Runtime readiness has already fired. Unrelated later-scene downloads can
+    // delay window.load, but only the restored frame's visible assets gate handoff.
+    return Boolean(doc && doc.readyState !== "loading" && !documentHasPendingVisualAssets(doc));
   } catch {
     return true;
   }
@@ -290,6 +295,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           window.location.origin,
         );
         applyPreviewVariablesToUrl(srcUrl);
+        const playback = usePlayerStore.getState();
+        const previewTime = playback.requestedSeekTime ?? playback.currentTime;
+        srcUrl.searchParams.set(STUDIO_PREVIEW_TIME_PARAM, String(previewTime));
+        if (!playback.isPlaying) srcUrl.searchParams.set(STUDIO_PREVIEW_FRAME_ONLY_PARAM, "1");
         // A staged refresh mounts a new player, but the browser can still serve
         // the previous HTML document when its URL is unchanged. Carry the
         // refresh token into the request so a persisted delete cannot be
@@ -301,6 +310,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.setAttribute("shader-capture-scale", "1");
         player.setAttribute("shader-loading", "player");
         player.setAttribute("src", src);
+        player.currentTime = previewTime;
         player.setAttribute("width", String(portrait ? 1080 : 1920));
         player.setAttribute("height", String(portrait ? 1920 : 1080));
         player.style.width = "100%";

@@ -25,6 +25,7 @@ export const FIRST_FRAME_READINESS_SCOPE: CompositionReadinessScope = "first-fra
 
 export interface CompositionReadinessOptions {
   scope?: CompositionReadinessScope;
+  currentTime?: number;
 }
 
 // HTMLMediaElement.HAVE_FUTURE_DATA per spec, used as a literal because not
@@ -58,13 +59,14 @@ function isActiveAtFirstFrame(
   element: Element,
   resolver: ReturnType<typeof createRuntimeStartTimeResolver>,
   timelineRegistry: Record<string, RuntimeTimelineLike | undefined>,
+  currentTime: number,
 ): boolean {
   let current: Element | null = element;
   while (current) {
     if (isTimedElement(current)) {
       if (
         !isRuntimeElementVisibleAt(current as HTMLElement, {
-          currentTime: 0,
+          currentTime,
           compositionDuration: Number.POSITIVE_INFINITY,
           canonicalFps: 30,
           exportRenderSeek: false,
@@ -84,15 +86,16 @@ function shouldIncludeAsset(
   scope: CompositionReadinessScope,
   resolver: ReturnType<typeof createRuntimeStartTimeResolver>,
   timelineRegistry: Record<string, RuntimeTimelineLike | undefined>,
+  currentTime: number,
 ): boolean {
   if (scope === "all") return true;
-  return isActiveAtFirstFrame(element, resolver, timelineRegistry);
+  return isActiveAtFirstFrame(element, resolver, timelineRegistry, currentTime);
 }
 
 /** One DOM pass for every declared-media asset not yet ready. */
 export function scanPendingCompositionAssets(
   doc: Document,
-  { scope = "all" }: CompositionReadinessOptions = {},
+  { scope = "all", currentTime = 0 }: CompositionReadinessOptions = {},
 ): PendingCompositionAssets {
   const runtimeWindow = doc.defaultView as
     | (Window & {
@@ -114,6 +117,7 @@ export function scanPendingCompositionAssets(
         defersMedia && el.preload !== "auto" ? FIRST_FRAME_READINESS_SCOPE : scope,
         resolver,
         runtimeWindow?.__timelines ?? {},
+        currentTime,
       ),
     )
     .filter((el) => el.readyState < HAVE_FUTURE_DATA);
@@ -125,6 +129,7 @@ export function scanPendingCompositionAssets(
         img.getAttribute("loading")?.toLowerCase() === "lazy" ? FIRST_FRAME_READINESS_SCOPE : scope,
         resolver,
         runtimeWindow?.__timelines ?? {},
+        currentTime,
       ),
     )
     .filter((img) => !img.complete);
@@ -170,9 +175,9 @@ function collectPendingCompositionAssets(
 export function mediaReadinessInput(
   doc: Document,
   signal: AbortSignal,
-  { scope = "all" }: CompositionReadinessOptions = {},
+  { scope = "all", currentTime = 0 }: CompositionReadinessOptions = {},
 ): Promise<void> | null {
-  const scan = scanPendingCompositionAssets(doc, { scope });
+  const scan = scanPendingCompositionAssets(doc, { scope, currentTime });
   if (scan.pendingMedia.length === 0 && scan.pendingImages.length === 0 && !scan.fontsLoading) {
     return null;
   }
@@ -314,7 +319,7 @@ export function settleCompositionReadiness(
   } = {},
 ): void {
   const inputs = opts.inputs ?? [
-    (inputDoc, signal) => mediaReadinessInput(inputDoc, signal, { scope: opts.scope }),
+    (inputDoc, signal) => mediaReadinessInput(inputDoc, signal, { scope: opts.scope, currentTime: opts.currentTime }),
     computeReadinessInput,
     paintAndIdleReadinessInput,
   ];

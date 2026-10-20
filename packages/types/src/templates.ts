@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ConversationWorkKind } from "./work-items.js";
 
 export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
 export const TEMPLATE_AUTHORING_ID_PREFIX = "ipollowork.authoring.";
@@ -33,6 +34,15 @@ export const templateCategorySchema = z.enum([
 ]);
 export const templateSourceTypeSchema = z.enum(["bundled", "local", "market"]);
 export const templateSurfaceSchema = z.enum(["design", "video"]);
+
+/** A prepared artifact's category takes precedence over words in its brief. */
+export function templateCategoryWorkKind(category: TemplateCategory): ConversationWorkKind | undefined {
+  if (category === "video") return "video";
+  if (category === "app" || category === "site") return "development";
+  if (category === "poster" || category === "cards") return "design";
+  if (category === "slides" || category === "report" || category === "article") return "document";
+  return undefined;
+}
 export const pptxCompatibilitySchema = z.enum(["native-editable"]);
 export const templateStyleSchema = z.enum([
   "minimal",

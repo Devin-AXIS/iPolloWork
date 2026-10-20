@@ -10,8 +10,10 @@ import {
 } from "./desktop";
 import {
   readEnterpriseConnections,
+  setEnterpriseConnectionAccount,
   type EnterpriseConnection,
 } from "./enterprise-connections";
+import { isEnterpriseConnectionActive } from "./enterprise-client";
 import {
   createiPolloWorkServerClient,
 } from "./ipollowork-server";
@@ -104,7 +106,7 @@ export function readActiveEnterpriseConnection(): EnterpriseConnection | null {
   const contextId = readActiveWorkContextId();
   if (contextId === PERSONAL_WORK_CONTEXT_ID) return null;
   const enterpriseId = contextId.slice("enterprise:".length);
-  return readEnterpriseConnections().find((connection) => connection.id === enterpriseId) ?? null;
+  return readEnterpriseConnections().find((connection) => connection.id === enterpriseId && isEnterpriseConnectionActive(connection)) ?? null;
 }
 
 export function workspaceBelongsToWorkContext(
@@ -169,6 +171,11 @@ function commitActiveContext(contextId: WorkContextId) {
   window.localStorage.setItem(ACTIVE_WORK_CONTEXT_KEY, contextId);
   window.localStorage.removeItem(LEGACY_ACTIVE_ENTERPRISE_KEY);
   window.dispatchEvent(new CustomEvent<WorkContextId>(workContextChangedEvent, { detail: contextId }));
+}
+
+export function clearEnterpriseLoginState() {
+  setEnterpriseConnectionAccount(null);
+  commitActiveContext(PERSONAL_WORK_CONTEXT_ID);
 }
 
 async function localServerClient() {
@@ -242,6 +249,9 @@ export async function activatePersonalWorkContext(): Promise<string | null> {
 }
 
 export async function activateEnterpriseWorkContext(connection: EnterpriseConnection): Promise<string | null> {
+  if (!isEnterpriseConnectionActive(connection) || !readEnterpriseConnections().some((item) =>
+    item.id === connection.id && item.membership.id === connection.membership.id
+    && item.session.token === connection.session.token)) throw new Error("enterprise_signin_required");
   const contextId = enterpriseWorkContextId(connection.id);
   let committed = false;
   dispatchSwitch("start", contextId);

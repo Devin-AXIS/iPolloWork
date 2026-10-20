@@ -9,8 +9,10 @@ import { deferMediaUntilDue } from "./preloadMedia";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
+import { parseVisualComponentData } from "../registry/componentData";
 import { assetUrl } from "./assetUrl";
 import { getVariables } from "./getVariables";
+import { onVariablesChange, updateVariables } from "./applyVariableBindings";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
 import { runScriptsAfterFonts } from "./afterFonts";
 import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
@@ -23,7 +25,10 @@ type HyperframeWindow = Window & {
     assetUrl: typeof assetUrl;
     fitTextFontSize: typeof fitTextFontSize;
     getVariables: typeof getVariables;
+    onVariablesChange: typeof onVariablesChange;
+    updateVariables: typeof updateVariables;
     pretext: typeof pretext;
+    parseVisualComponentData: typeof parseVisualComponentData;
     registerRuntimeDataHandler: typeof registerRuntimeDataHandler;
     setRuntimeData: typeof setRuntimeData;
     clearRuntimeData: typeof clearRuntimeData;
@@ -54,7 +59,10 @@ deferMediaUntilDue();
   assetUrl,
   fitTextFontSize,
   getVariables,
+  onVariablesChange,
+  updateVariables,
   pretext,
+  parseVisualComponentData,
   registerRuntimeDataHandler,
   setRuntimeData,
   clearRuntimeData,

@@ -4,7 +4,7 @@ import { searchSorts, type PostDraft, type StudioService } from './studio.js'
 
 type Nav = 'publishing' | 'comments' | 'analytics'
 
-const assetVersion = '20260911.3'
+const assetVersion = '20261015.2'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -47,10 +47,10 @@ function status(value: string): string {
 }
 
 function shell(title: string, active: Nav, body: string, pageData?: unknown, accountId?: number, accounts: AccountBinding[] = []): string {
-  const nav: Array<[Nav, string, string, string]> = [
-    ['publishing', '/publishing' + (accountId === undefined ? '' : `?account=${accountId}`), 'edit', '发帖'],
-    ['comments', '/comments' + (accountId === undefined ? '' : `?account=${accountId}`), 'messages', '评论'],
-    ['analytics', '/analytics' + (accountId === undefined ? '' : `?account=${accountId}`), 'chart-bar', '数据'],
+  const nav: Array<[Nav, string, string]> = [
+    ['publishing', '/publishing' + (accountId === undefined ? '' : `?account=${accountId}`), '发帖'],
+    ['comments', '/comments' + (accountId === undefined ? '' : `?account=${accountId}`), '评论'],
+    ['analytics', '/analytics' + (accountId === undefined ? '' : `?account=${accountId}`), '数据'],
   ]
   return `<!doctype html>
 <html lang="zh-CN">
@@ -64,16 +64,14 @@ function shell(title: string, active: Nav, body: string, pageData?: unknown, acc
     <link rel="stylesheet" href="/assets/app.css?v=${assetVersion}">
   </head>
   <body data-page="${active}">
-    <aside class="app-sidebar">
-      <a class="brand-mark" href="/publishing" aria-label="小红书运营台">小红书</a>
-      <nav aria-label="主要导航">${nav.map(([id, href, iconName, label]) => `<a href="${href}" ${active === id ? 'aria-current="page"' : ''}>${icon(iconName)}<span>${label}</span></a>`).join('')}</nav>
-      <a class="sidebar-profile" href="/publishing" aria-label="查看账号">d</a>
-    </aside>
-    <header class="app-topbar">
-      <a class="app-identity" href="/publishing" aria-label="小红书运营台"><span>小红书</span><div><strong>小红书运营台</strong><small>发帖、评论与数据，在一个工作台完成</small></div></a>
+    <div class="app-shell">
+    <header class="topbar">
+      <div><h1>小红书运营台</h1><p class="caption">内容、账号和运营任务，一个地方管理</p></div>
       ${accountBar(accounts, active, accounts.find(item => item.id === accountId) ?? accounts[0])}
     </header>
+    <div id="workbench-tabs"><nav aria-label="运营功能">${nav.map(([id, href, label]) => `<a href="${href}" data-tab="${id}" ${active === id ? 'aria-current="page"' : ''}>${label}</a>`).join('')}</nav></div>
     <main class="app-main"><p class="workbench-entry-notice" data-workbench-entry-notice role="status" hidden></p>${body}</main>
+    </div>
     ${accountDialogs(accounts.find(item => item.id === accountId) ?? accounts[0])}
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
     ${pageData === undefined ? '' : `<script type="application/json" id="page-data">${jsonScript(pageData)}</script>`}
@@ -91,11 +89,11 @@ function accountAvatar(account: AccountBinding): string {
 }
 
 function accountBar(accounts: AccountBinding[], panel: Nav, primary: AccountBinding | undefined): string {
-  const label = primary ? `${accountAvatar(primary)}<span><strong>${escapeHtml(primary.displayName)}</strong><small>${primary.sessionStatus === 'healthy' ? '<b></b> 已登录' : escapeHtml(statusLabel(primary.sessionStatus))}</small></span>${icon('chevron-down')}` : ''
   const accountHref = (id: number) => `/${panel}?account=${id}`
-  return `<section class="account-bar" aria-label="当前账号">
-    ${primary ? `<details class="account-picker"><summary class="account-switcher" aria-label="切换账号">${label}</summary><nav class="account-menu" aria-label="选择账号">${accounts.map(item => `<a href="${accountHref(item.id)}" ${item.id === primary.id ? 'aria-current="true"' : ''}>${accountAvatar(item)}<span><strong>${escapeHtml(item.displayName)}</strong><small>小红书号 ${escapeHtml(item.expectedProfileId)} · ${escapeHtml(statusLabel(item.sessionStatus))}</small></span>${item.id === primary.id ? icon('check', '当前账号') : ''}</a>`).join('')}</nav></details>` : '<span class="account-switcher is-empty">尚未添加账号</span>'}
-    <button class="add-account-link" type="button" data-open-account-form aria-label="添加账号" title="添加账号">${icon('plus')}<span>添加账号</span></button>${primary ? '<button class="icon-button" type="button" data-account-settings aria-label="管理当前账号" title="管理当前账号">⋯</button>' : ''}
+  return `<section class="account-tools" aria-label="当前账号">
+    <select id="account-library-picker" data-account-picker aria-label="切换账号" ${primary ? '' : 'disabled'}>${accounts.length ? accounts.map(item => `<option value="${accountHref(item.id)}" ${item.id === primary?.id ? 'selected' : ''}>${escapeHtml(item.displayName)}</option>`).join('') : '<option value="">暂无账号</option>'}</select>
+    ${primary ? '<button class="button button-secondary" type="button" data-account-settings><span data-ui-icon="Settings"></span>账号管理</button>' : ''}
+    <button class="button button-secondary" type="button" data-open-account-form><span data-ui-icon="Plus"></span>添加账号</button>
   </section>`
 }
 
@@ -120,7 +118,7 @@ function accountCard(account: AccountBinding): string {
 export function renderAnalytics(input: { accounts: AccountBinding[]; account: AccountBinding | undefined; content: ReturnType<OpsDatabase['accountContent']> | null; platform: PlatformSnapshot | null }): string {
   const { accounts, account, content, platform } = input
   const metric = (label: string, value: number | null | undefined) => `<div class="analytics-metric"><span>${label}</span><strong>${value == null ? '—' : value.toLocaleString('zh-CN')}</strong></div>`
-  const heading = `<header class="simple-heading"><div><span class="eyebrow">运营数据</span><h1>账号与文章数据</h1><p>按账号查看平台表现与运营台文章记录。</p></div>${account ? `<button class="button button-primary" type="button" data-verify-account="${account.id}" data-sync-analytics>同步数据</button>` : ''}</header>`
+  const heading = `<header class="simple-heading"><div><h1>账号与文章数据</h1><p>按账号查看平台表现与运营台文章记录。</p></div>${account ? `<button class="button button-primary" type="button" data-verify-account="${account.id}" data-sync-analytics>同步数据</button>` : ''}</header>`
   if (!account || !content) return shell('数据', 'analytics', `<div class="simple-page analytics-page">${heading}${empty('还没有接入账号', '请使用顶部“添加账号”完成接入，再查看对应的数据。')}</div>`, { accounts }, undefined, accounts)
   const profile = `<section class="surface panel analytics-profile">${accountAvatar(account)}<div><h2>${escapeHtml(account.displayName)} ${status(account.sessionStatus)}</h2><p>小红书号 ${escapeHtml(account.expectedProfileId)} · ${account.enabled ? '已启用' : '已暂停'}</p><p>${escapeHtml(account.position)} · ${escapeHtml(account.audience)}</p></div></section>`
   const platformView = `<section class="surface panel"><div class="section-heading"><div><h2>平台数据</h2><p>${platform ? `来源：${platform.source === 'browser' ? '浏览器可见页面' : 'CSV 导入'} · 更新于 ${formatDate(platform.importedAt)}` : '尚未同步或导入平台数据；“—”表示未知，不代表 0。'}</p></div></div><div class="analytics-metrics">${metric('粉丝数', platform?.followers)}${metric('获赞数', platform?.likes)}${metric('收藏数', platform?.collections)}${metric('已记录文章', platform ? platform.articles.length : null)}</div>
@@ -163,20 +161,20 @@ function mediaPreview(asset: MediaAsset, controls = false): string {
 }
 export function renderPublishing(input: StudioPage & { draftId?: string | undefined }): string {
   const { accounts, account, data } = input
-  const heading = `<header class="simple-heading"><div><span class="eyebrow">内容创作</span><h1>发帖</h1><p>从一个想法开始，让 AI 写内容、做素材，再发布到所选账号。</p></div><a class="button button-secondary" href="/publishing${account ? `?account=${account.id}&draft=new` : ''}">＋ 新建草稿</a></header>`
+  const heading = `<header class="simple-heading"><div><h1>帖子草稿</h1><p>准备内容，确认后交给 AI 发布</p></div><a data-new-draft class="button button-secondary" href="/publishing${account ? `?account=${account.id}&draft=new` : ''}">＋ 新建草稿</a></header>`
   if (!account || !data) return shell('发帖', 'publishing', `<div class="simple-page">${heading}${empty('请先接入并启用账号', '请使用顶部“添加账号”；每篇草稿和发布记录都属于一个明确账号。')}</div>`, { accounts }, undefined, accounts)
   const draft = data.drafts.find(item => item.id === input.draftId) ?? (input.draftId ? undefined : data.drafts[0])
   const locked = Boolean(draft?.jobId)
   const current: Partial<PostDraft> = draft ?? { mediaKind: 'image', assetIds: [], topics: [] }
-  const saved = `<section class="surface studio-presets"><label for="draft-picker">草稿与预设</label><select id="draft-picker"><option value="new">新建草稿</option>${data.drafts.map(item => `<option value="${item.id}" ${item.id === draft?.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${statusLabel(item.status)}</option>`).join('')}</select>${draft ? `<span>${status(draft.status)}</span><button type="button" class="button button-ghost" data-save-copy>另存一份</button>` : ''}</section>`
-  const media = `<section class="studio-media"><div class="section-heading"><div><h2>帖子素材</h2><p>图片最多 9 张；视频为 1 个 MP4。勾选后随草稿保存。</p></div></div><div class="studio-toolbar">${studioButton('image', '图片工作台生成', false, locked)}${studioButton('video', '视频工作台生成', false, locked)}<label class="button button-secondary upload-label">上传素材<input data-studio-upload type="file" accept="image/png,image/jpeg,image/webp,video/mp4" multiple ${locked ? 'disabled' : ''}></label></div><div class="media-picker">${data.assets.map(asset => `<label class="media-choice"><input type="checkbox" name="assetIds" value="${asset.id}" ${current.assetIds?.includes(asset.id) ? 'checked' : ''} ${locked ? 'disabled' : ''}>${mediaPreview(asset)}<span>${escapeHtml(asset.filename)}</span></label>`).join('') || '<p class="muted-copy">还没有素材。上传文件，或让图片、视频工作台生成。</p>'}</div></section>`
-  const body = `<div class="simple-page studio-page">${heading}${saved}<div class="publishing-grid"><form id="post-draft-form" class="surface panel studio-form"><fieldset ${locked ? 'disabled' : ''}><div class="setting-grid"><label class="field">预设名称<input name="name" maxlength="80" value="${escapeHtml(current.name)}" placeholder="例如：新品体验帖"></label><label class="field">帖子类型<select name="mediaKind"><option value="image" ${current.mediaKind === 'image' ? 'selected' : ''}>图文</option><option value="video" ${current.mediaKind === 'video' ? 'selected' : ''}>视频</option></select></label></div><label class="field">创作要求<textarea name="brief" rows="3" maxlength="4000" placeholder="写什么、给谁看、语气、素材画面要求…">${escapeHtml(current.brief)}</textarea></label><div class="studio-toolbar">${studioButton('draft', 'AI 写标题和描述')}</div><label class="field">标题<input name="title" maxlength="100" value="${escapeHtml(current.title)}" placeholder="一句话说清这篇帖子的亮点"></label><label class="field">描述<textarea name="body" rows="8" maxlength="10000" placeholder="输入正文，也可以让 AI 起草…">${escapeHtml(current.body)}</textarea></label><label class="field">话题（每行一个）<textarea name="topics" rows="2">${escapeHtml(lines(current.topics ?? []))}</textarea></label></fieldset>${media}<footer class="studio-footer"><span data-studio-feedback role="status">${locked ? statusLabel(draft?.status ?? '') + ' · 内容已锁定；修改请另存一份。' : '草稿尚未修改'}</span><div class="studio-toolbar"><button type="submit" class="button button-secondary" ${locked ? 'disabled' : ''}>保存草稿</button>${studioButton('publish', draft?.status === 'succeeded' ? '已发布' : locked ? '查看 / 继续执行' : '发布帖子', true, draft?.status === 'succeeded')}</div></footer></form><aside class="surface panel post-preview"><span class="eyebrow">帖子预览</span><div data-preview-media class="preview-media">${(current.assetIds ?? []).flatMap(id => data.assets.filter(asset => asset.id === id)).map(asset => mediaPreview(asset, true)).join('') || '<span>选择素材后在这里预览</span>'}</div><div class="preview-author">${accountAvatar(account)}<strong>${escapeHtml(account.displayName)}</strong></div><h2 data-preview-title>${escapeHtml(current.title || '你的帖子标题')}</h2><p data-preview-body>${escapeHtml(current.body || '在左侧填写内容，实时预览效果。')}</p><p class="preview-topics" data-preview-topics>${escapeHtml((current.topics ?? []).map(t => '#' + t.replace(/^#/, '')).join(' '))}</p><small>预览供参考，最终排版以小红书为准。</small></aside></div><p class="studio-hint">也可以在主软件对话或日程中指定账号、主题和素材要求，让 AI 完成这些步骤。</p></div>`
+  const saved = `<section class="studio-presets"><label for="draft-picker">草稿与预设</label><select id="draft-picker"><option value="new">新建草稿</option>${data.drafts.map(item => `<option value="${item.id}" ${item.id === draft?.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${statusLabel(item.status)}</option>`).join('')}</select>${draft ? `<span>${status(draft.status)}</span><button type="button" class="button button-ghost" data-save-copy>另存一份</button>` : ''}</section>`
+  const media = `<section class="studio-media"><div class="section-heading"><div><h2>帖子素材</h2><p>图片最多 9 张；视频为 1 个 MP4。勾选后随草稿保存。</p></div></div><div class="studio-toolbar">${studioButton('image', '图片工作台生成', false, locked)}${studioButton('video', '视频工作台生成', false, locked)}<label class="upload-label">上传素材<input aria-label="上传素材" data-studio-upload type="file" accept="image/png,image/jpeg,image/webp,video/mp4" multiple ${locked ? 'disabled' : ''}></label></div><div class="media-picker">${data.assets.map(asset => `<label class="media-choice"><input type="checkbox" name="assetIds" value="${asset.id}" ${current.assetIds?.includes(asset.id) ? 'checked' : ''} ${locked ? 'disabled' : ''}>${mediaPreview(asset)}<span>${escapeHtml(asset.filename)}</span></label>`).join('') || '<p class="muted-copy">还没有素材。上传文件，或让图片、视频工作台生成。</p>'}</div></section>`
+  const body = `<div class="simple-page studio-page"><div class="publishing-grid"><form id="post-draft-form" class="surface panel studio-form">${heading}${saved}<fieldset ${locked ? 'disabled' : ''}><div class="setting-grid"><label class="field">预设名称<input name="name" maxlength="80" value="${escapeHtml(current.name)}" placeholder="例如：新品体验帖"></label><label class="field">帖子类型<select name="mediaKind"><option value="image" ${current.mediaKind === 'image' ? 'selected' : ''}>图文</option><option value="video" ${current.mediaKind === 'video' ? 'selected' : ''}>视频</option></select></label></div><label class="field">创作要求<textarea name="brief" rows="3" maxlength="4000" placeholder="写什么、给谁看、语气、素材画面要求…">${escapeHtml(current.brief)}</textarea></label><div class="studio-toolbar">${studioButton('draft', 'AI 写标题和描述')}</div><label class="field">标题<input name="title" maxlength="100" value="${escapeHtml(current.title)}" placeholder="一句话说清这篇帖子的亮点"></label><label class="field">描述<textarea name="body" rows="8" maxlength="10000" placeholder="输入正文，也可以让 AI 起草…">${escapeHtml(current.body)}</textarea></label><label class="field">话题（每行一个）<textarea name="topics" rows="2">${escapeHtml(lines(current.topics ?? []))}</textarea></label></fieldset>${media}<footer class="studio-footer"><span data-studio-feedback role="status">${locked ? statusLabel(draft?.status ?? '') + ' · 内容已锁定；修改请另存一份。' : '草稿尚未修改'}</span><div class="studio-toolbar"><button type="submit" class="button button-secondary" ${locked ? 'disabled' : ''}>保存草稿</button>${studioButton('publish', draft?.status === 'succeeded' ? '已发布' : locked ? '查看 / 继续执行' : '发布帖子', true, draft?.status === 'succeeded')}</div></footer></form><aside class="surface panel post-preview"><h2>内容预览</h2><div data-preview-media class="preview-media">${(current.assetIds ?? []).flatMap(id => data.assets.filter(asset => asset.id === id)).map(asset => mediaPreview(asset, true)).join('') || '<span>选择素材后在这里预览</span>'}</div><div class="preview-author">${accountAvatar(account)}<strong>${escapeHtml(account.displayName)}</strong></div><h2 data-preview-title>${escapeHtml(current.title || '你的帖子标题')}</h2><p data-preview-body>${escapeHtml(current.body || '在左侧填写内容，实时预览效果。')}</p><p class="preview-topics" data-preview-topics>${escapeHtml((current.topics ?? []).map(t => '#' + t.replace(/^#/, '')).join(' '))}</p><small>预览供参考，最终排版以小红书为准。</small></aside></div><p class="studio-hint">也可以在主软件对话或日程中指定账号、主题和素材要求，让 AI 完成这些步骤。</p></div>`
   return shell('发帖', 'publishing', body, { accounts, accountId: account.id, draft: draft ?? null, state: input.revision }, account.id, accounts)
 }
 
 export function renderComments(input: StudioPage & { searchId?: string | undefined; interactions: Interaction[]; reviews: ReviewItem[] }): string {
   const { accounts, account, data } = input
-  const heading = `<header class="simple-heading"><div><span class="eyebrow">发现与交流</span><h1>评论</h1><p>找到相关帖子，为每一篇写有针对性的评论。</p></div></header>`
+  const heading = `<header class="simple-heading"><div><h1>评论</h1><p>找到相关帖子，为每一篇写有针对性的评论。</p></div></header>`
   if (!account || !data) return shell('评论', 'comments', `<div class="simple-page">${heading}${empty('请先接入并启用账号', '请使用顶部“添加账号”；接入后可搜索、筛选帖子和管理评论。')}</div>`, { accounts }, undefined, accounts)
   const search = data.searches.find(item => item.id === input.searchId) ?? data.searches[0]
   const metric = (n: number | null) => n === null ? '—' : n.toLocaleString('zh-CN')
@@ -190,12 +188,12 @@ export function renderComments(input: StudioPage & { searchId?: string | undefin
 }
 
 export function renderBrand(input: { accounts: AccountBinding[]; brand: BrandProfile; knowledge: KnowledgeItem[]; assets: MediaAsset[] }): string {
-  const body = `<div class="simple-page"><header class="simple-heading"><div><span class="eyebrow">高级设置</span><h1>内容参考</h1><p>在这里查看内容创作所需的事实、规则与素材。</p></div><a class="button button-secondary" href="/publishing">返回发帖</a></header><section class="surface panel"><h2>${escapeHtml(input.brand.name)}</h2><p class="muted-copy">${escapeHtml(input.brand.description || '暂无品牌说明')}</p><div class="reference-grid">${input.knowledge.map((item) => `<article><span>${escapeHtml(item.kind)}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.body)}</p></article>`).join('') || empty('没有内容参考', '没有参考资料也可以创建通用内容任务；系统不会编造产品事实。')}</div></section></div>`
+  const body = `<div class="simple-page"><header class="simple-heading"><div><h1>内容参考</h1><p>在这里查看内容创作所需的事实、规则与素材。</p></div><a class="button button-secondary" href="/publishing">返回发帖</a></header><section class="surface panel"><h2>${escapeHtml(input.brand.name)}</h2><p class="muted-copy">${escapeHtml(input.brand.description || '暂无品牌说明')}</p><div class="reference-grid">${input.knowledge.map((item) => `<article><span>${escapeHtml(item.kind)}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.body)}</p></article>`).join('') || empty('没有内容参考', '没有参考资料也可以创建通用内容任务；系统不会编造产品事实。')}</div></section></div>`
   return shell('内容参考', 'publishing', body, undefined, input.accounts[0]?.id, input.accounts)
 }
 
 export function renderJobs(input: { jobs: BrowserJob[]; accounts: AccountBinding[]; audit: Array<Record<string, unknown>> }): string {
-  const body = `<div class="simple-page"><header class="simple-heading"><div><span class="eyebrow">执行明细</span><h1>任务记录</h1><p>查看执行结果和错误信息，用于排查运行问题。</p></div><a class="button button-secondary" href="/publishing">返回账号</a></header><section class="surface panel"><div class="activity-list">${input.jobs.map((job) => { const account = input.accounts.find((item) => item.id === job.accountId); return `<article><span class="activity-icon">${icon('browser')}</span><div><strong>${escapeHtml(statusLabel(job.type))} · ${escapeHtml(account?.displayName ?? '账号已移除')}</strong><p>${escapeHtml(job.error ?? job.resultUrl ?? '等待执行')}</p><small>${formatDate(job.updatedAt)}</small></div>${status(job.status)}</article>` }).join('') || empty('还没有执行记录', '安排任务后，执行过程会记录在这里。')}</div></section></div>`
+  const body = `<div class="simple-page"><header class="simple-heading"><div><h1>任务记录</h1><p>查看执行结果和错误信息，用于排查运行问题。</p></div><a class="button button-secondary" href="/publishing">返回账号</a></header><section class="surface panel"><div class="activity-list">${input.jobs.map((job) => { const account = input.accounts.find((item) => item.id === job.accountId); return `<article><span class="activity-icon">${icon('browser')}</span><div><strong>${escapeHtml(statusLabel(job.type))} · ${escapeHtml(account?.displayName ?? '账号已移除')}</strong><p>${escapeHtml(job.error ?? job.resultUrl ?? '等待执行')}</p><small>${formatDate(job.updatedAt)}</small></div>${status(job.status)}</article>` }).join('') || empty('还没有执行记录', '安排任务后，执行过程会记录在这里。')}</div></section></div>`
   return shell('任务记录', 'publishing', body, undefined, input.accounts[0]?.id, input.accounts)
 }
 

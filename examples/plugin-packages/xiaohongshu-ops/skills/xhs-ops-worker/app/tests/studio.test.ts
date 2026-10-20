@@ -31,6 +31,22 @@ function fixture() {
   return { db, ops, studio, app, author, other, search, results, post }
 }
 
+test('shared UI stays host-owned in production and development runtime uses the service nonce', async () => {
+  const f = fixture()
+  try {
+    const response = await f.app.request('/publishing')
+    const html = await response.text()
+    const nonce = html.match(/name="ipollowork-ui-nonce" content="([^"]+)"/)?.[1]
+    assert.ok(nonce)
+    assert.ok(response.headers.get('content-security-policy')?.includes(`'nonce-${nonce}'`))
+    assert.doesNotMatch(html, /ipollowork-ui-runtime\.js/)
+    const preview = createApp(f.ops, { uiRuntime: '/* explicit bundled preview */' })
+    const previewHtml = await (await preview.request('/publishing')).text()
+    assert.match(previewHtml, /src="\/ipollowork-ui-runtime\.js" nonce="[^"]+"/)
+    assert.equal(await (await preview.request('/ipollowork-ui-runtime.js')).text(), '/* explicit bundled preview */')
+  } finally { f.db.close() }
+})
+
 test('native draft writes preserve Unicode and omitted fields without a session, and reject lossy overwrites atomically', async () => {
   const f = fixture()
   try {

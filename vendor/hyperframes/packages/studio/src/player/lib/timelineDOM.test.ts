@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { resolveTimelineEditingMode } from "../components/timelineLayerPresentation";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { ClipManifestClip } from "./playbackTypes";
 import {
   collectDomClipChildren,
@@ -12,6 +12,7 @@ import {
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
 import {
+  collectDomEditLayerItems,
   resolveDomEditSelection,
   refreshDomEditSelection,
 } from "../../components/editor/domEditing";
@@ -442,6 +443,42 @@ describe("timeline manifest translation", () => {
     expect(selection?.element).toBe(heading);
     expect(selection?.selector).toBe("h2");
     expect(selection?.sourceFile).toBe("compositions/outro.html");
+  });
+
+  test("indexes repeated selectors once per source and rebuilds after structural edits", () => {
+    document.body.innerHTML = `<main data-composition-id="main"><section id="a" data-start="0" data-duration="5" data-composition-id="a" data-composition-file="a.html">${"<span>Value</span>".repeat(100)}</section><section id="b" data-start="5" data-duration="5" data-composition-id="b" data-composition-file="b.html"><span>Other</span></section></main>`;
+    const a = document.getElementById("a");
+    const b = document.getElementById("b");
+    if (!a || !b) throw new Error("Missing fixture");
+    const clips = [{ ...MANIFEST_CLIP, id: "a" }, { ...MANIFEST_CLIP, id: "b" }];
+    const hosts = new Map([[clips[0], a], [clips[1], b]]);
+    const query = vi.spyOn(document, "querySelectorAll");
+    try {
+      const first = collectDomClipChildren(document, clips, hosts);
+      expect(first.children.filter(child => child.sourceFile === "a.html").map(child => child.selectorIndex)).toEqual(Array.from({ length: 100 }, (_, i) => i));
+      expect(first.children.find(child => child.sourceFile === "b.html")?.selectorIndex).toBe(0);
+      expect(query.mock.calls.filter(([selector]) => selector === "span")).toHaveLength(2);
+      a.prepend(document.createElement("span"));
+      const second = collectDomClipChildren(document, clips, hosts);
+      expect(second.children.filter(child => child.sourceFile === "a.html")).toHaveLength(101);
+      expect(second.children.filter(child => child.sourceFile === "a.html").at(-1)?.selectorIndex).toBe(100);
+    } finally { query.mockRestore(); }
+  });
+
+  test("the live layer panel also indexes repeated selectors once per source", () => {
+    document.body.innerHTML = `<main data-composition-id="main"><section data-composition-id="a" data-composition-file="a.html">${"<span>Value</span>".repeat(10)}</section><section data-composition-id="b" data-composition-file="b.html">${"<span>Other</span>".repeat(10)}</section></main>`;
+    const root = document.querySelector("main");
+    if (!root) throw new Error("Missing fixture");
+    const query = vi.spyOn(document, "querySelectorAll");
+    try {
+      const rows = collectDomEditLayerItems(root, { activeCompositionPath: "index.html", isMasterView: true });
+      expect(rows.filter(row => row.sourceFile === "a.html").map(row => row.selectorIndex)).toEqual(Array.from({ length: 10 }, (_, i) => i));
+      expect(rows.filter(row => row.sourceFile === "b.html").map(row => row.selectorIndex)).toEqual(Array.from({ length: 10 }, (_, i) => i));
+      expect(query.mock.calls.filter(([selector]) => selector === "span")).toHaveLength(2);
+      root.querySelector("section")?.prepend(document.createElement("span"));
+      const updated = collectDomEditLayerItems(root, { activeCompositionPath: "index.html", isMasterView: true });
+      expect(updated.filter(row => row.sourceFile === "a.html").at(-1)?.selectorIndex).toBe(10);
+    } finally { query.mockRestore(); }
   });
 
   test("keeps repeated plain-tag children mapped to their exact timeline row", async () => {

@@ -11,6 +11,7 @@ export function getSourceScopedSelectorIndex(
   selector: string | undefined,
   sourceFile: string | undefined,
   resolveSourceFile: (candidate: Element) => string | undefined,
+  cache?: Map<string, Map<Element, number>>,
 ): number | undefined {
   if (!selector || selector.startsWith("#") || selector.startsWith("[data-composition-id=")) {
     return undefined;
@@ -18,11 +19,16 @@ export function getSourceScopedSelectorIndex(
 
   try {
     const scope = sourceFile ?? "index.html";
-    const matches = Array.from(doc.querySelectorAll(selector)).filter(
-      (candidate) => (resolveSourceFile(candidate) ?? "index.html") === scope,
-    );
-    const matchIndex = matches.indexOf(el);
-    return matchIndex >= 0 ? matchIndex : undefined;
+    const key = JSON.stringify([scope, selector]);
+    let indexes = cache?.get(key);
+    if (!indexes) {
+      indexes = new Map();
+      for (const candidate of doc.querySelectorAll(selector)) {
+        if ((resolveSourceFile(candidate) ?? "index.html") === scope) indexes.set(candidate, indexes.size);
+      }
+      cache?.set(key, indexes);
+    }
+    return indexes.get(el);
   } catch {
     return undefined;
   }

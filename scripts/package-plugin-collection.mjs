@@ -10,6 +10,7 @@ import { catalogPluginPackageIds, resolveBundledPluginPackageRoot } from "../app
 import { previewPluginPackage, assertPluginPackageSafeForImport } from "../apps/server/src/plugin-package-lifecycle.ts";
 import { withMaterializedPluginPackageUpload } from "../apps/server/src/plugin-package-upload.ts";
 import { readPluginPackageArchive } from "../apps/app/src/app/lib/plugin-package-archive.ts";
+import { pluginPackageIconFiles } from "../apps/desktop/scripts/plugin-package-icons.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const requireFromApp = createRequire(new URL("../apps/app/package.json", import.meta.url));
@@ -37,7 +38,7 @@ const keys = !inventoryOnly && options.has("--keyring") ? JSON.parse(await readF
 if (release && (!release.privateKey || !release.keyId || !release.publisher?.id || !release.publisher?.name)) throw new Error("Release config requires privateKey, keyId and publisher {id, name}");
 const output = resolve(options.get("--out") ?? join(repo, ".ipollowork-dev/plugin-releases", new Date().toISOString().replace(/[:.]/g, "-")));
 if (await stat(output).catch(error => { if (error.code === "ENOENT") return null; throw error; })) throw new Error("EEXIST: output directory already exists: " + output);
-const closed = new Set(["operation-recorder", "labelu-data-annotation", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]);
+const closed = new Set(["operation-recorder", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]);
 function run(script, scriptArgs = []) {
   const result = spawnSync(process.execPath, [script, ...scriptArgs], {
     cwd: repo, encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024,
@@ -128,6 +129,10 @@ try {
   const collection = JSON.stringify({ schemaVersion: 1, signed: !inventoryOnly, cloudPublished: false, plugins: entries }, null, 2) + "\n";
   await writeFile(join(output, "collection.json"), collection);
   if (!inventoryOnly) {
+    for (const [file, bytes] of await pluginPackageIconFiles()) {
+      await writeFile(join(output, file), bytes);
+      zip.file(file, bytes);
+    }
     const sums = entries.map(entry => entry.artifact.sha256 + "  " + entry.artifact.file).join("\n") + "\n";
     await writeFile(join(output, "SHA256SUMS"), sums);
     zip.file("collection.json", collection); zip.file("SHA256SUMS", sums);

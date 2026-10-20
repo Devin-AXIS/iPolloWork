@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import {
+  OPENCODE_ZEN_PUBLIC_API_URL,
   openCodeZenPublicModels,
   openCodeZenPublicModelUsesSessionAffinity,
 } from "@ipollowork/types/opencode-zen-public-models";
@@ -50,6 +51,9 @@ function runtimeProviderMap(
   return {
     ...providers,
     opencode: {
+      // Keep the managed roster and its endpoint together, including engines
+      // whose in-memory models.dev catalog still points at the older route.
+      api: OPENCODE_ZEN_PUBLIC_API_URL,
       ...currentOpenCode,
       whitelist: publicModels.map((model) => model.id),
       models: Object.fromEntries(

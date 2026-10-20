@@ -2,7 +2,8 @@
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Player } from "./Player";
+import { Player, isDeferredFrameVisuallyReady } from "./Player";
+import { usePlayerStore } from "../store/playerStore";
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -52,6 +53,39 @@ async function advanceOverlay() {
 }
 
 describe("official player readiness and iframe load ordering", () => {
+  it("starts a paused replacement at the current playhead and requests only that frame", async () => {
+    usePlayerStore.setState({ currentTime: 45, requestedSeekTime: null, isPlaying: false });
+    try {
+      await act(async () => root.render(<Player key="current-frame" projectId="proof" onLoad={vi.fn()} />));
+      const current = container.querySelector("hyperframes-player");
+      expect(current?.getAttribute("src")).toContain("__hf_preview_time=45");
+      expect(current?.getAttribute("src")).toContain("__hf_preview_frame_only=1");
+    } finally {
+      usePlayerStore.setState({ currentTime: 0, requestedSeekTime: null, isPlaying: false });
+    }
+  });
+
+  it("reveals a parsed, visually ready frame without waiting for unrelated downloads", () => {
+    const iframe = player.iframeElement;
+    const doc = iframe.contentDocument!;
+    Object.defineProperty(doc, "readyState", { configurable: true, value: "interactive" });
+    Object.defineProperty(doc, "fonts", { configurable: true, value: { status: "loaded" } });
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(true);
+
+    const image = doc.createElement("img");
+    Object.defineProperty(image, "checkVisibility", { value: () => true });
+    Object.defineProperty(image, "complete", { configurable: true, value: false });
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 0 });
+    doc.body.append(image);
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(false);
+
+    Object.defineProperty(image, "complete", { value: true });
+    Object.defineProperty(image, "naturalWidth", { value: 100 });
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(true);
+    Object.defineProperty(doc, "readyState", { value: "loading" });
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(false);
+  });
+
   it("keeps a ready preview usable after a late iframe load", async () => {
     await act(async () => {
       player.ready = true;

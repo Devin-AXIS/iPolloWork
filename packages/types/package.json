@@ -4,8 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./video-enhancement": { "types": "./src/video-enhancement.ts", "development": "./src/video-enhancement.ts", "bun": "./src/video-enhancement.ts", "default": "./dist/video-enhancement.js" },
-    "./reference-context": { "types": "./src/reference-context.ts", "development": "./src/reference-context.ts", "bun": "./src/reference-context.ts", "default": "./dist/reference-context.js" },
+    "./video-enhancement": {
+      "types": "./src/video-enhancement.ts",
+      "development": "./src/video-enhancement.ts",
+      "bun": "./src/video-enhancement.ts",
+      "default": "./dist/video-enhancement.js"
+    },
+    "./reference-context": {
+      "types": "./src/reference-context.ts",
+      "development": "./src/reference-context.ts",
+      "bun": "./src/reference-context.ts",
+      "default": "./dist/reference-context.js"
+    },
     "./video-generation": {
       "types": "./src/video-generation.ts",
       "development": "./src/video-generation.ts",
@@ -97,6 +107,12 @@
       "bun": "./src/project-workspace.ts",
       "default": "./dist/project-workspace.js"
     },
+    "./enterprise": {
+      "types": "./src/enterprise.ts",
+      "development": "./src/enterprise.ts",
+      "bun": "./src/enterprise.ts",
+      "default": "./dist/enterprise.js"
+    },
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",
@@ -108,6 +124,12 @@
       "development": "./src/work-items.ts",
       "bun": "./src/work-items.ts",
       "default": "./dist/work-items.js"
+    },
+    "./skills": {
+      "types": "./src/skills.ts",
+      "development": "./src/skills.ts",
+      "bun": "./src/skills.ts",
+      "default": "./dist/skills.js"
     }
   },
   "files": [

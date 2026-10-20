@@ -350,7 +350,8 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
         if (input.signal?.aborted) return { sessionId: input.sessionId };
         const result = await client.session.promptAsync({
           sessionID: input.sessionId,
-          messageID: input.clientUserMessageId,
+          // Keep optimistic IDs local. OpenCode mints the authoritative ID
+          // used by its provider request; session sync reconciles the echo.
           parts: promptParts,
           model: input.model,
           agent,

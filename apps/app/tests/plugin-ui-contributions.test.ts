@@ -13,6 +13,21 @@ import {
 } from "@ipollowork/types/plugins";
 
 describe("plugin UI contributions", () => {
+  test("the locally installable workshop registers its host panel only while its resource is enabled", async () => {
+    const manifest = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/plugin-workshop/ipollowork.plugin.json", import.meta.url)).json());
+    const item: iPolloWorkPluginPackageItem = {
+      pluginId: manifest.id, name: manifest.name, version: "0.1.0", manifest,
+      enabled: true, disabledResourceIds: [], previousVersion: null,
+      integrity: { sha256: "0".repeat(64), status: "unsigned" },
+    };
+    expect(resolveInstalledPluginContributions([item]).sessionPanels).toEqual([
+      { id: "plugin-workshop", pluginId: "plugin-workshop", label: "插件工坊" },
+    ]);
+    expect(resolveInstalledPluginContributions([]).sessionPanels).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, enabled: false }]).sessionPanels).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, disabledResourceIds: ["plugin-workshop"] }]).sessionPanels).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, manifest: { ...manifest, contributions: [] } }]).sessionPanels).toEqual([]);
+  });
   test("an authenticated profile cannot be downgraded by its stale login tab", () => {
     const tab = (id: string, url: string, profileId = "social:profile-a"): BrowserPanelTab => ({
       id, type: "browser", label: id, url, profileId, favicon: null,
@@ -122,12 +137,16 @@ describe("plugin UI contributions", () => {
       }],
     };
 
+    item.manifest = { ...manifest, icon: { src: "/canvas.svg", simpleIconSlug: "figma" } };
     const result = resolveInstalledPluginContributions([item]);
 
     expect(result.workspaceApps).toHaveLength(1);
     expect(result.settingsPages).toHaveLength(1);
+    expect(result.workspaceApps[0]).toMatchObject({ iconSrc: "/canvas.svg", iconSlug: "figma" });
+    expect(result.settingsPages[0]).toMatchObject({ iconSrc: "/canvas.svg", iconSlug: "figma" });
     expect(result.conversationTemplates).toMatchObject([{ mode: "work", label: "Plan on a canvas" }]);
     expect(resolveInstalledPluginContributions([{ ...item, enabled: false }])).toEqual({
+      sessionPanels: [],
       workspaceApps: [],
       settingsPages: [],
       conversationTemplates: [],
@@ -178,6 +197,7 @@ describe("plugin UI contributions", () => {
     const canvas = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json());
     const manifest = parsePluginPackageManifest({
       ...canvas, id: "labelu-data-annotation", name: "数据标注实训云", contributions: [],
+      icon: { simpleIconSlug: "labelstudio" },
       resources: [{ type: "local-service", id: "annotation-service", path: "service/dist/data-annotation.mjs",
         actions: [{ id: "open-workbench", title: "打开工作台", description: "启动工作台并返回地址", effect: "read", inputSchema: { type: "object", properties: {} } }] }],
     });
@@ -188,6 +208,7 @@ describe("plugin UI contributions", () => {
     };
     expect(resolveInstalledPluginContributions([item]).workspaceApps).toMatchObject([{
       pluginId: manifest.id, label: "数据标注实训云", action: "open-workbench",
+      iconSlug: "labelstudio",
       resource: { type: "local-service", id: "annotation-service" },
     }]);
     expect(resolveInstalledPluginContributions([{ ...item, enabled: false }]).workspaceApps).toEqual([]);
@@ -234,6 +255,7 @@ describe("plugin UI contributions", () => {
     };
 
     expect(resolveInstalledPluginContributions([item])).toEqual({
+      sessionPanels: [],
       workspaceApps: [],
       settingsPages: [],
       conversationTemplates: [],

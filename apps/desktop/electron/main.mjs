@@ -2758,6 +2758,7 @@ const desktopCommandHandlers = {
       const suspendController = new AbortController();
       const signal = AbortSignal.any([suspendController.signal, AbortSignal.timeout(timeoutMs)]);
       const method = typeof init.method === "string" ? init.method.toUpperCase() : "GET";
+      if (init.body instanceof ArrayBuffer && init.body.byteLength > 50 * 1024 * 1024) throw new Error("Upload exceeds the 50 MB package limit.");
       activeDesktopFetchControllers.add(suspendController);
       try {
         for (let attempt = 0; ; attempt += 1) {
@@ -2765,7 +2766,8 @@ const desktopCommandHandlers = {
             const response = await electronNet.fetch(url, {
               method,
               headers: init.headers && typeof init.headers === "object" ? init.headers : undefined,
-              body: typeof init.body === "string" ? init.body : undefined,
+              body: typeof init.body === "string" || init.body instanceof ArrayBuffer ? init.body : undefined,
+              redirect: init.redirect === "error" ? "error" : "follow",
               signal,
               credentials: "omit",
               cache: "no-store",

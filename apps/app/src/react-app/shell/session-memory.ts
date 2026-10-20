@@ -107,6 +107,7 @@ export function readSessionDirectoryCache(): Record<string, RouteSession[]> {
         if (typeof record.parentID === "string") session.parentID = record.parentID;
         if (typeof record.directory === "string") session.directory = record.directory;
         if (typeof record.agent === "string") session.agent = record.agent;
+        if (record.enterpriseShare === true) session.enterpriseShare = true;
         if (record.time && typeof record.time === "object" && !Array.isArray(record.time)) {
           const time = record.time as Record<string, unknown>;
           session.time = {
@@ -130,6 +131,7 @@ export function writeSessionDirectoryCache(sessionsByWorkspaceId: Record<string,
     sessions.slice(0, 200).map((session) => ({
       id: session.id,
       title: session.title,
+      ...(session.enterpriseShare ? { enterpriseShare: true } : {}),
       ...(session.slug ? { slug: session.slug } : {}),
       ...(session.parentID ? { parentID: session.parentID } : {}),
       ...(session.directory ? { directory: session.directory } : {}),

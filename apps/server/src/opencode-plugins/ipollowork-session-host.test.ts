@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { join, resolve } from "node:path";
 import { iPolloWorkSessionHost } from "./ipollowork-session-host.js";
 
 const originalFetch = globalThis.fetch;
@@ -6,6 +7,7 @@ const originalEnvironment = {
   url: process.env.IPOLLOWORK_SERVER_URL,
   token: process.env.IPOLLOWORK_SERVER_TOKEN,
   workspaceId: process.env.IPOLLOWORK_WORKSPACE_ID,
+  dataHome: process.env.XDG_DATA_HOME,
 };
 
 afterEach(() => {
@@ -14,10 +16,23 @@ afterEach(() => {
     IPOLLOWORK_SERVER_URL: originalEnvironment.url,
     IPOLLOWORK_SERVER_TOKEN: originalEnvironment.token,
     IPOLLOWORK_WORKSPACE_ID: originalEnvironment.workspaceId,
+    XDG_DATA_HOME: originalEnvironment.dataHome,
   })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+});
+
+test("rejects unbounded runtime-root searches while allowing specific component and project directories", async () => {
+  const root = resolve("runtime-fixture");
+  process.env.XDG_DATA_HOME = join(root, "xdg", "data");
+  const before = (await iPolloWorkSessionHost())["tool.execute.before"];
+  for (const path of [root, process.env.XDG_DATA_HOME, join(process.env.XDG_DATA_HOME, "opencode")]) {
+    await expect(before({ tool: "grep" }, { args: { path } })).rejects.toThrow("specific project/source directory");
+  }
+  await before({ tool: "grep" }, { args: { path: join(root, "home", "project", "compositions") } });
+  await before({ tool: "read" }, { args: { path: root } });
+  await before({ tool: "grep" }, { args: {} });
 });
 
 test("binds each native host call to the invoking OpenCode session", async () => {
