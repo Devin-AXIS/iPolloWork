@@ -114,26 +114,6 @@ describe("enterprise connections", () => {
     expect(readEnterpriseConnections()).toHaveLength(1);
   });
 
-  test("entering a new enterprise on desktop leaves Projects empty without creating a workspace", async () => {
-    saveEnterpriseConnection(connectedEnterprise);
-    const calls: string[] = [];
-    Object.defineProperty(window, "__IPOLLOWORK_ELECTRON__", { value: {
-      invokeDesktop: async (command: string) => {
-        calls.push(command);
-        if (command === "workspaceBootstrap") return {
-          workspaces: [{ id: "personal", name: "Personal", path: "/test/Personal", workspaceType: "local" }],
-          selectedId: "personal", activeId: "personal",
-        };
-        throw new Error(`Unexpected desktop command: ${command}`);
-      },
-    } });
-    expect(await activateEnterpriseWorkContext(connectedEnterprise)).toBeNull();
-    expect(calls).toEqual(["workspaceBootstrap"]);
-    expect(readActiveWorkContextId()).toBe("enterprise:ent_medical");
-    expect(readActiveEnterpriseConnection()?.id).toBe(connectedEnterprise.id);
-    expect(JSON.parse(window.localStorage.getItem("ipollowork.work-context-projects.v1") ?? "{}")).not.toHaveProperty("enterprise:ent_medical");
-  });
-
   test.each(["invited", "suspended", "left"] as const)("%s enterprise members have no active enterprise features", async (status) => {
     const inactive = { ...connectedEnterprise, membership: { ...connectedEnterprise.membership, status } };
     saveEnterpriseConnection(inactive);

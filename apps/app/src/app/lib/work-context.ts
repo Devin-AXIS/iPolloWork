@@ -1,6 +1,9 @@
 import {
+  getDesktopHomeDir,
   ipolloworkServerInfo,
+  joinDesktopPath,
   workspaceBootstrap,
+  workspaceCreate,
   workspaceSetRuntimeActive,
   workspaceSetSelected,
   type WorkspaceInfo,
@@ -122,13 +125,13 @@ export function filterWorkspacesForWorkContext<T extends Pick<WorkspaceInfo, "wo
 ): (T & Pick<WorkspaceInfo, "isDefault">)[] {
   return workspaces.filter((workspace) => workspaceBelongsToWorkContext(workspace, contextId)).map((workspace) => {
     const path = workspace.path?.replace(/\\/g, "/").replace(/\/+$/, "") ?? "";
-    // Older clients created an implicit Enterprise runtime folder on sign-in.
+    // Enterprise sign-in keeps an implicit runtime folder for tools and settings.
     // Reuse the existing default-workspace presentation: empty containers stay
     // out of Projects, while any conversations already there remain accessible.
-    const legacyDefault = contextId !== PERSONAL_WORK_CONTEXT_ID
+    const implicitDefault = contextId !== PERSONAL_WORK_CONTEXT_ID
       && workspace.workspaceType !== "remote"
       && path.endsWith(`/.ipollowork/work-contexts/${contextId.slice("enterprise:".length)}`);
-    return legacyDefault ? { ...workspace, isDefault: true } : workspace;
+    return implicitDefault ? { ...workspace, isDefault: true } : workspace;
   });
 }
 
@@ -270,17 +273,25 @@ export async function activateEnterpriseWorkContext(connection: EnterpriseConnec
     const state = await workspaceBootstrap();
     const rememberedProjectId = readLastProjectForWorkContext(contextId);
     const projects = filterWorkspacesForWorkContext(state.workspaces, contextId);
-    const workspace = projects.find((project) => project.id === rememberedProjectId)
+    let workspace: WorkspaceInfo | null = projects.find((project) => project.id === rememberedProjectId)
       ?? projects.find((project) => project.id === state.selectedId)
       ?? projects.find((project) => project.id === state.activeId)
       ?? projects[0]
       ?? null;
     if (!workspace) {
-      rememberProjectForWorkContext(contextId, null);
-      commitActiveContext(contextId);
-      committed = true;
-      return null;
+      const homeDir = await getDesktopHomeDir();
+      const folderPath = await joinDesktopPath(homeDir, ".ipollowork", "work-contexts", connection.id);
+      const created = await workspaceCreate({
+        folderPath,
+        name: connection.name,
+        preset: "starter",
+        workContextId: contextId,
+      });
+      workspace = created.workspaces.find((entry) => entry.workContextId === contextId)
+        ?? created.workspaces.find((entry) => entry.path === folderPath)
+        ?? null;
     }
+    if (!workspace) throw new Error("enterprise_workspace_unavailable");
     const workspaceId = await activateWorkspaceEverywhere(workspace);
     rememberProjectForWorkContext(contextId, workspaceId);
     commitActiveContext(contextId);

@@ -108,7 +108,7 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(sessionRoute).toContain("workContextId: activeWorkContextId");
     expect(sessionRoute).toContain("sessionsByWorkspaceId,");
     expect(sessionRoute).not.toContain("ChatSpace");
-    expect(workContext).not.toContain("await workspaceCreate(");
+    expect(workContext).toContain('joinDesktopPath(homeDir, ".ipollowork", "work-contexts", connection.id)');
     expect(workContext).toContain("rememberProjectForWorkContext");
   });
 
