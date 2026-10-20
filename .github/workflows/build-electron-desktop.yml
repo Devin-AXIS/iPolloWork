@@ -2,6 +2,11 @@ name: Build Electron Desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      linux_installer:
+        description: "Build Ubuntu x64 DEB and AppImage installers"
+        type: boolean
+        default: false
   push:
     branches:
       - electron-notary-test
@@ -19,15 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            artifact: macos
-          - os: ubuntu-latest
-            artifact: linux
-          - os: windows-latest
-            artifact: windows
-          - os: windows-11-arm
-            artifact: windows-arm64
+        include: ${{ fromJSON(inputs.linux_installer && '[{"os":"ubuntu-22.04","artifact":"linux"}]' || '[{"os":"macos-latest","artifact":"macos"},{"os":"ubuntu-latest","artifact":"linux"},{"os":"windows-latest","artifact":"windows"},{"os":"windows-11-arm","artifact":"windows-arm64"}]') }}
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -57,16 +54,24 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package Electron desktop (unpacked)
+        if: ${{ !inputs.linux_installer }}
         run: pnpm --filter @ipollowork/desktop package:electron:dir
+
+      - name: Build Ubuntu installers
+        if: inputs.linux_installer
+        run: |
+          pnpm --filter @ipollowork/desktop build:electron
+          pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --linux deb AppImage --x64 --publish never
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ipollowork-electron-${{ matrix.artifact }}
-          path: apps/desktop/dist-electron/**
+          path: ${{ inputs.linux_installer && 'apps/desktop/dist-electron/ipollowork-*' || 'apps/desktop/dist-electron/**' }}
 
   electron-macos-notarization-smoke:
     name: Electron macOS notarization smoke
+    if: ${{ !inputs.linux_installer }}
     runs-on: macos-14
 
     steps:
