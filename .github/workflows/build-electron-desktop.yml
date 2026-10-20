@@ -115,17 +115,24 @@ jobs:
         if: inputs.linux_installer
         env:
           IPOLLOWORK_ELECTRON_USERDATA: ${{ runner.temp }}/ipollo-enterprise-profile
-          IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9826"
+          IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9827"
           IPOLLOWORK_ELECTRON_START_URL: http://127.0.0.1:5173
           IPOLLOWORK_EVAL_ENTERPRISE_EMPTY_PROJECTS: "1"
         run: |
           set -euo pipefail
           # Use source modules to seed only a verified external account in an
           # isolated profile; activation and workspace storage use real IPC.
+          # Electron can leave xvfb-run's process group during shutdown.
+          pkill -f '^(/usr/bin|/opt/iPollo)/@ipolloworkdesktop( |$)' || true
           setsid pnpm --dir apps/app exec vite --host 127.0.0.1 --port 5173 --strictPort > "$RUNNER_TEMP/ipollo-enterprise-renderer.log" 2>&1 &
           renderer_pid=$!
           launcher_pid=''
-          trap 'kill -- -"$renderer_pid" 2>/dev/null || true; if [ -n "$launcher_pid" ]; then kill -- -"$launcher_pid" 2>/dev/null || true; fi' EXIT
+          stop_enterprise_proof() {
+            kill -- -"$renderer_pid" 2>/dev/null || true
+            if [ -n "$launcher_pid" ]; then kill -- -"$launcher_pid" 2>/dev/null || true; fi
+            pkill -f '^(/usr/bin|/opt/iPollo)/@ipolloworkdesktop( |$)' || true
+          }
+          trap stop_enterprise_proof EXIT
           for attempt in $(seq 1 45); do
             if curl -sf http://127.0.0.1:5173/ > /dev/null; then break; fi
             sleep 1
@@ -135,7 +142,7 @@ jobs:
           launcher_pid=$!
           ready=false
           for attempt in $(seq 1 45); do
-            if curl -sf http://127.0.0.1:9826/json/list | grep -q '"type": "page"'; then
+            if curl -sf http://127.0.0.1:9827/json/list | grep -q '"type": "page"'; then
               ready=true
               break
             fi
@@ -146,7 +153,7 @@ jobs:
             tail -100 "$RUNNER_TEMP/ipollo-enterprise-startup.log" >&2
             exit 1
           fi
-          node evals/runner/run.mjs --flow enterprise-empty-projects --cdp-url http://127.0.0.1:9826 --out "$RUNNER_TEMP/enterprise-empty-projects-proof"
+          node evals/runner/run.mjs --flow enterprise-empty-projects --cdp-url http://127.0.0.1:9827 --out "$RUNNER_TEMP/enterprise-empty-projects-proof"
 
       - name: Upload Ubuntu installation proof
         if: always() && inputs.linux_installer
@@ -162,6 +169,7 @@ jobs:
             ${{ runner.temp }}/ipollo-enterprise-startup.log
 
       - name: Upload Electron artifacts
+        if: ${{ success() || (inputs.linux_installer && hashFiles('apps/desktop/dist-electron/*.deb') != '') }}
         uses: actions/upload-artifact@v7
         with:
           name: ipollowork-electron-${{ matrix.artifact }}
