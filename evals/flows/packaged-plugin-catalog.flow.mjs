@@ -38,6 +38,7 @@ export default {
             ctx.assert(workspace, "The packaged app has an active workspace");
             await ctx.navigateHash(`/workspace/${workspace}/settings/extensions`);
             await ctx.waitFor("Boolean(window.__packagedCatalogProof.catalog && window.__packagedCatalogProof.installed)", { timeoutMs: 60_000 });
+            await ctx.waitFor(`document.querySelector('[data-testid="plugin-check-updates"]')?.disabled === false`, { label: "initial catalog refresh complete" });
             original = readFileSync(conflictFile, "utf8");
             writeFileSync(conflictFile, customized);
             await ctx.eval("window.__packagedCatalogProof = {}");
@@ -47,9 +48,11 @@ export default {
               return Boolean(refresh);
             })()`), "Refresh is available in the installed app");
             await ctx.waitFor("Boolean(window.__packagedCatalogProof.catalog && window.__packagedCatalogProof.installed)", { timeoutMs: 60_000 });
+            await ctx.waitFor(`document.querySelector('[data-testid="plugin-check-updates"]')?.disabled === false`, { label: "conflicted catalog refresh complete" });
             await ctx.waitFor(`document.querySelectorAll('[data-testid="plugin-package-list-item"]').length >= ${expected.length}`, { label: "packaged local plugin cards" });
           },
           assert: async () => {
+            ctx.assert(await ctx.eval("location.protocol === 'file:'"), "The proof must run against the packaged desktop renderer");
             const responses = await ctx.eval("window.__packagedCatalogProof");
             ctx.assert(responses.installed.status === 200 && responses.catalog.status === 200, "Inventory and catalog stay readable despite the conflict");
             const actual = responses.catalog.body.items.map(item => item.pluginId).sort();
