@@ -61,7 +61,8 @@ jobs:
         if: inputs.linux_installer
         run: |
           pnpm --filter @ipollowork/desktop build:electron
-          pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --linux deb AppImage --x64 --publish never
+          pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --linux deb AppImage --x64 --config.extraMetadata.homepage=https://github.com/Devin-AXIS/iPolloWork --config.linux.category=Development --publish never
+          dpkg-deb --field apps/desktop/dist-electron/*.deb Package Version Architecture
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v7
