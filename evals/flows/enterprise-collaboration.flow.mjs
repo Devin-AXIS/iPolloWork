@@ -1,5 +1,3 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 // Open /tests/enterprise-collaboration-proof.html in the worktree's Vite server.
@@ -85,28 +83,16 @@ export default {
       });
       await close(ctx);
     } },
-    { name: "员工模板和插件投稿", async run(ctx) {
+    { name: "员工投稿入口暂时隐藏", async run(ctx) {
       await ctx.trustedClick('[data-testid="proof-member"]');
-      await ctx.prove("员工只能查看自己的模板和插件投稿并提交审核", {
+      await ctx.prove("员工的模板和插件投稿入口暂时隐藏，企业消息继续显示", {
         voiceover: vo[4], action: async () => {
-          for (const [type, suffix] of [["template", "ipwp"], ["extension", "ipollowork-plugin"]]) {
-            await ctx.trustedClick(`[data-testid="enterprise-${type}-manage"]`);
-            await ctx.waitFor(`Boolean(document.querySelector('${manage} input[type="file"]'))`);
-            const file = join(ctx.outDir, `synthetic-${type}.${suffix}`);
-            await writeFile(file, "Synthetic package for UI transport proof; no user data.");
-            const { root } = await ctx.client.send("DOM.getDocument", { depth: -1 });
-            const { nodeId } = await ctx.client.send("DOM.querySelector", { nodeId: root.nodeId, selector: `${manage} input[type="file"]` });
-            await ctx.client.send("DOM.setFileInputFiles", { nodeId, files: [file] });
-            await ctx.clickText("提交审核"); await ctx.waitForText("投稿已提交");
-            await ctx.expectText("待审核");
-            if (type === "template") await close(ctx);
-          }
+          await ctx.expectText("企业消息");
         }, assert: async () => {
-          await ctx.expectText("我的插件投稿"); await ctx.expectText("我的企业插件");
-          ctx.assert(!await ctx.eval(`document.querySelector('${manage}').innerText.includes('分配权限')`), "employee has no management controls");
-        }, screenshot: { name: "member-submission", requireText: ["我的插件投稿", "待审核", "投稿已提交"] },
+          await ctx.expectNoText("我的模板投稿"); await ctx.expectNoText("我的插件投稿");
+          ctx.assert(await ctx.eval('!document.querySelector(\'[data-testid="enterprise-template-manage"], [data-testid="enterprise-extension-manage"]\')'), "employee submission controls are not rendered");
+        }, screenshot: { name: "member-submission-hidden", requireText: ["企业消息"], rejectText: ["我的模板投稿", "我的插件投稿"] },
       });
-      await close(ctx);
     } },
     { name: "旧企业服务兼容", async run(ctx) {
       await ctx.prove("旧企业服务明确禁用未开放的新功能", {

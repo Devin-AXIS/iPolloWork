@@ -134,23 +134,25 @@ export function EnterprisePeoplePicker({ connection, value, onChange, allowDepar
     if (visited.has(department.id) || depth > 24) return null;
     const seen = new Set(visited).add(department.id);
     const page = pages[department.id];
+    const children = childrenById.get(department.id) ?? [];
+    const hasChildren = children.length > 0 || Boolean(page?.items.length || page?.nextCursor);
+    const canExpand = hasChildren || !page;
     const subtree = descendantIds(department.id);
     const visibleIds = [...new Set(allMembers.filter((member) => member.departmentId && subtree.has(member.departmentId)).map((member) => member.id))];
     const selectedCount = visibleIds.filter((id) => value.memberIds.includes(id)).length;
-    const isExpanded = expanded.has(department.id);
+    const isExpanded = expanded.has(department.id) && hasChildren;
     const checked = allowDepartments ? value.departmentIds.includes(department.id) : Boolean(visibleIds.length && [...subtree].every((id) => pages[id] && !pages[id].nextCursor) && selectedCount === visibleIds.length);
     return <div key={department.id}>
       <div className="flex min-h-10 items-center gap-2 rounded-lg px-2 hover:bg-muted">
-        <Button variant="ghost" size="icon-sm" aria-label={`${isExpanded ? "收起" : "展开"}${department.name}`} aria-expanded={isExpanded} onClick={() => { setExpanded((current) => { const next = new Set(current); if (isExpanded) next.delete(department.id); else next.add(department.id); return next; }); if (!isExpanded && !page) void loadMembers(department.id); }}>
+        {canExpand ? <Button variant="ghost" size="icon-sm" disabled={Boolean(loading)} aria-label={`${isExpanded ? "收起" : "展开"}${department.name}`} aria-expanded={isExpanded} onClick={() => { setExpanded((current) => { const next = new Set(current); if (isExpanded) next.delete(department.id); else next.add(department.id); return next; }); if (!isExpanded && !page) void loadMembers(department.id); }}>
           {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-        </Button>
+        </Button> : <span className="size-7 shrink-0" aria-hidden="true" />}
         <Checkbox checked={checked} indeterminate={!allowDepartments && selectedCount > 0 && !checked} disabled={disabled || Boolean(loading)} aria-label={`选择部门 ${department.name}`} onCheckedChange={() => selectDepartment(department.id)} />
         <Building2 className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0 truncate text-sm">{department.name}</span>
       </div>
       {isExpanded ? <div className="ml-5 border-l border-border pl-2">
-        {(childrenById.get(department.id) ?? []).map((item) => departmentNode(item, seen, depth + 1))}
+        {children.map((item) => departmentNode(item, seen, depth + 1))}
         {page?.items.map(memberRow)}
-        {page && !page.items.length ? <p className="px-3 py-2 text-xs text-muted-foreground">该部门暂无可选人员</p> : null}
         {page?.nextCursor ? <Button variant="ghost" size="sm" disabled={Boolean(loading)} onClick={() => void loadMembers(department.id, true)}>加载更多人员</Button> : null}
       </div> : null}
     </div>;

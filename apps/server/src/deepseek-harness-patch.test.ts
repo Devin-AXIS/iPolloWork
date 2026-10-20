@@ -106,7 +106,10 @@ describe("DeepSeek Harness runtime patch", () => {
 
     const patch = await buildDeepSeekHarnessPatch(config, config.workspaces[0]!);
     expect(patch.slice(0, 2)).toEqual([
-      { id: "skill-filesystem", disabled: false },
+      { id: "skill-filesystem", disabled: false, config: { customSkillDirs: [
+        join(workspaceRoot, ".dsh", "skills", "ipollowork-standalone"),
+        join(workspaceRoot, ".dsh", "skills", "ipollowork-enterprise"),
+      ] } },
       { id: "tool-skill", disabled: false },
     ]);
     expect(patch[2]).toEqual({

@@ -22,6 +22,7 @@ import {
   codexHarnessRuntimeProviderId,
   CodexHarnessModelSelectionError,
   CodexHarnessRuntime,
+  CodexHarnessRuntimePool,
 } from "./codex-harness-runtime.js";
 import {
   listCodexHarnessSessions,
@@ -94,6 +95,25 @@ afterEach(async () => {
 });
 
 describe("Codex Harness provider projection", () => {
+  test("account provider discovery works for OpenCode projects without creating a Codex runtime", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const env = new EnvService({ path: join(root, "env.json") });
+    const workspace: WorkspaceInfo = { id: "opencode-project", name: "OpenCode", path: root, preset: "starter", workspaceType: "local", engineId: "opencode" };
+    config.workspaces = [workspace];
+    await env.upsertMany([
+      { key: sharedProviderDisconnectedEnvKey("openai"), value: "1" },
+      { key: sharedProviderCredentialEnvKey("summary-test"), value: "synthetic-key" },
+      { key: sharedProviderProfileEnvKey("summary-test"), value: serializeSharedProviderProfile({ schemaVersion: 1, providerId: "summary-test", displayName: "Summary Test", api: "openai-completions", baseURL: "https://summary.example/v1", models: [{ id: "summary-model" }] }) },
+    ]);
+    const pool = new CodexHarnessRuntimePool({ config, env });
+    try {
+      expect(() => pool.forWorkspace(workspace)).toThrow("Codex Harness requires a Codex workspace");
+      expect((await pool.providers()).find((provider) => provider.id === "summary-test")?.models).toEqual([{ id: "summary-model" }]);
+      expect(existsSync(join(root, "codex-harness-workspaces"))).toBe(false);
+    } finally { await pool.close(); }
+  });
   test("recovers native totals in a read-only workspace batch without starting Codex or inventing zero usage", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");

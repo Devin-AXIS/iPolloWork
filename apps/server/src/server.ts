@@ -1,3 +1,5 @@
+import { assertStandaloneSkillWritable } from "./skill-packages.js";
+import { registerSkillPackageRoutes } from "./routes/skill-packages.js";
 import { PLUGIN_PACKAGE_MAX_UPLOAD_BYTES } from "@ipollowork/types/plugins";
 import { existsSync } from "node:fs";
 import { startVideoJobWorker } from "./extensions/video-generation.js";
@@ -1292,7 +1294,7 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
   headers.set("Access-Control-Allow-Origin", allowOrigin);
   headers.set(
     "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-iPolloWork-Filename, X-iPolloWork-Resource-Scope, X-iPolloWork-Template-Category, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
+    "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-iPolloWork-Filename, X-iPolloWork-Resource-Scope, X-iPolloWork-Template-Category, X-iPolloWork-Skill-Origin, X-iPolloWork-Skill-Id, X-iPolloWork-Skill-Digest, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
   headers.set("Access-Control-Expose-Headers", "Content-Disposition, X-iPollo-Artifact-SHA256, X-Artifact-Detail");
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
@@ -1784,6 +1786,7 @@ function createRoutes(
     resolveWorkspace,
   });
 
+  registerSkillPackageRoutes({ routes, config, resolveWorkspace, readJsonBody, ensureWritable, requireClientScope });
   registerWorkItemRoutes({
     routes,
     config,
@@ -2900,6 +2903,7 @@ function createRoutes(
     const name = String(body.name ?? "");
     const content = String(body.content ?? "");
     const description = body.description ? String(body.description) : undefined;
+    await assertStandaloneSkillWritable(config, workspace, name);
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "skills.upsert",
@@ -2939,6 +2943,7 @@ function createRoutes(
       summary: `Delete skill ${name}`,
       paths: [join(workspace.path, ".opencode", "skills", name)],
     });
+    await assertStandaloneSkillWritable(config, workspace, name);
     const result = await deleteSkill(workspace.path, name);
     await recordAudit(workspace.path, {
       id: shortId(),

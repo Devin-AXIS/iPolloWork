@@ -1,10 +1,12 @@
+import type { EnterpriseResourceType } from "@ipollowork/types/enterprise";
+export type { EnterpriseResourceType } from "@ipollowork/types/enterprise";
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
-import { enterpriseFeaturesSchema, enterpriseMemberSchema, enterpriseMembershipResponseSchema, type EnterpriseFeatures, type EnterpriseMember } from "@ipollowork/types/enterprise";
+import { enterpriseFeaturesSchema, enterpriseMemberSchema, enterpriseMemberRoleSchema, enterpriseMembershipResponseSchema, type EnterpriseFeatures, type EnterpriseMember } from "@ipollowork/types/enterprise";
 import { enterpriseRequest } from "./enterprise-client";
 import { readPluginPackageArchive } from "./plugin-package-archive";
 import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "./ipollowork-server";
 import { desktopFetchBinaryViaMain, desktopFetchViaMain } from "./desktop";
-import { readDenSettings } from "./den";
+import { normalizeDenBaseUrl, readDenSettings } from "./den";
 import { isDesktopRuntime } from "./runtime-env";
 import {
   IPOLLOWORK_PACKAGE_EXTENSION,
@@ -14,6 +16,7 @@ import {
 } from "@ipollowork/types/templates";
 
 const ENTERPRISE_CONNECTIONS_KEY = "ipollowork.enterprise-connections.v1";
+let connectionAccount: { storageKey: string; baseUrl: string; token: string } | null = null;
 const ENTERPRISE_CONNECTION_LIMIT = 12;
 const ENTERPRISE_TIMEOUT_MS = 12_000;
 const ENTERPRISE_DOWNLOAD_TIMEOUT_MS = 120_000;
@@ -28,7 +31,7 @@ export const enterpriseConnectionsChangedEvent = "ipollowork:enterprise-connecti
 
 type JsonRecord = Record<string, unknown>;
 
-export type EnterpriseMemberRole = "owner" | "admin" | "member";
+export type EnterpriseMemberRole = EnterpriseMember["role"];
 
 export type EnterpriseServer = {
   id: string;
@@ -54,7 +57,7 @@ export type EnterpriseConnection = EnterpriseServer & {
   };
 };
 
-export type EnterpriseResourceType = "template" | "extension";
+
 
 export type EnterpriseResource = {
   id: string;
@@ -101,7 +104,8 @@ function readString(record: JsonRecord, key: string) {
 }
 
 function parseRole(value: unknown): EnterpriseMemberRole | null {
-  return value === "owner" || value === "admin" || value === "member" ? value : null;
+  const parsed = enterpriseMemberRoleSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export function normalizeEnterpriseOrigin(value: string): string | null {
@@ -221,9 +225,11 @@ export async function refreshEnterpriseConnection(
   connection: EnterpriseConnection,
   fetcher?: typeof fetch,
 ): Promise<EnterpriseConnection> {
+  const accountKey = connectionStorageKey();
   const storedAtStart = readEnterpriseConnections().find((item) => item.id === connection.id);
   const server = await discoverEnterpriseConnection(connection.origin, fetcher);
   if (server.id !== connection.id) throw new Error("enterprise_manifest_mismatch");
+  if (accountKey !== connectionStorageKey()) return connection;
   const current = readEnterpriseConnections().find((item) => item.id === connection.id) ?? connection;
   let refreshed = { ...current, ...server };
   if (!server.features) delete refreshed.features;
@@ -232,6 +238,7 @@ export async function refreshEnterpriseConnection(
     if (result.membership.id !== connection.membership.id) throw new Error("enterprise_manifest_mismatch");
     refreshed = { ...refreshed, membership: { id: result.membership.id, role: result.membership.role, status: result.membership.status, departmentId: result.membership.departmentId } };
   }
+  if (accountKey !== connectionStorageKey()) return refreshed;
   const latest = readEnterpriseConnections().find((item) => item.id === connection.id);
   if (storedAtStart && !latest) return refreshed;
   if (latest && (latest.membership.id !== current.membership.id || latest.session.token !== current.session.token)) return latest;
@@ -442,7 +449,7 @@ export async function downloadEnterpriseResource(
     || new URL(downloadUrl).pathname.toLowerCase().endsWith(IPOLLOWORK_PACKAGE_EXTENSION);
   const extension = resource.type === "template"
     ? (canonicalPackage ? IPOLLOWORK_PACKAGE_EXTENSION : LEGACY_TEMPLATE_PACKAGE_EXTENSION).slice(1)
-    : ENTERPRISE_EXTENSION_PACKAGE_EXTENSION.slice(1);
+    : resource.type === "skill" ? "ipollowork-skill" : ENTERPRISE_EXTENSION_PACKAGE_EXTENSION.slice(1);
   return new File([bytes], `${resource.slug}-${resource.latestVersion.version}.${extension}`, {
     type: response.headers.get("content-type") || "application/octet-stream",
   });
@@ -459,6 +466,9 @@ export async function joinEnterpriseWithCode(
   if (!cloudOrigin || !cloudToken) throw new Error("cloud_signin_required");
   if (!enterpriseOrigin) throw new Error("invalid_enterprise_url");
   if (!/^[A-Z2-9]{5}-?[A-Z2-9]{5}$/u.test(joinCode)) throw new Error("invalid_join_code");
+  const accountKey = connectionStorageKey();
+  if (!accountKey || connectionAccount?.token !== cloudToken
+    || connectionAccount.baseUrl !== normalizeDenBaseUrl(input.cloudBaseUrl)) throw new Error("cloud_signin_required");
 
   const authorization = { Authorization: `Bearer ${cloudToken}` };
   const requestFetcher = enterpriseFetcher(fetcher);
@@ -477,6 +487,7 @@ export async function joinEnterpriseWithCode(
   }, requestFetcher);
   const connection = parseJoinResult(joinPayload, discoveredServer);
   if (!connection) throw new Error("invalid_enterprise_join_response");
+  if (accountKey !== connectionStorageKey()) throw new Error("cloud_signin_required");
   saveEnterpriseConnection(connection);
   return connection;
 }
@@ -503,10 +514,44 @@ function dispatchConnectionsChanged() {
   window.dispatchEvent(new CustomEvent(enterpriseConnectionsChangedEvent));
 }
 
+function connectionStorageKey(): string | null {
+  if (!connectionAccount) return null;
+  const settings = readDenSettings();
+  return settings.authToken?.trim() === connectionAccount.token
+    && normalizeDenBaseUrl(settings.baseUrl) === connectionAccount.baseUrl
+    ? connectionAccount.storageKey : null;
+}
+
+/** Select only after Cloud has verified the account; tokens never form the persistent cache key. */
+export function setEnterpriseConnectionAccount(account: { userId: string; baseUrl: string; token: string } | null) {
+  if (typeof window === "undefined") return;
+  if (!account) {
+    connectionAccount = null;
+    dispatchConnectionsChanged();
+    return;
+  }
+  const settings = readDenSettings();
+  const baseUrl = normalizeDenBaseUrl(account.baseUrl);
+  const userId = account.userId.trim();
+  const token = account.token.trim();
+  if (!baseUrl || !userId || !token || normalizeDenBaseUrl(settings.baseUrl) !== baseUrl
+    || settings.authToken?.trim() !== token) return;
+  const storageKey = `${ENTERPRISE_CONNECTIONS_KEY}:${encodeURIComponent(baseUrl)}:${encodeURIComponent(userId)}`;
+  if (connectionAccount?.storageKey === storageKey && connectionAccount.token === token) return;
+  // Adopt the pre-account format once, on the first verified session after upgrading.
+  const legacy = window.localStorage.getItem(ENTERPRISE_CONNECTIONS_KEY);
+  if (legacy && window.localStorage.getItem(storageKey) === null) window.localStorage.setItem(storageKey, legacy);
+  window.localStorage.removeItem(ENTERPRISE_CONNECTIONS_KEY);
+  connectionAccount = { storageKey, baseUrl, token };
+  dispatchConnectionsChanged();
+}
+
 export function readEnterpriseConnections(): EnterpriseConnection[] {
   if (typeof window === "undefined") return [];
+  const storageKey = connectionStorageKey();
+  if (!storageKey) return [];
   try {
-    const raw = window.localStorage.getItem(ENTERPRISE_CONNECTIONS_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -521,9 +566,11 @@ export function readEnterpriseConnections(): EnterpriseConnection[] {
 
 export function saveEnterpriseConnection(connection: EnterpriseConnection) {
   if (typeof window === "undefined") return;
+  const storageKey = connectionStorageKey();
+  if (!storageKey) throw new Error("cloud_signin_required");
   const existing = readEnterpriseConnections().filter((item) => item.id !== connection.id);
   window.localStorage.setItem(
-    ENTERPRISE_CONNECTIONS_KEY,
+    storageKey,
     JSON.stringify([connection, ...existing].slice(0, ENTERPRISE_CONNECTION_LIMIT)),
   );
   dispatchConnectionsChanged();
@@ -531,8 +578,10 @@ export function saveEnterpriseConnection(connection: EnterpriseConnection) {
 
 export function removeEnterpriseConnection(connectionId: string) {
   if (typeof window === "undefined") return;
+  const storageKey = connectionStorageKey();
+  if (!storageKey) return;
   const remaining = readEnterpriseConnections().filter((item) => item.id !== connectionId);
-  window.localStorage.setItem(ENTERPRISE_CONNECTIONS_KEY, JSON.stringify(remaining));
+  window.localStorage.setItem(storageKey, JSON.stringify(remaining));
   dispatchConnectionsChanged();
 }
 

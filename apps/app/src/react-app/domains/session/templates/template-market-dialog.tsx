@@ -220,8 +220,9 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   const [previewSelection, setPreviewSelection] = React.useState<TemplatePreviewSelection | null>(null);
   const importRef = React.useRef<HTMLInputElement>(null);
   const remoteCatalogMode = props.source !== "builtin";
+  const enterpriseLabel = props.enterpriseConnection?.name ?? t("enterprise_connection.enterprise");
   const remoteSourceLabel = props.source === "enterprise"
-    ? t("enterprise_connection.enterprise")
+    ? enterpriseLabel
     : t("enterprise_connection.cloud");
 
   React.useEffect(() => { if (props.open) props.onRefresh(); }, [props.open, props.onRefresh]);
@@ -371,9 +372,9 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
                   <Cloud className="size-3.5" />
                   {t("enterprise_connection.cloud")}
                 </Button> : null}
-                {props.enterpriseAvailable ? <Button type="button" variant={props.source === "enterprise" ? "secondary" : "ghost"} size="sm" role="tab" aria-selected={props.source === "enterprise"} onClick={() => props.onSelectSource("enterprise")}>
+                {props.enterpriseAvailable ? <Button type="button" variant={props.source === "enterprise" ? "secondary" : "ghost"} size="sm" role="tab" aria-selected={props.source === "enterprise"} title={enterpriseLabel} onClick={() => props.onSelectSource("enterprise")}>
                   <Building2 className="size-3.5" />
-                  {t("enterprise_connection.enterprise")}
+                  <span className="max-w-48 truncate">{enterpriseLabel}</span>
                 </Button> : null}
               </div>
             </div>

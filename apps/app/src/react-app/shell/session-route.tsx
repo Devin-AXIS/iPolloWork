@@ -1,3 +1,4 @@
+import { enterpriseSkillContext } from "@/app/lib/enterprise-client";
 /** @jsxImportSource react */
 import {
   useCallback,
@@ -23,6 +24,7 @@ import { createClient } from "@/app/lib/opencode";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
+  readActiveEnterpriseConnection,
   rememberProjectForWorkContext,
   type WorkContextId,
   workContextChangedEvent,
@@ -108,13 +110,12 @@ import { readAppliedDesignSystemId } from "@/react-app/domains/session/design/de
 import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/react-app/domains/session/templates/template-authoring";
 import {
   conversationTemplateBrief,
-  inferConversationTemplateIntents,
   inferConversationWorkKind,
   conversationVideoTarget,
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
   selectConversationTemplate,
-  shouldUseExistingTemplateContext,
+  resolveConversationTemplateRouting,
   templateBriefPrompt,
 } from "@/react-app/domains/session/templates/template-brief";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
@@ -392,6 +393,16 @@ export function SessionRoute() {
       : null,
     [opencodeBaseUrl, activeEngineId, selectedSessionId, selectedConversation?.id, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
   );
+  const enterpriseWorkspaceKey = workspaces.filter((workspace) => workspace.workContextId).map((workspace) => workspace.id).join("|");
+  useEffect(() => {
+    for (const workspace of workspaces.filter((item) => item.workContextId)) {
+      const endpoint = resolveWorkspaceEndpoint(workspace, { baseUrl, token, hostToken: ipolloworkServerHostInfoState?.hostToken });
+      if (!endpoint) continue;
+      const context = activeEnterprise?.features?.skills && workspace.workContextId === `enterprise:${activeEnterprise.id}` ? enterpriseSkillContext(activeEnterprise) : null;
+      void endpoint.client.setEnterpriseSkillContext(endpoint.workspaceId, context).catch(() => { console.warn("Enterprise skill context could not be synchronized", { workspaceId: endpoint.workspaceId }); });
+    }
+  }, [enterpriseWorkspaceKey, activeEnterprise?.id, activeEnterprise?.membership.id, activeEnterprise?.session.token, baseUrl, token]);
+
   const conversationConnectionKey = `${activeEngineId}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
   const videoLiveDirector = useMemo(() => createVideoLiveDirector({
     client: selectedWorkspaceEndpoint?.client ?? null,
@@ -1628,32 +1639,29 @@ export function SessionRoute() {
             ))
             .map((template) => template.sessionId),
         ]);
-        const promptTemplateSessionIds = new Set(explicitlyTargetedTemplateSessionIds);
-        const existingTemplateEdit = shouldUseExistingTemplateContext(text);
-        if (promptTemplateSessionIds.size === 0) {
-          const authoringTemplate = conversationTemplates.find((template) => template.authoring);
-          if (authoringTemplate) {
-            promptTemplateSessionIds.add(authoringTemplate.sessionId);
-          } else if (existingTemplateEdit && activeTemplateSessionId && conversationTemplates.some((template) => template.sessionId === activeTemplateSessionId)) {
-            promptTemplateSessionIds.add(activeTemplateSessionId);
-          } else if (existingTemplateEdit && conversationTemplates[0]) {
-            promptTemplateSessionIds.add(conversationTemplates[0].sessionId);
-          }
+        const routing = resolveConversationTemplateRouting({
+          sessionId: targetSessionId,
+          prompt: text,
+          templates: conversationTemplates,
+          targetedSessionIds: explicitlyTargetedTemplateSessionIds,
+          activeTemplateSessionId,
+        });
+        const sessionTemplates = routing.templates;
+        const preparedDesign = sessionTemplates.find((template) => template.sessionId === targetSessionId && template.surface === "design");
+        if (preparedDesign && activePanelTab?.type === "video" && activePanelTab.sessionId !== targetSessionId) {
+          usePanelTabStore.getState().openTab(targetSessionId, {
+            id: `design:${targetSessionId}:${encodeURIComponent(preparedDesign.state.entry)}`,
+            type: "design", sessionId: targetSessionId, path: preparedDesign.state.entry,
+            label: preparedDesign.manifest.category === "slides" ? "PPT" : preparedDesign.manifest.title,
+          });
+          useUiStateStore.getState().setSidePanelState(targetSessionId, "panel");
         }
-        const sessionTemplates = conversationTemplates.filter((template) =>
-          promptTemplateSessionIds.has(template.sessionId),
-        );
         let automaticTemplateInstruction: string | null = null;
         let automaticTemplateRoutingAttempted = false;
-        const automaticTemplateIntents = workspaceAppRequest ? [] : inferConversationTemplateIntents(text);
-        const continuingExistingTemplates = existingTemplateEdit && automaticTemplateIntents.length > 0
-          && automaticTemplateIntents.every((intent) => sessionTemplates.some(
-            (template) => template.manifest.category === intent.category,
-          ));
+        const automaticTemplateIntents = workspaceAppRequest ? [] : routing.automaticIntents;
         if (
           explicitlyTargetedTemplateSessionIds.size === 0
           && automaticTemplateIntents.length > 0
-          && !continuingExistingTemplates
           && selectedWorkspaceEndpoint
         ) {
           automaticTemplateRoutingAttempted = true;
@@ -1917,6 +1925,10 @@ export function SessionRoute() {
         if (await stopDispatchIfRequested()) return false;
         if (designSelectionContexts.length > 0 && !selectedWorkspaceEndpoint) {
           throw new Error("The selected Design element is no longer available in this workspace.");
+        }
+        if (selectedWorkspaceEndpoint && selectedWorkspace?.workContextId) {
+          const dispatchEnterprise = readActiveEnterpriseConnection();
+          await selectedWorkspaceEndpoint.client.setEnterpriseSkillContext(selectedWorkspaceEndpoint.workspaceId, dispatchEnterprise && selectedWorkspace.workContextId === `enterprise:${dispatchEnterprise.id}` && dispatchEnterprise.features?.skills ? enterpriseSkillContext(dispatchEnterprise) : null);
         }
         const promptResult = await promptDesignSelectionContexts({
           contexts: designSelectionContexts,
@@ -2928,12 +2940,18 @@ export function SessionRoute() {
         if (!workspace || workspace.workContextId !== `enterprise:${activeEnterprise.id}`) return null;
         return resolveWorkspaceEndpoint(workspace, { baseUrl, token, hostToken: ipolloworkServerHostInfoState?.hostToken });
       }}
-      onImported={(workspaceId, sessionId) => {
+      onImported={(workspaceId, sessionId, session) => {
         const workspace = workspaces.find((item) => item.workContextId === `enterprise:${activeEnterprise.id}` && (item.id === workspaceId || resolveWorkspaceEndpoint(item, { baseUrl, token, hostToken: ipolloworkServerHostInfoState?.hostToken })?.workspaceId === workspaceId));
         if (!workspace) return;
         setLegacySelectedWorkspaceId(workspace.id);
         writeActiveWorkspaceId(workspace.id);
         writeLastSessionFor(workspace.id, sessionId);
+        rememberPendingCreatedSession(workspace.id, sessionId);
+        setSessionsByWorkspaceId((current) => {
+          const next = { ...current, [workspace.id]: [session, ...(current[workspace.id] ?? []).filter((item) => item.id !== sessionId)] };
+          sessionsByWorkspaceIdRef.current = next;
+          return next;
+        });
         void loadWorkspaceSessionsInBackground([workspace]);
         navigateToWorkspaceSession(workspace.id, sessionId);
       }}

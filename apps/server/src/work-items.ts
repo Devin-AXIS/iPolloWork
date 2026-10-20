@@ -38,7 +38,9 @@ import {
 } from "@ipollowork/types/project-workspace";
 import { isHarnessWorkspaceEngineId } from "@ipollowork/types/workspace";
 
-import { ApiError } from "./errors.js";
+import { ApiError, isApiError } from "./errors.js";
+import { templateCategoryWorkKind } from "@ipollowork/types/templates";
+import { readTemplateSession } from "./templates.js";
 import { readiPolloWorkWorkspaceConfig, writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import { importNodeSqlite } from "./node-sqlite.js";
 import { runtimeDbPath } from "./runtime-storage.js";
@@ -1022,12 +1024,22 @@ export async function bindProjectSessionExecution(
     ...await resolveProjectExecutionPlan(config, workspace, input),
     boundAt: Date.now(),
   };
+  const preparedTemplate = await readTemplateSession(config, workspace, sessionId).catch((error: unknown) => {
+    if (isApiError(error) && error.code === "template_session_not_found") return null;
+    throw error;
+  });
+  const preparedKind = preparedTemplate ? templateCategoryWorkKind(preparedTemplate.manifest.category) : undefined;
+  const workKind = preparedKind ?? input.workKind;
   let workflow = execution.workflow;
-  if (workflow && (!existing || (existing.status === "ready" && existing.runStartedAt === null))) {
+  // Repair an automatic classification from older clients, while preserving
+  // user-chosen methods and any execution that is still running.
+  const repairPreparedMethod = preparedKind && workflow?.source === "auto"
+    && workflow.workKind !== preparedKind && existing?.status !== "running";
+  if (workflow && (!existing || (existing.status === "ready" && existing.runStartedAt === null) || repairPreparedMethod)) {
     const goal = workflow.goal || input.goal?.trim().slice(0, 2_000) || "";
-    if (workflow.source === "auto" && workflow.templateId === "general" && input.workKind && input.workKind !== "general") {
+    if (workflow.source === "auto" && (workflow.templateId === "general" || repairPreparedMethod) && workKind && workKind !== "general") {
       const { templates } = await projectWorkContext(config, workspace);
-      const template = templates.find((candidate) => candidate.id === input.workKind);
+      const template = templates.find((candidate) => candidate.id === workKind);
       if (!template) throw new ApiError(404, "work_template_not_found", "The initial work template was not found");
       workflow = { ...workflowFromTemplate(template, { source: "auto", goal, project: workflow.config }), progress: workflow.progress };
     } else if (goal !== workflow.goal) {

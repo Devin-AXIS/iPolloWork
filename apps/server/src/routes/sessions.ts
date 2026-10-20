@@ -28,8 +28,8 @@ import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { resolveWorkspaceSession, type WorkspaceSessionRuntime } from "../workspace-session-runtime.js";
 import { listConversationSessionBindings } from "../work-items.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
-import { enterpriseSnapshotSchema } from "@ipollowork/types/enterprise";
-import { importEnterpriseSnapshot, readEnterpriseSnapshot, summarizeEnterpriseSession } from "../enterprise-session-snapshots.js";
+import { enterpriseSnapshotImportSchema } from "@ipollowork/types/enterprise";
+import { importEnterpriseSnapshot, readEnterpriseSnapshot, summarizeEnterpriseSession, withEnterpriseSnapshotMetadata } from "../enterprise-session-snapshots.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -345,7 +345,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     const body = await readJsonBody(ctx.request);
     const model = sessionModelInput(body);
     if (!model) throw new ApiError(400, "enterprise_summary_model_required", "Select a model before generating the summary");
-    const provider = (await codexHarness.forWorkspace(workspace).providers()).find((item) => item.id === model.providerID);
+    const provider = (await codexHarness.providers()).find((item) => item.id === model.providerID);
     if (!provider || !provider.models.some((item) => item.id === model.modelID)) throw new ApiError(400, "enterprise_summary_model_unavailable", "The selected model is not connected");
     const snapshot = await readWorkspaceSessionSnapshot(workspace, ctx.params.sessionId, { limit: 200 });
     return jsonResponse({ item: await summarizeEnterpriseSession(snapshot, provider, model.modelID, ctx.request.signal) });
@@ -355,12 +355,12 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     ensureWritable(config); requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
-    const snapshot = enterpriseSnapshotSchema.safeParse(body.snapshot);
+    const snapshot = enterpriseSnapshotImportSchema.safeParse(body.snapshot);
     if (!snapshot.success) throw new ApiError(400, "invalid_payload", "A valid enterprise share snapshot is required");
     const engineId = optionalString(body, "engineId", 80) ?? (workspace.engineId?.trim() || DEFAULT_ENGINE_ID);
     if (!isBuiltInWorkspaceEngineId(engineId)) throw new ApiError(400, "invalid_payload", "Unsupported conversation engine");
     const imported = await importEnterpriseSnapshot(config, workspace, snapshot.data,
-      () => sessionRuntime.create(workspace, snapshot.data.title, sessionModelInput(body), engineId),
+      (savedSnapshot) => sessionRuntime.create(workspace, savedSnapshot.title, sessionModelInput(body), engineId),
       async (workspaceId, id) => {
         const existingWorkspace = await resolveWorkspace(config, workspaceId);
         if (existingWorkspace.workContextId !== workspace.workContextId) throw new ApiError(403, "enterprise_context_mismatch", "The original project no longer belongs to this enterprise");
@@ -405,7 +405,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       search: ctx.url.searchParams.get("search")?.trim() || undefined,
       limit: parseOptionalPositiveInteger(ctx.url.searchParams.get("limit"), "limit"),
     });
-    return jsonResponse({ items });
+    return jsonResponse({ items: await withEnterpriseSnapshotMetadata(config, workspace, items) });
   });
 
   addRoute(routes, "GET", "/workspace/:id/sessions/:sessionId", "client", async (ctx) => {
@@ -415,7 +415,8 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       throw new ApiError(400, "invalid_payload", "sessionId is required");
     }
     const item = await readWorkspaceSession(workspace, sessionId);
-    return jsonResponse({ item });
+    const [marked] = await withEnterpriseSnapshotMetadata(config, workspace, [item]);
+    return jsonResponse({ item: marked });
   });
 
   addRoute(routes, "GET", "/workspace/:id/sessions/:sessionId/messages", "client", async (ctx) => {

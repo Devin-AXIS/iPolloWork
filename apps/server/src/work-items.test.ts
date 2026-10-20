@@ -13,6 +13,7 @@ import {
 import { disposeiPolloWorkWorkspaceConfigStore, readiPolloWorkWorkspaceConfig, writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import type { ServerConfig } from "./types.js";
 import { startServer } from "./server.js";
+import { createTemplateAuthoringSession, disposeTemplateStore } from "./templates.js";
 import {
   WorkItemConflictError,
   createWorkItem,
@@ -75,6 +76,7 @@ async function testContext(): Promise<{ root: string; config: ServerConfig }> {
 
 afterEach(async () => {
   for (const root of temporaryRoots.splice(0)) {
+    await disposeTemplateStore(serverConfig(root));
     await disposeWorkItemStore(serverConfig(root));
     await disposeiPolloWorkWorkspaceConfigStore(serverConfig(root));
     // Bun retains prepared SQLite statements until collection on Windows.
@@ -373,6 +375,29 @@ describe("work item store", () => {
     } finally {
       await disposeWorkItemStore(config);
     }
+  });
+
+  test("prepared PPT metadata owns automatic roles and repairs a failed video misclassification without changing manual methods", async () => {
+    const { config } = await testContext();
+    const workspace = config.workspaces[0];
+    const runtime = { engineId: DEFAULT_ENGINE_ID, model: null, mode: null, modelVariant: null };
+    const brief = { title: "路演模版", audience: "投资人", details: "做一个动画丰富，主题色简单高级，适合商业路演的模版" };
+    const prepareSlides = (sessionId: string) => createTemplateAuthoringSession(config, workspace, { sessionId, category: "slides", pptxCompatibility: "native-editable", purpose: "artifact-delivery", brief });
+    await prepareSlides("prepared_ppt");
+    const first = await bindProjectSessionExecution(config, workspace, "prepared_ppt", { title: brief.title, goal: brief.details, workKind: "video", runtime });
+    expect(first.execution?.workflow).toMatchObject({ workKind: "document", templateId: "document", source: "auto" });
+    expect(first.execution?.agent.pluginIds).not.toContain("video-agent");
+    await bindProjectSessionExecution(config, workspace, "failed_ppt", { title: brief.title, goal: brief.details, workKind: "video", runtime });
+    await finishProjectSessionExecution(config, workspace.id, "failed_ppt", { status: "failed", error: "Aborted" });
+    await prepareSlides("failed_ppt");
+    const repaired = await bindProjectSessionExecution(config, workspace, "failed_ppt", { title: brief.title, goal: brief.details, workKind: "video", runtime });
+    expect(repaired.execution?.workflow).toMatchObject({ workKind: "document", templateId: "document", source: "auto", goal: brief.details });
+    expect(repaired.execution?.agent.pluginIds).not.toContain("video-agent");
+    await prepareSlides("manual_ppt");
+    const manual = await writeConversationWorkflow(config, workspace, "manual_ppt", { runtime, templateId: "research" });
+    const selected = await bindProjectSessionExecution(config, workspace, "manual_ppt", { title: brief.title, workKind: "video", runtime });
+    expect(selected.execution?.workflow?.templateId).toBe(manual.execution?.workflow?.templateId);
+    expect(selected.execution?.workflow?.source).toBe("manual");
   });
 
   test("partial progress updates preserve existing context and allow explicit clearing", async () => {

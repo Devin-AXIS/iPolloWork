@@ -1,91 +1,25 @@
 /** @jsxImportSource react */
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useReducer,
-  type SetStateAction,
-} from "react";
-import {
-  Cloud,
-  Download,
-  Edit2,
-  Loader2,
-  Package,
-  Plus,
-  RefreshCw,
-  Search,
-  Sparkles,
-  Trash2,
-  Users,
-} from "lucide-react";
-import { toast } from "@/components/ui/sonner";
-
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { t } from "@/i18n";
-import { saveInstalledSkillToiPolloWorkOrg } from "@/app/lib/den-skills";
-import {
-  buildDenAuthUrl,
-  DEFAULT_DEN_BASE_URL,
-  readDenSettings,
-} from "@/app/lib/den";
-import type {
-  DenOrgSkillCard,
-  HubSkillCard,
-  HubSkillRepo,
-  SkillCard,
-} from "@/app/types";
-import {
-  modalNoticeErrorClass,
-  modalNoticeSuccessClass,
-  pillGhostClass,
-  pillPrimaryClass,
-  pillSecondaryClass,
-  surfaceCardClass,
-  tagClass,
-} from "@/react-app/domains/workspace/modal-styles";
-import { Button } from "@/components/ui/button";
+import { useLocation } from "react-router-dom";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { settingsPageTitleClass, settingsPageDescriptionClass } from "@/react-app/domains/settings/shell/panel";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Building2, Cloud, Download, Loader2, Plus, RefreshCw, Search, Sparkles, User } from "lucide-react";
+import type { DenOrgSkillCard, HubSkillCard, HubSkillRepo, SkillCard } from "@/app/types";
+import type { InstalledEnterpriseSkill } from "@ipollowork/types/skills";
+import type { iPolloWorkServerClient, StandaloneSkillPackage } from "@/app/lib/ipollowork-server";
+import { downloadBlobAsFile } from "@/app/lib/download";
+import { downloadEnterpriseResource, listEnterpriseResources, type EnterpriseResource } from "@/app/lib/enterprise-connections";
+import { enterpriseApi, enterpriseErrorMessage, enterpriseSkillContext } from "@/app/lib/enterprise-client";
+import { downloadPublicSkill, listPublicSkills, skillFileDigest, type PublicSkill } from "@/app/lib/skill-catalog";
+import { EnterpriseResourceControls, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/sonner";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
-import {
-  settingsPageDescriptionClass,
-  settingsPageTitleClass,
-  settingsSectionTitleClass,
-  settingsStandardContentClass,
-} from "@/react-app/domains/settings/shell/panel";
-import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
-
 type InstallResult = { ok: boolean; message: string };
-type SkillsFilter = "all" | "cloud" | "hub";
-type SkillsStatusFilter = "all" | "installed" | "available" | "update";
-type CloudSkillInstallState = "available" | "installed" | "update" | "missing_local";
-
-function isSkillsStatusFilter(value: string): value is SkillsStatusFilter {
-  return value === "all" || value === "installed" || value === "available" || value === "update";
-}
-
-const panelCardClass =
-  "group rounded-[8px] bg-transparent p-4 transition-colors hover:bg-[#f6f7fb] focus-within:bg-[#f6f7fb] dark:hover:bg-dls-hover dark:focus-within:bg-dls-hover";
-
-const IPOLLOWORK_DEFAULT_SKILL_NAMES = new Set([
-  "workspace-guide",
-  "get-started",
-  "skill-creator",
-  "command-creator",
-  "agent-creator",
-  "plugin-creator",
-]);
-
+type Source = "personal" | "public" | "enterprise";
 export type ImportedCloudSkillRecord = {
   installedName: string;
   updatedAt?: string | null;
@@ -124,6 +58,8 @@ export type SkillsExtensionsStore = {
 };
 
 export type SkillsViewProps = {
+  client?: iPolloWorkServerClient | null;
+  workspaceId?: string | null;
   workspaceName: string;
   busy: boolean;
   showHeader?: boolean;
@@ -142,1215 +78,132 @@ export type SkillsViewHandle = {
   createInChat: () => void;
 };
 
-type SkillsViewLocalState = {
-  uninstallTarget: SkillCard | null;
-  searchQuery: string;
-  activeFilter: SkillsFilter;
-  statusFilter: SkillsStatusFilter;
-  customRepoOpen: boolean;
-  customRepoOwner: string;
-  customRepoName: string;
-  customRepoRef: string;
-  customRepoError: string | null;
-  shareTarget: SkillCard | null;
-  cloudSessionNonce: number;
-  shareTeamBusy: boolean;
-  shareTeamError: string | null;
-  shareTeamSuccess: string | null;
-  sharePermissionChoice: string;
-  selectedSkill: SkillCard | null;
-  selectedContent: string;
-  selectedLoading: boolean;
-  selectedDirty: boolean;
-  selectedError: string | null;
-  installingSkillCreator: boolean;
-  installingHubSkill: string | null;
-  installingCloudSkillId: string | null;
-  denUiTick: number;
-};
 
-type SkillsViewLocalAction<K extends keyof SkillsViewLocalState = keyof SkillsViewLocalState> =
-  | { type: "set"; key: K; value: SetStateAction<any> }
-  | { type: "denSessionUpdated" }
-  | { type: "closeShare" }
-  | { type: "openShare"; skill: SkillCard };
-
-const initialSkillsViewLocalState: SkillsViewLocalState = {
-  uninstallTarget: null,
-  searchQuery: "",
-  activeFilter: "all",
-  statusFilter: "all",
-  customRepoOpen: false,
-  customRepoOwner: "",
-  customRepoName: "",
-  customRepoRef: "main",
-  customRepoError: null,
-  shareTarget: null,
-  cloudSessionNonce: 0,
-  shareTeamBusy: false,
-  shareTeamError: null,
-  shareTeamSuccess: null,
-  sharePermissionChoice: "org",
-  selectedSkill: null,
-  selectedContent: "",
-  selectedLoading: false,
-  selectedDirty: false,
-  selectedError: null,
-  installingSkillCreator: false,
-  installingHubSkill: null,
-  installingCloudSkillId: null,
-  denUiTick: 0,
-};
-
-function skillsViewLocalReducer(
-  state: SkillsViewLocalState,
-  action: SkillsViewLocalAction,
-): SkillsViewLocalState {
-  switch (action.type) {
-    case "set": {
-      const current = state[action.key];
-      const next =
-        typeof action.value === "function"
-          ? (action.value as (value: typeof current) => typeof current)(current)
-          : action.value;
-      if (Object.is(current, next)) return state;
-      return { ...state, [action.key]: next };
-    }
-    case "denSessionUpdated":
-      return {
-        ...state,
-        denUiTick: state.denUiTick + 1,
-        cloudSessionNonce: state.cloudSessionNonce + 1,
-      };
-    case "closeShare":
-      return {
-        ...state,
-        shareTarget: null,
-        shareTeamBusy: false,
-        shareTeamError: null,
-        shareTeamSuccess: null,
-        sharePermissionChoice: "org",
-      };
-    case "openShare":
-      return {
-        ...state,
-        shareTarget: action.skill,
-        shareTeamBusy: false,
-        shareTeamError: null,
-        shareTeamSuccess: null,
-        sharePermissionChoice: "org",
-        cloudSessionNonce: state.cloudSessionNonce + 1,
-      };
-  }
-}
 
 export const SkillsView = forwardRef<SkillsViewHandle, SkillsViewProps>(function SkillsView(props, ref) {
-  const { extensions } = props;
-  const [localState, dispatchLocal] = useReducer(
-    skillsViewLocalReducer,
-    initialSkillsViewLocalState,
-  );
-  const {
-    uninstallTarget,
-    searchQuery,
-    activeFilter,
-    statusFilter,
-    customRepoOpen,
-    customRepoOwner,
-    customRepoName,
-    customRepoRef,
-    customRepoError,
-    shareTarget,
-    cloudSessionNonce,
-    shareTeamBusy,
-    shareTeamError,
-    shareTeamSuccess,
-    sharePermissionChoice,
-    selectedSkill,
-    selectedContent,
-    selectedLoading,
-    selectedDirty,
-    selectedError,
-    installingSkillCreator,
-    installingHubSkill,
-    installingCloudSkillId,
-    denUiTick,
-  } = localState;
-  const setLocal = <K extends keyof SkillsViewLocalState>(
-    key: K,
-    value: SetStateAction<SkillsViewLocalState[K]>,
-  ) => dispatchLocal({ type: "set", key, value });
-  const setUninstallTarget = (value: SetStateAction<SkillCard | null>) => setLocal("uninstallTarget", value);
-  const setSearchQuery = (value: SetStateAction<string>) => setLocal("searchQuery", value);
-  const setActiveFilter = (value: SetStateAction<SkillsFilter>) => setLocal("activeFilter", value);
-  const setStatusFilter = (value: SetStateAction<SkillsStatusFilter>) => setLocal("statusFilter", value);
-  const setCustomRepoOpen = (value: SetStateAction<boolean>) => setLocal("customRepoOpen", value);
-  const setCustomRepoOwner = (value: SetStateAction<string>) => setLocal("customRepoOwner", value);
-  const setCustomRepoName = (value: SetStateAction<string>) => setLocal("customRepoName", value);
-  const setCustomRepoRef = (value: SetStateAction<string>) => setLocal("customRepoRef", value);
-  const setCustomRepoError = (value: SetStateAction<string | null>) => setLocal("customRepoError", value);
-  const setShareTeamBusy = (value: SetStateAction<boolean>) => setLocal("shareTeamBusy", value);
-  const setShareTeamError = (value: SetStateAction<string | null>) => setLocal("shareTeamError", value);
-  const setShareTeamSuccess = (value: SetStateAction<string | null>) => setLocal("shareTeamSuccess", value);
-  const setSharePermissionChoice = (value: SetStateAction<string>) => setLocal("sharePermissionChoice", value);
-  const setSelectedSkill = (value: SetStateAction<SkillCard | null>) => setLocal("selectedSkill", value);
-  const setSelectedContent = (value: SetStateAction<string>) => setLocal("selectedContent", value);
-  const setSelectedLoading = (value: SetStateAction<boolean>) => setLocal("selectedLoading", value);
-  const setSelectedDirty = (value: SetStateAction<boolean>) => setLocal("selectedDirty", value);
-  const setSelectedError = (value: SetStateAction<string | null>) => setLocal("selectedError", value);
-  const setInstallingSkillCreator = (value: SetStateAction<boolean>) => setLocal("installingSkillCreator", value);
-  const setInstallingHubSkill = (value: SetStateAction<string | null>) => setLocal("installingHubSkill", value);
-  const setInstallingCloudSkillId = (value: SetStateAction<string | null>) => setLocal("installingCloudSkillId", value);
-
-  const maskError = useCallback(
-    (value: unknown) =>
-      value instanceof Error ? value.message : t("common.something_went_wrong"),
-    [],
-  );
-
+  const connection = useActiveEnterpriseConnection();
+  const location = useLocation();
+  const [source, setSource] = useState<Source>(() => new URLSearchParams(location.search).get("source") === "enterprise" ? "enterprise" : "personal");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [personal, setPersonal] = useState<StandaloneSkillPackage[]>([]);
+  const [installed, setInstalled] = useState<InstalledEnterpriseSkill[]>([]);
+  const [enterprise, setEnterprise] = useState<EnterpriseResource[]>([]);
+  const [publicItems, setPublicItems] = useState<PublicSkill[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [exporting, setExporting] = useState<StandaloneSkillPackage | null>(null);
+  const [title, setTitle] = useState("");
+  const [version, setVersion] = useState("1.0.0");
+  const [details, setDetails] = useState<{ title: string; content: string; files?: string[]; editable?: StandaloneSkillPackage } | null>(null);
+  const [content, setContent] = useState("");
+  const [uninstalling, setUninstalling] = useState<StandaloneSkillPackage | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const epoch = useRef(0);
+  const client = props.client;
+  const workspaceId = props.workspaceId;
+  const identity = `${workspaceId ?? ""}:${source}:${connection?.origin ?? ""}:${connection?.id ?? ""}:${connection?.membership.id ?? ""}`;
+  const actor = useRef({ identity, client });
+  if (actor.current.identity !== identity || actor.current.client !== client) actor.current = { identity, client };
+  const ready = Boolean(client && workspaceId && !props.busy && !pending);
+  const reload = useCallback(async (more = false) => {
+    const request = ++epoch.current; setLoading(true); setError("");
+    try {
+      if (source === "public") {
+        const result = await listPublicSkills({ search, cursor: more ? cursor : null });
+        if (request !== epoch.current) return;
+        if (more && result.nextCursor === cursor && cursor) throw new Error("公开技能分页无效，请联系云端管理员。");
+        setPublicItems((items) => more ? [...new Map([...items, ...result.items].map((item) => [item.id, item])).values()].slice(0, 500) : result.items); setCursor(result.nextCursor);
+      }
+      if (client && workspaceId) {
+        await client.setEnterpriseSkillContext(workspaceId, connection?.features?.skills ? enterpriseSkillContext(connection) : null);
+        const result = await client.listSkillPackages(workspaceId);
+        if (request !== epoch.current) return;
+        setPersonal(result.personal); setInstalled(result.enterprise);
+        if (source === "enterprise" && connection) { const items = await listEnterpriseResources("skill", { connection }); if (request === epoch.current) setEnterprise(items); }
+      } else if (source === "personal") {
+        setPersonal(props.extensions.skills().map((item) => ({ ...item, scope: "project", description: item.description ?? "", pluginName: null, canExport: false, source: null })));
+      }
+    } catch (cause) { if (request === epoch.current) setError(cause instanceof Error ? cause.message : "技能暂时无法加载。"); }
+    finally { if (request === epoch.current) setLoading(false); }
+  }, [client, workspaceId, source, search, cursor, connection, props.extensions]);
+  const reloadRef = useRef(reload); reloadRef.current = reload;
   useEffect(() => {
-    void extensions.ensureHubSkillsFresh();
-    void extensions.ensureCloudOrgSkillsFresh();
-    const onDenSession = () => {
-      dispatchLocal({ type: "denSessionUpdated" });
-      void extensions.refreshCloudOrgSkills({ force: true });
-    };
-    window.addEventListener("ipollowork-den-session-updated", onDenSession);
-    return () => window.removeEventListener("ipollowork-den-session-updated", onDenSession);
-  }, [extensions]);
-
-  useEffect(() => {
-    if (!shareTarget) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      dispatchLocal({ type: "closeShare" });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [shareTarget]);
-
-  const shareCloudSignedIn = useMemo(() => {
-    cloudSessionNonce;
-    return Boolean(readDenSettings().authToken?.trim());
-  }, [cloudSessionNonce]);
-
-  const shareTeamOrgLabel = useMemo(() => {
-    cloudSessionNonce;
-    const name = readDenSettings().activeOrgName?.trim();
-    return name || t("skills.share_team_org_fallback");
-  }, [cloudSessionNonce]);
-
-  const shareTeamDisabledReason = useMemo(() => {
-    if (!shareCloudSignedIn) return null;
-    const settings = readDenSettings();
-    if (!settings.activeOrgId?.trim() && !settings.activeOrgSlug?.trim()) {
-      return t("skills.share_team_choose_org");
-    }
-    return null;
-  }, [shareCloudSignedIn]);
-
-  const skills = extensions.skills();
-  const hubSkills = extensions.hubSkills();
-  const cloudOrgSkills = extensions.cloudOrgSkills();
-  const importedCloudSkills = extensions.importedCloudSkills();
-  const hubRepo = extensions.hubRepo();
-  const hubRepos = extensions.hubRepos();
-  const skillsStatus = extensions.skillsStatus();
-  const hubSkillsStatus = extensions.hubSkillsStatus();
-  const cloudOrgSkillsStatus = extensions.cloudOrgSkillsStatus();
-
-  const skillCreatorInstalled = useMemo(
-    () => skills.some((skill) => skill.name === "skill-creator"),
-    [skills],
-  );
-
-  const filteredSkills = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return skills;
-    return skills.filter((skill) => {
-      const description = skill.description ?? "";
-      return skill.name.toLowerCase().includes(query) || description.toLowerCase().includes(query);
-    });
-  }, [searchQuery, skills]);
-
-  const installedNames = useMemo(() => new Set(skills.map((skill) => skill.name)), [skills]);
-
-  const filteredHubSkills = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const items = hubSkills.filter((skill) => !installedNames.has(skill.name));
-    if (!query) return items;
-    return items.filter((skill) => {
-      const description = skill.description ?? "";
-      const trigger = skill.trigger ?? "";
-      return (
-        skill.name.toLowerCase().includes(query) ||
-        description.toLowerCase().includes(query) ||
-        trigger.toLowerCase().includes(query)
-      );
-    });
-  }, [hubSkills, installedNames, searchQuery]);
-
-  const filteredCloudOrgSkills = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return cloudOrgSkills;
-    return cloudOrgSkills.filter((skill) => {
-      const description = skill.description ?? "";
-      return (
-        skill.title.toLowerCase().includes(query) ||
-        description.toLowerCase().includes(query)
-      );
-    });
-  }, [cloudOrgSkills, searchQuery]);
-
-  const cloudSkillInstallState = useCallback(
-    (skill: DenOrgSkillCard): CloudSkillInstallState => {
-      const imported = importedCloudSkills[skill.id];
-      if (!imported) return "available";
-      if (!installedNames.has(imported.installedName)) return "missing_local";
-
-      const remoteUpdatedAt = skill.updatedAt ? Date.parse(skill.updatedAt) : Number.NaN;
-      const importedUpdatedAt = imported.updatedAt ? Date.parse(imported.updatedAt) : Number.NaN;
-      if (
-        Number.isFinite(remoteUpdatedAt) &&
-        (!Number.isFinite(importedUpdatedAt) || remoteUpdatedAt > importedUpdatedAt)
-      ) {
-        return "update";
-      }
-      return "installed";
-    },
-    [importedCloudSkills, installedNames],
-  );
-
-  const cloudOrgLabel = useMemo(() => {
-    denUiTick;
-    const name = readDenSettings().activeOrgName?.trim();
-    return name || t("skills.cloud_org_fallback");
-  }, [denUiTick]);
-
-  const cloudSessionReady = useMemo(() => {
-    denUiTick;
-    const settings = readDenSettings();
-    return Boolean(settings.authToken?.trim() && settings.activeOrgId?.trim());
-  }, [denUiTick]);
-
-  const cloudNeedsSignIn = useMemo(() => {
-    denUiTick;
-    return !readDenSettings().authToken?.trim();
-  }, [denUiTick]);
-
-  const sharePermissionOptions = useMemo(
-    () => [
-      { value: "private", label: t("skills.share_team_permission_private") },
-      { value: "org", label: t("skills.share_team_permission_org") },
-    ],
-    [],
-  );
-
-  const shareModalSubtitle = t("skills.share_subtitle_team");
-
-  const activeHubRepoLabel = useMemo(
-    () => (hubRepo ? `${hubRepo.owner}/${hubRepo.repo}@${hubRepo.ref}` : t("skills.no_hub_repo_label")),
-    [hubRepo],
-  );
-
-  const hasDefaultHubRepo = useMemo(
-    () => hubRepos.some((repo) => `${repo.owner}/${repo.repo}@${repo.ref}` === "Devin-AXIS/iPolloWork-hub@main"),
-    [hubRepos],
-  );
-
-  const statusFilterOptions = useMemo(
-    () => [
-      { value: "all", label: t("skills.filter_status_all") },
-      { value: "installed", label: t("skills.filter_installed") },
-      { value: "available", label: t("skills.filter_status_available") },
-      { value: "update", label: t("skills.filter_status_update") },
-    ],
-    [],
-  );
-
-  const visibleCloudOrgSkills = useMemo(() => {
-    if (statusFilter === "all") return filteredCloudOrgSkills;
-    return filteredCloudOrgSkills.filter((skill) => {
-      const state = cloudSkillInstallState(skill);
-      if (statusFilter === "available") return state === "available" || state === "missing_local";
-      return state === statusFilter;
-    });
-  }, [cloudSkillInstallState, filteredCloudOrgSkills, statusFilter]);
-
-  const visibleHubSkills = statusFilter === "all" || statusFilter === "available" ? filteredHubSkills : [];
-  const showInstalledSection = activeFilter === "all" && (statusFilter === "all" || statusFilter === "installed");
-  const showCloudSection = activeFilter === "all" || activeFilter === "cloud";
-  const showHubSection = activeFilter === "all" || activeFilter === "hub";
-  const canCreateInChat = !props.busy && (props.canInstallSkillCreator || props.canUseDesktopTools);
-
-  const resolveSharePermission = () => {
-    const choice = sharePermissionChoice.trim();
-    if (choice === "private") return { shared: null };
-    return { shared: "org" as const };
+    setDetails(null); setExporting(null); setUninstalling(null); setPending(false); setError(""); setPersonal([]); setInstalled([]); setEnterprise([]); setCursor(null); setPublicItems([]);
+    const timer = window.setTimeout(() => void reloadRef.current(), source === "public" ? 250 : 0);
+    return () => { window.clearTimeout(timer); epoch.current += 1; };
+  }, [client, workspaceId, source, source === "public" ? search : "", connection?.id, connection?.membership.id]);
+  useEffect(() => { if (source === "enterprise" && !connection) setSource("personal"); }, [source, connection]);
+  const perform = async (action: (isCurrent: () => boolean) => Promise<unknown>, message: string) => {
+    const startedBy = actor.current;
+    const isCurrent = () => actor.current === startedBy;
+    setPending(true); setError("");
+    try { await action(isCurrent); if (isCurrent()) { toast.success(message); await reloadRef.current(); } }
+    catch (cause) { if (isCurrent()) setError(cause instanceof Error ? cause.message : "操作未完成，请重试。"); }
+    finally { if (isCurrent()) setPending(false); }
   };
-
-  const closeShareLink = useCallback(() => {
-    dispatchLocal({ type: "closeShare" });
-  }, []);
-
-  const runDesktopAction = useCallback(
-    (action: () => void | Promise<void>) => {
-      if (props.busy) return;
-      if (!props.canUseDesktopTools) {
-        toast.warning(t("skills.desktop_required"));
-        return;
-      }
-      void Promise.resolve(action());
-    },
-    [props.busy, props.canUseDesktopTools],
-  );
-
-  const refreshCatalogs = useCallback(() => {
-    if (props.busy) return;
-    void extensions.refreshSkills({ force: true });
-    void extensions.refreshHubSkills({ force: true });
-    void extensions.refreshCloudOrgSkills({ force: true });
-  }, [extensions, props.busy]);
-
-  const installSkillCreator = useCallback(async () => {
-    if (props.busy || installingSkillCreator) return;
-    if (!props.canInstallSkillCreator) {
-      toast.warning(props.accessHint ?? t("skills.host_only_error"));
-      return;
-    }
-    setInstallingSkillCreator(true);
-    toast.info(t("skills.installing_skill_creator"));
-    try {
-      const result = await extensions.installSkillCreator();
-      toast.success(result.message);
-    } catch (error) {
-      toast.error(maskError(error));
-    } finally {
-      setInstallingSkillCreator(false);
-    }
-  }, [extensions, installingSkillCreator, maskError, props.accessHint, props.busy, props.canInstallSkillCreator]);
-
-  const installFromCloud = useCallback(
-    async (skill: DenOrgSkillCard) => {
-      if (props.busy || installingCloudSkillId) return;
-      const state = cloudSkillInstallState(skill);
-      if (state === "installed") return;
-      setInstallingCloudSkillId(skill.id);
-      toast.info(
-        t(state === "update" ? "skills.cloud_updating" : "skills.cloud_installing", undefined, { title: skill.title }),
-      );
-      try {
-        const result = await extensions.installCloudOrgSkill(skill);
-        if (result.ok) {
-          toast.success(result.message);
-        } else {
-          toast.error(result.message);
-        }
-      } catch (error) {
-        toast.error(maskError(error));
-      } finally {
-        setInstallingCloudSkillId(null);
-      }
-    },
-    [cloudSkillInstallState, extensions, installingCloudSkillId, maskError, props.busy],
-  );
-
-  const installFromHub = useCallback(
-    async (skill: HubSkillCard) => {
-      if (props.busy || installingHubSkill) return;
-      setInstallingHubSkill(skill.name);
-      toast.info(`${t("skills.installing_prefix")} ${skill.name}...`);
-      try {
-        const result = await extensions.installHubSkill(skill.name);
-        toast.success(result.message);
-      } catch (error) {
-        toast.error(maskError(error));
-      } finally {
-        setInstallingHubSkill(null);
-      }
-    },
-    [extensions, installingHubSkill, maskError, props.busy],
-  );
-
-  const handleNewSkill = useCallback(async () => {
-    if (props.busy) return;
-    if (props.canInstallSkillCreator && !skillCreatorInstalled) {
-      await installSkillCreator();
-    }
-    await Promise.resolve(props.createSessionAndOpen("/skill-creator"));
-  }, [installSkillCreator, props, skillCreatorInstalled]);
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      refresh: refreshCatalogs,
-      importLocal: () => runDesktopAction(extensions.importLocalSkill),
-      createInChat: () => void handleNewSkill(),
-    }),
-    [extensions.importLocalSkill, handleNewSkill, refreshCatalogs, runDesktopAction],
-  );
-
-  const openCloudSignIn = useCallback(() => {
-    const base = readDenSettings().baseUrl?.trim() || DEFAULT_DEN_BASE_URL;
-    // Label stays "Sign in"; opens the sign-up tab (returning users can toggle).
-    props.onOpenLink(buildDenAuthUrl(base, "sign-up"));
-  }, [props]);
-
-  const openShareLink = useCallback(
-    (skill: SkillCard) => {
-      if (props.busy) return;
-      dispatchLocal({ type: "openShare", skill });
-    },
-    [props.busy],
-  );
-
-  const startShareSkillSignIn = useCallback(() => {
-    const settings = readDenSettings();
-    // Label stays "Sign in"; opens the sign-up tab (returning users can toggle).
-    props.onOpenLink(buildDenAuthUrl(settings.baseUrl, "sign-up"));
-  }, [props]);
-
-  const publishSkillToTeam = useCallback(async () => {
-    if (!shareTarget || props.busy || shareTeamBusy || shareTeamDisabledReason) return;
-    setShareTeamBusy(true);
-    setShareTeamError(null);
-    setShareTeamSuccess(null);
-    try {
-      const skill = await extensions.readSkill(shareTarget.name);
-      if (!skill) throw new Error("Failed to load skill");
-      const sharing = resolveSharePermission();
-      const { orgName, orgId } = await saveInstalledSkillToiPolloWorkOrg({
-        skillText: skill.content,
-        shared: sharing.shared,
-      });
-      setShareTeamSuccess(t("skills.share_team_uploaded_success", undefined, { org: orgName }));
-      window.dispatchEvent(
-        new CustomEvent<{ orgId: string }>("ipollowork-den-org-skills-changed", {
-          detail: { orgId },
-        }),
-      );
-      void extensions.refreshCloudOrgSkills({ force: true });
-    } catch (error) {
-      setShareTeamError(maskError(error));
-    } finally {
-      setShareTeamBusy(false);
-    }
-  }, [extensions, maskError, props.busy, shareTarget, shareTeamBusy, shareTeamDisabledReason]);
-
-  const openSkill = useCallback(
-    async (skill: SkillCard) => {
-      if (props.busy) return;
-      setSelectedSkill(skill);
-      setSelectedContent("");
-      setSelectedDirty(false);
-      setSelectedError(null);
-      setSelectedLoading(true);
-      try {
-        const result = await extensions.readSkill(skill.name);
-        if (!result) {
-          setSelectedError(t("skills.skill_load_failed"));
-          return;
-        }
-        setSelectedContent(result.content);
-      } catch (error) {
-        setSelectedError(maskError(error));
-      } finally {
-        setSelectedLoading(false);
-      }
-    },
-    [extensions, maskError, props.busy],
-  );
-
-  const saveSelectedSkill = useCallback(async () => {
-    if (!selectedSkill || !selectedDirty) return;
-    setSelectedError(null);
-    try {
-      await Promise.resolve(
-        extensions.saveSkill({
-          name: selectedSkill.name,
-          content: selectedContent,
-          description: selectedSkill.description,
-        }),
-      );
-      setSelectedDirty(false);
-    } catch (error) {
-      setSelectedError(maskError(error));
-    }
-  }, [extensions, maskError, selectedContent, selectedDirty, selectedSkill]);
-
-  const selectHubRepo = useCallback(
-    (repo: HubSkillRepo) => {
-      void Promise.resolve(extensions.setHubRepo(repo)).then(() => {
-        void extensions.refreshHubSkills({ force: true });
-      });
-    },
-    [extensions],
-  );
-
-  const openCustomRepoModal = useCallback(() => {
-    if (props.busy) return;
-    setCustomRepoOpen(true);
-    setCustomRepoOwner(hubRepo?.owner ?? "");
-    setCustomRepoName(hubRepo?.repo ?? "");
-    setCustomRepoRef(hubRepo?.ref || "main");
-    setCustomRepoError(null);
-  }, [hubRepo, props.busy]);
-
-  const closeCustomRepoModal = useCallback(() => {
-    setCustomRepoOpen(false);
-    setCustomRepoError(null);
-  }, []);
-
-  const saveCustomRepo = useCallback(() => {
-    const owner = customRepoOwner.trim();
-    const repo = customRepoName.trim();
-    const ref = customRepoRef.trim() || "main";
-    if (!owner || !repo) {
-      setCustomRepoError(t("skills.owner_repo_required"));
-      return;
-    }
-    void Promise.resolve(extensions.addHubRepo({ owner, repo, ref })).then(() => {
-      void extensions.refreshHubSkills({ force: true });
-    });
-    closeCustomRepoModal();
-  }, [closeCustomRepoModal, customRepoName, customRepoOwner, customRepoRef, extensions]);
-
-  const isiPolloWorkInjectedSkill = (skill: SkillCard) => {
-    const normalizedName = skill.name.trim().toLowerCase();
-    const normalizedPath = skill.path.replace(/\\/g, "/").toLowerCase();
-    return normalizedPath.includes("/.opencode/skills/") &&
-      (IPOLLOWORK_DEFAULT_SKILL_NAMES.has(normalizedName) || normalizedName.endsWith("-creator"));
+  useImperativeHandle(ref, () => ({ refresh: () => void reloadRef.current(), importLocal: () => fileInput.current?.click(), createInChat: () => void props.createSessionAndOpen("帮我创建一个独立技能，包含标准 SKILL.md 和必要的配套文件。") }), [props.createSessionAndOpen]);
+  const filtered = <T extends { name: string; description?: string | null }>(items: T[]) => items.filter((item) => `${item.name} ${item.description ?? ""}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const savePackage = async (file: File) => downloadBlobAsFile(file.name, file);
+  const exportPackage = async (submit: boolean) => {
+    if (!exporting || !client || !workspaceId) return;
+    await perform(async () => {
+      const result = await client.exportSkillPackage(workspaceId, { name: exporting.name, title: title.trim(), version: version.trim() });
+      const file = new File([result.data], result.filename ?? `${exporting.name}-${version}.ipollowork-skill`, { type: "application/vnd.ipollowork.skill+zip" });
+      if (submit && connection) await enterpriseApi.submit(connection, "skill", file); else await savePackage(file);
+      setExporting(null);
+    }, submit ? "技能投稿已提交，等待审核。" : "技能包已导出。");
   };
-
-  return (
-    <section data-testid="settings-standard-page" className={`${settingsStandardContentClass} space-y-8`}>
-      <div className="space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            {props.showHeader !== false ? <h2 className={settingsPageTitleClass}>{t("skills.title")}</h2> : null}
-            <p className={`${settingsPageDescriptionClass} max-w-[714px]`}>
-              {t("skills.worker_profile_desc")}
-            </p>
-          </div>
-
-          {props.showActions === false ? null : (
-            <div className="flex flex-wrap gap-4 lg:justify-end">
-              <Button variant="outline" onClick={refreshCatalogs} disabled={props.busy}>
-                <RefreshCw size={14} />
-                {t("common.refresh")}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => runDesktopAction(extensions.importLocalSkill)}
-                disabled={props.busy || !props.canUseDesktopTools}
-              >
-                <Download size={14} />
-                {t("skills.import_local_skill")}
-              </Button>
-              <Button onClick={() => void handleNewSkill()} disabled={!canCreateInChat}>
-                <Sparkles size={14} />
-                {t("skills.create_in_chat")}
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <div className="relative min-w-0">
-          <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-dls-secondary" />
-          <input
-            data-testid="skills-library-search"
-            type="text"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.currentTarget.value)}
-            placeholder={t("skills.catalog_search_placeholder")}
-            className="h-[34px] w-full rounded-[8px] border border-transparent bg-[#f5f6f9] pl-[42px] pr-4 text-[13px] text-dls-text shadow-none outline-none transition-colors placeholder:text-[#a2a6af] focus:border-ring focus:ring-3 focus:ring-ring/30 dark:bg-dls-hover dark:placeholder:text-dls-secondary"
-          />
-        </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div data-testid="skills-library-source">
-            <SettingsSegmentedTabs
-              value={activeFilter}
-              ariaLabel={t("skills.source_label")}
-              items={[
-                { value: "all", label: t("skills.filter_all") },
-                { value: "cloud", label: t("skills.filter_cloud") },
-                { value: "hub", label: t("skills.filter_hub") },
-              ]}
-              onValueChange={setActiveFilter}
-            />
-          </div>
-
-          <Select
-            value={statusFilter}
-            onValueChange={(value) => {
-              if (value && isSkillsStatusFilter(value)) setStatusFilter(value);
-            }}
-          >
-            <SelectTrigger
-              data-testid="skills-status-filter"
-              aria-label={t("skills.filter_status_all")}
-              className="w-[132px] shrink-0"
-            >
-              <SelectValue>{statusFilterOptions.find((option) => option.value === statusFilter)?.label}</SelectValue>
-            </SelectTrigger>
-            <SelectContent align="end">
-              {statusFilterOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+  const openLocal = (item: StandaloneSkillPackage) => void perform(async (isCurrent) => {
+    if (!client || !workspaceId) return;
+    const result = await client.getSkill(workspaceId, item.name, { includeGlobal: true });
+    if (!isCurrent()) return;
+    setDetails({ title: item.name, content: result.content, ...(!item.pluginName && item.scope === "project" ? { editable: item } : {}) }); setContent(result.content);
+  }, "技能内容已加载。");
+  const installRemote = (item: PublicSkill) => void perform(async () => {
+    if (!client || !workspaceId) return;
+    const result = await downloadPublicSkill(item); await client.importSkillPackage(workspaceId, result.file, result.source); await props.extensions.refreshSkills({ force: true });
+  }, "公开技能已安装。");
+  const mutateEnterprise = (item: InstalledEnterpriseSkill, enabled: boolean | null) => void perform(async () => {
+    if (!client || !workspaceId || !connection) return;
+    await client.setEnterpriseSkillContext(workspaceId, enterpriseSkillContext(connection)); await client.updateEnterpriseSkill(workspaceId, item.resourceId, enabled);
+  }, enabled === null ? "企业技能已卸载。" : enabled ? "企业技能已启用。" : "企业技能已停用。");
+  return <section className="mx-auto w-full max-w-[1280px] space-y-5" data-testid="skills-catalog">
+    {props.showHeader !== false ? <div><h2 className={settingsPageTitleClass}>技能</h2><p className={`${settingsPageDescriptionClass} max-w-[714px]`}>管理独立技能；插件内置技能随所属插件管理。</p></div> : null}
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div role="group" aria-label="技能来源" className="flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-muted p-1">
+        <Button size="sm" variant={source === "personal" ? "secondary" : "ghost"} aria-pressed={source === "personal"} onClick={() => setSource("personal")}><User className="size-4" />个人</Button>
+        <Button size="sm" variant={source === "public" ? "secondary" : "ghost"} aria-pressed={source === "public"} onClick={() => setSource("public")}><Cloud className="size-4" />公开</Button>
+        {connection ? <Button size="sm" className="max-w-64" variant={source === "enterprise" ? "secondary" : "ghost"} aria-pressed={source === "enterprise"} title={connection.name} onClick={() => setSource("enterprise")}><Building2 className="size-4 shrink-0" /><span className="truncate">{connection.name}</span></Button> : null}
       </div>
-
-      {props.accessHint ? (
-        <div className="rounded-[20px] border border-dls-border bg-dls-hover px-5 py-4 text-[13px] text-dls-secondary">
-          {props.accessHint}
-        </div>
-      ) : null}
-      {!props.accessHint && !props.canInstallSkillCreator && !props.canUseDesktopTools ? (
-        <div className="rounded-[20px] border border-dls-border bg-dls-hover px-5 py-4 text-[13px] text-dls-secondary">
-          {t("skills.host_mode_only")}
-        </div>
-      ) : null}
-
-      {skillsStatus ? (
-        <div className="whitespace-pre-wrap break-words rounded-[20px] border border-dls-border bg-dls-hover px-5 py-4 text-[13px] text-dls-secondary">
-          {skillsStatus}
-        </div>
-      ) : null}
-
-      {showInstalledSection ? (
-        <div className="space-y-3">
-          <div data-testid="skills-installed-section" className="flex items-end justify-between gap-3 border-b border-dls-border pb-2">
-            <div className="space-y-1.5">
-              <h3 className={settingsSectionTitleClass}>{t("skills.installed")}</h3>
-              <p className={settingsPageDescriptionClass}>{t("skills.installed_desc")}</p>
-            </div>
-            <span className="text-[13px] text-dls-secondary">{t("skills.shown_count", undefined, { count: filteredSkills.length })}</span>
-          </div>
-
-          {filteredSkills.length === 0 ? (
-            <div className="rounded-[8px] border border-dashed border-dls-border px-5 py-8 text-[14px] text-dls-secondary">
-              {t("skills.no_skills")}
-            </div>
-          ) : (
-            <div data-testid="skills-installed-grid" className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-x-8">
-              {filteredSkills.map((skill) => (
-                <article key={skill.path} data-testid="skill-library-card" className={`${panelCardClass} flex min-w-0 flex-col gap-4`}>
-                  <button
-                    type="button"
-                    className="flex min-w-0 items-center gap-4 rounded-[8px] text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
-                    onClick={() => void openSkill(skill)}
-                  >
-                    <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[#f6f7fb] text-dls-secondary dark:bg-dls-hover">
-                      {skill.name.toLowerCase().includes("figma") ? (
-                        <img src="/ext-figma.svg" alt="" className="size-7 object-contain" />
-                      ) : (
-                        <Package size={19} />
-                      )}
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-ui-section-title font-semibold leading-5 tracking-[0.1px] text-dls-text">{skill.name}</span>
-                        {isiPolloWorkInjectedSkill(skill) ? <span className={tagClass}>iPolloWork</span> : null}
-                      </span>
-                      <span className="line-clamp-1 text-[11px] leading-[15px] text-dls-secondary">
-                        {skill.description || t("skills.no_description")}
-                      </span>
-                    </span>
-                  </button>
-
-                  <div className="flex min-w-0 items-center justify-between gap-3">
-                    <span className="shrink-0 text-ui-caption text-dls-secondary/60">{t("skills.installed_status")}</span>
-                    <div className="flex min-w-0 items-center justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => openShareLink(skill)}
-                        disabled={props.busy}
-                        title={t("skills.share_option_team_title")}
-                      >
-                        <Users size={14} />
-                        {t("skills.share_option_team_title")}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void openSkill(skill)}
-                        disabled={props.busy}
-                        title={t("common.edit")}
-                      >
-                        <Edit2 size={14} />
-                        {t("common.edit")}
-                      </Button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {showCloudSection ? (
-        <div className="space-y-3">
-          <div data-testid="skills-cloud-section" className="flex items-end justify-between gap-3 border-b border-dls-border pb-2">
-            <div className="min-w-0 space-y-1.5">
-              <h3 className={settingsSectionTitleClass}>{t("skills.cloud_section_title")}</h3>
-              <p className={settingsPageDescriptionClass}>{t("skills.cloud_section_subtitle")}</p>
-            </div>
-            <span className="max-w-[40%] shrink-0 truncate text-[13px] text-dls-secondary">{cloudOrgLabel}</span>
-          </div>
-
-          {!cloudSessionReady ? (
-            <div className="rounded-[20px] border border-dashed border-dls-border bg-dls-surface px-5 py-6 text-[14px] text-dls-secondary">
-              {cloudNeedsSignIn ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p>{t("skills.cloud_sign_in_hint")}</p>
-                  <button type="button" className={pillPrimaryClass} onClick={openCloudSignIn}>
-                    {t("skills.cloud_sign_in")}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p>{t("skills.cloud_choose_org_hint")}</p>
-                  <p className="text-[13px]">{t("skills.cloud_choose_org_detail")}</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              {cloudOrgSkillsStatus ? (
-                <div
-                  data-testid="skills-cloud-error"
-                  role="alert"
-                  className={modalNoticeErrorClass}
-                >
-                  {cloudOrgSkillsStatus}
-                </div>
-              ) : null}
-
-              {visibleCloudOrgSkills.length === 0 ? (
-                <div className="rounded-[20px] border border-dashed border-dls-border bg-dls-surface px-5 py-8 text-[14px] text-dls-secondary">
-                  {cloudOrgSkills.length === 0 ? t("skills.cloud_org_empty") : t("skills.cloud_no_search_matches")}
-                </div>
-              ) : (
-                <div className="rounded-[24px] bg-dls-hover p-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {visibleCloudOrgSkills.map((skill) => {
-                      const state = cloudSkillInstallState(skill);
-                      const installedName = importedCloudSkills[skill.id]?.installedName ?? null;
-                      return (
-                        <div key={skill.id} className={`${panelCardClass} flex flex-col gap-4 text-left`}>
-                          <div className="flex min-w-0 gap-4">
-                            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-dls-hover">
-                              <Cloud size={20} className="text-dls-secondary" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="truncate text-[14px] font-semibold text-dls-text">{skill.title}</h4>
-                              {skill.description ? (
-                                <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-dls-secondary">{skill.description}</p>
-                              ) : null}
-                              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-dls-secondary">
-                                {skill.shared === "org" ? <span className={tagClass}>{t("skills.cloud_shared_org")}</span> : null}
-                                {skill.shared === "public" ? <span className={tagClass}>{t("skills.cloud_shared_public")}</span> : null}
-                                {skill.shared === null ? <span className={tagClass}>{t("skills.cloud_shared_private")}</span> : null}
-                                {installedName ? <span className={tagClass}>{t("skills.cloud_installed_as", undefined, { name: installedName })}</span> : null}
-                                {state === "installed" ? <span className={tagClass}>{t("skills.cloud_status_installed")}</span> : null}
-                                {state === "update" ? <span className={tagClass}>{t("skills.cloud_status_update")}</span> : null}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3 border-t border-dls-border pt-4">
-                            <span className={tagClass}>{t("skills.cloud_footer_label")}</span>
-                            <button
-                              type="button"
-                              className={installingCloudSkillId === skill.id || state === "installed" ? pillSecondaryClass : pillPrimaryClass}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void installFromCloud(skill);
-                              }}
-                              disabled={props.busy || installingCloudSkillId === skill.id || state === "installed"}
-                            >
-                              {installingCloudSkillId === skill.id ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                              {installingCloudSkillId === skill.id
-                                ? t("skills.cloud_installing_short")
-                                : state === "update"
-                                  ? t("skills.cloud_update_skill")
-                                  : state === "installed"
-                                    ? t("skills.cloud_status_installed")
-                                    : t("skills.install")}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      ) : null}
-
-      {showHubSection ? (
-        <div className="space-y-3">
-          <div data-testid="skills-hub-section" className="flex items-end justify-between gap-3 border-b border-dls-border pb-2">
-            <div className="min-w-0 space-y-1.5">
-              <h3 className={settingsSectionTitleClass}>{t("skills.available_from_hub")}</h3>
-              <p className={settingsPageDescriptionClass}>{t("skills.hub_desc")}</p>
-            </div>
-            <div data-testid="skills-hub-header-actions" className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  void Promise.resolve(extensions.addHubRepo({ owner: "different-ai", repo: "ipollowork-hub", ref: "main" })).then(() => {
-                    void extensions.refreshHubSkills({ force: true });
-                  });
-                }}
-                className={pillGhostClass}
-                disabled={props.busy || hasDefaultHubRepo}
-              >
-                <Plus size={14} />
-                {t("skills.add_ipollowork_hub")}
-              </button>
-              <button type="button" onClick={openCustomRepoModal} disabled={props.busy} className={pillSecondaryClass}>
-                <Plus size={14} />
-                {t("skills.add_git_repo")}
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-[20px] border border-dls-border bg-dls-surface p-4">
-            <div className="text-[12px] text-dls-secondary">
-              {t("skills.source_label")}: <span className="font-mono text-dls-text">{activeHubRepoLabel}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {hubRepos.map((repo) => {
-                const key = `${repo.owner}/${repo.repo}@${repo.ref}`;
-                const active = hubRepo ? key === `${hubRepo.owner}/${hubRepo.repo}@${hubRepo.ref}` : false;
-                return (
-                  <div key={key} className="inline-flex items-center overflow-hidden rounded-full border border-dls-border bg-dls-surface">
-                    <button
-                      type="button"
-                      onClick={() => selectHubRepo(repo)}
-                      className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                        active ? "bg-dls-accent text-[var(--dls-accent-fg)]" : "text-dls-secondary hover:bg-dls-hover hover:text-dls-text"
-                      }`}
-                      disabled={props.busy}
-                    >
-                      {key}
-                    </button>
-                    <button
-                      type="button"
-                      className="px-2 py-1.5 text-[12px] text-dls-secondary transition-colors hover:bg-dls-hover hover:text-red-11"
-                      onClick={() => {
-                        void Promise.resolve(extensions.removeHubRepo(repo)).then(() => {
-                          void extensions.refreshHubSkills({ force: true });
-                        });
-                      }}
-                      disabled={props.busy}
-                      title={t("skills.remove_saved_repo")}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {hubSkillsStatus ? (
-            <div data-testid="skills-hub-error" role="alert" className={modalNoticeErrorClass}>
-              {hubSkillsStatus}
-            </div>
-          ) : null}
-
-          {visibleHubSkills.length === 0 ? (
-            <div className="rounded-[20px] border border-dashed border-dls-border bg-dls-surface px-5 py-8 text-[14px] text-dls-secondary">
-              {hubRepo ? t("skills.no_hub_skills") : t("skills.no_hub_repo_selected")}
-            </div>
-          ) : (
-            <div className="rounded-[24px] bg-dls-hover p-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {visibleHubSkills.map((skill) => (
-                  <div key={`${skill.source.owner}/${skill.source.repo}/${skill.name}`} className={`${panelCardClass} flex flex-col gap-4 text-left`}>
-                    <div className="flex min-w-0 gap-4">
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-dls-hover">
-                        <Package size={20} className="text-dls-secondary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="truncate text-[14px] font-semibold text-dls-text">{skill.name}</h4>
-                        <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-dls-secondary">
-                          {skill.description || t("skills.from_repo", undefined, { owner: skill.source.owner, repo: skill.source.repo })}
-                        </p>
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-dls-secondary">
-                          <span className={`${tagClass} font-mono`}>{skill.source.owner}/{skill.source.repo}</span>
-                          {skill.trigger ? (
-                            <span className={tagClass} title={t("skills.trigger_label", undefined, { trigger: skill.trigger })}>
-                              {t("skills.trigger_label", undefined, { trigger: skill.trigger })}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 border-t border-dls-border pt-4">
-                      <span className={tagClass}>{t("skills.hub_label")}</span>
-                      <button
-                        type="button"
-                        className={installingHubSkill === skill.name ? pillSecondaryClass : pillPrimaryClass}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void installFromHub(skill);
-                        }}
-                        disabled={props.busy || installingHubSkill === skill.name}
-                        title={t("skills.install_name_title", undefined, { name: skill.name })}
-                      >
-                        {installingHubSkill === skill.name ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                        {installingHubSkill === skill.name ? t("skills.installing") : t("common.add")}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      <Dialog
-        open={Boolean(selectedSkill)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedSkill(null);
-            setSelectedContent("");
-            setSelectedDirty(false);
-            setSelectedError(null);
-            setSelectedLoading(false);
-          }
-        }}
-      >
-        <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-4xl flex-col overflow-hidden sm:max-w-4xl">
-            <DialogHeader>
-              <DialogTitle className="truncate pr-10">{selectedSkill?.name}</DialogTitle>
-            </DialogHeader>
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {selectedError ? <div role="alert" className={`mb-3 ${modalNoticeErrorClass}`}>{selectedError}</div> : null}
-              {selectedLoading ? (
-                <div className="text-xs text-dls-secondary">{t("skills.loading")}</div>
-              ) : (
-                <textarea
-                  value={selectedContent}
-                  onChange={(event) => {
-                    setSelectedContent(event.currentTarget.value);
-                    setSelectedDirty(true);
-                  }}
-                  className="min-h-[420px] w-full rounded-xl border border-dls-border bg-dls-hover px-4 py-3 text-xs font-mono text-dls-text focus:outline-none focus:ring-2 focus:ring-[rgba(var(--dls-accent-rgb),0.25)]"
-                  spellCheck={false}
-                />
-              )}
-            </div>
-
-            <DialogFooter
-              data-testid="skill-editor-actions"
-              className="flex-row items-center justify-between sm:justify-between"
-            >
-              <Button
-                data-testid="skill-editor-uninstall"
-                type="button"
-                variant="destructive"
-                disabled={props.busy || !props.canUseDesktopTools}
-                onClick={() => {
-                  const target = selectedSkill;
-                  if (!target) return;
-                  setUninstallTarget(target);
-                  setSelectedSkill(null);
-                  setSelectedContent("");
-                  setSelectedDirty(false);
-                  setSelectedError(null);
-                  setSelectedLoading(false);
-                }}
-              >
-                <Trash2 size={14} />
-                {t("skills.uninstall")}
-              </Button>
-              <Button
-                data-testid="skill-editor-save"
-                type="button"
-                disabled={!selectedDirty || props.busy}
-                onClick={() => void saveSelectedSkill()}
-              >
-                {t("common.save")}
-              </Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmModal
-        open={Boolean(uninstallTarget)}
-        title={t("skills.uninstall_title")}
-        message={t("skills.uninstall_warning").replace("{name}", uninstallTarget?.name ?? "")}
-        confirmLabel={t("skills.uninstall")}
-        cancelLabel={t("common.cancel")}
-        confirmButtonVariant="destructive"
-        onCancel={() => setUninstallTarget(null)}
-        onConfirm={() => {
-          const target = uninstallTarget;
-          setUninstallTarget(null);
-          if (!target) return;
-          void extensions.uninstallSkill(target.name);
-        }}
-      />
-
-      <Dialog
-        open={Boolean(shareTarget)}
-        onOpenChange={(open) => {
-          if (!open) closeShareLink();
-        }}
-      >
-        <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-md flex-col overflow-hidden sm:max-w-md">
-          <DialogHeader>
-            <div className="min-w-0 flex flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle>{t("skills.share_title")}</DialogTitle>
-                <span className={tagClass}>{shareTarget?.name}</span>
-              </div>
-              <DialogDescription>{shareModalSubtitle}</DialogDescription>
-            </div>
-          </DialogHeader>
-
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="space-y-5 pt-2">
-              <p className="text-[14px] leading-relaxed text-dls-secondary">{t("skills.share_team_permissions_intro")}</p>
-              <div className={surfaceCardClass}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={tagClass}>{shareTeamOrgLabel}</span>
-                </div>
-                {shareTeamError?.trim() ? <div role="alert" className={`mt-4 ${modalNoticeErrorClass}`}>{shareTeamError}</div> : null}
-                {shareTeamSuccess?.trim() ? <div className={`mt-4 ${modalNoticeSuccessClass}`}>{shareTeamSuccess}</div> : null}
-                {shareCloudSignedIn && shareTeamDisabledReason?.trim() ? (
-                  <div className="mt-4 text-[12px] text-dls-secondary">{shareTeamDisabledReason}</div>
-                ) : null}
-                {shareCloudSignedIn ? (
-                  <div className="mt-4">
-                    <span id="skills-share-hub-label" className="mb-1.5 block text-[13px] font-medium text-dls-text">
-                      {t("skills.share_team_permissions_label")}
-                    </span>
-                    <Select
-                      value={sharePermissionChoice}
-                      onValueChange={(value) => { if (value !== null) setSharePermissionChoice(value); }}
-                      disabled={shareTeamBusy || Boolean(shareTeamSuccess?.trim())}
-                    >
-                      <SelectTrigger className="w-full" aria-labelledby="skills-share-hub-label">
-                        <SelectValue>{sharePermissionOptions.find((option) => option.value === sharePermissionChoice)?.label}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent align="start">
-                        {sharePermissionOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!shareCloudSignedIn) {
-                      startShareSkillSignIn();
-                      return;
-                    }
-                    void publishSkillToTeam();
-                  }}
-                  disabled={shareCloudSignedIn ? Boolean(shareTeamDisabledReason) || shareTeamBusy || Boolean(shareTeamSuccess?.trim()) : false}
-                  className={`${pillPrimaryClass} mt-4 w-full`}
-                >
-                  {!shareCloudSignedIn
-                    ? t("skills.share_team_sign_in")
-                    : shareTeamBusy
-                      ? t("skills.share_team_uploading")
-                      : t("skills.share_team_upload_and_save")}
-                </button>
-                {!shareCloudSignedIn ? <p className="mt-3 text-[12px] text-dls-secondary">{t("skills.share_team_sign_in_hint")}</p> : null}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>
-              {t("skills.share_done")}
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={customRepoOpen}
-        onOpenChange={(open) => {
-          if (!open) closeCustomRepoModal();
-        }}
-      >
-        <DialogContent className="w-full max-w-lg overflow-hidden sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{t("skills.add_custom_repo")}</DialogTitle>
-              <DialogDescription>{t("skills.github_repo_hint")}</DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="space-y-1">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-dls-secondary">{t("skills.owner_label")}</div>
-                  <input
-                    type="text"
-                    value={customRepoOwner}
-                    onChange={(event) => setCustomRepoOwner(event.currentTarget.value)}
-                    placeholder="different-ai"
-                    className="w-full rounded-lg border border-dls-border bg-dls-hover px-3 py-2 text-xs font-mono text-dls-text focus:outline-none"
-                    spellCheck={false}
-                  />
-                </label>
-                <label className="space-y-1">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-dls-secondary">{t("skills.repo_label")}</div>
-                  <input
-                    type="text"
-                    value={customRepoName}
-                    onChange={(event) => setCustomRepoName(event.currentTarget.value)}
-                    placeholder="ipollowork-hub"
-                    className="w-full rounded-lg border border-dls-border bg-dls-hover px-3 py-2 text-xs font-mono text-dls-text focus:outline-none"
-                    spellCheck={false}
-                  />
-                </label>
-              </div>
-
-              <label className="space-y-1">
-                <div className="text-xs font-semibold uppercase tracking-widest text-dls-secondary">{t("skills.ref_label")}</div>
-                <input
-                  type="text"
-                  value={customRepoRef}
-                  onChange={(event) => setCustomRepoRef(event.currentTarget.value)}
-                  placeholder="main"
-                  className="w-full rounded-lg border border-dls-border bg-dls-hover px-3 py-2 text-xs font-mono text-dls-text focus:outline-none"
-                  spellCheck={false}
-                />
-              </label>
-
-              {customRepoError ? <div role="alert" className={modalNoticeErrorClass}>{customRepoError}</div> : null}
-            </div>
-            <DialogFooter>
-              <DialogClose render={<Button variant="outline" />}>
-                {t("common.cancel")}
-              </DialogClose>
-              <Button variant="secondary" onClick={saveCustomRepo} disabled={props.busy}>
-                {t("skills.save_and_load")}
-              </Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </section>
-  );
+      <div className="flex flex-wrap items-center gap-2">
+        {source === "enterprise" && connection ? <EnterpriseResourceControls key={`${connection.id}:${connection.membership.id}`} connection={connection} type="skill" onChanged={() => void reloadRef.current()} /> : null}
+        {props.showActions !== false ? <>
+          {source === "personal" ? <><Button size="sm" variant="outline" disabled={!ready} onClick={() => fileInput.current?.click()}><Download className="size-4" />导入技能</Button><Button size="sm" variant="outline" disabled={props.busy || !props.canInstallSkillCreator} onClick={() => void props.createSessionAndOpen("帮我创建一个独立技能，包含标准 SKILL.md 和必要的配套文件。") }><Plus className="size-4" />创建技能</Button></> : null}
+          <Button size="icon-sm" variant="ghost" aria-label="刷新技能" disabled={loading || pending} onClick={() => void reloadRef.current()}><RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} /></Button>
+        </> : null}
+      </div>
+    </div>
+    <input ref={fileInput} type="file" accept=".md,.ipollowork-skill" className="hidden" aria-label="导入独立技能包" onChange={(event) => {
+      const file = event.target.files?.[0]; event.target.value = ""; if (!file || !client || !workspaceId) return;
+      void perform(async () => { const digest = await skillFileDigest(await file.arrayBuffer()); await client.importSkillPackage(workspaceId, file, { origin: "local", resourceId: "local", digest }); await props.extensions.refreshSkills({ force: true }); }, "技能包已导入。");
+    }} />
+    <div className="flex flex-wrap gap-3"><div className="relative min-w-48 flex-1"><Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索技能名称或说明" className="pl-9" /></div><Select value={status} onValueChange={(value) => setStatus(value ?? "all")}><SelectTrigger className="w-32" aria-label="技能状态" data-testid="skills-status-filter"><SelectValue>{status === "all" ? "全部状态" : status === "installed" ? "已安装" : status === "available" ? "未安装" : "可更新"}</SelectValue></SelectTrigger><SelectContent>{[["all", "全部状态"], ["installed", "已安装"], ["available", "未安装"], ["update", "可更新"]].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+    {error ? <p role="alert" className="rounded-xl bg-feedback-error px-4 py-3 text-sm text-red-11">{error}</p> : null}
+    {source === "enterprise" ? <p className="text-xs text-muted-foreground">企业技能仅在当前企业账号获授权时加载。撤权或离线后，后续任务停止加载，已下载文件另行管理。</p> : null}
+    {loading ? <div role="status" className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在加载技能</div> : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {source === "personal" && status !== "available" && status !== "update" ? filtered(personal).map((item) => <article key={item.path} className="flex min-w-0 flex-col rounded-xl border border-border bg-background p-4"><div className="flex items-start gap-3"><Sparkles className="mt-0.5 size-5 shrink-0 text-primary" /><div className="min-w-0"><h3 className="break-words text-sm font-semibold">{item.name}</h3><p className="mt-1 text-xs text-muted-foreground">{item.pluginName ? `来自插件 ${item.pluginName}` : item.source?.origin === "local" ? "本地导入" : item.source ? "来自公开云端" : item.scope === "global" ? "设备全局技能" : "个人技能"}{item.source ? ` · v${item.source.version}` : ""}</p></div></div><p className="mt-3 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.description || "暂无说明"}</p><div className="mt-auto flex flex-wrap justify-end gap-2 pt-4"><Button size="sm" variant="ghost" disabled={pending} onClick={() => openLocal(item)}>查看</Button>{item.canExport ? <Button size="sm" variant="outline" disabled={!ready} onClick={() => { setExporting(item); setTitle(item.name); setVersion(item.source?.version ?? "1.0.0"); }}>导出 / 投稿</Button> : null}{!item.pluginName && item.scope === "project" ? <Button size="sm" variant="ghost" disabled={!ready} onClick={() => setUninstalling(item)}>卸载</Button> : null}</div></article>) : null}
+      {source === "public" ? publicItems.filter((item) => { const existing = personal.find((skill) => skill.source?.resourceId === item.id); return status === "all" || (status === "installed" ? Boolean(existing) : status === "available" ? !existing : existing && existing.source?.version !== item.latestVersion.version); }).map((item) => { const existing = personal.find((skill) => skill.source?.resourceId === item.id); const current = existing?.source?.version === item.latestVersion.version; return <article key={item.id} className="flex min-w-0 flex-col rounded-xl border border-border bg-background p-4"><h3 className="break-words text-sm font-semibold">{item.title}</h3><p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.description}</p><p className="mt-3 text-xs text-muted-foreground">{item.authorName} · {item.category} · v{item.latestVersion.version}</p><div className="mt-auto flex justify-end gap-2 pt-4"><Button size="sm" variant="ghost" disabled={pending} onClick={() => void perform(async () => { const result = await downloadPublicSkill(item); await savePackage(result.file); }, "技能包已下载。")}>下载</Button><Button size="sm" disabled={!ready || current} onClick={() => installRemote(item)}>{current ? "已安装" : existing ? "更新" : "安装"}</Button></div></article>; }) : null}
+      {source === "enterprise" ? enterprise.filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(search.toLowerCase())).filter((item) => { const existing = installed.find((skill) => skill.resourceId === item.id); return status === "all" || (status === "installed" ? Boolean(existing) : status === "available" ? !existing : existing && existing.manifest.version !== item.latestVersion?.version); }).map((item) => { const existing = installed.find((skill) => skill.resourceId === item.id); const current = existing?.manifest.version === item.latestVersion?.version; return <article key={item.id} className="flex min-w-0 flex-col rounded-xl border border-border bg-background p-4"><h3 className="break-words text-sm font-semibold">{item.name}</h3><p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{item.description}</p><p className="mt-3 text-xs text-muted-foreground">{item.enterpriseCategory} · v{item.latestVersion?.version}{existing ? existing.enabled ? " · 已启用" : " · 已停用" : ""}</p><div className="mt-auto flex flex-wrap justify-end gap-2 pt-4"><Button size="sm" variant="ghost" disabled={pending} onClick={() => void perform(async () => { if (connection) await savePackage(await downloadEnterpriseResource(item, { connection })); }, "技能包已下载。")}>下载</Button><Button size="sm" variant="ghost" disabled={pending || !item.latestVersion} onClick={() => void perform(async (isCurrent) => { if (!connection || !item.latestVersion) return; const result = await enterpriseApi.skill(connection, item.id, item.latestVersion.version); if (!isCurrent()) return; setDetails({ title: item.name, content: result.content, files: result.files }); setContent(result.content); }, "技能内容已加载。")}>查看</Button>{existing ? <><Button size="sm" variant="outline" disabled={!ready} onClick={() => mutateEnterprise(existing, !existing.enabled)}>{existing.enabled ? "停用" : "启用"}</Button><Button size="sm" variant="ghost" disabled={!ready} onClick={() => mutateEnterprise(existing, null)}>卸载</Button></> : null}{!current && item.latestVersion ? <Button size="sm" disabled={!ready} onClick={() => void perform(async () => { if (!client || !workspaceId || !connection || !item.latestVersion) return; await client.installEnterpriseSkill(workspaceId, { context: enterpriseSkillContext(connection), resourceId: item.id, version: item.latestVersion.version, digest: item.latestVersion.digest }); }, "企业技能已安装。")}>{existing ? "更新" : "安装"}</Button> : null}</div></article>; }) : null}
+      {source === "enterprise" ? installed.filter((item) => !enterprise.some((resource) => resource.id === item.resourceId)).map((item) => <article key={item.resourceId} className="rounded-xl border border-dashed border-border p-4"><h3 className="text-sm font-semibold">{item.manifest.title}</h3><p className="mt-2 text-xs text-muted-foreground">权限已撤销或资源已下架，后续任务不再加载。</p><Button size="sm" variant="outline" className="mt-4" disabled={!ready} onClick={() => mutateEnterprise(item, null)}>卸载本地副本</Button></article>) : null}
+    </div>}
+    {!loading && !error && (source === "personal" ? personal.length === 0 : source === "public" ? publicItems.length === 0 : enterprise.length === 0 && installed.length === 0) ? <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{source === "personal" ? "暂无独立技能，可以创建或导入技能包。" : source === "public" ? "暂无公开技能。" : "暂无获授权的企业技能。"}</div> : null}
+    {source === "personal" ? <p className="text-xs text-muted-foreground">支持导入标准技能 .md（最大 1 MB）；含脚本、参考资料的技能请使用 .ipollowork-skill 包。</p> : null}
+    {source === "public" && cursor && publicItems.length < 500 ? <Button variant="outline" disabled={loading} onClick={() => void reload(true)}>加载更多技能</Button> : null}
+    <Dialog open={Boolean(exporting)} onOpenChange={(open) => { if (!open && !pending) setExporting(null); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>导出独立技能 / 企业投稿</DialogTitle><DialogDescription>包含 SKILL.md 和同目录配套文件。插件内置技能由所属插件管理。</DialogDescription></DialogHeader><label className="space-y-2 text-sm">技能名称<Input value={title} maxLength={96} onChange={(event) => setTitle(event.target.value)} /></label><label className="space-y-2 text-sm">版本号<Input value={version} maxLength={64} placeholder="1.0.0" onChange={(event) => setVersion(event.target.value)} /></label><DialogFooter><Button variant="outline" disabled={pending || !title.trim()} onClick={() => void exportPackage(false)}>导出技能包</Button>{connection?.features?.skillPublishing ? <Button disabled={pending || !title.trim()} onClick={() => void exportPackage(true)}>提交到{connection.name}</Button> : null}</DialogFooter></DialogContent></Dialog>
+    <Dialog open={Boolean(details)} onOpenChange={(open) => { if (!open && !pending) setDetails(null); }}><DialogContent className="max-h-[85dvh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>{details?.title}</DialogTitle><DialogDescription>{details?.editable ? "编辑当前项目中的技能正文。" : "技能内容仅供查看，企业技能和插件技能由来源管理。"}</DialogDescription></DialogHeader><Textarea aria-label="技能正文" className="min-h-72 font-mono text-xs" value={content} readOnly={!details?.editable} onChange={(event) => setContent(event.target.value)} />{details?.files ? <details><summary className="cursor-pointer text-sm">配套文件（{details.files.length}）</summary><ul className="mt-2 text-xs text-muted-foreground">{details.files.map((file) => <li key={file}>{file}</li>)}</ul></details> : null}{details?.editable ? <DialogFooter><Button disabled={pending} onClick={() => void perform(async () => { if (!details.editable) return; await props.extensions.saveSkill({ name: details.editable.name, content, description: details.editable.description ?? "" }); setDetails(null); }, "技能已保存。")}>保存技能</Button></DialogFooter> : null}</DialogContent></Dialog>
+    <ConfirmModal open={Boolean(uninstalling)} title="卸载技能" message={`将移除当前项目中的 ${uninstalling?.name ?? ""} 及其配套文件。`} confirmLabel="卸载" variant="danger" cancelLabel="取消" onCancel={() => setUninstalling(null)} onConfirm={() => void perform(async () => { if (uninstalling) await props.extensions.uninstallSkill(uninstalling.name); setUninstalling(null); }, "技能已卸载。") } />
+  </section>;
 });

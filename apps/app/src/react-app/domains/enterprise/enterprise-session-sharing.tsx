@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import type { iPolloWorkServerClient, iPolloWorkSession } from "@/app/lib/ipollowork-server";
 import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
 import { enterpriseApi, enterpriseErrorMessage, enterpriseImportMessageEvent, enterpriseShareSessionEvent, takeEnterpriseMessageImport } from "@/app/lib/enterprise-client";
 import { EnterprisePeoplePicker, type EnterprisePeopleSelection } from "./enterprise-people-picker";
@@ -18,7 +18,7 @@ export function EnterpriseSessionSharing({ connection, resolveWorkspace, current
   connection: EnterpriseConnection;
   resolveWorkspace: (id: string) => EnterpriseWorkspaceEndpoint | null;
   currentWorkspaceId: string;
-  onImported: (workspaceId: string, sessionId: string) => void;
+  onImported: (workspaceId: string, sessionId: string, session: iPolloWorkSession) => void;
   model?: { providerID: string; modelID: string } | null;
   engineId?: string;
 }) {
@@ -34,6 +34,7 @@ export function EnterpriseSessionSharing({ connection, resolveWorkspace, current
   const alive = useRef(true);
   const options = useRef({ connection, resolveWorkspace, currentWorkspaceId, onImported, model, engineId });
   options.current = { connection, resolveWorkspace, currentWorkspaceId, onImported, model, engineId };
+  const importReady = Boolean(resolveWorkspace(currentWorkspaceId));
   const importingRef = useRef(false);
   useEffect(() => {
     alive.current = true;
@@ -46,27 +47,30 @@ export function EnterpriseSessionSharing({ connection, resolveWorkspace, current
     const receive = () => {
       if (importingRef.current) return;
       const current = options.current;
+      const endpoint = current.resolveWorkspace(current.currentWorkspaceId);
+      if (!endpoint) return;
       const messageId = takeEnterpriseMessageImport(current.connection);
       if (!messageId) return;
       importingRef.current = true; setImporting(true); setImportError(null);
       void (async () => {
-        const endpoint = current.resolveWorkspace(current.currentWorkspaceId);
-        if (!endpoint) throw new Error("enterprise_context_mismatch");
         const message = await enterpriseApi.message(current.connection, messageId);
-        if (message.kind !== "session_share" || message.revokedAt || !message.markdown) throw new Error("enterprise_share_unavailable");
-        const snapshot = enterpriseSnapshotSchema.parse({ enterpriseId: current.connection.id, memberId: current.connection.membership.id, shareId: message.id, title: message.title, senderName: message.senderName, markdown: message.markdown, createdAt: message.createdAt });
+        if (message.kind !== "session_share" || message.revokedAt || message.ignoredAt || (!message.markdown && !message.acceptedAt)) throw new Error("enterprise_share_unavailable");
+        const identity = { enterpriseId: current.connection.id, memberId: current.connection.membership.id, shareId: message.id };
+        const snapshot = message.markdown ? enterpriseSnapshotSchema.parse({ ...identity, title: message.title, senderName: message.senderName, markdown: message.markdown, createdAt: message.createdAt }) : identity;
         if (!alive.current) return;
         const { item, workspaceId } = await endpoint.client.importEnterpriseSnapshot(endpoint.workspaceId, snapshot, current.model ?? undefined, current.engineId);
         if (!alive.current) return;
-        try { await enterpriseApi.messageAction(current.connection, message.id, "accept"); }
-        catch { toast.warning("会话已创建，接收回执尚未同步。再次接收会打开已有会话。"); }
+        if (!message.acceptedAt) {
+          try { await enterpriseApi.messageAction(current.connection, message.id, "accept"); }
+          catch { toast.warning("会话已保存到本机；接收回执尚未确认，可从会话列表继续使用。"); }
+        }
         if (!alive.current) return;
-        current.onImported(workspaceId, item.id);
-        toast.success("已接收总结并创建独立会话");
+        current.onImported(workspaceId, item.id, item);
+        toast.success(message.acceptedAt ? "已打开本机保存的分享会话" : "已接收总结并创建独立会话");
       })().catch((cause: unknown) => {
         if (!alive.current) return;
-        const message = cause instanceof Error ? cause.message : "";
-        setImportError(message.includes("enterprise_import_pending") ? "上次创建结果尚未确认，请先检查已有会话，避免重复创建。" : message === "enterprise_context_mismatch" ? "请先在当前企业中选择一个本地项目，再接收分享。" : message === "enterprise_share_unavailable" ? "这条分享已撤回或暂不可领取。" : enterpriseErrorMessage(cause));
+        const message = cause instanceof Error && "code" in cause && typeof cause.code === "string" ? cause.code : cause instanceof Error ? cause.message : "";
+        setImportError(message.includes("enterprise_import_pending") ? "上次创建结果尚未确认，请先检查已有会话，避免重复创建。" : message === "enterprise_share_not_imported" ? "总结已接收，企业端已清理正文。请在原接收设备打开会话，或请对方重新分享。" : message === "enterprise_context_mismatch" ? "请先在当前企业中选择一个本地项目，再接收分享。" : message === "enterprise_share_unavailable" ? "这条分享已撤回、忽略或暂不可领取。" : enterpriseErrorMessage(cause));
       }).finally(() => { importingRef.current = false; if (alive.current) setImporting(false); });
     };
     window.addEventListener(enterpriseShareSessionEvent, share);
@@ -74,6 +78,9 @@ export function EnterpriseSessionSharing({ connection, resolveWorkspace, current
     receive();
     return () => { alive.current = false; window.removeEventListener(enterpriseShareSessionEvent, share); window.removeEventListener(enterpriseImportMessageEvent, receive); };
   }, []);
+  useEffect(() => {
+    if (importReady) window.dispatchEvent(new CustomEvent(enterpriseImportMessageEvent));
+  }, [currentWorkspaceId, importReady]);
   const send = async () => {
     if (!target || !selected.memberIds.length || busy) return;
     const endpoint = resolveWorkspace(target.workspaceId);

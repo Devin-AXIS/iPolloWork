@@ -262,6 +262,20 @@ describe("route workspaces", () => {
     ]);
   });
 
+  test("retains imported enterprise summaries before any new prompt without exposing ordinary drafts or internal tasks", () => {
+    const empty = { title: "New conversation", time: { created: 1000, updated: 1000 } };
+    const sessions = { ws: [
+      routeSession("opencode-import", { ...empty, enterpriseShare: true }),
+      routeSession("codex-import", { ...empty, enterpriseShare: true, codex: { status: "notLoaded" } }),
+      routeSession("dsh-import", { ...empty, enterpriseShare: true, dsh: { blank: true } }),
+      routeSession("ordinary-draft", empty),
+      routeSession("internal", { ...empty, enterpriseShare: true, parentID: "parent", agent: "executor" }),
+    ] };
+    const visible = userVisibleSessionsByWorkspaceId(sessions);
+    expect(visible.ws.map((session) => session.id)).toEqual(["opencode-import", "codex-import", "dsh-import"]);
+    expect(toProjectSessionLists([mapDesktopWorkspace(localWorkspace("ws", "/workspace/ws"))], visible, {}, new Set())[0]?.sessions).toBe(visible.ws);
+  });
+
   test("keeps a locally started new session visible until the runtime index catches up", () => {
     const fetched = [routeSession("started-locally", {
       title: "New session - 2026-08-26T00:00:00.000Z",

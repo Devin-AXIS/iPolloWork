@@ -1,16 +1,42 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { enterpriseFeaturesSchema, enterpriseMessageSchema, enterpriseOkSchema } from "@ipollowork/types/enterprise";
-import { canManageEnterprise, enterpriseRequest } from "../src/app/lib/enterprise-client";
+import { canManageEnterprise, enterpriseErrorMessage, enterpriseRequest } from "../src/app/lib/enterprise-client";
+import { iPolloWorkServerError } from "../src/app/lib/ipollowork-server";
 import type { EnterpriseConnection } from "../src/app/lib/enterprise-connections";
-import { saveEnterpriseConnection } from "../src/app/lib/enterprise-connections";
+import { saveEnterpriseConnection, setEnterpriseConnectionAccount } from "../src/app/lib/enterprise-connections";
 import { desktopFetchViaMain } from "../src/app/lib/desktop";
 import { conversationEngineAdapters, withEnterpriseShareContext } from "../src/react-app/domains/session/engine/conversation-engines";
 
 const connection: EnterpriseConnection = { id: "ent_test", name: "示例企业", shortName: "示例", origin: "https://enterprise.example", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "member", status: "active" }, session: { token: "synthetic-enterprise-session", expiresAt: "2099-01-01T00:00:00.000Z" } };
 describe("enterprise client boundary", () => {
+  test("resource managers only manage their assigned resource type and inactive roles have no management access", () => {
+    for (const role of ["owner", "admin", "template_admin", "extension_admin", "skill_admin", "member"] as const) {
+      const current = { ...connection, membership: { ...connection.membership, role } };
+      expect(canManageEnterprise(current, "template")).toBe(["owner", "admin", "template_admin"].includes(role));
+      expect(canManageEnterprise(current, "extension")).toBe(["owner", "admin", "extension_admin"].includes(role));
+      expect(canManageEnterprise(current, "skill")).toBe(["owner", "admin", "skill_admin"].includes(role));
+      expect(canManageEnterprise({ ...current, membership: { ...current.membership, status: "suspended" } }, "template")).toBe(false);
+    }
+  });
+  test("summary and model failures are not reported as an enterprise connection failure", () => {
+    expect(enterpriseErrorMessage(new iPolloWorkServerError(400, "enterprise_summary_model_required", "Select a model"))).toContain("选择一个已连接的模型");
+    expect(enterpriseErrorMessage(new iPolloWorkServerError(502, "enterprise_summary_failed", "Summary failed"))).toContain("当前模型未能生成总结");
+    expect(enterpriseErrorMessage(new iPolloWorkServerError(402, "provider_quota_exhausted", "insufficient_quota"))).toContain("额度不足");
+    expect(enterpriseErrorMessage(new iPolloWorkServerError(504, "provider_timeout", "timeout"))).toContain("响应超时");
+    expect(enterpriseErrorMessage(new iPolloWorkServerError(500, "internal_error", "Unexpected server error"))).not.toContain("企业服务请求失败");
+  });
   test("features unavailable on an older service default to false", () => {
     const features = enterpriseFeaturesSchema.parse({ templates: true, extensions: true });
     expect(features.directory).toBe(false); expect(features.sessionSharing).toBe(false); expect(features.resourceManagement).toBe(false);
+  });
+  test("package validation failures describe the package problem instead of a connection failure", () => {
+    for (const code of ["invalid_extension_manifest", "extension_manifest_missing", "extension_file_missing", "invalid_template_package", "unsafe_template_file", "template_package_too_large", "resource_version_already_exists"]) {
+      const message = enterpriseErrorMessage(new Error(code));
+      expect(message).not.toContain("检查连接");
+      expect(message).not.toContain("企业服务请求失败");
+    }
+    expect(enterpriseErrorMessage(new Error("invalid_extension_manifest"))).toContain("插件清单");
+    expect(enterpriseErrorMessage(new Error("extension_file_missing"))).toContain("缺少");
   });
   test("targets the bound service and replaces caller-supplied authorization", async () => {
     const fetcher: typeof fetch = async (url, init) => {
@@ -80,6 +106,9 @@ test("all engines receive a snapshot as user reference once, and reject another 
   const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ snapshot }));
   try {
     const active = { ...connection, features: enterpriseFeaturesSchema.parse({ sessionSharing: true }) };
+    storage.setItem("ipollowork.den.baseUrl", "http://i.ipollo.ai");
+    storage.setItem("ipollowork.den.authToken", "synthetic-cloud-session");
+    setEnterpriseConnectionAccount({ userId: "snapshot-account", baseUrl: "http://i.ipollo.ai", token: "synthetic-cloud-session" });
     saveEnterpriseConnection(active); storage.setItem("ipollowork.work-context.v1", `enterprise:${connection.id}`);
     for (const id of conversationEngineAdapters.ids()) {
       const base = conversationEngineAdapters.get(id).connect({ baseUrl: "http://unused.test", serverBaseUrl: "http://local.test", workspaceId: "project" });

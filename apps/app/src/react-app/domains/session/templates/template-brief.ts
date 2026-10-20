@@ -1,8 +1,10 @@
 import {
   isArtifactDeliveryManifest,
+  templateCategoryWorkKind,
   type TemplateCatalogItem,
   type TemplateCategory,
   type TemplateManifestV1,
+  type TemplateSessionSnapshot,
 } from "@ipollowork/types/templates";
 import { t } from "@/i18n";
 import type { ConversationWorkKind } from "@ipollowork/types/work-items";
@@ -20,12 +22,7 @@ export type TemplateBrief = {
 export function inferConversationWorkKind(prompt: string): ConversationWorkKind | undefined {
   const intents = inferConversationTemplateIntents(prompt);
   if (intents.length !== 1) return undefined;
-  const category = intents[0].category;
-  if (category === "video") return "video";
-  if (category === "app" || category === "site") return "development";
-  if (category === "poster" || category === "cards") return "design";
-  if (category === "slides" || category === "report" || category === "article") return "document";
-  return undefined;
+  return templateCategoryWorkKind(intents[0].category);
 }
 
 export type TemplateBriefFields = Pick<TemplateBrief, "title" | "audience" | "details">;
@@ -183,6 +180,32 @@ export function shouldUseExistingTemplateContext(prompt: string) {
     || EXPLANATION_ONLY_REQUEST.test(normalized)
     || EXISTING_TEMPLATE_EDIT_QUESTION.test(normalized)) return false;
   return EXISTING_TEMPLATE_EDIT_ACTION.test(normalized);
+}
+
+export function resolveConversationTemplateRouting(input: {
+  sessionId: string;
+  prompt: string;
+  templates: readonly TemplateSessionSnapshot[];
+  targetedSessionIds: ReadonlySet<string>;
+  activeTemplateSessionId: string | null;
+}) {
+  const selectedIds = new Set(input.targetedSessionIds);
+  const prepared = input.templates.find((template) => template.sessionId === input.sessionId)
+    ?? input.templates.find((template) => template.authoring);
+  const editing = shouldUseExistingTemplateContext(input.prompt);
+  if (selectedIds.size === 0) {
+    const existing = prepared ?? (editing
+      ? input.templates.find((template) => template.sessionId === input.activeTemplateSessionId) ?? input.templates[0]
+      : undefined);
+    if (existing) selectedIds.add(existing.sessionId);
+  }
+  const templates = input.templates.filter((template) => selectedIds.has(template.sessionId));
+  const intents = inferConversationTemplateIntents(input.prompt);
+  const continuing = editing && intents.every((intent) => templates.some((template) => template.manifest.category === intent.category));
+  return {
+    templates,
+    automaticIntents: input.targetedSessionIds.size > 0 || prepared || continuing ? [] : intents,
+  };
 }
 
 export function conversationArtifactSessionId(sessionId: string, category: TemplateCategory) {
@@ -496,7 +519,7 @@ export function templateBriefPrompt(input: {
         : input.template.category === "poster" || input.template.category === "cards"
           ? "Preserve requested canvas dimensions and editable objects; scale fixed-canvas previews without reflowing the composition."
           : "Keep the result responsive for its target medium, semantic, complete, and editable through the existing artifact runtime hooks.";
-    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with brief.style when provided, otherwise a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} ${contentScope}${typeRules}${mediaWorkflow}${guide}${library} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}. ${TEMPLATE_REFERENCE_THEME_CONTRACT}`;
+    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with brief.style when provided, otherwise a coherent visual system chosen for the content and audience. Preserve manifest.json identity, category, surface, version and PPTX compatibility. Keep manifest.style unchanged or set it to "custom"; free-form style descriptions belong in brief.json and design tokens, never in that enum field. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} ${contentScope}${typeRules}${mediaWorkflow}${guide}${library} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}. ${TEMPLATE_REFERENCE_THEME_CONTRACT}`;
   }
   const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Edit/save target files now, then report generated files. Deliver files, not just a plan or confirmation. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. ${contentScope}${typeRules}${mediaWorkflow} Follow the owning Skill's template adaptation guidance within the requested scope.${guide}${library}`;
   if (input.template.id === "ipollowork.wechat-article") {

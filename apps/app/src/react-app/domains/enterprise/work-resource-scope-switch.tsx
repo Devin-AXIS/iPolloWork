@@ -21,12 +21,13 @@ export function WorkResourceScopeSwitch(props: WorkResourceScopeSwitchProps) {
   const enterpriseScope = enterpriseWorkContextId(props.enterprise.id);
 
   return (
-    <div className="inline-flex w-fit shrink-0 items-center gap-1 rounded-xl border border-dls-border bg-dls-surface p-1" aria-label={t("enterprise_connection.resource_scope")}>
+    <div className="inline-flex w-fit max-w-full items-center gap-1 rounded-xl border border-dls-border bg-dls-surface p-1" aria-label={t("enterprise_connection.resource_scope")}>
       <span className="whitespace-nowrap px-2 text-[11px] font-medium text-dls-secondary">{t("enterprise_connection.resource_scope")}</span>
       <Button
         type="button"
         variant={props.value === PERSONAL_WORK_CONTEXT_ID ? "secondary" : "ghost"}
         size="sm"
+        className="shrink-0"
         onClick={() => props.onChange(PERSONAL_WORK_CONTEXT_ID)}
         aria-pressed={props.value === PERSONAL_WORK_CONTEXT_ID}
       >
@@ -37,11 +38,13 @@ export function WorkResourceScopeSwitch(props: WorkResourceScopeSwitchProps) {
         type="button"
         variant={props.value === enterpriseScope ? "secondary" : "ghost"}
         size="sm"
+        className="min-w-0 shrink"
+        title={props.enterprise.name}
         onClick={() => props.onChange(enterpriseScope)}
         aria-pressed={props.value === enterpriseScope}
       >
         <Building2 className="size-3.5" />
-        {props.enterprise.shortName}
+        <span className="max-w-48 truncate">{props.enterprise.name}</span>
       </Button>
     </div>
   );

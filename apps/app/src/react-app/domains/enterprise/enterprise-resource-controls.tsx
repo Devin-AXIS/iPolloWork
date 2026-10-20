@@ -1,3 +1,4 @@
+import type { EnterpriseResourceType } from "@ipollowork/types/enterprise";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw, ShieldCheck, Upload } from "lucide-react";
 import type { EnterpriseAccess, EnterpriseManagedResource, EnterpriseSubmission } from "@ipollowork/types/enterprise";
@@ -26,7 +27,7 @@ function ResourceAccessDialog({ connection, resource, onClose, onSaved }: {
     void enterpriseApi.access(connection, resource.id).then((value) => { if (current) { setAccess(value); setIncludeDescendants(value.departments.length ? value.departments.every((item) => item.includeDescendants) : true); } })
       .catch((cause: unknown) => { if (current) setError(enterpriseErrorMessage(cause)); });
     return () => { current = false; };
-  }, [connection, resource.id]);
+  }, [connection.id, connection.origin, connection.membership.id, connection.session.token, resource.id]);
   const save = async () => {
     if (!access) return;
     setBusy(true); setError(null);
@@ -40,7 +41,6 @@ function ResourceAccessDialog({ connection, resource, onClose, onSaved }: {
       <div role="group" aria-label="访问范围" className="flex flex-wrap gap-2">{(["restricted", "all", "admins"] as const).map((scope) => <Button key={scope} variant={access.access === scope ? "secondary" : "outline"} size="sm" disabled={busy} onClick={() => setAccess({ ...access, access: scope })}>{scope === "restricted" ? "指定人员和部门" : scope === "all" ? "全体成员" : "仅管理员"}</Button>)}</div>
       {access.access === "restricted" ? <><EnterprisePeoplePicker connection={connection} disabled={busy} allowDepartments value={{ memberIds: access.memberIds, departmentIds: access.departments.map((item) => item.id) }} onChange={(selected) => setAccess({ ...access, memberIds: selected.memberIds, departments: selected.departmentIds.map((id) => access.departments.find((item) => item.id === id) ?? { id, includeDescendants }) })} />
         <label className="flex items-center gap-2 text-sm"><Checkbox checked={includeDescendants} indeterminate={access.departments.some((item) => item.includeDescendants) && !access.departments.every((item) => item.includeDescendants)} disabled={busy} onCheckedChange={(checked) => { setIncludeDescendants(checked); setAccess({ ...access, departments: access.departments.map((item) => ({ ...item, includeDescendants: checked })) }); }} />部门授权包含下级部门</label>
-        {access.groupIds.length ? <p className="text-xs text-muted-foreground">同时保留 {access.groupIds.length} 个已有访问组授权。</p> : null}
       </> : null}
       <p className="text-xs text-muted-foreground">保存后通知员工。清空指定对象可收回该范围权限，已下载的本地副本另行管理。</p>
     </> : !error ? <p role="status">正在读取权限</p> : null}
@@ -49,7 +49,7 @@ function ResourceAccessDialog({ connection, resource, onClose, onSaved }: {
 }
 
 export function EnterpriseResourceControls({ connection, type, onChanged }: {
-  connection: EnterpriseConnection; type: "template" | "extension"; onChanged?: () => void;
+  connection: EnterpriseConnection; type: EnterpriseResourceType; onChanged?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"manage" | "mine">("mine");
@@ -66,12 +66,12 @@ export function EnterpriseResourceControls({ connection, type, onChanged }: {
   const [file, setFile] = useState<File | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const epoch = useRef(0);
-  const manager = canManageEnterprise(connection);
-  const publishing = type === "template" ? connection.features?.templatePublishing : connection.features?.extensionPublishing;
-  const label = type === "template" ? "模板" : "插件";
+  const manager = canManageEnterprise(connection, type);
+  const publishing = type === "template" ? connection.features?.templatePublishing : type === "skill" ? connection.features?.skillPublishing : connection.features?.extensionPublishing;
+  const label = type === "template" ? "模板" : type === "skill" ? "技能" : "插件";
   const identity = enterpriseIdentity(connection);
   useEffect(() => { setOpen(false); setResources([]); setSubmissions([]); setAccessResource(null); setReviewResource(null); setFile(null); setError(null); setNotice(null); setBusy(false); epoch.current += 1; }, [identity]);
-  useEffect(() => { setError(null); setNotice(null); if (!manager) { setView("mine"); setResources([]); setAccessResource(null); setReviewResource(null); setBusy(false); epoch.current += 1; } }, [manager]);
+  useEffect(() => { setError(null); setNotice(null); if (!manager) { setOpen(false); setView("mine"); setResources([]); setAccessResource(null); setReviewResource(null); setBusy(false); epoch.current += 1; } }, [manager]);
   const refresh = async (more = false) => {
     const request = ++epoch.current;
     setBusy(true); setError(null);
@@ -98,15 +98,18 @@ export function EnterpriseResourceControls({ connection, type, onChanged }: {
   };
   const upload = () => {
     if (!file || !publishing) return;
-    const valid = type === "template" ? /\.(ipwp|ipwt)$/i.test(file.name) : /\.ipollowork-plugin$/i.test(file.name);
-    if (!valid || !file.size || file.size > MAX_TEMPLATE_PACKAGE_BYTES) { setError(`请选择有效的${label}包，文件大小不能超过 ${Math.round(MAX_TEMPLATE_PACKAGE_BYTES / 1024 / 1024)} MB。`); return; }
+    const valid = type === "template" ? /\.(ipwp|ipwt)$/i.test(file.name) : type === "skill" ? /\.(md|ipollowork-skill)$/i.test(file.name) : /\.ipollowork-plugin$/i.test(file.name);
+    const maximum = type === "skill" && /\.md$/i.test(file.name) ? 1024 * 1024 : MAX_TEMPLATE_PACKAGE_BYTES;
+    if (!valid || !file.size || file.size > maximum) { setError(`请选择有效的${label}${type === "skill" ? "文件" : "包"}，文件大小不能超过 ${Math.round(maximum / 1024 / 1024)} MB。`); return; }
     void mutation(() => enterpriseApi.submit(connection, type, file), "投稿已提交，可在我的投稿中查看审核状态。");
   };
+  // Employee submission controls are temporarily hidden; keep the workflow for re-enabling.
+  if (!manager && type !== "skill") return null;
   return <>
     <Button variant="outline" size="sm" data-testid={`enterprise-${type}-manage`} onClick={() => { setView(manager ? "manage" : "mine"); setOpen(true); }}><ShieldCheck className="size-4" />{manager ? `${label}管理` : `我的${label}投稿`}</Button>
     <Dialog open={open} onOpenChange={(value) => { if (!busy) setOpen(value); }}><DialogContent className="max-h-[90dvh] max-w-4xl overflow-y-auto" data-testid="enterprise-resource-management"><DialogHeader><DialogTitle>{manager ? `企业${label}管理` : `我的${label}投稿`}</DialogTitle><DialogDescription>{connection.name} · {manager ? "查看资源和投稿，分配使用权限" : "提交自己制作的资源，查看审核结果"}</DialogDescription></DialogHeader>
       <div className="flex flex-wrap items-center gap-2"><div role="group" aria-label="资源视图" className="flex gap-2">{manager ? <Button size="sm" variant={view === "manage" ? "secondary" : "ghost"} disabled={busy} onClick={() => setView("manage")}>全部企业{label}</Button> : null}<Button size="sm" variant={view === "mine" ? "secondary" : "ghost"} disabled={busy} onClick={() => setView("mine")}>我的投稿</Button></div><Button className="ml-auto" variant="ghost" size="icon-sm" aria-label="刷新企业资源" disabled={busy} onClick={() => void refresh()}><RefreshCw className="size-4" /></Button></div>
-      <div className="flex flex-wrap items-center gap-2"><input ref={input} type="file" accept={type === "template" ? ".ipwp,.ipwt" : ".ipollowork-plugin"} className="hidden" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><Button variant="outline" size="sm" disabled={busy || !publishing} onClick={() => input.current?.click()}><Upload className="size-4" />选择{label}包</Button><span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{file?.name ?? `上传自己制作的${label}，审核后在企业内分发`}</span><Button size="sm" disabled={busy || !file || !publishing} onClick={upload}>提交审核</Button></div>
+      <div className="flex flex-wrap items-center gap-2"><input ref={input} type="file" accept={type === "template" ? ".ipwp,.ipwt" : type === "skill" ? ".md,.ipollowork-skill" : ".ipollowork-plugin"} className="hidden" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><Button variant="outline" size="sm" disabled={busy || !publishing} onClick={() => input.current?.click()}><Upload className="size-4" />选择{label}{type === "skill" ? "文件" : "包"}</Button><span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{file?.name ?? (type === "skill" ? "支持技能 MD 或 .ipollowork-skill 包，审核后在企业内分发" : `上传自己制作的${label}，审核后在企业内分发`)}</span><Button size="sm" disabled={busy || !file || !publishing} onClick={upload}>提交审核</Button></div>
       {!publishing ? <p className="text-xs text-muted-foreground">当前企业服务尚未开放员工{label}投稿，请联系管理员升级。</p> : null}
       {error ? <p role="alert" className="rounded-lg bg-feedback-error p-3 text-sm text-red-11">{error}</p> : null}
       {notice ? <p role="status" className="rounded-lg bg-feedback-success p-3 text-sm">{notice}</p> : null}
@@ -118,7 +121,7 @@ export function EnterpriseResourceControls({ connection, type, onChanged }: {
           {item.status === "published" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void mutation(() => enterpriseApi.archive(connection, item.id), "资源已下架。")}>下架</Button> : null}
         </article>)}
         {!resources.length && !busy && !error ? <p className="py-8 text-center text-sm text-muted-foreground">企业中暂无{label}</p> : null}
-      </div>{cursor && resources.length < 500 ? <Button variant="outline" disabled={busy} onClick={() => void refresh(true)}>加载更多资源</Button> : null}{resources.length >= 500 ? <p className="text-xs text-muted-foreground">已显示前 500 个资源，请在企业管理服务中查看完整列表。</p> : null}</> : <div className="space-y-2">{submissions.map((item) => <article key={`${item.resourceId}:${item.version}`} className="rounded-xl border border-border p-3"><p className="text-sm font-medium">{item.resourceName || label} · v{item.version}</p><p className="mt-1 text-xs text-muted-foreground">{REVIEW_LABELS[item.reviewStatus]}{item.reviewNote ? ` · ${item.reviewNote}` : ""}</p></article>)}{!submissions.length && !busy && !error ? <p className="py-8 text-center text-sm text-muted-foreground">还没有投稿，选择自己的{label}包提交审核。</p> : null}</div>}
+      </div>{cursor && resources.length < 500 ? <Button variant="outline" disabled={busy} onClick={() => void refresh(true)}>加载更多资源</Button> : null}{resources.length >= 500 ? <p className="text-xs text-muted-foreground">已显示前 500 个资源，请在企业管理服务中查看完整列表。</p> : null}</> : <div className="space-y-2">{submissions.map((item) => <article key={`${item.resourceId}:${item.version}`} className="rounded-xl border border-border p-3"><p className="text-sm font-medium">{item.resourceName || label} · v{item.version}</p><p className="mt-1 text-xs text-muted-foreground">{REVIEW_LABELS[item.reviewStatus]}{item.reviewNote ? ` · ${item.reviewNote}` : ""}</p></article>)}{!submissions.length && !busy && !error ? <p className="py-8 text-center text-sm text-muted-foreground">还没有投稿，选择自己的{label}{type === "skill" ? "文件" : "包"}提交审核。</p> : null}</div>}
     </DialogContent></Dialog>
     {manager && accessResource ? <ResourceAccessDialog connection={connection} resource={accessResource} onClose={() => setAccessResource(null)} onSaved={() => { setNotice("权限已保存并下发。"); void refresh(); }} /> : null}
     <Dialog open={manager && Boolean(reviewResource)} onOpenChange={(value) => { if (!value && !busy) setReviewResource(null); }}><DialogContent><DialogHeader><DialogTitle>审核{label}投稿</DialogTitle><DialogDescription>{reviewResource?.name}</DialogDescription></DialogHeader><label className="space-y-1.5"><span className="text-sm">审核说明</span><Textarea value={reviewNote} maxLength={1000} onChange={(event) => setReviewNote(event.target.value)} placeholder="退回时请说明需要修改的内容" /></label><DialogFooter>{(["rejected", "approved"] as const).map((decision) => <Button key={decision} variant={decision === "approved" ? "default" : "outline"} disabled={busy || (decision === "rejected" && !reviewNote.trim())} onClick={() => { const item = reviewResource; const version = item?.latestVersion?.version; if (item && version) void mutation(async () => { await enterpriseApi.review(connection, item.id, version, decision, reviewNote); setReviewResource(null); }, decision === "approved" ? "版本已审核通过。" : "投稿已退回。"); }}>{decision === "approved" ? "通过并发布" : "退回修改"}</Button>)}</DialogFooter></DialogContent></Dialog>

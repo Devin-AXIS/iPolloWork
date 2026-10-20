@@ -1,3 +1,4 @@
+import { prepareEnterpriseSkills, prepareStandaloneSkills } from "./skill-packages.js";
 import { setTimeout as delay } from "node:timers/promises";
 import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import {
@@ -320,12 +321,14 @@ export class WorkspaceSessionRuntime {
 
   async preparePlugins(workspace: WorkspaceInfo): Promise<void> {
     if (workspace.workspaceType !== "local") return;
+    await prepareEnterpriseSkills(this.#config, workspace);
     await reconcilePluginPackagesForWorkspace({
       serverConfig: this.#config,
       workspaceId: workspace.id,
       workspaceRoot: workspace.path,
       engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
     });
+    await prepareStandaloneSkills(this.#config, workspace);
     if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
       await this.#codexHarness.forWorkspace(workspace).call("skills/list", { cwds: [workspace.path], forceReload: true });
     }
