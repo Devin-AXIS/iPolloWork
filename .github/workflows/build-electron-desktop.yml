@@ -64,6 +64,61 @@ jobs:
           pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --linux deb AppImage --x64 --config.extraMetadata.homepage=https://github.com/Devin-AXIS/iPolloWork --config.linux.category=Development --publish never
           dpkg-deb --field apps/desktop/dist-electron/*.deb Package Version Architecture
 
+      - name: Verify installed Ubuntu app startup with the sandbox enabled
+        if: inputs.linux_installer
+        env:
+          IPOLLOWORK_ELECTRON_USERDATA: ${{ runner.temp }}/ipollo-installed-profile
+          IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9826"
+          IPOLLOWORK_EVAL_INSTALLED_LINUX: "1"
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb dbus-x11 "$GITHUB_WORKSPACE"/apps/desktop/dist-electron/*.deb
+          sudo sysctl -w kernel.unprivileged_userns_clone=0
+          helper=/opt/iPollo/chrome-sandbox
+          executable=/usr/bin/@ipolloworkdesktop
+          test "$(stat -c '%u:%g:%a' "$helper")" = '0:0:4755'
+
+          # Reproduce the reported crash, then verify that reinstalling the
+          # package repairs the helper through the same hook used by upgrades.
+          sudo chmod 0755 "$helper"
+          if timeout 15s xvfb-run -a "$executable" --disable-gpu > "$RUNNER_TEMP/ipollo-broken-startup.log" 2>&1; then
+            echo 'The broken sandbox mode unexpectedly allowed startup.' >&2
+            exit 1
+          fi
+          grep -q 'SUID sandbox helper binary was found, but is not configured correctly' "$RUNNER_TEMP/ipollo-broken-startup.log"
+          sudo dpkg --install apps/desktop/dist-electron/*.deb
+          test "$(stat -c '%u:%g:%a' "$helper")" = '0:0:4755'
+
+          setsid xvfb-run -a -s '-screen 0 1440x900x24' "$executable" --disable-gpu --disable-dev-shm-usage > "$RUNNER_TEMP/ipollo-startup.log" 2>&1 &
+          launcher_pid=$!
+          trap 'kill -- -"$launcher_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in $(seq 1 45); do
+            if curl -sf http://127.0.0.1:9826/json/list | grep -q '"type": "page"'; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$launcher_pid" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            tail -100 "$RUNNER_TEMP/ipollo-startup.log" >&2
+            exit 1
+          fi
+          node evals/runner/run.mjs --flow linux-installed-startup --cdp-url http://127.0.0.1:9826 --out "$RUNNER_TEMP/ubuntu-startup-proof"
+
+      - name: Upload Ubuntu installation proof
+        if: always() && inputs.linux_installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipollowork-ubuntu-startup-proof
+          path: |
+            ${{ runner.temp }}/ubuntu-startup-proof/**
+            ${{ runner.temp }}/ipollo-startup.log
+            ${{ runner.temp }}/ipollo-broken-startup.log
+
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v7
         with:

@@ -139,6 +139,8 @@ linux:
   target:
     - AppImage
     - tar.gz
+deb:
+  afterInstall: build/after-install.tpl
 win:
   icon: resources/icons/windows/icon.ico
   extraResources:
