@@ -15,7 +15,9 @@ export default {
           const result = await ctx.eval(`(async () => {
             const connections = await import('/src/app/lib/enterprise-connections.ts');
             const contexts = await import('/src/app/lib/work-context.ts');
-            localStorage.setItem('ipollowork.den.baseUrl', 'http://127.0.0.1:9');
+            const den = await import('/src/app/lib/den.ts');
+            // Desktop settings read the native bootstrap, not the web URL key.
+            await den.setDenBootstrapConfig({ baseUrl: 'http://127.0.0.1:9', requireSignin: false });
             localStorage.setItem('ipollowork.den.authToken', 'isolated-enterprise-proof');
             connections.setEnterpriseConnectionAccount({ userId: 'enterprise-proof', baseUrl: 'http://127.0.0.1:9', token: 'isolated-enterprise-proof' });
             const connection = { id: 'ent_empty_projects', name: 'Enterprise Project Proof', shortName: 'Enterprise', origin: 'http://127.0.0.1:9', logoUrl: null, accent: 'blue', authMode: 'ipollo_oidc', membership: { id: 'proof-member', role: 'member', status: 'active' }, session: { token: 'isolated-member-proof', expiresAt: '2099-01-01T00:00:00.000Z' } };
