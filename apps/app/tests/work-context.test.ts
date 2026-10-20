@@ -37,6 +37,22 @@ describe("work context identity", () => {
     expect(normalizeWorkContextId("enterprise:alpha")).toBeNull();
   });
 
+  test("treats the legacy enterprise container as a default workspace without hiding user projects", () => {
+    const contextId = enterpriseWorkContextId("ent_beta");
+    const projects = filterWorkspacesForWorkContext([
+      ...workspaces,
+      { id: "user-project", path: "/Users/test/Client", workspaceType: "local", workContextId: contextId },
+      { id: "nested-project", path: "/Users/test/.ipollowork/work-contexts/ent_beta/client", workspaceType: "local", workContextId: contextId },
+    ], contextId);
+    expect(projects.find(project => project.id === "enterprise-b")?.isDefault).toBe(true);
+    expect(projects.filter(project => !project.isDefault).map(project => project.id)).toEqual(["user-project", "nested-project"]);
+  });
+
+  test("recognizes a Windows legacy enterprise container with trailing separators", () => {
+    const projects = filterWorkspacesForWorkContext([{ path: "C:\\Users\\test\\.ipollowork\\work-contexts\\ent_beta\\", workContextId: enterpriseWorkContextId("ent_beta") }], enterpriseWorkContextId("ent_beta"));
+    expect(projects[0]?.isDefault).toBe(true);
+  });
+
   test("treats null and missing context markers as the same Personal identity", () => {
     expect(workContextIdsEqual(null, undefined)).toBe(true);
     expect(workContextIdsEqual(undefined, PERSONAL_WORK_CONTEXT_ID)).toBe(true);
