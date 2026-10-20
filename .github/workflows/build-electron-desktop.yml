@@ -107,7 +107,9 @@ jobs:
             tail -100 "$RUNNER_TEMP/ipollo-startup.log" >&2
             exit 1
           fi
-          node evals/runner/run.mjs --flow linux-installed-startup --cdp-url http://127.0.0.1:9826 --out "$RUNNER_TEMP/ubuntu-startup-proof"
+          export IPOLLOWORK_EVAL_PACKAGED_PLUGIN_ROOT=/opt/iPollo/resources/plugin-packages
+          export IPOLLOWORK_EVAL_PLUGIN_CONFLICT_FILE="$HOME/iPolloWork/.opencode/skills/ipollowork-reference-analyzer/SKILL.md"
+          node evals/runner/run.mjs --flow linux-installed-startup --flow packaged-plugin-catalog --cdp-url http://127.0.0.1:9826 --out "$RUNNER_TEMP/ubuntu-startup-proof"
 
       - name: Upload Ubuntu installation proof
         if: always() && inputs.linux_installer

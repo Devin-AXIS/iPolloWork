@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/app",
   "private": true,
-  "version": "0.50.24",
+  "version": "0.50.25",
   "type": "module",
   "scripts": {
     "test": "bun test --isolate tests/",

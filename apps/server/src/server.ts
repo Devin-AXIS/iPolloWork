@@ -2074,7 +2074,16 @@ function createRoutes(
   addRoute(routes, "GET", "/workspace/:id/plugin-packages", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     await prepareDefaultPlugins();
-    await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
+    try {
+      await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
+    } catch (error) {
+      if (!isApiError(error) || error.code !== "plugin_package_conflict") throw error;
+      // A read must remain available when projection refuses to overwrite a
+      // user's files. Install/update operations still report these conflicts.
+      createServerLogger(config).log("warn", "Plugin inventory has a workspace projection conflict", {
+        workspaceId: workspace.id, error: error.message,
+      });
+    }
     const items = (await listInstalledPluginPackages({ serverConfig: config })).filter(item => !isInternalPluginPackage(item.pluginId)).map((item) => ({
       ...item,
       ...pluginPackageEngineState(workspace, item.manifest),

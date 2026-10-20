@@ -73,10 +73,10 @@ it("packages runtime modules without compiled tests, test support or stale stage
 it("copies bundled plugin manifests, Skills and services while excluding test-only fixtures", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-plugin-release-"));
   const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));
-  const resources = config.extraResources.filter((resource) => resource.to.startsWith("plugin-packages/"));
-  assert.deepEqual(resources.map(resource => resource.to), ["plugin-packages/reference-context"]);
-  const runtimeFiles = ["ipollowork.plugin.json", "service/test-tools.mjs", "skills/worker/SKILL.md", "skills/worker/app/src/simulation.ts"];
-  const testFiles = ["service/worker.test.mjs", "service/worker.spec.mjs", "skills/worker/app/tsconfig.test.json", "skills/worker/app/tests/fixtures/server.ts", "service/__tests__/helper.mjs"];
+  const resources = config.extraResources.filter((resource) => resource.to === "plugin-packages");
+  assert.deepEqual(resources.map(resource => resource.from), ["resources/plugin-packages"]);
+  const runtimeFiles = ["figma/ipollowork.plugin.json", "figma/service/test-tools.mjs", "figma/skills/worker/SKILL.md", "reference-context/ipollowork.plugin.json"];
+  const testFiles = ["figma/service/worker.test.mjs", "figma/service/worker.spec.mjs", "figma/service/tsconfig.test.json", "figma/service/tests/fixtures/server.ts", "figma/service/__tests__/helper.mjs"];
   try {
     const source = path.join(root, "source");
     for (const name of [...runtimeFiles, ...testFiles]) {
@@ -89,7 +89,7 @@ it("copies bundled plugin manifests, Skills and services while excluding test-on
       for (const name of runtimeFiles) assert.equal(await readFile(path.join(matcher.to, name), "utf8"), "fixture\n", `${resource.to}: ${name}`);
       for (const name of testFiles) await assert.rejects(readFile(path.join(matcher.to, name)), { code: "ENOENT" }, `${resource.to}: ${name}`);
     }
-    assert.equal(await readFile(path.join(source, "service/worker.test.mjs"), "utf8"), "fixture\n");
+    assert.equal(await readFile(path.join(source, "figma/service/worker.test.mjs"), "utf8"), "fixture\n");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -97,7 +97,7 @@ it("copies bundled plugin manifests, Skills and services while excluding test-on
 
 it("ships the shared reference Skill independently of Video", async () => {
   const builderConfig = await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8");
-  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/reference-context\s+to: plugin-packages\/reference-context/);
+  assert.match(builderConfig, /from: resources\/plugin-packages\s+to: plugin-packages/);
   const packageRoot = new URL("../../../examples/plugin-packages/reference-context/", import.meta.url);
   const manifest = JSON.parse(await readFile(new URL("ipollowork.plugin.json", packageRoot), "utf8"));
   assert.equal(manifest.defaultEnabled, true);
