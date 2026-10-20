@@ -13,6 +13,8 @@ export default {
           voiceover: "安装完成后直接打开 iPollo，应用正常显示，不需要再手动修改权限。",
           action: async () => {
             await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "installed application control API" });
+            await ctx.waitFor(`!document.querySelector('#ipollowork-startup-splash, [data-testid="startup-logo-animation"], [data-testid="session-loading-animation"]')`, { timeoutMs: 60_000, label: "startup loading screens removed" });
+            await ctx.waitFor(`Boolean(document.querySelector('[data-testid="main-workspace"]')?.getClientRects().length)`, { label: "main workspace visible" });
             await ctx.waitFor("document.body.innerText.trim().length > 40 && Boolean(document.querySelector('button, a, input'))", { label: "usable application window" });
           },
           assert: async () => {
@@ -25,7 +27,7 @@ export default {
             ctx.assert(typeof route === "string" && route.length > 0, "The installed application must report an active route");
             ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "The installed application has rendered its initial route", actual: route });
           },
-          screenshot: { name: "installed-ubuntu-app", rejectText: ["Something went wrong", "SUID sandbox helper binary"] },
+          screenshot: { name: "installed-ubuntu-app", rejectText: ["Loading...", "Something went wrong", "SUID sandbox helper binary"] },
         });
       },
     },
