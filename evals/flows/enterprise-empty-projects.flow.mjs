@@ -10,6 +10,7 @@ export default {
         voiceover: "进入企业后，项目列表保持为空。需要项目时，再点击加号创建。",
         action: async () => {
           await ctx.waitFor("Boolean(window.__ipolloworkControl && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop)", { timeoutMs: 60_000 });
+          await ctx.waitFor(`!document.querySelector('#ipollowork-startup-splash, [data-testid="startup-logo-animation"]')`, { timeoutMs: 60_000 });
           // Use the real sign-in activation path and desktop IPC. Only the
           // already-verified external account is seeded in this isolated profile.
           const result = await ctx.eval(`(async () => {
