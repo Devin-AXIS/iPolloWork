@@ -3,8 +3,34 @@ import { access, mkdtemp, mkdir, readFile, realpath, rm, utimes, writeFile } fro
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { spawn } from "node:child_process";
 
 import { createWorkspaceStore } from "./workspace-store.mjs";
+
+test("Windows registry replacement waits for a temporary reader lock without losing state", { skip: process.platform !== "win32", timeout: 15000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-workspace-lock-"));
+  const store = createWorkspaceStore({ app: { getPath: () => root }, defaultDenBaseUrl: "https://example.test", defaultRequireSignin: false, forceRequireSignin: false });
+  let locker;
+  try {
+    await store.writeWorkspaceState({ selectedId: "before", workspaces: [] });
+    locker = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$file=[IO.File]::Open($env:IPOLLOWORK_TEST_LOCK_PATH,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); [Console]::WriteLine('locked'); $null=[Console]::ReadLine(); $file.Dispose()"], {
+      windowsHide: true, env: { ...process.env, IPOLLOWORK_TEST_LOCK_PATH: path.join(root, "ipollowork-workspaces.json") },
+    });
+    await new Promise((resolve, reject) => { locker.stdout.once("data", resolve); locker.once("error", reject); locker.once("exit", code => { if (code) reject(new Error(`Lock helper exited: ${code}`)); }); });
+    const update = store.writeWorkspaceState({ selectedId: "after", workspaces: [] });
+    const unlock = setTimeout(() => locker.stdin.end("\n"), 250);
+    try { await update; } finally { clearTimeout(unlock); locker.stdin.end("\n"); }
+    const persisted = JSON.parse(await readFile(path.join(root, "ipollowork-workspaces.json"), "utf8"));
+    assert.equal(persisted.selectedId, "after");
+    assert.equal(persisted.selectedWorkspaceId, "after");
+  } finally {
+    if (locker && locker.exitCode === null) {
+      const exited = new Promise(resolve => locker.once("exit", resolve));
+      locker.kill(); await exited;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("development browser uploads use the developer registry and storage without exposing production", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ipollowork-upload-dev-"));

@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { ipolloworkWorkspaceDisplayName, selectiPolloWorkWorkspaceForConnection } from "./remote-workspace.mjs";
 import { exportWorkspaceConfig, importWorkspaceConfig } from "./workspace-archive.mjs";
@@ -80,7 +81,20 @@ async function writeJsonFileAtomic(outputPath, value) {
   await mkdir(path.dirname(outputPath), { recursive: true });
   const tempPath = `${outputPath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
   await writeFile(tempPath, content, "utf8");
-  await rename(tempPath, outputPath);
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(tempPath, outputPath); break; }
+      catch (error) {
+        // Windows readers/antivirus can briefly deny replacing the registry.
+        // Keep the old file intact and retry only this atomic rename.
+        if (process.platform !== "win32" || !["EPERM", "EBUSY", "EACCES"].includes(error?.code) || attempt >= 5) throw error;
+        await delay(50 * (attempt + 1));
+      }
+    }
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(cleanupError => console.warn("[workspace-store] temporary registry cleanup failed", cleanupError));
+    throw error;
+  }
 }
 
 async function readJsonFile(targetPath, fallback) {

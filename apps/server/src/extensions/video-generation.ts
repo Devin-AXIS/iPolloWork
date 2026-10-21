@@ -661,7 +661,7 @@ export async function releaseOwnedVideoJobs(config: ServerConfig, workspaceId: s
   const pending: Promise<void>[] = [];
   for (const [id, owner] of activeVideoJobOwners) {
     if (owner.workspaceId !== workspaceId || (sessionId !== undefined && owner.sessionId !== sessionId)) continue;
-    activeVideoJobControllers.get(id)?.abort(new Error("Resource archived or deleted"));
+    activeVideoJobControllers.get(id)?.abort(new Error("Resource deleted"));
     pending.push(owner.done);
   }
   await Promise.all(pending);
@@ -719,7 +719,7 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
   await Promise.all((await claimVideoJobs(config)).map(async job => {
     if (signal.aborted) return;
     try { await assertResourceWritable(config, job.workspaceId, job.sessionId); }
-    catch (error) { if (isApiError(error) && ["resource_archived", "resource_deleting", "resource_deleted"].includes(error.code)) return; throw error; }
+    catch (error) { if (isApiError(error) && ["resource_deleting", "resource_deleted"].includes(error.code)) return; throw error; }
     const controller = new AbortController();
     activeVideoJobControllers.set(job.id, controller);
     let finish = () => {};
@@ -730,7 +730,7 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
     try {
         // Register the producer before rechecking the barrier, so cleanup can drain it.
         try { await assertResourceWritable(config, job.workspaceId, job.sessionId); }
-        catch (error) { if (isApiError(error) && ["resource_archived", "resource_deleting", "resource_deleted"].includes(error.code)) return; throw error; }
+        catch (error) { if (isApiError(error) && ["resource_deleting", "resource_deleted"].includes(error.code)) return; throw error; }
       const workspace = config.workspaces.find(item => item.id === job.workspaceId);
       if (!workspace) throw new Error("发起任务的工作区已不可用，请恢复工作区后重试查询。");
       key = await credential(authorization, job.model, job.heygenBilling);

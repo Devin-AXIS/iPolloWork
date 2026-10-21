@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 
 import {
   buildSessionTreeState,
-  buildSidebarArchivedSessions,
   buildSidebarLayoutView,
   isStreamingSessionStatus,
   visibleProjectSessionLists,
@@ -98,7 +97,7 @@ describe("sidebar projects", () => {
     expect(view[0]?.sessions[0]?.sidebarWorkspaceId).toBe("ws_b");
   });
 
-  test("keeps archived sessions out of projects and collects them globally", () => {
+  test("shows legacy archived sessions in projects without archive or restore controls", () => {
     const projects: ProjectSessionList[] = [
       {
         workspace: { id: "ws_a", name: "A", path: "/a", preset: "starter", workspaceType: "local" },
@@ -111,12 +110,10 @@ describe("sidebar projects", () => {
     ];
 
     expect(buildSidebarLayoutView(projects, createSidebarLayoutSnapshot())[0]?.sessions.map((session) => session.id))
-      .toEqual(["active"]);
-    expect(buildSidebarArchivedSessions(projects).map((session) => session.id)).toEqual(["archived"]);
-    expect(buildSidebarArchivedSessions(projects)[0]?.sourceWorkspaceId).toBe("ws_a");
-    expect(sidebarSource).toContain("buildSidebarArchivedSessions(props.projectSessionLists)");
-    expect(sidebarSource).not.toContain("<ArchivedSessionsSection\n                      sessions={archivedSessions}");
-    expect(sidebarSource).toContain('className="group/archived px-2"');
+      .toEqual(["active", "archived"]);
+    expect(sidebarSource).not.toContain("ArchivedSessionsSection");
+    expect(sidebarSource).not.toContain("onArchiveSession");
+    expect(sidebarSource).not.toContain("onArchiveProject");
   });
 
   test("creates a clean empty layout snapshot", () => {
@@ -353,7 +350,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toMatch(/createConversationInProject[\s\S]{0,500}await onSelectProject\(workspace\.id\)/);
     expect(sidebarSource).toContain("setCreatingConversation(true)");
     expect(sidebarSource).toContain('aria-busy={creatingConversation}');
-    expect(sidebarSource).toContain('disabled={Boolean(workspace.archivedAt) || isConnectionActionBusy || creatingConversation}');
+    expect(sidebarSource).toContain('disabled={isConnectionActionBusy || creatingConversation}');
     expect(sidebarSource).not.toContain("showInitialLoading");
     expect(sidebarSource).not.toContain("canRemoveProject");
     expect(sessionRouteSource).not.toContain('t("projects.keep_one")');

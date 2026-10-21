@@ -88,10 +88,10 @@ export async function ensureWorkspaceFiles(workspaceRoot: string, presetInput: s
  * Shared by the embedded-server and CLI boot paths.
  */
 export async function ensureLocalWorkspaceFiles(
-  workspaces: ReadonlyArray<Pick<WorkspaceInfo, "path" | "preset" | "workspaceType" | "archivedAt">>,
+  workspaces: ReadonlyArray<Pick<WorkspaceInfo, "path" | "preset" | "workspaceType">>,
 ): Promise<void> {
   for (const workspace of workspaces) {
-    if (workspace.archivedAt || workspace.workspaceType === "remote" || !workspace.path.trim()) continue;
+    if (workspace.workspaceType === "remote" || !workspace.path.trim()) continue;
     await ensureWorkspaceFiles(workspace.path, workspace.preset);
   }
 }

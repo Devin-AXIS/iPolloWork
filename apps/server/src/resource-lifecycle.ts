@@ -16,14 +16,14 @@ export type ResourceCleanup = z.infer<typeof cleanupSchema>;
 type ActiveOperation = { sessionId?: string; done: Promise<void> };
 const activeOperations = new WeakMap<ServerConfig, Map<string, Set<ActiveOperation>>>();
 /** Register before checking the barrier, so deletion can drain already accepted writes. */
-export async function beginResourceOperation(config: ServerConfig, workspaceId: string, sessionId?: string, allowArchived = false) {
+export async function beginResourceOperation(config: ServerConfig, workspaceId: string, sessionId?: string) {
   const projects = activeOperations.get(config) ?? new Map<string, Set<ActiveOperation>>(); activeOperations.set(config, projects);
   const operations = projects.get(workspaceId) ?? new Set<ActiveOperation>(); projects.set(workspaceId, operations);
   let finish = () => {};
   const operation = { sessionId, done: new Promise<void>(resolve => { finish = resolve; }) };
   operations.add(operation);
   const release = () => { operations.delete(operation); if (!operations.size) projects.delete(workspaceId); finish(); };
-  try { await assertResourceWritable(config, workspaceId, sessionId, allowArchived); return release; }
+  try { await assertResourceWritable(config, workspaceId, sessionId); return release; }
   catch (error) { release(); throw error; }
 }
 export async function releaseResourceOperations(config: ServerConfig, workspaceId: string, sessionId?: string) {
@@ -32,7 +32,7 @@ export async function releaseResourceOperations(config: ServerConfig, workspaceI
 }
 const rowSchema = z.object({
   workspaceId: z.string(), sessionId: z.string(), engineId: z.string(), archivedAt: z.number().nullable(),
-  deleting: z.number(), engineDeleted: z.number(), summary: z.string().nullable(), cleanup: z.string().nullable(),
+  deleting: z.number(), engineDeleted: z.number(), deleteFiles: z.number(), summary: z.string().nullable(), cleanup: z.string().nullable(),
 });
 
 async function database(config: ServerConfig) {
@@ -48,10 +48,16 @@ async function database(config: ServerConfig) {
         archived_at INTEGER, deleting INTEGER NOT NULL DEFAULT 0, engine_deleted INTEGER NOT NULL DEFAULT 0,
         summary TEXT, cleanup TEXT, PRIMARY KEY (workspace_id, session_id)
       );`);
+    const columns = db.prepare("PRAGMA table_info(resource_lifecycle)");
+    let hasDeleteFiles: boolean;
+    try { hasDeleteFiles = columns.all().some(column => z.object({ name: z.string() }).parse(column).name === "delete_files"); }
+    finally { if ("finalize" in columns) columns.finalize(); }
+    // Existing pending deletions were always full deletions.
+    if (!hasDeleteFiles) db.exec("ALTER TABLE resource_lifecycle ADD COLUMN delete_files INTEGER NOT NULL DEFAULT 1");
     return db;
   } catch (error) { db.close(); throw error; }
 }
-const select = "SELECT workspace_id AS workspaceId, session_id AS sessionId, engine_id AS engineId, archived_at AS archivedAt, deleting, engine_deleted AS engineDeleted, summary, cleanup FROM resource_lifecycle";
+const select = "SELECT workspace_id AS workspaceId, session_id AS sessionId, engine_id AS engineId, archived_at AS archivedAt, deleting, engine_deleted AS engineDeleted, delete_files AS deleteFiles, summary, cleanup FROM resource_lifecycle";
 function decode(value: unknown) {
   const row = rowSchema.parse(value);
   return { ...row, summary: row.summary ? summarySchema.parse(JSON.parse(row.summary)) : null,
@@ -85,24 +91,14 @@ export async function rememberResourceSummaries(config: ServerConfig, workspaceI
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; } finally { db.close(); }
 }
-export async function archiveResource(config: ServerConfig, workspaceId: string, sessionId: string, engineId: string, archived: boolean, summary?: LifecycleSummary) {
+export async function beginResourceDeletion(config: ServerConfig, workspaceId: string, sessionId: string, engineId: string, cleanup: ResourceCleanup, summary?: LifecycleSummary, deleteFiles = true) {
   const db = await database(config);
   try {
-    const statement = db.prepare(`INSERT INTO resource_lifecycle(workspace_id, session_id, engine_id, archived_at, summary)
-      VALUES (?, ?, ?, ?, ?) ON CONFLICT(workspace_id, session_id) DO UPDATE SET
-      archived_at = excluded.archived_at, summary = COALESCE(excluded.summary, resource_lifecycle.summary)
-      WHERE resource_lifecycle.deleting = 0`);
-    try { statement.run(workspaceId, sessionId, engineId, archived ? Date.now() : null, summary ? JSON.stringify(summarySchema.parse(summary)) : null); }
-    finally { if ("finalize" in statement) statement.finalize(); }
-  } finally { db.close(); }
-}
-export async function beginResourceDeletion(config: ServerConfig, workspaceId: string, sessionId: string, engineId: string, cleanup: ResourceCleanup, summary?: LifecycleSummary) {
-  const db = await database(config);
-  try {
-    const statement = db.prepare(`INSERT INTO resource_lifecycle(workspace_id, session_id, engine_id, deleting, cleanup, summary)
-      VALUES (?, ?, ?, 1, ?, ?) ON CONFLICT(workspace_id, session_id) DO UPDATE SET deleting = 1,
+    const statement = db.prepare(`INSERT INTO resource_lifecycle(workspace_id, session_id, engine_id, deleting, cleanup, summary, delete_files)
+      VALUES (?, ?, ?, 1, ?, ?, ?) ON CONFLICT(workspace_id, session_id) DO UPDATE SET deleting = 1,
+      delete_files = CASE WHEN resource_lifecycle.deleting = 1 THEN resource_lifecycle.delete_files ELSE excluded.delete_files END,
       cleanup = COALESCE(resource_lifecycle.cleanup, excluded.cleanup), summary = COALESCE(resource_lifecycle.summary, excluded.summary)`);
-    try { statement.run(workspaceId, sessionId, engineId, JSON.stringify(cleanupSchema.parse(cleanup)), summary ? JSON.stringify(summarySchema.parse(summary)) : null); }
+    try { statement.run(workspaceId, sessionId, engineId, JSON.stringify(cleanupSchema.parse(cleanup)), summary ? JSON.stringify(summarySchema.parse(summary)) : null, Number(deleteFiles)); }
     finally { if ("finalize" in statement) statement.finalize(); }
   } finally { db.close(); }
 }
@@ -114,28 +110,31 @@ export async function markResourceEngineDeleted(config: ServerConfig, workspaceI
 export async function forgetResourceLifecycle(config: ServerConfig, workspaceId: string, sessionId?: string) {
   const db = await database(config);
   try {
-    if (sessionId === undefined) run(db, "DELETE FROM resource_lifecycle WHERE workspace_id = ? AND session_id <> ''", workspaceId);
+    if (sessionId === undefined) {
+      const query = db.prepare("SELECT delete_files FROM resource_lifecycle WHERE workspace_id = ? AND session_id = ''");
+      let state: unknown;
+      try { state = query.get(workspaceId); } finally { if ("finalize" in query) query.finalize(); }
+      if (state && z.object({ delete_files: z.number() }).parse(state).delete_files) run(db, "DELETE FROM resource_lifecycle WHERE workspace_id = ? AND session_id <> ''", workspaceId);
+    }
     // Keep only an opaque deletion barrier, never history, filenames, or recoverable content.
-    run(db, "UPDATE resource_lifecycle SET deleting = 2, engine_deleted = 1, engine_id = '', archived_at = NULL, summary = NULL, cleanup = NULL WHERE workspace_id = ? AND session_id = ?", workspaceId, sessionId ?? "");
+    run(db, "UPDATE resource_lifecycle SET deleting = 2, engine_deleted = delete_files, archived_at = NULL, summary = NULL, cleanup = NULL WHERE workspace_id = ? AND session_id = ?", workspaceId, sessionId ?? "");
   } finally { db.close(); }
 }
-export async function assertResourceWritable(config: ServerConfig, workspaceId: string, sessionId?: string, allowArchived = false) {
-  if (!allowArchived && config.workspaces.find(workspace => workspace.id === workspaceId)?.archivedAt) throw new ApiError(409, "resource_archived", "项目已归档，请先恢复。");
+export async function assertResourceWritable(config: ServerConfig, workspaceId: string, sessionId?: string) {
   const db = await database(config);
   let records: ReturnType<typeof decode>[];
   try {
     const query = db.prepare(`${select} WHERE workspace_id = ? AND session_id IN ('', ?)`);
     try { records = query.all(workspaceId, sessionId ?? "").map(decode); } finally { if ("finalize" in query) query.finalize(); }
   } finally { db.close(); }
-  const blocked = records.find(row => row.deleting || (!allowArchived && row.archivedAt));
+  const blocked = records.find(row => row.deleting);
   if (blocked?.deleting === 2) throw new ApiError(410, "resource_deleted", "此项目或会话已删除。");
-  if (blocked) throw new ApiError(409, blocked.deleting ? "resource_deleting" : "resource_archived",
-    blocked.deleting ? "正在删除，请等待清理完成。" : "此项目或会话已归档，请先恢复。" );
+  if (blocked) throw new ApiError(409, "resource_deleting", "正在删除，请等待清理完成。");
 }
 /** Only explicit project creation may reuse a path whose previous project was deleted. */
 export async function resetDeletedProject(config: ServerConfig, workspaceId: string) {
   const db = await database(config);
-  try { run(db, "DELETE FROM resource_lifecycle WHERE workspace_id = ? AND deleting = 2", workspaceId); }
+  try { run(db, "DELETE FROM resource_lifecycle WHERE workspace_id = ? AND session_id = '' AND deleting = 2", workspaceId); }
   finally { db.close(); }
 }
 /** Do not resurrect deleted projects from a stale registry during boot. */
@@ -144,7 +143,7 @@ export async function reconcileResourceWorkspaces(config: ServerConfig) {
   for (const workspace of config.workspaces) {
     const state = await readResourceLifecycle(config, workspace.id);
     if (state?.deleting === 2) continue;
-    retained.push(state?.deleting ? { ...workspace, archivedAt: workspace.archivedAt || Date.now() } : workspace);
+    retained.push({ ...workspace, archivedAt: undefined });
   }
   config.workspaces = retained;
 }

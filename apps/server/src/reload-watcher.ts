@@ -55,7 +55,6 @@ export function startReloadWatchers(input: {
   const workspaceWatchers = new Map<string, { path: string; watcher: WorkspaceReloadWatcher }>();
 
   const startWorkspaceWatcher = (workspace: WorkspaceInfo) => {
-    if (workspace.archivedAt) return;
     try {
       const watcher = startWorkspaceReloadWatcher({ workspace, reloadEvents, logger, debounceMs });
       workspaceWatchers.set(workspace.id, { path: resolve(workspace.path), watcher });
@@ -85,7 +84,7 @@ export function startReloadWatchers(input: {
       await Promise.all(closing);
     },
     reconcileWorkspaces: async () => {
-      const nextPaths = new Map(config.workspaces.filter(workspace => !workspace.archivedAt).map((workspace) => [workspace.id, resolve(workspace.path)]));
+      const nextPaths = new Map(config.workspaces.map((workspace) => [workspace.id, resolve(workspace.path)]));
       const closing: Promise<void>[] = [];
 
       for (const [workspaceId, current] of workspaceWatchers) {

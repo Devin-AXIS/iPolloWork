@@ -356,7 +356,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain("sessionId={props.selectedSessionId ?? undefined}");
   });
 
-  test("all engines expose unified archive and permanent deletion", () => {
+  test("all engines expose scoped deletion without archive or restore actions", () => {
     const routeSource = readFileSync(
       new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
       "utf8",
@@ -367,14 +367,13 @@ describe("session output issue regressions", () => {
     );
     const deleteBinding = routeSource.slice(
       routeSource.indexOf("onDeleteSession={"),
-      routeSource.indexOf("onArchiveSession={"),
+      routeSource.indexOf("notFoundMessage={", routeSource.indexOf("onDeleteSession={")),
     );
 
     expect(deleteBinding).not.toContain("activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID");
-    expect(deleteBinding).toContain("deleteSession(endpoint.workspaceId, sessionId)");
-    expect(routeSource).toContain("setSessionArchived(endpoint.workspaceId, sessionId, archived)");
-    expect(routeSource).toContain("onArchiveSession={client ? handleArchiveSession : undefined}");
-    expect(sidebarSource).toContain('t("session_management.archive_session")');
+    expect(deleteBinding).toContain("deleteSession(endpoint.workspaceId, sessionId, deleteFiles)");
+    expect(routeSource).not.toContain("setSessionArchived");
+    expect(sidebarSource).not.toContain('t("session_management.archive_session")');
   });
 
   test("template application uses one shared dialog with supplemental references", () => {

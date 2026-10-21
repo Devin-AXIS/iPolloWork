@@ -1306,25 +1306,17 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceMutation },
       );
     },
-    setWorkspaceArchived: (workspaceId: string, archived: boolean) => requestJson<{ ok: boolean; workspace: iPolloWorkWorkspaceInfo }>(
-      baseUrl, `/workspaces/${encodeURIComponent(workspaceId)}/archive`,
-      { token, hostToken, method: "POST", body: { archived }, timeoutMs: timeouts.deleteWorkspace },
-    ),
-    setSessionArchived: (workspaceId: string, sessionId: string, archived: boolean) => requestJson<{ ok: boolean }>(
-      baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/archive`,
-      { token, hostToken, method: "POST", body: { archived }, timeoutMs: timeouts.deleteSession },
-    ),
-    deleteWorkspace: (workspaceId: string) =>
+    deleteWorkspace: (workspaceId: string, deleteFiles = false) =>
       requestJson<{ ok: boolean; deleted: boolean; persisted: boolean; activeId: string | null; items: iPolloWorkWorkspaceInfo[]; workspaces?: WorkspaceInfo[] }>(
         baseUrl,
-        `/workspaces/${encodeURIComponent(workspaceId)}`,
-        { token, hostToken, method: "DELETE", timeoutMs: timeouts.deleteWorkspace },
+        `/workspaces/${encodeURIComponent(workspaceId)}?deleteFiles=${deleteFiles}`,
+        { token, hostToken, method: "DELETE", timeoutMs: deleteFiles ? Math.max(timeouts.deleteWorkspace, 600_000) : timeouts.deleteWorkspace },
       ),
-    deleteSession: (workspaceId: string, sessionId: string) =>
+    deleteSession: (workspaceId: string, sessionId: string, deleteFiles = false) =>
       requestJson<{ ok: boolean }>(
         baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
-        { token, hostToken, method: "DELETE", timeoutMs: timeouts.deleteSession },
+        `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?deleteFiles=${deleteFiles}`,
+        { token, hostToken, method: "DELETE", timeoutMs: deleteFiles ? Math.max(timeouts.deleteSession, 600_000) : timeouts.deleteSession },
       ),
     listTemplates: (workspaceId: string, scope: iPolloWorkResourceScope = "personal") =>
       requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken, headers: resourceScopeHeaders(scope) }),

@@ -110,7 +110,7 @@ export async function recordSessionArtifact(
   generation?: SessionArtifact["generation"],
 ): Promise<void> {
   const owner = sessionArtifactOwner(sessionId);
-  await assertResourceWritable(config, workspace.id, owner, true);
+  await assertResourceWritable(config, workspace.id, owner);
   const absolutePath = await resolveWithinRoot(workspace.path, path);
   const info = await stat(absolutePath);
   if (!info.isFile() || !info.size) throw new ApiError(400, "invalid_artifact", "Artifact must be a non-empty file");

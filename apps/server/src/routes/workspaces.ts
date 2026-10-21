@@ -254,15 +254,14 @@ async function persistServerWorkspaceState(config: ServerConfig): Promise<boolea
   }
 }
 
-async function forwardProjectLifecycle(workspace: WorkspaceInfo, archived?: boolean) {
+async function forwardProjectLifecycle(workspace: WorkspaceInfo, deleteFiles: boolean) {
   const host = workspace.ipolloworkHostUrl?.trim(); const id = workspace.ipolloworkWorkspaceId?.trim();
   if (workspace.remoteType === "opencode" || !host || !id) throw new ApiError(400, "remote_lifecycle_unavailable", "此远程连接没有项目文件管理接口，请连接项目所在的 iPolloWork 服务端。");
   const target = stripiPolloWorkWorkspaceMount(host);
   if (!target) throw new ApiError(400, "remote_lifecycle_unavailable", "远程项目地址无效。");
-  const response = await fetch(`${target.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(id)}${archived === undefined ? "" : "/archive"}`, {
-    method: archived === undefined ? "DELETE" : "POST", redirect: "error", signal: AbortSignal.timeout(120_000),
+  const response = await fetch(`${target.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(id)}?deleteFiles=${deleteFiles}`, {
+    method: "DELETE", redirect: "error", signal: AbortSignal.timeout(120_000),
     headers: { Authorization: `Bearer ${workspace.ipolloworkToken || ""}`, "Content-Type": "application/json" },
-    ...(archived === undefined ? {} : { body: JSON.stringify({ archived }) }),
   });
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
@@ -519,7 +518,6 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
 
   addRoute(routes, "POST", "/workspaces/:id/activate", "host", async (ctx) => {
     const workspace = await resolveWorkspaceForRegistry(ctx.params.id);
-    if (workspace.archivedAt) throw new ApiError(409, "resource_archived", "项目已归档，请先恢复。");
     const queryPersist = parseOptionalBoolean(ctx.url.searchParams.get("persist"), "persist");
     const body = queryPersist === undefined ? await readOptionalJsonBody(ctx.request) : {};
     const persist = queryPersist ?? (body.persist === true);
@@ -555,37 +553,14 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     return jsonResponse({ activeId: workspace.id, workspace: serializeWorkspace(workspace), persisted });
   });
 
-  addRoute(routes, "POST", "/workspaces/:id/archive", "host", async (ctx) => {
-    ensureWritable(config);
-    const workspace = await resolveWorkspaceForRegistry(ctx.params.id);
-    const body = await readJsonBody(ctx.request);
-    if (typeof body.archived !== "boolean") throw new ApiError(400, "invalid_payload", "archived must be a boolean");
-    const registered = config.workspaces.find(entry => entry.id === workspace.id);
-    if (!registered) throw new ApiError(404, "workspace_not_found", "Workspace not found");
-    await assertResourceWritable(config, workspace.id, undefined, true);
-    if (workspace.workspaceType === "remote") await forwardProjectLifecycle(workspace, body.archived);
-    const previous = registered.archivedAt;
-    registered.archivedAt = body.archived ? registered.archivedAt || Date.now() : undefined;
-    let persisted: boolean;
-    try {
-      persisted = await persistServerWorkspaceState(config);
-      if (body.archived && workspace.workspaceType !== "remote") await sessionRuntime.releaseWorkspace(registered);
-    } catch (error) {
-      registered.archivedAt = previous;
-      await persistServerWorkspaceState(config);
-      throw error;
-    }
-    await onWorkspacesChanged();
-    return jsonResponse({ ok: true, persisted, workspace: serializeWorkspace(registered) });
-  });
-
   addRoute(routes, "DELETE", "/workspaces/:id", "host", async (ctx) => {
     ensureWritable(config);
 
     const workspace = await resolveWorkspaceForRegistry(ctx.params.id);
 
-    if (workspace.workspaceType === "remote") await forwardProjectLifecycle(workspace);
-    else await sessionRuntime.deleteWorkspace(workspace);
+    const deleteFiles = parseOptionalBoolean(ctx.url.searchParams.get("deleteFiles"), "deleteFiles") ?? false;
+    if (workspace.workspaceType === "remote") await forwardProjectLifecycle(workspace, deleteFiles);
+    else await sessionRuntime.deleteWorkspace(workspace, deleteFiles);
 
     const previousWorkspaces = config.workspaces;
     const previousRoots = config.authorizedRoots;
@@ -602,7 +577,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     catch (error) { config.workspaces = previousWorkspaces; config.authorizedRoots = previousRoots; throw error; }
     await onWorkspacesChanged();
 
-    const active = config.workspaces.find(workspace => !workspace.archivedAt) ?? null;
+    const active = config.workspaces[0] ?? null;
     return jsonResponse({
       ok: true,
       deleted,

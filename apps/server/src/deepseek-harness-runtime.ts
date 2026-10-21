@@ -1220,9 +1220,11 @@ export function resolveLegacyDeepSeekHarnessWorkspaceId(config: ServerConfig, wo
 }
 
 export class DeepSeekHarnessRuntimePool {
+  #closed = false;
   readonly #config: ServerConfig;
   readonly #env: EnvService;
   readonly #runtimes = new Map<string, DeepSeekHarnessRuntime>();
+  readonly #closingWorkspaces = new Map<string, Promise<void>>();
   #legacyWorkspaceId: string | null = null;
   #legacyWorkspaceResolved = false;
   readonly #stopConfigListener: () => void;
@@ -1236,7 +1238,10 @@ export class DeepSeekHarnessRuntimePool {
     });
   }
 
+  hasWorkspaceRuntime(workspaceId: string) { return this.#runtimes.has(workspaceId); }
+
   forWorkspace(workspace: WorkspaceInfo): DeepSeekHarnessRuntime {
+    if (this.#closed) throw new DeepSeekHarnessUnavailableError("The server runtime pool has been closed");
     const existing = this.#runtimes.get(workspace.id);
     if (existing) return existing;
     if (!this.#legacyWorkspaceResolved) {
@@ -1254,9 +1259,17 @@ export class DeepSeekHarnessRuntimePool {
   }
 
   async closeWorkspace(workspaceId: string): Promise<void> {
+    const previous = this.#closingWorkspaces.get(workspaceId);
     const runtime = this.#runtimes.get(workspaceId);
     this.#runtimes.delete(workspaceId);
-    await runtime?.close({ retire: true });
+    if (!runtime) return previous;
+    // Config/environment reload may already be closing an older instance. File
+    // deletion must wait for every instance that has opened this native home.
+    const closing = Promise.all([previous, runtime.close({ retire: true })]).then(() => {}).finally(() => {
+      if (this.#closingWorkspaces.get(workspaceId) === closing) this.#closingWorkspaces.delete(workspaceId);
+    });
+    this.#closingWorkspaces.set(workspaceId, closing);
+    await closing;
   }
 
   async deleteSession(workspace: WorkspaceInfo, sessionId: string) {
@@ -1299,9 +1312,10 @@ export class DeepSeekHarnessRuntimePool {
   }
 
   async close(): Promise<void> {
+    this.#closed = true;
     this.#stopConfigListener();
-    await Promise.all([...this.#runtimes.values()].map((runtime) => runtime.close({ retire: true })));
-    this.#runtimes.clear();
+    const ids = new Set([...this.#runtimes.keys(), ...this.#closingWorkspaces.keys()]);
+    await Promise.all([...ids].map(id => this.closeWorkspace(id)));
   }
 }
 

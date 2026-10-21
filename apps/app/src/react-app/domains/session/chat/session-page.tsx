@@ -677,8 +677,7 @@ export type SessionPageSidebarProps = {
   onCreateTaskFromDraft: (workspaceId: string, draft: ComposerDraft) => Promise<boolean>;
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
   onRevealProject: (workspaceId: string) => Promise<void> | void;
-  onDeleteProject: (workspaceId: string) => Promise<void> | void;
-  onArchiveProject?: (workspaceId: string, archived: boolean) => Promise<void> | void;
+  onDeleteProject: (workspaceId: string, deleteFiles: boolean) => Promise<void> | void;
 
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
   onCreateTaskInWorkspace: (
@@ -836,8 +835,7 @@ export type SessionPageProps = {
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   notFoundMessage?: string | null;
   onRenameSession?: (sessionId: string, title: string) => Promise<void> | void;
-  onDeleteSession?: (sessionId: string) => Promise<void> | void;
-  onArchiveSession?: (sessionId: string, archived: boolean) => Promise<void> | void;
+  onDeleteSession?: (sessionId: string, deleteFiles: boolean) => Promise<void> | void;
   onAccessibleTargetsChange?: (targets: OpenTarget[]) => void;
   /** Settings content rendered inside the right pane when the settings rail icon is active. */
   settingsSlot?: React.ReactNode;
@@ -1672,6 +1670,22 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DeleteScopeChoice({ deleteFiles, busy, onChange }: { deleteFiles: boolean; busy: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <RadioGroup aria-label={t("delete_scope.label")} value={deleteFiles ? "files" : "software"} onValueChange={value => onChange(value === "files")} disabled={busy} className="gap-3">
+      {["software", "files"].map(scope => (
+        <label key={scope} className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 hover:bg-accent/50">
+          <RadioGroupItem value={scope} aria-label={t(scope === "files" ? "delete_scope.files" : "delete_scope.software")} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 space-y-1">
+            <span className="block text-sm font-medium">{t(scope === "files" ? "delete_scope.files" : "delete_scope.software")}</span>
+            <span className="block text-xs leading-relaxed text-muted-foreground">{t(scope === "files" ? "delete_scope.files_description" : "delete_scope.software_description")}</span>
+          </span>
+        </label>
+      ))}
+    </RadioGroup>
   );
 }
 
@@ -2533,7 +2547,7 @@ export function SessionPage(props: SessionPageProps) {
       && conversationMessages.length === 0;
     if (emptyGeneratedTemplateSession && props.onDeleteSession) {
       try {
-        await props.onDeleteSession(conversationId);
+        await props.onDeleteSession(conversationId, true);
         setTemplateSessionData(null);
         setDismissedTemplateBriefSessionIds((current) => {
           const next = new Set(current);
@@ -2599,6 +2613,7 @@ export function SessionPage(props: SessionPageProps) {
   const [renameTitle, setRenameTitle] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [sessionActionId, setSessionActionId] = useState<string | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
@@ -2612,6 +2627,7 @@ export function SessionPage(props: SessionPageProps) {
   const [renameProjectBusy, setRenameProjectBusy] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
+  const [deleteProjectFiles, setDeleteProjectFiles] = useState(false);
   const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "schedule" | "project-overview" | "project-board" | null>(null);
   const [scheduleAnchorAt, setScheduleAnchorAt] = useState<number | null>(null);
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
@@ -4496,7 +4512,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!sessionId || !props.onDeleteSession) return;
     setDeleteBusy(true);
     try {
-      await props.onDeleteSession(sessionId);
+      await props.onDeleteSession(sessionId, deleteFiles);
       setDeleteOpen(false);
     } catch (error) {
       toast.error(t("session_management.delete_failed"), { description: error instanceof Error ? error.message : String(error) });
@@ -4560,7 +4576,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!workspaceId) return;
     setDeleteProjectBusy(true);
     try {
-      await props.sidebar.onDeleteProject(workspaceId);
+      await props.sidebar.onDeleteProject(workspaceId, deleteProjectFiles);
       setDeleteProjectId(null);
     } catch (error) {
       toast.error(t("projects.delete_failed"), { description: error instanceof Error ? error.message : String(error) });
@@ -4589,7 +4605,7 @@ export function SessionPage(props: SessionPageProps) {
           selectedWorkspaceId={props.sidebar.selectedWorkspaceId}
           developerMode={props.sidebar.developerMode}
           selectedSessionId={props.sidebar.selectedSessionId}
-          showSessionActions={Boolean(props.onRenameSession || props.onDeleteSession || props.onArchiveSession)}
+          showSessionActions={Boolean(props.onRenameSession || props.onDeleteSession)}
           sessionStatusById={props.sidebar.sessionStatusById}
           connectingWorkspaceId={props.sidebar.connectingWorkspaceId}
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
@@ -4600,17 +4616,14 @@ export function SessionPage(props: SessionPageProps) {
           onCreateProjectBuilder={props.sidebar.onCreateProjectBuilder}
           onOpenRenameProject={openRenameProject}
           onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
-          onOpenDeleteProject={setDeleteProjectId}
-          onArchiveProject={props.sidebar.onArchiveProject}
+          onOpenDeleteProject={(workspaceId) => { setDeleteProjectFiles(false); setDeleteProjectId(workspaceId); }}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={handleSidebarCreateTask}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
           onOpenDeleteSession={props.onDeleteSession ? (sessionId) => {
             setSessionActionId(sessionId);
+            setDeleteFiles(false);
             setDeleteOpen(true);
-          } : undefined}
-          onArchiveSession={props.onArchiveSession ? (sessionId, archived) => {
-            void props.onArchiveSession?.(sessionId, archived);
           } : undefined}
           onRecoverWorkspace={props.sidebar.onRecoverWorkspace}
           onTestWorkspaceConnection={props.sidebar.onTestWorkspaceConnection}
@@ -4779,6 +4792,7 @@ export function SessionPage(props: SessionPageProps) {
                         variant="destructive"
                         onClick={() => {
                           setSessionActionId(props.selectedSessionId!);
+                          setDeleteFiles(false);
                           setDeleteOpen(true);
                         }}
                       >
@@ -5527,7 +5541,9 @@ export function SessionPage(props: SessionPageProps) {
           onCancel={() => {
             if (!deleteBusy) setDeleteOpen(false);
           }}
-        />
+        >
+          <DeleteScopeChoice deleteFiles={deleteFiles} busy={deleteBusy} onChange={setDeleteFiles} />
+        </ConfirmModal>
       ) : null}
 
       <Dialog open={createProjectOpen} onOpenChange={(open) => {
@@ -5674,7 +5690,9 @@ export function SessionPage(props: SessionPageProps) {
         variant="danger"
         onConfirm={() => void confirmDeleteProject()}
         onCancel={() => { if (!deleteProjectBusy) setDeleteProjectId(null); }}
-      />
+      >
+        <DeleteScopeChoice deleteFiles={deleteProjectFiles} busy={deleteProjectBusy} onChange={setDeleteProjectFiles} />
+      </ConfirmModal>
 
       {/* Cloud provider notifications are now handled globally by CloudProvidersToast in app-root.tsx */}
     </div>

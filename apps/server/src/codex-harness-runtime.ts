@@ -1079,9 +1079,11 @@ export class CodexHarnessRuntime {
 }
 
 export class CodexHarnessRuntimePool {
+  #closed = false;
   readonly #config: ServerConfig;
   readonly #env: EnvService;
   readonly #runtimes = new Map<string, CodexHarnessRuntime>();
+  readonly #closingWorkspaces = new Map<string, Promise<void>>();
   readonly #stopConfigListener: () => void;
   readonly #stopEnvironmentListener: () => void;
 
@@ -1102,7 +1104,10 @@ export class CodexHarnessRuntimePool {
     return (await readSourceProviders(this.#config, this.#env)).providers;
   }
 
+  hasWorkspaceRuntime(workspaceId: string) { return this.#runtimes.has(workspaceId); }
+
   forWorkspace(workspace: WorkspaceInfo): CodexHarnessRuntime {
+    if (this.#closed) throw new CodexHarnessUnavailableError("The server runtime pool has been closed");
     const existing = this.#runtimes.get(workspace.id);
     if (existing) return existing;
     if (workspace.engineId !== CODEX_HARNESS_ENGINE_ID) {
@@ -1114,9 +1119,17 @@ export class CodexHarnessRuntimePool {
   }
 
   async closeWorkspace(workspaceId: string): Promise<void> {
+    const previous = this.#closingWorkspaces.get(workspaceId);
     const runtime = this.#runtimes.get(workspaceId);
     this.#runtimes.delete(workspaceId);
-    await runtime?.close({ retire: true });
+    if (!runtime) return previous;
+    // Config/environment reload may already be closing an older instance. File
+    // deletion must wait for every instance that has opened this native home.
+    const closing = Promise.all([previous, runtime.close({ retire: true })]).then(() => {}).finally(() => {
+      if (this.#closingWorkspaces.get(workspaceId) === closing) this.#closingWorkspaces.delete(workspaceId);
+    });
+    this.#closingWorkspaces.set(workspaceId, closing);
+    await closing;
   }
 
   async deleteWorkspaceData(workspaceId: string): Promise<void> {
@@ -1126,14 +1139,14 @@ export class CodexHarnessRuntimePool {
   }
 
   async close(): Promise<void> {
+    this.#closed = true;
     this.#stopConfigListener();
     this.#stopEnvironmentListener();
     await this.#closeAllRuntimes();
   }
 
   async #closeAllRuntimes(): Promise<void> {
-    const runtimes = [...this.#runtimes.values()];
-    this.#runtimes.clear();
-    await Promise.all(runtimes.map((runtime) => runtime.close({ retire: true })));
+    const ids = new Set([...this.#runtimes.keys(), ...this.#closingWorkspaces.keys()]);
+    await Promise.all([...ids].map(id => this.closeWorkspace(id)));
   }
 }

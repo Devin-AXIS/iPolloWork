@@ -29,7 +29,7 @@ import {
 import type { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
 import { join } from "node:path";
 import { sessionArtifactCleanup, deleteSessionArtifactRecords } from "./session-artifacts.js";
-import { archiveResource, assertResourceWritable, beginResourceDeletion, deleteResourceRecords, forgetResourceLifecycle, listResourceLifecycles, markResourceEngineDeleted, readResourceLifecycle, rememberResourceSummaries, removeOwnedFiles, validateProjectDeletion, verifyCleanupPath } from "./resource-lifecycle.js";
+import { assertResourceWritable, beginResourceDeletion, deleteResourceRecords, forgetResourceLifecycle, listResourceLifecycles, markResourceEngineDeleted, readResourceLifecycle, rememberResourceSummaries, removeOwnedFiles, validateProjectDeletion, verifyCleanupPath } from "./resource-lifecycle.js";
 import { releaseOwnedVideoJobs } from "./extensions/video-generation.js";
 import { deleteWorkspacePluginServiceData } from "./plugin-service-runtime.js";
 import { beginResourceOperation, releaseResourceOperations } from "./resource-lifecycle.js";
@@ -709,12 +709,14 @@ export class WorkspaceSessionRuntime {
     return { ...summary, engineId: workspace.engineId || DEFAULT_ENGINE_ID };
   }
 
-  async #stop(workspace: WorkspaceInfo, sessionId: string) {
+  async #stop(workspace: WorkspaceInfo, sessionId: string, onlyIfStarted = false) {
     if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+      if (onlyIfStarted && !this.#deepseekHarness.hasWorkspaceRuntime(workspace.id)) return;
       const runtime = this.#deepseekHarness.forWorkspace(workspace);
       const sessions = await runtime.call<{ items: DeepSeekHarnessSummary[] }>("session.list", {});
       if (sessions.items.find(session => session.sessionId === sessionId)?.running) await runtime.call("session.cancel", { sessionId });
     } else if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+      if (onlyIfStarted && !this.#codexHarness.hasWorkspaceRuntime(workspace.id)) return;
       const runtime = this.#codexHarness.forWorkspace(workspace);
       const thread = await readCodexHarnessThread(runtime, sessionId).catch(error => { if (nativeSessionMissing(error)) return null; throw error; });
       if (!thread) return;
@@ -725,76 +727,18 @@ export class WorkspaceSessionRuntime {
     }
   }
 
-  async setArchived(workspace: WorkspaceInfo, sessionId: string, archived: boolean) {
-    return this.#lifecycle(workspace.id, async () => {
-      const previous = await readResourceLifecycle(this.#config, workspace.id, sessionId);
-      if (previous?.deleting) throw new ApiError(409, "resource_deleting", "此会话正在删除或已删除。");
-      workspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, { codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness });
-      const engineId = workspace.engineId || DEFAULT_ENGINE_ID;
-      const summary = previous?.summary ?? await this.#summary(workspace, sessionId);
-      await archiveResource(this.#config, workspace.id, sessionId, engineId, archived, { ...summary, engineId });
-      try {
-        if (archived) {
-          await releaseResourceOperations(this.#config, workspace.id, sessionId);
-          await this.#releaseSessionObservers?.(workspace.id, sessionId);
-          await releaseOwnedVideoJobs(this.#config, workspace.id, sessionId);
-          await this.#stop(workspace, sessionId);
-        }
-        if (engineId === CODEX_HARNESS_ENGINE_ID) {
-          const runtime = this.#codexHarness.forWorkspace(workspace);
-          await runtime.call(archived ? "thread/archive" : "thread/unarchive", { threadId: sessionId })
-            .catch(error => { if (!nativeSessionMissing(error)) throw error; });
-          this.#freshCodexThreads.delete(this.#codexThreadKey(workspace.id, sessionId));
-          if (archived) {
-            const loaded = await runtime.call<{ data?: string[] }>("thread/loaded/list", {});
-            if (Array.isArray(loaded.data) && !loaded.data.length) await this.#codexHarness.closeWorkspace(workspace.id);
-          }
-        } else if (engineId === DEFAULT_ENGINE_ID) {
-          const client = this.#createWorkspaceOpencodeClient(this.#config, workspace);
-          this.#unwrapOpencodeResult(await client.session.update({ sessionID: sessionId, time: { archived: archived ? Date.now() : 0 } }), `/session/${sessionId}`);
-          if (archived) {
-            const statuses = buildSessionStatuses(this.#unwrapOpencodeResult(await client.session.status(), "/session/status"));
-            if (!Object.values(statuses).some(status => status.type !== "idle")) this.#unwrapOpencodeResult(await client.instance.dispose({ directory: workspace.path }), "/instance/dispose");
-          }
-        } else if (archived) {
-          const runtime = this.#deepseekHarness.forWorkspace(workspace);
-          const sessions = await runtime.call<{ items: DeepSeekHarnessSummary[] }>("session.list", {});
-          if (!sessions.items.some(session => session.running)) await this.#deepseekHarness.closeWorkspace(workspace.id);
-        }
-      } catch (error) {
-        await archiveResource(this.#config, workspace.id, sessionId, engineId, Boolean(previous?.archivedAt), { ...summary, engineId });
-        throw error;
-      }
-    });
-  }
-
-  async releaseWorkspace(workspace: WorkspaceInfo) {
-    return this.#lifecycle(workspace.id, async () => {
-      await releaseResourceOperations(this.#config, workspace.id);
-      await this.#releaseSessionObservers?.(workspace.id);
-      await releaseOwnedVideoJobs(this.#config, workspace.id);
-      await Promise.all([this.#codexHarness.closeWorkspace(workspace.id), this.#deepseekHarness.closeWorkspace(workspace.id)]);
-      const engines = new Set([workspace.engineId || DEFAULT_ENGINE_ID, ...await listBoundSessionEngines(this.#config, workspace.id)]);
-      if (engines.has(DEFAULT_ENGINE_ID)) {
-        const client = this.#createWorkspaceOpencodeClient(this.#config, workspace);
-        this.#unwrapOpencodeResult(await client.instance.dispose({ directory: workspace.path }), "/instance/dispose");
-      }
-      this.#sessionContextHints.delete(workspace.id);
-      for (const key of this.#freshCodexThreads.keys()) if (key.startsWith(`${workspace.id}\u0000`)) this.#freshCodexThreads.delete(key);
-    });
-  }
-
-  async delete(workspace: WorkspaceInfo, sessionId: string): Promise<void> {
+  async delete(workspace: WorkspaceInfo, sessionId: string, deleteFiles = false): Promise<void> {
     return this.#lifecycle(workspace.id, async () => {
       let pending = await readResourceLifecycle(this.#config, workspace.id, sessionId);
       if (pending?.deleting === 2) return;
+      if (pending?.deleting && Boolean(pending.deleteFiles) !== deleteFiles) throw new ApiError(409, "deletion_scope_conflict", "请按原来的删除范围重试，等待当前清理完成。");
       workspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, { codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness });
       const engineId = workspace.engineId || DEFAULT_ENGINE_ID;
       if (!pending?.deleting) {
         const summary = pending?.summary ?? await this.#summary(workspace, sessionId);
-        const cleanup = await sessionArtifactCleanup(this.#config, workspace, sessionId);
+        const cleanup = deleteFiles ? await sessionArtifactCleanup(this.#config, workspace, sessionId) : { paths: [], retainedPaths: [] };
         for (const path of cleanup.paths) await verifyCleanupPath(workspace.path, join(workspace.path, path));
-        await beginResourceDeletion(this.#config, workspace.id, sessionId, engineId, cleanup, { ...summary, engineId });
+        await beginResourceDeletion(this.#config, workspace.id, sessionId, engineId, cleanup, { ...summary, engineId }, deleteFiles);
         pending = await readResourceLifecycle(this.#config, workspace.id, sessionId);
       }
       await releaseOwnedVideoJobs(this.#config, workspace.id, sessionId);
@@ -802,38 +746,59 @@ export class WorkspaceSessionRuntime {
       await this.#releaseSessionObservers?.(workspace.id, sessionId);
       if (!pending?.engineDeleted) {
         try {
-        await this.#stop(workspace, sessionId);
-        if (engineId === DEEPSEEK_HARNESS_ENGINE_ID) await this.#deepseekHarness.deleteSession(workspace, sessionId);
-        else if (engineId === CODEX_HARNESS_ENGINE_ID) {
-          this.#freshCodexThreads.delete(this.#codexThreadKey(workspace.id, sessionId));
-          await this.#codexHarness.forWorkspace(workspace).call("thread/delete", { threadId: sessionId });
-        } else this.#unwrapOpencodeResult(await this.#createWorkspaceOpencodeClient(this.#config, workspace).session.delete({ sessionID: sessionId }), `/session/${sessionId}`);
+          await this.#stop(workspace, sessionId, !deleteFiles);
+          if (!deleteFiles) {
+            // Close an idle runtime without changing native history or files.
+            if (engineId === DEEPSEEK_HARNESS_ENGINE_ID && this.#deepseekHarness.hasWorkspaceRuntime(workspace.id)) {
+              const sessions = await this.#deepseekHarness.forWorkspace(workspace).call<{ items: DeepSeekHarnessSummary[] }>("session.list", {});
+              if (!sessions.items.some(session => session.running)) await this.#deepseekHarness.closeWorkspace(workspace.id);
+            } else if (engineId === CODEX_HARNESS_ENGINE_ID && this.#codexHarness.hasWorkspaceRuntime(workspace.id)) {
+              const runtime = this.#codexHarness.forWorkspace(workspace);
+              const loaded = await runtime.call<{ data?: string[] }>("thread/loaded/list", {});
+              if (Array.isArray(loaded.data)) {
+                const threads = await Promise.all(loaded.data.map(id => readCodexHarnessThread(runtime, id)));
+                if (!threads.some(thread => thread.turns?.at(-1)?.status === "inProgress")) await this.#codexHarness.closeWorkspace(workspace.id);
+              }
+            }
+          } else if (engineId === DEEPSEEK_HARNESS_ENGINE_ID) await this.#deepseekHarness.deleteSession(workspace, sessionId);
+          else if (engineId === CODEX_HARNESS_ENGINE_ID) {
+            this.#freshCodexThreads.delete(this.#codexThreadKey(workspace.id, sessionId));
+            await this.#codexHarness.forWorkspace(workspace).call("thread/delete", { threadId: sessionId });
+          } else this.#unwrapOpencodeResult(await this.#createWorkspaceOpencodeClient(this.#config, workspace).session.delete({ sessionID: sessionId }), `/session/${sessionId}`);
         } catch (error) {
           // Ownership and cleanup were recorded before the native delete. A lost
           // response may leave an already-deleted native session on the next retry.
           if (!nativeSessionMissing(error)) throw error;
         }
-        await markResourceEngineDeleted(this.#config, workspace.id, sessionId);
+        if (deleteFiles) await markResourceEngineDeleted(this.#config, workspace.id, sessionId);
       }
-      if (pending?.cleanup) await removeOwnedFiles(workspace.path, pending.cleanup);
-      await deleteSessionArtifactRecords(this.#config, workspace.id, sessionId);
-      await deleteResourceRecords(this.#config, workspace.id, sessionId);
+      if (deleteFiles) {
+        if (pending?.cleanup) await removeOwnedFiles(workspace.path, pending.cleanup);
+        await deleteSessionArtifactRecords(this.#config, workspace.id, sessionId);
+        await deleteResourceRecords(this.#config, workspace.id, sessionId);
+      }
       const binding = await readProjectSessionWorkItem(this.#config, workspace.id, sessionId);
       if (binding) await deleteWorkItem(this.#config, workspace.id, binding.id, binding.version);
+      this.#freshCodexThreads.delete(this.#codexThreadKey(workspace.id, sessionId));
       await forgetResourceLifecycle(this.#config, workspace.id, sessionId);
     });
   }
 
-  async deleteWorkspace(workspace: WorkspaceInfo) {
+  async deleteWorkspace(workspace: WorkspaceInfo, deleteFiles = false) {
     return this.#lifecycle(workspace.id, async () => {
-      await validateProjectDeletion(this.#config, workspace);
+      if (deleteFiles) await validateProjectDeletion(this.#config, workspace);
       const pending = await readResourceLifecycle(this.#config, workspace.id);
       if (pending?.deleting === 2) return;
-      await beginResourceDeletion(this.#config, workspace.id, "", "", { paths: ["."], retainedPaths: [] });
+      if (pending?.deleting && Boolean(pending.deleteFiles) !== deleteFiles) throw new ApiError(409, "deletion_scope_conflict", "请按原来的删除范围重试，等待当前清理完成。");
+      await beginResourceDeletion(this.#config, workspace.id, "", workspace.engineId || DEFAULT_ENGINE_ID, { paths: deleteFiles ? ["."] : [], retainedPaths: [] }, undefined, deleteFiles);
       await releaseResourceOperations(this.#config, workspace.id);
       await this.#releaseSessionObservers?.(workspace.id);
       await releaseOwnedVideoJobs(this.#config, workspace.id);
-      if (!pending?.engineDeleted) {
+      if (!deleteFiles) {
+        await Promise.all([this.#codexHarness.closeWorkspace(workspace.id), this.#deepseekHarness.closeWorkspace(workspace.id)]);
+        const engines = new Set([workspace.engineId || DEFAULT_ENGINE_ID, ...await listBoundSessionEngines(this.#config, workspace.id)]);
+        if (engines.has(DEFAULT_ENGINE_ID)) this.#unwrapOpencodeResult(await this.#createWorkspaceOpencodeClient(this.#config, workspace).instance.dispose({ directory: workspace.path }), "/instance/dispose");
+      } else if (!pending?.engineDeleted) {
         const engines = new Set([workspace.engineId || DEFAULT_ENGINE_ID, ...await listBoundSessionEngines(this.#config, workspace.id), ...(await listResourceLifecycles(this.#config, workspace.id)).map(row => row.engineId)]);
         const client = this.#createWorkspaceOpencodeClient(this.#config, workspace);
         if (engines.has(DEFAULT_ENGINE_ID)) {
@@ -855,10 +820,12 @@ export class WorkspaceSessionRuntime {
           (await listResourceLifecycles(this.#config, workspace.id)).filter(row => row.engineId === DEEPSEEK_HARNESS_ENGINE_ID).map(row => row.sessionId).filter(Boolean));
         await markResourceEngineDeleted(this.#config, workspace.id, "");
       }
-      await removeOwnedFiles(workspace.path, { paths: ["."], retainedPaths: [] }, true);
-      await deleteWorkspacePluginServiceData(this.#config, workspace.id);
-      await deleteSessionArtifactRecords(this.#config, workspace.id);
-      await deleteResourceRecords(this.#config, workspace.id);
+      if (deleteFiles) {
+        await removeOwnedFiles(workspace.path, { paths: ["."], retainedPaths: [] }, true);
+        await deleteWorkspacePluginServiceData(this.#config, workspace.id);
+        await deleteSessionArtifactRecords(this.#config, workspace.id);
+        await deleteResourceRecords(this.#config, workspace.id);
+      }
       await deleteWorkspaceWorkState(this.#config, workspace.id);
       await forgetResourceLifecycle(this.#config, workspace.id);
       this.#sessionContextHints.delete(workspace.id);

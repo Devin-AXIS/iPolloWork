@@ -22,6 +22,7 @@ export type ConfirmModalProps = {
   message: string | ReactNode;
   confirmLabel: string;
   busy?: boolean;
+  children?: ReactNode;
   cancelLabel: string;
   variant?: "danger" | "warning";
   confirmButtonVariant?: "secondary" | "ghost" | "outline" | "destructive";
@@ -53,6 +54,7 @@ export function ConfirmModal(props: ConfirmModalProps) {
           <AlertDialogTitle>{props.title}</AlertDialogTitle>
           <AlertDialogDescription>{props.message}</AlertDialogDescription>
         </AlertDialogHeader>
+        {props.children}
         <AlertDialogFooter>
           <AlertDialogCancel variant={cancelVariant} disabled={props.busy}>
             {props.cancelLabel}

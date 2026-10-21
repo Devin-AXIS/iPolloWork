@@ -155,7 +155,7 @@ export async function stopOwnedVideoJobs(config: ServerConfig, workspaceId: stri
     const jobs = sessionId === undefined
       ? rows(db, "SELECT data FROM video_jobs WHERE workspace_id = ? AND status IN ('submitting','running','saving','paused','uncertain')", workspaceId)
       : rows(db, "SELECT data FROM video_jobs WHERE workspace_id = ? AND session_id = ? AND status IN ('submitting','running','saving','paused','uncertain')", workspaceId, sessionId);
-    for (const job of jobs) put(db, { ...job, status: "stopped", nextPoll: 0, updatedAt: Date.now(), message: "项目或会话已归档或删除，已停止本地生成和结果查询。" });
+    for (const job of jobs) put(db, { ...job, status: "stopped", nextPoll: 0, updatedAt: Date.now(), message: "项目或会话已删除，已停止本地生成和结果查询。" });
   });
 }
 

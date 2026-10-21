@@ -797,7 +797,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     },
     releaseSessionObservers: async (workspaceId, sessionId) => {
       const monitors = [...sessionMonitors.entries()].filter(([key, monitor]) => key.startsWith(`${workspaceId}\u0000`) && (!sessionId || monitor.sessionId === sessionId));
-      for (const [, monitor] of monitors) monitor.abort.abort(new Error("Resource archived or deleted"));
+      for (const [, monitor] of monitors) monitor.abort.abort(new Error("Resource deleted"));
       await Promise.all(monitors.map(([, monitor]) => monitor.promise));
       if (!sessionId) await disposeAllPluginServices(config, workspaceId);
     },
@@ -988,13 +988,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
               : route.auth === "client"
                 ? await requireClient(request, config, tokens)
                 : undefined;
-        const lifecycleRequest = request.method === "DELETE" && (/\/sessions\/[^/]+$/.test(url.pathname) || /^\/workspaces\/[^/]+$/.test(url.pathname))
-          || request.method === "POST" && /\/(?:sessions\/[^/]+|workspaces\/[^/]+)\/archive$/.test(url.pathname);
+        const lifecycleRequest = request.method === "DELETE" && (/\/sessions\/[^/]+$/.test(url.pathname) || /^\/workspaces\/[^/]+$/.test(url.pathname));
         if (route.params.id && /^\/workspaces?\//.test(url.pathname) && !lifecycleRequest) {
           const reading = ["GET", "HEAD"].includes(request.method);
-          const rename = request.method === "PATCH" && url.pathname.endsWith("/display-name");
-          const cachedRead = reading && !url.pathname.includes("/engine/");
-          try { releaseResource = await beginResourceOperation(config, route.params.id, route.params.sessionId, cachedRead || rename); }
+          try { releaseResource = await beginResourceOperation(config, route.params.id, route.params.sessionId); }
           catch (error) {
             if (reading && isApiError(error) && error.code === "resource_deleted") throw new ApiError(404, route.params.sessionId ? "session_not_found" : "workspace_not_found", "Resource was deleted");
             throw error;
@@ -1030,7 +1027,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   });
   config.port = server.port;
   if (!config.readOnly) {
-    for (const workspace of config.workspaces.filter(workspace => !workspace.archivedAt)) {
+    for (const workspace of config.workspaces) {
       for (const binding of await listConversationSessionBindings(config, workspace.id)) {
         if (binding.status === "running") monitorSessionExecution(workspace, binding.sessionId);
       }
@@ -1249,7 +1246,7 @@ async function forwardOpencodeRequest(input: {
     : await input.request.arrayBuffer().then((buf) => (buf.byteLength > 0 ? buf : undefined));
   if (method === "PATCH" && /^\/session\/[^/]+$/.test(normalizeOpencodeProxyPath(proxyPath)) && body) {
     const update: unknown = JSON.parse(new TextDecoder().decode(body));
-    if (isRecord(update) && isRecord(update.time) && "archived" in update.time) throw new ApiError(400, "use_session_lifecycle", "请通过会话归档接口释放运行实例。");
+    if (isRecord(update) && isRecord(update.time) && "archived" in update.time) throw new ApiError(400, "use_session_lifecycle", "会话不再支持归档，请使用删除操作。");
   }
   if (isSessionCommandProxyRequest(method, proxyPath)) {
     void fetch(targetUrl, {
@@ -3438,8 +3435,8 @@ async function resolveWorkspace(config: ServerConfig, id: string): Promise<Works
   if (!authorized) {
     throw new ApiError(403, "workspace_unauthorized", "Workspace is not authorized");
   }
-  await assertResourceWritable(config, workspace.id, undefined, true);
-  if (!config.readOnly && !workspace.archivedAt) {
+  await assertResourceWritable(config, workspace.id);
+  if (!config.readOnly) {
     const ensured = await ensureWorkspaceFiles(resolvedWorkspace, workspace.preset ?? "starter");
     const bootstrapReloadReasons = new Set<ReloadReason>(ensured.reloadReasons);
     if (await repairCommands(resolvedWorkspace)) {

@@ -39,7 +39,6 @@ export type SidebarContextValue = {
   onOpenDeleteSession?: (sessionId: string) => void;
   onShareSession?: (workspaceId: string, sessionId: string) => void;
   enterpriseSharingAvailable?: boolean;
-  onArchiveSession?: (sessionId: string, archived: boolean) => void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
   onEditWorkspaceConnection: (workspaceId: string) => void;

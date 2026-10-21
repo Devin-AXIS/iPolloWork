@@ -382,7 +382,7 @@ export function SessionRoute() {
     : newConversationEngineId || selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
   useEffect(() => setNewConversationEngineId(null), [selectedWorkspaceId]);
   const conversation = useMemo(
-    () => !selectedWorkspace?.archivedAt && !selectedConversation?.time?.archived && opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError && (!selectedSessionId || selectedConversation)
+    () => opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError && (!selectedSessionId || selectedConversation)
       ? withEnterpriseShareContext(conversationEngineAdapters.get(activeEngineId)).connect({
           baseUrl: opencodeBaseUrl,
           token: selectedWorkspaceServerToken,
@@ -391,7 +391,7 @@ export function SessionRoute() {
           workspaceId: selectedWorkspaceEndpoint?.workspaceId,
         })
       : null,
-    [opencodeBaseUrl, activeEngineId, selectedSessionId, selectedConversation?.id, selectedConversation?.time?.archived, selectedWorkspace?.archivedAt, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
+    [opencodeBaseUrl, activeEngineId, selectedSessionId, selectedConversation?.id, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
   );
   const enterpriseWorkspaceKey = workspaces.filter((workspace) => workspace.workContextId).map((workspace) => workspace.id).join("|");
   useEffect(() => {
@@ -621,11 +621,6 @@ export function SessionRoute() {
   const selectProject = useCallback(async (workspaceId: string) => {
     const project = workspaces.find((workspace) => workspace.id === workspaceId);
     if (!project) return false;
-    if (project.archivedAt) {
-      if (!client) return false;
-      await client.setWorkspaceArchived(workspaceId, false);
-      await refreshRouteState();
-    }
 
     pendingProjectSelectionRef.current = workspaceId;
     setLegacySelectedWorkspaceId(workspaceId);
@@ -782,10 +777,10 @@ export function SessionRoute() {
     await revealDesktopItemInDir(project.path);
   }, [workspaces]);
 
-  const deleteProject = useCallback(async (workspaceId: string) => {
-    const fallback = workspaces.find((workspace) => workspace.id !== workspaceId && !workspace.archivedAt && !workspace.isDefault)
-      ?? workspaces.find((workspace) => workspace.id !== workspaceId && !workspace.archivedAt);
-    if (client) await client.deleteWorkspace(workspaceId);
+  const deleteProject = useCallback(async (workspaceId: string, deleteFiles: boolean) => {
+    const fallback = workspaces.find((workspace) => workspace.id !== workspaceId && !workspace.isDefault)
+      ?? workspaces.find((workspace) => workspace.id !== workspaceId);
+    if (client) await client.deleteWorkspace(workspaceId, deleteFiles);
     if (isDesktopRuntime()) await workspaceForget(workspaceId);
     writeLastSessionFor(workspaceId, null);
     if (fallback) {
@@ -799,19 +794,6 @@ export function SessionRoute() {
     await refreshRouteState();
   }, [activeWorkContextId, client, navigateToWorkspaceSession, refreshRouteState, selectProject, setLegacySelectedWorkspaceId, workspaces]);
 
-  const archiveProject = useCallback(async (workspaceId: string, archived: boolean) => {
-    if (!client) return;
-    try {
-      await client.setWorkspaceArchived(workspaceId, archived);
-      writeLastSessionFor(workspaceId, null);
-      if (archived && selectedWorkspaceId === workspaceId) {
-        const fallback = workspaces.find(workspace => workspace.id !== workspaceId && !workspace.archivedAt);
-        if (fallback) await selectProject(fallback.id);
-        else { writeActiveWorkspaceId(null); setLegacySelectedWorkspaceId(""); navigateToWorkspaceSession("", null); }
-      }
-      await refreshRouteState();
-    } catch (error) { toast.error(archived ? t("projects.archive_failed") : t("projects.restore_failed"), { description: describeRouteError(error) }); }
-  }, [client, navigateToWorkspaceSession, refreshRouteState, selectedWorkspaceId, selectProject, setLegacySelectedWorkspaceId, workspaces]);
   const seedWorkspaceActivitySessions = useSessionActivityStore((state) => state.seedWorkspaceSessions);
   const sessionActivityByWorkspaceId = useSessionActivityStore((state) => state.statusesByWorkspaceId);
 
@@ -2901,34 +2883,6 @@ export function SessionRoute() {
     },
   }), [reloadCoordinator.canReloadWorkspaceEngine, reloadCoordinator.reloadWorkspaceEngine]);
 
-  const handleArchiveSession = useCallback(
-    async (sessionId: string, archived: boolean) => {
-      const ownerId = projectSessionLists.find(project => project.sessions.some(session => session.id === sessionId))?.workspace.id;
-      const project = workspaces.find(project => project.id === ownerId) ?? selectedWorkspace;
-      if (!project) return;
-      const endpoint = endpointForWorkspace(project);
-      if (!endpoint) return;
-      try {
-        await endpoint.client.setSessionArchived(endpoint.workspaceId, sessionId, archived);
-        if (archived) conversation?.forgetSessionPermissions?.(sessionId);
-        if (archived && selectedSessionId === sessionId) {
-          writeLastSessionFor(project.id, null);
-          navigateToWorkspaceSession(project.id, null);
-        }
-        await refreshRouteState();
-      } catch (error) {
-        console.error("[session-route] archive session failed", error);
-        toast.error(
-          archived
-            ? t("session_management.archive_failed")
-            : t("session_management.unarchive_failed"),
-          { description: describeRouteError(error) },
-        );
-      }
-    },
-    [conversation, endpointForWorkspace, navigateToWorkspaceSession, projectSessionLists, refreshRouteState, selectedSessionId, selectedWorkspace, workspaces],
-  );
-
   return (
     <WorkspaceProvider
       client={engineProviderClient}
@@ -3098,14 +3052,6 @@ export function SessionRoute() {
         newTaskDisabled: !canCreateSession,
         startupPhase: effectiveLoading ? "nativeInit" : "ready",
         onOpenSession: async (workspaceId, sessionId) => {
-          const project = workspaces.find(project => project.id === workspaceId);
-          const session = projectSessionLists.find(project => project.workspace.id === workspaceId)?.sessions.find(session => session.id === sessionId);
-          try {
-            if (project?.archivedAt && client) await client.setWorkspaceArchived(workspaceId, false);
-            const endpoint = endpointForWorkspace(project ?? null);
-            if (session?.time?.archived && endpoint) await endpoint.client.setSessionArchived(endpoint.workspaceId, sessionId, false);
-            if (project?.archivedAt || session?.time?.archived) await refreshRouteState();
-          } catch (error) { toast.error(t("session_management.unarchive_failed"), { description: describeRouteError(error) }); return; }
           setLegacySelectedWorkspaceId(workspaceId);
           writeActiveWorkspaceId(workspaceId || null);
           writeLastSessionFor(workspaceId, sessionId);
@@ -3119,7 +3065,6 @@ export function SessionRoute() {
         onRenameProject: renameProject,
         onRevealProject: revealProject,
         onDeleteProject: deleteProject,
-        onArchiveProject: archiveProject,
         onPrefetchSession: () => {},
           onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) => {
             if (!templateId && type === undefined) {
@@ -3175,13 +3120,14 @@ export function SessionRoute() {
       }
       onDeleteSession={
         client && selectedWorkspaceId
-          ? async (sessionId) => {
+          ? async (sessionId, deleteFiles) => {
               const ownerId = projectSessionLists.find(project => project.sessions.some(session => session.id === sessionId))?.workspace.id;
               const project = workspaces.find(project => project.id === ownerId) ?? selectedWorkspace;
               if (!project) return;
               const endpoint = endpointForWorkspace(project);
               if (!endpoint) return;
-              await endpoint.client.deleteSession(endpoint.workspaceId, sessionId);
+              await endpoint.client.deleteSession(endpoint.workspaceId, sessionId, deleteFiles);
+              conversation?.forgetSessionPermissions?.(sessionId);
               forgetProjectBuilderSession(project.id, sessionId);
               useDesignAiSelectionStore.getState().resetSession(sessionId);
               if (selectedSessionId === sessionId) {
@@ -3192,7 +3138,6 @@ export function SessionRoute() {
             }
           : undefined
       }
-      onArchiveSession={client ? handleArchiveSession : undefined}
       notFoundMessage={routeNotFoundMessage}
       onAccessibleTargetsChange={setPaletteAccessibleTargets}
     />
