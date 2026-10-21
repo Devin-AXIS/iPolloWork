@@ -346,6 +346,7 @@ export default {
   "plugin_library.source_label": "插件来源",
   "plugin_library.marketplace": "公开",
   "plugin_library.marketplace_description": "发现经过审核的完整能力包；安装一次，即可在所有项目中使用。",
+  "plugin_library.enterprise_description": "浏览当前企业授权的插件，在此安装或更新。",
   "plugin_library.personal": "个人",
   "plugin_library.personal_title": "个人插件",
   "plugin_library.personal_description": "浏览本地插件集，在此安装、更新或卸载；也可导入本机插件包。",

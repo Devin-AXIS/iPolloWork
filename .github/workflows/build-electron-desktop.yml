@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
           ulimit -c 0
           sudo apt-get update -qq
-          sudo apt-get install -y xvfb dbus-x11 "$GITHUB_WORKSPACE"/apps/desktop/dist-electron/*.deb
+          sudo apt-get install -y xvfb dbus-x11 x11-utils fonts-noto-cjk "$GITHUB_WORKSPACE"/apps/desktop/dist-electron/*.deb
           sudo sysctl -w kernel.unprivileged_userns_clone=0
           helper=/opt/iPollo/chrome-sandbox
           executable=/usr/bin/@ipolloworkdesktop

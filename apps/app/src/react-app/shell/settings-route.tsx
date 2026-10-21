@@ -88,7 +88,6 @@ import { useFeatureFlagsPreferences } from "@/react-app/domains/settings/state/f
 import { DebugView } from "@/react-app/domains/settings/pages/debug-view";
 import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-view";
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
-import { ExtensionsView, type ExtensionsSection } from "@/react-app/domains/settings/pages/extensions-view";
 import { PluginPackagesPanel, type PluginPackagesPanelHandle } from "@/react-app/domains/settings/plugin-packages-panel";
 import type { PluginPackageRelationships } from "@/react-app/domains/settings/plugin-platform-state";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
@@ -244,7 +243,7 @@ const SETTINGS_UPDATE_AUTO_DOWNLOAD_KEY = "ipollowork.react.settings.update-auto
 export function parseSettingsPath(pathname: string): {
   tab: SettingsTab;
   redirectPath: string | null;
-  extensionsSection?: ExtensionsSection;
+  extensionsSection?: "all" | "mcp" | "skills" | "plugins";
   pluginPackageId?: string;
   pluginPagePluginId?: string;
   pluginPageResourceId?: string;
@@ -2084,15 +2083,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           />
         );
         if (route.pluginPackageId) return pluginPackagesView;
-        return (
-          <ExtensionsView
-            client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
-            workspaceId={runtimeWorkspaceId}
-            activeTab={route.extensionsSection === "skills" ? "skills" : "plugins"}
-            pluginPackagesView={pluginPackagesView}
-            skillsView={skillsView}
-          />
-        );
+        return route.extensionsSection === "skills" ? skillsView : pluginPackagesView;
       }
       case "cloud-account":
         return (

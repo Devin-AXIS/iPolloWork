@@ -1,4 +1,7 @@
-import { readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 
 export default {
   id: "linux-installed-startup",
@@ -23,6 +26,43 @@ export default {
             const helper = statSync("/opt/iPollo/chrome-sandbox");
             ctx.assert(helper.uid === 0 && helper.gid === 0 && (helper.mode & 0o7777) === 0o4755, "The installed Chromium sandbox helper must be root:root with mode 4755");
             ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "Installed sandbox ownership and mode are root:root / 4755", actual: { uid: helper.uid, gid: helper.gid, mode: (helper.mode & 0o7777).toString(8) } });
+            const icon = '/opt/iPollo/resources/icons/icon.png';
+            const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+            ctx.assert(hash(readFileSync(icon)) === hash(readFileSync(new URL('../../apps/desktop/resources/icons/icon.png', import.meta.url))), 'The installed runtime includes the application logo');
+            const desktopFile = readdirSync('/usr/share/applications').find(name => name.includes('ipollowork') && name.endsWith('.desktop'));
+            ctx.assert(desktopFile, 'The application has an installed desktop launcher');
+            const { extractFile } = createRequire(new URL('../../apps/desktop/package.json', import.meta.url))('@electron/asar');
+            const metadata = JSON.parse(extractFile('/opt/iPollo/resources/app.asar', 'package.json').toString());
+            ctx.assert(metadata.desktopName === desktopFile, 'The Wayland application identity matches its installed desktop launcher');
+            const desktop = readFileSync('/usr/share/applications/' + desktopFile, 'utf8');
+            const iconName = desktop.match(/^Icon=(.+)$/m)?.[1];
+            ctx.assert(iconName && readdirSync('/usr/share/icons/hicolor').some(size => existsSync('/usr/share/icons/hicolor/' + size + '/apps/' + iconName + '.png')), 'The launcher references an installed theme icon');
+            const processes = readdirSync('/proc').filter(name => /^\d+$/.test(name)).flatMap(pid => {
+              try {
+                const args = readFileSync('/proc/' + pid + '/cmdline', 'utf8').split('\0');
+                if (!/^\/(usr\/bin|opt\/iPollo)\/@ipolloworkdesktop$/.test(args[0]) || args.some(arg => arg.startsWith('--type='))) return [];
+                const display = readFileSync('/proc/' + pid + '/environ', 'utf8').split('\0').find(value => value.startsWith('DISPLAY='))?.slice(8);
+                return display ? [{ pid: Number(pid), display }] : [];
+              } catch { return []; } // Processes can exit while /proc is read.
+            });
+            ctx.assert(processes.length > 0, 'The installed Electron application has a native display');
+            let nativeIcon;
+            for (const process of processes) {
+              const env = { ...globalThis.process.env, DISPLAY: process.display };
+              const tree = execFileSync('xwininfo', ['-root', '-tree'], { env, encoding: 'utf8' });
+              for (const match of tree.matchAll(/^\s*(0x[0-9a-f]+)\s/gmi)) {
+                const properties = execFileSync('xprop', ['-id', match[1], '-f', '_NET_WM_ICON', '32c', '-len', '32', '_NET_WM_ICON', 'WM_CLASS', '_NET_WM_PID'], { env, encoding: 'utf8' });
+                const dimensions = properties.match(/_NET_WM_ICON\(CARDINAL\) = (\d+), (\d+)/);
+                if (dimensions && Number(properties.match(/_NET_WM_PID\(CARDINAL\) = (\d+)/)?.[1]) === process.pid) {
+                  nativeIcon = { width: Number(dimensions[1]), height: Number(dimensions[2]), wmClass: properties.match(/^WM_CLASS.+$/m)?.[0], launcherClass: desktop.match(/^StartupWMClass=(.+)$/m)?.[1] };
+                  break;
+                }
+              }
+              if (nativeIcon) break;
+            }
+            ctx.assert(nativeIcon?.width > 0 && nativeIcon?.height > 0, 'The running Linux window exposes its application icon to the desktop');
+            ctx.assert(nativeIcon.wmClass?.toLowerCase().includes(nativeIcon.launcherClass?.toLowerCase()), 'The desktop launcher matches the running window class');
+            ctx.recordEvidence({ type: 'assertion', status: 'passed', assertion: 'Linux launcher and running window both expose the packaged application logo', actual: nativeIcon });
             const route = await ctx.eval("window.__ipolloworkControl.snapshot().route");
             ctx.assert(typeof route === "string" && route.length > 0, "The installed application must report an active route");
             ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "The installed application has rendered its initial route", actual: route });

@@ -124,6 +124,10 @@ mac:
 linux:
   icon: resources/icons/icon.png
   extraResources:
+    - from: resources/icons
+      to: icons
+      filter:
+        - icon.png
     - from: resources/sidecars
       to: sidecars
       filter:

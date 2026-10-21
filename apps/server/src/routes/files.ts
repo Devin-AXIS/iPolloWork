@@ -88,6 +88,11 @@ function resolveOutboxDir(workspaceRoot: string): string {
   return join(workspaceRoot, ".opencode", "ipollowork", "outbox");
 }
 
+function fileContentDisposition(type: "inline" | "attachment", path: string): string {
+  const filename = encodeURIComponent(basename(path)).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${type}; filename*=UTF-8''${filename}`;
+}
+
 export function normalizeWorkspaceRelativePath(input: string, options: { allowSubdirs: boolean }): string {
   const raw = String(input ?? "").trim();
   if (!raw) {
@@ -750,7 +755,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const headers = new Headers();
     headers.set("Content-Type", "application/octet-stream");
     headers.set("Content-Length", String(info.size));
-    headers.set("Content-Disposition", `attachment; filename=\"${basename(relativePath)}\"`);
+    headers.set("Content-Disposition", fileContentDisposition("attachment", relativePath));
     const stream = Readable.toWeb(createReadStream(absPath)) as unknown as ReadableStream;
     return new Response(stream, { status: 200, headers });
   });
@@ -900,7 +905,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const headers = new Headers();
     headers.set("Content-Type", "application/octet-stream");
     headers.set("Content-Length", String(info.size));
-    headers.set("Content-Disposition", `attachment; filename="${basename(relativePath)}"`);
+    headers.set("Content-Disposition", fileContentDisposition("attachment", relativePath));
     const stream = Readable.toWeb(createReadStream(absPath)) as unknown as ReadableStream;
     return new Response(stream, { status: 200, headers });
   });
@@ -1371,7 +1376,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const headers = new Headers();
     headers.set("Content-Type", contentTypeForPath(relativePath));
     headers.set("Content-Length", String(info.size));
-    headers.set("Content-Disposition", `inline; filename="${basename(relativePath)}"`);
+    headers.set("Content-Disposition", fileContentDisposition("inline", relativePath));
     const stream = Readable.toWeb(createReadStream(absPath)) as unknown as ReadableStream;
     return new Response(stream, { status: 200, headers });
   });

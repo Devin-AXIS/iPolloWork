@@ -343,6 +343,7 @@ export default {
   "plugin_library.source_label": "Plugin source",
   "plugin_library.marketplace": "Public",
   "plugin_library.marketplace_description": "Discover reviewed capability packages. Install once and use them in every project.",
+  "plugin_library.enterprise_description": "Browse plugins authorized by your enterprise, and install or update them here.",
   "plugin_library.personal": "Personal",
   "plugin_library.personal_title": "Personal plugins",
   "plugin_library.personal_description": "Browse the local plugin collection. Install, update, uninstall, or import packages from this computer.",
