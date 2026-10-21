@@ -73,6 +73,8 @@ const migrationReleaseEnv = loadMigrationReleaseEnv();
 const isElectronPackagedBuild = process.env.IPOLLOWORK_ELECTRON_BUILD === "1";
 
 export default defineConfig({
+  // Worktrees can share node_modules; each dev server needs its own optimizer cache.
+  cacheDir: resolve(appRoot, "../../.ipollowork-dev/vite", String(devPort)),
   base: isElectronPackagedBuild ? "./" : "/",
   define: {
     ...Object.fromEntries(
