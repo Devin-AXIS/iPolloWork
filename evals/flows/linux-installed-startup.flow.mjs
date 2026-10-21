@@ -41,14 +41,16 @@ export default {
               try {
                 const args = readFileSync('/proc/' + pid + '/cmdline', 'utf8').split('\0');
                 if (!/^\/(usr\/bin|opt\/iPollo)\/@ipolloworkdesktop$/.test(args[0]) || args.some(arg => arg.startsWith('--type='))) return [];
-                const display = readFileSync('/proc/' + pid + '/environ', 'utf8').split('\0').find(value => value.startsWith('DISPLAY='))?.slice(8);
-                return display ? [{ pid: Number(pid), display }] : [];
+                const environment = readFileSync('/proc/' + pid + '/environ', 'utf8').split('\0');
+                const display = environment.find(value => value.startsWith('DISPLAY='))?.slice(8);
+                const authority = environment.find(value => value.startsWith('XAUTHORITY='))?.slice(11);
+                return display ? [{ pid: Number(pid), display, authority }] : [];
               } catch { return []; } // Processes can exit while /proc is read.
             });
             ctx.assert(processes.length > 0, 'The installed Electron application has a native display');
             let nativeIcon;
             for (const process of processes) {
-              const env = { ...globalThis.process.env, DISPLAY: process.display };
+              const env = { ...globalThis.process.env, DISPLAY: process.display, ...(process.authority ? { XAUTHORITY: process.authority } : {}) };
               const tree = execFileSync('xwininfo', ['-root', '-tree'], { env, encoding: 'utf8' });
               for (const match of tree.matchAll(/^\s*(0x[0-9a-f]+)\s/gmi)) {
                 const properties = execFileSync('xprop', ['-id', match[1], '-f', '_NET_WM_ICON', '32c', '-len', '32', '_NET_WM_ICON', 'WM_CLASS', '_NET_WM_PID'], { env, encoding: 'utf8' });
