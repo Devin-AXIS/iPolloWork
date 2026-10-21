@@ -430,13 +430,6 @@ function codexHarnessConnection(input: {
     async rename(sessionId, title) {
       await client.call("thread/name/set", { threadId: sessionId, name: title });
     },
-    async setArchived(sessionId, archived) {
-      await client.call(archived ? "thread/archive" : "thread/unarchive", { threadId: sessionId });
-      if (archived) {
-        selectedModes.delete(sessionId);
-        selectedAccessModes.delete(sessionId);
-      }
-    },
     async shell(sessionId, command) {
       await client.call("thread/shellCommand", { threadId: sessionId, command });
     },

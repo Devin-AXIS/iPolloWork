@@ -28,6 +28,7 @@ export interface WorkspaceConfig {
   id?: string;
   path: string;
   name?: string;
+  archivedAt?: number;
   preset?: string;
   workContextId?: `enterprise:${string}`;
   workspaceType?: WorkspaceType;
@@ -50,6 +51,7 @@ export interface WorkspaceConfig {
 export interface WorkspaceInfo {
   id: string;
   name: string;
+  archivedAt?: number;
   path: string;
   preset: string;
   workContextId?: `enterprise:${string}`;

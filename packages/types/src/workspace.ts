@@ -164,6 +164,8 @@ export function isHarnessWorkspaceEngineId(value: unknown): value is HarnessWork
 export type WorkspaceWire = {
   id: string;
   name: string;
+  /** Archived projects keep their data and do not start execution until restored. */
+  archivedAt?: number | null;
   path: string;
   preset: string;
   /** System workspace that owns conversations not assigned to a named project. */

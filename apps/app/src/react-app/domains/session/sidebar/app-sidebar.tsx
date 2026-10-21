@@ -447,6 +447,7 @@ export type AppSidebarProps = {
   onOpenRenameProject: (workspaceId: string) => void;
   onRevealProject: (workspaceId: string) => void;
   onOpenDeleteProject: (workspaceId: string) => void;
+  onArchiveProject?: (workspaceId: string, archived: boolean) => Promise<void> | void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
   onCreateTaskInWorkspace: (
     workspaceId: string,
@@ -573,13 +574,18 @@ export function AppSidebar(props: AppSidebarProps) {
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
   const [projectsExpanded, setProjectsExpanded] = React.useState(true);
   const [archivedExpanded, setArchivedExpanded] = React.useState(false);
+  const [archivedProjectsExpanded, setArchivedProjectsExpanded] = React.useState(false);
   const sourceProjects = React.useMemo(
     () => visibleProjectSessionLists(props.projectSessionLists),
     [props.projectSessionLists],
   );
   const namedProjects = React.useMemo(
-    () => buildSidebarLayoutView(props.projectSessionLists, layout, contextId),
+    () => buildSidebarLayoutView(props.projectSessionLists.filter(project => !project.workspace.archivedAt), layout, contextId),
     [contextId, layout, props.projectSessionLists],
+  );
+  const archivedProjects = React.useMemo(
+    () => visibleProjectSessionLists(props.projectSessionLists).filter(project => project.workspace.archivedAt),
+    [props.projectSessionLists],
   );
   const archivedSessions = React.useMemo(
     () => buildSidebarArchivedSessions(props.projectSessionLists),
@@ -935,10 +941,19 @@ export function AppSidebar(props: AppSidebarProps) {
                     onOpenRenameProject={props.onOpenRenameProject}
                     onRevealProject={props.onRevealProject}
                     onOpenDeleteProject={props.onOpenDeleteProject}
+                    onArchiveProject={props.onArchiveProject}
                   />
                 ))}
               </CollapsibleContent>
             </Collapsible>
+            {archivedProjects.length > 0 ? (
+              <Collapsible open={archivedProjectsExpanded} onOpenChange={setArchivedProjectsExpanded} data-testid="archived-projects-section">
+                <SidebarSectionHeader label={t("projects.archived")} expanded={archivedProjectsExpanded} toggleTestId="archived-projects-section-toggle" onToggle={() => setArchivedProjectsExpanded(value => !value)} />
+                <CollapsibleContent>
+                  {archivedProjects.map(project => <ProjectSidebarContent key={project.workspace.id} project={project} className="py-0" onOpenRenameProject={props.onOpenRenameProject} onRevealProject={props.onRevealProject} onOpenDeleteProject={props.onOpenDeleteProject} onArchiveProject={props.onArchiveProject} />)}
+                </CollapsibleContent>
+              </Collapsible>
+            ) : null}
             {archivedSessions.length > 0 ? (
               <ArchivedSessionsSection
                 sessions={archivedSessions}
@@ -1053,6 +1068,7 @@ type ProjectSidebarContentProps = {
   onOpenRenameProject: (workspaceId: string) => void;
   onRevealProject: (workspaceId: string) => void;
   onOpenDeleteProject: (workspaceId: string) => void;
+  onArchiveProject?: (workspaceId: string, archived: boolean) => Promise<void> | void;
 };
 
 function ProjectSidebarContent({
@@ -1063,12 +1079,14 @@ function ProjectSidebarContent({
   onOpenRenameProject,
   onRevealProject,
   onOpenDeleteProject,
+  onArchiveProject,
 }: ProjectSidebarContentProps) {
   const ctx = useSidebarContext();
   const workspace = project.workspace;
   const isCurrentProject = ctx.selectedWorkspaceId === workspace.id;
   const isSelectedProject = isCurrentProject && !ctx.selectedSessionId;
-  const [projectExpanded, setProjectExpanded] = React.useState(true);
+  const [projectExpanded, setProjectExpanded] = React.useState(!workspace.archivedAt);
+  const [archiving, setArchiving] = React.useState(false);
   const tree = useSessionTree(project.sessions, ctx.sessionStatusById);
 
   React.useEffect(() => {
@@ -1137,7 +1155,7 @@ function ProjectSidebarContent({
   return (
     <SidebarGroup className={cn(className, "px-2")}>
       <SidebarGroupContent>
-        <Collapsible open={projectExpanded} onOpenChange={setProjectExpanded} className="group/project">
+        <Collapsible open={projectExpanded && !workspace.archivedAt} onOpenChange={setProjectExpanded} className="group/project">
           {showProjectRow ? <SidebarMenu>
             <SidebarMenuItem
               className={cn(
@@ -1197,7 +1215,7 @@ function ProjectSidebarContent({
                   size="icon-sm"
                   className="size-7 rounded-md text-muted-foreground hover:text-sidebar-foreground"
                   onClick={() => void createConversationInProject()}
-                  disabled={isConnectionActionBusy || creatingConversation}
+                  disabled={Boolean(workspace.archivedAt) || isConnectionActionBusy || creatingConversation}
                   aria-busy={creatingConversation}
                   aria-label={t("projects.new_conversation", { project: workspaceLabel(workspace) })}
                   title={t("projects.new_conversation", { project: workspaceLabel(workspace) })}
@@ -1264,6 +1282,13 @@ function ProjectSidebarContent({
                       {t("projects.show_in_folder")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
+                    {onArchiveProject ? <DropdownMenuItem disabled={archiving} data-testid="project-archive" onClick={() => {
+                      setArchiving(true);
+                      void Promise.resolve(onArchiveProject(workspace.id, !workspace.archivedAt)).finally(() => setArchiving(false));
+                    }}>
+                      {workspace.archivedAt ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+                      {workspace.archivedAt ? t("projects.restore") : t("projects.archive")}
+                    </DropdownMenuItem> : null}
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={() => onOpenDeleteProject(workspace.id)}

@@ -9,6 +9,7 @@ import {
   type CodexHarnessProvider,
 } from "../codex-harness-runtime.js";
 import { ApiError } from "../errors.js";
+import { assertResourceWritable } from "../resource-lifecycle.js";
 import {
   parseEnginePluginPromptSelection,
   resolveEnginePluginPrompt,
@@ -111,9 +112,6 @@ const WRITE_METHODS = new Set([
   "thread/start",
   "thread/resume",
   "thread/fork",
-  "thread/archive",
-  "thread/delete",
-  "thread/unarchive",
   "thread/name/set",
   "thread/rollback",
   "thread/compact/start",
@@ -246,6 +244,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
     if (!isRecord(body.payload) || typeof body.payload.threadId !== "string" || !body.payload.threadId.trim()) {
       throw new ApiError(400, "invalid_payload", "A Codex Harness threadId is required");
     }
+    await assertResourceWritable(config, workspace.id, body.payload.threadId.trim());
     workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), body.payload.threadId.trim(), { codexHarness: runtime });
     if (workspace.engineId !== CODEX_HARNESS_ENGINE_ID) {
       throw new ApiError(409, "session_engine_mismatch", "This conversation is bound to a different engine");
@@ -323,6 +322,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
     const sessionId = isRecord(body.payload) && typeof body.payload.threadId === "string"
       ? body.payload.threadId.trim()
       : "";
+    await assertResourceWritable(config, workspace.id, sessionId);
     if (sessionId) {
       workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), sessionId, { codexHarness: runtime });
       if (workspace.engineId !== CODEX_HARNESS_ENGINE_ID) {
@@ -419,6 +419,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
   });
 
   addRoute(routes, "GET", "/workspace/:id/engine/codex-harness/events", "client", async (ctx) => {
+    await assertResourceWritable(config, ctx.params.id);
     const workspace: WorkspaceInfo = { ...await resolveWorkspace(config, ctx.params.id), engineId: CODEX_HARNESS_ENGINE_ID };
     try {
       return await runtime.forWorkspace(workspace).events(ctx.request.signal);

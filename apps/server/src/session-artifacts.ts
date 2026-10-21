@@ -1,5 +1,7 @@
 import { realpath, stat } from "node:fs/promises";
 import { dirname, relative } from "node:path";
+import type { ResourceCleanup } from "./resource-lifecycle.js";
+import { assertResourceWritable } from "./resource-lifecycle.js";
 import { z } from "zod";
 import type { SessionArtifact, SessionArtifactPage } from "@ipollowork/types/workspace";
 import { ApiError } from "./errors.js";
@@ -65,6 +67,39 @@ async function openArtifactDb(config: ServerConfig) {
   }
 }
 
+/** Capture ownership before removing native history so a failed cleanup remains retryable. */
+export async function sessionArtifactCleanup(config: ServerConfig, workspace: WorkspaceInfo, sessionId: string): Promise<ResourceCleanup> {
+  const owner = sessionArtifactOwner(sessionId);
+  const db = await openArtifactDb(config);
+  try {
+    const owned = db.prepare("SELECT path FROM session_artifacts WHERE workspace_id = ? AND session_id = ?");
+    const shared = db.prepare("SELECT DISTINCT path FROM session_artifacts WHERE workspace_id = ? AND session_id <> ?");
+    try {
+      const schema = z.array(z.object({ path: z.string() }));
+      return {
+        paths: [...new Set([`design/${owner}`, `video/${owner}`, ...schema.parse(owned.all(workspace.id, owner)).map(row => row.path)])],
+        retainedPaths: schema.parse(shared.all(workspace.id, owner)).map(row => row.path),
+      };
+    } finally { if ("finalize" in owned) owned.finalize(); if ("finalize" in shared) shared.finalize(); }
+  } finally { db.close(); }
+}
+
+export async function deleteSessionArtifactRecords(config: ServerConfig, workspaceId: string, sessionId?: string) {
+  const db = await openArtifactDb(config);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const statement = sessionId === undefined
+      ? db.prepare("DELETE FROM session_artifacts WHERE workspace_id = ?")
+      : db.prepare("DELETE FROM session_artifacts WHERE workspace_id = ? AND session_id = ?");
+    try { if (sessionId === undefined) statement.run(workspaceId); else statement.run(workspaceId, sessionId); }
+    finally { if ("finalize" in statement) statement.finalize(); }
+    const renames = db.prepare("DELETE FROM artifact_path_renames WHERE workspace_id = ? AND NOT EXISTS (SELECT 1 FROM session_artifacts WHERE workspace_id = ? AND (path = old_path OR path = new_path))");
+    try { renames.run(workspaceId, workspaceId); } finally { if ("finalize" in renames) renames.finalize(); }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
+}
+
 /** Called only after the producer has saved its file; never stores image bytes. */
 export async function recordSessionArtifact(
   config: ServerConfig,
@@ -75,6 +110,7 @@ export async function recordSessionArtifact(
   generation?: SessionArtifact["generation"],
 ): Promise<void> {
   const owner = sessionArtifactOwner(sessionId);
+  await assertResourceWritable(config, workspace.id, owner, true);
   const absolutePath = await resolveWithinRoot(workspace.path, path);
   const info = await stat(absolutePath);
   if (!info.isFile() || !info.size) throw new ApiError(400, "invalid_artifact", "Artifact must be a non-empty file");

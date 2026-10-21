@@ -84,6 +84,7 @@ export function buildWorkspaceInfos(
     return {
       id,
       name,
+      archivedAt: workspace.archivedAt,
       path: resolvedPath,
       preset: workspace.preset?.trim() || (workspaceType === "remote" ? "remote" : "starter"),
       workContextId: workspace.workContextId,
@@ -117,7 +118,7 @@ export function buildWorkspaceInfos(
  * Project defaults do not restrict the engines available to conversations.
  */
 export function findManagedEngineWorkspace(workspaces: WorkspaceInfo[]): WorkspaceInfo | undefined {
-  const local = workspaces.filter((workspace) => workspace.workspaceType !== "remote" && workspace.path.trim() !== "");
+  const local = workspaces.filter((workspace) => !workspace.archivedAt && workspace.workspaceType !== "remote" && workspace.path.trim() !== "");
   const preferred = local.find((workspace) => (workspace.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID);
   if (preferred) return preferred;
   const workspace = local[0];

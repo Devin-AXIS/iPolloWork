@@ -313,7 +313,6 @@ function permissionMemoryTestAdapter(
           return { id: `${input.sessionId}-fork`, title: "Fork" };
         },
         async rename() {},
-        async setArchived() {},
         async shell() {},
         async runCommand() {},
         async sendPrompt(input) {
@@ -505,7 +504,7 @@ describe("conversation engine adapters", () => {
     const connection = beforeArchive.adapter.connect(connectInput);
     const first = testPermission("first", "session-archive");
     await connection.replyPermission({ permission: first, reply: "always" });
-    await connection.setArchived(first.sessionId, true);
+    connection.forgetSessionPermissions?.(first.sessionId);
 
     const afterReload = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID, storage);
     const restoredConnection = afterReload.adapter.connect(connectInput);

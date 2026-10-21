@@ -95,6 +95,32 @@ afterEach(async () => {
 });
 
 describe("Codex Harness provider projection", () => {
+  test("closing during initialization drains the child and cannot restart a released runtime", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath); const marker = join(root, "native-pid.txt");
+    const fixturePath = join(root, "closing-fixture.js");
+    await writeFile(fixturePath, `import {createInterface} from 'node:readline';import {writeFileSync} from 'node:fs';
+      createInterface({input:process.stdin}).on('line',line=>{const request=JSON.parse(line);if(request.id===undefined)return;
+        const respond=()=>process.stdout.write(JSON.stringify({id:request.id,result:{data:[]}})+'\\n');
+        if(request.method==='initialize'){writeFileSync(${JSON.stringify(marker)},String(process.pid));setTimeout(respond,150);}else respond();});`);
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    const workspace: WorkspaceInfo = { id: "closing", name: "Closing", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness" };
+    const runtime = new CodexHarnessRuntime({ config, workspace, env: new EnvService({ path: join(root, "env.json") }) });
+    try {
+      const request = runtime.call("thread/list", {}).catch(() => undefined);
+      for (let attempt = 0; attempt < 100 && !existsSync(marker); attempt++) await new Promise(resolve => setTimeout(resolve, 10));
+      expect(existsSync(marker)).toBe(true);
+      const pid = Number(await readFile(marker, "utf8"));
+      await runtime.close({ retire: true }); await request;
+      expect(() => process.kill(pid, 0)).toThrow();
+      await expect(runtime.call("thread/list", {})).rejects.toThrow("runtime was released");
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI; else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+    }
+  });
   test("account provider discovery works for OpenCode projects without creating a Codex runtime", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");

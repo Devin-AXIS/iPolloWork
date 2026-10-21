@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { readFile, unlink } from "node:fs/promises";
+import { readFile, unlink, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { deepSeekRemoteCall, deepSeekRemoteSnapshot, DeepSeekRemoteMux, remoteRecord } from "./deepseek-harness-remote.js";
 import { workspacePathMatches } from "./deepseek-harness-session-read-model.js";
@@ -29,6 +29,8 @@ import { writeDeepSeekHarnessPatchFile } from "./deepseek-harness-patch.js";
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import { readRuntimeProviderChannels } from "./runtime-opencode-config-store.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
+import { removeOwnedFiles, verifyCleanupPath } from "./resource-lifecycle.js";
+import { ApiError } from "./errors.js";
 import { resolveOpenAiCodexOAuthSession } from "./openai-codex-oauth.js";
 import {
   compatibleProviderRuntimeProfiles,
@@ -531,8 +533,10 @@ export async function waitForDeepSeekHarnessApi(
 }
 
 export class DeepSeekHarnessRuntime {
+  #closed = false;
   #cookie = "";
   readonly #remoteResponses = new Map<string, { clientId: string; event: string }>();
+  readonly #eventStreams = new Set<() => void>();
   readonly #config: ServerConfig;
   readonly #env: EnvService;
   readonly #workspace: WorkspaceInfo;
@@ -557,6 +561,8 @@ export class DeepSeekHarnessRuntime {
     this.#workspace = workspace;
     this.#legacyWorkspaceId = input.legacyWorkspaceId ?? workspace.id;
   }
+
+  get running() { return Boolean(this.#baseUrl && this.#child?.exitCode === null); }
 
   async call<T>(method: string, payload: unknown): Promise<T> {
     const baseUrl = await this.#ensureStarted();
@@ -915,11 +921,18 @@ export class DeepSeekHarnessRuntime {
     const pendingIds = new Map<string, { event: string; sessionId: unknown }>();
     const body = new ReadableStream<Uint8Array>({
       start: (controller) => {
+        const finish = () => {
+          this.#eventStreams.delete(finish);
+          if (!combined.aborted) controller.close();
+          lifetime.abort();
+        };
+        this.#eventStreams.add(finish);
         const emit = (payload: Record<string, unknown>, rpcId: string = randomUUID()) => {
           if (!combined.aborted) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "server-request", rpcId, payload })}\n\n`));
         };
         const fail = (error: unknown) => {
           if (combined.aborted) return;
+          this.#eventStreams.delete(finish);
           controller.error(error);
           lifetime.abort(error);
         };
@@ -1002,8 +1015,7 @@ export class DeepSeekHarnessRuntime {
         };
         void run().catch(fail).finally(() => {
           for (const id of pendingIds.keys()) this.#remoteResponses.delete(id);
-          if (!combined.aborted) controller.close();
-          lifetime.abort();
+          finish();
         });
       },
       cancel() { lifetime.abort(); },
@@ -1011,7 +1023,8 @@ export class DeepSeekHarnessRuntime {
     return new Response(body);
   }
 
-  async close(): Promise<void> {
+  async close(options: { retire?: boolean } = {}): Promise<void> {
+    if (options.retire) this.#closed = true;
     if (!this.#closing) {
       this.#closing = this.#close().finally(() => {
         this.#closing = null;
@@ -1023,6 +1036,7 @@ export class DeepSeekHarnessRuntime {
   async #close(): Promise<void> {
     const starting = this.#starting;
     if (starting) await starting.catch(() => undefined);
+    for (const finish of this.#eventStreams) finish();
     const child = this.#child;
     this.#baseUrl = null;
     this.#cookie = "";
@@ -1056,6 +1070,7 @@ export class DeepSeekHarnessRuntime {
 
   async #ensureStarted(): Promise<string> {
     if (this.#closing) await this.#closing;
+    if (this.#closed) throw new DeepSeekHarnessUnavailableError("The workspace runtime was released; reconnect before using it again");
     if (this.#baseUrl && this.#child?.exitCode === null) return this.#baseUrl;
     if (!this.#starting) {
       this.#starting = this.#start().finally(() => {
@@ -1241,14 +1256,77 @@ export class DeepSeekHarnessRuntimePool {
   async closeWorkspace(workspaceId: string): Promise<void> {
     const runtime = this.#runtimes.get(workspaceId);
     this.#runtimes.delete(workspaceId);
-    await runtime?.close();
+    await runtime?.close({ retire: true });
+  }
+
+  async deleteSession(workspace: WorkspaceInfo, sessionId: string) {
+    const runtime = this.forWorkspace(workspace);
+    const sessions = await runtime.call<{ items: Array<{ sessionId: string; cwd?: string; running: boolean; blank: boolean }> }>("session.list", {});
+    const session = sessions.items.find(item => item.sessionId === sessionId);
+    if (session && !workspacePathMatches(session.cwd, workspace.path)) throw new ApiError(404, "session_not_found", "Session does not belong to this project");
+    if (session?.running) await runtime.call("session.cancel", { sessionId });
+    if (sessions.items.some(item => item.sessionId !== sessionId && item.running)) {
+      throw new ApiError(409, "deepseek_runtime_busy", "DeepSeek 的其他会话仍在运行。当前会话已停止，请在其他任务完成后重试删除。");
+    }
+    const home = deepSeekHarnessHome(this.#config, workspace, process.env.IPOLLOWORK_DSH_HOME?.trim(), this.#legacyWorkspaceId);
+    await this.closeWorkspace(workspace.id);
+    await deleteDeepSeekSessionFiles(home, session?.cwd ?? workspace.path, sessionId, session?.blank ?? true);
+  }
+
+  async deleteWorkspaceData(workspace: WorkspaceInfo, knownSessionIds: string[] = []) {
+    if (!this.#legacyWorkspaceResolved) {
+      this.#legacyWorkspaceId = resolveLegacyDeepSeekHarnessWorkspaceId(this.#config, workspace);
+      this.#legacyWorkspaceResolved = true;
+    }
+    const home = deepSeekHarnessHome(this.#config, workspace, process.env.IPOLLOWORK_DSH_HOME?.trim(), this.#legacyWorkspaceId);
+    if (this.#legacyWorkspaceId !== workspace.id) {
+      await this.closeWorkspace(workspace.id);
+      await removeOwnedFiles(home, { paths: ["."], retainedPaths: [] }, true);
+      return;
+    }
+    if (!existsSync(home)) { await this.closeWorkspace(workspace.id); return; }
+    const current = this.#runtimes.get(workspace.id);
+    const sessions = current?.running
+      ? await current.call<{ items: Array<{ sessionId: string; cwd?: string; running: boolean; blank: boolean }> }>("session.list", {})
+      : { items: knownSessionIds.map(sessionId => ({ sessionId, cwd: workspace.path, running: false, blank: true })) };
+    const owned = sessions.items.filter(item => workspacePathMatches(item.cwd, workspace.path));
+    if (sessions.items.some(item => !workspacePathMatches(item.cwd, workspace.path) && item.running)) {
+      throw new ApiError(409, "deepseek_runtime_busy", "共享 DeepSeek 运行环境还有其他项目的任务，请完成后重试。");
+    }
+    await this.closeWorkspace(workspace.id);
+    for (const session of owned) await deleteDeepSeekSessionFiles(home, session.cwd ?? workspace.path, session.sessionId, session.blank);
+    await removeOwnedFiles(home, { paths: [join("sessions", deepSeekSessionProjectKey(workspace.path))], retainedPaths: [] });
   }
 
   async close(): Promise<void> {
     this.#stopConfigListener();
-    await Promise.all([...this.#runtimes.values()].map((runtime) => runtime.close()));
+    await Promise.all([...this.#runtimes.values()].map((runtime) => runtime.close({ retire: true })));
     this.#runtimes.clear();
   }
+}
+
+/** Pinned DSH JSONL backend: one project directory and one directory per session. */
+export async function deleteDeepSeekSessionFiles(home: string, cwd: string, sessionId: string, blank: boolean) {
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(sessionId)) throw new ApiError(400, "invalid_session", "Invalid session id");
+  const paths = [`sessions/${deepSeekSessionProjectKey(cwd)}/${sessionId}`, `sessions/${sessionId}.jsonl`, `sessions/${sessionId}.jsonl.zstd`];
+  let found = false;
+  for (const path of paths) {
+    const absolute = await verifyCleanupPath(home, join(home, path));
+    const exists = await lstat(absolute).then(() => true).catch(error => { if (error.code === "ENOENT") return false; throw error; });
+    if (exists) found = true;
+  }
+  if (!found && !blank) throw new ApiError(409, "deepseek_storage_layout", "未找到 DeepSeek 会话的受管存储文件，已保留数据，请检查运行时存储配置后重试。");
+  await removeOwnedFiles(home, { paths, retainedPaths: [] });
+}
+
+function deepSeekSessionProjectKey(cwd: string) {
+  let readable = ""; let separatorRun = false;
+  for (let index = 0; index < cwd.length; index++) {
+    const character = cwd[index];
+    if (/[\\/:]/.test(character)) { if (!separatorRun) readable += "-"; separatorRun = true; }
+    else { readable += character !== "~" && /[A-Za-z0-9._-]/.test(character) ? character : `~${cwd.charCodeAt(index).toString(16).toUpperCase().padStart(4, "0")}`; separatorRun = false; }
+  }
+  return `--${(readable.replace(/^-+/, "") || "root").slice(0, 251)}--`;
 }
 
 function waitForReadyUrl(child: ChildProcess): Promise<string> {

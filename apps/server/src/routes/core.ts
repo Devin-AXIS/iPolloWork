@@ -45,6 +45,7 @@ import {
   type EngineHostToolName,
 } from "../engine-host-tools.js";
 import { ApiError } from "../errors.js";
+import { beginResourceOperation } from "../resource-lifecycle.js";
 import { readProjectSessionWorkItem, listWorkTemplates, writeConversationWorkflow, saveWorkTemplate, WorkItemConflictError } from "../work-items.js";
 import {
   createGoogleWorkspaceConnectFlowManager,
@@ -368,6 +369,10 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         body = { ...body, context };
       }
     }
+    const operationWorkspace = findWorkspaceForContext(config.workspaces, context);
+    if (typeof context.workspaceId === "string" && !config.workspaces.some(workspace => workspace.id === context.workspaceId)) throw new ApiError(404, "workspace_not_found", "Project was deleted or is unavailable");
+    const release = operationWorkspace ? await beginResourceOperation(config, operationWorkspace.id, typeof context.sessionId === "string" ? context.sessionId : undefined) : undefined;
+    try {
     const connectSnapshot = await getConnectSnapshot(config);
     const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
       .find((action) => action.extensionId === extensionId && action.action === actionId);
@@ -405,6 +410,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       });
     }
     return result;
+    } finally { release?.(); }
   };
 
   const resolveEngineToolWorkspace = async (context: Record<string, unknown>): Promise<WorkspaceInfo> => {

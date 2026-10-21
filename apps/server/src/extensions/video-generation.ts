@@ -17,7 +17,8 @@ import { providerFetch } from "../provider-fetch.js";
 import { callHeygenSubscriptionTool, heygenSubscriptionAccount, uploadHeygenSubscriptionAsset } from "../heygen-subscription.js";
 import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
-import { claimVideoJobs, createVideoJob, finishVideoJobPause, getVideoJob, listVideoJobs, requestVideoJobPause, resumeVideoJob, stopVideoJob, updateStoppedVideoJobMessage, updateVideoJob, type VideoJob } from "./video-jobs.js";
+import { claimVideoJobs, createVideoJob, finishVideoJobPause, getVideoJob, listVideoJobs, requestVideoJobPause, resumeVideoJob, stopVideoJob, stopOwnedVideoJobs, updateStoppedVideoJobMessage, updateVideoJob, type VideoJob } from "./video-jobs.js";
+import { assertResourceWritable } from "../resource-lifecycle.js";
 import { storageStatus, uploadWorkspaceFile } from "./storage.js";
 import { avatarTimelineContext } from "./media-center.js";
 import { inspectLocalVideo, localVideoEditSchema, inspectNarrationDuration, mixAvatarNarration, saveLocalVideo } from "./video-local-edit.js";
@@ -653,6 +654,18 @@ async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
 }
 
 const activeVideoJobControllers = new Map<string, AbortController>();
+const activeVideoJobOwners = new Map<string, { workspaceId: string; sessionId: string; done: Promise<void> }>();
+
+export async function releaseOwnedVideoJobs(config: ServerConfig, workspaceId: string, sessionId?: string) {
+  await stopOwnedVideoJobs(config, workspaceId, sessionId);
+  const pending: Promise<void>[] = [];
+  for (const [id, owner] of activeVideoJobOwners) {
+    if (owner.workspaceId !== workspaceId || (sessionId !== undefined && owner.sessionId !== sessionId)) continue;
+    activeVideoJobControllers.get(id)?.abort(new Error("Resource archived or deleted"));
+    pending.push(owner.done);
+  }
+  await Promise.all(pending);
+}
 
 async function validateHeygenPlan(config: ServerConfig, sessionId: string | undefined, duration: number, signal?: AbortSignal) {
   if (!sessionId) throw new ApiError(401, "heygen_subscription_authorization_required", "请重新登录 HeyGen 授权账户。未改用 API 余额。");
@@ -705,11 +718,19 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
   if (config.readOnly) return;
   await Promise.all((await claimVideoJobs(config)).map(async job => {
     if (signal.aborted) return;
+    try { await assertResourceWritable(config, job.workspaceId, job.sessionId); }
+    catch (error) { if (isApiError(error) && ["resource_archived", "resource_deleting", "resource_deleted"].includes(error.code)) return; throw error; }
     const controller = new AbortController();
     activeVideoJobControllers.set(job.id, controller);
+    let finish = () => {};
+    const done = new Promise<void>(resolve => { finish = resolve; });
+    activeVideoJobOwners.set(job.id, { workspaceId: job.workspaceId, sessionId: job.sessionId, done });
     const jobSignal = AbortSignal.any([signal, controller.signal]);
     let key = "", saving = job.status === "saving";
     try {
+        // Register the producer before rechecking the barrier, so cleanup can drain it.
+        try { await assertResourceWritable(config, job.workspaceId, job.sessionId); }
+        catch (error) { if (isApiError(error) && ["resource_archived", "resource_deleting", "resource_deleted"].includes(error.code)) return; throw error; }
       const workspace = config.workspaces.find(item => item.id === job.workspaceId);
       if (!workspace) throw new Error("发起任务的工作区已不可用，请恢复工作区后重试查询。");
       key = await credential(authorization, job.model, job.heygenBilling);
@@ -754,6 +775,7 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
           : job.avatarSequence ? `已有数字人任务的结果查询暂未完成：${safeError(error, key)} ${expired ? "可恢复查询" : "系统会继续查询"}，不会重复提交生成。` : safeError(error, key), nextPoll: Date.now() + 60_000 });
     } finally {
       if (activeVideoJobControllers.get(job.id) === controller) activeVideoJobControllers.delete(job.id);
+      activeVideoJobOwners.delete(job.id); finish();
     }
   }));
 }

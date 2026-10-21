@@ -678,6 +678,7 @@ export type SessionPageSidebarProps = {
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
   onRevealProject: (workspaceId: string) => Promise<void> | void;
   onDeleteProject: (workspaceId: string) => Promise<void> | void;
+  onArchiveProject?: (workspaceId: string, archived: boolean) => Promise<void> | void;
 
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
   onCreateTaskInWorkspace: (
@@ -4497,6 +4498,8 @@ export function SessionPage(props: SessionPageProps) {
     try {
       await props.onDeleteSession(sessionId);
       setDeleteOpen(false);
+    } catch (error) {
+      toast.error(t("session_management.delete_failed"), { description: error instanceof Error ? error.message : String(error) });
     } finally {
       setDeleteBusy(false);
     }
@@ -4559,6 +4562,8 @@ export function SessionPage(props: SessionPageProps) {
     try {
       await props.sidebar.onDeleteProject(workspaceId);
       setDeleteProjectId(null);
+    } catch (error) {
+      toast.error(t("projects.delete_failed"), { description: error instanceof Error ? error.message : String(error) });
     } finally {
       setDeleteProjectBusy(false);
     }
@@ -4596,6 +4601,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenRenameProject={openRenameProject}
           onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
           onOpenDeleteProject={setDeleteProjectId}
+          onArchiveProject={props.sidebar.onArchiveProject}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={handleSidebarCreateTask}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
@@ -5507,6 +5513,7 @@ export function SessionPage(props: SessionPageProps) {
       {props.onDeleteSession ? (
         <ConfirmModal
           open={deleteOpen}
+          busy={deleteBusy}
           title={t("session.delete_session_title")}
           message={
             sessionActionTitle.trim()
@@ -5659,8 +5666,9 @@ export function SessionPage(props: SessionPageProps) {
 
       <ConfirmModal
         open={deleteProjectId !== null}
+        busy={deleteProjectBusy}
         title={t("projects.remove_title")}
-        message={t("projects.remove_description")}
+        message={<span className="whitespace-pre-wrap break-all">{t("projects.remove_description", { path: props.workspaces.find(project => project.id === deleteProjectId)?.path || "" })}</span>}
         confirmLabel={deleteProjectBusy ? t("projects.removing") : t("projects.remove")}
         cancelLabel={t("common.cancel")}
         variant="danger"

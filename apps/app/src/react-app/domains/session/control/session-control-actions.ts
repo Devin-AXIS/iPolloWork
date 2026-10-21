@@ -143,7 +143,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       { name: "sessionId", type: "string", required: true, description: "Session ID from session.list_sessions." },
       { name: "title", type: "string", required: true, description: "New session title." },
     ],
-    disabled: !conversation,
+    disabled: !ipolloworkClient,
     execute: async (args) => {
       const sessionId = stringArg(args, "sessionId");
       const title = stringArg(args, "title");
@@ -238,13 +238,15 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       const sessionId = stringArg(args, "sessionId");
       const archived = booleanArg(args, "archived");
       if (!sessionId) return { ok: false, error: "sessionId is required" };
-      if (!conversation) return { ok: false, error: "Conversation engine is not connected" };
+      if (!ipolloworkClient) return { ok: false, error: "iPolloWork server is not connected" };
       const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
-      await conversation.setArchived(sessionId, archived, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
+      if (!targetWorkspace) return { ok: false, error: "Session was not found in the current session list" };
+      await ipolloworkClient.setSessionArchived(targetWorkspace.id, sessionId, archived);
+      if (archived) conversation?.forgetSessionPermissions?.(sessionId);
       await refreshRouteState();
       return { ok: true, sessionId, archived };
     },
-  }), [conversation, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
+  }), [conversation, ipolloworkClient, refreshRouteState, sessionsByWorkspaceId, workspaces]);
   useControlAction(archiveControlAction);
 
 }

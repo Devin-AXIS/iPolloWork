@@ -1197,8 +1197,8 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     capabilities: 6_000,
     listWorkspaces: 8_000,
     workspaceMutation: 30_000,
-    deleteWorkspace: 30_000,
-    deleteSession: 12_000,
+    deleteWorkspace: 120_000,
+    deleteSession: 120_000,
     sessionRead: 12_000,
     status: 6_000,
     config: 10_000,
@@ -1306,6 +1306,14 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceMutation },
       );
     },
+    setWorkspaceArchived: (workspaceId: string, archived: boolean) => requestJson<{ ok: boolean; workspace: iPolloWorkWorkspaceInfo }>(
+      baseUrl, `/workspaces/${encodeURIComponent(workspaceId)}/archive`,
+      { token, hostToken, method: "POST", body: { archived }, timeoutMs: timeouts.deleteWorkspace },
+    ),
+    setSessionArchived: (workspaceId: string, sessionId: string, archived: boolean) => requestJson<{ ok: boolean }>(
+      baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/archive`,
+      { token, hostToken, method: "POST", body: { archived }, timeoutMs: timeouts.deleteSession },
+    ),
     deleteWorkspace: (workspaceId: string) =>
       requestJson<{ ok: boolean; deleted: boolean; persisted: boolean; activeId: string | null; items: iPolloWorkWorkspaceInfo[]; workspaces?: WorkspaceInfo[] }>(
         baseUrl,

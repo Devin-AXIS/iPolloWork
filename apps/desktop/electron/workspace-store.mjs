@@ -802,6 +802,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       path: String(input.path ?? ""),
       preset: String(input.preset ?? "starter"),
       isDefault,
+      ...(typeof input.archivedAt === "number" && input.archivedAt > 0 ? { archivedAt: input.archivedAt } : {}),
       workContextId,
       workspaceType,
       engineId: typeof input.engineId === "string" && input.engineId.trim() ? input.engineId.trim() : "opencode",

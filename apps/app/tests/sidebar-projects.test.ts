@@ -353,7 +353,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toMatch(/createConversationInProject[\s\S]{0,500}await onSelectProject\(workspace\.id\)/);
     expect(sidebarSource).toContain("setCreatingConversation(true)");
     expect(sidebarSource).toContain('aria-busy={creatingConversation}');
-    expect(sidebarSource).toContain('disabled={isConnectionActionBusy || creatingConversation}');
+    expect(sidebarSource).toContain('disabled={Boolean(workspace.archivedAt) || isConnectionActionBusy || creatingConversation}');
     expect(sidebarSource).not.toContain("showInitialLoading");
     expect(sidebarSource).not.toContain("canRemoveProject");
     expect(sessionRouteSource).not.toContain('t("projects.keep_one")');

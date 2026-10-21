@@ -406,7 +406,7 @@ export interface ConversationEngineConnection {
     messages: UIMessage[];
   }): Promise<ConversationSession>;
   rename(sessionId: string, title: string, directory?: string): Promise<void>;
-  setArchived(sessionId: string, archived: boolean, directory?: string): Promise<void>;
+  forgetSessionPermissions?(sessionId: string): void;
   shell(sessionId: string, command: string): Promise<void>;
   runCommand(input: {
     sessionId: string;
@@ -641,10 +641,7 @@ export function withSessionPermissionMemory(
             throw error;
           }
         },
-        async setArchived(sessionId, archived, directory) {
-          await connection.setArchived(sessionId, archived, directory);
-          if (archived) forgetSession(sessionId);
-        },
+        forgetSessionPermissions: forgetSession,
       };
     },
   };

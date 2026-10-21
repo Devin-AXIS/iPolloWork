@@ -13,6 +13,7 @@ import {
 } from "./plugin-package-lifecycle.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
+import { removeOwnedFiles } from "./resource-lifecycle.js";
 import type { ServerConfig } from "./types.js";
 
 export type PluginServiceAction = {
@@ -228,16 +229,23 @@ export async function disposePluginServices(config: ServerConfig, workspaceId: s
   return matches.length;
 }
 
-export async function disposeAllPluginServices(config: ServerConfig): Promise<number> {
+export async function disposeAllPluginServices(config: ServerConfig, workspaceId?: string): Promise<number> {
   const cache = serviceCacheByConfig.get(config);
   if (!cache) return 0;
-  const entries = [...cache.values()];
-  serviceCacheByConfig.delete(config);
+  const entries = [...cache.values()].filter(entry => workspaceId === undefined || entry.workspaceId === workspaceId);
+  for (const [key, entry] of cache) if (entries.includes(entry)) cache.delete(key);
+  if (!cache.size) serviceCacheByConfig.delete(config);
   for (const entry of entries) {
     const service = await entry.service.catch(() => null);
     if (service?.dispose) await service.dispose();
   }
   return entries.length;
+}
+
+export async function deleteWorkspacePluginServiceData(config: ServerConfig, workspaceId: string) {
+  const root = join(runtimeStorageDir(config), "plugin-data");
+  // Account libraries and credentials belong to the application, not this project.
+  await removeOwnedFiles(root, { paths: [safeSegment(workspaceId)], retainedPaths: [...globalPluginServiceDataIds].map(safeSegment) });
 }
 
 async function assertServiceAuthorizationReady(

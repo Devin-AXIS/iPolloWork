@@ -21,16 +21,25 @@ import {
 } from "./codex-harness-session-read-model.js";
 import {
   readDeepSeekHarnessSnapshot,
+  readDeepSeekHarnessSession,
   workspacePathMatches,
   type DeepSeekHarnessSummary,
   type DeepSeekHarnessHistory,
 } from "./deepseek-harness-session-read-model.js";
 import type { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
+import { join } from "node:path";
+import { sessionArtifactCleanup, deleteSessionArtifactRecords } from "./session-artifacts.js";
+import { archiveResource, assertResourceWritable, beginResourceDeletion, deleteResourceRecords, forgetResourceLifecycle, listResourceLifecycles, markResourceEngineDeleted, readResourceLifecycle, rememberResourceSummaries, removeOwnedFiles, validateProjectDeletion, verifyCleanupPath } from "./resource-lifecycle.js";
+import { releaseOwnedVideoJobs } from "./extensions/video-generation.js";
+import { deleteWorkspacePluginServiceData } from "./plugin-service-runtime.js";
+import { beginResourceOperation, releaseResourceOperations } from "./resource-lifecycle.js";
 import { ApiError } from "./errors.js";
+import { StdioJsonRpcError } from "./stdio-json-rpc-runtime.js";
 import { readEnhancementExecution, finishEnhancementExecution } from "./extensions/video-enhancement.js";
 import { reconcilePluginPackagesForWorkspace } from "./plugin-package-lifecycle.js";
 import {
   buildSession,
+  buildSessionList,
   buildSessionMessages,
   buildSessionStatuses,
   type SessionInfoReadModel,
@@ -38,7 +47,7 @@ import {
   type SessionStatusReadModel,
 } from "./session-read-model.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { bindConversationSession, deleteWorkItem, listBoundSessionEngines, readProjectSessionWorkItem, startProjectSessionExecution } from "./work-items.js";
+import { bindConversationSession, deleteWorkItem, deleteWorkspaceWorkState, listBoundSessionEngines, readProjectSessionWorkItem, startProjectSessionExecution } from "./work-items.js";
 
 type WorkspaceOpencodeClient = ReturnType<typeof createOpencodeClient>;
 type OpencodeClientResult<T, E> =
@@ -77,6 +86,8 @@ export async function resolveWorkspaceSession(
   sessionId: string,
   runtimes: { codexHarness?: CodexHarnessRuntimePool; deepseekHarness?: DeepSeekHarnessRuntimePool },
 ): Promise<WorkspaceInfo> {
+  const lifecycle = await readResourceLifecycle(config, workspace.id, sessionId);
+  if (lifecycle?.engineId) return { ...workspace, engineId: lifecycle.engineId };
   const binding = await readProjectSessionWorkItem(config, workspace.id, sessionId);
   if (binding?.execution) return { ...workspace, engineId: binding.execution.runtime.engineId };
   const engines = new Set([workspace.engineId || DEFAULT_ENGINE_ID, ...await listBoundSessionEngines(config, workspace.id)]);
@@ -268,6 +279,8 @@ export class WorkspaceSessionRuntime {
   readonly #prepareOpencodePrompt?: (workspace: WorkspaceInfo) => Promise<void>;
   readonly #freshCodexThreads = new Map<string, WorkspaceSessionModel>();
   readonly #sessionContextHints = new Map<string, string>();
+  readonly #lifecycleOperations = new Map<string, Promise<unknown>>();
+  readonly #releaseSessionObservers?: (workspaceId: string, sessionId?: string) => Promise<void>;
 
   constructor(input: {
     config: ServerConfig;
@@ -279,6 +292,7 @@ export class WorkspaceSessionRuntime {
     deepseekHarness: DeepSeekHarnessRuntimePool;
     codexHarness: CodexHarnessRuntimePool;
     prepareOpencodePrompt?: (workspace: WorkspaceInfo) => Promise<void>;
+    releaseSessionObservers?: (workspaceId: string, sessionId?: string) => Promise<void>;
   }) {
     this.#config = input.config;
     this.#createWorkspaceOpencodeClient = input.createWorkspaceOpencodeClient;
@@ -286,6 +300,7 @@ export class WorkspaceSessionRuntime {
     this.#deepseekHarness = input.deepseekHarness;
     this.#codexHarness = input.codexHarness;
     this.#prepareOpencodePrompt = input.prepareOpencodePrompt;
+    this.#releaseSessionObservers = input.releaseSessionObservers;
   }
 
   #codexThreadKey(workspaceId: string, threadId: string): string {
@@ -336,6 +351,7 @@ export class WorkspaceSessionRuntime {
 
   /** Native workers share their bound conversation's artifact ownership. */
   async artifactOwnerSessionId(workspace: WorkspaceInfo, sessionId: string): Promise<string> {
+    await assertResourceWritable(this.#config, workspace.id, sessionId);
     const engineWorkspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, {
       codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness,
     }).catch(() => null);
@@ -378,9 +394,15 @@ export class WorkspaceSessionRuntime {
     model?: WorkspaceSessionModel,
     engineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
   ): Promise<SessionInfoReadModel> {
+    const release = await beginResourceOperation(this.#config, workspace.id);
+    try { return await this.#create(workspace, title, model, engineId); } finally { release(); }
+  }
+  async #create(workspace: WorkspaceInfo, title: string | undefined, model: WorkspaceSessionModel | undefined, engineId: string): Promise<SessionInfoReadModel> {
+    await assertResourceWritable(this.#config, workspace.id);
     workspace = { ...workspace, engineId };
     await this.preparePlugins(workspace);
     const created = await this.#createSession(workspace, title, model);
+    await rememberResourceSummaries(this.#config, workspace.id, [{ ...created, engineId }]);
     await bindConversationSession(this.#config, workspace, created.id, {
       title: created.title || "New conversation",
       engineId,
@@ -459,6 +481,11 @@ export class WorkspaceSessionRuntime {
     sessionId: string,
     input: WorkspaceSessionPromptInput,
   ): Promise<string> {
+    const release = await beginResourceOperation(this.#config, workspace.id, sessionId);
+    try { return await this.#prompt(workspace, sessionId, input); } finally { release(); }
+  }
+  async #prompt(workspace: WorkspaceInfo, sessionId: string, input: WorkspaceSessionPromptInput): Promise<string> {
+    await assertResourceWritable(this.#config, workspace.id, sessionId);
     workspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, { codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness });
     await this.preparePlugins(workspace);
     const startedAt = Date.now();
@@ -666,27 +693,181 @@ export class WorkspaceSessionRuntime {
     throw new Error(`Automatic task did not finish within ${Math.round(timeoutMs / 60_000)} minutes${detail}`);
   }
 
-  async delete(workspace: WorkspaceInfo, sessionId: string): Promise<void> {
-    workspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, { codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness });
-    if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-      throw new ApiError(
-        501,
-        "session_delete_unsupported",
-        "DeepSeek Harness supports session archiving but not permanent deletion",
-      );
-    }
-
-    if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
-      this.#freshCodexThreads.delete(this.#codexThreadKey(workspace.id, sessionId));
-      await this.#codexHarness.forWorkspace(workspace).call("thread/delete", { threadId: sessionId });
-    } else {
-      const opencode = this.#createWorkspaceOpencodeClient(this.#config, workspace);
-      this.#unwrapOpencodeResult(
-        await opencode.session.delete({ sessionID: sessionId }),
-        `/session/${encodeURIComponent(sessionId)}`,
-      );
-    }
-    const binding = await readProjectSessionWorkItem(this.#config, workspace.id, sessionId);
-    if (binding) await deleteWorkItem(this.#config, workspace.id, binding.id, binding.version);
+  async #lifecycle<T>(workspaceId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#lifecycleOperations.get(workspaceId) ?? Promise.resolve();
+    const pending = previous.catch(() => undefined).then(operation);
+    this.#lifecycleOperations.set(workspaceId, pending);
+    try { return await pending; } finally { if (this.#lifecycleOperations.get(workspaceId) === pending) this.#lifecycleOperations.delete(workspaceId); }
   }
+
+  async #summary(workspace: WorkspaceInfo, sessionId: string): Promise<SessionInfoReadModel> {
+    let summary: SessionInfoReadModel;
+    if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) summary = await readDeepSeekHarnessSession(this.#deepseekHarness.forWorkspace(workspace), workspace, sessionId);
+    else if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) summary = mapCodexThread(await readCodexHarnessThread(this.#codexHarness.forWorkspace(workspace), sessionId));
+    else summary = buildSession(this.#unwrapOpencodeResult(await this.#createWorkspaceOpencodeClient(this.#config, workspace).session.get({ sessionID: sessionId }), `/session/${sessionId}`));
+    if (!workspacePathMatches(summary.directory ?? undefined, workspace.path)) throw new ApiError(404, "session_not_found", "Session does not belong to this project");
+    return { ...summary, engineId: workspace.engineId || DEFAULT_ENGINE_ID };
+  }
+
+  async #stop(workspace: WorkspaceInfo, sessionId: string) {
+    if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+      const runtime = this.#deepseekHarness.forWorkspace(workspace);
+      const sessions = await runtime.call<{ items: DeepSeekHarnessSummary[] }>("session.list", {});
+      if (sessions.items.find(session => session.sessionId === sessionId)?.running) await runtime.call("session.cancel", { sessionId });
+    } else if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+      const runtime = this.#codexHarness.forWorkspace(workspace);
+      const thread = await readCodexHarnessThread(runtime, sessionId).catch(error => { if (nativeSessionMissing(error)) return null; throw error; });
+      if (!thread) return;
+      const turn = thread.turns?.at(-1);
+      if (turn?.status === "inProgress") await runtime.call("turn/interrupt", { threadId: sessionId, turnId: turn.id });
+    } else {
+      this.#unwrapOpencodeResult(await this.#createWorkspaceOpencodeClient(this.#config, workspace).session.abort({ sessionID: sessionId }), `/session/${sessionId}/abort`);
+    }
+  }
+
+  async setArchived(workspace: WorkspaceInfo, sessionId: string, archived: boolean) {
+    return this.#lifecycle(workspace.id, async () => {
+      const previous = await readResourceLifecycle(this.#config, workspace.id, sessionId);
+      if (previous?.deleting) throw new ApiError(409, "resource_deleting", "此会话正在删除或已删除。");
+      workspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, { codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness });
+      const engineId = workspace.engineId || DEFAULT_ENGINE_ID;
+      const summary = previous?.summary ?? await this.#summary(workspace, sessionId);
+      await archiveResource(this.#config, workspace.id, sessionId, engineId, archived, { ...summary, engineId });
+      try {
+        if (archived) {
+          await releaseResourceOperations(this.#config, workspace.id, sessionId);
+          await this.#releaseSessionObservers?.(workspace.id, sessionId);
+          await releaseOwnedVideoJobs(this.#config, workspace.id, sessionId);
+          await this.#stop(workspace, sessionId);
+        }
+        if (engineId === CODEX_HARNESS_ENGINE_ID) {
+          const runtime = this.#codexHarness.forWorkspace(workspace);
+          await runtime.call(archived ? "thread/archive" : "thread/unarchive", { threadId: sessionId })
+            .catch(error => { if (!nativeSessionMissing(error)) throw error; });
+          this.#freshCodexThreads.delete(this.#codexThreadKey(workspace.id, sessionId));
+          if (archived) {
+            const loaded = await runtime.call<{ data?: string[] }>("thread/loaded/list", {});
+            if (Array.isArray(loaded.data) && !loaded.data.length) await this.#codexHarness.closeWorkspace(workspace.id);
+          }
+        } else if (engineId === DEFAULT_ENGINE_ID) {
+          const client = this.#createWorkspaceOpencodeClient(this.#config, workspace);
+          this.#unwrapOpencodeResult(await client.session.update({ sessionID: sessionId, time: { archived: archived ? Date.now() : 0 } }), `/session/${sessionId}`);
+          if (archived) {
+            const statuses = buildSessionStatuses(this.#unwrapOpencodeResult(await client.session.status(), "/session/status"));
+            if (!Object.values(statuses).some(status => status.type !== "idle")) this.#unwrapOpencodeResult(await client.instance.dispose({ directory: workspace.path }), "/instance/dispose");
+          }
+        } else if (archived) {
+          const runtime = this.#deepseekHarness.forWorkspace(workspace);
+          const sessions = await runtime.call<{ items: DeepSeekHarnessSummary[] }>("session.list", {});
+          if (!sessions.items.some(session => session.running)) await this.#deepseekHarness.closeWorkspace(workspace.id);
+        }
+      } catch (error) {
+        await archiveResource(this.#config, workspace.id, sessionId, engineId, Boolean(previous?.archivedAt), { ...summary, engineId });
+        throw error;
+      }
+    });
+  }
+
+  async releaseWorkspace(workspace: WorkspaceInfo) {
+    return this.#lifecycle(workspace.id, async () => {
+      await releaseResourceOperations(this.#config, workspace.id);
+      await this.#releaseSessionObservers?.(workspace.id);
+      await releaseOwnedVideoJobs(this.#config, workspace.id);
+      await Promise.all([this.#codexHarness.closeWorkspace(workspace.id), this.#deepseekHarness.closeWorkspace(workspace.id)]);
+      const engines = new Set([workspace.engineId || DEFAULT_ENGINE_ID, ...await listBoundSessionEngines(this.#config, workspace.id)]);
+      if (engines.has(DEFAULT_ENGINE_ID)) {
+        const client = this.#createWorkspaceOpencodeClient(this.#config, workspace);
+        this.#unwrapOpencodeResult(await client.instance.dispose({ directory: workspace.path }), "/instance/dispose");
+      }
+      this.#sessionContextHints.delete(workspace.id);
+      for (const key of this.#freshCodexThreads.keys()) if (key.startsWith(`${workspace.id}\u0000`)) this.#freshCodexThreads.delete(key);
+    });
+  }
+
+  async delete(workspace: WorkspaceInfo, sessionId: string): Promise<void> {
+    return this.#lifecycle(workspace.id, async () => {
+      let pending = await readResourceLifecycle(this.#config, workspace.id, sessionId);
+      if (pending?.deleting === 2) return;
+      workspace = await resolveWorkspaceSession(this.#config, workspace, sessionId, { codexHarness: this.#codexHarness, deepseekHarness: this.#deepseekHarness });
+      const engineId = workspace.engineId || DEFAULT_ENGINE_ID;
+      if (!pending?.deleting) {
+        const summary = pending?.summary ?? await this.#summary(workspace, sessionId);
+        const cleanup = await sessionArtifactCleanup(this.#config, workspace, sessionId);
+        for (const path of cleanup.paths) await verifyCleanupPath(workspace.path, join(workspace.path, path));
+        await beginResourceDeletion(this.#config, workspace.id, sessionId, engineId, cleanup, { ...summary, engineId });
+        pending = await readResourceLifecycle(this.#config, workspace.id, sessionId);
+      }
+      await releaseOwnedVideoJobs(this.#config, workspace.id, sessionId);
+      await releaseResourceOperations(this.#config, workspace.id, sessionId);
+      await this.#releaseSessionObservers?.(workspace.id, sessionId);
+      if (!pending?.engineDeleted) {
+        try {
+        await this.#stop(workspace, sessionId);
+        if (engineId === DEEPSEEK_HARNESS_ENGINE_ID) await this.#deepseekHarness.deleteSession(workspace, sessionId);
+        else if (engineId === CODEX_HARNESS_ENGINE_ID) {
+          this.#freshCodexThreads.delete(this.#codexThreadKey(workspace.id, sessionId));
+          await this.#codexHarness.forWorkspace(workspace).call("thread/delete", { threadId: sessionId });
+        } else this.#unwrapOpencodeResult(await this.#createWorkspaceOpencodeClient(this.#config, workspace).session.delete({ sessionID: sessionId }), `/session/${sessionId}`);
+        } catch (error) {
+          // Ownership and cleanup were recorded before the native delete. A lost
+          // response may leave an already-deleted native session on the next retry.
+          if (!nativeSessionMissing(error)) throw error;
+        }
+        await markResourceEngineDeleted(this.#config, workspace.id, sessionId);
+      }
+      if (pending?.cleanup) await removeOwnedFiles(workspace.path, pending.cleanup);
+      await deleteSessionArtifactRecords(this.#config, workspace.id, sessionId);
+      await deleteResourceRecords(this.#config, workspace.id, sessionId);
+      const binding = await readProjectSessionWorkItem(this.#config, workspace.id, sessionId);
+      if (binding) await deleteWorkItem(this.#config, workspace.id, binding.id, binding.version);
+      await forgetResourceLifecycle(this.#config, workspace.id, sessionId);
+    });
+  }
+
+  async deleteWorkspace(workspace: WorkspaceInfo) {
+    return this.#lifecycle(workspace.id, async () => {
+      await validateProjectDeletion(this.#config, workspace);
+      const pending = await readResourceLifecycle(this.#config, workspace.id);
+      if (pending?.deleting === 2) return;
+      await beginResourceDeletion(this.#config, workspace.id, "", "", { paths: ["."], retainedPaths: [] });
+      await releaseResourceOperations(this.#config, workspace.id);
+      await this.#releaseSessionObservers?.(workspace.id);
+      await releaseOwnedVideoJobs(this.#config, workspace.id);
+      if (!pending?.engineDeleted) {
+        const engines = new Set([workspace.engineId || DEFAULT_ENGINE_ID, ...await listBoundSessionEngines(this.#config, workspace.id), ...(await listResourceLifecycles(this.#config, workspace.id)).map(row => row.engineId)]);
+        const client = this.#createWorkspaceOpencodeClient(this.#config, workspace);
+        if (engines.has(DEFAULT_ENGINE_ID)) {
+          let start = 0;
+          for (;;) {
+            const page = buildSessionList(this.#unwrapOpencodeResult(await client.session.list({ limit: 100, start }), "/session"));
+            if (!page.length) break;
+            const sessions = page.filter(session => workspacePathMatches(session.directory ?? undefined, workspace.path));
+            for (const session of sessions) {
+              this.#unwrapOpencodeResult(await client.session.abort({ sessionID: session.id }), `/session/${session.id}/abort`);
+              this.#unwrapOpencodeResult(await client.session.delete({ sessionID: session.id }), `/session/${session.id}`);
+            }
+            if (!sessions.length) { if (page.length < 100) break; start += page.length; }
+          }
+          this.#unwrapOpencodeResult(await client.instance.dispose({ directory: workspace.path }), "/instance/dispose");
+        }
+        await this.#codexHarness.deleteWorkspaceData(workspace.id);
+        if (engines.has(DEEPSEEK_HARNESS_ENGINE_ID)) await this.#deepseekHarness.deleteWorkspaceData({ ...workspace, engineId: DEEPSEEK_HARNESS_ENGINE_ID },
+          (await listResourceLifecycles(this.#config, workspace.id)).filter(row => row.engineId === DEEPSEEK_HARNESS_ENGINE_ID).map(row => row.sessionId).filter(Boolean));
+        await markResourceEngineDeleted(this.#config, workspace.id, "");
+      }
+      await removeOwnedFiles(workspace.path, { paths: ["."], retainedPaths: [] }, true);
+      await deleteWorkspacePluginServiceData(this.#config, workspace.id);
+      await deleteSessionArtifactRecords(this.#config, workspace.id);
+      await deleteResourceRecords(this.#config, workspace.id);
+      await deleteWorkspaceWorkState(this.#config, workspace.id);
+      await forgetResourceLifecycle(this.#config, workspace.id);
+      this.#sessionContextHints.delete(workspace.id);
+      for (const key of this.#freshCodexThreads.keys()) if (key.startsWith(`${workspace.id}\u0000`)) this.#freshCodexThreads.delete(key);
+    });
+  }
+}
+
+function nativeSessionMissing(error: unknown) {
+  return error instanceof ApiError && (error.status === 404 || (isRecord(error.details) && error.details.status === 404))
+    || error instanceof StdioJsonRpcError && /^(?:thread not found:|session not found(?::|$)|no rollout found for thread id\b)/i.test(error.message);
 }

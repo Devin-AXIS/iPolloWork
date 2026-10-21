@@ -2,13 +2,14 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
+import { assertResourceWritable, resetDeletedProject } from "../resource-lifecycle.js";
 import { inheritWorkspaceOpencodeConnection, resolveWorkspaceOpencodeConnection } from "../opencode-connection.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig, type WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles } from "../workspace-init.js";
 import { seediPolloWorkWorkspaceConfigIfEmpty } from "../ipollowork-workspace-config-store.js";
 import { workspaceIdForPath, workspaceIdForRemote } from "../workspaces.js";
-import { deleteWorkspaceWorkState } from "../work-items.js";
+import type { WorkspaceSessionRuntime } from "../workspace-session-runtime.js";
 import { addRoute, type Route } from "./registry.js";
 import { isBuiltInWorkspaceEngineId } from "@ipollowork/types/workspace";
 
@@ -19,6 +20,7 @@ type ParseOptionalBoolean = (value: string | null, name: string) => boolean | un
 interface RegisterWorkspaceRoutesOptions {
   routes: Route[];
   config: ServerConfig;
+  sessionRuntime: WorkspaceSessionRuntime;
   onWorkspacesChanged: () => Promise<void>;
   onLocalWorkspaceReady: (workspace: WorkspaceInfo) => Promise<void>;
   jsonResponse: JsonResponse;
@@ -203,6 +205,7 @@ function serializeWorkspaceConfigEntry(workspace: WorkspaceInfo): Record<string,
   const isLocalWorkspace = workspace.workspaceType !== "remote";
   return {
     id: workspace.id,
+    ...(workspace.archivedAt ? { archivedAt: workspace.archivedAt } : {}),
     path: workspace.path,
     name: workspace.name,
     preset: workspace.preset,
@@ -251,10 +254,27 @@ async function persistServerWorkspaceState(config: ServerConfig): Promise<boolea
   }
 }
 
+async function forwardProjectLifecycle(workspace: WorkspaceInfo, archived?: boolean) {
+  const host = workspace.ipolloworkHostUrl?.trim(); const id = workspace.ipolloworkWorkspaceId?.trim();
+  if (workspace.remoteType === "opencode" || !host || !id) throw new ApiError(400, "remote_lifecycle_unavailable", "此远程连接没有项目文件管理接口，请连接项目所在的 iPolloWork 服务端。");
+  const target = stripiPolloWorkWorkspaceMount(host);
+  if (!target) throw new ApiError(400, "remote_lifecycle_unavailable", "远程项目地址无效。");
+  const response = await fetch(`${target.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(id)}${archived === undefined ? "" : "/archive"}`, {
+    method: archived === undefined ? "DELETE" : "POST", redirect: "error", signal: AbortSignal.timeout(120_000),
+    headers: { Authorization: `Bearer ${workspace.ipolloworkToken || ""}`, "Content-Type": "application/json" },
+    ...(archived === undefined ? {} : { body: JSON.stringify({ archived }) }),
+  });
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+    throw new ApiError(response.status, "remote_project_lifecycle_failed", isRecord(body) && typeof body.message === "string" ? body.message : "远程项目操作未完成，请检查连接和项目管理权限后重试。");
+  }
+}
+
 export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions): void {
   const {
     routes,
     config,
+    sessionRuntime,
     onWorkspacesChanged,
     onLocalWorkspaceReady,
     jsonResponse,
@@ -279,7 +299,8 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     if (workspace.workspaceType === "remote") {
       return { ...workspace, path: workspace.path?.trim() ?? "" };
     }
-    return resolveWorkspace(config, id);
+    // Registry actions must not bootstrap a folder that is being deleted.
+    return { ...workspace, path: resolve(workspace.path) };
   };
 
   addRoute(routes, "POST", "/workspaces/local", "host", async (ctx) => {
@@ -306,6 +327,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       entry.workspaceType !== "remote" && entry.id === workspaceId
     );
     if (existingWorkspace) {
+      await assertResourceWritable(config, existingWorkspace.id);
       await onLocalWorkspaceReady(existingWorkspace);
       return jsonResponse({
         activeId: existingWorkspace.id,
@@ -315,6 +337,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     }
 
     await ensureDir(workspacePath);
+    await resetDeletedProject(config, workspaceId);
     await ensureWorkspaceFiles(workspacePath, preset);
 
     // Seed the per-workspace ipollowork config in the runtime DB (replaces the
@@ -496,6 +519,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
 
   addRoute(routes, "POST", "/workspaces/:id/activate", "host", async (ctx) => {
     const workspace = await resolveWorkspaceForRegistry(ctx.params.id);
+    if (workspace.archivedAt) throw new ApiError(409, "resource_archived", "项目已归档，请先恢复。");
     const queryPersist = parseOptionalBoolean(ctx.url.searchParams.get("persist"), "persist");
     const body = queryPersist === undefined ? await readOptionalJsonBody(ctx.request) : {};
     const persist = queryPersist ?? (body.persist === true);
@@ -531,11 +555,40 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     return jsonResponse({ activeId: workspace.id, workspace: serializeWorkspace(workspace), persisted });
   });
 
+  addRoute(routes, "POST", "/workspaces/:id/archive", "host", async (ctx) => {
+    ensureWritable(config);
+    const workspace = await resolveWorkspaceForRegistry(ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    if (typeof body.archived !== "boolean") throw new ApiError(400, "invalid_payload", "archived must be a boolean");
+    const registered = config.workspaces.find(entry => entry.id === workspace.id);
+    if (!registered) throw new ApiError(404, "workspace_not_found", "Workspace not found");
+    await assertResourceWritable(config, workspace.id, undefined, true);
+    if (workspace.workspaceType === "remote") await forwardProjectLifecycle(workspace, body.archived);
+    const previous = registered.archivedAt;
+    registered.archivedAt = body.archived ? registered.archivedAt || Date.now() : undefined;
+    let persisted: boolean;
+    try {
+      persisted = await persistServerWorkspaceState(config);
+      if (body.archived && workspace.workspaceType !== "remote") await sessionRuntime.releaseWorkspace(registered);
+    } catch (error) {
+      registered.archivedAt = previous;
+      await persistServerWorkspaceState(config);
+      throw error;
+    }
+    await onWorkspacesChanged();
+    return jsonResponse({ ok: true, persisted, workspace: serializeWorkspace(registered) });
+  });
+
   addRoute(routes, "DELETE", "/workspaces/:id", "host", async (ctx) => {
     ensureWritable(config);
 
     const workspace = await resolveWorkspaceForRegistry(ctx.params.id);
 
+    if (workspace.workspaceType === "remote") await forwardProjectLifecycle(workspace);
+    else await sessionRuntime.deleteWorkspace(workspace);
+
+    const previousWorkspaces = config.workspaces;
+    const previousRoots = config.authorizedRoots;
     const before = config.workspaces.length;
     config.workspaces = config.workspaces.filter((entry) => entry.id !== workspace.id);
     const deleted = before !== config.workspaces.length;
@@ -544,21 +597,12 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       // Only remove exact matches; authorizedRoots can contain broader entries.
       config.authorizedRoots = config.authorizedRoots.filter((root) => resolve(root) !== resolve(workspace.path));
     }
-    const persisted = await persistServerWorkspaceState(config);
-    if (deleted) await deleteWorkspaceWorkState(config, workspace.id);
+    let persisted: boolean;
+    try { persisted = await persistServerWorkspaceState(config); }
+    catch (error) { config.workspaces = previousWorkspaces; config.authorizedRoots = previousRoots; throw error; }
     await onWorkspacesChanged();
 
-    await recordAudit(workspace.path, {
-      id: shortId(),
-      workspaceId: workspace.id,
-      actor: ctx.actor ?? { type: "host" },
-      action: "workspace.delete",
-      target: "workspace",
-      summary: "Deleted workspace from iPolloWork server",
-      timestamp: Date.now(),
-    });
-
-    const active = config.workspaces[0] ?? null;
+    const active = config.workspaces.find(workspace => !workspace.archivedAt) ?? null;
     return jsonResponse({
       ok: true,
       deleted,

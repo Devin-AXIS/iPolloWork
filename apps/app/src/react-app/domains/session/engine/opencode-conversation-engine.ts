@@ -297,14 +297,6 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
     async rename(sessionId, title, directory) {
       unwrap(await client.session.update({ sessionID: sessionId, title, directory }));
     },
-    async setArchived(sessionId, archived, directory) {
-      unwrap(await client.session.update({
-        sessionID: sessionId,
-        directory,
-        time: { archived: archived ? Date.now() : 0 },
-      }));
-      if (archived) selectedAccessModes.delete(sessionId);
-    },
     async shell(sessionId, command) {
       const result = await client.session.shell({ sessionID: sessionId, command });
       if (result.error !== undefined) unwrap(result);

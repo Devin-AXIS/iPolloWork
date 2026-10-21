@@ -356,7 +356,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain("sessionId={props.selectedSessionId ?? undefined}");
   });
 
-  test("DeepSeek Harness sessions expose archive instead of permanent delete", () => {
+  test("all engines expose unified archive and permanent deletion", () => {
     const routeSource = readFileSync(
       new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
       "utf8",
@@ -370,8 +370,10 @@ describe("session output issue regressions", () => {
       routeSource.indexOf("onArchiveSession={"),
     );
 
-    expect(deleteBinding).toContain("activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID");
-    expect(routeSource).toContain("onArchiveSession={conversation ? handleArchiveSession : undefined}");
+    expect(deleteBinding).not.toContain("activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID");
+    expect(deleteBinding).toContain("deleteSession(endpoint.workspaceId, sessionId)");
+    expect(routeSource).toContain("setSessionArchived(endpoint.workspaceId, sessionId, archived)");
+    expect(routeSource).toContain("onArchiveSession={client ? handleArchiveSession : undefined}");
     expect(sidebarSource).toContain('t("session_management.archive_session")');
   });
 

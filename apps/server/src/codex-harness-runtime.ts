@@ -28,6 +28,7 @@ import { readEngineRuntimeMcpConfig } from "./mcp.js";
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import { readRuntimeProviderChannels } from "./runtime-opencode-config-store.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
+import { removeOwnedFiles } from "./resource-lifecycle.js";
 import { importNodeSqlite } from "./node-sqlite.js";
 import { engineHostMcp } from "./engine-host-mcp.js";
 import {
@@ -476,6 +477,8 @@ type AttachedThreadSelection = {
 };
 
 export class CodexHarnessRuntime {
+  #closed = false;
+  #closing: Promise<void> | null = null;
   readonly #config: ServerConfig;
   readonly #env: EnvService;
   readonly #workspace: WorkspaceInfo;
@@ -730,9 +733,16 @@ export class CodexHarnessRuntime {
     });
   }
 
-  async close(): Promise<void> {
-    await this.#stopProcess();
-    await this.#providerGateway.close();
+  async close(options: { retire?: boolean } = {}): Promise<void> {
+    if (options.retire) this.#closed = true;
+    if (!this.#closing) this.#closing = (async () => {
+      // Initialization can still publish a process after a config reload removed
+      // this runtime from its pool. Wait for it, then close that process too.
+      await this.#starting?.catch(() => undefined);
+      await this.#stopProcess();
+      await this.#providerGateway.close();
+    })().finally(() => { this.#closing = null; });
+    await this.#closing;
   }
 
   async #stopProcess(): Promise<void> {
@@ -902,6 +912,8 @@ export class CodexHarnessRuntime {
   }
 
   async #ensureStarted(): Promise<StdioJsonRpcProcess> {
+    if (this.#closing) await this.#closing;
+    if (this.#closed) throw new CodexHarnessUnavailableError("The workspace runtime was released; reconnect before using it again");
     // Provider and MCP writes already dispose the workspace runtime through
     // the shared engine-reload path. Re-reading every credential/catalog,
     // reconfiguring the protocol gateway, and rewriting config.toml before
@@ -1104,7 +1116,13 @@ export class CodexHarnessRuntimePool {
   async closeWorkspace(workspaceId: string): Promise<void> {
     const runtime = this.#runtimes.get(workspaceId);
     this.#runtimes.delete(workspaceId);
-    await runtime?.close();
+    await runtime?.close({ retire: true });
+  }
+
+  async deleteWorkspaceData(workspaceId: string): Promise<void> {
+    await this.closeWorkspace(workspaceId);
+    const root = runtimeStorageDir(this.#config);
+    await removeOwnedFiles(root, { paths: [join("codex-harness-workspaces", safeRuntimeSegment(workspaceId))], retainedPaths: [] });
   }
 
   async close(): Promise<void> {
@@ -1116,6 +1134,6 @@ export class CodexHarnessRuntimePool {
   async #closeAllRuntimes(): Promise<void> {
     const runtimes = [...this.#runtimes.values()];
     this.#runtimes.clear();
-    await Promise.all(runtimes.map((runtime) => runtime.close()));
+    await Promise.all(runtimes.map((runtime) => runtime.close({ retire: true })));
   }
 }

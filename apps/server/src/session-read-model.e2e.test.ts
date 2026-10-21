@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
@@ -9,6 +9,8 @@ import { startServer } from "./server.js";
 import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import { CodexHarnessRuntime, CodexHarnessUnavailableError } from "./codex-harness-runtime.js";
 import { ApiError } from "./errors.js";
+import { readResourceLifecycle } from "./resource-lifecycle.js";
+import { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
 import type { ServerConfig } from "./types.js";
 import { bindConversationSession, bindProjectSessionExecution, listWorkItems, readProjectSessionWorkItem } from "./work-items.js";
 import {
@@ -30,7 +32,7 @@ afterEach(async () => {
     await stops.pop()?.();
   }
   while (roots.length) {
-    await rm(roots.pop()!, { recursive: true, force: true });
+    await rm(roots.pop()!, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });
 
@@ -46,7 +48,7 @@ function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-function startMockOpencode(input?: { delegatedWorker?: boolean; invalidList?: boolean; invalidStatus?: boolean; holdCommand?: Promise<void>; promptAsyncNoContent?: boolean; beforeSessionWrite?: () => Promise<void>; promptCompletion?: { time: number; status: "running" | "completed" | "failed"; rejected: boolean } }) {
+function startMockOpencode(input?: { deleted?: Set<string>; delegatedWorker?: boolean; invalidList?: boolean; invalidStatus?: boolean; holdCommand?: Promise<void>; promptAsyncNoContent?: boolean; beforeSessionWrite?: () => Promise<void>; promptCompletion?: { time: number; status: "running" | "completed" | "failed"; rejected: boolean } }) {
   const requests: Array<{
     method: string;
     pathname: string;
@@ -70,6 +72,11 @@ function startMockOpencode(input?: { delegatedWorker?: boolean; invalidList?: bo
         directory: request.headers.get("x-opencode-directory"),
         body,
       });
+      if (url.pathname === "/instance/dispose" || url.pathname.endsWith("/abort")) return Response.json(true);
+      if (request.method === "DELETE" && /^\/session\/[^/]+$/.test(url.pathname)) {
+        input?.deleted?.add(url.pathname.split("/").pop()!); return Response.json(true);
+      }
+      if (input?.deleted?.has(url.pathname.split("/").pop()!)) return Response.json({ error: "not found" }, { status: 404 });
       if (url.pathname === "/session/ses_created/abort") return Response.json(true);
 
       if (input?.delegatedWorker && /^\/session\/ses_(worker|fork|foreign)$/.test(url.pathname)) {
@@ -77,6 +84,7 @@ function startMockOpencode(input?: { delegatedWorker?: boolean; invalidList?: bo
       }
 
       if (url.pathname === "/session" && request.method === "GET") {
+        if (input?.deleted?.has("ses_1")) return Response.json([]);
         if (input?.invalidList) {
           return Response.json({ nope: true });
         }
@@ -616,26 +624,66 @@ describe("workspace session completion projection", () => {
 });
 
 describe("workspace session read APIs", () => {
-  test("rejects permanent deletion for DeepSeek Harness sessions", async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    const mock = startMockOpencode();
-    const ipollowork = await startiPolloWorkServer({
-      workspaceRoot,
-      opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
-      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
-      readOnly: false,
+  for (const engineId of [DEFAULT_ENGINE_ID, CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID]) {
+    test(`${engineId}: archive, restore and permanently delete owned files through the same API`, async () => {
+      const workspaceRoot = await createWorkspaceRoot(); const deleted = new Set<string>();
+      const mock = startMockOpencode({ deleted });
+      const codex = spyOn(CodexHarnessRuntime.prototype, "call").mockImplementation(async <T>(method: string): Promise<T> => {
+        const value = method === "thread/read" ? { thread: { id: "ses_1", cwd: workspaceRoot, createdAt: 100, updatedAt: 200, turns: [] } } : {};
+        return value as T; // The test transport supplies the method-specific wire response.
+      });
+      const dsh = spyOn(DeepSeekHarnessRuntime.prototype, "call").mockImplementation(async <T>(method: string): Promise<T> => {
+        const value = method === "session.list" ? { items: [{ sessionId: "ses_1", cwd: workspaceRoot, running: false, blank: true, updatedAt: 200 }] }
+          : method === "workspace.list" ? { archivedSessionIds: [] } : {};
+        return value as T; // The test transport supplies the method-specific wire response.
+      });
+      const dshDelete = spyOn(DeepSeekHarnessRuntimePool.prototype, "deleteSession").mockImplementation(async (_workspace, id) => { deleted.add(id); });
+      try {
+        const host = await startiPolloWorkServer({ workspaceRoot, opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`, engineId, readOnly: false });
+        const session = `http://127.0.0.1:${host.server.port}/workspace/ws_1/sessions/ses_1`;
+        await mkdir(join(workspaceRoot, "design", "ses_1"), { recursive: true });
+        await writeFile(join(workspaceRoot, "design", "ses_1", "index.html"), "keep until deletion");
+        const archive = await fetch(`${session}/archive`, { method: "POST", headers: auth(host.token), body: JSON.stringify({ archived: true }) });
+        expect(await archive.text()).toBe('{"ok":true}'); expect(archive.status).toBe(200);
+        expect((await readResourceLifecycle(host.config, "ws_1", "ses_1"))?.archivedAt).toBeGreaterThan(0);
+        const reads = mock.requests.length + codex.mock.calls.length + dsh.mock.calls.length;
+        expect((await fetch(`http://127.0.0.1:${host.server.port}/workspace/ws_1/sessions`, { headers: auth(host.token) })).status).toBe(200);
+        expect(mock.requests.length + codex.mock.calls.length + dsh.mock.calls.length).toBe(reads);
+        expect(await readFile(join(workspaceRoot, "design", "ses_1", "index.html"), "utf8")).toBe("keep until deletion");
+        expect((await fetch(`${session}/prompt`, { method: "POST", headers: auth(host.token), body: JSON.stringify({ text: "must not run" }) })).status).toBe(409);
+        expect((await fetch(`${session}/archive`, { method: "POST", headers: auth(host.token), body: JSON.stringify({ archived: false }) })).status).toBe(200);
+        expect((await readResourceLifecycle(host.config, "ws_1", "ses_1"))?.archivedAt).toBeNull();
+        const removal = await fetch(session, { method: "DELETE", headers: auth(host.token) });
+        expect(await removal.text()).toBe('{"ok":true}'); expect(removal.status).toBe(200);
+        await expect(access(join(workspaceRoot, "design", "ses_1"))).rejects.toThrow();
+        expect((await fetch(session, { method: "DELETE", headers: auth(host.token) })).status).toBe(200);
+        expect((await fetch(session, { headers: auth(host.token) })).status).toBe(404);
+        if (engineId === DEEPSEEK_HARNESS_ENGINE_ID) expect(dshDelete).toHaveBeenCalledTimes(1);
+        if (engineId === CODEX_HARNESS_ENGINE_ID) expect(codex.mock.calls.some(([method]) => method === "thread/delete")).toBe(true);
+      } finally { codex.mockRestore(); dsh.mockRestore(); dshDelete.mockRestore(); }
     });
+  }
 
-    const response = await fetch(
-      `http://127.0.0.1:${ipollowork.server.port}/workspace/ws_1/sessions/ses_1`,
-      { method: "DELETE", headers: auth(ipollowork.token) },
-    );
-    expect(response.status).toBe(501);
-    expect(await response.json()).toMatchObject({
-      code: "session_delete_unsupported",
-      message: "DeepSeek Harness supports session archiving but not permanent deletion",
-    });
-    expect(mock.requests).toHaveLength(0);
+  test("project archive preserves files without restarting engines; delete removes its folder and registry", async () => {
+    const workspaceRoot = await createWorkspaceRoot("project"); const mock = startMockOpencode({ deleted: new Set() });
+    const host = await startiPolloWorkServer({ workspaceRoot, opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`, readOnly: false,
+      beforeStart: async config => { config.configPath = join(dirname(workspaceRoot), "state", "server.json"); } });
+    const base = `http://127.0.0.1:${host.server.port}`; const headers = { "X-iPolloWork-Host-Token": host.config.hostToken };
+    await fetch(`${base}/workspace/ws_1/sessions`, { headers: auth(host.token) });
+    await writeFile(join(workspaceRoot, "original.txt"), "original");
+    const archived = await fetch(`${base}/workspaces/ws_1/archive`, { method: "POST", headers, body: JSON.stringify({ archived: true }) });
+    expect(archived.status).toBe(200); const count = mock.requests.length;
+    expect((await fetch(`${base}/workspace/ws_1/sessions`, { headers: auth(host.token) })).status).toBe(200);
+    expect(mock.requests.length).toBe(count);
+    expect((await fetch(`${base}/workspace/ws_1/engine/deepseek-harness/events/mux`, { headers: auth(host.token) })).status).toBe(409);
+    expect((await fetch(`${base}/workspace/ws_1/engine/codex-harness/events`, { headers: auth(host.token) })).status).toBe(409);
+    expect(await readFile(join(workspaceRoot, "original.txt"), "utf8")).toBe("original");
+    expect((await fetch(`${base}/workspaces/ws_1/archive`, { method: "POST", headers, body: JSON.stringify({ archived: false }) })).status).toBe(200);
+    const removal = await fetch(`${base}/workspaces/ws_1`, { method: "DELETE", headers });
+    expect(removal.status).toBe(200); expect(host.config.workspaces).toHaveLength(0);
+    await expect(access(workspaceRoot)).rejects.toThrow();
+    expect((await fetch(`${base}/workspace/ws_1/sessions`, { headers: auth(host.token) })).status).toBe(404);
+    await expect(access(workspaceRoot)).rejects.toThrow();
   });
 
   test("lists sessions and returns session details, messages, and snapshot", async () => {
@@ -800,12 +848,13 @@ describe("workspace session read APIs", () => {
       new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 100)),
     ]);
 
-    expect(response).not.toBe("timeout");
-    expect(response instanceof Response ? response.status : 0).toBe(200);
-    await expect(response instanceof Response ? response.json() : null).resolves.toMatchObject({ accepted: true });
-    const sawCommand = await waitUntil(() => mock.requests.some((request) => request.pathname === "/session/ses_1/command"));
-    command.resolve();
-    expect(sawCommand).toBe(true);
+    try {
+      expect(response).not.toBe("timeout");
+      expect(response instanceof Response ? response.status : 0).toBe(200);
+      await expect(response instanceof Response ? response.json() : null).resolves.toMatchObject({ accepted: true });
+      const sawCommand = await waitUntil(() => mock.requests.some((request) => request.pathname === "/session/ses_1/command"));
+      expect(sawCommand).toBe(true);
+    } finally { command.resolve(); }
   });
 
   test("keeps legacy /w workspace opencode proxy alias", async () => {
