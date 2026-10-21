@@ -84,7 +84,7 @@ export default {
         assert: async () => {
           const placement = await ctx.eval(`(() => {
             const section = document.querySelector('[data-testid="plugin-library-source"]');
-            const installed = document.querySelector('[data-testid="plugin-installed-row"]');
+            const installed = document.querySelector('[data-testid="plugin-library-installed"]');
             return { count: section.querySelectorAll('[role="tab"]').length, belowInstalled: section.getBoundingClientRect().top >= installed.getBoundingClientRect().bottom, oldSwitchCount: document.querySelectorAll('[aria-label="Resource source"], [aria-label="资源来源"]').length };
           })()`);
           ctx.assert(placement.count === 3 && placement.belowInstalled && placement.oldSwitchCount === 0, 'One source selector contains all three scopes below installed plugins');
@@ -98,6 +98,7 @@ export default {
           await ctx.trustedClick('[data-testid="plugin-library-source"] [role="tab"]:nth-child(3)');
           await ctx.waitForText('Enterprise Catalog Proof', { timeoutMs: 60_000 });
           await ctx.client.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 900, deviceScaleFactor: 1, mobile: false });
+          await ctx.waitFor(`window.innerWidth === 900 && document.querySelector('[data-testid="plugin-library-source"]')?.clientWidth > 0`);
         },
         assert: async () => {
           ctx.assert(catalogRequests.some(request => request.path.includes('type=extension') && request.authorized), 'Enterprise plugins are requested with the current Enterprise account');
