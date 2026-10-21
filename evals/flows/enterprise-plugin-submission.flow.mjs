@@ -31,6 +31,7 @@ export default {
           ctx.assert(await ctx.eval('Boolean(document.querySelector(\'[data-testid="enterprise-extension-manage"]\'))'), "employee plugin submission entry is visible");
           await ctx.trustedClick('[data-testid="enterprise-extension-manage"]');
           await ctx.waitForText("我的插件投稿");
+          await ctx.waitFor(`Boolean(document.querySelector('${dialog} input[type="file"]'))`);
           const document = await ctx.client.send("DOM.getDocument");
           const input = await ctx.client.send("DOM.querySelector", { nodeId: document.root.nodeId, selector: `${dialog} input[type="file"]` });
           await ctx.client.send("DOM.setFileInputFiles", { nodeId: input.nodeId, files: [packagePath] });

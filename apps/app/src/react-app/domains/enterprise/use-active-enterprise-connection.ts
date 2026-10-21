@@ -45,16 +45,19 @@ export function useActiveEnterpriseConnection(): EnterpriseConnection | null {
           }
         });
     };
+    const refreshVisibleConnection = () => { if (document.visibilityState === "visible") refreshActiveConnection(); };
     window.addEventListener(enterpriseConnectionsChangedEvent, readStoredConnection);
     window.addEventListener(workContextChangedEvent, refreshActiveConnection);
     window.addEventListener("focus", refreshActiveConnection);
-    const interval = window.setInterval(refreshActiveConnection, 60_000);
+    document.addEventListener("visibilitychange", refreshVisibleConnection);
+    const interval = window.setInterval(refreshVisibleConnection, 15_000);
     refreshActiveConnection();
     return () => {
       disposed = true;
       window.removeEventListener(enterpriseConnectionsChangedEvent, readStoredConnection);
       window.removeEventListener(workContextChangedEvent, refreshActiveConnection);
       window.removeEventListener("focus", refreshActiveConnection);
+      document.removeEventListener("visibilitychange", refreshVisibleConnection);
       window.clearInterval(interval);
     };
   }, []);

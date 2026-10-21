@@ -11,19 +11,19 @@ export default {
     { name: "登录身份与角色", async run(ctx) {
       await ctx.trustedClick('[data-testid="proof-owner"]');
       await ctx.prove("企业超管保留资源管理入口，员工可投稿插件", {
-        voiceover: "企业超管仍可管理模板和插件。切换员工后，可以打开自己的插件投稿，模板投稿入口继续隐藏，企业消息仍然可用。",
+        voiceover: "企业超管仍可管理模板和插件。切换员工后，可以打开自己的模板、插件和技能投稿，企业消息仍然可用。",
         action: async () => {
           await ctx.expectText("模板管理");
           await ctx.expectText("插件管理");
           await ctx.trustedClick('[data-testid="proof-member"]');
         },
         assert: async () => {
-          await ctx.expectNoText("我的模板投稿");
+          await ctx.expectText("我的模板投稿");
           await ctx.expectText("我的插件投稿");
-          ctx.assert(await ctx.eval('!document.querySelector(\'[data-testid="enterprise-template-manage"]\')'), "employee template submissions remain hidden");
+          await ctx.expectText("我的技能投稿");
           await ctx.expectText("企业消息");
         },
-        screenshot: { name: "enterprise-member", requireText: ["企业消息", "我的插件投稿"], rejectText: ["我的模板投稿"] },
+        screenshot: { name: "enterprise-member", requireText: ["企业消息", "我的模板投稿", "我的插件投稿", "我的技能投稿"] },
       });
     } },
     { name: "资源管理员按类型分工", async run(ctx) {

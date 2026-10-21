@@ -11,6 +11,7 @@ import {
   normalizeEnterpriseOrigin,
   readEnterpriseConnections,
   refreshEnterpriseConnection,
+  refreshEnterpriseMembership,
   removeEnterpriseConnection,
   saveEnterpriseConnection,
   setEnterpriseConnectionAccount,
@@ -329,6 +330,40 @@ describe("enterprise connections", () => {
     const downgraded = await refreshEnterpriseConnection(refreshed, fetcher);
     expect(downgraded.features).toBeUndefined();
     expect(readEnterpriseConnections()[0].features).toBeUndefined();
+  });
+
+  test("resource management refreshes membership even when its separate capability flag is absent", async () => {
+    const admin = { ...connectedEnterprise, membership: { ...connectedEnterprise.membership, role: "admin" } } satisfies EnterpriseConnection;
+    saveEnterpriseConnection(admin);
+    const refreshed = await refreshEnterpriseConnection(admin, async (input) => {
+      const url = String(input);
+      if (url.endsWith("/.well-known/ipollo-enterprise")) return Response.json({ serverId: admin.id, name: admin.name, origin: admin.origin, authMode: admin.authMode });
+      if (url.endsWith("/membership")) return Response.json({ membership: { ...admin.membership, role: "member", status: "active", displayName: "Employee", email: "employee@example.com" } });
+      return Response.json({ enterprise: admin, features: { resourceManagement: true } });
+    });
+    expect(refreshed.membership.role).toBe("member");
+    expect(readEnterpriseConnections()[0].membership.role).toBe("member");
+  });
+
+  test("a slow membership response cannot restore privileges already revoked by a newer refresh", async () => {
+    const admin = { ...connectedEnterprise, membership: { ...connectedEnterprise.membership, role: "admin" } } satisfies EnterpriseConnection;
+    saveEnterpriseConnection(admin);
+    let finish: (response: Response) => void = () => {};
+    const pending = refreshEnterpriseMembership(admin, () => new Promise<Response>((resolve) => { finish = resolve; }));
+    saveEnterpriseConnection({ ...admin, membership: { ...admin.membership, role: "member" } });
+    finish(Response.json({ membership: { ...admin.membership, status: "active", displayName: "Employee", email: "employee@example.com" } }));
+    expect((await pending).membership.role).toBe("member");
+    expect(readEnterpriseConnections()[0].membership.role).toBe("member");
+  });
+
+  test("membership verification rejects account switches and cannot save permissions for the next login", async () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    let finish: (response: Response) => void = () => {};
+    const pending = refreshEnterpriseMembership(connectedEnterprise, () => new Promise<Response>((resolve) => { finish = resolve; }));
+    setEnterpriseConnectionAccount({ userId: "account-b", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    finish(Response.json({ membership: { ...connectedEnterprise.membership, role: "admin", status: "active", displayName: "Employee", email: "employee@example.com" } }));
+    await expect(pending).rejects.toThrow("enterprise_account_changed");
+    expect(readEnterpriseConnections()).toEqual([]);
   });
 
   test("joins the configured Enterprise with a Cloud-issued identity token", async () => {

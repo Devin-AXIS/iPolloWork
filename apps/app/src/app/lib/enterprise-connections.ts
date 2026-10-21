@@ -221,6 +221,26 @@ export async function discoverEnterpriseConnection(
   };
 }
 
+export async function refreshEnterpriseMembership(connection: EnterpriseConnection, fetcher?: typeof fetch): Promise<EnterpriseConnection> {
+  const accountKey = connectionStorageKey();
+  const storedAtStart = readEnterpriseConnections().find((item) => item.id === connection.id);
+  const result = await enterpriseRequest(connection, "/api/v1/membership", enterpriseMembershipResponseSchema, {
+    cache: "no-store",
+  }, fetcher);
+  if (result.membership.id !== connection.membership.id) throw new Error("enterprise_manifest_mismatch");
+  const latest = readEnterpriseConnections().find((item) => item.id === connection.id);
+  if (accountKey !== connectionStorageKey() || (storedAtStart && !latest)
+    || (latest && (latest.membership.id !== connection.membership.id || latest.session.token !== connection.session.token || latest.origin !== connection.origin))) {
+    throw new Error("enterprise_account_changed");
+  }
+  // A slower poll cannot overwrite a newer role or member-status update.
+  if (storedAtStart && latest && JSON.stringify(storedAtStart.membership) !== JSON.stringify(latest.membership)) return latest;
+  const current = latest ?? connection;
+  const refreshed = { ...current, membership: { id: result.membership.id, role: result.membership.role, status: result.membership.status, departmentId: result.membership.departmentId } };
+  if (accountKey && JSON.stringify(current.membership) !== JSON.stringify(refreshed.membership)) saveEnterpriseConnection(refreshed);
+  return refreshed;
+}
+
 export async function refreshEnterpriseConnection(
   connection: EnterpriseConnection,
   fetcher?: typeof fetch,
@@ -233,10 +253,9 @@ export async function refreshEnterpriseConnection(
   const current = readEnterpriseConnections().find((item) => item.id === connection.id) ?? connection;
   let refreshed = { ...current, ...server };
   if (!server.features) delete refreshed.features;
-  if (server.features?.membership) {
-    const result = await enterpriseRequest(refreshed, "/api/v1/membership", enterpriseMembershipResponseSchema, {}, fetcher);
-    if (result.membership.id !== connection.membership.id) throw new Error("enterprise_manifest_mismatch");
-    refreshed = { ...refreshed, membership: { id: result.membership.id, role: result.membership.role, status: result.membership.status, departmentId: result.membership.departmentId } };
+  if (server.features?.membership || server.features?.resourceManagement) {
+    const verified = await refreshEnterpriseMembership(refreshed, fetcher);
+    refreshed = { ...refreshed, membership: verified.membership };
   }
   if (accountKey !== connectionStorageKey()) return refreshed;
   const latest = readEnterpriseConnections().find((item) => item.id === connection.id);

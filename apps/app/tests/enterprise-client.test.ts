@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { enterpriseFeaturesSchema, enterpriseMessageSchema, enterpriseOkSchema } from "@ipollowork/types/enterprise";
-import { canManageEnterprise, enterpriseErrorMessage, enterpriseRequest } from "../src/app/lib/enterprise-client";
+import { enterpriseFeaturesSchema, enterpriseMessageSchema, enterpriseOkSchema, type EnterpriseResourceType } from "@ipollowork/types/enterprise";
+import { canManageEnterprise, enterpriseApi, enterpriseErrorMessage, enterpriseRequest } from "../src/app/lib/enterprise-client";
 import { iPolloWorkServerError } from "../src/app/lib/ipollowork-server";
 import type { EnterpriseConnection } from "../src/app/lib/enterprise-connections";
 import { saveEnterpriseConnection, setEnterpriseConnectionAccount } from "../src/app/lib/enterprise-connections";
@@ -9,6 +9,71 @@ import { conversationEngineAdapters, withEnterpriseShareContext } from "../src/r
 
 const connection: EnterpriseConnection = { id: "ent_test", name: "示例企业", shortName: "示例", origin: "https://enterprise.example", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "member", status: "active" }, session: { token: "synthetic-enterprise-session", expiresAt: "2099-01-01T00:00:00.000Z" } };
 describe("enterprise client boundary", () => {
+  test("every resource management request rechecks a cached administrator and blocks a demoted member", async () => {
+    const cached = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
+    let checks = 0, managementRequests = 0;
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/membership")) {
+        checks++;
+        return Response.json({ membership: { ...connection.membership, displayName: "Employee", email: "employee@example.com" } });
+      }
+      managementRequests++;
+      return Response.json({ ok: true });
+    });
+    try {
+      const types: EnterpriseResourceType[] = ["template", "extension", "skill"];
+      for (const type of types) {
+        expect(canManageEnterprise(cached, type)).toBe(true);
+        const actions = [
+          () => enterpriseApi.resources(cached, type),
+          () => enterpriseApi.access(cached, "resource", type),
+          () => enterpriseApi.setAccess(cached, "resource", { revision: 0, access: "all", memberIds: [], departments: [], groupIds: [] }, type),
+          () => enterpriseApi.review(cached, "resource", "1.0.0", "approved", "", type),
+          () => enterpriseApi.archive(cached, "resource", type),
+        ];
+        for (const action of actions) await expect(action()).rejects.toMatchObject({ status: 403, code: "forbidden" });
+      }
+      expect(checks).toBe(15);
+      expect(managementRequests).toBe(0);
+    } finally { fetchMock.mockRestore(); }
+  });
+  test("membership verification failures never fall back to cached management privileges", async () => {
+    const cached = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
+    let managementRequests = 0;
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/membership")) return Response.json({ error: "temporary_unavailable" }, { status: 503 });
+      managementRequests++;
+      return Response.json({ items: [], nextCursor: null });
+    });
+    try {
+      await expect(enterpriseApi.resources(cached, "template")).rejects.toMatchObject({ status: 503 });
+      expect(managementRequests).toBe(0);
+    } finally { fetchMock.mockRestore(); }
+  });
+  test("fresh resource administrator roles remain limited to their assigned type on every call", async () => {
+    const cached = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
+    const types: EnterpriseResourceType[] = ["template", "extension", "skill"];
+    for (const [role, allowedType] of [["template_admin", "template"], ["extension_admin", "extension"], ["skill_admin", "skill"]]) {
+      let checks = 0, managementRequests = 0;
+      const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        if (String(input).endsWith("/membership")) {
+          checks++;
+          expect(init?.cache).toBe("no-store");
+          return Response.json({ membership: { ...connection.membership, role, displayName: "Employee", email: "employee@example.com" } });
+        }
+        managementRequests++;
+        return Response.json({ items: [], nextCursor: null });
+      });
+      try {
+        for (const type of types) {
+          if (type === allowedType) await expect(enterpriseApi.resources(cached, type)).resolves.toEqual({ items: [], nextCursor: null });
+          else await expect(enterpriseApi.resources(cached, type)).rejects.toMatchObject({ status: 403 });
+        }
+        expect(checks).toBe(3);
+        expect(managementRequests).toBe(1);
+      } finally { fetchMock.mockRestore(); }
+    }
+  });
   test("resource managers only manage their assigned resource type and inactive roles have no management access", () => {
     for (const role of ["owner", "admin", "template_admin", "extension_admin", "skill_admin", "member"] as const) {
       const current = { ...connection, membership: { ...connection.membership, role } };
