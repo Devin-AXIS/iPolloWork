@@ -62,15 +62,18 @@ describe("enterprise client boundary", () => {
           return Response.json({ membership: { ...connection.membership, role, displayName: "Employee", email: "employee@example.com" } });
         }
         managementRequests++;
-        return Response.json({ items: [], nextCursor: null });
+        return Response.json(String(input).endsWith("/review") ? { ok: true } : { items: [], nextCursor: null });
       });
       try {
         for (const type of types) {
           if (type === allowedType) await expect(enterpriseApi.resources(cached, type)).resolves.toEqual({ items: [], nextCursor: null });
           else await expect(enterpriseApi.resources(cached, type)).rejects.toMatchObject({ status: 403 });
+          const review = enterpriseApi.review(cached, "resource", "1.0.0", "approved", "", type);
+          if (type === allowedType) await expect(review).resolves.toEqual({ ok: true });
+          else await expect(review).rejects.toMatchObject({ status: 403 });
         }
-        expect(checks).toBe(3);
-        expect(managementRequests).toBe(1);
+        expect(checks).toBe(6);
+        expect(managementRequests).toBe(2);
       } finally { fetchMock.mockRestore(); }
     }
   });
