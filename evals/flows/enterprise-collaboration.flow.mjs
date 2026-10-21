@@ -83,15 +83,15 @@ export default {
       });
       await close(ctx);
     } },
-    { name: "员工投稿入口暂时隐藏", async run(ctx) {
+    { name: "员工插件投稿入口", async run(ctx) {
       await ctx.trustedClick('[data-testid="proof-member"]');
-      await ctx.prove("员工的模板和插件投稿入口暂时隐藏，企业消息继续显示", {
+      await ctx.prove("员工保留插件投稿和企业消息，模板投稿入口继续隐藏", {
         voiceover: vo[4], action: async () => {
           await ctx.expectText("企业消息");
         }, assert: async () => {
-          await ctx.expectNoText("我的模板投稿"); await ctx.expectNoText("我的插件投稿");
-          ctx.assert(await ctx.eval('!document.querySelector(\'[data-testid="enterprise-template-manage"], [data-testid="enterprise-extension-manage"]\')'), "employee submission controls are not rendered");
-        }, screenshot: { name: "member-submission-hidden", requireText: ["企业消息"], rejectText: ["我的模板投稿", "我的插件投稿"] },
+          await ctx.expectNoText("我的模板投稿"); await ctx.expectText("我的插件投稿");
+          ctx.assert(await ctx.eval('!document.querySelector(\'[data-testid="enterprise-template-manage"]\')'), "employee template submissions remain hidden");
+        }, screenshot: { name: "member-plugin-submission", requireText: ["企业消息", "我的插件投稿"], rejectText: ["我的模板投稿"] },
       });
     } },
     { name: "旧企业服务兼容", async run(ctx) {

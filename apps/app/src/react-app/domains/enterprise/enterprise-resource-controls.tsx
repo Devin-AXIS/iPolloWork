@@ -103,8 +103,8 @@ export function EnterpriseResourceControls({ connection, type, onChanged }: {
     if (!valid || !file.size || file.size > maximum) { setError(`请选择有效的${label}${type === "skill" ? "文件" : "包"}，文件大小不能超过 ${Math.round(maximum / 1024 / 1024)} MB。`); return; }
     void mutation(() => enterpriseApi.submit(connection, type, file), "投稿已提交，可在我的投稿中查看审核状态。");
   };
-  // Employee submission controls are temporarily hidden; keep the workflow for re-enabling.
-  if (!manager && type !== "skill") return null;
+  // Employee template submissions remain hidden; plugin and skill submissions are available.
+  if (!manager && type === "template") return null;
   return <>
     <Button variant="outline" size="sm" data-testid={`enterprise-${type}-manage`} onClick={() => { setView(manager ? "manage" : "mine"); setOpen(true); }}><ShieldCheck className="size-4" />{manager ? `${label}管理` : `我的${label}投稿`}</Button>
     <Dialog open={open} onOpenChange={(value) => { if (!busy) setOpen(value); }}><DialogContent className="max-h-[90dvh] max-w-4xl overflow-y-auto" data-testid="enterprise-resource-management"><DialogHeader><DialogTitle>{manager ? `企业${label}管理` : `我的${label}投稿`}</DialogTitle><DialogDescription>{connection.name} · {manager ? "查看资源和投稿，分配使用权限" : "提交自己制作的资源，查看审核结果"}</DialogDescription></DialogHeader>
