@@ -20,30 +20,36 @@ export default {
     const file = await ctx.eval(`(() => {
       const card = Array.from(document.querySelectorAll('[data-testid="artifact-file-card"]')).find(card => /\\.md$/i.test(card.dataset.artifactPath));
       const route = window.__ipollowork.slice('route');
-      return card ? { path: card.dataset.artifactPath, root: route.workspaces.find(item => item.id === route.selectedWorkspaceId).path } : null;
+      return card ? { path: card.dataset.artifactPath, root: route.workspaces.find(item => item.id === route.selectedWorkspaceId).path, workspaceId: route.selectedWorkspaceId } : null;
     })()`);
     ctx.assert(file, "Open a session containing a generated Markdown file card before running this flow");
     const absolutePath = isAbsolute(file.path) ? file.path : join(file.root, file.path);
     const original = await readFile(absolutePath, "utf8");
-    const edited = `${original}\n\nMarkdown editor verification：自动保存与下载。\n`;
+    const addition = "\n\nMarkdown editor verification：自动保存与下载。";
     const selector = `[data-testid="artifact-file-card"][data-artifact-path=${JSON.stringify(file.path)}]`;
+    const name = file.path.split(/[\\/]/).at(-1);
+    const closeSelector = `button[aria-label=${JSON.stringify(`Close tab: ${name}`)}]`;
     const downloadDirectory = await mkdtemp(join(tmpdir(), "ipollowork-markdown-dev-download-"));
     let downloaded;
     try {
+      await ctx.eval(`document.querySelector(${JSON.stringify(closeSelector)})?.click()`);
+      await ctx.waitFor("!document.querySelector('.cm-editor')");
+      await ctx.eval(`window.__owReactQueryClient.removeQueries({ queryKey: ['artifact-panel', ${JSON.stringify(file.workspaceId)}] })`);
       await ctx.prove("开发版点击生成的 Markdown 卡片不会崩溃，编辑自动保存且下载正文一致", {
         voiceover: "点击生成的 Markdown 文件，右侧正常显示可编辑正文；修改后自动保存，下载文件包含最新内容。验证完成后恢复原文。",
         action: async () => {
           await ctx.trustedClick(selector);
           await ctx.waitFor("Boolean(document.querySelector('.cm-editor .cm-content[contenteditable=true]'))");
-          ctx.assert(await ctx.eval(`window.__artifactEditorView.state.doc.toString() === ${JSON.stringify(original)}`), "Editor loads the actual generated file");
+          await ctx.waitFor(`window.__artifactEditorView?.state.doc.toString() === ${JSON.stringify(original)}`, { label: "Editor loads the actual generated file" });
           await ctx.trustedClick(".cm-editor .cm-content");
           await ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "End", code: "End", modifiers: 2, windowsVirtualKeyCode: 35 });
           await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "End", code: "End", windowsVirtualKeyCode: 35 });
-          await ctx.client.send("Input.insertText", { text: edited.slice(original.length) });
+          await ctx.client.send("Input.insertText", { text: addition });
+          const edited = await ctx.eval("window.__artifactEditorView.state.doc.toString()");
+          ctx.assert(edited.startsWith(original.trimEnd()) && edited.includes(addition.trim()), "Native text input preserves the original document and adds the verification text");
           await waitForFile(ctx, absolutePath, edited);
           await ctx.client.send("Page.setDownloadBehavior", { behavior: "allow", downloadPath: downloadDirectory });
           await ctx.eval(`document.querySelector(${JSON.stringify(selector)}).closest('[data-testid="artifact-file-shell"]').querySelector('[data-testid="artifact-file-actions"] button').click()`);
-          const name = file.path.split(/[\\/]/).at(-1);
           for (let attempt = 0; attempt < 40; attempt++) {
             downloaded = await readFile(join(downloadDirectory, name), "utf8").catch(() => null);
             if (downloaded !== null) break;
@@ -53,7 +59,7 @@ export default {
           // Restore the user's file through the same editor and autosave path.
           await ctx.eval(`(() => { const view = window.__artifactEditorView; view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: ${JSON.stringify(original)} } }); })()`);
           await waitForFile(ctx, absolutePath, original);
-          await ctx.trustedClick('button[aria-label="Close artifact"]');
+          await ctx.trustedClick(closeSelector);
           await ctx.waitFor("!document.querySelector('.cm-editor')");
           await ctx.trustedClick(selector);
           await ctx.waitFor(`window.__artifactEditorView?.state.doc.toString() === ${JSON.stringify(original)}`);
@@ -64,12 +70,12 @@ export default {
           await ctx.expectNoText("File not found");
           ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "Generated file opens in the real editor; native input autosaves, download matches, and original content is restored", actual: { path: file.path, downloadedBytes: Buffer.byteLength(downloaded) } });
         },
-        screenshot: { name: "markdown-dev-editor-ready", requireText: [file.path.split(/[\\/]/).at(-1)], rejectText: ["iPolloWork 暂时无法响应", "File not found"] },
+        screenshot: { name: "markdown-dev-editor-ready", requireText: [name], rejectText: ["iPolloWork 暂时无法响应", "File not found"] },
       });
     } finally {
       await ctx.client.send("Page.setDownloadBehavior", { behavior: "default" });
       if (await readFile(absolutePath, "utf8") !== original) {
-        await ctx.eval(`document.querySelector('button[aria-label="Close artifact"]')?.click()`);
+        await ctx.eval(`document.querySelector(${JSON.stringify(closeSelector)})?.click()`);
         await writeFile(absolutePath, original, "utf8");
       }
     }
