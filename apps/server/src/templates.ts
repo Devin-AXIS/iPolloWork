@@ -32,6 +32,7 @@ import {
 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ApiError, isApiError } from "./errors.js";
+import { renderTemplatePreview } from "./template-preview.js";
 import pkg from "../package.json" with { type: "json" };
 
 const MAX_EXPANDED_BYTES = 200 * 1024 * 1024;
@@ -384,10 +385,12 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
   if (isPlainObject(value) && typeof value.schemaVersion === "number" && value.schemaVersion !== 1) {
     throw new ApiError(400, "unsupported_template_schema", `Template manifest schema ${value.schemaVersion} is not supported`);
   }
+  if (isPlainObject(value) && value.cover === undefined) value.cover = "cover.png";
   const parsed = templateManifestV1Schema.safeParse(value);
   if (!parsed.success) throw new ApiError(400, "invalid_template_manifest", "Template manifest is invalid", parsed.error.flatten());
   const manifest = parsed.data;
-  for (const relativePath of [manifest.entry, manifest.cover, manifest.designSystem.tokens, manifest.authoringGuide].filter((path): path is string => Boolean(path))) {
+  validateStaticFile(manifest.cover);
+  for (const relativePath of [manifest.entry, manifest.designSystem.tokens, manifest.authoringGuide].filter((path): path is string => Boolean(path))) {
     const safe = validateStaticFile(relativePath);
     const target = resolve(directory, ...safe.split("/"));
     if (!target.startsWith(`${resolve(directory)}${sep}`) || !existsSync(target)) throw new ApiError(400, "invalid_template_manifest", `Missing package file: ${relativePath}`);
@@ -1222,6 +1225,10 @@ export async function readTemplateCover(config: ServerConfig, workspaceId: strin
     ? bundled?.directory
     : row?.status === "installed" && row.packagePath ? row.packagePath : undefined;
   if (!directory) throw new ApiError(404, "template_cover_not_found", "Template cover not found");
+  if (item.sourceType !== "bundled" || extname(cover).toLowerCase() === ".svg" || !existsSync(join(directory, ...cover.split("/")))) {
+    const data = await renderTemplatePreview({ digest: bundled?.hash || row?.packageHash || await hashDirectory(directory), cacheRoot: join(dirname(runtimeDbPath(config)), "template-previews"), entry: item.manifest.entry, read: async (path) => readFile(join(directory, ...validateStaticFile(path).split("/"))) });
+    return { data, contentType: "image/png" };
+  }
   const data = await readFile(join(directory, ...cover.split("/")));
   const extension = extname(cover).toLowerCase();
   const contentType = extension === ".svg" ? "image/svg+xml" : extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg";

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SettingsResourceListItem } from "../src/react-app/domains/settings/settings-list";
 
 import {
   MARKETPLACE_CATEGORY_IDS,
@@ -8,6 +11,18 @@ import {
 import { resolveExtensionIconUrl } from "../src/react-app/design-system/extension-icon-src";
 
 describe("Cloud marketplace row visibility", () => {
+  test("resource rows expose their content and keep actions usable without a detail link", () => {
+    const markup = renderToStaticMarkup(createElement(SettingsResourceListItem, {
+      title: "技能 & 插件", description: "跨来源保留完整说明", icon: createElement("svg"), metadata: "v1.2.3",
+      actions: createElement("button", { type: "button" }, "安装"),
+    }));
+    expect(markup).toContain("技能 &amp; 插件");
+    expect(markup).toContain("跨来源保留完整说明");
+    expect(markup).toContain("v1.2.3");
+    expect(markup.match(/<button/g)).toHaveLength(1);
+    expect(markup).not.toContain("disabled");
+    expect(markup).toContain("<article");
+  });
   test("requires a Cloud account but not an organization", () => {
     expect(shouldShowMarketplaceRows(false)).toBe(false);
     expect(shouldShowMarketplaceRows(true)).toBe(true);
@@ -84,6 +99,7 @@ describe("Cloud marketplace row visibility", () => {
     const panelSource = await Bun.file(new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url)).text();
     const marketplaceSource = await Bun.file(new URL("../src/react-app/domains/settings/pages/cloud-marketplaces-view.tsx", import.meta.url)).text();
     const listItemSource = await Bun.file(new URL("../src/react-app/domains/settings/plugin-package-list-item.tsx", import.meta.url)).text();
+    const resourceListSource = await Bun.file(new URL("../src/react-app/domains/settings/settings-list.tsx", import.meta.url)).text();
     const segmentedTabsSource = await Bun.file(new URL("../src/react-app/domains/settings/settings-segmented-tabs.tsx", import.meta.url)).text();
     const routeSource = await Bun.file(new URL("../src/react-app/shell/settings-route.tsx", import.meta.url)).text();
     const ipolloLogo = await Bun.file(new URL("../public/ipollowork-mark.svg", import.meta.url)).text();
@@ -121,7 +137,7 @@ describe("Cloud marketplace row visibility", () => {
     expect(segmentedTabsSource).toContain('disabled={item.disabled}');
     expect(segmentedTabsSource).not.toContain('variant?:');
     expect(panelSource).not.toContain('variant="standalone"');
-    expect(panelSource).toContain('useState<"marketplace" | "personal">("personal")');
+    expect(panelSource).toContain('useState<PluginLibrarySource>("personal")');
     expect(panelSource.indexOf('{ value: "personal", label: t("plugin_library.personal") }'))
       .toBeLessThan(panelSource.indexOf('{ value: "marketplace", label: t("plugin_library.marketplace") }'));
     expect(routeSource).toContain('data-testid="plugin-library-navigation-actions"');
@@ -135,18 +151,18 @@ describe("Cloud marketplace row visibility", () => {
     expect(marketplaceSource).toContain('statusFilter === "installed"');
     expect(marketplaceSource).toContain('statusFilter === "update"');
     expect(marketplaceSource).toContain('categoryFilter !== "all"');
-    expect(listItemSource).toContain('min-h-[74px]');
-    expect(listItemSource).toContain('bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb]');
+    expect(resourceListSource).toContain('min-h-[74px]');
+    expect(resourceListSource).toContain('bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb]');
     expect(listItemSource).not.toContain('rounded-lg border border-dls-border bg-dls-surface px-4 py-2');
-    expect(listItemSource).toContain('size-12 shrink-0');
-    expect(listItemSource).toContain('rounded-[8px] bg-[#f3f3f4] text-dls-secondary');
-    expect(listItemSource).toContain('data-testid="plugin-package-card-copy"');
-    expect(listItemSource).toContain('flex min-w-0 flex-1 flex-col gap-1');
-    expect(listItemSource).toContain('className="line-clamp-2 text-ui-caption');
+    expect(resourceListSource).toContain('size-12 shrink-0');
+    expect(resourceListSource).toContain('rounded-[8px] bg-[#f3f3f4] text-dls-secondary');
+    expect(listItemSource).toContain('copyTestId="plugin-package-card-copy"');
+    expect(resourceListSource).toContain('flex min-w-0 flex-1 flex-col gap-1');
+    expect(resourceListSource).toContain('className="line-clamp-2 text-ui-caption');
     expect(listItemSource).not.toContain('{skills} Skills');
     expect(listItemSource).not.toContain('{mcps} MCP');
-    expect(panelSource).toContain('grid gap-x-8 gap-y-2 lg:grid-cols-2');
-    expect(marketplaceSource).toContain('mt-3 grid gap-x-8 gap-y-2 lg:grid-cols-2');
+    expect(panelSource).toContain('className={settingsResourceGridClassName}');
+    expect(marketplaceSource).toContain('settingsResourceGridClassName');
     expect(listItemSource).not.toContain('dark:bg-white/[0.06]');
     expect(listItemSource).toContain('text-ui-caption text-dls-secondary');
     expect(ipolloLogo).toContain('viewBox="0 0 281 298"');

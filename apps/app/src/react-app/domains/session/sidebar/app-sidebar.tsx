@@ -1,5 +1,10 @@
 /** @jsxImportSource react */
 import * as React from "react";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { defaultNavigationShortcuts, type NavigationShortcut } from "@ipollowork/types/enterprise";
+import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
+import { canManageEnterprise, enterpriseApi, enterpriseErrorMessage, isEnterpriseConnectionActive } from "@/app/lib/enterprise-client";
 import {
   AlertCircle,
   CalendarDays,
@@ -124,7 +129,6 @@ import { MarbleAvatar } from "../../../design-system/marble-avatar";
 import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../status/session-activity-store";
 import { NotificationBell } from "../../../shell/notification-center";
 import { useShellConfig } from "../../../shell/shell-config";
-import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
 import { requestEnterpriseSessionShare } from "@/app/lib/enterprise-client";
 import { NAVIGATION_ICON_STROKE_WIDTH, ProjectFolderIcon } from "@/components/navigation-icons";
 
@@ -445,8 +449,10 @@ export type AppSidebarProps = {
     email: string | null;
   };
   activePrimaryItem?: "template-market" | "schedule" | "extensions" | null;
+  enterpriseConnection?: EnterpriseConnection | null;
   pluginShortcuts: {
     id: string;
+    pluginId: string;
     label: string;
     iconSrc?: string;
     workshop: boolean;
@@ -541,8 +547,47 @@ function isSessionActivityStatus(status: string | undefined): status is SessionA
 }
 
 export function AppSidebar(props: AppSidebarProps) {
-  const activeEnterprise = useActiveEnterpriseConnection();
   const layout = useSidebarLayoutStore();
+  const enterprise = props.enterpriseConnection;
+  const queryClient = useQueryClient();
+  const navigationKey = ["enterprise-navigation", enterprise?.origin, enterprise?.id, enterprise?.membership.id, enterprise?.session.expiresAt];
+  const navigation = useQuery({
+    queryKey: navigationKey,
+    queryFn: enterprise?.features?.navigationShortcuts && isEnterpriseConnectionActive(enterprise)
+      ? ({ signal }) => enterpriseApi.navigation(enterprise, signal) : skipToken,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+    retry: 1,
+  });
+  const saveNavigation = useMutation({
+    mutationFn: async (item: NavigationShortcut) => {
+      if (!enterprise || !navigation.data || !canManageEnterprise(enterprise)) throw new Error("forbidden");
+      const selected = navigation.data.items.some(value => value.kind === item.kind && value.id === item.id);
+      const items = selected ? navigation.data.items.filter(value => value.kind !== item.kind || value.id !== item.id) : [...navigation.data.items, item];
+      const key = navigationKey;
+      await queryClient.cancelQueries({ queryKey: key });
+      return { key, data: await enterpriseApi.setNavigation(enterprise, { revision: navigation.data.revision, items }) };
+    },
+    onSuccess: result => queryClient.setQueryData(result.key, result.data),
+    onError: error => {
+      toast.error(enterpriseErrorMessage(error));
+      void queryClient.invalidateQueries({ queryKey: ["enterprise-navigation"] });
+    },
+  });
+  const navigationItems = enterprise ? navigation.data?.items ?? defaultNavigationShortcuts : defaultNavigationShortcuts;
+  const builtinActions = [
+    { kind: "builtin", id: "template-market", label: t("template_market.title"), onClick: props.onOpenTemplateMarket, icon: <LayoutTemplate className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} /> },
+    { kind: "builtin", id: "extensions", label: t("settings.tab_extensions"), onClick: props.onOpenExtensions, icon: <ToyBrick className="!size-[17px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} /> },
+    { kind: "builtin", id: "schedule", label: t("work.global_title"), onClick: props.onOpenSchedule, icon: <CalendarDays className="!size-[15px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} /> },
+  ] satisfies { kind: "builtin"; id: "template-market" | "extensions" | "schedule"; label: string; onClick: () => void; icon: React.ReactNode }[];
+  const shortcutOptions: NavigationShortcut[] = [
+    ...builtinActions.map(({ kind, id }) => ({ kind, id })),
+    ...props.pluginShortcuts.map(({ id, pluginId, label }): NavigationShortcut => ({ kind: "plugin", id, pluginId, label })),
+    ...navigationItems.filter(item => item.kind === "plugin" && !props.pluginShortcuts.some(plugin => plugin.id === item.id && plugin.pluginId === item.pluginId)),
+  ];
+  const missingPlugin = (label: string) => toast.info(t("sidebar.navigation_plugin_missing", { name: label }), {
+    action: { label: t("sidebar.navigation_open_market"), onClick: props.onOpenExtensions },
+  });
   const pruneLayout = layout.prune;
   const contextId = props.workContextId?.trim() || "personal";
   const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
@@ -712,8 +757,8 @@ export function AppSidebar(props: AppSidebarProps) {
     onCreateTaskInWorkspace: props.onCreateTaskInWorkspace,
     onOpenRenameSession: props.onOpenRenameSession,
     onOpenDeleteSession: props.onOpenDeleteSession,
-    onShareSession: activeEnterprise ? requestEnterpriseSessionShare : undefined,
-    enterpriseSharingAvailable: Boolean(activeEnterprise?.features?.sessionSharing && activeEnterprise?.features?.directory),
+    onShareSession: enterprise ? requestEnterpriseSessionShare : undefined,
+    enterpriseSharingAvailable: Boolean(enterprise?.features?.sessionSharing && enterprise?.features?.directory),
     onRecoverWorkspace: props.onRecoverWorkspace,
     onTestWorkspaceConnection: props.onTestWorkspaceConnection,
     onEditWorkspaceConnection: props.onEditWorkspaceConnection,
@@ -730,10 +775,10 @@ export function AppSidebar(props: AppSidebarProps) {
   const brandLogoUrl = useBrandLogoUrl();
   const brandAppName = useBrandAppName();
   const { config: shellConfig } = useShellConfig();
-  const effectiveBrandLogoUrl = activeEnterprise
-    ? activeEnterprise.logoUrl ?? DEFAULT_BRAND_LOGO_URL
+  const effectiveBrandLogoUrl = enterprise
+    ? enterprise.logoUrl ?? DEFAULT_BRAND_LOGO_URL
     : brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
-  const effectiveBrandAppName = activeEnterprise?.name ?? brandAppName;
+  const effectiveBrandAppName = enterprise?.name ?? brandAppName;
   return (
     <SidebarContext.Provider value={contextValue}>
       <Sidebar
@@ -793,91 +838,55 @@ export function AppSidebar(props: AppSidebarProps) {
                 </SidebarMenuButton>
               </div>
             </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={props.onOpenTemplateMarket}
-                isActive={props.activePrimaryItem === "template-market"}
-                className={primarySidebarActionClass}
-              >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>
-                  <LayoutTemplate className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
-                </span>
-                <span className="flex-1 truncate">{t("template_market.title")}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={props.onOpenSchedule}
-                isActive={props.activePrimaryItem === "schedule"}
-                className={primarySidebarActionClass}
-              >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>
-                  <CalendarDays className="!size-[15px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
-                </span>
-                <span className="flex-1 truncate">{t("work.global_title")}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={props.onOpenExtensions}
-                isActive={props.activePrimaryItem === "extensions"}
-                className={primarySidebarActionClass}
-              >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>
-                  <ToyBrick className="!size-[17px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
-                </span>
-                <span className="flex-1 truncate">{t("settings.tab_extensions")}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {props.pluginShortcuts.filter(item => layout.pluginShortcutIds.includes(item.id)).map(item => (
-              <SidebarMenuItem key={item.id}>
-                <SidebarMenuButton
-                  data-testid={`sidebar-plugin-shortcut-${item.id}`}
-                  onClick={item.onClick}
-                  isActive={item.active}
-                  disabled={item.disabled}
-                  title={item.label}
-                  className={primarySidebarActionClass}
-                >
+            {navigationItems.map(item => {
+              if (item.kind === "builtin") {
+                const action = builtinActions.find(value => value.id === item.id);
+                if (!action) return null;
+                return <SidebarMenuItem key={item.id}><SidebarMenuButton data-testid={"sidebar-navigation-shortcut-" + item.id} onClick={action.onClick} isActive={props.activePrimaryItem === item.id} className={primarySidebarActionClass}>
+                  <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>{action.icon}</span>
+                  <span className="flex-1 truncate">{action.label}</span>
+                </SidebarMenuButton></SidebarMenuItem>;
+              }
+              const plugin = props.pluginShortcuts.find(value => value.id === item.id && value.pluginId === item.pluginId);
+              const label = plugin?.label ?? item.label;
+              return <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton data-testid={"sidebar-plugin-shortcut-" + item.id} onClick={() => plugin ? plugin.onClick() : missingPlugin(label)} isActive={plugin?.active} disabled={plugin?.disabled || props.pluginsLoading} title={label} className={primarySidebarActionClass}>
                   <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
-                    {item.iconSrc ? <img src={item.iconSrc} alt="" className="size-4 rounded-sm object-contain" />
-                      : item.workshop ? <ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
+                    {plugin?.iconSrc ? <img src={plugin.iconSrc} alt="" className="size-4 rounded-sm object-contain" />
+                      : plugin?.workshop ? <ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                       : <ToyBrick className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />}
                   </span>
-                  <span className="flex-1 truncate">{item.label}</span>
+                  <span className="flex-1 truncate">{label}</span>
                 </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-            <SidebarMenuItem>
+              </SidebarMenuItem>;
+            })}
+            {enterprise && canManageEnterprise(enterprise) ? <SidebarMenuItem>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<SidebarMenuButton className={primarySidebarActionClass} aria-label={t("sidebar.plugin_shortcuts")} data-testid="sidebar-plugin-shortcuts-menu" />}>
-                  <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
-                    <Plus className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
-                  </span>
+                  <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon><Plus className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} /></span>
                   <span className="flex-1 truncate">{t("sidebar.plugin_shortcuts")}</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="right" className="w-60 max-w-[calc(100vw-2rem)]">
                   <DropdownMenuGroup>
                     <DropdownMenuLabel>{t("sidebar.plugin_shortcuts_hint")}</DropdownMenuLabel>
-                    {props.pluginShortcuts.map(item => (
-                      <DropdownMenuCheckboxItem
-                        key={item.id}
-                        data-testid={`sidebar-plugin-shortcut-option-${item.id}`}
-                        checked={layout.pluginShortcutIds.includes(item.id)}
-                        onCheckedChange={checked => layout.setPluginShortcut(item.id, checked)}
-                        className="min-w-0"
-                      >
-                        <span className="truncate" title={item.label}>{item.label}</span>
-                      </DropdownMenuCheckboxItem>
-                    ))}
+                    {shortcutOptions.map(item => {
+                      const label = item.kind === "builtin" ? builtinActions.find(value => value.id === item.id)?.label : item.label;
+                      const checked = navigationItems.some(value => value.kind === item.kind && value.id === item.id);
+                      return <DropdownMenuCheckboxItem key={item.kind + ":" + item.id} data-testid={"sidebar-plugin-shortcut-option-" + item.id}
+                        checked={checked} disabled={!navigation.data || navigation.isError || saveNavigation.isPending || navigationItems.length >= 50 && !checked}
+                        onCheckedChange={() => saveNavigation.mutate(item)} className="min-w-0">
+                        <span className="truncate" title={label}>{label}</span>
+                      </DropdownMenuCheckboxItem>;
+                    })}
                   </DropdownMenuGroup>
-                  {props.pluginsLoading ? <div role="status" className="px-2 py-1.5 text-xs text-muted-foreground">{t("common.loading")}</div>
-                    : props.pluginShortcuts.length === 0 ? <div className="px-2 py-1.5 text-xs text-muted-foreground">{t("sidebar.plugin_shortcuts_empty")}</div> : null}
+                  {navigation.isLoading || props.pluginsLoading || saveNavigation.isPending ? <div role="status" className="px-2 py-1.5 text-xs text-muted-foreground">{t("common.loading")}</div> : null}
+                  {navigation.isError || !enterprise.features?.navigationShortcuts ? <div role="alert" className="px-2 py-1.5 text-xs text-destructive">{enterpriseErrorMessage(navigation.error ?? new Error("enterprise_feature_unavailable"))}</div> : null}
+                  {navigation.isError ? <DropdownMenuItem onClick={() => void navigation.refetch()}>{t("common.retry")}</DropdownMenuItem> : null}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={props.onOpenExtensions}>{t("sidebar.manage_plugins")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </SidebarMenuItem>
+            </SidebarMenuItem> : null}
           </SidebarMenu>
         </SidebarHeader>
         <LazyMotion features={domMax}>
@@ -927,11 +936,11 @@ export function AppSidebar(props: AppSidebarProps) {
                 <SidebarMenuButton
                   onClick={props.onOpenAccount}
                   className="h-9 gap-2 rounded-lg px-2"
-                  aria-label={activeEnterprise?.name || props.account.name || props.account.email || t("settings.tab_cloud_account")}
+                  aria-label={enterprise?.name || props.account.name || props.account.email || t("settings.tab_cloud_account")}
                 >
-                  <MarbleAvatar seed={activeEnterprise?.id || props.account.email || props.account.name || "ipollowork"} className="size-5 shrink-0 rounded-full" />
+                  <MarbleAvatar seed={enterprise?.id || props.account.email || props.account.name || "ipollowork"} className="size-5 shrink-0 rounded-full" />
                   <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
-                    {activeEnterprise?.shortName || props.account.name || props.account.email}
+                    {enterprise?.shortName || props.account.name || props.account.email}
                   </span>
                 </SidebarMenuButton>
               ) : (

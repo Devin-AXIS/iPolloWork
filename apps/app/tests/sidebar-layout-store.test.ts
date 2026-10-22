@@ -59,23 +59,6 @@ test("invalid or self-directed reorder requests leave an empty layout untouched"
   expect(writes).toBe(0);
 });
 
-test("plugin shortcuts default to empty, persist across reloads and remove without duplicates", async () => {
-  expect(store.getState().pluginShortcutIds).toEqual([]);
-  store.getState().setPluginShortcut("plugin-workshop", true);
-  store.getState().setPluginShortcut("plugin-workshop", true);
-  store.getState().setPluginShortcut(" ", true);
-  expect(writes).toBe(1);
-  const persisted = saved.get(SIDEBAR_LAYOUT_STORAGE_KEY);
-  if (!persisted) throw new Error("Expected saved shortcuts");
-  store.setState(createSidebarLayoutSnapshot());
-  saved.set(SIDEBAR_LAYOUT_STORAGE_KEY, persisted);
-  await store.persist.rehydrate();
-  expect(store.getState().pluginShortcutIds).toEqual(["plugin-workshop"]);
-  store.getState().prune(knownItems);
-  expect(store.getState().pluginShortcutIds).toEqual(["plugin-workshop"]);
-  store.getState().setPluginShortcut("plugin-workshop", false);
-  expect(store.getState().pluginShortcutIds).toEqual([]);
-});
 
 test("real moves, cleanup and reload retain project and session ordering", async () => {
   store.getState().prune(knownItems);

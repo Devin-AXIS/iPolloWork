@@ -5,6 +5,7 @@ import { Loader2, Package } from "lucide-react";
 import type { iPolloWorkExtensionManifest } from "@/app/extensions";
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n";
+import { SettingsResourceListItem } from "./settings-list";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 
 type PluginPackageListItemProps = {
@@ -45,36 +46,13 @@ export function PluginPackageListItem({
   const mcps = manifest.resources.filter((resource) => resource.type === "mcp").length;
 
   if (compact) {
-    return (
-      <div data-testid="plugin-package-list-item" className="flex min-h-[74px] min-w-0 items-center gap-4 rounded-[8px] bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb] focus-within:bg-[#f6f7fb] dark:hover:bg-dls-hover dark:focus-within:bg-dls-hover">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
-          onClick={onOpen}
-          disabled={!onOpen}
-        >
-          <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[#f3f3f4] text-dls-secondary dark:bg-dls-hover">
-            {iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
-          </span>
-          <span data-testid="plugin-package-card-copy" className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span title={manifest.name} className="max-w-full truncate text-ui-section-title font-semibold leading-5 tracking-[0.1px] text-dls-text">{manifest.name}</span>
-              {badge}
-            </span>
-            <span className="line-clamp-2 text-ui-caption leading-[15px] text-dls-secondary">{manifest.description}</span>
-            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-ui-caption text-dls-secondary">
-              <span title={`v${version}`} className="min-w-0 max-w-full truncate">v{version}</span>
-              {status ? <span className="inline-flex shrink-0 items-center whitespace-nowrap">{status}</span> : null}
-            </span>
-          </span>
-        </button>
-        <Button size="sm" variant="outline" className="shrink-0" aria-busy={actionBusy} disabled={actionBusy || actionDisabled} onClick={onAction}>
-          {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
-          {actionLabel}
-        </Button>
-        {secondaryAction}
-      </div>
-    );
+    return <SettingsResourceListItem testId="plugin-package-list-item" copyTestId="plugin-package-card-copy"
+      title={manifest.name} description={manifest.description} badge={badge} onOpen={onOpen}
+      icon={iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
+      metadata={<><span title={`v${version}`} className="min-w-0 max-w-full truncate">v{version}</span>{status ? <span className="inline-flex shrink-0 items-center whitespace-nowrap">{status}</span> : null}</>}
+      actions={<><Button size="sm" variant="outline" className="shrink-0" aria-busy={actionBusy} disabled={actionBusy || actionDisabled} onClick={onAction}>
+        {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}{actionLabel}
+      </Button>{secondaryAction}</>} />;
   }
 
   return (

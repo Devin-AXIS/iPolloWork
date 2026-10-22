@@ -40,7 +40,7 @@ import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin
 import { PluginAuthorizationDialog } from "@/components/plugin-authorization-dialog";
 import { EnterpriseResourceControls, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
-import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
+import { SettingsListSearchInput, SettingsResourceListItem, settingsResourceGridClassName } from "./settings-list";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import {
   settingsPageDescriptionClass,
@@ -1098,24 +1098,20 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
 
         {source === "enterprise" ? (
           !loading && !cloudError ? filteredEnterpriseResources.length ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className={settingsResourceGridClassName}>
               {filteredEnterpriseResources.map(resource => {
                 const installed = items.find(item => item.pluginId === (resource.manifestId ?? resource.slug));
                 const current = Boolean(installed && installed.version === resource.latestVersion?.version);
+                const iconUrl = resolveExtensionIconUrl({ pluginId: resource.manifestId ?? resource.slug });
                 return (
-                  <article key={resource.id} className="rounded-2xl border border-dls-border bg-dls-surface p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Package size={17} /></div>
-                      <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-dls-text">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{resource.description}</p></div>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <span className="truncate text-[11px] text-dls-secondary">{resource.enterpriseCategory}{resource.latestVersion ? ` · v${resource.latestVersion.version}` : ""}</span>
-                      <Button variant={current ? "outline" : "default"} size="sm" disabled={current || !resource.latestVersion || busyKey !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>
+                  <SettingsResourceListItem key={resource.id} testId="enterprise-plugin-card"
+                    title={resource.name} description={resource.description}
+                    icon={iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
+                    metadata={<>{resource.latestVersion ? <span>v{resource.latestVersion.version}</span> : null}<span>{resource.enterpriseCategory}</span></>}
+                    actions={<Button variant="outline" size="sm" disabled={current || !resource.latestVersion || busyKey !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>
                         {busyKey === `enterprise:${resource.id}` ? <Loader2 size={14} className="animate-spin" /> : null}
                         {current ? t("plugin_platform.status.installed") : installed ? t("template_market.update") : t("enterprise_connection.install_from_enterprise")}
-                      </Button>
-                    </div>
-                  </article>
+                      </Button>} />
                 );
               })}
             </div>
@@ -1125,7 +1121,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             items: cloudResources, loading, error: cloudError, onRefresh: refresh,
           })
         ) : (filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
-          <div className="grid gap-x-8 gap-y-2 lg:grid-cols-2">
+          <div className={settingsResourceGridClassName}>
             {filteredCatalogItems.map(item => <PluginPackageListItem key={`catalog:${item.pluginId}`} manifest={item.manifest}
               version={item.version} compact badge={pluginPackageBadges(item)} actionBusy={busyKey === `catalog:${item.pluginId}`}
               actionDisabled={loading || busyKey !== null} actionLabel={t("plugin_platform.action.install")}

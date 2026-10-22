@@ -16,7 +16,7 @@ import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-sessio
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { PluginPackageListItem } from "@/react-app/domains/settings/plugin-package-list-item";
 import { formatPluginPlatformError } from "@/react-app/domains/settings/plugin-platform-state";
-import { SettingsListEmptyState, SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
+import { SettingsListEmptyState, SettingsListSearchInput, settingsResourceGridClassName } from "@/react-app/domains/settings/settings-list";
 import { SettingsPill } from "@/react-app/domains/settings/settings-section";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { settingsPageTitleClass } from "@/react-app/domains/settings/shell/panel";
@@ -104,6 +104,7 @@ function resourceManifest(resource: EnterpriseResource): iPolloWorkExtensionMani
     name: resource.name,
     description: resource.description,
     category: resource.category,
+    ...(resource.iconPath ? { icon: { src: resource.iconPath } } : {}),
     source: {
       format: "ipollowork-extension-manifest",
       trusted: true,
@@ -392,7 +393,7 @@ function MarketplaceSection(props: MarketplaceSectionProps) {
 
 function MarketplaceRows(props: Omit<MarketplaceSectionProps, "title">) {
   return (
-    <div className="mt-3 grid gap-x-8 gap-y-2 lg:grid-cols-2">
+    <div className={"mt-3 " + settingsResourceGridClassName}>
       {props.items.map((item) => {
         const pluginId = resourcePluginId(item);
         const localPackage = props.installed[pluginId];

@@ -92,7 +92,7 @@ async function buildOnce(entrypoint: string, outdir: string, filename: string, t
   mkdirSync(outdir, { recursive: true });
   const outfile = join(outdir, outputName(filename, target));
 
-  const args = ["build", entrypoint, "--compile", "--outfile", outfile];
+  const args = ["build", entrypoint, "--compile", "--external", "playwright-core", "--outfile", outfile];
   if (target) {
     args.push("--target", target);
   }
