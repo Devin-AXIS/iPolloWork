@@ -1,10 +1,11 @@
 /** @jsxImportSource react */
-import { listEnterpriseResources, type EnterpriseResource } from "@/app/lib/enterprise-connections";
+import { installCloudPluginResource, listEnterpriseResources, type EnterpriseResource } from "@/app/lib/enterprise-connections";
 import { useCloudSession } from "./cloud/cloud-session-provider";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AppWindow,
   Bot,
+  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -37,6 +38,7 @@ import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { PluginAuthorizationDialog } from "@/components/plugin-authorization-dialog";
+import { EnterpriseResourceControls, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
@@ -64,6 +66,8 @@ import {
   pluginPackageEngineScope,
   type PluginPackageRelationships,
 } from "./plugin-platform-state";
+
+type PluginLibrarySource = "marketplace" | "personal" | "enterprise";
 
 type PluginPackagesPanelProps = {
   client: iPolloWorkServerClient | null;
@@ -185,6 +189,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const [catalogItems, setCatalogItems] = useState<iPolloWorkBundledPluginPackageItem[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const cloud = useCloudSession();
+  const activeEnterprise = useActiveEnterpriseConnection();
   const [cloudResources, setCloudResources] = useState<EnterpriseResource[]>([]);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const lastCloudCheck = useRef(0);
@@ -197,13 +202,19 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const refreshGeneration = useRef(0);
-  const [source, setSource] = useState<"marketplace" | "personal">("personal");
+  const [source, setSource] = useState<PluginLibrarySource>("personal");
   const [search, setSearch] = useState("");
   const [marketplaceCategory, setMarketplaceCategory] = useState<MarketplaceCategoryFilter>("all");
   const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatusFilter>("all");
   const [installedExpanded, setInstalledExpanded] = useState(false);
   const [installedPreviewLimit, setInstalledPreviewLimit] = useState(Number.MAX_SAFE_INTEGER);
   const installedPreviewRowRef = useRef<HTMLDivElement>(null);
+
+  const sourceTabs: Array<{ value: PluginLibrarySource; label: string }> = [
+    { value: "personal", label: t("plugin_library.personal") },
+    { value: "marketplace", label: t("plugin_library.marketplace") },
+  ];
+  if (activeEnterprise) sourceTabs.push({ value: "enterprise", label: activeEnterprise.name });
 
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
@@ -225,7 +236,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
       const [packagesResult, catalogResult, cloudResult] = await Promise.allSettled([
         loadPluginPackageData(() => client.listPluginPackages(workspaceId)),
         loadPluginPackageData(() => client.listBundledPluginPackages(workspaceId)),
-        source === "marketplace" && cloud.isSignedIn ? listEnterpriseResources("extension") : Promise.resolve([]),
+        source === "enterprise" && activeEnterprise
+          ? listEnterpriseResources("extension", { connection: activeEnterprise })
+          : source === "marketplace" && cloud.isSignedIn ? listEnterpriseResources("extension") : Promise.resolve([]),
       ]);
 
       if (generation !== refreshGeneration.current) return;
@@ -258,7 +271,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         setCloudResources(cloudResult.value);
         setCloudError(null);
       } else {
-        setCloudError(t("plugin_library.update_check_failed"));
+        setCloudResources([]);
+        setCloudError(t(source === "enterprise" ? "enterprise_connection.enterprise_resources_error" : "plugin_library.update_check_failed"));
       }
       lastCloudCheck.current = Date.now();
       if (packagesResult.status === "rejected") setError(formatPluginPlatformError(packagesResult.reason, t("plugin_platform.error.load")));
@@ -270,7 +284,11 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         setLoading(false);
       }
     }
-  }, [props.client, props.workspaceId, source, cloud.isSignedIn, cloud.authToken, cloud.baseUrl]);
+  }, [props.client, props.workspaceId, source, activeEnterprise, cloud.isSignedIn, cloud.authToken, cloud.baseUrl]);
+
+  useEffect(() => {
+    if (source === "enterprise" && !activeEnterprise) setSource("personal");
+  }, [activeEnterprise, source]);
 
   useImperativeHandle(ref, () => ({
     refresh: () => void refresh(),
@@ -315,6 +333,10 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     return localizedItems.filter((item) => [item.name, item.manifest.description, item.manifest.category ?? ""]
       .some((value) => value.toLocaleLowerCase().includes(query)));
   }, [localizedItems, search]);
+  const filteredEnterpriseResources = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return cloudResources.filter(resource => `${resource.name} ${resource.description}`.toLocaleLowerCase().includes(query));
+  }, [cloudResources, search]);
   const filteredCatalogItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return catalogItems.filter(entry => !items.some(item => item.pluginId === entry.pluginId)).flatMap(item => {
@@ -402,6 +424,19 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     await props.client.installBundledPluginPackage(props.workspaceId, resource.pluginId);
     await refresh();
     notifyPluginUiContributionsChanged();
+  });
+
+  const installEnterpriseExtension = (resource: EnterpriseResource) => run(`enterprise:${resource.id}`, async () => {
+    if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
+    const result = await installCloudPluginResource(resource, props.client, props.workspaceId, { connection: activeEnterprise }).catch(cause => {
+      if (cause instanceof Error && cause.message === "desktop_binary_fetch_requires_restart") {
+        throw new Error(t("enterprise_connection.desktop_restart_required"));
+      }
+      throw cause;
+    });
+    if (!result) return;
+    await refresh();
+    toast.success(`${resource.name} v${result.result.version}`);
   });
 
   const uninstallPackage = (pluginId: string) => run(`${pluginId}:remove`, async () => {
@@ -983,18 +1018,24 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         ) : null}
       </section>
 
-      <section data-testid="plugin-library-source" aria-busy={source === "personal" && loading} className="mt-8 space-y-3">
+      <section data-testid="plugin-library-source" aria-busy={loading} className="mt-8 space-y-3">
         <div className="border-b border-dls-border pb-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <SettingsSegmentedTabs
               value={source}
               ariaLabel={t("plugin_library.source_label")}
-              items={[
-                { value: "personal", label: t("plugin_library.personal") },
-                { value: "marketplace", label: t("plugin_library.marketplace") },
-              ]}
+              items={sourceTabs}
               onValueChange={setSource}
             />
+
+            {source === "enterprise" && activeEnterprise ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <EnterpriseResourceControls key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" onChanged={() => void refresh()} />
+                <Button variant="ghost" size="icon-sm" aria-label={t("common.refresh")} disabled={loading || busyKey !== null} onClick={() => void refresh()}>
+                  <RefreshCw size={15} className={loading ? "animate-spin" : undefined} />
+                </Button>
+              </div>
+            ) : null}
 
             {source === "personal" ? (
               <Button variant="ghost" size="sm" data-testid="plugin-check-updates"
@@ -1041,20 +1082,45 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             ) : null}
           </div>
           <p className="settings-description mt-2 text-ui-control leading-5 text-dls-secondary">
-            {t(source === "marketplace" ? "plugin_library.marketplace_description" : "plugin_library.personal_description")}
+            {t(source === "enterprise" ? "plugin_library.enterprise_description" : source === "marketplace" ? "plugin_library.marketplace_description" : "plugin_library.personal_description")}
           </p>
         </div>
 
         {error ? <div role="alert" data-testid="plugin-library-operation-error" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{error}</div> : null}
+        {source === "enterprise" && cloudError ? <p role="alert" className="text-ui-meta text-red-11">{cloudError}</p> : null}
         {source === "personal" && catalogError ? <p role="alert" className="text-ui-meta text-red-11">{catalogError}</p> : null}
-        {source === "personal" && loading ? (
+        {source !== "marketplace" && loading ? (
           <div role="status" aria-live="polite" data-testid="plugin-library-loading" className="flex items-center gap-2 text-ui-control text-dls-secondary">
             <Loader2 size={16} className="animate-spin" aria-hidden="true" />
             {t("settings.marketplace.loading")}
           </div>
         ) : null}
 
-        {source === "marketplace" ? (
+        {source === "enterprise" ? (
+          !loading && !cloudError ? filteredEnterpriseResources.length ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filteredEnterpriseResources.map(resource => {
+                const installed = items.find(item => item.pluginId === (resource.manifestId ?? resource.slug));
+                const current = Boolean(installed && installed.version === resource.latestVersion?.version);
+                return (
+                  <article key={resource.id} className="rounded-2xl border border-dls-border bg-dls-surface p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Package size={17} /></div>
+                      <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-dls-text">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{resource.description}</p></div>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span className="truncate text-[11px] text-dls-secondary">{resource.enterpriseCategory}{resource.latestVersion ? ` · v${resource.latestVersion.version}` : ""}</span>
+                      <Button variant={current ? "outline" : "default"} size="sm" disabled={current || !resource.latestVersion || busyKey !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>
+                        {busyKey === `enterprise:${resource.id}` ? <Loader2 size={14} className="animate-spin" /> : null}
+                        {current ? t("plugin_platform.status.installed") : installed ? t("template_market.update") : t("enterprise_connection.install_from_enterprise")}
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : <div className="rounded-2xl border border-dashed border-dls-border px-5 py-10 text-center text-sm text-dls-secondary"><Building2 className="mx-auto mb-3 size-5" />{t(search ? "settings.marketplace.no_match" : "enterprise_connection.enterprise_extensions_empty")}</div> : null
+        ) : source === "marketplace" ? (
           props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items, {
             items: cloudResources, loading, error: cloudError, onRefresh: refresh,
           })

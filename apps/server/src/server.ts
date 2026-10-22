@@ -44,6 +44,7 @@ import { engineHostMcp } from "./engine-host-mcp.js";
 import { EnvService } from "./env-file.js";
 import { disposeEnterpriseSnapshots } from "./enterprise-session-snapshots.js";
 import { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
+import { assertResourceWritable, beginResourceOperation } from "./resource-lifecycle.js";
 import { CodexHarnessRuntimePool } from "./codex-harness-runtime.js";
 import { WorkspaceSessionRuntime } from "./workspace-session-runtime.js";
 import { pluginEngineAdapters, pluginEngineCompatibility } from "./plugin-engine-adapter.js";
@@ -794,6 +795,12 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     prepareOpencodePrompt: async workspace => {
       if (workspace.workspaceType !== "remote") await syncRuntimeMcpToOpencodeEngine(config, workspace, ["ipollowork"]);
     },
+    releaseSessionObservers: async (workspaceId, sessionId) => {
+      const monitors = [...sessionMonitors.entries()].filter(([key, monitor]) => key.startsWith(`${workspaceId}\u0000`) && (!sessionId || monitor.sessionId === sessionId));
+      for (const [, monitor] of monitors) monitor.abort.abort(new Error("Resource deleted"));
+      await Promise.all(monitors.map(([, monitor]) => monitor.promise));
+      if (!sessionId) await disposeAllPluginServices(config, workspaceId);
+    },
   });
   const logger = createServerLogger(config);
   const watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
@@ -971,6 +978,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       }
 
       authMode = route.auth;
+      let releaseResource: (() => void) | undefined;
       try {
         const actor =
           route.auth === "host-token"
@@ -980,6 +988,15 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
               : route.auth === "client"
                 ? await requireClient(request, config, tokens)
                 : undefined;
+        const lifecycleRequest = request.method === "DELETE" && (/\/sessions\/[^/]+$/.test(url.pathname) || /^\/workspaces\/[^/]+$/.test(url.pathname));
+        if (route.params.id && /^\/workspaces?\//.test(url.pathname) && !lifecycleRequest) {
+          const reading = ["GET", "HEAD"].includes(request.method);
+          try { releaseResource = await beginResourceOperation(config, route.params.id, route.params.sessionId); }
+          catch (error) {
+            if (reading && isApiError(error) && error.code === "resource_deleted") throw new ApiError(404, route.params.sessionId ? "session_not_found" : "workspace_not_found", "Resource was deleted");
+            throw error;
+          }
+        }
         const response = await route.handler({
           request,
           url,
@@ -998,6 +1015,8 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
         const apiError = toApiError(error);
         errorMessage = apiError.message;
         return finalize(jsonResponse(formatError(apiError), apiError.status));
+      } finally {
+        releaseResource?.();
       }
     },
   };
@@ -1153,7 +1172,15 @@ function unwrapOpencodeResult<T, E>(result: OpencodeClientResult<T, E>, path: st
   });
 }
 
-async function proxyOpencodeRequest(input: {
+async function proxyOpencodeRequest(input: Parameters<typeof forwardOpencodeRequest>[0]) {
+  if (!input.workspace) return forwardOpencodeRequest(input);
+  const path = normalizeOpencodeProxyPath(input.proxyPath ?? input.url.pathname);
+  const match = /^\/session\/([^/]+)/.exec(path);
+  const release = await beginResourceOperation(input.config, input.workspace.id, match ? decodeURIComponent(match[1]) : undefined);
+  try { return await forwardOpencodeRequest(input); } finally { release(); }
+}
+
+async function forwardOpencodeRequest(input: {
   config: ServerConfig;
   request: Request;
   url: URL;
@@ -1168,6 +1195,14 @@ async function proxyOpencodeRequest(input: {
   }
 
   const proxyPath = input.proxyPath ?? input.url.pathname;
+  if (workspace) {
+    const match = /^\/session\/([^/]+)/.exec(normalizeOpencodeProxyPath(proxyPath));
+    const sessionId = match && !["status", "diff"].includes(match[1]) ? decodeURIComponent(match[1]) : undefined;
+    if (["GET", "HEAD"].includes(input.request.method)) await assertResourceWritable(input.config, workspace.id, sessionId);
+    if (input.request.method === "DELETE" && /^\/session\/[^/]+$/.test(normalizeOpencodeProxyPath(proxyPath))) {
+      throw new ApiError(400, "use_session_lifecycle", "请通过会话删除接口删除会话及所属文件。");
+    }
+  }
   const targetUrl = buildOpencodeProxyUrl(baseUrl, proxyPath, input.url.search);
   const headers = new Headers(input.request.headers);
   headers.delete("authorization");
@@ -1209,6 +1244,10 @@ async function proxyOpencodeRequest(input: {
   const body = method === "GET" || method === "HEAD"
     ? undefined
     : await input.request.arrayBuffer().then((buf) => (buf.byteLength > 0 ? buf : undefined));
+  if (method === "PATCH" && /^\/session\/[^/]+$/.test(normalizeOpencodeProxyPath(proxyPath)) && body) {
+    const update: unknown = JSON.parse(new TextDecoder().decode(body));
+    if (isRecord(update) && isRecord(update.time) && "archived" in update.time) throw new ApiError(400, "use_session_lifecycle", "会话不再支持归档，请使用删除操作。");
+  }
   if (isSessionCommandProxyRequest(method, proxyPath)) {
     void fetch(targetUrl, {
       method,
@@ -1707,6 +1746,7 @@ function createRoutes(
   registerWorkspaceRoutes({
     routes,
     config,
+    sessionRuntime,
     onWorkspacesChanged,
     onLocalWorkspaceReady: async (workspace) => {
       try {
@@ -2074,7 +2114,16 @@ function createRoutes(
   addRoute(routes, "GET", "/workspace/:id/plugin-packages", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     await prepareDefaultPlugins();
-    await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
+    try {
+      await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
+    } catch (error) {
+      if (!isApiError(error) || error.code !== "plugin_package_conflict") throw error;
+      // A read must remain available when projection refuses to overwrite a
+      // user's files. Install/update operations still report these conflicts.
+      createServerLogger(config).log("warn", "Plugin inventory has a workspace projection conflict", {
+        workspaceId: workspace.id, error: error.message,
+      });
+    }
     const items = (await listInstalledPluginPackages({ serverConfig: config })).filter(item => !isInternalPluginPackage(item.pluginId)).map((item) => ({
       ...item,
       ...pluginPackageEngineState(workspace, item.manifest),
@@ -3386,6 +3435,7 @@ async function resolveWorkspace(config: ServerConfig, id: string): Promise<Works
   if (!authorized) {
     throw new ApiError(403, "workspace_unauthorized", "Workspace is not authorized");
   }
+  await assertResourceWritable(config, workspace.id);
   if (!config.readOnly) {
     const ensured = await ensureWorkspaceFiles(resolvedWorkspace, workspace.preset ?? "starter");
     const bootstrapReloadReasons = new Set<ReloadReason>(ensured.reloadReasons);

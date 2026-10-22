@@ -119,11 +119,20 @@ export function workspaceBelongsToWorkContext(
     : workspaceContextId === contextId;
 }
 
-export function filterWorkspacesForWorkContext<T extends Pick<WorkspaceInfo, "workContextId">>(
+export function filterWorkspacesForWorkContext<T extends Pick<WorkspaceInfo, "workContextId"> & Partial<Pick<WorkspaceInfo, "path" | "isDefault" | "workspaceType">>>(
   workspaces: T[],
   contextId: WorkContextId,
-): T[] {
-  return workspaces.filter((workspace) => workspaceBelongsToWorkContext(workspace, contextId));
+): (T & Pick<WorkspaceInfo, "isDefault">)[] {
+  return workspaces.filter((workspace) => workspaceBelongsToWorkContext(workspace, contextId)).map((workspace) => {
+    const path = workspace.path?.replace(/\\/g, "/").replace(/\/+$/, "") ?? "";
+    // Enterprise sign-in keeps an implicit runtime folder for tools and settings.
+    // Reuse the existing default-workspace presentation: empty containers stay
+    // out of Projects, while any conversations already there remain accessible.
+    const implicitDefault = contextId !== PERSONAL_WORK_CONTEXT_ID
+      && workspace.workspaceType !== "remote"
+      && path.endsWith(`/.ipollowork/work-contexts/${contextId.slice("enterprise:".length)}`);
+    return implicitDefault ? { ...workspace, isDefault: true } : workspace;
+  });
 }
 
 function readLastProjectMap(): Record<string, string> {

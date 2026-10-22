@@ -20,9 +20,9 @@ import { CloudAccountSection } from "../src/react-app/domains/settings/cloud/clo
 import { useDenSession } from "../src/react-app/domains/settings/cloud/use-den-session";
 
 // Only the isolated fixture URL uses this synthetic transport. Production imports never load it.
-const initial: EnterpriseConnection = { id: "ent_proof", name: "星河科技", shortName: "星河", origin: "https://enterprise-proof.invalid", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "owner", status: "active", departmentId: "product" }, session: { token: "synthetic-proof-session", expiresAt: "2099-01-01T00:00:00.000Z" }, features: enterpriseFeaturesSchema.parse({ membership: true, directory: true, messaging: true, sessionSharing: true, resourceManagement: true, resourcePermissions: true, templatePublishing: true, extensionPublishing: true }) };
+const initial: EnterpriseConnection = { id: "ent_proof", name: "星河科技", shortName: "星河", origin: "https://enterprise-proof.invalid", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "owner", status: "active", departmentId: "product" }, session: { token: "synthetic-proof-session", expiresAt: "2099-01-01T00:00:00.000Z" }, features: enterpriseFeaturesSchema.parse({ membership: true, directory: true, messaging: true, sessionSharing: true, resourceManagement: true, resourcePermissions: true, templatePublishing: true, extensionPublishing: true, skills: true, skillPublishing: true }) };
 const departments = [{ id: "company", name: "星河科技", parentId: null }, { id: "product", name: "产品部", parentId: "company" }, { id: "engineering", name: "研发部", parentId: "company" }, { id: "empty", name: "空部门", parentId: "company" }];
-const roleNames = { owner: "企业超管", admin: "管理员", template_admin: "模板管理员", extension_admin: "插件管理员", member: "员工" };
+const roleNames = { owner: "企业超管", admin: "管理员", template_admin: "模板管理员", extension_admin: "插件管理员", skill_admin: "技能管理员", member: "员工" };
 const members = [{ id: "zhang", displayName: "张敏", email: "zhangmin@example.com", departmentId: "product", role: "member", status: "active" }, { id: "li", displayName: "李晨", email: "lichen@example.com", departmentId: "product", role: "member", status: "active" }, { id: "wang", displayName: "王磊", email: "wanglei@example.com", departmentId: "engineering", role: "member", status: "active" }];
 const summary = "## 任务背景\n梳理产品页面和交互需求。\n\n## 关键结论\n沿用已经确认的信息结构。\n\n## 下一步\n细化原型和验收条件。";
 const message: EnterpriseMessage = { id: "received-share", title: "产品方案讨论总结", kind: "session_share", senderName: "张敏", createdAt: "2026-10-16T02:00:00.000Z", readAt: null, acceptedAt: null, ignoredAt: null, revokedAt: null, markdown: summary, resourceType: null };
@@ -32,7 +32,10 @@ let summaryCalls = 0;
 let shareCount = 0;
 let creates = 0;
 let uploads = 0;
-const submissions: Record<"template" | "extension", EnterpriseSubmission[]> = { template: [], extension: [] };
+const submissions: Record<"template" | "extension" | "skill", EnterpriseSubmission[]> = { template: [], extension: [], skill: [] };
+let serviceRole: EnterpriseConnection["membership"]["role"] | null = null;
+let managementRequests = 0;
+let managementWrites = 0;
 let grants = 0;
 let recipients = 0;
 let failNextShare = false;
@@ -63,7 +66,15 @@ window.fetch = async (input, init) => {
   if (url.pathname.endsWith("/join")) return Response.json({ enterprise: initial, membership: initial.membership, session: initial.session });
   if (url.pathname.endsWith("/client-manifest")) return Response.json({ enterprise: initial, features: initial.features });
   if (url.pathname.includes(".well-known")) return Response.json({ serverId: initial.id, name: initial.name, origin: initial.origin, authMode: initial.authMode });
-  if (url.pathname.endsWith("/membership")) return Response.json({ membership: { ...(readEnterpriseConnections().find((item) => item.id === initial.id) ?? initial).membership, displayName: "验证用户", email: "owner@example.com" } });
+  if (url.pathname.endsWith("/membership")) {
+    const membership = (readEnterpriseConnections().find((item) => item.id === initial.id) ?? initial).membership;
+    return Response.json({ membership: { ...membership, role: serviceRole ?? membership.role, displayName: "验证用户", email: "owner@example.com" } });
+  }
+  if ((url.pathname.endsWith("/resources") && url.searchParams.get("view") === "manage") || url.pathname.endsWith("/access") || url.pathname.endsWith("/review") || method === "PATCH") {
+    managementRequests++;
+    if (method !== "GET") managementWrites++;
+    if (serviceRole === "member") return Response.json({ error: "forbidden" }, { status: 403 });
+  }
   if (url.pathname.endsWith("/departments")) return Response.json({ items: departments, nextCursor: null });
   if (url.pathname.endsWith("/members")) {
     const search = url.searchParams.get("search")?.toLowerCase();
@@ -100,13 +111,13 @@ window.fetch = async (input, init) => {
   if (url.pathname.endsWith("/ignore")) { message.ignoredAt = new Date().toISOString(); message.markdown = null; return Response.json({ ok: true }); }
   if (url.pathname.endsWith("/access")) { if (method === "PUT") { access = { ...body, revision: access.revision + 1 }; grants++; } return Response.json(access); }
   if (url.pathname.endsWith("-submissions")) {
-    const type = url.pathname.endsWith("/template-submissions") ? "template" : "extension";
-    if (method === "POST") { uploads++; const item: EnterpriseSubmission = { resourceId: `${type}-submission-${uploads}`, resourceName: type === "template" ? "我的企业模板" : "我的企业插件", version: "1.0.0", reviewStatus: "pending", reviewNote: null }; submissions[type].push(item); return Response.json(item); }
+    const type = url.pathname.endsWith("/template-submissions") ? "template" : url.pathname.endsWith("/skill-submissions") ? "skill" : "extension";
+    if (method === "POST") { uploads++; const item: EnterpriseSubmission = { resourceId: `${type}-submission-${uploads}`, resourceName: type === "template" ? "我的企业模板" : type === "skill" ? "我的企业技能" : "我的企业插件", version: "1.0.0", reviewStatus: "pending", reviewNote: null }; submissions[type].push(item); return Response.json(item); }
     return Response.json({ items: submissions[type] });
   }
   if (url.pathname.endsWith("/resources")) {
     const type = url.searchParams.get("type") ?? "template";
-    return Response.json({ items: [{ id: `${type}-1`, type, name: type === "template" ? "产品提案模板" : "产品调研助手", status: "published", access: "restricted", ownerName: "张敏", latestVersion: { version: "1.2.0", reviewStatus: "approved" } }, { id: `${type}-2`, type, name: type === "template" ? "待审核报告模板" : "待审核调研插件", status: "draft", access: "admins", ownerName: "王磊", latestVersion: { version: "1.0.0", reviewStatus: "pending" } }], nextCursor: null });
+    return Response.json({ items: [{ id: `${type}-1`, type, name: type === "template" ? "产品提案模板" : type === "skill" ? "笔记整理技能" : "产品调研助手", status: "published", access: "restricted", ownerName: "张敏", latestVersion: { version: "1.2.0", reviewStatus: "approved" } }, { id: `${type}-2`, type, name: type === "template" ? "待审核报告模板" : type === "skill" ? "待审核整理技能" : "待审核调研插件", status: "draft", access: "admins", ownerName: "王磊", latestVersion: { version: "1.0.0", reviewStatus: "pending" } }], nextCursor: null });
   }
   if (url.pathname.endsWith("/review") || method === "PATCH") return Response.json({ ok: true });
   return Response.json({ error: "not_found" }, { status: 404 });
@@ -124,6 +135,7 @@ localStorage.setItem("ipollowork.language", "zh");
 const client = createiPolloWorkServerClient({ baseUrl: "https://local-proof.invalid", token: "synthetic-local-token" });
 
 function restoreProofOwner() {
+  serviceRole = null;
   writeDenSettings({ baseUrl: proofCloudUrl, authToken: "synthetic-cloud-account-a" });
   setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: proofCloudUrl, token: "synthetic-cloud-account-a" });
   saveEnterpriseConnection(initial);
@@ -179,16 +191,17 @@ function Proof() {
     <p data-testid="proof-route" className="text-xs text-muted-foreground">当前路由 {pathname} · 本机项目 {workspaceReady ? "已就绪" : "连接中"}</p>
     {sourceConnection ? <section className="space-y-2 rounded-xl border p-3"><p className="text-xs text-muted-foreground">模板与插件来源名称验证</p><div data-testid="proof-plugin-source" className="max-w-[360px]"><WorkResourceScopeSwitch enterprise={sourceConnection} value={resourceScope} onChange={setResourceScope} /></div><div className="flex gap-2"><Button variant="outline" data-testid="proof-template-source" onClick={() => setSourceDialogOpen(true)}>查看模板来源</Button><Button variant="outline" data-testid="proof-long-source-name" onClick={() => setSourceName("星河科技企业协作与数字创意研发中心企业资源管理服务平台")}>切换长企业名</Button></div></section> : null}
     {sourceDialogOpen && sourceConnection ? <TemplateMarketDialog open onOpenChange={setSourceDialogOpen} templates={[]} remoteResources={[]} loading={false} error={null} busyId={null} getCover={async () => ({ data: new ArrayBuffer(0) })} cloudAvailable enterpriseAvailable enterpriseConnection={sourceConnection} source={templateSource} onSelectSource={setTemplateSource} onRefresh={() => {}} onUse={() => {}} onCustom={() => {}} onInstall={() => {}} onImport={async () => true} onInstallRemote={() => {}} /> : null}
-    {connection ? <><section className="flex flex-wrap items-center gap-3 rounded-xl border border-border p-4"><span className="mr-auto text-sm font-medium">{connection.name} · {roleNames[connection.membership.role]}</span><Button data-testid="proof-share" disabled={!connection.features?.sessionSharing} onClick={() => requestEnterpriseSessionShare("project-proof", "source-session")}>分享产品讨论</Button><EnterpriseResourceControls connection={connection} type="template" /><EnterpriseResourceControls connection={connection} type="extension" /></section>
+    {connection ? <><section className="flex flex-wrap items-center gap-3 rounded-xl border border-border p-4"><span className="mr-auto text-sm font-medium">{connection.name} · {roleNames[connection.membership.role]}</span><Button data-testid="proof-share" disabled={!connection.features?.sessionSharing} onClick={() => requestEnterpriseSessionShare("project-proof", "source-session")}>分享产品讨论</Button><EnterpriseResourceControls connection={connection} type="template" /><EnterpriseResourceControls connection={connection} type="extension" /><EnterpriseResourceControls connection={connection} type="skill" /></section>
     <div className="grid gap-5 md:grid-cols-[360px_minmax(0,1fr)]"><section className="overflow-hidden rounded-xl border border-border"><EnterpriseMessageList key={`${connection.id}:${connection.membership.id}`} connection={connection} inbox={inbox} onExit={() => setRevision((value) => value + 1)} /></section><section className="rounded-xl border border-border p-4"><h2 className="mb-3 text-sm font-semibold">接收后的会话</h2>{sessionId ? <><p className="text-sm">产品方案讨论 · 独立会话</p><EnterpriseSnapshotNotice key={revision} connection={connection} client={client} workspaceId="project-proof" sessionId={sessionId} /><p className="mt-3 text-xs text-muted-foreground">等待用户继续提问，未启动模型执行。</p></> : <p className="py-12 text-center text-sm text-muted-foreground">接收分享后在此打开独立会话</p>}</section></div></> : <p data-testid="proof-personal" className="rounded-xl border p-5">当前为个人模式或企业登录已失效 · 企业协作入口已隐藏</p>}
     <section className="flex flex-wrap gap-2"><Button variant="outline" data-testid="proof-fail-summary" onClick={() => { failNextSummary = true; }}>模拟下一次总结失败</Button><Button variant="outline" data-testid="proof-fail-send" onClick={() => { failNextShare = true; }}>模拟下一次发送失败</Button><Button variant="outline" data-testid="proof-member" onClick={() => { const next = { ...initial, membership: { ...initial.membership, role: "member" } } satisfies EnterpriseConnection; saveEnterpriseConnection(next); }}>切换员工</Button><Button variant="outline" data-testid="proof-legacy" onClick={() => { const next = { ...initial, features: enterpriseFeaturesSchema.parse({}) }; saveEnterpriseConnection(next); }}>旧企业服务</Button><Button variant="outline" data-testid="proof-owner" onClick={restoreProofOwner}>恢复超管</Button><Button variant="outline" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; }}>切换深色</Button><Button variant="outline" data-testid="proof-stats" onClick={() => setRevision((value) => value + 1)}>刷新验证记录</Button></section>
     <section className="flex flex-wrap gap-2"><Button variant="outline" data-testid="proof-personal-mode" onClick={() => { void activatePersonalWorkContext(); }}>切换个人</Button><Button variant="outline" data-testid="proof-expire" onClick={() => saveEnterpriseConnection({ ...initial, session: { ...initial.session, expiresAt: new Date(Date.now() + 5000).toISOString() } })}>登录将在 5 秒后过期</Button><Button variant="outline" data-testid="proof-suspend" onClick={() => saveEnterpriseConnection({ ...initial, membership: { ...initial.membership, status: "suspended" } })}>停用成员</Button><Button variant="outline" data-testid="proof-sign-out" onClick={clearEnterpriseLoginState}>退出登录</Button></section>
-    <section className="flex flex-wrap gap-2">{(["admin", "template_admin", "extension_admin"] as const).map(role => <Button key={role} variant="outline" data-testid={`proof-${role}`} onClick={() => saveEnterpriseConnection({ ...initial, membership: { ...initial.membership, role } })}>切换{roleNames[role]}</Button>)}</section>
+    <section className="flex flex-wrap gap-2">{(["admin", "template_admin", "extension_admin", "skill_admin"] as const).map(role => <Button key={role} variant="outline" data-testid={`proof-${role}`} onClick={() => saveEnterpriseConnection({ ...initial, membership: { ...initial.membership, role } })}>切换{roleNames[role]}</Button>)}</section>
     <section className="flex flex-wrap gap-2"><Button variant="outline" data-testid="proof-fail-import" onClick={() => { failNextImport = true; }}>模拟本机保存失败</Button><Button variant="outline" data-testid="proof-fail-accept" onClick={() => { failNextAccept = true; }}>模拟接收回执失败</Button></section>
     <section data-testid="proof-session-history" className="rounded-xl border p-4"><h2 className="text-sm font-semibold">会话记录（生产列表过滤）</h2>{visibleSessions.map((session) => <p key={session.id} data-testid="proof-session-row" className="mt-2 text-sm">{session.title}</p>)}<div className="mt-3 flex gap-2"><Button variant="outline" data-testid="proof-refresh-sessions" onClick={() => { void client.listSessions("project-proof").then(({ items }) => rememberSessions(items)); }}>从本机服务刷新列表</Button><Button variant="outline" data-testid="proof-restore-cache" onClick={() => setSessions(readSessionDirectoryCache()["project-proof"] ?? [])}>从启动缓存恢复列表</Button></div></section>
     <section className="flex gap-2"><Button variant="outline" data-testid="proof-settings" onClick={() => navigate("/settings/extensions")}>进入设置页</Button><Button variant="outline" data-testid="proof-workspace-route" onClick={() => navigate("/workspace/project-proof/session")}>进入企业会话页</Button></section>
     <Button variant="outline" data-testid="proof-reset-received" onClick={() => { imported = null; creates = 0; acceptCalls = 0; message.markdown = summary; message.acceptedAt = null; message.readAt = null; setSessionId(null); rememberSessions([]); setRevision((value) => value + 1); inbox.refresh(); }}>重置隔离分享数据</Button>
-    <p data-testid="proof-result" className="text-xs text-muted-foreground">总结生成次数 {summaryCalls} · 分享次数 {shareCount} · 分享对象 {recipients} 人 · 本机创建次数 {creates} · 投稿次数 {uploads} · 权限保存次数 {grants} · 企业登录记录 {readEnterpriseConnections().length} · 企业正文 {message.markdown ? "待领取" : "已清理"} · 接收回执次数 {acceptCalls}</p>
+    <Button variant="outline" data-testid="proof-demote-member" onClick={() => { serviceRole = "member"; }}>后台降为成员</Button>
+    <p data-testid="proof-result" data-management-requests={managementRequests} data-management-writes={managementWrites} className="text-xs text-muted-foreground">总结生成次数 {summaryCalls} · 分享次数 {shareCount} · 分享对象 {recipients} 人 · 本机创建次数 {creates} · 投稿次数 {uploads} · 权限保存次数 {grants} · 企业登录记录 {readEnterpriseConnections().length} · 企业正文 {message.markdown ? "待领取" : "已清理"} · 接收回执次数 {acceptCalls} · 管理请求 {managementRequests} · 管理写入 {managementWrites}</p>
     {connection && isSessionRoute ? <EnterpriseSessionSharing key={`${connection.id}:${connection.membership.id}`} connection={connection} currentWorkspaceId="project-proof" resolveWorkspace={() => workspaceReady ? ({ client, workspaceId: "project-proof" }) : null} model={{ providerID: "proof", modelID: "proof-model" }} engineId="opencode" onImported={(_workspaceId, id, session) => { setSessionId(id); rememberSessions([session]); setRevision((value) => value + 1); inbox.refresh(); navigate(`/workspace/project-proof/session/${id}`); }} /> : null}
     <Toaster />
   </div></main>;

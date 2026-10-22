@@ -9,6 +9,7 @@ import { DeepSeekRemoteMux, deepSeekRemoteCall } from "./deepseek-harness-remote
 import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import { EnvService } from "./env-file.js";
 import type { ServerConfig } from "./types.js";
+import { disposeRuntimeOpencodeConfigStore } from "./runtime-opencode-config-store.js";
 
 test("projects Work calls onto current DSH named Remote arguments", () => {
   expect(deepSeekRemoteCall("session.list", {})).toEqual({ method: "session/list", args: { _request: {} } });
@@ -54,8 +55,8 @@ test("multiplexes subscriptions on one authenticated connection and cancels them
 });
 
 const runtimeRoot = fileURLToPath(new URL("../../desktop/dsh-runtime/", import.meta.url));
-const cli = join(runtimeRoot, "node_modules/@deepseek-ai/dsh/lib/bin.js");
-const nodeBin = join(runtimeRoot, "node-runtime", process.platform === "win32" ? "node.exe" : "node");
+const cli = process.env.IPOLLOWORK_DSH_CLI || join(runtimeRoot, "node_modules/@deepseek-ai/dsh/lib/bin.js");
+const nodeBin = process.env.IPOLLOWORK_DSH_NODE_BIN || join(runtimeRoot, "node-runtime", process.platform === "win32" ? "node.exe" : "node");
 
 test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH streams, compacts and restores a tool-backed session", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-dsh-remote-"));
@@ -63,7 +64,7 @@ test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH streams, comp
     IPOLLOWORK_DSH_HOME: join(root, "dsh"),
     IPOLLOWORK_DSH_CLI: cli,
     IPOLLOWORK_DSH_NODE_BIN: nodeBin,
-    IPOLLOWORK_DSH_HOST_PLUGIN: join(runtimeRoot, "ipollowork-host-tools.mjs"),
+    IPOLLOWORK_DSH_HOST_PLUGIN: process.env.IPOLLOWORK_DSH_HOST_PLUGIN || join(runtimeRoot, "ipollowork-host-tools.mjs"),
     IPOLLOWORK_RUNTIME_DB: join(root, "runtime.db"),
   };
   const previous = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
@@ -168,15 +169,21 @@ test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH streams, comp
     expect(JSON.stringify(restored.events)).toContain("upgrade-ok");
     expect(JSON.stringify(restored.events)).toContain("compaction/summary");
     expect(JSON.stringify(restored.events)).toContain("Checkpoint: the test ping returned upgrade-ok");
+    const releasedEvents = await runtime.events("mux", new AbortController().signal);
+    const drained = (async () => { for await (const chunk of releasedEvents.body!) void chunk; })();
+    await runtime.close({ retire: true });
+    await Promise.race([drained, new Promise((_, reject) => setTimeout(() => reject(new Error("Released DSH event stream did not end")), 1000))]);
+    await expect(runtime.call("session.list", {})).rejects.toThrow("released");
   } finally {
     releaseModel();
     abort.abort();
     await runtime.close();
     host.stop(true);
+    await disposeRuntimeOpencodeConfigStore(config);
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 }, 60_000);

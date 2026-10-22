@@ -1221,7 +1221,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
     void verifyTargets();
     return () => { cancelled = true; };
-  }, [openTargetsFingerprint, props.client, props.sessionId, props.workspaceId]);
+  // Shell commands can create a file already mentioned before it existed.
+  // Verify it again when the turn finishes even if its path has not changed.
+  }, [chatStreaming, latestAssistantCompleted, openTargetsFingerprint, props.client, props.sessionId, props.workspaceId]);
 
   useEffect(() => {
     usePanelTabStore.getState().syncTranscriptArtifacts(props.sessionId, verifiedOpenTargets);

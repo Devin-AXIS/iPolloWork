@@ -465,9 +465,13 @@ function openTargetFromArtifactPath(
 ): OpenTarget {
   const normalized = normalizeArtifactPath(path);
   const id = `file:${normalized.toLowerCase()}`;
-  const verified = verifiedTargets.find(
-    (target) => target.id === id || artifactPathMatchesTarget(normalized, target.value),
-  );
+  const exact = verifiedTargets.find((target) => target.id === id);
+  if (exact?.exists === true) return exact;
+  let verified: OpenTarget | undefined;
+  for (const target of verifiedTargets) {
+    if (target.exists === true && artifactPathMatchesTarget(normalized, target.value)
+      && (!verified || target.value.length > verified.value.length)) verified = target;
+  }
   if (verified) return verified;
 
   if (!normalized.includes("/")) {
@@ -479,7 +483,7 @@ function openTargetFromArtifactPath(
     if (basenameMatches.length === 1) return basenameMatches[0];
   }
 
-  return {
+  return exact ?? {
     id,
     kind: "file",
     value: normalized,

@@ -484,7 +484,7 @@ export function deriveOpenTargets(messages: UIMessage[], options: DeriveOpenTarg
       const writeTool = isWriteTool(part.toolName);
       const artifactMetadataTool = isArtifactMetadataTool(part.toolName);
 
-      if (writeTool) {
+      if (writeTool && part.state === "output-available") {
         addFileValues(
           targets,
           getWrittenFilePaths(part.toolName, part.input, part.output),

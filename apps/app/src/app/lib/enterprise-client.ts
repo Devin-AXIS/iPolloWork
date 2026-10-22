@@ -12,7 +12,7 @@ import {
 } from "@ipollowork/types/enterprise";
 import { desktopFetchViaMain, desktopFetchBinaryViaMain } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
-import type { EnterpriseConnection } from "./enterprise-connections";
+import { refreshEnterpriseMembership, type EnterpriseConnection } from "./enterprise-connections";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 
 export class EnterpriseRequestError extends Error {
@@ -32,6 +32,7 @@ export function enterpriseErrorMessage(error: unknown): string {
   if (code === "enterprise_session_expired" || code === "unauthorized") return "企业登录已过期，请重新连接企业。";
   if (code === "enterprise_member_inactive" || code === "MEMBER_SUSPENDED") return "当前企业成员已停用，请联系企业管理员。";
   if (code === "forbidden") return "当前企业账号没有执行此操作的权限。";
+  if (code === "enterprise_account_changed") return "企业账号已切换，请重新打开操作。";
   if (code === "revision_conflict") return "权限已被其他管理员修改，请刷新后重新分配。";
   if (code === "enterprise_feature_unavailable" || (error instanceof EnterpriseRequestError && [404, 405, 501].includes(error.status))) return "企业服务暂不支持此功能，请联系管理员升级。";
   if (code === "enterprise_invalid_response") return "企业服务返回的数据不完整，请重试或联系管理员。";
@@ -134,16 +135,22 @@ function query(input: { search?: string; departmentId?: string | null; includeDe
   return value.toString();
 }
 const ok = enterpriseOkSchema;
+async function enterpriseManagementRequest<T>(connection: EnterpriseConnection, type: EnterpriseResourceType, path: string,
+  schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false } }, init: RequestInit = {}) {
+  const verified = await refreshEnterpriseMembership(connection);
+  if (!canManageEnterprise(verified, type)) throw new EnterpriseRequestError("forbidden", 403);
+  return enterpriseRequest(verified, path, schema, init);
+}
 export const enterpriseApi = {
   skill: (connection: EnterpriseConnection, resourceId: string, version: string) => enterpriseRequest(connection, `/api/v1/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(version)}`, skillDetailSchema),
   resources: (connection: EnterpriseConnection, type: EnterpriseResourceType, cursor?: string | null, search?: string) =>
-    enterpriseRequest(connection, `/api/v1/resources?type=${type}&view=manage&${query({ cursor, search })}`, enterprisePageSchema(enterpriseManagedResourceSchema)),
-  review: (connection: EnterpriseConnection, resourceId: string, version: string, decision: "approved" | "rejected", note: string) =>
-    enterpriseRequest(connection, `/api/v1/resources/${encodeURIComponent(resourceId)}/versions/${encodeURIComponent(version)}/review`, ok, {
+    enterpriseManagementRequest(connection, type, `/api/v1/resources?type=${type}&view=manage&${query({ cursor, search })}`, enterprisePageSchema(enterpriseManagedResourceSchema)),
+  review: (connection: EnterpriseConnection, resourceId: string, version: string, decision: "approved" | "rejected", note: string, type: EnterpriseResourceType) =>
+    enterpriseManagementRequest(connection, type, `/api/v1/resources/${encodeURIComponent(resourceId)}/versions/${encodeURIComponent(version)}/review`, ok, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision, note }),
     }),
-  archive: (connection: EnterpriseConnection, resourceId: string) =>
-    enterpriseRequest(connection, `/api/v1/resources/${encodeURIComponent(resourceId)}`, ok, {
+  archive: (connection: EnterpriseConnection, resourceId: string, type: EnterpriseResourceType) =>
+    enterpriseManagementRequest(connection, type, `/api/v1/resources/${encodeURIComponent(resourceId)}`, ok, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "archived" }),
     }),
   departments: (connection: EnterpriseConnection, cursor?: string | null, signal?: AbortSignal) =>
@@ -160,10 +167,10 @@ export const enterpriseApi = {
     enterpriseRequest(connection, "/api/v1/session-shares", enterpriseCreatedSchema, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(enterpriseShareInputSchema.parse(input)),
     }),
-  access: (connection: EnterpriseConnection, resourceId: string) =>
-    enterpriseRequest(connection, `/api/v1/resources/${encodeURIComponent(resourceId)}/access`, enterpriseAccessSchema),
-  setAccess: (connection: EnterpriseConnection, resourceId: string, input: EnterpriseAccess) =>
-    enterpriseRequest(connection, `/api/v1/resources/${encodeURIComponent(resourceId)}/access`, enterpriseAccessSchema, {
+  access: (connection: EnterpriseConnection, resourceId: string, type: EnterpriseResourceType) =>
+    enterpriseManagementRequest(connection, type, `/api/v1/resources/${encodeURIComponent(resourceId)}/access`, enterpriseAccessSchema),
+  setAccess: (connection: EnterpriseConnection, resourceId: string, input: EnterpriseAccess, type: EnterpriseResourceType) =>
+    enterpriseManagementRequest(connection, type, `/api/v1/resources/${encodeURIComponent(resourceId)}/access`, enterpriseAccessSchema, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(enterpriseAccessSchema.parse(input)),
     }),
   submissions: (connection: EnterpriseConnection, type: EnterpriseResourceType) =>

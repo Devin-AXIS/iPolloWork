@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { generateKeyPairSync } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,27 @@ test("an untrusted signing key cannot produce a ready cloud collection", async (
     assert.equal((result.stdout + result.stderr).includes(String(pem)), false);
     await assert.rejects(readFile(join(output, "collection.json")), { code: "ENOENT" });
     await assert.rejects(readFile(join(output, "plugins-collection.zip")), { code: "ENOENT" });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("desktop staging includes complete installable resources without requiring a cloud signing key", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-desktop-collection-"));
+  try {
+    const output = join(root, "collection");
+    const result = run(["--desktop", "--plugin", "figma", "--out", output]);
+    assert.equal(result.status, 0, result.stderr);
+    const manifest = JSON.parse(await readFile(join(output, "figma/ipollowork.plugin.json"), "utf8"));
+    assert.equal(manifest.id, "figma");
+    const inventory = JSON.parse(await readFile(join(output, "collection.json"), "utf8"));
+    assert.equal(inventory.signed, false);
+    assert.equal(inventory.plugins[0].pluginId, "figma");
+    for (const resource of manifest.resources.filter(resource => resource.path)) {
+      assert.ok(await stat(join(output, "figma", resource.path)));
+    }
+    await assert.rejects(readFile(join(output, "plugins-collection.zip")), { code: "ENOENT" });
+    const repeated = run(["--desktop", "--plugin", "figma", "--out", output]);
+    assert.notEqual(repeated.status, 0);
+    assert.match(repeated.stderr, /EEXIST/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

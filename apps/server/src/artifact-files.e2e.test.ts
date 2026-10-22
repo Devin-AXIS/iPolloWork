@@ -71,6 +71,24 @@ function auth(token: string) {
 }
 
 describe("artifact file routes", () => {
+  test("downloads Unicode Markdown filenames with an ASCII-safe response header", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token } = await startiPolloWorkServer(root);
+    const name = "iPolloWork简介 (100%)'笔记.md";
+    const path = `reports/${name}`;
+    const content = "# iPolloWork 简介\n\n这是一份可编辑、可下载的 Markdown 文件。\n";
+    await writeFile(join(root, path), content);
+    const response = await fetch(`${base}/workspace/ws_1/files/raw?path=${encodeURIComponent(path)}`, { headers: auth(token) });
+    const downloaded = await response.text();
+    expect(response.status).toBe(200);
+    const disposition = response.headers.get("content-disposition") ?? "";
+    expect(disposition).toStartWith("inline; filename*=UTF-8''");
+    expect(disposition).toMatch(/^[\x20-\x7e]+$/);
+    expect(decodeURIComponent(disposition.split("''")[1])).toBe(name);
+    expect(response.headers.get("content-type")).toContain("charset=utf-8");
+    expect(downloaded).toBe(content);
+  });
+
   test("artifact reads expose scoped live video states without prompts or upstream identifiers", async () => {
     const root = await createWorkspaceRoot();
     const { base, token, config } = await startiPolloWorkServer(root);

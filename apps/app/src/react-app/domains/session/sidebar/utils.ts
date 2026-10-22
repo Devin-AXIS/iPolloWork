@@ -61,7 +61,6 @@ export function buildSidebarLayoutView(
 
   for (const project of visible) {
     for (const session of project.sessions) {
-      if (isSessionArchived(session)) continue;
       const key = sessionLayoutKey(project.workspace.id, session.id);
       const targetProjectId = layout.sessionProjectByKey[key];
       const target = targetProjectId && projectIds.has(targetProjectId)
@@ -92,28 +91,6 @@ export function buildSidebarLayoutView(
   });
 }
 
-export const isSessionArchived = (session: SessionListItem): boolean =>
-  typeof session.time?.archived === "number" && session.time.archived > 0;
-
-/**
- * Collect archived sessions into one sidebar-only list. Archived sessions keep
- * their source workspace so engine actions still target the owning project.
- */
-export function buildSidebarArchivedSessions(projects: ProjectSessionList[]): SidebarDisplaySession[] {
-  const archived: SidebarDisplaySession[] = [];
-  for (const project of visibleProjectSessionLists(projects)) {
-    for (const session of project.sessions) {
-      if (!isSessionArchived(session)) continue;
-      archived.push({
-        ...session,
-        sourceWorkspaceId: project.workspace.id,
-        sidebarWorkspaceId: project.workspace.id,
-      });
-    }
-  }
-  return archived;
-}
-
 export const isStreamingSessionStatus = (status: string | undefined) =>
   status === "running" ||
   status === "busy" ||
@@ -134,16 +111,6 @@ export const getRootSessions = (sessions: ProjectSessionList["sessions"]) => {
     const parentID = normalizeSessionParentID(session);
     return !parentID || !byID.has(parentID);
   });
-};
-
-/** Split sessions into active vs. archived. Archived sessions live in their own section. */
-export const partitionArchivedSessions = (sessions: ProjectSessionList["sessions"]) => {
-  const active: SessionListItem[] = [];
-  const archived: SessionListItem[] = [];
-  for (const session of sessions) {
-    (isSessionArchived(session) ? archived : active).push(session);
-  }
-  return { active, archived };
 };
 
 /**
@@ -185,9 +152,8 @@ export const buildSessionTreeState = (
   const descendantCountBySessionId = new Map<string, number>();
   const activeIds = new Set<string>();
   const streamingIds = new Set<string>();
-  // Archived sessions render in their own flat section, so they never join the
   // active tree (neither as roots nor as children of active sessions).
-  const visibleSessions = sessions.filter((session) => !isSessionArchived(session));
+  const visibleSessions = sessions;
   const sessionIds = new Set(visibleSessions.map((session) => session.id));
 
   visibleSessions.forEach((session) => {
@@ -241,7 +207,7 @@ export const flattenSessionRows = (
   pinnedIds: Set<string> = EMPTY_SET,
   orderIds: string[] = EMPTY_ARRAY,
 ) => {
-  const { active } = partitionArchivedSessions(sessions);
+  const active = sessions;
   const orderedRoots = orderRootSessions(getRootSessions(active), pinnedIds, orderIds).slice(0, rootLimit);
   const rows: FlattenedSessionRow[] = [];
   const visited = new Set<string>();

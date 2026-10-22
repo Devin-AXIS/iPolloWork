@@ -28,6 +28,11 @@ function toolMessage(id: string, toolName: string, input: Record<string, unknown
 }
 
 describe("deriveOpenTargets", () => {
+  it("waits for a write tool to complete before resolving its generated file", () => {
+    const pending: UIMessage = { id: "pending", role: "assistant", parts: [{ type: "dynamic-tool", toolName: "write", toolCallId: "write-md", state: "input-available", input: { filePath: "reports/SKILL.md" } }] };
+    expect(deriveOpenTargets([pending])).toEqual([]);
+    expect(deriveOpenTargets([toolMessage("done", "write", { filePath: "reports/SKILL.md" }, { success: true })]).map(target => target.value)).toEqual(["reports/SKILL.md"]);
+  });
   it("creates verified open targets from workspace catalog files", () => {
     expect(createWorkspaceFileOpenTarget({
       path: "exports\\launch-deck.pptx",

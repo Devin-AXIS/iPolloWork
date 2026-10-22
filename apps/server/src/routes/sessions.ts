@@ -20,6 +20,7 @@ import {
   readDeepSeekHarnessMessages,
   readDeepSeekHarnessSession,
   readDeepSeekHarnessSnapshot,
+  workspacePathMatches,
 } from "../deepseek-harness-session-read-model.js";
 import { ApiError } from "../errors.js";
 import { StdioJsonRpcError } from "../stdio-json-rpc-runtime.js";
@@ -28,6 +29,7 @@ import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { resolveWorkspaceSession, type WorkspaceSessionRuntime } from "../workspace-session-runtime.js";
 import { listConversationSessionBindings } from "../work-items.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
+import { assertResourceWritable, listResourceLifecycles, readResourceLifecycle, rememberResourceSummaries } from "../resource-lifecycle.js";
 import { enterpriseSnapshotImportSchema } from "@ipollowork/types/enterprise";
 import { importEnterpriseSnapshot, readEnterpriseSnapshot, summarizeEnterpriseSession, withEnterpriseSnapshotMetadata } from "../enterprise-session-snapshots.js";
 
@@ -189,7 +191,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
           () => null,
         ),
       ]);
-      const sessions = buildSessionList(unwrapOpencodeResult(sessionResult, "/session"));
+      const sessions = buildSessionList(unwrapOpencodeResult(sessionResult, "/session")).filter(session => workspacePathMatches(session.directory ?? undefined, workspace.path));
       if (!statuses) return sessions.map((session) => ({ ...session, engineId: DEFAULT_ENGINE_ID }));
       return sessions.map((session) => ({
         ...session,
@@ -205,19 +207,42 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     workspace: WorkspaceInfo,
     input: { roots?: boolean; start?: number; search?: string; limit?: number },
   ): Promise<SessionInfoReadModel[]> {
+    const known = await listResourceLifecycles(config, workspace.id);
+    const readEngine = async (target: WorkspaceInfo, query: typeof input): Promise<SessionInfoReadModel[]> => {
+      const records = known.filter(row => row.summary && row.engineId === (target.engineId || DEFAULT_ENGINE_ID));
+      const allDeleted = known.length > 0 && known.every(row => row.deleting === 2);
+      if (!query.search && !query.start && (allDeleted || records.length > 0 && records.every(row => row.deleting))) {
+        return records.flatMap(row => row.summary ? [{ ...row.summary, status: { type: "idle" } }] : [])
+          .filter(item => !query.roots || !item.parentID).sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0)).slice(0, query.limit ?? 200);
+      }
+      return listEngineSessions(target, query);
+    };
+    async function applyLifecycle(items: SessionInfoReadModel[]) {
+      await rememberResourceSummaries(config, workspace.id, items.map(item => ({ ...item, engineId: item.engineId || DEFAULT_ENGINE_ID })));
+      const records = await listResourceLifecycles(config, workspace.id);
+      const states = new Map(records.map(row => [row.sessionId, row]));
+      const values = new Map(items.map(item => [item.id, item]));
+      for (const row of records) if (row.summary && (row.archivedAt || row.deleting === 1)
+        && (!input.roots || !row.summary.parentID)
+        && (!input.search || row.summary.title?.toLowerCase().includes(input.search.toLowerCase()))) values.set(row.sessionId, { ...row.summary, status: { type: "idle" } });
+      return [...values.values()].filter(item => states.get(item.id)?.deleting !== 2).map(item => {
+        const row = states.get(item.id);
+        return { ...item, ...(item.time?.archived ? { time: { ...item.time, archived: 0 } } : {}), ...(row?.deleting ? { deletionPending: true } : {}) };
+      });
+    }
     const bindings = await listConversationSessionBindings(config, workspace.id);
     const engines = Array.from(new Set([
       workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
       ...bindings.map((binding) => binding.engineId),
     ])).filter(isBuiltInWorkspaceEngineId);
     const limit = Math.min(input.limit ?? 200, 500);
-    if (engines.length === 1 && !bindings.length) return listEngineSessions(workspace, { ...input, limit });
+    if (engines.length === 1 && !bindings.length) return applyLifecycle(await readEngine(workspace, { ...input, limit }));
     const mixed = engines.length > 1;
     const start = mixed ? input.start ?? 0 : 0;
     if (mixed && start + limit > 1_000) {
       throw new ApiError(400, "invalid_query", "Mixed-engine session pages must stay within the latest 1000 conversations");
     }
-    const results = await Promise.allSettled(engines.map((engineId) => listEngineSessions(
+    const results = await Promise.allSettled(engines.map((engineId) => readEngine(
       { ...workspace, engineId },
       mixed ? { ...input, start: 0, limit: start + limit } : { ...input, limit },
     )));
@@ -249,12 +274,17 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       const first = results[0];
       if (first?.status === "rejected") throw first.reason;
     }
-    return [...sessions.values()]
+    return applyLifecycle([...sessions.values()]
       .sort((left, right) => (right.time?.updated ?? 0) - (left.time?.updated ?? 0))
-      .slice(start, start + limit);
+      .slice(start, start + limit));
   }
 
   async function readWorkspaceSession(workspace: WorkspaceInfo, sessionId: string) {
+    const lifecycle = await readResourceLifecycle(config, workspace.id, sessionId);
+    if (lifecycle?.deleting === 2) throw new ApiError(404, "session_not_found", "Session was deleted");
+    if (lifecycle?.summary && lifecycle.deleting) {
+      return { ...lifecycle.summary, time: { ...lifecycle.summary.time, archived: 0 }, status: { type: "idle" } };
+    }
     workspace = await resolveWorkspaceSession(config, workspace, sessionId, { codexHarness, deepseekHarness });
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
@@ -280,6 +310,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     sessionId: string,
     input: { limit?: number },
   ) {
+    await assertResourceWritable(config, workspace.id, sessionId);
     workspace = await resolveWorkspaceSession(config, workspace, sessionId, { codexHarness, deepseekHarness });
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
@@ -434,6 +465,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   addRoute(routes, "GET", "/workspace/:id/sessions/:sessionId/snapshot", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const sessionId = (ctx.params.sessionId ?? "").trim();
+    await assertResourceWritable(config, workspace.id, sessionId);
     if (!sessionId) {
       throw new ApiError(400, "invalid_payload", "sessionId is required");
     }
@@ -475,7 +507,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       throw new ApiError(400, "invalid_payload", "sessionId is required");
     }
 
-    await sessionRuntime.delete(workspace, sessionId);
+    await sessionRuntime.delete(workspace, sessionId, parseOptionalBoolean(ctx.url.searchParams.get("deleteFiles"), "deleteFiles") ?? false);
     return jsonResponse({ ok: true });
   });
 }

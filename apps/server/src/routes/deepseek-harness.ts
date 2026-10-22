@@ -9,6 +9,7 @@ import {
   DeepSeekHarnessUnavailableError,
 } from "../deepseek-harness-runtime.js";
 import { ApiError } from "../errors.js";
+import { assertResourceWritable } from "../resource-lifecycle.js";
 import {
   parseEnginePluginPromptSelection,
   resolveEnginePluginPrompt,
@@ -39,7 +40,6 @@ const ALLOWED_METHODS = new Set([
   "settings.describe",
   "settings.mutate",
   "workspace.list",
-  "workspace.archiveSession",
   "agentPreset.list",
   "agentPreset.select",
   "commands/execute",
@@ -130,6 +130,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
     if (!isRecord(body.payload) || typeof body.payload.sessionId !== "string" || !body.payload.sessionId.trim()) {
       throw new ApiError(400, "invalid_payload", "A DeepSeek Harness sessionId is required");
     }
+    await assertResourceWritable(config, workspace.id, body.payload.sessionId.trim());
     workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), body.payload.sessionId.trim(), { deepseekHarness: runtime });
     if (workspace.engineId !== DEEPSEEK_HARNESS_ENGINE_ID) {
       throw new ApiError(409, "session_engine_mismatch", "This conversation is bound to a different engine");
@@ -161,6 +162,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
     const sessionId = isRecord(body.payload) && typeof body.payload.sessionId === "string"
       ? body.payload.sessionId.trim()
       : "";
+    await assertResourceWritable(config, workspace.id, sessionId);
     if (sessionId) {
       workspace = await resolveWorkspaceSession(config, await resolveWorkspace(config, ctx.params.id), sessionId, { deepseekHarness: runtime });
       if (workspace.engineId !== DEEPSEEK_HARNESS_ENGINE_ID) {

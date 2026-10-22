@@ -24,9 +24,9 @@ extraResources:
     to: video-models
   - from: video-codecs
     to: video-codecs
-  # Business plugins are signed cloud downloads; only the internal Skill ships.
-  - from: ../../examples/plugin-packages/reference-context
-    to: plugin-packages/reference-context
+  # Copy the validated runtime collection, including compiled closed packages.
+  - from: resources/plugin-packages
+    to: plugin-packages
     filter: &runtimeFiles
       - "**/*"
       - "!**/*.{test,spec}.*"
@@ -124,6 +124,10 @@ mac:
 linux:
   icon: resources/icons/icon.png
   extraResources:
+    - from: resources/icons
+      to: icons
+      filter:
+        - icon.png
     - from: resources/sidecars
       to: sidecars
       filter:
@@ -139,6 +143,8 @@ linux:
   target:
     - AppImage
     - tar.gz
+deb:
+  afterInstall: build/after-install.tpl
 win:
   icon: resources/icons/windows/icon.ico
   extraResources:

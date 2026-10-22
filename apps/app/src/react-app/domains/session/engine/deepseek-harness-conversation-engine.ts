@@ -498,10 +498,6 @@ function deepSeekHarnessConnection(input: {
     async rename(sessionId, title) {
       await client.call("session.rename", { sessionId, title });
     },
-    async setArchived(sessionId, archived) {
-      if (!archived) throw new Error("DeepSeek Harness does not expose conversation unarchive");
-      await client.call("workspace.archiveSession", { sessionId });
-    },
     async shell() {
       throw new Error("DeepSeek Harness does not expose direct shell execution through its conversation API");
     },

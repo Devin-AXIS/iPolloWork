@@ -1197,8 +1197,8 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     capabilities: 6_000,
     listWorkspaces: 8_000,
     workspaceMutation: 30_000,
-    deleteWorkspace: 30_000,
-    deleteSession: 12_000,
+    deleteWorkspace: 120_000,
+    deleteSession: 120_000,
     sessionRead: 12_000,
     status: 6_000,
     config: 10_000,
@@ -1306,17 +1306,17 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceMutation },
       );
     },
-    deleteWorkspace: (workspaceId: string) =>
+    deleteWorkspace: (workspaceId: string, deleteFiles = false) =>
       requestJson<{ ok: boolean; deleted: boolean; persisted: boolean; activeId: string | null; items: iPolloWorkWorkspaceInfo[]; workspaces?: WorkspaceInfo[] }>(
         baseUrl,
-        `/workspaces/${encodeURIComponent(workspaceId)}`,
-        { token, hostToken, method: "DELETE", timeoutMs: timeouts.deleteWorkspace },
+        `/workspaces/${encodeURIComponent(workspaceId)}?deleteFiles=${deleteFiles}`,
+        { token, hostToken, method: "DELETE", timeoutMs: deleteFiles ? Math.max(timeouts.deleteWorkspace, 600_000) : timeouts.deleteWorkspace },
       ),
-    deleteSession: (workspaceId: string, sessionId: string) =>
+    deleteSession: (workspaceId: string, sessionId: string, deleteFiles = false) =>
       requestJson<{ ok: boolean }>(
         baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
-        { token, hostToken, method: "DELETE", timeoutMs: timeouts.deleteSession },
+        `/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?deleteFiles=${deleteFiles}`,
+        { token, hostToken, method: "DELETE", timeoutMs: deleteFiles ? Math.max(timeouts.deleteSession, 600_000) : timeouts.deleteSession },
       ),
     listTemplates: (workspaceId: string, scope: iPolloWorkResourceScope = "personal") =>
       requestJson<{ items: TemplateCatalogItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates`, { token, hostToken, headers: resourceScopeHeaders(scope) }),

@@ -4,6 +4,67 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>iPollo Work</title>
+    <script id="ipollowork-startup-recovery">
+      // This must run before the module graph: React cannot handle failed imports.
+      (function () {
+        var retryKey = "ipollowork.startupRetries";
+        var retryTimer;
+        var failed = false;
+        function starting() {
+          var root = document.getElementById("root");
+          return !root || !root.dataset.ipolloworkDeployment;
+        }
+        function showError() {
+          if (!starting()) return;
+          var panel = document.getElementById("ipollowork-startup-error");
+          var message = document.getElementById("ipollowork-startup-message");
+          var button = document.getElementById("ipollowork-startup-retry");
+          if (!panel || !message || !button) return;
+          var language = navigator.language;
+          try { language = localStorage.getItem("ipollowork.language") || language; } catch (e) {}
+          var chinese = /^zh/i.test(language);
+          message.textContent = chinese ? "启动资源加载失败，请重新加载。" : "Startup resources could not load. Please try again.";
+          button.textContent = chinese ? "重新加载" : "Reload";
+          button.onclick = function () {
+            try { sessionStorage.removeItem(retryKey); } catch (e) {}
+            location.reload();
+          };
+          panel.hidden = false;
+        }
+        function resourceFailed(event) {
+          var target = event.target;
+          if (failed || !starting() || !target ||
+              !(target.tagName === "SCRIPT" && target.type === "module") &&
+              !(target.tagName === "LINK" && target.rel === "stylesheet")) return;
+          failed = true;
+          // Tab-scoped storage bounds retries across reloads. If unavailable,
+          // keep manual recovery instead of risking an endless reload loop.
+          try {
+            var attempts = Number(sessionStorage.getItem(retryKey)) || 0;
+            if (attempts >= 0 && attempts < 2) {
+              sessionStorage.setItem(retryKey, String(attempts + 1));
+              retryTimer = setTimeout(function () {
+                if (starting()) location.reload();
+              }, 1000 * (attempts + 1));
+              return;
+            }
+          } catch (e) {}
+          showError();
+        }
+        var watchdog = setTimeout(showError, 45000);
+        window.addEventListener("error", resourceFailed, true);
+        window.addEventListener("load", function () {
+          if (failed && !retryTimer) showError();
+        }, { once: true });
+        // A module's top-level await can outlive the page load event.
+        window.addEventListener("ipollowork:startup-ready", function () {
+          clearTimeout(watchdog);
+          clearTimeout(retryTimer);
+          window.removeEventListener("error", resourceFailed, true);
+          try { sessionStorage.removeItem(retryKey); } catch (e) {}
+        }, { once: true });
+      })();
+    </script>
 
     <link rel="icon" type="image/svg+xml" href="/ipollowork-mark.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
@@ -49,6 +110,26 @@
         display: block;
       }
 
+      #ipollowork-startup-error {
+        position: absolute;
+        top: calc(50% + 130px);
+        padding: 16px;
+        text-align: center;
+        font: 14px/1.5 system-ui, sans-serif;
+        color: #555;
+      }
+
+      html[data-theme="dark"] #ipollowork-startup-error { color: #ccc; }
+      #ipollowork-startup-retry {
+        padding: 8px 18px;
+        border: 1px solid currentColor;
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+
       html[data-theme="dark"] #ipollowork-startup-splash img {
         filter: brightness(0) invert(1);
       }
@@ -63,6 +144,10 @@
   <body class="bg-dls-surface text-dls-text mac:bg-transparent">
     <div id="ipollowork-startup-splash" aria-label="Loading" role="status">
       <img src="/ipollowork-app-loading-v3.gif" alt="" aria-hidden="true" />
+      <div id="ipollowork-startup-error" hidden>
+        <p id="ipollowork-startup-message"></p>
+        <button id="ipollowork-startup-retry" type="button"></button>
+      </div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/index.react.tsx"></script>

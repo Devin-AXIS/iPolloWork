@@ -143,7 +143,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       { name: "sessionId", type: "string", required: true, description: "Session ID from session.list_sessions." },
       { name: "title", type: "string", required: true, description: "New session title." },
     ],
-    disabled: !conversation,
+    disabled: !ipolloworkClient,
     execute: async (args) => {
       const sessionId = stringArg(args, "sessionId");
       const title = stringArg(args, "title");
@@ -169,6 +169,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
     args: [
       { name: "sessionId", type: "string", required: true, description: "Session ID from session.list_sessions." },
       { name: "confirmed", type: "boolean", required: true, description: "Must be true after explicit user confirmation." },
+      { name: "deleteFiles", type: "boolean", description: "Also delete native history and owned local files. Defaults to false; full cleanup can take longer." },
     ],
     disabled: !ipolloworkClient,
     execute: async (args) => {
@@ -180,14 +181,15 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
 
       const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
       if (!targetWorkspace) return { ok: false, error: "Session was not found in the current session list" };
-      await ipolloworkClient.deleteSession(targetWorkspace.id, sessionId);
+      await ipolloworkClient.deleteSession(targetWorkspace.id, sessionId, booleanArg(args, "deleteFiles"));
+      conversation?.forgetSessionPermissions?.(sessionId);
       if (selectedSessionId === sessionId) {
         navigateToSessionRoot();
       }
       await refreshRouteState();
       return { ok: true, sessionId, deleted: true };
     },
-  }), [navigateToSessionRoot, ipolloworkClient, refreshRouteState, selectedSessionId, sessionsByWorkspaceId, workspaces]);
+  }), [conversation, navigateToSessionRoot, ipolloworkClient, refreshRouteState, selectedSessionId, sessionsByWorkspaceId, workspaces]);
   useControlAction(deleteSessionControlAction);
 
   const modelPickerControlAction = useMemo<iPolloWorkControlAction>(() => ({
@@ -201,7 +203,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   useControlAction(modelPickerControlAction);
 
   // ---------------------------------------------------------------------------
-  // Session management control actions (pin and archive)
+  // Session management control actions (pin).
   // ---------------------------------------------------------------------------
 
   const store = useSessionPinStore;
@@ -223,28 +225,5 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   }), []);
   useControlAction(pinControlAction);
 
-  const archiveControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "session.archive",
-    label: "Archive or unarchive a session",
-    description: "Archive a session (non-destructive, preserves context). Archived sessions move to the Archived section. Pass archived=false to unarchive.",
-    sideEffect: "mutation",
-    requiresArgs: true,
-    args: [
-      { name: "sessionId", type: "string", required: true, description: "Session ID." },
-      { name: "archived", type: "boolean", required: true, description: "true to archive, false to unarchive." },
-    ],
-    disabled: !conversation,
-    execute: async (args) => {
-      const sessionId = stringArg(args, "sessionId");
-      const archived = booleanArg(args, "archived");
-      if (!sessionId) return { ok: false, error: "sessionId is required" };
-      if (!conversation) return { ok: false, error: "Conversation engine is not connected" };
-      const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
-      await conversation.setArchived(sessionId, archived, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
-      await refreshRouteState();
-      return { ok: true, sessionId, archived };
-    },
-  }), [conversation, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
-  useControlAction(archiveControlAction);
 
 }

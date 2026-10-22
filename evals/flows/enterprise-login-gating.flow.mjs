@@ -10,20 +10,20 @@ export default {
   steps: [
     { name: "登录身份与角色", async run(ctx) {
       await ctx.trustedClick('[data-testid="proof-owner"]');
-      await ctx.prove("企业超管保留资源管理入口，员工模板和插件投稿入口暂时隐藏", {
-        voiceover: "企业超管仍可管理模板和插件。切换员工后，自己的模板和插件投稿入口暂时隐藏，企业消息仍然可用。",
+      await ctx.prove("企业超管保留资源管理入口，员工可投稿插件", {
+        voiceover: "企业超管仍可管理模板和插件。切换员工后，可以打开自己的模板、插件和技能投稿，企业消息仍然可用。",
         action: async () => {
           await ctx.expectText("模板管理");
           await ctx.expectText("插件管理");
           await ctx.trustedClick('[data-testid="proof-member"]');
         },
         assert: async () => {
-          await ctx.expectNoText("我的模板投稿");
-          await ctx.expectNoText("我的插件投稿");
-          ctx.assert(await ctx.eval('!document.querySelector(\'[data-testid="enterprise-template-manage"], [data-testid="enterprise-extension-manage"]\')'), "employee submission controls are not rendered");
+          await ctx.expectText("我的模板投稿");
+          await ctx.expectText("我的插件投稿");
+          await ctx.expectText("我的技能投稿");
           await ctx.expectText("企业消息");
         },
-        screenshot: { name: "enterprise-member", requireText: ["企业消息"], rejectText: ["我的模板投稿", "我的插件投稿"] },
+        screenshot: { name: "enterprise-member", requireText: ["企业消息", "我的模板投稿", "我的插件投稿", "我的技能投稿"] },
       });
     } },
     { name: "资源管理员按类型分工", async run(ctx) {
@@ -38,7 +38,11 @@ export default {
           voiceover: `${name}管理员只管理${name}。另一类资源的管理入口隐藏，范围内的资源仍可分配权限。`,
           action: async () => {
             await ctx.trustedClick(`[data-testid="proof-${role}"]`);
-            ctx.assert(await ctx.eval(`Boolean(document.querySelector('[data-testid="enterprise-${type}-manage"]')) && !document.querySelector('[data-testid="enterprise-${type === "template" ? "extension" : "template"}-manage"]')`), `${role} only has its scoped resource entry`);
+            ctx.assert(await ctx.eval(`(() => {
+              const own = document.querySelector('[data-testid="enterprise-${type}-manage"]');
+              const other = document.querySelector('[data-testid="enterprise-${type === "template" ? "extension" : "template"}-manage"]');
+              return own?.textContent.includes('${name}管理') && !other?.textContent.includes('${other}管理');
+            })()`), `${role} only manages its assigned resource type`);
             await ctx.trustedClick(`[data-testid="enterprise-${type}-manage"]`);
             await ctx.waitForText(`全部企业${name}`);
             await ctx.waitForText(type === "template" ? "产品提案模板" : "产品调研助手");
