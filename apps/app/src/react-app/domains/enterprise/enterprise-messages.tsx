@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import { Loader2, Mail } from "lucide-react";
+import { CircleAlert, Loader2, Mail } from "lucide-react";
 import type { EnterpriseMessage } from "@ipollowork/types/enterprise";
-import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button, ButtonStyleScopeProvider } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
 import { enterpriseApi, enterpriseErrorMessage, enterpriseIdentity, requestEnterpriseMessageImport } from "@/app/lib/enterprise-client";
@@ -106,15 +108,16 @@ export function EnterpriseMessageList({ connection, inbox, onExit, renderMessage
       <span className="truncate text-xs text-muted-foreground">{t("notifications.source")}: {connection.shortName} · {message.senderName}{message.revokedAt ? " · 已撤回" : message.acceptedAt ? " · 已接收" : message.ignoredAt ? " · 已忽略" : ""}</span>
     </span>
   </button>;
-  return <div data-testid="enterprise-inbox">
-      {inbox.error || error ? <p role="alert" className="mx-3 rounded-lg bg-feedback-error p-2 text-xs text-red-11">{error || inbox.error}</p> : null}
+  return <ButtonStyleScopeProvider value="settings" flat><div data-testid="enterprise-inbox">
+      {inbox.error || error ? <Alert variant="destructive" className="mx-3 w-auto p-2"><CircleAlert aria-hidden="true" /><AlertDescription className="text-xs">{error || inbox.error}</AlertDescription></Alert> : null}
       {renderMessages ? renderMessages(renderMessage) : inbox.items.map(renderMessage)}
       {inbox.loading && !inbox.items.length ? <p role="status" className="px-4 py-3 text-xs text-muted-foreground">{t("notifications.loading")}</p> : null}
+      {!renderMessages && !inbox.loading && !inbox.items.length && !inbox.error ? <Empty variant="ghost" className="items-start px-4 py-3 text-left"><EmptyDescription className="text-xs">暂无企业消息</EmptyDescription></Empty> : null}
       {inbox.cursor && inbox.items.length < 500 ? <Button variant="ghost" size="sm" disabled={inbox.loading} onClick={() => void inbox.more()}>加载更多消息</Button> : null}
     <Dialog open={Boolean(selected)} onOpenChange={(value) => { if (!value && !busy) setSelected(null); }}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" data-testid="enterprise-message-preview"><DialogHeader><DialogTitle>{selected?.title}</DialogTitle><DialogDescription>{selected?.senderName} · {connection.name}</DialogDescription></DialogHeader>
       {selected?.markdown ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-3 font-sans text-sm leading-7">{selected.markdown}</pre> : <p className="text-sm text-muted-foreground">{selected?.kind === "session_share" ? selected.revokedAt ? "这条分享已撤回，企业端已清理总结正文。" : selected.acceptedAt ? "总结已保存到接收设备，企业端不再向你提供正文。可在原设备打开已保存的会话。" : selected.ignoredAt ? "这条分享已忽略，不再领取总结。" : "这条分享暂不可领取。" : selected?.kind === "resource_granted" ? "你可以在当前企业的资源入口中查看已授权资源。" : "企业通知"}</p>}
-      {error ? <p role="alert" className="text-sm text-red-11">{error}</p> : null}
+      {error ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert> : null}
       <DialogFooter><Button variant="outline" disabled={busy || Boolean(selected?.revokedAt || selected?.acceptedAt || selected?.ignoredAt)} onClick={() => void ignore()}>忽略</Button>{selected?.kind === "session_share" ? <Button disabled={busy || Boolean(selected.revokedAt || selected.ignoredAt) || (!selected.markdown && !selected.acceptedAt)} onClick={() => { requestEnterpriseMessageImport(connection, selected.id); setSelected(null); onExit(); if (!matchPath("/session/:sessionId?", pathname) && !matchPath("/workspace/:workspaceId/session/:sessionId?", pathname)) navigate("/session"); }}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}{selected.acceptedAt ? "在本机打开分享会话" : "接收并新建会话"}</Button> : selected?.resourceType ? <Button disabled={busy} onClick={() => { const path = selected.resourceType === "template" ? `/session?enterpriseTemplates=${encodeURIComponent(connection.id)}` : selected.resourceType === "skill" ? "/settings/extensions/skills?source=enterprise" : "/settings/extensions/plugins"; setSelected(null); onExit(); navigate(path); }}>查看资源</Button> : <Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>}</DialogFooter>
     </DialogContent></Dialog>
-  </div>;
+  </div></ButtonStyleScopeProvider>;
 }

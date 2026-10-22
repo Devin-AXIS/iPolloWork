@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardIcon, CardTitle, CardDescription, CardMeta } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
 import { useState, type ReactNode } from "react";
 import { ArrowRight, CheckCircle2, KeyRound, X } from "lucide-react";
@@ -7,7 +8,8 @@ import { ArrowRight, CheckCircle2, KeyRound, X } from "lucide-react";
 import { t } from "@/i18n";
 import { ProviderIcon } from "../../../design-system/provider-icon";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
-import { SettingsNotice, SettingsStatusBadge } from "../settings-section";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
+import { SettingsNotice } from "../settings-section";
 import {
   LayoutSection,
   LayoutSectionItem,
@@ -57,11 +59,6 @@ function providerSourceLabel(source?: ConnectedProvider["source"]) {
   return null;
 }
 
-function providerStatusTone(label: string): "ready" | "warning" | "neutral" {
-  if (label.toLowerCase().includes("connected")) return "ready";
-  if (label.toLowerCase().includes("error") || label.toLowerCase().includes("fail")) return "warning";
-  return "neutral";
-}
 
 export function AiSettingsView(props: AiSettingsViewProps) {
   const [disconnectTarget, setDisconnectTarget] = useState<ConnectedProvider | null>(null);
@@ -85,18 +82,14 @@ export function AiSettingsView(props: AiSettingsViewProps) {
   };
 
   return (
-    <>
+    <div data-testid="ai-providers">
       <LayoutStack>
       {/* ---- Providers ---- */}
       <LayoutSection>
         <LayoutSectionItem>
           <LayoutSectionItemHeader>
             <LayoutSectionItemTitle>
-              {props.providerSummary}
-              <SettingsStatusBadge
-                tone={providerStatusTone(props.providerStatusLabel)}
-                label={props.providerStatusLabel}
-              />
+              {t("status.providers_connected", { count: props.connectedProviders.length })}
             </LayoutSectionItemTitle>
             <LayoutSectionItemHeaderActions>
               <Button
@@ -159,75 +152,49 @@ export function AiSettingsView(props: AiSettingsViewProps) {
         ) : null}
 
         {props.connectedProviders.length > 0 ? (
-          <div className="space-y-2">
+          <div data-testid="connected-provider-list" className="space-y-2">
             {props.connectedProviders.map((provider) => (
-              <LayoutSectionItem
-                key={provider.id}
-                className="flex-row flex-wrap items-center justify-between gap-3 rounded-2xl border border-dls-border px-4 py-3"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <ProviderIcon
+              <Card variant="resource" key={provider.id} data-testid="connected-provider-row" data-provider-id={provider.id} className="h-[72px] min-w-0 flex-row items-center justify-between">
+                <CardHeader className="min-w-0 flex-1 items-center">
+                  <CardIcon><ProviderIcon
                     providerId={provider.id}
                     providerName={provider.name}
                     size={20}
-                    className="text-dls-text"
-                  />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-dls-text">{provider.name}</span>
-                      {props.cloudProviderIds?.has(provider.id) ? (
-                        <span className="shrink-0 rounded-full border border-blue-6 bg-blue-2 px-2 py-0.5 text-[10px] font-medium text-blue-11">
-                          Cloud
-                        </span>
-                      ) : null}
-                      {provider.source === "env" ? (
-                        <span className="shrink-0 rounded-full border border-amber-6 bg-amber-2 px-2 py-0.5 text-[10px] font-medium text-amber-11">
-                          {providerSourceLabel("env")}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="truncate font-mono text-xs text-muted-foreground">{provider.displayId ?? provider.id}</div>
+                    className="shrink-0 text-dls-text"
+                  /></CardIcon>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle title={provider.displayId ?? provider.id} className="truncate">{provider.name}</CardTitle>
+                    <CardMeta className="mt-1 truncate">
+                      {props.cloudProviderIds?.has(provider.id) ? "Cloud" : providerSourceLabel(provider.source) ?? t("status.connected")}
+                    </CardMeta>
                   </div>
+                </CardHeader>
+                <div className="flex w-24 shrink-0 justify-end">
+                  {!props.cloudProviderIds?.has(provider.id) && provider.id !== "opencode" ? (
+                    <Button data-testid="provider-disconnect" variant="ghost" size="sm" className="text-destructive hover:text-destructive" title={!props.canDisconnectProvider(provider.source) ? t("settings.managed_by_env") : undefined} onClick={() => setDisconnectTarget(provider)} disabled={props.busy || props.providerAuthBusy || disconnectingProviderId !== null || !props.canDisconnectProvider(provider.source)}>
+                      {disconnectingProviderId === provider.id ? t("settings.disconnecting") : t("settings.disconnect")}
+                    </Button>
+                  ) : null}
                 </div>
-                {!props.cloudProviderIds?.has(provider.id) && provider.id !== "opencode" ? (
-                  <Button
-                    variant="destructive"
-                    onClick={() => setDisconnectTarget(provider)}
-                    disabled={
-                      props.busy ||
-                      props.providerAuthBusy ||
-                      disconnectingProviderId !== null ||
-                      !props.canDisconnectProvider(provider.source)
-                    }
-                  >
-                    {disconnectingProviderId === provider.id
-                      ? t("settings.disconnecting")
-                      : props.canDisconnectProvider(provider.source)
-                        ? t("settings.disconnect")
-                        : t("settings.managed_by_env")}
-                  </Button>
-                ) : null}
-              </LayoutSectionItem>
+              </Card>
             ))}
           </div>
-        ) : null}
+        ) : <Empty variant="ghost" className="py-6"><EmptyDescription>{t("settings.no_providers_connected")}</EmptyDescription></Empty>}
 
         {props.showiPolloWorkModelsConnect ? (
-          <LayoutSectionItem className="flex-row flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-dls-border px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <ProviderIcon providerId="ipollowork" size={20} className="text-muted-foreground" />
+          <Card variant="resource" className="flex-row flex-wrap items-center justify-between">
+            <CardHeader className="min-w-0 flex-1 items-center">
+              <CardIcon><ProviderIcon providerId="ipollowork" size={20} className="text-muted-foreground" /></CardIcon>
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-dls-text">iPolloWork Models</span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <CardTitle className="truncate">iPolloWork Models</CardTitle>
                   <span className="shrink-0 rounded-full border border-dls-border bg-dls-sidebar/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                     {t("settings.ai.not_connected")}
                   </span>
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {t("settings.ai.models_connect_description")}
-                </div>
+                <CardDescription className="truncate">{t("settings.ai.models_connect_description")}</CardDescription>
               </div>
-            </div>
+            </CardHeader>
             <Button
               variant="outline"
               onClick={() => void props.onSubscribeiPolloWorkModels?.()}
@@ -236,7 +203,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
               {t("connect.row_action_connect")}
               <ArrowRight className="ml-1.5 size-3.5" />
             </Button>
-          </LayoutSectionItem>
+          </Card>
         ) : null}
 
         {props.providerConnectError ? (
@@ -249,7 +216,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
           <SettingsNotice tone="error">{props.providerDisconnectError}</SettingsNotice>
         ) : null}
 
-        <LayoutSectionItemFootnote>{t("settings.api_keys_info")}</LayoutSectionItemFootnote>
+        <LayoutSectionItemFootnote className="text-ui-caption text-dls-secondary">{t("settings.api_keys_info")}</LayoutSectionItemFootnote>
       </LayoutSection>
 
       {props.cloudProvidersView}
@@ -265,6 +232,6 @@ export function AiSettingsView(props: AiSettingsViewProps) {
         onConfirm={() => void confirmDisconnect()}
         onCancel={() => setDisconnectTarget(null)}
       />
-    </>
+    </div>
   );
 }

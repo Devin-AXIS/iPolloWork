@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
+import { ChevronDown, CircleAlert } from "lucide-react";
 
 import {
   joinEnterpriseWithCode,
@@ -7,7 +8,8 @@ import {
 } from "../../../../app/lib/enterprise-connections";
 import { readDenSettings } from "../../../../app/lib/den";
 import { denSessionUpdatedEvent } from "../../../../app/lib/den-session-events";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button, ButtonStyleScopeProvider } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +18,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { TextInput } from "../../../design-system/text-input";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { t } from "../../../../i18n";
 
 type EnterpriseServerDialogProps = {
@@ -62,6 +66,7 @@ export function EnterpriseServerDialog({
   onOpenChange,
   onSignInRequired,
 }: EnterpriseServerDialogProps) {
+  const fieldId = useId();
   const [serverUrl, setServerUrl] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -122,8 +127,8 @@ export function EnterpriseServerDialog({
   }, [awaitingSignIn, open, submit]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-md sm:max-w-md">
+    <ButtonStyleScopeProvider value="settings" flat><Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="enterprise-connect-dialog">
         <DialogHeader>
           <DialogTitle>{t("enterprise_connection.title")}</DialogTitle>
           <DialogDescription>{t("enterprise_connection.description")}</DialogDescription>
@@ -136,9 +141,10 @@ export function EnterpriseServerDialog({
             if (!connecting && !awaitingSignIn && serverUrl.trim() && joinCode.trim()) void submit();
           }}
         >
-          <TextInput
-            label={t("enterprise_connection.url_label")}
-            hint={t("enterprise_connection.url_hint")}
+          <Field data-invalid={error === t("enterprise_connection.error_url") || undefined}>
+          <FieldLabel htmlFor={`${fieldId}-url`}>{t("enterprise_connection.url_label")}</FieldLabel>
+          <Input id={`${fieldId}-url`} required
+            aria-describedby={error === t("enterprise_connection.error_url") ? `${fieldId}-error` : undefined}
             value={serverUrl}
             onChange={(event) => setServerUrl(event.currentTarget.value)}
             placeholder={t("enterprise_connection.url_placeholder")}
@@ -149,9 +155,11 @@ export function EnterpriseServerDialog({
             spellCheck={false}
             inputMode="url"
           />
-          <TextInput
-            label={t("enterprise_connection.code_label")}
-            hint={t("enterprise_connection.code_hint")}
+          </Field>
+          <Field data-invalid={Boolean(error) || undefined}>
+          <FieldLabel htmlFor={`${fieldId}-code`}>{t("enterprise_connection.code_label")}</FieldLabel>
+          <Input id={`${fieldId}-code`} required
+            aria-describedby={error ? `${fieldId}-error` : undefined}
             value={joinCode}
             onChange={(event) => setJoinCode(event.currentTarget.value.toUpperCase())}
             placeholder={t("enterprise_connection.code_placeholder")}
@@ -161,14 +169,19 @@ export function EnterpriseServerDialog({
             autoCorrect="off"
             spellCheck={false}
           />
+          </Field>
           {awaitingSignIn ? (
             <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
               {t("enterprise_connection.signin_to_continue")}
             </p>
           ) : error ? (
-            <p className="text-xs text-destructive" role="alert">{error}</p>
+            <Alert id={`${fieldId}-error`} variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert>
           ) : null}
 
+          <Collapsible>
+            <CollapsibleTrigger data-testid="enterprise-connect-help" render={<Button type="button" variant="ghost" size="sm" className="-ml-2" />}><ChevronDown className="size-3.5" aria-hidden="true" />{t("enterprise_connection.join_details")}</CollapsibleTrigger>
+            <CollapsibleContent className="pt-2 text-ui-body text-muted-foreground">{t("enterprise_connection.code_hint")} {t("enterprise_connection.url_hint")}</CollapsibleContent>
+          </Collapsible>
           <DialogFooter>
             <Button
               type="button"
@@ -191,6 +204,6 @@ export function EnterpriseServerDialog({
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+    </Dialog></ButtonStyleScopeProvider>
   );
 }

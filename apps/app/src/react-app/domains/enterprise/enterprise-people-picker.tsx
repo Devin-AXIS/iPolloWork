@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Building2, ChevronDown, ChevronRight, Loader2, Search, UserRound, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { CircleAlert, Building2, ChevronDown, ChevronRight, Loader2, UserRound, X } from "lucide-react";
 import type { EnterpriseDepartment, EnterpriseMember } from "@ipollowork/types/enterprise";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { SearchField } from "@/components/ui/search-field";
 import { enterpriseApi, enterpriseErrorMessage, enterpriseIdentity } from "@/app/lib/enterprise-client";
 import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
 
@@ -16,6 +19,7 @@ export function EnterprisePeoplePicker({ connection, value, onChange, allowDepar
   onChange: (value: EnterprisePeopleSelection) => void; allowDepartments?: boolean; disabled?: boolean;
 }) {
   const identity = enterpriseIdentity(connection);
+  const searchId = useId();
   const [departments, setDepartments] = useState<EnterpriseDepartment[]>([]);
   const [departmentCursor, setDepartmentCursor] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -158,8 +162,8 @@ export function EnterprisePeoplePicker({ connection, value, onChange, allowDepar
     </div>;
   };
   return <div data-testid="enterprise-people-picker" className="space-y-3">
-    <label className="block space-y-1.5"><span className="text-xs font-medium">搜索企业人员</span><div className="relative"><Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="姓名、邮箱或部门" disabled={disabled} /></div></label>
-    {error ? <p role="alert" className="rounded-lg bg-feedback-error p-3 text-sm text-red-11">{error}</p> : null}
+    <Field><FieldLabel htmlFor={searchId}>搜索企业人员</FieldLabel><SearchField id={searchId} value={search} onValueChange={setSearch} clearLabel="清除人员搜索" placeholder="姓名、邮箱或部门" disabled={disabled} /></Field>
+    {error ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert> : null}
     <div className="grid min-h-64 grid-cols-[minmax(0,1fr)_minmax(150px,.65fr)] divide-x rounded-xl border border-border max-[560px]:grid-cols-1 max-[560px]:divide-x-0 max-[560px]:divide-y">
       <div className="max-h-80 overflow-y-auto p-2" aria-label="部门与人员">
         {loading ? <p role="status" className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />正在加载通讯录</p> : null}
@@ -171,7 +175,7 @@ export function EnterprisePeoplePicker({ connection, value, onChange, allowDepar
           {departmentCursor ? <Button variant="ghost" size="sm" disabled={Boolean(loading)} onClick={() => void run("departments", async () => { const epoch = generation.current; const page = await enterpriseApi.departments(connectionRef.current, departmentCursor, controller.current?.signal); if (epoch === generation.current) { setDepartments((current) => [...current, ...page.items]); setDepartmentCursor(page.nextCursor); } })}>加载更多部门</Button> : null}
         </>}
         {search.trim() && searchPage?.nextCursor ? <Button variant="ghost" size="sm" disabled={Boolean(loading)} onClick={() => void run("search", async () => { const requestSearch = search; const page = await enterpriseApi.members(connectionRef.current, { search, cursor: searchPage.nextCursor }, controller.current?.signal); if (requestSearch === searchRef.current) setSearchPage((current) => ({ ...page, items: [...(current?.items ?? []), ...page.items] })); })}>加载更多搜索结果</Button> : null}
-        {searchPage && !searchPage.items.length && !loading ? <p className="p-3 text-sm text-muted-foreground">没有匹配的人员</p> : null}
+        {search.trim() && searchPage && !searchPage.items.length && !loading && !error ? <Empty variant="ghost"><EmptyDescription>没有匹配的人员</EmptyDescription><Button variant="outline" size="sm" disabled={disabled} onClick={() => setSearch("")}>清除搜索</Button></Empty> : null}
       </div>
       <div className="max-h-80 overflow-y-auto p-3"><div className="mb-3 flex items-center justify-between gap-2"><p className="text-xs font-medium">已选 {value.memberIds.length} 人{allowDepartments ? ` · ${value.departmentIds.length} 个部门` : ""}</p><Button variant="ghost" size="sm" disabled={disabled} onClick={() => onChange(EMPTY)}>清空</Button></div>
         {value.memberIds.map((id, index) => <div key={id} className="flex items-center gap-2 py-1"><span className="min-w-0 flex-1 truncate text-sm">{labelForMember(id, index)}</span><Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={`取消 ${labelForMember(id, index)}`} onClick={() => toggleMember(id)}><X className="size-3.5" /></Button></div>)}

@@ -326,7 +326,7 @@ describe("settings route parsing", () => {
     expect(skillsViewSource).not.toContain('SelectMenu');
     expect(skillsViewSource).toContain('aria-label="技能来源"');
     expect(skillsViewSource).not.toContain("添加Git仓库");
-    expect(skillsViewSource).toContain('<Cloud className="size-4" />公开</Button>');
+    expect(skillsViewSource).toContain('<Cloud className="size-4" />公开</TabsTrigger>');
     expect(skillsViewSource).not.toContain('公开（云端）');
     expect(skillsViewSource).toContain('data-testid="skills-status-filter"');
     expect(skillsViewSource).not.toContain('<select\n              data-testid="skills-status-filter"');
@@ -355,9 +355,9 @@ describe("settings route parsing", () => {
   test("separates personal, public and enterprise skills without a repository source", () => {
     expect(settingsRouteSource).toContain('data-testid="skills-library-navigation-actions"');
     expect(skillsViewSource).toContain('aria-label="技能来源"');
-    expect(skillsViewSource).toContain('<Cloud className="size-4" />公开</Button>');
-    expect(skillsViewSource).toContain('setSource("personal")');
-    expect(skillsViewSource).toContain('setSource("enterprise")');
+    expect(skillsViewSource).toContain('<Cloud className="size-4" />公开</TabsTrigger>');
+    expect(skillsViewSource).toContain('<TabsTrigger value="personal"');
+    expect(skillsViewSource).toContain('<TabsTrigger value="enterprise"');
     expect(skillsViewSource).toContain('data-testid="skills-status-filter"');
     expect(skillsViewSource).not.toContain('skills-hub-section');
     expect(skillsViewSource).not.toContain('extensions.installHubSkill(');

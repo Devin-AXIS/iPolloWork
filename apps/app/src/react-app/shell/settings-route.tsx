@@ -2040,6 +2040,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         const pluginPackagesView = (
           <PluginPackagesPanel
             ref={pluginPackagesPanelRef}
+            showHeader={false}
             client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
             workspaceId={runtimeWorkspaceId}
             selectedPluginId={route.pluginPackageId ?? null}
@@ -2302,6 +2303,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         showNotifications={route.tab !== "extensions"}
         hidePageHeader={
           route.tab === "extensions"
+          || route.tab === "authorizations"
           || route.tab === "cloud-marketplaces"
           || Boolean(route.pluginPackageId)
           || Boolean(selectedPluginSettingsPage)
