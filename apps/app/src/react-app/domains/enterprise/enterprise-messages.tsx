@@ -1,14 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import { Loader2, Mail, RefreshCw } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import type { EnterpriseMessage } from "@ipollowork/types/enterprise";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
 import { enterpriseApi, enterpriseErrorMessage, enterpriseIdentity, requestEnterpriseMessageImport } from "@/app/lib/enterprise-client";
+import { formatRelativeTime } from "@/app/utils";
+import { t } from "@/i18n";
+import { useNotificationStore } from "@/react-app/kernel/notification-store";
+
+function messageSource(connection: EnterpriseConnection | null) {
+  return connection ? JSON.stringify([connection.origin, enterpriseIdentity(connection)]) : "";
+}
 
 export function useEnterpriseMessages(connection: EnterpriseConnection | null) {
-  const identity = connection ? enterpriseIdentity(connection) : "";
+  const identity = messageSource(connection);
+  const clearedThrough = useNotificationStore((state) => state.clearedSources[identity] ?? 0);
   const [state, setState] = useState<{ identity: string; items: EnterpriseMessage[]; cursor: string | null }>({ identity: "", items: [], cursor: null });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,17 +55,24 @@ export function useEnterpriseMessages(connection: EnterpriseConnection | null) {
     setLoading(true); setError(null);
     try {
       const page = await enterpriseApi.messages(options.current, state.cursor);
-      if (!options.current || enterpriseIdentity(options.current) !== snapshotIdentity) return;
+      if (messageSource(options.current) !== snapshotIdentity) return;
       setState((previous) => ({ identity, items: [...new Map([...previous.items, ...page.items].map((message) => [message.id, message])).values()].slice(0, 500), cursor: page.nextCursor === state.cursor ? null : page.nextCursor }));
-    } catch (cause) { if (options.current && enterpriseIdentity(options.current) === snapshotIdentity) setError(enterpriseErrorMessage(cause)); }
-    finally { if (options.current && enterpriseIdentity(options.current) === snapshotIdentity) setLoading(false); }
+    } catch (cause) { if (messageSource(options.current) === snapshotIdentity) setError(enterpriseErrorMessage(cause)); }
+    finally { if (messageSource(options.current) === snapshotIdentity) setLoading(false); }
   };
-  const items = state.identity === identity ? state.items : [];
-  return { items, cursor: state.identity === identity ? state.cursor : null, error, loading, refresh: () => setRevision((value) => value + 1), more, unread: items.filter((item) => !item.readAt && !item.ignoredAt && !item.revokedAt).length };
+  const received = state.identity === identity ? state.items : [];
+  const items = received.filter((item) => Date.parse(item.createdAt) > clearedThrough);
+  return {
+    items, cursor: state.identity === identity && !received.some((item) => Date.parse(item.createdAt) <= clearedThrough) ? state.cursor : null,
+    error, loading, refresh: () => setRevision((value) => value + 1), more,
+    clearBoundary: () => identity ? { id: identity, through: Math.max(Date.now(), ...received.map((item) => Date.parse(item.createdAt))) } : undefined,
+    unread: items.filter((item) => !item.readAt && !item.ignoredAt && !item.revokedAt).length,
+  };
 }
 
-export function EnterpriseMessageList({ connection, inbox, onExit }: {
+export function EnterpriseMessageList({ connection, inbox, onExit, renderMessages }: {
   connection: EnterpriseConnection; inbox: ReturnType<typeof useEnterpriseMessages>; onExit: () => void;
+  renderMessages?: (renderMessage: (message: EnterpriseMessage) => ReactNode) => ReactNode;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -84,14 +99,18 @@ export function EnterpriseMessageList({ connection, inbox, onExit }: {
     catch (cause) { if (active.current) setError(enterpriseErrorMessage(cause)); }
     finally { if (active.current) setBusy(false); }
   };
-  return <div data-testid="enterprise-inbox" className="max-h-80 overflow-y-auto border-b border-border pb-2">
-    <div className="flex items-center gap-2 px-4 py-2"><Mail className="size-3.5" /><p className="min-w-0 flex-1 truncate text-xs font-medium">{connection.shortName} · 企业消息</p><Button variant="ghost" size="icon-sm" disabled={inbox.loading} aria-label="刷新企业消息" onClick={inbox.refresh}><RefreshCw className="size-3.5" /></Button></div>
-    {!connection.features?.messaging ? <p className="px-4 py-2 text-xs text-muted-foreground">当前企业服务尚未开放企业消息。</p> : <>
+  const renderMessage = (message: EnterpriseMessage) => <button key={`enterprise:${message.id}`} data-notification-source={connection.shortName} type="button" disabled={busy} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-muted disabled:opacity-50" onClick={() => void open(message)}>
+    <Mail className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="flex items-baseline justify-between gap-2"><span className="min-w-0 truncate text-sm font-medium">{message.title}</span><span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">{formatRelativeTime(Date.parse(message.createdAt))}{!message.readAt && !message.ignoredAt && !message.revokedAt ? <span className="size-1.5 rounded-full bg-primary" /> : null}</span></span>
+      <span className="truncate text-xs text-muted-foreground">{t("notifications.source")}: {connection.shortName} · {message.senderName}{message.revokedAt ? " · 已撤回" : message.acceptedAt ? " · 已接收" : message.ignoredAt ? " · 已忽略" : ""}</span>
+    </span>
+  </button>;
+  return <div data-testid="enterprise-inbox">
       {inbox.error || error ? <p role="alert" className="mx-3 rounded-lg bg-feedback-error p-2 text-xs text-red-11">{error || inbox.error}</p> : null}
-      {inbox.items.map((message) => <button key={message.id} type="button" disabled={busy} className="block w-full px-4 py-3 text-left hover:bg-muted disabled:opacity-50" onClick={() => void open(message)}><span className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{message.title}</span>{!message.readAt ? <span className="size-1.5 shrink-0 rounded-full bg-primary" /> : null}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{message.senderName} · {message.revokedAt ? "已撤回" : message.acceptedAt ? "已接收" : message.ignoredAt ? "已忽略" : message.kind === "session_share" ? "会话分享" : message.kind === "resource_granted" ? "资源授权" : "企业通知"}</span></button>)}
-      {inbox.loading && !inbox.items.length ? <p role="status" className="px-4 py-3 text-xs text-muted-foreground">正在加载企业消息</p> : !inbox.items.length && !inbox.error ? <p className="px-4 py-3 text-xs text-muted-foreground">暂无企业消息</p> : null}
+      {renderMessages ? renderMessages(renderMessage) : inbox.items.map(renderMessage)}
+      {inbox.loading && !inbox.items.length ? <p role="status" className="px-4 py-3 text-xs text-muted-foreground">{t("notifications.loading")}</p> : null}
       {inbox.cursor && inbox.items.length < 500 ? <Button variant="ghost" size="sm" disabled={inbox.loading} onClick={() => void inbox.more()}>加载更多消息</Button> : null}
-    </>}
     <Dialog open={Boolean(selected)} onOpenChange={(value) => { if (!value && !busy) setSelected(null); }}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" data-testid="enterprise-message-preview"><DialogHeader><DialogTitle>{selected?.title}</DialogTitle><DialogDescription>{selected?.senderName} · {connection.name}</DialogDescription></DialogHeader>
       {selected?.markdown ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-3 font-sans text-sm leading-7">{selected.markdown}</pre> : <p className="text-sm text-muted-foreground">{selected?.kind === "session_share" ? selected.revokedAt ? "这条分享已撤回，企业端已清理总结正文。" : selected.acceptedAt ? "总结已保存到接收设备，企业端不再向你提供正文。可在原设备打开已保存的会话。" : selected.ignoredAt ? "这条分享已忽略，不再领取总结。" : "这条分享暂不可领取。" : selected?.kind === "resource_granted" ? "你可以在当前企业的资源入口中查看已授权资源。" : "企业通知"}</p>}
       {error ? <p role="alert" className="text-sm text-red-11">{error}</p> : null}

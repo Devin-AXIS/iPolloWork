@@ -18,6 +18,11 @@ import { DenAuthProvider, useDenAuth } from "../src/react-app/domains/cloud/den-
 import { CloudSessionProvider } from "../src/react-app/domains/settings/cloud/cloud-session-provider";
 import { CloudAccountSection } from "../src/react-app/domains/settings/cloud/cloud-account-section";
 import { useDenSession } from "../src/react-app/domains/settings/cloud/use-den-session";
+import { NotificationBell } from "../src/react-app/shell/notification-center";
+import { ShellConfigProvider } from "../src/react-app/shell/shell-config";
+import { ReloadCoordinatorProvider } from "../src/react-app/shell/reload-coordinator";
+import { useNotificationStore } from "../src/react-app/kernel/notification-store";
+import { setLocale } from "../src/i18n";
 
 // Only the isolated fixture URL uses this synthetic transport. Production imports never load it.
 const initial: EnterpriseConnection = { id: "ent_proof", name: "星河科技", shortName: "星河", origin: "https://enterprise-proof.invalid", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "owner", status: "active", departmentId: "product" }, session: { token: "synthetic-proof-session", expiresAt: "2099-01-01T00:00:00.000Z" }, features: enterpriseFeaturesSchema.parse({ membership: true, directory: true, messaging: true, sessionSharing: true, resourceManagement: true, resourcePermissions: true, templatePublishing: true, extensionPublishing: true, skills: true, skillPublishing: true }) };
@@ -47,6 +52,13 @@ const shareKeys = new Set<string>();
 const importedSession = () => ({ id: "imported-session", title: message.title, time: { created: 1000, updated: 1000 }, enterpriseShare: true });
 const baseFetch = window.fetch.bind(window);
 const accountCacheMode = new URLSearchParams(window.location.search).has("account-cache");
+const notificationsMode = new URLSearchParams(window.location.search).has("notifications");
+const notificationMessages: EnterpriseMessage[] = [
+  { ...message, id: "permission-message", title: "专注脉冲 · 使用权限已更新", kind: "resource_granted", markdown: null, resourceType: "extension" },
+  { ...message, id: "review-message", title: "Web Prototype · 审核通过", kind: "submission_reviewed", markdown: null },
+];
+const initialNotificationMessages = [...notificationMessages];
+let notificationRequests = 0;
 const proofCloudUrl = "https://account-proof.invalid";
 let accountLoginCount = 0;
 window.fetch = async (input, init) => {
@@ -54,6 +66,12 @@ window.fetch = async (input, init) => {
   if (!url.hostname.endsWith("-proof.invalid")) return baseFetch(input, init);
   const method = init?.method ?? "GET";
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+  if (notificationsMode && url.pathname.endsWith("/messages")) {
+    notificationRequests++;
+    const items = new Headers(init?.headers).get("authorization")?.includes("employee-2")
+      ? [{ ...message, id: "other-member-message", title: "另一成员的通知" }] : notificationMessages;
+    return Response.json({ items, nextCursor: "older-notification-page" });
+  }
   if (url.hostname === "account-proof.invalid") {
     const account = String(body.grant ?? new Headers(init?.headers).get("authorization")).includes("account-b") ? "b" : "a";
     const user = { id: `account-${account}`, name: `验证账号 ${account.toUpperCase()}`, email: `account-${account}@example.test` };
@@ -161,6 +179,32 @@ function AccountCacheProof() {
   </div></main>;
 }
 
+function NotificationProof() {
+  const [revision, setRevision] = useState(0);
+  const reset = () => {
+    notificationMessages.splice(0, notificationMessages.length, ...initialNotificationMessages);
+    useNotificationStore.setState({ notifications: [], clearedSources: {} });
+    useNotificationStore.getState().add({ kind: "cloud", title: "公开插件更新可用", body: "新版本已发布。" });
+    restoreProofOwner();
+    window.dispatchEvent(new Event("focus"));
+    setRevision((value) => value + 1);
+  };
+  return <ShellConfigProvider><ReloadCoordinatorProvider><main className="min-h-screen bg-background p-6 text-foreground">
+    <style>{'[data-slot="popover-content"]{animation:none!important;transition:none!important}'}</style>
+    <h1 className="text-xl font-semibold">统一通知清除验证</h1>
+    <p className="mt-2 text-sm text-muted-foreground">生产通知中心 · 隔离消息响应 · 清除记录在本机保存</p>
+    <div className="my-6 flex flex-wrap items-center gap-3">
+      <Button data-testid="notification-proof-reset" onClick={reset}>重置通知</Button>
+      <Button data-testid="notification-proof-new" onClick={() => { notificationMessages.unshift({ ...message, id: `new-${Date.now()}`, title: "清除后新收到的通知", createdAt: new Date().toISOString() }); window.dispatchEvent(new Event("focus")); }}>收到新通知</Button>
+      <Button data-testid="notification-proof-member" onClick={() => { saveEnterpriseConnection({ ...initial, membership: { ...initial.membership, id: "employee-2" }, session: { ...initial.session, token: "synthetic-employee-2" } }); }}>切换另一成员</Button>
+      <Button data-testid="notification-proof-reopen" onClick={async () => { await useNotificationStore.persist.rehydrate(); setRevision((value) => value + 1); }}>重开通知中心</Button>
+      <Button data-testid="notification-proof-theme" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; }}>切换主题</Button>
+      <NotificationBell key={revision} />
+    </div>
+    <p key={revision} className="text-xs text-muted-foreground">通知请求 {notificationRequests}</p>
+  </main></ReloadCoordinatorProvider></ShellConfigProvider>;
+}
+
 function Proof() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -206,4 +250,5 @@ function Proof() {
     <Toaster />
   </div></main>;
 }
-createRoot(document.getElementById("root")!).render(<HashRouter>{accountCacheMode ? <DenAuthProvider><CloudSessionProvider><AccountCacheProof /></CloudSessionProvider></DenAuthProvider> : <Routes><Route path="/workspace/:workspaceId/session/:sessionId?" element={<Proof />} /><Route path="/session/:sessionId?" element={<Proof />} /><Route path="/settings/*" element={<Proof />} /><Route path="*" element={<Navigate to="/session" replace />} /></Routes>}</HashRouter>);
+if (notificationsMode) setLocale("zh");
+createRoot(document.getElementById("root")!).render(<HashRouter>{notificationsMode ? <NotificationProof /> : accountCacheMode ? <DenAuthProvider><CloudSessionProvider><AccountCacheProof /></CloudSessionProvider></DenAuthProvider> : <Routes><Route path="/workspace/:workspaceId/session/:sessionId?" element={<Proof />} /><Route path="/session/:sessionId?" element={<Proof />} /><Route path="/settings/*" element={<Proof />} /><Route path="*" element={<Navigate to="/session" replace />} /></Routes>}</HashRouter>);

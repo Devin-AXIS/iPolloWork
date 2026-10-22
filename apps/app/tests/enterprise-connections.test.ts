@@ -8,6 +8,7 @@ import {
   downloadEnterpriseResource,
   joinEnterpriseWithCode,
   listEnterpriseResources,
+  readRemoteTemplateCard,
   normalizeEnterpriseOrigin,
   readEnterpriseConnections,
   refreshEnterpriseConnection,
@@ -19,7 +20,7 @@ import {
   type EnterpriseResource,
 } from "../src/app/lib/enterprise-connections";
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
-import { IPOLLOWORK_PACKAGE_MEDIA_TYPE } from "@ipollowork/types/templates";
+import { IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateManifestV1Schema } from "@ipollowork/types/templates";
 import { enterpriseFeaturesSchema } from "@ipollowork/types/enterprise";
 import { activateEnterpriseWorkContext, activatePersonalWorkContext, clearEnterpriseLoginState, readActiveEnterpriseConnection, readActiveWorkContextId } from "../src/app/lib/work-context";
 
@@ -97,6 +98,28 @@ describe("enterprise connections", () => {
       "http://localhost:3200/team",
     );
     expect(normalizeEnterpriseOrigin("ipollowork://enterprise")).toBeNull();
+  });
+
+  test("reads a versioned card with the member session and rejects mismatched identities and executable covers", async () => {
+    const manifest = templateManifestV1Schema.parse({ schemaVersion: 1, id: "test.remote-card", version: "1.0.0", kind: "design", category: "site", subcategory: "landing", style: "minimal", title: "Remote card", description: "A template card", cover: "cover.svg", entry: "entry.html", source: { name: "Test", license: "Private" }, designSystem: { tokenVersion: 1, editableGroups: ["theme"] }, applyChecklist: ["Update content"], minimumAppVersion: "0.1.0" });
+    const resource: EnterpriseResource = { id: "remote-card", type: "template", slug: manifest.id, manifestId: manifest.id, name: manifest.title, description: manifest.description, category: "site", enterpriseCategory: "Marketing", iconPath: null, featured: false, updatedAt: "2026-10-22", latestVersion: { version: "1.0.0", digest: "a".repeat(64), downloadPath: "/api/v1/resources/remote-card/versions/1.0.0/download" } };
+    let payload = { manifest, coverDataUrl: "data:image/svg+xml;base64,PHN2Zy8+" };
+    const requested: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      requested.push(String(input));
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
+      return Response.json(payload);
+    };
+    const options = { connection: connectedEnterprise, fetcher };
+    expect((await readRemoteTemplateCard(resource, options)).manifest.id).toBe(manifest.id);
+    expect(requested).toEqual(["https://enterprise.example.com/api/v1/resources/remote-card?version=1.0.0"]);
+    payload = { ...payload, manifest: { ...manifest, id: "test.different" } };
+    await expect(readRemoteTemplateCard(resource, options)).rejects.toThrow("invalid_template_preview");
+    payload = { ...payload, manifest, coverDataUrl: "data:text/html;base64,PHNjcmlwdD4=" };
+    await expect(readRemoteTemplateCard(resource, options)).rejects.toThrow("invalid_template_preview");
+    payload = { ...payload, manifest: { ...manifest, version: "2.0.0" } };
+    await expect(readRemoteTemplateCard(resource, options)).rejects.toThrow("invalid_template_preview");
+    expect(requested.every((url) => !url.includes("/download"))).toBe(true);
   });
   test("retains both resource manager roles when saving and restoring a bound enterprise account", () => {
     for (const role of ["template_admin", "extension_admin", "skill_admin"] as const) {

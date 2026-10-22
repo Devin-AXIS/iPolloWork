@@ -3,7 +3,7 @@ import { DEFAULT_ENGINE_ID, type WorkspaceWire } from "@ipollowork/types/workspa
 declare global {
   namespace NodeJS {
     interface Process {
-      resourcesPath?: string;
+      readonly resourcesPath: string;
     }
   }
 }

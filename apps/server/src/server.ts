@@ -1852,7 +1852,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const scope = parseTemplateLibraryScope(ctx.request.headers.get("x-ipollowork-resource-scope"));
     const cover = await readTemplateCover(config, workspace.id, ctx.params.templateId, scope);
-    return new Response(cover.data, { headers: { "Content-Type": cover.contentType, "Cache-Control": "no-store" } });
+    return new Response(new Uint8Array(cover.data), { headers: { "Content-Type": cover.contentType, "Cache-Control": "no-store" } });
   });
 
   addRoute(routes, "GET", "/workspace/:id/templates/:templateId/package", "client", async (ctx) => {

@@ -5,14 +5,12 @@ export const SIDEBAR_LAYOUT_STORAGE_KEY = "ipollowork.react.sidebarLayout.v1";
 export const PERSONAL_SIDEBAR_CONTEXT_ID = "personal";
 
 export type SidebarLayoutSnapshot = {
-  pluginShortcutIds: string[];
   projectOrderByContext: Record<string, string[]>;
   sessionOrderByProject: Record<string, string[]>;
   sessionProjectByKey: Record<string, string>;
 };
 
 export type SidebarLayoutState = SidebarLayoutSnapshot & {
-  setPluginShortcut: (id: string, enabled: boolean) => void;
   reorderProjects: (contextId: string, sourceId: string, targetId: string) => void;
   moveSession: (sessionKey: string, targetProjectId: string) => void;
   reorderSessions: (projectId: string, sourceKey: string, targetKey: string) => void;
@@ -62,7 +60,6 @@ function cleanAssignmentMap(value: unknown): Record<string, string> {
 
 export function createSidebarLayoutSnapshot(): SidebarLayoutSnapshot {
   return {
-    pluginShortcutIds: [],
     projectOrderByContext: {},
     sessionOrderByProject: {},
     sessionProjectByKey: {},
@@ -73,7 +70,6 @@ export function normalizeSidebarLayout(value: unknown): SidebarLayoutSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return createSidebarLayoutSnapshot();
   const record = value as Record<string, unknown>;
   return {
-    pluginShortcutIds: cleanIds(record.pluginShortcutIds),
     projectOrderByContext: cleanMap(record.projectOrderByContext),
     sessionOrderByProject: cleanMap(record.sessionOrderByProject),
     sessionProjectByKey: cleanAssignmentMap(record.sessionProjectByKey),
@@ -110,12 +106,6 @@ export const useSidebarLayoutStore = create<SidebarLayoutState>()(
   persist(
     (set, get) => ({
       ...createSidebarLayoutSnapshot(),
-      setPluginShortcut: (id, enabled) => {
-        const key = id.trim();
-        const { pluginShortcutIds } = get();
-        if (!key || pluginShortcutIds.includes(key) === enabled) return;
-        set({ pluginShortcutIds: enabled ? [...pluginShortcutIds, key] : pluginShortcutIds.filter(value => value !== key) });
-      },
       reorderProjects: (contextId, sourceId, targetId) => {
         const state = get();
         const projectOrderByContext = upsertOrder(state.projectOrderByContext, contextId, sourceId, targetId);
@@ -179,7 +169,6 @@ export const useSidebarLayoutStore = create<SidebarLayoutState>()(
       name: SIDEBAR_LAYOUT_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
-        pluginShortcutIds: state.pluginShortcutIds,
         projectOrderByContext: state.projectOrderByContext,
         sessionOrderByProject: state.sessionOrderByProject,
         sessionProjectByKey: state.sessionProjectByKey,

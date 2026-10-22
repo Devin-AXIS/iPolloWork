@@ -43,10 +43,11 @@ import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { EnterpriseResource } from "@/app/lib/enterprise-connections";
 import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
+import { readRemoteTemplateCard } from "@/app/lib/enterprise-connections";
 import { EnterpriseResourceControls } from "@/react-app/domains/enterprise";
 
 type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
-type TemplatePreviewSelection = { template: TemplateCatalogItem; remoteResourceId?: string };
+type TemplatePreviewSelection = { template: TemplateCatalogItem; remoteResourceId?: string; coverDataUrl?: string };
 
 type CategoryDefinition = {
   id: TemplateCategory;
@@ -129,6 +130,7 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
   const [src, setSrc] = React.useState("");
   const [failed, setFailed] = React.useState(false);
   const [retry, setRetry] = React.useState(0);
+  const loadCover = React.useEffectEvent((id: string) => getCover(id));
 
   React.useEffect(() => {
     if (eager || shouldLoad) {
@@ -158,9 +160,10 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
     }, TEMPLATE_COVER_TIMEOUT_MS);
     setSrc("");
     setFailed(false);
-    void getCover(template.manifest.id).then(({ data, contentType }) => {
+    void loadCover(template.manifest.id).then(({ data, contentType }) => {
       if (!active) return;
       window.clearTimeout(timeout);
+      setFailed(false);
       objectUrl = URL.createObjectURL(new Blob([data], { type: contentType ?? "image/svg+xml" }));
       setSrc(objectUrl);
     }).catch(() => {
@@ -168,11 +171,11 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
       if (active) setFailed(true);
     });
     return () => { active = false; window.clearTimeout(timeout); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [getCover, retry, shouldLoad, template.installedVersion, template.manifest.id, template.manifest.version]);
+  }, [retry, shouldLoad, template.installedVersion, template.manifest.id, template.manifest.version]);
   if (!shouldLoad) return <div ref={placeholderRef} data-template-cover-lazy className={cn("h-full w-full bg-muted", className)} />;
   if (failed) {
     return (
-      <div className={cn("grid h-full w-full place-items-center bg-muted p-4 text-center", className)}>
+      <div className={cn("relative z-10 grid h-full w-full place-items-center bg-muted p-4 text-center", className)}>
         <div className="max-w-full">
           <p className="truncate text-xs font-medium text-foreground">{template.manifest.title}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">{t("template_market.cover_failed")}</p>
@@ -183,7 +186,7 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
       </div>
     );
   }
-  return src ? <img src={src} alt={alt} decoding="async" className={cn("h-full w-full object-cover", className)} /> : <div className={cn("h-full w-full animate-pulse bg-muted", className)} />;
+  return src ? <img src={src} alt={alt} decoding="async" onError={() => setFailed(true)} className={cn("h-full w-full object-cover", className)} /> : <div className={cn("h-full w-full animate-pulse bg-muted", className)} />;
 }
 
 export type TemplateMarketDialogProps = {
@@ -225,7 +228,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     ? enterpriseLabel
     : t("enterprise_connection.cloud");
 
-  React.useEffect(() => { if (props.open) props.onRefresh(); }, [props.open, props.onRefresh]);
+  const refreshCatalog = React.useEffectEvent(() => props.onRefresh());
+  React.useEffect(() => { if (props.open) refreshCatalog(); }, [props.open, props.source, props.enterpriseConnection?.id, props.enterpriseConnection?.origin, props.enterpriseConnection?.membership.id, props.enterpriseConnection?.session.token]);
   React.useEffect(() => {
     if (!props.open) setTopic("all");
   }, [props.open]);
@@ -272,7 +276,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
       && previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion,
   );
   const previewPrimaryLabel = previewRemoteResource
-    ? previewRemoteCurrent ? t("template_market.use_template") : t("template_market.update_template")
+    ? previewRemoteCurrent ? t("template_market.use_template") : t(previewTemplate?.installed ? "template_market.update_template" : "template_market.install_template")
     : previewTemplate?.updateAvailable
       ? t("template_market.update_template")
       : previewTemplate?.installed ? t("template_market.use_template") : t("template_market.install_template");
@@ -326,8 +330,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
         </DialogHeader>
 
         <div className="mt-4 w-full shrink-0 px-6">
-          <div className="flex h-9 items-center">
-            <div className="flex min-w-0 flex-1 items-center gap-4" role="tablist" aria-label={t("template_market.title")}>
+          <div className="flex h-9 items-center max-[540px]:h-auto max-[540px]:flex-wrap max-[540px]:gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-4 max-[540px]:basis-full" role="tablist" aria-label={t("template_market.title")}>
               {TEMPLATE_MARKET_VIEWS.map((item) => (
                 <Button
                   key={item}
@@ -425,9 +429,9 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
         {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2"><Download className="size-4 text-foreground" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}
 
         <section className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6">
-          {props.loading ? <div data-testid="template-catalog-loading" className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-[227px] animate-pulse rounded-lg bg-muted" />)}</div> : props.error ? <div role="alert" className="rounded-lg border-0 bg-feedback-error p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : remoteCatalogMode && view === "explore" ? (visibleRemoteResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleRemoteResources.map((resource) => {
+          {props.loading && !props.templates.length && !props.remoteResources.length ? <div data-testid="template-catalog-loading" className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-[227px] animate-pulse rounded-lg bg-muted" />)}</div> : props.error ? <div role="alert" className="rounded-lg border-0 bg-feedback-error p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : remoteCatalogMode && view === "explore" ? (visibleRemoteResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleRemoteResources.map((resource) => {
             const installedTemplate = remoteTemplateInstallations.get(resource.id);
-            return <RemoteTemplateCard key={resource.id} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={installedTemplate ? favoriteIds.has(installedTemplate.manifest.id) : false} source={props.source} sourceLabel={remoteSourceLabel} onToggleFavorite={() => { if (installedTemplate) toggleFavorite(installedTemplate.manifest.id); }} onPreview={(template) => setPreviewSelection({ template, remoteResourceId: resource.id })} onInstall={() => props.onInstallRemote(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
+            return <RemoteTemplateCard key={`${props.source}:${props.enterpriseConnection?.id}:${resource.id}:${resource.latestVersion?.digest}`} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={favoriteIds.has(resource.manifestId ?? resource.slug)} connection={props.source === "enterprise" ? props.enterpriseConnection ?? undefined : undefined} sourceLabel={remoteSourceLabel} onToggleFavorite={toggleFavorite} onPreview={(template, coverDataUrl) => setPreviewSelection({ template, remoteResourceId: resource.id, coverDataUrl })} onInstall={() => props.onInstallRemote(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
           })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center">{props.source === "enterprise" ? <Building2 className="mx-auto size-5 text-muted-foreground" /> : <Cloud className="mx-auto size-5 text-muted-foreground" />}<p className="mt-3 text-sm font-medium">{t(props.source === "enterprise" ? "enterprise_connection.enterprise_templates_empty" : "enterprise_connection.cloud_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : view === "my" && myCollection === "all" && myTemplatesEmpty ? <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.my_empty_title")}</p><Button type="button" size="sm" className="mt-4 rounded-lg bg-[var(--project-dialog-accent)] text-white hover:brightness-95 active:brightness-90" onClick={exploreTemplates}>{t("template_market.explore_templates")}</Button></div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
         </section>
       </DialogContent>
@@ -435,7 +439,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewSelection(null); }}>
       <DialogContent showCloseButton className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">
         {previewTemplate ? <>
-          <div className="aspect-video overflow-hidden bg-muted"><TemplateCover template={previewTemplate} getCover={props.getCover} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} eager /></div>
+          <div className="aspect-video overflow-hidden bg-muted">{previewSelection?.coverDataUrl ? <img src={previewSelection.coverDataUrl} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} className="h-full w-full object-cover" /> : <TemplateCover template={previewTemplate} getCover={props.getCover} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} eager />}</div>
           <div className="relative z-10 flex flex-col gap-5 border-t border-border bg-popover px-6 pb-5 pt-8 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0 flex-1"><div className="flex min-h-7 flex-wrap items-center gap-2"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle>{isPptxCompatibleTemplate(previewTemplate.manifest) ? <Badge className="text-[10px]">{t("template_market.pptx_compatible")}</Badge> : null}<Badge variant="outline" className="text-[10px]">{t(CATEGORIES.find((item) => item.id === previewTemplate.manifest.category)?.labelKey ?? "template_market.category.other")}</Badge><Badge variant="outline" className="text-[10px]">{templateStyleLabel(previewTemplate.manifest.style)}</Badge></div><DialogDescription className="mt-2 line-clamp-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-muted-foreground">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div>
             <div className="flex shrink-0 items-center gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewSelection(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={props.busyId !== null || Boolean(previewRemoteResource && !previewRemoteResource.latestVersion)} onClick={runPreviewPrimaryAction}>{props.busyId === previewTemplate.manifest.id || props.busyId === previewRemoteResource?.id ? <Loader2 className="size-3.5 animate-spin" /> : null}{previewPrimaryLabel}</Button></div>
@@ -447,43 +451,76 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   );
 }
 
-function RemoteTemplateCard({ resource, installedTemplate, getCover, busy, disabled, favorite, source, sourceLabel, onToggleFavorite, onPreview, onInstall, onUse }: { resource: EnterpriseResource; installedTemplate?: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; disabled: boolean; favorite: boolean; source: TemplateCatalogSource; sourceLabel: string; onToggleFavorite: () => void; onPreview: (template: TemplateCatalogItem) => void; onInstall: () => void; onUse: () => void }) {
+function RemoteTemplateCard({ resource, installedTemplate, getCover, busy, disabled, favorite, connection, sourceLabel, onToggleFavorite, onPreview, onInstall, onUse }: { resource: EnterpriseResource; installedTemplate?: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; disabled: boolean; favorite: boolean; connection?: EnterpriseConnection; sourceLabel: string; onToggleFavorite: (templateId: string) => void; onPreview: (template: TemplateCatalogItem, coverDataUrl?: string) => void; onInstall: () => void; onUse: () => void }) {
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const [preview, setPreview] = React.useState<Awaited<ReturnType<typeof readRemoteTemplateCard>> | null>(null);
+  const [failed, setFailed] = React.useState(false);
+  const [retry, setRetry] = React.useState(0);
+  const loadPreview = React.useEffectEvent(() => readRemoteTemplateCard(resource, { connection }));
+  React.useEffect(() => {
+    if (!resource.latestVersion) return;
+    let active = true;
+    const load = () => {
+      setFailed(false);
+      void loadPreview().then((card) => { if (active) setPreview(card); })
+        .catch(() => { if (active) setFailed(true); });
+    };
+    const target = cardRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") { load(); return () => { active = false; }; }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      load();
+    }, { rootMargin: TEMPLATE_COVER_ROOT_MARGIN });
+    observer.observe(target);
+    return () => { active = false; observer.disconnect(); };
+  }, [connection?.id, resource.id, resource.latestVersion?.digest, resource.latestVersion?.version, retry]);
   const currentVersionInstalled = Boolean(installedTemplate && resource.latestVersion?.version === installedTemplate.installedVersion);
   const action = currentVersionInstalled ? onUse : onInstall;
   const label = currentVersionInstalled
     ? t("template_market.use")
-    : installedTemplate ? t("template_market.update") : t("enterprise_connection.install_from_enterprise");
-  if (installedTemplate) {
-    return <TemplateCard template={installedTemplate} getCover={getCover} busy={disabled} favorite={favorite} onToggleFavorite={onToggleFavorite} onPreview={() => onPreview(installedTemplate)} onUse={onUse} onInstall={onInstall} primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel} />;
-  }
-  return <article className="overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm"><div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">{source === "enterprise" ? <Building2 className="size-4" /> : <Cloud className="size-4" />}</div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{resource.description}</p></div></div><div className="mt-4 flex items-center justify-between gap-2"><div className="flex min-w-0 gap-1.5"><Badge variant="outline" className="truncate text-[10px]">{resource.enterpriseCategory}</Badge>{resource.latestVersion ? <Badge variant="secondary" className="text-[10px]">v{resource.latestVersion.version}</Badge> : null}</div><Button variant={currentVersionInstalled ? "outline" : "default"} size="sm" className="h-7 rounded-lg px-2.5 text-[11px]" disabled={disabled || !resource.latestVersion} onClick={action}>{busy ? <Loader2 className="size-3 animate-spin" /> : null}{label}</Button></div></article>;
+    : installedTemplate ? t("template_market.update") : t("template_market.install");
+  const template: TemplateCatalogItem | undefined = preview ? {
+    manifest: preview.manifest, sourceType: "market", installed: Boolean(installedTemplate),
+    installedVersion: installedTemplate?.installedVersion ?? null,
+    updateAvailable: Boolean(installedTemplate && !currentVersionInstalled), verified: false,
+  } : installedTemplate;
+  const cover = preview ? <img src={preview.coverDataUrl} alt={t("template_market.cover_alt", { title: resource.name })} decoding="async" className="h-full w-full object-cover" />
+    : installedTemplate ? <TemplateCover template={installedTemplate} getCover={getCover} />
+    : <div className="grid h-full w-full place-items-center bg-muted text-muted-foreground">{failed ? <div className="text-center"><p className="text-xs">{t("template_market.cover_failed")}</p><Button variant="outline" size="sm" className="mt-2" onClick={(event) => { event.stopPropagation(); setRetry((value) => value + 1); }}>{t("template_market.retry_cover")}</Button></div> : <TemplateIcon className="size-8 opacity-30" />}</div>;
+  return <div ref={cardRef} className="min-w-0"><TemplateCardFrame title={resource.name} style={template?.manifest.style} format={template ? templateFormatLabel(template) : undefined} cover={cover} busy={busy} disabled={disabled || !resource.latestVersion} favorite={favorite} favoriteDisabled={!template} onToggleFavorite={() => { if (template) onToggleFavorite(template.manifest.id); }} onPreview={template ? () => onPreview(template, preview?.coverDataUrl) : undefined} primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel} /></div>;
 }
 
 function TemplateCard({ template, getCover, busy, favorite, onToggleFavorite, onPreview, onUse, onInstall, primaryAction: primaryActionOverride, primaryLabel: primaryLabelOverride, sourceLabel }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; favorite: boolean; onToggleFavorite: () => void; onPreview: () => void; onUse: () => void; onInstall: () => void; primaryAction?: () => void; primaryLabel?: string; sourceLabel?: string }) {
   const primaryAction = primaryActionOverride ?? (template.updateAvailable ? onInstall : template.installed ? onUse : onInstall);
   const primaryLabel = primaryLabelOverride ?? (template.updateAvailable ? t("template_market.update") : template.installed ? t("template_market.use") : t("template_market.install"));
+  return <TemplateCardFrame title={template.manifest.title} style={template.manifest.style} format={templateFormatLabel(template)} cover={<TemplateCover template={template} getCover={getCover} alt={t("template_market.cover_alt", { title: template.manifest.title })} />} busy={busy} disabled={busy} favorite={favorite} onToggleFavorite={onToggleFavorite} onPreview={onPreview} primaryAction={primaryAction} primaryLabel={primaryLabel} sourceLabel={sourceLabel ?? t(template.sourceType === "local" ? "template_market.mine_badge" : "template_market.official_badge")} />;
+}
+
+function TemplateCardFrame({ title, style, format, cover, busy, disabled, favorite, favoriteDisabled, onToggleFavorite, onPreview, primaryAction, primaryLabel, sourceLabel }: { title: string; style?: TemplateStyle; format?: string; cover: React.ReactNode; busy: boolean; disabled: boolean; favorite: boolean; favoriteDisabled?: boolean; onToggleFavorite: () => void; onPreview?: () => void; primaryAction: () => void; primaryLabel: string; sourceLabel: string }) {
   return (
     <article className="flex h-[227px] min-w-0 flex-col gap-3 overflow-hidden rounded-lg border-2 border-transparent bg-muted/50 pb-4 transition-colors duration-150 hover:border-[var(--project-dialog-accent)]">
-      <Tooltip>
-        <TooltipTrigger render={<button type="button" className="relative block h-[137px] w-full shrink-0 overflow-hidden rounded-lg bg-muted text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30" onClick={onPreview} aria-label={t("template_market.preview_aria", { title: template.manifest.title })} />}>
-          <TemplateCover template={template} getCover={getCover} alt={t("template_market.cover_alt", { title: template.manifest.title })} />
-          <span className="absolute bottom-4 right-2 rounded-[18px] bg-muted-foreground px-2 py-0.5 font-['PingFang_SC',sans-serif] text-xs font-medium leading-[18px] text-background">{templateStyleLabel(template.manifest.style)}</span>
-        </TooltipTrigger>
-        <TooltipContent positionerClassName="z-[90]">{t("template_market.format_tooltip", { format: templateFormatLabel(template) })}</TooltipContent>
-      </Tooltip>
+      <div className="relative block h-[137px] w-full shrink-0 overflow-hidden rounded-lg bg-muted">
+        {cover}
+        <Tooltip>
+          <TooltipTrigger render={<button type="button" disabled={!onPreview} className="absolute inset-0 h-full w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 disabled:pointer-events-none" onClick={onPreview} aria-label={t("template_market.preview_aria", { title })} />} />
+          <TooltipContent positionerClassName="z-[90]">{format ? t("template_market.format_tooltip", { format }) : title}</TooltipContent>
+        </Tooltip>
+        {style ? <span className="pointer-events-none absolute bottom-4 right-2 rounded-[18px] bg-muted-foreground px-2 py-0.5 font-['PingFang_SC',sans-serif] text-xs font-medium leading-[18px] text-background">{templateStyleLabel(style)}</span> : null}
+      </div>
       <div className="flex min-h-0 flex-1 flex-col px-2">
         <div className="flex h-5 min-w-0 items-center justify-between gap-2">
-          <h3 className="truncate font-['PingFang_SC',sans-serif] text-sm font-bold leading-5 text-foreground">{template.manifest.title}</h3>
-          <span className="max-w-24 shrink-0 truncate font-['PingFang_SC',sans-serif] text-xs font-medium leading-[18px] text-primary">{sourceLabel ?? t(template.sourceType === "local" ? "template_market.mine_badge" : "template_market.official_badge")}</span>
+          <h3 title={title} className="truncate font-['PingFang_SC',sans-serif] text-sm font-bold leading-5 text-foreground">{title}</h3>
+          <span className="max-w-24 shrink-0 truncate font-['PingFang_SC',sans-serif] text-xs font-medium leading-[18px] text-primary">{sourceLabel}</span>
         </div>
         <div className="mt-3 flex h-7 items-center justify-between gap-3">
           <Tooltip>
-            <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" className={cn("h-7 rounded-lg px-2 font-['PingFang_SC',sans-serif] text-[13px] font-semibold leading-[18px]", favorite ? "text-foreground" : "text-muted-foreground")} aria-pressed={favorite} aria-label={t(favorite ? "template_market.remove_favorite" : "template_market.add_favorite", { title: template.manifest.title })} onClick={onToggleFavorite} />}>
+            <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" className={cn("h-7 rounded-lg px-2 font-['PingFang_SC',sans-serif] text-[13px] font-semibold leading-[18px]", favorite ? "text-foreground" : "text-muted-foreground")} disabled={favoriteDisabled} aria-pressed={favorite} aria-label={t(favorite ? "template_market.remove_favorite" : "template_market.add_favorite", { title })} onClick={onToggleFavorite} />}>
               <Star className={cn("size-3.5", favorite && "fill-current")} />{t("template_market.favorite")}
             </TooltipTrigger>
             <TooltipContent positionerClassName="z-[90]">{t(favorite ? "template_market.remove_from_favorites" : "template_market.add_to_favorites")}</TooltipContent>
           </Tooltip>
-          <Button size="sm" className="h-7 rounded-lg px-2 font-['PingFang_SC',sans-serif] text-[13px] font-semibold leading-[18px] shadow-none" disabled={busy} onClick={primaryAction}>{busy ? <Loader2 className="size-3 animate-spin" /> : null}{primaryLabel}</Button>
+          <Button size="sm" className="h-7 rounded-lg px-2 font-['PingFang_SC',sans-serif] text-[13px] font-semibold leading-[18px] shadow-none" disabled={disabled} onClick={primaryAction}>{busy ? <Loader2 className="size-3 animate-spin" /> : null}{primaryLabel}</Button>
         </div>
       </div>
     </article>

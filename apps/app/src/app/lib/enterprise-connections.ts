@@ -13,6 +13,7 @@ import {
   IPOLLOWORK_PACKAGE_MEDIA_TYPE,
   LEGACY_TEMPLATE_PACKAGE_EXTENSION,
   MAX_TEMPLATE_PACKAGE_BYTES,
+  templateManifestV1Schema,
 } from "@ipollowork/types/templates";
 
 const ENTERPRISE_CONNECTIONS_KEY = "ipollowork.enterprise-connections.v1";
@@ -155,11 +156,11 @@ function endpoint(origin: string, path: string) {
   return `${origin.replace(/\/+$/u, "")}${path}`;
 }
 
-function enterpriseFetcher(fetcher?: typeof fetch) {
+function enterpriseFetcher(fetcher?: typeof fetch, timeoutMs = ENTERPRISE_TIMEOUT_MS) {
   if (fetcher) return fetcher;
   if (!isDesktopRuntime()) return globalThis.fetch;
   return (input: RequestInfo | URL, init?: RequestInit) => (
-    desktopFetchViaMain(input, init, ENTERPRISE_TIMEOUT_MS)
+    desktopFetchViaMain(input, init, timeoutMs)
   );
 }
 
@@ -364,6 +365,25 @@ export function enterpriseResourceUrl(
   const access = enterpriseResourceAccess(connection);
   if (!path?.startsWith(enterpriseResourcePathPrefix(access.source))) return null;
   return endpoint(access.origin, path);
+}
+
+export async function readRemoteTemplateCard(resource: EnterpriseResource, options: EnterpriseResourceRequestOptions = {}) {
+  const access = enterpriseResourceAccess(options.connection);
+  if (resource.type !== "template" || !resource.latestVersion) throw new Error("template_preview_unavailable");
+  const path = `${enterpriseResourcePathPrefix(access.source)}${encodeURIComponent(resource.id)}`;
+  const payload = await fetchJson(endpoint(access.origin, `${path}?version=${encodeURIComponent(resource.latestVersion.version)}`), {
+    headers: { Authorization: `Bearer ${access.token}` },
+    signal: AbortSignal.timeout(120_000),
+  }, enterpriseFetcher(options.fetcher, 120_000));
+  if (!isRecord(payload)) throw new Error("invalid_template_preview");
+  const manifest = templateManifestV1Schema.parse(payload.manifest);
+  const coverDataUrl = payload.coverDataUrl;
+  if (manifest.id !== (resource.manifestId ?? resource.slug) || manifest.version !== resource.latestVersion.version
+    || typeof coverDataUrl !== "string" || coverDataUrl.length > 7 * 1024 * 1024
+    || !/^data:image\/(?:svg\+xml|png|jpeg|webp|gif|avif);base64,[A-Za-z0-9+/]*={0,2}$/u.test(coverDataUrl)) {
+    throw new Error("invalid_template_preview");
+  }
+  return { manifest, coverDataUrl };
 }
 
 export async function listEnterpriseResources(

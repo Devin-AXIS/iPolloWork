@@ -5,11 +5,25 @@ export type EnterpriseResourceType = z.infer<typeof enterpriseResourceTypeSchema
 const id = z.string().trim().min(1).max(128);
 export const enterpriseMemberRoleSchema = z.enum(["owner", "admin", "template_admin", "extension_admin", "skill_admin", "member"]);
 export type EnterpriseMemberRole = z.infer<typeof enterpriseMemberRoleSchema>;
+export const navigationShortcutSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("builtin"), id: z.enum(["template-market", "extensions", "schedule"]) }),
+  z.object({ kind: z.literal("plugin"), id, pluginId: id, label: z.string().trim().min(1).max(160) }),
+]);
+export type NavigationShortcut = z.infer<typeof navigationShortcutSchema>;
+export const defaultNavigationShortcuts: NavigationShortcut[] = [
+  { kind: "builtin", id: "template-market" }, { kind: "builtin", id: "extensions" }, { kind: "builtin", id: "schedule" },
+];
+export const enterpriseNavigationSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  items: z.array(navigationShortcutSchema).max(50).refine(items => new Set(items.map(item => `${item.kind}:${item.id}`)).size === items.length),
+});
+export type EnterpriseNavigation = z.infer<typeof enterpriseNavigationSchema>;
 export function canManageEnterpriseResource(role: EnterpriseMemberRole, type?: EnterpriseResourceType) {
   return role === "owner" || role === "admin" || (role === "template_admin" && type === "template") || (role === "extension_admin" && type === "extension") || (role === "skill_admin" && type === "skill");
 }
 export const enterpriseFeaturesSchema = z.object({
   membership: z.boolean().default(false),
+  navigationShortcuts: z.boolean().default(false),
   directory: z.boolean().default(false),
   messaging: z.boolean().default(false),
   sessionSharing: z.boolean().default(false),

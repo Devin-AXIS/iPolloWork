@@ -5,6 +5,7 @@ import {
   enterpriseAccessSchema, enterpriseDepartmentSchema, enterpriseMemberSchema,
   enterpriseMessageSchema, enterprisePageSchema, enterpriseShareInputSchema,
   enterpriseSubmissionSchema,
+  enterpriseNavigationSchema, type EnterpriseNavigation,
   enterpriseManagedResourceSchema,
   canManageEnterpriseResource,
   enterpriseOkSchema, enterpriseCreatedSchema, enterpriseSubmissionsResponseSchema, enterprisePendingImportSchema,
@@ -34,6 +35,7 @@ export function enterpriseErrorMessage(error: unknown): string {
   if (code === "forbidden") return "当前企业账号没有执行此操作的权限。";
   if (code === "enterprise_account_changed") return "企业账号已切换，请重新打开操作。";
   if (code === "revision_conflict") return "权限已被其他管理员修改，请刷新后重新分配。";
+  if (code === "navigation_revision_conflict") return "导航快捷入口已被其他管理员修改，已刷新，请重新选择。";
   if (code === "enterprise_feature_unavailable" || (error instanceof EnterpriseRequestError && [404, 405, 501].includes(error.status))) return "企业服务暂不支持此功能，请联系管理员升级。";
   if (code === "enterprise_invalid_response") return "企业服务返回的数据不完整，请重试或联系管理员。";
   if (code === "enterprise_selection_limit") return "单次最多选择 500 人，请缩小部门或搜索范围。";
@@ -142,6 +144,15 @@ async function enterpriseManagementRequest<T>(connection: EnterpriseConnection, 
   return enterpriseRequest(verified, path, schema, init);
 }
 export const enterpriseApi = {
+  navigation: (connection: EnterpriseConnection, signal?: AbortSignal) =>
+    enterpriseRequest(connection, "/api/v1/navigation-shortcuts", enterpriseNavigationSchema, { signal, cache: "no-store" }),
+  setNavigation: async (connection: EnterpriseConnection, input: EnterpriseNavigation) => {
+    const verified = await refreshEnterpriseMembership(connection);
+    if (!canManageEnterprise(verified)) throw new EnterpriseRequestError("forbidden", 403);
+    return enterpriseRequest(verified, "/api/v1/navigation-shortcuts", enterpriseNavigationSchema, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(enterpriseNavigationSchema.parse(input)),
+    });
+  },
   skill: (connection: EnterpriseConnection, resourceId: string, version: string) => enterpriseRequest(connection, `/api/v1/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(version)}`, skillDetailSchema),
   resources: (connection: EnterpriseConnection, type: EnterpriseResourceType, cursor?: string | null, search?: string) =>
     enterpriseManagementRequest(connection, type, `/api/v1/resources?type=${type}&view=manage&${query({ cursor, search })}`, enterprisePageSchema(enterpriseManagedResourceSchema)),

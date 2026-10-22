@@ -167,3 +167,9 @@ Approvals endpoints:
 - `POST /approvals/:id` with `{ "reply": "allow" | "deny" }`
 
 Set `IPOLLOWORK_APPROVAL_MODE=auto` to auto-approve during local development.
+
+## Automatic template previews
+
+Template cards can render the declared HTML entry and package assets without a separately supplied cover. Missing covers default to `cover.png`. Imported and personal templates always render a 960×540 screenshot from their entry, so a stale packaged cover cannot hide updated content. Built-ins reuse their versioned PNG covers. Screenshots use the server-only Apache-2.0 `playwright-core` runtime and are cached by immutable package content under the runtime data directory. Each process renders one template at a time, coalesces duplicate requests, allows at most 32 pending jobs and closes each browser after 25 seconds. The isolated context has no account cookies and cannot load host files, external network assets, WebSockets or service workers. Windows uses installed Edge/Chrome; macOS uses installed Chrome/Edge; headless deployments install Chromium with `node node_modules/playwright-core/cli.js install chromium --only-shell` and persist `PLAYWRIGHT_BROWSERS_PATH`, or configure `IPOLLO_TEMPLATE_BROWSER`.
+
+Cloud and Enterprise card previews are fetched through authenticated metadata endpoints before installation. Installing a package remains an explicit user action.

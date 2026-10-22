@@ -202,7 +202,6 @@ describe("template market actions", () => {
     expect(marketDialog).not.toContain("electron:titlebar-drag");
     expect(marketDialog).toContain("<DialogContent showCloseButton className=");
     expect(marketDialog).toContain("max-h-[calc(100dvh-32px)] max-w-[calc(100dvw-32px)] resize");
-    expect(marketDialog).toContain("[&>[data-slot=dialog-close]]:top-[29px]");
     expect(marketDialog).toContain('className="mt-4 w-full shrink-0 px-6"');
     expect(marketDialog).toContain('<InputGroup className="mt-4">');
     expect(marketDialog).toContain('<InputGroupInput value={query}');
@@ -238,10 +237,10 @@ describe("template market actions", () => {
     expect(marketDialog).not.toContain('view === "my" ? "mt-4" : "mt-5"');
   });
 
-  test("reuses the HTML cover and preview flow for installed remote templates", () => {
-    expect(marketDialog).toContain("if (installedTemplate) {");
-    expect(marketDialog).toContain("<TemplateCard template={installedTemplate} getCover={getCover}");
-    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, remoteResourceId: resource.id })}");
+  test("shares one card frame and supports remote previews before installation", () => {
+    expect(marketDialog.match(/<TemplateCardFrame /g)).toHaveLength(2);
+    expect(marketDialog).toContain("readRemoteTemplateCard(resource, { connection })");
+    expect(marketDialog).toContain("onPreview={(template, coverDataUrl) => setPreviewSelection({ template, remoteResourceId: resource.id, coverDataUrl })}");
     expect(marketDialog).toContain("previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion");
     expect(marketDialog).toContain("props.onInstallRemote(remoteResource)");
   });

@@ -289,6 +289,17 @@ function videoPackage(id = "local.product-video", entry = "<!doctype html><html 
 }
 
 describe("template installations", () => {
+  test("accepts a template entry without a separately supplied cover", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-auto-preview-"));
+    try {
+      await writeFile(join(root, "manifest.json"), JSON.stringify({ schemaVersion: 1, id: "local.auto-preview", version: "1.0.0", kind: "design", category: "site", subcategory: "portfolio", title: "Auto preview", description: "A template with no manual cover.", entry: "entry.html", source: { name: "Local", license: "MIT" }, designSystem: { tokenVersion: 1, editableGroups: ["theme"] }, applyChecklist: ["Update content"], minimumAppVersion: "0.17.0" }));
+      await writeFile(join(root, "entry.html"), "<!doctype html><h1>Actual template</h1>");
+      const result = await validateTemplatePackageDirectory(root);
+      expect(result.ready).toBe(true);
+      expect(result.manifest?.cover).toBe("cover.png");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   test("classifies all bundled templates with one shared purpose and an explicit style", async () => {
     const directories = await bundledTemplateDirectories();
     expect(directories).toHaveLength(111);

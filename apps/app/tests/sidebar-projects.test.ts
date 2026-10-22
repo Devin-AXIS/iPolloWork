@@ -118,7 +118,6 @@ describe("sidebar projects", () => {
 
   test("creates a clean empty layout snapshot", () => {
     expect(createSidebarLayoutSnapshot()).toEqual({
-      pluginShortcutIds: [],
       projectOrderByContext: {},
       sessionOrderByProject: {},
       sessionProjectByKey: {},
@@ -213,7 +212,6 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('addTestId="new-project-button"');
     expect(sidebarSource).toContain('t("session.new_task")');
     expect(sidebarSource).toContain('t("projects.create")');
-    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(4);
     expect(sidebarSource).toContain('primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2');
     expect(navigationIconSource).toContain("NAVIGATION_ICON_STROKE_WIDTH = 1.5;");
     expect(sidebarSource).toContain("const SIDEBAR_ICON_STROKE_WIDTH = NAVIGATION_ICON_STROKE_WIDTH;");

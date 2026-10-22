@@ -1,100 +1,67 @@
-// Drive the real host and local archive importer; no plugin-list or panel mocks.
 export default {
   id: "plugin-sidebar-shortcuts",
-  title: "本地安装插件工坊并自定义左侧快捷入口",
+  title: "个人固定入口与企业统一导航（隔离企业服务）",
   kind: "user-facing",
-  requiredEnv: ["IPOLLOWORK_EVAL_WORKSHOP_PACKAGE"],
-  steps: [{ name: "安装、选择、打开和保存插件快捷入口", async run(ctx) {
-    await ctx.waitFor("Boolean(window.__ipolloworkControl)");
-    const workspaceId = await ctx.eval("location.hash.split('/')[2]");
-    ctx.assert(workspaceId?.startsWith("ws_"), "Use an isolated onboarded workspace.");
-    const home = `/workspace/${workspaceId}/session`;
-    const shortcut = '[data-testid="sidebar-plugin-shortcut-plugin-workshop"]';
-    const menu = '[data-testid="sidebar-plugin-shortcuts-menu"]';
-    const option = '[data-testid="sidebar-plugin-shortcut-option-plugin-workshop"]';
+  preserveTheme: true,
+  cdpTarget: { urlIncludes: "[::1]:5173/tests/enterprise-collaboration-proof.html?navigation" },
+  steps: [{ name: "导航权限、保存、同步与缺少插件提示", async run(ctx) {
+    await ctx.waitForText("导航快捷入口验证");
+    const menu = '[data-testid="proof-admin"] [data-testid="sidebar-plugin-shortcuts-menu"]';
+    const option = id => `[data-testid="sidebar-plugin-shortcut-option-${id}"]`;
     const exists = selector => `Boolean(document.querySelector(${JSON.stringify(selector)}))`;
-    const click = selector => ctx.eval(`document.querySelector(${JSON.stringify(selector)}).click()`);
-    const clickText = (text, root = "document") => ctx.eval(`(() => {
-      const button = [...${root}.querySelectorAll('button')].find(el => el.textContent.trim() === ${JSON.stringify(text)} && el.getClientRects().length);
-      if (!button || button.disabled) throw new Error('Enabled button missing: ' + ${JSON.stringify(text)});
-      button.click();
-    })()`);
-
-    await ctx.navigateHash(home);
-    await ctx.waitFor(exists(menu));
-    await ctx.prove("左侧默认没有固定的插件工坊入口", {
-      voiceover: "左侧现在显示插件快捷入口，可以自己选择要放在这里的插件。",
-      assert: async () => ctx.assert(!await ctx.eval(exists(shortcut)), "Workshop shortcut must be opt-in."),
-      screenshot: { name: "default-sidebar", requireText: ["插件快捷入口"], rejectText: ["Something went wrong"] },
-    });
-
-    await ctx.prove("插件工坊通过本地安装包安装成功", {
-      voiceover: "在扩展中添加本地插件工坊安装包，确认安装后，插件进入已安装列表。",
-      action: async () => {
-        await ctx.navigateHash(`/workspace/${workspaceId}/settings/extensions`);
-        await ctx.waitFor(exists('[data-testid="plugin-library-heading"]'));
-        await ctx.waitFor("[...document.querySelectorAll('button')].some(el => el.textContent.trim() === '添加')");
-        await clickText("添加");
-        await ctx.waitFor(exists('[data-testid="plugin-package-import-dialog"] input[type="file"]'));
-        const { root } = await ctx.client.send("DOM.getDocument");
-        const { nodeId } = await ctx.client.send("DOM.querySelector", { nodeId: root.nodeId, selector: '[data-testid="plugin-package-import-dialog"] input[type="file"]' });
-        await ctx.client.send("DOM.setFileInputFiles", { nodeId, files: [process.env.IPOLLOWORK_EVAL_WORKSHOP_PACKAGE] });
-        await ctx.waitFor("[...document.querySelectorAll('[data-testid=\"plugin-package-import-dialog\"] button')].some(el => ['安装插件', '更新'].includes(el.textContent.trim()) && !el.disabled)");
-        const installLabel = await ctx.eval("[...document.querySelectorAll('[data-testid=\"plugin-package-import-dialog\"] button')].find(el => ['安装插件', '更新'].includes(el.textContent.trim())).textContent.trim()");
-        await clickText(installLabel, "document.querySelector('[data-testid=\"plugin-package-import-dialog\"]')");
-        await ctx.waitFor(`!${exists('[data-testid="plugin-package-import-dialog"]')}`, { timeoutMs: 60_000 });
-      },
+    const closeMenu = async () => {
+      if (await ctx.eval(exists('[role="menu"]'))) {
+        await ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+        await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+        await ctx.waitFor('!document.querySelector(\'[role="menu"]\')');
+      }
+    };
+    await ctx.prove("个人账号固定三个入口，个人与普通成员没有管理入口", {
+      voiceover: "个人账号固定显示模板、扩展和日程；只有企业管理员可以打开导航快捷入口管理菜单。",
       assert: async () => {
-        const installed = await ctx.eval(`(async () => {
-          const info = await window.__IPOLLOWORK_ELECTRON__.invokeDesktop('ipolloworkServerInfo');
-          const response = await fetch(info.baseUrl + '/workspace/${workspaceId}/plugin-packages', { headers: { authorization: 'Bearer ' + (info.ownerToken || info.clientToken), 'X-iPolloWork-Host-Token': info.hostToken } });
-          if (!response.ok) throw new Error('Plugin list HTTP ' + response.status);
-          return (await response.json()).items.some(item => item.pluginId === 'plugin-workshop' && item.enabled && item.version === ${JSON.stringify(process.env.IPOLLOWORK_EVAL_WORKSHOP_VERSION || "0.1.1")});
-        })()`, { awaitPromise: true });
-        ctx.assert(installed, "Local package was not persisted as enabled.");
-        await ctx.waitForText("插件工坊");
-      },
-      screenshot: { name: "local-package-installed", requireText: ["插件工坊", "已安装"], rejectText: ["Something went wrong"] },
+        for (const id of ["template-market", "extensions", "schedule"]) ctx.assert(await ctx.eval(exists(`[data-testid="proof-personal"] [data-testid="sidebar-navigation-shortcut-${id}"]`)), `${id} is present`);
+        for (const role of ["personal", "member"]) ctx.assert(!await ctx.eval(exists(`[data-testid="proof-${role}"] [data-testid="sidebar-plugin-shortcuts-menu"]`)), `${role} has no management menu`);
+      }, screenshot: { targetUrlIncludes: "localhost:5173/tests/enterprise-collaboration-proof.html?navigation-frame", textTargetUrlIncludes: "[::1]:5173/tests/enterprise-collaboration-proof.html?navigation", name: "personal-defaults", requireText: ["个人账号", "模板", "扩展", "日程", "导航快捷入口"], rejectText: ["Something went wrong"] },
     });
-
-    await ctx.prove("勾选插件工坊后出现快捷按钮并打开右侧页面", {
-      voiceover: "回到对话，在插件快捷入口中勾选插件工坊。左侧出现按钮，点击就能打开右侧工坊。",
+    await ctx.prove("管理员沿用勾选菜单，内置入口也能选择并同步成员", {
+      voiceover: "管理员打开勾选菜单，模板、扩展、日程和插件都能选择。取消日程后，同步的成员导航也会移除日程。",
       action: async () => {
-        await ctx.navigateHash(home);
-        await ctx.waitFor(exists(menu));
-        await click(menu);
-        await ctx.waitFor(exists(option));
-        await click(option);
-        await click(menu);
-        await ctx.waitFor(exists(shortcut));
-        await click(shortcut);
-        await ctx.waitFor(exists('[data-testid="plugin-workshop-empty"]'), { timeoutMs: 60_000 });
-      },
-      assert: async () => {
-        ctx.assert(await ctx.eval(`document.querySelectorAll(${JSON.stringify(shortcut)}).length === 1`), "Shortcut must appear exactly once.");
-        ctx.assert(await ctx.eval("document.querySelector('[data-testid=\"plugin-workshop-empty\"]').getBoundingClientRect().width > 200"), "Workshop panel is not visible.");
-      },
-      screenshot: { name: "workshop-open", requireText: ["插件工坊", "插件快捷入口"], rejectText: ["Something went wrong"] },
+        await ctx.trustedClick(menu);
+        for (const id of ["template-market", "extensions", "schedule", "plugin-workshop"]) await ctx.waitFor(exists(option(id)));
+        await ctx.trustedClick(option("schedule"));
+        await ctx.waitFor('!document.querySelector(\'[data-testid="proof-admin"] [data-testid="sidebar-navigation-shortcut-schedule"]\')');
+        await closeMenu();
+        await ctx.trustedClick('[data-testid="proof-refresh"]');
+      }, assert: async () => {
+        await ctx.waitFor('!document.querySelector(\'[data-testid="proof-member"] [data-testid="sidebar-navigation-shortcut-schedule"]\')');
+        ctx.assert(await ctx.eval(exists('[data-testid="proof-personal"] [data-testid="sidebar-navigation-shortcut-schedule"]')), "Personal defaults remain independent");
+      }, screenshot: { targetUrlIncludes: "localhost:5173/tests/enterprise-collaboration-proof.html?navigation-frame", textTargetUrlIncludes: "[::1]:5173/tests/enterprise-collaboration-proof.html?navigation", name: "enterprise-synced", requireText: ["企业管理员", "普通成员", "导航快捷入口"], rejectText: ["Something went wrong"] },
     });
-
-    await ctx.prove("快捷入口刷新后保留并可随时取消", {
-      voiceover: "刷新应用后，插件工坊快捷入口仍然保留。取消勾选就会移除按钮，插件本身继续安装在扩展中。",
+    await ctx.prove("未安装插件的成员仍看到企业入口，点击提示前往插件市场下载", {
+      voiceover: "管理员添加插件工坊后，未安装插件的成员也会看到入口。点击会提示自行下载，并可前往插件市场。",
       action: async () => {
-        await ctx.client.send("Page.reload");
-        await ctx.waitFor(exists(shortcut), { timeoutMs: 60_000 });
-        await ctx.waitFor(exists('[data-testid="plugin-workshop-empty"]'));
-        await click(menu);
-        await ctx.waitFor(`document.querySelector(${JSON.stringify(option)})?.getAttribute('aria-checked') === 'true'`);
-        await click(option);
-        await click(menu);
-      },
-      assert: async () => {
-        await ctx.waitFor(`!${exists(shortcut)}`);
-        const saved = await ctx.eval("JSON.parse(localStorage.getItem('ipollowork.react.sidebarLayout.v1')).state.pluginShortcutIds");
-        ctx.assert(!saved.includes("plugin-workshop"), "Deselection was not persisted.");
-        await ctx.waitFor(exists('[data-testid="plugin-workshop-empty"]'));
-      },
-      screenshot: { name: "shortcut-removed", requireText: ["插件快捷入口", "插件工坊"], rejectText: ["Something went wrong"] },
+        await ctx.trustedClick(menu); await ctx.trustedClick(option("plugin-workshop"));
+        await ctx.waitFor(exists('[data-testid="proof-admin"] [data-testid="sidebar-plugin-shortcut-plugin-workshop"]'));
+        await closeMenu(); await ctx.trustedClick('[data-testid="proof-refresh"]');
+        await ctx.waitFor(exists('[data-testid="proof-member"] [data-testid="sidebar-plugin-shortcut-plugin-workshop"]'));
+        await ctx.trustedClick('[data-testid="proof-member"] [data-testid="sidebar-plugin-shortcut-plugin-workshop"]');
+      }, assert: async () => {
+        await ctx.waitForText("未安装「插件工坊」");
+        await ctx.expectText("前往插件市场");
+      }, screenshot: { targetUrlIncludes: "localhost:5173/tests/enterprise-collaboration-proof.html?navigation-frame", textTargetUrlIncludes: "[::1]:5173/tests/enterprise-collaboration-proof.html?navigation", name: "missing-plugin", requireText: ["未安装「插件工坊」", "请前往插件市场自行下载", "前往插件市场"], rejectText: ["Something went wrong"] },
+    });
+    await ctx.prove("后台撤销管理员角色后，旧菜单无法保存导航", {
+      voiceover: "管理员被降为成员后，旧菜单再次保存也会重新验证权限，并提示当前账号没有权限。",
+      action: async () => {
+        await ctx.trustedClick('[data-testid="proof-stats"]');
+        const before = await ctx.eval('document.querySelector(\'[data-testid="proof-result"]\').dataset.writes');
+        await ctx.trustedClick('[data-testid="proof-demote"]');
+        await ctx.trustedClick(menu); await ctx.trustedClick(option("schedule"));
+        await ctx.waitForText("当前企业账号没有执行此操作的权限");
+        await closeMenu(); await ctx.trustedClick('[data-testid="proof-stats"]');
+        ctx.assert(await ctx.eval('document.querySelector(\'[data-testid="proof-result"]\').dataset.writes') === before, "Demoted administrator sends no navigation write");
+      }, assert: async () => ctx.expectText("当前企业账号没有执行此操作的权限"),
+      screenshot: { targetUrlIncludes: "localhost:5173/tests/enterprise-collaboration-proof.html?navigation-frame", textTargetUrlIncludes: "[::1]:5173/tests/enterprise-collaboration-proof.html?navigation", name: "demoted-denied", requireText: ["当前企业账号没有执行此操作的权限"], rejectText: ["Something went wrong"] },
     });
   } }],
 };

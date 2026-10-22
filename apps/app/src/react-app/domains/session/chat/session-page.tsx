@@ -4650,9 +4650,11 @@ export function SessionPage(props: SessionPageProps) {
           }}
           onOpenSchedule={openGlobalSchedule}
           onOpenExtensions={openExtensionsRailPane}
+          enterpriseConnection={activeEnterprise}
           pluginsLoading={pluginsLoading}
           pluginShortcuts={sidePanelLauncherItems.filter(item => item.group === "studio").map(item => ({
             id: item.id,
+            pluginId: item.icon === "plugin-workshop" ? "plugin-workshop" : workspaceApps.find(surface => workspaceAppTabId(surface) === item.id)?.pluginId ?? item.id,
             label: item.label,
             iconSrc: item.iconSrc,
             workshop: item.icon === "plugin-workshop",
@@ -5409,6 +5411,7 @@ export function SessionPage(props: SessionPageProps) {
       />
 
       {props.ipolloworkServerClient && props.runtimeWorkspaceId ? <TemplateMarketDialog
+        key={`${props.runtimeWorkspaceId}:${templateResourceScope}:${denAuth.user?.id}:${activeEnterprise?.membership.id}`}
         open={templateMarketOpen}
         onOpenChange={setTemplateMarketOpen}
         templates={templateCatalog}

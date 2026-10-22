@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { enterpriseFeaturesSchema, enterpriseMessageSchema, enterpriseOkSchema, type EnterpriseResourceType } from "@ipollowork/types/enterprise";
+import { defaultNavigationShortcuts, enterpriseNavigationSchema, enterpriseFeaturesSchema, enterpriseMessageSchema, enterpriseOkSchema, type EnterpriseResourceType } from "@ipollowork/types/enterprise";
 import { canManageEnterprise, enterpriseApi, enterpriseErrorMessage, enterpriseRequest } from "../src/app/lib/enterprise-client";
 import { iPolloWorkServerError } from "../src/app/lib/ipollowork-server";
 import type { EnterpriseConnection } from "../src/app/lib/enterprise-connections";
@@ -9,6 +9,32 @@ import { conversationEngineAdapters, withEnterpriseShareContext } from "../src/r
 
 const connection: EnterpriseConnection = { id: "ent_test", name: "示例企业", shortName: "示例", origin: "https://enterprise.example", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "member", status: "active" }, session: { token: "synthetic-enterprise-session", expiresAt: "2099-01-01T00:00:00.000Z" } };
 describe("enterprise client boundary", () => {
+  test("navigation is bounded and carries plugin identity even when the plugin is absent locally", () => {
+    const plugin = { kind: "plugin", id: "workspace-app:demo:home", pluginId: "demo", label: "Demo" };
+    expect(enterpriseNavigationSchema.parse({ revision: 1, items: [...defaultNavigationShortcuts, plugin] }).items).toHaveLength(4);
+    for (const items of [[plugin, plugin], [{ kind: "builtin", id: "unknown" }], Array.from({ length: 51 }, (_, i) => ({ ...plugin, id: String(i) }))]) {
+      expect(enterpriseNavigationSchema.safeParse({ revision: 0, items }).success).toBe(false);
+    }
+    expect(enterpriseFeaturesSchema.parse({}).navigationShortcuts).toBe(false);
+  });
+  test("navigation writes recheck current roles and reject members and resource managers", async () => {
+    const cached = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
+    let role = "member", writes = 0;
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      if (String(url).endsWith("/membership")) return Response.json({ membership: { ...connection.membership, role, displayName: "Employee", email: "employee@example.com" } });
+      expect(init?.method).toBe("PUT");
+      writes++;
+      return Response.json({ revision: 1, items: defaultNavigationShortcuts });
+    });
+    try {
+      for (role of ["member", "template_admin", "extension_admin", "skill_admin"]) {
+        await expect(enterpriseApi.setNavigation(cached, { revision: 0, items: defaultNavigationShortcuts })).rejects.toMatchObject({ status: 403 });
+      }
+      expect(writes).toBe(0);
+      for (role of ["admin", "owner"]) await expect(enterpriseApi.setNavigation(cached, { revision: 0, items: defaultNavigationShortcuts })).resolves.toMatchObject({ revision: 1 });
+      expect(writes).toBe(2);
+    } finally { fetchMock.mockRestore(); }
+  });
   test("every resource management request rechecks a cached administrator and blocks a demoted member", async () => {
     const cached = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
     let checks = 0, managementRequests = 0;
