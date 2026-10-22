@@ -65,7 +65,7 @@ export default {
     try {
       await ctx.prove('公共组件可调用，字段失败保留草稿，多选与搜索选择工作',{
         voiceover:vo[0],action:async()=>{
-          const foundations = await ctx.eval(`(async()=>{const tiers=[['page-title',16,24,600],['section-title',14,20,600],['control',13,18,500],['body',13,20,400],['meta',12,18,400],['caption',11,16,400],['micro',10,14,600]];const results=[];for(const theme of ['light','dark'])for(const rootSize of [13,16]){document.documentElement.dataset.theme=theme;document.documentElement.style.fontSize=rootSize+'px';await new Promise(r=>setTimeout(r,250));for(const [name,size,line,weight]of tiers){const p=document.createElement('span');p.className='text-ui-'+name;p.textContent='字体';document.body.append(p);const s=getComputedStyle(p);results.push({name,theme,rootSize,size:s.fontSize,line:s.lineHeight,weight:s.fontWeight,pass:s.fontSize===size+'px'&&s.lineHeight===line+'px'&&s.fontWeight===String(weight)});p.remove();}const b=document.querySelector('#fail'),s=getComputedStyle(b);results.push({name:'primary-button',theme,pass:s.backgroundColor===(theme==='light'?'rgb(22, 30, 36)':'rgb(31, 186, 192)')&&s.color===(theme==='light'?'rgb(255, 255, 255)':'rgb(22, 30, 36)')});const i=document.querySelector('#name').getBoundingClientRect(),d=document.querySelector('[data-slot=field-description]').getBoundingClientRect();results.push({name:'field-hint',theme,gap:d.top-i.bottom,pass:Math.abs(d.top-i.bottom-8)<0.5});}document.documentElement.dataset.theme='light';document.documentElement.style.fontSize='16px';return results})()`,{awaitPromise:true});
+          const foundations = await ctx.eval(`(async()=>{const tiers=[['page-title',16,24,600],['section-title',14,20,600],['control',13,18,500],['body',13,20,400],['meta',12,18,400],['caption',11,16,400],['micro',10,14,600]];const results=[];for(const theme of ['light','dark'])for(const rootSize of [13,16]){document.documentElement.dataset.theme=theme;document.documentElement.style.fontSize=rootSize+'px';await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));await Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));for(const [name,size,line,weight]of tiers){const p=document.createElement('span');p.className='text-ui-'+name;p.textContent='字体';document.body.append(p);const s=getComputedStyle(p);results.push({name,theme,rootSize,size:s.fontSize,line:s.lineHeight,weight:s.fontWeight,pass:s.fontSize===size+'px'&&s.lineHeight===line+'px'&&s.fontWeight===String(weight)});p.remove();}const b=document.querySelector('#fail'),s=getComputedStyle(b);results.push({name:'primary-button',theme,pass:s.backgroundColor===(theme==='light'?'rgb(22, 30, 36)':'rgb(31, 186, 192)')&&s.color===(theme==='light'?'rgb(255, 255, 255)':'rgb(22, 30, 36)')});const i=document.querySelector('#name').getBoundingClientRect(),d=document.querySelector('[data-slot=field-description]').getBoundingClientRect();results.push({name:'field-hint',theme,gap:d.top-i.bottom,pass:Math.abs(d.top-i.bottom-8)<0.5});}document.documentElement.dataset.theme='light';document.documentElement.style.fontSize='16px';return results})()`,{awaitPromise:true});
           ctx.assert(foundations.every(result=>result.pass),'public foundations in both themes and root font sizes: '+JSON.stringify(foundations));
           await ctx.fill('#name','保留我的草稿');await click(parent,frame,'#fail');
           ctx.assert(await ctx.eval('document.querySelector("#name").value==="保留我的草稿" && document.querySelector("#name").getAttribute("aria-invalid")==="true"'),'field draft and error association');
@@ -233,6 +233,45 @@ export default {
           await ctx.waitFor('!document.querySelector("#icon-loading").disabled && document.querySelector("#receipt").textContent==="保存完成" && document.querySelector("#icon-loading svg").dataset.iconName==="Save"');
           ctx.assert(await ctx.eval('document.querySelector("#icon-loading").getAttribute("aria-busy")==="false"'),'loading state recovers');
         }, screenshot:shot('icons-buttons'),
+      });
+      for(const theme of ['light','dark']) {
+        await ctx.prove(mode+'：'+theme+' 资源卡公共组合、字体和默认兼容',{
+          voiceover:vo[7],action:async()=>{
+            await click(parent,frame,'[id="group-数据、状态与布局"]');
+            await ctx.eval(`document.documentElement.dataset.theme='${theme}';document.documentElement.style.zoom='1'`);
+            for(const width of [1280,390])for(const rootSize of [13,16]) {
+              await parent.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+              await ctx.eval(`document.documentElement.style.fontSize='${rootSize}px'`);
+              const metrics=await ctx.eval(`(()=>{const card=document.querySelector('#resource-card');const s=getComputedStyle(card);const typography=['card-title','card-description','card-meta'].map(slot=>{const n=card.querySelector('[data-slot='+slot+']');const t=getComputedStyle(n);return [t.fontSize,t.lineHeight,t.fontWeight];});return {variant:card.dataset.variant,border:s.borderTopWidth,fill:s.backgroundColor,padding:s.padding,radius:s.borderRadius,gap:s.rowGap,icon:document.querySelector('#resource-card-icon').getBoundingClientRect().width,iconContent:document.querySelector('#resource-card-icon svg,#resource-card-icon img').getBoundingClientRect().width,typography,nested:!!card.querySelector('button button'),defaultVariant:document.querySelector('#default-card').dataset.variant,defaultRadius:getComputedStyle(document.querySelector('#default-card')).borderRadius,outline:getComputedStyle(document.querySelector('#outline-card')).borderTopWidth};})()`);
+              ctx.assert(metrics.variant==='resource'&&metrics.border==='1px'&&metrics.fill==='rgba(0, 0, 0, 0)'&&metrics.padding==='16px'&&metrics.radius==='12px'&&metrics.gap==='12px'&&metrics.icon===32&&metrics.iconContent===24&&!metrics.nested&&metrics.defaultVariant==='default'&&metrics.defaultRadius==='16px'&&metrics.outline==='1px'&&JSON.stringify(metrics.typography)===JSON.stringify([['14px','20px','600'],['12px','18px','400'],['11px','16px','400']]),mode+'/'+theme+'/'+width+'/'+rootSize+': '+JSON.stringify(metrics));
+            }
+            await click(parent,frame,'#resource-card-action');
+            await ctx.eval("document.querySelector('#resource-card').scrollIntoView({block:'center'})");
+          },assert:()=>ctx.waitFor('document.querySelector("#receipt").textContent==="资源卡动作已执行"'),screenshot:shot('resource-card-'+theme),
+        });
+      }
+      await ctx.prove(mode+'：行式卡片操作在右侧或右下',{
+        voiceover:vo[8],action:async()=>{
+          await click(parent,frame,'[id="group-数据、状态与布局"]');
+          for(const width of [1280,390]) {
+            await parent.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+            await ctx.eval("document.documentElement.style.fontSize='16px';document.documentElement.style.zoom='1';new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))",{awaitPromise:true});
+            const row=await ctx.eval(`(()=>{const card=document.querySelector('#resource-row-card'),h=card.querySelector('[data-slot=card-header]').getBoundingClientRect(),f=card.querySelector('[data-slot=card-footer]').getBoundingClientRect(),r=card.getBoundingClientRect();return {layout:card.dataset.layout,noMeta:!card.querySelector('[data-slot=card-meta]'),fits:card.scrollWidth<=card.clientWidth+1,right:f.right<=r.right,bottom:f.top>=h.bottom-1,sameRow:f.left>=h.right-1};})()`);
+            ctx.assert(await ctx.eval(`['plain','outline'].every(surface=>{const card=document.querySelector(surface==='plain'?'#resource-row-card':'#resource-row-outline-card');const style=getComputedStyle(card);const action=card.querySelector('button');return card.dataset.surface===surface&&style.borderTopWidth===(surface==='plain'?'0px':'1px')&&style.backgroundColor==='rgba(0, 0, 0, 0)'&&style.padding==='16px'&&style.borderRadius==='12px'&&getComputedStyle(action).borderTopWidth==='1px';})`),mode+'/'+width+': both resource surfaces share geometry and outlined actions');
+            ctx.assert(row.layout==='row'&&row.noMeta&&row.fits&&row.right&&(width===1280?row.sameRow:row.bottom),mode+'/'+width+': '+JSON.stringify(row));
+          }
+          await click(parent,frame,'#resource-row-action');
+          await ctx.eval("document.querySelector('#resource-row-card').scrollIntoView({block:'center'})");
+        },assert:()=>ctx.waitFor('document.querySelector("#receipt").textContent==="资源行动作已执行"'),screenshot:shot('resource-row-narrow'),
+      });
+      await ctx.prove(mode+'：公共资源卡菜单支持键盘操作',{
+        voiceover:vo[9],action:async()=>{
+          await click(parent,frame,'[aria-label="资源卡操作"]');
+          await ctx.waitFor("Boolean(document.querySelector('[role=menu] #resource-menu-action'))");
+          ctx.assert(await ctx.eval("document.querySelector('[aria-label=资源卡操作]').getAttribute('aria-expanded')==='true'"),'ellipsis trigger exposes its open state');
+          await click(parent,frame,'#resource-menu-action');
+          await ctx.eval("document.querySelector('[aria-label=资源卡操作]').scrollIntoView({block:'center'})");
+        },assert:()=>ctx.waitFor('document.querySelector("#receipt").textContent==="资源菜单动作已执行"&&!document.querySelector("[role=menu]")'),screenshot:shot('resource-actions-menu'),
       });
     } finally {frame.close();ctx.client=parent;}
   }})),

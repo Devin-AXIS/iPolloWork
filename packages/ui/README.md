@@ -131,7 +131,7 @@ See `.codex/skills/ipollowork-plugin-ui/references/plugin-contract.md` for
 the canonical v1 public-entry, build/injection and major-version contract,
 including current limitations, and `evals/flows/shared-ui-runtime.flow.mjs`
 for proof. `plugin-runtime` is an implementation entrypoint, not the production
-plugin business-script API. Runtime `1.7.0` is distinct from client/plugin
+plugin business-script API. Runtime `1.8.0` is distinct from client/plugin
 package versions; `requireRuntime(1, required, 3)` enforces minor >= 3 in major 1.
 Older two-argument callers remain compatible. There is no semver range negotiation.
 The built-in production plugin was installed in a dedicated Electron dev
@@ -183,6 +183,9 @@ installed clients or already running plugin scripts.
 
 The settings Button decoration is absolutely positioned so it cannot consume
 a flex gap; typography and padding remain stable between ghost and secondary.
+Host enterprise controls use `ButtonStyleScopeProvider value="settings" flat`
+to remove both Button and pseudo-element shadows, including inside portals.
+The optional `flat` setting preserves focus rings and defaults to `false`.
 DialogContent supplies the standard ghost close (28px target, 16px centered X).
 Template facets compose this Button with DropdownMenu; the model selector keeps
 its text and trailing chevron in narrow containers without a leading icon.
@@ -384,3 +387,94 @@ confirmation/cancel, read failure and partial batch recovery.
 Measured 1.7 host runtime: 1,117,754 raw / 304,119 gzip bytes, versus
 1.6.1's 1,115,327 / 303,032 (+2,427 raw / +1,087 gzip); no dependency added.
 Proof: `evals/results/2026-10-12T05-18-08-985Z/fraimz.html` (16 frames).
+
+
+## Resource cards (runtime 1.8)
+
+Reuse `Card variant="resource"` for catalog resources, keeping ordinary `default`
+and `outline` behavior unchanged. Resource cards have two shared surfaces:
+
+| Surface | API | Resting state | Hover | Typical use |
+| --- | --- | --- | --- | --- |
+| Borderless | `surface="plain"` | Transparent, no border or shadow | Neutral `muted` background | Plugin and skill catalogs |
+| Bordered | `surface="outline"` (default) | Transparent, 1px semantic border, no shadow | Border emphasis | Authorization and provider cards |
+
+Both use 12px radius, 16px padding and 12px gap. Use `layout="row"`
+for compact icon/title/description rows or `layout="stack"` for richer content.
+Keep actions visible with `Button variant="outline"`; they align right and wrap
+to the lower right when space is insufficient. Child controls retain visible focus.
+Dimensions use fixed CSS pixels in host and iframe roots. Header/content/footer
+own no additional padding in this variant. CardHeader arranges icon and text with
+12px gap; CardFooter wraps status/actions, separates them and sits after available
+content without forcing a card height.
+
+```tsx
+<Card variant="resource">
+  <CardHeader>
+    <CardIcon><img src={iconUrl} alt="" /></CardIcon>
+    <div className="min-w-0">
+      <CardTitle as="h3">Resource name</CardTitle>
+      <CardDescription>Short resource description</CardDescription>
+    </div>
+  </CardHeader>
+  <CardContent><CardMeta>Version and source</CardMeta></CardContent>
+  <CardFooter><CardMeta>Ready</CardMeta><Button variant="outline">Open</Button></CardFooter>
+</Card>
+```
+
+CardIcon is a transparent 32px alignment slot containing a 24px logo or icon;
+Lucide fallback icons use 1.5px strokes. It has no icon tile. CardTitle uses the
+shared sans 14/20/600 text in this variant (`as` supports `div` or `h3`, default
+`div`); CardDescription is 12/18/400; CardMeta is 11/16/400. Use each real resource's
+identity, status and callbacks; do not fabricate a plugin manifest to reuse layout.
+The card is not an extra button: place named actions in its footer and avoid
+nesting interactive controls inside another button.
+
+Host React imports `@/components/ui/card`. Iframe consumers obtain every actual
+constructor from the runtime, for example
+`requireRuntime(1, ['Card','CardHeader','CardIcon','CardTitle','CardDescription','CardContent','CardMeta','CardFooter','Button'], 8)`.
+Both explicit bundled and host-injected builds use the same implementation.
+The new variant/slots are a code extension, not a newly confirmed Figma identity
+or a packaged-release claim. The existing core fixture includes default, outline
+and resource samples; verify computed geometry, typography, hover/focus, long text
+and both themes in each runtime mode before declaring the applicable matrix Passed.
+
+
+For a compact catalog row, use `Card variant="resource" layout="row"` with just
+CardHeader (CardIcon + title/one-sentence description) and CardFooter (actions).
+`layout` is typed as `stack | row`, defaults to `stack`, and applies only to the
+resource variant. The row uses CSS flex wrapping: header grows with a minimum
+width of `min(100%, 240px)` and footer stays at the right, wrapping to the right
+below the copy when space is insufficient. No fixed height, viewport measurement
+or extra state is involved. Metadata/content blocks are optional. Stack resources
+and ordinary default/outline cards keep their previous behavior. The runtime 1.8
+core fixture includes `resource-card` and `resource-row-card` for comparison.
+
+The compact forms share exactly the same composition; only `surface` changes:
+
+```tsx
+<Card variant="resource" layout="row" surface="plain">
+  <CardHeader>
+    <CardIcon><img src={iconUrl} alt="" /></CardIcon>
+    <div className="min-w-0 flex-1">
+      <CardTitle as="h3" className="truncate">Resource name</CardTitle>
+      <CardDescription className="line-clamp-1">One key description</CardDescription>
+    </div>
+  </CardHeader>
+  <CardFooter><Button variant="outline">Open</Button></CardFooter>
+</Card>
+// Use surface="outline" for the bordered form.
+```
+
+### Card action menus
+
+Use `CardActionsMenu label="Resource name的操作"` inside CardFooter for plugin
+and skill rows. It renders one outlined ellipsis trigger with keyboard support;
+compose its children with shared DropdownMenuItem, keeping the real callbacks
+and disabled states. Destructive items use `variant="destructive"`; enterprise
+management items are supplied by the domain only when the current resource role
+allows them. Permission editing and archive confirmation remain domain dialogs.
+Iframe consumers list CardActionsMenu and every used menu component in the
+runtime required exports (minimum minor 8).
+
+Enterprise catalog grant/archive items stay on resource cards; the domain submission-only control appears in Personal (plugins/skills) or Mine (templates), without exposing the management catalog. CardActionsMenu preserves focus for any dialog opened by a menu item.

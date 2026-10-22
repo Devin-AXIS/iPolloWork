@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import * as core from "@ipollowork/ui/core";
+import { Card, CardIcon, CardMeta } from "../src/components/ui/card";
+import { requireRuntime } from "@ipollowork/ui/runtime-contract";
+import { UI_RUNTIME_VERSION } from "@ipollowork/ui/plugin-runtime";
 import { Checkbox } from "../src/components/ui/checkbox";
 import { Command } from "../src/components/ui/command";
 import { Table } from "../src/components/ui/table";
@@ -18,6 +21,94 @@ test("host compatibility entries use the same public component implementation", 
   expect(Sheet).toBe(core.Sheet);
   expect(ToggleGroup).toBe(core.ToggleGroup);
   expect(Button).toBe(core.Button);
+  expect(Card).toBe(core.Card);
+  expect(CardIcon).toBe(core.CardIcon);
+  expect(CardMeta).toBe(core.CardMeta);
+});
+
+test("resource cards preserve semantic titles and named independent footer actions", () => {
+  for (const size of ["default", "sm"] satisfies ComponentProps<typeof core.Card>["size"][]) {
+    const html = renderToStaticMarkup(createElement(core.Card, { variant: "resource", size, "aria-labelledby": "resource-name" },
+      createElement(core.CardHeader, null,
+        createElement(core.CardIcon, null, createElement("img", { src: "/resource.svg", alt: "" })),
+        createElement("div", null,
+          createElement(core.CardTitle, { as: "h3", id: "resource-name" }, "资源名称"),
+          createElement(core.CardDescription, null, "资源说明"))),
+      createElement(core.CardContent, null, createElement(core.CardMeta, null, "v1.0.0")),
+      createElement(core.CardFooter, null, createElement(core.CardMeta, null, "就绪"),
+        createElement(core.Button, { children: "打开资源" }))));
+    expect(html).toContain('data-variant="resource"');
+    expect(html).toContain('aria-labelledby="resource-name"');
+    expect(html).toContain('<h3 data-slot="card-title"');
+    expect(html).toContain('id="resource-name"');
+    expect(html).toContain('data-slot="card-icon"');
+    expect(html).toContain('data-slot="card-meta"');
+    expect(html).toContain('size-[32px]');
+    expect(html).toContain('p-[16px]');
+    expect(html.match(/<button /g)).toHaveLength(1);
+    expect(html).toContain("打开资源");
+  }
+});
+
+test("resource row layout keeps a single semantic heading and footer action without a metadata block", () => {
+  const html = renderToStaticMarkup(createElement(core.Card, { variant: "resource", layout: "row" },
+    createElement(core.CardHeader, null,
+      createElement(core.CardIcon, null, createElement("img", { src: "/brand.svg", alt: "" })),
+      createElement("div", null, createElement(core.CardTitle, { as: "h3" }, "资源名称"), createElement(core.CardDescription, null, "一句说明"))),
+    createElement(core.CardFooter, null, createElement(core.Button, { children: "查看" }))));
+  expect(html).toContain('data-layout="row"');
+  expect(html).toContain('data-variant="resource"');
+  expect(html).toContain('flex-row flex-wrap');
+  expect(html).toContain('min-w-[min(100%,240px)]');
+  expect(html.match(/<button /g)).toHaveLength(1);
+  expect(html).not.toContain('data-slot="card-content"');
+  expect(html).not.toContain('data-slot="card-meta"');
+});
+
+test("card action menu exposes one named button and preserves disabled state", () => {
+  const html = renderToStaticMarkup(createElement(core.CardActionsMenu, { label: "技能操作", disabled: true }, createElement(core.DropdownMenuItem, null, "查看")));
+  expect(html.match(/<button /g)).toHaveLength(1);
+  expect(html).toContain('aria-label="技能操作"');
+  expect(html).toContain('aria-haspopup="menu"');
+  expect(html).toContain('disabled');
+  expect(html).toContain('lucide-ellipsis');
+});
+
+test("ordinary cards retain default and outline presentation without opting into resources", () => {
+  const implicit = renderToStaticMarkup(createElement(core.Card, null, createElement(core.CardTitle, null, "默认卡片")));
+  const explicit = renderToStaticMarkup(createElement(core.Card, { variant: "default" }, createElement(core.CardTitle, null, "默认卡片")));
+  expect(implicit).toBe(explicit);
+  expect(implicit).toContain('bg-card');
+  expect(implicit).toContain('shadow-md');
+  expect(implicit).toContain('rounded-[16px]');
+  expect(implicit).toContain('data-variant="default"');
+  expect(implicit).not.toContain('<h3');
+  const outline = renderToStaticMarkup(createElement(core.Card, { variant: "outline", size: "sm" }));
+  expect(outline).toContain('data-variant="outline"');
+  expect(outline).toContain('bg-transparent');
+  expect(outline).toContain('shadow-none');
+  expect(outline).toContain('py-3');
+  expect(outline).not.toContain('p-[16px]');
+  const ordinaryRow = renderToStaticMarkup(createElement(core.Card, { variant: "outline", layout: "row", size: "sm" }));
+  expect(ordinaryRow).toBe(outline);
+});
+
+test("resource card capability rejects older minor runtimes and missing companion exports", () => {
+  const previousWindow = Reflect.get(globalThis, "window");
+  const required = ["Card", "CardHeader", "CardTitle", "CardDescription", "CardIcon", "CardMeta", "CardContent", "CardFooter"] satisfies Parameters<typeof requireRuntime>[1];
+  const runtime = { version: UI_RUNTIME_VERSION, ...core };
+  try {
+    Reflect.set(globalThis, "window", { ipolloworkUi: { ...runtime, version: "1.7.0" } });
+    expect(() => requireRuntime(1, required, 8)).toThrow("版本过旧");
+    Reflect.set(globalThis, "window", { ipolloworkUi: runtime });
+    expect(UI_RUNTIME_VERSION).toBe("1.8.0");
+    expect(requireRuntime(1, required, 8)).toBe(runtime);
+    Reflect.deleteProperty(runtime, "CardMeta");
+    expect(() => requireRuntime(1, required, 8)).toThrow("缺少所需 UI 组件");
+  } finally {
+    if (previousWindow === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Reflect.set(globalThis, "window", previousWindow);
+  }
 });
 
 test("the public Button supports all audited variants and sizes", () => {
@@ -30,6 +121,19 @@ test("the public Button supports all audited variants and sizes", () => {
     expect(html).toContain('aria-label="按钮"');
     expect(html).toContain('disabled');
     expect(core.buttonVariants({ variant, size })).toContain('group/button');
+  }
+});
+
+test("flat button scopes preserve focus treatment and do not change ordinary buttons", () => {
+  for (const variant of ["default", "outline", "destructive"] satisfies ComponentProps<typeof core.Button>["variant"][]) {
+    const ordinary = renderToStaticMarkup(createElement(core.Button, { variant, children: "普通动作" }));
+    const flat = renderToStaticMarkup(createElement(core.ButtonStyleScopeProvider, { value: "settings", flat: true,
+      children: createElement(core.Button, { variant, children: "企业动作" }),
+    }));
+    expect(ordinary).toContain("shadow-xs/5");
+    expect(flat).not.toContain("shadow-xs/5");
+    expect(flat).toContain("before:shadow-none");
+    expect(flat).toContain("focus-visible:ring-3");
   }
 });
 
@@ -89,7 +193,12 @@ test("SettingsNotice preserves content while reusing borderless feedback tokens"
 test("public mapping only names available runtime exports and existing public entries", () => {
   const mapping = JSON.parse(readFileSync(new URL("../../../.codex/skills/ipollowork-plugin-ui/references/component-mapping.json", import.meta.url), "utf8"));
   const pkg = JSON.parse(readFileSync(new URL("../../../packages/ui/package.json", import.meta.url), "utf8"));
+  expect(mapping.runtimeVersion).toBe(UI_RUNTIME_VERSION);
   for (const component of mapping.components) {
+    if (component.export === "Card") {
+      expect(component.resourceVariant.minimumMinor).toBe(8);
+      expect(component.relatedExports).toEqual(expect.arrayContaining(["CardIcon", "CardMeta"]));
+    }
     expect(Object.hasOwn(core, component.export)).toBe(true);
     for (const name of component.relatedExports ?? []) expect(Object.hasOwn(core, name)).toBe(true);
     expect(Object.hasOwn(pkg.exports, component.package.replace("@ipollowork/ui", "."))).toBe(true);

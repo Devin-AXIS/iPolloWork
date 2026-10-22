@@ -20,7 +20,7 @@ description: 为 iPolloWork 新插件或插件工作区复用 UI 组件、颜色
 - 宿主 React 使用原有 `@/components/ui/*` 入口；共享包控件入口为 `@ipollowork/ui/controls`。
 - iframe 插件只从 `@ipollowork/ui/runtime-contract` 导入 `requireRuntime(1)`；实际 React/控件从返回的运行时对象取得。不要从 `plugin-runtime` 或宿主私有路径导入实现，也不要给生产插件再打包 React。
 - 开发构建显式选择 `buildPluginRuntime('bundled')`，将运行时放在业务脚本之前；生产包不包含运行时，保留契约中的固定 meta 标记，由宿主注入。不能仅凭 `NODE_ENV` 推断加载方式。
-- 当前运行时版本为 `1.7.0`。使用本轮颜色与字体规范时调用 `requireRuntime(1, required, 3)`，第三参数检查最低 minor；使用公共 Icon 时调用 `requireRuntime(1, ['Button', 'Icon'], 4)`，尺寸 S/M/L 为14/16/20px，Button 前后图标直接作为 children 组合，纯图标按钮必须有 aria-label。required 列出实际使用的全部函数导出（包括子组件）。共享 Badge 的 info/success/warning 语义变体和前置图标组合要求 `requireRuntime(1, ['Badge', 'Icon'], 5)`。SearchField、NumberField、Slider、Calendar、DatePicker / TimeInput、FileUpload / FileUploadItem 要求 `requireRuntime(1, required, 6)`；日期使用本地年月日，上传状态由业务调用方提供，不伪造进度或取消能力。表格组合 TableSortHead / TablePagination / TablePageSelection / TableBulkActions 要求 `requireRuntime(1, required, 7)`。排序、过滤、分页与稳定ID选择由调用方管理；表头只选当前页，翻页保留选择，改变筛选清空选择；批量确认与部分失败恢复必须由实际业务处理。旧版本或缺组件时停止初始化并提示更新客户端。不支持完整 semver 范围、最低 patch 或 manifest UI 版本协商，也不自动下载另一份组件库。
+- 当前运行时版本为 `1.8.0`。使用本轮颜色与字体规范时调用 `requireRuntime(1, required, 3)`，第三参数检查最低 minor；使用公共 Icon 时调用 `requireRuntime(1, ['Button', 'Icon'], 4)`，尺寸 S/M/L 为14/16/20px，Button 前后图标直接作为 children 组合，纯图标按钮必须有 aria-label。required 列出实际使用的全部函数导出（包括子组件）。共享 Badge 的 info/success/warning 语义变体和前置图标组合要求 `requireRuntime(1, ['Badge', 'Icon'], 5)`。SearchField、NumberField、Slider、Calendar、DatePicker / TimeInput、FileUpload / FileUploadItem 要求 `requireRuntime(1, required, 6)`；日期使用本地年月日，上传状态由业务调用方提供，不伪造进度或取消能力。表格组合 TableSortHead / TablePagination / TablePageSelection / TableBulkActions 要求 `requireRuntime(1, required, 7)`。排序、过滤、分页与稳定ID选择由调用方管理；表头只选当前页，翻页保留选择，改变筛选清空选择；批量确认与部分失败恢复必须由实际业务处理。资源卡 `Card variant="resource"`、`CardIcon`、`CardMeta` 和 `CardTitle as="h3"` 要求 `requireRuntime(1, required, 8)`；既有 default/outline Card 行为不变。旧版本或缺组件时停止初始化并提示更新客户端。不支持完整 semver 范围、最低 patch 或 manifest UI 版本协商，也不自动下载另一份组件库。
 
 历史1.2整合记录不代表当前发布状态。当前core汇总43个模块；Figma推荐页的62个条目包含变体和内容示例，不能当作独立组件数量。按组件目录分别核对代码可用、业务采用、设计对齐、交互验收、发布验证五个维度。核心样板是浏览器隔离验证，真实客户端安装证据另记；签名包上传、打包客户端和跨客户端升级仍未完成全面验收。
 
@@ -78,6 +78,16 @@ Figma 状态页展示现有组件实例副本；主组件留在完整目录。�
 
 完整业务接入参考 `examples/plugin-packages/short-video-studio/src/ui.mjs`，七页验收流程为 `evals/flows/short-video-shared-ui.flow.mjs`：标记适配基础输入与按钮，React 岛挂载选择、多选、导航及反馈。迁移还需移除被替代的控件 CSS，保留领域布局，避免只给旧 DOM 换颜色。不要把 Base UI 的隐藏表单 input 当作未迁移的可见控件；校验真实选择值、草稿保留和重试写盘。
 
+## 资源卡复用 · runtime 1.8
+
+目录资源复用 `Card variant="resource"` 的两种正式形态：`surface="plain"` 无边框款默认透明、hover浅灰；`surface="outline"` 描边款为默认值，透明底、1px语义描边、hover强调描边。两款均无阴影，圆角12px、padding16px、gap12px，右侧动作使用outline Button。内部 Header/Content/Footer 不重复padding，Header以flex排列32px透明对齐槽的CardIcon（内部Logo为24px，Lucide笔画1.5px）和正文，Footer支持左状态/右动作、换行与mt-auto，不强制高度。CardTitle可设 `as="h3"`（默认div保持兼容），resource内使用sans 14/20/600，CardDescription为12/18/400，CardMeta为11/16/400。尺寸按固定px，不随iframe根字号缩小。
+
+`layout="row"`仅用于resource紧凑目录行（默认stack）：Header放32px图标槽（内部24px图标）、名称和一句说明并自适应占宽，最小宽度min(100%,240px)；Footer操作靠右，空间不足自然换到右下。内容/meta块可省略，不设固定卡高、不用JS测宽。普通default/outline不受layout影响。
+
+保留资源自己的类型、来源、状态和业务回调，不伪造插件manifest套用插件业务组件；整卡不再嵌套一层button，真实动作仍用共享Button。宿主从原card入口导入，iframe required必须列出实际使用的Card及子槽并检查最低minor8。此轮是代码扩展，未新增或确认Figma身份；交互、业务采用与发布验证仍按各自证据记录。
+
 ## 维护
 
 组件晋升时同时更新代码位置、Figma 状态页、清单和验证范围。主组件视觉在 Figma 完整目录维护；状态页元数据和本地目录为核对快照，不具备自动同步。新增公共组件必须有真实需求；候选库可持续编辑。
+
+插件和技能的紧凑目录使用 `Card variant="resource" layout="row" surface="plain"`：默认透明无边框，悬停使用共享 muted 浅灰背景，操作使用 outline Button；其他资源卡保持默认描边。
