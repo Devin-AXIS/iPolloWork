@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 
 import {
   BOOT_OVERLAY_FADE_MS,
@@ -32,5 +33,113 @@ describe("desktop boot overlay timing", () => {
     expect(loadingOverlay).toContain('publicAssetUrl("ipollowork-app-loading-v3.gif")');
     expect(loadingOverlay).toContain("bg-dls-surface");
     expect(loadingOverlay).not.toContain("bg-black transition-opacity");
+  });
+});
+
+const recoveryScript = startupHtml.match(/<script id="ipollowork-startup-recovery">([\s\S]*?)<\/script>/)?.[1];
+if (!recoveryScript) throw new Error("Startup recovery must run inline before module imports");
+
+function startupRecovery(storage = new Map<string, string>(), unavailableStorage = false) {
+  const root = { dataset: { ipolloworkDeployment: "" } };
+  const panel = { hidden: true };
+  const message = { textContent: "" };
+  const button = { textContent: "", onclick: () => {} };
+  const elements = new Map<string, object>([
+    ["root", root], ["ipollowork-startup-error", panel],
+    ["ipollowork-startup-message", message], ["ipollowork-startup-retry", button],
+  ]);
+  const listeners = new Map<string, (event?: object) => void>();
+  const timers = new Map<number, { callback: () => void; delay: number }>();
+  let timerId = 0;
+  let reloads = 0;
+  runInNewContext(recoveryScript, {
+    document: { getElementById: (id: string) => elements.get(id) },
+    navigator: { language: "en" },
+    localStorage: { getItem: () => "zh" },
+    sessionStorage: {
+      getItem: (key: string) => { if (unavailableStorage) throw new Error("Blocked"); return storage.get(key); },
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    },
+    location: { reload: () => reloads++ },
+    setTimeout: (callback: () => void, delay: number) => { timers.set(++timerId, { callback, delay }); return timerId; },
+    clearTimeout: (id: number) => timers.delete(id),
+    window: {
+      addEventListener: (name: string, callback: (event?: object) => void) => listeners.set(name, callback),
+      removeEventListener: (name: string) => listeners.delete(name),
+    },
+  });
+  return {
+    root, panel, message, button, storage, timers, listeners,
+    fail: (target: object = { tagName: "SCRIPT", type: "module" }) => listeners.get("error")?.({ target }),
+    loaded: () => listeners.get("load")?.(),
+    runTimer: (delay: number) => {
+      const timer = [...timers.values()].find((entry) => entry.delay === delay);
+      if (!timer) throw new Error(`No timer scheduled for ${delay}ms`);
+      timer.callback();
+    },
+    reloads: () => reloads,
+  };
+}
+
+describe("startup resource failure recovery", () => {
+  test("recovers a failed entry graph once even when several modules fail", () => {
+    const boot = startupRecovery();
+    boot.fail();
+    boot.fail();
+    expect(boot.storage.get("ipollowork.startupRetries")).toBe("1");
+    boot.runTimer(1000);
+    expect(boot.reloads()).toBe(1);
+  });
+
+  test("bounds consecutive reloads and offers a working manual retry", () => {
+    const storage = new Map<string, string>();
+    const first = startupRecovery(storage);
+    first.fail();
+    first.runTimer(1000);
+    const second = startupRecovery(storage);
+    second.fail({ tagName: "LINK", rel: "stylesheet" });
+    second.runTimer(2000);
+    const third = startupRecovery(storage);
+    third.fail();
+    expect(third.panel.hidden).toBe(false);
+    expect(third.message.textContent).toContain("启动资源加载失败");
+    expect(third.reloads()).toBe(0);
+    third.button.onclick();
+    expect(storage.size).toBe(0);
+    expect(third.reloads()).toBe(1);
+  });
+
+  test("successful startup resets the retry budget and removes recovery work", () => {
+    const boot = startupRecovery(new Map([["ipollowork.startupRetries", "2"]]));
+    boot.root.dataset.ipolloworkDeployment = "local";
+    boot.loaded();
+    expect(boot.storage.size).toBe(0);
+    expect(boot.timers.size).toBe(0);
+    expect(boot.listeners.has("error")).toBe(false);
+  });
+
+  test("does not reload a running app or react to unrelated images and runtime errors", () => {
+    const boot = startupRecovery();
+    boot.fail({ tagName: "IMG" });
+    boot.fail({ message: "unrelated error" });
+    expect(boot.storage.size).toBe(0);
+    boot.fail();
+    boot.root.dataset.ipolloworkDeployment = "local";
+    boot.runTimer(1000);
+    boot.runTimer(45000);
+    expect(boot.reloads()).toBe(0);
+    expect(boot.panel.hidden).toBe(true);
+  });
+
+  test("storage restrictions and hung startup still allow manual recovery", () => {
+    const blocked = startupRecovery(new Map(), true);
+    blocked.fail();
+    expect(blocked.panel.hidden).toBe(false);
+    expect(blocked.reloads()).toBe(0);
+    const hung = startupRecovery();
+    hung.runTimer(45000);
+    expect(hung.panel.hidden).toBe(false);
+    expect(hung.reloads()).toBe(0);
   });
 });
