@@ -5,6 +5,7 @@ import {
   AudioLines,
   CheckCircle2,
   Cloud,
+  ChevronDown,
   FolderCog,
   Globe,
   Image,
@@ -17,15 +18,11 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { openDesktopUrl } from "@/app/lib/desktop";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { publicAssetUrl } from "@/app/lib/public-asset";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { Card, CardHeader, CardIcon, CardTitle, CardDescription, CardMeta, CardFooter } from "@/components/ui/card";
 import type {
   iPolloWorkAuthorizationService,
   iPolloWorkAuthorizationServiceId,
@@ -46,6 +43,7 @@ type AuthorizationCenterViewProps = {
 
 type ServicePresentation = {
   icon: LucideIcon;
+  logo?: string;
   titleKey: string;
   descriptionKey: string;
   fields: Array<{
@@ -59,20 +57,24 @@ type ServicePresentation = {
   }>;
 };
 
+// Local favicons: fal.ai, heygen.com, runninghub.ai, volcengine.com, aliyun.com, wasabi.com. OpenAI reuses the existing SVG.
 const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = {
   "fal-images": {
+    logo: "ext-fal.png",
     icon: Image,
     titleKey: "settings.authorization.service.fal_images.title",
     descriptionKey: "settings.authorization.service.fal_images.description",
     fields: [{ key: "FAL_KEY", label: "fal API key", placeholder: "Key ID:Key Secret", hintKey: "settings.authorization.fal_key_hint" }],
   },
   "openai-images": {
+    logo: "ext-openai.svg",
     icon: Image,
     titleKey: "settings.authorization.service.openai_images.title",
     descriptionKey: "settings.authorization.service.openai_images.description",
     fields: [{ key: "OPENAI_API_KEY", label: "OpenAI API key", placeholder: "sk-..." }],
   },
   "aliyun-bailian": {
+    logo: "ext-aliyun.png",
     icon: AudioLines,
     titleKey: "settings.authorization.service.aliyun_bailian.title",
     descriptionKey: "settings.authorization.service.aliyun_bailian.description",
@@ -82,24 +84,28 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     ],
   },
   "volcengine-video": {
+    logo: "ext-volcengine.png",
     icon: Image,
     titleKey: "settings.authorization.service.volcengine_video.title",
     descriptionKey: "settings.authorization.service.volcengine_video.description",
     fields: [{ key: "ARK_API_KEY", label: "Ark API key", placeholder: "your Ark API key" }],
   },
   "runninghub-video": {
+    logo: "ext-runninghub.ico",
     icon: AudioLines,
     titleKey: "settings.authorization.service.runninghub_video.title",
     descriptionKey: "settings.authorization.service.runninghub_video.description",
     fields: [{ key: "RUNNINGHUB_API_KEY", label: "RunningHub API key", placeholder: "Enterprise-Shared API key", hintKey: "settings.authorization.runninghub_key_hint" }],
   },
   "heygen-video": {
+    logo: "ext-heygen.ico",
     icon: AudioLines,
     titleKey: "settings.authorization.service.heygen_video.title",
     descriptionKey: "settings.authorization.service.heygen_video.description",
     fields: [{ key: "HEYGEN_API_KEY", label: "HeyGen API key", placeholder: "HeyGen API key" }],
   },
   "aliyun-oss": {
+    logo: "ext-aliyun.png",
     icon: Cloud,
     titleKey: "settings.authorization.service.aliyun_oss.title",
     descriptionKey: "settings.authorization.service.aliyun_oss.description",
@@ -112,6 +118,7 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     ],
   },
   "wasabi": {
+    logo: "ext-wasabi.ico",
     icon: Cloud,
     titleKey: "settings.authorization.service.wasabi.title",
     descriptionKey: "settings.authorization.service.wasabi.description",
@@ -286,11 +293,11 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
         {servicesQuery.error ? <SettingsNotice tone="error">{servicesQuery.error.message}</SettingsNotice> : null}
 
         {servicesQuery.isLoading ? (
-          <div className="flex min-h-40 items-center justify-center rounded-2xl border border-dls-border bg-dls-hover/40">
+          <div className="flex min-h-40 items-center justify-center rounded-xl border border-dls-border">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="grid gap-3 @md/settings:grid-cols-2">
+          <div className="grid items-start gap-3 @md/settings:grid-cols-2">
             {services.map((service) => (
               <AuthorizationServiceCard
                 key={service.id}
@@ -336,6 +343,7 @@ function AuthorizationServiceCard(props: {
   heygenBusy?: boolean;
   heygenWaiting?: boolean;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const presentation = SERVICES[props.service.id];
   const Icon = presentation.icon;
   const subscription = props.service.subscription;
@@ -345,87 +353,68 @@ function AuthorizationServiceCard(props: {
     field.configured && presentation.fields.find((presentationField) => presentationField.key === field.key)?.required !== false,
   ).length;
 
+  const statusLabel = props.onOpenBrowserLogin
+    ? t(props.service.browserLogin?.connected ? "settings.authorization.browser_connected" : "settings.authorization.browser_disconnected")
+    : props.onHeygenAction && subscription?.mode === "subscription"
+      ? t(subscription.connected ? "settings.authorization.heygen.connected" : "settings.authorization.heygen.disconnected")
+      : t(props.service.configured ? "settings.authorization.connected" : "settings.authorization.not_configured");
+  const statusReady = props.onOpenBrowserLogin ? Boolean(props.service.browserLogin?.connected) : ready;
+
   return (
-    <Card variant="outline" size="sm" className="flex min-h-52 flex-col">
-      <CardHeader className="gap-3">
-        <div className="flex items-start justify-between gap-3">
-          <span className="flex size-9 items-center justify-center rounded-xl border border-border bg-muted/40 text-muted-foreground">
-            <Icon className="size-4" />
-          </span>
-          <SettingsStatusBadge
-            tone={ready ? "ready" : "neutral"}
-            label={ready ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
-            className="min-h-7 px-0 text-[11px]"
-          />
+    <Card variant="resource" data-testid="authorization-service-row" data-service-id={props.service.id} className="min-w-0">
+    <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen} className="flex min-h-[156px] flex-col gap-3">
+        <CardHeader>
+          <CardIcon>
+            {presentation.logo ? <img src={publicAssetUrl(presentation.logo)} alt={t(presentation.titleKey)} className={cn("size-7 object-contain", props.service.id === "openai-images" && "dark:invert")} /> : <Icon className="size-6" />}
+          </CardIcon>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <CardTitle as="h3" title={t(presentation.titleKey)}>{t(presentation.titleKey)}</CardTitle>
+            <CardDescription className="min-h-9 line-clamp-2">{t(presentation.descriptionKey)}</CardDescription>
+            <CardMeta data-testid="authorization-service-status"><SettingsStatusBadge tone={statusReady ? "ready" : "neutral"} label={statusLabel} className="min-h-0 justify-start px-0 text-ui-caption" /></CardMeta>
+          </div>
+        </CardHeader>
+        <CardFooter data-testid="authorization-service-actions"><div className="ml-auto flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" onClick={props.onConfigure} disabled={!props.canEdit}>
+            <KeyRound className="size-3.5" />
+            {props.onOpenBrowserLogin || props.onHeygenAction ? t("settings.authorization.api_key") : props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => { setDetailsOpen(true); props.onTest(); }} disabled={!props.canEdit || !ready || props.testing}>
+            {props.testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
+            {props.testing ? t("settings.authorization.testing") : props.onOpenBrowserLogin ? t("settings.authorization.test_api") : t("settings.authorization.test")}
+          </Button>
+        </div></CardFooter>
+        <CollapsibleTrigger data-testid="authorization-service-more" render={<Button variant="ghost" size="sm" className="h-auto justify-between px-0 py-0 text-muted-foreground hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent data-[state=open]:bg-transparent dark:hover:bg-transparent dark:active:bg-transparent" />}>
+          {t("settings.authorization.help")}<ChevronDown className={cn("size-3.5 transition-transform", detailsOpen && "rotate-180")} />
+        </CollapsibleTrigger>
+      <CollapsibleContent data-testid="authorization-service-details" className="space-y-3">
+      {props.onHeygenAction ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("settings.authorization.heygen.billing")}>
+            <Button size="sm" variant={subscription?.mode === "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-subscription")} aria-pressed={subscription?.mode === "subscription"}>{t("settings.authorization.heygen.subscription")}</Button>
+            <Button size="sm" variant={subscription?.mode !== "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-api-key")} aria-pressed={subscription?.mode !== "subscription"}>{t("settings.authorization.heygen.api")}</Button>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {subscription?.mode !== "subscription" ? <span className="text-ui-caption text-dls-secondary">{t(subscription?.connected ? "settings.authorization.heygen.connected" : "settings.authorization.heygen.disconnected")}</span> : null}
+            <Button variant="outline" size="sm" disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.(subscription?.connected ? "disconnect" : "connect")}>
+              {props.heygenBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Globe className="size-3.5" />}
+              {t(subscription?.connected ? "settings.authorization.heygen.disconnect" : "settings.authorization.heygen.connect")}
+            </Button>
+          </div>
+          <p className="text-ui-caption leading-5 text-muted-foreground">{t(subscription?.mode === "subscription" ? "settings.authorization.heygen.subscription_limit" : "settings.authorization.heygen.api_requirement")}</p>
+          {props.heygenWaiting ? <p role="status" className="text-ui-caption text-muted-foreground">{t("settings.authorization.heygen.waiting")}</p> : null}
         </div>
-        <div>
-          <CardTitle className="text-sm">{t(presentation.titleKey)}</CardTitle>
-          <CardDescription className="mt-1 min-h-10 text-xs leading-5">
-            {t(presentation.descriptionKey)}
-          </CardDescription>
+      ) : null}
+      {props.onOpenBrowserLogin ? <div className="space-y-2"><Button variant="outline" size="sm" onClick={props.onOpenBrowserLogin} disabled={!props.canEdit}><Globe className="size-3.5" />{t("settings.authorization.browser_login")}</Button><p className="text-ui-caption leading-5 text-muted-foreground">{t("settings.authorization.browser_billing")}</p></div> : null}
+        <div className="space-y-2 text-ui-caption leading-5 text-muted-foreground">
+          <p>{props.onHeygenAction || props.onOpenBrowserLogin ? "API Key · " : null}{t("settings.authorization.fields_configured", { configured: configuredFields, total: requiredFields })}</p>
+          {props.onHeygenAction || props.onOpenBrowserLogin ? <p>{t(props.onHeygenAction ? "settings.authorization.heygen.hint" : "settings.authorization.browser_hint")}</p> : null}
         </div>
-      </CardHeader>
-      <CardContent className="flex-1">
-        {props.onHeygenAction ? (
-          <div className="mb-3 space-y-3">
-            <div className="flex flex-wrap gap-2" role="group" aria-label={t("settings.authorization.heygen.billing")}>
-              <Button size="sm" variant={subscription?.mode === "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-subscription")} aria-pressed={subscription?.mode === "subscription"}>{t("settings.authorization.heygen.subscription")}</Button>
-              <Button size="sm" variant={subscription?.mode !== "subscription" ? "default" : "outline"} disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.("use-api-key")} aria-pressed={subscription?.mode !== "subscription"}>{t("settings.authorization.heygen.api")}</Button>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <SettingsStatusBadge tone={subscription?.connected ? "ready" : "neutral"} label={t(subscription?.connected ? "settings.authorization.heygen.connected" : "settings.authorization.heygen.disconnected")} />
-              <Button variant="outline" size="sm" disabled={!props.canEdit || props.heygenBusy} onClick={() => props.onHeygenAction?.(subscription?.connected ? "disconnect" : "connect")}>
-                {props.heygenBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Globe className="size-3.5" />}
-                {t(subscription?.connected ? "settings.authorization.heygen.disconnect" : "settings.authorization.heygen.connect")}
-              </Button>
-            </div>
-            <p className="text-xs leading-5 text-muted-foreground">{t(props.heygenWaiting ? "settings.authorization.heygen.waiting" : "settings.authorization.heygen.hint")}</p>
-          </div>
-        ) : null}
-        {props.onOpenBrowserLogin ? (
-          <div className="mb-3 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <SettingsStatusBadge
-                tone={props.service.browserLogin?.connected ? "ready" : "neutral"}
-                label={t(props.service.browserLogin?.connected ? "settings.authorization.browser_connected" : "settings.authorization.browser_disconnected")}
-              />
-              <Button variant="outline" size="sm" onClick={props.onOpenBrowserLogin} disabled={!props.canEdit}>
-                <Globe className="size-3.5" />
-                {t("settings.authorization.browser_login")}
-              </Button>
-            </div>
-            <p className="text-xs leading-5 text-muted-foreground">{t("settings.authorization.browser_hint")}</p>
-          </div>
-        ) : null}
-        <p className="text-xs text-muted-foreground">
-          {props.onOpenBrowserLogin || props.onHeygenAction ? "API Key · " : null}
-          {t("settings.authorization.fields_configured", {
-            configured: configuredFields,
-            total: requiredFields,
-          })}
-        </p>
-        {props.testResult ? (
-          <div className={`mt-3 flex gap-2 rounded-xl px-3 py-2 text-xs ${props.testResult.ok ? "bg-green-3/40 text-green-11" : "bg-red-3/40 text-red-11"}`}>
-            {props.testResult.ok ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" /> : <XCircle className="mt-0.5 size-3.5 shrink-0" />}
-            <span>{props.testResult.detail}</span>
-          </div>
-        ) : null}
-      </CardContent>
-      <CardFooter className="justify-between gap-2 border-t border-border">
-        <Button variant="ghost" size="sm" onClick={props.onConfigure} disabled={!props.canEdit}>
-          <KeyRound className="size-3.5" />
-          {props.onOpenBrowserLogin || props.onHeygenAction ? t("settings.authorization.api_key") : props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={props.onTest}
-          disabled={!props.canEdit || !ready || props.testing}
-        >
-          {props.testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
-          {props.testing ? t("settings.authorization.testing") : props.onOpenBrowserLogin ? t("settings.authorization.test_api") : t("settings.authorization.test")}
-        </Button>
-      </CardFooter>
+        {props.testResult ? <div role="status" className={cn("flex gap-2 text-ui-caption", props.testResult.ok ? "text-green-11" : "text-red-11")}>
+          {props.testResult.ok ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" /> : <XCircle className="mt-0.5 size-3.5 shrink-0" />}
+          <span>{props.testResult.detail}</span>
+        </div> : null}
+      </CollapsibleContent>
+    </Collapsible>
     </Card>
   );
 }

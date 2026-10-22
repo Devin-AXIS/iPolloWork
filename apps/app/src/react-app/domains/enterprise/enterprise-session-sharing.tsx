@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Loader2, Share2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { CircleAlert, Loader2, Share2 } from "lucide-react";
 import { enterpriseShareTargetSchema, enterpriseSummarySchema, enterpriseSnapshotSchema, type EnterpriseSnapshot, type EnterpriseSummary } from "@ipollowork/types/enterprise";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonStyleScopeProvider } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -22,6 +24,7 @@ export function EnterpriseSessionSharing({ connection, resolveWorkspace, current
   model?: { providerID: string; modelID: string } | null;
   engineId?: string;
 }) {
+  const fieldId = useId();
   const [target, setTarget] = useState<{ workspaceId: string; sessionId: string } | null>(null);
   const [selected, setSelected] = useState<EnterprisePeopleSelection>({ memberIds: [], departmentIds: [] });
   const [summary, setSummary] = useState<EnterpriseSummary | null>(null);
@@ -102,19 +105,19 @@ export function EnterpriseSessionSharing({ connection, resolveWorkspace, current
     } catch (cause) { if (alive.current) setError(enterpriseErrorMessage(cause)); }
     finally { if (alive.current) setBusy(null); }
   };
-  return <>
+  return <ButtonStyleScopeProvider value="settings" flat>
     <Dialog open={Boolean(target)} onOpenChange={(open) => { if (!open && !busy) setTarget(null); }}><DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto" data-testid="enterprise-session-share"><DialogHeader><DialogTitle>分享会话总结</DialogTitle><DialogDescription>{connection.name} · 接收方会创建独立会话，双方后续各自继续</DialogDescription></DialogHeader>
       <EnterprisePeoplePicker connection={connection} disabled={Boolean(busy)} value={selected} onChange={(value) => { setSelected(value); key.current = crypto.randomUUID(); }} />
       <label className="flex items-center gap-2 text-sm"><Checkbox checked={preview} disabled={Boolean(busy) || Boolean(summary)} onCheckedChange={setPreview} />发送前预览和编辑总结</label>
-      {summary ? <div className="space-y-3"><label className="block space-y-1.5"><span className="text-xs font-medium">分享标题</span><Input value={summary.title} maxLength={500} disabled={Boolean(busy)} onChange={(event) => { setSummary({ ...summary, title: event.target.value }); key.current = crypto.randomUUID(); }} /></label><label className="block space-y-1.5"><span className="text-xs font-medium">Markdown 总结</span><Textarea className="min-h-48" value={summary.markdown} maxLength={100_000} disabled={Boolean(busy)} onChange={(event) => { setSummary({ ...summary, markdown: event.target.value }); key.current = crypto.randomUUID(); }} /></label>{summary.truncated ? <p className="text-xs text-muted-foreground">会话较长，本次总结仅覆盖已读取且在长度范围内的已完成消息。</p> : null}</div> : null}
-      {error ? <div className="space-y-2"><p role="alert" className="rounded-lg bg-feedback-error p-3 text-sm text-red-11">{error}</p>{!summary ? <Button variant="outline" size="sm" onClick={() => { setSummary({ title: "会话总结", markdown: "", messageCount: 0, truncated: false }); setError(null); key.current = crypto.randomUUID(); }}>手动填写总结</Button> : null}</div> : null}
+      {summary ? <div className="space-y-3"><Field><FieldLabel htmlFor={`${fieldId}-title`}>分享标题</FieldLabel><Input id={`${fieldId}-title`} value={summary.title} maxLength={500} disabled={Boolean(busy)} onChange={(event) => { setSummary({ ...summary, title: event.target.value }); key.current = crypto.randomUUID(); }} /></Field><Field><FieldLabel htmlFor={`${fieldId}-markdown`}>Markdown 总结</FieldLabel><Textarea id={`${fieldId}-markdown`} className="min-h-48" value={summary.markdown} maxLength={100_000} disabled={Boolean(busy)} onChange={(event) => { setSummary({ ...summary, markdown: event.target.value }); key.current = crypto.randomUUID(); }} /></Field>{summary.truncated ? <p className="text-xs text-muted-foreground">会话较长，本次总结仅覆盖已读取且在长度范围内的已完成消息。</p> : null}</div> : null}
+      {error ? <div className="space-y-2"><Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert>{!summary ? <Button variant="outline" size="sm" onClick={() => { setSummary({ title: "会话总结", markdown: "", messageCount: 0, truncated: false }); setError(null); key.current = crypto.randomUUID(); }}>手动填写总结</Button> : null}</div> : null}
       {busy ? <p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" />{busy}</p> : null}
       <p className="text-xs text-muted-foreground">分享总结正文。源电脑上的文件、账号凭据和插件授权不会随总结传输。</p>
       <DialogFooter><Button variant="outline" disabled={Boolean(busy)} onClick={() => setTarget(null)}>取消</Button><Button disabled={Boolean(busy) || !selected.memberIds.length || (!summary && !model) || Boolean(summary && (!summary.title.trim() || !summary.markdown.trim()))} onClick={() => void send()}><Share2 className="size-4" />{summary ? "确认发送" : preview ? "生成总结并预览" : "确定并分享"}</Button></DialogFooter>
       {!model && !summary ? <p className="text-xs text-muted-foreground">请先为当前项目选择一个已连接的模型。</p> : null}
     </DialogContent></Dialog>
-    <Dialog open={importing || Boolean(importError)} onOpenChange={(open) => { if (!open && !importing) setImportError(null); }}><DialogContent><DialogHeader><DialogTitle>接收会话分享</DialogTitle><DialogDescription>保存总结快照并创建独立会话</DialogDescription></DialogHeader>{importing ? <p role="status" className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />正在接收分享</p> : <p role="alert">{importError}</p>}</DialogContent></Dialog>
-  </>;
+    <Dialog open={importing || Boolean(importError)} onOpenChange={(open) => { if (!open && !importing) setImportError(null); }}><DialogContent><DialogHeader><DialogTitle>接收会话分享</DialogTitle><DialogDescription>保存总结快照并创建独立会话</DialogDescription></DialogHeader>{importing ? <p role="status" className="flex items-center gap-2"><Loader2 className="size-4 animate-spin" />正在接收分享</p> : <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{importError}</AlertDescription></Alert>}</DialogContent></Dialog>
+  </ButtonStyleScopeProvider>;
 }
 
 export function EnterpriseSnapshotNotice({ client, workspaceId, sessionId, connection }: { client: iPolloWorkServerClient; workspaceId: string; sessionId: string; connection: EnterpriseConnection }) {

@@ -1,4 +1,6 @@
 /** @jsxImportSource react */
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { canManageEnterprise } from "@/app/lib/enterprise-client";
 import { installCloudPluginResource, listEnterpriseResources, type EnterpriseResource } from "@/app/lib/enterprise-connections";
 import { useCloudSession } from "./cloud/cloud-session-provider";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
@@ -7,6 +9,7 @@ import {
   Bot,
   Building2,
   CheckCircle2,
+  CircleAlert,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -21,6 +24,8 @@ import {
   WandSparkles,
 } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Empty, EmptyDescription, EmptyMedia } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { Switch } from "@/components/ui/switch";
@@ -38,10 +43,10 @@ import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { PluginAuthorizationDialog } from "@/components/plugin-authorization-dialog";
-import { EnterpriseResourceControls, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { EnterpriseResourceControls, EnterpriseResourceActionDialog, type EnterpriseResourceAction, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
-import { SettingsListSearchInput, SettingsResourceListItem, settingsResourceGridClassName } from "./settings-list";
-import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
+import { SettingsListSearchInput, settingsResourceGridClassName } from "@/react-app/domains/settings/settings-list";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   settingsPageDescriptionClass,
   settingsPageTitleClass,
@@ -70,6 +75,7 @@ import {
 type PluginLibrarySource = "marketplace" | "personal" | "enterprise";
 
 type PluginPackagesPanelProps = {
+  showHeader?: boolean;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   selectedPluginId: string | null;
@@ -202,6 +208,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const refreshGeneration = useRef(0);
+  const [resourceAction, setResourceAction] = useState<EnterpriseResourceAction | null>(null);
   const [source, setSource] = useState<PluginLibrarySource>("personal");
   const [search, setSearch] = useState("");
   const [marketplaceCategory, setMarketplaceCategory] = useState<MarketplaceCategoryFilter>("all");
@@ -271,7 +278,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         setCloudResources(cloudResult.value);
         setCloudError(null);
       } else {
-        setCloudResources([]);
         setCloudError(t(source === "enterprise" ? "enterprise_connection.enterprise_resources_error" : "plugin_library.update_check_failed"));
       }
       lastCloudCheck.current = Date.now();
@@ -286,6 +292,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     }
   }, [props.client, props.workspaceId, source, activeEnterprise, cloud.isSignedIn, cloud.authToken, cloud.baseUrl]);
 
+  useEffect(() => { setResourceAction(null); }, [activeEnterprise?.id, activeEnterprise?.membership.id]);
   useEffect(() => {
     if (source === "enterprise" && !activeEnterprise) setSource("personal");
   }, [activeEnterprise, source]);
@@ -919,10 +926,10 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   return (
     <section className={settingsStandardContentClass}>
       <div className="space-y-4">
-        <div className="max-w-lg">
+        {props.showHeader !== false ? <div className="max-w-lg">
           <h1 data-testid="plugin-library-heading" className={settingsPageTitleClass}>{t("plugin_library.title")}</h1>
           <p data-testid="plugin-library-description" className={settingsPageDescriptionClass}>{t("plugin_library.description")}</p>
-        </div>
+        </div> : null}
         <SettingsListSearchInput
           value={search}
           onValueChange={setSearch}
@@ -1018,19 +1025,15 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         ) : null}
       </section>
 
-      <section data-testid="plugin-library-source" aria-busy={loading} className="mt-8 space-y-3">
+      <Tabs value={source} onValueChange={(value) => { if (value === "personal" || value === "marketplace" || value === "enterprise") setSource(value); }}><section data-testid="plugin-library-source" aria-busy={loading} className="mt-8 space-y-3">
         <div className="border-b border-dls-border pb-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <SettingsSegmentedTabs
-              value={source}
-              ariaLabel={t("plugin_library.source_label")}
-              items={sourceTabs}
-              onValueChange={setSource}
-            />
+            <TabsList aria-label={t("plugin_library.source_label")}>
+              {sourceTabs.map(tab => <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>)}
+            </TabsList>
 
             {source === "enterprise" && activeEnterprise ? (
               <div className="flex flex-wrap items-center gap-2">
-                <EnterpriseResourceControls key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" onChanged={() => void refresh()} />
                 <Button variant="ghost" size="icon-sm" aria-label={t("common.refresh")} disabled={loading || busyKey !== null} onClick={() => void refresh()}>
                   <RefreshCw size={15} className={loading ? "animate-spin" : undefined} />
                 </Button>
@@ -1038,12 +1041,15 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             ) : null}
 
             {source === "personal" ? (
-              <Button variant="ghost" size="sm" data-testid="plugin-check-updates"
-                disabled={loading || busyKey !== null} aria-busy={loading}
-                onClick={() => void refresh()}>
-                <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
-                {t("plugin_library.check_updates")}
-              </Button>
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                {activeEnterprise ? <EnterpriseResourceControls mode="submissions" key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" onChanged={() => void refresh()} /> : null}
+                <Button variant="ghost" size="sm" data-testid="plugin-check-updates"
+                  disabled={loading || busyKey !== null} aria-busy={loading}
+                  onClick={() => void refresh()}>
+                  <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
+                  {t("plugin_library.check_updates")}
+                </Button>
+              </div>
             ) : null}
 
             {source === "marketplace" ? (
@@ -1086,8 +1092,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           </p>
         </div>
 
+        <TabsContent value={source} aria-busy={loading} className="space-y-3">
         {error ? <div role="alert" data-testid="plugin-library-operation-error" className="rounded-xl border-0 bg-feedback-error px-5 py-3 text-xs text-red-11">{error}</div> : null}
-        {source === "enterprise" && cloudError ? <p role="alert" className="text-ui-meta text-red-11">{cloudError}</p> : null}
+        {source === "enterprise" && cloudError ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{cloudError}</AlertDescription><Button variant="outline" size="sm" disabled={loading} onClick={() => void refresh()}>重试</Button></Alert> : null}
         {source === "personal" && catalogError ? <p role="alert" className="text-ui-meta text-red-11">{catalogError}</p> : null}
         {source !== "marketplace" && loading ? (
           <div role="status" aria-live="polite" data-testid="plugin-library-loading" className="flex items-center gap-2 text-ui-control text-dls-secondary">
@@ -1097,25 +1104,27 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         ) : null}
 
         {source === "enterprise" ? (
-          !loading && !cloudError ? filteredEnterpriseResources.length ? (
-            <div className={settingsResourceGridClassName}>
+          (!loading || cloudResources.length > 0) ? filteredEnterpriseResources.length ? (
+            <div className="grid gap-3 sm:grid-cols-2">
               {filteredEnterpriseResources.map(resource => {
                 const installed = items.find(item => item.pluginId === (resource.manifestId ?? resource.slug));
                 const current = Boolean(installed && installed.version === resource.latestVersion?.version);
-                const iconUrl = resolveExtensionIconUrl({ pluginId: resource.manifestId ?? resource.slug });
                 return (
-                  <SettingsResourceListItem key={resource.id} testId="enterprise-plugin-card"
-                    title={resource.name} description={resource.description}
-                    icon={iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
-                    metadata={<>{resource.latestVersion ? <span>v{resource.latestVersion.version}</span> : null}<span>{resource.enterpriseCategory}</span></>}
-                    actions={<Button variant="outline" size="sm" disabled={current || !resource.latestVersion || busyKey !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>
-                        {busyKey === `enterprise:${resource.id}` ? <Loader2 size={14} className="animate-spin" /> : null}
-                        {current ? t("plugin_platform.status.installed") : installed ? t("template_market.update") : t("enterprise_connection.install_from_enterprise")}
-                      </Button>} />
+                  <PluginPackageListItem key={resource.id} compact
+                    manifest={{ id: resource.manifestId ?? resource.slug, name: resource.name, description: resource.description }}
+                    version={resource.latestVersion?.version ?? ""}
+                    actionLabel={current ? t("plugin_platform.status.installed") : installed ? t("template_market.update") : t("enterprise_connection.install_from_enterprise")}
+                    actionBusy={busyKey === `enterprise:${resource.id}`}
+                    actionDisabled={current || !resource.latestVersion || busyKey !== null || !props.client || !props.workspaceId}
+                    onAction={() => void installEnterpriseExtension(resource)}
+                    menuItems={activeEnterprise && canManageEnterprise(activeEnterprise, "extension") ? <>
+                      <DropdownMenuItem disabled={!activeEnterprise.features?.resourcePermissions || busyKey !== null} onClick={() => setResourceAction({ resource, kind: "access" })}>分配权限</DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" disabled={busyKey !== null} onClick={() => setResourceAction({ resource, kind: "archive" })}>下架</DropdownMenuItem>
+                    </> : null} />
                 );
               })}
             </div>
-          ) : <div className="rounded-2xl border border-dashed border-dls-border px-5 py-10 text-center text-sm text-dls-secondary"><Building2 className="mx-auto mb-3 size-5" />{t(search ? "settings.marketplace.no_match" : "enterprise_connection.enterprise_extensions_empty")}</div> : null
+          ) : !cloudError ? <Empty><EmptyMedia variant="icon"><Building2 /></EmptyMedia><EmptyDescription>{t(search ? "settings.marketplace.no_match" : "enterprise_connection.enterprise_extensions_empty")}</EmptyDescription></Empty> : null : null
         ) : source === "marketplace" ? (
           props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items, {
             items: cloudResources, loading, error: cloudError, onRefresh: refresh,
@@ -1148,8 +1157,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                   status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
                   actionBusy={busyKey === `${item.pluginId}:enable` || Boolean(catalogUpdate && busyKey === `catalog:${catalogUpdate.pluginId}`)}
                   actionDisabled={loading || busyKey !== null}
-                  secondaryAction={<Button variant="ghost" size="sm" disabled={loading || busyKey !== null}
-                    aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void uninstallPackage(item.pluginId)}><Trash2 size={14} /></Button>}
+                  menuItems={<DropdownMenuItem variant="destructive" disabled={loading || busyKey !== null}
+                    aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void uninstallPackage(item.pluginId)}><Trash2 size={14} />{t("plugin_platform.uninstall")}</DropdownMenuItem>}
                   actionLabel={catalogUpdate ? `${t("plugin_platform.action.update")} · v${catalogUpdate.version}` : t(primaryAction.labelKey)}
                   onOpen={() => props.onSelectPlugin(item.pluginId)}
                   onAction={() => {
@@ -1176,8 +1185,10 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             {!search ? <Button variant="outline" size="sm" className="mt-3" onClick={() => setImportOpen(true)}>{t("plugin_platform.import")}</Button> : null}
           </div>
         ) : null}
-      </section>
+        </TabsContent>
+      </section></Tabs>
 
+      {activeEnterprise && resourceAction ? <EnterpriseResourceActionDialog connection={activeEnterprise} action={resourceAction} onClose={() => setResourceAction(null)} onChanged={() => void refresh()} /> : null}
       <PluginPackageImportModal
         open={importOpen}
         client={props.client}

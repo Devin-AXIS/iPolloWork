@@ -1,8 +1,11 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { Building2, Check, LogOut, Loader2, Plus, UserRound } from "lucide-react";
+import { CircleAlert, Building2, Check, LogOut, Loader2, MoreHorizontal, Plus, UserRound } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { t } from "@/i18n";
 import {
@@ -167,19 +170,26 @@ export function CloudAccountSection({
       <Separator />
 
       <div data-testid="cloud-workspaces" className="flex flex-col gap-3">
-        <div>
-          <div className="text-sm font-medium text-dls-text">{t("enterprise_connection.sources_title")}</div>
-          <div className="text-xs leading-5 text-dls-secondary">{t("enterprise_connection.sources_hint")}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-dls-text">{t("enterprise_connection.sources_title")}</div>
+            <div className="text-xs leading-5 text-dls-secondary">{t("enterprise_connection.sources_hint")}</div>
+          </div>
+          <Button variant="outline" size="sm" data-testid="join-enterprise-workspace" disabled={controlsDisabled} onClick={() => setJoinOpen(true)}>
+            <Plus className="size-3.5" />{t("enterprise_connection.join")}
+          </Button>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <button
+        <div data-testid="workspace-options" className="divide-y divide-dls-border overflow-hidden rounded-xl border border-dls-border">
+          <Button
             type="button"
-            className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-dls-border bg-dls-surface px-4 py-3 text-left transition-colors hover:bg-dls-hover"
+            variant="ghost"
+            aria-pressed={!activeConnection}
+            className={cn("h-auto min-h-16 w-full justify-start gap-3 rounded-none border-0 px-4 py-3 text-left whitespace-normal shadow-none focus-visible:ring-inset before:shadow-none", !activeConnection ? "bg-feedback-success hover:bg-feedback-success active:bg-feedback-success aria-pressed:bg-feedback-success aria-pressed:hover:bg-feedback-success aria-pressed:active:bg-feedback-success" : "bg-transparent hover:bg-dls-border active:bg-dls-border")}
             onClick={() => void selectConnection(null)}
             disabled={switchingId !== null}
           >
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-black text-white dark:bg-black dark:text-white">
               <UserRound size={15} />
             </div>
             <div className="min-w-0 flex-1">
@@ -199,7 +209,7 @@ export function CloudAccountSection({
               : !isSignedIn || !activeConnection
                 ? <Check size={16} className="shrink-0 text-green-11" />
                 : null}
-          </button>
+          </Button>
 
           {isSignedIn ? connections.map((connection) => {
             const active = activeConnection?.id === connection.id;
@@ -207,15 +217,17 @@ export function CloudAccountSection({
             return (
               <div
                 key={connection.id}
-                className="flex min-h-16 items-center gap-3 rounded-xl border border-dls-border bg-dls-surface px-4 py-3"
+                className={cn("flex min-h-16 items-center gap-3 px-4 py-3 transition-colors", active ? "bg-feedback-success" : "hover:bg-dls-border")}
               >
-                <button
+                <Button
                   type="button"
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  variant="ghost"
+                  aria-pressed={active}
+                  className="h-auto min-w-0 flex-1 justify-start gap-3 border-0 bg-transparent p-0 text-left whitespace-normal shadow-none before:shadow-none hover:bg-transparent active:bg-transparent aria-pressed:bg-transparent aria-pressed:hover:bg-transparent aria-pressed:active:bg-transparent"
                   onClick={() => void selectConnection(connection)}
                   disabled={leaving || switchingId !== null}
                 >
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-black text-white dark:bg-black dark:text-white">
                     <Building2 size={15} />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -227,39 +239,25 @@ export function CloudAccountSection({
                   {switchingId === connection.id
                     ? <Loader2 size={16} className="shrink-0 animate-spin text-dls-secondary" />
                     : active ? <Check size={16} className="shrink-0 text-green-11" /> : null}
-                </button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => requestLeave(connection)}
-                  disabled={leaving || connection.membership.role === "owner"}
-                  title={connection.membership.role === "owner" ? t("enterprise_connection.owner_transfer_required") : undefined}
-                >
-                  <LogOut className="size-3.5" />
-                  {leaving ? t("enterprise_connection.leaving") : t("enterprise_connection.leave")}
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" data-testid="workspace-actions" aria-label={t("enterprise_connection.workspace_actions", { name: connection.name })} disabled={leaving} />}>
+                    <MoreHorizontal className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem variant="destructive" disabled={leaving || connection.membership.role === "owner"} onClick={() => requestLeave(connection)} title={connection.membership.role === "owner" ? t("enterprise_connection.owner_transfer_required") : undefined}>
+                      <LogOut className="size-3.5" />{leaving ? t("enterprise_connection.leaving") : t("enterprise_connection.leave")}
+                    </DropdownMenuItem>
+                    {connection.membership.role === "owner" ? <p className="max-w-60 px-2 py-1 text-ui-caption leading-5 text-muted-foreground">{t("enterprise_connection.owner_transfer_required")}</p> : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             );
           }) : null}
 
-          <button
-            type="button"
-            data-testid="join-enterprise-workspace"
-            className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-dls-border bg-transparent px-4 py-3 text-left transition-colors hover:bg-dls-hover"
-            onClick={() => setJoinOpen(true)}
-            disabled={controlsDisabled}
-          >
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">
-              <Plus size={15} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-dls-text">{t("enterprise_connection.join")}</div>
-              <div className="text-xs text-dls-secondary">{t("enterprise_connection.empty")}</div>
-            </div>
-          </button>
         </div>
 
-        {enterpriseError ? <p className="text-xs text-destructive" role="alert">{enterpriseError}</p> : null}
+        {enterpriseError ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{enterpriseError}</AlertDescription></Alert> : null}
       </div>
 
       <EnterpriseServerDialog

@@ -40,7 +40,7 @@ Alert / Toast 已统一为无边框的语义浅背景；主组件、完整目录
 2026-10-10 用户截图修正：反馈背景减淡到palette第2档；模板操作32px、筛选触发器复用共享Button；设置按钮装饰不占flex间距，选中尺寸稳定；Dialog关闭统一28px点击区/16px图标。真实客户端8帧证据 `evals/results/2026-10-10T05-21-04-298Z/fraimz.html`，两种运行模式12帧证据 `evals/results/2026-10-10T05-18-34-476Z/fraimz.html`；这是所测页面与状态的证明，不是全客户端视觉验收。
 | 数据与布局 | Table、Card（含 CardContent）、Avatar、Image、Tabs、Accordion、Collapsible、ScrollArea、Separator |
 
-上述基础能力统一由 `@ipollowork/ui/core` 和单模块入口提供；运行时1.7.0提供同源值导出，含后续日期、上传和表格组合。单一实现，不另写插件版控件。`shared-ui-core.test.ts` 检查映射、模块数量和状态维度，`shared-ui-core.flow.mjs` 驱动两种加载模式的核心调用样板；样板回调隔离，不代表真实业务服务验收或所有组件全部状态已通过。
+上述基础能力统一由 `@ipollowork/ui/core` 和单模块入口提供；运行时1.8.0提供同源值导出，含后续日期、上传和表格组合。单一实现，不另写插件版控件。`shared-ui-core.test.ts` 检查映射、模块数量和状态维度，`shared-ui-core.flow.mjs` 驱动两种加载模式的核心调用样板；样板回调隔离，不代表真实业务服务验收或所有组件全部状态已通过。
 
 以下推荐条目仍没有独立插件公共组件：ModelBehaviorMenu、LinkActionMenu、ConfirmModal、NotificationCenter、ModelLoadingStatus、Tool/Tool Status、Message、Source、ChainOfThought、Artifact、Sidebar、PanelTabs、Resizable。不能让插件直接引用这些宿主私有路径；ConfirmModal可先按共享基础组件组合，但不能声称已公开同名API。需继续提取数据/回调依赖或迁入纯组件，补齐类型与两模式验证。
 
@@ -55,6 +55,12 @@ Alert / Toast 已统一为无边框的语义浅背景；主组件、完整目录
 真实接入：设置搜索、插件自定义比例、模板数值滑杆、任务日期、数字人图片上传。日期保存本地年月日；任务时间菜单保持原15分钟步长。上传校验为空文件/类型/大小；失败保留文件重试，仅调用方提供真实进度或取消回调时显示相应功能。专业时间轴、画布和属性布局不改。
 
 验证：`evals/results/2026-10-12T04-30-25-419Z/fraimz.html`，两种运行时和宿主搜索/日期/上传交互通过。上传传输为模拟HTTP响应，保存回调为隔离数据，不表示真实服务器写入验收。Figma主组件身份未核对，映射保持null。新增控件需最低minor6。
+
+## 资源卡代码扩展 · runtime 1.8
+
+Card原default/outline保留；新增 `variant="resource"` 与CardIcon/CardMeta，CardTitle支持as=h3，最低minor8。resource正式提供surface=plain无边框款（默认透明、hover浅灰）与surface=outline描边款（默认值，hover强调边框），均无投影、12px圆角、16pxpadding、12pxgap；既有槽无额外内距，标题/说明/meta为sans 14/20/600、12/18/400、11/16/400，图标32px透明对齐槽，内部Logo为24px、Lucide笔画1.5px。可用layout=row紧凑行（默认stack）：图标/名称/一句说明优先，操作在右侧或空间不足时右下；不强制meta块和高度。实际调用与Props见共享包README。
+
+此条仅记录公共代码扩展：沿用Card模块与历史身份，不修改或确认新Figma主组件。业务采用、两模式明暗/窄屏/字体/焦点验收、打包发布各自记录，不能继承历史Card样板的Passed。`shared-ui-core-fixture.mjs`包含default/outline/resource对照；required列明新槽并校验最低minor8。
 
 ## Figma 状态页
 

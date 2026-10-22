@@ -1,7 +1,13 @@
 {
   "figmaFileKey": "kpx32oBzY6ecHJZX11mAvr",
-  "runtimeVersion": "1.7.0",
-  "statusDimensions": ["code", "adoption", "design", "interaction", "release"],
+  "runtimeVersion": "1.8.0",
+  "statusDimensions": [
+    "code",
+    "adoption",
+    "design",
+    "interaction",
+    "release"
+  ],
   "statusPolicy": "Evaluate dimensions independently using component-catalog.md evidence. Figma IDs verify identity only; null is unverified. No implied release or complete state acceptance.",
   "foundations": {
     "figmaCollectionId": "VariableCollectionId:237:1443",
@@ -194,8 +200,15 @@
         "CardDescription",
         "CardFooter",
         "CardHeader",
-        "CardTitle"
+        "CardTitle",
+        "CardIcon",
+        "CardMeta",
+        "CardActionsMenu"
       ],
+      "resourceVariant": {
+        "minimumMinor": 8,
+        "scope": "Code extension: resource variant with stack/row layout, CardIcon, CardMeta and CardTitle as h3; Figma identity and full interaction/release acceptance remain unverified"
+      },
       "package": "@ipollowork/ui/card",
       "source": "packages/ui/src/react/card.tsx",
       "figmaMainId": null,

@@ -193,7 +193,7 @@ Select 保存中禁用并关联字段错误；风格提示失败恢复持久化�
 
 ## 版本兼容规则
 
-当前 `UI_RUNTIME_VERSION = '1.7.0'`（1.7新增四个受控表格组合控件，要求最低minor7；1.6新增SearchField、NumberField、Slider、Calendar、DatePicker/TimeInput和FileUpload/FileUploadItem，要求最低minor6；1.5新增Badge的info/success/warning语义变体，使用时调用 `requireRuntime(1, ['Badge', 'Icon'], 5)`；1.4新增公共Icon；1.3规范保持兼容）；独立于客户端与插件版本。1.3增加公共颜色/字体变量、保证七档字号类生成并增加最低minor检查；保留原v1组件入口与Props。短片包0.1.3采用新规范，插件ID和数据路径不变。生产业务脚本不包含组件实现；旧体积统计属于1.2快照，不当作本轮产物实测。
+当前 `UI_RUNTIME_VERSION = '1.8.0'`（1.8新增Card的resource组合、CardIcon/CardMeta及CardTitle as=h3，使用时最低minor8；1.7新增四个受控表格组合控件，要求最低minor7；1.6新增SearchField、NumberField、Slider、Calendar、DatePicker/TimeInput和FileUpload/FileUploadItem，要求最低minor6；1.5新增Badge的info/success/warning语义变体，使用时调用 `requireRuntime(1, ['Badge', 'Icon'], 5)`；1.4新增公共Icon；1.3规范保持兼容）；独立于客户端与插件版本。1.3增加公共颜色/字体变量、保证七档字号类生成并增加最低minor检查；保留原v1组件入口与Props。短片包0.1.3采用新规范，插件ID和数据路径不变。生产业务脚本不包含组件实现；旧体积统计属于1.2快照，不当作本轮产物实测。
 
 | 运行时情况 | 当前代码行为 | 插件要求 |
 | --- | --- | --- |
@@ -277,3 +277,15 @@ Button继续使用原children API：sm28px、default32px、lg36px；icon-sm/icon
 ## 本地服务 iframe
 
 ServiceWorkbenchFrame 的初始化 hostContext["ai.ipollo/ui-runtime"] 提供宿主运行时。页面只接受 parent 的响应，以本地服务生成的 CSP nonce 加载脚本；installRuntime 沿用 nonce 安装样式。业务从运行时公开的 requireRuntime 取得原始 React 和组件，不将 React 或运行时打包进插件。独立开发显式使用 startServer({ uiRuntime: (await buildPluginRuntime("bundled")).script })，生产只用宿主提供的版本。
+
+
+## 资源卡契约 · minor 8
+
+`Card variant="resource"`、`CardIcon`、`CardMeta` 与 `CardTitle as="h3"` 是同一card模块的兼容扩展；原default/outline及默认div标题保持不变，不新增公共模块。resource采用透明1px描边、无阴影、12px圆角、16px内距、12px间距，hover仅描边变化；标题/说明/meta分别为sans 14/20/600、12/18/400、11/16/400。CardIcon为32px透明槽。Header/Content/Footer零额外内距，Footer可换行且不强制卡高。
+
+宿主沿用 `@/components/ui/card`；iframe沿用React岛，显式bundled构建或生产host注入，调用 `requireRuntime(1, ['Card','CardHeader','CardIcon','CardTitle','CardDescription','CardContent','CardMeta','CardFooter'], 8)`，required按实际组合补齐Button等函数。不要使用原生HTML标记适配Card、复制组件或在运行时过旧时静默降级。资源卡不承担插件业务，不应伪造manifest或嵌套交互按钮。
+
+Figma已有Card身份保留；新resource样式和新子槽只记录代码扩展，设计对齐和全状态/发布验收没有由此自动确认。核心样板保留default/outline/resource对照，按两种运行时、明暗、窄屏、字号/缩放与hover/focus记录真实可观察证据。
+
+
+同一minor8还支持resource的 `layout="row"`（默认stack，普通Card忽略layout）：Header最小宽度min(100%,240px)并flex增长，Footer零顶部margin、右对齐且可换行，窄容器自然移至右下；不测宽、不新增状态或固定高度。紧凑行仅需CardHeader的图标/标题/一句说明与CardFooter操作，CardContent/CardMeta并非必填。

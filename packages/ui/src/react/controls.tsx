@@ -8,16 +8,18 @@ import { Input as InputPrimitive } from "@base-ui/react/input"
 
 type ButtonStyleScope = "default" | "settings"
 
-const ButtonStyleScopeContext = createContext<ButtonStyleScope>("default")
+const ButtonStyleScopeContext = createContext<{ value: ButtonStyleScope; flat: boolean }>({ value: "default", flat: false })
 
 function ButtonStyleScopeProvider({
   value,
+  flat = false,
   children,
 }: {
   value: ButtonStyleScope
+  flat?: boolean
   children: ReactNode
 }) {
-  return <ButtonStyleScopeContext.Provider value={value}>{children}</ButtonStyleScopeContext.Provider>
+  return <ButtonStyleScopeContext.Provider value={{ value, flat }}>{children}</ButtonStyleScopeContext.Provider>
 }
 
 function Button({
@@ -33,7 +35,8 @@ function Button({
       data-slot="button"
       className={cn(
         buttonVariants({ variant, size }),
-        styleScope === "settings" ? settingsButtonVariants({ variant, size }) : null,
+        styleScope.value === "settings" ? settingsButtonVariants({ variant, size }) : null,
+        styleScope.flat ? "shadow-none before:shadow-none dark:before:shadow-none" : null,
         className,
       )}
       {...props}

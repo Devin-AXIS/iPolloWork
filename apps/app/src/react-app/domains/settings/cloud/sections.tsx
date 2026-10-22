@@ -2,6 +2,7 @@
 import type { CloudImportedProvider, CloudImportedSkill } from "../../../../app/cloud/import-state";
 import type { DenOrgLlmProvider } from "../../../../app/lib/den";
 import type { DenOrgSkillCard } from "../../../../app/types";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { cva } from "class-variance-authority";
 import fuzzysort from "fuzzysort";
@@ -219,7 +220,7 @@ function CloudProviderListItem({ actionId, actionKind, row, onImport, onRemove, 
     <SettingsListItem>
       <SettingsListItemContent>
         <SettingsListTitle>
-          <SettingsListItemTitle>{row.name}</SettingsListItemTitle>
+          <SettingsListItemTitle><span title={row.provider?.providerId ?? row.imported?.providerId}>{row.name}</span></SettingsListItemTitle>
           {row.status !== "available" ? (
             <SettingsPill className={statusBadgeVariants({ tone: resourceStatusTone(row.status) })}>
               {row.status === "imported"
@@ -232,7 +233,6 @@ function CloudProviderListItem({ actionId, actionKind, row, onImport, onRemove, 
         </SettingsListTitle>
         <SettingsListItemDescription>
           {[
-            row.provider?.providerId ?? row.imported?.providerId,
             row.provider?.hasApiKey ? t("den.credentials_ready_badge") : null,
             row.status === "removed_from_cloud"
               ? t("den.cloud_provider_removed_detail", {
@@ -450,9 +450,7 @@ export function CloudProvidersSection({
       {actionError ? <SettingsNotice tone="error">{actionError}</SettingsNotice> : null}
 
       {!busy && rows.length === 0 ? (
-        <SettingsListEmptyState>
-          {hasActiveOrg ? t("den.no_cloud_providers") : t("den.choose_org_for_providers")}
-        </SettingsListEmptyState>
+        <Empty className="py-6"><EmptyDescription>{hasActiveOrg ? t("den.no_cloud_providers") : t("den.choose_org_for_providers")}</EmptyDescription></Empty>
       ) : null}
 
       {rows.length > 0 ? (
@@ -496,7 +494,7 @@ export function CloudProvidersSection({
               ))}
             </Accordion>
           ) : (
-            <SettingsListEmptyState>{t("settings.cloud.no_providers_match")}</SettingsListEmptyState>
+            <Empty className="py-6"><EmptyDescription>{t("settings.cloud.no_providers_match")}</EmptyDescription><Button variant="outline" size="sm" onClick={() => setSearchQuery("")}>{t("help.clear_search")}</Button></Empty>
           )}
         </>
       ) : null}

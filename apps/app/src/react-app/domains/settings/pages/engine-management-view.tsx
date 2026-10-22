@@ -1,8 +1,9 @@
 /** @jsxImportSource react */
 import { useMemo, useState } from "react";
-import { Download, HardDrive, LoaderCircle, ShieldCheck, Trash2 } from "lucide-react";
+import { ChevronDown, Download, HardDrive, LoaderCircle, ShieldCheck, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "@/components/ui/sonner";
 import { formatBytes, isDesktopRuntime } from "@/app/utils";
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { useEnginePackages } from "@/react-app/domains/engines/use-engine-packages";
 import { SettingsNotice, Spinner } from "../settings-section";
+import { settingsResourceIconClass, settingsResourceTitleClass } from "../shell/panel";
 import { LayoutStack } from "../settings-layout";
 import projectEngineDeepSeekIcon from "../../session/chat/assets/project-engine-deepseek.png";
 import projectEngineOpenCodeIcon from "../../session/chat/assets/project-engine-opencode.svg";
@@ -102,7 +104,7 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
   if (loading && packages.length === 0) {
     return (
       <LayoutStack>
-        <div className="flex items-center gap-2 rounded-2xl border border-dls-border bg-dls-card/70 px-5 py-8 text-sm text-dls-secondary">
+        <div className="flex items-center gap-2 px-4 py-8 text-ui-body text-dls-secondary">
           <Spinner className="size-4" />
           {t("settings.engine_manager.loading")}
         </div>
@@ -112,8 +114,8 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
 
   return (
     <LayoutStack>
-      <div className="overflow-hidden rounded-2xl border border-dls-border bg-dls-card/75 shadow-[var(--dls-card-shadow)] backdrop-blur-xl">
-        {packages.map((engine, index) => {
+      <div className="divide-y divide-border overflow-hidden rounded-xl border border-border" data-testid="engine-package-list">
+        {packages.map((engine) => {
           const busy = actionEngineId === engine.id
             || ["downloading", "verifying", "installing", "uninstalling"].includes(engine.status);
           const sourceNotice = externalSourceNotice(engine);
@@ -122,10 +124,10 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
               key={engine.id}
               data-testid="engine-package-row"
               data-engine-id={engine.id}
-              className={cn("px-5 py-4 md:px-6", index > 0 && "border-t border-dls-border")}
+              className="flex min-w-0 flex-col gap-3 px-4 py-3"
             >
-              <div className="flex min-w-0 items-start gap-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-background/70">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className={settingsResourceIconClass}>
                   <img
                     src={engineIcon(engine.id)}
                     alt=""
@@ -134,7 +136,7 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <h3 className="text-sm font-semibold text-dls-text">{engine.name}</h3>
+                    <h3 className={settingsResourceTitleClass}>{engine.name}</h3>
                     {engine.builtIn ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-3/70 px-2 py-0.5 text-[10px] font-medium text-emerald-11">
                         <ShieldCheck className="size-3" />
@@ -152,20 +154,19 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
                       {statusLabel(engine)}
                     </span>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-dls-secondary">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-ui-caption text-dls-secondary">
                     {hasManagedVersion(engine) ? <span>v{engine.version}</span> : null}
-                    <span>{sourceLabel(engine)}</span>
+                    {sourceNotice ? <Collapsible className="contents">
+                      <CollapsibleTrigger data-testid="engine-source-details" render={<Button type="button" variant="link" size="sm" className="h-auto p-0 text-ui-caption text-dls-secondary" />}>
+                        {sourceLabel(engine)}<ChevronDown className="size-3" aria-hidden="true" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="basis-full pt-2 text-ui-body text-muted-foreground">{sourceNotice}</CollapsibleContent>
+                    </Collapsible> : <span>{sourceLabel(engine)}</span>}
                     {engine.installedBytes != null ? (
                       <span className="inline-flex items-center gap-1"><HardDrive className="size-3" />{formatBytes(engine.installedBytes)}</span>
                     ) : null}
                   </div>
-                  {sourceNotice ? (
-                    <p className="mt-2 max-w-2xl text-xs leading-5 text-dls-secondary">
-                      {sourceNotice}
-                    </p>
-                  ) : null}
-                  {busy ? <EngineProgress engine={engine} /> : null}
-                  {engine.error ? <p className="mt-2 text-xs leading-5 text-red-11">{engine.error}</p> : null}
+
                 </div>
                 <div className="shrink-0">
                   {engine.canInstall ? (
@@ -196,6 +197,10 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
                   ) : null}
                 </div>
               </div>
+              {busy || engine.error ? <div className="pl-16">
+                  {busy ? <EngineProgress engine={engine} /> : null}
+                  {engine.error ? <p className="mt-2 text-xs leading-5 text-red-11">{engine.error}</p> : null}
+              </div> : null}
             </div>
           );
         })}

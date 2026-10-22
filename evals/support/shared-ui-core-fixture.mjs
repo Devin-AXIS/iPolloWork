@@ -2,9 +2,8 @@
 function mountLibrary(initialSection = '输入与选择') {
   const ui = window.ipolloworkUi;
   const h = ui.React.createElement;
-  const required = ['TableSortHead','TablePagination','TablePageSelection','TableBulkActions','Table','Card','Avatar','Image','Field','InputGroup','Autocomplete','Checkbox','RadioGroup','Switch','Toggle','ToggleGroup','DropdownMenu','ContextMenu','Command','AlertDialog','Sheet','Popover','HoverCard','Tooltip','Alert','Badge','Progress','Skeleton','Empty','Tabs','Accordion','Collapsible','ScrollArea','Separator','DescriptiveButton','Button','Icon','SearchField','NumberField','Slider','DatePicker','Calendar','TimeInput','FileUpload','FileUploadItem'];
-  if (Number(ui.version.split('.')[1]) < 7) throw Error('请更新客户端 UI 运行时');
-  if (required.some(name => typeof ui[name] !== 'function')) throw Error('缺少核心组件');
+  const required = ['TableSortHead','TablePagination','TablePageSelection','TableBulkActions','Table','Card','CardActionsMenu','DropdownMenuItem','CardHeader','CardTitle','CardDescription','CardContent','CardFooter','CardIcon','CardMeta','Avatar','Image','Field','InputGroup','Autocomplete','Checkbox','RadioGroup','Switch','Toggle','ToggleGroup','DropdownMenu','ContextMenu','Command','AlertDialog','Sheet','Popover','HoverCard','Tooltip','Alert','Badge','Progress','Skeleton','Empty','Tabs','Accordion','Collapsible','ScrollArea','Separator','DescriptiveButton','Button','Icon','SearchField','NumberField','Slider','DatePicker','Calendar','TimeInput','FileUpload','FileUploadItem'];
+  ui.requireRuntime(1, required, 8);
   window.__libraryRequired = required;
   function Demo() {
     const [receipt, setReceipt] = ui.React.useState('等待操作');
@@ -180,12 +179,27 @@ function mountLibrary(initialSection = '输入与选择') {
       ],
       '数据、状态与布局': [
         sample('Table / Card',
-          h(ui.Card,null,
+          h(ui.Card,{id:'default-card'},
             h(ui.CardHeader,null,h(ui.CardTitle,null,'项目列表')),
             h(ui.CardContent,null,
               h(ui.Table,null,
                 h(ui.TableHeader,null,h(ui.TableRow,null,h(ui.TableHead,null,'名称'),h(ui.TableHead,null,'状态'))),
                 h(ui.TableBody,null,h(ui.TableRow,null,h(ui.TableCell,null,'演示项目'),h(ui.TableCell,null,h(ui.Badge,null,'待处理')))))))),
+        sample('Resource Card',
+          h(ui.Card,{variant:'resource',id:'resource-card'},
+            h(ui.CardHeader,null,h(ui.CardIcon,{id:'resource-card-icon'},h('img',{alt:'资源品牌',src:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="4" fill="teal"/></svg>')})),h('div',{className:'min-w-0'},h(ui.CardTitle,{as:'h3'},'共享资源卡'),h(ui.CardDescription,null,'说明保持可读，使用共享字体和布局。'))),
+            h(ui.CardContent,null,h(ui.CardMeta,null,'v1.0.0 · 资源元信息')),
+            h(ui.CardFooter,null,h(ui.CardMeta,null,'已就绪'),h(ui.Button,{id:'resource-card-action',size:'sm',variant:'outline',onClick:()=>setReceipt('资源卡动作已执行')},'查看'))),
+          h(ui.Card,{variant:'outline',id:'outline-card'},h(ui.CardHeader,null,h(ui.CardTitle,null,'原有描边卡')),h(ui.CardContent,null,'既有默认尺寸与版式保留'))),
+        h('article',{'data-sample':'Resource Card Row',style:{gridColumn:'1 / -1'}},h('h2',null,'Resource Card Row · 无边框款'),
+          h(ui.Card,{variant:'resource',layout:'row',surface:'plain',id:'resource-row-card'},
+            h(ui.CardHeader,null,h(ui.CardIcon,null,h(ui.Icon,{name:'Folder'})),h('div',{className:'min-w-0'},h(ui.CardTitle,{as:'h3'},'紧凑资源行'),h(ui.CardDescription,null,'名称和一句说明，操作在右侧或右下。'))),
+            h(ui.CardFooter,null,h(ui.Button,{id:'resource-row-action',size:'sm',variant:'outline',onClick:()=>setReceipt('资源行动作已执行')},'查看')))),
+        h('article',{'data-sample':'Resource Card Row Outline',style:{gridColumn:'1 / -1'}},h('h2',null,'Resource Card Row · 描边款'),
+          h(ui.Card,{variant:'resource',layout:'row',surface:'outline',id:'resource-row-outline-card'},
+            h(ui.CardHeader,null,h(ui.CardIcon,null,h(ui.Icon,{name:'Folder'})),h('div',{className:'min-w-0'},h(ui.CardTitle,{as:'h3'},'紧凑资源行'),h(ui.CardDescription,null,'名称和一句说明，操作在右侧或右下。'))),
+            h(ui.CardFooter,null,h(ui.Button,{size:'sm',variant:'outline',onClick:()=>setReceipt('描边资源行动作已执行')},'查看')))),
+        sample('Resource Card Actions',h(ui.CardActionsMenu,{label:'资源卡操作'},h(ui.DropdownMenuItem,{id:'resource-menu-action',onClick:()=>setReceipt('资源菜单动作已执行')},'查看详情'))),
         sample('Avatar / Image',h(ui.Avatar,null,h(ui.AvatarImage,{src:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="teal"/></svg>'),alt:'头像'}),h(ui.AvatarFallback,null,'IP')),h(ui.Image,{alt:'图片占位',style:{height:40,width:80}})),
         sample('Alert / Toast',...['default','success','warning','destructive'].filter(variant=>!dismissed.includes(variant)).map(variant=>h(ui.Alert,{key:variant,variant,'data-feedback':variant,onDismiss:()=>setDismissed([...dismissed,variant]),closeLabel:'关闭'+variant},h(ui.AlertTitle,null,({default:'信息提醒',success:'连接成功',warning:'操作提醒',destructive:'连接失败'})[variant]),h(ui.AlertDescription,null,'错误留在原位置'),variant==='destructive'?h(ui.AlertAction,null,action('alert-retry','重试连接',()=>setReceipt('提醒重试已执行'))):null)),action('notify','成功提示',()=>ui.toast.success('操作成功'))),
         sample('Badge / Progress / Skeleton / Empty',...['info','success','warning','destructive'].map((variant,index)=>h(ui.Badge,{key:variant,variant,'data-semantic-badge':variant},h(ui.Icon,{name:['Info','CircleCheck','TriangleAlert','CircleX'][index],'data-icon':'inline-start'}),['处理中','已保存','已中断','失败'][index])),h(ui.Progress,{value:40,'aria-label':'实际进度'}),h(ui.Skeleton,{style:{height:16,width:100}}),h(ui.Empty,null,h(ui.EmptyHeader,null,h(ui.EmptyTitle,null,'暂无结果'),h(ui.EmptyDescription,null,'请选择条件')))),

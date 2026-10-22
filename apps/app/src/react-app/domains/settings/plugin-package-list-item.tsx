@@ -3,25 +3,30 @@ import type { ReactNode } from "react";
 import { Loader2, Package } from "lucide-react";
 
 import type { iPolloWorkExtensionManifest } from "@/app/extensions";
+import { Card, CardHeader, CardTitle, CardDescription, CardIcon, CardFooter, CardActionsMenu } from "@/components/ui/card";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n";
-import { SettingsResourceListItem } from "./settings-list";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 
 type PluginPackageListItemProps = {
-  manifest: iPolloWorkExtensionManifest;
   version: string;
   badge?: ReactNode;
   status?: ReactNode;
   actionLabel: ReactNode;
   actionBusy?: boolean;
   actionDisabled?: boolean;
-  secondaryAction?: ReactNode;
+  menuItems?: ReactNode;
   featured?: boolean;
-  compact?: boolean;
   onOpen?: () => void;
   onAction: () => void;
-};
+} & ({
+  compact: true;
+  manifest: Pick<iPolloWorkExtensionManifest, "id" | "name" | "description" | "icon">;
+} | {
+  compact?: false;
+  manifest: iPolloWorkExtensionManifest;
+});
 
 export function PluginPackageListItem({
   manifest,
@@ -31,9 +36,9 @@ export function PluginPackageListItem({
   actionLabel,
   actionBusy = false,
   actionDisabled = false,
-  secondaryAction,
+  menuItems,
   featured = false,
-  compact = false,
+  compact,
   onOpen,
   onAction,
 }: PluginPackageListItemProps) {
@@ -42,18 +47,30 @@ export function PluginPackageListItem({
     iconSrc: manifest.icon?.src,
     iconSlug: manifest.icon?.simpleIconSlug,
   });
-  const skills = manifest.resources.filter((resource) => resource.type === "skill").length;
-  const mcps = manifest.resources.filter((resource) => resource.type === "mcp").length;
 
   if (compact) {
-    return <SettingsResourceListItem testId="plugin-package-list-item" copyTestId="plugin-package-card-copy"
-      title={manifest.name} description={manifest.description} badge={badge} onOpen={onOpen}
-      icon={iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
-      metadata={<><span title={`v${version}`} className="min-w-0 max-w-full truncate">v{version}</span>{status ? <span className="inline-flex shrink-0 items-center whitespace-nowrap">{status}</span> : null}</>}
-      actions={<><Button size="sm" variant="outline" className="shrink-0" aria-busy={actionBusy} disabled={actionBusy || actionDisabled} onClick={onAction}>
-        {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}{actionLabel}
-      </Button>{secondaryAction}</>} />;
+    return (
+      <Card variant="resource" layout="row" surface="plain" data-testid="plugin-package-list-item" title={`${manifest.name}${version ? ` · v${version}` : ""}`}>
+        <CardHeader className="relative">
+          {onOpen ? <button type="button" className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30" onClick={onOpen}><span className="sr-only">{manifest.name}</span></button> : null}
+          <CardIcon>{iconUrl ? <img src={iconUrl} alt="" /> : <Package />}</CardIcon>
+          <div data-testid="plugin-package-card-copy" className="min-w-0 flex-1 space-y-1">
+            <CardTitle as="h3" className="truncate">{manifest.name}</CardTitle>
+            <CardDescription title={manifest.description} className="line-clamp-1">{manifest.description}</CardDescription>
+          </div>
+        </CardHeader>
+        <CardFooter>
+          <CardActionsMenu label={`${manifest.name}的操作`} disabled={actionBusy}>
+            <DropdownMenuItem disabled={actionBusy || actionDisabled} onClick={onAction}>{actionBusy ? <Loader2 className="size-4 animate-spin" /> : null}{actionLabel}</DropdownMenuItem>
+            {menuItems}
+          </CardActionsMenu>
+        </CardFooter>
+      </Card>
+    );
   }
+
+  const skills = manifest.resources.filter((resource) => resource.type === "skill").length;
+  const mcps = manifest.resources.filter((resource) => resource.type === "mcp").length;
 
   return (
     <div className={`flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${featured ? "bg-blue-2/40" : ""}`}>
@@ -78,7 +95,6 @@ export function PluginPackageListItem({
         {actionBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : null}
         {actionLabel}
       </Button>
-      {secondaryAction}
     </div>
   );
 }

@@ -99,7 +99,6 @@ describe("Cloud marketplace row visibility", () => {
     const panelSource = await Bun.file(new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url)).text();
     const marketplaceSource = await Bun.file(new URL("../src/react-app/domains/settings/pages/cloud-marketplaces-view.tsx", import.meta.url)).text();
     const listItemSource = await Bun.file(new URL("../src/react-app/domains/settings/plugin-package-list-item.tsx", import.meta.url)).text();
-    const resourceListSource = await Bun.file(new URL("../src/react-app/domains/settings/settings-list.tsx", import.meta.url)).text();
     const segmentedTabsSource = await Bun.file(new URL("../src/react-app/domains/settings/settings-segmented-tabs.tsx", import.meta.url)).text();
     const routeSource = await Bun.file(new URL("../src/react-app/shell/settings-route.tsx", import.meta.url)).text();
     const ipolloLogo = await Bun.file(new URL("../public/ipollowork-mark.svg", import.meta.url)).text();
@@ -151,20 +150,18 @@ describe("Cloud marketplace row visibility", () => {
     expect(marketplaceSource).toContain('statusFilter === "installed"');
     expect(marketplaceSource).toContain('statusFilter === "update"');
     expect(marketplaceSource).toContain('categoryFilter !== "all"');
-    expect(resourceListSource).toContain('min-h-[74px]');
-    expect(resourceListSource).toContain('bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb]');
-    expect(listItemSource).not.toContain('rounded-lg border border-dls-border bg-dls-surface px-4 py-2');
-    expect(resourceListSource).toContain('size-12 shrink-0');
-    expect(resourceListSource).toContain('rounded-[8px] bg-[#f3f3f4] text-dls-secondary');
-    expect(listItemSource).toContain('copyTestId="plugin-package-card-copy"');
-    expect(resourceListSource).toContain('flex min-w-0 flex-1 flex-col gap-1');
-    expect(resourceListSource).toContain('className="line-clamp-2 text-ui-caption');
+    expect(listItemSource).toContain('Card variant="resource"');
+    expect(listItemSource).toContain('CardIcon');
+    expect(listItemSource).toContain('CardTitle as="h3"');
+    expect(listItemSource).toContain('CardDescription');
+    expect(listItemSource).toContain('CardFooter');
+    expect(listItemSource).toContain('data-testid="plugin-package-card-copy"');
+    expect(listItemSource).toContain('line-clamp-1');
     expect(listItemSource).not.toContain('{skills} Skills');
     expect(listItemSource).not.toContain('{mcps} MCP');
     expect(panelSource).toContain('className={settingsResourceGridClassName}');
     expect(marketplaceSource).toContain('settingsResourceGridClassName');
     expect(listItemSource).not.toContain('dark:bg-white/[0.06]');
-    expect(listItemSource).toContain('text-ui-caption text-dls-secondary');
     expect(ipolloLogo).toContain('viewBox="0 0 281 298"');
     expect(ipolloLogo.match(/<path /g)).toHaveLength(3);
     expect(englishLocale).toContain('"plugin_library.marketplace": "Public"');
@@ -172,10 +169,10 @@ describe("Cloud marketplace row visibility", () => {
   });
 
   test("keeps raw MCP management out of the primary plugin page", async () => {
-    const extensionsSource = await Bun.file(new URL("../src/react-app/domains/settings/pages/extensions-view.tsx", import.meta.url)).text();
+    const extensionsSource = await Bun.file(new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url)).text();
     const routeSource = await Bun.file(new URL("../src/react-app/shell/settings-route.tsx", import.meta.url)).text();
-    expect(extensionsSource).toContain("pluginPackagesView");
-    expect(extensionsSource).toContain("skillsView");
+    expect(extensionsSource).toContain("filteredEnterpriseResources");
+    expect(extensionsSource).toContain("PluginPackageListItem");
     expect(extensionsSource).not.toContain("mcpView");
     expect(extensionsSource).not.toContain("PluginsView");
     expect(routeSource).not.toContain("<McpView");

@@ -187,12 +187,13 @@ describe("template market actions", () => {
   });
 
   test("puts My templates first and guides a genuinely empty collection to Explore", () => {
-    expect(marketDialog).toContain('const TEMPLATE_MARKET_VIEWS: TemplateMarketView[] = ["my", "explore"]');
+    expect(marketDialog).toContain('<TabsTrigger value="my"');
     expect(marketDialog).toContain('template.sourceType === "local" || favoriteIds.has(template.manifest.id)');
     expect(marketDialog).toContain('view === "my" && myCollection === "all" && myTemplatesEmpty');
     expect(marketDialog).toContain('onClick={exploreTemplates}');
     expect(marketDialog).toContain('t("template_market.explore_templates")');
-    expect(marketDialog).toContain('bg-[var(--project-dialog-accent)] text-white hover:brightness-95 active:brightness-90');
+    expect(marketDialog).toContain("<Empty>");
+    expect(marketDialog).toContain('t("help.clear_search")');
   });
 
   test("keeps the template dialog stationary, resizable, and above its popup controls", () => {
@@ -205,7 +206,7 @@ describe("template market actions", () => {
     expect(marketDialog).toContain('className="mt-4 w-full shrink-0 px-6"');
     expect(marketDialog).toContain('<InputGroup className="mt-4">');
     expect(marketDialog).toContain('<InputGroupInput value={query}');
-    expect(marketDialog).toContain('className="mt-3 flex min-h-9 items-center overflow-x-auto"');
+    expect(marketDialog.match(/<TabsList /g)).toHaveLength(1);
     expect(marketDialog).toContain('className="mt-2 flex h-9 items-center gap-4 overflow-x-auto"');
     expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6"');
     expect(marketDialog).not.toContain("showCloseButton={false}");
@@ -217,7 +218,7 @@ describe("template market actions", () => {
   });
 
   test("matches the Figma three-column template card layout", () => {
-    expect(marketDialog.match(/grid grid-cols-3 gap-4 max-\[800px\]:grid-cols-2 max-\[540px\]:grid-cols-1/g)).toHaveLength(3);
+    expect(marketDialog).toContain("grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1");
     expect(marketDialog).toContain('border-2 border-transparent bg-muted/50 pb-4 transition-colors duration-150 hover:border-[var(--project-dialog-accent)]');
     expect(marketDialog).toContain('className="relative block h-[137px] w-full shrink-0');
     expect(marketDialog).toContain('t("template_market.favorite")');
@@ -229,28 +230,46 @@ describe("template market actions", () => {
     expect(marketDialog).not.toContain("widthClass");
     expect(marketDialog).not.toContain("max-w-[763px]");
     expect(marketDialog).not.toContain("w-[calc(100%-48px)]");
-    expect(marketDialog.match(/w-full[^\"]*px-6/g)).toHaveLength(3);
     expect(marketDialog).not.toContain("ml-[57px]");
     expect(marketDialog).toContain('t("template_market.type_label")');
-    expect(marketDialog).toContain('variant={myCollection === item ? "secondary" : "ghost"}');
     expect(marketDialog).toContain('className="ml-auto flex shrink-0 items-center gap-2"');
     expect(marketDialog).not.toContain('view === "my" ? "mt-4" : "mt-5"');
   });
 
-  test("shares one card frame and supports remote previews before installation", () => {
-    expect(marketDialog.match(/<TemplateCardFrame /g)).toHaveLength(2);
+  test("uses shared catalog tabs and persistent feedback without duplicate tab semantics", () => {
+    expect(marketDialog).toContain('from "@/components/ui/tabs"');
+    expect(marketDialog).toContain("<Tabs ");
+    expect(marketDialog).toContain("<TabsList ");
+    expect(marketDialog).toContain("<TabsTrigger ");
+    expect(marketDialog).toContain("<TabsContent ");
+    expect(marketDialog).not.toContain('role="tab"');
+    expect(marketDialog).not.toContain('role="tablist"');
+    expect(marketDialog).toContain('myCollection === "favorites"');
+    expect(marketDialog).toContain('myCollection === "mine"');
+    expect(marketDialog).toContain("<AlertDescription>{props.error}</AlertDescription>");
+    expect(marketDialog).toContain("<Skeleton ");
+  });
+
+  test("keeps remote pre-install previews alongside compact cards and management menus", () => {
     expect(marketDialog).toContain("readRemoteTemplateCard(resource, { connection })");
+    expect(marketDialog).toContain('<Card ref={cardRef} variant="resource" layout="row" surface="outline"');
+    expect(marketDialog).toContain("onPreview(template, preview?.coverDataUrl)");
     expect(marketDialog).toContain("onPreview={(template, coverDataUrl) => setPreviewSelection({ template, remoteResourceId: resource.id, coverDataUrl })}");
     expect(marketDialog).toContain("previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion");
     expect(marketDialog).toContain("props.onInstallRemote(remoteResource)");
+    expect(marketDialog).toContain('onError={() => setFailed(true)}');
+    expect(marketDialog).toContain('onManage("access")');
+    expect(marketDialog).toContain('onManage("archive")');
   });
 
   test("shows Built-in, Cloud, and Enterprise in Explore and keeps remote templates usable from local storage", () => {
-    expect(marketDialog).toContain('view === "explore" && (props.cloudAvailable || props.enterpriseAvailable)');
+    expect(marketDialog.match(/<TabsList /g)).toHaveLength(1);
     expect(marketDialog).toContain('t("template_market.source_builtin")');
     expect(marketDialog).toContain('props.onSelectSource("builtin")');
-    expect(marketDialog).toContain('props.onSelectSource("cloud")');
-    expect(marketDialog).toContain('props.onSelectSource("enterprise")');
+    expect(marketDialog).toContain("props.onSelectSource(value)");
+    for (const source of ["builtin", "cloud", "enterprise"]) {
+      expect(marketDialog).toContain(`<TabsTrigger value="${source}"`);
+    }
     expect(marketDialog).toContain('t("enterprise_connection.enterprise")');
     expect(marketDialog).toContain('const remoteCatalogMode = props.source !== "builtin"');
     expect(marketDialog).not.toContain("<WorkResourceScopeSwitch");

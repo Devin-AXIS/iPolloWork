@@ -21,6 +21,12 @@ export function SettingsContent(props: SettingsContentProps) {
 
 export const settingsStandardContentClass = "mx-auto w-full max-w-[960px]";
 
+export const settingsResourceRowClass = "flex min-h-[74px] min-w-0 items-center gap-4 rounded-[8px] bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb] focus-within:bg-[#f6f7fb] dark:hover:bg-dls-hover dark:focus-within:bg-dls-hover";
+export const settingsResourceIconClass = "flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[#f3f3f4] text-dls-secondary dark:bg-dls-hover";
+export const settingsResourceTitleClass = "max-w-full truncate text-ui-section-title font-semibold leading-5 tracking-[0.1px] text-dls-text";
+export const settingsResourceDescriptionClass = "text-ui-caption leading-[15px] text-dls-secondary";
+
+
 type SettingsPanelProps = {
   children: React.ReactNode;
 };
