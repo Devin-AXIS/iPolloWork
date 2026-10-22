@@ -54,10 +54,10 @@
         var watchdog = setTimeout(showError, 45000);
         window.addEventListener("error", resourceFailed, true);
         window.addEventListener("load", function () {
-          if (starting()) {
-            if (failed && !retryTimer) showError();
-            return;
-          }
+          if (failed && !retryTimer) showError();
+        }, { once: true });
+        // A module's top-level await can outlive the page load event.
+        window.addEventListener("ipollowork:startup-ready", function () {
           clearTimeout(watchdog);
           clearTimeout(retryTimer);
           window.removeEventListener("error", resourceFailed, true);

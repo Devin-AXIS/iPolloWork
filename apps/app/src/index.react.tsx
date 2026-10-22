@@ -69,6 +69,7 @@ const hideStartupSplash = () => {
   const splash = document.getElementById("ipollowork-startup-splash");
   if (!splash || splash.dataset.hiding === "true") return;
   splash.dataset.hiding = "true";
+  window.dispatchEvent(new Event("ipollowork:startup-ready"));
   window.setTimeout(() => splash.remove(), 180);
 };
 

@@ -73,6 +73,7 @@ function startupRecovery(storage = new Map<string, string>(), unavailableStorage
     root, panel, message, button, storage, timers, listeners,
     fail: (target: object = { tagName: "SCRIPT", type: "module" }) => listeners.get("error")?.({ target }),
     loaded: () => listeners.get("load")?.(),
+    ready: () => listeners.get("ipollowork:startup-ready")?.(),
     runTimer: (delay: number) => {
       const timer = [...timers.values()].find((entry) => entry.delay === delay);
       if (!timer) throw new Error(`No timer scheduled for ${delay}ms`);
@@ -112,8 +113,10 @@ describe("startup resource failure recovery", () => {
 
   test("successful startup resets the retry budget and removes recovery work", () => {
     const boot = startupRecovery(new Map([["ipollowork.startupRetries", "2"]]));
-    boot.root.dataset.ipolloworkDeployment = "local";
     boot.loaded();
+    expect(boot.storage.size).toBe(1);
+    boot.root.dataset.ipolloworkDeployment = "local";
+    boot.ready();
     expect(boot.storage.size).toBe(0);
     expect(boot.timers.size).toBe(0);
     expect(boot.listeners.has("error")).toBe(false);
