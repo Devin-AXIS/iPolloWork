@@ -31,8 +31,13 @@ import {
   type TemplateTopicFilter,
 } from "@ipollowork/types/templates";
 
+import { Alert, AlertDescription, AlertAction, AlertTitle } from "@/components/ui/alert";
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card, CardHeader, CardIcon, CardTitle, CardDescription, CardFooter, CardActionsMenu } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonStyleScopeProvider } from "@/components/ui/button";
 import { TemplateIcon } from "@/components/template-icon";
 import { TemplateCatalogFilters } from "@/components/template-catalog-filters";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -44,7 +49,8 @@ import { cn } from "@/lib/utils";
 import type { EnterpriseResource } from "@/app/lib/enterprise-connections";
 import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
 import { readRemoteTemplateCard } from "@/app/lib/enterprise-connections";
-import { EnterpriseResourceControls } from "@/react-app/domains/enterprise";
+import { canManageEnterprise } from "@/app/lib/enterprise-client";
+import { EnterpriseResourceControls, EnterpriseResourceActionDialog, type EnterpriseResourceAction } from "@/react-app/domains/enterprise";
 
 type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
 type TemplatePreviewSelection = { template: TemplateCatalogItem; remoteResourceId?: string; coverDataUrl?: string };
@@ -79,7 +85,6 @@ type TemplateMarketView = "explore" | "my";
 type MyTemplateCollection = "all" | "favorites" | "mine";
 export type TemplateCatalogSource = "builtin" | "cloud" | "enterprise";
 
-const TEMPLATE_MARKET_VIEWS: TemplateMarketView[] = ["my", "explore"];
 const MY_TEMPLATE_COLLECTIONS: MyTemplateCollection[] = ["all", "favorites", "mine"];
 
 function readFavoriteTemplateIds(): Set<string> {
@@ -175,18 +180,14 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
   if (!shouldLoad) return <div ref={placeholderRef} data-template-cover-lazy className={cn("h-full w-full bg-muted", className)} />;
   if (failed) {
     return (
-      <div className={cn("relative z-10 grid h-full w-full place-items-center bg-muted p-4 text-center", className)}>
-        <div className="max-w-full">
-          <p className="truncate text-xs font-medium text-foreground">{template.manifest.title}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">{t("template_market.cover_failed")}</p>
-          <Button type="button" variant="outline" size="sm" className="mt-3 h-7 rounded-lg px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setRetry((value) => value + 1); }}>
-            {t("template_market.retry_cover")}
-          </Button>
-        </div>
-      </div>
+      <Alert variant="destructive" className={cn("flex h-full w-full flex-col items-center justify-center rounded-none text-center", className)}>
+        <AlertTitle className="max-w-full truncate">{template.manifest.title}</AlertTitle>
+        <AlertDescription>{t("template_market.cover_failed")}</AlertDescription>
+        <AlertAction><Button type="button" variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); setRetry((value) => value + 1); }}>{t("template_market.retry_cover")}</Button></AlertAction>
+      </Alert>
     );
   }
-  return src ? <img src={src} alt={alt} decoding="async" onError={() => setFailed(true)} className={cn("h-full w-full object-cover", className)} /> : <div className={cn("h-full w-full animate-pulse bg-muted", className)} />;
+  return src ? <img src={src} alt={alt} decoding="async" onError={() => setFailed(true)} className={cn("h-full w-full object-cover", className)} /> : <Skeleton aria-label={t("settings.marketplace.loading")} className={cn("h-full w-full rounded-none", className)} />;
 }
 
 export type TemplateMarketDialogProps = {
@@ -215,6 +216,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   const [category, setCategory] = React.useState<TemplateCategory | "all">("all");
   const [style, setStyle] = React.useState<TemplateStyle | "all">("all");
   const [topic, setTopic] = React.useState<TemplateTopicFilter>("all");
+  const [resourceAction, setResourceAction] = React.useState<EnterpriseResourceAction | null>(null);
+  React.useEffect(() => { setResourceAction(null); }, [props.enterpriseConnection?.id, props.enterpriseConnection?.membership.id, props.source]);
   const [view, setView] = React.useState<TemplateMarketView>("explore");
   const [myCollection, setMyCollection] = React.useState<MyTemplateCollection>("all");
   const [query, setQuery] = React.useState("");
@@ -319,6 +322,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     setStyle("all");
     setQuery("");
   };
+  const catalogTab = view === "my" ? "my" : props.source;
   const moreCategoryActive = MORE_CATEGORIES.some((item) => item.id === category);
 
   return (
@@ -329,27 +333,21 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
           <DialogTitle>{t("template_market.title")}</DialogTitle>
         </DialogHeader>
 
+        <Tabs value={catalogTab} onValueChange={(value) => { if (value === "my") selectView("my"); else if (value === "builtin" || value === "cloud" || value === "enterprise") { selectView("explore"); props.onSelectSource(value); } }} className="min-h-0 flex-1 gap-0">
         <div className="mt-4 w-full shrink-0 px-6">
-          <div className="flex h-9 items-center max-[540px]:h-auto max-[540px]:flex-wrap max-[540px]:gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-4 max-[540px]:basis-full" role="tablist" aria-label={t("template_market.title")}>
-              {TEMPLATE_MARKET_VIEWS.map((item) => (
-                <Button
-                  key={item}
-                  type="button"
-                  variant={view === item ? "secondary" : "ghost"}
-                  size="sm"
-                  role="tab"
-                  aria-selected={view === item}
-                  onClick={() => selectView(item)}
-                >
-                  {t(item === "explore" ? "template_market.explore" : "template_market.my_templates")}
-                </Button>
-              ))}
-            </div>
+          <div className="flex min-h-9 flex-wrap items-center gap-3">
+            <TabsList className="min-w-0 max-w-full shrink-0" aria-label={t("template_market.title")}>
+              <TabsTrigger value="my" className="flex-none shrink-0">{t("template_market.my_tab")}</TabsTrigger>
+              <TabsTrigger value="builtin" className="flex-none shrink-0"><TemplateIcon className="size-3.5" />{t("template_market.source_builtin")}</TabsTrigger>
+              {props.cloudAvailable ? <TabsTrigger value="cloud" className="flex-none shrink-0"><Cloud className="size-3.5" />{t("enterprise_connection.cloud")}</TabsTrigger> : null}
+              {props.enterpriseAvailable ? <TabsTrigger value="enterprise" className="min-w-0 flex-initial" title={enterpriseLabel}><Building2 className="size-3.5" /><span className="max-w-48 truncate">{enterpriseLabel}</span></TabsTrigger> : null}
+            </TabsList>
             <input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
+            <ButtonStyleScopeProvider value="settings" flat><div role="group" aria-label="模板操作" className="ml-auto flex shrink-0 items-center gap-2">
+            {view === "my" && props.enterpriseConnection ? <EnterpriseResourceControls mode="submissions" key={`${props.enterpriseConnection.id}:${props.enterpriseConnection.membership.id}`} connection={props.enterpriseConnection} type="template" onChanged={props.onRefresh} /> : null}
             <Button
               variant="outline"
-              className="mr-2 shadow-none"
+              className="shadow-none"
               disabled={props.busyId !== null || remoteCatalogMode}
               onClick={() => props.onCustom(category === "all" ? "slides" : category)}
             >
@@ -361,29 +359,13 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
               </TooltipTrigger>
               <TooltipContent positionerClassName="z-[90]">{t("template_market.import_tooltip")}</TooltipContent>
             </Tooltip>
+            </div></ButtonStyleScopeProvider>
           </div>
-
+        </div>
+        <TabsContent value={catalogTab} className="flex min-h-0 flex-1 flex-col">
+        <div className="w-full shrink-0 px-6">
           <InputGroup className="mt-4"><InputGroupAddon><Search aria-hidden="true" className="size-4" /></InputGroupAddon><InputGroupInput value={query} onChange={(event) => setQuery(event.currentTarget.value)} aria-label={t("template_market.search_placeholder")} placeholder={t("template_market.search_placeholder")} /></InputGroup>
 
-          {view === "explore" && (props.cloudAvailable || props.enterpriseAvailable) ? (
-            <div className="mt-3 flex min-h-9 items-center overflow-x-auto">
-              <div className="inline-flex w-fit shrink-0 items-center gap-1 rounded-xl border border-border bg-card p-1" role="tablist" aria-label={t("template_market.source_label")}>
-                <Button type="button" variant={props.source === "builtin" ? "secondary" : "ghost"} size="sm" role="tab" aria-selected={props.source === "builtin"} onClick={() => props.onSelectSource("builtin")}>
-                  <TemplateIcon className="size-3.5" />
-                  {t("template_market.source_builtin")}
-                </Button>
-                {props.cloudAvailable ? <Button type="button" variant={props.source === "cloud" ? "secondary" : "ghost"} size="sm" role="tab" aria-selected={props.source === "cloud"} onClick={() => props.onSelectSource("cloud")}>
-                  <Cloud className="size-3.5" />
-                  {t("enterprise_connection.cloud")}
-                </Button> : null}
-                {props.enterpriseAvailable ? <Button type="button" variant={props.source === "enterprise" ? "secondary" : "ghost"} size="sm" role="tab" aria-selected={props.source === "enterprise"} title={enterpriseLabel} onClick={() => props.onSelectSource("enterprise")}>
-                  <Building2 className="size-3.5" />
-                  <span className="max-w-48 truncate">{enterpriseLabel}</span>
-                </Button> : null}
-              </div>
-            </div>
-          ) : null}
-          {props.enterpriseConnection ? <div className="mt-2 flex justify-end"><EnterpriseResourceControls key={`${props.enterpriseConnection.id}:${props.enterpriseConnection.membership.id}`} connection={props.enterpriseConnection} type="template" onChanged={props.onRefresh} /></div> : null}
           <div className="mt-2 flex h-9 items-center gap-4 overflow-x-auto">
             {view === "explore" ? <div className="flex min-w-max items-center gap-4">
             <Button type="button" size="sm" variant={category === "all" ? "secondary" : "ghost"} aria-pressed={category === "all"} onClick={() => setCategory("all")}>{t("template_market.all_types")}</Button>
@@ -397,8 +379,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
               </DropdownMenuContent>
             </DropdownMenu>
             </div> : <>
-            <div className="flex min-w-max items-center gap-2" role="tablist" aria-label={t("template_market.my_templates")}>
-              {MY_TEMPLATE_COLLECTIONS.map((item) => <Button key={item} type="button" size="sm" variant={myCollection === item ? "secondary" : "ghost"} role="tab" aria-selected={myCollection === item} onClick={() => setMyCollection(item)}>{t(translationKey("template_market.my_", item))}</Button>)}
+            <div role="group" className="flex min-w-max gap-1" aria-label={t("template_market.my_templates")}>
+              {MY_TEMPLATE_COLLECTIONS.map((item) => <Button key={item} size="sm" variant={myCollection === item ? "secondary" : "ghost"} aria-pressed={myCollection === item} onClick={() => setMyCollection(item)}>{t(translationKey("template_market.my_", item))}</Button>)}
             </div>
             <DropdownMenu>
               <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -428,14 +410,17 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
 
         {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2"><Download className="size-4 text-foreground" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}
 
-        <section className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6">
-          {props.loading && !props.templates.length && !props.remoteResources.length ? <div data-testid="template-catalog-loading" className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-[227px] animate-pulse rounded-lg bg-muted" />)}</div> : props.error ? <div role="alert" className="rounded-lg border-0 bg-feedback-error p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : remoteCatalogMode && view === "explore" ? (visibleRemoteResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleRemoteResources.map((resource) => {
+        <div className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6">
+          {props.loading && !props.templates.length && !props.remoteResources.length ? <div data-testid="template-catalog-loading" role="status" aria-label={t("settings.marketplace.loading")} className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-[227px] rounded-lg" />)}</div> : props.error ? <Alert variant="destructive"><AlertDescription>{props.error}</AlertDescription><AlertAction><Button variant="outline" size="sm" onClick={props.onRefresh}>{t("template_market.retry")}</Button></AlertAction></Alert> : remoteCatalogMode && view === "explore" ? (visibleRemoteResources.length ? <div className="grid grid-cols-2 gap-4 max-[540px]:grid-cols-1">{visibleRemoteResources.map((resource) => {
             const installedTemplate = remoteTemplateInstallations.get(resource.id);
-            return <RemoteTemplateCard key={`${props.source}:${props.enterpriseConnection?.id}:${resource.id}:${resource.latestVersion?.digest}`} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={favoriteIds.has(resource.manifestId ?? resource.slug)} connection={props.source === "enterprise" ? props.enterpriseConnection ?? undefined : undefined} sourceLabel={remoteSourceLabel} onToggleFavorite={toggleFavorite} onPreview={(template, coverDataUrl) => setPreviewSelection({ template, remoteResourceId: resource.id, coverDataUrl })} onInstall={() => props.onInstallRemote(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
-          })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center">{props.source === "enterprise" ? <Building2 className="mx-auto size-5 text-muted-foreground" /> : <Cloud className="mx-auto size-5 text-muted-foreground" />}<p className="mt-3 text-sm font-medium">{t(props.source === "enterprise" ? "enterprise_connection.enterprise_templates_empty" : "enterprise_connection.cloud_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : view === "my" && myCollection === "all" && myTemplatesEmpty ? <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.my_empty_title")}</p><Button type="button" size="sm" className="mt-4 rounded-lg bg-[var(--project-dialog-accent)] text-white hover:brightness-95 active:brightness-90" onClick={exploreTemplates}>{t("template_market.explore_templates")}</Button></div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
-        </section>
+            return <RemoteTemplateCard key={`${props.source}:${props.enterpriseConnection?.id}:${resource.id}:${resource.latestVersion?.digest}`} resource={resource} installedTemplate={installedTemplate} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={favoriteIds.has(resource.manifestId ?? resource.slug)} connection={props.source === "enterprise" ? props.enterpriseConnection ?? undefined : undefined} source={props.source} sourceLabel={remoteSourceLabel} onManage={props.source === "enterprise" && props.enterpriseConnection && canManageEnterprise(props.enterpriseConnection, "template") ? (kind) => setResourceAction({ resource, kind }) : undefined} canAssign={Boolean(props.enterpriseConnection?.features?.resourcePermissions)} onToggleFavorite={toggleFavorite} onPreview={(template, coverDataUrl) => setPreviewSelection({ template, remoteResourceId: resource.id, coverDataUrl })} onInstall={() => props.onInstallRemote(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
+          })}</div> : <Empty><EmptyMedia variant="icon">{props.source === "enterprise" ? <Building2 /> : <Cloud />}</EmptyMedia><EmptyDescription>{t(props.source === "enterprise" ? "enterprise_connection.enterprise_templates_empty" : "enterprise_connection.cloud_templates_empty")}</EmptyDescription>{query || category !== "all" || style !== "all" || topic !== "all" ? <Button variant="outline" size="sm" onClick={exploreTemplates}>{t("help.clear_search")}</Button> : null}</Empty>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : view === "my" && myCollection === "all" && myTemplatesEmpty ? <Empty><EmptyMedia variant="icon"><TemplateIcon /></EmptyMedia><EmptyTitle>{t("template_market.my_empty_title")}</EmptyTitle><Button type="button" size="sm" onClick={exploreTemplates}>{t("template_market.explore_templates")}</Button></Empty> : <Empty><EmptyMedia variant="icon"><TemplateIcon /></EmptyMedia><EmptyTitle>{t("template_market.no_match_title")}</EmptyTitle><EmptyDescription>{t("template_market.no_match_desc")}</EmptyDescription><Button variant="outline" size="sm" onClick={() => { setQuery(""); setCategory("all"); setStyle("all"); setTopic("all"); }}>{t("help.clear_search")}</Button></Empty>}
+        </div>
+        </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
+    {props.enterpriseConnection && resourceAction ? <EnterpriseResourceActionDialog connection={props.enterpriseConnection} action={resourceAction} onClose={() => setResourceAction(null)} onChanged={props.onRefresh} /> : null}
     <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewSelection(null); }}>
       <DialogContent showCloseButton className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">
         {previewTemplate ? <>
@@ -451,7 +436,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
   );
 }
 
-function RemoteTemplateCard({ resource, installedTemplate, getCover, busy, disabled, favorite, connection, sourceLabel, onToggleFavorite, onPreview, onInstall, onUse }: { resource: EnterpriseResource; installedTemplate?: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; disabled: boolean; favorite: boolean; connection?: EnterpriseConnection; sourceLabel: string; onToggleFavorite: (templateId: string) => void; onPreview: (template: TemplateCatalogItem, coverDataUrl?: string) => void; onInstall: () => void; onUse: () => void }) {
+function RemoteTemplateCard({ resource, installedTemplate, busy, disabled, favorite, connection, source, sourceLabel, onManage, canAssign, onToggleFavorite, onPreview, onInstall, onUse }: { resource: EnterpriseResource; installedTemplate?: TemplateCatalogItem; busy: boolean; disabled: boolean; favorite: boolean; connection?: EnterpriseConnection; source: TemplateCatalogSource; sourceLabel: string; onManage?: (kind: "access" | "archive") => void; canAssign: boolean; onToggleFavorite: (templateId: string) => void; onPreview: (template: TemplateCatalogItem, coverDataUrl?: string) => void; onInstall: () => void; onUse: () => void }) {
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [preview, setPreview] = React.useState<Awaited<ReturnType<typeof readRemoteTemplateCard>> | null>(null);
   const [failed, setFailed] = React.useState(false);
@@ -479,16 +464,32 @@ function RemoteTemplateCard({ resource, installedTemplate, getCover, busy, disab
   const action = currentVersionInstalled ? onUse : onInstall;
   const label = currentVersionInstalled
     ? t("template_market.use")
-    : installedTemplate ? t("template_market.update") : t("template_market.install");
+    : installedTemplate ? t("template_market.update") : t("enterprise_connection.install_from_enterprise");
   const template: TemplateCatalogItem | undefined = preview ? {
     manifest: preview.manifest, sourceType: "market", installed: Boolean(installedTemplate),
     installedVersion: installedTemplate?.installedVersion ?? null,
     updateAvailable: Boolean(installedTemplate && !currentVersionInstalled), verified: false,
   } : installedTemplate;
-  const cover = preview ? <img src={preview.coverDataUrl} alt={t("template_market.cover_alt", { title: resource.name })} decoding="async" className="h-full w-full object-cover" />
-    : installedTemplate ? <TemplateCover template={installedTemplate} getCover={getCover} />
-    : <div className="grid h-full w-full place-items-center bg-muted text-muted-foreground">{failed ? <div className="text-center"><p className="text-xs">{t("template_market.cover_failed")}</p><Button variant="outline" size="sm" className="mt-2" onClick={(event) => { event.stopPropagation(); setRetry((value) => value + 1); }}>{t("template_market.retry_cover")}</Button></div> : <TemplateIcon className="size-8 opacity-30" />}</div>;
-  return <div ref={cardRef} className="min-w-0"><TemplateCardFrame title={resource.name} style={template?.manifest.style} format={template ? templateFormatLabel(template) : undefined} cover={cover} busy={busy} disabled={disabled || !resource.latestVersion} favorite={favorite} favoriteDisabled={!template} onToggleFavorite={() => { if (template) onToggleFavorite(template.manifest.id); }} onPreview={template ? () => onPreview(template, preview?.coverDataUrl) : undefined} primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel} /></div>;
+  return <Card ref={cardRef} variant="resource" layout="row" surface="outline" data-testid="remote-template-card" data-source={source} title={`${sourceLabel}${resource.latestVersion ? ` · v${resource.latestVersion.version}` : ""}`}>
+    <CardHeader>
+      <CardIcon>{source === "enterprise" ? <Building2 /> : <Cloud />}</CardIcon>
+      <div className="min-w-0 flex-1 space-y-1">
+        <CardTitle as="h3" className="truncate">{resource.name}</CardTitle>
+        <CardDescription className="line-clamp-2" title={resource.description}>{resource.description}</CardDescription>
+      </div>
+    </CardHeader>
+    <CardFooter className="self-end">
+      <CardActionsMenu label={`${resource.name}的操作`} disabled={busy}>
+        <DropdownMenuItem disabled={disabled || !resource.latestVersion} onClick={action}>{label}</DropdownMenuItem>
+        <DropdownMenuItem disabled={!template && !failed} onClick={() => { if (template) onPreview(template, preview?.coverDataUrl); else if (failed) setRetry((value) => value + 1); }}>{t(failed && !template ? "template_market.retry_cover" : "template_market.view")}</DropdownMenuItem>
+        <DropdownMenuItem disabled={!template} onClick={() => { if (template) onToggleFavorite(template.manifest.id); }}>{t(favorite ? "template_market.remove_from_favorites" : "template_market.favorite")}</DropdownMenuItem>
+        {onManage ? <>
+          <DropdownMenuItem disabled={disabled || !canAssign} onClick={() => onManage("access")}>分配权限</DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" disabled={disabled} onClick={() => onManage("archive")}>下架</DropdownMenuItem>
+        </> : null}
+      </CardActionsMenu>
+    </CardFooter>
+  </Card>;
 }
 
 function TemplateCard({ template, getCover, busy, favorite, onToggleFavorite, onPreview, onUse, onInstall, primaryAction: primaryActionOverride, primaryLabel: primaryLabelOverride, sourceLabel }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; favorite: boolean; onToggleFavorite: () => void; onPreview: () => void; onUse: () => void; onInstall: () => void; primaryAction?: () => void; primaryLabel?: string; sourceLabel?: string }) {

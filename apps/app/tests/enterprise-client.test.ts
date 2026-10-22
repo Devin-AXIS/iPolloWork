@@ -1,3 +1,6 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { EnterpriseResourceControls } from "../src/react-app/domains/enterprise/enterprise-resource-controls";
 import { describe, expect, spyOn, test } from "bun:test";
 import { defaultNavigationShortcuts, enterpriseNavigationSchema, enterpriseFeaturesSchema, enterpriseMessageSchema, enterpriseOkSchema, type EnterpriseResourceType } from "@ipollowork/types/enterprise";
 import { canManageEnterprise, enterpriseApi, enterpriseErrorMessage, enterpriseRequest } from "../src/app/lib/enterprise-client";
@@ -35,6 +38,18 @@ describe("enterprise client boundary", () => {
       expect(writes).toBe(2);
     } finally { fetchMock.mockRestore(); }
   });
+  test("personal submission entry stays submission-only for resource administrators", () => {
+    const admin = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
+    for (const type of ["template", "extension", "skill"] satisfies EnterpriseResourceType[]) {
+      const html = renderToStaticMarkup(createElement(EnterpriseResourceControls, { connection: admin, type, mode: "submissions" }));
+      expect(html).toContain(`data-testid="enterprise-${type}-submissions"`);
+      expect(html).toContain("我的投稿");
+      expect(html).not.toContain("lucide-shield-check");
+      expect(html).not.toContain("分配权限");
+      expect(html).not.toContain("下架");
+    }
+  });
+
   test("every resource management request rechecks a cached administrator and blocks a demoted member", async () => {
     const cached = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
     let checks = 0, managementRequests = 0;

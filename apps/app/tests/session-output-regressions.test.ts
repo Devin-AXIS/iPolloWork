@@ -802,7 +802,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-[13px] font-medium leading-[18px] text-foreground');
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
     expect(source).toContain('remoteCatalogMode && view === "explore"');
-    expect(source).toContain('view === "explore" && (props.cloudAvailable || props.enterpriseAvailable)');
+    expect(source).toContain('<TabsList className="min-w-0 max-w-full shrink-0"');
     expect(source).toContain('t("template_market.source_builtin")');
     expect(source).not.toContain("<WorkResourceScopeSwitch");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
@@ -816,21 +816,21 @@ describe("session output issue regressions", () => {
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
     expect(source).toContain("remoteTemplateInstallations");
     expect(source).toContain("resource.manifestId");
-    expect(source).toContain("return <TemplateCard template={installedTemplate}");
-    expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
+    expect(source).toContain('<Card ref={cardRef} variant="resource" layout="row" surface="outline"');
+    expect(source).toContain("onPreview(template, preview?.coverDataUrl)");
   });
 
   test("enterprise extensions reflect local package installation versions", () => {
     const source = readFileSync(
-      new URL("../src/react-app/domains/settings/pages/extensions-view.tsx", import.meta.url),
+      new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("listPluginPackages(props.workspaceId)");
+    expect(source).toContain("client.listPluginPackages(workspaceId)");
     expect(source).toContain('listEnterpriseResources("extension", { connection: activeEnterprise })');
-    expect(source).toContain("downloadEnterpriseResource(resource, { connection: activeEnterprise })");
-    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.manifestId ?? resource.slug)");
+    expect(source).toContain("installCloudPluginResource");
+    expect(source).toContain("items.find(item => item.pluginId === (resource.manifestId ?? resource.slug))");
     expect(source).toContain('t("plugin_platform.status.installed")');
-    expect(source).toContain("currentVersionInstalled || !resource.latestVersion");
+    expect(source).toContain("current || !resource.latestVersion");
   });
 });

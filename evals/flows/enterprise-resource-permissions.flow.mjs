@@ -76,7 +76,7 @@ export default {
         await expectMember(ctx);
         await ctx.expectText("我的技能投稿");
         await ctx.expectNoText("全部企业技能");
-        ctx.assert(await ctx.eval(`!document.querySelector('${dialog} input[type="file"] ~ button').disabled`), "Member submission remains available");
+        ctx.assert(await ctx.eval(`!document.querySelector('${dialog} [data-slot=file-upload] button').disabled`), "Member submission remains available");
         ctx.recordEvidence({ type: "assertion", status: "passed", assertion: "All three stale management entries and open grant/review/archive dialogs recheck the service role; no privileged request is sent after demotion" });
         await close(ctx);
       },
@@ -106,13 +106,13 @@ export default {
               await ctx.trustedClick(`${dialog} article:last-child button:last-child`);
               await ctx.waitForText(`审核${label}投稿`);
               await ctx.expectText("通过并发布");
-              await ctx.trustedClick('[role="dialog"]:not([data-testid="enterprise-resource-management"]) [data-slot="dialog-close"]');
+              await ctx.clickText('返回资源列表');
               await ctx.waitFor(`!document.body.innerText.includes('通过并发布')`);
             } else {
               await ctx.waitFor(`!document.querySelector('${dialog} [role="status"]')`);
               ctx.assert(await ctx.eval(`!document.querySelector('${entry} .lucide-shield-check')`), "Submission entry has no review icon");
               ctx.assert(await ctx.eval(`!['审核','分配权限','下架'].some(text => [...document.querySelectorAll('${dialog} button')].some(button => button.textContent === text))`), `${roleLabel} has no management controls for ${label}`);
-              ctx.assert(await ctx.eval(`Boolean(document.querySelector('${dialog} input[type="file"]')) && !document.querySelector('${dialog} input[type="file"] ~ button').disabled`), `${label} submission remains available`);
+              ctx.assert(await ctx.eval(`Boolean(document.querySelector('${dialog} input[type="file"]')) && !document.querySelector('${dialog} [data-slot=file-upload] button').disabled`), `${label} submission remains available`);
             }
             await close(ctx);
           }

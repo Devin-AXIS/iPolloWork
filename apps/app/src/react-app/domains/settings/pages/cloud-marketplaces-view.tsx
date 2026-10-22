@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import * as React from "react";
 import { Cloud, Loader2, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 
@@ -411,8 +412,8 @@ function MarketplaceRows(props: Omit<MarketplaceSectionProps, "title">) {
             status={localPackage ? (cloudPluginUpdate([item], localPackage) ? t("extensions.update_available") : t("settings.marketplace.installed")) : item.enterpriseCategory}
             actionBusy={props.busyId === item.id}
             actionDisabled={!props.client || !props.workspaceId || !version || props.busyId !== null || Boolean(localPackage && !cloudPluginUpdate([item], localPackage))}
-            secondaryAction={localPackage ? <Button variant="ghost" size="sm" disabled={!props.client || !props.workspaceId || props.busyId !== null}
-              aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void props.onUninstall(item)}><Trash2 size={14} /></Button> : null}
+            menuItems={localPackage ? <DropdownMenuItem variant="destructive" disabled={!props.client || !props.workspaceId || props.busyId !== null}
+              aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void props.onUninstall(item)}><Trash2 size={14} />{t("plugin_platform.uninstall")}</DropdownMenuItem> : null}
             actionLabel={actionLabel(item, localPackage)}
             onOpen={() => props.onOpen(item.id)}
             onAction={() => void props.onInstall(item)}
