@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import * as React from "react";
-import { Cloud, Loader2, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { Cloud, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { iPolloWorkExtensionManifest } from "@/app/extensions";
 import {
@@ -413,7 +413,7 @@ function MarketplaceRows(props: Omit<MarketplaceSectionProps, "title">) {
             actionBusy={props.busyId === item.id}
             actionDisabled={!props.client || !props.workspaceId || !version || props.busyId !== null || Boolean(localPackage && !cloudPluginUpdate([item], localPackage))}
             menuItems={localPackage ? <DropdownMenuItem variant="destructive" disabled={!props.client || !props.workspaceId || props.busyId !== null}
-              aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void props.onUninstall(item)}><Trash2 size={14} />{t("plugin_platform.uninstall")}</DropdownMenuItem> : null}
+              aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void props.onUninstall(item)}>{t("plugin_platform.uninstall")}</DropdownMenuItem> : null}
             actionLabel={actionLabel(item, localPackage)}
             onOpen={() => props.onOpen(item.id)}
             onAction={() => void props.onInstall(item)}

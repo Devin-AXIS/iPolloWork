@@ -3,6 +3,7 @@ import { pluginWorkshopExportFormatSchema } from "@ipollowork/types/plugins";
 import { ApiError } from "../errors.js";
 import {
   exportPluginWorkshopProject,
+  exportInstalledPluginPackage,
   importPluginWorkshopProject,
   listPluginWorkshopProjects,
   readPluginWorkshopProjectSnapshot,
@@ -33,6 +34,11 @@ export function registerPluginWorkshopRoutes(options: RegisterPluginWorkshopRout
     requireClientScope,
     resolveWorkspace,
   } = options;
+
+  addRoute(routes, "GET", "/workspace/:id/plugin-packages/:pluginId/export", "client", async (ctx) => {
+    await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse(await exportInstalledPluginPackage({ serverConfig: config, pluginId: ctx.params.pluginId ?? "" }));
+  });
 
   addRoute(routes, "GET", "/workspace/:id/plugin-workshop/projects", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);

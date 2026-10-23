@@ -5419,6 +5419,11 @@ export function SessionPage(props: SessionPageProps) {
         error={templateCatalogError}
         busyId={templateBusyId}
         getCover={getTemplateCover}
+        exportPackage={async (template) => {
+          if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) throw new Error("请先连接工作空间。");
+          const result = await props.ipolloworkServerClient.exportTemplatePackage(props.runtimeWorkspaceId, template.manifest.id, "personal");
+          return new File([result.data], result.filename ?? `${template.manifest.id}.ipwp`, { type: "application/zip" });
+        }}
         remoteResources={remoteTemplateResources}
         cloudAvailable={denAuth.isSignedIn}
         enterpriseAvailable={Boolean(activeEnterprise)}

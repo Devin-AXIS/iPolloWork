@@ -145,7 +145,7 @@ function CardMeta({ className, ...props }: React.ComponentProps<"div">) {
 function CardActionsMenu({ label, disabled, children }: { label: string; disabled?: boolean; children: React.ReactNode }) {
   const trigger = React.useRef<HTMLButtonElement>(null)
   return <DropdownMenu>
-    <DropdownMenuTrigger render={<Button ref={trigger} variant="outline" size="icon-sm" aria-label={label} disabled={disabled} />}><Ellipsis className="size-4" /></DropdownMenuTrigger>
+    <DropdownMenuTrigger render={<Button ref={trigger} variant="ghost" size="icon-sm" className="rounded-lg border-0" aria-label={label} disabled={disabled} />}><Ellipsis className="size-4" /></DropdownMenuTrigger>
     <DropdownMenuContent align="end" positionerClassName="z-[90]" finalFocus={() => {
       const dialog = [...document.querySelectorAll('[role="dialog"][data-open], [role="alertdialog"][data-open]')].at(-1)
       return !dialog || dialog.contains(trigger.current)

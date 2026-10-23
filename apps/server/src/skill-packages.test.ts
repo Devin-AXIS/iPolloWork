@@ -1,10 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStoredZip } from "./package-archive.js";
-import { exportStandaloneSkill, importStandaloneSkill, inspectSkillArchive, installEnterpriseSkill, listEnterpriseSkills, prepareEnterpriseSkills, prepareStandaloneSkills, readEnterpriseSkill, setEnterpriseSkillContext, skillMarkdownArchive, updateEnterpriseSkill } from "./skill-packages.js";
+import { assertStandaloneSkillWritable, exportStandaloneSkill, importStandaloneSkill, inspectSkillArchive, installEnterpriseSkill, listEnterpriseSkills, listStandaloneSkillPackages, prepareEnterpriseSkills, prepareStandaloneSkills, readEnterpriseSkill, setEnterpriseSkillContext, skillMarkdownArchive, updateEnterpriseSkill } from "./skill-packages.js";
+import { installPluginPackage } from "./plugin-package-lifecycle.js";
+import * as skillDiscovery from "./skills.js";
 import { disposeTemplateStore } from "./templates.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import type { EnterpriseSkillContext } from "@ipollowork/types/skills";
@@ -93,6 +95,33 @@ describe("independent skill packages", () => {
     const result = await exportStandaloneSkill(config, workspace, { name: "proof-skill", title: "验证技能", version: "1.0.0" });
     const inspected = await inspectSkillArchive(result.archive);
     expect(result.filename).toEndWith(".ipollowork-skill"); expect(inspected.files.map((file) => file.name)).toContain("references/guide.md"); expect(inspected.content).toBe(content);
+  });
+  test("personal plugin skills can be submitted separately with their plugin dependency", async () => {
+    const packageRoot = join(root, "plugin-source");
+    const skillRoot = join(packageRoot, "skills/proof-skill");
+    await mkdir(join(skillRoot, "references"), { recursive: true });
+    await writeFile(join(skillRoot, "SKILL.md"), content);
+    await writeFile(join(skillRoot, "references/guide.md"), "# Plugin reference");
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({ schemaVersion: 2, id: "proof-plugin", name: "Proof Plugin", description: "Skill publishing test", source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false }, package: { version: "1.0.0", engines: ["opencode"], updateId: "proof/plugin" }, resources: [{ type: "skill", id: "proof-skill", path: "skills/proof-skill/SKILL.md", required: true }, { type: "file", id: "proof-files", path: "skills/proof-skill/references", required: true }] }));
+    await installPluginPackage({ serverConfig: config, packageRoot });
+    expect((await listStandaloneSkillPackages(config, workspace)).find(item => item.name === "proof-skill")).toMatchObject({ canExport: true, pluginName: "Proof Plugin" });
+    const exported = await exportStandaloneSkill(config, workspace, { name: "proof-skill", title: "个人技能投稿", version: "1.0.0" });
+    const inspected = await inspectSkillArchive(exported.archive);
+    expect(inspected.manifest.dependencies).toEqual([{ type: "plugin", name: "proof-plugin" }]);
+    expect(inspected.files.some(file => file.name === "references/guide.md")).toBe(true);
+    expect(await readFile(join(skillRoot, "SKILL.md"), "utf8")).toBe(content);
+    await expect(assertStandaloneSkillWritable(config, workspace, "proof-skill")).rejects.toMatchObject({ code: "skill_owned_by_plugin" });
+  });
+  test("global personal skills can be exported for enterprise submission", async () => {
+    const directory = join(root, "global/proof-skill");
+    await mkdir(directory, { recursive: true }); await writeFile(join(directory, "SKILL.md"), content);
+    const discovery = spyOn(skillDiscovery, "listSkills").mockResolvedValue([{ name: "proof-skill", description: manifest.description, path: join(directory, "SKILL.md"), scope: "global" }]);
+    try {
+      expect((await listStandaloneSkillPackages(config, workspace))[0]).toMatchObject({ canExport: true, scope: "global" });
+      const exported = await exportStandaloneSkill(config, workspace, { name: "proof-skill", title: "个人全局技能", version: "1.0.0" });
+      expect((await inspectSkillArchive(exported.archive)).content).toBe(content);
+      expect(await readFile(join(directory, "SKILL.md"), "utf8")).toBe(content);
+    } finally { discovery.mockRestore(); }
   });
   test.each(["../escape.md", "scripts/link:stream.py", ".env", "assets/CON.md"])("rejects unsafe archive path %s", async (path) => {
     await expect(inspectSkillArchive(archive({ [path]: "bad" }))).rejects.toMatchObject({ code: "unsafe_skill_file" });

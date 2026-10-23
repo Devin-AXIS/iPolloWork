@@ -3,7 +3,7 @@ import type { Dirent } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
-import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
+import { comparePluginPackageVersions, PLUGIN_PACKAGE_MAX_BYTES, PLUGIN_PACKAGE_MAX_FILES } from "@ipollowork/types/plugins";
 import type {
   PluginPromptCapabilitySummary,
   PluginUiResource,
@@ -1315,6 +1315,30 @@ export async function listPortablePluginPromptCapabilities(input: {
 
 export async function listSuppressedDefaultPluginIds(input: { serverConfig: ServerConfig }): Promise<string[]> {
   return (await readState(input.serverConfig)).suppressedDefaultPluginIds;
+}
+
+export async function exportInstalledPluginPackage(input: { serverConfig: ServerConfig; pluginId: string }): Promise<PluginWorkshopSourceBundle> {
+  const installed = (await readState(input.serverConfig)).packages[input.pluginId];
+  if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
+  const version = installed.versions[installed.currentVersion];
+  if (!version) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
+  const root = artifactRoot(input.serverConfig, installed.pluginId, version.version);
+  // Export only immutable package-owned files, never workspace files or runtime credentials.
+  const manifest = Buffer.from(JSON.stringify(version.manifest));
+  const files = [{ path: MANIFEST_FILE, contentBase64: manifest.toString("base64") }];
+  let totalBytes = manifest.byteLength;
+  for (const file of version.files) {
+    if (file.path === MANIFEST_FILE) continue;
+    const path = resolveWithin(root, file.path);
+    const metadata = await lstat(path);
+    totalBytes += metadata.size;
+    if (!metadata.isFile()) throw new ApiError(400, "plugin_package_file_invalid", "Package export requires regular files");
+    if (files.length >= PLUGIN_PACKAGE_MAX_FILES || totalBytes > PLUGIN_PACKAGE_MAX_BYTES) throw new ApiError(413, "plugin_package_export_too_large", "Package export exceeds the file or size limit");
+    const content = await readFile(path);
+    if (createHash("sha256").update(content).digest("hex") !== file.sha256) throw new ApiError(409, "plugin_package_version_changed", "Installed package files changed after installation");
+    files.push({ path: file.path, contentBase64: content.toString("base64") });
+  }
+  return { pluginId: installed.pluginId, version: version.version, files, preparation: { localizedUrls: [], removedNetworkPermission: false } };
 }
 
 export async function readInstalledPluginUiResource(input: {

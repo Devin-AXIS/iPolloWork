@@ -208,7 +208,7 @@ describe("template market actions", () => {
     expect(marketDialog).toContain('<InputGroupInput value={query}');
     expect(marketDialog.match(/<TabsList /g)).toHaveLength(1);
     expect(marketDialog).toContain('className="mt-2 flex h-9 items-center gap-4 overflow-x-auto"');
-    expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6"');
+    expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto [scrollbar-gutter:stable] px-6 pb-6"');
     expect(marketDialog).not.toContain("showCloseButton={false}");
     for (const source of [marketDialog, catalogFilters]) {
       const popups = source.match(/<DropdownMenu(?:Sub)?Content\b[^>]*>/g) ?? [];
@@ -250,9 +250,14 @@ describe("template market actions", () => {
     expect(marketDialog).toContain("<Skeleton ");
   });
 
-  test("keeps remote pre-install previews alongside compact cards and management menus", () => {
+  test("shows remote covers with direct pre-install previews and independent management menus", () => {
     expect(marketDialog).toContain("readRemoteTemplateCard(resource, { connection })");
-    expect(marketDialog).toContain('<Card ref={cardRef} variant="resource" layout="row" surface="outline"');
+    expect(marketDialog).toContain('src={preview.coverDataUrl}');
+    expect(marketDialog).toContain('previewTestId="remote-template-preview"');
+    expect(marketDialog).toContain('onPreview={template && !failed ? openPreview : undefined}');
+    expect(marketDialog.match(/<TemplateCardFrame[\s>]/g)).toHaveLength(2);
+    expect(marketDialog).toContain('actions={source === "enterprise"');
+    expect(marketDialog).toContain('favoriteDisabled={!template}');
     expect(marketDialog).toContain("onPreview(template, preview?.coverDataUrl)");
     expect(marketDialog).toContain("onPreview={(template, coverDataUrl) => setPreviewSelection({ template, remoteResourceId: resource.id, coverDataUrl })}");
     expect(marketDialog).toContain("previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion");

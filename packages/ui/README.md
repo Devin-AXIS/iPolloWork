@@ -469,7 +469,7 @@ The compact forms share exactly the same composition; only `surface` changes:
 ### Card action menus
 
 Use `CardActionsMenu label="Resource name的操作"` inside CardFooter for plugin
-and skill rows. It renders one outlined ellipsis trigger with keyboard support;
+and skill rows. It renders one borderless ellipsis trigger with a transparent resting state, a light rounded hover background, and keyboard support;
 compose its children with shared DropdownMenuItem, keeping the real callbacks
 and disabled states. Destructive items use `variant="destructive"`; enterprise
 management items are supplied by the domain only when the current resource role
@@ -477,4 +477,4 @@ allows them. Permission editing and archive confirmation remain domain dialogs.
 Iframe consumers list CardActionsMenu and every used menu component in the
 runtime required exports (minimum minor 8).
 
-Enterprise catalog grant/archive items stay on resource cards; the domain submission-only control appears in Personal (plugins/skills) or Mine (templates), without exposing the management catalog. CardActionsMenu preserves focus for any dialog opened by a menu item.
+Enterprise catalog grant/archive items stay on resource cards; Personal plugin cards, exportable personal skill cards, and saved personal template cards offer Submit to enterprise in the same menu, with the selected resource bound to a confirmation dialog. CardActionsMenu preserves focus for any dialog opened by a menu item.
