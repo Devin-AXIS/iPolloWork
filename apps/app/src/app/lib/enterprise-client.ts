@@ -35,6 +35,7 @@ export function enterpriseErrorMessage(error: unknown): string {
   if (code === "forbidden") return "当前企业账号没有执行此操作的权限。";
   if (code === "enterprise_account_changed") return "企业账号已切换，请重新打开操作。";
   if (code === "revision_conflict") return "权限已被其他管理员修改，请刷新后重新分配。";
+  if (code === "resource_version_reviewed") return "此版本已由其他管理员审核，请刷新资源列表。";
   if (code === "navigation_revision_conflict") return "导航快捷入口已被其他管理员修改，已刷新，请重新选择。";
   if (code === "enterprise_feature_unavailable" || (error instanceof EnterpriseRequestError && [404, 405, 501].includes(error.status))) return "企业服务暂不支持此功能，请联系管理员升级。";
   if (code === "enterprise_invalid_response") return "企业服务返回的数据不完整，请重试或联系管理员。";
@@ -184,8 +185,8 @@ export const enterpriseApi = {
     enterpriseManagementRequest(connection, type, `/api/v1/resources/${encodeURIComponent(resourceId)}/access`, enterpriseAccessSchema, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(enterpriseAccessSchema.parse(input)),
     }),
-  submissions: (connection: EnterpriseConnection, type: EnterpriseResourceType) =>
-    enterpriseRequest(connection, `/api/v1/${type}-submissions`, enterpriseSubmissionsResponseSchema),
+  submissions: (connection: EnterpriseConnection, type: EnterpriseResourceType, cursor?: string | null) =>
+    enterpriseRequest(connection, `/api/v1/${type}-submissions?${query({ cursor })}`, enterpriseSubmissionsResponseSchema),
   submit: (connection: EnterpriseConnection, type: EnterpriseResourceType, file: File) =>
     enterpriseRequest(connection, `/api/v1/${type}-submissions`, enterpriseSubmissionSchema, {
       method: "POST", headers: { "Content-Type": type === "skill" && file.name.toLowerCase().endsWith(".md") ? "text/markdown; charset=utf-8" : "application/zip" }, body: file,

@@ -31,6 +31,7 @@ import {
 import {
   downloadEnterpriseResource,
   listEnterpriseResources,
+  listEnterpriseResourcePage,
   type EnterpriseConnection,
   type EnterpriseResource,
 } from "@/app/lib/enterprise-connections";
@@ -1777,6 +1778,7 @@ export function SessionPage(props: SessionPageProps) {
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
   const [templateCatalogSource, setTemplateCatalogSource] = useState<TemplateCatalogSource>("builtin");
   const [remoteTemplateResources, setRemoteTemplateResources] = useState<EnterpriseResource[]>([]);
+  const [remoteTemplateCursor, setRemoteTemplateCursor] = useState<string | null>(null);
   const templateResourceScope = templateCatalogSource === "enterprise" && activeEnterprise
     ? enterpriseWorkContextId(activeEnterprise.id)
     : PERSONAL_WORK_CONTEXT_ID;
@@ -2055,7 +2057,7 @@ export function SessionPage(props: SessionPageProps) {
       setTemplateBusyId(null);
     }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate]);
-  const refreshTemplateCatalog = useCallback(async () => {
+  const refreshTemplateCatalog = useCallback(async (cursor?: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
     setTemplateCatalogLoading(true);
@@ -2066,17 +2068,21 @@ export function SessionPage(props: SessionPageProps) {
           ? { connection: activeEnterprise }
           : {};
         const [remoteResources, installedCatalog] = await Promise.all([
-          listEnterpriseResources("template", resourceOptions),
+          templateCatalogSource === "enterprise" && activeEnterprise
+            ? listEnterpriseResourcePage("template", { connection: activeEnterprise, cursor })
+            : listEnterpriseResources("template", resourceOptions).then(items => ({ items, nextCursor: null })),
           props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
         ]);
         if (requestId !== templateCatalogRequestIdRef.current) return;
         setTemplateCatalog(installedCatalog.items.filter((item) => item.sourceType === "local" && item.installed));
-        setRemoteTemplateResources(remoteResources);
+        setRemoteTemplateResources(current => cursor ? [...new Map([...current, ...remoteResources.items].map(item => [item.id, item])).values()] : remoteResources.items);
+        setRemoteTemplateCursor(remoteResources.nextCursor);
       } else {
         const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, PERSONAL_WORK_CONTEXT_ID);
         if (requestId !== templateCatalogRequestIdRef.current) return;
         setTemplateCatalog(localCatalog.items);
         setRemoteTemplateResources([]);
+        setRemoteTemplateCursor(null);
       }
     }
     catch (error) {
@@ -5431,6 +5437,7 @@ export function SessionPage(props: SessionPageProps) {
         source={templateCatalogSource}
         onSelectSource={selectTemplateCatalogSource}
         onInstallRemote={(resource) => void installRemoteTemplate(resource)}
+        onLoadMore={remoteTemplateCursor ? () => void refreshTemplateCatalog(remoteTemplateCursor) : undefined}
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onImport={importDesignTemplate}

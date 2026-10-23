@@ -4,7 +4,7 @@ import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "r
 import "../src/app/index.css";
 import { templateManifestV1Schema, type TemplateCatalogItem } from "@ipollowork/types/templates";
 import { enterpriseFeaturesSchema, type EnterpriseAccess, type EnterpriseMessage, type EnterpriseSnapshot, type EnterpriseSubmission } from "@ipollowork/types/enterprise";
-import { joinEnterpriseWithCode, readEnterpriseConnections, saveEnterpriseConnection, setEnterpriseConnectionAccount, type EnterpriseConnection } from "../src/app/lib/enterprise-connections";
+import { joinEnterpriseWithCode, listEnterpriseResources, readEnterpriseConnections, saveEnterpriseConnection, setEnterpriseConnectionAccount, type EnterpriseConnection, type EnterpriseResource } from "../src/app/lib/enterprise-connections";
 import { readDenSettings, writeDenSettings } from "../src/app/lib/den";
 import { activateEnterpriseWorkContext, activatePersonalWorkContext, clearEnterpriseLoginState, type WorkContextId } from "../src/app/lib/work-context";
 import { createiPolloWorkServerClient, type iPolloWorkSession } from "../src/app/lib/ipollowork-server";
@@ -63,6 +63,14 @@ let acceptCalls = 0;
 const shareKeys = new Set<string>();
 const importedSession = () => ({ id: "imported-session", title: message.title, time: { created: 1000, updated: 1000 }, enterpriseShare: true });
 const baseFetch = window.fetch.bind(window);
+const resourceManagementMode = new URLSearchParams(location.search).has("resource-management");
+const resourceCards: EnterpriseResource[] = (["template", "extension", "skill"] as const).flatMap(type => (["pending", "rejected", "approved"] as const).map((reviewStatus, index) => ({
+  id: `${type}-upload-${index}`, type, slug: `${type}-upload-${index}`, manifestId: `${type}-upload-${index}`,
+  name: `${type === "template" ? "模板" : type === "extension" ? "插件" : "技能"}${["待审核投稿", "退回投稿", "已下架投稿"][index]}`,
+  description: "已上传的企业投稿，支持在卡片菜单中管理。", category: "site", enterpriseCategory: "产品研发", iconPath: null, featured: false, updatedAt: "2026-10-23T00:00:00Z",
+  lifecycle: { status: index === 2 ? "archived" : "draft", review: { version: "1.0.0", reviewStatus, reviewNote: index === 1 ? "请补充使用说明" : null }, installable: false },
+  latestVersion: { version: "1.0.0", digest: "a".repeat(64), downloadPath: `/api/v1/resources/${type}-upload-${index}/versions/1.0.0/download` },
+})));
 const accountCacheMode = new URLSearchParams(window.location.search).has("account-cache");
 const notificationsMode = new URLSearchParams(window.location.search).has("notifications");
 const notificationMessages: EnterpriseMessage[] = [
@@ -78,6 +86,19 @@ window.fetch = async (input, init) => {
   if (!url.hostname.endsWith("-proof.invalid")) return baseFetch(input, init);
   const method = init?.method ?? "GET";
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+  if (resourceManagementMode && url.pathname.endsWith("/resources") && url.searchParams.get("view") === "catalog") {
+    return Response.json({ items: resourceCards.filter(item => item.type === url.searchParams.get("type")).map(item => ({ ...item, status: item.lifecycle?.status, sourceTemplateId: item.manifestId })), nextCursor: null });
+  }
+  if (resourceManagementMode && url.pathname.startsWith("/api/v1/resources/")) {
+    const item = resourceCards.find(item => item.id === url.pathname.split("/")[4]);
+    if (item?.lifecycle && url.pathname.endsWith("/review")) {
+      if (item.lifecycle.review) { item.lifecycle.review.reviewStatus = body.decision; item.lifecycle.review.reviewNote = body.note || null; }
+      if (body.decision === "approved") { item.lifecycle.status = "published"; item.lifecycle.installable = true; }
+      return Response.json({ ok: true });
+    }
+    if (item?.lifecycle && method === "PATCH") { item.lifecycle.status = "archived"; item.lifecycle.installable = false; return Response.json({ ok: true }); }
+    if (item?.type === "template" && method === "GET" && url.searchParams.has("version")) return Response.json({ manifest: { ...personalTemplate.manifest, id: item.manifestId, title: item.name }, coverDataUrl: `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540"><rect width="960" height="540" fill="#dceceb"/><text x="80" y="280" font-size="56">Submission preview</text></svg>')}` });
+  }
   if (notificationsMode && url.pathname.endsWith("/messages")) {
     notificationRequests++;
     const items = new Headers(init?.headers).get("authorization")?.includes("employee-2")
@@ -258,7 +279,14 @@ function Proof() {
   const [sourceName, setSourceName] = useState(initial.name);
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
   const [enterpriseDialogOpen, setEnterpriseDialogOpen] = useState(false);
-  const [, setCatalogRevision] = useState(0);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const [remoteUploads, setRemoteUploads] = useState<EnterpriseResource[]>([]);
+  useEffect(() => {
+    if (!resourceManagementMode || !connection) return;
+    let current = true;
+    void listEnterpriseResources("template", { connection }).then(items => { if (current) setRemoteUploads(items); });
+    return () => { current = false; };
+  }, [connection?.id, connection?.membership.role, catalogRevision]);
   const pluginPanel = useRef<PluginPackagesPanelHandle>(null);
   const [templateSource, setTemplateSource] = useState<TemplateCatalogSource>("enterprise");
   const [resourceScope, setResourceScope] = useState<WorkContextId>("enterprise:ent_proof");
@@ -276,7 +304,7 @@ function Proof() {
     <div><h1 className="text-xl font-semibold">企业协作功能验证</h1><p className="mt-2 text-sm text-muted-foreground">隔离界面验证 · 企业和模型返回使用合成数据 · 生产控件直接复用</p></div>
     <p data-testid="proof-route" className="text-xs text-muted-foreground">当前路由 {pathname} · 本机项目 {workspaceReady ? "已就绪" : "连接中"}</p>
     {sourceConnection ? <section className="space-y-2 rounded-xl border p-3"><p className="text-xs text-muted-foreground">模板与插件来源名称验证</p><div data-testid="proof-plugin-source" className="max-w-[360px]"><Tabs value={resourceScope} onValueChange={(value) => { if (value === "personal" || value === "enterprise:ent_proof") setResourceScope(value); }}><WorkResourceScopeSwitch enterprise={sourceConnection} /><TabsContent value="personal">个人资源</TabsContent><TabsContent value="enterprise:ent_proof">企业资源</TabsContent></Tabs></div><div className="flex gap-2"><Button variant="outline" data-testid="proof-template-source" onClick={() => setSourceDialogOpen(true)}>查看模板来源</Button><Button variant="outline" data-testid="proof-long-source-name" onClick={() => setSourceName("星河科技企业协作与数字创意研发中心企业资源管理服务平台")}>切换长企业名</Button></div></section> : null}
-    {sourceDialogOpen && sourceConnection ? <TemplateMarketDialog open onOpenChange={setSourceDialogOpen} templates={[personalTemplate]} exportPackage={async () => new File(["isolated template package"], "personal.card-proof.ipwp", { type: "application/zip" })} remoteResources={catalogState === "empty" ? [] : [{ id: "template-card-proof", type: "template", slug: "template-card-proof", manifestId: null, name: templateSource === "cloud" ? "Cloud 产品模板" : "企业产品模板", description: "用于产品提案的可编辑模板。", category: "site", enterpriseCategory: "产品", iconPath: null, featured: false, updatedAt: "2026-10-22T00:00:00Z", latestVersion: { version: "1.0.0", digest: "a".repeat(64), downloadPath: "/proof/template.zip" } }]} loading={false} error={catalogState === "error" ? "企业服务请求失败" : null} busyId={null} getCover={async () => ({ data: new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#e7efed"/><text x="140" y="460" font-size="88">Personal Template</text></svg>').buffer, contentType: "image/svg+xml" })} cloudAvailable enterpriseAvailable enterpriseConnection={sourceConnection} source={templateSource} onSelectSource={setTemplateSource} onRefresh={() => {}} onUse={() => {}} onCustom={() => {}} onInstall={() => {}} onImport={async () => true} onInstallRemote={() => {}} /> : null}
+    {sourceDialogOpen && sourceConnection ? <TemplateMarketDialog open onOpenChange={setSourceDialogOpen} templates={[personalTemplate]} exportPackage={async () => new File(["isolated template package"], "personal.card-proof.ipwp", { type: "application/zip" })} remoteResources={resourceManagementMode ? remoteUploads : catalogState === "empty" ? [] : [{ id: "template-card-proof", type: "template", slug: "template-card-proof", manifestId: null, name: templateSource === "cloud" ? "Cloud 产品模板" : "企业产品模板", description: "用于产品提案的可编辑模板。", category: "site", enterpriseCategory: "产品", iconPath: null, featured: false, updatedAt: "2026-10-22T00:00:00Z", latestVersion: { version: "1.0.0", digest: "a".repeat(64), downloadPath: "/proof/template.zip" } }]} loading={false} error={catalogState === "error" ? "企业服务请求失败" : null} busyId={null} getCover={async () => ({ data: new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="1600" height="900" fill="#e7efed"/><text x="140" y="460" font-size="88">Personal Template</text></svg>').buffer, contentType: "image/svg+xml" })} cloudAvailable enterpriseAvailable enterpriseConnection={sourceConnection} source={templateSource} onSelectSource={setTemplateSource} onRefresh={() => setCatalogRevision(value => value + 1)} onUse={() => {}} onCustom={() => {}} onInstall={() => {}} onImport={async () => true} onInstallRemote={() => {}} /> : null}
     {connection ? <><section className="flex flex-wrap items-center gap-3 rounded-xl border border-border p-4"><span className="mr-auto text-sm font-medium">{connection.name} · {roleNames[connection.membership.role]}</span><Button data-testid="proof-share" disabled={!connection.features?.sessionSharing} onClick={() => requestEnterpriseSessionShare("project-proof", "source-session")}>分享产品讨论</Button><EnterpriseResourceControls connection={connection} type="template" /><EnterpriseResourceControls connection={connection} type="extension" /><EnterpriseResourceControls connection={connection} type="skill" /></section>
     <div className="grid gap-5 md:grid-cols-[360px_minmax(0,1fr)]"><section className="overflow-hidden rounded-xl border border-border"><EnterpriseMessageList key={`${connection.id}:${connection.membership.id}`} connection={connection} inbox={inbox} onExit={() => setRevision((value) => value + 1)} /></section><section className="rounded-xl border border-border p-4"><h2 className="mb-3 text-sm font-semibold">接收后的会话</h2>{sessionId ? <><p className="text-sm">产品方案讨论 · 独立会话</p><EnterpriseSnapshotNotice key={revision} connection={connection} client={client} workspaceId="project-proof" sessionId={sessionId} /><p className="mt-3 text-xs text-muted-foreground">等待用户继续提问，未启动模型执行。</p></> : <p className="py-12 text-center text-sm text-muted-foreground">接收分享后在此打开独立会话</p>}</section></div></> : <p data-testid="proof-personal" className="rounded-xl border p-5">当前为个人模式或企业登录已失效 · 企业协作入口已隐藏</p>}
     <section className="flex flex-wrap gap-2"><Button variant="outline" data-testid="proof-fail-summary" onClick={() => { failNextSummary = true; }}>模拟下一次总结失败</Button><Button variant="outline" data-testid="proof-fail-send" onClick={() => { failNextShare = true; }}>模拟下一次发送失败</Button><Button variant="outline" data-testid="proof-member" onClick={() => { const next = { ...initial, membership: { ...initial.membership, role: "member" } } satisfies EnterpriseConnection; saveEnterpriseConnection(next); }}>切换员工</Button><Button variant="outline" data-testid="proof-legacy" onClick={() => { const next = { ...initial, features: enterpriseFeaturesSchema.parse({}) }; saveEnterpriseConnection(next); }}>旧企业服务</Button><Button variant="outline" data-testid="proof-owner" onClick={restoreProofOwner}>恢复超管</Button><Button variant="outline" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; }}>切换深色</Button><Button variant="outline" data-testid="proof-stats" onClick={() => setRevision((value) => value + 1)}>刷新验证记录</Button></section>

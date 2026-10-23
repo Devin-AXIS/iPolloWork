@@ -12,6 +12,20 @@ import { conversationEngineAdapters, withEnterpriseShareContext } from "../src/r
 
 const connection: EnterpriseConnection = { id: "ent_test", name: "示例企业", shortName: "示例", origin: "https://enterprise.example", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "member", status: "active" }, session: { token: "synthetic-enterprise-session", expiresAt: "2099-01-01T00:00:00.000Z" } };
 describe("enterprise client boundary", () => {
+  test("submission history preserves its page cursor and upload status", async () => {
+    const requested: string[] = [];
+    const mock = spyOn(globalThis, "fetch").mockImplementation(async input => {
+      requested.push(String(input));
+      return Response.json({ items: [{ resourceId: "upload", resourceName: "My upload", version: "1.0.0", reviewStatus: "rejected", reviewNote: "请补充说明", resourceStatus: "archived" }], nextCursor: requested.length === 1 ? "next-version" : null });
+    });
+    try {
+      const first = await enterpriseApi.submissions(connection, "template");
+      const second = await enterpriseApi.submissions(connection, "template", first.nextCursor);
+      expect(first.items[0]).toMatchObject({ resourceStatus: "archived", reviewNote: "请补充说明" });
+      expect(second.nextCursor).toBeNull();
+      expect(requested[1]).toContain("cursor=next-version");
+    } finally { mock.mockRestore(); }
+  });
   test("navigation is bounded and carries plugin identity even when the plugin is absent locally", () => {
     const plugin = { kind: "plugin", id: "workspace-app:demo:home", pluginId: "demo", label: "Demo" };
     expect(enterpriseNavigationSchema.parse({ revision: 1, items: [...defaultNavigationShortcuts, plugin] }).items).toHaveLength(4);

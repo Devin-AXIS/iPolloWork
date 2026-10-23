@@ -1,4 +1,4 @@
-import type { EnterpriseResourceType } from "@ipollowork/types/enterprise";
+import { enterpriseResourceLifecycleSchema, type EnterpriseResourceLifecycle, type EnterpriseResourceType } from "@ipollowork/types/enterprise";
 export type { EnterpriseResourceType } from "@ipollowork/types/enterprise";
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import { enterpriseFeaturesSchema, enterpriseMemberSchema, enterpriseMemberRoleSchema, enterpriseMembershipResponseSchema, type EnterpriseFeatures, type EnterpriseMember } from "@ipollowork/types/enterprise";
@@ -72,6 +72,7 @@ export type EnterpriseResource = {
   iconPath: string | null;
   featured: boolean;
   updatedAt: string;
+  lifecycle?: EnterpriseResourceLifecycle;
   latestVersion: {
     version: string;
     digest: string;
@@ -302,7 +303,8 @@ function parseEnterpriseResource(
   source: EnterpriseResourceSource,
 ): EnterpriseResource | null {
   if (!isRecord(value) || readString(value, "type") !== expectedType) return null;
-  if (source === "enterprise" && readString(value, "status") !== "published") return null;
+  const lifecycle = source === "enterprise" && value.lifecycle !== undefined ? enterpriseResourceLifecycleSchema.parse(value.lifecycle) : undefined;
+  if (source === "enterprise" && !lifecycle && readString(value, "status") !== "published") return null;
   const id = readString(value, "id");
   const slug = readString(value, "slug");
   const name = readString(value, "name");
@@ -335,6 +337,7 @@ function parseEnterpriseResource(
     iconPath,
     featured: value.featured === true,
     updatedAt,
+    ...(lifecycle ? { lifecycle } : {}),
     latestVersion: version && SHA256_HEX_PATTERN.test(digest) && downloadPath.startsWith(pathPrefix)
       ? { version, digest, downloadPath }
       : null,
@@ -386,6 +389,17 @@ export async function readRemoteTemplateCard(resource: EnterpriseResource, optio
   return { manifest, coverDataUrl };
 }
 
+export async function listEnterpriseResourcePage(type: EnterpriseResourceType, options: EnterpriseResourceRequestOptions & { connection: EnterpriseConnection; cursor?: string | null }) {
+  const access = enterpriseResourceAccess(options.connection);
+  const query = new URLSearchParams({ type, limit: String(ENTERPRISE_RESOURCE_PAGE_SIZE), view: "catalog" });
+  if (options.cursor) query.set("cursor", options.cursor);
+  const payload = await fetchJson(endpoint(access.origin, `/api/v1/resources?${query}`), { headers: { Authorization: `Bearer ${access.token}` } }, enterpriseFetcher(options.fetcher));
+  if (!isRecord(payload) || !Array.isArray(payload.items) || payload.items.length > ENTERPRISE_RESOURCE_PAGE_SIZE
+    || (payload.nextCursor !== null && (typeof payload.nextCursor !== "string" || !payload.nextCursor.trim() || payload.nextCursor.length > 128 || payload.nextCursor === options.cursor))) throw new Error("invalid_enterprise_resource_catalog");
+  const items = payload.items.flatMap(item => { const parsed = parseEnterpriseResource(item, type, "enterprise"); return parsed ? [parsed] : []; });
+  return { items, nextCursor: typeof payload.nextCursor === "string" ? payload.nextCursor : null };
+}
+
 export async function listEnterpriseResources(
   type: EnterpriseResourceType,
   options: EnterpriseResourceRequestOptions = {},
@@ -409,22 +423,13 @@ export async function listEnterpriseResources(
 
   const resources: EnterpriseResource[] = [];
   const seenCursors = new Set<string>();
+  const connection = options.connection;
+  if (!connection) throw new Error("enterprise_signin_required");
   let cursor: string | null = null;
   for (let page = 0; page < ENTERPRISE_RESOURCE_PAGE_LIMIT; page += 1) {
-    const query = new URLSearchParams({ type, limit: String(ENTERPRISE_RESOURCE_PAGE_SIZE) });
-    if (cursor) query.set("cursor", cursor);
-    const payload = await fetchJson(
-      endpoint(access.origin, `/api/v1/resources?${query.toString()}`),
-      { headers: authorization },
-      fetcher,
-    );
-    if (!isRecord(payload) || !Array.isArray(payload.items)) throw new Error("invalid_enterprise_resource_catalog");
-    resources.push(...payload.items.flatMap((item) => {
-      const parsed = parseEnterpriseResource(item, type, access.source);
-      return parsed ? [parsed] : [];
-    }));
+    const payload = await listEnterpriseResourcePage(type, { ...options, connection, cursor });
+    resources.push(...payload.items);
     if (payload.nextCursor === null) return resources;
-    if (typeof payload.nextCursor !== "string") throw new Error("invalid_enterprise_resource_catalog");
     const nextCursor = payload.nextCursor.trim();
     if (!nextCursor || nextCursor.length > 128 || seenCursors.has(nextCursor)) {
       throw new Error("invalid_enterprise_resource_catalog");
@@ -449,7 +454,7 @@ export async function downloadEnterpriseResource(
     resource.latestVersion?.downloadPath ?? null,
     options.connection,
   );
-  if (!downloadUrl || !resource.latestVersion) throw new Error("enterprise_resource_version_unavailable");
+  if (!downloadUrl || !resource.latestVersion || resource.lifecycle?.installable === false) throw new Error("enterprise_resource_version_unavailable");
   const response = await enterpriseBinaryFetcher(options.fetcher)(downloadUrl, {
     headers: { Authorization: `Bearer ${access.token}` },
     signal: AbortSignal.timeout(ENTERPRISE_DOWNLOAD_TIMEOUT_MS),

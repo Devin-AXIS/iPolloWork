@@ -57,6 +57,7 @@ export function PluginPackageListItem({
           <div data-testid="plugin-package-card-copy" className="min-w-0 flex-1 space-y-1">
             <CardTitle as="h3" className="truncate">{manifest.name}</CardTitle>
             <CardDescription title={manifest.description} className="line-clamp-1">{manifest.description}</CardDescription>
+            {status}
           </div>
         </CardHeader>
         <CardFooter>
