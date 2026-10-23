@@ -84,6 +84,42 @@ export function EnterpriseResourceActionDialog({ connection, action, onClose, on
   return <Dialog open onOpenChange={(open) => { if (!open) close(); }}><DialogContent finalFocus={trigger} className="max-h-[90dvh] max-w-[640px] overflow-y-auto" data-testid="enterprise-card-access"><ResourceAccessPanel connection={connection} resource={action.resource} busy={busy} onBusyChange={setBusy} onClose={onClose} onSaved={() => { onChanged(); toast.success("权限已保存并下发。"); }} /></DialogContent></Dialog>;
 }
 
+export type EnterpriseResourceSubmission = { name: string; prepareFile: () => Promise<File> };
+
+export function EnterpriseResourceSubmissionDialog({ connection, type, submission, onClose }: {
+  connection: EnterpriseConnection; type: EnterpriseResourceType; submission: EnterpriseResourceSubmission; onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const trigger = useRef<HTMLElement>(null);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    trigger.current = document.querySelector<HTMLElement>(`button[aria-label=${JSON.stringify(`${submission.name}的操作`)}]`);
+    return () => { active.current = false; };
+  }, [submission]);
+  const publishing = type === "template" ? connection.features?.templatePublishing : type === "skill" ? connection.features?.skillPublishing : connection.features?.extensionPublishing;
+  const submit = async () => {
+    if (busy || !publishing) return;
+    setBusy(true); setError(null);
+    try {
+      const file = await submission.prepareFile();
+      if (!active.current) return;
+      await enterpriseApi.submit(connection, type, file);
+      if (!active.current) return;
+      toast.success("投稿已提交，等待企业审核。");
+      onClose();
+    } catch (cause) { if (active.current) setError(enterpriseErrorMessage(cause)); }
+    finally { if (active.current) setBusy(false); }
+  };
+  return <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}><DialogContent finalFocus={trigger} className="max-w-md" data-testid="enterprise-card-submission">
+    <DialogHeader><DialogTitle>投稿到企业</DialogTitle><DialogDescription>将“{submission.name}”提交到{connection.name}，审核通过后在企业内分发。</DialogDescription></DialogHeader>
+    {error ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert> : null}
+    {!publishing ? <Alert><AlertDescription>当前企业尚未开放此类资源投稿。</AlertDescription></Alert> : null}
+    <DialogFooter><Button variant="outline" disabled={busy} onClick={onClose}>取消</Button><Button disabled={busy || !publishing} onClick={() => void submit()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}{busy ? "正在提交" : "提交审核"}</Button></DialogFooter>
+  </DialogContent></Dialog>;
+}
+
 export function EnterpriseResourceControls({ connection, type, onChanged, mode = "manage" }: {
   connection: EnterpriseConnection; type: EnterpriseResourceType; onChanged?: () => void; mode?: "manage" | "submissions";
 }) {

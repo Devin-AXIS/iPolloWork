@@ -20,7 +20,6 @@ import {
   Plug,
   ShieldCheck,
   Sparkles,
-  Trash2,
   WandSparkles,
 } from "lucide-react";
 
@@ -43,7 +42,7 @@ import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { PluginAuthorizationDialog } from "@/components/plugin-authorization-dialog";
-import { EnterpriseResourceControls, EnterpriseResourceActionDialog, type EnterpriseResourceAction, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { EnterpriseResourceSubmissionDialog, type EnterpriseResourceSubmission, EnterpriseResourceActionDialog, type EnterpriseResourceAction, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { SettingsListSearchInput, settingsResourceGridClassName } from "@/react-app/domains/settings/settings-list";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -208,6 +207,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const refreshGeneration = useRef(0);
+  const [submission, setSubmission] = useState<EnterpriseResourceSubmission | null>(null);
   const [resourceAction, setResourceAction] = useState<EnterpriseResourceAction | null>(null);
   const [source, setSource] = useState<PluginLibrarySource>("personal");
   const [search, setSearch] = useState("");
@@ -292,7 +292,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     }
   }, [props.client, props.workspaceId, source, activeEnterprise, cloud.isSignedIn, cloud.authToken, cloud.baseUrl]);
 
-  useEffect(() => { setResourceAction(null); }, [activeEnterprise?.id, activeEnterprise?.membership.id]);
+  useEffect(() => { setResourceAction(null); setSubmission(null); }, [activeEnterprise?.id, activeEnterprise?.membership.id, props.workspaceId, source]);
   useEffect(() => {
     if (source === "enterprise" && !activeEnterprise) setSource("personal");
   }, [activeEnterprise, source]);
@@ -1042,7 +1042,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
 
             {source === "personal" ? (
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                {activeEnterprise ? <EnterpriseResourceControls mode="submissions" key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" onChanged={() => void refresh()} /> : null}
                 <Button variant="ghost" size="sm" data-testid="plugin-check-updates"
                   disabled={loading || busyKey !== null} aria-busy={loading}
                   onClick={() => void refresh()}>
@@ -1157,8 +1156,16 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                   status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
                   actionBusy={busyKey === `${item.pluginId}:enable` || Boolean(catalogUpdate && busyKey === `catalog:${catalogUpdate.pluginId}`)}
                   actionDisabled={loading || busyKey !== null}
-                  menuItems={<DropdownMenuItem variant="destructive" disabled={loading || busyKey !== null}
-                    aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void uninstallPackage(item.pluginId)}><Trash2 size={14} />{t("plugin_platform.uninstall")}</DropdownMenuItem>}
+                  menuItems={<>
+                    {activeEnterprise?.features?.extensionPublishing ? <DropdownMenuItem disabled={loading || busyKey !== null} onClick={() => setSubmission({ name: item.name, prepareFile: async () => {
+                      if (!props.client || !props.workspaceId) throw new Error("请先连接工作空间。");
+                      const [{ default: JSZip }, bundle] = await Promise.all([import("jszip"), props.client.exportPluginPackage(props.workspaceId, item.pluginId)]);
+                      const archive = new JSZip();
+                      bundle.files.forEach((file) => archive.file(file.path, file.contentBase64, { base64: true }));
+                      return new File([await archive.generateAsync({ type: "blob", compression: "DEFLATE" })], `${bundle.pluginId}-${bundle.version}.ipollowork-plugin`, { type: "application/zip" });
+                    } })}>投稿到企业</DropdownMenuItem> : null}
+                    <DropdownMenuItem variant="destructive" disabled={loading || busyKey !== null}
+                    aria-label={`${t("plugin_platform.uninstall")} ${item.name}`} onClick={() => void uninstallPackage(item.pluginId)}>{t("plugin_platform.uninstall")}</DropdownMenuItem></>}
                   actionLabel={catalogUpdate ? `${t("plugin_platform.action.update")} · v${catalogUpdate.version}` : t(primaryAction.labelKey)}
                   onOpen={() => props.onSelectPlugin(item.pluginId)}
                   onAction={() => {
@@ -1189,6 +1196,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
       </section></Tabs>
 
       {activeEnterprise && resourceAction ? <EnterpriseResourceActionDialog connection={activeEnterprise} action={resourceAction} onClose={() => setResourceAction(null)} onChanged={() => void refresh()} /> : null}
+      {activeEnterprise && submission ? <EnterpriseResourceSubmissionDialog key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" submission={submission} onClose={() => setSubmission(null)} /> : null}
       <PluginPackageImportModal
         open={importOpen}
         client={props.client}

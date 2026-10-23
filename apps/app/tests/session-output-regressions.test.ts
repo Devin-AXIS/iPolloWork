@@ -816,7 +816,7 @@ describe("session output issue regressions", () => {
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
     expect(source).toContain("remoteTemplateInstallations");
     expect(source).toContain("resource.manifestId");
-    expect(source).toContain('<Card ref={cardRef} variant="resource" layout="row" surface="outline"');
+    expect(source.match(/<TemplateCardFrame[\s>]/g)).toHaveLength(2);
     expect(source).toContain("onPreview(template, preview?.coverDataUrl)");
   });
 

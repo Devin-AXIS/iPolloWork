@@ -270,11 +270,12 @@ export async function prepareEnterpriseSkills(config: ServerConfig, workspace: W
 }
 
 export async function exportStandaloneSkill(config: ServerConfig, workspace: WorkspaceInfo, input: SkillPackageExportInput) {
-  const skills = await listSkills(workspace.path, false); const skill = skills.find((item) => item.name === input.name);
-  if (!skill || skill.scope !== "project") throw new ApiError(404, "skill_not_found", "请选择当前项目中的独立技能。");
-  const source = await skillPath(workspace.path, relative(workspace.path, dirname(skill.path))); const localPath = relative(workspace.path, skill.path).replaceAll(sep, "/");
+  const skills = await listSkills(workspace.path, true); const skill = skills.find((item) => item.name === input.name);
+  if (!skill) throw new ApiError(404, "skill_not_found", "请选择个人列表中的技能。");
+  const source = skill.scope === "global" ? await skillPath(dirname(skill.path)) : await skillPath(workspace.path, relative(workspace.path, dirname(skill.path))); const localPath = relative(workspace.path, skill.path).replaceAll(sep, "/");
   const packages = await listInstalledPluginPackages({ serverConfig: config });
-  if (localPath.includes("/ipollowork-enterprise/") || packages.some((item) => item.manifest.resources.some((resource) => resource.type === "skill" && resource.path && (() => { const path = pluginEnginePortablePath(resource.path).replace(/\/$/u, ""); return localPath === `.opencode/${path.endsWith("SKILL.md") ? path : `${path}/SKILL.md`}`; })()))) throw new ApiError(409, "skill_owned_by_plugin", "插件内置技能和企业技能由来源管理，不能作为个人技能重新投稿。");
+  if (localPath.includes("/ipollowork-enterprise/")) throw new ApiError(409, "skill_managed_resource", "企业技能由企业来源管理，不能作为个人技能重新投稿。");
+  const owner = packages.find((item) => item.manifest.resources.some((resource) => resource.type === "skill" && resource.path && (() => { const path = pluginEnginePortablePath(resource.path).replace(/\/$/u, ""); return localPath === `.opencode/${path.endsWith("SKILL.md") ? path : `${path}/SKILL.md`}`; })()));
   const files: ZipEntry[] = []; let total = 0;
   async function collect(root: string, prefix = "") {
     for (const entry of await readdir(root, { withFileTypes: true })) {
@@ -286,7 +287,7 @@ export async function exportStandaloneSkill(config: ServerConfig, workspace: Wor
   }
   await collect(source);
   const { data } = parseFrontmatter((await readFile(skill.path)).toString("utf8"));
-  const manifest = skillPackageManifestSchema.parse({ schemaVersion: 1, kind: "skill", id: `personal.${input.name}`, name: input.name, title: input.title, description: data.description, version: input.version, entry: "SKILL.md", category: "general", minimumAppVersion: pkg.version, dependencies: [] });
+  const manifest = skillPackageManifestSchema.parse({ schemaVersion: 1, kind: "skill", id: `personal.${input.name}`, name: input.name, title: input.title, description: data.description, version: input.version, entry: "SKILL.md", category: "general", minimumAppVersion: pkg.version, dependencies: owner ? [{ type: "plugin", name: owner.pluginId }] : [] });
   const archive = createStoredZip([{ name: SKILL_PACKAGE_MANIFEST, data: Buffer.from(JSON.stringify(manifest, null, 2)) }, ...files]);
   await inspectSkillArchive(archive);
   return { archive, filename: `${manifest.id}-${manifest.version}.ipollowork-skill` };
@@ -306,7 +307,7 @@ export async function listStandaloneSkillPackages(config: ServerConfig, workspac
     let source: z.infer<typeof publicSourceSchema> | null = null;
     try { source = publicSourceSchema.parse(JSON.parse(await readFile(join(dirname(item.path), "ipollowork.source.json"), "utf8"))); }
     catch (error) { if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error; }
-    return { ...item, pluginName: plugin?.name ?? null, canExport: item.scope === "project" && !path.startsWith("..") && !plugin, source };
+    return { ...item, pluginName: plugin?.name ?? null, canExport: item.scope === "global" || !path.startsWith(".."), source };
   }));
 }
 

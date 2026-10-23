@@ -516,6 +516,45 @@ describe("plugin package lifecycle", () => {
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin).toEqual([]);
   });
 
+  test("exports an installed plugin through the authenticated route without workspace credentials", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-export-");
+    const packageRoot = await createRoot("ipollowork-plugin-export-source-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Original skill\n");
+    const config = serverConfig(workspaceRoot);
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    await writeFile(join(workspaceRoot, "credentials.json"), "secret-account", "utf8");
+    await writeFile(join(workspaceRoot, ".opencode/skills/acme-research/SKILL.md"), "# Workspace edit\n", "utf8");
+    const server = await startServer(config);
+    try {
+      const url = `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research/export`;
+      expect((await fetch(url)).status).toBe(401);
+      const response = await fetch(url, { headers: { authorization: "Bearer token" } });
+      expect(response.status).toBe(200);
+      const bundle = await response.json();
+      expect(bundle).toMatchObject({ pluginId: "acme-research", version: "1.0.0" });
+      expect(bundle.files.map((file: { path: string }) => file.path).sort()).toEqual(["engines/opencode/plugins/acme-research.ts", "ipollowork.plugin.json", "skills/acme-research/SKILL.md"]);
+      expect(JSON.stringify(bundle)).not.toContain(Buffer.from("secret-account").toString("base64"));
+      const skill = bundle.files.find((file: { path: string }) => file.path === "skills/acme-research/SKILL.md");
+      expect(Buffer.from(skill.contentBase64, "base64").toString()).toBe("# Original skill\n");
+      expect((await fetch(url.replace("acme-research", "missing"), { headers: { authorization: "Bearer token" } })).status).toBe(404);
+    } finally { await server.stop(); }
+  });
+
+  test("rejects an installed plugin export when its immutable files were changed", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const { runtimeStorageDir } = await import("./runtime-storage.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-export-integrity-");
+    const packageRoot = await createRoot("ipollowork-plugin-export-integrity-source-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Original skill\n");
+    const config = serverConfig(workspaceRoot);
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    await writeFile(join(runtimeStorageDir(config), "plugin-packages/artifacts/acme-research/1.0.0/skills/acme-research/SKILL.md"), "changed", "utf8");
+    await expect(lifecycle.exportInstalledPluginPackage({ serverConfig: config, pluginId: "acme-research" })).rejects.toMatchObject({ code: "plugin_package_version_changed" });
+  });
+
   test("adopts identical activation files but preserves different user content", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const packageRoot = await createRoot("ipollowork-plugin-adoption-package-");

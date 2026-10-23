@@ -361,26 +361,23 @@ export default {
         await ctx.waitFor("document.activeElement?.dataset.testid==='proof-enterprise-connect'");
       }
     } },
-    { name: "模板我的投稿入口位置和尺寸", async run(ctx) {
+    { name: "模板卡片投稿入口", async run(ctx) {
       await reset(ctx);
       for (const theme of ["light", "dark"]) {
         await ctx.eval(`document.documentElement.dataset.theme = '${theme}'`);
-        await ctx.prove(`${theme}：我的投稿仅在我的模板中显示，三个动作尺寸一致`, {
+        await ctx.prove(`${theme}：模板投稿从个人卡片发起`, {
           voiceover: vo[6], action: async () => {
             await ctx.trustedClick('[data-testid="proof-template-source"]');
             await ctx.waitFor(`Boolean(document.querySelector('[aria-label="模板操作"]'))`);
-            ctx.assert(await ctx.eval("!document.querySelector('[aria-label=模板操作] [data-testid=enterprise-template-manage]')&&!document.querySelector('[data-testid=enterprise-template-submissions]')"),'enterprise catalog has no global management or submissions entry');
             await ctx.trustedClick('[role="tablist"][aria-label="模板"] [role="tab"]:first-child');
-            await ctx.waitFor(`[...document.querySelectorAll('[data-slot="dialog-content"][data-open]')].every(dialog => dialog.getAnimations({ subtree: true }).every(animation => animation.playState !== "running"))`);
+            await ctx.trustedClick('[role="dialog"][data-open] article [aria-haspopup="menu"]');
+            await clickMenuItem(ctx,'投稿到企业');
+            await ctx.waitFor("Boolean(document.querySelector('[data-testid=enterprise-card-submission]'))");
           }, assert: async () => {
-            const buttons = await ctx.eval(`(() => [...document.querySelectorAll('[aria-label="模板操作"] button')].map(button => { const r=button.getBoundingClientRect(), style=getComputedStyle(button); return { name:button.textContent.trim(),x:r.x,y:r.y,height:r.height,font:style.fontSize,line:style.lineHeight,icon:!!button.querySelector('svg') }; }))()`);
-            ctx.assert(buttons.length === 3 && buttons[0].name === '我的投稿' && buttons[1].name === '自定义模板' && buttons[2].name === '导入' && buttons.every(button => button.y === buttons[0].y && button.height === buttons[0].height && button.font === buttons[0].font && button.line === buttons[0].line && button.icon) && buttons[0].x < buttons[1].x && buttons[1].x < buttons[2].x, JSON.stringify(buttons));
-          }, screenshot: { name: `template-top-actions-${theme}`, requireText: ["我的投稿", "自定义模板", "导入", "内置"] },
+            ctx.assert(await ctx.eval("!document.querySelector('[data-testid=enterprise-template-submissions]')&&document.querySelector('[data-testid=enterprise-card-submission]').textContent.includes('我的产品模板')&&!document.querySelector('[data-testid=enterprise-card-submission] input[type=file]')"),'selected template is bound to submission without a global upload button');
+          }, screenshot: { name: `template-card-submission-${theme}`, requireText: ["投稿到企业", "我的产品模板", "提交审核"] },
         });
-        await ctx.trustedClick('[aria-label="模板操作"] [data-testid="enterprise-template-submissions"]');
-        await ctx.waitFor(`Boolean(document.querySelector('${manage}'))`);
-        await close(ctx, manage);
-        await ctx.waitFor(`document.activeElement?.dataset.testid === 'enterprise-template-submissions'`);
+        await close(ctx, '[data-testid="enterprise-card-submission"][data-open]');
         await close(ctx, '[data-slot="dialog-content"][data-open]');
         await ctx.waitFor(`document.activeElement?.dataset.testid === 'proof-template-source'`);
       }
@@ -402,7 +399,7 @@ export default {
             for (const index of [3,4]) {
               await ctx.trustedClick(`${views} [role="tab"]:nth-child(${index})`);
               await ctx.waitFor("Boolean(document.querySelector('[data-testid=remote-template-card]'))");
-              ctx.assert(await ctx.eval(`(()=>{const card=document.querySelector('[data-testid=remote-template-card]');const style=getComputedStyle(card);return card.dataset.variant==='resource'&&card.dataset.surface==='outline'&&style.borderTopWidth==='1px'&&style.backgroundColor==='rgba(0, 0, 0, 0)'&&card.querySelector('[data-slot=card-icon]')&&getComputedStyle(card.querySelector('h3')).fontSize==='14px'&&getComputedStyle(card.querySelector('[data-slot=card-footer] button')).borderTopWidth==='1px';})()`),'remote templates use shared outlined resource cards');
+              ctx.assert(await ctx.eval(`(()=>{const card=document.querySelector('[data-testid=remote-template-card]');const frame=card.querySelector('article');return frame&&getComputedStyle(frame).height==='227px'&&getComputedStyle(card.querySelector('[data-template-cover]')).height==='137px'&&card.querySelector('[data-testid=remote-template-preview]')&&getComputedStyle(card.querySelector('h3')).fontSize==='14px';})()`),'remote templates reuse the built-in cover card frame');
             }
           }, assert: async () => {
             ctx.assert(await ctx.eval(`(()=>{const d=document.querySelector('${dialog}');const lists=d.querySelectorAll('[role=tablist]');const selected=lists[0].querySelector('[aria-selected=true]');const panel=document.getElementById(selected.getAttribute('aria-controls'));return lists.length===1&&lists[0].querySelectorAll('[role=tab]').length===4&&panel?.querySelector('[data-testid=remote-template-card]')&&[...lists[0].querySelectorAll('[role=tab]')].filter(tab=>tab.tabIndex===0).length===1;})()`),'one catalog tablist owns the active remote template panel');
@@ -477,7 +474,7 @@ export default {
     { name: "技能导出表单错误保留与键盘", async run(ctx) {
       await reset(ctx); await ctx.trustedClick('[data-testid="proof-fail-resource-write"]');
       await ctx.trustedClick('[data-testid="skills-catalog"] [data-testid="skill-card"] [data-slot="card-footer"] button');
-      await clickMenuItem(ctx,'导出 / 投稿');
+      await clickMenuItem(ctx,'导出技能包');
       await ctx.waitFor(`Boolean(document.querySelector('${exporting}'))`);
       const inputIds = await ctx.eval(`[...document.querySelectorAll('${exporting} input')].map(input => input.id)`);
       await ctx.fill(`input[id="${inputIds[0]}"]`, "产品调研技能共享版");
@@ -490,7 +487,7 @@ export default {
           ctx.assert(await ctx.eval(`(() => { const inputs = [...document.querySelectorAll('${exporting} input')]; return inputs[0].value === '产品调研技能共享版' && inputs[1].value === '2.0.0' && inputs.every(input => input.labels.length === 1 && input.closest('[data-slot="field"]')); })()`), "export shared fields retain valid values after failure");
           await key(ctx, "Tab");
           ctx.assert(await ctx.eval(`document.querySelector('${exporting}').contains(document.activeElement)`), "keyboard focus stays inside the dialog");
-        }, screenshot: { name: "export-error-draft", requireText: ["导出独立技能 / 企业投稿", "技能名称", "版本号"] },
+        }, screenshot: { name: "export-error-draft", requireText: ["导出独立技能", "技能名称", "版本号"] },
       });
       await key(ctx, "Escape"); await ctx.waitFor(`!document.querySelector('${exporting}')`);
       await ctx.waitFor(`document.activeElement?.getAttribute('aria-label')==='产品调研技能的操作'`, { label: "Escape restores export action focus" });
@@ -526,11 +523,13 @@ export default {
             await ctx.waitFor("!document.querySelector('[role=alertdialog]')");
           } else await key(ctx,'Escape');
           await stableClick(ctx,`${root} [role="tab"]:first-child`);
-          await ctx.waitFor(`Boolean(document.querySelector('${root} [data-testid=enterprise-${type}-submissions]'))`);
-          await ctx.trustedClick(`${root} [data-testid=enterprise-${type}-submissions]`);
-          await ctx.waitFor("Boolean(document.querySelector('[data-testid=enterprise-resource-management] input[type=file]'))");
-          ctx.assert(await ctx.eval("!document.querySelector('[data-testid=enterprise-resource-management]').textContent.includes('全部企业')"),'personal submission entry never exposes management catalog');
-          await close(ctx,manage);
+          ctx.assert(await ctx.eval(`!document.querySelector('${root} [data-testid=enterprise-${type}-submissions]')`),'personal catalog has no standalone submissions button');
+          const personalCard=type==='extension'?'[data-testid="plugin-package-list-item"]':'[data-testid="skill-card"][data-source="personal"]';
+          await stableClick(ctx,`${root} ${personalCard} [aria-haspopup="menu"]`);
+          await clickMenuItem(ctx,'投稿到企业');
+          await ctx.waitFor("Boolean(document.querySelector('[data-testid=enterprise-card-submission]'))");
+          ctx.assert(await ctx.eval("!document.querySelector('[data-testid=enterprise-card-submission] input[type=file]')"),'selected personal resource is bound without a file picker');
+          await close(ctx,'[data-testid="enterprise-card-submission"][data-open]');
         }
       }
       await ctx.prove('卡片管理操作在后台降权后停止',{voiceover:vo[14],action:async()=>{
@@ -578,11 +577,12 @@ export default {
           await close(ctx,'[data-testid="enterprise-card-access"][data-open]');
         } else await key(ctx,'Escape');
         await ctx.trustedClick(`${main} [role=tablist][aria-label="模板"] [role=tab]:first-child`);
-        await ctx.waitFor(`Boolean(document.querySelector('${main} [data-testid=enterprise-template-submissions]'))`);
-        await ctx.trustedClick(`${main} [data-testid=enterprise-template-submissions]`);
-        await ctx.waitFor(`Boolean(document.querySelector('${manage} input[type=file]'))`);
-        ctx.assert(await ctx.eval(`!document.querySelector('${manage}').textContent.includes('全部企业')`),'template personal submissions are available to all active roles without management controls');
-        await close(ctx,manage);
+        ctx.assert(await ctx.eval(`!document.querySelector('${main} [data-testid=enterprise-template-submissions]')`),'templates have no standalone submissions button');
+        await ctx.trustedClick(`${main} article [aria-haspopup="menu"]`);
+        await clickMenuItem(ctx,'投稿到企业');
+        await ctx.waitFor("Boolean(document.querySelector('[data-testid=enterprise-card-submission]'))");
+        ctx.assert(await ctx.eval("document.querySelector('[data-testid=enterprise-card-submission]').textContent.includes('我的产品模板')&&!document.querySelector('[data-testid=enterprise-card-submission] input[type=file]')"),'submission uses the selected personal template');
+        await close(ctx,'[data-testid="enterprise-card-submission"][data-open]');
         await close(ctx,main);
       }
       await ctx.trustedClick('[data-testid="proof-owner"]');
@@ -595,11 +595,10 @@ export default {
       for (const source of ["cloud", "enterprise"]) {
         await ctx.trustedClick(`${dialog} [role=tablist] [role=tab]:nth-child(${source === "cloud" ? 3 : 4})`);
         await ctx.waitFor("document.querySelectorAll('[data-testid=remote-template-card]').length===2");
-        await ctx.prove(`${source}：紧凑模板卡片保留安装前预览`, {
+        await ctx.prove(`${source}：封面卡片保留直接点击和安装前预览`, {
           voiceover: vo[16], action: async () => {
-            await ctx.trustedClick('[data-testid="remote-template-card"] button');
-            await ctx.waitFor("[...document.querySelectorAll('[role=menuitem]')].some(item=>item.textContent==='查看'&&!item.hasAttribute('aria-disabled'))");
-            await clickMenuItem(ctx, '查看');
+            await ctx.waitFor("document.querySelector('[data-testid=remote-template-card] [data-template-cover] img')?.naturalWidth>0 && !document.querySelector('[data-testid=remote-template-preview]').disabled");
+            await ctx.trustedClick('[data-testid="remote-template-preview"]');
             await ctx.waitFor("document.querySelectorAll('[role=dialog][data-open]').length===2");
           }, assert: async () => {
             await ctx.waitFor("[...document.querySelectorAll('[role=dialog][data-open]')].at(-1).querySelector('img')?.naturalWidth===1600");

@@ -72,6 +72,9 @@ test("card action menu exposes one named button and preserves disabled state", (
   expect(html).toContain('aria-haspopup="menu"');
   expect(html).toContain('disabled');
   expect(html).toContain('lucide-ellipsis');
+  expect(html).toContain('rounded-lg border-0');
+  expect(html).toContain('hover:bg-muted/60');
+  expect(html).not.toContain('shadow-xs/5');
 });
 
 test("ordinary cards retain default and outline presentation without opting into resources", () => {

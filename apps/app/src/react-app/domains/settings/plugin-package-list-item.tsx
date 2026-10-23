@@ -61,7 +61,7 @@ export function PluginPackageListItem({
         </CardHeader>
         <CardFooter>
           <CardActionsMenu label={`${manifest.name}的操作`} disabled={actionBusy}>
-            <DropdownMenuItem disabled={actionBusy || actionDisabled} onClick={onAction}>{actionBusy ? <Loader2 className="size-4 animate-spin" /> : null}{actionLabel}</DropdownMenuItem>
+            <DropdownMenuItem disabled={actionBusy || actionDisabled} aria-busy={actionBusy} onClick={onAction}>{actionLabel}</DropdownMenuItem>
             {menuItems}
           </CardActionsMenu>
         </CardFooter>
