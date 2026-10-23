@@ -6,7 +6,7 @@ import { join } from "node:path";
 const requireFromApp = createRequire(new URL("../../apps/app/package.json", import.meta.url));
 const JSZip = requireFromApp("jszip");
 const dialog = '[data-testid="enterprise-resource-management"]';
-const submitButton = `${dialog} input[type="file"] ~ button:last-child`;
+const submit = (ctx) => ctx.clickText("提交审核", { selector: `${dialog} button` });
 
 export default {
   id: "enterprise-plugin-submission",
@@ -47,11 +47,11 @@ export default {
               return original(input, init);
             };
           })()`);
-          await ctx.trustedClick(submitButton);
+          await submit(ctx);
           await ctx.waitFor(`Boolean(document.querySelector('${dialog} [role="alert"]'))`);
           await ctx.expectText("plugin-workshop.ipollowork-plugin");
-          ctx.assert(await ctx.eval(`document.querySelector('${dialog} input[type="file"]').files.length === 1`), "failed upload retains the selected file for retry");
-          await ctx.trustedClick(submitButton);
+          await ctx.expectText("已选择，提交后等待审核");
+          await submit(ctx);
           await ctx.waitForText("投稿已提交，可在我的投稿中查看审核状态。");
         },
         assert: async () => {

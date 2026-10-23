@@ -104,7 +104,7 @@ export default {
               await ctx.waitFor(`document.querySelectorAll('${dialog} article').length === 2`);
               ctx.assert(await ctx.eval(`['审核','分配权限','下架'].every(text => [...document.querySelectorAll('${dialog} button')].some(button => button.textContent === text))`), `${roleLabel} sees its assigned review, grant and archive controls`);
               await ctx.trustedClick(`${dialog} article:last-child button:last-child`);
-              await ctx.waitForText(`审核${label}投稿`);
+              await ctx.waitForText("审核企业投稿");
               await ctx.expectText("通过并发布");
               await ctx.clickText('返回资源列表');
               await ctx.waitFor(`!document.body.innerText.includes('通过并发布')`);

@@ -154,7 +154,7 @@ export default {
           await ctx.waitFor(`Boolean(document.querySelector('${review} [data-slot="alert"]'))`);
         }, assert: async () => {
           ctx.assert(await ctx.eval(`(() => { const n = document.querySelector('${review} textarea'); return n.value === '请补充模板的使用说明' && n.labels.length === 1 && !!n.closest('[data-slot="field"]'); })()`), "review shared Field labels and draft survive failure");
-        }, screenshot: { name: "review-failure", requireText: ["审核模板投稿", "审核说明", "企业服务请求失败"] },
+        }, screenshot: { name: "review-failure", requireText: ["审核企业投稿", "审核说明", "企业服务请求失败"] },
       });
       await ctx.trustedClick(`${review} [data-slot="dialog-footer"] button:nth-child(2)`);
       await ctx.waitFor(`!document.querySelector('${review}')`);
@@ -369,7 +369,10 @@ export default {
           voiceover: vo[6], action: async () => {
             await ctx.trustedClick('[data-testid="proof-template-source"]');
             await ctx.waitFor(`Boolean(document.querySelector('[aria-label="模板操作"]'))`);
+            await ctx.waitFor("document.querySelector('[role=dialog][data-open]').getAnimations({subtree:true}).every(animation=>animation.playState!=='running')");
             await ctx.trustedClick('[role="tablist"][aria-label="模板"] [role="tab"]:first-child');
+            await ctx.waitFor("document.querySelector('[role=tablist][aria-label=模板] [role=tab]:first-child').getAttribute('aria-selected')==='true'");
+            await ctx.expectText("我的产品模板");
             await ctx.trustedClick('[role="dialog"][data-open] article [aria-haspopup="menu"]');
             await clickMenuItem(ctx,'投稿到企业');
             await ctx.waitFor("Boolean(document.querySelector('[data-testid=enterprise-card-submission]'))");
@@ -394,12 +397,16 @@ export default {
             await ctx.waitFor(`Boolean(document.querySelector('${views}'))`);
             await ctx.waitFor(`document.querySelector('${dialog}').getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
             await ctx.trustedClick(`${views} [role="tab"]:first-child`);
+            await ctx.waitFor(`Boolean(document.querySelector('${dialog} article [data-template-cover]'))`);
+            const localFrame = await ctx.eval(`(()=>{const card=document.querySelector('${dialog} article');return {height:getComputedStyle(card).height,cover:getComputedStyle(card.querySelector('[data-template-cover]')).height,font:getComputedStyle(card.querySelector('h3')).fontSize};})()`);
             await key(ctx, "ArrowRight"); await key(ctx, "Enter");
             await ctx.waitFor(`document.querySelector('${views} [role="tab"]:nth-child(2)').getAttribute('aria-selected')==='true'`);
             for (const index of [3,4]) {
               await ctx.trustedClick(`${views} [role="tab"]:nth-child(${index})`);
               await ctx.waitFor("Boolean(document.querySelector('[data-testid=remote-template-card]'))");
-              ctx.assert(await ctx.eval(`(()=>{const card=document.querySelector('[data-testid=remote-template-card]');const frame=card.querySelector('article');return frame&&getComputedStyle(frame).height==='227px'&&getComputedStyle(card.querySelector('[data-template-cover]')).height==='137px'&&card.querySelector('[data-testid=remote-template-preview]')&&getComputedStyle(card.querySelector('h3')).fontSize==='14px';})()`),'remote templates reuse the built-in cover card frame');
+              const remoteFrame = await ctx.eval(`(()=>{const card=document.querySelector('[data-testid=remote-template-card]');return {height:getComputedStyle(card.querySelector('article')).height,cover:getComputedStyle(card.querySelector('[data-template-cover]')).height,font:getComputedStyle(card.querySelector('h3')).fontSize};})()`);
+              ctx.assert(JSON.stringify(remoteFrame) === JSON.stringify(localFrame), 'remote templates reuse the current local cover card dimensions');
+              ctx.assert(await ctx.eval("Boolean(document.querySelector('[data-testid=remote-template-card] [data-testid=remote-template-preview]'))"), 'remote templates expose the preview action');
             }
           }, assert: async () => {
             ctx.assert(await ctx.eval(`(()=>{const d=document.querySelector('${dialog}');const lists=d.querySelectorAll('[role=tablist]');const selected=lists[0].querySelector('[aria-selected=true]');const panel=document.getElementById(selected.getAttribute('aria-controls'));return lists.length===1&&lists[0].querySelectorAll('[role=tab]').length===4&&panel?.querySelector('[data-testid=remote-template-card]')&&[...lists[0].querySelectorAll('[role=tab]')].filter(tab=>tab.tabIndex===0).length===1;})()`),'one catalog tablist owns the active remote template panel');
@@ -561,7 +568,9 @@ export default {
         if(role!=='owner')await ctx.trustedClick(`[data-testid="proof-${role}"]`);
         await ctx.trustedClick('[data-testid="proof-template-source"]');
         await ctx.waitFor(`Boolean(document.querySelector('${main} [role=tablist][aria-label="模板"]'))`);
+        await ctx.waitFor(`document.querySelector('${main}').getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
         await ctx.trustedClick(`${main} [role=tablist][aria-label="模板"] [role=tab]:last-child`);
+        await ctx.waitFor(`document.querySelector('${main} [role=tablist][aria-label="模板"] [role=tab]:last-child').getAttribute('aria-selected')==='true'`);
         await ctx.waitFor("Boolean(document.querySelector('[data-testid=remote-template-card]'))");
         const allowed=role==='owner'||role==='template_admin';
         const menuProof={voiceover:vo[15],action:async()=>{
