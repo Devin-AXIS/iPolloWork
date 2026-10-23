@@ -36,6 +36,7 @@ export function enterpriseErrorMessage(error: unknown): string {
   if (code === "enterprise_account_changed") return "企业账号已切换，请重新打开操作。";
   if (code === "revision_conflict") return "权限已被其他管理员修改，请刷新后重新分配。";
   if (code === "resource_version_reviewed") return "此版本已由其他管理员审核，请刷新资源列表。";
+  if (code === "resource_version_required") return "请先审核通过一个资源版本，再重新上架。";
   if (code === "navigation_revision_conflict") return "导航快捷入口已被其他管理员修改，已刷新，请重新选择。";
   if (code === "enterprise_feature_unavailable" || (error instanceof EnterpriseRequestError && [404, 405, 501].includes(error.status))) return "企业服务暂不支持此功能，请联系管理员升级。";
   if (code === "enterprise_invalid_response") return "企业服务返回的数据不完整，请重试或联系管理员。";
@@ -164,6 +165,10 @@ export const enterpriseApi = {
   archive: (connection: EnterpriseConnection, resourceId: string, type: EnterpriseResourceType) =>
     enterpriseManagementRequest(connection, type, `/api/v1/resources/${encodeURIComponent(resourceId)}`, ok, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "archived" }),
+    }),
+  restore: (connection: EnterpriseConnection, resourceId: string, type: EnterpriseResourceType) =>
+    enterpriseManagementRequest(connection, type, `/api/v1/resources/${encodeURIComponent(resourceId)}`, ok, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "published" }),
     }),
   departments: (connection: EnterpriseConnection, cursor?: string | null, signal?: AbortSignal) =>
     enterpriseRequest(connection, `/api/v1/departments?${query({ cursor })}`, enterprisePageSchema(enterpriseDepartmentSchema), { signal }),

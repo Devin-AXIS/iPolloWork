@@ -43,7 +43,7 @@ export function EnterpriseResourceMenuItems({ connection, resource, busy, onActi
   return <><DropdownMenuSeparator />
     {review?.reviewStatus === "pending" ? <DropdownMenuItem disabled={busy} onClick={() => onAction({ resource, kind: "review", version: review.version })}>审核投稿</DropdownMenuItem> : null}
     <DropdownMenuItem disabled={busy || !connection.features.resourcePermissions} onClick={() => onAction({ resource, kind: "access" })}>分配权限</DropdownMenuItem>
-    {resource.lifecycle?.status !== "archived" ? <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onAction({ resource, kind: "archive" })}>下架</DropdownMenuItem> : null}
+    {resource.lifecycle?.status === "archived" ? <DropdownMenuItem disabled={busy} onClick={() => onAction({ resource, kind: "restore" })}>重新上架</DropdownMenuItem> : <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onAction({ resource, kind: "archive" })}>下架</DropdownMenuItem>}
   </>;
 }
 
@@ -104,7 +104,7 @@ function ResourceAccessPanel({ connection, resource, busy, onBusyChange, onClose
 
 export type EnterpriseResourceAction = {
   resource: Pick<EnterpriseManagedResource, "id" | "name" | "type">;
-} & ({ kind: "access" | "archive" } | { kind: "review"; version: string });
+} & ({ kind: "access" | "archive" | "restore" } | { kind: "review"; version: string });
 
 export function EnterpriseResourceActionDialog({ connection, action, onClose, onChanged }: {
   connection: EnterpriseConnection; action: EnterpriseResourceAction; onClose: () => void; onChanged: () => void;
@@ -116,15 +116,20 @@ export function EnterpriseResourceActionDialog({ connection, action, onClose, on
   useEffect(() => { trigger.current = document.querySelector<HTMLElement>(`button[aria-label=${JSON.stringify(`${action.resource.name}的操作`)}]`); }, [action.resource.id, action.resource.name]);
   useEffect(() => { if (!manager) onClose(); }, [manager, onClose]);
   const close = () => { if (!busy) { onClose(); requestAnimationFrame(() => trigger.current?.focus()); } };
-  const archive = async () => {
+  const changePublication = async () => {
+    if (busy) return;
     setBusy(true); setError(null);
-    try { await enterpriseApi.archive(connection, action.resource.id, action.resource.type); onChanged(); onClose(); toast.success("资源已下架。"); }
+    try { await (action.kind === "restore" ? enterpriseApi.restore : enterpriseApi.archive)(connection, action.resource.id, action.resource.type); onChanged(); onClose(); toast.success(action.kind === "restore" ? "资源已重新上架。" : "资源已下架。"); }
     catch (cause) { setError(enterpriseErrorMessage(cause)); }
     finally { setBusy(false); }
   };
   if (!manager) return null;
-  if (action.kind === "archive") return <ConfirmModal open title="下架企业资源" message={`下架“${action.resource.name}”后，成员将无法再从企业目录获取它；已下载的本地副本另行管理。`} confirmLabel="下架" cancelLabel="取消" busy={busy} variant="danger" onConfirm={() => void archive()} onCancel={close}>{error ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert> : null}</ConfirmModal>;
-  return <Dialog open onOpenChange={(open) => { if (!open) close(); }}><DialogContent finalFocus={trigger} className="max-h-[90dvh] max-w-[640px] overflow-y-auto" data-testid={`enterprise-card-${action.kind}`}>{action.kind === "review" ? <ResourceReviewPanel connection={connection} resource={action.resource} version={action.version} busy={busy} onBusyChange={setBusy} onClose={onClose} onReviewed={onChanged} /> : <ResourceAccessPanel connection={connection} resource={action.resource} busy={busy} onBusyChange={setBusy} onClose={onClose} onSaved={() => { onChanged(); toast.success("权限已保存并下发。"); }} />}</DialogContent></Dialog>;
+  if (action.kind === "archive") return <ConfirmModal open title="下架企业资源" message={`下架“${action.resource.name}”后，成员将无法再从企业目录获取它；已下载的本地副本另行管理。`} confirmLabel="下架" cancelLabel="取消" busy={busy} variant="danger" onConfirm={() => void changePublication()} onCancel={close}>{error ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert> : null}</ConfirmModal>;
+  return <Dialog open onOpenChange={(open) => { if (!open) close(); }}><DialogContent finalFocus={trigger} className="max-h-[90dvh] max-w-[640px] overflow-y-auto" data-testid={`enterprise-card-${action.kind}`}>{action.kind === "restore" ? <>
+    <DialogHeader><DialogTitle>重新上架企业资源</DialogTitle><DialogDescription>重新上架“{action.resource.name}”后，有权限的成员可获取已审核通过的版本，现有授权保持不变。</DialogDescription></DialogHeader>
+    {error ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert> : null}
+    <DialogFooter><Button variant="outline" disabled={busy} onClick={close}>取消</Button><Button disabled={busy} onClick={() => void changePublication()}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}重新上架</Button></DialogFooter>
+  </> : action.kind === "review" ? <ResourceReviewPanel connection={connection} resource={action.resource} version={action.version} busy={busy} onBusyChange={setBusy} onClose={onClose} onReviewed={onChanged} /> : <ResourceAccessPanel connection={connection} resource={action.resource} busy={busy} onBusyChange={setBusy} onClose={onClose} onSaved={() => { onChanged(); toast.success("权限已保存并下发。"); }} />}</DialogContent></Dialog>;
 }
 
 export type EnterpriseResourceSubmission = { name: string; prepareFile: () => Promise<File> };
@@ -267,6 +272,7 @@ export function EnterpriseResourceControls({ connection, type, onChanged, mode =
           <Button size="sm" variant="outline" disabled={busy || !connection.features?.resourcePermissions} id={`${actionId}-access-${item.id}`} onClick={(event) => { returnFocusId.current = event.currentTarget.id; setAccessResource(item); }}>分配权限</Button>
           {item.latestVersion?.reviewStatus === "pending" ? <Button size="sm" disabled={busy} id={`${actionId}-review-${item.id}`} onClick={(event) => { returnFocusId.current = event.currentTarget.id; setError(null); setReviewResource(item); }}>审核</Button> : null}
           {item.status === "published" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void mutation(() => enterpriseApi.archive(connection, item.id, type), "资源已下架。")}>下架</Button> : null}
+          {item.status === "archived" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void mutation(() => enterpriseApi.restore(connection, item.id, type), "资源已重新上架。")}>重新上架</Button> : null}
         </article>)}
         {!resources.length && !busy && !error ? <Empty variant="ghost"><EmptyDescription>{search.trim() ? `没有匹配的${label}` : `企业中暂无${label}`}</EmptyDescription>{search.trim() ? <Button variant="outline" size="sm" onClick={() => setSearch("")}>清除搜索</Button> : null}</Empty> : null}
       </div>{cursor ? <Button variant="outline" disabled={busy} onClick={() => void refresh(true)}>加载更多资源</Button> : null}</TabsContent> : null}<TabsContent value="mine" className="space-y-2">{submissions.map((item) => <article key={`${item.resourceId}:${item.version}`} className="rounded-xl border border-border p-3"><p className="text-sm font-medium">{item.resourceName || label} · v{item.version}</p><p className="mt-1 text-xs text-muted-foreground">{item.resourceStatus ? `${STATUS_LABELS[item.resourceStatus]} · ` : ""}{REVIEW_LABELS[item.reviewStatus]}{item.reviewNote ? ` · ${item.reviewNote}` : ""}</p></article>)}{!submissions.length && !busy && !error ? <Empty variant="ghost"><EmptyDescription>还没有投稿，选择自己的{label}{type === "skill" ? "文件" : "包"}提交审核。</EmptyDescription></Empty> : null}{cursor ? <Button variant="outline" disabled={busy} onClick={() => void refresh(true)}>加载更多投稿</Button> : null}</TabsContent>

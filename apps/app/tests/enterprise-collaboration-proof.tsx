@@ -96,7 +96,7 @@ window.fetch = async (input, init) => {
       if (body.decision === "approved") { item.lifecycle.status = "published"; item.lifecycle.installable = true; }
       return Response.json({ ok: true });
     }
-    if (item?.lifecycle && method === "PATCH") { item.lifecycle.status = "archived"; item.lifecycle.installable = false; return Response.json({ ok: true }); }
+    if (item?.lifecycle && method === "PATCH") { item.lifecycle.status = body.status; item.lifecycle.installable = body.status === "published" && item.lifecycle.review?.reviewStatus === "approved"; return Response.json({ ok: true }); }
     if (item?.type === "template" && method === "GET" && url.searchParams.has("version")) return Response.json({ manifest: { ...personalTemplate.manifest, id: item.manifestId, title: item.name }, coverDataUrl: `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540"><rect width="960" height="540" fill="#dceceb"/><text x="80" y="280" font-size="56">Submission preview</text></svg>')}` });
   }
   if (notificationsMode && url.pathname.endsWith("/messages")) {

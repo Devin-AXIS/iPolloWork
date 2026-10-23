@@ -12,6 +12,21 @@ import { conversationEngineAdapters, withEnterpriseShareContext } from "../src/r
 
 const connection: EnterpriseConnection = { id: "ent_test", name: "示例企业", shortName: "示例", origin: "https://enterprise.example", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "member", status: "active" }, session: { token: "synthetic-enterprise-session", expiresAt: "2099-01-01T00:00:00.000Z" } };
 describe("enterprise client boundary", () => {
+  test("relisting keeps the resource type boundary and sends the published status", async () => {
+    const cached = { ...connection, membership: { ...connection.membership, role: "admin" } } satisfies EnterpriseConnection;
+    const writes: unknown[] = [];
+    const mock = spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      if (String(url).endsWith("/membership")) return Response.json({ membership: { ...cached.membership, displayName: "Admin", email: "admin@example.test" } });
+      expect(init?.method).toBe("PATCH");
+      writes.push(typeof init?.body === "string" ? JSON.parse(init.body) : null);
+      return Response.json({ ok: true });
+    });
+    try {
+      for (const type of ["template", "extension", "skill"] satisfies EnterpriseResourceType[]) await enterpriseApi.restore(cached, "archived-resource", type);
+      expect(writes).toEqual([{ status: "published" }, { status: "published" }, { status: "published" }]);
+      expect(enterpriseErrorMessage(new Error("resource_version_required"))).toContain("先审核通过");
+    } finally { mock.mockRestore(); }
+  });
   test("submission history preserves its page cursor and upload status", async () => {
     const requested: string[] = [];
     const mock = spyOn(globalThis, "fetch").mockImplementation(async input => {
@@ -85,10 +100,11 @@ describe("enterprise client boundary", () => {
           () => enterpriseApi.setAccess(cached, "resource", { revision: 0, access: "all", memberIds: [], departments: [], groupIds: [] }, type),
           () => enterpriseApi.review(cached, "resource", "1.0.0", "approved", "", type),
           () => enterpriseApi.archive(cached, "resource", type),
+          () => enterpriseApi.restore(cached, "resource", type),
         ];
         for (const action of actions) await expect(action()).rejects.toMatchObject({ status: 403, code: "forbidden" });
       }
-      expect(checks).toBe(15);
+      expect(checks).toBe(18);
       expect(managementRequests).toBe(0);
     } finally { fetchMock.mockRestore(); }
   });
