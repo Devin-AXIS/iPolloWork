@@ -100,12 +100,12 @@ export function EnvVarRequestTool({ part }: EnvVarRequestToolProps) {
           />
 
           {!canModify ? (
-            <p className="rounded-lg border border-amber-6/40 bg-amber-3/20 px-3 py-2 text-xs text-amber-11">
+            <p className="rounded-lg border-0 bg-feedback-warning px-3 py-2 text-xs text-amber-11">
               Environment variables can only be edited from a local desktop workspace.
             </p>
           ) : null}
           {applyError ? (
-            <p className="rounded-lg border border-red-6/40 bg-red-3/20 px-3 py-2 text-xs text-red-11">
+            <p className="rounded-lg border-0 bg-feedback-error px-3 py-2 text-xs text-red-11">
               {applyError.message}
             </p>
           ) : null}

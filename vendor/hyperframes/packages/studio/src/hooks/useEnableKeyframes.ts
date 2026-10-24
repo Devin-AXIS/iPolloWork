@@ -1,6 +1,6 @@
 /**
  * Centralized "Enable keyframes" logic that handles ALL scenarios:
- * - Element has explicit keyframes → add/remove at seeked time
+ * - Element has explicit keyframes → add at seeked time
  * - Element has a flat tween → convert + add at seeked time + propagate to end
  * - Element has no animation (deleted) → create new tween with correct position + keyframes
  *
@@ -12,7 +12,7 @@ import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gs
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { fetchParsedAnimations, getAnimationsForElement } from "./useGsapTweenCache";
-import { selectorFromSelection, computeElementPercentage, isInstantHold } from "./gsapShared";
+import { selectorFromSelection, computeElementPercentage, isInstantHold, MANUAL_KEYFRAME_MARKER } from "./gsapShared";
 import {
   resolveTweenStart,
   resolveTweenDuration,
@@ -20,6 +20,7 @@ import {
 } from "../utils/globalTimeCompiler";
 import { POSITION_PROPS } from "./gsapRuntimeReaders";
 import { roundTo3 } from "../utils/rounding";
+import { isolateSharedAnimationTargets } from "./gsapRuntimeBridge";
 import { nearestPointOnPath } from "../components/editor/motionPathGeometry";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 
@@ -62,12 +63,16 @@ export interface EnableKeyframesSession {
  */
 export function animatedProps(anim: GsapAnimation | null): string[] {
   if (!anim) return ["x", "y"];
-  const own = Object.keys(anim.properties ?? {});
+  const own = Object.keys(anim.properties ?? {}).filter((key) => key !== "data");
   if (own.length > 0) return own;
   const stops = anim.keyframes?.keyframes;
   if (stops?.length) {
     const keys = new Set<string>();
-    for (const stop of stops) for (const k of Object.keys(stop.properties ?? {})) keys.add(k);
+    for (const stop of stops) {
+      for (const key of Object.keys(stop.properties ?? {})) {
+        if (key !== "data") keys.add(key);
+      }
+    }
     if (keys.size > 0) return [...keys];
   }
   return ["x", "y"];
@@ -84,6 +89,18 @@ export function isPlayheadWithinTween(anim: GsapAnimation, currentTime: number):
   return isTimeWithinTween(currentTime, start, resolveTweenDuration(anim));
 }
 
+/** A conversion alone is not proof that capture at the playhead was persisted. */
+export function keyframeAtPlayhead(
+  animation: GsapAnimation,
+  selection: DomEditSelection,
+  currentTime: number,
+): GsapPercentageKeyframe | undefined {
+  const percentage = computeElementPercentage(currentTime, selection, animation);
+  return animation.keyframes?.keyframes.find(
+    (point) => Math.abs(point.percentage - percentage) < 0.001,
+  );
+}
+
 /**
  * Grow a keyframe tween's range to reach a playhead that sits outside it, and add a
  * keyframe there. Existing keyframes keep their *absolute* timing (percentages
@@ -94,7 +111,7 @@ export function isPlayheadWithinTween(anim: GsapAnimation, currentTime: number):
 export function buildExtendedKeyframes(
   anim: GsapAnimation,
   currentTime: number,
-  position: Record<string, number>,
+  position: Record<string, number | string>,
 ): { position: number; duration: number; keyframes: GsapPercentageKeyframe[] } {
   const oldStart = resolveTweenStart(anim) ?? 0;
   const oldDuration = resolveTweenDuration(anim);
@@ -105,7 +122,7 @@ export function buildExtendedKeyframes(
     newDuration > 0
       ? Math.max(
           0,
-          Math.min(100, Math.round(((absoluteTime - newStart) / newDuration) * 1000) / 10),
+          Math.min(100, Math.round(((absoluteTime - newStart) / newDuration) * 100_000_000) / 1_000_000),
         )
       : 0;
   const stops = anim.keyframes?.keyframes ?? [];
@@ -142,7 +159,7 @@ async function replaceSetWithSingleKeyframe(
       targetSelector: selector,
       position: roundTo3(range.start),
       duration: roundTo3(range.duration),
-      keyframes: [{ percentage: 0, properties: position }],
+      keyframes: [{ percentage: 0, properties: { ...position, data: MANUAL_KEYFRAME_MARKER } }],
       ease: setAnim.ease,
     },
     { label: "Enable keyframes", softReload: true },
@@ -229,14 +246,8 @@ async function fetchAnimationsForElement(sel: DomEditSelection): Promise<GsapAni
   return (await tryFetchAnimationsForElement(sel)) ?? [];
 }
 
-/**
- * Apply "add keyframe at playhead" to a tween that already has x/y keyframes:
- * toggle off an existing stop, add one at the playhead's tween-relative %, or —
- * when the playhead sits outside the tween — extend the range to reach it (see
- * buildExtendedKeyframes). Shared by native keyframe tweens and flat tweens that
- * were just converted, so both behave identically.
- */
-async function applyKeyframeAtPlayhead(
+/** Add at the playhead without deleting existing points or extending the tween. */
+export async function applyKeyframeAtPlayhead(
   session: EnableKeyframesSession,
   sel: DomEditSelection,
   kfAnim: GsapAnimation,
@@ -244,40 +255,16 @@ async function applyKeyframeAtPlayhead(
   iframe: HTMLIFrameElement | null,
   commitOverrides?: Partial<CommitMutationOptions>,
 ): Promise<void> {
-  if (!isPlayheadWithinTween(kfAnim, t)) {
-    const position = readElementPosition(iframe, sel, kfAnim);
-    const selector = selectorFromSelection(sel);
-    if (selector && Object.keys(position).length > 0 && session.commitMutation) {
-      const extended = buildExtendedKeyframes(kfAnim, t, position);
-      await session.commitMutation(
-        {
-          type: "replace-with-keyframes",
-          animationId: kfAnim.id,
-          targetSelector: selector,
-          position: extended.position,
-          duration: extended.duration,
-          keyframes: extended.keyframes,
-          ease: kfAnim.ease,
-        },
-        {
-          label: "Add keyframe",
-          softReload: true,
-          ...commitOverrides,
-        },
-      );
-    }
-    return;
-  }
+  if (!isPlayheadWithinTween(kfAnim, t)) return;
   const pct = computeElementPercentage(t, sel, kfAnim);
-  const existing = kfAnim.keyframes?.keyframes.find((k) => Math.abs(k.percentage - pct) <= 1);
+  const existing = kfAnim.keyframes?.keyframes.find((k) => Math.abs(k.percentage - pct) <= 0.001);
   if (existing) {
-    session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage, undefined, sel);
     return;
   }
   if (session.handleGsapAddKeyframeBatch) {
     const position = readElementPosition(iframe, sel, kfAnim);
     if (Object.keys(position).length > 0) {
-      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, position, commitOverrides, sel);
+      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, { ...position, data: MANUAL_KEYFRAME_MARKER }, commitOverrides, sel);
     }
   }
 }
@@ -330,7 +317,7 @@ export async function promoteSetToKeyframes(
           properties: Object.keys(startPosition).length > 0 ? startPosition : endPosition,
           auto: true,
         },
-        { percentage: 100, properties: endPosition },
+        { percentage: 100, properties: { ...endPosition, data: MANUAL_KEYFRAME_MARKER } },
       ],
       ease: setAnim.ease,
     },
@@ -416,7 +403,21 @@ export function useEnableKeyframes(
     // honored. Fall back to the cache only when the fetch couldn't run at all
     // (no projectId / request failed), preserving prior behavior offline.
     const fetched = await tryFetchAnimationsForElement(sel);
-    const anims = fetched ?? session.selectedGsapAnimations;
+    let anims = fetched ?? session.selectedGsapAnimations;
+    const existingKeyframed = anims.find((animation) => animation.keyframes && !animation.arcPath);
+    if (existingKeyframed && (!isPlayheadWithinTween(existingKeyframed, t) || keyframeAtPlayhead(existingKeyframed, sel, t))) return;
+    const existingFlat = anims.find((animation) => !animation.keyframes && !animation.arcPath && !isInstantHold(animation));
+    if (!existingKeyframed && existingFlat && !isPlayheadWithinTween(existingFlat, t)) return;
+    if (session.commitMutation) {
+      const commitMutation = session.commitMutation;
+      const isolation = await isolateSharedAnimationTargets(
+        sel,
+        anims,
+        (_selection, mutation, options) => commitMutation(mutation, options),
+        () => fetchAnimationsForElement(sel),
+      );
+      anims = isolation.animations;
+    }
 
     // An arc/motionPath tween carries reconstructed x/y keyframes too, so match it
     // first and edit it as waypoints — treating it as plain keyframes would break
@@ -435,8 +436,8 @@ export function useEnableKeyframes(
     } else if (flatAnim) {
       // Convert the flat tween (to/from/fromTo) to its natural keyframes — no
       // resolvedFromValues, so the 0%/100% stops keep the real start→end motion
-      // (passing the playhead value would flatten it). Then apply uniformly so an
-      // out-of-range playhead extends the range just like a keyframe tween.
+      // (passing the playhead value would flatten it). Out-of-range playheads
+      // have already returned above and never extend an authored animation.
       enableKeyframesTransactionCounter += 1;
       const coalesceKey = `enable-keyframes:${flatAnim.id}:${enableKeyframesTransactionCounter}`;
       const convertCommitOverrides: Partial<CommitMutationOptions> = {
@@ -492,6 +493,7 @@ export function useEnableKeyframes(
         await session.commitMutation(
           {
             type: "add-with-keyframes",
+            origin: "manual",
             targetSelector: selector,
             position: roundTo3(elStart),
             duration: roundTo3(elDuration),

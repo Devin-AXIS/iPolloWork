@@ -1,4 +1,4 @@
-import type { TimelineElement, TimelineKind } from "../store/playerStore";
+import type { DomClipChild, TimelineElement, TimelineKind } from "../store/playerStore";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 
 const TEXT_TAGS = new Set([
@@ -67,9 +67,70 @@ export function shouldDisplayTimelineElement(
   return resolveTimelineKind(element) !== "element" || hasAnimation;
 }
 
+/** Flatten only editor presentation. Source parents still own transforms and timing. */
+export function presentFlatSceneLayers(
+  elements: TimelineElement[], parentMap: ReadonlyMap<string, string>,
+  domChildren: readonly DomClipChild[], animatedKeys: ReadonlySet<string>, scope?: TimelineElement,
+): TimelineElement[] {
+  const domById = new Map(domChildren.map(child => [child.id, child]));
+  const parents = new Set(parentMap.values());
+  const isAnimated = (element: TimelineElement) =>
+    [element.key, element.id, element.domId].some(key => key !== undefined && animatedKeys.has(key));
+  const visible = elements.filter(element => {
+    // The scene owner is edited in overview; its contents never duplicate that row.
+    if (scope && element.id === scope.id) return false;
+    if (isAnimated(element) || element.compositionSrc || element.timingSource !== "implicit") return true;
+    const dom = domById.get(element.id);
+    if (dom?.hasVisualContent) return true;
+    // Empty wrappers (including text-span wrappers) should not duplicate descendants.
+    if (parents.has(element.id)) return false;
+    return shouldDisplayTimelineElement(element, false);
+  });
+  const groups = new Map(visible.filter(element => parents.has(element.id))
+    .map(element => [element.id, element]));
+  return visible.map(element => {
+    let parentId = parentMap.get(element.id);
+    let parentLabel: string | undefined;
+    const visited = new Set([element.id]);
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = groups.get(parentId);
+      if (parent && parent.id !== scope?.id) {
+        parentLabel = resolveTimelineLayerLabel([parent], parent.track);
+        break;
+      }
+      parentId = parentMap.get(parentId);
+    }
+    return { ...element, sceneLayer: {
+      role: element.id === scope?.id ? "scene" : parents.has(element.id) ? "group" : "element",
+      parentLabel,
+    } };
+  });
+}
+
 export function resolveTimelineLayerLabel(elements: readonly TimelineElement[], track: number) {
   const first = elements[0];
   return first?.label?.trim() || first?.domId?.trim() || first?.id?.trim() || `Layer ${track + 1}`;
+}
+
+/** A shared lane's controls follow its selected clip, then the playhead. */
+export function resolveTimelineLayerPrimaryElement(
+  elements: readonly TimelineElement[],
+  selectedElementId: string | null,
+  currentTime: number,
+): TimelineElement | null {
+  return (
+    elements.find(
+      (element) =>
+        selectedElementId != null &&
+        [element.key, element.id, element.domId].includes(selectedElementId),
+    ) ??
+    elements.find(
+      (element) => currentTime >= element.start && currentTime < element.start + element.duration,
+    ) ??
+    elements[0] ??
+    null
+  );
 }
 
 /** A clip caption is intentionally independent from the layer-tree label. */
@@ -112,7 +173,7 @@ export function resolveTimelineLayerSourceTarget(
 
 export function resolveTimelineLayerDepth(elements: readonly TimelineElement[]) {
   const first = elements[0];
-  if (first?.expandedParentStart === undefined) return 0;
+  if (first?.sceneLayer || first?.expandedParentStart === undefined) return 0;
   return Math.max(1, first.compositionAncestors?.length ?? 1);
 }
 
@@ -159,4 +220,14 @@ export function buildTimelineColorIndexes(
   }
 
   return indexes;
+}
+
+/** Author-declared scenes use the total clip view, including scenes in one HTML file. */
+export function resolveTimelineEditingMode(
+  compositionDepth: number,
+  elements: readonly Pick<TimelineElement, "compositionSrc" | "inlineScopeKind">[],
+): "master" | "scene" {
+  return compositionDepth > 1 || !elements.some((element) => element.compositionSrc || element.inlineScopeKind === "scene")
+    ? "scene"
+    : "master";
 }

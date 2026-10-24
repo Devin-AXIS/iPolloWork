@@ -1,0 +1,1807 @@
+import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
+import { loadCompositions } from "./compositionLoader";
+
+type LoaderParams = Parameters<typeof loadCompositions>[0];
+
+function createLoaderParams(overrides: Partial<LoaderParams> = {}): LoaderParams {
+  return {
+    injectedStyles: [],
+    injectedScripts: [],
+    injectedLinks: [],
+    parseDimensionPx: (value) => (value ? `${value}px` : null),
+    ...overrides,
+  };
+}
+
+async function loadFixture(overrides: Partial<LoaderParams> = {}) {
+  const params = createLoaderParams(overrides);
+  await loadCompositions(params);
+  return params;
+}
+
+function appendExternalHost(source: string, compositionId: string): HTMLDivElement {
+  const host = document.createElement("div");
+  host.setAttribute("data-composition-src", source);
+  host.setAttribute("data-composition-id", compositionId);
+  document.body.appendChild(host);
+  return host;
+}
+
+// jsdom doesn't provide CSS.escape
+const nativeQuerySelector = Element.prototype.querySelector;
+const nativeQuerySelectorAll = Element.prototype.querySelectorAll;
+afterEach(() => {
+  Element.prototype.querySelector = nativeQuerySelector;
+  Element.prototype.querySelectorAll = nativeQuerySelectorAll;
+  delete window.__hfSvgSelectorAliases;
+});
+
+beforeAll(() => {
+  if (typeof globalThis.CSS === "undefined") {
+    (globalThis as any).CSS = {};
+  }
+  if (typeof CSS.escape !== "function") {
+    CSS.escape = (value: string) => value.replace(/([^\w-])/g, "\\$1");
+  }
+});
+
+describe("loadCompositions external hosts", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    document.head.querySelectorAll("style, link").forEach((node) => node.remove());
+    delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).gsap;
+    delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).__selectedTitle;
+    delete (window as Window & { __hyperframes?: unknown }).__hyperframes;
+    delete (window as Window & { __timelines?: unknown }).__timelines;
+    delete (window as WindowWithScopedVars).__hfVariablesByComp;
+    delete (document as { fonts?: unknown }).fonts;
+    vi.restoreAllMocks();
+  });
+
+  it("does nothing when no composition-src elements exist", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await loadFixture();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("binds a fetched composition's scripts to its own URL for __hyperframes.assetUrl", async () => {
+    appendExternalHost("https://example.com/blocks/blk/blk.html", "blk");
+    const compositionHtml =
+      `<div data-composition-id="blk"><script>window.__url = __hyperframes.assetUrl("assets/env.hdr");</scr` +
+      `ipt></div>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(injectedScripts.map((script) => script.textContent).join("")).toContain(
+      'var __hfCompositionSrc = "https://example.com/blocks/blk/blk.html";',
+    );
+  });
+
+  it("injects a fetched composition's import map and module script bound to its own URL", async () => {
+    appendExternalHost("https://example.com/blocks/blk/blk.html", "blk");
+    const compositionHtml =
+      `<div data-composition-id="blk">` +
+      `<script type="importmap">{ "imports": { "three": "./lib/three.js" } }</scr` +
+      `ipt><script type="module">import "three"; window.__url = __hyperframes.assetUrl("a.png");</scr` +
+      `ipt></div>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedScripts } = await loadFixture();
+
+    const importMap = injectedScripts.find((script) => script.type === "importmap");
+    const moduleScript = injectedScripts.find((script) => script.type === "module");
+    expect(JSON.parse(importMap?.textContent || "")).toEqual({
+      imports: { three: "https://example.com/blocks/blk/lib/three.js" },
+    });
+    expect(moduleScript?.textContent).toMatch(/^const __hyperframes = /);
+    expect(moduleScript?.textContent).toContain('"https://example.com/blocks/blk/blk.html"');
+  });
+
+  it("fetches and mounts external composition HTML", async () => {
+    const host = appendExternalHost("https://example.com/comp.html", "scene-1");
+
+    const compositionHtml = `
+      <html><body>
+        <div data-composition-id="scene-1" data-width="1920" data-height="1080">
+          <p>Hello World</p>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+
+    const mountedParagraph = host.querySelector("p");
+
+    expect(mountedParagraph).toBeTruthy();
+    expect(mountedParagraph?.textContent).toBe("Hello World");
+    expect(host.getAttribute("data-width")).toBe("1920");
+    expect(host.getAttribute("data-height")).toBe("1080");
+    expect(
+      Array.from(host.children).some(
+        (child) => child.getAttribute("data-composition-id") === "scene-1",
+      ),
+    ).toBe(false);
+  });
+
+  it("sizes a flattened inner root from a px-suffixed or fractional size", async () => {
+    const host = appendExternalHost("https://example.com/comp.html", "scene-1");
+    const compositionHtml = `
+      <html><body>
+        <div data-composition-id="scene-1" data-width="1080px" data-height="540.5"><p>Hi</p></div>
+      </body></html>
+    `;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+
+    const flattened = host.querySelector("p")?.parentElement;
+    expect(flattened?.style.width).toBe("1080px");
+    expect(flattened?.style.height).toBe("540.5px");
+  });
+
+  it("injects styles into document head", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/comp.html");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html><body>
+        <style>.test { color: red; }</style>
+        <p>Styled</p>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedStyles } = await loadFixture();
+
+    expect(injectedStyles.length).toBeGreaterThan(0);
+  });
+
+  it("mounts <style>/<script> authored as siblings of the composition root", async () => {
+    // The canonical sub-composition shape puts <style> and <script> directly
+    // inside <template>, NEXT TO the root div rather than inside it. Collecting
+    // only from the root dropped the composition's whole stylesheet, so rules
+    // keyed on the root (`#root { container-type: size }`) never landed and every
+    // container-query unit in the composition resolved against the wrong basis.
+    const host = appendExternalHost("https://example.com/scene.html", "scene");
+
+    const compositionHtml =
+      `
+      <html><body>
+        <template>
+          <style>#root { container-type: size; }</style>
+          <div id="root" data-composition-id="scene"><p>Scene</p></div>
+          <script>window.__sceneRan = true;</scr` +
+      `ipt>
+        </template>
+      </body></html>
+    `;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedStyles, injectedScripts } = await loadFixture();
+
+    expect(injectedStyles.map((style) => style.textContent).join("")).toContain(
+      "container-type: size",
+    );
+    expect(injectedScripts.map((script) => script.textContent).join("")).toContain("__sceneRan");
+    // The extracted nodes are stripped from the mounted copy, not duplicated.
+    expect(host.querySelectorAll("style, script")).toHaveLength(0);
+    expect(host.querySelector("p")?.textContent).toBe("Scene");
+  });
+
+  it.each(["scene", "different-host-id"])(
+    "hoists fragment stylesheets once for %s",
+    async (hostId) => {
+      const host = appendExternalHost("https://example.com/compositions/scene.html", hostId);
+      const html = `<div data-composition-id="scene">
+<link rel="stylesheet" href="scene.css"><link rel="icon" href="icon.svg"><p>Styled scene</p></div>`;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(html, { status: 200 }));
+
+      await loadFixture();
+
+      expect(
+        document.head.querySelectorAll('link[href="https://example.com/compositions/scene.css"]'),
+      ).toHaveLength(1);
+      expect(host.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(0);
+      expect(host.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+      expect(host.querySelector("p")?.textContent).toBe("Styled scene");
+    },
+  );
+
+  it("preserves head stylesheets when an external composition uses a template", async () => {
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
+
+    const compositionHtml = `
+      <html>
+        <head><link rel="stylesheet" href="./scene.css"></head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+
+    expect(
+      document.head.querySelector(
+        'link[rel="stylesheet"][href="https://example.com/compositions/scene.css"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it("does not resolve an empty stylesheet href to the composition HTML", async () => {
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
+
+    const compositionHtml = `
+      <html>
+        <head><link rel="stylesheet" href=""></head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Unstyled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+
+    expect(
+      document.head.querySelector(
+        'link[rel="stylesheet"][href="https://example.com/compositions/scene.html"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("does not inject stylesheet href variants that resolve to the composition document", async () => {
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <link rel="stylesheet" href=" ">
+          <link rel="stylesheet" href="#theme">
+          <link rel="stylesheet" href="?v=1">
+          <link rel="stylesheet" href="./scene.html?v=2#theme">
+          <link rel="stylesheet" href="./scene.css?v=1">
+        </head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+
+    const injectedHrefs = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map(
+      (link) => (link as HTMLLinkElement).href,
+    );
+    expect(injectedHrefs).toEqual(["https://example.com/compositions/scene.css?v=1"]);
+  });
+
+  it("does not execute head script src variants that resolve to the composition document", async () => {
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <script src="#theme"></script>
+          <script src="?v=1"></script>
+          <script src="./scene.html?v=2#theme"></script>
+        </head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(injectedScripts).toEqual([]);
+  });
+
+  it("does not execute content script src variants that resolve to the composition document", async () => {
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
+
+    const compositionHtml = `
+      <html>
+        <body>
+          <div data-composition-id="scene">
+            <p>Scene</p>
+            <script src="#theme"></script>
+            <script src="?v=1"></script>
+            <script src="./scene.html?v=2#theme"></script>
+          </div>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(injectedScripts).toEqual([]);
+  });
+
+  it("does not fail composition mounting when a head script src is malformed", async () => {
+    appendExternalHost("https://example.com/compositions/scene.html", "scene");
+
+    const compositionHtml = `
+      <html>
+        <head><script src="http://[invalid"></script></head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const onDiagnostic = vi.fn();
+    const { injectedScripts } = await loadFixture({ onDiagnostic });
+
+    expect(injectedScripts).toHaveLength(1);
+    expect(onDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it("calls onDiagnostic when fetch fails", async () => {
+    appendExternalHost("https://example.com/broken.html", "broken");
+
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error"));
+
+    const onDiagnostic = vi.fn();
+    await loadCompositions({
+      ...createLoaderParams(),
+      onDiagnostic,
+    });
+
+    expect(onDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "external_composition_load_failed",
+        details: expect.objectContaining({
+          hostCompositionSrc: "https://example.com/broken.html",
+          errorMessage: "Network error",
+        }),
+      }),
+    );
+  });
+
+  it("calls onDiagnostic when HTTP response is not ok", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/404.html");
+    document.body.appendChild(host);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("Not Found", { status: 404 }));
+
+    const onDiagnostic = vi.fn();
+    await loadCompositions({
+      ...createLoaderParams(),
+      onDiagnostic,
+    });
+
+    expect(onDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "external_composition_load_failed",
+      }),
+    );
+  });
+
+  it("uses local template when available", async () => {
+    const template = document.createElement("template");
+    template.id = "local-comp-template";
+    template.innerHTML = "<p>From template</p>";
+    document.body.appendChild(template);
+
+    const host = appendExternalHost("https://example.com/comp.html", "local-comp");
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await loadFixture();
+
+    // Should use local template and not fetch
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(host.querySelector("p")?.textContent).toBe("From template");
+  });
+
+  it("skips hosts without data-composition-src value", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "");
+    document.body.appendChild(host);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await loadFixture();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("clears host content before mounting", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/comp.html");
+    host.innerHTML = "<span>Old content</span>";
+    document.body.appendChild(host);
+
+    const compositionHtml = `<html><body><p>New</p></body></html>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+    expect(host.querySelector("span")).toBeNull();
+  });
+
+  it("handles inline scripts", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/comp.html");
+    document.body.appendChild(host);
+
+    // Only inline scripts (no external src) to avoid waitForExternalScriptLoad timeout
+    const compositionHtml = `
+      <html><body>
+        <script>console.log("inline")</script>
+        <p>With inline script</p>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(injectedScripts.length).toBeGreaterThan(0);
+    expect(injectedScripts[0].textContent).toContain("console.log");
+  });
+
+  it("mounts the content, then runs its scripts only once web fonts are ready", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/comp.html");
+    document.body.appendChild(host);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(`<html><body><p>Text</p><script>void 0</script></body></html>`, {
+        status: 200,
+      }),
+    );
+    let fontsLoaded = () => {};
+    const ready = new Promise<void>((resolve) => (fontsLoaded = resolve));
+    Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
+    const injectedScripts: HTMLScriptElement[] = [];
+
+    const loading = loadCompositions({ ...createLoaderParams(), injectedScripts });
+    await vi.waitFor(() => expect(host.textContent).toContain("Text"));
+    expect(injectedScripts).toHaveLength(0);
+    fontsLoaded();
+    await loading;
+    expect(injectedScripts).toHaveLength(1);
+  });
+
+  it("scopes injected styles and document selectors to the mounted composition root", async () => {
+    const otherRoot = document.createElement("div");
+    otherRoot.setAttribute("data-composition-id", "other");
+    otherRoot.innerHTML = '<h1 class="title">Other</h1>';
+    document.body.appendChild(otherRoot);
+
+    const host = appendExternalHost("https://example.com/comp.html", "scene");
+
+    const compositionHtml = `
+      <html><body>
+        <div data-composition-id="scene" data-width="1920" data-height="1080">
+          <style>.title { opacity: 0; }</style>
+          <h1 class="title">Scene</h1>
+          <script>
+            window.__selectedTitle = document.querySelector('.title')?.textContent;
+          </script>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedStyles, injectedScripts } = await loadFixture();
+
+    expect(injectedStyles[0]?.textContent).toContain('[data-composition-id="scene"] .title');
+    expect(injectedScripts[0]?.textContent).toContain('var __hfCompId = "scene";');
+    expect(injectedScripts[0]?.textContent).toContain("new Proxy(window.document");
+    expect(host.querySelector(".title")?.textContent).toBe("Scene");
+    expect(
+      Array.from(host.children).some(
+        (child) => child.getAttribute("data-composition-id") === "scene",
+      ),
+    ).toBe(false);
+  });
+
+  it("preserves the authored inner root wrapper for class and id scoped styles", async () => {
+    const host = appendExternalHost("https://example.com/comp.html", "scene");
+
+    const compositionHtml = `
+      <html><body>
+        <div id="scene-root" class="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+          <style>
+            .scene-root .title { opacity: 0; }
+            #scene-root { font-family: Inter, sans-serif; }
+          </style>
+          <h1 class="title">Scene</h1>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedStyles } = await loadFixture();
+
+    const authoredRoot = host.querySelector('[data-hf-authored-id="scene-root"]');
+    expect(authoredRoot).toBeTruthy();
+    expect(authoredRoot?.id).toBe("");
+    expect(authoredRoot?.getAttribute("data-composition-id")).toBeNull();
+    expect(authoredRoot?.getAttribute("data-hf-inner-root")).toBe("true");
+    expect(authoredRoot?.getAttribute("data-hf-authored-id")).toBe("scene-root");
+    expect(injectedStyles[0]?.textContent).toContain(
+      '[data-composition-id="scene"] .scene-root .title',
+    );
+    expect(injectedStyles[0]?.textContent).toContain(
+      '[data-composition-id="scene"] [data-hf-authored-id="scene-root"]',
+    );
+  });
+
+  it("does not keep duplicate authored root ids when the same external composition mounts twice", async () => {
+    const hostA = document.createElement("div");
+    hostA.setAttribute("data-composition-src", "https://example.com/comp.html");
+    hostA.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostA);
+
+    const hostB = document.createElement("div");
+    hostB.setAttribute("data-composition-src", "https://example.com/comp.html");
+    hostB.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostB);
+
+    const compositionHtml = `
+      <html><body>
+        <div id="scene-root" class="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+          <h1 class="title">Scene</h1>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(compositionHtml, { status: 200 }),
+    );
+
+    await loadFixture();
+
+    const authoredRoots = document.querySelectorAll('[data-hf-authored-id="scene-root"]');
+    expect(authoredRoots).toHaveLength(2);
+    expect(document.querySelectorAll("#scene-root")).toHaveLength(0);
+    expect(Array.from(authoredRoots).every((root) => !root.getAttribute("id"))).toBe(true);
+  });
+
+  it("isolates sibling instances of the same external sub-composition at runtime", async () => {
+    const hostA = document.createElement("div");
+    hostA.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostA.setAttribute("data-composition-id", "scene");
+    hostA.setAttribute("data-variable-values", '{"title":"Scene A"}');
+    document.body.appendChild(hostA);
+
+    const hostB = document.createElement("div");
+    hostB.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostB.setAttribute("data-composition-id", "scene");
+    hostB.setAttribute("data-variable-values", '{"title":"Scene B"}');
+    document.body.appendChild(hostB);
+
+    const compositionHtml = `
+      <html><body>
+        <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+          <style>[data-composition-id="scene"] .title { opacity: 0; }</style>
+          <h1 class="title">Default</h1>
+          <script>
+            const titleEl = document.querySelector(".title");
+            const runtimeId = titleEl?.closest("[data-composition-id]")?.getAttribute("data-composition-id") || "missing";
+            if (titleEl) titleEl.textContent = runtimeId;
+            window.__timelines = window.__timelines || {};
+            window.__timelines["scene"] = { marker: runtimeId };
+          </script>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(compositionHtml, { status: 200 }),
+    );
+
+    const { injectedScripts } = await loadFixture();
+
+    const runtimeIdA = hostA.getAttribute("data-composition-id") ?? "";
+    const runtimeIdB = hostB.getAttribute("data-composition-id") ?? "";
+    const variables =
+      (window as Window & { __hfVariablesByComp?: Record<string, { title?: string }> })
+        .__hfVariablesByComp ?? {};
+
+    expect(runtimeIdA).not.toBe("scene");
+    expect(runtimeIdB).not.toBe("scene");
+    expect(runtimeIdA).not.toBe(runtimeIdB);
+    expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostA.querySelector(".title")?.textContent).toBe(runtimeIdA);
+    expect(hostB.querySelector(".title")?.textContent).toBe(runtimeIdB);
+    expect(variables[runtimeIdA]?.title).toBe("Scene A");
+    expect(variables[runtimeIdB]?.title).toBe("Scene B");
+    expect(
+      injectedScripts.some((script) =>
+        script.textContent?.includes(`var __hfTimelineCompId = "${runtimeIdA}"`),
+      ),
+    ).toBe(true);
+    expect(
+      injectedScripts.some((script) =>
+        script.textContent?.includes(`var __hfTimelineCompId = "${runtimeIdB}"`),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps the authored composition id stable across repeat loadCompositions runs", async () => {
+    const hostA = document.createElement("div");
+    hostA.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostA.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostA);
+
+    const hostB = document.createElement("div");
+    hostB.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostB.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostB);
+
+    const compositionHtml = `
+      <html><body>
+        <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+          <h1 class="title">Scene</h1>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(compositionHtml, { status: 200 }),
+    );
+
+    await loadFixture();
+
+    const runtimeIdA1 = hostA.getAttribute("data-composition-id");
+    const runtimeIdB1 = hostB.getAttribute("data-composition-id");
+    expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
+
+    await loadFixture();
+
+    expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostA.getAttribute("data-composition-id")).toBe(runtimeIdA1);
+    expect(hostB.getAttribute("data-composition-id")).toBe(runtimeIdB1);
+    expect(hostA.querySelector('[data-hf-authored-id="scene-root"]')).toBeTruthy();
+    expect(hostB.querySelector('[data-hf-authored-id="scene-root"]')).toBeTruthy();
+  });
+
+  it("normalizes a runtime composition id back to the authored id when only one host remains", async () => {
+    const hostA = document.createElement("div");
+    hostA.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostA.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostA);
+
+    const hostB = document.createElement("div");
+    hostB.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostB.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostB);
+
+    const compositionHtml = `
+      <html><body>
+        <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+          <h1 class="title">Scene</h1>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(compositionHtml, { status: 200 }),
+    );
+
+    await loadFixture();
+
+    expect(hostB.getAttribute("data-composition-id")).toBe("scene__hf2");
+    expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
+
+    hostA.remove();
+
+    await loadFixture();
+
+    expect(hostB.getAttribute("data-composition-id")).toBe("scene");
+    expect(hostB.hasAttribute("data-hf-original-composition-id")).toBe(false);
+    expect(hostB.querySelector('[data-hf-authored-id="scene-root"]')).toBeTruthy();
+  });
+
+  it("clears stale variable entries when a host runtime composition id changes", async () => {
+    const hostA = document.createElement("div");
+    hostA.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostA.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostA);
+
+    const hostB = document.createElement("div");
+    hostB.setAttribute("data-composition-src", "https://example.com/scene.html");
+    hostB.setAttribute("data-composition-id", "scene");
+    hostB.setAttribute("data-variable-values", '{"title":"Scene B"}');
+    document.body.appendChild(hostB);
+
+    const compositionHtml = `
+      <html><body>
+        <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+          <h1 class="title">Scene</h1>
+        </div>
+      </body></html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(compositionHtml, { status: 200 }),
+    );
+
+    await loadFixture();
+
+    const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+    expect(byCompAfterFirstMount["scene__hf2"]).toEqual({ title: "Scene B" });
+
+    hostA.remove();
+    hostB.innerHTML = "";
+
+    await loadFixture();
+
+    const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+    expect(byCompAfterSecondMount["scene"]).toEqual({ title: "Scene B" });
+    expect(byCompAfterSecondMount["scene__hf2"]).toBeUndefined();
+  });
+
+  it("handles multiple compositions in parallel", async () => {
+    const host1 = document.createElement("div");
+    host1.setAttribute("data-composition-src", "https://example.com/a.html");
+    document.body.appendChild(host1);
+
+    const host2 = document.createElement("div");
+    host2.setAttribute("data-composition-src", "https://example.com/b.html");
+    document.body.appendChild(host2);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("a.html")) {
+        return new Response("<html><body><p>A</p></body></html>", { status: 200 });
+      }
+      return new Response("<html><body><p>B</p></body></html>", { status: 200 });
+    });
+
+    await loadFixture();
+    expect(host1.querySelector("p")?.textContent).toBe("A");
+    expect(host2.querySelector("p")?.textContent).toBe("B");
+  });
+
+  describe("asset path rewriting (Studio preview parity with render)", () => {
+    /**
+     * Authored compositions live at `compositions/frames/*.html` and may
+     * reference assets either as project-root-relative (`assets/x.mp4`,
+     * which already resolves against the main document's base) or as
+     * sub-comp-relative with `../../` (which the server-side bundler
+     * rewrites for the baked render, but which historically broke in
+     * Studio preview because the runtime did no such rewriting and the
+     * `../../` traversed above the project root).
+     *
+     * These tests pin the rewrite contract so the runtime stays in
+     * lockstep with the producer's `inlineSubCompositions` path.
+     */
+    const FRAME_URL =
+      "http://localhost:5190/api/projects/demo/preview/compositions/frames/scene.html";
+
+    it("rewrites `../`-traversing src on elements inside <template>", async () => {
+      const host = appendExternalHost(FRAME_URL, "scene");
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <video id="hero" src="../../assets/hero.mp4"></video>
+              <img id="badge" src="../../assets/badge.png" />
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      const hero = host.querySelector("#hero");
+      const badge = host.querySelector("#badge");
+      expect(hero?.getAttribute("src")).toBe(
+        "http://localhost:5190/api/projects/demo/preview/assets/hero.mp4",
+      );
+      expect(badge?.getAttribute("src")).toBe(
+        "http://localhost:5190/api/projects/demo/preview/assets/badge.png",
+      );
+    });
+
+    it("leaves plain project-root-relative paths untouched (no double-prefix)", async () => {
+      const host = appendExternalHost(FRAME_URL, "scene");
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <video id="hero" src="assets/hero.mp4"></video>
+              <img id="badge" src="assets/badge.png" />
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      // Plain relative paths resolve against the main document's base, which
+      // points at the project preview root — so the runtime must NOT rewrite
+      // them. Doing so would risk double-prefixing the URL.
+      const hero = host.querySelector("#hero");
+      const badge = host.querySelector("#badge");
+      expect(hero?.getAttribute("src")).toBe("assets/hero.mp4");
+      expect(badge?.getAttribute("src")).toBe("assets/badge.png");
+    });
+
+    it("leaves absolute URLs, data URIs, and hash refs untouched", async () => {
+      const host = appendExternalHost(FRAME_URL, "scene");
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <video id="abs" src="https://cdn.example.com/clip.mp4"></video>
+              <img id="dat" src="data:image/png;base64,AA" />
+              <a id="hash" href="#main">jump</a>
+              <img id="root" src="/global/logo.png" />
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      expect(host.querySelector("#abs")?.getAttribute("src")).toBe(
+        "https://cdn.example.com/clip.mp4",
+      );
+      expect(host.querySelector("#dat")?.getAttribute("src")).toBe("data:image/png;base64,AA");
+      expect(host.querySelector("#hash")?.getAttribute("href")).toBe("#main");
+      expect(host.querySelector("#root")?.getAttribute("src")).toBe("/global/logo.png");
+    });
+
+    it("rewrites CSS url(...) `../` references inside <style> blocks", async () => {
+      appendExternalHost(FRAME_URL, "scene");
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <style>
+                @font-face { font-family: 'Brand'; src: url("../../assets/fonts/brand.woff2") format("woff2"); }
+                .cover { background-image: url('../../assets/cover.png'); }
+                .icon { background-image: url(assets/icon.svg); }
+              </style>
+              <p>scoped</p>
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      const injectedStyles: HTMLStyleElement[] = [];
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+      await loadCompositions({ ...createLoaderParams(), injectedStyles });
+
+      const cssText = injectedStyles.map((s) => s.textContent || "").join("\n");
+      expect(cssText).toContain(
+        'url("http://localhost:5190/api/projects/demo/preview/assets/fonts/brand.woff2")',
+      );
+      expect(cssText).toContain(
+        "url('http://localhost:5190/api/projects/demo/preview/assets/cover.png')",
+      );
+      // Plain relative path stays untouched — the main document's base
+      // already covers it, and double-prefixing would 404.
+      expect(cssText).toContain("url(assets/icon.svg)");
+    });
+
+    it("rewrites url(...) inside inline style attributes", async () => {
+      const host = appendExternalHost(FRAME_URL, "scene");
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <div id="card" style="background-image: url('../../assets/card-bg.png');"></div>
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+      await loadFixture();
+
+      const card = host.querySelector("#card");
+      expect(card?.getAttribute("style")).toContain(
+        "url('http://localhost:5190/api/projects/demo/preview/assets/card-bg.png')",
+      );
+    });
+
+    it("rewrites `../`-traversing src on non-template (full HTML doc) sub-comps", async () => {
+      const host = appendExternalHost(FRAME_URL, "scene");
+
+      const compositionHtml = `
+        <html><body>
+          <div data-composition-id="scene" data-width="1920" data-height="1080">
+            <video id="hero" src="../../assets/hero.mp4"></video>
+          </div>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+      await loadFixture();
+
+      const hero = host.querySelector("#hero");
+      expect(hero?.getAttribute("src")).toBe(
+        "http://localhost:5190/api/projects/demo/preview/assets/hero.mp4",
+      );
+    });
+  });
+
+  describe("variable scoping (window.__hfVariablesByComp)", () => {
+    type WindowWithScopedVars = Window & {
+      __hfVariablesByComp?: Record<string, Record<string, unknown>>;
+    };
+
+    afterEach(() => {
+      delete (window as WindowWithScopedVars).__hfVariablesByComp;
+    });
+
+    it("merges sub-comp declared defaults with host data-variable-values", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card.html");
+      host.setAttribute("data-composition-id", "card-1");
+      host.setAttribute("data-variable-values", '{"title":"Pro","price":"$29"}');
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"title","type":"string","label":"Title","default":"Default"},
+          {"id":"price","type":"string","label":"Price","default":"$0"},
+          {"id":"theme","type":"string","label":"Theme","default":"light"}
+        ]'>
+          <body>
+            <div data-composition-id="card-1"><p>card</p></div>
+          </body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byComp["card-1"]).toEqual({
+        title: "Pro", // host wins over declared default
+        price: "$29", // host wins
+        theme: "light", // host omits → declared default falls through
+      });
+    });
+
+    it("does not redefine a CSS variable already authored on the host", async () => {
+      const style = document.createElement("style");
+      style.textContent = ":root { --accent: #4287f5; }";
+      document.head.appendChild(style);
+
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card.html");
+      host.setAttribute("data-composition-id", "card-authored-token");
+      host.setAttribute("data-variable-values", '{"accent":"blue"}');
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"accent","type":"string","label":"Accent","default":"red"}
+        ]'>
+          <body><div data-composition-id="card-authored-token"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      expect(host.style.getPropertyValue("--accent")).toBe("");
+      expect(window.getComputedStyle(host).getPropertyValue("--accent")).toBe("#4287f5");
+    });
+
+    it("uses declared defaults when host has no data-variable-values", async () => {
+      appendExternalHost("https://example.com/card.html", "card-2");
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"title","type":"string","label":"Title","default":"Default Title"}
+        ]'>
+          <body><div data-composition-id="card-2"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byComp["card-2"]).toEqual({ title: "Default Title" });
+    });
+
+    it("skips registration when neither declared defaults nor host overrides exist", async () => {
+      appendExternalHost("https://example.com/card.html", "card-empty");
+
+      const compositionHtml = `
+        <html><body><div data-composition-id="card-empty"><p>x</p></div></body></html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      const byComp = (window as WindowWithScopedVars).__hfVariablesByComp;
+      expect(byComp?.["card-empty"]).toBeUndefined();
+    });
+
+    it("clears stale registered variables when a repeat mount has no values left", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card.html");
+      host.setAttribute("data-composition-id", "card-clear");
+      host.setAttribute("data-variable-values", '{"title":"Pro"}');
+      document.body.appendChild(host);
+
+      const firstCompositionHtml = `
+        <html data-composition-variables='[
+          {"id":"title","type":"string","label":"Title","default":"Default Title"}
+        ]'>
+          <body><div data-composition-id="card-clear"><p>x</p></div></body>
+        </html>
+      `;
+      const secondCompositionHtml = `
+        <html><body><div data-composition-id="card-clear"><p>y</p></div></body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(new Response(firstCompositionHtml, { status: 200 }))
+        .mockResolvedValueOnce(new Response(secondCompositionHtml, { status: 200 }));
+
+      await loadFixture();
+
+      const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byCompAfterFirstMount["card-clear"]).toEqual({ title: "Pro" });
+
+      host.removeAttribute("data-variable-values");
+      host.innerHTML = "";
+
+      await loadFixture();
+
+      const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp;
+      expect(byCompAfterSecondMount?.["card-clear"]).toBeUndefined();
+    });
+
+    it("ignores invalid JSON in host data-variable-values", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card.html");
+      host.setAttribute("data-composition-id", "card-bad");
+      host.setAttribute("data-variable-values", "{not json");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"OK"}]'>
+          <body><div data-composition-id="card-bad"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byComp["card-bad"]).toEqual({ title: "OK" });
+    });
+
+    it("registers per-instance entries for multiple sub-comps with the same source", async () => {
+      const host1 = document.createElement("div");
+      host1.setAttribute("data-composition-src", "https://example.com/card.html");
+      host1.setAttribute("data-composition-id", "card-A");
+      host1.setAttribute("data-variable-values", '{"title":"Pro","price":"$29"}');
+      document.body.appendChild(host1);
+
+      const host2 = document.createElement("div");
+      host2.setAttribute("data-composition-src", "https://example.com/card.html");
+      host2.setAttribute("data-composition-id", "card-B");
+      host2.setAttribute("data-variable-values", '{"title":"Enterprise","price":"Custom"}');
+      document.body.appendChild(host2);
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"title","type":"string","label":"Title","default":"Default"},
+          {"id":"price","type":"string","label":"Price","default":"$0"}
+        ]'>
+          <body><div data-composition-id="card-A"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockImplementation(
+        async () => new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byComp["card-A"]).toEqual({ title: "Pro", price: "$29" });
+      expect(byComp["card-B"]).toEqual({ title: "Enterprise", price: "Custom" });
+    });
+
+    it("clears stale variable entries when a previous host was removed from the DOM", async () => {
+      const hostA = document.createElement("div");
+      hostA.setAttribute("data-composition-src", "https://example.com/card-a.html");
+      hostA.setAttribute("data-composition-id", "card-a");
+      hostA.setAttribute("data-variable-values", '{"title":"A"}');
+      document.body.appendChild(hostA);
+
+      const hostB = document.createElement("div");
+      hostB.setAttribute("data-composition-src", "https://example.com/card-b.html");
+      hostB.setAttribute("data-composition-id", "card-b");
+      hostB.setAttribute("data-variable-values", '{"title":"B"}');
+      document.body.appendChild(hostB);
+
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes("card-a.html")) {
+          return new Response(
+            `<html><body><div data-composition-id="card-a"><p>A</p></div></body></html>`,
+            { status: 200 },
+          );
+        }
+        return new Response(
+          `<html><body><div data-composition-id="card-b"><p>B</p></div></body></html>`,
+          { status: 200 },
+        );
+      });
+
+      await loadFixture();
+
+      const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byCompAfterFirstMount["card-a"]).toEqual({ title: "A" });
+      expect(byCompAfterFirstMount["card-b"]).toEqual({ title: "B" });
+
+      hostB.remove();
+      hostA.innerHTML = "";
+
+      await loadFixture();
+
+      const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byCompAfterSecondMount["card-a"]).toEqual({ title: "A" });
+      expect(byCompAfterSecondMount["card-b"]).toBeUndefined();
+    });
+
+    it("clears stale variable entries when the last host was removed from the DOM", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card-last.html");
+      host.setAttribute("data-composition-id", "card-last");
+      host.setAttribute("data-variable-values", '{"title":"Last"}');
+      document.body.appendChild(host);
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          `<html><body><div data-composition-id="card-last"><p>Last</p></div></body></html>`,
+          { status: 200 },
+        ),
+      );
+
+      await loadFixture();
+
+      const byCompAfterFirstMount = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byCompAfterFirstMount["card-last"]).toEqual({ title: "Last" });
+
+      host.remove();
+
+      await loadFixture();
+
+      const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp;
+      expect(byCompAfterSecondMount?.["card-last"]).toBeUndefined();
+    });
+  });
+
+  it("scopes an anonymous host's composition to the id its own content declares", async () => {
+    // A host naming no composition id used to mount the fetched content WHOLE:
+    // unflattened, and with its CSS injected unscoped, so the composition's
+    // rules landed on the host document at large. The compiler has always
+    // fallen back to the first root declared in the content, scoped to it, and
+    // restored the id that flattening strips. The mount path does the same now.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/scoped-text.html");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <template id="scoped-text-template">
+        <style>.label { color: rgb(1, 2, 3); }</style>
+        <div data-composition-id="scoped-text" data-width="1080" data-height="1920">
+          <div class="label">Scoped Text Should Stay Styled</div>
+        </div>
+      </template>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const { injectedStyles } = await loadFixture();
+
+    // Flattened like every other mount, with the declared id restored so the
+    // composition's scoped CSS and self-referencing queries still resolve.
+    const mountedRoot = host.querySelector('[data-composition-id="scoped-text"]');
+    expect(mountedRoot?.getAttribute("data-hf-inner-root")).toBe("true");
+    expect(mountedRoot?.querySelector(".label")?.textContent).toBe(
+      "Scoped Text Should Stay Styled",
+    );
+    // The stylesheet is scoped to the composition rather than leaking whole.
+    const injectedCss = injectedStyles.map((style) => style.textContent).join("\n");
+    expect(injectedCss).toContain('[data-composition-id="scoped-text"]');
+    expect(injectedCss).not.toMatch(/^\s*\.label\s*\{/);
+  });
+
+  // --- D1/D4 regressions: what the compiler and the mount path now agree on ---
+
+  it("executes an inline <head> script of a non-templated composition", async () => {
+    // The compiler used to drop this one on the floor (its <head> loop had a
+    // `src` branch and no else); the mount path always executed it.
+    appendExternalHost("https://example.com/head-script.html", "head-script");
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<html><head><script>window.__headScriptRan = true;</script></head><body>
+           <div data-composition-id="head-script"><p>Body</p></div>
+         </body></html>`,
+        { status: 200 },
+      ),
+    );
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(injectedScripts.map((script) => script.textContent).join("\n")).toContain(
+      "window.__headScriptRan = true;",
+    );
+  });
+
+  it("scopes scripts to the id the content declares when the host names another", async () => {
+    // Two scope ids, not one: CSS stays on the id the host asked for, scripts
+    // follow the id the content actually declares, so a script's own
+    // querySelector('[data-composition-id="..."]') resolves. Collapsing them
+    // pointed every self-query at an id that is nowhere in the content.
+    appendExternalHost("https://example.com/captions.html", "captions-comp");
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<template id="captions-comp-template">
+           <div data-composition-id="captions"><p>Caption</p></div>
+           <script>void 0;</script>
+         </template>`,
+        { status: 200 },
+      ),
+    );
+
+    const { injectedScripts } = await loadFixture();
+
+    const scriptSource = injectedScripts.map((script) => script.textContent).join("\n");
+    expect(scriptSource).toContain('var __hfCompId = "captions";');
+    expect(scriptSource).not.toContain('var __hfCompId = "captions-comp";');
+  });
+});
+
+describe("loadCompositions inline templates", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    document.head.querySelectorAll("style").forEach((s) => s.remove());
+    vi.restoreAllMocks();
+  });
+
+  it("mounts template content into matching empty host", async () => {
+    const template = document.createElement("template");
+    template.id = "logo-reveal-template";
+    template.innerHTML = `
+      <div data-composition-id="logo-reveal" data-width="1920" data-height="1080">
+        <p>Logo content</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "logo-reveal");
+    host.setAttribute("data-start", "0");
+    host.setAttribute("data-duration", "10");
+    document.body.appendChild(host);
+
+    await loadFixture();
+
+    expect(host.querySelector("p")?.textContent).toBe("Logo content");
+  });
+
+  it("does nothing when no matching template exists", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "no-template");
+    document.body.appendChild(host);
+
+    await loadFixture();
+
+    // Host should remain empty
+    expect(host.children.length).toBe(0);
+  });
+
+  it("does nothing when no inline template hosts exist", async () => {
+    // Add a template with no matching host
+    const template = document.createElement("template");
+    template.id = "orphan-template";
+    template.innerHTML = "<p>Orphan</p>";
+    document.body.appendChild(template);
+
+    await loadFixture();
+
+    // Nothing should change — no hosts match
+    expect(document.querySelector("p")).toBeNull();
+  });
+
+  it("skips hosts that already have content", async () => {
+    const template = document.createElement("template");
+    template.id = "filled-template";
+    template.innerHTML = `
+      <div data-composition-id="filled" data-width="800" data-height="600">
+        <p>Template content</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "filled");
+    host.innerHTML = "<span>Existing content</span>";
+    document.body.appendChild(host);
+
+    await loadFixture();
+
+    // Original content should remain
+    expect(host.querySelector("span")?.textContent).toBe("Existing content");
+    expect(host.querySelector("p")).toBeNull();
+  });
+
+  it("uses the cached matching template for an external host", async () => {
+    const template = document.createElement("template");
+    template.id = "external-template";
+    template.innerHTML = `
+      <div data-composition-id="external" data-width="800" data-height="600">
+        <p>Cached content</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "external");
+    host.setAttribute("data-composition-src", "https://example.com/comp.html");
+    document.body.appendChild(host);
+
+    const fetch = vi.spyOn(globalThis, "fetch");
+    await loadFixture();
+
+    expect(host.querySelector("p")?.textContent).toBe("Cached content");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("processes multiple inline templates", async () => {
+    const template1 = document.createElement("template");
+    template1.id = "comp-a-template";
+    template1.innerHTML = `
+      <div data-composition-id="comp-a" data-width="1920" data-height="1080">
+        <p>Content A</p>
+      </div>
+    `;
+    document.body.appendChild(template1);
+
+    const template2 = document.createElement("template");
+    template2.id = "comp-b-template";
+    template2.innerHTML = `
+      <div data-composition-id="comp-b" data-width="800" data-height="600">
+        <p>Content B</p>
+      </div>
+    `;
+    document.body.appendChild(template2);
+
+    const host1 = document.createElement("div");
+    host1.setAttribute("data-composition-id", "comp-a");
+    document.body.appendChild(host1);
+
+    const host2 = document.createElement("div");
+    host2.setAttribute("data-composition-id", "comp-b");
+    document.body.appendChild(host2);
+
+    await loadFixture();
+
+    expect(host1.querySelector("p")?.textContent).toBe("Content A");
+    expect(host2.querySelector("p")?.textContent).toBe("Content B");
+  });
+
+  it("injects styles from template into document head", async () => {
+    const template = document.createElement("template");
+    template.id = "styled-comp-template";
+    template.innerHTML = `
+      <div data-composition-id="styled-comp" data-width="1920" data-height="1080">
+        <style>.test-inline { color: blue; }</style>
+        <p>Styled content</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "styled-comp");
+    document.body.appendChild(host);
+
+    const { injectedStyles } = await loadFixture();
+
+    expect(injectedStyles.length).toBeGreaterThan(0);
+  });
+
+  it("injects scripts from template", async () => {
+    const template = document.createElement("template");
+    template.id = "scripted-comp-template";
+    template.innerHTML = `
+      <div data-composition-id="scripted-comp" data-width="1920" data-height="1080">
+        <p>Content with script</p>
+        <script>console.log("inline template script")</script>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scripted-comp");
+    document.body.appendChild(host);
+
+    const { injectedScripts } = await loadFixture();
+
+    expect(injectedScripts.length).toBeGreaterThan(0);
+    expect(injectedScripts[0].textContent).toContain("inline template script");
+  });
+
+  it("copies dimension attributes from template inner root to host", async () => {
+    const template = document.createElement("template");
+    template.id = "dim-comp-template";
+    template.innerHTML = `
+      <div data-composition-id="dim-comp" data-width="1920" data-height="1080">
+        <p>Dimensioned</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "dim-comp");
+    document.body.appendChild(host);
+
+    await loadFixture();
+
+    expect(host.getAttribute("data-width")).toBe("1920");
+    expect(host.getAttribute("data-height")).toBe("1080");
+  });
+
+  it("keeps authored template lookup stable across repeat inline loads for duplicate hosts", async () => {
+    const template = document.createElement("template");
+    template.id = "scene-template";
+    template.innerHTML = `
+      <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+        <p>Inline scene</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const hostA = document.createElement("div");
+    hostA.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostA);
+
+    const hostB = document.createElement("div");
+    hostB.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostB);
+
+    await loadFixture();
+
+    const runtimeIdA = hostA.getAttribute("data-composition-id");
+    const runtimeIdB = hostB.getAttribute("data-composition-id");
+    expect(runtimeIdA).not.toBe("scene");
+    expect(runtimeIdB).not.toBe("scene");
+    expect(runtimeIdA).not.toBe(runtimeIdB);
+    expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
+
+    hostA.innerHTML = "";
+    hostB.innerHTML = "";
+
+    await loadFixture();
+
+    expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostA.getAttribute("data-composition-id")).toBe(runtimeIdA);
+    expect(hostB.getAttribute("data-composition-id")).toBe(runtimeIdB);
+    expect(hostA.querySelector('[data-hf-authored-id="scene-root"]')).toBeTruthy();
+    expect(hostB.querySelector('[data-hf-authored-id="scene-root"]')).toBeTruthy();
+  });
+
+  it("does not rewrite ids for duplicate inline hosts that are skipped", async () => {
+    const filledTemplate = document.createElement("template");
+    filledTemplate.id = "filled-scene-template";
+    filledTemplate.innerHTML = `
+      <div data-composition-id="filled-scene" data-width="1920" data-height="1080">
+        <p>Filled scene</p>
+      </div>
+    `;
+    document.body.appendChild(filledTemplate);
+
+    const filledHostA = document.createElement("div");
+    filledHostA.setAttribute("data-composition-id", "filled-scene");
+    filledHostA.innerHTML = "<span>Existing A</span>";
+    document.body.appendChild(filledHostA);
+
+    const filledHostB = document.createElement("div");
+    filledHostB.setAttribute("data-composition-id", "filled-scene");
+    filledHostB.innerHTML = "<span>Existing B</span>";
+    document.body.appendChild(filledHostB);
+
+    const orphanHostA = document.createElement("div");
+    orphanHostA.setAttribute("data-composition-id", "orphan-scene");
+    document.body.appendChild(orphanHostA);
+
+    const orphanHostB = document.createElement("div");
+    orphanHostB.setAttribute("data-composition-id", "orphan-scene");
+    document.body.appendChild(orphanHostB);
+
+    await loadFixture();
+
+    expect(filledHostA.getAttribute("data-composition-id")).toBe("filled-scene");
+    expect(filledHostB.getAttribute("data-composition-id")).toBe("filled-scene");
+    expect(filledHostA.hasAttribute("data-hf-original-composition-id")).toBe(false);
+    expect(filledHostB.hasAttribute("data-hf-original-composition-id")).toBe(false);
+    expect(orphanHostA.getAttribute("data-composition-id")).toBe("orphan-scene");
+    expect(orphanHostB.getAttribute("data-composition-id")).toBe("orphan-scene");
+    expect(orphanHostA.hasAttribute("data-hf-original-composition-id")).toBe(false);
+    expect(orphanHostB.hasAttribute("data-hf-original-composition-id")).toBe(false);
+  });
+
+  it("uniquifies a mounted inline host when a skipped sibling already uses the authored id", async () => {
+    const template = document.createElement("template");
+    template.id = "scene-template";
+    template.innerHTML = `
+      <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+        <p>Inline scene</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const skippedHost = document.createElement("div");
+    skippedHost.setAttribute("data-composition-id", "scene");
+    skippedHost.innerHTML = "<span>Existing scene</span>";
+    document.body.appendChild(skippedHost);
+
+    const mountedHost = document.createElement("div");
+    mountedHost.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(mountedHost);
+
+    await loadFixture();
+
+    expect(skippedHost.getAttribute("data-composition-id")).toBe("scene");
+    expect(skippedHost.hasAttribute("data-hf-original-composition-id")).toBe(false);
+    expect(mountedHost.getAttribute("data-composition-id")).not.toBe("scene");
+    expect(mountedHost.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(mountedHost.querySelector('[data-hf-authored-id="scene-root"]')).toBeTruthy();
+  });
+
+  it("re-numbers duplicate inline runtime ids when the mount set grows", async () => {
+    const template = document.createElement("template");
+    template.id = "scene-template";
+    template.innerHTML = `
+      <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+        <p>Inline scene</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const hostA = document.createElement("div");
+    hostA.setAttribute("data-composition-id", "scene");
+    hostA.innerHTML = "<span>Existing A</span>";
+    document.body.appendChild(hostA);
+
+    const hostB = document.createElement("div");
+    hostB.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(hostB);
+
+    await loadFixture();
+
+    expect(hostA.getAttribute("data-composition-id")).toBe("scene");
+    expect(hostB.getAttribute("data-composition-id")).toBe("scene__hf1");
+
+    hostA.innerHTML = "";
+    hostB.innerHTML = "";
+
+    await loadFixture();
+
+    expect(hostA.getAttribute("data-composition-id")).toBe("scene__hf1");
+    expect(hostB.getAttribute("data-composition-id")).toBe("scene__hf2");
+    expect(hostA.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostB.getAttribute("data-hf-original-composition-id")).toBe("scene");
+  });
+
+  it("uniquifies duplicate sub-compositions across inline-template and external hosts", async () => {
+    const template = document.createElement("template");
+    template.id = "scene-template";
+    template.innerHTML = `
+      <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+        <p>Inline scene</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const inlineHost = document.createElement("div");
+    inlineHost.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(inlineHost);
+
+    const externalHost = document.createElement("div");
+    externalHost.setAttribute("data-composition-id", "scene");
+    externalHost.setAttribute("data-composition-src", "https://example.com/scene.html");
+    document.body.appendChild(externalHost);
+
+    const compositionHtml = `
+      <html><body>
+        <div data-composition-id="scene" data-width="1920" data-height="1080">
+          <p>External scene</p>
+        </div>
+      </body></html>
+    `;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+
+    expect(inlineHost.getAttribute("data-composition-id")).toBe("scene__hf1");
+    expect(externalHost.getAttribute("data-composition-id")).toBe("scene__hf2");
+    expect(inlineHost.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(externalHost.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(inlineHost.querySelector("p")?.textContent).toBe("Inline scene");
+    expect(externalHost.querySelector("p")?.textContent).toBeTruthy();
+  });
+});
+
+describe("namespaceMountedSvgIds", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    document.head.querySelectorAll("style").forEach((s) => s.remove());
+    vi.restoreAllMocks();
+  });
+
+  const CLIPPED = (id: string) =>
+    `<svg><g clip-path="url(#${id})"><path d="M0 0h24v24H0z"/></g>` +
+    `<defs><clipPath id="${id}"><rect width="24" height="24"/></clipPath></defs></svg>`;
+
+  async function mountAll(files: Record<string, string>, body: string) {
+    document.body.innerHTML = body;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      return new Response(files[String(input)], { status: 200 });
+    });
+    const params = {
+      injectedStyles: [] as HTMLStyleElement[],
+      injectedScripts: [] as HTMLScriptElement[],
+      injectedLinks: [] as HTMLLinkElement[],
+      parseDimensionPx: () => null,
+    };
+    await loadCompositions(params);
+    return params.injectedStyles;
+  }
+
+  const host = (id: string) =>
+    document.querySelector<HTMLElement>(`[data-composition-id="${id}"][data-composition-src]`)!;
+  const clipTarget = (el: Element | null) =>
+    document.getElementById(/#([^)"']+)/.exec(el!.getAttribute("clip-path")!)![1]!);
+  const external = (id: string) =>
+    `<div data-composition-id="${id}" data-composition-src="https://x.test/${id}.html"></div>`;
+
+  it("resolves each loaded composition's clip-path to its own clipPath when ids collide", async () => {
+    await mountAll(
+      {
+        "https://x.test/intro.html": `<div data-composition-id="intro">${CLIPPED("clip0_1_2")}</div>`,
+        "https://x.test/grid.html": `<div data-composition-id="grid">${CLIPPED("clip0_1_2")}</div>`,
+      },
+      external("intro") + external("grid"),
+    );
+
+    for (const id of ["intro", "grid"]) {
+      expect(host(id).contains(clipTarget(host(id).querySelector("g")))).toBe(true);
+    }
+    expect(host("grid").querySelector("clipPath")!.id).toBe("grid--clip0_1_2");
+  });
+
+  it("rewrites a url(#id) used only from a composition's <style> along with the element", async () => {
+    const filtered = (id: string) =>
+      `<div data-composition-id="${id}"><style>.box { filter: url(#fx); }</style>` +
+      `<svg><filter id="fx"><feGaussianBlur stdDeviation="2"/></filter></svg><div class="box"></div></div>`;
+    const styles = await mountAll(
+      { "https://x.test/a.html": filtered("a"), "https://x.test/b.html": filtered("b") },
+      external("a") + external("b"),
+    );
+
+    const css = (id: string) =>
+      styles.find((style) => style.textContent!.includes(`[data-composition-id="${id}"]`))!
+        .textContent;
+    expect(host("b").querySelector("filter")!.id).toBe("b--fx");
+    expect(css("a")).toContain("url(#fx)");
+    expect(css("b")).toContain("url(#b--fx)");
+  });
+
+  it("leaves an id that does not collide untouched", async () => {
+    await mountAll(
+      {
+        "https://x.test/a.html": `<div data-composition-id="a">${CLIPPED("c")}</div>`,
+        "https://x.test/b.html": `<div data-composition-id="b">${CLIPPED("c")}${CLIPPED("only-b")}</div>`,
+      },
+      external("a") + external("b"),
+    );
+
+    const [renamed, onlyB] = host("b").querySelectorAll("clipPath");
+    expect(renamed!.id).toBe("b--c");
+    expect(onlyB!.id).toBe("only-b");
+    expect(onlyB!.hasAttribute("data-hf-authored-id")).toBe(false);
+    expect(host("b").querySelectorAll("g")[1]!.getAttribute("clip-path")).toBe("url(#only-b)");
+  });
+
+  it("keeps a nested composition's references out of its parent's renames", async () => {
+    await mountAll(
+      {
+        "https://x.test/outer.html":
+          `<div data-composition-id="outer"><div id="inner-host" data-composition-id="inner"></div>` +
+          `${CLIPPED("c")}</div>`,
+      },
+      `<template id="inner-template"><div data-composition-id="inner">${CLIPPED("c")}</div></template>` +
+        external("outer"),
+    );
+
+    const inner = document.getElementById("inner-host")!;
+    expect(inner.contains(clipTarget(inner.querySelector("g")))).toBe(true);
+    const outerG = [...host("outer").querySelectorAll("g")].find((g) => !inner.contains(g))!;
+    const outerClip = clipTarget(outerG);
+    expect(host("outer").contains(outerClip) && !inner.contains(outerClip)).toBe(true);
+  });
+});

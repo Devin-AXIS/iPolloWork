@@ -19,6 +19,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableSortHead,
+  type TableSortDirection,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { t } from "@/i18n";
@@ -49,7 +51,7 @@ export type EnvironmentVariableTableProps = {
 
 export function EnvironmentVariableTable({ className, children }: EnvironmentVariableTableProps) {
   return (
-    <Card variant="outline" className={cn("w-full p-0 rounded-xl", className)}>
+    <Card variant="outline" className={cn("w-full rounded-[8px] p-0", className)}>
       <CardContent className="p-0">
         <Table>{children}</Table>
       </CardContent>
@@ -57,11 +59,12 @@ export function EnvironmentVariableTable({ className, children }: EnvironmentVar
   );
 }
 
-export function EnvironmentVariableTableHeader() {
+export function EnvironmentVariableTableHeader({ selection, direction = "none", onSort }: { selection?: ReactNode; direction?: TableSortDirection; onSort?: (direction: TableSortDirection) => void }) {
   return (
     <TableHeader>
       <TableRow>
-        <TableHead className="w-1/3">{t("settings.environment.key_label")}</TableHead>
+        {selection ? <TableHead className="w-10">{selection}</TableHead> : null}
+        {onSort ? <TableSortHead className="w-1/3" direction={direction} onDirectionChange={onSort} label={t("client_list.sort_name")}>{t("settings.environment.key_label")}</TableSortHead> : <TableHead className="w-1/3">{t("settings.environment.key_label")}</TableHead>}
         <TableHead>{t("settings.environment.value_label")}</TableHead>
         <TableHead className="text-right"><span className="sr-only">{t("settings.environment.table_actions")}</span></TableHead>
       </TableRow>
@@ -161,6 +164,7 @@ export function EnvironmentVariableTableDeleteButton(props: EnvironmentVariableT
 
 export type EnvironmentVariableTableItemProps = {
   item: EnvironmentVariableItem;
+  selection?: ReactNode;
   isRevealed: boolean;
   canEdit: boolean;
   deleting: boolean;
@@ -174,19 +178,20 @@ export function EnvironmentVariableTableItem(props: EnvironmentVariableTableItem
   const updatedLabel = formatUpdatedAt(props.item.updatedAt);
 
   return (
-    <TableRow>
+    <TableRow data-row-id={props.item.key}>
+      {props.selection ? <TableCell>{props.selection}</TableCell> : null}
       <TableCell>
         <div className="flex flex-col gap-0.5">
           {props.canEdit ? (
             <Button
               variant="link"
-              className="h-auto w-full justify-start truncate p-0 font-mono text-sm font-medium text-foreground"
+              className="h-auto w-full justify-start truncate p-0 font-mono text-ui-body font-medium text-foreground"
               onClick={() => props.onEdit(props.item)}
             >
               {props.item.key}
             </Button>
           ) : (
-            <span className="truncate font-mono text-sm font-medium">{props.item.key}</span>
+            <span className="truncate font-mono text-ui-body font-medium">{props.item.key}</span>
           )}
           {updatedLabel ? (
             <span className="text-xs text-muted-foreground">

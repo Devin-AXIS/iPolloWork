@@ -1,263 +1,48 @@
 import { publicAssetUrl } from "./lib/public-asset";
+import type {
+  PluginAuthorizationMethod,
+  PluginAuthorizationMethodTranslation,
+  PluginContribution,
+  PluginContributionType,
+  PluginEnablementCondition,
+  PluginEnablementConditionType,
+  PluginEnablementResult,
+  PluginLifecycle,
+  PluginLocalization,
+  PluginManifest,
+  PluginPackageMetadata,
+  PluginPermission,
+  PluginReloadReason,
+  PluginResource,
+  PluginResourceType,
+  PluginSecretField,
+  PluginSetup,
+  PluginSource,
+  PluginSourceFormat,
+  PluginTranslation,
+} from "@ipollowork/types/plugins";
 
-// Owned here: reload vocabulary is part of the extension manifest contract.
-// types.ts re-exports it for the rest of the app.
-export type ReloadReason = "plugins" | "skills" | "mcp" | "config" | "agents" | "commands";
-
-export type iPolloWorkExtensionSourceFormat =
-  | "ipollowork-builtin"
-  | "ipollowork-extension-manifest"
-  | "claude-plugin"
-  | "opencode-plugin"
-  | "mcp-directory"
-  | "manual";
-
-export type iPolloWorkExtensionSource = {
-  format: iPolloWorkExtensionSourceFormat;
-  trusted: boolean;
-  origin?: "builtin" | "den" | "workspace" | "local";
-  reference?: string;
-};
-
-export type iPolloWorkExtensionResourceType =
-  | "skill"
-  | "agent"
-  | "command"
-  | "tool"
-  | "mcp"
-  | "opencode-plugin"
-  | "provider"
-  | "hook"
-  | "context"
-  | "secret"
-  | "file"
-  | "local-service"
-  | "native-binary";
-
-export type iPolloWorkExtensionResource = {
-  type: iPolloWorkExtensionResourceType;
-  id: string;
-  label?: string;
-  description?: string;
-  path?: string;
-  command?: string[];
-  envKey?: string;
-  packageName?: string;
-  providerId?: string;
-  mcpServerName?: string;
-  oauth?: boolean;
-  localCommandRef?: "ipollowork.computerUseMcp" | "ipollowork.uiMcp";
-  requires?: string[];
-  provides?: string[];
-  required?: boolean;
-};
-
-export type iPolloWorkExtensionContributionType =
-  | "settings-panel"
-  | "setup-instructions"
-  | "composer-prompt"
-  | "session-side-panel"
-  | "session-rail-item"
-  | "control-actions"
-  | "server-route"
-  | "native-capability"
-  | "test-action";
-
-export type iPolloWorkExtensionContribution = {
-  type: iPolloWorkExtensionContributionType;
-  ref?: string;
-  label?: string;
-  description?: string;
-  prompt?: string;
-  location?: "settings-detail" | "composer" | "session-right-pane" | "session-rail" | "server" | "native";
-};
-
-export type iPolloWorkExtensionSetup = {
-  instructions?: string;
-  primaryCta?: string;
-  secondaryCta?: string;
-  requiredEnv?: string[];
-  testActionRef?: string;
-};
-
-export type iPolloWorkExtensionLifecycle = {
-  reload?: ReloadReason[];
-  detection?: string[];
-};
-
-export type iPolloWorkPluginPermissionId =
-  | "network"
-  | "workspace-read"
-  | "workspace-write"
-  | "process"
-  | "clipboard"
-  | "notifications"
-  | "camera"
-  | "microphone";
-
-export type iPolloWorkPluginPermission = {
-  id: iPolloWorkPluginPermissionId;
-  reason: string;
-  optional?: boolean;
-};
-
-export type iPolloWorkPluginSecretField = {
-  id: string;
-  label: string;
-  description?: string;
-  placeholder?: string;
-  secret?: boolean;
-  required?: boolean;
-};
-
-export type iPolloWorkPluginAuthorizationMethod =
-  | {
-      id: string;
-      kind: "secret-form";
-      label: string;
-      description?: string;
-      fields: iPolloWorkPluginSecretField[];
-    }
-  | {
-      id: string;
-      kind: "oauth-pkce";
-      label: string;
-      description?: string;
-      clientId: string;
-      authorizationUrl: string;
-      tokenUrl: string;
-      scopes: string[];
-      audience?: string;
-    }
-  | {
-      id: string;
-      kind: "device-code";
-      label: string;
-      description?: string;
-      clientId: string;
-      deviceAuthorizationUrl: string;
-      tokenUrl: string;
-      scopes: string[];
-      qr?: boolean;
-    }
-  | {
-      id: string;
-      kind: "hosted-browser";
-      label: string;
-      description?: string;
-      startUrl: string;
-      callbackOrigin: string;
-      exchangeUrl: string;
-      refreshUrl?: string;
-    };
-
-export type iPolloWorkPluginPackageMetadata = {
-  version: string;
-  publisher?: { id: string; name: string };
-  compatibility?: { ipollowork?: string; opencode?: string };
-  updateId: string;
-  entrypoints: { opencode?: string; service?: string };
-  checksum?: { algorithm: "sha256"; value: string };
-  signature?: { algorithm: "ed25519"; keyId: string; value: string };
-};
-
-export type iPolloWorkPluginAuthorizationMethodTranslation = {
-  label?: string;
-  description?: string;
-  fields?: Record<string, {
-    label?: string;
-    description?: string;
-    placeholder?: string;
-  }>;
-};
-
-export type iPolloWorkExtensionTranslation = {
-  name?: string;
-  description?: string;
-  category?: string;
-  composer?: { prompt?: string };
-  setup?: {
-    instructions?: string;
-    primaryCta?: string;
-    secondaryCta?: string;
-  };
-  resources?: Record<string, {
-    label?: string;
-    description?: string;
-  }>;
-  permissions?: Record<string, { reason?: string }>;
-  authorizationMethods?: Record<string, iPolloWorkPluginAuthorizationMethodTranslation>;
-};
-
-export type iPolloWorkExtensionLocalization = {
-  defaultLocale: string;
-  translations: Record<string, iPolloWorkExtensionTranslation>;
-};
-
-// ---------------------------------------------------------------------------
-// Enablement — declarative conditions for extension "active" state
-// ---------------------------------------------------------------------------
-
-export type EnablementConditionType =
-  | "mcp-connected"
-  | "plugin-loaded"
-  | "provider-connected"
-  | "env-set"
-  | "permission-granted"
-  | "toggle-enabled";
-
-export type EnablementCondition = {
-  type: EnablementConditionType;
-  /** What to check — MCP server name, plugin id, env key, etc. */
-  ref: string;
-  /** Human-readable label shown in the UI. */
-  label: string;
-};
-
-/** Result of evaluating a single enablement condition at runtime. */
-export type EnablementResult = {
-  condition: EnablementCondition;
-  met: boolean;
-};
-
-export type iPolloWorkExtensionManifest = {
-  schemaVersion: 1;
-  id: string;
-  name: string;
-  description: string;
-  category?: string;
-  preview?: boolean;
-  source: iPolloWorkExtensionSource;
-  icon?: {
-    src?: string;
-    simpleIconSlug?: string;
-  };
-  composer?: {
-    prompt: string;
-  };
-  setup?: iPolloWorkExtensionSetup;
-  resources: iPolloWorkExtensionResource[];
-  /** Detected external Skills shown with this plugin but never installed, toggled, or removed by it. */
-  relatedSkills?: string[];
-  contributions?: iPolloWorkExtensionContribution[];
-  lifecycle?: iPolloWorkExtensionLifecycle;
-  /** Optional package metadata for independently distributed extensions. */
-  package?: iPolloWorkPluginPackageMetadata;
-  /** Locale-specific display metadata. Runtime identifiers and behavior are never localized. */
-  localization?: iPolloWorkExtensionLocalization;
-  /** Permissions shown before installing executable third-party packages. */
-  permissions?: iPolloWorkPluginPermission[];
-  /** Plugin-owned authorization; intentionally independent from Authorization Center. */
-  authorization?: {
-    required: boolean;
-    methods: iPolloWorkPluginAuthorizationMethod[];
-  };
-  /** Declarative conditions that must ALL be true for the extension to be "active". */
-  enablement?: EnablementCondition[];
-  defaultEnabled?: boolean;
-  defaultHidden?: boolean;
-  platform?: Array<"darwin" | "linux" | "windows" | "web">;
-};
+export type ReloadReason = PluginReloadReason;
+export type iPolloWorkExtensionSourceFormat = PluginSourceFormat;
+export type iPolloWorkExtensionSource = PluginSource;
+export type iPolloWorkExtensionResourceType = PluginResourceType;
+export type iPolloWorkExtensionResource = PluginResource;
+export type iPolloWorkExtensionContributionType = PluginContributionType;
+export type iPolloWorkExtensionContribution = PluginContribution;
+export type iPolloWorkExtensionSetup = PluginSetup;
+export type iPolloWorkExtensionLifecycle = PluginLifecycle;
+export type iPolloWorkPluginPermissionId = PluginPermission["id"];
+export type iPolloWorkPluginPermission = PluginPermission;
+export type iPolloWorkPluginSecretField = PluginSecretField;
+export type iPolloWorkPluginAuthorizationMethod = PluginAuthorizationMethod;
+export type iPolloWorkPluginPackageMetadata = PluginPackageMetadata;
+export type iPolloWorkPluginAuthorizationMethodTranslation = PluginAuthorizationMethodTranslation;
+export type iPolloWorkExtensionTranslation = PluginTranslation;
+export type iPolloWorkExtensionLocalization = PluginLocalization;
+export type EnablementConditionType = PluginEnablementConditionType;
+export type EnablementCondition = PluginEnablementCondition;
+export type EnablementResult = PluginEnablementResult;
+export type iPolloWorkExtensionManifest = PluginManifest;
 
 export function extensionContribution(
   manifest: iPolloWorkExtensionManifest | undefined,
@@ -279,37 +64,30 @@ export function isTrustedBuiltInExtension(manifest: iPolloWorkExtensionManifest 
 
 export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifest[] = [
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "ipollowork-browser",
     name: "iPolloWork Browser",
     description: "Automate the built-in browser panel that stays visible inside iPolloWork.",
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     icon: { src: publicAssetUrl("ipollowork-mark.svg") },
-    composer: { prompt: "Use the iPolloWork Browser extension to " },
+    composer: { prompt: "Use the iPolloWork built-in browser to " },
     setup: {
-      instructions: "iPolloWork Browser is ready by default in desktop workspaces.",
+      instructions: "iPolloWork Browser is ready by default and uses the same host-owned semantic runtime with every AI engine.",
     },
-    resources: [
-      {
-        type: "opencode-plugin",
-        id: "opencode-chrome-devtools",
-        packageName: "opencode-chrome-devtools",
-        required: true,
-      },
-    ],
+    resources: [],
     contributions: [
       { type: "settings-panel", ref: "ipollowork.browser.settings", location: "settings-detail" },
       { type: "session-side-panel", ref: "ipollowork.browser.panel", location: "session-right-pane" },
-      { type: "composer-prompt", prompt: "Use the iPolloWork Browser extension to ", location: "composer" },
+      { type: "composer-prompt", prompt: "Use the iPolloWork built-in browser to ", location: "composer" },
     ],
     enablement: [
       { type: "toggle-enabled", ref: "ipollowork-browser", label: "Enabled" },
     ],
-    lifecycle: { reload: ["plugins", "agents"], detection: ["plugin:opencode-chrome-devtools"] },
+    lifecycle: { reload: [], detection: [] },
     defaultEnabled: true,
   },
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "computer-use",
     name: "Computer Use",
     description: "Mac only: control Mac apps through semantic accessibility refs, screenshots, background-safe clicks, keyboard input, and strict mode.",
@@ -356,7 +134,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     platform: ["darwin"],
   },
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "openai-image-gen",
     name: "OpenAI Image Gen",
     description: "Generate image artifacts with gpt-image-2.",
@@ -386,7 +164,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     lifecycle: { reload: ["config"], detection: ["env:OPENAI_API_KEY"] },
   },
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "ipollowork-voice",
     name: "Voice Mode",
     description: "Talk to iPolloWork through a Realtime voice panel that drives the same semantic UI controls as iPolloWork UI MCP.",
@@ -422,7 +200,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     lifecycle: { reload: ["config"], detection: ["env:OPENAI_REALTIME_API_KEY", "env:OPENAI_API_KEY"] },
   },
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "google-workspace",
     name: "Google Workspace",
     description: "Let iPolloWork help with meetings, selected Drive files, and Gmail drafts.",
@@ -455,7 +233,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     lifecycle: { reload: ["config"], detection: ["provider:google-workspace"] },
   },
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "minimax",
     name: "MiniMax",
     description: "Configure MiniMax models through regional OpenAI-compatible or Anthropic endpoints.",
@@ -478,7 +256,7 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     lifecycle: { reload: ["config"], detection: ["provider:minimax"] },
   },
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "ollama",
     name: "Ollama",
     description: "Local model provider at http://localhost:11434.",

@@ -16,7 +16,8 @@ import {
   writeDenSettings,
   type DenOrgSummary,
 } from "@/app/lib/den";
-import { clearDesktopBootstrapConfig } from "@/app/lib/desktop";
+import { clearDesktopAuthSession, clearDesktopBootstrapConfig } from "@/app/lib/desktop";
+import { clearEnterpriseLoginState } from "@/app/lib/work-context";
 import { exchangeHandoffAndSignIn } from "@/app/lib/den-handoff";
 import {
   denSessionUpdatedEvent,
@@ -25,7 +26,7 @@ import {
 } from "@/app/lib/den-session-events";
 import { t } from "@/i18n";
 import { useDenAuth } from "../../cloud/den-auth-provider";
-import { tryOpenBrowserAuthUrl } from "../../cloud/open-browser-auth";
+import { tryOpenBrowserAuthUrl } from "@/app/lib/open-browser-auth";
 import { useCloudSession } from "./cloud-session-provider";
 import { defaultControlPlaneUrl, saveControlPlaneUrl } from "./control-plane-url";
 
@@ -165,6 +166,7 @@ export function useDenSession({
     ) => {
       const includeBaseUrls = options?.includeBaseUrls ?? !developerMode;
       clearDenSession({ includeBaseUrls });
+      clearEnterpriseLoginState();
       if (includeBaseUrls) {
         setBaseUrl(DEFAULT_DEN_BASE_URL);
         setBaseUrlDraft(DEFAULT_DEN_BASE_URL);
@@ -502,7 +504,16 @@ export function useDenSession({
       if (authToken.trim()) {
         await client.signOut();
       }
+      let authSessionClearError: unknown = null;
+      try {
+        await clearDesktopAuthSession();
+      } catch (error) {
+        authSessionClearError = error;
+      }
       clearSignedInState(t("den.status_signed_out"));
+      if (authSessionClearError) {
+        setAuthError(t("den.error_signin_session_clear_failed"));
+      }
     } catch (error) {
       setAuthError(
         error instanceof DenApiError

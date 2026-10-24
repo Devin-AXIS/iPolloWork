@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 2,
+  "id": "jev-decision-model",
+  "name": "Jev DSH 决策引擎",
+  "description": "Jev 为多种 Agent Harness 提供结构化决策能力，辅助选择工具、Skill 和 Agent，进行评分与判断；由当前 Agent 执行。",
+  "category": "AI Agent 与自动化",
+  "icon": { "src": "https://docs.typesafe.ai/mintlify-assets/_mintlify/favicons/ts-docs/zg2v0DiYB7xPw0I2/_generated/favicon/android-chrome-192x192.png" },
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false,
+    "reference": "https://github.com/Devin-AXIS/jev-dsh-decision"
+  },
+  "package": {
+    "version": "0.1.2",
+    "publisher": { "id": "ipollowork", "name": "iPolloWork" },
+    "compatibility": { "ipollowork": ">=0.21.0" },
+    "updateId": "ipollowork/jev-decision-model"
+  },
+  "composer": { "prompt": "使用 Jev DSH 决策引擎，帮助我选择适合当前任务的工具、Skill 或 Agent，并解释推荐结果。" },
+  "setup": {
+    "instructions": "在 TypeSafe AI 控制台创建 API Key，然后在此插件中连接。连接测试会发送一个最小评估请求；状态检查只检查本地配置。待评估内容将发送至 TypeSafe AI。",
+    "testActionRef": "check-connection"
+  },
+  "permissions": [{ "id": "network", "reason": "将用户选定的任务上下文和判断标准发送至 api.typesafe.ai，取得 Jev 决策结果。" }],
+  "authorization": {
+    "required": true,
+    "methods": [{
+      "id": "typesafe-api-key",
+      "connectionId": "jev-decision-model",
+      "kind": "secret-form",
+      "label": "连接 Jev",
+      "description": "填写 TypeSafe AI API Key。密钥保存在 Work 的加密授权仓库，不进入对话。",
+      "fields": [{ "id": "apiKey", "label": "TypeSafe API Key", "secret": true, "required": true }]
+    }]
+  },
+  "resources": [
+    {
+      "type": "local-service",
+      "id": "jev-service",
+      "label": "Jev",
+      "description": "TypeSafe AI 结构化决策服务。",
+      "path": "service/work.mjs",
+      "required": true,
+      "provides": ["action:status", "action:check-connection", "action:evaluate"],
+      "actions": [
+        {
+          "id": "status",
+          "title": "Jev 配置状态",
+          "description": "检查本地密钥是否已配置，不发起网络请求，不代表密钥已通过远端验证。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+          "id": "check-connection",
+          "title": "测试 Jev 连接",
+          "description": "发送一个最小评估请求，验证 API Key 和 Jev 服务是否可用，会产生少量 API 用量。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+          "id": "evaluate",
+          "title": "Jev 结构化评估",
+          "description": "对同一 state 批量评估独立问题。questions 为问题 ID 到问题对象的映射：type 为 choice、score 或 noul；instructions 是完整问题（字符串、对象或数组）。choice.criteria 是 2–255 个候选 ID 到描述（字符串、对象、数组或 null）的映射；score.criteria 是 2–10 个从低到高的等级描述；noul.criteria 可省略，或提供 true/false 的描述。返回选择、评分、概率和用量，不执行推荐动作。最多 64 个问题、请求 256 KiB。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "description": "判断所需的最小任务上下文，不要包含密钥或无关资料。",
+                "oneOf": [{ "type": "string" }, { "type": "object", "additionalProperties": true }, { "type": "array", "items": {} }]
+              },
+              "questions": { "type": "object", "additionalProperties": true, "description": "问题 ID 到 {type, instructions, criteria?} 的映射；完整规则见工具描述。" }
+            },
+            "required": ["state", "questions"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    { "type": "file", "id": "jev-client", "path": "service/jev.mjs", "required": true },
+    {
+      "type": "skill",
+      "id": "jev-decision",
+      "label": "Jev 决策",
+      "description": "根据任务与候选能力选择工具、Skill 和 Agent，或按明确标准评估产出。",
+      "path": "skills/jev-decision/SKILL.md",
+      "requires": ["service:jev-service"],
+      "required": true
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Jev DSH Decision Engine",
+        "description": "Jev provides structured decisions for agent harnesses, helping select tools, Skills, and agents, score results, and make judgments. The current agent executes the selected actions.",
+        "category": "AI Agents & Automation",
+        "composer": {
+          "prompt": "Use the Jev DSH Decision Engine to select tools, Skills, or agents for the current task and explain the recommendation."
+        },
+        "setup": {
+          "instructions": "Create an API key in the TypeSafe AI console, then connect it in this plugin. The connection test sends a minimal evaluation request; the status check only inspects local configuration. Evaluation content is sent to TypeSafe AI."
+        },
+        "resources": {
+          "jev-service": {
+            "label": "Jev",
+            "description": "TypeSafe AI structured decision service."
+          },
+          "jev-decision": {
+            "label": "Jev Decision",
+            "description": "Select tools, Skills, and agents for a task and its available capabilities, or evaluate results against explicit criteria."
+          }
+        },
+        "permissions": {
+          "network": {
+            "reason": "Send the task context and evaluation criteria selected by the user to api.typesafe.ai to obtain Jev decisions."
+          }
+        },
+        "authorizationMethods": {
+          "typesafe-api-key": {
+            "label": "Connect Jev",
+            "description": "Enter a TypeSafe AI API key. Work stores it in the encrypted authorization vault and keeps it out of conversations.",
+            "fields": {
+              "apiKey": {
+                "label": "TypeSafe API Key"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

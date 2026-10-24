@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.wireframe-sketch",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "poster",
   "subcategory": "design",
@@ -10,7 +10,8 @@
     "design",
     "wireframe",
     "lo-fi",
-    "sketch"
+    "sketch",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Wireframe Sketch",

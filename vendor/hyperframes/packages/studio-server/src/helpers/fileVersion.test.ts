@@ -1,0 +1,172 @@
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  DELETED_VERSION,
+  identifyFileWrite,
+  fileContentVersion,
+  recordFileWriteReceipt,
+  resetFileWriteReceipts,
+  settledFileTag,
+} from "./fileVersion";
+
+afterEach(resetFileWriteReceipts);
+
+describe("file versions and write receipts", () => {
+  it("produces a strong quoted SHA-256 ETag", () => {
+    expect(fileContentVersion("abc")).toBe(
+      '"sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"',
+    );
+  });
+
+  it("attaches one API write identity to every reader of the same watcher echo", () => {
+    const receipt = {
+      path: "index.html",
+      version: fileContentVersion("after"),
+      writeToken: "write-1",
+    };
+    recordFileWriteReceipt("/project/index.html", receipt);
+
+    // One watcher event fans out to every open SSE subscriber; a reader that
+    // removed the receipt would leave the rest reloading on Studio's own edit.
+    expect(identifyFileWrite("/project/index.html", receipt.version)).toEqual(receipt);
+    expect(identifyFileWrite("/project/index.html", receipt.version)).toEqual(receipt);
+    expect(identifyFileWrite("/project/index.html", fileContentVersion("other"))).toBeNull();
+  });
+
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "recognises a deletion and a creation in a linked folder, recorded before the file changes",
+    () => {
+      const real = mkdtempSync(join(tmpdir(), "hf-receipt-"));
+      const linked = `${real}-link`;
+      symlinkSync(real, linked, "dir");
+      try {
+        const file = join(linked, "index.html");
+        writeFileSync(file, "a");
+        recordFileWriteReceipt(file, {
+          path: "index.html",
+          version: DELETED_VERSION,
+          writeToken: "undo",
+        });
+        rmSync(file);
+        expect(identifyFileWrite(file, DELETED_VERSION)?.writeToken).toBe("undo");
+
+        const version = fileContentVersion("b");
+        recordFileWriteReceipt(file, { path: "index.html", version, writeToken: "redo" });
+        writeFileSync(file, "b");
+        expect(identifyFileWrite(file, version)?.writeToken).toBe("redo");
+
+        const nested = join(linked, "gone", "index.html");
+        recordFileWriteReceipt(nested, { path: "gone/index.html", version, writeToken: "restore" });
+        mkdirSync(join(real, "gone"));
+        writeFileSync(nested, "b");
+        expect(identifyFileWrite(nested, version)?.writeToken).toBe("restore");
+      } finally {
+        rmSync(linked, { force: true });
+        rmSync(real, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("stops recognising a write once the receipt TTL has passed", () => {
+    vi.useFakeTimers();
+    try {
+      const receipt = {
+        path: "index.html",
+        version: fileContentVersion("after"),
+        writeToken: "write-1",
+      };
+      recordFileWriteReceipt("/project/index.html", receipt);
+
+      // The TTL is the ONLY thing that evicts a receipt now that reads leave it
+      // in place, so a watcher echo arriving after it must read as external.
+      vi.advanceTimersByTime(9_999);
+      expect(identifyFileWrite("/project/index.html", receipt.version)).toEqual(receipt);
+      vi.advanceTimersByTime(2);
+      expect(identifyFileWrite("/project/index.html", receipt.version)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("matches the final debounced watcher version instead of receipt insertion order", () => {
+    const first = {
+      path: "index.html",
+      version: fileContentVersion("first"),
+      writeToken: "write-1",
+    };
+    const last = {
+      path: "index.html",
+      version: fileContentVersion("last"),
+      writeToken: "write-2",
+    };
+    recordFileWriteReceipt("/project/index.html", first);
+    recordFileWriteReceipt("/project/index.html", last);
+
+    expect(identifyFileWrite("/project/index.html", last.version)).toEqual(last);
+    expect(identifyFileWrite("/project/index.html", first.version)).toEqual(first);
+  });
+
+  it("says which version a write replaced when the writer read it, and nothing when it did not", () => {
+    const version = fileContentVersion("<h1>Title!</h1>");
+    recordFileWriteReceipt("/project/index.html", {
+      path: "index.html",
+      version,
+      writeToken: "hand",
+      overwrote: "<h1>Title</h1>",
+    });
+    expect(identifyFileWrite("/project/index.html", version)).toEqual({
+      path: "index.html",
+      version,
+      writeToken: "hand",
+      from: fileContentVersion("<h1>Title</h1>"),
+    });
+    const restored = fileContentVersion("<h1>Old</h1>");
+    recordFileWriteReceipt("/project/index.html", {
+      path: "index.html",
+      version: restored,
+      writeToken: "restore",
+    });
+    expect(identifyFileWrite("/project/index.html", restored)).not.toHaveProperty("from");
+  });
+
+  it("names what a write replaced only from the bytes it overwrote, never from its caller", () => {
+    const version = fileContentVersion("<h1>Forged</h1>");
+    recordFileWriteReceipt("/project/index.html", {
+      path: "index.html",
+      version,
+      writeToken: "agent",
+      // @ts-expect-error a receipt's `from` is derived, not given
+      from: fileContentVersion("<h1>Title</h1>"),
+    });
+    expect(identifyFileWrite("/project/index.html", version)).not.toHaveProperty("from");
+  });
+
+  it("labels a repeat of earlier bytes with the newest token, not the spent one", () => {
+    const version = fileContentVersion("same bytes");
+    const older = { path: "index.html", version, writeToken: "write-older" };
+    const newer = { path: "index.html", version, writeToken: "write-newer" };
+    recordFileWriteReceipt("/project/index.html", older);
+    recordFileWriteReceipt("/project/index.html", newer);
+
+    expect(identifyFileWrite("/project/index.html", version)).toEqual(newer);
+  });
+});
+
+describe("settledFileTag", () => {
+  it("tags a file only once its last change is three seconds old", () => {
+    const now = 1_000_000;
+    expect(settledFileTag({ ino: 7, ctimeMs: now - 2999, size: 10 }, now)).toBeNull();
+    expect(settledFileTag({ ino: 7, ctimeMs: now - 3000, size: 10 }, now)).toBe(
+      [7, now - 3000, 10].map((n) => n.toString(36)).join("-"),
+    );
+  });
+
+  it("gives a file replaced at the same size and change time a new tag", () => {
+    const now = 1_000_000;
+    const before = settledFileTag({ ino: 7, ctimeMs: now - 5000, size: 10 }, now);
+    expect(settledFileTag({ ino: 8, ctimeMs: now - 5000, size: 10 }, now)).not.toBe(before);
+  });
+});

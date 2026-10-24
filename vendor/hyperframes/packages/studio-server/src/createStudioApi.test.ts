@@ -1,0 +1,169 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createStudioApi } from "./createStudioApi";
+import { fileContentVersion } from "./helpers/fileVersion";
+import type { StudioApiAdapter } from "./types";
+
+describe("createStudioApi project cache invalidation", () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(() => {
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards temporal capture and resolution aliases without changing existing default exports", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-render-options-"));
+    temporaryDirectories.push(dir);
+    const received: Parameters<StudioApiAdapter["startRender"]>[0][] = [];
+    const adapter = {
+      listProjects: () => [{ id: "proof", dir }], resolveProject: () => ({ id: "proof", dir }),
+      bundle: async () => "", lint: () => ({ findings: [] }), runtimeUrl: "/runtime.js", rendersDir: () => dir,
+      startRender: (opts: Parameters<StudioApiAdapter["startRender"]>[0]) => {
+        received.push(opts);
+        return { id: opts.jobId, status: "complete" as const, progress: 100, outputPath: opts.outputPath };
+      },
+    } satisfies StudioApiAdapter;
+    const api = createStudioApi(adapter);
+    const request = (body: object) => api.request("/projects/proof/render", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    expect((await request({ motionBlur: true, resolution: "4k", fps: 60, captureSize: { width: 640, height: 360 }, outputSize: { width: 3840, height: 2160 } })).status).toBe(200);
+    expect(received[0]).toMatchObject({ motionBlur: true, outputResolution: "landscape-4k", outputResolutionAspectAgnostic: true, fps: { num: 60, den: 1 }, captureSize: { width: 640, height: 360 }, outputSize: { width: 3840, height: 2160 } });
+    expect((await request({ resolution: 15 })).status).toBe(200);
+    expect(received[1]?.motionBlur).toBeUndefined();
+    expect(received[1]?.outputResolution).toBeUndefined();
+    expect(received[1]?.fps).toEqual({ num: 30, den: 1 });
+    expect((await request({ motionBlur: "yes" })).status).toBe(400);
+    expect(received).toHaveLength(2);
+  });
+
+  it("derives recipe mount evidence from exact scene hosts and existing recipe sources, not Markdown claims", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-recipe-mount-"));
+    temporaryDirectories.push(projectDir);
+    mkdirSync(join(projectDir, "components"));
+    writeFileSync(join(projectDir, "components", "sample-loop.html"), '<main data-composition-id="sample-loop"></main><script data-ipw-motion-recipe="1">/* executable recipe */</script>');
+    writeFileSync(join(projectDir, "components", "legacy.html"), '<main data-composition-id="sample-loop"></main><script data-ipw-motion-recipe="1">/* executable recipe */</script>');
+    writeFileSync(join(projectDir, "components", "custom.html"), '<main data-composition-id="custom"></main>');
+    const entry = `<section id="real-scene" data-ipw-scene data-ipw-registry-component="sample-loop" data-ipw-timing-owner="host" data-composition-src="components/sample-loop.html"></section>
+<section id="missing-source" data-ipw-scene data-ipw-registry-component="sample-loop" data-ipw-timing-owner="host" data-composition-src="components/missing.html"></section>
+<section id="custom-scene" data-ipw-scene data-ipw-registry-component="custom" data-ipw-timing-owner="host" data-composition-src="components/custom.html"></section>
+<section id="wrong-component" data-ipw-scene data-ipw-registry-component="sample-definition" data-ipw-timing-owner="host" data-composition-src="components/sample-loop.html"></section>
+<section id="legacy-scene" data-ipw-scene data-ipw-registry-component="sample-loop" data-ipw-timing-owner="host" data-composition-src="components/legacy.html"></section>`;
+    writeFileSync(join(projectDir, "index.html"), entry);
+    const storyboard = `# Storyboard
+## Frame 1 — Mounted
+- recipe: sample-loop
+- scene_id: real-scene
+## Frame 2 — Missing source
+- recipe: sample-loop
+- scene_id: missing-source
+- status: mounted
+## Frame 3 — Component mismatch
+- recipe: sample-loop
+- scene_id: wrong-component
+## Frame 4 — Custom source
+- recipe: custom
+- scene_id: custom-scene
+## Frame 5 — Wrong association
+- recipe: sample-loop
+- scene_id: absent-scene
+- src: components/sample-loop.html
+## Frame 6 — Legacy unique source
+- camera: component:custom
+- src: components/custom.html
+## Frame 7 — No identity
+- recipe: sample-loop
+## Frame 8 — Ambiguous source
+- recipe: sample-loop
+- src: components/sample-loop.html
+## Frame 9 — Legacy mounted source
+- camera: component:sample-loop
+- src: components/legacy.html
+`;
+    writeFileSync(join(projectDir, "STORYBOARD.md"), storyboard);
+    const adapter = {
+      listProjects: () => [{ id: "proof", dir: projectDir }],
+      resolveProject: (id: string) => id === "proof" ? { id, dir: projectDir } : null,
+      bundle: async () => entry,
+      lint: () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => projectDir,
+      startRender: () => ({ id: "render", status: "complete" as const, progress: 100, outputPath: join(projectDir, "render.mp4") }),
+    } satisfies StudioApiAdapter;
+    const response = await createStudioApi(adapter).request("/projects/proof/storyboard");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.frames).toHaveLength(9);
+    expect(result.frames[0].recipeMount).toEqual({ componentId: "sample-loop", source: "components/sample-loop.html" });
+    for (const frame of result.frames.slice(1, 8)) expect(frame.recipeMount).toBeUndefined();
+    expect(result.frames[8].recipeMount).toEqual({ componentId: "sample-loop", source: "components/legacy.html" });
+    expect(readFileSync(join(projectDir, "index.html"), "utf8")).toBe(entry);
+    expect(readFileSync(join(projectDir, "STORYBOARD.md"), "utf8")).toBe(storyboard);
+  });
+
+  it("invalidates a host-owned preview signature before a successful write returns", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-preview-invalidation-"));
+    temporaryDirectories.push(projectDir);
+    const entryPath = join(projectDir, "index.html");
+    const before = "<!doctype html><html><body>Before</body></html>";
+    const after = "<!doctype html><html><body>After</body></html>";
+    writeFileSync(entryPath, before);
+    writeFileSync(join(projectDir, "avatar.webm"), "generated media");
+
+    let signature = "old";
+    let invalidations = 0;
+    const adapter = {
+      listProjects: () => [{ id: "proof", dir: projectDir }],
+      resolveProject: (id: string) => (id === "proof" ? { id, dir: projectDir } : null),
+      bundle: async () => readFileSync(entryPath, "utf8"),
+      getProjectSignature: () => signature,
+      invalidateProjectSignature: () => {
+        invalidations += 1;
+        signature = "new";
+      },
+      lint: () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => projectDir,
+      startRender: () => ({
+        id: "render",
+        status: "complete" as const,
+        progress: 100,
+        outputPath: join(projectDir, "render.mp4"),
+      }),
+    } satisfies StudioApiAdapter;
+    const api = createStudioApi(adapter);
+
+    const initialPreview = await api.request("/projects/proof/preview");
+    expect(initialPreview.headers.get("etag")).toBe('"preview:old"');
+    // Upstream only tags files after their change time has settled for 3s.
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 4000);
+    const media = await api.request("/projects/proof/preview/avatar.webm");
+    expect(media.headers.get("cache-control")).toBe("private, no-cache");
+    const mediaEtag = media.headers.get("etag");
+    expect(mediaEtag).toBeTruthy();
+    const cachedMedia = await api.request("/projects/proof/preview/avatar.webm", {
+      headers: { "If-None-Match": mediaEtag! },
+    });
+    expect(cachedMedia.status).toBe(304);
+    vi.restoreAllMocks();
+
+    const writeResponse = await api.request("/projects/proof/files/index.html", {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(before) },
+      body: after,
+    });
+    expect(writeResponse.status).toBe(200);
+    expect(invalidations).toBe(1);
+
+    const refreshedPreview = await api.request("/projects/proof/preview", {
+      headers: { "If-None-Match": '"preview:old"' },
+    });
+    expect(refreshedPreview.status).toBe(200);
+    expect(refreshedPreview.headers.get("etag")).toBe('"preview:new"');
+    expect(await refreshedPreview.text()).toContain("After");
+  });
+});

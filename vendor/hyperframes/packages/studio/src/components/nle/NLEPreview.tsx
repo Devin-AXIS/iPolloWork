@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { Player } from "../../player";
+import { Player, liveTime, usePlayerStore } from "../../player";
+import { setPreviewPlaybackActive } from "../../player/lib/timelineIframeHelpers";
 import {
   DEFAULT_PREVIEW_ZOOM,
   PREVIEW_ZOOM_RESET_EVENT,
@@ -152,11 +153,23 @@ export const NLEPreview = memo(function NLEPreview({
   const [retiringSlot, setRetiringSlot] = useState<PreviewPlayerSlot | null>(null);
   const loadingSlotKeyRef = useRef<string | null>(null);
   const retireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const visibleIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const setPreviewIframeRef = useCallback(
+    (node: HTMLIFrameElement | null) => {
+      previewIframeRef.current = node;
+      iframeRef.current = node;
+    },
+    [iframeRef],
+  );
   loadingSlotKeyRef.current = loadingSlot?.key ?? null;
   useEffect(() => {
     if (requestedSlot.key === visibleSlot.key || requestedSlot.key === loadingSlot?.key) return;
+    // An incoming frame can have handed over playback before its visual assets
+    // settle. Cancelling it must restore the connected, painted player.
+    if (loadingSlot) setPreviewIframeRef(visibleIframeRef.current);
     setLoadingSlot(requestedSlot);
-  }, [requestedSlot.key, projectId, directUrl, refreshToken, visibleSlot.key, loadingSlot?.key]);
+  }, [requestedSlot.key, projectId, directUrl, refreshToken, visibleSlot.key, loadingSlot?.key, setPreviewIframeRef]);
   useEffect(
     () => () => {
       if (retireTimerRef.current) clearTimeout(retireTimerRef.current);
@@ -165,7 +178,6 @@ export const NLEPreview = memo(function NLEPreview({
   );
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   useEffect(() => {
     onStageRef?.(stageRef);
   }, [onStageRef]);
@@ -222,14 +234,6 @@ export const NLEPreview = memo(function NLEPreview({
   useEffect(() => {
     onCompositionSizeChangeRef.current?.(compositionSize);
   }, [compositionSize]);
-
-  const setPreviewIframeRef = useCallback(
-    (node: HTMLIFrameElement | null) => {
-      previewIframeRef.current = node;
-      iframeRef.current = node;
-    },
-    [iframeRef],
-  );
 
   const stageSizeRef = useRef(stageSize);
   stageSizeRef.current = stageSize;
@@ -533,7 +537,18 @@ export const NLEPreview = memo(function NLEPreview({
               return (
                 <Player
                   key={slot.key}
-                  ref={setPreviewIframeRef}
+                  ref={(node) => {
+                    if (incoming && loadingSlotKeyRef.current !== slot.key) return;
+                    if (incoming && node && node !== previewIframeRef.current) {
+                      const state = usePlayerStore.getState();
+                      if (state.liveGenerationActive && state.liveGeneration) {
+                        state.setCurrentTime(state.isPlaying ? liveTime.get() : state.currentTime);
+                        setPreviewPlaybackActive(visibleIframeRef.current, false);
+                      }
+                    }
+                    if (active) visibleIframeRef.current = node;
+                    setPreviewIframeRef(node);
+                  }}
                   projectId={slot.directUrl ? undefined : slot.projectId}
                   directUrl={slot.directUrl}
                   refreshToken={slot.refreshToken}
@@ -543,6 +558,7 @@ export const NLEPreview = memo(function NLEPreview({
                       ? () => {
                           if (loadingSlotKeyRef.current !== slot.key) return;
                           if (retireTimerRef.current) clearTimeout(retireTimerRef.current);
+                          visibleIframeRef.current = previewIframeRef.current;
                           setRetiringSlot(visibleSlot);
                           setVisibleSlot(slot);
                           setLoadingSlot(null);
@@ -558,7 +574,9 @@ export const NLEPreview = memo(function NLEPreview({
                     incoming
                       ? () => {
                           if (loadingSlotKeyRef.current !== slot.key) return;
+                          setPreviewIframeRef(visibleIframeRef.current);
                           setLoadingSlot(null);
+                          onIframeLoad();
                           onRefreshSettled?.();
                         }
                       : undefined

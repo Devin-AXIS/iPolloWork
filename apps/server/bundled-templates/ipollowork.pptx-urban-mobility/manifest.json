@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-urban-mobility",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "city-planning",
@@ -10,7 +10,8 @@
     "city-planning",
     "swiss",
     "pptx-compatible",
-    "themeable"
+    "themeable",
+    "topic:business"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

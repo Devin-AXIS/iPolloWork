@@ -29,7 +29,7 @@ type UpdateDownloadProgressProps = {
 function UpdateDownloadProgress(props: UpdateDownloadProgressProps) {
   const downloadedBytes = props.downloadedBytes ?? 0;
   const progressPercent =
-    props.totalBytes != null && props.totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / props.totalBytes) * 100)) : 0;
+    props.totalBytes != null && props.totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / props.totalBytes) * 100)) : null;
   const progressLabel = (
     <>
       {formatBytes(downloadedBytes)}
@@ -38,9 +38,9 @@ function UpdateDownloadProgress(props: UpdateDownloadProgressProps) {
   );
 
   return (
-    <Progress value={progressPercent} className="w-full">
+    <Progress value={progressPercent} className="w-full" getAriaValueText={() => progressPercent == null ? t("settings.update_downloading") : `${progressPercent}%`}>
       <ProgressLabel className="text-sm text-muted-foreground font-normal">{progressLabel}</ProgressLabel>
-      <ProgressValue className="text-sm" />
+      {progressPercent != null ? <ProgressValue className="text-sm" /> : null}
     </Progress>
   );
 }

@@ -14,6 +14,8 @@ export interface StoryboardFrameTileProps {
   pendingComment: string | null;
   /** Project signature the board was loaded with (busts the poster cache). */
   posterVersion?: string;
+  /** Authored storyboard aspect ratio. */
+  aspectRatio: number;
 }
 
 function firstLine(text: string): string {
@@ -41,6 +43,7 @@ export function StoryboardFrameTile({
   onCommentDraftChange,
   pendingComment,
   posterVersion,
+  aspectRatio,
 }: StoryboardFrameTileProps) {
   const meta = FRAME_STATUS_META[frame.status];
   const renderable = frame.srcExists && frame.status !== "outline";
@@ -52,7 +55,8 @@ export function StoryboardFrameTile({
       <button
         type="button"
         onClick={() => onOpen(frame.index)}
-        className="group relative block aspect-video w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 text-left transition-colors hover:border-neutral-600"
+        style={{ aspectRatio }}
+        className="group relative block w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 text-left transition-colors hover:border-neutral-600"
       >
         <div className="absolute left-2 top-2 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-black/70 px-1.5 text-xs font-semibold text-neutral-100">
           {frame.number ?? frame.index}

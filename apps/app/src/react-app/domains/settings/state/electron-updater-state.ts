@@ -84,17 +84,6 @@ function releaseNotesToText(value: unknown): string | undefined {
   return undefined;
 }
 
-function updateProgress(event: unknown): { downloaded?: number; total?: number } | null {
-  if (!event || typeof event !== "object") return null;
-  const data = event as { data?: unknown };
-  if (!data.data || typeof data.data !== "object") return null;
-  const payload = data.data as { chunkLength?: unknown; contentLength?: unknown };
-  return {
-    downloaded: typeof payload.chunkLength === "number" ? payload.chunkLength : undefined,
-    total: typeof payload.contentLength === "number" ? payload.contentLength : undefined,
-  };
-}
-
 export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions) {
   const { updateAutoCheck, updateAutoDownload, setError } = options;
   const [updateStatus, setUpdateStatus] = useState<SettingsUpdateStatus>(null);

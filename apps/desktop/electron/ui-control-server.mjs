@@ -10,7 +10,7 @@ import path from "node:path";
 
 import { app } from "electron";
 
-export function createUiControlServer({ appName, appIdentifier, getWindow }) {
+export function createUiControlServer({ appName, appIdentifier, getWindow, ensureVideoStudio }) {
   let uiControlServer = null;
   let uiControlDiscoveryPath = null;
   const uiControlToken = randomBytes(32).toString("hex");
@@ -96,7 +96,7 @@ export function createUiControlServer({ appName, appIdentifier, getWindow }) {
         }
         control.setEnabled?.(true);
         return control.execute(input.actionId, input.args ?? {});
-      })()`, { focus: true });
+      })()`, { focus: !String(args.actionId ?? "").startsWith("browser.") });
     }
     return { ok: false, error: `Unknown iPolloWork control command: ${command}` };
   }
@@ -120,6 +120,10 @@ export function createUiControlServer({ appName, appIdentifier, getWindow }) {
         }
         if (request.method === "GET" && url.pathname === "/actions") {
           sendJsonResponse(response, 200, await runiPolloWorkControlCommand("actions"));
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/video/ensure-studio") {
+          sendJsonResponse(response, 200, await ensureVideoStudio(await readJsonRequestBody(request)));
           return;
         }
         if (request.method === "POST" && url.pathname === "/execute") {

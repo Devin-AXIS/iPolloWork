@@ -1,7 +1,27 @@
+import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { diag } from "../ui/diagnostics.js";
+import type { CapturePhaseProgress } from "../capture/types.js";
+import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
+
+const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
+
+function emitCapturePhase(event: CapturePhaseProgress): void {
+  diag.notice(`${CAPTURE_PHASE_PREFIX}${JSON.stringify(event)}`);
+}
+
+function parseCaptureBudget(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    console.error("--capture-budget must be a positive integer in milliseconds.");
+    failCommand();
+  }
+  return parsed;
+}
 
 export const examples: Example[] = [
   ["Capture a website into ./capture/", "hyperframes capture https://stripe.com"],
@@ -38,6 +58,11 @@ export default defineCommand({
       description: "Skip downloading assets (images, SVGs)",
       default: false,
     },
+    "skip-vision": {
+      type: "boolean",
+      description: "Skip optional AI image captioning",
+      default: false,
+    },
     "max-screenshots": {
       type: "string",
       description: "Maximum screenshots to capture (default: 24)",
@@ -45,6 +70,11 @@ export default defineCommand({
     timeout: {
       type: "string",
       description: "Page load timeout in ms (default: 120000)",
+    },
+    "capture-budget": {
+      type: "string",
+      description:
+        "Cooperative post-navigation budget in ms (default: 120000), separate from page-load --timeout; not a hard wall-clock timeout and cannot interrupt already-started native/core work",
     },
     json: {
       type: "boolean",
@@ -88,15 +118,17 @@ export default defineCommand({
       console.error(
         "Missing URL. Pass a website URL, or use --video <project> for video download.",
       );
-      process.exit(1);
+      failCommand();
     }
 
     try {
       new URL(url);
     } catch {
       console.error(`Invalid URL: ${url}`);
-      process.exit(1);
+      failCommand();
     }
+
+    const captureBudgetMs = parseCaptureBudget(args["capture-budget"] as string | undefined);
 
     const isDefaultOutput = !args.output;
     let outputName = (args.output as string | undefined) ?? "capture";
@@ -114,7 +146,7 @@ export default defineCommand({
       }
       if (existsSync(outputDir)) {
         console.error(`./capture-{2..99} are all taken. Pass -o <name> to pick a directory.`);
-        process.exit(1);
+        failCommand();
       }
     }
 
@@ -138,11 +170,15 @@ export default defineCommand({
           url,
           outputDir,
           skipAssets: args["skip-assets"] as boolean,
+          skipVision: args["skip-vision"] as boolean,
           maxScreenshots: args["max-screenshots"]
             ? parseInt(args["max-screenshots"] as string)
             : undefined,
           timeout: args.timeout ? parseInt(args.timeout as string) : undefined,
+          postNavigationBudgetMs: captureBudgetMs,
+          captureDeadlineMs: parseCaptureDeadline(process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS),
           json: isJson,
+          onPhase: emitCapturePhase,
         },
         isJson
           ? undefined
@@ -170,14 +206,19 @@ export default defineCommand({
               ok: result.ok,
               projectDir: result.projectDir,
               url: result.url,
+              // Reported beside `ok`, because they answer different questions: a capture of an
+              // error page is `ok: true` with a status the caller has to see to know it.
+              httpStatus: result.httpStatus,
               title: result.title,
               screenshots: result.screenshots.length,
               assets: result.assets.length,
+              dropped: result.dropped,
               detectedSections: result.tokens.sections.length,
               fonts: result.tokens.fonts.map((f) => f.family),
               fontsDetailed: result.tokens.fonts,
               animations: result.animationCatalog?.summary,
               warnings: result.warnings,
+              lastPhase: result.lastPhase,
             },
             null,
             2,
@@ -190,6 +231,18 @@ export default defineCommand({
         console.log();
         console.log(`  ${c.dim("Screenshots:")} ${result.screenshots.length}`);
         console.log(`  ${c.dim("Assets:")} ${result.assets.length}`);
+        const droppedTotal = Object.values(result.dropped).reduce((sum, n) => sum + n, 0);
+        if (droppedTotal > 0) {
+          const breakdown = Object.entries(result.dropped)
+            .filter(function (entry) {
+              return entry[1] > 0;
+            })
+            .map(function (entry) {
+              return entry[1] + " " + entry[0];
+            })
+            .join(", ");
+          console.log(`  ${c.dim("Dropped:")} ${droppedTotal} (${breakdown})`);
+        }
         console.log(`  ${c.dim("Sections:")} ${result.tokens.sections.length}`);
         console.log(
           `  ${c.dim("Fonts:")} ${result.tokens.fonts
@@ -215,15 +268,13 @@ export default defineCommand({
       }
     } catch (err) {
       const errMsg = normalizeErrorMessage(err);
-      // Write BLOCKED.md so the user/agent knows the capture failed
       try {
-        const { mkdirSync, writeFileSync } = await import("node:fs");
+        const { mkdirSync } = await import("node:fs");
+        const { formatCaptureFailureReason } = await import("../capture/captureTimeout.js");
+        const { writeCaptureFileSync } = await import("../capture/captureFile.js");
         mkdirSync(outputDir, { recursive: true });
-        const isTimeout = /timeout|timed out/i.test(errMsg);
-        const reason = isTimeout
-          ? "Page navigation timed out — the site may be blocking headless browsers or requires authentication."
-          : `Capture failed: ${errMsg}`;
-        writeFileSync(
+        const reason = formatCaptureFailureReason(errMsg);
+        writeCaptureFileSync(
           `${outputDir}/BLOCKED.md`,
           `# Capture Failed\n\n${reason}\n\nURL: ${url}\n\n## What to try\n\n- Re-run with a longer timeout: \`--timeout 60000\`\n- The site may block headless browsers (anti-bot protection)\n- Try capturing a different page on the same domain\n`,
           "utf-8",
@@ -236,7 +287,7 @@ export default defineCommand({
       } else {
         console.error(`\n  ✗ Capture failed: ${errMsg}\n`);
       }
-      process.exit(1);
+      failCommand();
     }
   },
 });

@@ -18,7 +18,7 @@ import {
   readGsapProperty,
 } from "./gsapRuntimeBridge";
 import type { SetPatchProps } from "./gsapRuntimePatch";
-import { selectorFromSelection, computeElementPercentage, isInstantHold } from "./gsapShared";
+import { selectorFromSelection, computeElementPercentage, isInstantHold, getOwnedAnimationSelectors } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
@@ -82,19 +82,18 @@ function pickBestAnimation(
 }
 
 /**
- * Auto-keyframe a just-updated static `set`: if the element is already animated
- * (its clip carries keyframes on another tween), convert the set to keyframes so
- * subsequent edits at other playheads interpolate — matching the drag / resize /
- * rotate UX. Purely static elements (no other keyframes) are left as a set.
+ * Editing an explicitly selected point may promote a static `set` to keyframes
+ * when another tween on the same element supplies its animation duration.
+ * Ordinary edits and purely static elements remain static sets.
  */
-async function maybeAutoKeyframeSet(
+async function maybeKeyframeSelectedSet(
   selection: DomEditSelection,
   setAnim: GsapAnimation,
   animations: GsapAnimation[],
   commit: NonNullable<CommitAnimatedPropertyDeps["gsapCommitMutation"]>,
 ): Promise<void> {
-  const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
-  if (!shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) return;
+  const { activeKeyframePct } = usePlayerStore.getState();
+  if (!shouldCommitAnimationKeyframe(activeKeyframePct)) return;
   const animatedTween = animations.find((a) => a.keyframes && a.id !== setAnim.id);
   if (!animatedTween) return;
   await commit(
@@ -127,7 +126,7 @@ function staticSetLabel(propEntries: [string, number | string][]): string {
 }
 
 /** Merge ALL props into the static `set` in ONE commit (value-only, instant), then
- *  auto-keyframe. One mutation — a per-property loop would shift the set's
+ *  promote only an explicitly selected point. One mutation — a per-property loop would shift the set's
  *  group-derived id mid-way (e.g. reset adding `scale` to a rotation set), 404-ing
  *  the next update. */
 async function commitSetProps(
@@ -162,7 +161,7 @@ async function commitSetProps(
       ...(instantPatch ? { instantPatch } : {}),
     },
   );
-  await maybeAutoKeyframeSet(selection, setAnim, animations, commit);
+  await maybeKeyframeSelectedSet(selection, setAnim, animations, commit);
 }
 
 /**
@@ -401,8 +400,13 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   } = deps;
 
   const commitAnimatedProperties = useCallback(
-    async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
+    async (
+      selection: DomEditSelection,
+      props: Record<string, number | string>,
+      options?: { positionDelta: number },
+    ): Promise<void> => {
       if (!gsapCommitMutation) return;
+      if (options && (!Number.isFinite(options.positionDelta) || options.positionDelta === 0)) return;
       const propEntries = Object.entries(props);
       if (propEntries.length === 0) return;
       const primaryProp = propEntries[0]![0];
@@ -427,6 +431,22 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         );
         const workingAnimations = isolation.animations;
         const persistMutation = isolation.commitMutation;
+        // Layout edits translate the whole path. They never promote a static
+        // axis to keyframes or use the currently selected animation point.
+        if (options && selector && (primaryProp === "x" || primaryProp === "y")) {
+          await persistMutation(
+            selection,
+            {
+              type: "offset-position-paths",
+              targetSelector: selector,
+              ownedSelectors: getOwnedAnimationSelectors(selection, workingAnimations),
+              deltaX: primaryProp === "x" ? options.positionDelta : 0,
+              deltaY: primaryProp === "y" ? options.positionDelta : 0,
+            },
+            { label: "Move layer", softReload: true },
+          );
+          return;
+        }
         const anim: GsapAnimation | undefined = pickBestAnimation(
           workingAnimations,
           selector,
@@ -446,10 +466,9 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         // keyframe would never land (the bug: scrolling depth on a keyframed element
         // just changed the constant instead of dropping a keyframe).
         if (elementHasKeyframes && anim) {
-          // With auto-keyframe off (#1808), nudge the whole tween instead of
-          // adding/updating a keyframe at the playhead.
-          const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
-          if (!shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) {
+          // Only an explicitly selected point limits this edit to a keyframe.
+          const { activeKeyframePct } = usePlayerStore.getState();
+          if (!shouldCommitAnimationKeyframe(activeKeyframePct)) {
             const pct = computeElementPercentage(
               usePlayerStore.getState().currentTime,
               selection,
@@ -482,7 +501,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         }
 
         // Existing static hold on a NON-animated element — merge the props into the
-        // same write (maybeAutoKeyframeSet no-ops when nothing else is keyframed).
+        // same write (maybeKeyframeSelectedSet no-ops when nothing else is keyframed).
         if (anim && isInstantHold(anim)) {
           await commitSetProps(
             selection,
@@ -497,10 +516,10 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
 
         // Static element (no keyframes anywhere) — persist as a `tl.set`, never
         // keyframes (incl. the no-animation case, which creates a fresh set).
-        const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
+        const { activeKeyframePct } = usePlayerStore.getState();
         if (
           !elementHasKeyframes ||
-          !shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)
+          !shouldCommitAnimationKeyframe(activeKeyframePct)
         ) {
           await commitStaticSet(
             selection,
@@ -563,8 +582,12 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   );
 
   const commitAnimatedProperty = useCallback(
-    (selection: DomEditSelection, property: string, value: number | string) =>
-      commitAnimatedProperties(selection, { [property]: value }),
+    (
+      selection: DomEditSelection,
+      property: string,
+      value: number | string,
+      options?: { positionDelta: number },
+    ) => commitAnimatedProperties(selection, { [property]: value }, options),
     [commitAnimatedProperties],
   );
 

@@ -20,4 +20,5 @@ Use the right channel to get faster help:
 
 ## Maintainer triage
 
-Maintainers use the rubric in `TRIAGE.md` to label and route issues.
+Maintainers use the triage process in `docs/governance.md` to label and route
+issues.

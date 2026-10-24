@@ -11,7 +11,7 @@ const revealHidden = async (ctx) => {
 export default {
   id: "builtin-mcps-hidden-by-default",
   title: "Built-in iPolloWork MCPs are hidden by default and revealed by Show hidden",
-  spec: "evals/browser-extension-flows.md",
+  spec: "evals/unified-browser-runtime-flows.md",
   kind: "user-facing",
   steps: [
     {

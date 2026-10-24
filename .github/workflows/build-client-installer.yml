@@ -100,7 +100,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -327,7 +327,7 @@ jobs:
       - name: Upload unsigned Windows installer for SignPath
         if: matrix.os_type == 'windows' && env.SIGN_WINDOWS == 'true'
         id: upload-unsigned-windows-installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-ipollowork-installer-windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/signpath-unsigned/*.exe
@@ -378,7 +378,7 @@ jobs:
           fi
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ipollowork-installer-${{ steps.client.outputs.slug }}-${{ matrix.artifact }}
           path: ${{ runner.temp }}/out/*

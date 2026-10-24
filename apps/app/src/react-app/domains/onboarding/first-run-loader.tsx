@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 
 import { OwDotTicker } from "../../shell/dot-ticker";
+import { t } from "../../../i18n";
 
 /**
  * First-run full-screen loader shown while the first session is created,
@@ -17,7 +18,7 @@ export function FirstRunLoader() {
       <div className="flex w-full max-w-[320px] flex-col items-center gap-4 px-6 text-center">
         <OwDotTicker size="md" />
         <div className="text-[12px] leading-5 text-dls-secondary">
-          Preparing workspace
+          {t("onboarding.installing_resources")}
         </div>
       </div>
     </div>

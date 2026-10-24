@@ -1,6 +1,7 @@
 import type { DomEditViewport } from "../components/editor/domEditing";
 import {
   getDomLayerPatchTarget,
+  getDomEditGroupMembers,
   isElementComputedVisible,
   resolveAllVisualDomEditTargets,
 } from "../components/editor/domEditingElement";
@@ -41,17 +42,8 @@ export function coversComposition(
   );
 }
 
-function isEmbeddedHtmlAssetContainer(el: HTMLElement): boolean {
-  const source = (el.getAttribute("src") ?? "").replace(/\\/g, "/");
-  return (
-    el.getAttribute("data-hf-asset-kind") === "html" ||
-    (el.hasAttribute("data-hf-lock-aspect-ratio") && /\.html?$/i.test(source))
-  );
-}
-
 export function isFullBleedTarget(el: HTMLElement, viewport: DomEditViewport): boolean {
   if (FULL_BLEED_SELECTABLE_MEDIA_TAGS.has(el.tagName.toLowerCase())) return false;
-  if (isEmbeddedHtmlAssetContainer(el)) return false;
   return coversComposition(el.getBoundingClientRect(), viewport);
 }
 
@@ -166,14 +158,6 @@ function filterAuthorInteractiveTargets(
   return resolveAllVisualDomEditTargets(elements, { activeCompositionPath });
 }
 
-/** HTML illustration iframes are viewports; the surrounding clip owns geometry. */
-export function resolveEmbeddedHtmlAssetSelectionTarget(target: HTMLElement): HTMLElement {
-  if (target.tagName.toLowerCase() !== "iframe") return target;
-  const parent = target.parentElement;
-  if (!parent) return target;
-  return isEmbeddedHtmlAssetContainer(parent) ? parent : target;
-}
-
 // Animated group members can move outside their wrapper's static layout box, so
 // the empty space inside a group's *visual* bounds (the member-union the overlay
 // draws) doesn't hit-test to the group via elementsFromPoint. Recover it: if the
@@ -184,11 +168,13 @@ function findGroupAtPoint(doc: Document, x: number, y: number): HTMLElement | nu
   let best: HTMLElement | null = null;
   let bestArea = Infinity;
   for (const group of Array.from(doc.querySelectorAll<HTMLElement>("[data-hf-group]"))) {
+    if (!isElementComputedVisible(group)) continue;
     let left = Infinity;
     let top = Infinity;
     let right = -Infinity;
     let bottom = -Infinity;
-    for (const member of Array.from(group.children)) {
+    for (const member of getDomEditGroupMembers(group)) {
+      if (!isElementComputedVisible(member)) continue;
       const r = member.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
       left = Math.min(left, r.left);
@@ -235,7 +221,7 @@ export function getPreviewTargetFromPointer(
       const candidates = filterAuthorInteractiveTargets(elements, activeCompositionPath);
       const visualTarget =
         candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
-      if (visualTarget) return resolveEmbeddedHtmlAssetSelectionTarget(visualTarget);
+      if (visualTarget) return visualTarget;
     }
 
     // Belt-and-suspenders: elementsFromPoint is universally supported in the
@@ -249,19 +235,18 @@ export function getPreviewTargetFromPointer(
     // back to the group whose member-union contains the point, so the whole group
     // area is hoverable/selectable, not just where a member currently sits.
     const groupHit = findGroupAtPoint(doc, localPointer.x, localPointer.y);
-    if (
-      groupHit &&
-      !hasAuthorPointerEventsNone(groupHit) &&
-      getDomLayerPatchTarget(groupHit, activeCompositionPath)
-    )
-      return resolveEmbeddedHtmlAssetSelectionTarget(groupHit);
+    if (groupHit && getDomLayerPatchTarget(groupHit, activeCompositionPath)) return groupHit;
+
+    // A native paint-order hit test already ruled out empty SVG viewports and
+    // layout wrappers. Retrying elementFromPoint would select them again.
+    if (typeof doc.elementsFromPoint === "function") return null;
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
     if (hasAuthorPointerEventsNone(fallback)) return null;
     if (!isElementComputedVisible(fallback)) return null;
     if (isFullBleedTarget(fallback, localPointer.viewport)) return null;
-    return resolveEmbeddedHtmlAssetSelectionTarget(fallback);
+    return fallback;
   } finally {
     removePointerEventsOverride(overrideStyle);
   }

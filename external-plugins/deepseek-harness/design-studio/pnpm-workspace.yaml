@@ -1,0 +1,10 @@
+packages:
+  - "."
+
+minimumReleaseAge: 4320
+
+minimumReleaseAgeExclude:
+  - "@deepseek-ai/*"
+
+allowBuilds:
+  esbuild: true

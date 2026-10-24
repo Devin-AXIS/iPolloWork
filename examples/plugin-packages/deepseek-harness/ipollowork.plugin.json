@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 2,
+  "id": "deepseek-harness",
+  "name": "DeepSeek Harness",
+  "description": "让 OpenCode 把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
+  "category": "AI Agent 与自动化",
+  "preview": true,
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/deepseek-ai/deepseek-harness"
+  },
+  "icon": { "simpleIconSlug": "deepseek" },
+  "composer": {
+    "prompt": "请使用 DeepSeek Harness 协作完成以下任务："
+  },
+  "setup": {
+    "instructions": "软件已内置 Windows 和 macOS DeepSeek Harness 运行环境。连接 DeepSeek 后即可开始委派任务。",
+    "primaryCta": "连接 DeepSeek",
+    "secondaryCta": "检查服务状态"
+  },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Let OpenCode delegate code review, development, and research tasks to DeepSeek Harness.",
+        "category": "AI Agents & Automation",
+        "composer": {
+          "prompt": "Work with DeepSeek Harness on the following task:"
+        },
+        "setup": {
+          "instructions": "The Windows and macOS DeepSeek Harness runtime is bundled. Connect DeepSeek to start delegating tasks.",
+          "primaryCta": "Connect DeepSeek",
+          "secondaryCta": "Check Service Status"
+        },
+        "resources": {
+          "deepseek-harness-service": {
+            "description": "Let OpenCode delegate tasks to DeepSeek Harness and view progress and results."
+          },
+          "deepseek-harness": {
+            "label": "DeepSeek Harness",
+            "description": "Let OpenCode delegate code review, development, and research tasks to DeepSeek Harness."
+          }
+        },
+        "authorizationMethods": {
+          "deepseek-api-key": {
+            "label": "Connect DeepSeek",
+            "description": "iPolloWork securely stores this API key and uses it to connect to DeepSeek.",
+            "fields": {
+              "apiKey": { "label": "DeepSeek API Key", "placeholder": "sk-…" },
+              "baseUrl": { "label": "API Base URL (optional)", "placeholder": "https://api.deepseek.com" }
+            }
+          }
+        },
+        "permissions": {
+          "network": {
+            "reason": "Connect the bundled DeepSeek Harness runtime to the selected model provider."
+          },
+          "workspace-read": {
+            "reason": "Read the active project for delegated tasks."
+          },
+          "process": {
+            "reason": "Run DeepSeek Harness for delegated tasks."
+          }
+        }
+      }
+    }
+  },
+  "package": {
+    "version": "0.3.7",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "engines": ["opencode"],
+    "updateId": "ipollowork/deepseek-harness"
+  },
+  "platform": ["darwin", "windows"],
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "使用内置 DeepSeek Harness 连接用户选择的模型服务。"
+    },
+    {
+      "id": "workspace-read",
+      "reason": "读取当前项目内容以完成委派任务。"
+    },
+    {
+      "id": "process",
+      "reason": "运行 DeepSeek Harness 以完成委派任务。"
+    }
+  ],
+  "authorization": {
+    "required": true,
+    "methods": [
+      {
+        "id": "deepseek-api-key",
+        "connectionId": "deepseek",
+        "kind": "secret-form",
+        "label": "连接 DeepSeek",
+        "description": "API Key 由 iPolloWork 安全保存，用于连接 DeepSeek 服务。",
+        "fields": [
+          {
+            "id": "apiKey",
+            "label": "DeepSeek API Key",
+            "placeholder": "sk-…",
+            "secret": true,
+            "required": true
+          },
+          {
+            "id": "baseUrl",
+            "label": "API Base URL（可选）",
+            "placeholder": "https://api.deepseek.com",
+            "secret": false,
+            "required": false
+          }
+        ]
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "local-service",
+      "id": "deepseek-harness-service",
+      "label": "DeepSeek Harness",
+      "description": "供 OpenCode 将任务委派给 DeepSeek Harness，并查看进度和结果。",
+      "path": "service/deepseek-harness.mjs",
+      "environment": [
+        "DSH_RUNTIME_BIN",
+        "DSH_CORDIS_CONFIG",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "IPOLLOWORK_API_KEY",
+        "IPOLLOWORK_INFERENCE_BASE_URL",
+        "IPOLLOWORK_DSH_CLI",
+        "IPOLLOWORK_DSH_CLI_VERSION"
+      ],
+      "provides": [
+        "service:external-subagent",
+        "workflow:deepseek-harness",
+        "action:capabilities",
+        "action:runtime_status",
+        "action:runtime_install",
+        "action:runtime_update",
+        "action:runtime_remove",
+        "action:start",
+        "action:status",
+        "action:cancel"
+      ],
+      "required": true,
+      "actions": [
+        {
+          "id": "capabilities",
+          "title": "Inspect DSH capabilities",
+          "description": "Check whether DSH is ready and which task modes are available.",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "runtime_status",
+          "title": "Inspect the DSH runtime",
+          "description": "Read the active, installed, recommended, and latest official DSH runtime versions.",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "runtime_install",
+          "title": "Install a DSH runtime",
+          "description": "Install and activate an official DSH runtime.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "version": { "type": "string", "minLength": 1, "maxLength": 64 }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "runtime_update",
+          "title": "Update the DSH runtime",
+          "description": "Install and activate the latest official DSH runtime.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "runtime_remove",
+          "title": "Remove managed DSH runtimes",
+          "description": "Remove installed DSH runtimes.",
+          "effect": "destructive",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "start",
+          "title": "Start a DSH task",
+          "description": "Start a DeepSeek Harness task and return a job ID.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "prompt": { "type": "string", "minLength": 1, "maxLength": 100000 },
+              "mode": { "type": "string", "enum": ["standard", "code", "review"] },
+              "provider": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "model": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "maxTokens": { "type": "integer", "minimum": 1024, "maximum": 262144 }
+            },
+            "required": ["prompt"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "status",
+          "title": "Read a DSH job",
+          "description": "View task progress, report, and patch.",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "includePatch": { "type": "boolean" },
+              "patchOffset": { "type": "integer", "minimum": 0 },
+              "patchLimit": { "type": "integer", "minimum": 1, "maximum": 500000 }
+            },
+            "required": ["jobId"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "cancel",
+          "title": "Cancel a DSH job",
+          "description": "Stop an active DeepSeek Harness runtime and preserve a cancelled job record.",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": { "type": "string", "minLength": 1, "maxLength": 64 }
+            },
+            "required": ["jobId"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "id": "deepseek-harness-runtime-config",
+      "path": "cordis.yml",
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "deepseek-harness",
+      "label": "DeepSeek Harness",
+      "description": "供 OpenCode 把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
+      "path": "skills/deepseek-harness/SKILL.md",
+      "provides": ["workflow:deepseek-harness"],
+      "required": true
+    }
+  ]
+}

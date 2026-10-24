@@ -1,12 +1,19 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-signal-workspace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "product-landing",
   "style": "editorial",
-  "tags": ["product", "saas", "workspace", "editorial", "dashboard"],
+  "tags": [
+    "product",
+    "saas",
+    "workspace",
+    "editorial",
+    "dashboard",
+    "topic:product"
+  ],
   "surface": "design",
   "title": "Signal Workspace",
   "description": "A polished product website with an editorial hero, live workspace preview, proof points, and conversion sections.",

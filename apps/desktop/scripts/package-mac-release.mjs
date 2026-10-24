@@ -95,6 +95,7 @@ const tempDir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-mac-release-"));
 try {
   const env = {
     ...process.env,
+    TARGET: "aarch64-apple-darwin",
     MACOS_NOTARIZE: "true",
     APPLE_API_KEY: process.env.APPLE_API_KEY?.trim() || process.env.APPLE_NOTARY_API_KEY_ID?.trim() || "",
     APPLE_API_ISSUER: process.env.APPLE_API_ISSUER?.trim() || process.env.APPLE_NOTARY_API_ISSUER_ID?.trim() || "",

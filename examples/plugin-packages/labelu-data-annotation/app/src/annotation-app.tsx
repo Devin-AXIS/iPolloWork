@@ -1,0 +1,1458 @@
+import type { TextAttribute } from "@labelu/interface";
+import type { Annotator as ImageEngine } from "@labelu/image";
+import type { AnnotatorRef as ImageAnnotatorRef, ImageSample } from "@labelu/image-annotator-react";
+import type { AudioAndVideoAnnotatorRef, MediaSample } from "@labelu/audio-annotator-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import type { WorkbenchRole, ProjectReview, MediaSource } from "../../types";
+
+import { AnnotationPanelTabs, type AnnotationPanelProps } from "./annotation-panels";
+
+const ImageAnnotator = lazy(() => import("./image-annotator"));
+const MediaAnnotator = lazy(() => import("./media-annotator"));
+
+type Modality = "image" | "video" | "audio" | "text";
+type AnnotationMap = Record<string, unknown>;
+
+type ProjectSummary = {
+  id: string;
+  title: string;
+  modality: Modality;
+  revision: number;
+  updatedAt: string;
+  updateSource: "user" | "ai";
+  annotationCount: number;
+  annotationCounts: Record<string, number>;
+  status: "not_started" | "in_progress";
+  review: ProjectReview;
+};
+
+type ProjectPayload = ProjectSummary & {
+  schemaVersion: 2;
+  sourcePath: string | null;
+  mimeType: string | null;
+  textContent: string | null;
+  labels: string[];
+  labelColors: Record<string, string>;
+  annotations: AnnotationMap;
+  createdAt: string;
+  mediaUrl: string | null;
+  mediaSource?: MediaSource;
+};
+
+type TrainingTemplateSummary = {
+  id: string;
+  title: string;
+  modality: Modality;
+  description: string;
+  instruction: string;
+  difficulty: "入门" | "进阶";
+  labels: string[];
+  labelColors: Record<string, string>;
+  mediaSource?: MediaSource;
+};
+
+type TextSpan = {
+  id: string;
+  start: number;
+  end: number;
+  label: string;
+  text: string;
+};
+
+type LabelDraft = {
+  id: string;
+  originalName: string | null;
+  name: string;
+  color: string;
+};
+
+type RemovedLabel = {
+  name: string;
+  count: number;
+  replacementId: string;
+};
+
+const palette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#be123c", "#4f46e5"];
+const modalityCopy: Record<Modality, { name: string; description: string; accept: string }> = {
+  image: {
+    name: "图片标注",
+    description: "框选、点选和轮廓标记",
+    accept: "image/jpeg,image/png,image/gif,image/webp,image/bmp",
+  },
+  video: {
+    name: "视频标注",
+    description: "时间片段和关键帧标记",
+    accept: "video/mp4,video/quicktime,video/webm,video/ogg",
+  },
+  audio: {
+    name: "音频标注",
+    description: "波形区间和时间点标记",
+    accept: "audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg,audio/flac",
+  },
+  text: {
+    name: "文字标注",
+    description: "文字区间标注与标签管理",
+    accept: "text/plain",
+  },
+};
+
+function projectLabelDrafts(project: ProjectPayload): LabelDraft[] {
+  return project.labels.map((name, index) => ({
+    id: crypto.randomUUID(),
+    originalName: name,
+    name,
+    color: project.labelColors[name] ?? palette[index % palette.length],
+  }));
+}
+
+function configuredLabels(project: ProjectPayload | null, fallback: string): Array<{ color: string; key: string; value: string }> {
+  const names = project?.labels.length ? project.labels : [fallback];
+  return names.map((name, index) => ({
+    color: project?.labelColors[name] ?? palette[index % palette.length],
+    key: name,
+    value: name,
+  }));
+}
+
+function annotationLabelUsage(value: unknown, counts: Record<string, number> = {}): Record<string, number> {
+  if (Array.isArray(value)) {
+    for (const entry of value) annotationLabelUsage(entry, counts);
+    return counts;
+  }
+  if (!value || typeof value !== "object") return counts;
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === "label" && typeof nested === "string") counts[nested] = (counts[nested] ?? 0) + 1;
+    else annotationLabelUsage(nested, counts);
+  }
+  return counts;
+}
+
+function query(): string {
+  const parameters = new URLSearchParams(window.location.search);
+  const token = parameters.get("token") ?? "";
+  const session = parameters.get("session") ?? "";
+  if (!token || !session) throw new Error("标注页面地址无效，请从 iPolloWork 重新打开。");
+  return new URLSearchParams({ token, session }).toString();
+}
+
+function endpoint(path: string, apiQuery: string, extra?: Record<string, string>): string {
+  const parameters = new URLSearchParams(apiQuery);
+  for (const [key, value] of Object.entries(extra ?? {})) parameters.set(key, value);
+  return `${path}?${parameters.toString()}`;
+}
+
+async function responseJson<T>(response: Response): Promise<T> {
+  const payload = await response.json().catch(() => null) as ({ error?: string } & T) | null;
+  if (!response.ok) throw new Error(payload?.error ?? `请求失败 (${response.status})`);
+  if (!payload) throw new Error("服务返回了空结果");
+  return payload;
+}
+
+function annotationCounts(annotations: AnnotationMap): Record<string, number> {
+  return Object.fromEntries(Object.entries(annotations).map(([key, value]) => [
+    key,
+    Array.isArray(value) ? value.length : value == null || value === "" ? 0 : 1,
+  ]));
+}
+
+function totalAnnotations(annotations: AnnotationMap): number {
+  return Object.values(annotationCounts(annotations)).reduce((sum, count) => sum + count, 0);
+}
+
+function textSpans(annotations: AnnotationMap): TextSpan[] {
+  if (!Array.isArray(annotations.spans)) return [];
+  return annotations.spans.flatMap((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const span = value as Record<string, unknown>;
+    if (
+      typeof span.id !== "string" ||
+      typeof span.start !== "number" ||
+      typeof span.end !== "number" ||
+      typeof span.label !== "string" ||
+      typeof span.text !== "string"
+    ) return [];
+    return [{ id: span.id, start: span.start, end: span.end, label: span.label, text: span.text }];
+  });
+}
+
+function formatTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function openSourceLink(event: ReactMouseEvent<HTMLAnchorElement>) {
+  if (window.parent === window) return;
+  event.preventDefault();
+  window.parent.postMessage({ type: "labelu:open-source", url: event.currentTarget.href }, "*");
+}
+
+function EngineLoading() {
+  return <div className="engine-loading">正在加载标注引擎…</div>;
+}
+
+const reviewCopy: Record<ProjectReview["status"], string> = { pending: "待审核", approved: "已通过", rejected: "已退回" };
+
+function ReviewBadge({ review }: { review: ProjectReview }) {
+  return <span className={`review-badge ${review.status}`}>{reviewCopy[review.status]}</span>;
+}
+
+function EmptyProjects({ reviewing }: { reviewing: boolean }) {
+  return (
+    <div className="empty-projects">
+      <strong>还没有保存的标注</strong>
+      <span>{reviewing ? "切换为标注员并保存标注后，记录会出现在这里。" : "从上面选择一种类型开始。"}</span>
+    </div>
+  );
+}
+
+type TextEditorProps = AnnotationPanelProps & {
+  readOnly: boolean;
+  content: string;
+  spans: TextSpan[];
+  labels: string[];
+  onContentChange: (value: string) => void;
+  onSpansChange: (value: TextSpan[]) => void;
+};
+
+function TextEditor({
+  readOnly,
+  content,
+  spans,
+  labels,
+  onContentChange,
+  onSpansChange,
+  labelsPanel,
+  panelTab,
+  onPanelTabChange,
+  labelsBusy,
+}: TextEditorProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [activeLabel, setActiveLabel] = useState(labels[0] ?? "实体");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!labels.includes(activeLabel)) setActiveLabel(labels[0] ?? "实体");
+  }, [activeLabel, labels]);
+
+  const addSelection = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || textarea.selectionStart === textarea.selectionEnd) {
+      setNotice("请先在正文中选择一段文字。");
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const next: TextSpan = {
+      id: crypto.randomUUID(),
+      start,
+      end,
+      label: activeLabel,
+      text: content.slice(start, end),
+    };
+    onSpansChange([...spans, next].sort((left, right) => left.start - right.start));
+    setNotice(`已添加“${activeLabel}”标注。`);
+  }, [activeLabel, content, onSpansChange, spans]);
+
+  return (
+    <div className="text-editor">
+      <section className="text-source" aria-labelledby="text-source-title">
+        <div className="section-heading">
+          <div>
+            <h2 id="text-source-title">正文</h2>
+            <p>{readOnly ? "查看正文与右侧已保存的标注，确认后提交审核结果。" : "选择文字，再添加区间标签。"}</p>
+          </div>
+          {!readOnly ? <div className="text-actions">
+            <label>
+              标签
+              <select value={activeLabel} onChange={(event) => setActiveLabel(event.currentTarget.value)}>
+                {labels.map((label) => <option key={label} value={label}>{label}</option>)}
+              </select>
+            </label>
+            <button className="secondary-button" type="button" onClick={addSelection}>标注所选文字</button>
+          </div> : null}
+        </div>
+        <textarea
+          ref={textareaRef}
+          readOnly={readOnly}
+          value={content}
+          spellCheck={false}
+          aria-label="待标注正文"
+          onChange={(event) => {
+            if (spans.length) onSpansChange([]);
+            onContentChange(event.currentTarget.value);
+            setNotice(spans.length ? "正文已修改，原有区间标注已清除。" : "");
+          }}
+        />
+        <div className="inline-status" aria-live="polite">{notice}</div>
+      </section>
+      <aside className="text-inspector" aria-label="文字标注结果">
+        <div className="text-panel-header"><AnnotationPanelTabs panelTab={panelTab} onPanelTabChange={onPanelTabChange} labelsBusy={labelsBusy} count={spans.length} /></div>
+        {panelTab === "labels" ? (
+          <section className="annotation-labels-panel" id="annotation-labels-panel" role="tabpanel" aria-labelledby="labels-tab">{labelsPanel}</section>
+        ) : <section className="text-marks-panel" role="tabpanel" aria-labelledby="marks-tab">
+          <div className="span-heading">
+            <strong>区间标注</strong>
+            <span>{spans.length} 条</span>
+          </div>
+          <div className="span-list">
+            {spans.length ? spans.map((span) => (
+              <div className="span-item" key={span.id}>
+                <div>
+                  <span className="span-label">{span.label}</span>
+                  <p>{span.text}</p>
+                  <small>{span.start}-{span.end}</small>
+                </div>
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => onSpansChange(spans.filter((item) => item.id !== span.id))}
+                >
+                  删除
+                </button>
+              </div>
+            )) : <p className="muted">还没有区间标注。</p>}
+          </div>
+        </section>}
+      </aside>
+    </div>
+  );
+}
+
+export function AnnotationApp() {
+  const imageRef = useRef<ImageAnnotatorRef>(null);
+  const panKeyboard = useRef<NonNullable<ImageEngine["keyboard"]> | null>(null);
+  const mediaRef = useRef<AudioAndVideoAnnotatorRef>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const uploadModalityRef = useRef<Exclude<Modality, "text">>("image");
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [trainingTemplates, setTrainingTemplates] = useState<TrainingTemplateSummary[]>([]);
+  const [activeProject, setActiveProject] = useState<ProjectPayload | null>(null);
+  const [homeTab, setHomeTab] = useState<"start" | "training">("start");
+  const [templateFilter, setTemplateFilter] = useState<Modality | "all">("all");
+  const [loading, setLoading] = useState(true);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [creatingTemplate, setCreatingTemplate] = useState("");
+  const [opening, setOpening] = useState("");
+  const [deleting, setDeleting] = useState("");
+  const [deleteCandidate, setDeleteCandidate] = useState("");
+  const [uploading, setUploading] = useState<Modality | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [annotationPanelTab, setAnnotationPanelTab] = useState<"marks" | "labels">("marks");
+  const [imagePan, setImagePan] = useState(false);
+  const markDirty = useCallback(() => setDirty(true), []);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [labelDraft, setLabelDraft] = useState<LabelDraft[]>([]);
+  const [removedLabels, setRemovedLabels] = useState<RemovedLabel[]>([]);
+  const [labelSaving, setLabelSaving] = useState(false);
+  const [labelNotice, setLabelNotice] = useState("");
+  const [labelError, setLabelError] = useState("");
+  const [error, setError] = useState("");
+  const [textFormOpen, setTextFormOpen] = useState(false);
+  const [textTitle, setTextTitle] = useState("");
+  const [textDraft, setTextDraft] = useState("");
+  const [documentImporting, setDocumentImporting] = useState(false);
+  const [documentNotice, setDocumentNotice] = useState("");
+  const [textContent, setTextContent] = useState("");
+  const [spans, setSpans] = useState<TextSpan[]>([]);
+  const [role, setRole] = useState<WorkbenchRole>("annotator");
+  const [roleChanging, setRoleChanging] = useState(false);
+  const [reviewFilter, setReviewFilter] = useState<ProjectReview["status"] | "all">("all");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
+  const reviewing = role === "reviewer";
+  const apiQuery = useMemo(query, []);
+
+  const loadProjects = useCallback(async () => {
+    try {
+      const response = await fetch(endpoint("/api/projects", apiQuery), { cache: "no-store" });
+      const payload = await responseJson<{ projects: ProjectSummary[]; role: WorkbenchRole }>(response);
+      setProjects(payload.projects);
+      setRole(payload.role);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法读取我的标注");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiQuery]);
+
+  const loadTrainingTemplates = useCallback(async () => {
+    if (templatesLoaded || templatesLoading) return;
+    setTemplatesLoading(true);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/training-templates", apiQuery), { cache: "no-store" });
+      const payload = await responseJson<{ templates: TrainingTemplateSummary[] }>(response);
+      setTrainingTemplates(payload.templates);
+      setTemplatesLoaded(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法读取实训项目");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [apiQuery, templatesLoaded, templatesLoading]);
+
+  const selectHomeTab = useCallback((tab: "start" | "training") => {
+    setHomeTab(tab);
+    setError("");
+    if (tab === "training") {
+      setTextFormOpen(false);
+      void loadTrainingTemplates();
+    }
+  }, [loadTrainingTemplates]);
+
+  const handleHomeTabKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next = homeTab === "start" ? "training" : "start";
+    selectHomeTab(next);
+    document.getElementById(`${next}-tab`)?.focus();
+  }, [homeTab, selectHomeTab]);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  const prepareProject = useCallback((project: ProjectPayload) => {
+    setReviewComment(project.review.comment);
+    setExportNotice("");
+    setActiveProject(project);
+    setTextContent(project.textContent ?? "");
+    setSpans(textSpans(project.annotations));
+    setLabelDraft(projectLabelDrafts(project));
+    setRemovedLabels([]);
+    setLabelNotice("");
+    setLabelError("");
+    setDirty(false);
+    setPanelOpen(false);
+    setError("");
+  }, []);
+
+  const openProject = useCallback(async (projectId: string) => {
+    setOpening(projectId);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project", apiQuery, { projectId }), { cache: "no-store" });
+      const payload = await responseJson<{ project: ProjectPayload }>(response);
+      prepareProject(payload.project);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法打开标注项目");
+    } finally {
+      setOpening("");
+    }
+  }, [apiQuery, prepareProject]);
+
+  const deleteProject = useCallback(async (project: ProjectSummary) => {
+    if (deleting) return;
+    setDeleting(project.id);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project", apiQuery, { projectId: project.id }), { method: "DELETE" });
+      await responseJson<{ ok: boolean }>(response);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      setDeleteCandidate("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "删除失败，请重试。");
+    } finally {
+      setDeleting("");
+    }
+  }, [apiQuery, deleting]);
+
+  const beginFileProject = useCallback((modality: Exclude<Modality, "text">) => {
+    uploadModalityRef.current = modality;
+    if (fileInputRef.current) fileInputRef.current.accept = modalityCopy[modality].accept;
+    fileInputRef.current?.click();
+  }, []);
+
+  const uploadProject = useCallback(async (file: File, modality: Exclude<Modality, "text">) => {
+    setUploading(modality);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project-file", apiQuery, { modality, name: file.name }), {
+        method: "POST",
+        headers: { "content-type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      const payload = await responseJson<{ project: ProjectPayload }>(response);
+      prepareProject(payload.project);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `${modalityCopy[modality].name}创建失败`);
+    } finally {
+      setUploading(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [apiQuery, prepareProject]);
+
+  const importDocument = useCallback(async (file: File) => {
+    const extension = file.name.toLowerCase().split(".").pop();
+    if (!extension || !["pdf", "doc", "docx", "txt"].includes(extension)) {
+      setError("请选择 PDF、Word（.doc、.docx）或 TXT 文件。");
+      return;
+    }
+    const maximumMB = extension === "txt" ? 5 : 50;
+    if (file.size > maximumMB * 1024 * 1024) {
+      setError(`文件不能超过 ${maximumMB} MB。`);
+      return;
+    }
+    setDocumentImporting(true);
+    setDocumentNotice("");
+    setError("");
+    try {
+      const response = await fetch(endpoint(extension === "pdf" ? "/api/extract-pdf" : "/api/extract-document", apiQuery, { name: file.name }), {
+        method: "POST",
+        headers: { "content-type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      const payload = await responseJson<{ textContent: string; pageCount?: number; characterCount: number }>(response);
+      setTextDraft(payload.textContent);
+      setTextTitle((current) => current.trim() || file.name.replace(/\.[^.]+$/, "").slice(0, 200));
+      setDocumentNotice(`已导入${payload.pageCount ? ` ${payload.pageCount} 页，` : "，"}共 ${payload.characterCount} 个字符。请确认正文后开始标注。`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "文件导入失败");
+    } finally {
+      setDocumentImporting(false);
+      if (documentInputRef.current) documentInputRef.current.value = "";
+    }
+  }, [apiQuery]);
+
+  const createTextProject = useCallback(async () => {
+    if (!textDraft.trim()) {
+      setError("请先输入需要标注的文字。");
+      return;
+    }
+    setUploading("text");
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project-text", apiQuery), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: textTitle, textContent: textDraft }),
+      });
+      const payload = await responseJson<{ project: ProjectPayload }>(response);
+      setTextFormOpen(false);
+      setTextTitle("");
+      setTextDraft("");
+      setDocumentNotice("");
+      prepareProject(payload.project);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "文字项目创建失败");
+    } finally {
+      setUploading(null);
+    }
+  }, [apiQuery, prepareProject, textDraft, textTitle]);
+
+  const createTrainingProject = useCallback(async (templateId: string) => {
+    if (creatingTemplate) return;
+    setCreatingTemplate(templateId);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/training-project", apiQuery), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ templateId }),
+      });
+      const payload = await responseJson<{ project: ProjectPayload }>(response);
+      prepareProject(payload.project);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "实训项目创建失败");
+    } finally {
+      setCreatingTemplate("");
+    }
+  }, [apiQuery, creatingTemplate, prepareProject]);
+
+  const imageConfig = useMemo(() => {
+    const labels = configuredLabels(activeProject, "目标");
+    return {
+      width: 0,
+      height: 0,
+      image: { url: "", rotate: 0 },
+      point: { maxPointAmount: 100, labels },
+      line: { lineType: "line" as const, minPointAmount: 2, maxPointAmount: 100, edgeAdsorptive: false, labels },
+      rect: { minWidth: 1, minHeight: 1, labels },
+      polygon: { lineType: "line" as const, minPointAmount: 3, maxPointAmount: 100, edgeAdsorptive: false, labels },
+    };
+  }, [activeProject]);
+
+  const mediaConfig = useMemo(() => {
+    // The upstream interface package ships types only, including this string enum.
+    const attributes: TextAttribute[] = [
+      { key: "标记名称", value: "标记名称", type: "string" as TextAttribute["type"], stringType: "text", maxLength: 80 },
+      { key: "描述", value: "描述", type: "string" as TextAttribute["type"], stringType: "text", maxLength: 2000 },
+    ];
+    const labels = configuredLabels(activeProject, activeProject?.modality === "audio" ? "声音" : "片段")
+      .map(label => ({ ...label, attributes }));
+    return {
+      segment: labels,
+      frame: labels,
+    };
+  }, [activeProject]);
+
+  const imageSample = useMemo<ImageSample | null>(() => {
+    if (!activeProject || activeProject.modality !== "image" || !activeProject.mediaUrl) return null;
+    return {
+      id: activeProject.id,
+      name: activeProject.title,
+      url: activeProject.mediaUrl,
+      data: activeProject.annotations as ImageSample["data"],
+    };
+  }, [activeProject]);
+
+  const mediaSample = useMemo<MediaSample | null>(() => {
+    if (!activeProject || !activeProject.mediaUrl || (activeProject.modality !== "audio" && activeProject.modality !== "video")) return null;
+    return {
+      id: activeProject.id,
+      name: activeProject.title,
+      url: activeProject.mediaUrl,
+      data: activeProject.annotations as MediaSample["data"],
+    };
+  }, [activeProject]);
+
+  const currentAnnotations = useCallback((): AnnotationMap | null => {
+    if (!activeProject) return null;
+    if (activeProject.modality === "image") return imageRef.current?.getAnnotations() ?? null;
+    if (activeProject.modality === "audio" || activeProject.modality === "video") return mediaRef.current?.getAnnotations() ?? null;
+    return { ...activeProject.annotations, spans };
+  }, [activeProject, spans]);
+
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!activeProject || saving || reviewing) return false;
+    const annotations = currentAnnotations();
+    if (!annotations) return false;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project", apiQuery, { projectId: activeProject.id }), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          annotations,
+          expectedRevision: activeProject.revision,
+          textContent: activeProject.modality === "text" ? textContent : undefined,
+        }),
+      });
+      const payload = await responseJson<{ project: ProjectPayload }>(response);
+      setActiveProject(payload.project);
+      setDirty(false);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "保存失败");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [activeProject, apiQuery, currentAnnotations, reviewing, saving, textContent]);
+
+  useEffect(() => {
+    const handleSave = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void save();
+      }
+    };
+    window.addEventListener("keydown", handleSave);
+    return () => window.removeEventListener("keydown", handleSave);
+  }, [save]);
+
+  const returnHome = useCallback(async () => {
+    if (dirty && !(await save())) return;
+    setActiveProject(null);
+    setPanelOpen(false);
+    setDirty(false);
+    await loadProjects();
+  }, [dirty, loadProjects, save]);
+
+  const onImageLoad = useCallback((engine: ImageEngine) => {
+    const changed = () => { if (!reviewing) setDirty(true); };
+    engine.on("add", changed);
+    engine.on("change", changed);
+    engine.on("delete", changed);
+  }, [reviewing]);
+
+  useEffect(() => {
+    // The public keyboard state activates LabelU's own Space+drag canvas pan.
+    // Release the temporary modifier even when the pointer leaves the editor.
+    const release = () => {
+      if (panKeyboard.current) panKeyboard.current.Space = false;
+      panKeyboard.current = null;
+    };
+    window.addEventListener("mouseup", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("mouseup", release);
+      window.removeEventListener("blur", release);
+      release();
+    };
+  }, []);
+
+  const activeLabelUsage = useMemo(
+    () => activeProject ? annotationLabelUsage(activeProject.annotations) : {},
+    [activeProject],
+  );
+  const effectiveRemovedLabels = useMemo(() => {
+    const currentNames = new Set(labelDraft.map((label) => label.name.trim()));
+    return removedLabels.filter((label) => !currentNames.has(label.name));
+  }, [labelDraft, removedLabels]);
+  const labelHasChanges = useMemo(() => {
+    if (!activeProject) return false;
+    const saved = activeProject.labels.map((name, index) => ({
+      name,
+      color: activeProject.labelColors[name] ?? palette[index % palette.length],
+    }));
+    const draft = labelDraft.map((label) => ({ name: label.name.trim(), color: label.color.toLowerCase() }));
+    return JSON.stringify(saved) !== JSON.stringify(draft) || effectiveRemovedLabels.length > 0;
+  }, [activeProject, effectiveRemovedLabels, labelDraft]);
+
+  const addLabel = useCallback(() => {
+    if (labelDraft.length >= 50) {
+      setLabelError("每个项目最多可以设置 50 个标签。");
+      return;
+    }
+    const existing = new Set(labelDraft.map((label) => label.name.trim().toLocaleLowerCase()));
+    let suffix = 1;
+    let name = "新标签";
+    while (existing.has(name.toLocaleLowerCase())) {
+      suffix += 1;
+      name = `新标签 ${suffix}`;
+    }
+    setLabelDraft((current) => [...current, {
+      id: crypto.randomUUID(),
+      originalName: null,
+      name,
+      color: palette[current.length % palette.length],
+    }]);
+    setLabelNotice("已添加标签，请修改名称后应用。");
+    setLabelError("");
+  }, [labelDraft]);
+
+  const moveLabel = useCallback((id: string, direction: -1 | 1) => {
+    setLabelDraft((current) => {
+      const index = current.findIndex((label) => label.id === id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      const selected = next[index];
+      next[index] = next[target];
+      next[target] = selected;
+      return next;
+    });
+    setLabelNotice("");
+    setLabelError("");
+  }, []);
+
+  const removeLabel = useCallback((id: string) => {
+    const selected = labelDraft.find((label) => label.id === id);
+    if (!selected) return;
+    if (labelDraft.length === 1) {
+      setLabelError("项目至少需要保留一个标签。");
+      return;
+    }
+    const remaining = labelDraft.filter((label) => label.id !== id);
+    const fallback = remaining[0]?.id ?? "";
+    const count = selected.originalName ? activeLabelUsage[selected.originalName] ?? 0 : 0;
+    setLabelDraft(remaining);
+    setRemovedLabels((current) => {
+      const next = current.map((label) => label.replacementId === id ? { ...label, replacementId: fallback } : label);
+      if (!selected.originalName || count === 0) return next;
+      return [...next.filter((label) => label.name !== selected.originalName), {
+        name: selected.originalName,
+        count,
+        replacementId: fallback,
+      }];
+    });
+    setLabelNotice(count ? "这个标签已有标注，请确认替换标签。" : "标签已从草稿中移除。");
+    setLabelError("");
+  }, [activeLabelUsage, labelDraft]);
+
+  const restoreRemovedLabel = useCallback((name: string) => {
+    if (!activeProject) return;
+    const originalIndex = activeProject.labels.indexOf(name);
+    setLabelDraft((current) => [...current, {
+      id: crypto.randomUUID(),
+      originalName: name,
+      name,
+      color: activeProject.labelColors[name] ?? palette[Math.max(0, originalIndex) % palette.length],
+    }]);
+    setRemovedLabels((current) => current.filter((label) => label.name !== name));
+    setLabelNotice("已撤销删除。");
+    setLabelError("");
+  }, [activeProject]);
+
+  const resetLabelEditor = useCallback(() => {
+    if (!activeProject) return;
+    setLabelDraft(projectLabelDrafts(activeProject));
+    setRemovedLabels([]);
+    setLabelNotice("");
+    setLabelError("");
+  }, [activeProject]);
+
+  const applyLabels = useCallback(async () => {
+    if (!activeProject || labelSaving) return;
+    if (dirty) {
+      setLabelError("请先保存当前标注，再修改标签。");
+      return;
+    }
+    const definitions = labelDraft.map((label) => ({
+      name: label.name.trim(),
+      color: label.color.toLowerCase(),
+    }));
+    const names = new Set<string>();
+    for (const definition of definitions) {
+      if (!definition.name || definition.name.length > 48) {
+        setLabelError("标签名称不能为空，且不能超过 48 个字符。");
+        return;
+      }
+      const comparable = definition.name.toLocaleLowerCase();
+      if (names.has(comparable)) {
+        setLabelError(`标签“${definition.name}”重复，请使用不同名称。`);
+        return;
+      }
+      names.add(comparable);
+    }
+    const finalNames = new Set(definitions.map((definition) => definition.name));
+    const replacements: Record<string, string> = {};
+    for (const [index, label] of labelDraft.entries()) {
+      const nextName = definitions[index]?.name ?? "";
+      if (label.originalName && label.originalName !== nextName && !finalNames.has(label.originalName)) {
+        replacements[label.originalName] = nextName;
+      }
+    }
+    for (const removed of effectiveRemovedLabels) {
+      const replacement = labelDraft.find((label) => label.id === removed.replacementId)?.name.trim() ?? "";
+      if (!replacement || !finalNames.has(replacement)) {
+        setLabelError(`请为“${removed.name}”选择一个有效的替换标签。`);
+        return;
+      }
+      replacements[removed.name] = replacement;
+    }
+    setLabelSaving(true);
+    setLabelError("");
+    setLabelNotice("");
+    try {
+      const response = await fetch(endpoint("/api/project-labels", apiQuery, { projectId: activeProject.id }), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          labels: definitions,
+          replacements,
+          expectedRevision: activeProject.revision,
+        }),
+      });
+      const payload = await responseJson<{ project: ProjectPayload }>(response);
+      setActiveProject(payload.project);
+      setTextContent(payload.project.textContent ?? "");
+      setSpans(textSpans(payload.project.annotations));
+      setLabelDraft(projectLabelDrafts(payload.project));
+      setRemovedLabels([]);
+      setDirty(false);
+      setLabelNotice("标签已更新，标注工具已经同步。");
+    } catch (cause) {
+      setLabelError(cause instanceof Error ? cause.message : "标签更新失败");
+    } finally {
+      setLabelSaving(false);
+    }
+  }, [activeProject, apiQuery, dirty, effectiveRemovedLabels, labelDraft, labelSaving]);
+
+  const filteredTrainingTemplates = useMemo(
+    () => templateFilter === "all"
+      ? trainingTemplates
+      : trainingTemplates.filter((template) => template.modality === templateFilter),
+    [templateFilter, trainingTemplates],
+  );
+  const activeCounts = useMemo(() => activeProject ? annotationCounts(activeProject.annotations) : {}, [activeProject]);
+  const visibleProjects = reviewFilter === "all" ? projects : projects.filter((project) => project.review.status === reviewFilter);
+
+  const changeRole = async (nextRole: WorkbenchRole) => {
+    if (roleChanging || nextRole === role) return;
+    if (labelHasChanges) { setError("请先应用或还原标签修改，再切换角色。"); return; }
+    setRoleChanging(true);
+    try {
+      if (dirty && !(await save())) return;
+      const response = await fetch(endpoint("/api/role", apiQuery), {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: nextRole }),
+      });
+      const payload = await responseJson<{ role: WorkbenchRole }>(response);
+      setRole(payload.role);
+      setReviewFilter("all");
+      setDeleteCandidate("");
+      if (activeProject) await openProject(activeProject.id);
+      else await loadProjects();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "角色切换失败"); }
+    finally { setRoleChanging(false); }
+  };
+
+  const submitReview = async (status: "approved" | "rejected") => {
+    if (!activeProject || !reviewing || reviewSaving) return;
+    setReviewSaving(true);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project-review", apiQuery, { projectId: activeProject.id }), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status, comment: reviewComment, expectedRevision: activeProject.revision }),
+      });
+      const payload = await responseJson<{ project: ProjectPayload }>(response);
+      prepareProject(payload.project);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "审核提交失败"); }
+    finally { setReviewSaving(false); }
+  };
+
+  const exportProject = async () => {
+    if (!activeProject || exporting || dirty || labelHasChanges) return;
+    setExporting(true);
+    setExportNotice("");
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project-export", apiQuery, { projectId: activeProject.id }), { cache: "no-store" });
+      if (!response.ok) { await responseJson(response); return; }
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `${activeProject.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 100)}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
+      setExportNotice("JSON 已生成，请在下载中查看。");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "导出失败"); }
+    finally { setExporting(false); }
+  };
+
+  const roleControl = <label className="role-control">
+    工作角色
+    <select aria-label="工作角色" value={role} disabled={roleChanging || saving || labelSaving || reviewSaving || exporting || uploading !== null || Boolean(creatingTemplate) || Boolean(opening) || Boolean(deleting)}
+      onChange={(event) => void changeRole(event.currentTarget.value === "reviewer" ? "reviewer" : "annotator")}>
+      <option value="annotator">标注员</option><option value="reviewer">审核员</option>
+    </select>
+  </label>;
+
+  const changeAnnotationPanelTab = (tab: AnnotationPanelProps["panelTab"]) => {
+    void (async () => {
+      if (saving || labelSaving) return;
+      if (tab === "labels" && dirty && !(await save())) return;
+      setAnnotationPanelTab(tab);
+    })();
+  };
+
+  const labelEditor = (<fieldset className="inspector-section label-editor" disabled={reviewing}>
+                  <div className="label-editor-heading">
+                    <strong>标签设置</strong>
+                    <button className="text-button" type="button" disabled={labelDraft.length >= 50} onClick={addLabel}>新增标签</button>
+                  </div>
+                  <p className="muted">{reviewing ? "审核员可查看标签，切换为标注员后可修改。" : "标签只属于当前项目。可以改名、换颜色或调整顺序。"}</p>
+                  <div className="label-list">
+                    {labelDraft.map((label, index) => (
+                      <div className="label-row" key={label.id}>
+                        <div className="label-fields">
+                          <label className="label-color-field">
+                            <span className="visually-hidden">{label.name || `标签 ${index + 1}`}的颜色</span>
+                            <input
+                              type="color"
+                              value={label.color}
+                              onChange={(event) => {
+                                const color = event.currentTarget.value;
+                                setLabelDraft((current) => current.map((item) => item.id === label.id ? { ...item, color } : item));
+                                setLabelNotice("");
+                                setLabelError("");
+                              }}
+                            />
+                          </label>
+                          <label className="label-name-field">
+                            <span className="visually-hidden">标签名称</span>
+                            <input
+                              value={label.name}
+                              maxLength={48}
+                              aria-label={`第 ${index + 1} 个标签名称`}
+                              onChange={(event) => {
+                                const name = event.currentTarget.value;
+                                setLabelDraft((current) => current.map((item) => item.id === label.id ? { ...item, name } : item));
+                                setLabelNotice("");
+                                setLabelError("");
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <div className="label-row-actions">
+                          <button type="button" disabled={index === 0} onClick={() => moveLabel(label.id, -1)}>上移</button>
+                          <button type="button" disabled={index === labelDraft.length - 1} onClick={() => moveLabel(label.id, 1)}>下移</button>
+                          <button className="danger-text" type="button" onClick={() => removeLabel(label.id)}>删除</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {effectiveRemovedLabels.length ? (
+                    <div className="label-replacements" aria-label="标签删除保护">
+                      {effectiveRemovedLabels.map((removed) => (
+                        <div className="label-replacement" key={removed.name}>
+                          <div>
+                            <strong>“{removed.name}”已用于 {removed.count} 条</strong>
+                            <button className="text-button" type="button" onClick={() => restoreRemovedLabel(removed.name)}>撤销</button>
+                          </div>
+                          <label>
+                            删除后替换为
+                            <select
+                              value={removed.replacementId}
+                              onChange={(event) => {
+                                const replacementId = event.currentTarget.value;
+                                setRemovedLabels((current) => current.map((item) => item.name === removed.name ? { ...item, replacementId } : item));
+                                setLabelError("");
+                              }}
+                            >
+                              {labelDraft.map((label) => <option key={label.id} value={label.id}>{label.name || "未命名标签"}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {dirty ? <p className="label-warning">请先保存当前标注，再应用标签修改。</p> : null}
+                  {labelError ? <p className="label-feedback error-text" role="alert">{labelError}</p> : null}
+                  {!labelError && labelNotice ? <p className="label-feedback" aria-live="polite">{labelNotice}</p> : null}
+                  <div className="label-editor-actions">
+                    <button className="secondary-button" type="button" disabled={!labelHasChanges || labelSaving} onClick={resetLabelEditor}>还原</button>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={!labelHasChanges || dirty || saving || labelSaving}
+                      onClick={() => void applyLabels()}
+                    >
+                      {labelSaving ? "应用中…" : "应用标签"}
+                    </button>
+                  </div>
+                </fieldset>);
+
+  if (loading) return <main className="message">正在打开数据标注工作台…</main>;
+
+  return (
+    <div className="workbench">
+
+      <input
+        ref={fileInputRef}
+        className="file-input"
+        type="file"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) void uploadProject(file, uploadModalityRef.current);
+        }}
+      />
+      <input
+        ref={documentInputRef}
+        className="file-input"
+        type="file"
+        accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) void importDocument(file);
+        }}
+      />
+
+      {!activeProject ? (
+        <main className="home-shell">
+          <header className="home-header">
+            <div>
+              <p className="eyebrow">智慧未来学校</p>
+              <h1>数据标注实训云</h1>
+              <p>{reviewing ? "查看当前工作区的本地标注记录，打开详情后通过或退回。" : "上传自己的素材，或直接打开已经配好素材与标签的实训项目。"}</p>
+            </div>
+            {roleControl}
+          </header>
+
+          <p className="role-hint">角色是本机工作模式，可随时切换。审核通过的记录，标注员和审核员均可导出 JSON。</p>
+
+          {!reviewing ? <>
+          <div className="home-tabs" role="tablist" aria-label="标注项目来源">
+            <button
+              id="start-tab"
+              type="button"
+              role="tab"
+              aria-selected={homeTab === "start"}
+              aria-controls="start-panel"
+              tabIndex={homeTab === "start" ? 0 : -1}
+              onClick={() => selectHomeTab("start")}
+              onKeyDown={handleHomeTabKeyDown}
+            >
+              开始标注
+            </button>
+            <button
+              id="training-tab"
+              type="button"
+              role="tab"
+              aria-selected={homeTab === "training"}
+              aria-controls="training-panel"
+              tabIndex={homeTab === "training" ? 0 : -1}
+              onClick={() => selectHomeTab("training")}
+              onKeyDown={handleHomeTabKeyDown}
+            >
+              选择实训项目
+            </button>
+          </div>
+
+          {homeTab === "start" ? (
+            <section
+              id="start-panel"
+              className="training-section"
+              role="tabpanel"
+              aria-labelledby="start-tab"
+            >
+              <div className="training-heading">
+                <h2>上传自己的素材</h2>
+                <p>选择标注类型后上传文件；文字项目可以直接输入正文或导入 PDF、Word、TXT。</p>
+              </div>
+              <div className="modality-grid">
+                {(Object.keys(modalityCopy) as Modality[]).map((modality) => (
+                  <button
+                    className="modality-option"
+                    type="button"
+                    key={modality}
+                    disabled={uploading !== null}
+                    onClick={() => {
+                      if (modality === "text") setTextFormOpen(true);
+                      else beginFileProject(modality);
+                    }}
+                  >
+                    <span>{modalityCopy[modality].name}</span>
+                    <small>{uploading === modality ? "正在创建…" : modalityCopy[modality].description}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <section
+              id="training-panel"
+              className="training-section"
+              role="tabpanel"
+              aria-labelledby="training-tab"
+            >
+              <div className="training-heading training-heading-row">
+                <div>
+                  <h2>选择实训项目</h2>
+                  <p>素材、任务说明和标签已经配置好，点击后直接开始标注。</p>
+                </div>
+                <span>{trainingTemplates.length} 个项目</span>
+              </div>
+              <div className="template-filters" aria-label="实训项目分类">
+                {(["all", "image", "video", "audio", "text"] as const).map((filter) => (
+                  <button
+                    type="button"
+                    key={filter}
+                    aria-pressed={templateFilter === filter}
+                    onClick={() => setTemplateFilter(filter)}
+                  >
+                    {filter === "all" ? "全部" : modalityCopy[filter].name.replace("标注", "")}
+                  </button>
+                ))}
+              </div>
+              {templatesLoading ? (
+                <div className="template-status" aria-live="polite">正在加载实训项目…</div>
+              ) : filteredTrainingTemplates.length ? (
+                <div className="template-grid">
+                  {filteredTrainingTemplates.map((template) => (
+                    <button
+                      className="template-card"
+                      type="button"
+                      key={template.id}
+                      disabled={Boolean(creatingTemplate)}
+                      onClick={() => void createTrainingProject(template.id)}
+                    >
+                      <span className="template-meta">
+                        <span>{modalityCopy[template.modality].name}</span>
+                        <span>{template.difficulty}</span>
+                      </span>
+                      <strong>{template.title}</strong>
+                      <small>{template.description}</small>
+                      <span className="template-instruction">{template.instruction}</span>
+                      {template.mediaSource ? <span className="template-source">真实素材 · {template.mediaSource.author} · {template.mediaSource.license}</span> : <span className="template-source">原创教学文本 · 多段落练习</span>}
+                      <span className="template-labels" aria-label="预设标签">
+                        {template.labels.map((label) => (
+                          <span key={label}>
+                            <i style={{ backgroundColor: template.labelColors[label] }} />
+                            {label}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="template-open">
+                        {creatingTemplate === template.id ? "正在打开…" : "直接开始"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="template-status">这个分类暂时没有实训项目。</div>
+              )}
+            </section>
+          )}
+
+          {homeTab === "start" && textFormOpen ? (
+            <section className="text-project-form" aria-labelledby="new-text-title">
+              <div className="section-heading">
+                <div>
+                  <h2 id="new-text-title">新建文字标注</h2>
+                  <p>输入正文或从 PDF、Word、TXT 提取文字，再进入区间标注页面。</p>
+                </div>
+                <button className="text-button" type="button" onClick={() => setTextFormOpen(false)}>取消</button>
+              </div>
+              <div className="pdf-import-row">
+                <div>
+                  <strong>从文件导入</strong>
+                  <span>支持 PDF、Word（.doc / .docx，最大 50 MB）和 TXT（最大 5 MB）。扫描件需要先完成 OCR。</span>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={documentImporting || uploading === "text"}
+                  onClick={() => documentInputRef.current?.click()}
+                >
+                  {documentImporting ? "正在提取…" : "导入文件"}
+                </button>
+              </div>
+              {documentNotice ? <p className="pdf-import-notice" aria-live="polite">{documentNotice}</p> : null}
+              <label>
+                项目名称
+                <input value={textTitle} placeholder="可选" onChange={(event) => setTextTitle(event.currentTarget.value)} />
+              </label>
+              <label>
+                正文
+                <textarea value={textDraft} placeholder="粘贴需要标注的文字，或从 PDF、Word、TXT 导入" onChange={(event) => setTextDraft(event.currentTarget.value)} />
+              </label>
+              <div className="form-actions">
+                <button className="primary-button" type="button" disabled={documentImporting || uploading === "text"} onClick={() => void createTextProject()}>
+                  {uploading === "text" ? "正在创建…" : "创建并开始"}
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          </> : null}
+          <section className="projects-section" aria-labelledby="projects-title">
+            <div className="projects-heading">
+              <div>
+                <h2 id="projects-title">{reviewing ? "审核记录" : "我的标注"}</h2>
+                <p>{reviewing ? "只审核已保存的版本。退回时请说明需要修改的地方。" : "保存后进入待审核；修改已通过记录会重新进入待审核。"}</p>
+              </div>
+              <span>{projects.length} 个项目</span>
+            </div>
+            <div className="template-filters review-filters" aria-label="审核状态筛选">
+              {(["all", "pending", "approved", "rejected"] as const).map((filter) => <button key={filter} type="button" aria-pressed={reviewFilter === filter} onClick={() => setReviewFilter(filter)}>
+                {filter === "all" ? "全部" : reviewCopy[filter]} · {filter === "all" ? projects.length : projects.filter((project) => project.review.status === filter).length}
+              </button>)}
+              <button className="refresh-records" type="button" aria-label="刷新记录" title="刷新记录" onClick={() => void loadProjects()}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17" />
+                </svg>
+              </button>
+            </div>
+            {visibleProjects.length ? (
+              <div className="project-list">
+                {visibleProjects.map((project) => (
+                  <div className="project-list-item" key={project.id} onKeyDown={(event) => { if (event.key === "Escape") setDeleteCandidate(""); }}>
+                  <button
+                    className="project-row"
+                    type="button"
+                    disabled={opening !== "" || deleting !== ""}
+                    onClick={() => void openProject(project.id)}
+                  >
+                    <span className="project-type">{modalityCopy[project.modality].name.replace("标注", "")}</span>
+                    <span className="project-main">
+                      <strong>{project.title}</strong>
+                      <small>{project.annotationCount ? `${project.annotationCount} 条标注` : "尚未标注"}</small>
+                    </span>
+                    <ReviewBadge review={project.review} />
+                    <span className="project-time">{opening === project.id ? "正在打开…" : formatTime(project.updatedAt)}</span>
+                  </button>
+                  {!reviewing && (deleteCandidate === project.id ? <div className="project-delete-confirm" role="group" aria-label={`确认删除“${project.title}”`}>
+                    <span>删除此记录？<small>不可恢复，素材保留</small></span>
+                    <button type="button" disabled={deleting !== ""} onClick={() => void deleteProject(project)}>{deleting === project.id ? "删除中…" : "确认删除"}</button>
+                    <button type="button" disabled={deleting !== ""} onClick={() => setDeleteCandidate("")}>取消</button>
+                  </div> : <button
+                    className="project-delete-button"
+                    type="button"
+                    title={`删除“${project.title}”`}
+                    aria-label={`删除“${project.title}”的标注记录`}
+                    disabled={deleting !== "" || opening !== ""}
+                    onClick={() => setDeleteCandidate(project.id)}
+                  >
+                    {deleting === project.id ? <span aria-live="polite">…</span> : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+                      </svg>
+                    )}
+                  </button>)}
+                  </div>
+                ))}
+              </div>
+            ) : projects.length ? <div className="empty-projects">没有{reviewFilter === "all" ? "" : reviewCopy[reviewFilter]}的记录。</div> : <EmptyProjects reviewing={reviewing} />}
+          </section>
+          {error ? <div className="page-error" role="alert">{error}</div> : null}
+        </main>
+      ) : (
+        <main className="editor-shell">
+          <header className="app-header">
+            <button className="header-button" type="button" disabled={roleChanging || saving || reviewSaving} onClick={() => void returnHome()}>{reviewing ? "审核记录" : "我的标注"}</button>
+            <div className="project-title">
+              <strong>{activeProject.title}</strong>
+              <span>{modalityCopy[activeProject.modality].name} · v{activeProject.revision}</span>
+            </div>
+            <div className="header-actions">
+              <span className={error ? "save-status error-text" : "save-status"} aria-live="polite">
+                {error || (saving ? "保存中…" : dirty ? "未保存" : "已保存")}
+              </span>
+              <button className="header-button" type="button" onClick={() => setPanelOpen((value) => !value)}>项目</button>
+              {!reviewing ? <button className="primary-button compact" type="button" disabled={!dirty || saving || roleChanging} onClick={() => void save()}>保存</button> : null}
+              <button className="secondary-button compact" type="button" disabled={activeProject.review.status !== "approved" || dirty || labelHasChanges || exporting || reviewSaving || roleChanging}
+                title="只有当前版本已通过审核，且没有未保存修改时才能导出" onClick={() => void exportProject()}>{exporting ? "导出中…" : "导出 JSON"}</button>
+            </div>
+          </header>
+
+          <section className="review-panel" aria-label="审核详情">
+            <div className="review-summary" aria-live="polite">
+              <ReviewBadge review={activeProject.review} />
+              <span>{dirty || labelHasChanges ? "保存修改后需要重新审核。" : activeProject.review.status === "pending" ? "保存的标注等待审核员检查。" : `${formatTime(activeProject.review.reviewedAt ?? "")} · 审核版本 v${activeProject.review.revision}`}</span>
+              {exportNotice ? <span>{exportNotice}</span> : null}
+              {reviewing ? <button className="text-button" type="button" disabled={reviewSaving} onClick={() => void openProject(activeProject.id)}>重新读取记录</button> : null}
+            </div>
+            {reviewing ? <div className="review-form">
+              <label>审核意见<input aria-label="审核意见" value={reviewComment} maxLength={2000} placeholder="通过可选填，退回必填" disabled={reviewSaving} onChange={(event) => setReviewComment(event.currentTarget.value)} /></label>
+              <button className="secondary-button" type="button" disabled={reviewSaving || roleChanging || !reviewComment.trim()} onClick={() => void submitReview("rejected")}>退回修改</button>
+              <button className="primary-button" type="button" disabled={reviewSaving || roleChanging || activeProject.annotationCount === 0} onClick={() => void submitReview("approved")}>{reviewSaving ? "提交中…" : "审核通过"}</button>
+            </div> : activeProject.review.comment ? <p className="review-comment">审核意见：{activeProject.review.comment}</p> : null}
+          </section>
+
+          <div className="editor-body">
+            <section
+              className={`editor-engine${activeProject.modality === "image" && imagePan ? " image-pan" : ""}`}
+              aria-label={`${modalityCopy[activeProject.modality].name}编辑器`}
+              onMouseDownCapture={(event) => {
+                if (!imagePan || activeProject.modality !== "image" || event.button !== 0 || !(event.target instanceof HTMLCanvasElement)) return;
+                const keyboard = imageRef.current?.getEngine()?.keyboard;
+                if (keyboard && !keyboard.Space) {
+                  keyboard.Space = true;
+                  panKeyboard.current = keyboard;
+                }
+              }}
+            >
+              {activeProject.modality === "image" && imageSample ? (
+                <Suspense fallback={<EngineLoading />}>
+                  <ImageAnnotator
+                    key={`${activeProject.id}:${activeProject.revision}:${role}`}
+                    disabled={reviewing}
+                    ref={imageRef}
+                    labelsBusy={saving || labelSaving}
+                    labelsPanel={labelEditor}
+                    panelTab={annotationPanelTab}
+                    onPanelTabChange={changeAnnotationPanelTab}
+                    samples={[imageSample]}
+                    editingSample={imageSample}
+                    config={imageConfig}
+                    renderSidebar={null}
+                    offsetTop={44}
+                    primaryColor="#2563eb"
+                    toolbarExtra={<div className="image-pan-controls">
+                      <button type="button" aria-pressed={imagePan} className="secondary-button compact"
+                        onClick={() => setImagePan((value) => !value)}>拖动画布</button>
+                      <span>{imagePan ? "左键拖动图片；再次点击返回标注。" : "空格＋左键或右键拖动画布"}</span>
+                    </div>}
+                    onLoad={onImageLoad}
+                    onError={(event) => setError(event.message)}
+                  />
+                </Suspense>
+              ) : null}
+              {activeProject.modality === "video" && mediaSample ? (
+                <Suspense fallback={<EngineLoading />}>
+                  <MediaAnnotator
+                    modality="video"
+                    onDirty={markDirty}
+                    labelsPanel={labelEditor}
+                    panelTab={annotationPanelTab}
+                    labelsBusy={saving || labelSaving}
+                    onPanelTabChange={changeAnnotationPanelTab}
+                    key={`${activeProject.id}:${activeProject.revision}:${role}`}
+                    disabled={reviewing}
+                    ref={mediaRef}
+                    samples={[mediaSample]}
+                    editingSample={mediaSample}
+                    config={mediaConfig}
+                    selectedTool="segment"
+                    renderSidebar={() => null}
+                    offsetTop={44}
+                    primaryColor="#2563eb"
+                  />
+                </Suspense>
+              ) : null}
+              {activeProject.modality === "audio" && mediaSample ? (
+                <Suspense fallback={<EngineLoading />}>
+                  <MediaAnnotator
+                    modality="audio"
+                    onDirty={markDirty}
+                    labelsPanel={labelEditor}
+                    panelTab={annotationPanelTab}
+                    labelsBusy={saving || labelSaving}
+                    onPanelTabChange={changeAnnotationPanelTab}
+                    key={`${activeProject.id}:${activeProject.revision}:${role}`}
+                    disabled={reviewing}
+                    ref={mediaRef}
+                    samples={[mediaSample]}
+                    editingSample={mediaSample}
+                    config={mediaConfig}
+                    selectedTool="segment"
+                    renderSidebar={() => null}
+                    offsetTop={44}
+                    primaryColor="#2563eb"
+                  />
+                </Suspense>
+              ) : null}
+              {activeProject.modality === "text" ? (
+                <TextEditor
+                  readOnly={reviewing}
+                  content={textContent}
+                  spans={spans}
+                  labelsPanel={labelEditor}
+                  panelTab={annotationPanelTab}
+                  labelsBusy={saving || labelSaving}
+                  onPanelTabChange={changeAnnotationPanelTab}
+                  labels={activeProject.labels.length ? activeProject.labels : ["实体"]}
+                  onContentChange={(value) => { setTextContent(value); setDirty(true); }}
+                  onSpansChange={(value) => { setSpans(value); setDirty(true); }}
+                />
+              ) : null}
+            </section>
+
+            {panelOpen ? (
+              <aside className="project-inspector" aria-label="项目状态">
+                <div className="inspector-heading">
+                  <strong>项目状态</strong>
+                  <button className="text-button" type="button" onClick={() => setPanelOpen(false)}>收起</button>
+                </div>
+                <dl>
+                  <div><dt>类型</dt><dd>{modalityCopy[activeProject.modality].name}</dd></div>
+                  <div><dt>版本</dt><dd>v{activeProject.revision}</dd></div>
+                  <div><dt>上次保存</dt><dd>{formatTime(activeProject.updatedAt)}</dd></div>
+                  <div><dt>标注数量</dt><dd>{totalAnnotations(activeProject.annotations)}</dd></div>
+                </dl>
+                {activeProject.mediaSource ? <div className="inspector-section media-source">
+                  <strong>素材来源</strong>
+                  <p>{activeProject.mediaSource.title} · {activeProject.mediaSource.author}</p>
+                  <p>{activeProject.mediaSource.license} · {activeProject.mediaSource.changes}</p>
+                  <a href={activeProject.mediaSource.url} target="_blank" rel="noreferrer" onClick={openSourceLink}>查看来源</a>
+                  {" · "}<a href={activeProject.mediaSource.licenseUrl} target="_blank" rel="noreferrer" onClick={openSourceLink}>许可说明</a>
+                </div> : null}
+                <div className="inspector-section">
+                  <strong>已保存标注</strong>
+                  {Object.keys(activeCounts).length ? Object.entries(activeCounts).map(([key, count]) => (
+                    <div className="count-row" key={key}><span>{key}</span><span>{count}</span></div>
+                  )) : <p className="muted">尚未保存标注。</p>}
+                </div>
+                <p className="inspector-note">左侧 AI 只能读取这里已经保存的项目状态，不会操作当前页面。</p>
+              </aside>
+            ) : null}
+          </div>
+        </main>
+      )}
+    </div>
+  );
+}

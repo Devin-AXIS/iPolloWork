@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { buildPluginRuntime } from "@ipollowork/ui/build-plugin-runtime";
 
 const portValue = Number.parseInt(process.env.PORT ?? "", 10);
 const devPort = Number.isFinite(portValue) && portValue > 0 ? portValue : 5173;
+const uiRuntimeDependencies = new Set<string>();
 const allowedHosts = new Set<string>();
 const envAllowedHosts = process.env.VITE_ALLOWED_HOSTS ?? "";
 
@@ -71,6 +73,8 @@ const migrationReleaseEnv = loadMigrationReleaseEnv();
 const isElectronPackagedBuild = process.env.IPOLLOWORK_ELECTRON_BUILD === "1";
 
 export default defineConfig({
+  // Worktrees can share node_modules; each dev server needs its own optimizer cache.
+  cacheDir: resolve(appRoot, "../../.ipollowork-dev/vite", String(devPort)),
   base: isElectronPackagedBuild ? "./" : "/",
   define: {
     ...Object.fromEntries(
@@ -82,6 +86,24 @@ export default defineConfig({
     "import.meta.env.VITE_IPOLLOWORK_APP_VERSION": JSON.stringify(buildAppVersion),
   },
   plugins: [
+    {
+      name: "ipollowork-plugin-ui-runtime",
+      resolveId(id) { if (id === "virtual:ipollowork-plugin-ui-runtime") return "\0ipollowork-plugin-ui-runtime"; },
+      async load(id) {
+        if (id !== "\0ipollowork-plugin-ui-runtime") return;
+        const runtime = await buildPluginRuntime("host");
+        uiRuntimeDependencies.clear();
+        for (const path of runtime.dependencies) { this.addWatchFile(path); uiRuntimeDependencies.add(path); }
+        return `export default ${JSON.stringify(runtime.script)}`;
+      },
+      handleHotUpdate(context) {
+        if (!uiRuntimeDependencies.has(context.file)) return;
+        const module = context.server.moduleGraph.getModuleById("\0ipollowork-plugin-ui-runtime");
+        if (!module) return;
+        context.server.moduleGraph.invalidateModule(module);
+        return [...context.modules, module];
+      },
+    },
     {
       name: "ipollowork-dev-server-id",
       configureServer(server) {

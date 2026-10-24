@@ -1,0 +1,169 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shotcraft-dolly-zoom",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "主体固定背景变焦",
+  "description": "在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。",
+  "tags": [
+    "component",
+    "shotcraft",
+    "media",
+    "camera",
+    "theme"
+  ],
+  "author": "WeiYihao; iPolloWork integration",
+  "license": "Apache-2.0",
+  "upstream": {
+    "repository": "https://github.com/Vincentwei1021/video-shotcraft",
+    "revision": "5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab",
+    "implementation": "demos/camera/depth-layer-moves/DollyZoomReal.tsx",
+    "rules": "references/shots/camera/depth-layer-moves.md",
+    "license": "Apache-2.0",
+    "upstreamSha256": "47d44cad258e8a3c7b7bfd7c5e5b3535360b486f21621e6fb25d210c7e4797b0",
+    "adaptation": "Preserves original bezier curves, layered motion coefficients and fixed-subject geometry. Adapted: real screenshot regions instead of hardcoded demo textures, page extent clamp, content variables, theme, measured phrase cues and final hold. Not pixel-identical Remotion rendering."
+  },
+  "source": {
+    "provider": "video-shotcraft",
+    "label": "Video Shotcraft · Apache-2.0",
+    "url": "https://github.com/Vincentwei1021/video-shotcraft/blob/5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab/references/shots/camera/depth-layer-moves.md"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "media",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "mediaUrl",
+        "captureLayout"
+      ],
+      "instructions": "在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。 不用于日常连续阅读或每幕重复；全片最多一次，不给主体增加运镜或模糊。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5.2,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "shotcraft-dolly-zoom.html",
+      "target": "compositions/shotcraft-dolly-zoom.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "LICENSE",
+      "target": "compositions/licenses/video-shotcraft-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/shotcraft-dolly-zoom.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Short scene heading",
+      "type": "string",
+      "default": "主体固定背景变焦",
+      "maxLength": 12,
+      "update": "reload"
+    },
+    {
+      "id": "mediaUrl",
+      "label": "Real captured screenshot",
+      "type": "string",
+      "default": "assets/evidence.svg",
+      "maxLength": 2000,
+      "update": "reload"
+    },
+    {
+      "id": "captureLayout",
+      "label": "Measured CSS-page crop geometry",
+      "type": "string",
+      "default": "{\"width\":1920,\"height\":1080,\"pixelRatio\":1,\"regions\":[{\"id\":\"region-0\",\"x\":50,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-1\",\"x\":330,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-2\",\"x\":610,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-3\",\"x\":890,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-4\",\"x\":1170,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-5\",\"x\":1450,\"y\":300,\"width\":240,\"height\":240}],\"heroId\":\"region-3\",\"foregroundIds\":[\"region-0\",\"region-5\"]}",
+      "maxLength": 4096,
+      "update": "reload"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Measured semantic cues",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "state-transformation",
+    "minHoldSeconds": 0.7,
+    "textLimits": {
+      "title": {
+        "maxLines": 1,
+        "maxLineLength": 12
+      }
+    },
+    "events": [
+      {
+        "id": "camera",
+        "target": ".sc-layer",
+        "time": 0.65,
+        "duration": 3.1666666666666665,
+        "action": "在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。"
+      ],
+      "avoidWhen": [
+        "不用于日常连续阅读或每幕重复；全片最多一次，不给主体增加运镜或模糊。"
+      ],
+      "inputRules": {
+        "title": "单行最多12字；不遮盖素材中的必要信息。",
+        "mediaUrl": "已有项目内真实页面截图；禁止用演示卡片或手绘假界面替代。",
+        "captureLayout": "JSON: width/height 是截图的 CSS 页面尺寸，pixelRatio 是像素倍率；regions 是6–8个实测 {id,x,y,width,height} 区域，heroId 与两个 foregroundIds 引用已有区域。图片像素尺寸必须一致。先核对裁切，过密或无适合主体时换配方，不猜坐标。"
+      },
+      "readingOrder": [
+        "建立真实页面和层次",
+        "在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。",
+        "保留主体和最终可读画面"
+      ],
+      "cueBindings": {
+        "camera": "绑定开始探索/强调主体的实测旁白短语；内部时值比例和各层运动关系不变。"
+      },
+      "fallback": {
+        "overflow": "拆镜或选择合适配方，不缩小文字。",
+        "missingInput": "先取得真实截图和实测区域；素材不可用则报告缺口。",
+        "timingMismatch": "绑定实测短语并整体重排；过长旁白拆镜，不让相机漫无目的持续移动。",
+        "inapplicable": "换合适的已验证配方；仅配方模式下禁止自绘替代。"
+      },
+      "example": {
+        "values": {
+          "title": "主体固定背景变焦",
+          "mediaUrl": "assets/evidence.svg",
+          "captureLayout": "{\"width\":1920,\"height\":1080,\"pixelRatio\":1,\"regions\":[{\"id\":\"region-0\",\"x\":50,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-1\",\"x\":330,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-2\",\"x\":610,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-3\",\"x\":890,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-4\",\"x\":1170,\"y\":300,\"width\":240,\"height\":240},{\"id\":\"region-5\",\"x\":1450,\"y\":300,\"width\":240,\"height\":240}],\"heroId\":\"region-3\",\"foregroundIds\":[\"region-0\",\"region-5\"]}"
+        },
+        "narration": "在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。"
+      },
+      "acceptance": [
+        "真实页面裁切与实测坐标一致，原图解码成功，高清主阅读层不模糊。",
+        "主体屏幕矩形保持固定；背景从1放大到2.25，模糊从0增加到3.5。",
+        "保持原曲线和动效关系，正反向拖动恢复同一画面；这不是像素完全相同的Remotion渲染。"
+      ],
+      "intent": "在真实素材中固定主体并扩张背景，让观众感到该主体的重要性与环境关系。"
+    }
+  }
+}

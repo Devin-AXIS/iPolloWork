@@ -1,0 +1,401 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import * as fs from "fs";
+import { tmpdir } from "node:os";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import { readWav } from "./audioFxRender.js";
+import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
+
+vi.mock("fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    writeFileSync: vi.fn(actual.writeFileSync),
+    renameSync: vi.fn(actual.renameSync),
+    rmSync: vi.fn(actual.rmSync),
+  };
+});
+
+const SAMPLE_RATE = 48000;
+const CHANNELS = 2;
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
+
+/** Build a PCM s16le stereo WAV whose every sample equals `value`. */
+function writeConstantWav(path: string, frames: number, value: number): void {
+  const bytesPerSample = 2;
+  const dataSize = frames * CHANNELS * bytesPerSample;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20); // PCM
+  buffer.writeUInt16LE(CHANNELS, 22);
+  buffer.writeUInt32LE(SAMPLE_RATE, 24);
+  buffer.writeUInt32LE(SAMPLE_RATE * CHANNELS * bytesPerSample, 28);
+  buffer.writeUInt16LE(CHANNELS * bytesPerSample, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataSize, 40);
+  for (let i = 0; i < frames * CHANNELS; i += 1) buffer.writeInt16LE(value, 44 + i * 2);
+  writeFileSync(path, buffer);
+}
+
+function sampleAt(path: string, frame: number, channel = 0): number {
+  const buffer = readFileSync(path);
+  return buffer.readInt16LE(44 + (frame * CHANNELS + channel) * 2);
+}
+
+describe("applyVolumeEnvelopeToWav", () => {
+  const dirs: string[] = [];
+  const tmp = () => {
+    const d = mkdtempSync(join(tmpdir(), "hf-env-"));
+    dirs.push(d);
+    return d;
+  };
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it.each(["write", "rename"])(
+    "preserves the WAV and removes staging after a %s failure",
+    async (stage) => {
+      const dir = tmp();
+      const path = join(dir, "failure.wav");
+      writeConstantWav(path, 16, 10000);
+      const original = readFileSync(path);
+      const actual = await vi.importActual<typeof import("node:fs")>("fs");
+      if (stage === "write") {
+        vi.mocked(fs.writeFileSync).mockImplementationOnce((...args) => {
+          // Simulate a write that leaves a partial staging file before failing.
+          Reflect.apply(actual.writeFileSync, actual, args);
+          throw new Error("injected write failure");
+        });
+      } else {
+        vi.mocked(fs.renameSync).mockImplementationOnce(() => {
+          throw new Error("injected rename failure");
+        });
+      }
+      expect(applyVolumeEnvelopeToWav(path, [{ time: 0, volume: 0 }], 0, 0)).toBe(false);
+      expect(readFileSync(path)).toEqual(original);
+      expect(readdirSync(dir)).toEqual(["failure.wav"]);
+    },
+  );
+
+  it("uses a private sibling directory and preserves success if cleanup fails", async () => {
+    const dir = tmp();
+    const path = join(dir, "private.wav");
+    writeConstantWav(path, 16, 10000);
+    const actual = await vi.importActual<typeof import("node:fs")>("fs");
+    let stagingDir = "";
+    vi.mocked(fs.writeFileSync).mockImplementationOnce((...args) => {
+      stagingDir = dirname(String(args[0]));
+      expect(dirname(stagingDir)).toBe(dir);
+      expect(stagingDir).not.toBe(dir);
+      if (process.platform !== "win32")
+        expect(actual.statSync(stagingDir).mode & 0o777).toBe(0o700);
+      Reflect.apply(actual.writeFileSync, actual, args);
+    });
+    vi.mocked(fs.rmSync).mockImplementationOnce(() => {
+      throw new Error("injected cleanup failure");
+    });
+    expect(applyVolumeEnvelopeToWav(path, [{ time: 0, volume: 0 }], 0, 0)).toBe(true);
+    expect(sampleAt(path, 0)).toBe(0);
+    expect(readdirSync(stagingDir)).toEqual([]);
+  });
+
+  it("applies a linear fade sample-accurately", () => {
+    const path = join(tmp(), "a.wav");
+    const frames = SAMPLE_RATE; // 1 second
+    writeConstantWav(path, frames, 10000);
+
+    // Fade 0 -> 1 over the full second.
+    const applied = applyVolumeEnvelopeToWav(
+      path,
+      [
+        { time: 0, volume: 0 },
+        { time: 1, volume: 1 },
+      ],
+      0,
+      0,
+    );
+    expect(applied).toBe(true);
+    expect(readdirSync(dirname(path))).toEqual(["a.wav"]);
+
+    expect(sampleAt(path, 0)).toBe(0); // gain 0
+    expect(sampleAt(path, frames / 2)).toBeCloseTo(5000, -2); // gain ~0.5
+    expect(sampleAt(path, frames - 1)).toBeGreaterThan(9900); // gain ~1
+  });
+
+  it("offsets keyframes by the track start (composition time -> track-relative)", () => {
+    const path = join(tmp(), "b.wav");
+    const frames = SAMPLE_RATE;
+    writeConstantWav(path, frames, 10000);
+
+    // Track starts at 5s; the fade runs from comp-time 5s..6s -> wav 0s..1s.
+    applyVolumeEnvelopeToWav(
+      path,
+      [
+        { time: 5, volume: 0 },
+        { time: 6, volume: 1 },
+      ],
+      5,
+      0,
+    );
+
+    expect(sampleAt(path, 0)).toBe(0);
+    expect(sampleAt(path, frames / 2)).toBeCloseTo(5000, -2);
+  });
+
+  it("holds base volume before the first keyframe and the last value after", () => {
+    const path = join(tmp(), "c.wav");
+    const frames = SAMPLE_RATE * 3; // 3 seconds
+    writeConstantWav(path, frames, 10000);
+
+    // Base 0.8 held until a fade-out begins at 2s.
+    applyVolumeEnvelopeToWav(
+      path,
+      [
+        { time: 2, volume: 0.8 },
+        { time: 3, volume: 0 },
+      ],
+      0,
+      0.8,
+    );
+
+    expect(sampleAt(path, SAMPLE_RATE)).toBeCloseTo(8000, -2); // 1s: base 0.8
+    expect(sampleAt(path, frames - 1)).toBeLessThan(200); // 3s: faded to ~0
+  });
+
+  it("handles thousands of keyframes without failing (no expression ceiling)", () => {
+    const path = join(tmp(), "d.wav");
+    const frames = SAMPLE_RATE * 2;
+    writeConstantWav(path, frames, 10000);
+
+    const keyframes = Array.from({ length: 5000 }, (_, i) => ({
+      time: (i / 4999) * 2,
+      volume: Math.abs(Math.sin(i / 50)),
+    }));
+    expect(applyVolumeEnvelopeToWav(path, keyframes, 0, 0)).toBe(true);
+  });
+
+  it("parses chunks in any order (data before fmt)", () => {
+    const path = join(tmp(), "order.wav");
+    const frames = 4;
+    const dataSize = frames * CHANNELS * 2;
+    // Lay the data chunk before fmt to exercise order-independent scanning.
+    const buffer = Buffer.alloc(12 + (8 + dataSize) + (8 + 16));
+    buffer.write("RIFF", 0, "ascii");
+    buffer.writeUInt32LE(buffer.length - 8, 4);
+    buffer.write("WAVE", 8, "ascii");
+    let o = 12;
+    buffer.write("data", o, "ascii");
+    buffer.writeUInt32LE(dataSize, o + 4);
+    for (let i = 0; i < frames * CHANNELS; i += 1) buffer.writeInt16LE(10000, o + 8 + i * 2);
+    o += 8 + dataSize;
+    buffer.write("fmt ", o, "ascii");
+    buffer.writeUInt32LE(16, o + 4);
+    buffer.writeUInt16LE(1, o + 8);
+    buffer.writeUInt16LE(CHANNELS, o + 10);
+    buffer.writeUInt32LE(SAMPLE_RATE, o + 12);
+    buffer.writeUInt16LE(16, o + 22);
+    writeFileSync(path, buffer);
+
+    expect(applyVolumeEnvelopeToWav(path, [{ time: 0, volume: 0 }], 0, 0)).toBe(true);
+    expect(readFileSync(path).readInt16LE(12 + 8)).toBe(0); // first sample muted
+  });
+
+  it("rejects non-16-bit PCM so the caller can fall back", () => {
+    const path = join(tmp(), "e.wav");
+    // 24-bit PCM header (bitsPerSample = 24); body contents are irrelevant.
+    const buffer = Buffer.alloc(44);
+    buffer.write("RIFF", 0, "ascii");
+    buffer.write("WAVE", 8, "ascii");
+    buffer.write("fmt ", 12, "ascii");
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20);
+    buffer.writeUInt16LE(CHANNELS, 22);
+    buffer.writeUInt32LE(SAMPLE_RATE, 24);
+    buffer.writeUInt16LE(24, 34);
+    buffer.write("data", 36, "ascii");
+    buffer.writeUInt32LE(0, 40);
+    writeFileSync(path, buffer);
+
+    expect(
+      applyVolumeEnvelopeToWav(
+        path,
+        [
+          { time: 0, volume: 0 },
+          { time: 1, volume: 1 },
+        ],
+        0,
+        0,
+      ),
+    ).toBe(false);
+  });
+
+  // The group sub-mix writes float precisely so an over-unity member sum keeps
+  // its headroom until the group's own fader and FX act on it. If the baker
+  // could not read that file it returned false, and the group's automation was
+  // dropped on the floor by the caller.
+  describe("32-bit float input", () => {
+    /** Stereo float32 WAV, every sample `value` — over 1.0 on purpose. */
+    function writeConstantFloatWav(path: string, frames: number, value: number): void {
+      const dataSize = frames * CHANNELS * 4;
+      const buffer = Buffer.alloc(44 + dataSize);
+      buffer.write("RIFF", 0, "ascii");
+      buffer.writeUInt32LE(36 + dataSize, 4);
+      buffer.write("WAVE", 8, "ascii");
+      buffer.write("fmt ", 12, "ascii");
+      buffer.writeUInt32LE(16, 16);
+      buffer.writeUInt16LE(3, 20); // WAVE_FORMAT_IEEE_FLOAT
+      buffer.writeUInt16LE(CHANNELS, 22);
+      buffer.writeUInt32LE(SAMPLE_RATE, 24);
+      buffer.writeUInt32LE(SAMPLE_RATE * CHANNELS * 4, 28);
+      buffer.writeUInt16LE(CHANNELS * 4, 32);
+      buffer.writeUInt16LE(32, 34);
+      buffer.write("data", 36, "ascii");
+      buffer.writeUInt32LE(dataSize, 40);
+      for (let i = 0; i < frames * CHANNELS; i += 1) buffer.writeFloatLE(value, 44 + i * 4);
+      writeFileSync(path, buffer);
+    }
+
+    const floatSampleAt = (path: string, frame: number, channel = 0): number =>
+      readFileSync(path).readFloatLE(44 + (frame * CHANNELS + channel) * 4);
+
+    it("scales float samples and keeps them above 1.0 unclamped", () => {
+      const path = join(tmp(), "float.wav");
+      writeConstantFloatWav(path, SAMPLE_RATE, 1.4);
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 1 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      // Unity envelope: unchanged, and NOT clamped down to 1.0.
+      expect(floatSampleAt(path, 0)).toBeCloseTo(1.4, 5);
+      expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(1.4, 5);
+    });
+
+    it("applies the envelope across the file", () => {
+      const path = join(tmp(), "float-fade.wav");
+      writeConstantFloatWav(path, SAMPLE_RATE, 1.4);
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 0 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      expect(floatSampleAt(path, 0)).toBeCloseTo(1.4, 5);
+      expect(floatSampleAt(path, Math.floor(SAMPLE_RATE / 2))).toBeCloseTo(0.7, 2);
+      expect(floatSampleAt(path, SAMPLE_RATE - 1)).toBeCloseTo(0, 3);
+    });
+
+    // Exercise the installed encoder as well as the captured extensible fixtures.
+    it.skipIf(!HAS_FFMPEG)("reads what ffmpeg actually writes, not just a canonical header", () => {
+      const path = join(tmp(), "ffmpeg-f32.wav");
+      const made = spawnSync(
+        getFfmpegBinary(),
+        [
+          "-nostdin",
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "aevalsrc=0.5*sin(2*PI*440*t)|0.5*sin(2*PI*440*t):d=1:s=48000",
+          "-acodec",
+          "pcm_f32le",
+          "-ar",
+          "48000",
+          path,
+        ],
+        { encoding: "utf-8" },
+      );
+      expect(made.status).toBe(0);
+
+      expect(readWav(path)).toMatchObject({ float: true, channels: 2, sampleRate: 48000 });
+
+      expect(
+        applyVolumeEnvelopeToWav(
+          path,
+          [
+            { time: 0, volume: 1 },
+            { time: 1, volume: 0 },
+          ],
+          0,
+          1,
+        ),
+      ).toBe(true);
+
+      // Locate `data` the way the parser does, then check the fade landed.
+      let at = 12;
+      let dataOffset = -1;
+      const after = readFileSync(path);
+      while (at + 8 <= after.length) {
+        const id = after.toString("ascii", at, at + 4);
+        const size = after.readUInt32LE(at + 4);
+        if (id === "data") {
+          dataOffset = at + 8;
+          break;
+        }
+        at += 8 + size + (size % 2);
+      }
+      expect(dataOffset).toBeGreaterThan(0);
+      // Faded to silence by the end (stereo float = 8 bytes per frame). This is
+      // the assertion that matters: the parser read a real file and the bake
+      // landed, whatever chunk layout the build chose.
+      expect(Math.abs(after.readFloatLE(dataOffset + (SAMPLE_RATE - 2) * 8))).toBeLessThan(0.02);
+    });
+  });
+
+  // FFmpeg 8.1.1 output, captured without rewriting its RIFF/fmt/fact/LIST/data chunks.
+  // ffmpeg -f lavfi -i 'aevalsrc=0.5|-0.5|0.25|-0.25:s=48000:d=0.0001' -c:a <codec> out.wav
+  const extensibleFixtures = [
+    {
+      codec: "pcm_f32le",
+      float: true,
+      hex: "52494646ba00000057415645666d742028000000feff040080bb000000b80b001000200016002000070100000300000000001000800000aa00389b716661637404000000050000004c4953541a000000494e464f495346540e0000004c61766636322e31322e3130310064617461500000000000003f000000bf0000803e000080be0000003f000000bf0000803e000080be0000003f000000bf0000803e000080be0000003f000000bf0000803e000080be0000003f000000bf0000803e000080be",
+    },
+    {
+      codec: "pcm_s16le",
+      float: false,
+      hex: "524946468600000057415645666d742028000000feff040080bb000000dc05000800100016001000070100000100000000001000800000aa00389b714c4953541a000000494e464f495346540e0000004c61766636322e31322e313031006461746128000000004000c0002000e0004000c0002000e0004000c0002000e0004000c0002000e0004000c0002000e0",
+    },
+  ];
+
+  it.each(extensibleFixtures)(
+    "reads and applies gain to real FFmpeg extensible $codec",
+    (fixture) => {
+      const path = join(tmp(), "extensible.wav");
+      const original = Buffer.from(fixture.hex, "hex");
+      expect(original.readUInt16LE(20)).toBe(0xfffe);
+      writeFileSync(path, original);
+      const decoded = readWav(path);
+      expect(decoded).toMatchObject({ float: fixture.float, channels: 4, sampleRate: 48000 });
+      expect([...decoded.samples]).toEqual(Array(5).fill([0.5, -0.5, 0.25, -0.25]).flat());
+      expect(applyVolumeEnvelopeToWav(path, [{ time: 0, volume: 0.5 }], 0, 1)).toBe(true);
+      expect([...readWav(path).samples]).toEqual(
+        Array(5).fill([0.25, -0.25, 0.125, -0.125]).flat(),
+      );
+      expect(readFileSync(path).subarray(0, 60)).toEqual(original.subarray(0, 60));
+    },
+  );
+});

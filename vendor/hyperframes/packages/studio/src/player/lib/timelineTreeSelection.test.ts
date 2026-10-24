@@ -1,23 +1,50 @@
 import { describe, expect, test } from "vitest";
 import {
-  collectTimelineAncestorIds,
+  collectTimelineTreeElements,
   resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
+  resolveStoryboardTimelineTarget,
 } from "./timelineTreeSelection";
+import { parseStoryboard } from "@hyperframes/core/storyboard";
+import type { TimelineElement } from "../store/playerStore";
+
+describe("script to official timeline correspondence", () => {
+  const scene = (id: string, start: number, duration: number, overrides: Partial<TimelineElement> = {}): TimelineElement =>
+    ({ id, domId: id, key: `index.html#${id}`, tag: "section", start, duration, track: 0, timingSource: "authored", ...overrides });
+  const frames = parseStoryboard("## Frame 1 — Opening\n- duration: 5s\n\n## Frame 2 — Detail\n- duration: 6s\n").frames;
+
+  test("locates a legacy script by unique frame-aligned scene bounds, regardless of array order", () => {
+    const second = scene("detail", 5.01, 6.01);
+    expect(resolveStoryboardTimelineTarget(frames[1], frames, [second, scene("opening", 0, 5)], 30)).toBe(second);
+  });
+  test("does not guess from row order, ambiguous bounds, or stale explicit bindings", () => {
+    const second = scene("detail", 5, 6);
+    expect(resolveStoryboardTimelineTarget(frames[1], frames, [scene("wrong", 12, 6)], 30)).toBeNull();
+    expect(resolveStoryboardTimelineTarget(frames[1], frames, [second, scene("duplicate", 5, 6)], 30)).toBeNull();
+    expect(resolveStoryboardTimelineTarget({ ...frames[1], extra: { scene_id: "deleted" } }, frames, [second], 30)).toBeNull();
+    expect(resolveStoryboardTimelineTarget(frames[1], frames, [scene("wrapper", 5, 6, { timingSource: "implicit" })], 30)).toBeNull();
+  });
+  test("accepts a runtime media scene without mistaking matching audio or nested details for the shot", () => {
+    const mediaScene = scene("detail", 5, 6, { tag: "img", timelineKind: "image" });
+    const voice = scene("voice", 5, 6, { tag: "audio", src: "voice.mp3" });
+    const child = scene("nested", 5, 6, { expandedParentStart: 5 });
+    expect(resolveStoryboardTimelineTarget(frames[1], frames, [mediaScene, voice, child], 30)).toBe(mediaScene);
+    expect(resolveStoryboardTimelineTarget(frames[1], frames, [voice, child], 30)).toBeNull();
+  });
+  test("resolves repeated component sources to their distinct hosts and rejects incomplete mappings", () => {
+    const repeated = frames.map(frame => ({ ...frame, src: "./compositions/card.html" }));
+    const first = scene("first", 0, 5, { compositionSrc: "compositions\\card.html" });
+    const second = scene("second", 5, 6, { compositionSrc: "compositions/card.html" });
+    expect(resolveStoryboardTimelineTarget(repeated[1], repeated, [second, first], 30)).toBe(second);
+    expect(resolveStoryboardTimelineTarget(repeated[1], repeated, [first], 30)).toBeNull();
+    expect(resolveStoryboardTimelineTarget({ ...repeated[1], extra: { scene_id: "first" } }, repeated, [second, first], 30)).toBe(first);
+    const partiallyBound = [{ ...repeated[0], extra: { scene_id: "second" } }, repeated[1]];
+    expect(resolveStoryboardTimelineTarget(partiallyBound[1], partiallyBound, [first, second], 30)).toBe(first);
+    expect(resolveStoryboardTimelineTarget(repeated[1], repeated, [first, { ...second, start: 0 }], 30)).toBeNull();
+  });
+});
 
 describe("timeline tree selection", () => {
-  test("collects every ancestor from root to the selected node's parent", () => {
-    expect(
-      collectTimelineAncestorIds(
-        "title",
-        new Map([
-          ["title", "hero"],
-          ["hero", "scene"],
-        ]),
-      ),
-    ).toEqual(["scene", "hero"]);
-  });
-
   test("uses the nested source file key for a DOM-only child", () => {
     expect(
       resolveTimelineTreeSelectionKey({
@@ -55,7 +82,7 @@ describe("timeline tree selection", () => {
     ).toBe("compositions/second.html#title");
   });
 
-  test("resolves an id-less preview selection through its hf id and expands its parents", () => {
+  test("resolves an id-less preview selection through its hf id", () => {
     const domClipChildren = [
       {
         id: "hf-title",
@@ -81,9 +108,6 @@ describe("timeline tree selection", () => {
     expect(resolveTimelineTreeSelectionKey(input)).toBe(
       "scene::compositions/scene.html:.title:0",
     );
-    expect(collectTimelineAncestorIds("hf-title", new Map([["hf-title", "hero"]]))).toEqual([
-      "hero",
-    ]);
   });
 
   test("resolves a selector-only preview element to its timeline tree identity", () => {
@@ -165,4 +189,48 @@ describe("timeline tree selection", () => {
       }),
     ).toBe("index.html:.logo-wrap:0::index.html:.absolute:1");
   });
+});
+
+ test("same-file inline descendants keep one canonical selectable key and global host bounds", () => {
+   const host:TimelineElement={id:"alpha",key:"index.html#alpha",domId:"alpha",tag:"section",start:2,duration:6,track:10,sourceFile:"index.html",inlineScopeKind:"scene"};
+   const children:import("../store/playerStore").DomClipChild[]=[{id:"group",domId:"group",hostId:"alpha",parentId:"alpha",tagName:"div",label:"Group",sourceFile:"index.html",stackingContextId:"root"},
+     {id:"title",domId:"title",selector:"#title",selectorIndex:0,hostId:"alpha",parentId:"group",tagName:"h1",label:"Title",sourceFile:"index.html",stackingContextId:"root"}];
+   const authored=[host];const before=JSON.stringify(authored);
+   const selectable=collectTimelineTreeElements(authored,[],children);
+   const title=selectable.find((element)=>element.id==="title");
+   expect(title).toMatchObject({key:"index.html#title",sourceFile:"index.html",start:2,duration:6,authoredTrack:10,previewHostId:undefined,timingSource:"implicit"});
+   const identity={elementId:"title",sourceFile:"index.html",selector:"#title",selectorIndex:0,manifest:[],domClipChildren:children};
+   expect(resolveTimelineTreeSelectionKey({...identity,elements:authored})).toBe("index.html#title");
+   expect(resolveTimelineTreeSelectionKey({...identity,elements:selectable})).toBe("index.html#title");
+   expect(JSON.stringify(authored)).toBe(before);expect(authored).toHaveLength(1);
+ });
+ test("collision-qualified same-file descendants remain distinct by source selector index", () => {
+   const host:TimelineElement={id:"alpha",domId:"alpha",tag:"section",start:0,duration:6,track:10,sourceFile:"index.html",inlineScopeKind:"scene"};
+   const children:import("../store/playerStore").DomClipChild[]=[{id:"title",domId:"title",selector:"#title",selectorIndex:0,hostId:"alpha",parentId:"alpha",label:"Title",sourceFile:"index.html",stackingContextId:"root"},
+     {id:"alpha::index.html:title:1",domId:"title",selector:"#title",selectorIndex:1,hostId:"alpha",parentId:"alpha",label:"Title",sourceFile:"index.html",stackingContextId:"root"}];
+   const identity={elementId:"title",sourceFile:"index.html",selector:"#title",selectorIndex:1,elements:[host],manifest:[],domClipChildren:children};
+   expect(resolveTimelineTreeSelectionId(identity)).toBe("alpha::index.html:title:1");
+   expect(resolveTimelineTreeSelectionKey(identity)).toBe("alpha::index.html:#title:1");
+   const rows=collectTimelineTreeElements([host],[],children);
+   expect(new Set(rows.map((row)=>row.key))).toHaveProperty("size",3);
+ });
+
+
+test("id-less flat scene layers keep one key through row, canvas and inspector selection", () => {
+  const host: TimelineElement = { id: "scene", domId: "scene", key: "index.html#scene",
+    tag: "section", start: 8, duration: 7, track: 2, inlineScopeKind: "scene" };
+  const child = { id: "hf-title", hfId: "hf-title", hostId: "scene", parentId: "layout",
+    label: "Title", tagName: "h1", selector: "h1", selectorIndex: 1,
+    sourceFile: "index.html", stackingContextId: "root" };
+  const snapshot = JSON.stringify([host, child]);
+  const input = { hfId: child.hfId, sourceFile: "index.html", selector: "h1", selectorIndex: 1,
+    manifest: [], domClipChildren: [child] };
+  const row = collectTimelineTreeElements([host], [], [child])[1];
+  expect(row.key).toBe("index.html#hf-title");
+  expect(resolveTimelineTreeSelectionKey({ ...input, elements: [host] })).toBe(row.key);
+  expect(resolveTimelineTreeSelectionKey({ ...input, elements: [host, row] })).toBe(row.key);
+  const runtimeRow: TimelineElement = { ...row, selector: undefined, sourceFile: undefined };
+  expect(resolveTimelineTreeSelectionKey({ ...input, elements: [host, runtimeRow] })).toBe(row.key);
+  expect(row).toMatchObject({ hfId: child.hfId, start: 8, duration: 7, domId: undefined });
+  expect(JSON.stringify([host, child])).toBe(snapshot);
 });

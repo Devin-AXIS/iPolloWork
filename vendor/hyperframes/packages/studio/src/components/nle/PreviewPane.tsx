@@ -6,15 +6,20 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { CompositionRefreshLoadingOverlay, PlayerControls, usePlayerStore } from "../../player";
+import { CompositionRefreshLoadingOverlay, PlayerControls, usePlayerStore, liveTime } from "../../player";
 import { NLEPreview } from "./NLEPreview";
-import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
-import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
+import {
+  useDomEditActionsContext,
+  useDomEditSelectionContext,
+} from "../../contexts/DomEditContext";
 import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
+import { LoaderCircle } from "lucide-react";
+import { useStudioI18n } from "../../i18n";
+import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -53,20 +58,48 @@ export function PreviewPane({
     seek,
     onIframeLoad,
     compositionStack,
-    handleNavigateComposition,
+    scenePlaybackRange,
     setCompositionLoading,
     timelineDisabled,
     hasLoadedOnceRef,
     previewCompositionSize,
     setPreviewCompositionSize,
   } = useNLEContext();
-  const { compositionLoading: studioCompositionLoading } = useStudioPlaybackContext();
+  const { compositionLoading: studioCompositionLoading, hostAiEditing } = useStudioPlaybackContext();
+  const { t } = useStudioI18n();
+  const { avatarCutoutProgress } = useDomEditActionsContext();
+  const aiEditing = hostAiEditing || avatarCutoutProgress !== null;
+  const publication = usePlayerStore(state => state.liveGeneration);
+  const waitingForScene = usePlayerStore(state => Boolean(state.liveGenerationActive && state.liveGeneration?.status === "generating"
+    && state.isPlaying && state.currentTime >= state.liveGeneration.readyDuration - 1e-6));
+  const liveGenerating = hostAiEditing && publication?.status === "generating";
+  useEffect(() => {
+    if (window.parent === window) return;
+    let lastSent = -Infinity;
+    const publish = (playhead: number, force = false) => {
+      if (!force && performance.now() - lastSent < 500) return;
+      lastSent = performance.now();
+      window.parent.postMessage({
+        type: "ipollowork:video-live-preview", projectId,
+        generation: hostAiEditing || publication?.status === "complete" ? publication : null,
+        playhead: Math.max(0, Math.min(7200, playhead)),
+      }, "*");
+    };
+    publish(usePlayerStore.getState().currentTime, true);
+    const unsubscribe = liveTime.subscribe(time => publish(time));
+    return () => { unsubscribe(); };
+  }, [hostAiEditing, publication, projectId, waitingForScene]);
   const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
   const handlePreviewRefreshSettled = useCallback(() => {
     const playerState = usePlayerStore.getState();
     if (playerState.previewDeletePending) playerState.setPreviewDeletePending(false);
   }, []);
   const { domEditSelection, previewSelectionInteraction } = useDomEditSelectionContext();
+  // Image editing must remain reachable after timeline/selection synchronisation,
+  // which can clear the primary-click marker without clearing the selected image.
+  const selectedImage = window.parent !== window && domEditSelection
+    ? resolveEditableVideoImage(domEditSelection, projectId)
+    : null;
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
@@ -157,7 +190,8 @@ export function PreviewPane({
   }, [toggleFullscreen]);
 
   const currentLevel = compositionStack[compositionStack.length - 1];
-  const directUrl = compositionStack.length > 1 ? currentLevel.previewUrl : undefined;
+  const fileLevel = compositionStack.findLast((level) => !level.inlineTarget);
+  const directUrl = fileLevel?.id !== "master" ? fileLevel?.previewUrl : undefined;
 
   return (
     <div
@@ -204,16 +238,41 @@ export function PreviewPane({
           iframeRef={iframeRef}
           containerRef={containerRef}
           activeSelection={editingEnabled ? domEditSelection : null}
-          hidden={timelineDisabled || !editingEnabled || previewSelectionInteraction !== "primary"}
+          hidden={timelineDisabled || !editingEnabled || (previewSelectionInteraction !== "primary" && !selectedImage)}
         />
       </div>
+      {!isFullscreen && aiEditing ? (
+        <div className="flex shrink-0 justify-center bg-transparent pb-2">
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="studio-ai-editing-status"
+            className="flex min-h-[34px] min-w-0 max-w-[calc(100%_-_32px)] items-center rounded-[6px] bg-[#087b82] px-4 py-2 text-[#a9e7ea]"
+          >
+            <span className="flex min-w-0 items-center justify-between gap-2">
+              <LoaderCircle
+                className="size-4 shrink-0 animate-spin text-[#a9e7ea] motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              <span className="text-[12px] font-normal leading-normal">
+                {avatarCutoutProgress === null
+                  ? liveGenerating
+                    ? t(waitingForScene ? "preview.liveWaiting" : "preview.liveGenerating").replace("{seconds}", String(Math.round(publication.readyDuration * 10) / 10))
+                    : t("preview.aiEditingWarning")
+                  : avatarCutoutProgress === 0
+                    ? t("preview.avatarCutoutPreparing")
+                    : t("preview.avatarCutoutProgress").replace("{progress}", String(avatarCutoutProgress))}
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : null}
       {/* Transport row: no own background or border — the controls sit flat on
           the preview panel's surface (CapCut-style). */}
       <div className="flex-shrink-0">
-        {!isFullscreen && compositionStack.length > 1 && (
-          <CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />
-        )}
         <PlayerControls
+          timeOffset={scenePlaybackRange?.start ?? 0}
+          displayDuration={scenePlaybackRange ? scenePlaybackRange.end - scenePlaybackRange.start : undefined}
           onTogglePlay={togglePlay}
           onSeek={seek}
           disabled={timelineDisabled}

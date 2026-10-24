@@ -2,11 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { googleWorkspaceLegacyConfigured } from "./extensions/google-workspace.js";
-import {
-  readRuntimeOpencodeConfig,
-  runtimeMcpMap,
-  runtimeStorageDir,
-} from "./runtime-opencode-config-store.js";
+import { readRuntimeMcpConfig } from "./runtime-capability-store.js";
+import { runtimeStorageDir } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
 import { ensureDir } from "./utils.js";
 
@@ -72,8 +69,7 @@ export async function getConnectSnapshot(config: ServerConfig): Promise<ConnectS
   let cloudMcpPresent = false;
 
   for (const workspace of config.workspaces) {
-    const runtimeConfig = await readRuntimeOpencodeConfig(config, workspace.id);
-    if (Object.hasOwn(runtimeMcpMap(runtimeConfig), IPOLLOWORK_CLOUD_MCP_NAME)) {
+    if (Object.hasOwn(await readRuntimeMcpConfig(config, workspace.id), IPOLLOWORK_CLOUD_MCP_NAME)) {
       cloudMcpPresent = true;
       break;
     }

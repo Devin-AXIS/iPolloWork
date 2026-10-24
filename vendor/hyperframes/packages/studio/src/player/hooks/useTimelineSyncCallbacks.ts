@@ -1,3 +1,5 @@
+import { frameAlignedDurationSeconds } from "@hyperframes/core/runtime/protocol";
+import { readVideoLiveGeneration } from "@ipollowork/types/hyperframes";
 /**
  * React callbacks for synchronising the player store from iframe runtime data.
  *
@@ -17,6 +19,7 @@ import {
   collectDomClipChildren,
   createTimelineElementFromManifestClip,
   findTimelineDomNodeForClip,
+  filterEditableTimelineManifestClips,
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
   getTimelineElementSelector,
@@ -93,27 +96,15 @@ function sanitizeDurationSeconds(value: number): number {
   return Number.isFinite(value) && value > 0 && value < 7200 ? value : 0;
 }
 
-/**
- * The transport TOTAL a clip-manifest message should write to the store.
- *
- * The manifest's `durationInFrames` measures the runtime timeline; some runtimes
- * report only the furthest clip end and ignore the root composition's authored
- * `data-duration`. When that manifest total is SHORTER than the authored root
- * duration, writing it makes the readout stale (playback still runs the full
- * authored window — the user saw "0:44/0:40" on a root authored at 44.5s whose
- * last clip ends at 40s). The authored root duration is the floor for the total,
- * so the readout can never sit below what the file declares. A manifest total
- * that is LONGER (clips extend past the root) still wins — content can only grow
- * the timeline, never shrink it below the authored window.
- */
+/** Manifest and authored durations share the same whole-frame transport boundary. */
 export function resolveTimelineTotalDuration(input: {
   manifestDurationSeconds: number;
   authoredRootDurationSeconds: number;
+  manifestFps: number;
 }): number {
-  return Math.max(
-    sanitizeDurationSeconds(input.manifestDurationSeconds),
-    sanitizeDurationSeconds(input.authoredRootDurationSeconds),
-  );
+  const manifest = sanitizeDurationSeconds(input.manifestDurationSeconds);
+  const authored = sanitizeDurationSeconds(input.authoredRootDurationSeconds);
+  return frameAlignedDurationSeconds(Math.max(manifest, authored), input.manifestFps);
 }
 
 export function useTimelineSyncCallbacks({
@@ -146,13 +137,6 @@ export function useTimelineSyncCallbacks({
         return;
       }
 
-      usePlayerStore.getState().setClipManifest(data.clips);
-
-      // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
-      const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
-      const filtered = data.clips.filter(
-        (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
-      );
       let iframeDoc: Document | null = null;
       const parentMap = new Map<string, string>();
       try {
@@ -160,10 +144,20 @@ export function useTimelineSyncCallbacks({
       } catch {
         iframeDoc = null;
       }
+      const editableClips = filterEditableTimelineManifestClips(iframeDoc, data.clips);
+      usePlayerStore.getState().setClipManifest(editableClips);
+
+      // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
+      const clipCompositionIds = new Set(
+        editableClips.map((clip) => clip.compositionId).filter(Boolean),
+      );
+      const filtered = editableClips.filter(
+        (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
+      );
       const resolvedClipHosts = new Map<ClipManifestClip, Element>();
       if (iframeDoc) {
         const usedHostElements = new Set<Element>();
-        data.clips.forEach((clip, index) => {
+        editableClips.forEach((clip, index) => {
           const host = findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements);
           if (!host) return;
           usedHostElements.add(host);
@@ -190,7 +184,7 @@ export function useTimelineSyncCallbacks({
       }
 
       if (iframeDoc) {
-        const domHierarchy = collectDomClipChildren(iframeDoc, data.clips, resolvedClipHosts);
+        const domHierarchy = collectDomClipChildren(iframeDoc, editableClips, resolvedClipHosts);
         for (const [childId, parentId] of domHierarchy.parentMap) {
           parentMap.set(childId, parentId);
         }
@@ -219,6 +213,7 @@ export function useTimelineSyncCallbacks({
       const newDuration = resolveTimelineTotalDuration({
         manifestDurationSeconds: rawDuration,
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
+        manifestFps: acceptedRuntimeMessageFps(data),
       });
       const effectiveDuration = newDuration > 0 ? newDuration : usePlayerStore.getState().duration;
       const clampedEls =
@@ -280,10 +275,19 @@ export function useTimelineSyncCallbacks({
     // time is authoritative for this first-load race because the store playhead
     // intentionally does not re-render on every animation frame.
     const playerState = usePlayerStore.getState();
-    const shouldResumePlayback = playerState.isPlaying;
+    const publication = readVideoLiveGeneration(iframeRef.current?.contentDocument?.querySelector("[data-composition-id]") ?? null);
+    const firstPublication = playerState.liveGenerationActive && publication?.status === "generating" && publication.id !== playerState.liveGeneration?.id;
+    if (firstPublication) pendingSeekRef.current = 0;
+    if (playerState.liveGenerationActive || playerState.liveGeneration) usePlayerStore.setState({ liveGeneration: publication });
+    const finalPublication = publication?.status === "complete" && publication.id === playerState.liveGeneration?.id;
+    if (finalPublication && playerState.liveGenerationResumePending) pendingSeekRef.current = playerState.currentTime;
+    const shouldResumePlayback = firstPublication || playerState.isPlaying || (finalPublication && playerState.liveGenerationResumePending);
+    if (firstPublication || finalPublication) usePlayerStore.setState({ liveGenerationResumePending: false });
+    if (firstPublication) setIsPlaying(true);
     const adapterTime = adapter.getTime();
     const currentPlaybackTime =
-      shouldResumePlayback && Number.isFinite(adapterTime) ? adapterTime : playerState.currentTime;
+      firstPublication ? 0 : publication && (isRefreshingRef.current || playerState.liveGenerationResumePending) ? playerState.currentTime
+        : shouldResumePlayback && Number.isFinite(adapterTime) ? adapterTime : playerState.currentTime;
     adapter.pause();
     // Honor a seek requested before the adapter was ready. It may sit in either
     // place: `pendingSeekRef` if the store subscription was mounted when requestSeek

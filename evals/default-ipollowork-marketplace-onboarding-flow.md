@@ -114,7 +114,7 @@ Expected outcome:
 - The API returns `iPolloWork Marketplace`.
 - Resolved plugins include the built-in iPolloWork entries.
 - Each built-in plugin has `extension.sourceFormat = ipollowork-builtin`.
-- `iPolloWork Browser` has an extension manifest with the `opencode-chrome-devtools` resource.
+- `iPolloWork Browser` is engine-neutral and uses the Desktop Host browser runtime without an engine-specific resource.
 
 ## Flow 5: assigned Marketplace plugin import
 

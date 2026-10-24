@@ -1,7 +1,7 @@
 /**
  * Per-clip render-time frame-coverage accounting + threshold fail-loud gate.
  *
- * Sibling to #2474's `hasRuntimeInsertedMedia` probe: that PR guarantees the
+ * Sibling to #2474's `hasRuntimeMediaChanges` probe: that PR guarantees the
  * DISCOVERY of runtime-inserted media (so the browser probe launches and
  * reconciles element identity). This module owns the DELIVERY side —
  * for each authored/discovered video clip on the timeline, did the
@@ -45,7 +45,22 @@
  */
 
 import { parseHTML } from "linkedom";
-import type { ExtractedFrames, VideoElement } from "@hyperframes/engine";
+import {
+  fpsToNumber,
+  normalizeRateSpec,
+  sourceTimeAt,
+  toFps,
+  type FpsInput,
+} from "@hyperframes/core";
+import {
+  extractionFrameCountForDuration,
+  resolvePlayableVideoDuration,
+  type ExtractedFrames,
+  type VideoElement,
+} from "@hyperframes/engine";
+
+const SHORT_CLIP_ONE_FRAME_TOLERANCE_MIN_EXPECTED_FRAMES = 14;
+const SHORT_CLIP_ONE_FRAME_TOLERANCE_MAX_EXPECTED_FRAMES = 20;
 
 export interface VideoFrameCoverageReport {
   videoId: string;
@@ -71,6 +86,8 @@ export interface VideoFrameCoverageErrorDetails {
 }
 
 export class VideoFrameCoverageError extends Error {
+  // Read structurally by isVideoFrameCoverageError and cross-module callers.
+  // fallow-ignore-next-line unused-class-member
   readonly hyperframesVideoFrameCoverageError = true as const;
   readonly threshold: number;
   readonly worst: VideoFrameCoverageReport;
@@ -117,22 +134,69 @@ export function resolveVideoCoverageThreshold(
 }
 
 /**
- * Ceil the clip's authored `[start,end)` window at `fps` — the number of
- * captured render frames whose center-time falls inside the window. Kept
- * separate so a caller (or a test) can override it if a composition uses
- * a non-integer fps whose sampling makes the naive count off by one.
+ * Count frames in a clip's authored `[start,end)` window. CFR extraction uses
+ * FFmpeg's `-vf fps=<fps>` and rounds to the nearest output-frame boundary;
+ * VFR extraction uses `-fps_mode cfr -r <fps>` and rounds up. Missing entries
+ * retain the fail-closed `ceil` default. Positive sub-frame clips emit one.
  */
-export function expectedFramesForClip(start: number, end: number, fps: number): number {
-  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(fps)) return 0;
-  if (fps <= 0) return 0;
+export function expectedFramesForClip(
+  start: number,
+  end: number,
+  fps: FpsInput,
+  rounding: "ceil" | "nearest" = "ceil",
+): number {
+  const fpsValue = fpsToNumber(toFps(fps));
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(fpsValue)) return 0;
+  if (fpsValue <= 0) return 0;
   const duration = Math.max(0, end - start);
-  return Math.ceil(duration * fps);
+  if (duration === 0) return 0;
+  return extractionFrameCountForDuration(duration, fps, rounding === "ceil");
+}
+
+function isToleratedShortClipBoundaryMiss(
+  report: VideoFrameCoverageReport,
+  threshold: number,
+): boolean {
+  return (
+    threshold < 1 &&
+    report.capturedFrames > 0 &&
+    report.expectedFrames >= SHORT_CLIP_ONE_FRAME_TOLERANCE_MIN_EXPECTED_FRAMES &&
+    report.expectedFrames <= SHORT_CLIP_ONE_FRAME_TOLERANCE_MAX_EXPECTED_FRAMES &&
+    report.expectedFrames - report.capturedFrames === 1
+  );
+}
+
+function expectedFramesForVideo(
+  video: VideoElement,
+  entry: ExtractedFrames | undefined,
+  fps: FpsInput,
+): number {
+  const rounding = entry && !entry.metadata.isVFR ? "nearest" : "ceil";
+  const slotSourceDuration = sourceTimeAt(
+    normalizeRateSpec(video.playbackRate),
+    Math.max(0, video.end - video.start),
+  );
+  const slotFrames = expectedFramesForClip(0, slotSourceDuration, fps, rounding);
+  if (!entry) return slotFrames;
+
+  // A short source in a longer slot has a legitimate delivery ceiling of
+  // the source portion, not the full slot: a non-looping clip holds its
+  // final decoded frame across the tail (#2516/#2606), and a looping clip
+  // reuses its full source frame set per repeat (#2665). In both cases the
+  // full source *has* been delivered — the same 90 unique source frames
+  // cover the 300-frame slot — so coverage must measure source-source, not
+  // slot-source.
+  const sourceDuration = resolvePlayableVideoDuration(entry.metadata) - video.mediaStart;
+  if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return slotFrames;
+
+  const sourceFrames = expectedFramesForClip(0, sourceDuration, fps, rounding);
+  return Math.min(slotFrames, sourceFrames);
 }
 
 export function computeVideoFrameCoverage(
   videos: readonly VideoElement[],
   extracted: readonly ExtractedFrames[],
-  fps: number,
+  fps: FpsInput,
 ): VideoFrameCoverageReport[] {
   const byId = new Map<string, ExtractedFrames>();
   for (const entry of extracted) byId.set(entry.videoId, entry);
@@ -140,7 +204,7 @@ export function computeVideoFrameCoverage(
   const reports: VideoFrameCoverageReport[] = [];
   for (const video of videos) {
     const entry = byId.get(video.id);
-    const expectedFrames = expectedFramesForClip(video.start, video.end, fps);
+    const expectedFrames = expectedFramesForVideo(video, entry, fps);
     // framePaths is a Map — `size` is the number of distinct captured frames
     // delivered to the runtime injector, which is the load-bearing count
     // (some extractors report a total that includes cache-hit-skipped frames
@@ -170,7 +234,12 @@ export function assertVideoFrameCoverage(
   threshold: number | null,
 ): void {
   if (threshold === null) return;
-  const failed = reports.filter((report) => report.expectedFrames > 0 && report.ratio < threshold);
+  const failed = reports.filter(
+    (report) =>
+      report.expectedFrames > 0 &&
+      report.ratio < threshold &&
+      !isToleratedShortClipBoundaryMiss(report, threshold),
+  );
   if (failed.length === 0) return;
   // Sort ascending by ratio so the "worst" is first — that's what we cite
   // in the message and pin on the error details for telemetry.
@@ -197,7 +266,7 @@ export function assertVideoFrameCoverage(
  * composition is queryable in telemetry (the ts=1784144554 field signal
  * shape). Runtime `syncTimedElementVisibility` iterates the same set at
  * render time; counting statically here is a coarse proxy — dynamic
- * script-inserted `[data-start]` divs land in `hasRuntimeInsertedMedia`'s
+ * script-inserted `[data-start]` divs land in `hasRuntimeMediaChanges`'s
  * probe path (PR #2474), not this static scan.
  */
 export function countAuthoredTimedClips(html: string): number {

@@ -12,9 +12,16 @@ type VariablesWindow = Window & {
   __hyperframes?: { getVariables?: () => Record<string, unknown> };
 };
 
+export function findVariableScope(element: Element): Element | null {
+  // An installed component can use a unique host id while retaining its
+  // authored inner root. The mount owns the instance values in that case.
+  return element.closest("[data-composition-id][data-composition-file], [data-composition-id][data-composition-src]")
+    ?? element.closest("[data-composition-id]");
+}
+
 export function readVariablesForElement(element: Element): Record<string, unknown> {
   const win = window as VariablesWindow;
-  const scope = element.closest("[data-composition-id]");
+  const scope = findVariableScope(element);
   const compositionId = scope?.getAttribute("data-composition-id")?.trim() ?? "";
   const scoped = compositionId ? win.__hfVariablesByComp?.[compositionId] : undefined;
   if (scoped) return scoped;

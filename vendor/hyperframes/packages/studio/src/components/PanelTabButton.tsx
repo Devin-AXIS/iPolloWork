@@ -1,4 +1,5 @@
 import { Tooltip } from "./ui";
+import { Button } from "@ipollowork/ui/controls";
 
 /** Tab-bar button for the right inspector panel header. */
 export function PanelTabButton({
@@ -14,20 +15,17 @@ export function PanelTabButton({
 }) {
   return (
     <Tooltip label={tooltip} side="bottom">
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant={active ? "default" : "ghost"}
         onClick={onClick}
         aria-pressed={active}
         aria-label={label}
-        style={active ? { color: "#ffffff" } : undefined}
-        className={`relative z-10 h-7 rounded-[7px] px-[11px] text-[11px] font-medium transition-[background-color,color,transform] active:scale-[0.98] ${
-          active
-            ? "bg-[#171816] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
-            : "text-[#858a94] hover:bg-panel-input"
-        }`}
+        className="relative z-10 min-w-0"
       >
         <span className="relative z-10 whitespace-nowrap text-current">{label}</span>
-      </button>
+      </Button>
     </Tooltip>
   );
 }

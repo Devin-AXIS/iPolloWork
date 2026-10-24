@@ -1,3 +1,4 @@
+import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 // Onion-skin motion screenshot: seek the LIVE timeline at N equal-time steps and
 // project the REAL element at each step, so an agent can SELF-VERIFY motion (the
 // rendered result — every channel: position, rotation, scale, opacity, colour),
@@ -10,16 +11,26 @@
 // exactly what it's editing. All geometry + SVG live in ./motionShotLayout.ts
 // (pure, tested); this file only drives the browser and SAMPLES.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
+import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { waitForRuntimeReady } from "../capture/captureCompositionFrame.js";
+import {
+  assertWebGpuAdapterAvailable,
+  compositionRequiresWebGpu,
+  resolveLocalBrowserGpuMode,
+} from "../browser/gpuPolicy.js";
 import {
   buildOnionSvg,
+  buildRenderedStripSvg,
   ghostAlphas,
   parseAngle,
   resolveShotSelectors,
   sampleTimes,
+  stripCaptureTimeCandidates,
   type OnionElement,
+  type RenderedStripFrame,
 } from "./motionShotLayout.js";
 
 export interface ShotRequest {
@@ -27,7 +38,25 @@ export interface ShotRequest {
   selector: string;
 }
 
-export function ensureShotOutputDir(outPath: string): void {
+function pathsReferToSameFile(firstPath: string, secondPath: string): boolean {
+  const first = resolve(firstPath);
+  const second = resolve(secondPath);
+  if (first === second) return true;
+  try {
+    const firstStat = statSync(first);
+    const secondStat = statSync(second);
+    return firstStat.dev === secondStat.dev && firstStat.ino === secondStat.ino;
+  } catch {
+    return false;
+  }
+}
+
+export function ensureShotOutputDir(outPath: string, sourcePath?: string): void {
+  if (sourcePath && pathsReferToSameFile(outPath, sourcePath)) {
+    throw new Error(
+      `--shot output must not overwrite the composition source: ${sourcePath}. Choose a separate .png path.`,
+    );
+  }
   mkdirSync(dirname(outPath), { recursive: true });
 }
 
@@ -46,7 +75,11 @@ export interface ShotOptions {
   entryFile?: string;
   /** Equal-time samples across the (windowed) timeline. Default 9. */
   samples?: number;
-  /** "path" = ghosts at real positions + path; "strip" = filmstrip by time. */
+  /** "path" = ghosts at real positions + path. "strip" = real per-time pixel
+   * filmstrip, but only when the selector targets an SVG element (see
+   * `stripTargetsSvg` below); for any other selector — including every
+   * nested sub-composition host, which is always a `<div data-composition-src>`
+   * — it falls back to one live frame plus vector position markers. */
   layout?: "path" | "strip";
   /** Zoom the motion to fill the frame. Default true. */
   fit?: boolean;
@@ -75,6 +108,91 @@ interface PageSample {
 
 type OrbitCamera = { yaw: number; pitch: number };
 type FrameSize = { width: number; height: number };
+
+/** Runs in the browser: sample HTML targets through inherited marker geometry,
+ * and SVG graphics through their native local bbox + screen transform. */
+export async function sampleMarkerOnionElements(
+  selectors: string[],
+  ts: number[],
+): Promise<OnionElement[]> {
+  const seek = (window as unknown as { __hfSeekAllAdapters?: (t: number) => Promise<void> })
+    .__hfSeekAllAdapters;
+  const rigs = selectors.map((selector) => {
+    const el = document.querySelector(selector) as HTMLElement | null;
+    if (!el) return null;
+    const svg = el as Element & {
+      getBBox?: () => { x: number; y: number; width: number; height: number };
+      getScreenCTM?: () => {
+        a: number;
+        b: number;
+        c: number;
+        d: number;
+        e: number;
+        f: number;
+      } | null;
+    };
+    if (typeof svg.getBBox === "function" && typeof svg.getScreenCTM === "function") {
+      return { el, svg, markers: null };
+    }
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const local: Array<[number, number]> = [
+      [0, 0],
+      [w, 0],
+      [w, h],
+      [0, h],
+      [w / 2, h / 2],
+    ];
+    const markers = local.map(([lx, ly]) => {
+      const marker = document.createElement("div");
+      marker.style.cssText = `position:absolute;left:${lx}px;top:${ly}px;width:0;height:0;pointer-events:none`;
+      el.appendChild(marker);
+      return marker;
+    });
+    return { el, svg: null, markers };
+  });
+  const out = selectors.map((selector) => ({ selector, samples: [] as PageSample[] }));
+  for (const t of ts) {
+    await seek?.(t);
+    rigs.forEach((rig, index) => {
+      if (!rig) return;
+      let points: Array<{ x: number; y: number }>;
+      if (rig.svg) {
+        const box = rig.svg.getBBox?.();
+        const matrix = rig.svg.getScreenCTM?.();
+        if (!box || !matrix) return;
+        const local = [
+          { x: box.x, y: box.y },
+          { x: box.x + box.width, y: box.y },
+          { x: box.x + box.width, y: box.y + box.height },
+          { x: box.x, y: box.y + box.height },
+          { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+        ];
+        points = local.map((point) => ({
+          x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+          y: matrix.b * point.x + matrix.d * point.y + matrix.f,
+        }));
+      } else {
+        points = rig.markers!.map((marker) => {
+          const rect = marker.getBoundingClientRect();
+          return { x: rect.left, y: rect.top };
+        });
+      }
+      const style = getComputedStyle(rig.el);
+      out[index]!.samples.push({
+        t: Math.round(t * 1000) / 1000,
+        q: points.slice(0, 4),
+        c: points[4]!,
+        color: style.backgroundColor,
+        opacity: parseFloat(style.opacity) || 0,
+      });
+    });
+  }
+  rigs.forEach((rig) => {
+    if (rig) rig.el.style.visibility = "hidden";
+  });
+  return out.filter((element) => element.samples.length > 0);
+}
 
 // Runs IN THE BROWSER (serialized by page.evaluate). Make the element's ancestor
 // chain preserve-3d, strip intermediate perspective, put one perspective on the
@@ -156,23 +274,27 @@ function compositeGhostFrames(
 // Runs IN THE BROWSER. Self-contained (only `tt` + window/document — never a
 // Node-side closure variable), pauses/seeks every adapter to time `tt`: GSAP
 // `__timelines`, the Web Animations API, `__hfAnime` instances, then dispatches
-// `hf-seek` and nudges the three/GSAP render hooks. This one routine backs BOTH
+// `hf-seek` and nudges the three/GSAP render hooks. GPU work registered through
+// `waitUntil()` is awaited before returning. This one routine backs BOTH
 // the ghost-frame capture and the marker sampler below — see installSeekHelper
 // for why it's installed as a page global instead of being duplicated inline
 // (Puppeteer's page.evaluate only serializes the single function passed to it,
 // so a Node-side function can't be *called* from inside another evaluate
 // callback; it can only be reused by installing its source as a real page
 // global once, up front).
-function seekAllAdaptersInBrowser(tt: number): void {
-  const tryCall = (fn: () => void): void => {
+export async function seekAllAdaptersInBrowser(tt: number): Promise<void> {
+  const tryCall = (fn: () => void): boolean => {
     try {
       fn();
+      return true;
     } catch {
-      /* best-effort */
+      return false;
     }
   };
   const w = window as unknown as {
     __player?: { renderSeek?: (t: number) => void; seek?: (t: number) => void };
+    __hfReseekGpu?: (t: number) => void;
+    __hfWaitForSeekCompletion?: () => Promise<void>;
     __hfThreeTime?: number;
     __hfThreeRender?: () => void;
     __hfAnime?: Array<{ pause?: () => void; seek?: (timeMs: number) => void }>;
@@ -187,11 +309,16 @@ function seekAllAdaptersInBrowser(tt: number): void {
     >;
   };
   const timeMs = Math.max(0, tt * 1000);
+  let runtimeSeeked = false;
+  const pendingGpuWork: PromiseLike<unknown>[] = [];
 
-  tryCall(() => {
-    if (typeof w.__player?.renderSeek === "function") w.__player.renderSeek(tt);
-    else if (typeof w.__player?.seek === "function") w.__player.seek(tt);
-  });
+  if (typeof w.__player?.renderSeek === "function") {
+    runtimeSeeked = tryCall(() => w.__player?.renderSeek?.(tt));
+  } else if (typeof w.__player?.seek === "function") {
+    runtimeSeeked = tryCall(() => w.__player?.seek?.(tt));
+  } else if (typeof w.__hfReseekGpu === "function") {
+    runtimeSeeked = tryCall(() => w.__hfReseekGpu?.(tt));
+  }
 
   Object.values(w.__timelines ?? {}).forEach((tl) => {
     tryCall(() => {
@@ -223,12 +350,31 @@ function seekAllAdaptersInBrowser(tt: number): void {
     });
   }
 
-  tryCall(() => {
-    w.__hfThreeTime = tt;
-    window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time: tt } }));
-    w.__hfThreeRender?.();
-    w.gsap?.ticker?.tick?.();
-  });
+  w.__hfThreeTime = tt;
+  if (!runtimeSeeked) {
+    let acceptingGpuWork = true;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("hf-seek", {
+          detail: {
+            time: tt,
+            waitUntil(promise: PromiseLike<unknown>) {
+              if (!acceptingGpuWork) {
+                throw new Error("hf-seek waitUntil() must be called synchronously");
+              }
+              pendingGpuWork.push(promise);
+            },
+          },
+        }),
+      );
+    } finally {
+      acceptingGpuWork = false;
+    }
+  }
+  tryCall(() => w.__hfThreeRender?.());
+  tryCall(() => w.gsap?.ticker?.tick?.());
+
+  await Promise.all([Promise.all(pendingGpuWork), w.__hfWaitForSeekCompletion?.()]);
 }
 
 // Installs seekAllAdaptersInBrowser as a real `window` global, once per page
@@ -243,6 +389,7 @@ async function installSeekHelper(page: import("puppeteer-core").Page): Promise<v
 // Launch headless Chrome, load the composition sized to its canvas, wait for the
 // timelines + fonts to be ready. Returns the browser (caller closes it), page, size.
 async function openCompositionPage(
+  html: string,
   url: string,
   executablePath: string,
 ): Promise<{
@@ -251,37 +398,25 @@ async function openCompositionPage(
   size: FrameSize;
 }> {
   const puppeteer = await import("puppeteer-core");
-  const browser = await puppeteer.default.launch({
+  const { buildChromeArgs } = await import("@hyperframes/engine");
+  const size = resolveCompositionViewportFromHtml(html);
+  const requestedGpuMode = resolveLocalBrowserGpuMode();
+  const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, executablePath);
+  const requiresWebGpu = compositionRequiresWebGpu(html);
+  const browser = await launchManagedBrowser(puppeteer.default, {
     headless: true,
     executablePath,
-    args: [
-      "--no-sandbox",
-      "--disable-gpu",
-      "--disable-dev-shm-usage",
-      "--enable-webgl",
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
-    ],
+    args: buildChromeArgs(
+      { ...size, captureMode: "screenshot", requiresWebGpu },
+      { browserGpuMode: resolvedGpuMode },
+    ),
   });
   const page = await browser.newPage();
   const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
-  const size = await page.evaluate(() => {
-    const root = document.querySelector("[data-composition-id][data-width][data-height]");
-    const w = root ? parseInt(root.getAttribute("data-width") ?? "", 10) : 0;
-    const h = root ? parseInt(root.getAttribute("data-height") ?? "", 10) : 0;
-    return {
-      width: Number.isFinite(w) && w > 0 ? Math.min(w, 4096) : 1920,
-      height: Number.isFinite(h) && h > 0 ? Math.min(h, 4096) : 1080,
-    };
-  });
   await page.setViewport(size);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
-  await page
-    .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {
-      timeout: 10000,
-    })
-    .catch(() => {});
+  await assertWebGpuAdapterAvailable(page, requiresWebGpu);
+  await waitForRuntimeReady(page, 10000);
   await page
     .evaluate(async () => {
       const d = document as unknown as { fonts?: { ready?: Promise<unknown> } };
@@ -436,10 +571,10 @@ async function resolveScopedRequests(
 // SAME tick — before the browser clears the GL drawing buffer (works without
 // preserveDrawingBuffer; page.screenshot can't see the GL buffer here).
 function captureGhostFrame(page: import("puppeteer-core").Page, t: number): Promise<string> {
-  return page.evaluate((tt: number) => {
-    (window as unknown as { __hfSeekAllAdapters?: (time: number) => void }).__hfSeekAllAdapters?.(
-      tt,
-    );
+  return page.evaluate(async (tt: number) => {
+    await (
+      window as unknown as { __hfSeekAllAdapters?: (time: number) => Promise<void> }
+    ).__hfSeekAllAdapters?.(tt);
     const root = (document.querySelector("[data-composition-id]") ?? document.body) as HTMLElement;
     const rb = root.getBoundingClientRect();
     const off = document.createElement("canvas");
@@ -520,6 +655,64 @@ async function captureGhostOnionSkin(
   return outPath;
 }
 
+async function captureRenderedSvgStrip(
+  page: import("puppeteer-core").Page,
+  selector: string,
+  times: number[],
+  size: FrameSize,
+  camera: OrbitCamera,
+  hasWindow: boolean,
+  outPath: string,
+): Promise<string> {
+  await applyOrbitCameraIfAngled(page, [{ selector }], camera);
+  const frames: RenderedStripFrame[] = [];
+  for (const t of times) {
+    let clip: { x: number; y: number; width: number; height: number } | null = null;
+    for (const captureTime of stripCaptureTimeCandidates(t)) {
+      await page.evaluate(
+        async (time: number) =>
+          await (
+            window as unknown as { __hfSeekAllAdapters?: (value: number) => Promise<void> }
+          ).__hfSeekAllAdapters?.(time),
+        captureTime,
+      );
+      clip = await page.evaluate((value: string) => {
+        const element = document.querySelector(value);
+        const rect = element?.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+        const padding = 8;
+        const x = Math.max(0, Math.floor(rect.left - padding));
+        const y = Math.max(0, Math.floor(rect.top - padding));
+        const right = Math.min(window.innerWidth, Math.ceil(rect.right + padding));
+        const bottom = Math.min(window.innerHeight, Math.ceil(rect.bottom + padding));
+        return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
+      }, selector);
+      if (clip) break;
+    }
+    if (!clip) throw new Error(`--shot: '${selector}' has no visible SVG bounds at ${t}s.`);
+    const shot = await page.screenshot({ type: "png", clip });
+    const png = Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
+    frames.push({
+      t,
+      dataUrl: `data:image/png;base64,${png.toString("base64")}`,
+      width: clip.width,
+      height: clip.height,
+    });
+  }
+  const windowStr = hasWindow ? `  ·  t ${times[0]}–${times[times.length - 1]}s` : "";
+  const markup = buildRenderedStripSvg(frames, {
+    width: size.width,
+    height: size.height,
+    label: `${cameraLabel(camera)}  ·  filmstrip  ·  ${times.length} frames${windowStr}`,
+  });
+  await page.evaluate((svg: string) => document.body.insertAdjacentHTML("beforeend", svg), markup);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 60));
+  const output = await page.screenshot({ type: "png" });
+  if (!output) throw new Error("screenshot returned no data");
+  writeFileSync(outPath, output as Uint8Array);
+  return outPath;
+}
+
 // Default (marker) onion-skin: seek to each sample time, read every element's
 // projected corners. Marker children (zero-size) inherit the element's full
 // transform chain, so their screen positions ARE the 3D projection of each
@@ -537,54 +730,7 @@ async function captureMarkerOnionSkin(
   await applyOrbitCameraIfAngled(page, requests, camera);
 
   const elements = (await page.evaluate(
-    (selectors: string[], ts: number[]) => {
-      const seek = (window as unknown as { __hfSeekAllAdapters?: (t: number) => void })
-        .__hfSeekAllAdapters;
-
-      const rigs = selectors.map((sel) => {
-        const el = document.querySelector(sel) as HTMLElement | null;
-        if (!el) return null;
-        const w = el.offsetWidth;
-        const h = el.offsetHeight;
-        const local: Array<[number, number]> = [
-          [0, 0],
-          [w, 0],
-          [w, h],
-          [0, h],
-          [w / 2, h / 2],
-        ];
-        const markers = local.map(([lx, ly]) => {
-          const m = document.createElement("div");
-          m.style.cssText = `position:absolute;left:${lx}px;top:${ly}px;width:0;height:0;pointer-events:none`;
-          el.appendChild(m);
-          return m;
-        });
-        return { el, markers };
-      });
-      const out = selectors.map((selector) => ({ selector, samples: [] as PageSample[] }));
-      for (const t of ts) {
-        seek?.(t);
-        rigs.forEach((rig, i) => {
-          if (!rig) return;
-          const pts = rig.markers.map((m) => {
-            const r = m.getBoundingClientRect();
-            return { x: r.left, y: r.top };
-          });
-          const cs = getComputedStyle(rig.el);
-          out[i]!.samples.push({
-            t: Math.round(t * 1000) / 1000,
-            q: pts.slice(0, 4),
-            c: pts[4]!,
-            color: cs.backgroundColor,
-            opacity: parseFloat(cs.opacity) || 0,
-          });
-        });
-      }
-      rigs.forEach((rig) => {
-        if (rig) rig.el.style.visibility = "hidden";
-      });
-      return out.filter((o) => o.samples.length > 0);
-    },
+    sampleMarkerOnionElements,
     requests.map((r) => r.selector),
     times,
   )) as OnionElement[];
@@ -618,7 +764,7 @@ export async function captureMotionPathShot(
   outPath: string,
   opts: ShotOptions = {},
 ): Promise<string> {
-  ensureShotOutputDir(outPath);
+  ensureShotOutputDir(outPath, resolve(projectDir, opts.entryFile ?? "index.html"));
   let requests = requestsIn;
   const samples = Math.max(1, Math.min(60, opts.samples ?? 9));
   const layout = opts.layout ?? "path";
@@ -638,7 +784,7 @@ export async function captureMotionPathShot(
   let browserInstance: import("puppeteer-core").Browser | undefined;
   try {
     const browser = await ensureBrowser();
-    const opened = await openCompositionPage(server.url, browser.executablePath);
+    const opened = await openCompositionPage(html, server.url, browser.executablePath);
     browserInstance = opened.browser;
     const { page, size } = opened;
 
@@ -655,6 +801,30 @@ export async function captureMotionPathShot(
 
     if (opts.ghost) {
       return await captureGhostOnionSkin(page, requests, times, size, camera, outPath);
+    }
+
+    const stripSelector = layout === "strip" ? requests[0]?.selector : undefined;
+    const stripTargetsSvg = stripSelector
+      ? await page.evaluate((selector: string) => {
+          const element = document.querySelector(selector) as Element & {
+            getBBox?: () => unknown;
+            getScreenCTM?: () => unknown;
+          };
+          return (
+            typeof element?.getBBox === "function" && typeof element.getScreenCTM === "function"
+          );
+        }, stripSelector)
+      : false;
+    if (stripSelector && stripTargetsSvg) {
+      return await captureRenderedSvgStrip(
+        page,
+        stripSelector,
+        times,
+        size,
+        camera,
+        opts.from != null || opts.to != null,
+        outPath,
+      );
     }
 
     return await captureMarkerOnionSkin(

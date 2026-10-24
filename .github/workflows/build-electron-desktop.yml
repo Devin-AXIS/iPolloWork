@@ -2,6 +2,11 @@ name: Build Electron Desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      linux_installer:
+        description: "Build Ubuntu x64 DEB and AppImage installers"
+        type: boolean
+        default: false
   push:
     branches:
       - electron-notary-test
@@ -19,31 +24,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            artifact: macos
-          - os: ubuntu-latest
-            artifact: linux
-          - os: windows-latest
-            artifact: windows
-          - os: windows-11-arm
-            artifact: windows-arm64
+        include: ${{ fromJSON(inputs.linux_installer && '[{"os":"ubuntu-22.04","artifact":"linux"}]' || '[{"os":"macos-latest","artifact":"macos"},{"os":"ubuntu-latest","artifact":"linux"},{"os":"windows-latest","artifact":"windows"},{"os":"windows-11-arm","artifact":"windows-arm64"}]') }}
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # pnpm must be installed BEFORE setup-node so setup-node can find the
       # pnpm binary on PATH. Matches the pattern in build-desktop.yml so
       # the two workflows share the same bootstrap story.
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -57,29 +54,144 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package Electron desktop (unpacked)
+        if: ${{ !inputs.linux_installer }}
         run: pnpm --filter @ipollowork/desktop package:electron:dir
 
+      - name: Build Ubuntu installers
+        if: inputs.linux_installer
+        run: |
+          pnpm --filter @ipollowork/desktop build:electron
+          pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --linux deb AppImage --x64 --config.extraMetadata.homepage=https://github.com/Devin-AXIS/iPolloWork --config.linux.category=Development --publish never
+          dpkg-deb --field apps/desktop/dist-electron/*.deb Package Version Architecture
+
+      - name: Verify installed Ubuntu app startup with the sandbox enabled
+        if: inputs.linux_installer
+        env:
+          IPOLLOWORK_ELECTRON_USERDATA: ${{ runner.temp }}/ipollo-installed-profile
+          IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9826"
+          IPOLLOWORK_EVAL_INSTALLED_LINUX: "1"
+          IPOLLOWORK_EVAL_PACKAGED_MARKDOWN_EDITOR: "1"
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb dbus-x11 x11-utils fonts-noto-cjk "$GITHUB_WORKSPACE"/apps/desktop/dist-electron/*.deb
+          sudo sysctl -w kernel.unprivileged_userns_clone=0
+          helper=/opt/iPollo/chrome-sandbox
+          executable=/usr/bin/@ipolloworkdesktop
+          test "$(stat -c '%u:%g:%a' "$helper")" = '0:0:4755'
+
+          # Reproduce the reported crash, then verify that reinstalling the
+          # package repairs the helper through the same hook used by upgrades.
+          sudo chmod 0755 "$helper"
+          if timeout 15s xvfb-run -a "$executable" --disable-gpu > "$RUNNER_TEMP/ipollo-broken-startup.log" 2>&1; then
+            echo 'The broken sandbox mode unexpectedly allowed startup.' >&2
+            exit 1
+          fi
+          grep -q 'SUID sandbox helper binary was found, but is not configured correctly' "$RUNNER_TEMP/ipollo-broken-startup.log"
+          sudo dpkg --install apps/desktop/dist-electron/*.deb
+          test "$(stat -c '%u:%g:%a' "$helper")" = '0:0:4755'
+
+          setsid xvfb-run -a -s '-screen 0 1440x900x24' "$executable" --disable-gpu --disable-dev-shm-usage > "$RUNNER_TEMP/ipollo-startup.log" 2>&1 &
+          launcher_pid=$!
+          trap 'kill -- -"$launcher_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in $(seq 1 45); do
+            if curl -sf http://127.0.0.1:9826/json/list | grep -q '"type": "page"'; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$launcher_pid" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            tail -100 "$RUNNER_TEMP/ipollo-startup.log" >&2
+            exit 1
+          fi
+          export IPOLLOWORK_EVAL_PACKAGED_PLUGIN_ROOT=/opt/iPollo/resources/plugin-packages
+          export IPOLLOWORK_EVAL_PLUGIN_CONFLICT_FILE="$HOME/iPolloWork/.opencode/skills/ipollowork-reference-analyzer/SKILL.md"
+          node evals/runner/run.mjs --flow linux-installed-startup --flow packaged-plugin-catalog --flow packaged-markdown-editor --cdp-url http://127.0.0.1:9826 --out "$RUNNER_TEMP/ubuntu-startup-proof"
+
+      - name: Verify Enterprise starts with an empty project list
+        if: inputs.linux_installer
+        env:
+          IPOLLOWORK_ELECTRON_USERDATA: ${{ runner.temp }}/ipollo-enterprise-profile
+          IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9827"
+          IPOLLOWORK_ELECTRON_START_URL: http://127.0.0.1:5173
+          IPOLLOWORK_EVAL_ENTERPRISE_EMPTY_PROJECTS: "1"
+        run: |
+          set -euo pipefail
+          # Use source modules to seed only a verified external account in an
+          # isolated profile; activation and workspace storage use real IPC.
+          # Electron can leave xvfb-run's process group during shutdown.
+          pkill -f '^(/usr/bin|/opt/iPollo)/@ipolloworkdesktop( |$)' || true
+          setsid pnpm --dir apps/app exec vite --host 127.0.0.1 --port 5173 --strictPort > "$RUNNER_TEMP/ipollo-enterprise-renderer.log" 2>&1 &
+          renderer_pid=$!
+          launcher_pid=''
+          stop_enterprise_proof() {
+            kill -- -"$renderer_pid" 2>/dev/null || true
+            if [ -n "$launcher_pid" ]; then kill -- -"$launcher_pid" 2>/dev/null || true; fi
+            pkill -f '^(/usr/bin|/opt/iPollo)/@ipolloworkdesktop( |$)' || true
+          }
+          trap stop_enterprise_proof EXIT
+          for attempt in $(seq 1 45); do
+            if curl -sf http://127.0.0.1:5173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:5173/ > /dev/null
+          setsid xvfb-run -a -s '-screen 0 1440x900x24' /usr/bin/@ipolloworkdesktop --disable-gpu --disable-dev-shm-usage > "$RUNNER_TEMP/ipollo-enterprise-startup.log" 2>&1 &
+          launcher_pid=$!
+          ready=false
+          for attempt in $(seq 1 45); do
+            if curl -sf http://127.0.0.1:9827/json/list | grep -q '"type": "page"'; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$launcher_pid" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            tail -100 "$RUNNER_TEMP/ipollo-enterprise-startup.log" >&2
+            exit 1
+          fi
+          node evals/runner/run.mjs --flow enterprise-empty-projects --cdp-url http://127.0.0.1:9827 --out "$RUNNER_TEMP/enterprise-empty-projects-proof"
+
+      - name: Upload Ubuntu installation proof
+        if: always() && inputs.linux_installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipollowork-ubuntu-startup-proof
+          path: |
+            ${{ runner.temp }}/ubuntu-startup-proof/**
+            ${{ runner.temp }}/ipollo-startup.log
+            ${{ runner.temp }}/ipollo-broken-startup.log
+            ${{ runner.temp }}/enterprise-empty-projects-proof/**
+            ${{ runner.temp }}/ipollo-enterprise-renderer.log
+            ${{ runner.temp }}/ipollo-enterprise-startup.log
+
       - name: Upload Electron artifacts
-        uses: actions/upload-artifact@v4
+        if: ${{ success() || (inputs.linux_installer && hashFiles('apps/desktop/dist-electron/*.deb') != '') }}
+        uses: actions/upload-artifact@v7
         with:
           name: ipollowork-electron-${{ matrix.artifact }}
-          path: apps/desktop/dist-electron/**
+          path: ${{ inputs.linux_installer && 'apps/desktop/dist-electron/ipollowork-*' || 'apps/desktop/dist-electron/**' }}
 
   electron-macos-notarization-smoke:
     name: Electron macOS notarization smoke
+    if: ${{ !inputs.linux_installer }}
     runs-on: macos-14
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -139,5 +251,6 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.NOTARY_KEY_PATH }}
         run: |
           set -euo pipefail
+          pnpm --filter @ipollowork/desktop run package:engine-runtimes
           pnpm --filter @ipollowork/desktop run build:electron
           pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --mac dmg zip --publish never

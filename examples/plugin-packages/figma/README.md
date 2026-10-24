@@ -25,15 +25,15 @@ Desktop MCP 使用 Figma 官方地址 `http://127.0.0.1:3845/mcp`。它只监听
 ## 目录
 
 - `ipollowork.plugin.json`：iPolloWork 插件清单
-- `.opencode/mcps/figma.json`：Figma 官方 Desktop MCP
-- `.opencode/skills/`：Figma 官方工作流 Skills 及引用资料
-- `.opencode/commands/`：常用快捷命令
-- `.opencode/agents/`：专项执行与审查 Agents
+- `mcp/figma.json`：Figma 官方 Desktop MCP
+- `skills/`：Figma 官方工作流 Skills 及引用资料
+- `commands/`：常用快捷命令
+- `agents/`：专项执行与审查 Agents
 - `assets/`：展示资源
 
 ## 来源与限制
 
-工作流材料同步自 [openai/plugins 的 Figma 插件](https://github.com/openai/plugins/tree/main/plugins/figma)，上游提交为 `11c74d6ba24d3a6d48f54a194cd00ef3beea18f9`，上游插件版本为 `2.0.16`；iPolloWork bundle `2.0.17` 仅补充双语展示元数据。
+工作流材料同步自 [openai/plugins 的 Figma 插件](https://github.com/openai/plugins/tree/main/plugins/figma)，上游提交为 `11c74d6ba24d3a6d48f54a194cd00ef3beea18f9`，上游插件版本为 `2.0.16`；iPolloWork bundle `2.0.18` 补充双语展示元数据与引擎无关的能力目录。
 
 Figma MCP 当前处于 Beta，部分写入能力要求 Full seat 和目标文件编辑权限。Figma 的远程 MCP 只接受其 MCP 目录中的客户端；在 iPolloWork 获得远程客户端准入前，本插件使用官方 Desktop MCP，避免触发不受支持的远程 OAuth 客户端注册。
 

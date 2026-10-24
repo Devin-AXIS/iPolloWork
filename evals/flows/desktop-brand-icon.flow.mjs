@@ -135,10 +135,9 @@ async function openAdminPanel(ctx) {
     { timeoutMs: 30_000, label: "browser.open_url control action" },
   );
   const result = await ctx.control("browser.open_url", {
-    provider: "builtin",
     url: orgSettingsUrl(ctx),
   });
-  if (typeof result?.target_id === "string") panelTargetId = result.target_id;
+  panelTargetId = await getPanelTargetId(ctx);
   await waitForPanel(ctx, "document.body.innerText.trim().length > 0", {
     timeoutMs: 30_000,
     label: "admin panel initial load",

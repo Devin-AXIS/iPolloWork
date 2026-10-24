@@ -64,6 +64,7 @@ export default {
       name: "App boots to a usable session surface",
       run: async (ctx) => {
         await ctx.prove("App boots clean to a known route", {
+          voiceover: "打开应用，可以看到正常加载的工作界面。",
           action: async () => {
             await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
               timeoutMs: 60_000,
@@ -89,6 +90,7 @@ export default {
       name: "User creates a fresh task in the active workspace",
       run: async (ctx) => {
         await ctx.prove("A new session is created and becomes active", {
+          voiceover: "新建一个任务，应用切换到这个任务的对话。",
           action: async () => {
             await ctx.control("session.create_task");
           },
@@ -113,6 +115,7 @@ export default {
       name: "User writes a message and runs it",
       run: async (ctx) => {
         await ctx.prove("The composer accepts a message and the agent responds", {
+          voiceover: "输入消息并发送，可以看到消息和回复。",
           action: async () => {
             const pasted = await pasteComposer(ctx, MESSAGE);
             ctx.assert(pasted?.ok, `Composer not ready: ${pasted?.reason ?? "unknown"}`);
@@ -134,7 +137,11 @@ export default {
           assert: async () => {
             // The message we typed must appear in the transcript, and an
             // assistant response must stream in without an error state.
-            await ctx.waitForText("core-flow ok", { timeoutMs: 60_000 });
+            await ctx.waitFor(`Array.from(document.querySelectorAll('[data-message-role="assistant"]'))
+              .some((message) => message.innerText.includes("core-flow ok"))`, {
+              timeoutMs: 60_000,
+              label: "assistant response (not the matching user prompt)",
+            });
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: { name: "task-response", requireText: ["core-flow ok"] },
@@ -155,6 +162,7 @@ export default {
         ctx.log(`session before reload: ${before}`);
 
         await ctx.prove("Reopening restores the session and its message history", {
+          voiceover: "重新打开应用，刚才的任务和消息仍然保留。",
           action: async () => {
             // Simulate close + reopen: re-boot the renderer/client.
             await ctx.eval("(() => { window.location.reload(); return true; })()");
@@ -170,9 +178,10 @@ export default {
               "window.__ipolloworkControl.listActions().some((a) => a.id === 'session.list_sessions')",
               { timeoutMs: 45_000, label: "session.list_sessions available" },
             );
-            const sessions = await ctx.control("session.list_sessions");
-            const listed = Array.isArray(sessions) && sessions.some((s) => s.sessionId === before);
-            ctx.assert(listed, `Session ${before} was not listed after reopen (not persisted).`);
+            await ctx.waitFor(`(async () => {
+              const sessions = await window.__ipolloworkControl.execute("session.list_sessions");
+              return Array.isArray(sessions) && sessions.some((session) => session.sessionId === ${JSON.stringify(before)});
+            })()`, { timeoutMs: 45_000, label: "persisted session loaded after reopen" });
             // Open it explicitly and confirm its message history is retrievable.
             await ctx.control("session.open", { sessionId: before });
             await ctx.waitForText("core-flow ok", { timeoutMs: 45_000 });

@@ -1,9 +1,39 @@
+import { attachElementFxChain, readElementAutomation, type ElementFxHandle } from "./audioFx.js";
+import {
+  clearParamLane,
+  scheduleParamLane,
+  volumeLane,
+  type AutomationTiming,
+} from "../audio/audioFxAutomation.js";
+import { VOLUME_RANGE } from "../audioAutomation.js";
+import { audioGroupOf, readAudioGroupVolume, resolveGroupElement } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
+import { createLevelTap, type LevelTap, type StereoLevel } from "./levelTap.js";
+import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
+import { readElementPlaybackRate } from "./media.js";
+import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
 
 function normalizeRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   return rate;
+}
+
+/**
+ * The render puts every track volume through `clampVolume`, which is
+ * `clampAudioGain` — ceiling MAX_AUDIO_GAIN (+12 dB, ~3.98), not unity. Preview
+ * has to agree or the two diverge on exactly the attribute this bus exists to
+ * honour: an authored `<hf-audio-group data-volume="2">` previewed at 1.0 and
+ * exported at 2.0, up to 6 dB quieter in the audition than in the file, and
+ * 12 dB at the ceiling. Preview was also self-inconsistent — the same
+ * parameter's automation lane is bounded by `VOLUME_RANGE.max`, which IS
+ * MAX_AUDIO_GAIN, so an envelope could reach 3.98 where the static fader could
+ * not pass 1.0. `clampAudioGain` still floors at 0, so a negative value cannot
+ * invert polarity in preview while rendering silent. Compositions are
+ * hand-authorable, so out-of-range values do not need a slider to be reachable.
+ */
+function clampGroupVolume(volume: number): number {
+  return clampAudioGain(volume);
 }
 
 /**
@@ -36,46 +66,116 @@ function startBoundedSource(
     elapsed: number;
     mediaStart: number;
     scheduledAt: number;
-    safeRate: number;
+    globalRate: number;
+    mediaRate: number;
     clipDuration: number;
   },
 ): boolean {
-  const { elapsed, mediaStart, scheduledAt, safeRate, clipDuration } = opts;
+  const { elapsed, mediaStart, scheduledAt, globalRate, mediaRate, clipDuration } = opts;
   const hasBound = Number.isFinite(clipDuration) && clipDuration > 0;
-  const clipSourceLen = clipDuration * safeRate;
+  const clipSourceLen = clipDuration * mediaRate;
   if (elapsed >= 0) {
-    const remaining = clipSourceLen - elapsed;
+    const sourceElapsed = elapsed * mediaRate;
+    const remaining = clipSourceLen - sourceElapsed;
     if (hasBound && remaining <= 0) return false;
-    if (hasBound) node.start(0, elapsed + mediaStart, remaining);
-    else node.start(0, elapsed + mediaStart);
+    if (hasBound) node.start(0, sourceElapsed + mediaStart, remaining);
+    else node.start(0, sourceElapsed + mediaStart);
     return true;
   }
-  const delay = -elapsed / safeRate;
+  const delay = -elapsed / globalRate;
   if (hasBound) node.start(scheduledAt + delay, mediaStart, clipSourceLen);
   else node.start(scheduledAt + delay, mediaStart);
   return true;
 }
 
-export type ScheduledSource = {
+/**
+ * The volume lane rides the fader, after the effects — where a DAW puts it,
+ * and the order the render bakes it in.
+ *
+ * Typed against the attribute reader rather than `HTMLMediaElement` so a group
+ * bus (an `<hf-audio-group>`, not a media element) can ride the same path.
+ */
+function scheduleVolumeLane(
+  el: { getAttribute?(name: string): string | null },
+  gainNode: GainNode,
+  timing: AutomationTiming,
+): void {
+  const lane = volumeLane(readElementAutomation(el));
+  if (!lane) return;
+  scheduleParamLane([{ param: gainNode.gain }], lane, VOLUME_RANGE.scale, timing);
+}
+
+type ScheduledSourceBase = {
   el: HTMLMediaElement;
-  sourceNode: AudioBufferSourceNode;
   gainNode: GainNode;
+  /** FX chain spliced between source and gain, when the element carries one. */
+  fx?: ElementFxHandle | null;
   compositionStart: number;
   mediaStart: number;
   scheduledAt: number;
   priorMuted: boolean;
+  priorVolume: number;
+  mediaPlaybackRate: number;
   // The clip had a finite window, so start() was given a fixed duration in
   // buffer-sample seconds. That bound can't be rescaled in place on a rate
   // change — callers must stopAll()+reschedule (see hasBoundedActiveSources).
   bounded: boolean;
 };
 
+export type ScheduledSource = ScheduledSourceBase &
+  (
+    | { sourceKind: "buffer"; sourceNode: AudioBufferSourceNode }
+    | { sourceKind: "media-element"; sourceNode: MediaElementAudioSourceNode }
+  );
+
+function isBufferSource(
+  source: ScheduledSource,
+): source is ScheduledSourceBase & { sourceKind: "buffer"; sourceNode: AudioBufferSourceNode } {
+  return source.sourceKind === "buffer";
+}
+
+// A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
+const IDLE_SUSPEND_MS = 10000;
+
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _failedSrcs = new Set<string>();
+  private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
+  /** Preview volume and mute. Downstream of `_masterGain`; meters tap the program. */
+  private _monitorGain: GainNode | null = null;
+  private _masterVolume = 1;
+  private _masterMuted = false;
+  // One shared bus per group id, lazily built the first time a member of that
+  // group is scheduled. Lives for the session (mirrors `_masterGain`'s own
+  // lifecycle) rather than being torn down on every `stopAll()`, so replaying
+  // a group does not rebuild its chain; only `destroy()` disposes these.
+  private _groups = new Map<
+    string,
+    {
+      input: GainNode;
+      /** Where the bus meets master; the level meter taps here. */
+      output: GainNode;
+      /** False once the group's element is gone from the document. */
+      isPresent(): boolean;
+      /** Post-FX fader: `data-volume` plus the volume lane. */
+      fader: GainNode;
+      muteGain: GainNode;
+      /** Kept so `setRate` can re-aim this bus's FX automation, the way it does
+       *  every source's — its docblock claims it already did. */
+      fx: ElementFxHandle | null;
+      /** Play generation the current envelopes were booked against. */
+      generation: number;
+      reanchor(timing: AutomationTiming): void;
+      dispose(): void;
+    }
+  >();
+  // Level taps exist only between `startMetering()` and `stopMetering()`.
+  private _metering = false;
+  private _masterTap: LevelTap | null = null;
+  private _groupTaps = new Map<string, LevelTap>();
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
   // `_rate` composition-seconds per wallclock-second since.
@@ -84,16 +184,54 @@ export class WebAudioTransport {
   private _rate = 1;
   private _paused = true;
   private _playGeneration = 0;
+  // A running context renders silence nonstop, so a paused transport keeps it
+  // suspended unless a captured track is sounding on the idle route (scrub).
+  private _playingCaptured = new Set<HTMLMediaElement>();
+  private _suspendPending = false;
+  private _restTimer: ReturnType<typeof setTimeout> | null = null;
 
   async init(): Promise<boolean> {
     try {
       this._ctx = new AudioContext();
+      this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
-      this._masterGain.connect(this._ctx.destination);
+      this._monitorGain = this._ctx.createGain();
+      this._masterGain.connect(this._monitorGain);
+      this._monitorGain.connect(this._ctx.destination);
+      this.applyMasterGain();
+      if (this._metering) this.attachMasterTap();
       return true;
     } catch {
       return false;
     }
+  }
+
+  private async wake(): Promise<void> {
+    if (!this._ctx || (this._ctx.state === "running" && !this._suspendPending)) return;
+    this._suspendPending = false;
+    await this._ctx.resume();
+  }
+
+  private rest(): void {
+    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    this._restTimer = null;
+    if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
+    this._restTimer = setTimeout(() => {
+      this._restTimer = null;
+      this.suspendIfIdle();
+    }, IDLE_SUSPEND_MS);
+  }
+
+  private suspendIfIdle(): void {
+    // `paused` is the truth; the load algorithm clears it without a "pause" event.
+    for (const el of this._playingCaptured) if (el.paused) this._playingCaptured.delete(el);
+    if (!this._ctx || !this._paused || this._suspendPending || this._playingCaptured.size > 0)
+      return;
+    this._suspendPending = true;
+    this._ctx.suspend().catch((err) => {
+      this._suspendPending = false;
+      swallow("webAudioTransport.suspend", err);
+    });
   }
 
   get context(): AudioContext | null {
@@ -156,12 +294,375 @@ export class WebAudioTransport {
     return this._playGeneration;
   }
 
+  /**
+   * The element's cached MediaElementAudioSourceNode, building it on first use
+   * — or `null` when this element must not be captured at all.
+   *
+   * That second outcome is the whole point. `createMediaElementSource` cannot
+   * report that it produced a silent node: over a CORS-cross-origin resource
+   * the Web Audio spec asks the node for SILENCE rather than an exception, so
+   * the caller's `try/catch` never fires and the composition plays through
+   * with no audio and no error (#3458). The call also permanently reroutes the
+   * element away from its native output, so the question has to be settled
+   * before it, and there is no undo afterwards.
+   *
+   * `init.ts` routes on the same verdict before ever calling in, and
+   * `AudioRow.tsx`'s standalone preview player classifies over its own
+   * throwaway `AudioContext` before its own `createMediaElementSource` call —
+   * this method is A enforcement point, not THE enforcement point; every
+   * caller that can reach `createMediaElementSource` is expected to classify
+   * first. What this method DOES own is the cache below: `_mediaElementSources`
+   * is keyed by element identity, not by asset, so a cache hit alone says
+   * nothing about the element's CURRENT resource. Reclassifying on every call
+   * — cache hit included — means a `src` mutation an outer caller missed (a
+   * pooled element swapped from a same-origin clip to a cross-origin one
+   * without going through a fresh generation) can't leave a stale
+   * `web-audio` verdict silently attached to the new resource.
+   */
+  private acquireMediaElementSource(el: HTMLMediaElement): MediaElementAudioSourceNode | null {
+    const cached = this._mediaElementSources.get(el);
+    if (cached) {
+      // The node itself doesn't change identity on a src swap, but its
+      // eligibility can: the Web Audio spec's tainted-origin check runs
+      // against the element's CURRENT underlying resource, not the one that
+      // was current when the node was built. A same-origin-to-cross-origin
+      // mutation on this element would otherwise keep returning the old
+      // (now-silent) node forever — `destroy()` was the only thing that ever
+      // cleared this cache, so a long-lived element that changed sources
+      // stayed silenced for the rest of the session (the R2 finding this
+      // block exists to close). The node is still a one-way door — it can't
+      // be un-created, and the element's native output is gone either way —
+      // so disconnecting it just stops it feeding a graph that no longer
+      // matches the asset; the caller falls back to the decode-only path.
+      const route = classifyWebAudioMediaRoute(el);
+      if (route.kind !== "web-audio") {
+        try {
+          cached.disconnect();
+        } catch {
+          // Already torn down.
+        }
+        this._mediaElementSources.delete(el);
+        reportWebAudioMediaRoute(el, route);
+        return null;
+      }
+      return cached;
+    }
+    if (!this._ctx) return null;
+    const route = classifyWebAudioMediaRoute(el);
+    if (route.kind !== "web-audio") {
+      reportWebAudioMediaRoute(el, route);
+      return null;
+    }
+    const sourceNode = this._ctx.createMediaElementSource(el);
+    this._mediaElementSources.set(el, sourceNode);
+    if (!el.paused) this._playingCaptured.add(el);
+    el.addEventListener("play", () => {
+      this._playingCaptured.add(el);
+      void this.wake();
+    });
+    const stopped = () => {
+      this._playingCaptured.delete(el);
+      this.rest();
+    };
+    el.addEventListener("pause", stopped);
+    el.addEventListener("emptied", stopped);
+    return sourceNode;
+  }
+
+  /**
+   * Route the browser's pitch-preserving HTMLMediaElement transport through the
+   * same FX, automation, element-gain, and master graph used by final audio.
+   * The media element remains the source-time/rate owner; Web Audio is strictly
+   * downstream and therefore never resamples it for Studio global speed.
+   */
+  async scheduleMediaElementPlayback(
+    el: HTMLMediaElement,
+    compositionStart: number,
+    _mediaStart: number,
+    compositionTime: number,
+    volume: number,
+    generation: number,
+    rate = 1,
+  ): Promise<ScheduledSource | null> {
+    if (!this._ctx || !this._masterGain) return null;
+    if (generation !== this._playGeneration) return null;
+
+    try {
+      await this.wake();
+      if (generation !== this._playGeneration) return null;
+
+      const sourceNode = this.acquireMediaElementSource(el);
+      if (!sourceNode) return null;
+      sourceNode.disconnect();
+
+      const safeRate = normalizeRate(rate);
+      const gainNode = this._ctx.createGain();
+      gainNode.gain.value = volume;
+      const scheduledAt = this._ctx.currentTime;
+      const elapsed = compositionTime - compositionStart;
+      const timing: AutomationTiming = { scheduledAt, elapsed, rate: safeRate };
+      const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
+      // The group bus, not master, for a member — same as the decoded-buffer
+      // path. This transport is the PRIMARY one for audio (the decode path is
+      // its fallback), so routing it at master would have left every grouped
+      // track bypassing the bus whose whole premise is that a group is one
+      // signal.
+      gainNode.connect(
+        this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
+      );
+      scheduleVolumeLane(el, gainNode, timing);
+
+      this._rate = safeRate;
+      this._rateAnchorCtx = scheduledAt;
+      this._rateAnchorComp = compositionTime;
+
+      const scheduled: ScheduledSource = {
+        fx,
+        el,
+        sourceNode,
+        sourceKind: "media-element",
+        gainNode,
+        compositionStart,
+        mediaStart: _mediaStart,
+        scheduledAt,
+        priorMuted: el.muted,
+        priorVolume: el.volume,
+        mediaPlaybackRate: readElementPlaybackRate(el),
+        bounded: false,
+      };
+      // Chrome applies HTMLMediaElement.volume before MediaElementAudioSource.
+      // Keep that upstream stage at unity so the existing downstream gain is
+      // the single owner of author × user volume and automation.
+      el.volume = 1;
+      this._activeSources.push(scheduled);
+      this._paused = false;
+      return scheduled;
+    } catch (err) {
+      swallow("webAudioTransport.mediaElementSource", err);
+      return null;
+    }
+  }
+
+  /**
+   * The gain a grouped member's signal should land on, building it on first
+   * use. A group's clock is COMPOSITION time (design doc §1.3) — it has no
+   * `data-start`, and a missing start parses as 0, which is exactly
+   * composition time — so its chain and volume lane are scheduled once here
+   * against that zero-offset timing, not the member's own clip-local timing.
+   * A group id with no matching `<hf-audio-group>` element still gets a bus
+   * (flat, no chain) so a hand-authored `data-audio-group` degrades to a
+   * plain sum rather than losing the member's audio.
+   */
+  private groupInput(groupId: string, doc: Document, timing: AutomationTiming): GainNode | null {
+    const existing = this._groups.get(groupId);
+    if (existing) {
+      // The bus outlives `stopAll()` on purpose, so a replay or a seek reuses
+      // this graph — but its envelopes were committed to the FIRST pass's
+      // absolute context times. Left alone they hold their last value forever,
+      // which for a fade-out is silence for the rest of the session. Re-anchor
+      // once per play generation, not once per member scheduled.
+      if (existing.generation !== this._playGeneration) {
+        // Stamped only on success, and isolated: this runs inside
+        // `schedulePlayback`, whose catch turns any throw into `return null` —
+        // i.e. a bus problem would silently drop the MEMBER from the pass. And
+        // stamping first would consume the generation, so no later member of
+        // the same group would retry and the bus would keep the previous pass's
+        // envelopes: finding 11 unfixed on exactly the pass that failed.
+        try {
+          existing.reanchor(timing);
+          existing.generation = this._playGeneration;
+        } catch (err) {
+          swallow("webAudioTransport.groupReanchor", err);
+        }
+      }
+      return existing.input;
+    }
+    if (!this._ctx || !this._masterGain) return null;
+
+    const input = this._ctx.createGain();
+    // Stable point the FX chain (or, when there's none, the dry passthrough —
+    // see `attachElementFxChain`'s `detach()`) always lands on before master,
+    // regardless of whether a chain is attached/detached/rebuilt later. The
+    // mute gain splices in BEFORE `output`, between the FX chain and here.
+    const output = this._ctx.createGain();
+    output.connect(this._masterGain);
+
+    // Tag-checked, and re-resolved on every reanchor below rather than frozen:
+    // a bus whose element does not exist yet (studio group creation, or a
+    // sub-composition that loads later) kept the `getAttribute: () => null`
+    // stub for the whole session, so its fader, chain and mute never reached
+    // preview while the export honoured all three.
+    const resolveEl = (): Element | null => resolveGroupElement(doc, groupId);
+    const groupEl = resolveEl();
+    const muteGain = this._ctx.createGain();
+    muteGain.gain.value = groupEl?.hasAttribute("data-hidden") ? 0 : 1;
+    muteGain.connect(output);
+    // The group's fader, POST-FX: `data-volume` is the static position and the
+    // volume lane rides it, which is where a DAW puts it and the order the
+    // render bakes it in (`scheduleVolumeLane`'s own contract). Scheduling it
+    // on `input` instead put the fader ahead of the effects, so any nonlinear
+    // group effect — a compressor, the Giant preset — previewed differently
+    // than it rendered.
+    const fader = this._ctx.createGain();
+    fader.gain.value = clampGroupVolume(readAudioGroupVolume(groupEl));
+    fader.connect(muteGain);
+    const fx = attachElementFxChain(
+      this._ctx,
+      groupEl ?? { getAttribute: () => null },
+      input,
+      fader,
+      timing,
+    );
+    if (groupEl) scheduleVolumeLane(groupEl, fader, timing);
+
+    this._groups.set(groupId, {
+      input,
+      output,
+      isPresent: () => resolveEl() !== null,
+      fader,
+      muteGain,
+      fx,
+      generation: this._playGeneration,
+      reanchor: (at: AutomationTiming) => {
+        // Cleared BEFORE the value write, and unconditionally. `scheduleVolumeLane`
+        // clears as part of scheduling, but returns early when the group no
+        // longer has a lane — and a scheduled envelope outranks a `.value`
+        // write, so deleting a group's automation mid-session otherwise left
+        // the previous pass's ramps still owning the param (for a fade-out,
+        // silence) for the rest of the session.
+        clearParamLane([{ param: fader.gain }]);
+        // Re-resolved, not the element captured at build time — see `resolveEl`.
+        const live = resolveEl();
+        fader.gain.value = clampGroupVolume(readAudioGroupVolume(live));
+        muteGain.gain.value = live?.hasAttribute("data-hidden") ? 0 : 1;
+        fx?.reanchor(at);
+        if (live) scheduleVolumeLane(live, fader, at);
+      },
+      dispose: () => {
+        try {
+          fx?.dispose();
+          input.disconnect();
+          fader.disconnect();
+          muteGain.disconnect();
+          output.disconnect();
+        } catch {
+          // Already torn down.
+        }
+      },
+    });
+    this.attachGroupTap(groupId, output);
+    return input;
+  }
+
+  startMetering(): void {
+    this._metering = true;
+    this.attachMasterTap();
+    for (const [id, group] of this._groups) this.attachGroupTap(id, group.output);
+  }
+
+  stopMetering(): void {
+    this._metering = false;
+    this._masterTap?.dispose();
+    this._masterTap = null;
+    for (const tap of this._groupTaps.values()) tap.dispose();
+    this._groupTaps.clear();
+  }
+
+  readLevels(): { master: StereoLevel; groups: Record<string, StereoLevel> } {
+    const groups: Record<string, StereoLevel> = {};
+    for (const [id, tap] of this._groupTaps) {
+      if (this._groups.get(id)?.isPresent()) groups[id] = tap.read();
+    }
+    return { master: this._masterTap?.read() ?? { l: 0, r: 0 }, groups };
+  }
+
+  private attachMasterTap(): void {
+    if (this._ctx && this._masterGain && !this._masterTap) {
+      this._masterTap = createLevelTap(this._ctx, this._masterGain);
+    }
+  }
+
+  private attachGroupTap(id: string, output: GainNode): void {
+    if (this._metering && this._ctx && !this._groupTaps.has(id)) {
+      this._groupTaps.set(id, createLevelTap(this._ctx, output));
+    }
+  }
+
+  /**
+   * Group mute, preview side — a separate gain from `input`'s volume fader
+   * so a mute toggle never fights `scheduleVolumeLane`'s ramps on the
+   * same param (the same hazard the design doc flags for §2.1). A no-op
+   * until the group has an active member: at that point `groupInput` reads
+   * the element's own `data-hidden` for its initial value, so there is
+   * nothing to catch up on here.
+   */
+  setGroupMuted(groupId: string, muted: boolean): void {
+    const group = this._groups.get(groupId);
+    if (!group) return;
+    try {
+      group.muteGain.gain.value = muted ? 0 : 1;
+    } catch (err) {
+      swallow("webAudioTransport.setGroupMuted", err);
+    }
+  }
+
+  /** Master, unless `el` belongs to a group — then that group's bus (built on
+   *  first use, per `groupInput`). */
+  private resolveDestination(
+    el: HTMLMediaElement,
+    scheduledAt: number,
+    compositionTime: number,
+    safeRate: number,
+  ): GainNode | null {
+    if (!this._masterGain) return null;
+    const groupId = audioGroupOf(el);
+    if (!groupId) return this._masterGain;
+    const groupTiming: AutomationTiming = { scheduledAt, elapsed: compositionTime, rate: safeRate };
+    return this.groupInput(groupId, el.ownerDocument, groupTiming) ?? this._masterGain;
+  }
+
+  /**
+   * The graph goes with it. Splicing alone left the FX handle alive and then
+   * UNREACHABLE — `stopAll()` disposes by walking `_activeSources`, which the
+   * splice just emptied of this entry. Every clip that finished naturally
+   * leaked its MutationObserver for the session, and each one still answered
+   * later `data-fx-chain` edits by rebuilding a whole graph (impulse response,
+   * chorus/phaser oscillators started and never stopped) around a dead
+   * source. Not disposed when the index is already -1: `stopAll()` has
+   * already done it, and `stop()` is what fired this event.
+   */
+  private handleSourceEnded(
+    sourceNode: AudioBufferSourceNode,
+    scheduled: ScheduledSource,
+    el: HTMLMediaElement,
+    priorMuted: boolean,
+  ): void {
+    const idx = this._activeSources.indexOf(scheduled);
+    if (idx === -1) return;
+    this._activeSources.splice(idx, 1);
+    el.muted = priorMuted;
+    try {
+      sourceNode.disconnect();
+      scheduled.fx?.dispose();
+      scheduled.gainNode.disconnect();
+    } catch {
+      // Already torn down.
+    }
+    if (this._activeSources.length === 0) this._paused = true;
+  }
+
+  // Pre-existing size (110 lines before this diff, which shrank it to under
+  // 95 via two extractions — see `handleSourceEnded`/`resolveDestination`);
+  // the remainder is inherently sequential graph-wiring, not a nested
+  // decision tree, and further splitting would cost more readability than it
+  // buys. Same call the B2 step took on `TimelineLogicalRow`.
+  // fallow-ignore-next-line complexity
   async schedulePlayback(
     el: HTMLMediaElement,
     buffer: AudioBuffer,
     compositionStart: number,
     mediaStart: number,
-    compositionTime: number,
+    readCompositionTime: () => number,
     volume: number,
     generation: number,
     rate = 1,
@@ -171,24 +672,37 @@ export class WebAudioTransport {
     if (generation !== this._playGeneration) return null;
 
     try {
-      if (this._ctx.state === "suspended") {
-        await this._ctx.resume();
-      }
+      await this.wake();
       if (generation !== this._playGeneration) return null;
+      // Read after the wake: the clock kept running while the context resumed.
+      const compositionTime = readCompositionTime();
 
       const safeRate = normalizeRate(rate);
+      const mediaRate = readElementPlaybackRate(el);
+      const sourceRate = safeRate * mediaRate;
 
       const sourceNode = this._ctx.createBufferSource();
       sourceNode.buffer = buffer;
-      sourceNode.playbackRate.value = safeRate;
+      sourceNode.playbackRate.value = sourceRate;
 
       const gainNode = this._ctx.createGain();
       gainNode.gain.value = volume;
-      sourceNode.connect(gainNode);
-      gainNode.connect(this._masterGain);
 
       const elapsed = compositionTime - compositionStart;
       const scheduledAt = this._ctx.currentTime;
+      const timing: AutomationTiming = { scheduledAt, elapsed, rate: safeRate };
+
+      // Splice the element's FX chain between the decoded source and its gain,
+      // so effects see the raw signal and volume automation rides on their
+      // output — the same order the offline render uses. Preview and render run
+      // the identical graph builders, so what is heard here is what is written.
+      const fx = attachElementFxChain(this._ctx, el, sourceNode, gainNode, timing);
+      gainNode.connect(
+        this.resolveDestination(el, scheduledAt, compositionTime, safeRate) ?? this._masterGain,
+      );
+
+      scheduleVolumeLane(el, gainNode, timing);
+
       this._rate = safeRate;
       this._rateAnchorCtx = scheduledAt;
       this._rateAnchorComp = compositionTime;
@@ -198,12 +712,14 @@ export class WebAudioTransport {
           elapsed,
           mediaStart,
           scheduledAt,
-          safeRate,
+          globalRate: safeRate,
+          mediaRate,
           clipDuration,
         })
       ) {
         // Playhead already past the clip end — discard the nodes we built.
         sourceNode.disconnect();
+        fx?.dispose();
         gainNode.disconnect();
         return null;
       }
@@ -213,26 +729,25 @@ export class WebAudioTransport {
       logFallbackHandoff(el, priorMuted);
 
       const scheduled: ScheduledSource = {
+        fx,
         el,
         sourceNode,
+        sourceKind: "buffer",
         gainNode,
         compositionStart,
         mediaStart,
         scheduledAt,
         priorMuted,
+        priorVolume: el.volume,
+        mediaPlaybackRate: mediaRate,
         bounded: Number.isFinite(clipDuration) && clipDuration > 0,
       };
       this._activeSources.push(scheduled);
       this._paused = false;
 
-      sourceNode.addEventListener("ended", () => {
-        const idx = this._activeSources.indexOf(scheduled);
-        if (idx !== -1) {
-          this._activeSources.splice(idx, 1);
-          el.muted = priorMuted;
-          if (this._activeSources.length === 0) this._paused = true;
-        }
-      });
+      sourceNode.addEventListener("ended", () =>
+        this.handleSourceEnded(sourceNode, scheduled, el, priorMuted),
+      );
 
       return scheduled;
     } catch (err) {
@@ -246,6 +761,14 @@ export class WebAudioTransport {
    * `getTime()` stays continuous across the change. Sources scheduled to
    * start in the future keep their original wallclock start time — callers
    * that need rate-correct future starts should `stopAll()` and reschedule.
+   *
+   * Each source's FX automation is re-aimed too. Lanes are committed to
+   * absolute context times when the source is scheduled, so bumping only
+   * `playbackRate` left every automated parameter running its original plan
+   * over audio moving at a different speed. The `stopAll()`+reschedule recovery
+   * in the runtime is no help here: it only fires for bounded sources, and a
+   * project-level music bed with no `data-duration` is unbounded, so it never
+   * recovered at all.
    */
   setRate(rate: number): boolean {
     const safeRate = normalizeRate(rate);
@@ -257,9 +780,22 @@ export class WebAudioTransport {
     this._rate = safeRate;
     for (const source of this._activeSources) {
       try {
-        source.sourceNode.playbackRate.value = safeRate;
+        if (isBufferSource(source)) {
+          source.sourceNode.playbackRate.value = safeRate * source.mediaPlaybackRate;
+        }
+        source.fx?.setRate(safeRate);
       } catch (err) {
         swallow("webAudioTransport.setRate", err);
+      }
+    }
+    // Group buses are not in `_activeSources` — they outlive it — so their FX
+    // automation needs re-aiming here too, or a rate change leaves a group's
+    // envelopes running the old plan over audio at the new speed.
+    for (const group of this._groups.values()) {
+      try {
+        group.fx?.setRate(safeRate);
+      } catch (err) {
+        swallow("webAudioTransport.setRate.group", err);
       }
     }
     return true;
@@ -269,35 +805,54 @@ export class WebAudioTransport {
   // arg at its original rate; a later rate change can't rescale it in place, so
   // the caller must stopAll()+reschedule to keep trimmed clips ending on time.
   hasBoundedActiveSources(): boolean {
-    return this._activeSources.some((s) => s.bounded);
+    return this._activeSources.some((s) => isBufferSource(s) && s.bounded);
   }
 
   stopAll(): void {
     for (const source of this._activeSources) {
       try {
-        source.sourceNode.stop();
+        if (isBufferSource(source)) source.sourceNode.stop();
         source.sourceNode.disconnect();
+        source.fx?.dispose();
         source.gainNode.disconnect();
       } catch {
         // already stopped
       }
-      source.el.muted = source.priorMuted;
+      if (isBufferSource(source)) source.el.muted = source.priorMuted;
+      else {
+        source.el.volume = source.priorVolume;
+        // Captured, it has no native output; outside a play it sounds through the destination.
+        if (this._ctx) source.sourceNode.connect(this._ctx.destination);
+      }
     }
     this._activeSources = [];
     this._paused = true;
+    this._playGeneration += 1;
+    this.rest();
   }
 
   setVolume(volume: number): void {
-    if (this._masterGain) {
-      this._masterGain.gain.value = Math.max(0, Math.min(1, volume));
-    }
+    this._masterVolume = Math.max(0, Math.min(1, volume));
+    this.applyMasterGain();
   }
 
+  /**
+   * The per-element gain carries the clip's AUTHOR gain, which reaches
+   * MAX_AUDIO_GAIN — so it is clamped against that ceiling, not the spec's
+   * [0,1]. `setVolume` above is the opposite case and stays spec-clamped: the
+   * user's master volume is a fader, not a gain.
+   *
+   * Clamping this one at unity capped every static above-unity `data-volume` on
+   * the preview path while the render honoured it — the exact preview/render
+   * divergence this ceiling exists to close. Automation lanes hid it, because
+   * they schedule ramps onto the param directly and never pass through here.
+   */
   setElementVolume(el: HTMLMediaElement, volume: number): void {
-    const safeVolume = Math.max(0, Math.min(1, volume));
+    const safeVolume = clampAudioGain(volume);
     for (const source of this._activeSources) {
       if (source.el !== el) continue;
       try {
+        if (source.sourceKind === "media-element") source.el.volume = 1;
         source.gainNode.gain.value = safeVolume;
       } catch (err) {
         swallow("webAudioTransport.setElementVolume", err);
@@ -306,25 +861,42 @@ export class WebAudioTransport {
   }
 
   setMuted(muted: boolean): void {
-    if (this._masterGain) {
-      this._masterGain.gain.value = muted ? 0 : 1;
-    }
+    this._masterMuted = muted;
+    this.applyMasterGain();
   }
 
-  isActive(): boolean {
-    return this._activeSources.length > 0 && !this._paused;
+  private applyMasterGain(): void {
+    if (this._monitorGain)
+      this._monitorGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
+  }
+
+  ownsClock(): boolean {
+    return !this._paused && this._activeSources.some(isBufferSource);
   }
 
   /** Whether the transport currently plays THIS element (the runtime mutes it to
    *  avoid double audio; an unclaimed track stays audible). */
   ownsElement(el: HTMLMediaElement): boolean {
-    return !this._paused && this._activeSources.some((s) => s.el === el);
+    return !this._paused && this._activeSources.some((s) => s.el === el && isBufferSource(s));
+  }
+
+  /** Whether this element's native signal currently flows through the WebAudio graph. */
+  routesElement(el: HTMLMediaElement): boolean {
+    return !this._paused && this._activeSources.some((source) => source.el === el);
   }
 
   destroy(): void {
     this.stopAll();
+    this.stopMetering();
+    for (const group of this._groups.values()) group.dispose();
+    this._groups.clear();
     this._bufferCache.clear();
     this._failedSrcs.clear();
+    this._mediaElementSources = new WeakMap();
+    this._playingCaptured.clear();
+    this._suspendPending = false;
+    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    this._restTimer = null;
     if (this._ctx) {
       try {
         void this._ctx.close();
@@ -334,5 +906,8 @@ export class WebAudioTransport {
     }
     this._ctx = null;
     this._masterGain = null;
+    this._monitorGain = null;
+    this._masterVolume = 1;
+    this._masterMuted = false;
   }
 }

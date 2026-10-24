@@ -2,6 +2,12 @@ import type { ComposerDraft, ComposerPart } from "@/app/types";
 
 import { decodeComposerMentionValue, type ComposerMentionKind } from "./mention-encoding";
 
+export function canSteerActiveDraft(draft: ComposerDraft): boolean {
+  return draft.mode === "prompt" && !draft.command && !draft.capability
+    && !draft.attachments.some(attachment => attachment.delivery === "workspace")
+    && !draft.parts.some(part => part.type === "agent" || part.type === "design-selection");
+}
+
 type ParseComposerPartsInput = {
   mentions: Record<string, ComposerMentionKind>;
   pasteParts: Array<{ id: string; label: string; text: string; lines: number }>;

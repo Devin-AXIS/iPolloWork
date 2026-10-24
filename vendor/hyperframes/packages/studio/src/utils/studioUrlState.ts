@@ -23,14 +23,12 @@ export interface StudioUrlState {
 const VALID_TABS: RightPanelTab[] = [
   "layers",
   "design",
-  "illustration",
   "assets",
+  "code",
   "voice",
   "style",
+  "components",
   "animation",
-  "animation-properties",
-  "catalog",
-  "effects",
   "renders",
   "slideshow",
   "variables",
@@ -84,7 +82,8 @@ function parseNumber(value: string | null): number | null {
 }
 
 function parseTab(value: string | null): RightPanelTab | null {
-  return VALID_TABS.includes(value as RightPanelTab) ? (value as RightPanelTab) : null;
+  if (value === "animation-properties") return "design";
+  return VALID_TABS.find((tab) => tab === value) ?? null;
 }
 
 function normalizeSelection(params: URLSearchParams): StudioUrlSelectionState | null {

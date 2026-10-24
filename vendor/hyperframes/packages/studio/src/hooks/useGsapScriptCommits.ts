@@ -15,6 +15,7 @@ import {
 import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
+import { markManualKeyframe } from "./gsapShared";
 import { createKeyedSerializer } from "./serializeByKey";
 import {
   GsapMutationHttpError,
@@ -367,14 +368,14 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       if (!activeProjectId) return Promise.resolve();
       const file = selection.sourceFile || activeCompPath || "index.html";
       return serializeCommit(file, options.serializeKey, () =>
-        runCommit(activeProjectId, activeCompPath, file, selection, mutation, options),
+        runCommit(activeProjectId, activeCompPath, file, selection, markManualKeyframe(mutation), options),
       );
     };
     commit.batch = (calls, options) => {
       if (!activeProjectId) return Promise.resolve();
       const file = calls[0]?.selection.sourceFile || activeCompPath || "index.html";
       return serializeCommit(file, options.serializeKey, () =>
-        runBatchCommit(activeProjectId, activeCompPath, file, calls, options),
+        runBatchCommit(activeProjectId, activeCompPath, file, calls.map((call) => ({ ...call, mutation: markManualKeyframe(call.mutation) })), options),
       );
     };
     return commit;

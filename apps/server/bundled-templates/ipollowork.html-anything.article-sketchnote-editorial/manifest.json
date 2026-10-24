@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.article-sketchnote-editorial",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "article",
   "subcategory": "education",
@@ -12,7 +12,8 @@
     "magazine",
     "editorial",
     "narrative",
-    "concept-history"
+    "concept-history",
+    "topic:education"
   ],
   "surface": "design",
   "title": "Editorial Sketchnote",

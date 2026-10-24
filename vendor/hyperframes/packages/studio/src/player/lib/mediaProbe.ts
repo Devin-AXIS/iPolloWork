@@ -11,6 +11,28 @@ const inflight = new Map<string, Promise<MediaProbeResult | null>>();
 // URLs whose probe failed (CORS, 404, non-media). Remembered so the rAF-driven
 // timeline re-derive doesn't re-fetch them every frame and flood the console.
 const failed = new Set<string>();
+const MAX_PROBE_CACHE_ENTRIES = 256;
+
+function rememberProbe(key: string, result: MediaProbeResult): void {
+  failed.delete(key);
+  cache.delete(key);
+  cache.set(key, result);
+  while (cache.size > MAX_PROBE_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+function rememberFailedProbe(key: string): void {
+  failed.delete(key);
+  failed.add(key);
+  while (failed.size > MAX_PROBE_CACHE_ENTRIES) {
+    const oldest = failed.values().next().value;
+    if (oldest === undefined) break;
+    failed.delete(oldest);
+  }
+}
 
 let mediabunnyModule: typeof import("mediabunny") | null | false = null;
 
@@ -65,7 +87,12 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
 }
 
 function getCachedProbe(url: string): MediaProbeResult | undefined {
-  return cache.get(normalizeUrl(url));
+  const key = normalizeUrl(url);
+  const cached = cache.get(key);
+  if (!cached) return undefined;
+  cache.delete(key);
+  cache.set(key, cached);
+  return cached;
 }
 
 /**
@@ -123,8 +150,8 @@ async function probeMediaUrl(url: string): Promise<MediaProbeResult | null> {
 
   pending = probeOne(key).then((result) => {
     inflight.delete(key);
-    if (result) cache.set(key, result);
-    else failed.add(key);
+    if (result) rememberProbe(key, result);
+    else rememberFailedProbe(key);
     return result;
   });
   inflight.set(key, pending);

@@ -1,26 +1,38 @@
+import { enterpriseResourceLifecycleSchema, type EnterpriseResourceLifecycle, type EnterpriseResourceType } from "@ipollowork/types/enterprise";
+export type { EnterpriseResourceType } from "@ipollowork/types/enterprise";
+import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
+import { enterpriseFeaturesSchema, enterpriseMemberSchema, enterpriseMemberRoleSchema, enterpriseMembershipResponseSchema, type EnterpriseFeatures, type EnterpriseMember } from "@ipollowork/types/enterprise";
+import { enterpriseRequest } from "./enterprise-client";
+import { readPluginPackageArchive } from "./plugin-package-archive";
+import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "./ipollowork-server";
 import { desktopFetchBinaryViaMain, desktopFetchViaMain } from "./desktop";
+import { normalizeDenBaseUrl, readDenSettings } from "./den";
 import { isDesktopRuntime } from "./runtime-env";
 import {
   IPOLLOWORK_PACKAGE_EXTENSION,
   IPOLLOWORK_PACKAGE_MEDIA_TYPE,
   LEGACY_TEMPLATE_PACKAGE_EXTENSION,
   MAX_TEMPLATE_PACKAGE_BYTES,
+  templateManifestV1Schema,
 } from "@ipollowork/types/templates";
 
 const ENTERPRISE_CONNECTIONS_KEY = "ipollowork.enterprise-connections.v1";
+let connectionAccount: { storageKey: string; baseUrl: string; token: string } | null = null;
 const ENTERPRISE_CONNECTION_LIMIT = 12;
 const ENTERPRISE_TIMEOUT_MS = 12_000;
 const ENTERPRISE_DOWNLOAD_TIMEOUT_MS = 120_000;
 const ENTERPRISE_RESOURCE_PAGE_SIZE = 50;
-const ENTERPRISE_RESOURCE_MAX_PAGES = 20;
+const ENTERPRISE_RESOURCE_PAGE_LIMIT = 20;
 const ENTERPRISE_EXTENSION_PACKAGE_EXTENSION = ".ipollowork-plugin";
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
+const CLOUD_RESOURCE_PATH_PREFIX = "/api/v1/enterprise-resources/";
+const ENTERPRISE_RESOURCE_PATH_PREFIX = "/api/v1/resources/";
 
 export const enterpriseConnectionsChangedEvent = "ipollowork:enterprise-connections-changed";
 
 type JsonRecord = Record<string, unknown>;
 
-export type EnterpriseMemberRole = "owner" | "admin" | "member";
+export type EnterpriseMemberRole = EnterpriseMember["role"];
 
 export type EnterpriseServer = {
   id: string;
@@ -30,12 +42,15 @@ export type EnterpriseServer = {
   logoUrl: string | null;
   accent: "blue" | "neutral";
   authMode: "bootstrap" | "ipollo_oidc";
+  features?: EnterpriseFeatures;
 };
 
 export type EnterpriseConnection = EnterpriseServer & {
   membership: {
     id: string;
     role: EnterpriseMemberRole;
+    status?: EnterpriseMember["status"];
+    departmentId?: string | null;
   };
   session: {
     token: string;
@@ -43,13 +58,13 @@ export type EnterpriseConnection = EnterpriseServer & {
   };
 };
 
-export type EnterpriseResourceType = "template" | "extension";
+
 
 export type EnterpriseResource = {
   id: string;
   type: EnterpriseResourceType;
   slug: string;
-  sourceTemplateId: string | null;
+  manifestId: string | null;
   name: string;
   description: string;
   category: string;
@@ -57,6 +72,7 @@ export type EnterpriseResource = {
   iconPath: string | null;
   featured: boolean;
   updatedAt: string;
+  lifecycle?: EnterpriseResourceLifecycle;
   latestVersion: {
     version: string;
     digest: string;
@@ -77,6 +93,7 @@ type EnterpriseManifest = {
   shortName: string;
   logoUrl: string | null;
   accent: EnterpriseServer["accent"];
+  features?: EnterpriseFeatures;
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -89,7 +106,8 @@ function readString(record: JsonRecord, key: string) {
 }
 
 function parseRole(value: unknown): EnterpriseMemberRole | null {
-  return value === "owner" || value === "admin" || value === "member" ? value : null;
+  const parsed = enterpriseMemberRoleSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export function normalizeEnterpriseOrigin(value: string): string | null {
@@ -131,18 +149,19 @@ function parseManifest(value: unknown): EnterpriseManifest | null {
   const accentValue = readString(enterprise, "accent");
   const accent = accentValue === "neutral" ? "neutral" : accentValue === "blue" ? "blue" : null;
   if (!id.startsWith("ent_") || !name || !shortName || !accent) return null;
-  return { id, name, shortName, logoUrl, accent };
+  const features = enterpriseFeaturesSchema.safeParse(value.features);
+  return { id, name, shortName, logoUrl, accent, ...(features.success ? { features: features.data } : {}) };
 }
 
 function endpoint(origin: string, path: string) {
   return `${origin.replace(/\/+$/u, "")}${path}`;
 }
 
-function enterpriseFetcher(fetcher?: typeof fetch) {
+function enterpriseFetcher(fetcher?: typeof fetch, timeoutMs = ENTERPRISE_TIMEOUT_MS) {
   if (fetcher) return fetcher;
   if (!isDesktopRuntime()) return globalThis.fetch;
   return (input: RequestInfo | URL, init?: RequestInit) => (
-    desktopFetchViaMain(input, init, ENTERPRISE_TIMEOUT_MS)
+    desktopFetchViaMain(input, init, timeoutMs)
   );
 }
 
@@ -200,17 +219,50 @@ export async function discoverEnterpriseConnection(
     logoUrl: manifest.logoUrl,
     accent: manifest.accent,
     authMode: discovery.authMode,
+    ...(manifest.features ? { features: manifest.features } : {}),
   };
+}
+
+export async function refreshEnterpriseMembership(connection: EnterpriseConnection, fetcher?: typeof fetch): Promise<EnterpriseConnection> {
+  const accountKey = connectionStorageKey();
+  const storedAtStart = readEnterpriseConnections().find((item) => item.id === connection.id);
+  const result = await enterpriseRequest(connection, "/api/v1/membership", enterpriseMembershipResponseSchema, {
+    cache: "no-store",
+  }, fetcher);
+  if (result.membership.id !== connection.membership.id) throw new Error("enterprise_manifest_mismatch");
+  const latest = readEnterpriseConnections().find((item) => item.id === connection.id);
+  if (accountKey !== connectionStorageKey() || (storedAtStart && !latest)
+    || (latest && (latest.membership.id !== connection.membership.id || latest.session.token !== connection.session.token || latest.origin !== connection.origin))) {
+    throw new Error("enterprise_account_changed");
+  }
+  // A slower poll cannot overwrite a newer role or member-status update.
+  if (storedAtStart && latest && JSON.stringify(storedAtStart.membership) !== JSON.stringify(latest.membership)) return latest;
+  const current = latest ?? connection;
+  const refreshed = { ...current, membership: { id: result.membership.id, role: result.membership.role, status: result.membership.status, departmentId: result.membership.departmentId } };
+  if (accountKey && JSON.stringify(current.membership) !== JSON.stringify(refreshed.membership)) saveEnterpriseConnection(refreshed);
+  return refreshed;
 }
 
 export async function refreshEnterpriseConnection(
   connection: EnterpriseConnection,
   fetcher?: typeof fetch,
 ): Promise<EnterpriseConnection> {
+  const accountKey = connectionStorageKey();
+  const storedAtStart = readEnterpriseConnections().find((item) => item.id === connection.id);
   const server = await discoverEnterpriseConnection(connection.origin, fetcher);
   if (server.id !== connection.id) throw new Error("enterprise_manifest_mismatch");
+  if (accountKey !== connectionStorageKey()) return connection;
   const current = readEnterpriseConnections().find((item) => item.id === connection.id) ?? connection;
-  const refreshed = { ...current, ...server };
+  let refreshed = { ...current, ...server };
+  if (!server.features) delete refreshed.features;
+  if (server.features?.membership || server.features?.resourceManagement) {
+    const verified = await refreshEnterpriseMembership(refreshed, fetcher);
+    refreshed = { ...refreshed, membership: verified.membership };
+  }
+  if (accountKey !== connectionStorageKey()) return refreshed;
+  const latest = readEnterpriseConnections().find((item) => item.id === connection.id);
+  if (storedAtStart && !latest) return refreshed;
+  if (latest && (latest.membership.id !== current.membership.id || latest.session.token !== current.session.token)) return latest;
   if (
     current.name !== refreshed.name
     || current.shortName !== refreshed.shortName
@@ -218,6 +270,8 @@ export async function refreshEnterpriseConnection(
     || current.accent !== refreshed.accent
     || current.origin !== refreshed.origin
     || current.authMode !== refreshed.authMode
+    || JSON.stringify(current.features) !== JSON.stringify(refreshed.features)
+    || JSON.stringify(current.membership) !== JSON.stringify(refreshed.membership)
   ) {
     saveEnterpriseConnection(refreshed);
   }
@@ -237,8 +291,20 @@ function parseJoinResult(value: unknown, server: EnterpriseServer): EnterpriseCo
   return { ...server, membership: { id: memberId, role }, session: { token, expiresAt } };
 }
 
-function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourceType): EnterpriseResource | null {
+type EnterpriseResourceSource = "cloud" | "enterprise";
+
+function enterpriseResourcePathPrefix(source: EnterpriseResourceSource) {
+  return source === "enterprise" ? ENTERPRISE_RESOURCE_PATH_PREFIX : CLOUD_RESOURCE_PATH_PREFIX;
+}
+
+function parseEnterpriseResource(
+  value: unknown,
+  expectedType: EnterpriseResourceType,
+  source: EnterpriseResourceSource,
+): EnterpriseResource | null {
   if (!isRecord(value) || readString(value, "type") !== expectedType) return null;
+  const lifecycle = source === "enterprise" && value.lifecycle !== undefined ? enterpriseResourceLifecycleSchema.parse(value.lifecycle) : undefined;
+  if (source === "enterprise" && !lifecycle && readString(value, "status") !== "published") return null;
   const id = readString(value, "id");
   const slug = readString(value, "slug");
   const name = readString(value, "name");
@@ -246,20 +312,24 @@ function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourc
   const enterpriseCategory = readString(value, "enterpriseCategory");
   const updatedAt = readString(value, "updatedAt");
   if (!id || !slug || !name || !category || !enterpriseCategory || !updatedAt) return null;
-  const iconPath = typeof value.iconPath === "string" && value.iconPath.startsWith("/api/v1/resources/")
-    ? value.iconPath
+  const pathPrefix = enterpriseResourcePathPrefix(source);
+  const iconValue = source === "enterprise" ? value.iconPath : value.iconUrl;
+  const iconPath = typeof iconValue === "string" && iconValue.startsWith(pathPrefix)
+    ? iconValue
     : null;
-  const latest = isRecord(value.latestVersion) ? value.latestVersion : null;
+  const latestValue = source === "enterprise" ? value.latestVersion : value.latestArtifact;
+  const latest = isRecord(latestValue) ? latestValue : null;
   const version = latest ? readString(latest, "version") : "";
-  const digest = latest ? readString(latest, "digest") : "";
+  const manifestId = source === "enterprise"
+    ? readString(value, "sourceTemplateId")
+    : latest ? readString(latest, "manifestId") : "";
+  const digest = latest ? readString(latest, source === "enterprise" ? "digest" : "sha256") : "";
   const downloadPath = latest ? readString(latest, "downloadPath") : "";
   return {
     id,
     type: expectedType,
     slug,
-    sourceTemplateId: typeof value.sourceTemplateId === "string" && value.sourceTemplateId.trim()
-      ? value.sourceTemplateId.trim()
-      : null,
+    manifestId: manifestId || null,
     name,
     description: readString(value, "description"),
     category,
@@ -267,42 +337,102 @@ function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourc
     iconPath,
     featured: value.featured === true,
     updatedAt,
-    latestVersion: version && SHA256_HEX_PATTERN.test(digest) && downloadPath.startsWith("/api/v1/resources/")
+    ...(lifecycle ? { lifecycle } : {}),
+    latestVersion: version && SHA256_HEX_PATTERN.test(digest) && downloadPath.startsWith(pathPrefix)
       ? { version, digest, downloadPath }
       : null,
   };
 }
 
-export function enterpriseResourceUrl(connection: EnterpriseConnection, path: string | null): string | null {
-  if (!path?.startsWith("/api/v1/resources/")) return null;
-  return endpoint(connection.origin, path);
+export type EnterpriseResourceRequestOptions = {
+  connection?: EnterpriseConnection;
+  fetcher?: typeof fetch;
+};
+
+function enterpriseResourceAccess(connection?: EnterpriseConnection) {
+  if (connection) {
+    const token = connection.session.token.trim();
+    if (!token) throw new Error("enterprise_signin_required");
+    return { origin: connection.origin, token, source: "enterprise" as const };
+  }
+  const settings = readDenSettings();
+  const token = settings.authToken?.trim() ?? "";
+  if (!token) throw new Error("cloud_signin_required");
+  return { origin: settings.baseUrl, token, source: "cloud" as const };
+}
+
+export function enterpriseResourceUrl(
+  path: string | null,
+  connection?: EnterpriseConnection,
+): string | null {
+  const access = enterpriseResourceAccess(connection);
+  if (!path?.startsWith(enterpriseResourcePathPrefix(access.source))) return null;
+  return endpoint(access.origin, path);
+}
+
+export async function readRemoteTemplateCard(resource: EnterpriseResource, options: EnterpriseResourceRequestOptions = {}) {
+  const access = enterpriseResourceAccess(options.connection);
+  if (resource.type !== "template" || !resource.latestVersion) throw new Error("template_preview_unavailable");
+  const path = `${enterpriseResourcePathPrefix(access.source)}${encodeURIComponent(resource.id)}`;
+  const payload = await fetchJson(endpoint(access.origin, `${path}?version=${encodeURIComponent(resource.latestVersion.version)}`), {
+    headers: { Authorization: `Bearer ${access.token}` },
+    signal: AbortSignal.timeout(120_000),
+  }, enterpriseFetcher(options.fetcher, 120_000));
+  if (!isRecord(payload)) throw new Error("invalid_template_preview");
+  const manifest = templateManifestV1Schema.parse(payload.manifest);
+  const coverDataUrl = payload.coverDataUrl;
+  if (manifest.id !== (resource.manifestId ?? resource.slug) || manifest.version !== resource.latestVersion.version
+    || typeof coverDataUrl !== "string" || coverDataUrl.length > 7 * 1024 * 1024
+    || !/^data:image\/(?:svg\+xml|png|jpeg|webp|gif|avif);base64,[A-Za-z0-9+/]*={0,2}$/u.test(coverDataUrl)) {
+    throw new Error("invalid_template_preview");
+  }
+  return { manifest, coverDataUrl };
+}
+
+export async function listEnterpriseResourcePage(type: EnterpriseResourceType, options: EnterpriseResourceRequestOptions & { connection: EnterpriseConnection; cursor?: string | null }) {
+  const access = enterpriseResourceAccess(options.connection);
+  const query = new URLSearchParams({ type, limit: String(ENTERPRISE_RESOURCE_PAGE_SIZE), view: "catalog" });
+  if (options.cursor) query.set("cursor", options.cursor);
+  const payload = await fetchJson(endpoint(access.origin, `/api/v1/resources?${query}`), { headers: { Authorization: `Bearer ${access.token}` } }, enterpriseFetcher(options.fetcher));
+  if (!isRecord(payload) || !Array.isArray(payload.items) || payload.items.length > ENTERPRISE_RESOURCE_PAGE_SIZE
+    || (payload.nextCursor !== null && (typeof payload.nextCursor !== "string" || !payload.nextCursor.trim() || payload.nextCursor.length > 128 || payload.nextCursor === options.cursor))) throw new Error("invalid_enterprise_resource_catalog");
+  const items = payload.items.flatMap(item => { const parsed = parseEnterpriseResource(item, type, "enterprise"); return parsed ? [parsed] : []; });
+  return { items, nextCursor: typeof payload.nextCursor === "string" ? payload.nextCursor : null };
 }
 
 export async function listEnterpriseResources(
-  connection: EnterpriseConnection,
   type: EnterpriseResourceType,
-  fetcher?: typeof fetch,
+  options: EnterpriseResourceRequestOptions = {},
 ): Promise<EnterpriseResource[]> {
-  const resources = new Map<string, EnterpriseResource>();
-  const seenCursors = new Set<string>();
-  let cursor: string | null = null;
-  for (let page = 0; page < ENTERPRISE_RESOURCE_MAX_PAGES; page += 1) {
+  const access = enterpriseResourceAccess(options.connection);
+  const fetcher = enterpriseFetcher(options.fetcher);
+  const authorization = { Authorization: `Bearer ${access.token}` };
+  if (access.source === "cloud") {
     const query = new URLSearchParams({ type, limit: String(ENTERPRISE_RESOURCE_PAGE_SIZE) });
-    if (cursor) query.set("cursor", cursor);
     const payload = await fetchJson(
-      endpoint(connection.origin, `/api/v1/resources?${query.toString()}`),
-      { headers: { Authorization: `Bearer ${connection.session.token}` } },
-      enterpriseFetcher(fetcher),
+      endpoint(access.origin, `/api/v1/enterprise-resources?${query.toString()}`),
+      { headers: authorization },
+      fetcher,
     );
-    if (!isRecord(payload) || !Array.isArray(payload.items)) throw new Error("invalid_enterprise_resource_catalog");
-    for (const item of payload.items) {
-      const parsed = parseEnterpriseResource(item, type);
-      if (parsed) resources.set(parsed.id, parsed);
-    }
-    const nextCursor = payload.nextCursor;
-    if (nextCursor === null || nextCursor === undefined) return [...resources.values()];
-    if (typeof nextCursor !== "string" || !nextCursor || nextCursor.length > 128 || seenCursors.has(nextCursor)) {
-      throw new Error("invalid_enterprise_resource_cursor");
+    if (!isRecord(payload) || !Array.isArray(payload.resources)) throw new Error("invalid_enterprise_resource_catalog");
+    return payload.resources.flatMap((item) => {
+      const parsed = parseEnterpriseResource(item, type, access.source);
+      return parsed ? [parsed] : [];
+    });
+  }
+
+  const resources: EnterpriseResource[] = [];
+  const seenCursors = new Set<string>();
+  const connection = options.connection;
+  if (!connection) throw new Error("enterprise_signin_required");
+  let cursor: string | null = null;
+  for (let page = 0; page < ENTERPRISE_RESOURCE_PAGE_LIMIT; page += 1) {
+    const payload = await listEnterpriseResourcePage(type, { ...options, connection, cursor });
+    resources.push(...payload.items);
+    if (payload.nextCursor === null) return resources;
+    const nextCursor = payload.nextCursor.trim();
+    if (!nextCursor || nextCursor.length > 128 || seenCursors.has(nextCursor)) {
+      throw new Error("invalid_enterprise_resource_catalog");
     }
     seenCursors.add(nextCursor);
     cursor = nextCursor;
@@ -316,14 +446,17 @@ async function sha256Hex(bytes: ArrayBuffer) {
 }
 
 export async function downloadEnterpriseResource(
-  connection: EnterpriseConnection,
   resource: EnterpriseResource,
-  fetcher?: typeof fetch,
+  options: EnterpriseResourceRequestOptions = {},
 ): Promise<File> {
-  const downloadUrl = enterpriseResourceUrl(connection, resource.latestVersion?.downloadPath ?? null);
-  if (!downloadUrl || !resource.latestVersion) throw new Error("enterprise_resource_version_unavailable");
-  const response = await enterpriseBinaryFetcher(fetcher)(downloadUrl, {
-    headers: { Authorization: `Bearer ${connection.session.token}` },
+  const access = enterpriseResourceAccess(options.connection);
+  const downloadUrl = enterpriseResourceUrl(
+    resource.latestVersion?.downloadPath ?? null,
+    options.connection,
+  );
+  if (!downloadUrl || !resource.latestVersion || resource.lifecycle?.installable === false) throw new Error("enterprise_resource_version_unavailable");
+  const response = await enterpriseBinaryFetcher(options.fetcher)(downloadUrl, {
+    headers: { Authorization: `Bearer ${access.token}` },
     signal: AbortSignal.timeout(ENTERPRISE_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -332,11 +465,17 @@ export async function downloadEnterpriseResource(
     throw new Error(code || `enterprise_server_${response.status}`);
   }
   const expectedDigest = resource.latestVersion.digest.toLowerCase();
-  const responseDigest = response.headers.get("x-ipollo-artifact-sha256")?.trim().toLowerCase() ?? "";
+  const responseDigestHeader = access.source === "enterprise"
+    ? "x-ipollo-artifact-sha256"
+    : "x-ipollowork-sha256";
+  const responseDigest = response.headers.get(responseDigestHeader)?.trim().toLowerCase() ?? "";
   if (!SHA256_HEX_PATTERN.test(expectedDigest) || !SHA256_HEX_PATTERN.test(responseDigest)) {
     throw new Error("enterprise_resource_digest_missing");
   }
-  if (response.headers.get("x-ipollo-resource-type")?.trim() !== resource.type) {
+  const responseTypeHeader = access.source === "enterprise"
+    ? "x-ipollo-resource-type"
+    : "x-ipollowork-resource-type";
+  if (response.headers.get(responseTypeHeader)?.trim() !== resource.type) {
     throw new Error("enterprise_resource_type_mismatch");
   }
   const contentLength = Number(response.headers.get("content-length"));
@@ -354,7 +493,7 @@ export async function downloadEnterpriseResource(
     || new URL(downloadUrl).pathname.toLowerCase().endsWith(IPOLLOWORK_PACKAGE_EXTENSION);
   const extension = resource.type === "template"
     ? (canonicalPackage ? IPOLLOWORK_PACKAGE_EXTENSION : LEGACY_TEMPLATE_PACKAGE_EXTENSION).slice(1)
-    : ENTERPRISE_EXTENSION_PACKAGE_EXTENSION.slice(1);
+    : resource.type === "skill" ? "ipollowork-skill" : ENTERPRISE_EXTENSION_PACKAGE_EXTENSION.slice(1);
   return new File([bytes], `${resource.slug}-${resource.latestVersion.version}.${extension}`, {
     type: response.headers.get("content-type") || "application/octet-stream",
   });
@@ -371,6 +510,9 @@ export async function joinEnterpriseWithCode(
   if (!cloudOrigin || !cloudToken) throw new Error("cloud_signin_required");
   if (!enterpriseOrigin) throw new Error("invalid_enterprise_url");
   if (!/^[A-Z2-9]{5}-?[A-Z2-9]{5}$/u.test(joinCode)) throw new Error("invalid_join_code");
+  const accountKey = connectionStorageKey();
+  if (!accountKey || connectionAccount?.token !== cloudToken
+    || connectionAccount.baseUrl !== normalizeDenBaseUrl(input.cloudBaseUrl)) throw new Error("cloud_signin_required");
 
   const authorization = { Authorization: `Bearer ${cloudToken}` };
   const requestFetcher = enterpriseFetcher(fetcher);
@@ -389,13 +531,14 @@ export async function joinEnterpriseWithCode(
   }, requestFetcher);
   const connection = parseJoinResult(joinPayload, discoveredServer);
   if (!connection) throw new Error("invalid_enterprise_join_response");
+  if (accountKey !== connectionStorageKey()) throw new Error("cloud_signin_required");
   saveEnterpriseConnection(connection);
   return connection;
 }
 
 function parseStoredConnection(value: unknown): EnterpriseConnection | null {
   if (!isRecord(value)) return null;
-  const server = parseManifest({ enterprise: value });
+  const server = parseManifest({ enterprise: value, features: value.features });
   const origin = normalizeEnterpriseOrigin(readString(value, "origin"));
   const authModeValue = readString(value, "authMode");
   const authMode = authModeValue === "bootstrap" || authModeValue === "ipollo_oidc" ? authModeValue : null;
@@ -405,7 +548,9 @@ function parseStoredConnection(value: unknown): EnterpriseConnection | null {
   const token = readString(value.session, "token");
   const expiresAt = readString(value.session, "expiresAt");
   if (!memberId || !role || !token || !expiresAt) return null;
-  return { ...server, origin, authMode, membership: { id: memberId, role }, session: { token, expiresAt } };
+  const status = enterpriseMemberSchema.shape.status.safeParse(value.membership.status);
+  const departmentId = value.membership.departmentId;
+  return { ...server, origin, authMode, membership: { id: memberId, role, ...(status.success ? { status: status.data } : {}), ...(departmentId === null || typeof departmentId === "string" ? { departmentId } : {}) }, session: { token, expiresAt } };
 }
 
 function dispatchConnectionsChanged() {
@@ -413,10 +558,44 @@ function dispatchConnectionsChanged() {
   window.dispatchEvent(new CustomEvent(enterpriseConnectionsChangedEvent));
 }
 
+function connectionStorageKey(): string | null {
+  if (!connectionAccount) return null;
+  const settings = readDenSettings();
+  return settings.authToken?.trim() === connectionAccount.token
+    && normalizeDenBaseUrl(settings.baseUrl) === connectionAccount.baseUrl
+    ? connectionAccount.storageKey : null;
+}
+
+/** Select only after Cloud has verified the account; tokens never form the persistent cache key. */
+export function setEnterpriseConnectionAccount(account: { userId: string; baseUrl: string; token: string } | null) {
+  if (typeof window === "undefined") return;
+  if (!account) {
+    connectionAccount = null;
+    dispatchConnectionsChanged();
+    return;
+  }
+  const settings = readDenSettings();
+  const baseUrl = normalizeDenBaseUrl(account.baseUrl);
+  const userId = account.userId.trim();
+  const token = account.token.trim();
+  if (!baseUrl || !userId || !token || normalizeDenBaseUrl(settings.baseUrl) !== baseUrl
+    || settings.authToken?.trim() !== token) return;
+  const storageKey = `${ENTERPRISE_CONNECTIONS_KEY}:${encodeURIComponent(baseUrl)}:${encodeURIComponent(userId)}`;
+  if (connectionAccount?.storageKey === storageKey && connectionAccount.token === token) return;
+  // Adopt the pre-account format once, on the first verified session after upgrading.
+  const legacy = window.localStorage.getItem(ENTERPRISE_CONNECTIONS_KEY);
+  if (legacy && window.localStorage.getItem(storageKey) === null) window.localStorage.setItem(storageKey, legacy);
+  window.localStorage.removeItem(ENTERPRISE_CONNECTIONS_KEY);
+  connectionAccount = { storageKey, baseUrl, token };
+  dispatchConnectionsChanged();
+}
+
 export function readEnterpriseConnections(): EnterpriseConnection[] {
   if (typeof window === "undefined") return [];
+  const storageKey = connectionStorageKey();
+  if (!storageKey) return [];
   try {
-    const raw = window.localStorage.getItem(ENTERPRISE_CONNECTIONS_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -431,9 +610,11 @@ export function readEnterpriseConnections(): EnterpriseConnection[] {
 
 export function saveEnterpriseConnection(connection: EnterpriseConnection) {
   if (typeof window === "undefined") return;
+  const storageKey = connectionStorageKey();
+  if (!storageKey) throw new Error("cloud_signin_required");
   const existing = readEnterpriseConnections().filter((item) => item.id !== connection.id);
   window.localStorage.setItem(
-    ENTERPRISE_CONNECTIONS_KEY,
+    storageKey,
     JSON.stringify([connection, ...existing].slice(0, ENTERPRISE_CONNECTION_LIMIT)),
   );
   dispatchConnectionsChanged();
@@ -441,8 +622,10 @@ export function saveEnterpriseConnection(connection: EnterpriseConnection) {
 
 export function removeEnterpriseConnection(connectionId: string) {
   if (typeof window === "undefined") return;
+  const storageKey = connectionStorageKey();
+  if (!storageKey) return;
   const remaining = readEnterpriseConnections().filter((item) => item.id !== connectionId);
-  window.localStorage.setItem(ENTERPRISE_CONNECTIONS_KEY, JSON.stringify(remaining));
+  window.localStorage.setItem(storageKey, JSON.stringify(remaining));
   dispatchConnectionsChanged();
 }
 
@@ -455,4 +638,53 @@ export async function leaveEnterpriseConnection(
     headers: { Authorization: `Bearer ${connection.session.token}` },
   }, enterpriseFetcher(fetcher));
   removeEnterpriseConnection(connection.id);
+}
+
+/** Match manifest identity and select semantic upgrades, never a different or older package. */
+export function cloudPluginResourceId(resource: EnterpriseResource): string {
+  return resource.manifestId ?? resource.slug;
+}
+
+export function cloudPluginUpdate(
+  resources: readonly EnterpriseResource[],
+  installed: Pick<iPolloWorkPluginPackageItem, "pluginId" | "version">,
+): EnterpriseResource | undefined {
+  let selected: EnterpriseResource | undefined;
+  for (const resource of resources) {
+    const version = resource.latestVersion?.version;
+    if (resource.type !== "extension" || cloudPluginResourceId(resource) !== installed.pluginId || !version
+      || (comparePluginPackageVersions(version, installed.version) ?? -1) <= 0) continue;
+    if (!selected || (comparePluginPackageVersions(version, selected.latestVersion?.version ?? "") ?? -1) > 0) selected = resource;
+  }
+  return selected;
+}
+
+export function assertCloudPluginIdentity(
+  resource: EnterpriseResource,
+  manifest: { id: string; package?: { version: string } },
+): void {
+  if (manifest.id !== cloudPluginResourceId(resource)
+    || manifest.package?.version !== resource.latestVersion?.version) {
+    throw new Error("cloud_plugin_package_identity_mismatch");
+  }
+}
+
+/** Public, Personal and enterprise downloads share the verified installation path. */
+export async function installCloudPluginResource(
+  resource: EnterpriseResource,
+  client: Pick<iPolloWorkServerClient, "listPluginPackages" | "validatePluginPackageUpload" | "importPluginPackage">,
+  workspaceId: string,
+  options: EnterpriseResourceRequestOptions = {},
+) {
+  const latest = resource.latestVersion;
+  if (resource.type !== "extension" || !latest
+    || comparePluginPackageVersions(latest.version, latest.version) === null) throw new Error("enterprise_resource_version_unavailable");
+  const current = (await client.listPluginPackages(workspaceId)).items
+    .find(item => item.pluginId === cloudPluginResourceId(resource));
+  if (current && (comparePluginPackageVersions(latest.version, current.version) ?? -1) <= 0) return null;
+  const file = await downloadEnterpriseResource(resource, options);
+  const upload = await readPluginPackageArchive(file, "install");
+  const { preview } = await client.validatePluginPackageUpload(workspaceId, upload);
+  assertCloudPluginIdentity(resource, preview.manifest);
+  return client.importPluginPackage(workspaceId, upload);
 }

@@ -1,8 +1,79 @@
 import { describe, expect, test } from "bun:test";
+import { get } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { serve } from "./serve-node.js";
 
 describe("serve", () => {
+  test("does not abort a normally completed request", async () => {
+    let requestSignal: AbortSignal | undefined;
+    const server = await serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        requestSignal = request.signal;
+        return Response.json({ ok: true });
+      },
+    });
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/health`);
+      expect(response.status).toBe(200);
+      await response.body?.cancel();
+      await delay(25);
+      expect(requestSignal?.aborted).toBe(false);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("aborts the request and cancels its streaming body when the client disconnects", async () => {
+    let requestAborted!: Promise<void>;
+    let bodyCancelled!: Promise<void>;
+    const server = await serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        requestAborted = new Promise((resolve) => {
+          request.signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        let resolveBodyCancelled!: () => void;
+        bodyCancelled = new Promise((resolve) => {
+          resolveBodyCancelled = resolve;
+        });
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("connected"));
+          },
+          cancel() {
+            resolveBodyCancelled();
+          },
+        }));
+      },
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const request = get(`http://127.0.0.1:${server.port}/events`, (incoming) => {
+          incoming.once("data", () => {
+            request.destroy();
+            resolve();
+          });
+        });
+        request.once("error", (error: NodeJS.ErrnoException) => {
+          if (error.code !== "ECONNRESET") reject(error);
+        });
+      });
+      await Promise.race([
+        Promise.all([requestAborted, bodyCancelled]),
+        delay(500).then(() => {
+          throw new Error("disconnect cancellation timed out");
+        }),
+      ]);
+    } finally {
+      await server.stop();
+    }
+  });
+
   test("does not write an error response after a streaming response has ended", async () => {
     const uncaught: unknown[] = [];
     const onUncaughtException = (error: unknown) => {
@@ -51,15 +122,31 @@ describe("serve", () => {
     }
   });
 
-  test("awaits shutdown before resolving stop", async () => {
+  test("awaits shutdown of an active stream before resolving stop and releasing its port", async () => {
+    let requestSignal: AbortSignal | undefined;
+    let bodyCancelled = false;
     const first = await serve({
       hostname: "127.0.0.1",
       port: 0,
-      fetch: () => Response.json({ ok: true }),
+      fetch: (request) => {
+        requestSignal = request.signal;
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) { controller.enqueue(new TextEncoder().encode("data: connected\n\n")); },
+          cancel() { bodyCancelled = true; },
+        }), { headers: { "Content-Type": "text/event-stream" } });
+      },
     });
     const port = first.port;
+    const response = await fetch(`http://127.0.0.1:${port}/events`);
+    const reader = response.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("data: connected\n\n");
+    const clientClosed = reader.read().then(chunk => chunk.done, () => true);
 
-    await first.stop();
+    await Promise.all([first.stop(), first.stop()]);
+    expect(await clientClosed).toBe(true);
+    expect(requestSignal?.aborted).toBe(true);
+    expect(bodyCancelled).toBe(true);
+    reader.releaseLock();
 
     const second = await serve({
       hostname: "127.0.0.1",

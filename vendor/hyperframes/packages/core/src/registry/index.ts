@@ -7,6 +7,10 @@ export type {
   RegistryItemEngine,
   RegistryItemKind,
   RegistryItemLibrarySection,
+  RegistryVisualComponent,
+  RegistryVisualComponentAi,
+  RegistryVisualComponentCategory,
+  RegistryVisualComponentSurface,
   RegistryMotionPreset,
   RegistryMotionPresetAnchor,
   RegistryMotionPresetCategory,
@@ -26,10 +30,35 @@ export type {
   BlockParam,
 } from "./types.js";
 
+export type {
+  ParsedVisualComponentData,
+  RegistryVisualComponentDataBinding,
+  RegistryVisualComponentDataColumn,
+  RegistryVisualComponentDataColumnRole,
+  RegistryVisualComponentDataColumnType,
+  RegistryVisualComponentDataContract,
+  RegistryVisualComponentDataEncoding,
+  RegistryVisualComponentDataKind,
+  RegistryVisualComponentValueFormat,
+  VisualComponentDataCell,
+  VisualComponentDataDocument,
+  VisualComponentDataIssue,
+  VisualComponentDataRow,
+} from "./componentData.js";
+
+export {
+  createVisualComponentDataRow,
+  formatVisualComponentDataForAi,
+  parseVisualComponentData,
+  serializeVisualComponentData,
+} from "./componentData.js";
+
 export {
   ITEM_TYPES,
   FILE_TYPES,
   ITEM_TYPE_DIRS,
+  VISUAL_COMPONENT_CATEGORIES,
+  resolveVisualComponentCategory,
   BLOCK_CATEGORIES,
   resolveBlockCategory,
   resolveRegistryItemKind,
@@ -47,3 +76,6 @@ export type {
 
 export { GSAP_OFFICIAL_CAPABILITIES, GSAP_OFFICIAL_VERSION } from "./gsapCapabilities.js";
 export { resolveGsapRegistryItemEngine } from "./gsapRuntime.js";
+
+export type { ComponentContentModel, ComponentContentField, ComponentContentIssue, ComponentContentSchema, ComponentContentResult, ComponentVariableValues } from "./componentContent.js";
+export { toJSON, fromJSON, schema as componentContentSchema, guide as componentContentGuide, validateComponentVariables, parseComponentTextList, isComponentContentModel } from "./componentContent.js";

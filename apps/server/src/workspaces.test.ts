@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { findManagedEngineWorkspace } from "./workspaces.js";
-import type { WorkspaceInfo } from "./types.js";
+import { buildWorkspaceInfos, findManagedEngineWorkspace, findWorkspaceForContext } from "./workspaces.js";
+import { DEFAULT_ENGINE_ID, type WorkspaceInfo } from "./types.js";
 
 function ws(fields: {
   id?: string;
@@ -9,6 +9,8 @@ function ws(fields: {
   path: string;
   preset?: string;
   workspaceType: WorkspaceInfo["workspaceType"];
+  engineId?: string;
+  directory?: string;
 }): WorkspaceInfo {
   return {
     id: fields.id ?? "ws_test",
@@ -16,8 +18,58 @@ function ws(fields: {
     path: fields.path,
     preset: fields.preset ?? (fields.workspaceType === "remote" ? "remote" : "starter"),
     workspaceType: fields.workspaceType,
+    engineId: fields.engineId,
+    directory: fields.directory,
   };
 }
+
+describe("findWorkspaceForContext", () => {
+  test("uses the current engine directory when a process-level workspace id is stale", () => {
+    const workspaces = [
+      ws({ id: "ws_first", path: "/srv/first", workspaceType: "local" }),
+      ws({ id: "ws_selected", path: "/srv/selected", workspaceType: "local" }),
+    ];
+    expect(findWorkspaceForContext(workspaces, {
+      workspaceId: "ws_selected",
+      directory: "/srv/first",
+    })?.id).toBe("ws_first");
+  });
+
+  test("uses the explicit workspace id when the engine directory is unavailable", () => {
+    const workspaces = [
+      ws({ id: "ws_first", path: "/srv/first", workspaceType: "local" }),
+      ws({ id: "ws_selected", path: "/srv/selected", workspaceType: "local" }),
+    ];
+    expect(findWorkspaceForContext(workspaces, { workspaceId: "ws_selected" })?.id).toBe("ws_selected");
+  });
+
+  test("matches the engine directory exposed by a remote workspace", () => {
+    const workspaces = [
+      ws({ id: "ws_first", path: "/srv/first", workspaceType: "local" }),
+      ws({
+        id: "ws_remote",
+        path: "/srv/remote-files",
+        directory: "/engine/projects/remote",
+        workspaceType: "remote",
+      }),
+    ];
+    expect(findWorkspaceForContext(workspaces, {
+      directory: "/engine/projects/remote/video/session",
+    })?.id).toBe("ws_remote");
+  });
+});
+
+describe("workspace engine selection", () => {
+  test("defaults existing workspace configs to OpenCode", () => {
+    const [workspace] = buildWorkspaceInfos([{ path: "./workspace" }], "/tmp");
+    expect(workspace?.engineId).toBe(DEFAULT_ENGINE_ID);
+  });
+
+  test("preserves an explicitly selected engine", () => {
+    const [workspace] = buildWorkspaceInfos([{ path: "./workspace", engineId: "deepseek-harness" }], "/tmp");
+    expect(workspace?.engineId).toBe("deepseek-harness");
+  });
+});
 
 describe("findManagedEngineWorkspace", () => {
   test("selects the local workspace in a typical local + remote config", () => {
@@ -43,6 +95,28 @@ describe("findManagedEngineWorkspace", () => {
   test("returns undefined for a remote-only config", () => {
     const workspaces = [ws({ id: "rem_ws", path: "", workspaceType: "remote" })];
     expect(findManagedEngineWorkspace(workspaces)).toBeUndefined();
+  });
+
+  test("provides managed OpenCode for native-default projects without changing their defaults", () => {
+    const workspaces = [
+      ws({
+        id: "ws_dsh",
+        path: "/home/user/harness",
+        workspaceType: "local",
+        engineId: "deepseek-harness",
+      }),
+    ];
+    expect(findManagedEngineWorkspace(workspaces)).toMatchObject({ id: "ws_dsh", engineId: DEFAULT_ENGINE_ID });
+    expect(workspaces[0]?.engineId).toBe("deepseek-harness");
+  });
+
+  test("prefers an OpenCode default while retaining native projects", () => {
+    const workspaces = [
+      ws({ id: "ws_codex", path: "/home/user/codex", workspaceType: "local", engineId: "codex-harness" }),
+      ws({ id: "ws_opencode", path: "/home/user/work", workspaceType: "local", engineId: DEFAULT_ENGINE_ID }),
+    ];
+    expect(findManagedEngineWorkspace(workspaces)?.id).toBe("ws_opencode");
+    expect(workspaces[0]?.engineId).toBe("codex-harness");
   });
 
   test("ignores a remote workspace that carries a non-empty directory path", () => {

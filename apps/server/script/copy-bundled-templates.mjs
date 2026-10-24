@@ -7,9 +7,47 @@ const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(serverRoot, "bundled-templates");
 const target = process.argv[2] ?? join(serverRoot, "dist", "bundled-templates");
 
+// Typecheck tests with the server, but never distribute their compiled output,
+// including leftovers from tests removed since the previous incremental build.
+async function removeTestOutput(directory) {
+  const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  for (const entry of entries) {
+    const absolute = join(directory, entry.name);
+    if (/\.(?:test|spec)\./.test(entry.name) || (entry.isDirectory() && /^(?:tests|__tests__|__fixtures__|__mocks__)$/.test(entry.name))) {
+      await rm(absolute, { recursive: true, force: true });
+    } else if (entry.isDirectory() && absolute !== join(serverRoot, "dist", "bundled-templates")) {
+      await removeTestOutput(absolute);
+    }
+  }
+}
+await removeTestOutput(join(serverRoot, "dist"));
+
+// Remove retired plugin output from incremental builds before distribution.
+for (const name of ["ipollowork-extensions-preview", "ipollowork-extensions-preview-connect-steering", "ipollowork-capabilities-knowledge", "ipollowork-anthropic-adaptive-thinking", "ipollowork-anthropic-tool-schema", "ipollowork-moonshot-temperature"]) {
+  for (const extension of ["js", "js.map", "d.ts", "d.ts.map"]) {
+    await rm(join(serverRoot, "dist", "opencode-plugins", `${name}.${extension}`), { force: true });
+  }
+}
+
 await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
 await mkdir(dirname(target), { recursive: true });
 await cp(source, target, { recursive: true });
+
+// Professional guidance is owned by its plugin; these are runtime copies.
+const pluginGuides = [
+  ["design-agent/skills/ipollowork-presentations/references", "layout.md", "core-v1-slides-layout.md"],
+  ["video-agent/skills/ipollowork-video-studio/references", "video-motion-principles.md", "core-v1-video-motion-principles.md"],
+  ["video-agent/skills/ipollowork-video-studio/references", "video-acceptance.md", "core-v1-video-acceptance.md"],
+];
+for (const [directory, name, output] of pluginGuides) {
+  const owner = `examples/plugin-packages/${directory}/`;
+  const body = await readFile(join(serverRoot, "../..", owner, name), "utf8");
+  const header = `<!-- Distribution reference: maintained in ${owner}; checked against the source by plugin-package-manifest.test.ts. -->\n\n`;
+  await writeFile(join(target, output), header + body);
+}
 
 const crcTable = Array.from({ length: 256 }, (_, value) => {
   let crc = value;

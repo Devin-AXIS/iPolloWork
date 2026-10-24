@@ -11,6 +11,8 @@ function readThemeFromHash(): StudioTheme | null {
 
 function applyTheme(theme: StudioTheme) {
   document.documentElement.dataset.ipolloworkTheme = theme;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.classList.toggle("dark", theme === "dark");
   document.documentElement.style.colorScheme = theme;
 }
 

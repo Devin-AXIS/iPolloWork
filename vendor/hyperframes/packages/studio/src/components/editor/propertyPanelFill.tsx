@@ -175,8 +175,8 @@ export function ImageFillField({
   if (flat) {
     return (
       <div className="grid gap-3">
-        <div className="flex h-[34px] items-center justify-between gap-3 rounded-[6px] bg-panel-input pl-2 pr-4">
-          <span className="text-[13px] text-[#24262b] dark:text-panel-text-1">Image</span>
+        <div className="flex h-8 items-center justify-between gap-2 rounded-lg bg-panel-input px-2">
+          <span className="text-xs text-panel-text-1">Image</span>
           <FlatDropdown
             ariaLabel="Image fill"
             value={selectedAsset ?? ""}
@@ -420,7 +420,7 @@ export function GradientField({
       toHexColor(hsvToRgb({ ...baseHsv, value: Math.min(1, baseHsv.value + 0.22) })),
       toHexColor(hsvToRgb({ ...baseHsv, value: Math.max(0.18, baseHsv.value - 0.22) })),
       toHexColor(hsvToRgb({ ...baseHsv, hue: (baseHsv.hue + 32) % 360 })),
-      "#20BBC0",
+      "#1FBAC0",
       "#7C5CFC",
       "#F6C344",
     ];

@@ -56,5 +56,3 @@ export function RestrictionNoticeModal(props: RestrictionNoticeModalProps) {
     </Dialog>
   );
 }
-
-export default RestrictionNoticeModal;

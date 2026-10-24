@@ -1,21 +1,24 @@
-import type { MutableRefObject } from "react";
+import { buildProjectApiPath } from "./projectRouting";
 import type { EditHistoryKind } from "./editHistory";
+import type { MutableRefObject } from "react";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
 import { createStudioSaveHttpError } from "./studioSaveDiagnostics";
+import { studioApiFetch } from "./studioApiFetch";
 
 export interface RecordEditInput {
+  kind?: EditHistoryKind;
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
+  created?: string[];
 }
 
 export interface DomEditCommitBaseParams {
+  domEditSaveTimestampRef: MutableRefObject<number>;
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: ProjectFileWriter;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   projectIdRef: MutableRefObject<string | null>;
   reloadPreview: () => void;
@@ -25,19 +28,36 @@ export interface DomEditCommitBaseParams {
 type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
 
 interface SaveProjectFilesWithHistoryInput {
+  kind?: EditHistoryKind;
   projectId: string;
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
-  files: Record<string, string>;
+  files: Record<string, string | ((contentInsideFileQueue: string) => string)>;
   readFile: (path: string) => Promise<string>;
   writeFile: ProjectFileWriter;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
+  /**
+   * What a path holds ON DISK right now, when that is not the same as the
+   * history's "before".
+   *
+   * The two are normally one value, so the write's optimistic-concurrency
+   * expectation was taken straight from the undo baseline. They come apart when
+   * a server-side mutation has already written part of the edit: deleting a clip
+   * POSTs `remove-element`, which rewrites the file, and only then saves the
+   * duration shrink — expecting the pre-delete content it read at the start. The
+   * server had moved the file on, so the write was refused as a conflict, the
+   * save queue paused, and the clip stayed on the timeline until a reload.
+   *
+   * Undo still restores `before`; this only says what to expect on disk.
+   */
+  diskContent?: Record<string, string>;
 }
 
 export async function readProjectFileContent(pid: string, path: string): Promise<string> {
-  const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
+  const response = await studioApiFetch(
+    buildProjectApiPath(pid, `/files/${encodeURIComponent(path)}`),
+  );
   if (!response.ok) {
     throw await createStudioSaveHttpError(response, `Failed to read ${path}`);
   }
@@ -48,7 +68,44 @@ export async function readProjectFileContent(pid: string, path: string): Promise
   return data.content;
 }
 
-export async function saveProjectFilesWithHistory({
+export async function saveProjectFilesWithHistory(
+  input: SaveProjectFilesWithHistoryInput,
+): Promise<string[]> {
+  return serializeStudioFileMutations(input.writeFile, Object.keys(input.files), () =>
+    writeProjectFilesWithHistoryInQueue(input),
+  );
+}
+
+/**
+ * A server-side rewrite and its undo entry, holding the file's queue from the read to the history write.
+ * `rewrite` returns what the server left on disk (and the edit's final content if it goes further), or null.
+ */
+export async function saveServerRewriteWithHistory(input: {
+  projectId: string;
+  path: string;
+  label: string;
+  coalesceKey?: string;
+  coalesceMs?: number;
+  writeFile: ProjectFileWriter;
+  recordEdit: (entry: RecordEditInput) => Promise<void>;
+  rewrite: (original: string) => Promise<{ disk: string; after?: string } | null>;
+}): Promise<boolean> {
+  const { projectId, path, writeFile } = input;
+  return serializeStudioFileMutations(writeFile, [path], async () => {
+    const original = await readProjectFileContent(projectId, path);
+    const result = await input.rewrite(original);
+    if (!result) return false;
+    await writeProjectFilesWithHistoryInQueue({
+      ...input,
+      files: { [path]: () => result.after ?? result.disk },
+      readFile: async () => original,
+      diskContent: { [path]: result.disk },
+    });
+    return true;
+  });
+}
+
+export async function writeProjectFilesWithHistoryInQueue({
   label,
   kind,
   coalesceKey,
@@ -57,40 +114,40 @@ export async function saveProjectFilesWithHistory({
   readFile,
   writeFile,
   recordEdit,
+  diskContent,
 }: SaveProjectFilesWithHistoryInput): Promise<string[]> {
-  return serializeStudioFileMutations(writeFile, Object.keys(files), async () => {
-    const snapshots: Record<string, { before: string; after: string }> = {};
-    for (const [path, after] of Object.entries(files)) {
-      const before = await readFile(path);
-      if (before !== after) {
-        snapshots[path] = { before, after };
-      }
+  const snapshots: Record<string, { before: string; after: string }> = {};
+  for (const [path, build] of Object.entries(files)) {
+    const before = await readFile(path);
+    const after = typeof build === "string" ? build : build(before);
+    if (before !== after) {
+      snapshots[path] = { before, after };
+    }
+  }
+
+  const changedPaths = Object.keys(snapshots);
+  if (changedPaths.length === 0) return [];
+
+  const writtenPaths: string[] = [];
+  try {
+    for (const path of changedPaths) {
+      await writeFile(path, snapshots[path].after, diskContent?.[path] ?? snapshots[path].before);
+      writtenPaths.push(path);
     }
 
-    const changedPaths = Object.keys(snapshots);
-    if (changedPaths.length === 0) return [];
-
-    const writtenPaths: string[] = [];
+    await recordEdit({ label, kind, coalesceKey, coalesceMs, files: snapshots });
+  } catch (error) {
     try {
-      for (const path of changedPaths) {
-        await writeFile(path, snapshots[path].after, snapshots[path].before);
-        writtenPaths.push(path);
+      for (const path of writtenPaths.reverse()) {
+        await writeFile(path, snapshots[path].before, snapshots[path].after);
       }
-
-      await recordEdit({ label, kind, coalesceKey, coalesceMs, files: snapshots });
-    } catch (error) {
-      try {
-        for (const path of writtenPaths.reverse()) {
-          await writeFile(path, snapshots[path].before, snapshots[path].after);
-        }
-      } catch (rollbackError) {
-        throw new AggregateError(
-          [error, rollbackError],
-          "Failed to save project files and rollback did not complete",
-        );
-      }
-      throw error;
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        "Failed to save project files and rollback did not complete",
+      );
     }
-    return changedPaths;
-  });
+    throw error;
+  }
+  return changedPaths;
 }

@@ -1,7 +1,10 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { setCommandExitCode } from "../../utils/commandResult.js";
+import { createWriteStream, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { c } from "../../ui/colors.js";
 import { safeFetch } from "../../capture/assetDownloader.js";
+import { ensureCaptureDirSync } from "../../capture/captureFile.js";
+import { CAPTURE_USER_AGENT } from "../../capture/userAgent.js";
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_CONTENT_TYPE_RE = /^(video\/|application\/(mp4|octet-stream|x-mpegurl))/i;
@@ -11,7 +14,7 @@ async function streamToFile(url: string, destPath: string): Promise<number> {
   // safeFetch re-validates redirect hops; bare redirect:"follow" leaks to private hosts.
   const r = await safeFetch(url, {
     signal: AbortSignal.timeout(120_000),
-    headers: { "User-Agent": "HyperFrames/1.0" },
+    headers: { "User-Agent": CAPTURE_USER_AGENT },
   });
   if (!r) {
     throw new Error(
@@ -196,7 +199,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       `${c.error("✗")} no video-manifest.json at ${directPath} or ${w2hPath}\n` +
         `  Was this directory produced by \`hyperframes capture\`?`,
     );
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
   let manifest: ManifestEntry[];
@@ -204,7 +207,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
   } catch (e) {
     console.error(`${c.error("✗")} video-manifest.json is malformed: ${(e as Error).message}`);
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
@@ -232,7 +235,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       `${c.error("✗")} ${pick.message}` +
         (pick.code === "no-match-url" ? `\n  Run with --list to see what's available.` : ""),
     );
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
   const entry = pick.entry;
@@ -245,14 +248,20 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
         `${collisions.map((co) => `[${co.index}]`).join(", ")}. ` +
         `Refusing to download — the on-disk file's bytes would not match the requested entry.`,
     );
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
   const outDir = isW2hLayout
     ? join(projectDir, "capture", "assets", "videos")
     : join(projectDir, "assets", "videos");
-  mkdirSync(outDir, { recursive: true });
+  try {
+    ensureCaptureDirSync(projectDir, outDir);
+  } catch (e) {
+    console.error(`${c.error("✗")} ${(e as Error).message}`);
+    setCommandExitCode(1);
+    return;
+  }
   const fname = safeFilename(entry.filename || basename(entry.url));
   const outPath = join(outDir, fname);
   const relPath = isW2hLayout ? `capture/assets/videos/${fname}` : `assets/videos/${fname}`;
@@ -278,6 +287,6 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       return;
     }
     console.error(`${c.error("✗")} download failed: ${(e as Error).message}`);
-    process.exitCode = 1;
+    setCommandExitCode(1);
   }
 }

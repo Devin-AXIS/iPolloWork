@@ -31,7 +31,7 @@ Use the Daytona setup as four reusable pieces. Prefer the focused skills when a
 request names one piece directly:
 
 - `test-on-daytona.sh` for the real Electron/noVNC/CDP sandbox.
-- `daytona-flow-validator` for the observe -> act -> assert -> evidence loop.
+- `fraimz` for the observe -> act -> assert -> evidence loop.
 - `test-server-on-daytona.sh` for the cloud Den server sandbox.
 - `daytona-electron-den` for Electron connected to a Daytona Den server.
 - `daytona-chrome-cdp` for standalone Chrome in the sandbox, separate from Electron.
@@ -42,7 +42,7 @@ Focused skills:
 
 - `daytona-cloud-server` for cloud server and Den flows.
 - `daytona-electron-den` for two-sandbox Electron + Den validation.
-- `daytona-flow-validator` for pass/fail validation and evidence.
+- `fraimz` for pass/fail validation and evidence.
 - `daytona-chrome-cdp` for normal Chrome browser automation in Daytona.
 - `daytona-secrets-volume` for adding or verifying secrets.
 - `daytona-electron-test` for real Electron UI validation.

@@ -14,7 +14,11 @@ export type RuntimeAnalyticsEvent =
   | "composition_ended"
   | "element_picked"
   | "position_edit_fold_skipped"
-  | "timeline_missing_pause";
+  | "timeline_missing_pause"
+  | "auto_marker_install_failed"
+  | "custom_ease_install_failed"
+  | "custom_ease_parse_failed"
+  | "keyframe_ease_repair_failed";
 
 export type RuntimeAnalyticsProperties = Record<string, string | number | boolean | null>;
 

@@ -1,13 +1,13 @@
 /**
- * Pure helpers for CapCut-style asset card click behavior.
- *
- * Clicking an asset card that is ALREADY ADDED to the timeline selects the
- * corresponding clip. Clicking one NOT yet in the timeline opens a lightweight
- * preview overlay. Both behaviors are gated on "this was a click, not a drag".
+ * Pure helpers for asset-card click handling and timeline lookup.
+ * Image/video cards always preview on click and expose a separate timeline
+ * locate action; audio rows still reveal used clips on click. Pointer clicks
+ * are gated so dragging an asset never triggers either action.
  *
  * Pure — unit-tested.
  */
 import type { TimelineElement } from "../player/store/playerStore";
+import { resolveGeneratedAvatarCompositePaths } from "./timelineAssetDrop";
 
 /**
  * Find the TimelineElement that references `assetPath`, returning the one with
@@ -25,9 +25,11 @@ export function findClipForAsset(
   assetPath: string,
 ): TimelineElement | null {
   let best: TimelineElement | null = null;
+  const avatarSource = resolveGeneratedAvatarCompositePaths(assetPath)?.sourcePath;
   for (const el of elements) {
     if (!el.src) continue;
-    if (normalizeSrc(el.src) !== assetPath) continue;
+    const normalized = normalizeSrc(el.src);
+    if (normalized !== assetPath && normalized !== avatarSource) continue;
     if (best === null || el.start < best.start) best = el;
   }
   return best;

@@ -9,6 +9,36 @@
 
 // ── Phase 1: Capture ────────────────────────────────────────────────────────
 
+export type CapturePhase =
+  | "browser"
+  | "navigation"
+  | "core-extraction"
+  | "fonts"
+  | "assets"
+  | "vision"
+  | "contact-sheets"
+  | "scaffold"
+  | "complete";
+
+export const CAPTURE_PHASE_SCHEMA = "hyperframes.capture.phase.v1" as const;
+
+export interface CapturePhaseProgress {
+  schema: typeof CAPTURE_PHASE_SCHEMA;
+  phase: CapturePhase;
+  status: "started" | "completed" | "degraded";
+  /** Null before the post-navigation budget begins. */
+  remainingMs: number | null;
+  reason?:
+    | "budget-exhausted"
+    | "disabled"
+    | "request-timeout"
+    | "provider-error"
+    | "internal-error"
+    | "blocked"
+    | "webgl-disabled-retry"
+    | "deadline";
+}
+
 export interface CaptureOptions {
   /** URL to capture */
   url: string;
@@ -26,6 +56,14 @@ export interface CaptureOptions {
   maxScreenshots?: number;
   /** Skip asset downloads */
   skipAssets?: boolean;
+  /** Skip optional vision captioning */
+  skipVision?: boolean;
+  /** Cooperative post-navigation budget in ms (default: 120000). */
+  postNavigationBudgetMs?: number;
+  /** Optional hard wall-clock deadline for the complete capture run. */
+  captureDeadlineMs?: number;
+  /** Stable, non-sensitive progress records for watchdog diagnostics. */
+  onPhase?: (event: CapturePhaseProgress) => void;
   /** Output JSON for programmatic use */
   json?: boolean;
 }
@@ -37,6 +75,11 @@ export interface CaptureResult {
   projectDir: string;
   /** Source URL */
   url: string;
+  /**
+   * What the server answered for `url`, after redirects; null when navigation produced no
+   * response. Also persisted to `extracted/response.json` for out-of-process consumers.
+   */
+  httpStatus: number | null;
   /** Page title */
   title: string;
   /** Extracted HTML data */
@@ -47,10 +90,19 @@ export interface CaptureResult {
   tokens: DesignTokens;
   /** Downloaded asset paths (relative to projectDir) */
   assets: DownloadedAsset[];
+  /**
+   * How many referenced assets are NOT here, by reason.
+   *
+   * Without this, a capture of a page with three images and a capture truncated to three images
+   * are the same object. All zeroes means the capture kept everything it was offered.
+   */
+  dropped: import("./assetDownloader.js").AssetDropCounts;
   /** Animation catalog (captured during full-JS page load) */
   animationCatalog?: import("./animationCataloger.js").AnimationCatalog;
   /** Errors/warnings encountered during capture */
   warnings: string[];
+  /** Final structured phase record emitted by a successful capture. */
+  lastPhase: CapturePhaseProgress;
 }
 
 export interface ExtractedHtml {
