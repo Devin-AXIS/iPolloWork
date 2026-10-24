@@ -3,7 +3,7 @@ import type { ComposerAttachment } from "@/app/types";
 /**
  * Which attachment media types can be sent to the model as file parts.
  *
- * Providers (via opencode + the AI SDK) accept images, PDFs, and text.
+ * Providers (via opencode + the AI SDK) accept images, video, PDFs, and text.
  * Anything else (e.g. Keynote `application/x-iwork-keynote-sffkey`, Office
  * binaries) is rejected by the provider with an UnsupportedFunctionalityError
  * — and because the file part lives in server-side session history, every
@@ -16,14 +16,14 @@ import type { ComposerAttachment } from "@/app/types";
 export function isModelReadableAttachment(mimeType: string) {
   const mime = mimeType.toLowerCase();
   if (mime === "" || mime === "application/octet-stream") return true;
-  if (mime.startsWith("image/") || mime.startsWith("text/")) return true;
+  if (mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("text/")) return true;
   if (mime === "application/pdf" || mime === "application/json") return true;
   return mime.endsWith("+json") || mime.endsWith("+xml") || mime === "application/xml" || mime === "application/javascript";
 }
 
 export function attachmentRequiresNativeModelSupport(mimeType: string) {
   const mime = mimeType.toLowerCase();
-  return mime.startsWith("image/") || mime === "application/pdf";
+  return mime.startsWith("image/") || mime.startsWith("video/") || mime === "application/pdf";
 }
 
 export function composerAttachmentRequiresNativeModelSupport(
