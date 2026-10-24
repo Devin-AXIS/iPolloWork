@@ -651,6 +651,7 @@ export type iPolloWorkUserEnvItem = {
 };
 
 export type iPolloWorkAuthorizationServiceId =
+  | "minimax-images"
   | "openai-images"
   | "fal-images"
   | "aliyun-bailian"
