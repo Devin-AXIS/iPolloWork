@@ -263,8 +263,7 @@ describe("template market actions", () => {
     expect(marketDialog).toContain("previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion");
     expect(marketDialog).toContain("props.onInstallRemote(remoteResource)");
     expect(marketDialog).toContain('onError={() => setFailed(true)}');
-    expect(marketDialog).toContain('onManage("access")');
-    expect(marketDialog).toContain('onManage("archive")');
+    expect(marketDialog).toContain('<EnterpriseResourceMenuItems connection={connection} resource={resource}');
   });
 
   test("shows Built-in, Cloud, and Enterprise in Explore and keeps remote templates usable from local storage", () => {

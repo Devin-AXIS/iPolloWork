@@ -532,6 +532,23 @@ describe("enterprise connections", () => {
     ]);
   });
 
+  test("retains pending, rejected and archived uploads and blocks installation before fetching bytes", async () => {
+    const items = ["pending", "rejected", "approved"].map((reviewStatus, index) => ({
+      id: `upload-${index}`, type: "template", slug: `upload-${index}`, sourceTemplateId: `upload-${index}`, name: "My upload", description: "",
+      category: "site", enterpriseCategory: "site", updatedAt: "2026-10-23T00:00:00.000Z", status: index === 2 ? "archived" : "draft",
+      lifecycle: { status: index === 2 ? "archived" : "draft", review: { version: "1.0.0", reviewStatus, reviewNote: index === 1 ? "请补充说明" : null }, installable: false },
+      latestVersion: { version: "1.0.0", digest: "a".repeat(64), downloadPath: `/api/v1/resources/upload-${index}/versions/1.0.0/download` },
+    }));
+    const catalog = await listEnterpriseResources("template", { connection: connectedEnterprise, fetcher: async () => Response.json({ items, nextCursor: null }) });
+    expect(catalog).toHaveLength(3);
+    expect(catalog.map(item => item.lifecycle?.review?.reviewStatus)).toEqual(["pending", "rejected", "approved"]);
+    expect(catalog[1].lifecycle?.review?.reviewNote).toBe("请补充说明");
+    let downloads = 0;
+    for (const resource of catalog) await expect(downloadEnterpriseResource(resource, { connection: connectedEnterprise, fetcher: async () => { downloads++; throw new Error("Must not download"); } })).rejects.toThrow("enterprise_resource_version_unavailable");
+    expect(downloads).toBe(0);
+    await expect(listEnterpriseResources("template", { connection: connectedEnterprise, fetcher: async () => Response.json({ items: [{ ...items[0], lifecycle: { ...items[0].lifecycle, installable: "true" } }], nextCursor: null }) })).rejects.toThrow();
+  });
+
   test("loads resources from the active Enterprise Server with its member session", async () => {
     const digest = "b".repeat(64);
     const requested: string[] = [];
@@ -601,8 +618,8 @@ describe("enterprise connections", () => {
       { id: "enterprise-template-2", name: "Brand site", latestVersion: null },
     ]);
     expect(requested).toEqual([
-      "https://enterprise.example.com/api/v1/resources?type=template&limit=50",
-      "https://enterprise.example.com/api/v1/resources?type=template&limit=50&cursor=page-2",
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50&view=catalog",
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50&view=catalog&cursor=page-2",
     ]);
   });
 

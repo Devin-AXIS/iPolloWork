@@ -106,8 +106,15 @@ export const enterpriseSubmissionSchema = z.object({
   version: z.string().max(80),
   reviewStatus: z.enum(["pending", "approved", "rejected"]),
   reviewNote: z.string().nullable().default(null),
+  resourceStatus: z.enum(["draft", "published", "archived"]).optional(),
 });
 export type EnterpriseSubmission = z.infer<typeof enterpriseSubmissionSchema>;
+export const enterpriseResourceLifecycleSchema = z.object({
+  status: z.enum(["draft", "published", "archived"]),
+  review: z.object({ version: z.string().min(1).max(80), reviewStatus: z.enum(["pending", "approved", "rejected"]), reviewNote: z.string().max(1000).nullable() }).nullable(),
+  installable: z.boolean(),
+});
+export type EnterpriseResourceLifecycle = z.infer<typeof enterpriseResourceLifecycleSchema>;
 export const enterpriseManagedResourceSchema = z.object({
   id, name: z.string().min(1).max(500), description: z.string().nullable().default(null),
   type: enterpriseResourceTypeSchema, status: z.enum(["draft", "published", "archived"]),
@@ -119,6 +126,6 @@ export type EnterpriseManagedResource = z.infer<typeof enterpriseManagedResource
 export const enterpriseMembershipResponseSchema = z.object({ membership: enterpriseMemberSchema });
 export const enterpriseOkSchema = z.object({ ok: z.literal(true) });
 export const enterpriseCreatedSchema = z.object({ id });
-export const enterpriseSubmissionsResponseSchema = z.object({ items: z.array(enterpriseSubmissionSchema).max(100) });
+export const enterpriseSubmissionsResponseSchema = z.object({ items: z.array(enterpriseSubmissionSchema).max(100), nextCursor: id.nullable().default(null) });
 export const enterprisePendingImportSchema = z.object({ identity: z.string(), messageId: id });
 export const enterpriseShareTargetSchema = z.object({ workspaceId: id, sessionId: id });

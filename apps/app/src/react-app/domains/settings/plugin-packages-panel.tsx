@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { canManageEnterprise } from "@/app/lib/enterprise-client";
-import { installCloudPluginResource, listEnterpriseResources, type EnterpriseResource } from "@/app/lib/enterprise-connections";
+import { installCloudPluginResource, listEnterpriseResourcePage, listEnterpriseResources, type EnterpriseResource } from "@/app/lib/enterprise-connections";
 import { useCloudSession } from "./cloud/cloud-session-provider";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -42,7 +41,7 @@ import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { PluginAuthorizationDialog } from "@/components/plugin-authorization-dialog";
-import { EnterpriseResourceSubmissionDialog, type EnterpriseResourceSubmission, EnterpriseResourceActionDialog, type EnterpriseResourceAction, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { EnterpriseResourceStatus, EnterpriseResourceMenuItems, EnterpriseResourceSubmissionDialog, type EnterpriseResourceSubmission, EnterpriseResourceActionDialog, type EnterpriseResourceAction, useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { SettingsListSearchInput, settingsResourceGridClassName } from "@/react-app/domains/settings/settings-list";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -196,6 +195,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const cloud = useCloudSession();
   const activeEnterprise = useActiveEnterpriseConnection();
   const [cloudResources, setCloudResources] = useState<EnterpriseResource[]>([]);
+  const [enterpriseCursor, setEnterpriseCursor] = useState<string | null>(null);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const lastCloudCheck = useRef(0);
   const [authorizations, setAuthorizations] = useState<Record<string, iPolloWorkPluginAuthorizationState>>({});
@@ -223,7 +223,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   ];
   if (activeEnterprise) sourceTabs.push({ value: "enterprise", label: activeEnterprise.name });
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (cursor?: string) => {
     const generation = ++refreshGeneration.current;
     const client = props.client;
     const workspaceId = props.workspaceId;
@@ -244,8 +244,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         loadPluginPackageData(() => client.listPluginPackages(workspaceId)),
         loadPluginPackageData(() => client.listBundledPluginPackages(workspaceId)),
         source === "enterprise" && activeEnterprise
-          ? listEnterpriseResources("extension", { connection: activeEnterprise })
-          : source === "marketplace" && cloud.isSignedIn ? listEnterpriseResources("extension") : Promise.resolve([]),
+          ? listEnterpriseResourcePage("extension", { connection: activeEnterprise, cursor })
+          : source === "marketplace" && cloud.isSignedIn ? listEnterpriseResources("extension").then(items => ({ items, nextCursor: null })) : Promise.resolve({ items: [], nextCursor: null }),
       ]);
 
       if (generation !== refreshGeneration.current) return;
@@ -275,7 +275,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         setCatalogError(formatPluginPlatformError(catalogResult.reason, t("plugin_platform.error.load")));
       }
       if (cloudResult.status === "fulfilled") {
-        setCloudResources(cloudResult.value);
+        setCloudResources(current => cursor ? [...new Map([...current, ...cloudResult.value.items].map(item => [item.id, item])).values()] : cloudResult.value.items);
+        setEnterpriseCursor(cloudResult.value.nextCursor);
         setCloudError(null);
       } else {
         setCloudError(t(source === "enterprise" ? "enterprise_connection.enterprise_resources_error" : "plugin_library.update_check_failed"));
@@ -1114,12 +1115,10 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                     version={resource.latestVersion?.version ?? ""}
                     actionLabel={current ? t("plugin_platform.status.installed") : installed ? t("template_market.update") : t("enterprise_connection.install_from_enterprise")}
                     actionBusy={busyKey === `enterprise:${resource.id}`}
-                    actionDisabled={current || !resource.latestVersion || busyKey !== null || !props.client || !props.workspaceId}
+                    actionDisabled={current || !resource.latestVersion || resource.lifecycle?.installable === false || busyKey !== null || !props.client || !props.workspaceId}
                     onAction={() => void installEnterpriseExtension(resource)}
-                    menuItems={activeEnterprise && canManageEnterprise(activeEnterprise, "extension") ? <>
-                      <DropdownMenuItem disabled={!activeEnterprise.features?.resourcePermissions || busyKey !== null} onClick={() => setResourceAction({ resource, kind: "access" })}>分配权限</DropdownMenuItem>
-                      <DropdownMenuItem variant="destructive" disabled={busyKey !== null} onClick={() => setResourceAction({ resource, kind: "archive" })}>下架</DropdownMenuItem>
-                    </> : null} />
+                    status={<EnterpriseResourceStatus resource={resource} />}
+                    menuItems={activeEnterprise ? <EnterpriseResourceMenuItems connection={activeEnterprise} resource={resource} busy={busyKey !== null} onAction={setResourceAction} /> : null} />
                 );
               })}
             </div>
@@ -1195,6 +1194,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         </TabsContent>
       </section></Tabs>
 
+      {source === "enterprise" && enterpriseCursor ? <Button variant="outline" disabled={loading} onClick={() => void refresh(enterpriseCursor)}>加载更多插件</Button> : null}
       {activeEnterprise && resourceAction ? <EnterpriseResourceActionDialog connection={activeEnterprise} action={resourceAction} onClose={() => setResourceAction(null)} onChanged={() => void refresh()} /> : null}
       {activeEnterprise && submission ? <EnterpriseResourceSubmissionDialog key={`${activeEnterprise.id}:${activeEnterprise.membership.id}`} connection={activeEnterprise} type="extension" submission={submission} onClose={() => setSubmission(null)} /> : null}
       <PluginPackageImportModal
