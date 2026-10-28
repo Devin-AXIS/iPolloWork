@@ -49,8 +49,8 @@
     "yaml": "^2.9.1"
   },
   "resolutions": {
-    "@codemirror/state": "6.7.1",
-    "@codemirror/view": "6.43.8",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
@@ -59,8 +59,8 @@
     "typescript": "5.7.3"
   },
   "overrides": {
-    "@codemirror/state": "6.7.1",
-    "@codemirror/view": "6.43.8",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
