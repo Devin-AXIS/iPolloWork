@@ -1,5 +1,8 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { Readable } from "node:stream";
 import os from "node:os";
 import path from "node:path";
 import { createEnginePackageManager } from "../../apps/desktop/electron/engine-package-manager.mjs";
@@ -8,7 +11,7 @@ import { DESKTOP_RESOURCE_APP_VERSION } from "../../apps/desktop/electron/app-ve
 
 export default {
   id: "desktop-resource-install",
-  title: "Native engines download from the signed cloud release and remain available offline",
+  title: "Signed native release archives install, start and remain available offline",
   kind: "internal",
   requiresApp: false,
   steps: [{
@@ -16,6 +19,8 @@ export default {
     run: async (ctx) => {
       const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-resource-proof-"));
       const baseUrl = "http://i.ipollo.ai";
+      const archiveDirectory = process.env.IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR;
+      const verifiedArchives = new Map();
       const constants = JSON.parse(await readFile(new URL("../../constants.json", import.meta.url), "utf8"));
       const versions = { opencode: constants.opencodeVersion, codexHarness: constants.codexHarnessVersion, deepseekHarness: constants.deepseekHarnessVersion };
       const home = path.join(root, "home");
@@ -28,11 +33,19 @@ export default {
       const options = {
         app: { getPath: () => root, getVersion: () => DESKTOP_RESOURCE_APP_VERSION, isPackaged: true },
         desktopRoot: path.join(root, "desktop"), homeDir: path.join(root, "home"), versions,
-        env: environment, fetch,
+        env: environment,
+        fetch: (url, init) => {
+          const cached = verifiedArchives.get(String(url));
+          return cached
+            ? new Response(Readable.toWeb(createReadStream(cached.file)), { headers: { "Content-Length": String(cached.size) } })
+            : fetch(url, init);
+        },
       };
       try {
-        await ctx.prove("Both native engines install from verified cloud bytes and work without another download", {
-          voiceover: "This clean release runner downloads both engines for its own operating system and processor. Their signatures and checksums pass, the engines start, and a new manager reuses the installed copies offline.",
+        await ctx.prove("Cloud download endpoints serve the signed release and both native engines install and work offline", {
+          voiceover: archiveDirectory
+            ? "The public cloud signs all four archives and serves their actual download ranges. This clean native runner checks the full published archives against those signed hashes, installs both engines, starts them, and reuses the installed copies offline. Full cloud transfer speed is not measured by this proof."
+            : "This clean release runner downloads both engines from the signed cloud release for its own operating system and processor. Their checksums pass, the engines start, and a new manager reuses the installed copies offline.",
           assert: async () => {
             const manifest = await fetchDesktopResourceManifest({ baseUrl, appVersion: DESKTOP_RESOURCE_APP_VERSION, platform: process.platform, arch: process.arch, fetch });
             for (const resource of manifest.resources) {
@@ -41,11 +54,25 @@ export default {
               const range = await fetch(resource.url, { headers: { Range: "bytes=0-1" }, signal: AbortSignal.timeout(30_000) });
               const bytes = Buffer.from(await range.arrayBuffer());
               ctx.assert(range.status === 206 && bytes.equals(Buffer.from([0x1f, 0x8b])), `${resource.id} supports an actual gzip range download`);
+              if (archiveDirectory) {
+                ctx.assert(path.basename(resource.fileName) === resource.fileName, `${resource.id} has a safe archive name`);
+                const file = path.resolve(archiveDirectory, resource.fileName);
+                const hash = createHash("sha256");
+                for await (const chunk of createReadStream(file)) hash.update(chunk);
+                ctx.assert((await stat(file)).size === resource.sizeBytes && hash.digest("hex") === resource.sha256, `${resource.id} complete published archive matches the signed cloud size and SHA-256`);
+                const tail = await fetch(resource.url, { headers: { Range: `bytes=${resource.sizeBytes - 2}-` }, signal: AbortSignal.timeout(30_000) });
+                const handle = await open(file, "r");
+                const expected = Buffer.alloc(2);
+                try { await handle.read(expected, 0, 2, resource.sizeBytes - 2); } finally { await handle.close(); }
+                ctx.assert(tail.status === 206 && Buffer.from(await tail.arrayBuffer()).equals(expected), `${resource.id} cloud download also serves the matching archive tail`);
+                verifiedArchives.set(resource.url, { file, size: resource.sizeBytes });
+              }
             }
+            ctx.output("Archive transport", archiveDirectory ? "Complete published archives; live cloud signature, HEAD and prefix/tail range checks. Full cloud download throughput is not asserted." : "Complete downloads from the public cloud.");
             const manager = createEnginePackageManager(options);
             for (const id of ["codex-harness", "deepseek-harness"]) {
               const installed = await manager.install(id, baseUrl);
-              ctx.assert(installed.status === "ready" && installed.source === "downloaded", `${id} downloaded, verified, extracted and started`);
+              ctx.assert(installed.status === "ready" && installed.source === "downloaded", `${id} verified, extracted and started through the engine package manager`);
               const cli = id === "deepseek-harness" ? environment.IPOLLOWORK_DSH_CLI : environment.IPOLLOWORK_CODEX_CLI;
               const command = id === "deepseek-harness" ? environment.IPOLLOWORK_DSH_NODE_BIN : cli.endsWith(".js") ? process.execPath : cli;
               const args = command === cli ? ["--version"] : [cli, "--version"];

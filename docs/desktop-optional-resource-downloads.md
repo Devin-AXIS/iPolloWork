@@ -50,7 +50,9 @@ Release App 在六种原生构建机上生成全部四项归档，上传 GitHub 
 
 当前云服务的管理上传通过专用 SSH 隧道加密传输。GitHub 配置 `DESKTOP_RESOURCE_SSH_KEY`、`IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN` 两项 secrets，以及 `DESKTOP_RESOURCE_SSH_HOST`、`DESKTOP_RESOURCE_SSH_KNOWN_HOSTS` 两项 variables。SSH 使用独立的 `ipollo-resource-publisher` 账号，公钥限制为 `restrict,port-forwarding,permitopen="127.0.0.1:3100",command="/bin/false"`；sshd 对该账号设置 `AllowTcpForwarding local`、`PermitOpen 127.0.0.1:3100`、`MaxSessions 0`，并禁止密码、Agent、Unix socket 和 X11 转发，只允许连接资源 API。工作流固定校验服务器 host key。签名私钥只留在云端，发布脚本复用桌面内置公钥验证返回清单及上传文件的哈希、尺寸、版本。
 
-每个原生构建随后运行 `node evals/runner/run.mjs --flow desktop-resource-install`：从公开云地址验证四项资源的签名、HEAD 和 Range，使用实际引擎安装管理器在隔离目录下载并校验两种引擎，执行版本命令，再以禁用下载的新管理器验证离线复用。任何平台发布或安装失败都会阻止 GitHub 草稿转为正式发布；各平台的 `resource-install-electron-*` Actions artifact 保留 fraimz 证据。
+每个原生构建随后运行 `node evals/runner/run.mjs --flow desktop-resource-install`：从公开云地址验证四项资源的签名、HEAD 和实际首尾 Range；将已发布的完整归档与云端签名中的尺寸、SHA-256 逐一比对，再由实际引擎安装管理器在隔离目录安装两种引擎，执行版本命令，并以禁用下载的新管理器验证离线复用。CI 通过 `IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR` 复用已发布归档，避免重复消耗云主机出口带宽；这不测量云端全量下载速度。不设置该变量时，验证仍会从公开云地址全量下载。任何平台发布或安装失败都会阻止 GitHub 草稿转为正式发布；各平台的 `resource-install-electron-*` Actions artifact 保留 fraimz 证据。
+
+如果安装包已经生成、只需恢复验证和发布，Release App 的 `resource_recovery_run` 接收原构建 run ID：在同一套原生矩阵上从 GitHub 下载完整归档执行上述检查，复用原构建的 updater artifacts，全部通过后才合并更新清单并发布。不会重新上传云资源或替换安装包；必须选择同一版本且已上传六份更新清单的原构建。
 
 ## 验收
 

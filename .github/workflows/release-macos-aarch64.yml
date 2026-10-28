@@ -58,6 +58,10 @@ on:
         required: false
         type: boolean
         default: false
+      resource_recovery_run:
+        description: "Verify existing GitHub/cloud archives and reuse updater artifacts from this run ID, without rebuilding installers"
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -283,7 +287,7 @@ jobs:
   publish-electron:
     name: Build + publish Electron (${{ matrix.artifact }})
     needs: [resolve-release, verify-release]
-    if: needs.resolve-release.outputs.build_electron == 'true'
+    if: needs.resolve-release.outputs.build_electron == 'true' && github.event.inputs.resource_recovery_run == ''
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 120
     env:
@@ -297,7 +301,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
+      matrix: &electron-matrix
         include:
           - platform: macos-14
             os_type: macos
@@ -619,7 +623,9 @@ jobs:
             --platform "${{ matrix.os_type }}" --arch "$(node -p process.arch)" \
             --base-url http://127.0.0.1:4319
 
-      - name: Prove native cloud engine installation and offline reuse
+      - name: Prove cloud resource delivery and native archive installation
+        env:
+          IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR: apps/desktop/dist-engine-packs
         run: node evals/runner/run.mjs --flow desktop-resource-install --out apps/desktop/resource-install-proof
 
       - name: Upload native resource installation proof
@@ -630,15 +636,60 @@ jobs:
           path: apps/desktop/resource-install-proof
           if-no-files-found: warn
 
+  verify-existing-resources:
+    name: Verify existing resources (${{ matrix.artifact }})
+    needs: [resolve-release, verify-release]
+    if: github.event.inputs.resource_recovery_run != ''
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: *electron-matrix
+    env:
+      RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
+      IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR: ${{ runner.temp }}/resource-archives
+      IPOLLOWORK_EVAL_FLOWS_DIR: ${{ runner.temp }}/resource-proof-flows
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Download the complete published native archives from GitHub
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*-${{ matrix.os_type }}-$(node -p process.arch)-*.tar.gz" --dir "$IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR"
+      - name: Select the standalone native resource proof
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          import { resolve, join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const directory = process.env.IPOLLOWORK_EVAL_FLOWS_DIR;
+          mkdirSync(directory, { recursive: true });
+          const flow = pathToFileURL(resolve('evals/flows/desktop-resource-install.flow.mjs')).href;
+          writeFileSync(join(directory, 'desktop-resource-install.flow.mjs'), `export { default } from ${JSON.stringify(flow)};\n`);
+          NODE
+      - name: Prove cloud resource delivery and native archive installation
+        run: node evals/runner/run.mjs --flow desktop-resource-install --out apps/desktop/resource-install-proof
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: resource-install-${{ matrix.artifact }}
+          path: apps/desktop/resource-install-proof
+          if-no-files-found: error
+
   publish-electron-assets:
     name: Publish Electron Assets
-    needs: [resolve-release, verify-release, publish-electron]
+    needs: [resolve-release, verify-release, publish-electron, verify-existing-resources]
     if: |
       always() &&
-      needs.resolve-release.outputs.build_electron == 'true' &&
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
-      needs.publish-electron.result == 'success'
+      (needs.publish-electron.result == 'success' || needs.verify-existing-resources.result == 'success')
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
@@ -661,6 +712,8 @@ jobs:
         with:
           pattern: electron-*
           path: ${{ runner.temp }}/electron-dist
+          run-id: ${{ github.event.inputs.resource_recovery_run || github.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Upload merged updater manifests
         env:
@@ -984,10 +1037,12 @@ jobs:
       - verify-release
       - publish-electron
       - publish-electron-assets
+      - verify-existing-resources
     if: |
       always() &&
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
+      (needs.verify-existing-resources.result == 'success' || needs.verify-existing-resources.result == 'skipped') &&
       (needs.publish-electron.result == 'success' || needs.publish-electron.result == 'skipped') &&
       (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped')
     runs-on: ubuntu-latest
