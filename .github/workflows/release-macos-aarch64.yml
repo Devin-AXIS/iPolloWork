@@ -647,8 +647,8 @@ jobs:
       matrix: *electron-matrix
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
-      IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR: ${{ runner.temp }}/resource-archives
-      IPOLLOWORK_EVAL_FLOWS_DIR: ${{ runner.temp }}/resource-proof-flows
+      IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR: apps/desktop/dist-engine-packs
+      IPOLLOWORK_EVAL_FLOWS_DIR: evals/results/resource-proof-loader
     steps:
       - uses: actions/checkout@v7
         with:
