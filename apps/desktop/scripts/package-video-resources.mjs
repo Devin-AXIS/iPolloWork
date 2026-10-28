@@ -180,7 +180,8 @@ async function packageVideoResources() {
       } else {
         const label = ({ darwin: "macos", win32: "windows", linux: "linux" })[target.platform];
         const archive = path.join(outputRoot, `ipollowork-${id}-${label}-${target.arch}-${version}.tar.gz`);
-        const result = spawnSync("tar", ["-czf", archive, "-C", staging, "."], { stdio: "inherit", windowsHide: true, timeout: 120_000 });
+        // GNU tar shipped with Git interprets a Windows drive letter as a remote host.
+        const result = spawnSync("tar", ["-czf", path.basename(archive), "-C", staging, "."], { cwd: outputRoot, stdio: "inherit", windowsHide: true, timeout: 120_000 });
         if (result.status !== 0) throw new Error(`Could not package ${archive}.`);
         const checksum = await digest(archive, "sha256", "hex");
         writeFileSync(`${archive}.sha256`, `${checksum}  ${path.basename(archive)}\n`);
