@@ -37,7 +37,7 @@ test("migrates an existing isolated Bun runtime without downloading it again", (
   assert.match(prepareRuntimeSource, /materializeBunPackages\(resolve\(runtimeRoot, "node_modules"\)\)/);
   assert.match(prepareRuntimeSource, /dereference: true/);
   assert.match(prepareRuntimeSource, /rmSync\(bunRoot, \{ recursive: true, force: true \}\)/);
-  assert.match(prepareRuntimeSource, /runtimeFormatVersion = 7/);
+  assert.match(prepareRuntimeSource, /runtimeFormatVersion = 8/);
   assert.match(prepareRuntimeSource, /pruneOnnxRuntimeBinaries/);
   assert.match(prepareRuntimeSource, /process\.platform, process\.arch/);
 });
@@ -67,7 +67,10 @@ test("repairs stamped runtime resources and rejects broken cached imports withou
     await writeFixture("vendor/hyperframes/package.json", JSON.stringify({ private: true, resolutions: {}, overrides: {} }));
     await writeFixture("vendor/hyperframes/bun.lock", "fixture-lock\n");
     await writeFixture("vendor/hyperframes/LICENSE", "fixture-license\n");
-    await writeFixture("vendor/hyperframes/packages/cli/package.json", JSON.stringify({ type: "module", dependencies }));
+    await writeFixture("vendor/hyperframes/packages/cli/package.json", JSON.stringify({
+      type: "module", dependencies: { ...dependencies, "onnxruntime-node": "2.0.0" },
+      devDependencies: { "onnxruntime-node": dependencies["onnxruntime-node"] },
+    }));
     for (const [relativePath, body] of Object.entries(resources)) {
       await writeFixture(`vendor/hyperframes/packages/cli/${relativePath}`, body);
     }
@@ -81,9 +84,18 @@ test("repairs stamped runtime resources and rejects broken cached imports withou
       await writeFixture(`apps/desktop/hyperframes-runtime/node_modules/${packageName}/index.js`, 'import "./dependency.js";\n');
       await writeFixture(`apps/desktop/hyperframes-runtime/node_modules/${packageName}/dependency.js`, "export const ready = true;\n");
     }
+    const bindingRoot = "apps/desktop/hyperframes-runtime/node_modules/onnxruntime-node/bin/napi-v3";
+    const targets = [["darwin", "arm64"], ["darwin", "x64"], ["linux", "arm64"], ["linux", "x64"], ["win32", "arm64"], ["win32", "x64"]];
+    for (const [platform, arch] of targets) {
+      await writeFixture(`${bindingRoot}/${platform}/${arch}/onnxruntime_binding.node`, "fixture");
+    }
     const initial = prepare();
     assert.equal(initial.status, 0, initial.stderr);
     assert.match(initial.stdout, /cached runtime migrated/);
+    const packaged = JSON.parse(await readFile(path.join(runtime, "package.json"), "utf8"));
+    assert.equal(packaged.dependencies["onnxruntime-node"], dependencies["onnxruntime-node"]);
+    assert.deepEqual(await readdir(path.join(root, bindingRoot)), [process.platform]);
+    assert.deepEqual(await readdir(path.join(root, bindingRoot, process.platform)), [process.arch]);
     const cached = prepare();
     assert.equal(cached.status, 0, cached.stderr);
     assert.match(cached.stdout, /up to date; skipping staging/);

@@ -22,12 +22,13 @@ const targets = {
 };
 
 // Native ARM64 Windows binaries are unavailable in the npm installers.
-// Pin a month-end build: upstream deletes ordinary daily builds after 14 days.
+// Pin a retained month-end build before the ARM64 startup regression in
+// BtbN/FFmpeg-Builds#675; ordinary daily builds disappear after 14 days.
 const windowsArm64 = {
-  tag: "autobuild-2026-09-30-13-08",
-  asset: "ffmpeg-n8.1.3-9-g29e619e767-winarm64-gpl-8.1.zip",
-  sha256: "061a770557c30bbf8e0b6ca3810288a60f72b85088378b84be03277746f34f17",
-  version: "8.1.3",
+  tag: "autobuild-2026-08-31-13-27",
+  asset: "ffmpeg-n8.1.2-50-g1a748fe2cd-winarm64-gpl-8.1.zip",
+  sha256: "722be613f4fdb0b114671515c44a747edd86b814d4e367ca11b10df4539e6e74",
+  version: "8.1.2",
 };
 
 export function resolveVideoResourceTarget(target = process.env.TAURI_ENV_TARGET_TRIPLE ?? process.env.CARGO_CFG_TARGET_TRIPLE ?? process.env.TARGET, platform = process.platform, arch = process.arch) {
@@ -167,7 +168,9 @@ async function packageVideoResources() {
       if (existsSync(path.join(resource.packageRoot, "README.md"))) await copyFile(path.join(resource.packageRoot, "README.md"), path.join(staging, "BINARY-README.md"));
       if (target.platform === process.platform && target.arch === process.arch) {
         const verified = spawnSync(stagedBinary, ["-version"], { encoding: "utf8", timeout: 10_000, windowsHide: true });
-        if (verified.status !== 0 || !(verified.stdout + verified.stderr).toLowerCase().includes(id)) throw new Error(`Bundled ${id} failed its version check.`);
+        if (verified.status !== 0 || !(verified.stdout + verified.stderr).toLowerCase().includes(id)) {
+          throw new Error(`Bundled ${id} failed its version check (exit ${verified.status}, signal ${verified.signal}): ${verified.error?.message ?? verified.stderr ?? ""}`);
+        }
       }
       stagedResources.push({ id, staging, version: resource.metadata.version });
     }
