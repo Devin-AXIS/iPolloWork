@@ -667,7 +667,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*-${{ matrix.os_type }}-$(node -p process.arch)-*.tar.gz" --dir "$IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR"
+        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "ipollowork-*-${{ matrix.os_type }}-$(node -p process.arch)-*.tar.gz" --dir "$IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR"
       - uses: pnpm/action-setup@v6
         if: github.event.inputs.rebuild_engine_resources == 'true'
         with:
