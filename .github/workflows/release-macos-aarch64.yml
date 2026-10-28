@@ -62,6 +62,11 @@ on:
         description: "Verify existing GitHub/cloud archives and reuse updater artifacts from this run ID, without rebuilding installers"
         required: false
         type: string
+      rebuild_engine_resources:
+        description: "Rebuild and republish engine archives during resource recovery (keeps existing installers)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -587,7 +592,9 @@ jobs:
           path: apps/desktop/dist-electron/latest*.yml
           if-no-files-found: error
 
-      - name: Publish signed cloud resources through restricted SSH tunnel
+      - &publish-cloud-resources
+        name: Publish signed cloud resources through restricted SSH tunnel
+        if: github.event.inputs.resource_recovery_run == '' || github.event.inputs.rebuild_engine_resources == 'true'
         shell: bash
         env:
           RESOURCE_SSH_KEY: ${{ secrets.DESKTOP_RESOURCE_SSH_KEY }}
@@ -661,6 +668,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*-${{ matrix.os_type }}-$(node -p process.arch)-*.tar.gz" --dir "$IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR"
+      - uses: pnpm/action-setup@v6
+        if: github.event.inputs.rebuild_engine_resources == 'true'
+        with:
+          version: 11.4.0
+      - name: Rebuild native engine archives
+        if: github.event.inputs.rebuild_engine_resources == 'true'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --outdir "$IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR"
+      - name: Upload corrected engine archives
+        if: github.event.inputs.rebuild_engine_resources == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" apps/desktop/dist-engine-packs/ipollowork-engine-* --clobber
+      - *publish-cloud-resources
       - name: Select the standalone native resource proof
         shell: bash
         run: |
