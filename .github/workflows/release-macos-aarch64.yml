@@ -304,7 +304,7 @@ jobs:
             artifact: electron-macos-arm64
             electron_args: "--mac --arm64"
             target_triple: aarch64-apple-darwin
-          - platform: macos-14
+          - platform: macos-15-intel
             os_type: macos
             artifact: electron-macos-x64
             electron_args: "--mac --x64"
@@ -370,9 +370,9 @@ jobs:
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-electron-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-electron-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-electron-pnpm-
+            ${{ runner.os }}-${{ runner.arch }}-electron-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -422,6 +422,12 @@ jobs:
         env:
           TARGET: ${{ matrix.target_triple }}
         run: node apps/desktop/scripts/package-engine-runtime.mjs --all --clean --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
+
+      - name: Build remaining signed cloud resources
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-video-resources.mjs --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
 
       - name: Build Electron app
         shell: bash
@@ -576,6 +582,53 @@ jobs:
           name: ${{ matrix.artifact }}
           path: apps/desktop/dist-electron/latest*.yml
           if-no-files-found: error
+
+      - name: Publish signed cloud resources through restricted SSH tunnel
+        shell: bash
+        env:
+          RESOURCE_SSH_KEY: ${{ secrets.DESKTOP_RESOURCE_SSH_KEY }}
+          RESOURCE_SSH_HOST: ${{ vars.DESKTOP_RESOURCE_SSH_HOST }}
+          RESOURCE_SSH_KNOWN_HOSTS: ${{ vars.DESKTOP_RESOURCE_SSH_KNOWN_HOSTS }}
+          IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN: ${{ secrets.IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${RESOURCE_SSH_KEY:?Missing resource publishing SSH key}"
+          : "${RESOURCE_SSH_HOST:?Missing resource publishing SSH host}"
+          : "${RESOURCE_SSH_KNOWN_HOSTS:?Missing pinned SSH host key}"
+          : "${IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN:?Missing resource publishing token}"
+          key_file="$RUNNER_TEMP/resource-publish-key"
+          hosts_file="$RUNNER_TEMP/resource-publish-hosts"
+          printf '%s\n' "$RESOURCE_SSH_KEY" > "$key_file"
+          printf '%s\n' "$RESOURCE_SSH_KNOWN_HOSTS" > "$hosts_file"
+          chmod 600 "$key_file" "$hosts_file"
+          ssh -N -L 127.0.0.1:4319:127.0.0.1:3100 \
+            -i "$key_file" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$hosts_file" \
+            -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
+            "$RESOURCE_SSH_HOST" &
+          tunnel_pid=$!
+          trap 'kill "$tunnel_pid" 2>/dev/null || true; rm -f "$key_file" "$hosts_file"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --max-time 2 http://127.0.0.1:4319/api/ready > /dev/null; then break; fi
+            kill -0 "$tunnel_pid"
+            sleep 1
+          done
+          resource_version="$(node --input-type=module -e 'import { DESKTOP_RESOURCE_APP_VERSION as version } from "./apps/desktop/electron/app-version.mjs"; console.log(version)')"
+          node apps/desktop/scripts/publish-desktop-resources.mjs \
+            --directory apps/desktop/dist-engine-packs --app-version "$resource_version" \
+            --platform "${{ matrix.os_type }}" --arch "$(node -p process.arch)" \
+            --base-url http://127.0.0.1:4319
+
+      - name: Prove native cloud engine installation and offline reuse
+        run: node evals/runner/run.mjs --flow desktop-resource-install --out apps/desktop/resource-install-proof
+
+      - name: Upload native resource installation proof
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resource-install-${{ matrix.artifact }}
+          path: apps/desktop/resource-install-proof
+          if-no-files-found: warn
 
   publish-electron-assets:
     name: Publish Electron Assets

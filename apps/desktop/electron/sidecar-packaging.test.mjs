@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { it } from "node:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -19,6 +20,19 @@ import {
 const afterPack = afterPackModule.default ?? afterPackModule;
 const require = createRequire(import.meta.url);
 const { FileMatcher, copyFiles } = createRequire(require.resolve("electron-builder"))("app-builder-lib/out/fileMatcher.js");
+
+it("rejects a foreign engine target before packaging the host Node runtime under another architecture", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-native-target-"));
+  try {
+    const result = spawnSync(process.execPath, ["apps/desktop/scripts/package-engine-runtime.mjs", "--all", "--outdir", root], {
+      cwd: new URL("../../../", import.meta.url), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, TARGET: process.arch === "arm64" ? "x86_64-apple-darwin" : "aarch64-apple-darwin" },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Engine packages require a native/);
+    assert.deepEqual(await readdir(root), []);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 it("packages runtime modules without compiled tests, test support or stale staged files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-package-"));

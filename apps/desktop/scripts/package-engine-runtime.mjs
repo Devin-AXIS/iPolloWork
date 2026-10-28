@@ -57,6 +57,10 @@ async function sha256File(targetPath) {
 }
 
 async function packageEngine(engineId, outputDirectory) {
+  const hostPlatform = ({ win32: "windows", darwin: "macos", linux: "linux" })[process.platform];
+  if (targetPlatform() !== hostPlatform || targetArch() !== process.arch) {
+    throw new Error(`Engine packages require a native ${targetPlatform()}/${targetArch()} builder; current host is ${hostPlatform}/${process.arch}.`);
+  }
   const isDsh = engineId === "deepseek-harness";
   const runtimeDirectoryName = isDsh ? "dsh-runtime" : "codex-runtime";
   const prepareScript = isDsh ? "prepare-dsh-runtime.mjs" : "prepare-codex-runtime.mjs";

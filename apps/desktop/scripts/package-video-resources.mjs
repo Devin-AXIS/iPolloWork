@@ -22,10 +22,11 @@ const targets = {
 };
 
 // Native ARM64 Windows binaries are unavailable in the npm installers.
+// Pin a month-end build: upstream deletes ordinary daily builds after 14 days.
 const windowsArm64 = {
-  tag: "autobuild-2026-10-01-13-06",
-  asset: "ffmpeg-n8.1.3-14-g330caae0c1-winarm64-gpl-8.1.zip",
-  sha256: "3dd51c0c37f8f6d6c6779da0af4b370589728abdcb16559bd9aa8318a187764e",
+  tag: "autobuild-2026-09-30-13-08",
+  asset: "ffmpeg-n8.1.3-9-g29e619e767-winarm64-gpl-8.1.zip",
+  sha256: "061a770557c30bbf8e0b6ca3810288a60f72b85088378b84be03277746f34f17",
   version: "8.1.3",
 };
 

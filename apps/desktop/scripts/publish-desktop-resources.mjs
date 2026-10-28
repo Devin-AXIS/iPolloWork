@@ -1,7 +1,8 @@
-import { createHash, createPrivateKey, createPublicKey, verify } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { verifyDesktopResourceManifest } from "../electron/desktop-resource-manifest.mjs";
 
 const IDS = ["codex-harness", "deepseek-harness", "ffmpeg", "ffprobe"];
 
@@ -63,6 +64,8 @@ for (const item of artifacts) {
   url.search = new URLSearchParams({ ...target, version: item.version }).toString();
   const response = await fetch(url, {
     method: "PUT",
+    redirect: "error",
+    signal: AbortSignal.timeout(10 * 60_000),
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/gzip",
@@ -78,22 +81,17 @@ for (const item of artifacts) {
 const publishUrl = new URL("/api/v1/admin/desktop/resource-releases/publish", baseUrl);
 await responseJson(await fetch(publishUrl, {
   method: "POST",
+  redirect: "error",
+  signal: AbortSignal.timeout(120_000),
   headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
   body: JSON.stringify(target),
 }), "Publish");
 const manifestUrl = new URL("/api/v1/desktop/resources", baseUrl);
 manifestUrl.search = new URLSearchParams(target).toString();
-const manifest = await responseJson(await fetch(manifestUrl), "Verify published manifest");
-const signature = manifest.signature;
-const payload = Buffer.from(signature.payload, "base64url");
-const privateKey = createPrivateKey(process.env.DESKTOP_RESOURCE_MANIFEST_PRIVATE_KEY.replace(/\\n/g, "\n"));
-const publicKey = createPublicKey(privateKey);
-if (signature.keyId !== process.env.DESKTOP_RESOURCE_MANIFEST_KEY_ID
-  || createHash("sha256").update(payload).digest("hex") !== signature.payloadSha256
-  || !verify(null, payload, publicKey, Buffer.from(signature.value, "base64url"))) {
-  throw new Error("Published manifest signature verification failed.");
-}
-const published = JSON.parse(payload.toString("utf8"));
+const manifest = await responseJson(await fetch(manifestUrl, { cache: "no-store", signal: AbortSignal.timeout(30_000) }), "Verify published manifest");
+// The publisher needs only the same public key shipped to desktop clients.
+// Keep the signing private key exclusively on the cloud server.
+const published = verifyDesktopResourceManifest(manifest, target);
 for (const item of artifacts) {
   const matched = published.resources.find((resource) => resource.id === item.id);
   if (!matched || matched.version !== item.version || matched.sha256 !== item.sha256 || matched.sizeBytes !== item.sizeBytes) {
