@@ -42,10 +42,18 @@ function gh(args) {
   return result.stdout;
 }
 
+function readRelease(tag, repo, runGh = gh) {
+  // GitHub's tag endpoint only returns published releases. The CLI also
+  // resolves pending draft tags, so use its ID for the full REST response.
+  const id = runGh(["release", "view", tag, "--repo", repo, "--json", "databaseId", "--jq", ".databaseId"]).trim();
+  if (!/^[1-9]\d*$/.test(id)) throw new Error("GitHub release ID is missing or invalid.");
+  return JSON.parse(runGh(["api", `repos/${repo}/releases/${id}`]));
+}
+
 export function finalizeInstallerRelease(tag, { repo, prune = false, runGh = gh }) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo ?? "")) throw new Error("GITHUB_REPOSITORY is required.");
   installerNames(tag);
-  const read = () => JSON.parse(runGh(["api", `repos/${repo}/releases/tags/${tag}`]));
+  const read = () => readRelease(tag, repo, runGh);
   let release = read();
   const extra = validateInstallers(release, tag);
   if (extra.length && !prune) throw new Error(`Non-installer release assets: ${extra.map((asset) => asset.name).join(", ")}`);
@@ -97,7 +105,12 @@ export function mergeUpdaterMetadata(directory, release) {
   visit(directory);
   if (Object.keys(metadata.files).length !== 6) throw new Error("Expected six native updater receipts.");
   const body = `${String(release.body ?? "").replace(UPDATE_METADATA_PATTERN, "").trim()}\n\n${updateMetadataBlock(metadata)}\n`;
-  const candidate = { ...release, draft: false, prerelease: false, body };
+  // Draft attachments use temporary `untagged-*` URLs. Preview their published
+  // URLs without relaxing the desktop provider's public-feed validation.
+  const assets = release.draft ? release.assets.map((asset) => ({ ...asset,
+    browser_download_url: `https://github.com/${RELEASE_REPOSITORY}/releases/download/${release.tag_name}/${asset.name}`,
+  })) : release.assets;
+  const candidate = { ...release, draft: false, prerelease: false, body, assets };
   for (const platform of ["win32", "darwin", "linux"]) {
     for (const arch of ["x64", "arm64"]) releaseUpdateInfo(candidate, { platform, arch });
   }
@@ -113,7 +126,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const repo = process.env.GITHUB_REPOSITORY;
     if (args[0] === "--metadata-dir" && args.length === 3) {
       // Keep old attachments until all six update receipts and cloud ZIPs pass.
-      const release = JSON.parse(gh(["api", `repos/${repo}/releases/tags/${tag}`]));
+      const release = readRelease(tag, repo);
       validateInstallers(release, tag);
       const { body, metadata } = mergeUpdaterMetadata(args[1], release);
       for (const [target, file] of Object.entries(metadata.files)) {
