@@ -129,8 +129,8 @@ jobs:
           fi
 
           ALL='[
-            {"platform_id":"mac-arm64","runner":"macos-14","os_type":"macos","bun_target":"bun-darwin-arm64","asset":"ipollowork-installer-mac-arm64.zip"},
-            {"platform_id":"mac-x64","runner":"macos-14","os_type":"macos","bun_target":"bun-darwin-x64","asset":"ipollowork-installer-mac-x64.zip"},
+            {"platform_id":"mac-arm64","runner":"macos-15","os_type":"macos","bun_target":"bun-darwin-arm64","asset":"ipollowork-installer-mac-arm64.zip"},
+            {"platform_id":"mac-x64","runner":"macos-15","os_type":"macos","bun_target":"bun-darwin-x64","asset":"ipollowork-installer-mac-x64.zip"},
             {"platform_id":"win-x64","runner":"windows-2022","os_type":"windows","bun_target":"bun-windows-x64","asset":"ipollowork-installer-win-x64.exe"}
           ]'
           MATRIX=$(jq -cn --arg csv "$PLATFORMS" --argjson all "$ALL" \
