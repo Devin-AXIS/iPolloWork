@@ -29,6 +29,9 @@ preferWorkspacePackages: true
 # incompatible emnapi 2.x prereleases; keep its supported stable runtime line.
 overrides:
   "@oxc-parser/binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.1.6
+  "@oxc-resolver/binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.1.6
+  # LabelU's own standalone configuration already uses this compatible version.
+  "i18next": 23.16.8
 allowBuilds:
   onnxruntime-node: true
   "@ffmpeg-installer/darwin-arm64": true

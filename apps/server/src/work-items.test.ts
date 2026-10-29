@@ -208,7 +208,7 @@ describe("work item store", () => {
         expectedVersion: ready.version, runtime: ready.execution.runtime, templateId: "video", goal: "Deliver a 30 second product video",
       });
       expect(video).toMatchObject({ status: "ready", runStartedAt: null, execution: {
-        workflow: { templateId: "video", templateVersion: 6, workKind: "video", source: "manual" },
+        workflow: { templateId: "video", templateVersion: 7, workKind: "video", source: "manual" },
       } });
       if (!video.execution?.workflow) throw new Error("Workflow required");
       const team = video.execution.workflow.config;

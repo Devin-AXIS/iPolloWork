@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
@@ -13,6 +14,10 @@ type Served = {
 
 const stops: Array<() => void | Promise<void>> = [];
 const roots: string[] = [];
+const previousBundledPackages = process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
+beforeEach(() => {
+  process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = fileURLToPath(new URL("../../../examples/plugin-packages", import.meta.url));
+});
 
 afterEach(async () => {
   while (stops.length) {
@@ -21,6 +26,8 @@ afterEach(async () => {
   while (roots.length) {
     await rm(roots.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
+  if (previousBundledPackages === undefined) delete process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
+  else process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = previousBundledPackages;
 });
 
 async function createWorkspaceRoot() {
@@ -107,6 +114,10 @@ function startMockRemoteiPolloWork() {
             { id: "ws_other", name: "Other", path: "/remote/other" },
           ],
         });
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/workspaces/ws_one") {
+        return Response.json({ ok: true, deleted: true });
       }
 
       return Response.json({ code: "not_found", message: "Not found" }, { status: 404 });
@@ -541,6 +552,8 @@ describe("workspace lifecycle registry", () => {
   });
 
   test("renames activates and deletes remote records without authorized roots", async () => {
+    const remote = startMockRemoteiPolloWork();
+    const remoteHost = `http://127.0.0.1:${remote.server.port}`;
     const workspaceRoot = await createWorkspaceRoot();
     const configPath = join(workspaceRoot, "server.json");
     const workspaces: ServerConfig["workspaces"] = [
@@ -553,6 +566,8 @@ describe("workspace lifecycle registry", () => {
         remoteType: "ipollowork",
         baseUrl: "http://127.0.0.1:9",
         ipolloworkWorkspaceId: "ws_one",
+        ipolloworkHostUrl: remoteHost,
+        ipolloworkToken: "remote-test-token",
       },
       {
         id: "rem_ws_two",
@@ -594,6 +609,7 @@ describe("workspace lifecycle registry", () => {
       headers: hostAuth(ipollowork.hostToken),
     });
     expect(deleteResponse.status).toBe(200);
+    expect(remote.requests).toContainEqual({ pathname: "/workspaces/ws_one", authorization: "Bearer remote-test-token" });
     persisted = await readPersistedConfig(configPath);
     expect(workspaceIdsFromConfig(persisted)).toEqual(["rem_ws_two"]);
     expect(authorizedRootsFromConfig(persisted)).toEqual([]);

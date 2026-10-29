@@ -1,3 +1,4 @@
+import type * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "../common/control-styles"
@@ -85,7 +86,7 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
+function EmptyDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="empty-description"

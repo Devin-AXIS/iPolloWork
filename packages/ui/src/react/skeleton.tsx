@@ -1,3 +1,4 @@
+import type * as React from "react"
 import { cn } from "../common/control-styles"
 
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
