@@ -46,6 +46,16 @@ GET /api/v1/desktop/resources?appVersion=0.50.13&platform=macos&arch=arm64
 
 `publish-desktop-resources.mjs` 负责现有四项云资源的发布与清单验证；`package-video-resources.mjs` 不带 `--bundled` 时仍能为这个发布协议产出两个媒体归档。这是发布端协议用途，不是视频启动的备用下载路径。
 
+Release App 在六种原生构建机上生成全部四项归档，直接发布到云端，不作为 GitHub Release 附件。兼容资源版本从 `DESKTOP_RESOURCE_APP_VERSION` 读取，与桌面下载端保持一致；`0.50.13` 是资源兼容版本，不是桌面安装包版本。macOS Intel 使用 `macos-15-intel`，引擎打包拒绝宿主与目标架构不一致，避免把 ARM Node 打进 Intel 归档。Windows ARM64 编解码组件固定到上游保留两年的月末构建及 SHA-256，不引用仅保留 14 天的日构建。
+
+当前云服务的管理上传通过专用 SSH 隧道加密传输。GitHub 配置 `DESKTOP_RESOURCE_SSH_KEY`、`IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN` 两项 secrets，以及 `DESKTOP_RESOURCE_SSH_HOST`、`DESKTOP_RESOURCE_SSH_KNOWN_HOSTS` 两项 variables。SSH 使用独立的 `ipollo-resource-publisher` 账号，公钥限制为 `restrict,port-forwarding,permitopen="127.0.0.1:3100",command="/bin/false"`；sshd 对该账号设置 `AllowTcpForwarding local`、`PermitOpen 127.0.0.1:3100`、`MaxSessions 0`，并禁止密码、Agent、Unix socket 和 X11 转发，只允许连接资源 API。工作流固定校验服务器 host key。签名私钥只留在云端，发布脚本复用桌面内置公钥验证返回清单及上传文件的哈希、尺寸、版本。
+
+每个原生构建随后运行 `node evals/runner/run.mjs --flow desktop-resource-install`：从公开云地址验证四项资源的签名、HEAD 和实际首尾 Range；将已发布的完整归档与云端签名中的尺寸、SHA-256 逐一比对，再由实际引擎安装管理器在隔离目录安装两种引擎，执行版本命令，并以禁用下载的新管理器验证离线复用。CI 通过 `IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR` 复用已发布归档，避免重复消耗云主机出口带宽；这不测量云端全量下载速度。不设置该变量时，验证仍会从公开云地址全量下载。任何平台发布或安装失败都会阻止 GitHub 草稿转为正式发布；各平台的 `resource-install-electron-*` Actions artifact 保留 fraimz 证据。
+
+资源恢复不再依赖 GitHub Release 中的引擎归档。失败的平台可重跑构建任务，重新发布云资源并运行原生安装验证。
+
+引擎归档会将运行时内部的 npm 符号链接物化为文件，拒绝链接越出运行时目录、循环链接或特殊文件。客户端继续拒绝包含符号链接的下载包，不为 Unix 打包差异放宽安全检查。
+
 ## 验收
 
 - 构建产物同时包含 HyperFrames runtime、registry、两个可执行媒体组件和许可证。

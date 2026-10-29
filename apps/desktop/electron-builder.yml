@@ -76,8 +76,8 @@ asarUnpack:
 npmRebuild: false
 afterPack: scripts/electron-after-pack.cjs
 afterSign: scripts/electron-after-sign.cjs
-# electron-updater feed. The public GitHub Release carries the platform
-# manifests consumed by the Electron desktop clients.
+# Provider identity for generated app-update.yml. The runtime uses release
+# metadata through GithubInstallerProvider; no YAML/blockmap is published.
 publish:
   - provider: github
     owner: Devin-AXIS
@@ -142,7 +142,6 @@ linux:
         - versions.json-x86_64-unknown-linux-gnu
   target:
     - AppImage
-    - tar.gz
 deb:
   afterInstall: build/after-install.tpl
 win:

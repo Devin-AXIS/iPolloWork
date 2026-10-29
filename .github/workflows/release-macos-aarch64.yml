@@ -142,7 +142,7 @@ jobs:
               "## What's new" \
               "$TAG" \
               "- Download the attached installer for your platform." \
-              "- Electron builds use the attached latest-mac.yml updater feed."
+              "- In-app updates use the installers; Mac update ZIPs are delivered from the cloud."
           fi
 
           draft="${INPUT_DRAFT:-}"
@@ -304,7 +304,7 @@ jobs:
             artifact: electron-macos-arm64
             electron_args: "--mac --arm64"
             target_triple: aarch64-apple-darwin
-          - platform: macos-14
+          - platform: macos-15-intel
             os_type: macos
             artifact: electron-macos-x64
             electron_args: "--mac --x64"
@@ -370,12 +370,15 @@ jobs:
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-electron-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-electron-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-electron-pnpm-
+            ${{ runner.os }}-${{ runner.arch }}-electron-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify installer-only publishing and native update provider
+        run: node --test scripts/release/publish-electron-assets.test.mjs apps/desktop/electron/github-installer-provider.test.mjs apps/desktop/electron/updater.test.mjs
 
       - name: Write Electron notary API key (macOS)
         if: matrix.os_type == 'macos' && env.MACOS_NOTARIZE == 'true'
@@ -422,6 +425,12 @@ jobs:
         env:
           TARGET: ${{ matrix.target_triple }}
         run: node apps/desktop/scripts/package-engine-runtime.mjs --all --clean --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
+
+      - name: Build remaining signed cloud resources
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-video-resources.mjs --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
 
       - name: Build Electron app
         shell: bash
@@ -553,7 +562,7 @@ jobs:
           set -euo pipefail
           echo "::warning::Publishing unsigned Windows installer because SIGN_WINDOWS is not enabled."
 
-      - name: Upload Electron release assets
+      - name: Upload only the native desktop installer
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -561,28 +570,102 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           assets=(
-            apps/desktop/dist-electron/ipollowork-*
-            apps/desktop/dist-engine-packs/ipollowork-*
+            apps/desktop/dist-electron/ipollowork-win-*.exe
+            apps/desktop/dist-electron/ipollowork-mac-*.dmg
+            apps/desktop/dist-electron/ipollowork-linux-*.AppImage
           )
-          if [ ${#assets[@]} -eq 0 ]; then
-            echo "No Electron release assets found in apps/desktop/dist-electron" >&2
+          if [ ${#assets[@]} -ne 1 ]; then
+            echo "Expected exactly one native desktop installer, found ${#assets[@]}" >&2
             exit 1
           fi
           gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
 
-      - name: Upload Electron updater manifest artifact
+      - name: Stage native updater receipt
+        shell: bash
+        run: node scripts/release/publish-electron-assets.mjs --stage-updater apps/desktop/dist-electron "$RELEASE_TAG"
+
+      - name: Upload Mac updater ZIP to cloud storage
+        if: matrix.os_type == 'macos'
+        shell: bash
+        env:
+          UPDATE_SSH_KEY: ${{ secrets.DESKTOP_UPDATE_SSH_KEY }}
+          RESOURCE_SSH_HOST: ${{ vars.DESKTOP_RESOURCE_SSH_HOST }}
+          RESOURCE_SSH_KNOWN_HOSTS: ${{ vars.DESKTOP_RESOURCE_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${UPDATE_SSH_KEY:?Missing cloud updater publishing key}"
+          key_file="$RUNNER_TEMP/update-publish-key"
+          hosts_file="$RUNNER_TEMP/update-publish-hosts"
+          printf '%s\n' "$UPDATE_SSH_KEY" > "$key_file"
+          printf '%s\n' "$RESOURCE_SSH_KNOWN_HOSTS" > "$hosts_file"
+          chmod 600 "$key_file" "$hosts_file"
+          trap 'rm -f "$key_file" "$hosts_file"' EXIT
+          sftp -i "$key_file" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$hosts_file" \
+            -b apps/desktop/dist-electron/cloud-upload.txt \
+            "ipollo-update-publisher@${RESOURCE_SSH_HOST#*@}"
+
+      - name: Upload native updater receipt
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: apps/desktop/dist-electron/latest*.yml
+          path: apps/desktop/dist-electron/update-info.json
           if-no-files-found: error
+
+      - name: Publish signed cloud resources through restricted SSH tunnel
+        shell: bash
+        env:
+          RESOURCE_SSH_KEY: ${{ secrets.DESKTOP_RESOURCE_SSH_KEY }}
+          RESOURCE_SSH_HOST: ${{ vars.DESKTOP_RESOURCE_SSH_HOST }}
+          RESOURCE_SSH_KNOWN_HOSTS: ${{ vars.DESKTOP_RESOURCE_SSH_KNOWN_HOSTS }}
+          IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN: ${{ secrets.IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${RESOURCE_SSH_KEY:?Missing resource publishing SSH key}"
+          : "${RESOURCE_SSH_HOST:?Missing resource publishing SSH host}"
+          : "${RESOURCE_SSH_KNOWN_HOSTS:?Missing pinned SSH host key}"
+          : "${IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN:?Missing resource publishing token}"
+          key_file="$RUNNER_TEMP/resource-publish-key"
+          hosts_file="$RUNNER_TEMP/resource-publish-hosts"
+          printf '%s\n' "$RESOURCE_SSH_KEY" > "$key_file"
+          printf '%s\n' "$RESOURCE_SSH_KNOWN_HOSTS" > "$hosts_file"
+          chmod 600 "$key_file" "$hosts_file"
+          ssh -N -L 127.0.0.1:4319:127.0.0.1:3100 \
+            -i "$key_file" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$hosts_file" \
+            -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
+            "$RESOURCE_SSH_HOST" &
+          tunnel_pid=$!
+          trap 'kill "$tunnel_pid" 2>/dev/null || true; rm -f "$key_file" "$hosts_file"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --max-time 2 http://127.0.0.1:4319/api/ready > /dev/null; then break; fi
+            kill -0 "$tunnel_pid"
+            sleep 1
+          done
+          resource_version="$(node --input-type=module -e 'import { DESKTOP_RESOURCE_APP_VERSION as version } from "./apps/desktop/electron/app-version.mjs"; console.log(version)')"
+          node apps/desktop/scripts/publish-desktop-resources.mjs \
+            --directory apps/desktop/dist-engine-packs --app-version "$resource_version" \
+            --platform "${{ matrix.os_type }}" --arch "$(node -p process.arch)" \
+            --base-url http://127.0.0.1:4319
+
+      - name: Prove cloud resource delivery and native archive installation
+        env:
+          IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR: apps/desktop/dist-engine-packs
+        run: node evals/runner/run.mjs --flow desktop-resource-install --out apps/desktop/resource-install-proof
+
+      - name: Upload native resource installation proof
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resource-install-${{ matrix.artifact }}
+          path: apps/desktop/resource-install-proof
+          if-no-files-found: warn
 
   publish-electron-assets:
     name: Publish Electron Assets
     needs: [resolve-release, verify-release, publish-electron]
     if: |
       always() &&
-      needs.resolve-release.outputs.build_electron == 'true' &&
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
       needs.publish-electron.result == 'success'
@@ -603,16 +686,17 @@ jobs:
         with:
           node-version: 24
 
-      - name: Download Electron updater manifest artifacts
+      - name: Download native updater receipts
         uses: actions/download-artifact@v8
         with:
           pattern: electron-*
           path: ${{ runner.temp }}/electron-dist
+          github-token: ${{ github.token }}
 
-      - name: Upload merged updater manifests
+      - name: Publish update metadata and retain only six installers
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish-electron-assets.mjs --manifests-only "${{ runner.temp }}/electron-dist" "$RELEASE_TAG"
+        run: node scripts/release/publish-electron-assets.mjs --metadata-dir "${{ runner.temp }}/electron-dist" "$RELEASE_TAG"
 
   release-orchestrator-sidecars:
     name: Build + Upload ipollowork-orchestrator Sidecars
@@ -942,34 +1026,16 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
       RELEASE_PRERELEASE: ${{ needs.resolve-release.outputs.prerelease }}
     steps:
-      - name: Publish release checksums
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify the release contains only six complete installers
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          release_dir="$RUNNER_TEMP/release-assets"
-          rm -rf "$release_dir"
-          mkdir -p "$release_dir"
-
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$release_dir"
-          find "$release_dir" -type f \( -name 'SHA256SUMS*' -o -name '*.sha256' \) -delete
-
-          if ! find "$release_dir" -type f -print -quit | grep -q .; then
-            echo "No release assets found for checksum generation." >&2
-            exit 1
-          fi
-
-          (
-            cd "$release_dir"
-            find . -type f ! -name 'SHA256SUMS.txt' -printf '%P\n' | sort | while IFS= read -r asset; do
-              sha256sum "$asset"
-            done > SHA256SUMS.txt
-          )
-
-          gh release upload "$RELEASE_TAG" "$release_dir/SHA256SUMS.txt" \
-            --repo "$GITHUB_REPOSITORY" --clobber
+        run: node scripts/release/publish-electron-assets.mjs "$RELEASE_TAG"
 
       - name: Publish release after assets are ready
         env:

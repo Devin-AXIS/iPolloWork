@@ -23,7 +23,7 @@ const sourceRoot = resolve(repoRoot, "vendor", "hyperframes");
 const runtimeRoot = resolve(desktopRoot, "hyperframes-runtime");
 const stampPath = resolve(runtimeRoot, ".runtime-stamp.json");
 const bunCommand = process.platform === "win32" ? "bun.exe" : "bun";
-const runtimeFormatVersion = 7;
+const runtimeFormatVersion = 8;
 
 const cliRuntimeResources = ["bin", "dist"];
 
@@ -151,7 +151,7 @@ function materializeBunPackages(nodeModulesRoot) {
 }
 
 function pruneOnnxRuntimeBinaries(nodeModulesRoot) {
-  const napiRoot = resolve(nodeModulesRoot, "onnxruntime-node", "bin", "napi-v6");
+  const napiRoot = resolve(nodeModulesRoot, "onnxruntime-node", "bin", "napi-v3");
   const targetRoot = resolve(napiRoot, process.platform, process.arch);
   if (!existsSync(targetRoot)) return;
 
@@ -191,6 +191,9 @@ function runtimePackageJson() {
   const sourceDependencies = {
     ...(cliPackage.dependencies ?? {}),
     ...(cliPackage.optionalDependencies ?? {}),
+    // HyperFrames pins its optional native runtime in devDependencies for all
+    // six targets. Its direct 1.27 dependency omits the Intel macOS binary.
+    "onnxruntime-node": cliPackage.devDependencies["onnxruntime-node"],
   };
   const dependencies = Object.fromEntries(
     Object.entries(sourceDependencies).filter(([name]) => !runtimeDependencyBlocklist.has(name)),

@@ -3,9 +3,10 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 
 import { resolveDesktopAppVersion } from "./app-version.mjs";
+import { createGithubInstallerProvider, RELEASE_API_URL } from "./github-installer-provider.mjs";
 
 const LEGACY_ELECTRON_UPDATER_CHANNEL_FILENAME = "electron-updater-channel.v1.json";
-const OFFICIAL_ELECTRON_UPDATER_FEED = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
+const OFFICIAL_ELECTRON_UPDATER_FEED = RELEASE_API_URL;
 
 export function normalizeElectronUpdaterChannel(_value) {
   return "stable";
@@ -114,7 +115,7 @@ async function applyElectronUpdaterFeed(app, updater) {
   updater.allowPrerelease = false;
   updater.allowDowngrade = false;
   if (updater?.setFeedURL) {
-    updater.setFeedURL({ provider: "generic", url: state.feedUrl });
+    updater.setFeedURL({ provider: "custom", updateProvider: await createGithubInstallerProvider() });
   }
   return state;
 }
