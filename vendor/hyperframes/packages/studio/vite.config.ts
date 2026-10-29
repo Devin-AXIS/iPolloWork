@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
+import { workspaceUiChunk, WORKSPACE_CHUNK_LIMIT_KB } from "../../../../packages/ui/build-plugin-runtime.mjs";
 import react from "@vitejs/plugin-react";
 import postcss from "postcss";
 import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync, copyFileSync } from "node:fs";
@@ -316,6 +317,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    chunkSizeWarningLimit: WORKSPACE_CHUNK_LIMIT_KB,
+    rollupOptions: { output: { manualChunks: workspaceUiChunk } },
   },
   optimizeDeps: {
     include: ["bpm-detective"],

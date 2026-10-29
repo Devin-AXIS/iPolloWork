@@ -73,7 +73,7 @@ jobs:
     name: Resolve Release Metadata
     # SignPath trusted builds require every job leading to the Windows signing
     # request to use GitHub-hosted runners.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_tag: ${{ steps.resolve.outputs.release_tag }}
       release_name: ${{ steps.resolve.outputs.release_name }}
@@ -247,7 +247,7 @@ jobs:
     needs: resolve-release
     # SignPath trusted builds require every job leading to the Windows signing
     # request to use GitHub-hosted runners.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
@@ -656,7 +656,7 @@ jobs:
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
       needs.publish-electron.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
@@ -689,7 +689,7 @@ jobs:
     name: Build + Upload ipollowork-orchestrator Sidecars
     needs: [resolve-release, verify-release]
     if: needs.resolve-release.outputs.publish_sidecars == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
@@ -795,7 +795,7 @@ jobs:
       needs.verify-release.result == 'success' &&
       (needs.release-orchestrator-sidecars.result == 'success' || needs.release-orchestrator-sidecars.result == 'skipped') &&
       needs.resolve-release.outputs.publish_npm == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
@@ -934,7 +934,7 @@ jobs:
       needs.resolve-release.result == 'success' &&
       needs.publish-electron.result == 'success' &&
       (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
@@ -992,7 +992,7 @@ jobs:
       needs.verify-release.result == 'success' &&
       (needs.publish-electron.result == 'success' || needs.publish-electron.result == 'skipped') &&
       (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
       RELEASE_PRERELEASE: ${{ needs.resolve-release.outputs.prerelease }}

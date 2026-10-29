@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { workspaceUiChunk, WORKSPACE_CHUNK_LIMIT_KB } from "../../../../packages/ui/build-plugin-runtime.mjs";
 import { isCustomerVisibleBundledTemplate } from "../../../../packages/types/src/templates";
 import { createBundledTemplateCopyPlugin } from "../../studio-host/build.ts";
 import type { DeepSeekDesignStudioMode } from "../src/index";
@@ -52,6 +53,8 @@ export function createDesignStudioViteConfig(options: DesignStudioViteOptions) {
       outDir: resolve(options.outputPluginRoot, "studio/dist"),
       emptyOutDir: true,
       target: "es2022",
+      chunkSizeWarningLimit: WORKSPACE_CHUNK_LIMIT_KB,
+      rollupOptions: { output: { manualChunks: workspaceUiChunk } },
     },
   });
 }

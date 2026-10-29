@@ -50,6 +50,8 @@ Release App 在六种原生构建机上生成全部四项归档，直接发布�
 
 当前云服务的管理上传通过专用 SSH 隧道加密传输。GitHub 配置 `DESKTOP_RESOURCE_SSH_KEY`、`IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN` 两项 secrets，以及 `DESKTOP_RESOURCE_SSH_HOST`、`DESKTOP_RESOURCE_SSH_KNOWN_HOSTS` 两项 variables。SSH 使用独立的 `ipollo-resource-publisher` 账号，公钥限制为 `restrict,port-forwarding,permitopen="127.0.0.1:3100",command="/bin/false"`；sshd 对该账号设置 `AllowTcpForwarding local`、`PermitOpen 127.0.0.1:3100`、`MaxSessions 0`，并禁止密码、Agent、Unix socket 和 X11 转发，只允许连接资源 API。工作流固定校验服务器 host key。签名私钥只留在云端，发布脚本复用桌面内置公钥验证返回清单及上传文件的哈希、尺寸、版本。
 
+资源服务器使用 OpenSSH 9.6；系统 DEFAULT 加密策略未提供混合密钥交换时，在 `/etc/ssh/sshd_config.d/10-ipollowork-release-kex.conf` 中将 `sntrup761x25519-sha512@openssh.com` 放在原有算法列表之前。修改后先运行 `sshd -t`，再 reload，并用新的连接强制该算法验证。升级系统加密策略时重新核对有效配置；不要通过关闭 `WarnWeakCrypto` 隐藏告警。[OpenSSH 的迁移说明](https://www.openssh.org/pq.html)解释了版本支持与算法检查方法。
+
 每个原生构建随后运行 `node evals/runner/run.mjs --flow desktop-resource-install`：从公开云地址验证四项资源的签名、HEAD 和实际首尾 Range；将已发布的完整归档与云端签名中的尺寸、SHA-256 逐一比对，再由实际引擎安装管理器在隔离目录安装两种引擎，执行版本命令，并以禁用下载的新管理器验证离线复用。CI 通过 `IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR` 复用已发布归档，避免重复消耗云主机出口带宽；这不测量云端全量下载速度。不设置该变量时，验证仍会从公开云地址全量下载。任何平台发布或安装失败都会阻止 GitHub 草稿转为正式发布；各平台的 `resource-install-electron-*` Actions artifact 保留 fraimz 证据。
 
 资源恢复不再依赖 GitHub Release 中的引擎归档。失败的平台可重跑构建任务，重新发布云资源并运行原生安装验证。
