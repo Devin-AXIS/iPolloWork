@@ -636,17 +636,18 @@ jobs:
             --base-url http://127.0.0.1:4319
 
       - name: Prove cloud resource delivery and native archive installation
+        id: resource-proof
         env:
           IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR: apps/desktop/dist-engine-packs
         run: node evals/runner/run.mjs --flow desktop-resource-install --out apps/desktop/resource-install-proof
 
       - name: Upload native resource installation proof
-        if: always()
+        if: always() && (steps.resource-proof.outcome == 'success' || steps.resource-proof.outcome == 'failure')
         uses: actions/upload-artifact@v7
         with:
           name: resource-install-${{ matrix.artifact }}
           path: apps/desktop/resource-install-proof
-          if-no-files-found: warn
+          if-no-files-found: error
 
   publish-electron-assets:
     name: Publish Electron Assets

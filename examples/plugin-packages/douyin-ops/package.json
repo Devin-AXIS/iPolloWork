@@ -16,5 +16,5 @@
     "url": "https://github.com/Devin-AXIS/iPolloWork.git",
     "directory": "examples/plugin-packages/douyin-ops"
   },
-  "packageManager": "pnpm@11.13.0"
+  "packageManager": "pnpm@11.4.0"
 }

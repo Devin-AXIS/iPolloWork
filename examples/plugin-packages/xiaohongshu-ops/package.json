@@ -19,5 +19,5 @@
     "check": "node --check service/workbench.mjs && node --check skills/xhs-ops-worker/scripts/start.mjs && node --check skills/xhs-ops-worker/app/public/app.js && pnpm --dir skills/xhs-ops-worker/app typecheck",
     "test": "pnpm --dir skills/xhs-ops-worker/app test && node --test tests/*.test.mjs"
   },
-  "packageManager": "pnpm@11.13.0"
+  "packageManager": "pnpm@11.4.0"
 }
