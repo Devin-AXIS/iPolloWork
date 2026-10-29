@@ -110,9 +110,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare complete bundled plugins
-        run: |
-          pnpm --dir examples/plugin-packages/ipollo-onto install --ignore-workspace --frozen-lockfile --ignore-scripts
-          pnpm plugins:package --desktop
+        run: pnpm plugins:package --desktop
 
       - name: Build runtime contracts
         run: pnpm --filter ipollowork-server build
