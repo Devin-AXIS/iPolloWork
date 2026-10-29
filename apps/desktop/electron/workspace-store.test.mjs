@@ -973,7 +973,8 @@ test("treats the previous HTTPS iPollo hosted URL as replaceable default bootstr
   });
 });
 
-test("clearDesktopBootstrapConfig removes bootstrap files without deleting workspace state", async () => {
+test("clearDesktopBootstrapConfig removes bootstrap files without deleting workspace state", async (context) => {
+  const warn = context.mock.method(console, "warn", () => {});
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, legacyPath, userDataPath }) => {
     const workspaceStatePath = path.join(userDataPath, "ipollowork-workspaces.json");
     await writeBootstrapConfig(canonicalPath, {
@@ -999,5 +1000,17 @@ test("clearDesktopBootstrapConfig removes bootstrap files without deleting works
     const config = await store.getDesktopBootstrapConfig();
     assert.equal(config.baseUrl, "https://default.example.com");
     assert.equal(config.requireSignin, false);
+    assert.equal(warn.mock.callCount(), 0);
+  });
+});
+
+test("malformed installed bootstrap config still reports a diagnostic before using defaults", async (context) => {
+  const warn = context.mock.method(console, "warn", () => {});
+  await withIsolatedBootstrapStore(async ({ store, canonicalPath }) => {
+    await mkdir(path.dirname(canonicalPath), { recursive: true });
+    await writeFile(canonicalPath, "{ malformed", "utf8");
+    assert.equal((await store.getDesktopBootstrapConfig()).baseUrl, "https://default.example.com");
+    assert.equal(warn.mock.callCount(), 1);
+    assert.equal(warn.mock.calls[0].arguments[1].path, canonicalPath);
   });
 });

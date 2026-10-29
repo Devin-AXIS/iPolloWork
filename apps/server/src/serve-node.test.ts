@@ -75,6 +75,8 @@ describe("serve", () => {
   });
 
   test("does not write an error response after a streaming response has ended", async () => {
+    const errors: unknown[][] = [];
+    const originalError = console.error;
     const uncaught: unknown[] = [];
     const onUncaughtException = (error: unknown) => {
       uncaught.push(error);
@@ -106,17 +108,20 @@ describe("serve", () => {
       },
     });
 
+    console.error = (...args: unknown[]) => { errors.push(args); };
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}/stream`);
       await response.text().catch(() => undefined);
       await delay(25);
 
       expect(uncaught).toEqual([]);
+      expect(errors).toEqual([["[serve-node] Unhandled error:", expect.objectContaining({ message: "stream failed after response started" })]]);
 
       const health = await fetch(`http://127.0.0.1:${server.port}/health`);
       expect(health.status).toBe(200);
       expect(await health.json()).toEqual({ ok: true });
     } finally {
+      console.error = originalError;
       process.off("uncaughtException", onUncaughtException);
       await server.stop();
     }

@@ -476,10 +476,13 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       return legacy.normalized;
     }
 
-    console.warn("[desktop-bootstrap] falling back to defaults", {
-      path: configPath,
-      error: primary.error instanceof Error ? primary.error.message : String(primary.error),
-    });
+    const invalid = [primary, legacy].find((candidate) => candidate && candidate.error?.code !== "ENOENT");
+    if (invalid) {
+      console.warn("[desktop-bootstrap] falling back to defaults", {
+        path: invalid.path,
+        error: invalid.error instanceof Error ? invalid.error.message : String(invalid.error),
+      });
+    }
     return {
       baseUrl: defaultDenBaseUrl,
       requireSignin: defaultRequireSignin,
