@@ -1026,9 +1026,14 @@ describe("plugin package lifecycle", () => {
       await rm(legacyDesignRoot, { recursive: true });
       await cp(designRoot, legacyDesignRoot, { recursive: true });
       const response = await fetch(base, { headers });
-      expect(response.status).toBe(customized ? 409 : 200);
+      expect(response.status).toBe(200);
       const result = await response.json();
-      if (customized) expect(result.code).toBe("plugin_package_conflict");
+      expect(result.items).toEqual(expect.arrayContaining([expect.objectContaining({ pluginId: "design-agent" })]));
+      if (customized) {
+        const update = await fetch(`${base}/catalog/design-agent/install`, { method: "POST", headers });
+        expect(update.status).toBe(409);
+        expect(await update.json()).toMatchObject({ code: "plugin_package_conflict" });
+      }
       const installed = (await lifecycle.listInstalledPluginPackages({ serverConfig: config })).find((item) => item.pluginId === "design-agent");
       if (!installed) throw new Error("Design package is missing after refresh");
       expect(installed).toMatchObject({
@@ -1217,12 +1222,17 @@ describe("plugin package lifecycle", () => {
       await rm(bundledVideoRoot, { recursive: true });
       await cp(videoRoot, bundledVideoRoot, { recursive: true });
       const responses = await Promise.all(Array.from({ length: 3 }, () => fetch(base, { headers })));
-      for (const refresh of responses) expect(refresh.status).toBe(customizedSkill ? 409 : 200);
+      for (const refresh of responses) expect(refresh.status).toBe(200);
       const response = responses[0];
       if (!response) throw new Error("Plugin refresh response is missing");
-      expect(response.status).toBe(customizedSkill ? 409 : 200);
+      expect(response.status).toBe(200);
       const result = await response.json();
-      if (customizedSkill) expect(result).toMatchObject({ code: "plugin_package_conflict" });
+      expect(result.items).toEqual(expect.arrayContaining([expect.objectContaining({ pluginId: "video-agent" })]));
+      if (customizedSkill) {
+        const update = await fetch(`${base}/catalog/video-agent/install`, { method: "POST", headers });
+        expect(update.status).toBe(409);
+        expect(await update.json()).toMatchObject({ code: "plugin_package_conflict" });
+      }
       expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual(expect.arrayContaining([
         expect.objectContaining({
           pluginId: "video-agent", version: customizedSkill ? previousVersion : videoVersion, enabled,

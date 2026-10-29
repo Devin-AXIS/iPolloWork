@@ -14,7 +14,7 @@ import {
   readRuntimeOpencodeConfig,
   writeRuntimeOpencodeConfig,
 } from "./runtime-opencode-config-store.js";
-import { startServer } from "./server.js";
+import { disposeServerRuntimeStores, startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
 const WORKSPACE_ID = "ws_runtime_test";
@@ -52,6 +52,7 @@ async function withWorkspace(fn: (input: { root: string; config: ServerConfig })
   try {
     await fn({ root, config: serverConfig(root, dbPath) });
   } finally {
+    await disposeServerRuntimeStores(serverConfig(root, dbPath));
     if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
     else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     await rm(root, { recursive: true, force: true });

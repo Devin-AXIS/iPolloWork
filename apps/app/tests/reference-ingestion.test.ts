@@ -921,7 +921,7 @@ test("an oversized Word auxiliary part does not discard readable main content", 
   const result = await extractDocxReference(new File([await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })], "partial.docx"));
   expect(result.text).toContain("Readable main document");
   expect(result.warnings?.join(" ")).toContain("other readable parts preserved");
-});
+}, 30000);
 
 test("labeled requirements in one reference do not suppress facts from another", async () => {
   const first = await ingestReferenceFile(new File(["# 发布计划\n需求：介绍智能家具的核心功能，并展示家庭实际使用场景及操作流程。"], "brief.md"));

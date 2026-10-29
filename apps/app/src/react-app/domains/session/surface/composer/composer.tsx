@@ -33,6 +33,7 @@ import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
 import { getSlashCommandQuery } from "./slash-command";
+import { composerEscapeToStopAllowed } from "./composer-draft";
 
 type MentionItem = {
   id: string;
@@ -49,17 +50,6 @@ type PastedTextChip = {
 };
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
-
-export function composerEscapeToStopAllowed(
-  key: string,
-  target: { closest(selector: string): unknown } | null,
-  busy: boolean,
-  menuOpen: boolean,
-): boolean {
-  return key === "Escape" && busy && !menuOpen && !target?.closest(
-    '[role="menu"], [data-slot="dropdown-menu-trigger"][aria-expanded="true"]',
-  );
-}
 
 export type ComposerPlusMenuData = {
   extensions: iPolloWorkPluginPackageItem[];

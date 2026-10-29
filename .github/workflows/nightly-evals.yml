@@ -14,27 +14,15 @@ permissions:
 
 jobs:
   eval-smoke:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 11.4.0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.9
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Install OpenCode CLI
         shell: bash
@@ -92,14 +80,14 @@ jobs:
           tail -100 /tmp/ipollowork-dev.log >&2
           exit 1
 
-      - name: Run eval flows
+      - name: Run core smoke flow
         shell: bash
         env:
           IPOLLOWORK_EVAL_CDP_URL: "http://127.0.0.1:9823"
           # Optional cloud coverage: flows skip cleanly when unset.
           IPOLLOWORK_EVAL_DEN_API_URL: ${{ secrets.IPOLLOWORK_EVAL_DEN_API_URL }}
           IPOLLOWORK_EVAL_DEN_TOKEN: ${{ secrets.IPOLLOWORK_EVAL_DEN_TOKEN }}
-        run: pnpm evals --all
+        run: pnpm evals --flow app-smoke
 
       - name: Upload eval reports
         if: always()

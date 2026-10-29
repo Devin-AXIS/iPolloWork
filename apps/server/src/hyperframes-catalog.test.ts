@@ -154,11 +154,11 @@ describe("HyperFrames catalog parameters", () => {
     const animations = gsapItems.filter((item) => item.kind === "animation");
     const effects = gsapItems.filter((item) => item.kind === "effect");
 
-    expect(gsapItems).toHaveLength(172);
-    expect(animations).toHaveLength(92);
-    expect(effects).toHaveLength(80);
+    expect(gsapItems).toHaveLength(425);
+    expect(animations).toHaveLength(164);
+    expect(effects).toHaveLength(261);
     expect(gsapItems.filter((item) => item.source?.provider === "gsap-docs")).toHaveLength(25);
-    expect(gsapItems.filter((item) => item.source?.provider === "hyperframes")).toHaveLength(119);
+    expect(gsapItems.filter((item) => item.source?.provider === "hyperframes")).toHaveLength(372);
     expect(gsapItems.filter((item) => item.source?.provider === "video-shotcraft")).toHaveLength(3);
     expect(gsapItems.filter((item) => item.source?.provider === "ipollowork")).toHaveLength(18);
     expect(

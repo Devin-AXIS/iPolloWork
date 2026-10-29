@@ -137,7 +137,7 @@ describe("initial task draft handoff", () => {
     expect(capture).toBeGreaterThan(initialStart);
     expect(capture).toBeLessThan(source.indexOf("await createProject(", initialStart));
     expect(source).toContain("restoreInitialProjectDraft(pending);");
-    expect(source).toContain("if (!dispatched) {\n          rollbackFailedInitialProjectPrompt(pending);\n        } else {\n          clearInitialProjectDraftSource(pending, true);");
+    expect(source).toMatch(/if \(!dispatched\)\s*\{\s*rollbackFailedInitialProjectPrompt\(pending\);\s*\}\s*else\s*\{\s*clearInitialProjectDraftSource\(pending, true\);/);
   });
 });
 

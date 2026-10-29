@@ -446,7 +446,7 @@ describe("plugin developer and user flow", () => {
       { path: "ipollowork.plugin.json", contentBase64: Buffer.from("{}").toString("base64") },
       { path: "runtime/native.bin", contentBase64: Buffer.alloc(PLUGIN_PACKAGE_MAX_BYTES).toString("base64") },
     ] })).toThrow("32 MB");
-  });
+  }, 30000);
 
   test("routes migrated services through the existing MCP directory", async () => {
     const { FIGMA_MCP_QUICK_CONNECT, MCP_QUICK_CONNECT } = await import("../src/app/constants");

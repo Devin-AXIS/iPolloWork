@@ -1176,7 +1176,9 @@ describe("HyperFrames Video Studio", () => {
     );
     expect(workspaceAppSource).toContain("sameWorkspaceAppRuntimeResource");
     expect(workspaceAppSource).toContain("developmentPreviewRef.current");
-    expect(workspaceAppSource).toContain('sandbox="allow-scripts allow-same-origin"');
+    expect(workspaceAppSource).toContain('"allow-scripts"');
+    expect(workspaceAppSource).toContain('"allow-same-origin"');
+    expect(workspaceAppSource).not.toContain('"allow-top-navigation"');
     expect(workspaceAppSource).not.toContain("key={props.developmentPreview?.revision}");
     expect(workshopSource).toContain("aiEditingRef.current ? 800 : 3_000");
     expect(workshopSource).not.toContain("[props.aiEditing, props.tab.pluginId, refreshSnapshot]");

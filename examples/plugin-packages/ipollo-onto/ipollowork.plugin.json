@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPollo-Onto/tree/c209c8b8ebdb36773232632e83a02de52360882f"
   },
   "package": {
-    "version": "0.1.6",
+    "version": "0.1.7",
     "publisher": {
       "id": "smart-future-school",
       "name": "智慧未来学校"
@@ -136,6 +136,9 @@
         "description": "Ready-to-use business workspace with built-in SQLite: projects, tables, relationships, documents, and scoped project MCP. External PostgreSQL projects are optional.",
         "category": "Data & Analytics",
         "resources": {
+          "onto-service": {
+            "label": "Onto Local Data Service"
+          },
           "workbench": {
             "label": "iPollo Onto"
           },
@@ -146,6 +149,9 @@
         "permissions": {
           "network": {
             "reason": "Show the local Onto workbench, connecting only to ports 5710 and 5711 on 127.0.0.1."
+          },
+          "process": {
+            "reason": "Start the bundled local data service using the host runtime, listening only on 127.0.0.1."
           }
         },
         "setup": {

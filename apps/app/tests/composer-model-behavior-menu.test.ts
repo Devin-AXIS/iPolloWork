@@ -267,7 +267,7 @@ describe("Composer model and reasoning menu", () => {
 
   test("Composer uses one combined model and reasoning menu", () => {
     const composer = readFileSync(composerPath, "utf8");
-    const menu = readFileSync(menuPath, "utf8");
+    const menu = readFileSync(menuPath, "utf8").replace(/\r\n/g, "\n");
     const model = readFileSync(modelSelectPath, "utf8");
 
     expect(composer).toContain("<ModelBehaviorMenu");
@@ -279,11 +279,11 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain("min-w-0 max-w-72 flex-[0_1_auto]");
     expect(menu).toContain('appearance === "composer"\n            ? "me-1 h-8');
     expect(menu).toContain("rounded-full bg-transparent px-2 text-xs");
-    expect(menu).toContain('<Cpu className="size-4 shrink-0 [stroke-width:1.75]"');
-    expect(menu).toContain('className="truncate @max-[560px]/composer:hidden">{summary}</span>');
-    expect(menu).toContain('@max-[560px]/composer:w-8');
+    expect(menu).toContain('data-testid={appearance === "composer" ? "composer-model-trigger" : undefined}');
+    expect(menu).toContain('className="min-w-0 truncate">{summary}</span>');
+    expect(menu).toContain('@max-[560px]/composer:max-w-32');
     expect(menu).toContain('<TooltipContent>{summary}</TooltipContent>');
-    expect(menu).toContain('appearance === "composer" ? "size-3.5 [stroke-width:1.75] @max-[560px]/composer:hidden" : "size-4"');
+    expect(menu).toContain('appearance === "composer" ? "size-3.5 [stroke-width:1.75]" : "size-4"');
     expect(menu).toContain("hover:bg-gray-3");
     expect(menu).toContain("focus-visible:ring-2 focus-visible:ring-gray-7");
     expect(model).not.toContain("Connect TokenStar");

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { composerEscapeToStopAllowed } from "../src/react-app/domains/session/surface/composer/composer";
+import { composerEscapeToStopAllowed } from "../src/react-app/domains/session/surface/composer/composer-draft";
 
 const composerSource = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx"),

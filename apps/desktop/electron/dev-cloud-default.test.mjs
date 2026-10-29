@@ -182,7 +182,7 @@ test("main window ignores saved video deliveries while preserving desktop lifecy
     const window = await runtime.createMainWindow();
     assert.equal(await runtime.createMainWindow(), window, "reopening reuses the main window");
     assert.equal(windows.length, 1, "saved deliveries must not create a hidden worker");
-    assert.deepEqual(window.loaded, packaged ? ["file", "/packaged-resources/app-dist/index.html"] : ["url", "http://localhost:5173/"]);
+    assert.deepEqual(window.loaded, packaged ? ["file", path.join("/packaged-resources", "app-dist", "index.html")] : ["url", "http://localhost:5173/"]);
     assert.equal(window.options.webPreferences.backgroundThrottling, false);
     window.emit("ready-to-show");
     assert.equal(window.shown, 1);

@@ -1188,7 +1188,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         ) : !loading ? (
           <div className="rounded-2xl border border-dashed border-dls-border px-6 py-10 text-center text-ui-control leading-5 text-dls-secondary">
             <p>{search ? t("settings.marketplace.no_match") : t("plugin_library.personal_empty")}</p>
-            {!search ? <Button variant="outline" size="sm" className="mt-3" onClick={() => setImportOpen(true)}>{t("plugin_platform.import")}</Button> : null}
+            {!search ? <Button variant="outline" size="sm" className="mt-3" onClick={() => setImportOpen(true)}>{t("plugin_platform.import_button")}</Button> : null}
           </div>
         ) : null}
         </TabsContent>

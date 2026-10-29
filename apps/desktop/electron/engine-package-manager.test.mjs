@@ -9,16 +9,18 @@ import { test } from "node:test";
 
 import { createEnginePackageManager, run } from "./engine-package-manager.mjs";
 
-test("engine package commands wait for inherited stdout and stderr to close after exit", async () => {
+test("engine package commands drain stdout and stderr before settling", async () => {
   const delayedOutput = String.raw`setTimeout(() => {
     process.stdout.write("archive-entry\n");
     process.stderr.write("archive-diagnostic\n");
   }, 50);`;
   for (const code of [0, 7]) {
     const parent = `const { spawn } = require("node:child_process");
-      spawn(process.execPath, ["-e", ${JSON.stringify(delayedOutput)}], { stdio: ["ignore", 1, 2] }).unref();
-      process.exit(${code});`;
-    const result = run(process.execPath, ["-e", parent]);
+      const child = spawn(process.execPath, ["-e", ${JSON.stringify(delayedOutput)}], { stdio: ["ignore", 1, 2] });
+      child.once("spawn", () => process.exit(${code}));`;
+    // Windows pipes cannot be inherited by a grandchild like POSIX descriptors.
+    const script = process.platform === "win32" ? `${delayedOutput}\nsetTimeout(() => process.exit(${code}), 100);` : parent;
+    const result = run(process.execPath, ["-e", script]);
     if (code === 0) assert.deepEqual(await result, { stdout: "archive-entry\n", stderr: "archive-diagnostic\n" });
     else await assert.rejects(result, /failed \(7\): archive-diagnostic/);
   }
@@ -526,7 +528,8 @@ test("recovers local Codex discovery after transient failures without redundant 
   try {
     for (const recovery of ["retry", "exception", "refresh", "install"]) {
       await t.test(recovery, async (context) => {
-        context.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
+        let now = 1_000_000;
+        context.mock.method(Date, "now", () => now);
         const userData = path.join(root, recovery);
         const environment = { PATH: bin, APPDATA: path.join(root, "app-data"), LOCALAPPDATA: path.join(root, "local-app-data") };
         const managedCli = path.join(userData, "engine-packs", "codex-harness", "7.8.9", `${process.platform}-${process.arch}`, codexCliRelativePath());
@@ -559,12 +562,12 @@ test("recovers local Codex discovery after transient failures without redundant 
         } else {
           assert.equal(environment.IPOLLOWORK_CODEX_CLI, recovery === "refresh" ? managedCli : undefined);
           available = true;
-          context.mock.timers.tick(29_999);
+          now += 29_999;
           const cached = (await manager.list()).find((engine) => engine.id === "codex-harness");
           assert.equal(cached.source, recovery === "refresh" ? "downloaded" : "none");
           assert.equal(probes, 2, "polling does not repeatedly spawn an unavailable executable");
           if (recovery === "refresh") {
-            context.mock.timers.tick(1);
+            now += 1;
           } else {
             const installed = await manager.install("codex-harness");
             assert.equal(installed.source, "official", "install rechecks before the failure cache expires");

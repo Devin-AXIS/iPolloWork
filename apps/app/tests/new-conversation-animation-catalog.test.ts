@@ -7,7 +7,7 @@ const starter = readFileSync(resolve(root, "src/components/chat/new-conversation
 const surface = readFileSync(resolve(root, "src/react-app/domains/session/surface/session-surface.tsx"), "utf8");
 const sessionPage = readFileSync(resolve(root, "src/react-app/domains/session/chat/session-page.tsx"), "utf8");
 const composer = readFileSync(resolve(root, "src/react-app/domains/session/surface/composer/composer.tsx"), "utf8");
-const styles = readFileSync(resolve(root, "src/app/index.css"), "utf8");
+const styles = readFileSync(resolve(root, "src/app/index.css"), "utf8") + readFileSync(resolve(root, "../../packages/ui/src/common/tokens.css"), "utf8");
 
 describe("new conversation animation catalog", () => {
   test("shows the video template picker without the GSAP animation catalog", () => {

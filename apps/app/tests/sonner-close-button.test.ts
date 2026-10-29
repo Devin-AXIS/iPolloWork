@@ -10,6 +10,6 @@ describe("toast close button", () => {
     expect(source).toContain("onPointerDown={dismiss}");
     expect(source).toContain("onClick={dismiss}");
     expect(source).toContain("sonnerToast.dismiss(id)");
-    expect(source).toContain("relative z-50");
+    expect(source).toMatch(/data-slot="toast-close"[^>]*className="[^"]*\bz-50\b/);
   });
 });

@@ -309,7 +309,7 @@ describe("sidebar projects", () => {
     expect(starterSource).not.toContain('{t("new_conversation.subtitle")}');
     expect(starterSource).toContain('return t("new_conversation.placeholder")');
     expect(appStyleSource).toContain("--dls-active: var(--slate-4)");
-    expect(composerEditorSource).toContain('text-[14px] leading-[1.5] text-[color:var(--new-conversation-placeholder)]');
+    expect(composerEditorSource).toContain('text-ui-body font-normal text-[color:var(--new-conversation-placeholder)]');
     expect(composerEditorSource).toContain('data-testid="composer-placeholder"');
     expect(englishLocaleSource).toContain('"new_conversation.placeholder": "Choose a direction, or describe the work in your own words."');
     expect(chineseLocaleSource).toContain('"new_conversation.placeholder": "选择一个方向，或直接描述你要推进的工作。"');
@@ -468,7 +468,7 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('className="block text-[13px] font-medium leading-5 text-foreground"');
     expect(sessionPageSource).toContain('className="text-xs leading-[22px] text-muted-foreground"');
     expect(sessionPageSource).toContain('text-[11px] leading-4 text-muted-foreground');
-    expect(appStyleSource).toContain("--project-dialog-accent: #1fbac0");
+    expect(appStyleSource).toContain("--project-dialog-accent: var(--brand-accent)");
     expect(appStyleSource).toContain("--project-dialog-option-border: #e7e7e8");
     expect(sessionPageSource).toContain('data-testid="project-name-icon"');
     expect(sessionPageSource).toContain('className="pointer-events-none absolute start-3 top-1/2 z-10 flex size-6');

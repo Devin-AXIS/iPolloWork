@@ -740,6 +740,9 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
         await setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: true });
       }
     } catch (error) {
+      // A host can provide a subset of the catalog (for example server-only
+      // deployments); packaging validates completeness for desktop releases.
+      if (isApiError(error) && error.code === "plugin_package_catalog_unavailable") continue;
       // User-owned projection conflicts and immutable version changes need an
       // explicit resolution. Incomplete bundles and transient I/O may recover.
       if (!isApiError(error) || !["plugin_package_conflict", "plugin_package_version_changed"].includes(error.code)) {
@@ -768,6 +771,19 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
     }
   }
   return prepared;
+}
+
+export async function disposeServerRuntimeStores(config: ServerConfig): Promise<void> {
+  await Promise.all([
+    disposeRuntimeOpencodeConfigStore(config),
+    disposeiPolloWorkWorkspaceConfigStore(config),
+    disposeWorkItemStore(config),
+    disposeEnterpriseSnapshots(config),
+    disposeTemplateStore(config),
+  ]);
+  if (process.platform === "win32" && typeof Bun !== "undefined") Bun.gc(true);
+  // Bun releases Windows SQLite handles on the following event-loop turn.
+  await new Promise<void>((resolveClose) => setTimeout(resolveClose, process.platform === "win32" ? 100 : 0));
 }
 
 export async function startServer(config: ServerConfig): Promise<ServeResult> {
@@ -1096,16 +1112,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
         await disposeAllPluginServices(config);
         await server.stop();
       } finally {
-        await Promise.all([
-          disposeRuntimeOpencodeConfigStore(config),
-          disposeiPolloWorkWorkspaceConfigStore(config),
-          disposeWorkItemStore(config),
-          disposeEnterpriseSnapshots(config),
-          disposeTemplateStore(config),
-        ]);
-        // Bun releases Windows SQLite file handles on the following event-loop
-        // turn even though Database.close() itself is synchronous.
-        await new Promise<void>((resolveClose) => setTimeout(resolveClose, process.platform === "win32" ? 100 : 0));
+        await disposeServerRuntimeStores(config);
       }
     },
   };

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { addMcp, listMcp, removeMcp } from "./mcp.js";
 import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
+import { disposeServerRuntimeStores } from "./server.js";
 
 const WORKSPACE_ID = "ws_mcp_remote";
 
@@ -64,6 +65,7 @@ describe("mcp remote connect flow", () => {
       const listedAfterRemove = await listMcp(config, WORKSPACE_ID, workspaceRoot);
       expect(listedAfterRemove.some((entry) => entry.name === "simple-remote")).toBe(false);
     } finally {
+      await disposeServerRuntimeStores(config);
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
       await rm(workspaceRoot, { recursive: true, force: true });

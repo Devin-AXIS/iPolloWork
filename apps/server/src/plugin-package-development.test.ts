@@ -154,7 +154,7 @@ test("production local catalog installs, updates and uninstalls independently of
   try {
     const catalog = await (await fetch(base + "/catalog", { headers })).json();
     expect(catalog.errors).toEqual([]);
-    expect(catalog.items).toEqual([expect.objectContaining({ pluginId: "figma", installedVersion: null })]);
+    expect(catalog.items).toEqual([expect.objectContaining({ pluginId: "figma", installedVersion: "1.0.0" })]);
     const branchInstall = await fetch(base + "/catalog/labelu-data-annotation/install", { method: "POST", headers });
     expect(branchInstall.status).toBe(404);
     expect(await branchInstall.json()).toMatchObject({ code: "plugin_package_catalog_not_found" });

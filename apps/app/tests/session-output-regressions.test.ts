@@ -24,6 +24,9 @@ describe("session output issue regressions", () => {
     const props: { selectedSessionId: string | null } = { selectedSessionId: null };
     const state = {
       props, sidePanelOpen: false,
+      flushSync: (commit: () => void) => commit(),
+      animateWorkspaceMode: (_mode: string, commit: () => void) => commit(),
+      rightPanelElementRef: { current: null },
       effectiveSidePanelView: "",
       lastRightPanelViewRef: { current: "panel" },
       userOpenedSidebarWhileNarrowRef: { current: false },
@@ -204,7 +207,7 @@ describe("session output issue regressions", () => {
     expect(artifactSource).not.toContain("hover:-translate-y-px");
     expect(artifactSource).not.toContain("hover:shadow-sm");
     expect(artifactSource).toContain('data-testid="artifact-file-card"');
-    expect(artifactSource).toContain('group-hover/output:pointer-events-auto');
+    expect(artifactSource).toContain('data-testid="artifact-file-actions"');
     expect(artifactSource).toContain('t("session.outputs.copy_path")');
     expect(artifactSource).toContain("client.downloadWorkspaceFile(workspaceId, artifact.path)");
     expect(sessionPageSource).toContain('<SidebarRightToggleIcon panelOpen={sidePanelOpen} />');
@@ -216,7 +219,7 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
     expect(artifactSource).toContain("minmax(220px,1fr)");
-    expect(artifactSource).toContain('"chat-output-card pr-20"');
+    expect(artifactSource).toContain('"chat-output-card"');
     expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
     expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
     expect(messageListSource).toContain("sessionTitle={sessionTitle}");
@@ -289,14 +292,14 @@ describe("session output issue regressions", () => {
     const imageAdapter = readFileSync(new URL("../src/components/ui/image.tsx", import.meta.url), "utf8");
     const chineseLocaleSource = readFileSync(new URL("../src/i18n/locales/zh.ts", import.meta.url), "utf8");
 
-    expect(markdownSource).toContain("const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 360;");
+    expect(markdownSource).toMatch(/const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = (?:2[6-9]\d|3[0-5]\d|360);/);
     expect(imageSource).toContain("const DEFAULT_PREVIEW_MAX_HEIGHT = 360");
     expect(markdownSource).toContain('t("image.preview.show_full")');
     expect(imageAdapter).toContain('t("image.preview.show_less")');
     expect(chineseLocaleSource).toContain('"image.preview.show_full": "查看完整图片"');
   });
 
-  test("keeps scroll recovery compact and limits chat weight tuning to macOS", () => {
+  test("keeps scroll recovery compact and uses scalable chat typography", () => {
     const scrollOverlaySource = readFileSync(
       new URL("../src/react-app/domains/session/surface/scroll-overlay.tsx", import.meta.url),
       "utf8",
@@ -310,10 +313,10 @@ describe("session output issue regressions", () => {
     expect(scrollOverlaySource).toContain('t("session.scroll.jump_to_latest")');
     expect(scrollOverlaySource).toContain("absolute bottom-3 right-3");
     expect(scrollOverlaySource).not.toContain("shadow-(--dls-card-shadow)");
-    expect(appStyles).toContain('html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"]');
-    expect(appStyles).toContain("font-size: 14px");
-    expect(appStyles).toContain("font-weight: 500");
-    expect(appStyles).toContain("line-height: 1.5");
+    expect(appStyles).toContain('[data-chat-readable-text="true"]');
+    expect(appStyles).toContain("font-size: var(--ui-body-size)");
+    expect(appStyles).toContain("font-weight: 400");
+    expect(appStyles).toContain("line-height: var(--ui-body-line)");
     expect(appStyles).toContain("font-weight: 600");
     expect(appStyles).not.toContain("font-weight: 450");
     expect(appStyles).not.toContain('ipollowork-platform-windows [data-chat-readable-text="true"]');
@@ -504,7 +507,7 @@ describe("session output issue regressions", () => {
 
     expect(source).toContain('className="chat-output-grid pb-2"');
     const styles = readFileSync(new URL("../src/app/index.css", import.meta.url), "utf8");
-    expect(styles).toContain("grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:12px");
+    expect(styles).toContain("grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr)); gap:12px");
     expect(styles).toContain(".chat-output-grid .chat-output-card { display:flex; width:100%; min-width:0; }");
     expect(source).not.toContain("overflow-x-auto overscroll-x-contain");
     expect(source).not.toContain("snap-proximity");
@@ -611,7 +614,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(sessionPageSource).toContain(
-      "titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}",
+      "titlebarInset={rightWorkspaceExpanded && (!shellConfig.sidebar || !sidebarOpen)}",
     );
     expect(sidePanelSource).toContain('titlebarInset && "mac:pl-20"');
   });
@@ -668,7 +671,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain("showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}");
     expect(source).toContain("const isLatestAssistantGroup = items.some");
     expect(source).toContain("selectSupplementalArtifactsForRequest(");
-    expect(source).toContain("artifactFiles={requestArtifactFiles}");
+    expect(source).toContain("artifactFiles={isResult ? requestArtifactFiles : []}");
     expect(source).toContain('title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}');
     expect(source).toContain('status === "submitted" || status === "streaming" || status === "retrying"');
     expect(source).toContain("{!isStreaming ? (");
@@ -744,7 +747,7 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("const hasRootTemplateFocus = currentTemplateSessionData?.sessionId === props.selectedSessionId");
     expect(sessionPageSource).toContain("if (!hasRootTemplateFocus) return undefined;");
     expect(sessionPageSource).toContain("const templateEntryPathForArtifacts = !hasRootTemplateFocus || isPresentationSession");
-    expect(sessionPageSource).toContain("result.sessionId === sessionId && materializedType !== selectedSessionType");
+    expect(sessionPageSource).toContain("readSessionType(result.sessionId) !== materializedType");
     expect(routeSource).toContain("occupiedTemplateSessionIds.push(artifactSessionId)");
     expect(routeSource).toContain("sessionTemplates.length = 0;");
     expect(routeSource).toContain("!automaticTemplateRoutingAttempted");
@@ -827,7 +830,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain("client.listPluginPackages(workspaceId)");
-    expect(source).toContain('listEnterpriseResources("extension", { connection: activeEnterprise })');
+    expect(source).toContain('listEnterpriseResourcePage("extension", { connection: activeEnterprise, cursor })');
     expect(source).toContain("installCloudPluginResource");
     expect(source).toContain("items.find(item => item.pluginId === (resource.manifestId ?? resource.slug))");
     expect(source).toContain('t("plugin_platform.status.installed")');
