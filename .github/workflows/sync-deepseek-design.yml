@@ -8,6 +8,7 @@ on:
       - "packages/design-studio/**"
       - "packages/video-studio/**"
       - "packages/types/**"
+      - "packages/ui/**"
       - "apps/app/src/**"
       - "apps/server/bundled-templates/**"
       - "vendor/hyperframes/packages/studio/src/**"
@@ -32,32 +33,21 @@ jobs:
   sync:
     name: Build and synchronize public mirror
     if: github.repository == 'Devin-AXIS/iPolloWork'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout iPolloWork
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 11.4.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Install iPolloWork workspace
         run: pnpm install --frozen-lockfile
 
       - name: Install plugin workspaces
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
         run: |
           pnpm --dir external-plugins/deepseek-harness/design-studio install --frozen-lockfile
           pnpm --dir external-plugins/deepseek-harness/ppt-studio install --frozen-lockfile

@@ -12,11 +12,14 @@ runs:
     - name: Install pnpm
       shell: bash
       env:
-        BUN_INSTALL: ${{ runner.temp }}/ipollowork-toolchain
+        COREPACK_HOME: ${{ runner.temp }}/ipollowork-corepack
         PNPM_HOME: ${{ runner.temp }}/ipollowork-pnpm
       run: |
         set -euo pipefail
-        export PATH="$BUN_INSTALL/bin:$PATH"
-        bun install --global pnpm@11.4.0
-        echo "$BUN_INSTALL/bin" >> "$GITHUB_PATH"
+        mkdir -p "$COREPACK_HOME/bin"
+        corepack enable --install-directory "$COREPACK_HOME/bin" pnpm
+        corepack install --global pnpm@11.4.0
+        echo "$COREPACK_HOME/bin" >> "$GITHUB_PATH"
+        echo "COREPACK_HOME=$COREPACK_HOME" >> "$GITHUB_ENV"
         echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+        corepack pnpm --version
