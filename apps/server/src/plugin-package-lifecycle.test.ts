@@ -13,7 +13,7 @@ import {
   PluginEngineAdapterRegistry,
   type PluginEngineAdapter,
 } from "./plugin-engine-adapter.js";
-import { catalogPluginPackageIds } from "./plugin-package-catalog.js";
+import { bundledPluginPackageIds, catalogPluginPackageIds } from "./plugin-package-catalog.js";
 import { buildDeepSeekHarnessPatch } from "./deepseek-harness-patch.js";
 import { disposeiPolloWorkWorkspaceConfigStore } from "./ipollowork-workspace-config-store.js";
 import {
@@ -33,6 +33,7 @@ const previousDevMode = process.env.IPOLLOWORK_DEV_MODE;
 beforeEach(() => { process.env.IPOLLOWORK_DEV_MODE = "1"; });
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledPackagesDir = process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
+const previousLocalPackagesDir = process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR;
 
 function serverConfig(root: string): ServerConfig {
   return {
@@ -200,6 +201,8 @@ afterEach(async () => {
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
   if (previousBundledPackagesDir === undefined) delete process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
   else process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = previousBundledPackagesDir;
+  if (previousLocalPackagesDir === undefined) delete process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR;
+  else process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR = previousLocalPackagesDir;
   while (roots.length) {
     const root = roots.pop();
     if (root) await removeTestRoot(root);
@@ -2195,11 +2198,9 @@ describe("plugin package lifecycle", () => {
     }
   });
 
-  test("lists and installs every bundled service plugin through the user catalog API", async () => {
+  test("lists default installations and reinstalls bundled services through the user catalog API", async () => {
 
     const workspaceRoot = await realpath(await createRoot("ipollowork-figma-catalog-api-"));
-    const designVersion = JSON.parse(await readFile(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url), "utf8")).package.version;
-    const videoVersion = JSON.parse(await readFile(new URL("../../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url), "utf8")).package.version;
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const figmaPackageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
     const existingFigmaAgent = ".opencode/agents/design-parity-review-agent.md";
@@ -2213,33 +2214,20 @@ describe("plugin package lifecycle", () => {
     try {
       const catalog = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, { headers });
       expect(catalog.status).toBe(200);
-      expect(await catalog.json()).toMatchObject({
-        items: [
-          { pluginId: "figma", version: "2.0.18", installedVersion: null, updateAvailable: false },
-          { pluginId: "notion", version: "1.0.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "linear", version: "1.0.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "sentry", version: "1.0.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "stripe", version: "1.0.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
-          { pluginId: "douyin-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/douyin-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-channels-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/wechat-channels-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: designVersion, installedVersion: designVersion, updateAvailable: false },
-          { pluginId: "video-agent", version: videoVersion, installedVersion: videoVersion, updateAvailable: false },
-          { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
-          { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
-          { pluginId: "operation-recorder", version: "0.3.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "short-video-studio", version: "0.1.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "jev-decision-model", version: "0.1.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "ipollo-onto", version: "0.1.4", installedVersion: null, updateAvailable: false },
-        ],
-      });
+      const collection = await catalog.json();
+      expect(collection.errors).toEqual([]);
+      expect(collection.items.map((item: { pluginId: string }) => item.pluginId)).toEqual([...catalogPluginPackageIds]);
+      for (const item of collection.items) {
+        expect(item).toMatchObject({ installedVersion: item.version, updateAvailable: false });
+      }
+      for (const pluginId of ["operation-recorder", "deepseek-harness", "figma", "notion", "linear", "sentry", "stripe", "context7", "github", "wechat-official", "xiaohongshu-ops", "douyin-ops", "wechat-channels-ops"]) {
+        const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/${pluginId}`, { method: "DELETE", headers });
+        expect(removal.status, pluginId).toBe(200);
+      }
 
       const recorderInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/operation-recorder/install`, { method: "POST", headers });
       expect(recorderInstallation.status).toBe(200);
-      expect(await recorderInstallation.json()).toMatchObject({ result: { status: "installed", pluginId: "operation-recorder", version: "0.3.0" } });
+      expect(await recorderInstallation.json()).toMatchObject({ result: { status: "installed", pluginId: "operation-recorder", version: collection.items.find((item: { pluginId: string }) => item.pluginId === "operation-recorder").version } });
       const recorderStatus = await fetch(`${base}/experimental/extensions/call`, {
         method: "POST", headers,
         body: JSON.stringify({ extensionId: "operation-recorder", action: "status", args: {}, context: { directory: workspaceRoot } }),
@@ -2380,7 +2368,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.3.0" },
+        result: { status: "installed", pluginId: "wechat-official", version: collection.items.find((item: { pluginId: string }) => item.pluginId === "wechat-official").version },
         item: {
           pluginId: "wechat-official",
           manifest: {
@@ -2451,7 +2439,7 @@ describe("plugin package lifecycle", () => {
     } finally {
       await server.stop();
     }
-  }, 15_000);
+  }, 60_000);
 
   test("installs, toggles, removes, and restores complete creative workspace packages", async () => {
     const workspaceRoot = await createRoot("ipollowork-creative-agent-catalog-api-");
@@ -2614,15 +2602,83 @@ describe("plugin package lifecycle", () => {
   });
 });
 
-test("a fresh workspace keeps optional plugins absent until explicitly installed", async () => {
+test.each([
+  { engineId: "opencode", development: false },
+  { engineId: "deepseek-harness", development: false },
+  { engineId: "codex-harness", development: false },
+  { engineId: "opencode", development: true },
+])("bundled defaults install once and preserve user choices after restart (%j)", async ({ engineId, development }) => {
+  const lifecycle = await import("./plugin-package-lifecycle.js");
   const root = await realpath(await createRoot("ipollowork-cloud-plugin-defaults-"));
+  const catalogRoot = await createRoot("ipollowork-default-plugin-catalog-");
+  delete process.env.IPOLLOWORK_DEV_MODE;
+  delete process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR;
+  process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = catalogRoot;
   process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
-  const server = await startServer(serverConfig(root));
-  const headers = { authorization: "Bearer token" };
-  try {
+  for (const pluginId of [...bundledPluginPackageIds, "marketplace-only"]) {
+    const packageRoot = join(catalogRoot, pluginId);
+    const skillPath = `skills/${pluginId}/SKILL.md`;
+    await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
+    await writeFile(join(packageRoot, skillPath), `# ${pluginId}\n`);
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
+      schemaVersion: 2, id: pluginId, name: pluginId, description: "Bundled default installation fixture.",
+      source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+      defaultEnabled: pluginId === "marketplace-only",
+      package: { version: "1.0.0", updateId: `test/${pluginId}` },
+      resources: [{ type: "skill", id: `${pluginId}-skill`, path: skillPath, required: false }],
+    }));
+  }
+  if (development) {
+    process.env.IPOLLOWORK_DEV_MODE = "1";
+    process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR = catalogRoot;
+  }
+  const config = serverConfig(root);
+  const workspace = config.workspaces[0];
+  if (!workspace) throw new Error("Test workspace is missing");
+  workspace.engineId = engineId;
+  let server = await startServer(config);
+  const headers = { authorization: "Bearer token", "content-type": "application/json" };
+  const inventory = async () => {
     const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
     expect(response.status).toBe(200);
-    expect((await response.json()).items).toEqual([]);
+    return (await response.json()).items;
+  };
+  try {
+    const installed = await inventory();
+    expect(installed.map((item: { pluginId: string }) => item.pluginId).sort()).toEqual([...catalogPluginPackageIds].sort());
+    expect(installed.every((item: { enabled: boolean }) => item.enabled)).toBe(true);
+    expect(await inventory()).toEqual(installed);
+    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).map(item => item.pluginId).sort())
+      .toEqual([...bundledPluginPackageIds].sort());
+    const projectionRoot = engineId === "opencode" ? ".opencode" : engineId === "deepseek-harness" ? ".dsh" : ".agents";
+    expect(await readFile(join(root, projectionRoot, "skills/figma/SKILL.md"), "utf8")).toBe("# figma\n");
+    const base = `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`;
+    expect((await fetch(`${base}/github`, { method: "PATCH", headers, body: JSON.stringify({ enabled: false }) })).status).toBe(200);
+    expect((await fetch(`${base}/figma/resources/figma-skill`, { method: "PATCH", headers, body: JSON.stringify({ enabled: false }) })).status).toBe(200);
+    expect((await fetch(`${base}/plugin-workshop`, { method: "DELETE", headers })).status).toBe(200);
+    expect(await lifecycle.listSuppressedDefaultPluginIds({ serverConfig: config })).toContain("plugin-workshop");
+    for (const pluginId of ["github", "figma", "plugin-workshop"]) {
+      const manifestPath = join(catalogRoot, pluginId, "ipollowork.plugin.json");
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      manifest.package.version = "1.0.1";
+      await writeFile(manifestPath, JSON.stringify(manifest));
+    }
+    await server.stop();
+    server = await startServer(config);
+    const restarted = await inventory();
+    expect(restarted.map((item: { pluginId: string }) => item.pluginId).sort())
+      .toEqual(catalogPluginPackageIds.filter(id => id !== "plugin-workshop").sort());
+    expect(restarted).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pluginId: "github", version: development ? expect.stringMatching(/^1\.0\.1\+dev\./) : "1.0.1", enabled: false }),
+      expect.objectContaining({ pluginId: "figma", version: development ? expect.stringMatching(/^1\.0\.1\+dev\./) : "1.0.1", disabledResourceIds: ["figma-skill"] }),
+    ]));
+    await expectMissing(join(root, projectionRoot, "skills/github/SKILL.md"));
+    await expectMissing(join(root, projectionRoot, "skills/figma/SKILL.md"));
+    await expectMissing(join(root, projectionRoot, "skills/plugin-workshop/SKILL.md"));
+    const reinstall = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/plugin-workshop/install`, { method: "POST", headers });
+    expect(reinstall.status).toBe(200);
+    expect(await lifecycle.listSuppressedDefaultPluginIds({ serverConfig: config })).not.toContain("plugin-workshop");
+    expect(await readFile(join(root, projectionRoot, "skills/plugin-workshop/SKILL.md"), "utf8")).toBe("# plugin-workshop\n");
   } finally { await server.stop(); }
 });
 

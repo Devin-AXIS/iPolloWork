@@ -698,9 +698,6 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
 
   const logger = createServerLogger(config);
   let prepared = true;
-  const installedById = new Map(
-    (await listInstalledPluginPackages({ serverConfig: config })).map((item) => [item.pluginId, item]),
-  );
   const suppressed = new Set(await listSuppressedDefaultPluginIds({ serverConfig: config }));
 
   for (const pluginId of localPluginPackageRoot() ? runtimeCatalogPluginPackageIds() : []) {
@@ -713,6 +710,9 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
     }
   }
 
+  const installedById = new Map(
+    (await listInstalledPluginPackages({ serverConfig: config })).map((item) => [item.pluginId, item]),
+  );
   for (const pluginId of defaultBundledPluginPackageIds) {
     try {
       const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
@@ -720,10 +720,7 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
         packageRoot,
         engineId: installWorkspace.engineId ?? DEFAULT_ENGINE_ID,
       });
-      if (!preview.manifest.defaultEnabled
-        || preview.manifest.source.origin !== "builtin"
-        || !preview.manifest.source.trusted) continue;
-
+      // Defaults come from the host-owned catalog, not imported manifest flags.
       const installed = installedById.get(pluginId);
       if (!installed && suppressed.has(pluginId) && !isInternalPluginPackage(pluginId)) continue;
       if (!installed) {
@@ -1696,7 +1693,7 @@ function createRoutes(
   const prepareDefaultPlugins = () => {
     if (!defaultPluginPreparation) {
       defaultPluginPreparation = (async () => {
-        // Read only internal manifest versions/roots on refresh. Package scans
+        // Read only bundled manifest versions/roots on refresh. Package scans
         // and global projection run again only when bundled versions change.
         const manifests = await Promise.all(defaultBundledPluginPackageIds.map(async (pluginId) => {
           try {
