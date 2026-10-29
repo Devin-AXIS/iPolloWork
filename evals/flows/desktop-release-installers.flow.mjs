@@ -1,6 +1,12 @@
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { mkdtemp, writeFile, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
+import os from "node:os";
+import path from "node:path";
 import { validateInstallers } from "../../scripts/release/publish-electron-assets.mjs";
-import { releaseUpdateInfo } from "../../apps/desktop/electron/github-installer-provider.mjs";
+import { createGithubInstallerProvider, releaseUpdateInfo } from "../../apps/desktop/electron/github-installer-provider.mjs";
 
 export default {
   id: "desktop-release-installers",
@@ -39,5 +45,42 @@ export default {
         },
       });
     },
-  }],
+  }, ...(process.env.IPOLLOWORK_EVAL_UPDATE_DOWNLOAD === "1" ? [{
+    name: "Download the full Windows update through electron-updater",
+    run: async (ctx) => {
+      await ctx.prove("The Windows updater detects the public release and downloads its complete installer with SHA-512 verification", {
+        voiceover: "The existing updater runs with an isolated previous-version profile. It finds the public release, downloads the entire Windows installer, and reaches the ready state after checksum verification. This proof does not replace the application installed on this computer.",
+        assert: async () => {
+          ctx.assert(process.platform === "win32", "The full installer download runs on Windows");
+          const requireDesktop = createRequire(new URL("../../apps/desktop/package.json", import.meta.url));
+          const { NsisUpdater } = requireDesktop("electron-updater/out/NsisUpdater.js");
+          const requireBuilder = createRequire(requireDesktop.resolve("electron-builder"));
+          const { httpExecutor } = requireBuilder("builder-util/out/nodeHttpExecutor.js");
+          const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-release-update-proof-"));
+          const config = path.join(root, "app-update.yml");
+          await writeFile(config, "updaterCacheDirName: installer-proof\n");
+          const updater = new NsisUpdater(null, { version: "0.50.29", isPackaged: true, userDataPath: root,
+            baseCachePath: root, appUpdateConfigPath: config, name: "iPolloWork update proof", whenReady: async () => {},
+            quit: () => { throw new Error("The proof must not install or quit the user's app."); } });
+          updater.httpExecutor = httpExecutor;
+          updater.autoDownload = false;
+          updater.autoInstallOnAppQuit = false;
+          updater.disableDifferentialDownload = true;
+          updater.disableWebInstaller = true;
+          updater.setFeedURL({ provider: "custom", updateProvider: await createGithubInstallerProvider() });
+          const checked = await updater.checkForUpdates();
+          ctx.assert(checked.isUpdateAvailable, "The previous-version profile sees the new public release");
+          let ready = false;
+          updater.on("update-downloaded", () => { ready = true; });
+          const files = await updater.downloadUpdate();
+          ctx.assert(ready && files.length === 1, "The updater emitted update-downloaded for one installer");
+          const hash = createHash("sha512");
+          for await (const chunk of createReadStream(files[0])) hash.update(chunk);
+          ctx.assert(hash.digest("base64") === checked.updateInfo.files[0].sha512, "The complete downloaded installer matches the release SHA-512");
+          ctx.assert((await stat(files[0])).size === checked.updateInfo.files[0].size, "The complete downloaded installer matches the release size");
+          ctx.output("native-update-ready", JSON.stringify({ version: checked.updateInfo.version, file: files[0], size: (await stat(files[0])).size, installed: false }, null, 2));
+        },
+      });
+    },
+  }] : [])],
 };

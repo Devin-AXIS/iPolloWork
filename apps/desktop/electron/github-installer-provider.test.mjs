@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { createGithubInstallerProvider, releaseUpdateInfo, updateMetadataBlock, CLOUD_UPDATE_BASE, RELEASE_REPOSITORY } from "./github-installer-provider.mjs";
 
 function fixture(platform, arch) {
@@ -66,4 +69,29 @@ test("the real electron-updater provider preserves SHA-512 and absolute download
   assert.equal(resolved.url.href, file.url);
   assert.equal(resolved.info.sha512, file.sha512);
   assert.equal(provider.isUseMultipleRangeRequest, false);
+});
+test("electron-updater detects a newer installer through the custom provider", async () => {
+  const { AppUpdater } = await import("electron-updater/out/AppUpdater.js");
+  class CheckUpdater extends AppUpdater {
+    constructor(app, release) {
+      super(null, app);
+      this.httpExecutor = { request: async () => JSON.stringify(release) };
+    }
+    doDownloadUpdate() { return Promise.reject(new Error("This check must not download an installer.")); }
+    quitAndInstall() { throw new Error("This check must not replace the running application."); }
+  }
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-update-provider-"));
+  try {
+    const { release, file } = fixture(process.platform, process.arch);
+    const updater = new CheckUpdater({ version: "0.50.29", isPackaged: true, userDataPath: root, whenReady: async () => {} }, release);
+    updater.autoDownload = false;
+    updater.logger = { info() {}, warn() {}, error() {}, debug() {} };
+    updater.setFeedURL({ provider: "custom", updateProvider: await createGithubInstallerProvider() });
+    const result = await updater.checkForUpdates();
+    assert.equal(result.isUpdateAvailable, true);
+    assert.equal(result.updateInfo.version, "0.50.30");
+    assert.deepEqual(result.updateInfo.files, [file]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
