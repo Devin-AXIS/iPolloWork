@@ -44,6 +44,19 @@ export const MINIMAX_EXTENSION_ACTIONS = [
         model: { type: "string", enum: [...MINIMAX_IMAGE_MODEL_REGISTRY.models], description: "Optional MiniMax image model." },
         region: { type: "string", enum: MINIMAX_IMAGE_ENDPOINT_REGISTRY.map((entry) => entry.region), description: "Optional regional endpoint." },
         filename: { type: "string", description: "Optional output filename without extension." },
+        subjectReference: {
+          type: "array",
+          description: "Optional subject references for image-to-image generation.",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["character"] },
+              imageFile: { type: "string", description: "HTTPS URL for the subject reference image." },
+            },
+            required: ["type", "imageFile"],
+            additionalProperties: false,
+          },
+        },
         aspectRatio: { type: "string", description: "Optional aspect_ratio value." },
         width: { type: "integer", description: "Optional output width." },
         height: { type: "integer", description: "Optional output height." },
@@ -87,6 +100,37 @@ function readInteger(value: unknown, key: string, positive = false): number | un
     throw new ApiError(400, "invalid_payload", `${key} must be ${positive ? "a positive " : "an "}integer`);
   }
   return result;
+}
+
+function readSubjectReferences(value: unknown) {
+  if (!isRecord(value) || value.subjectReference === undefined) return undefined;
+  if (!Array.isArray(value.subjectReference) || !value.subjectReference.length) {
+    throw new ApiError(400, "invalid_payload", "subjectReference must be a non-empty array");
+  }
+  return value.subjectReference.map((entry, index) => {
+    if (!isRecord(entry) || entry.type !== "character") {
+      throw new ApiError(400, "invalid_payload", `subjectReference[${index}].type must be character`);
+    }
+    const imageFile = readStringField(entry, "imageFile");
+    let imageUrl: URL;
+    try {
+      imageUrl = new URL(imageFile);
+    } catch {
+      throw new ApiError(400, "invalid_payload", `subjectReference[${index}].imageFile must be a valid HTTPS URL`);
+    }
+    if (imageUrl.protocol !== "https:") {
+      throw new ApiError(400, "invalid_payload", `subjectReference[${index}].imageFile must be a valid HTTPS URL`);
+    }
+    return { type: "character", image_file: imageUrl.toString() };
+  });
+}
+
+function readOptionalCount(value: unknown, key: string): number | undefined {
+  if (!isRecord(value)) return undefined;
+  const field = value[key];
+  if (typeof field === "number" && Number.isFinite(field)) return field;
+  if (typeof field === "string" && /^\d+$/.test(field)) return Number(field);
+  return undefined;
 }
 
 function isMiniMaxImageModel(value: string): value is MiniMaxImageModel {
@@ -312,6 +356,7 @@ function requestBody(args: JsonRecord) {
     );
   }
   const responseFormat = requestedResponseFormat || "base64";
+  const subjectReference = readSubjectReferences(args);
   const aspectRatio = readStringField(args, "aspectRatio");
   const width = readInteger(args, "width", true);
   const height = readInteger(args, "height", true);
@@ -326,6 +371,7 @@ function requestBody(args: JsonRecord) {
       model,
       prompt,
       response_format: responseFormat,
+      ...(subjectReference === undefined ? {} : { subject_reference: subjectReference }),
       ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
       ...(width === undefined ? {} : { width }),
       ...(height === undefined ? {} : { height }),
@@ -374,8 +420,8 @@ async function generateMiniMaxImageArtifacts(
     region: credentials.endpoint.region,
     responseFormat: request.responseFormat,
     metadata: {
-      successCount: readOptionalNumber(metadata, "success_count"),
-      failedCount: readOptionalNumber(metadata, "failed_count"),
+      successCount: readOptionalCount(metadata, "success_count"),
+      failedCount: readOptionalCount(metadata, "failed_count"),
     },
     workspaceId: workspace.id,
   };

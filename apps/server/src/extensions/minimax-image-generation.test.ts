@@ -82,6 +82,10 @@ describe("MiniMax image generation extension", () => {
         model: "image-01-live",
         prompt: "A red paper lantern",
         response_format: "base64",
+        subject_reference: [{
+          type: "character",
+          image_file: "https://assets.example.test/character.png",
+        }],
         aspect_ratio: "1:1",
         width: 1024,
         height: 1024,
@@ -91,7 +95,7 @@ describe("MiniMax image generation extension", () => {
       });
       return Promise.resolve(new Response(JSON.stringify({
         data: { image_urls: [pngBase64] },
-        metadata: { success_count: 1, failed_count: 0 },
+        metadata: { success_count: "1", failed_count: "0" },
         base_resp: { status_code: 0 },
       }), { status: 200, headers: { "content-type": "application/json" } }));
     }) as typeof fetch;
@@ -101,6 +105,10 @@ describe("MiniMax image generation extension", () => {
       model: "image-01-live",
       region: "cn_zh",
       filename: "lantern",
+      subjectReference: [{
+        type: "character",
+        imageFile: "https://assets.example.test/character.png",
+      }],
       aspectRatio: "1:1",
       width: 1024,
       height: 1024,
