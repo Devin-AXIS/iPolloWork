@@ -58,8 +58,8 @@ describe("portable files", () => {
       { path: ".opencode/tools/demo.ts", content: "export default {};\n" },
     ]);
 
-    expect(planned[0]?.absolutePath.endsWith("/.opencode/agents/demo.md")).toBe(true);
-    expect(planned[1]?.absolutePath.endsWith("/.opencode/tools/demo.ts")).toBe(true);
+    expect(planned[0]?.absolutePath).toBe(join(workspaceRoot, ".opencode", "agents", "demo.md"));
+    expect(planned[1]?.absolutePath).toBe(join(workspaceRoot, ".opencode", "tools", "demo.ts"));
 
     await writePortableFiles(workspaceRoot, [
       { path: ".opencode/agents/demo.md", content: "hello\n" },

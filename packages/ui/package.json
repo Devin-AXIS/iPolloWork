@@ -84,6 +84,7 @@
     "react": "^18 || ^19"
   },
   "devDependencies": {
+    "vite": "^6.4.3",
     "@tailwindcss/node": "4.1.18",
     "@tailwindcss/oxide": "4.1.18",
     "tailwindcss": "4.1.18",

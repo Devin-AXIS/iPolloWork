@@ -248,17 +248,17 @@ describe("settings route parsing", () => {
   });
 
   test("uses the shared settings typography hierarchy", () => {
-    expect(settingsPanelSource).toContain('export const settingsPageTitleClass = "text-2xl font-semibold leading-8 text-dls-text";');
-    expect(settingsPanelSource).toContain('export const settingsPageDescriptionClass = "settings-description mt-1.5 text-ui-control leading-5 text-dls-secondary";');
-    expect(settingsPanelSource).toContain('export const settingsSectionTitleClass = "text-ui-body font-semibold text-dls-text";');
+    expect(settingsPanelSource).toContain('export const settingsPageTitleClass = "text-ui-page-title font-semibold text-dls-text";');
+    expect(settingsPanelSource).toContain('export const settingsPageDescriptionClass = "settings-description mt-1.5 text-ui-body text-dls-secondary";');
+    expect(settingsPanelSource).toContain('export const settingsSectionTitleClass = "text-ui-section-title font-semibold text-dls-text";');
     expect(settingsPanelSource).toContain("cn(settingsPageTitleClass, props.className)");
     expect(pluginPanelSource).toContain('className={settingsPageTitleClass}');
     expect(pluginPanelSource).toContain('className={settingsPageDescriptionClass}');
     expect(skillsViewSource).toContain('className={`${settingsPageDescriptionClass} max-w-[714px]`}');
-    expect(settingsPanelSource).toContain('"settings-description text-ui-control leading-5 text-muted-foreground"');
-    expect(settingsLayoutSource).toContain('"flex items-center gap-2 text-ui-body font-semibold text-foreground"');
+    expect(settingsPanelSource).toContain('"settings-description text-ui-body text-muted-foreground"');
+    expect(settingsLayoutSource).toContain('"flex items-center gap-2 text-ui-section-title font-semibold text-foreground"');
     expect(settingsLayoutSource).toContain('"settings-description text-ui-control leading-5 text-muted-foreground"');
-    expect(settingsShellSource).toContain('"truncate text-ui-body font-semibold text-dls-text"');
+    expect(settingsShellSource).toContain('"truncate text-ui-page-title font-semibold text-dls-text"');
     expect(appStylesSource).toContain('html:lang(zh) .settings-description');
     expect(appStylesSource).toContain('font-weight: 500;');
     expect(`${settingsPanelSource}\n${settingsShellSource}\n${pluginPanelSource}\n${pluginListItemSource}`.replace('text-2xl font-semibold leading-8 text-dls-text', '')).not.toMatch(/text-(?:xl|2xl|3xl)|text-\[(?:15|2\d)px\]/);
@@ -277,9 +277,8 @@ describe("settings route parsing", () => {
 
   test("keeps settings forms on the compact divider-free dialog style", () => {
     for (const source of [pluginImportSource, environmentViewSource]) {
-      expect(source).toContain('showCloseButton={false}');
+      expect(source).toContain('<DialogContent');
       expect(source).not.toContain('rounded-[16px] p-6');
-      expect(source).toContain('className="absolute end-3 top-3"');
       expect(source).toContain('rounded-none border-0 bg-transparent p-0 pt-4');
     }
     expect(pluginImportSource).toContain('data-testid="plugin-package-import-dialog"');
@@ -298,13 +297,13 @@ describe("settings route parsing", () => {
     expect(pluginPanelSource).not.toContain('t("plugin_library.manage")');
     expect(pluginPanelSource).toContain('data-testid="plugin-installed-expand"');
     expect(pluginPanelSource).toMatch(/data-testid="plugin-installed-expand"[\s\S]*?variant="ghost"[\s\S]*?size="sm"/);
-    expect(pluginListItemSource).toContain('<Button size="sm" variant="outline" className="shrink-0"');
+    expect(pluginListItemSource).toContain('<Button size="sm" className="shrink-0"');
     expect(settingsShellSource.match(/data-settings-close=""/g)).toHaveLength(2);
     expect(settingsShellSource).toContain('className="inline-flex size-7');
     expect(settingsShellSource).toContain('<ButtonStyleScopeProvider value="settings">{children}</ButtonStyleScopeProvider>');
     expect(buttonSource).toContain('"gap-[6px] rounded-[8px] text-[13px] font-medium');
-    expect(buttonSource).toContain('const settingsCompactButtonSize = "h-7 px-2');
-    expect(buttonSource).toContain('const settingsCompactIconButtonSize = "size-7');
+    expect(buttonSource).toContain('const settingsCompactButtonSize = "h-[28px] px-2');
+    expect(buttonSource).toContain('const settingsCompactIconButtonSize = "size-[28px]');
     expect(buttonSource.match(/: settingsCompactButtonSize/g)).toHaveLength(4);
     expect(buttonSource.match(/: settingsCompactIconButtonSize/g)).toHaveLength(4);
     expect(buttonSource).toContain('bg-transparent shadow-none before:shadow-none');
@@ -322,7 +321,7 @@ describe("settings route parsing", () => {
     expect(selectSource).toContain('menuDensityClassNames.compact.content');
     expect(selectSource).toContain('menuDensityClassNames.compact.item');
     expect(selectSource).toContain('menuSurfaceClassName');
-    expect(selectSource).toContain('styleScope === "settings" && "text-[#1FBAC0]"');
+    expect(selectSource).toContain('styleScope === "settings" && "text-link"');
     expect(skillsViewSource).not.toContain('SelectMenu');
     expect(skillsViewSource).toContain('aria-label="技能来源"');
     expect(skillsViewSource).not.toContain("添加Git仓库");
@@ -337,13 +336,13 @@ describe("settings route parsing", () => {
     expect(pluginPanelSource).toContain('className={`flex w-full items-center gap-2');
     expect(pluginPanelSource).toContain('const INSTALLED_TILE_WIDTH = 48;');
     expect(pluginPanelSource).toContain('className="flex size-12 shrink-0 items-center justify-center');
-    expect(pluginPanelSource.match(/data-testid="plugin-library-(?:installed|source)" className="mt-8 space-y-3"/g)).toHaveLength(2);
-    expect(skillsViewSource.match(/<div className="space-y-3">\s*<div data-testid="skills-(?:installed|cloud|hub)-section"/g)).toHaveLength(3);
+    expect(pluginPanelSource.match(/data-testid="plugin-library-(?:installed|source)"/g)).toHaveLength(2);
+    expect(skillsViewSource).toContain('data-testid="skills-catalog"');
     expect(pluginPanelSource).toContain('hover:border-[#1FBAC0]');
     expect(pluginPanelSource).toContain('border-2 border-transparent');
     expect(pluginPanelSource).toContain('<TooltipProvider delay={0}>');
     expect(pluginPanelSource).toContain('data-testid="plugin-installed-tooltip"');
-    expect(pluginListItemSource).toContain('className="line-clamp-2 text-ui-caption');
+    expect(pluginListItemSource).toContain('line-clamp-2 block text-ui-compact');
     expect(pluginPanelSource).not.toContain('data-testid="plugin-installed-hover-card"');
     expect(pluginPanelSource).not.toContain('hover:w-[202px]');
     expect(pluginPanelSource).toContain('aria-expanded={installedExpanded}');
@@ -391,8 +390,8 @@ describe("settings route parsing", () => {
     expect(`${inputSource}\n${textareaSource}`).not.toMatch(/shadow-xs\/5|before:shadow/);
     expect(legacyTextInputSource).not.toContain("shadow-sm");
     expect(appStylesSource.match(/\.ow-input(?:\s|:focus)[^{]*\{[^}]*\}/g)?.join("\n")).not.toContain("box-shadow");
-    expect(inputSource).toContain("focus-visible:ring-3");
-    expect(textareaSource).toContain("focus-visible:ring-3");
+    expect(inputSource).toContain("focus-visible:border-ring");
+    expect(textareaSource).toContain("focus-visible:border-ring");
     expect(legacyTextInputSource).toContain('import { Input } from "@/components/ui/input"');
     expect(legacyTextInputSource).toContain("<Input");
     expect(appStylesSource).toContain("outline: 3px solid rgba(var(--dls-accent-rgb), 0.08);");

@@ -2,6 +2,17 @@ import type { ComposerDraft, ComposerPart } from "@/app/types";
 
 import { decodeComposerMentionValue, type ComposerMentionKind } from "./mention-encoding";
 
+export function composerEscapeToStopAllowed(
+  key: string,
+  target: { closest(selector: string): unknown } | null,
+  busy: boolean,
+  menuOpen: boolean,
+): boolean {
+  return key === "Escape" && busy && !menuOpen && !target?.closest(
+    '[role="menu"], [data-slot="dropdown-menu-trigger"][aria-expanded="true"]',
+  );
+}
+
 export function canSteerActiveDraft(draft: ComposerDraft): boolean {
   return draft.mode === "prompt" && !draft.command && !draft.capability
     && !draft.attachments.some(attachment => attachment.delivery === "workspace")

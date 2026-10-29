@@ -54,17 +54,44 @@ git tag -v vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-## Checksums
+## Installer-only releases and in-app updates
 
-The `Release App` workflow downloads the release assets before publishing a
-draft release, generates `SHA256SUMS.txt`, uploads it to the GitHub release, and
-only then makes the release public.
+Desktop releases upload exactly six installers: Windows EXE, macOS DMG, and
+Linux AppImage, each for x64 and arm64. GitHub also generates its two source
+archives; these are not uploaded assets and cannot be removed individually.
+Engine/media archives remain in the signed cloud resource service. ZIPs,
+blockmaps, YAML feeds and checksum text files are not release attachments.
+GitHub's asset API exposes a SHA-256 digest for every installer. The final
+publication gate checks all six names, nonzero sizes, uploaded state and digests
+before removing old non-installer attachments.
 
-Users can verify an asset after download:
+In-app checking, downloading and installation still use electron-updater.
+Its custom provider reads the official GitHub release over HTTPS and consumes
+a versioned hidden JSON block in the release description. Windows and Linux
+updates download the published installer. Mac updates require a ZIP; both Mac
+ZIPs are uploaded to cloud storage under SHA-512-prefixed immutable names.
+Every payload is verified against the SHA-512 in the HTTPS release metadata
+before electron-updater installs it. The provider rejects mismatched versions,
+platforms, missing hashes and URLs outside the exact official artifact paths.
+Only the two Mac update ZIPs use this storage; optional engines retain their
+existing signed cloud download protocol.
 
-```sh
-sha256sum -c SHA256SUMS.txt --ignore-missing
-```
+The storage owner is /srv/ipollowork-desktop-updates/releases, served by nginx
+at http://i.ipollo.ai/desktop-updates/. GitHub Actions uses the dedicated
+DESKTOP_UPDATE_SSH_KEY secret and the existing pinned SSH host variables.
+The ipollo-update-publisher account is chrooted to
+/srv/ipollowork-desktop-updates with ForceCommand internal-sftp, no shell,
+forwarding, password login or TTY. Its root-owned authorized key file lives in
+/etc/ssh/authorized_keys/ipollo-update-publisher (public-readable mode 644).
+Build receipts are temporary Actions artifacts, not release downloads.
+The release body must retain its ipollowork-desktop-update:v1 HTML comment;
+editing it away makes the updater fail closed.
+
+Clients built before this migration still request the deleted YAML feeds.
+They need one manual installation of the rebuilt desktop; subsequent releases
+continue to support in-app updates. Do not describe old clients as automatically
+migrated. The resource-only recovery inputs were removed because they depended
+on engine archives being attached to the GitHub release.
 
 Windows users can also verify the Authenticode signature from file properties
 or with `Get-AuthenticodeSignature`. macOS users can verify Gatekeeper and

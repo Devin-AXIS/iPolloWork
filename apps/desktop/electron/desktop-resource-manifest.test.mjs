@@ -9,10 +9,10 @@ const ids = ["codex-harness", "deepseek-harness", "ffmpeg", "ffprobe"];
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 const keys = { test: publicKey.export({ type: "spki", format: "pem" }).toString() };
 
-function signedManifest() {
+function signedManifest(manifestTarget = target) {
   const manifest = {
     schemaVersion: 1,
-    ...target,
+    ...manifestTarget,
     resources: ids.map((id) => ({
       id,
       version: "1.2.3",
@@ -40,6 +40,28 @@ test("accepts the exact signed cloud resource manifest", () => {
   const response = signedManifest();
   assert.equal(verifyDesktopResourceManifest(response, target, keys).resources.length, 4);
 });
+
+for (const [platform, cloudPlatform] of [["win32", "windows"], ["darwin", "macos"], ["linux", "linux"]]) {
+  for (const arch of ["x64", "arm64"]) {
+    test(`verifies the exact ${cloudPlatform}/${arch} target without cross-platform fallback`, async () => {
+      const requested = { appVersion: target.appVersion, platform: cloudPlatform, arch };
+      const response = signedManifest(requested);
+      const result = await fetchDesktopResourceManifest({
+        baseUrl: "https://example.com", appVersion: target.appVersion, platform, arch, trustedKeys: keys,
+        fetch: async (url) => {
+          assert.deepEqual(Object.fromEntries(new URL(url).searchParams), requested);
+          return Response.json(response);
+        },
+      });
+      assert.equal(result.arch, arch);
+      assert.throws(() => verifyDesktopResourceManifest(response, { ...requested, arch: arch === "x64" ? "arm64" : "x64" }, keys), /target or resource set/);
+      await assert.rejects(fetchDesktopResourceManifest({
+        baseUrl: "https://example.com", appVersion: target.appVersion, platform, arch, trustedKeys: keys,
+        fetch: async () => new Response(null, { status: 404 }),
+      }), /HTTP 404/);
+    });
+  }
+}
 
 test("rejects changed metadata, unknown keys and incomplete releases", () => {
   const changed = signedManifest();

@@ -67,15 +67,15 @@ test("floating menus share an 8px translucent surface with two densities", () =>
 });
 
 test("compact controls preserve size choices, semantics and settings density", () => {
-  expect(buttonVariants()).toContain("h-8");
-  expect(buttonVariants({ size: "sm" })).toContain("h-7");
-  expect(buttonVariants({ size: "lg" })).toContain("h-9");
+  expect(buttonVariants()).toMatch(/h-(?:8|\[32px\])/);
+  expect(buttonVariants({ size: "sm" })).toMatch(/h-(?:7|\[28px\])/);
+  expect(buttonVariants({ size: "lg" })).toMatch(/h-(?:9|\[36px\])/);
   const button = renderToStaticMarkup(React.createElement(ButtonStyleScopeProvider, {
     value: "settings", children: React.createElement(Button, {
       variant: "ghost", disabled: true, "aria-label": "编辑", children: "编辑",
     }),
   }));
-  expect(button).toContain("h-7");
+  expect(button).toMatch(/h-(?:7|\[28px\])/);
   expect(button).toContain("disabled");
   expect(button).toContain('aria-label="编辑"');
   const input = renderToStaticMarkup(React.createElement(TextInput, {

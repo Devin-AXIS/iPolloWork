@@ -22,11 +22,13 @@ const targets = {
 };
 
 // Native ARM64 Windows binaries are unavailable in the npm installers.
+// Pin a retained month-end build before the ARM64 startup regression in
+// BtbN/FFmpeg-Builds#675; ordinary daily builds disappear after 14 days.
 const windowsArm64 = {
-  tag: "autobuild-2026-10-01-13-06",
-  asset: "ffmpeg-n8.1.3-14-g330caae0c1-winarm64-gpl-8.1.zip",
-  sha256: "3dd51c0c37f8f6d6c6779da0af4b370589728abdcb16559bd9aa8318a187764e",
-  version: "8.1.3",
+  tag: "autobuild-2026-08-31-13-27",
+  asset: "ffmpeg-n8.1.2-50-g1a748fe2cd-winarm64-gpl-8.1.zip",
+  sha256: "722be613f4fdb0b114671515c44a747edd86b814d4e367ca11b10df4539e6e74",
+  version: "8.1.2",
 };
 
 export function resolveVideoResourceTarget(target = process.env.TAURI_ENV_TARGET_TRIPLE ?? process.env.CARGO_CFG_TARGET_TRIPLE ?? process.env.TARGET, platform = process.platform, arch = process.arch) {
@@ -166,7 +168,9 @@ async function packageVideoResources() {
       if (existsSync(path.join(resource.packageRoot, "README.md"))) await copyFile(path.join(resource.packageRoot, "README.md"), path.join(staging, "BINARY-README.md"));
       if (target.platform === process.platform && target.arch === process.arch) {
         const verified = spawnSync(stagedBinary, ["-version"], { encoding: "utf8", timeout: 10_000, windowsHide: true });
-        if (verified.status !== 0 || !(verified.stdout + verified.stderr).toLowerCase().includes(id)) throw new Error(`Bundled ${id} failed its version check.`);
+        if (verified.status !== 0 || !(verified.stdout + verified.stderr).toLowerCase().includes(id)) {
+          throw new Error(`Bundled ${id} failed its version check (exit ${verified.status}, signal ${verified.signal}): ${verified.error?.message ?? verified.stderr ?? ""}`);
+        }
       }
       stagedResources.push({ id, staging, version: resource.metadata.version });
     }
@@ -179,7 +183,8 @@ async function packageVideoResources() {
       } else {
         const label = ({ darwin: "macos", win32: "windows", linux: "linux" })[target.platform];
         const archive = path.join(outputRoot, `ipollowork-${id}-${label}-${target.arch}-${version}.tar.gz`);
-        const result = spawnSync("tar", ["-czf", archive, "-C", staging, "."], { stdio: "inherit", windowsHide: true, timeout: 120_000 });
+        // GNU tar shipped with Git interprets a Windows drive letter as a remote host.
+        const result = spawnSync("tar", ["-czf", path.basename(archive), "-C", staging, "."], { cwd: outputRoot, stdio: "inherit", windowsHide: true, timeout: 120_000 });
         if (result.status !== 0) throw new Error(`Could not package ${archive}.`);
         const checksum = await digest(archive, "sha256", "hex");
         writeFileSync(`${archive}.sha256`, `${checksum}  ${path.basename(archive)}\n`);

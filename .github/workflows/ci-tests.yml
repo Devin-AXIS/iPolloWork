@@ -20,21 +20,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-24.04, macos-14]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 11.4.0
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Install OpenCode CLI
         shell: bash
@@ -113,16 +106,25 @@ jobs:
       - name: Verify OpenCode
         run: opencode --version
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build bundled plugin UIs
+      - name: Prepare complete bundled plugins
         run: |
-          pnpm --filter @ipollowork/labelu-plugin build
-          pnpm --filter ipollowork-short-video-plugin build
+          pnpm --dir examples/plugin-packages/ipollo-onto install --ignore-workspace --frozen-lockfile --ignore-scripts
+          pnpm plugins:package --desktop
+
+      - name: Build runtime contracts
+        run: pnpm --filter ipollowork-server build
+
+      - name: Compile native macOS computer-use runtime
+        if: runner.os == 'macOS'
+        run: pnpm --filter @ipollowork/handsfree check
+
+      - name: Validate source and release contracts
+        run: |
+          node scripts/i18n-audit.mjs --ci
+          node --test scripts/release/package-client.test.mjs
 
       - name: Provide bundled video codecs to tests
         shell: bash
@@ -138,13 +140,7 @@ jobs:
           appendFileSync(process.env.GITHUB_PATH, `${dirname(ffmpeg)}\n${dirname(ffprobe)}\n`);
           NODE
 
-      - name: Run app unit tests
-        run: pnpm --filter @ipollowork/app test
-
-      - name: Run server unit tests
-        run: pnpm --filter ipollowork-server test
-
-      - name: Run desktop unit tests
+      - name: Run the shared source checks and test suites
         shell: bash
         run: |
           if [[ "${RUNNER_OS}" == "Linux" ]]; then
@@ -157,29 +153,28 @@ jobs:
               openbox &
               window_manager=$!
               trap "kill $window_manager" EXIT
-              pnpm --filter @ipollowork/desktop test
+              pnpm check
             '
           else
-            pnpm --filter @ipollowork/desktop test
+            pnpm check
           fi
-
-      - name: Typecheck Electron main against the IPC contract
-        run: pnpm --filter @ipollowork/desktop typecheck:electron
 
       - name: Run e2e tests
         run: pnpm --filter @ipollowork/app test:e2e
 
   business-components:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 22.22.1
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
       - name: Install HyperFrames dependencies
         working-directory: vendor/hyperframes
         run: bun install --frozen-lockfile

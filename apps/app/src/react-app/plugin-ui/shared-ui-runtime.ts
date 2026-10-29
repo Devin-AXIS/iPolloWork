@@ -1,3 +1,4 @@
+/// <reference path="./runtime-modules.d.ts" />
 import { requireRuntime } from '@ipollowork/ui/runtime-contract';
 import runtimeSource from 'virtual:ipollowork-plugin-ui-runtime';
 export { runtimeSource as sharedUiRuntimeSource };

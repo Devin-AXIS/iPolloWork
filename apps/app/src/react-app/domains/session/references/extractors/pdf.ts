@@ -41,9 +41,14 @@ export async function extractPdfReference(file: File, onProgress?: ReferenceProg
   const warnings = new Set<string>();
 
   try {
-    const pdfjs = await loadPdfjs();
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const loadingTask = pdfjs.getDocument({ data: bytes, useWorkerFetch: false, maxImageSize: 16_777_216 });
+    if (!new TextDecoder().decode(bytes.subarray(0, 1024)).includes("%PDF-")) {
+      throw new Error("Invalid PDF header.");
+    }
+    const pdfjs = await loadPdfjs();
+    // This path extracts text and geometry without rendering font glyphs.
+    // Keep Node's fallback consistent with the Electron/browser environment.
+    const loadingTask = pdfjs.getDocument({ data: bytes, useSystemFonts: true, useWorkerFetch: false, maxImageSize: 16_777_216 });
     const pdf = await loadingTask.promise;
     onProgress?.(10);
     try {

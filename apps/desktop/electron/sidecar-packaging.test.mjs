@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { it } from "node:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -9,6 +10,7 @@ import { createPackage, listPackage } from "@electron/asar";
 import { parse as parseYaml } from "yaml";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
+import { createEngineArchive } from "../scripts/package-engine-runtime.mjs";
 import {
   assertServerRuntimeDependencies,
   stageServerConstants,
@@ -19,6 +21,42 @@ import {
 const afterPack = afterPackModule.default ?? afterPackModule;
 const require = createRequire(import.meta.url);
 const { FileMatcher, copyFiles } = createRequire(require.resolve("electron-builder"))("app-builder-lib/out/fileMatcher.js");
+
+it("materializes internal links in an engine archive and rejects escaping or cyclic links", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-archive-"));
+  const runtime = path.join(root, "runtime");
+  try {
+    await mkdir(path.join(runtime, "package"), { recursive: true });
+    await mkdir(path.join(runtime, "node_modules"));
+    await writeFile(path.join(runtime, "package", "cli.js"), "console.log('native fixture');\n");
+    await symlink(path.join(runtime, "package"), path.join(runtime, "node_modules", "linked"), process.platform === "win32" ? "junction" : "dir");
+    await createEngineArchive(runtime, path.join(root, "engine.tar.gz"), ["node_modules"]);
+    const listing = spawnSync("tar", ["-tvzf", "engine.tar.gz"], { cwd: root, encoding: "utf8" });
+    assert.equal(listing.status, 0, listing.stderr);
+    assert.ok(listing.stdout.split(/\r?\n/).filter(Boolean).every(line => ["-", "d"].includes(line[0])), listing.stdout);
+    await mkdir(path.join(root, "extracted"));
+    const extracted = spawnSync("tar", ["-xzf", "engine.tar.gz", "-C", "extracted"], { cwd: root, encoding: "utf8" });
+    assert.equal(extracted.status, 0, extracted.stderr);
+    assert.equal(await readFile(path.join(root, "extracted/node_modules/linked/cli.js"), "utf8"), "console.log('native fixture');\n");
+    await symlink(root, path.join(runtime, "escape"), process.platform === "win32" ? "junction" : "dir");
+    await assert.rejects(createEngineArchive(runtime, path.join(root, "escape.tar.gz"), ["escape"]), /link escapes its root/);
+    await symlink(path.join(runtime, "node_modules"), path.join(runtime, "node_modules", "cycle"), process.platform === "win32" ? "junction" : "dir");
+    await assert.rejects(createEngineArchive(runtime, path.join(root, "cycle.tar.gz"), ["node_modules"]), /cycle or special file/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it("rejects a foreign engine target before packaging the host Node runtime under another architecture", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-native-target-"));
+  try {
+    const result = spawnSync(process.execPath, ["apps/desktop/scripts/package-engine-runtime.mjs", "--all", "--outdir", root], {
+      cwd: new URL("../../../", import.meta.url), encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, TARGET: process.arch === "arm64" ? "x86_64-apple-darwin" : "aarch64-apple-darwin" },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Engine packages require a native/);
+    assert.deepEqual(await readdir(root), []);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 it("packages runtime modules without compiled tests, test support or stale staged files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-package-"));

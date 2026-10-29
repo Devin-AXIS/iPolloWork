@@ -1,5 +1,3 @@
-"use memo";
-
 import * as React from "react"
 import { isAvatarVideoModel } from "@ipollowork/types/video-generation"
 import {
@@ -1645,6 +1643,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, deliveryIncomplete = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {}, deliveryError = null }: MessageListProps) {
+  "use memo";
   const { sessionTitle, waitingLabel } = useMessageList()
   const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
   const isStreaming = !stopAcknowledged

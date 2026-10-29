@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { pluginUiRuntime, workspaceUiChunk, WORKSPACE_CHUNK_LIMIT_KB } from "../../../../packages/ui/build-plugin-runtime.mjs";
 import { createBundledTemplateCopyPlugin } from "../../studio-host/build.ts";
 
 const pluginRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -13,6 +14,7 @@ export default defineConfig({
   root: resolve(pluginRoot, "studio"),
   base: "./",
   plugins: [
+    pluginUiRuntime(),
     createBundledTemplateCopyPlugin({
       repositoryRoot,
       outputPluginRoot: pluginRoot,
@@ -39,5 +41,7 @@ export default defineConfig({
     outDir: resolve(pluginRoot, "studio/dist"),
     emptyOutDir: true,
     target: "es2022",
+    chunkSizeWarningLimit: WORKSPACE_CHUNK_LIMIT_KB,
+    rollupOptions: { output: { manualChunks: workspaceUiChunk } },
   },
 });

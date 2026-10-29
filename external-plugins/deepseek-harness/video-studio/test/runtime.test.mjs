@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   VideoRuntimeManager,
   applyBundledTemplate,
@@ -12,6 +13,7 @@ import {
   verifiedWritePath,
 } from "../lib/runtime.js";
 import {
+  HYPERFRAMES_VERSION,
   isVideoStudioHostMessage,
   parseHyperframesAskAiMessage,
   videoStudioDocumentPrompt,
@@ -39,7 +41,7 @@ if (command === "preview") {
   const server = createServer((req, res) => {
     if (req.url === "/__hyperframes_config") {
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ isHyperframes: true, projectDir, projectName: basename(projectDir), version: "0.7.60", pid: process.pid }));
+      res.end(JSON.stringify({ isHyperframes: true, projectDir, projectName: basename(projectDir), version: ${JSON.stringify(HYPERFRAMES_VERSION)}, pid: process.pid }));
       return;
     }
     res.end("ok");
@@ -135,7 +137,7 @@ test("rejects workspace escapes and symlinked video projects", async () => {
   await assert.rejects(() => verifiedWritePath(root, "video/../outside.txt", "video", "iVideo"));
   const outside = await mkdtemp(resolve(tmpdir(), "deepseek-ivideo-outside-"));
   await mkdir(resolve(root, "video"), { recursive: true });
-  await symlink(outside, resolve(root, "video", "unsafe"));
+  await symlink(outside, resolve(root, "video", "unsafe"), process.platform === "win32" ? "junction" : "dir");
   const manager = new VideoRuntimeManager({ cliPath, startTimeoutMs: 1_000 });
   await assert.rejects(() => manager.start({ workspaceRoot: root, sessionId: "unsafe" }), /Symbolic links outside/);
   manager.dispose();
@@ -154,7 +156,7 @@ test("validation is bounded to the requested video session", async () => {
 });
 
 test("atomic template replacement restores the original project after validation failure", async () => {
-  const templatesRoot = resolve(dirname(new URL(import.meta.url).pathname), "../lib/templates");
+  const templatesRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../lib/templates");
   const names = (await import("node:fs/promises")).readdir(templatesRoot);
   const templateName = (await names)[0];
   const directory = resolve(templatesRoot, templateName);
@@ -176,15 +178,16 @@ test("atomic template replacement restores the original project after validation
 });
 
 test("ships all source Video templates without applying the curated Design catalog filter", async () => {
-  const pluginRoot = resolve(dirname(new URL(import.meta.url).pathname), "..");
+  const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const templatesRoot = resolve(pluginRoot, "lib/templates");
   const manifests = await Promise.all((await readdir(templatesRoot)).map(async (name) => (
     JSON.parse(await readFile(resolve(templatesRoot, name, "manifest.json"), "utf8"))
   )));
   const sourceRoot = resolve(pluginRoot, "../../../apps/server/bundled-templates");
-  const sourceManifests = await Promise.all((await readdir(sourceRoot)).map(async name => {
-    try { return JSON.parse(await readFile(resolve(sourceRoot, name, "manifest.json"), "utf8")); } catch (error) { if (error.code === "ENOTDIR") return null; throw error; }
-  }));
+  const sourceDirectories = (await readdir(sourceRoot, { withFileTypes: true })).filter(entry => entry.isDirectory());
+  const sourceManifests = await Promise.all(sourceDirectories.map(async entry => (
+    JSON.parse(await readFile(resolve(sourceRoot, entry.name, "manifest.json"), "utf8"))
+  )));
   const expectedIds = sourceManifests.filter(manifest => manifest?.surface === "video" && manifest.category === "video").map(manifest => manifest.id).sort();
   assert.ok(expectedIds.length > 0);
   assert.deepEqual(manifests.map(manifest => manifest.id).sort(), expectedIds);
@@ -215,7 +218,7 @@ test("AI bridge accepts only validated selections and builds draft-only prompts"
 });
 
 test("Harness client validates message source and fills a draft without sending it", async () => {
-  const source = await readFile(resolve(dirname(new URL(import.meta.url).pathname), "../src/client.tsx"), "utf8");
+  const source = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/client.tsx"), "utf8");
   assert.match(source, /event\.origin !== window\.location\.origin/);
   assert.match(source, /event\.source !== iframeRef\.current\?\.contentWindow/);
   assert.match(source, /inputActions\.setDraft/);
@@ -223,7 +226,7 @@ test("Harness client validates message source and fills a draft without sending 
 });
 
 test("Studio reuses the iPolloWork VideoPanel without a parallel editor shell", async () => {
-  const studioRoot = resolve(dirname(new URL(import.meta.url).pathname), "../studio/src");
+  const studioRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../studio/src");
   const source = await readFile(resolve(studioRoot, "main.tsx"), "utf8");
   assert.match(source, /VideoPanel/);
   assert.doesNotMatch(source, /setInterval|ivideo-native-row|VideoTemplateDialog/);

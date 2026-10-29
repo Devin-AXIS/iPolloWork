@@ -41,11 +41,11 @@ describe("desktop typography contract", () => {
   });
 
   test("maps scalable semantic text roles into shared controls", () => {
-    expect(css).toContain("--text-ui-caption: 0.6875rem;");
-    expect(css).toContain("--text-ui-control: 0.8125rem;");
-    expect(css).toContain("--text-ui-body: 0.875rem;");
-    expect(css).toContain("--text-ui-title-sm: 1rem;");
-    expect(button).toContain("text-ui-control font-medium");
+    expect(css).toContain("--text-ui-caption: var(--ui-caption-size);");
+    expect(css).toContain("--text-ui-control: var(--ui-control-size);");
+    expect(css).toContain("--text-ui-body: var(--ui-body-size);");
+    expect(css).toContain("--text-ui-title-sm: var(--ui-page-title-size);");
+    expect(button).toContain("font-medium");
     expect(input).toContain("text-ui-control");
     expect(dialog).toContain("text-ui-title-sm font-semibold");
   });

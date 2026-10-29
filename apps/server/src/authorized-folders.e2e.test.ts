@@ -125,7 +125,7 @@ describe("authorized folders routes", () => {
     expect(body).toMatchObject({
       folders: ["/shared"],
       hiddenCount: 2,
-      workspaceRoot: root,
+      workspaceRoot: root.replaceAll("\\", "/"),
     });
   });
 

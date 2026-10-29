@@ -5,6 +5,7 @@
 export default {
   id: "app-smoke",
   title: "App boots and renders a known route",
+  kind: "user-facing",
   spec: "evals/react-session-flows.md",
   steps: [
     {
@@ -37,11 +38,25 @@ export default {
     {
       name: "UI rendered meaningful content",
       run: async (ctx) => {
-        await ctx.waitFor("document.body.innerText.trim().length > 40", {
-          label: "rendered body text",
-        });
-        await ctx.screenshot("booted", {
-          claim: "The app rendered meaningful visible content after boot.",
+        await ctx.prove("The app finishes loading and displays its route without a blocking overlay", {
+          voiceover: "应用启动后，加载遮罩消失，工作界面正常显示。",
+          action: async () => {
+            await ctx.waitFor(`
+              document.body.innerText.trim().length > 40
+              && !document.querySelector('[data-testid="startup-logo-animation"]')
+              && !document.querySelector('[data-testid="session-loading-animation"]')
+            `, { timeoutMs: 30_000, label: "rendered route without a loading overlay" });
+          },
+          assert: async () => {
+            ctx.assert(
+              !(await ctx.eval("Boolean(document.querySelector('vite-error-overlay'))")),
+              "The renderer has no Vite compilation error overlay",
+            );
+          },
+          screenshot: {
+            name: "booted",
+            hashIncludes: await ctx.eval("window.__ipolloworkControl.snapshot().route"),
+          },
         });
       },
     },

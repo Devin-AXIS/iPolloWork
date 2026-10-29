@@ -261,7 +261,7 @@ describe("client timeout policies", () => {
     const durations = recordTimeouts();
     useFetch(async () => Response.json({ ok: true, deleted: true, persisted: true, activeId: null, items: [] }));
     await serverClient().deleteWorkspace("ws-proof");
-    expect(durations).toEqual([30_000]);
+    expect(durations).toEqual([120_000]);
   });
 
   test("Server forwards multipart and binary files without JSON conversion", async () => {

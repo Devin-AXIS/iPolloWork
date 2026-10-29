@@ -1,6 +1,6 @@
 {
   "name": "@ipollowork/onto",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "type": "module",
   "description": "iPollo Onto — a lightweight, AI-ready workspace for connected business data.",

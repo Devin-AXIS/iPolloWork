@@ -97,6 +97,11 @@ access or a looser CSP. Import `requireRuntime` from the lightweight
 `@ipollowork/ui/runtime-contract` entrypoint, not the implementation entrypoint,
 so production plugins do not accidentally bundle another React copy.
 
+Vite hosts reuse `pluginUiRuntime()` from the build entrypoint to provide the
+virtual source module and its standalone sandbox payload. The desktop app,
+embedded Studio and exported Studio workspaces also share `workspaceUiChunk`
+and `WORKSPACE_CHUNK_LIMIT_KB` for vendor/data chunking and the local 4 MB budget.
+
 Runtime 1.3 exposes React, createRoot and the core barrel's value exports.
 New consumers pass their actual function names to
 `requireRuntime(1, required)` before initializing the bridge. An old 1.x without

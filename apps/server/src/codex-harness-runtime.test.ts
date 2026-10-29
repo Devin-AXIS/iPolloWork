@@ -49,6 +49,7 @@ import type { ServerConfig, WorkspaceInfo } from "./types.js";
 const roots: string[] = [];
 const configs: ServerConfig[] = [];
 const servers: Server[] = [];
+const previousCodexHome = process.env.CODEX_HOME;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -67,12 +68,14 @@ async function removeTestRoot(root: string): Promise<void> {
 async function testConfig(): Promise<ServerConfig> {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-codex-runtime-test-"));
   roots.push(root);
+  process.env.CODEX_HOME = join(root, "official-codex");
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
     token: "test",
     hostToken: "test-host",
     configPath: join(root, "config.json"),
+    opencodeAuthPath: join(root, "opencode-auth.json"),
     approval: { mode: "manual", timeoutMs: 30_000 },
     corsOrigins: [],
     workspaces: [],
@@ -89,6 +92,8 @@ async function testConfig(): Promise<ServerConfig> {
 }
 
 afterEach(async () => {
+  if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+  else process.env.CODEX_HOME = previousCodexHome;
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   for (const config of configs.splice(0)) await disposeRuntimeOpencodeConfigStore(config);
   for (const root of roots.splice(0)) await removeTestRoot(root);
@@ -217,20 +222,30 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
       id: "compaction", name: "Compaction", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness",
     } });
     const eventController = new AbortController();
+    let eventPump: Promise<void> | undefined;
     try {
+      await expect(runtime.compactThread("active", new AbortController().signal)).rejects.toThrow("current task to finish");
+      expect(await runtime.call<{ starts: number; resumes: number }>("test/counts")).toEqual({ starts: 0, resumes: 0 });
       const response = await runtime.events(eventController.signal);
       if (!response.body) throw new Error("Missing native event stream");
       const reader = response.body.getReader();
-      const started = async (threadId: string) => {
+      const seenStarts = new Set<string>();
+      const startWaiters = new Map<string, () => void>();
+      eventPump = (async () => {
         while (true) {
           const chunk = await reader.read();
-          if (chunk.done) throw new Error("Native stream closed before compaction started");
+          if (chunk.done) return;
           const event = JSON.parse(new TextDecoder().decode(chunk.value).slice(6).trim());
-          if (event.method === "item/started" && event.params.threadId === threadId) return;
+          if (event.method === "item/started") {
+            seenStarts.add(event.params.threadId);
+            startWaiters.get(event.params.threadId)?.();
+            startWaiters.delete(event.params.threadId);
+          }
         }
-      };
-      await expect(runtime.compactThread("active", new AbortController().signal)).rejects.toThrow("current task to finish");
-      expect(await runtime.call<{ starts: number; resumes: number }>("test/counts")).toEqual({ starts: 0, resumes: 0 });
+      })().finally(() => reader.releaseLock());
+      void eventPump.catch(() => {});
+      const started = (threadId: string) => seenStarts.has(threadId) ? Promise.resolve()
+        : new Promise<void>(resolve => startWaiters.set(threadId, resolve));
       let settled = false;
       const success = runtime.compactThread("unloaded", new AbortController().signal).then(() => { settled = true; });
       await started("unloaded");
@@ -258,9 +273,9 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
       aborted.abort();
       await expect(runtime.compactThread("already-aborted", aborted.signal)).rejects.toThrow();
       expect(await runtime.call<{ starts: number; resumes: number }>("test/counts")).toEqual({ starts: 3, resumes: 1 });
-      reader.releaseLock();
     } finally {
       eventController.abort();
+      await eventPump;
       await runtime.close();
       if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
       else process.env.IPOLLOWORK_CODEX_CLI = previousCli;

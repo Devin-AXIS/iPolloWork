@@ -28,7 +28,7 @@ export const bundledPluginPackageIds = [
   "ipollo-onto",
 ] as const;
 
-export const defaultBundledPluginPackageIds = ["reference-context"] as const;
+export const defaultBundledPluginPackageIds = bundledPluginPackageIds;
 
 // Repository source refresh is development-only. The local catalog also reads
 // packages already provided by the host, independently of the online catalog.

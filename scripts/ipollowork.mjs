@@ -62,7 +62,7 @@ function printHelp() {
   ${launcher} dev                Start the source-available desktop app
   ${launcher} dev:ui             Start only the browser UI
   ${launcher} dev:cloud [url]    Start desktop connected to iPolloCloud
-  ${launcher} check              Run README localization, type checks, and desktop tests
+  ${launcher} check              Run localization, type checks, and app/server/desktop tests
   ${launcher} build              Build the desktop application
   ${launcher} package [flags]    Check, advance the client version, and build installers
   ${launcher} package:dir        Build an unpacked desktop application without advancing a version
@@ -134,7 +134,11 @@ switch (command) {
     await runSequence([
       [process.execPath, [resolve(root, "scripts", "check-hyperframes-version-sync.mjs")]],
       [process.execPath, [resolve(root, "scripts", "sync-readme-zh-hant.mjs"), "--check"]],
+      [process.execPath, [resolve(root, "scripts", "i18n-audit.mjs"), "--ci"]],
       [pnpm, ["--filter", "@ipollowork/app", "typecheck", ...args]],
+      [pnpm, ["--filter", "@ipollowork/app", "test", ...args]],
+      [pnpm, ["--filter", "ipollowork-server", "typecheck", ...args]],
+      [pnpm, ["--filter", "ipollowork-server", "test", ...args]],
       [pnpm, ["--filter", "@ipollowork/desktop", "typecheck:electron", ...args]],
       [pnpm, ["--filter", "@ipollowork/desktop", "test", ...args]],
     ]);

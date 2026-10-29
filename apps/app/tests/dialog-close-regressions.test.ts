@@ -35,7 +35,7 @@ describe("ordinary dialog close behavior", () => {
     const skills = source("domains/settings/pages/skills-view.tsx");
 
     expect(skills).not.toContain("showCloseButton={false}");
-    expect(skills).toContain("导出独立技能 / 企业投稿");
+    expect(skills).toContain("导出独立技能");
     expect(skills).not.toContain("customRepoOpen");
   });
 

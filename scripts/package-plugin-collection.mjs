@@ -6,7 +6,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { catalogPluginPackageIds, defaultBundledPluginPackageIds, resolveBundledPluginPackageRoot } from "../apps/server/src/plugin-package-catalog.ts";
+import { bundledPluginPackageIds, catalogPluginPackageIds, resolveBundledPluginPackageRoot } from "../apps/server/src/plugin-package-catalog.ts";
 import { previewPluginPackage, assertPluginPackageSafeForImport } from "../apps/server/src/plugin-package-lifecycle.ts";
 import { withMaterializedPluginPackageUpload } from "../apps/server/src/plugin-package-upload.ts";
 import { readPluginPackageArchive } from "../apps/app/src/app/lib/plugin-package-archive.ts";
@@ -28,7 +28,7 @@ for (let index = 0; index < args.length; index++) {
 if (options.has("--config") && options.has("--keyring")) throw new Error("Choose --config or --keyring");
 const desktop = Boolean(options.get("--desktop"));
 if (desktop && ["--inventory", "--config", "--keyring"].some(flag => options.has(flag))) throw new Error("Desktop resources do not use cloud signing or inventory mode");
-const availableIds = [...catalogPluginPackageIds, ...(desktop ? defaultBundledPluginPackageIds : [])];
+const availableIds = desktop ? bundledPluginPackageIds : catalogPluginPackageIds;
 const ids = options.has("--plugin") ? [options.get("--plugin")] : availableIds;
 if (ids.some(id => !availableIds.includes(id))) throw new Error("Unknown plugin ID. Available: " + availableIds.join(", "));
 const inventoryOnly = Boolean(options.get("--inventory"));

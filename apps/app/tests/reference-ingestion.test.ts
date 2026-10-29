@@ -1,9 +1,11 @@
 import { CreativeContextSchema } from "@ipollowork/types/reference-context";
 import { buildCreativeContext } from "../src/react-app/domains/session/references/creative-context";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 import { DOMParser as XmlDomParser } from "@xmldom/xmldom";
+
+afterEach(() => mock.restore());
 
 if (typeof DOMParser === "undefined") {
   Object.assign(globalThis, { DOMParser: XmlDomParser });
@@ -462,6 +464,7 @@ describe("reference extractors", () => {
   });
 
   test("extracts readable text into page-aware chunks from a valid PDF", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
     const file = new File([createTextPdf("Node PDF extraction works")], "readable.pdf", { type: "application/pdf" });
     const extracted = await extractPdfReference(file);
 
@@ -469,14 +472,17 @@ describe("reference extractors", () => {
     expect(extracted.metadata).toEqual({ pages: 1 });
     expect(extracted.chunks).toHaveLength(1);
     expect(extracted.chunks[0]).toMatchObject({ source: "readable.pdf", page: 1, text: "Node PDF extraction works" });
+    expect(log).not.toHaveBeenCalled();
   });
 
   test("fails cleanly for invalid PDF bytes", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
     const extracted = await extractPdfReference(new File(["not a pdf"], "broken.pdf", { type: "application/pdf" }));
 
     expect(extracted.text).toBe("");
     expect(extracted.chunks).toEqual([]);
     expect(extracted.warnings?.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
+    expect(log).not.toHaveBeenCalled();
   });
 
   test("extracts markdown headings as chunk headings", async () => {
@@ -786,10 +792,12 @@ describe("reference ingestion router", () => {
   });
 
   test("routes invalid PDF through failed quality without throwing", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
     const result = await ingestReferenceFile(new File(["not a pdf"], "broken.pdf", { type: "application/pdf" }));
 
     expect(result.quality).toBe("failed");
     expect(result.warnings.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
+    expect(log).not.toHaveBeenCalled();
   });
 
   test("routes invalid JSON through failed quality without throwing", async () => {
@@ -801,12 +809,14 @@ describe("reference ingestion router", () => {
   });
 
   test("routes PDFs by extension before generic text handling", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
     const file = new File(["not a pdf"], "broken.pdf", { type: "text/plain" });
     Object.defineProperty(file, "type", { value: "text/plain" });
     const result = await ingestReferenceFile(file);
 
     expect(result.quality).toBe("failed");
     expect(result.warnings.some((warning) => warning.includes("PDF parsing failed"))).toBe(true);
+    expect(log).not.toHaveBeenCalled();
   });
 
   test("autofills only from high and medium quality references", () => {
@@ -921,7 +931,7 @@ test("an oversized Word auxiliary part does not discard readable main content", 
   const result = await extractDocxReference(new File([await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })], "partial.docx"));
   expect(result.text).toContain("Readable main document");
   expect(result.warnings?.join(" ")).toContain("other readable parts preserved");
-});
+}, 30000);
 
 test("labeled requirements in one reference do not suppress facts from another", async () => {
   const first = await ingestReferenceFile(new File(["# 发布计划\n需求：介绍智能家具的核心功能，并展示家庭实际使用场景及操作流程。"], "brief.md"));

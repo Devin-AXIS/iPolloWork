@@ -32,7 +32,7 @@ import {
 } from "./plugin-package-manifest.js";
 import { parsePluginWorkshopDraftManifest, preparePluginWorkshopSourceBundle } from "./plugin-workshop-package.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
-import { localPluginPackageRoot, resolveBundledPluginPackageRoot, runtimeCatalogPluginPackageIds, usesLocalPluginPackages } from "./plugin-package-catalog.js";
+import { defaultBundledPluginPackageIds, localPluginPackageRoot, resolveBundledPluginPackageRoot, runtimeCatalogPluginPackageIds, usesLocalPluginPackages } from "./plugin-package-catalog.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 import { listBoundSessionEngines } from "./work-items.js";
 import serverPackage from "../package.json" with { type: "json" };
@@ -2068,7 +2068,8 @@ async function uninstallPluginPackageUnlocked(input: {
       }
     }
     delete state.packages[input.pluginId];
-    if (manifestFromVersion(current).defaultEnabled && !state.suppressedDefaultPluginIds.includes(input.pluginId)) {
+    if ((manifestFromVersion(current).defaultEnabled || defaultBundledPluginPackageIds.some(id => id === input.pluginId))
+      && !state.suppressedDefaultPluginIds.includes(input.pluginId)) {
       state.suppressedDefaultPluginIds.push(input.pluginId);
     }
     await writeState(input.serverConfig, state);

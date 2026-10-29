@@ -17,6 +17,7 @@ import { readRuntimeOpencodeConfig, writeRuntimeOpencodeConfig } from "./runtime
 import type { ServerConfig } from "./types.js";
 
 const roots: string[] = [];
+const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 
 async function removeTestRoot(root: string): Promise<void> {
   try {
@@ -29,12 +30,15 @@ async function removeTestRoot(root: string): Promise<void> {
 }
 
 afterEach(async () => {
+  if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
+  else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
   while (roots.length) await removeTestRoot(roots.pop()!);
 });
 
 async function testConfig(): Promise<ServerConfig> {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-mcp-authorization-"));
   roots.push(root);
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   return {
     host: "127.0.0.1",
     port: 3210,

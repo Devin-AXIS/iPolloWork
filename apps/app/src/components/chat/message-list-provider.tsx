@@ -1,5 +1,3 @@
-"use memo";
-
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server"
 import { useSessionActivityStore } from "@/react-app/domains/session/status/session-activity-store"
 import * as React from "react"
@@ -73,6 +71,7 @@ export function MessageListProvider({
   onForkAtMessage,
   onEditUserMessage,
 }: MessageListProviderProps) {
+  "use memo";
   const value = React.useMemo(
     () => ({
       client,

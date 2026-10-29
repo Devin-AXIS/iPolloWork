@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, readdir, realpath, rm, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -56,7 +56,31 @@ async function sha256File(targetPath) {
   return hash.digest("hex");
 }
 
+export async function createEngineArchive(runtimeRoot, archivePath, entries) {
+  const root = await realpath(runtimeRoot);
+  async function inspect(file, ancestors = new Set()) {
+    const actual = await realpath(file);
+    const within = relative(root, actual);
+    if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) {
+      throw new Error(`Engine runtime link escapes its root: ${file}`);
+    }
+    const info = await stat(file);
+    if (info.isFile()) return;
+    if (!info.isDirectory() || ancestors.has(actual)) throw new Error(`Engine runtime contains a cycle or special file: ${file}`);
+    const parents = new Set([...ancestors, actual]);
+    for (const entry of await readdir(file)) await inspect(resolve(file, entry), parents);
+  }
+  for (const entry of entries) await inspect(resolve(root, entry));
+  // npm creates Unix launcher symlinks. Ship their contents so the client's
+  // link/special-file rejection stays intact; never dereference outside runtimeRoot.
+  run("tar", ["-hczf", basename(archivePath), "-C", root, ...entries], dirname(archivePath));
+}
+
 async function packageEngine(engineId, outputDirectory) {
+  const hostPlatform = ({ win32: "windows", darwin: "macos", linux: "linux" })[process.platform];
+  if (targetPlatform() !== hostPlatform || targetArch() !== process.arch) {
+    throw new Error(`Engine packages require a native ${targetPlatform()}/${targetArch()} builder; current host is ${hostPlatform}/${process.arch}.`);
+  }
   const isDsh = engineId === "deepseek-harness";
   const runtimeDirectoryName = isDsh ? "dsh-runtime" : "codex-runtime";
   const prepareScript = isDsh ? "prepare-dsh-runtime.mjs" : "prepare-codex-runtime.mjs";
@@ -75,23 +99,26 @@ async function packageEngine(engineId, outputDirectory) {
   for (const entry of entries) {
     if (!existsSync(resolve(runtimeRoot, entry))) throw new Error(`Missing engine runtime entry: ${entry}`);
   }
-  run("tar", ["-czf", name, "-C", runtimeRoot, ...entries], outputDirectory);
+  await createEngineArchive(runtimeRoot, archivePath, entries);
   const checksum = await sha256File(archivePath);
   writeFileSync(`${archivePath}.sha256`, `${checksum}  ${name}\n`);
   process.stdout.write(`[engine-package] ${archivePath}\n`);
 }
 
-const requested = argumentValue("--engine");
-const outputDirectory = resolve(argumentValue("--outdir") || resolve(desktopRoot, "dist-engine-packs"));
-if (process.argv.includes("--clean")) await rm(outputDirectory, { recursive: true, force: true });
-await mkdir(outputDirectory, { recursive: true });
+async function main() {
+  const requested = argumentValue("--engine");
+  const outputDirectory = resolve(argumentValue("--outdir") || resolve(desktopRoot, "dist-engine-packs"));
+  if (process.argv.includes("--clean")) await rm(outputDirectory, { recursive: true, force: true });
+  await mkdir(outputDirectory, { recursive: true });
 
-const engineIds = process.argv.includes("--all")
-  ? ["deepseek-harness", "codex-harness"]
-  : requested
-    ? [requested]
-    : [];
-if (engineIds.length === 0 || engineIds.some((id) => id !== "deepseek-harness" && id !== "codex-harness")) {
-  throw new Error("Use --all or --engine deepseek-harness|codex-harness.");
+  const engineIds = process.argv.includes("--all")
+    ? ["deepseek-harness", "codex-harness"]
+    : requested
+      ? [requested]
+      : [];
+  if (engineIds.length === 0 || engineIds.some((id) => id !== "deepseek-harness" && id !== "codex-harness")) {
+    throw new Error("Use --all or --engine deepseek-harness|codex-harness.");
+  }
+  for (const engineId of engineIds) await packageEngine(engineId, outputDirectory);
 }
-for (const engineId of engineIds) await packageEngine(engineId, outputDirectory);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
