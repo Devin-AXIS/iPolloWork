@@ -28,9 +28,9 @@ test("missing, empty, unsigned-digest and mismatched-version installers block cl
     const release = fixture();
     mutate(release);
     const calls = [];
-    assert.throws(() => finalizeInstallerRelease(tag, { repo: "owner/repo", prune: true, runGh: (args) => { calls.push(args); return JSON.stringify(release); } }));
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0][0], "api");
+    assert.throws(() => finalizeInstallerRelease(tag, { repo: "owner/repo", prune: true, runGh: (args) => { calls.push(args); return args[0] === "api" ? JSON.stringify(release) : "42\n"; } }));
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1], ["api", "repos/owner/repo/releases/42"]);
   }
 });
 
@@ -41,20 +41,42 @@ test("cleanup deletes only extras and rechecks the final release", () => {
   const result = finalizeInstallerRelease(tag, { repo: "owner/repo", prune: true, runGh: (args) => {
     calls.push(args);
     if (args[0] === "api") return JSON.stringify(release);
+    if (args[1] === "view") return "42\n";
     assert.deepEqual(args, ["release", "delete-asset", tag, "SHA256SUMS.txt", "--repo", "owner/repo", "--yes"]);
     release.assets.pop();
     return "";
   } });
   assert.equal(result.assets.length, 6);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 5);
 });
 
 test("inspection never deletes an unexpected attachment", () => {
   const release = fixture();
   release.assets.push({ name: "latest.yml" });
   let calls = 0;
-  assert.throws(() => finalizeInstallerRelease(tag, { repo: "owner/repo", runGh: () => { calls += 1; return JSON.stringify(release); } }), /Non-installer/);
-  assert.equal(calls, 1);
+  assert.throws(() => finalizeInstallerRelease(tag, { repo: "owner/repo", runGh: (args) => { calls += 1; return args[0] === "api" ? JSON.stringify(release) : "42\n"; } }), /Non-installer/);
+  assert.equal(calls, 2);
+});
+
+test("pending draft tags resolve through the CLI and invalid release IDs block API access", () => {
+  const release = { ...fixture(), id: 42, draft: true };
+  const calls = [];
+  assert.deepEqual(finalizeInstallerRelease(tag, { repo: "owner/repo", runGh: (args) => {
+    calls.push(args);
+    if (args[0] === "release") {
+      assert.deepEqual(args, ["release", "view", tag, "--repo", "owner/repo", "--json", "databaseId", "--jq", ".databaseId"]);
+      return "42\n";
+    }
+    assert.deepEqual(args, ["api", "repos/owner/repo/releases/42"]);
+    return JSON.stringify(release);
+  } }), release);
+  assert.equal(calls.length, 2);
+  for (const id of ["", "null", "0", "../tags/v0.50.30"]) {
+    assert.throws(() => finalizeInstallerRelease(tag, { repo: "owner/repo", runGh: (args) => {
+      assert.equal(args[0], "release");
+      return id;
+    } }), /release ID/);
+  }
 });
 
 test("six build receipts replace old metadata and incomplete or duplicate builds are rejected", () => {
