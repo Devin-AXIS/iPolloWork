@@ -50,10 +50,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Xvfb
+      - name: Install desktop test services
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb
+          sudo apt-get install -y -qq xvfb dbus
 
       - name: Start Electron app under Xvfb
         id: desktop-startup
@@ -62,12 +62,12 @@ jobs:
           IPOLLOWORK_DEV_MODE: "1"
           ELECTRON_DISABLE_SANDBOX: "1"
           IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9823"
-          DAYTONA_ELECTRON_EXTRA_LAUNCH_ARGS: "--no-sandbox --disable-gpu --disable-dev-shm-usage --enable-unsafe-swiftshader"
+          ELECTRON_EXTRA_LAUNCH_ARGS: "--no-sandbox --disable-gpu --disable-dev-shm-usage --enable-unsafe-swiftshader"
         run: |
           set -euo pipefail
           Xvfb :99 -screen 0 1600x1000x24 &
           export DISPLAY=:99
-          nohup pnpm dev > /tmp/ipollowork-dev.log 2>&1 &
+          nohup dbus-run-session -- pnpm dev > /tmp/ipollowork-dev.log 2>&1 &
           app_pid=$!
           echo "Waiting for Electron CDP on :9823..."
           for i in $(seq 1 120); do
