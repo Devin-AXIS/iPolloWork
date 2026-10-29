@@ -117,6 +117,10 @@ jobs:
       - name: Build runtime contracts
         run: pnpm --filter ipollowork-server build
 
+      - name: Compile native macOS computer-use runtime
+        if: runner.os == 'macOS'
+        run: pnpm --filter @ipollowork/handsfree check
+
       - name: Validate source and release contracts
         run: |
           node scripts/i18n-audit.mjs --ci

@@ -9,7 +9,7 @@ This package focuses on the reusable control layer:
 
 - Semantic AX snapshots with compact refs like `{e1}`.
 - Strict background mode that avoids foreground cursor/HID fallbacks.
-- Target-window screenshots via `CGWindowListCreateImage(.optionIncludingWindow)`.
+- Target-window screenshots via ScreenCaptureKit on macOS 14 and later, with a bounded display crop when no window identifier is available.
 - Background input through `CGEvent.postToPid` with window-addressing fields.
 - Background activation using per-process event taps plus AppKit and center-click primers.
 - Non-UI orchestration modules from the original Electron prototype: realtime tool schemas/instructions and the GPT computer-use loop.
