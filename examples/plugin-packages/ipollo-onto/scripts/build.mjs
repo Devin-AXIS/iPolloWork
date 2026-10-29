@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const repo = resolve(root, '../../..');
@@ -24,8 +25,15 @@ if (process.argv.includes('--if-stale')) {
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 const require = createRequire(resolve(root, 'package.json'));
-try { require.resolve('vite'); }
-catch { throw new Error('Run pnpm --dir examples/plugin-packages/ipollo-onto install --ignore-workspace --frozen-lockfile --ignore-scripts before building'); }
+if (['vite', 'typescript', '@types/node'].some(name => !existsSync(resolve(root, 'node_modules', name, 'package.json')))) {
+  console.log('Preparing locked Onto build dependencies...');
+  const args = ['install', '--ignore-workspace', '--frozen-lockfile', '--ignore-scripts'];
+  const windows = process.platform === 'win32';
+  const result = spawnSync(windows ? process.env.ComSpec || 'cmd.exe' : 'pnpm',
+    windows ? ['/d', '/s', '/c', 'pnpm.cmd', ...args] : args,
+    { cwd: root, stdio: 'inherit', windowsHide: true, shell: false });
+  if (result.error || result.status !== 0) throw new Error('Could not prepare locked Onto build dependencies', { cause: result.error });
+}
 for (const command of [
   [require.resolve('typescript/bin/tsc'), '--noEmit'],
   [resolve(dirname(require.resolve('vite/package.json')), 'bin/vite.js'), 'build'],
