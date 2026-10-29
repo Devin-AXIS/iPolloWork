@@ -16,6 +16,7 @@ runs:
         PNPM_HOME: ${{ runner.temp }}/ipollowork-pnpm
       run: |
         set -euo pipefail
+        export PATH="$BUN_INSTALL/bin:$PATH"
         bun install --global pnpm@11.4.0
         echo "$BUN_INSTALL/bin" >> "$GITHUB_PATH"
         echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
