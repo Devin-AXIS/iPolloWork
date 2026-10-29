@@ -2,12 +2,14 @@ import { CreativeContextSchema } from "@ipollowork/types/reference-context";
 import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
 import { ingestReferenceFile } from "../src/react-app/domains/session/references/ingestion";
 import { composerAttachmentRequiresNativeModelSupport } from "../src/react-app/domains/session/sync/attachment-support";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import {
   persistedAttachmentInstruction,
   persistComposerAttachments,
   draftToParts,
 } from "../src/react-app/shell/session-prompt";
+
+afterEach(() => mock.restore());
 
 describe("composer attachment persistence", () => {
   test("reference upload rejects lower server limits and invalid manifests before publishing", async () => {
@@ -71,6 +73,7 @@ describe("composer attachment persistence", () => {
   });
 
   test("keeps the chat send usable when inbox persistence is unavailable", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
     const items = await persistComposerAttachments({
       attachments: [{
         id: "att-2",
@@ -87,6 +90,10 @@ describe("composer attachment persistence", () => {
 
     expect(items).toEqual([]);
     expect(persistedAttachmentInstruction(items)).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      "[composer-attachments] Could not persist image.png to the workspace inbox",
+      expect.objectContaining({ message: "inbox disabled" }),
+    );
   });
 });
 
