@@ -16,7 +16,7 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@11.4.0",
   "scripts": {
     "dev": "concurrently -k -n api,web 'pnpm dev:api' 'pnpm dev:web'",
     "dev:api": "tsx watch --env-file-if-exists=.env src/server/index.ts",

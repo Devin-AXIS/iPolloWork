@@ -21,5 +21,17 @@ export default defineConfig({
     },
   ],
   server: { port: 5710, strictPort: true, proxy: { '/api': 'http://127.0.0.1:5711' } },
-  build: { sourcemap: true },
+  build: {
+    sourcemap: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, maxSize: 400_000 },
+            { name: 'document-editor', test: /node_modules[\\/](@tiptap[\\/]|prosemirror-)/, maxSize: 400_000 },
+          ],
+        },
+      },
+    },
+  },
 })
