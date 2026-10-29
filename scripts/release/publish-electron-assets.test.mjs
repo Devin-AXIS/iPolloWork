@@ -102,6 +102,13 @@ test("six build receipts replace old metadata and incomplete or duplicate builds
     assert.equal(Object.keys(merged.metadata.files).length, 6);
     assert.equal((merged.body.match(/<!-- ipollowork-desktop-update:v1/g) ?? []).length, 1);
     assert.equal(releaseUpdateInfo({ ...release, body: merged.body }, { platform: "darwin", arch: "arm64" }).releaseNotes, "Visible notes");
+    const draft = { ...release, draft: true, assets: release.assets.map((asset) => ({ ...asset,
+      browser_download_url: asset.browser_download_url.replace(tag, "untagged-pending"),
+    })) };
+    assert.deepEqual(mergeUpdaterMetadata(root, draft), merged);
+    assert.throws(() => mergeUpdaterMetadata(root, { ...draft, draft: false }), /installer is missing or differs/);
+    draft.assets[0].size += 1;
+    assert.throws(() => mergeUpdaterMetadata(root, draft), /installer is missing or differs/);
     writeFileSync(path.join(root, "update-info.json"), JSON.stringify({ version: "0.50.30", files: { "darwin-arm64": merged.metadata.files["darwin-arm64"] } }));
     assert.throws(() => mergeUpdaterMetadata(root, release), /Duplicate/);
     rmSync(path.join(root, "update-info.json"));

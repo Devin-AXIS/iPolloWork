@@ -105,7 +105,12 @@ export function mergeUpdaterMetadata(directory, release) {
   visit(directory);
   if (Object.keys(metadata.files).length !== 6) throw new Error("Expected six native updater receipts.");
   const body = `${String(release.body ?? "").replace(UPDATE_METADATA_PATTERN, "").trim()}\n\n${updateMetadataBlock(metadata)}\n`;
-  const candidate = { ...release, draft: false, prerelease: false, body };
+  // Draft attachments use temporary `untagged-*` URLs. Preview their published
+  // URLs without relaxing the desktop provider's public-feed validation.
+  const assets = release.draft ? release.assets.map((asset) => ({ ...asset,
+    browser_download_url: `https://github.com/${RELEASE_REPOSITORY}/releases/download/${release.tag_name}/${asset.name}`,
+  })) : release.assets;
+  const candidate = { ...release, draft: false, prerelease: false, body, assets };
   for (const platform of ["win32", "darwin", "linux"]) {
     for (const arch of ["x64", "arm64"]) releaseUpdateInfo(candidate, { platform, arch });
   }
