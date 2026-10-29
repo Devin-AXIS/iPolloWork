@@ -249,7 +249,7 @@ function stageBundledOpenCodeRuntime() {
 run(nodeCmd, [resolve(repoRoot, "scripts", "check-hyperframes-version-sync.mjs")], repoRoot);
 assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath });
 run(pnpmCmd, ["--filter", "@ipollowork/app", "typecheck"], repoRoot);
-run(bunCmd, [resolve(repoRoot, "scripts/package-plugin-collection.mjs"), "--desktop"], repoRoot);
+run(bunCmd, [resolve(repoRoot, "scripts/package-plugin-collection.mjs"), "--desktop"], repoRoot, { IPOLLOWORK_NODE_BIN: nodeCmd });
 run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", "--outdir", electronHelperDir], desktopRoot);
 // Build the server TS → JS so Electron can import it in-process

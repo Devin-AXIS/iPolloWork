@@ -45,10 +45,10 @@ const output = resolve(options.get("--out") ?? (desktop ? desktopOutput : join(r
 if (desktop && output === resolve(desktopOutput)) await rm(output, { recursive: true, force: true });
 if (await stat(output).catch(error => { if (error.code === "ENOENT") return null; throw error; })) throw new Error("EEXIST: output directory already exists: " + output);
 const closed = new Set(["operation-recorder", "short-video-studio", "xiaohongshu-ops", "ipollo-onto"]);
+const buildNode = process.env.IPOLLOWORK_NODE_BIN?.trim() || process.env.npm_node_execpath?.trim() || "node";
 function run(script, scriptArgs = []) {
-  const result = spawnSync(process.execPath, [script, ...scriptArgs], {
+  const result = spawnSync(buildNode, [script, ...scriptArgs], {
     cwd: repo, encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024,
-    env: { ...process.env, BUN_BE_BUN: "1" },
   });
   if (result.status !== 0) throw new Error(`Failed: ${basename(script)}\n${result.stderr || result.stdout || result.error?.message}`);
   return result.stdout;
