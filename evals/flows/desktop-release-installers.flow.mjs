@@ -54,6 +54,7 @@ export default {
           ctx.assert(process.platform === "win32", "The full installer download runs on Windows");
           const requireDesktop = createRequire(new URL("../../apps/desktop/package.json", import.meta.url));
           const { NsisUpdater } = requireDesktop("electron-updater/out/NsisUpdater.js");
+          const { ElectronHttpExecutor } = requireDesktop("electron-updater/out/electronHttpExecutor.js");
           const requireBuilder = createRequire(requireDesktop.resolve("electron-builder"));
           const { httpExecutor } = requireBuilder("builder-util/out/nodeHttpExecutor.js");
           const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-release-update-proof-"));
@@ -62,7 +63,11 @@ export default {
           const updater = new NsisUpdater(null, { version: "0.50.29", isPackaged: true, userDataPath: root,
             baseCachePath: root, appUpdateConfigPath: config, name: "iPolloWork update proof", whenReady: async () => {},
             quit: () => { throw new Error("The proof must not install or quit the user's app."); } });
-          updater.httpExecutor = httpExecutor;
+          // Reuse Electron's complete download/integrity implementation with
+          // Node's transport so this isolated proof needs no live desktop app.
+          const executor = new ElectronHttpExecutor();
+          executor.createRequest = httpExecutor.createRequest.bind(httpExecutor);
+          updater.httpExecutor = executor;
           updater.autoDownload = false;
           updater.autoInstallOnAppQuit = false;
           updater.disableDifferentialDownload = true;
