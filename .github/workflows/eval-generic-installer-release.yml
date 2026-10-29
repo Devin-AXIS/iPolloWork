@@ -54,7 +54,7 @@ jobs:
   validate:
     name: Download and validate public artifact
     needs: [prepare, publish-generic-installer]
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Prove anonymous download, archive integrity, and macOS trust
         env:

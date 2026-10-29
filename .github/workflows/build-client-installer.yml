@@ -77,11 +77,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-14
+          - platform: macos-15
             os_type: macos
             artifact: installer-macos-arm64
             bun_target: bun-darwin-arm64
-          - platform: macos-14
+          - platform: macos-15
             os_type: macos
             artifact: installer-macos-x64
             bun_target: bun-darwin-x64

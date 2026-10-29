@@ -299,7 +299,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-14
+          - platform: macos-15
             os_type: macos
             artifact: electron-macos-arm64
             electron_args: "--mac --arm64"
@@ -675,11 +675,9 @@ jobs:
           node-version: 22.22.1
 
       - name: Download native updater receipts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: electron-*
-          path: ${{ runner.temp }}/electron-dist
-          github-token: ${{ github.token }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'electron-*' --dir "$RUNNER_TEMP/electron-dist"
 
       - name: Publish update metadata and retain only six installers
         env:
