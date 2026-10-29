@@ -854,19 +854,17 @@ describe("workspace session read APIs", () => {
       opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
     });
 
-    const response = await Promise.race([
-      fetch(`http://127.0.0.1:${ipollowork.server.port}/workspace/ws_1/opencode/session/ses_1/command`, {
+    try {
+      // The upstream stays blocked until finally: a successful acknowledgement
+      // proves ordering without depending on the runner's scheduling latency.
+      const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspace/ws_1/opencode/session/ses_1/command`, {
         method: "POST",
         headers: { ...auth(ipollowork.token), "Content-Type": "application/json" },
         body: JSON.stringify({ command: "review", arguments: "" }),
-      }),
-      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 100)),
-    ]);
-
-    try {
-      expect(response).not.toBe("timeout");
-      expect(response instanceof Response ? response.status : 0).toBe(200);
-      await expect(response instanceof Response ? response.json() : null).resolves.toMatchObject({ accepted: true });
+        signal: AbortSignal.timeout(5_000),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ accepted: true });
       const sawCommand = await waitUntil(() => mock.requests.some((request) => request.pathname === "/session/ses_1/command"));
       expect(sawCommand).toBe(true);
     } finally { command.resolve(); }
