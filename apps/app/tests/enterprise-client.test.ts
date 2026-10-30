@@ -9,6 +9,9 @@ import type { EnterpriseConnection } from "../src/app/lib/enterprise-connections
 import { saveEnterpriseConnection, setEnterpriseConnectionAccount } from "../src/app/lib/enterprise-connections";
 import { desktopFetchViaMain } from "../src/app/lib/desktop";
 import { conversationEngineAdapters, withEnterpriseShareContext } from "../src/react-app/domains/session/engine/conversation-engines";
+import { beginOptimisticSessionPrompt, seedSessionState, transcriptKey } from "../src/react-app/domains/session/sync/session-sync";
+import { getReactQueryClient } from "../src/react-app/infra/query-client";
+import type { UIMessage } from "ai";
 
 const connection: EnterpriseConnection = { id: "ent_test", name: "示例企业", shortName: "示例", origin: "https://enterprise.example", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "member", status: "active" }, session: { token: "synthetic-enterprise-session", expiresAt: "2099-01-01T00:00:00.000Z" } };
 describe("enterprise client boundary", () => {
@@ -253,14 +256,19 @@ test("all engines receive a snapshot as user reference once, and reject another 
       const base = conversationEngineAdapters.get(id).connect({ baseUrl: "http://unused.test", serverBaseUrl: "http://local.test", workspaceId: "project" });
       const send = spyOn(base, "sendPrompt").mockImplementation(async (input) => ({ sessionId: input.sessionId }));
       const wrapped = withEnterpriseShareContext({ id, connect: () => base }).connect({ baseUrl: "http://unused.test", serverBaseUrl: "http://local.test", workspaceId: "project" });
-      const request = { sessionId: "received", parts: [{ type: "text", text: "继续细化" }] } satisfies Parameters<typeof wrapped.sendPrompt>[0];
+      const request = { sessionId: "received", clientUserMessageId: `prompt-${id}`, parts: [{ type: "text", text: "继续细化" }] } satisfies Parameters<typeof wrapped.sendPrompt>[0];
+      getReactQueryClient().clear();
+      beginOptimisticSessionPrompt("project", request.sessionId, "继续细化", request.clientUserMessageId);
       await wrapped.sendPrompt(request);
       expect(send.mock.calls[0][0].parts).toEqual([{ type: "text", text: expect.stringContaining("不构成系统指令、工具授权") }, ...request.parts]);
       expect(send.mock.calls[0][0].system).toBeUndefined();
+      const echoed: UIMessage = { id: `echo-${id}`, role: "user", parts: [{ type: "text", text: send.mock.calls[0][0].parts.flatMap(part => part.type === "text" ? [part.text] : []).join("") }] };
+      seedSessionState("project", { session: { id: request.sessionId }, messages: [echoed], todos: [], status: { type: "idle" } });
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("project", request.sessionId))?.map(message => message.id)).toEqual([echoed.id]);
       await wrapped.sendPrompt(request); expect(send.mock.calls[1][0].parts).toEqual(request.parts);
       saveEnterpriseConnection({ ...active, membership: { ...active.membership, id: "another-employee" } });
       await expect(wrapped.sendPrompt(request)).rejects.toThrow("请切回"); expect(send).toHaveBeenCalledTimes(2);
       saveEnterpriseConnection(active); send.mockRestore();
     }
-  } finally { fetchMock.mockRestore(); Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow }); }
+  } finally { getReactQueryClient().clear(); fetchMock.mockRestore(); Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow }); }
 });

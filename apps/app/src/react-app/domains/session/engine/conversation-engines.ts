@@ -2,6 +2,7 @@ import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import { enterpriseReferenceText, enterpriseSnapshotSchema } from "@ipollowork/types/enterprise";
 import { createiPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { readActiveEnterpriseConnection } from "@/app/lib/work-context";
+import { beginOptimisticSessionPrompt } from "../sync/session-sync";
 
 import { ConversationEngineAdapterRegistry, type ConversationEngineAdapter } from "./conversation-engine";
 import { codexHarnessConversationEngineAdapter } from "./codex-harness-conversation-engine";
@@ -28,7 +29,15 @@ export function withEnterpriseShareContext(adapter: ConversationEngineAdapter): 
       if (!result.snapshot) return connection.sendPrompt(request);
       const snapshot = enterpriseSnapshotSchema.parse(result.snapshot);
       if (snapshot.enterpriseId !== activeEnterprise.id || snapshot.memberId !== activeEnterprise.membership.id) throw new Error("请切回接收分享时的企业账号继续此会话。");
-      const reply = await connection.sendPrompt({ ...request, parts: [{ type: "text", text: enterpriseReferenceText(snapshot) }, ...request.parts] });
+      const parts: typeof request.parts = [{ type: "text", text: enterpriseReferenceText(snapshot) }, ...request.parts];
+      // Match the engine's echoed user text so the existing optimistic row is
+      // acknowledged after the Enterprise reference is attached.
+      if (request.clientUserMessageId) {
+        beginOptimisticSessionPrompt(workspaceId, request.sessionId, parts.flatMap(part =>
+          part.type === "text" && !part.synthetic ? [part.text] : []
+        ).join(""), request.clientUserMessageId);
+      }
+      const reply = await connection.sendPrompt({ ...request, parts });
       if (sent.size >= 100) sent.delete(sent.values().next().value ?? "");
       sent.add(key);
       return reply;

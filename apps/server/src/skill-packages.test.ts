@@ -8,6 +8,7 @@ import { assertStandaloneSkillWritable, exportStandaloneSkill, importStandaloneS
 import { installPluginPackage } from "./plugin-package-lifecycle.js";
 import * as skillDiscovery from "./skills.js";
 import { disposeTemplateStore } from "./templates.js";
+import { disposeWorkItemStore } from "./work-items.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import type { EnterpriseSkillContext } from "@ipollowork/types/skills";
 
@@ -35,7 +36,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await setEnterpriseSkillContext(config, workspace, null);
-  await disposeTemplateStore(config); service.stop(true);
+  await disposeTemplateStore(config); await disposeWorkItemStore(config); service.stop(true);
   await rm(root, { recursive: true, force: true });
   if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB; else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
 });
