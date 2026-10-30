@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-exhibition-curation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "culture",
@@ -10,7 +10,8 @@
     "culture",
     "brutalist",
     "pptx-compatible",
-    "themeable"
+    "themeable",
+    "topic:events"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

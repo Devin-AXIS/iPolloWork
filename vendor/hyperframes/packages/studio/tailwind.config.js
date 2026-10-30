@@ -7,5 +7,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [resolve(__dirname, "./src/**/*.{ts,tsx}"), resolve(__dirname, "./index.html")],
+  darkMode: "selector",
   ...studioPreset,
 };

@@ -1,0 +1,160 @@
+// @vitest-environment happy-dom
+import { act, createRef } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Player, isDeferredFrameVisuallyReady } from "./Player";
+import { usePlayerStore } from "../store/playerStore";
+
+vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+
+vi.mock("@hyperframes/player", () => {
+  class TestPlayer extends HTMLElement {
+    ready = false;
+    readonly iframeElement: HTMLIFrameElement;
+    constructor() {
+      super();
+      this.iframeElement = document.createElement("iframe");
+      this.attachShadow({ mode: "open" }).append(this.iframeElement);
+    }
+  }
+  if (!customElements.get("hyperframes-player")) {
+    customElements.define("hyperframes-player", TestPlayer);
+  }
+  return {};
+});
+
+let root: Root;
+let container: HTMLDivElement;
+let onError = vi.fn<() => void>();
+let player: HTMLElement & { ready: boolean; iframeElement: HTMLIFrameElement };
+
+beforeEach(async () => {
+  vi.useFakeTimers();
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  onError = vi.fn();
+  await act(async () => {
+    root.render(<Player ref={createRef()} projectId="proof" onLoad={vi.fn()} onError={onError} suppressLoadingOverlay />);
+  });
+  player = container.querySelector("hyperframes-player")! as typeof player;
+  expect(player).toBeTruthy();
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+async function advanceOverlay() {
+  await act(async () => vi.advanceTimersByTime(250));
+}
+
+describe("official player readiness and iframe load ordering", () => {
+  it("starts a paused replacement at the current playhead and requests only that frame", async () => {
+    usePlayerStore.setState({ currentTime: 45, requestedSeekTime: null, isPlaying: false });
+    try {
+      await act(async () => root.render(<Player key="current-frame" projectId="proof" onLoad={vi.fn()} />));
+      const current = container.querySelector("hyperframes-player");
+      expect(current?.getAttribute("src")).toContain("__hf_preview_time=45");
+      expect(current?.getAttribute("src")).toContain("__hf_preview_frame_only=1");
+    } finally {
+      usePlayerStore.setState({ currentTime: 0, requestedSeekTime: null, isPlaying: false });
+    }
+  });
+
+  it("reveals a parsed, visually ready frame without waiting for unrelated downloads", () => {
+    const iframe = player.iframeElement;
+    const doc = iframe.contentDocument!;
+    Object.defineProperty(doc, "readyState", { configurable: true, value: "interactive" });
+    Object.defineProperty(doc, "fonts", { configurable: true, value: { status: "loaded" } });
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(true);
+
+    const image = doc.createElement("img");
+    Object.defineProperty(image, "checkVisibility", { value: () => true });
+    Object.defineProperty(image, "complete", { configurable: true, value: false });
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 0 });
+    doc.body.append(image);
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(false);
+
+    Object.defineProperty(image, "complete", { value: true });
+    Object.defineProperty(image, "naturalWidth", { value: 100 });
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(true);
+    Object.defineProperty(doc, "readyState", { value: "loading" });
+    expect(isDeferredFrameVisuallyReady(iframe)).toBe(false);
+  });
+
+  it("keeps a ready preview usable after a late iframe load", async () => {
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+      player.iframeElement.dispatchEvent(new Event("load"));
+    });
+    await advanceOverlay();
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).toBeNull();
+  });
+
+  it("shows loading before readiness and removes it on the native ready event", async () => {
+    await act(async () => player.iframeElement.dispatchEvent(new Event("load")));
+    await advanceOverlay();
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).not.toBeNull();
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+    });
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).toBeNull();
+  });
+
+  it("tracks readiness again when the official player navigates to another document", async () => {
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+      player.ready = false;
+      player.iframeElement.dispatchEvent(new Event("load"));
+    });
+    await advanceOverlay();
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).not.toBeNull();
+    await act(async () => {
+      player.ready = true;
+      player.dispatchEvent(new Event("ready"));
+    });
+    expect(container.querySelector('[data-testid="composition-refresh-loading-overlay"]')).toBeNull();
+  });
+
+  it("shows loading immediately and offers a retry after player failure", async () => {
+
+    await act(async () => {
+      root.render(<Player projectId="preview-proof" onLoad={vi.fn()} onError={onError} />);
+      await Promise.resolve();
+    });
+    player = container.querySelector("hyperframes-player")! as typeof player;
+
+    expect(container.querySelector('[data-testid="composition-loading-overlay"]')).not.toBeNull();
+
+    await act(async () => player?.dispatchEvent(new Event("error")));
+    expect(onError).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-testid="composition-error-overlay"]')).not.toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button")?.click();
+    });
+    expect(player?.getAttribute("src")).toContain("_hfRetry=");
+    expect(container.querySelector('[data-testid="composition-loading-overlay"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="composition-error-overlay"]')).toBeNull();
+  });
+});
+
+it("reveals a ready staged refresh in a background document whose animation frames are suspended", async () => {
+  vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  const frames = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+  const onReveal = vi.fn();
+  const iframeRef = createRef<HTMLIFrameElement>();
+  await act(async () => root.render(<Player key="staged" ref={iframeRef} projectId="proof" deferReveal suppressLoadingOverlay onReadyToReveal={onReveal} onLoad={() => { if (iframeRef.current) iframeRef.current.style.visibility = ""; }} />));
+  player = container.querySelector("hyperframes-player")! as typeof player;
+  await act(async () => { player.ready = true; player.dispatchEvent(new Event("ready")); });
+  await act(async () => vi.advanceTimersByTime(1000));
+  expect(onReveal).toHaveBeenCalledTimes(1);
+  expect(frames).not.toHaveBeenCalled();
+});

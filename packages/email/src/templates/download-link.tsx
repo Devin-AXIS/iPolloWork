@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react"
-import { Body, Button, Container, Head, Heading, Html, Preview, Section, Text } from "@react-email/components"
+import { Body, Button, Container, Head, Heading, Html, Preview, Section, Text } from "react-email"
 import { desktopCapabilities } from "./desktop-capabilities.js"
 
 export type DownloadLinkEmailProps = {

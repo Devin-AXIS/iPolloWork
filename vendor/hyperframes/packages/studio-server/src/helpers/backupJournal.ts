@@ -1,7 +1,7 @@
-import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { join, relative } from "node:path";
-import { isSafePath } from "./safePath.js";
+import { isProjectRootMissing, isSafePath, mkdirWithinProject } from "./safePath.js";
 
 const DEFAULT_KEEP_PER_FILE = 10;
 
@@ -36,11 +36,20 @@ export function snapshotBeforeWrite(
   if (!isSafePath(projectDir, absPath)) return { backupPath: null };
 
   try {
-    const content = readFileSync(absPath);
+    let content: Buffer;
+    try {
+      content = readFileSync(absPath);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error &&
+          (error.code === "ENOENT" || error.code === "EISDIR")) {
+        return { backupPath: null };
+      }
+      throw error;
+    }
 
     const relativePath = relative(projectDir, absPath);
     const backupDir = join(projectDir, ".hyperframes", "backup");
-    mkdirSync(backupDir, { recursive: true });
+    mkdirWithinProject(projectDir, backupDir);
 
     const backupKey = backupKeyForPath(relativePath);
     const backupPath = nextBackupPath(backupDir, backupKey);
@@ -48,14 +57,7 @@ export function snapshotBeforeWrite(
     pruneBackups(backupDir, backupKey, options.keepPerFile ?? DEFAULT_KEEP_PER_FILE);
     return { backupPath };
   } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "EISDIR")
-    ) {
-      return { backupPath: null };
-    }
+    if (isProjectRootMissing(error)) throw error;
     return { backupPath: null, error: error instanceof Error ? error.message : String(error) };
   }
 }

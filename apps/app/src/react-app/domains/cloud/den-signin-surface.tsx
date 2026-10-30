@@ -55,7 +55,7 @@ const headerBadgeClass =
 const softNoticeClass =
   "rounded-xl border border-dls-border bg-dls-hover px-3 py-2 text-xs text-dls-secondary";
 const errorBannerClass =
-  "rounded-xl border border-red-7/30 bg-red-1/40 px-3 py-2 text-xs text-red-11";
+  "rounded-xl border-0 bg-feedback-error px-3 py-2 text-xs text-red-11";
 
 /* ------------------------------------------------------------------ */
 /*  Brand icon via Simple Icons CDN                                    */

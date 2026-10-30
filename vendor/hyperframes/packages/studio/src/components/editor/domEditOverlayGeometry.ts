@@ -1,6 +1,7 @@
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
 import { hugRectForElement } from "./domEditOverlayCrop";
+import { getDomEditGroupMembers } from "./domEditingElement";
 
 export interface OverlayRect {
   left: number;
@@ -234,14 +235,21 @@ function toOverlayRect(
 
   const elementRect = element.getBoundingClientRect();
   const sourceBoundary = findSourceBoundary(element);
-  const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
+  // A composition HOST is positioned in its parent's coordinate system. Its
+  // own data-width/data-height describe the CHILD source mounted inside it,
+  // not the coordinate system used by left/top or GSAP x/y on the host. Using
+  // the child scale here makes an edit-as-unit host
+  // travel too far and then persist at a different-looking drop position.
+  // Descendants drilled into the sub-composition still need the child scale.
+  const nestedSourceBoundary = sourceBoundary && sourceBoundary !== element ? sourceBoundary : null;
+  const sourceBoundaryRect = nestedSourceBoundary?.getBoundingClientRect();
   const editScale = resolveDomEditCoordinateScale({
     rootScaleX,
     rootScaleY,
     sourceRectWidth: sourceBoundaryRect?.width,
     sourceRectHeight: sourceBoundaryRect?.height,
-    sourceWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
-    sourceHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+    sourceWidth: readPositiveDimension(nestedSourceBoundary?.getAttribute("data-width") ?? null),
+    sourceHeight: readPositiveDimension(nestedSourceBoundary?.getAttribute("data-height") ?? null),
   });
 
   return {
@@ -483,8 +491,8 @@ export function groupAwareOverlayRect(
   // members once they've been moved/transformed, which would otherwise drag the
   // group's bounds (and its off-canvas marker) off to a stale position.
   const rects: OverlayRect[] = [];
-  for (const child of Array.from(el.children)) {
-    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement);
+  for (const child of getDomEditGroupMembers(el)) {
+    const childRect = toOverlayRect(overlayEl, iframe, child);
     if (childRect) rects.push(childRect);
   }
   const union = rects.length > 0 ? resolveDomEditGroupOverlayRect(rects) : null;

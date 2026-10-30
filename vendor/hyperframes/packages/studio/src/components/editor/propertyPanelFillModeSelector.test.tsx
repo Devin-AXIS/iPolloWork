@@ -89,10 +89,7 @@ describe("FillModeSelector", () => {
 
   it("writes an asset path relative to a nested composition", () => {
     expect(
-      toRelativeProjectAssetPath(
-        "compositions/effects/effect-ending-douyin-follow.html",
-        "assets/fill.png",
-      ),
+      toRelativeProjectAssetPath("compositions/components/route-map.html", "assets/fill.png"),
     ).toBe("../../assets/fill.png");
     expect(toRelativeProjectAssetPath("index.html", "assets/fill.png")).toBe("assets/fill.png");
   });

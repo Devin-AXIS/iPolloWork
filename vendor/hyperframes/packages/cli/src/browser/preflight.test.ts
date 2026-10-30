@@ -1,0 +1,408 @@
+// fallow-ignore-file code-duplication
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  checkDisk,
+  extractMajorVersion,
+  parseToolVersion,
+  resolveRenderBrowser,
+  runEnvironmentChecks,
+} from "./preflight.js";
+import * as manager from "./manager.js";
+import * as linuxDeps from "./linuxDeps.js";
+
+const runProcess = vi.hoisted(() => vi.fn());
+
+vi.mock("../utils/cancellableProcess.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/cancellableProcess.js")>();
+  return {
+    ...actual,
+    runCancellableProcess: (
+      command: string,
+      args: readonly string[],
+      options: { signal?: AbortSignal },
+    ) =>
+      options.signal
+        ? actual.runCancellableProcess(command, args, options)
+        : runProcess(command, args, options),
+  };
+});
+
+describe("runEnvironmentChecks", () => {
+  const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
+  const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
+
+  beforeEach(() => {
+    process.env.HYPERFRAMES_FFMPEG_PATH = process.execPath;
+    process.env.HYPERFRAMES_FFPROBE_PATH = process.execPath;
+    runProcess.mockReset();
+    runProcess.mockResolvedValue({ stdout: "ffmpeg version 7.1.1\n", stderr: "" });
+  });
+
+  afterEach(() => {
+    if (originalFfmpegPath === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    else process.env.HYPERFRAMES_FFMPEG_PATH = originalFfmpegPath;
+    if (originalFfprobePath === undefined) delete process.env.HYPERFRAMES_FFPROBE_PATH;
+    else process.env.HYPERFRAMES_FFPROBE_PATH = originalFfprobePath;
+  });
+
+  it("returns configured FFmpeg and FFprobe paths when checks pass", async () => {
+    const result = await runEnvironmentChecks();
+
+    expect(result.outcomes.find((outcome) => outcome.name === "FFmpeg")?.ok).toBe(true);
+    expect(result.outcomes.find((outcome) => outcome.name === "FFprobe")?.ok).toBe(true);
+    expect(result.ffmpegPath).toBe(process.execPath);
+    expect(result.ffprobePath).toBe(process.execPath);
+    expect(result.ffmpegVersionMajor).toBe(7);
+    expect(runProcess).toHaveBeenCalledTimes(2);
+    expect(runProcess).toHaveBeenCalledWith(
+      process.execPath,
+      ["-version"],
+      expect.objectContaining({ timeoutMs: 5000 }),
+    );
+  });
+
+  it("omits ffmpegVersionMajor when the version banner has no parseable number", async () => {
+    runProcess.mockResolvedValue({ stdout: "ffmpeg version unknown\n", stderr: "" });
+
+    const result = await runEnvironmentChecks();
+
+    expect(result.ffmpegVersionMajor).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "aborts a blocked render probe and waits for its process tree to exit",
+    async () => {
+      const testDir = mkdtempSync(join(tmpdir(), "hyperframes-preflight-cancel-"));
+      const probePath = join(testDir, "ffmpeg");
+      const pidPath = join(testDir, "probe.pid");
+      writeFileSync(probePath, `#!/bin/sh\necho $$ > "${pidPath}"\nsleep 30\n`);
+      chmodSync(probePath, 0o755);
+      process.env.HYPERFRAMES_FFMPEG_PATH = probePath;
+      const controller = new AbortController();
+      let probePid: number | undefined;
+
+      try {
+        const checks = runEnvironmentChecks({ signal: controller.signal });
+        const deadline = Date.now() + 2_000;
+        while (probePid === undefined && Date.now() < deadline) {
+          try {
+            // Shell `>` redirection creates (truncates) the file before `echo $$`
+            // writes to it — a read can land on that empty window and parse to 0.
+            const pid = Number(readFileSync(pidPath, "utf8").trim());
+            if (Number.isInteger(pid) && pid > 0) probePid = pid;
+          } catch {
+            // pid file not created yet
+          }
+          if (probePid === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(probePid).toBeGreaterThan(0);
+
+        controller.abort(new Error("render_cancelled_parent_exited"));
+        await expect(checks).rejects.toThrow("render_cancelled_parent_exited");
+        expect(() => process.kill(probePid!, 0)).toThrow();
+      } finally {
+        if (probePid) {
+          try {
+            process.kill(probePid, "SIGKILL");
+          } catch {}
+        }
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("reports ffprobe as a render-blocking error when the explicit path is missing", async () => {
+    process.env.HYPERFRAMES_FFPROBE_PATH = "/missing/ffprobe.exe";
+
+    const result = await runEnvironmentChecks();
+
+    expect(result.outcomes).toContainEqual(
+      expect.objectContaining({
+        name: "FFprobe",
+        ok: false,
+        level: "error",
+        title: "FFprobe not found",
+      }),
+    );
+    expect(result.ffprobePath).toBeUndefined();
+  });
+
+  it("fails early when an explicit FFmpeg env override points at a missing file", async () => {
+    process.env.HYPERFRAMES_FFMPEG_PATH = "/missing/ffmpeg.exe";
+
+    const result = await runEnvironmentChecks();
+    const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+    expect(ffmpeg).toMatchObject({
+      ok: false,
+      detail: 'Configured path does not exist: HYPERFRAMES_FFMPEG_PATH="/missing/ffmpeg.exe"',
+    });
+  });
+
+  it("blocks rendering when the selected FFmpeg binary cannot launch", async () => {
+    runProcess.mockImplementation((binaryPath: string) => {
+      if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+        return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+      throw Object.assign(new Error("Command failed with exit code 3221225781"), {
+        status: 3221225781,
+      });
+    });
+
+    const result = await runEnvironmentChecks();
+    const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+    expect(ffmpeg).toMatchObject({
+      ok: false,
+      level: "error",
+      title: "FFmpeg cannot start",
+      path: process.execPath,
+    });
+    expect(ffmpeg?.detail).toContain(process.execPath);
+    expect(ffmpeg?.detail).toContain("3221225781");
+    expect(result.ffmpegPath).toBeUndefined();
+  });
+
+  // Windows DLL advice only on Windows; elsewhere the platform install hint.
+  describe("FFmpeg cannot-start hint is platform-specific", () => {
+    const realPlatform = process.platform;
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
+    });
+
+    it.each([
+      { platform: "darwin" as const, expectedHint: "brew install ffmpeg" },
+      { platform: "sunos" as const, expectedHint: "https://ffmpeg.org/download.html" },
+      {
+        platform: "win32" as const,
+        expectedHint: "Install a working 64-bit FFmpeg build with all required runtime DLLs.",
+      },
+    ])("gives the $platform cannot-start hint", async ({ platform, expectedHint }) => {
+      Object.defineProperty(process, "platform", { value: platform, configurable: true });
+      runProcess.mockImplementation((binaryPath: string) => {
+        if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+          return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+        throw Object.assign(new Error("cannot execute binary file"), { status: 126 });
+      });
+
+      const result = await runEnvironmentChecks();
+      const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+      expect(ffmpeg?.title).toBe("FFmpeg cannot start");
+      expect(ffmpeg?.hint).toBe(expectedHint);
+    });
+  });
+
+  it("validates an explicit browser path without needing browser discovery", async () => {
+    const result = await runEnvironmentChecks({
+      includeBrowser: true,
+      browserPath: process.execPath,
+    });
+
+    expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
+      ok: true,
+      path: process.execPath,
+      versionMajor: 7,
+    });
+    expect(result.browserVersionMajor).toBe(7);
+    expect(result.browserInstall).toMatchObject({ pathAscii: true });
+  });
+
+  it("reports Chrome as not found (no throw) when browser discovery throws on a corrupt cache", async () => {
+    const spy = vi.spyOn(manager, "findBrowser").mockRejectedValue(
+      Object.assign(new Error("ENOTDIR: not a directory, scandir 'chrome-headless-shell'"), {
+        code: "ENOTDIR",
+      }),
+    );
+
+    try {
+      const result = await runEnvironmentChecks({ includeBrowser: true });
+
+      expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
+        ok: false,
+        title: "Chrome not found",
+        hint: "Run: npx hyperframes browser ensure",
+      });
+      expect(result.browser).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each([
+    { failure: { status: 133, signal: "SIGTRAP" }, detail: "SIGTRAP" },
+    { failure: { code: "EACCES" }, detail: "EACCES" },
+    { failure: { code: "ETIMEDOUT", signal: "SIGKILL" }, detail: "ETIMEDOUT" },
+  ])("rejects an existing browser that fails --version: $detail", async ({ failure, detail }) => {
+    runProcess.mockImplementation((_path, args) => {
+      if (args[0] === "--version") throw Object.assign(new Error("cannot execute"), failure);
+      return Promise.resolve({ stdout: "ffmpeg version 7.1.1\n", stderr: "" });
+    });
+    const findBrowser = vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "cache",
+    });
+    try {
+      for (const browserPath of [undefined, process.execPath]) {
+        const result = await runEnvironmentChecks({ includeBrowser: true, browserPath });
+        const chrome = result.outcomes.find((outcome) => outcome.name === "Chrome");
+        expect(chrome).toMatchObject({ ok: false, level: "error", title: "Chrome cannot start" });
+        expect(chrome?.detail).toContain(detail);
+        expect(result.browser).toBeUndefined();
+      }
+      expect(runProcess).toHaveBeenCalledWith(
+        process.execPath,
+        ["--version"],
+        expect.objectContaining({
+          timeoutMs: 5000,
+          maxBufferBytes: 64 * 1024,
+        }),
+      );
+    } finally {
+      findBrowser.mockRestore();
+    }
+  });
+
+  it("reports an explicit missing browser path before render starts", async () => {
+    const result = await runEnvironmentChecks({
+      includeBrowser: true,
+      browserPath: "/missing/chrome-headless-shell.exe",
+    });
+
+    expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
+      ok: false,
+      title: "Chrome not found",
+    });
+  });
+});
+
+describe("runEnvironmentChecks — Chrome shared libraries (Linux/WSL)", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    runProcess.mockReset();
+    runProcess.mockResolvedValue({ stdout: "", stderr: "" });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    vi.restoreAllMocks();
+  });
+
+  it("downgrades a found Chrome to a render-blocking error when libs are missing", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "cache",
+    });
+    runProcess.mockImplementation((_command, args) =>
+      Promise.resolve({
+        stdout:
+          args[0] === "--version" ? "" : "libnss3.so => not found\nlibatk-1.0.so.0 => not found\n",
+        stderr: "",
+      }),
+    );
+    vi.spyOn(linuxDeps, "detectLinuxDistro").mockReturnValue({
+      family: "debian",
+      id: "ubuntu",
+      prettyName: "Ubuntu 22.04.3 LTS",
+      isWsl: true,
+    });
+
+    const result = await runEnvironmentChecks({ includeBrowser: true });
+    const chrome = result.outcomes.find((o) => o.name === "Chrome");
+
+    expect(chrome).toMatchObject({
+      ok: false,
+      level: "error",
+      title: "Chrome cannot launch (missing system libraries)",
+    });
+    expect(chrome?.detail).toContain("WSL");
+    expect(chrome?.detail).toContain("libnss3.so");
+    expect(chrome?.hint).toContain("apt-get install -y");
+    expect(chrome?.hint).toContain("libnss3");
+    // A lib-broken Chrome must NOT be handed to the render pipeline as usable.
+    expect(result.browser).toBeUndefined();
+  });
+
+  it("keeps Chrome ok when the shared-lib probe passes", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "system",
+    });
+
+    const result = await runEnvironmentChecks({ includeBrowser: true });
+    expect(result.outcomes.find((o) => o.name === "Chrome")).toMatchObject({ ok: true });
+    expect(result.browser?.executablePath).toBe(process.execPath);
+  });
+
+  it("keeps Chrome ok when the probe is inconclusive (no ldd)", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "system",
+    });
+    runProcess.mockImplementation((_command, args) => {
+      if (args[0] === "--version") return Promise.resolve({ stdout: "", stderr: "" });
+      throw new Error("ldd unavailable");
+    });
+
+    const result = await runEnvironmentChecks({ includeBrowser: true });
+    expect(result.outcomes.find((o) => o.name === "Chrome")).toMatchObject({ ok: true });
+  });
+
+  it("resolveRenderBrowser returns the browser the render check found", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "system",
+    });
+    await expect(resolveRenderBrowser()).resolves.toMatchObject({
+      executablePath: process.execPath,
+    });
+  });
+
+  it("resolveRenderBrowser refuses with the Chrome check's own message when none resolves", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue(undefined);
+    await expect(resolveRenderBrowser()).rejects.toThrow(
+      /Chrome not found: Chrome Headless Shell is required.*npx hyperframes browser ensure/,
+    );
+  });
+});
+
+describe("parseToolVersion", () => {
+  it("extracts ffprobe versions with Windows build suffixes", () => {
+    expect(parseToolVersion("ffprobe version 7.1.1-essentials_build-www.gyan.dev Copyright")).toBe(
+      "ffprobe 7.1.1-essentials_build-www.gyan.dev",
+    );
+  });
+});
+
+describe("extractMajorVersion", () => {
+  it("reads the major from an ffmpeg banner", () => {
+    expect(extractMajorVersion("ffmpeg version 7.1.1-essentials_build")).toBe(7);
+  });
+
+  it("reads the major from a Chrome/HeadlessShell banner", () => {
+    expect(extractMajorVersion("Google Chrome 119.0.6045.105")).toBe(119);
+    expect(extractMajorVersion("HeadlessShell 119.0.6045.199")).toBe(119);
+  });
+
+  it("returns undefined when no X.Y-shaped number is present", () => {
+    expect(extractMajorVersion("ffmpeg version unknown")).toBeUndefined();
+    expect(extractMajorVersion("")).toBeUndefined();
+  });
+});
+
+describe("checkDisk", () => {
+  it("checks the requested render volume", () => {
+    const freeDiskMb = vi.fn(() => 512);
+
+    expect(checkDisk("/external/render-output", freeDiskMb)).toMatchObject({
+      ok: false,
+      detail: "0.5 GB free at /external/render-output",
+    });
+    expect(freeDiskMb).toHaveBeenCalledWith("/external/render-output");
+  });
+});

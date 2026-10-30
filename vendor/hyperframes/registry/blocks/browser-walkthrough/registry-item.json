@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "browser-walkthrough",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Browser Walkthrough",
+  "description": "A browser UI walkthrough with editable steps, selected state and deterministic cursor click.",
+  "tags": ["component", "interface", "browser", "walkthrough", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "media", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["pageTitle", "url", "steps", "activeStep"], "instructions": "Use three short workflow steps separated by vertical bars and select the one-based step that the cursor should demonstrate." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "browser-walkthrough.html", "target": "compositions/browser-walkthrough.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "pageTitle", "label": "Page title", "type": "string", "default": "Build a clear campaign brief", "maxLength": 72, "update": "live" },
+    { "id": "url", "label": "Browser URL", "type": "string", "default": "workspace.example/project/brief", "maxLength": 96, "update": "live" },
+    { "id": "steps", "label": "Steps", "description": "Separate three steps with |", "type": "string", "default": "Add the objective|Choose the audience|Share for review", "maxLength": 180, "update": "live" },
+    { "id": "activeStep", "label": "Active step", "type": "number", "default": 2, "min": 1, "max": 3, "step": 1, "update": "live" }
+  ]
+}

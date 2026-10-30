@@ -1,3 +1,4 @@
+import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -74,6 +75,32 @@ describe("semantic motion mutation route", () => {
       body: JSON.stringify({ target }),
     });
   }
+
+  it.each(["value", "added-point", "removed-point", "property-split", "timing", "manual-marker"])(
+    "preserves %s edits when template parameters would regenerate the motion",
+    async (editKind) => {
+      const request = { type: "mutate-motion", operation: "upsert", targetSelector: "#headline", elementId: "headline", targetKind: "element", applicationKind: "general", phase: "enter", presetId: "element.enter.slide", start: 1, duration: 1 };
+      expect((await mutate(request)).status).toBe(200);
+      const animation = parseGsapScriptAcorn(readFileSync(join(projectDir, "index.html"), "utf8").match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "").animations.find((candidate) => readMotionInstanceFromExtras(candidate.extras));
+      expect(animation).toBeDefined();
+      const edits: Record<string, Record<string, unknown>> = {
+        value: { type: "update-keyframe", animationId: animation!.id, percentage: 100, properties: { x: 77 } },
+        "added-point": { type: "add-keyframe", animationId: animation!.id, percentage: 50, properties: { x: 42 } },
+        "removed-point": { type: "remove-keyframe", animationId: animation!.id, percentage: 100 },
+        "property-split": { type: "edit-property-keyframe", animationId: animation!.id, property: "x", percentage: 100, edit: { action: "update", value: 77 } },
+        timing: { type: "update-meta", animationId: animation!.id, updates: { duration: 2 } },
+        "manual-marker": { type: "add-keyframe", animationId: animation!.id, percentage: 50, properties: { opacity: 0.5, data: "hf-manual-keyframe" } },
+      };
+      expect((await mutate(edits[editKind]!)).status).toBe(200);
+      const before = readFileSync(join(projectDir, "index.html"), "utf8");
+      const response = await mutate({ ...request, parameters: { direction: "right", intensity: 2 } });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ code: "manual-motion-preserved", error: expect.stringContaining("已保留原动画") });
+      expect(readFileSync(join(projectDir, "index.html"), "utf8")).toBe(before);
+      // Explicit removal remains an intentional user action.
+      expect((await mutate({ ...request, operation: "remove" })).status).toBe(200);
+    },
+  );
 
   it("isolates shared GSAP targets before one element is edited", async () => {
     writeFileSync(
@@ -165,6 +192,57 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("data-ipw-motion-char");
     expect(html).toContain("你好 mixed AI");
     expect(html).not.toContain("text.enter.typewriter");
+  });
+
+  it("persists, edits and removes camera motion through the existing mutation route", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace(
+        '<h1 id="headline"',
+        '<div id="world" data-motion-role="camera"></div><h1 id="headline"',
+      ),
+    );
+    for (const zoom of [1.8, 2.4]) {
+      const response = await mutate({
+        type: "mutate-motion",
+        operation: "upsert",
+        targetSelector: "#world",
+        elementId: "world",
+        targetKind: "element",
+        phase: "emphasis",
+        presetId: "camera.push-in",
+        start: 1,
+        duration: 3,
+        parameters: { focusX: 72, focusY: 40, zoom },
+      });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      const motions = body.parsed.animations
+        .map((animation: { extras?: Record<string, unknown> }) =>
+          readMotionInstanceFromExtras(animation.extras),
+        )
+        .filter(Boolean);
+      expect(motions).toHaveLength(1);
+      expect(motions[0]).toMatchObject({
+        presetId: "camera.push-in",
+        start: 1,
+        duration: 3,
+        parameters: { zoom },
+      });
+      expect(readFileSync(join(projectDir, "index.html"), "utf8")).toContain("你好 mixed AI");
+    }
+    const removed = await mutate({
+      type: "mutate-motion",
+      operation: "remove",
+      targetSelector: "#world",
+      elementId: "world",
+      targetKind: "element",
+      phase: "emphasis",
+    });
+    expect(removed.status).toBe(200);
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain("camera.push-in");
+    expect(html).toContain('id="world"');
   });
 
   it("keeps a manually placed element anchored when semantic motion is added", async () => {

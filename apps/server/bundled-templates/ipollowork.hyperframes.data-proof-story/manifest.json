@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.data-proof-story",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "data-story",
@@ -12,7 +12,8 @@
     "chart",
     "proof",
     "case-study",
-    "metrics"
+    "metrics",
+    "topic:data"
   ],
   "surface": "video",
   "title": "Data Proof Story",

@@ -17,20 +17,22 @@ describe("translateStudioLiteral", () => {
     expect(translateStudioLiteral("zh", "Post-processing")).toBe("后处理");
     expect(translateStudioLiteral("zh", "Mask rectangle")).toBe("蒙层矩形");
     expect(translateStudioLiteral("zh", "Mask circle")).toBe("蒙层圆形");
-    expect(translateStudioLiteral("zh", "Split clip at playhead")).toBe(
-      "当前片段时刻分割",
-    );
-    expect(translateStudioLiteral("zh", "Add keyframe")).toBe("添加关键");
-    expect(translateStudioLiteral("zh", "Add keyframe at playhead")).toBe(
-      "当前片段时刻添加关键帧",
+    expect(translateStudioLiteral("zh", "Split clip at playhead")).toBe("当前片段时刻分割");
+    expect(translateStudioLiteral("zh", "Add keyframe")).toBe("添加关键帧");
+    expect(translateStudioLiteral("zh", "Add keyframe at playhead")).toBe("当前片段时刻添加关键帧");
+  });
+
+  it("translates narration and whole-video music controls", () => {
+    expect(translateStudioLiteral("zh", "AI chooses from the script")).toBe("AI 自动选择");
+    expect(translateStudioLiteral("zh", "Choose from project assets")).toBe("项目素材");
+    expect(translateStudioLiteral("zh", "Optional music direction for the AI")).toBe(
+      "可补充配乐风格；留空由 AI 按脚本判断",
     );
   });
 
   it("uses the approved AI video-editing warning copy", () => {
     const source = readFileSync(new URL("./i18n.tsx", import.meta.url), "utf8");
-    expect(source).toContain(
-      '"header.aiEditingWarning": "AI 修改视频中，建议不要手动修改"',
-    );
+    expect(source).toContain('"preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改"');
   });
 
   it("translates the existing animation editor controls", () => {
@@ -71,8 +73,14 @@ describe("translateStudioLiteral", () => {
   });
 
   it("falls back to the source text when a literal is not registered", () => {
-    expect(translateStudioLiteral("zh", "Project-specific label")).toBe(
-      "Project-specific label",
-    );
+    expect(translateStudioLiteral("zh", "Project-specific label")).toBe("Project-specific label");
   });
 });
+
+ it("localizes timeline hierarchy navigation without changing English flow labels", () => {
+   const labels={"Click to expand properties":"单击展开属性","Click to expand properties; double-click to enter (Ctrl/⌘+Enter)":"单击展开属性，双击进入（Ctrl/⌘+Enter）","Total timeline":"图层总览","Scene editing":"场景编辑","Composition navigation":"层级导航","Back to parent composition":"返回上一层","Back (Esc, or double-click empty timeline)":"返回上一层（Esc，或双击时间轴空白处）","Shared":"共享"};
+   for(const [label,expected] of Object.entries(labels)){
+     expect(translateStudioLiteral("zh",label)).toBe(expected);
+     expect(translateStudioLiteral("en",label)).toBe(label);
+   }
+ });

@@ -34,6 +34,7 @@ export function readGsapProperty(
   iframe: HTMLIFrameElement | null,
   selector: string | null,
   prop: string,
+  options?: { round?: boolean },
 ): number | null {
   if (!selector) return null;
   const gsap = getIframeGsap(iframe);
@@ -43,6 +44,7 @@ export function readGsapProperty(
   try {
     const val = readLiveGsapValue(gsap, el, prop);
     if (!Number.isFinite(val)) return null;
+    if (options?.round === false) return val;
     return POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
   } catch {
     return null;

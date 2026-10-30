@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Median Household Income by State","maxLength":72},{"id":"values","type":"string","label":"State data","default":"MD:106998,NJ:101778,MA:101079,CA:89648,TX:70813","maxLength":2000},{"id":"highlight","type":"string","label":"Highlight","default":"MD","maxLength":4},{"id":"source","type":"string","label":"Source","default":"Source: American Community Survey 2024","maxLength":72}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -37,7 +37,7 @@
       data-duration="10"
     >
       <div class="map-header">
-        <h1 class="map-headline">Median Household Income by State</h1>
+        <h1 class="map-headline" data-ipw-ai-slot="title">Median Household Income by State</h1>
         <p class="map-subtitle">American Community Survey, 2024</p>
       </div>
 
@@ -52,7 +52,7 @@
         <div class="legend-label legend-high">$107k</div>
       </div>
 
-      <div class="map-source">Source: U.S. Census Bureau, American Community Survey 2024</div>
+      <div class="map-source" data-ipw-ai-slot="source">Source: U.S. Census Bureau, American Community Survey 2024</div>
 
       <style>
         #us-map-hex {
@@ -149,11 +149,31 @@
           color: #475569;
           opacity: 0;
         }
+        #us-map-hex { background: var(--ipw-color-bg, #0f172a); color: var(--ipw-color-text, #f8fafc); font-family: var(--ipw-font-body, Inter, sans-serif); }
+        #us-map-hex .map-headline { color: var(--ipw-color-text, #f8fafc); font-family: var(--ipw-font-display, Inter, sans-serif); }
+        #us-map-hex .map-subtitle, #us-map-hex .legend-label, #us-map-hex .map-source { color: var(--ipw-color-muted, #94a3b8); }
+        #us-map-hex .hex-poly { stroke: var(--ipw-color-border, #0f172a); }
       </style>
 
       <script>
         (function () {
           var NS = "http://www.w3.org/2000/svg";
+          var root = document.querySelector("#us-map-hex");
+          var values = Object.assign(
+            {
+              title: "Median Household Income by State",
+              values: "MD:106998,NJ:101778,MA:101079,CA:89648,TX:70813",
+              highlight: "MD",
+              source: "Source: American Community Survey 2024",
+            },
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {},
+          );
+          root.querySelector(".map-headline").textContent = String(values.title);
+          root.querySelector(".map-source").textContent = String(values.source);
+          var themeAccent =
+            getComputedStyle(root).getPropertyValue("--ipw-color-primary").trim() || "#f59e0b";
           var hexGrid = document.querySelector("#us-map-hex .hex-grid");
           var hexLabels = document.querySelector("#us-map-hex .hex-labels");
 
@@ -266,6 +286,16 @@
             MS: 52434,
             DC: 101722,
           };
+          String(values.values)
+            .split(",")
+            .forEach(function (entry) {
+              var separator = entry.lastIndexOf(":");
+              var abbr = entry.slice(0, separator).trim().toUpperCase();
+              var amount = Number(entry.slice(separator + 1));
+              if (Object.prototype.hasOwnProperty.call(income, abbr) && Number.isFinite(amount)) {
+                income[abbr] = amount;
+              }
+            });
 
           /* --- Color interpolation --- */
           var incomeValues = [];
@@ -380,6 +410,10 @@
             poly.setAttribute("fill", getColor(income[st]));
             poly.setAttribute("class", "hex-poly");
             poly.setAttribute("data-state", st);
+            if (st === String(values.highlight).trim().toUpperCase()) {
+              poly.setAttribute("fill", themeAccent);
+              poly.setAttribute("stroke-width", "5");
+            }
             hexGrid.appendChild(poly);
             hexPolys.push(poly);
 

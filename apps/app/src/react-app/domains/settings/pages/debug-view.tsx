@@ -22,10 +22,11 @@ import type { OpencodeExecutionSnapshot } from "../../../../app/lib/desktop-type
 import { formatRelativeTime, isDesktopRuntime } from "../../../../app/utils";
 import { t } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
+import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 
 const sectionHeaderClass = "flex flex-col gap-1 pb-2";
-const sectionTitleClass = "text-[15px] font-semibold tracking-[-0.2px] text-dls-text";
-const sectionDescClass = "text-[12px] text-dls-secondary";
+const sectionTitleClass = "text-ui-section-title font-semibold tracking-[-0.2px] text-dls-text";
+const sectionDescClass = "text-ui-compact text-dls-secondary";
 const cardClass =
   "rounded-2xl border border-dls-border bg-dls-surface/95 p-5 space-y-4";
 const subCardClass = "rounded-xl border border-dls-border bg-dls-sidebar/40 p-4 space-y-3";
@@ -33,8 +34,6 @@ const monoPreClass =
   "max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dls-border bg-dls-sidebar/40 p-3 text-[11px] font-mono text-dls-text";
 const miniPreClass =
   "max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dls-border bg-dls-sidebar/30 p-2 text-[11px] font-mono text-dls-text";
-const compactDangerActionClass =
-  "inline-flex h-9 items-center gap-2 rounded-xl border border-red-7/40 bg-red-9 px-4 text-xs font-medium text-white transition-colors hover:bg-red-10 disabled:cursor-not-allowed disabled:opacity-60";
 
 type RuntimeSummary = {
   appVersionLabel: string;
@@ -347,7 +346,7 @@ export function DebugView(props: DebugViewProps) {
       : "";
 
   return (
-    <section className="space-y-6 max-w-3xl w-full">
+    <section className={`${settingsStandardContentClass} space-y-6`}>
       {/* Section: Runtime overview */}
       <div className={cardClass}>
         <div className="flex items-start justify-between gap-3">
@@ -552,7 +551,6 @@ export function DebugView(props: DebugViewProps) {
           {props.ipolloworkServerCapabilities ? (
             <div className="grid gap-2 text-[12px] text-dls-secondary md:grid-cols-2">
               <div>{t("settings.cap_skills", { value: formatCapability(props.ipolloworkServerCapabilities.skills) })}</div>
-              <div>{t("settings.cap_plugins", { value: formatCapability(props.ipolloworkServerCapabilities.plugins) })}</div>
               <div>{t("settings.cap_mcp", { value: formatCapability(props.ipolloworkServerCapabilities.mcp) })}</div>
               <div>{t("settings.cap_commands", { value: formatCapability(props.ipolloworkServerCapabilities.commands) })}</div>
               <div>{t("settings.cap_config", { value: formatCapability(props.ipolloworkServerCapabilities.config) })}</div>
@@ -903,7 +901,7 @@ export function DebugView(props: DebugViewProps) {
       {isDesktop ? (
         <div className="space-y-3 rounded-2xl border border-red-7/30 bg-red-3/10 p-5">
           <div className={sectionHeaderClass}>
-            <div className="text-[15px] font-semibold tracking-[-0.2px] text-red-11">
+            <div className="text-ui-section-title font-semibold tracking-[-0.2px] text-red-11">
               {t("settings.danger_section_title")}
             </div>
             <div className={sectionDescClass}>{t("settings.danger_section_desc")}</div>
@@ -936,9 +934,9 @@ export function DebugView(props: DebugViewProps) {
           <div className="text-[11px] text-dls-secondary">{t("settings.quit_hint")}</div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <Button
               type="button"
-              className={compactDangerActionClass}
+              variant="destructive"
               onClick={() => void props.onNukeiPolloWorkAndOpencodeConfig()}
               disabled={props.busy || props.nukeConfigBusy}
             >
@@ -946,7 +944,7 @@ export function DebugView(props: DebugViewProps) {
               {props.nukeConfigBusy
                 ? t("settings.removing_local_state")
                 : t("settings.delete_local_config")}
-            </button>
+            </Button>
             <div className="text-[12px] text-dls-secondary">{t("settings.nuke_hint")}</div>
           </div>
 

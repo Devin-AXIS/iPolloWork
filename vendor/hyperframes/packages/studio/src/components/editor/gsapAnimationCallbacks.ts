@@ -6,6 +6,9 @@ import type { ArcPathSegment } from "@hyperframes/parsers/gsap-parser";
  * signatures the section forwards straight through to the card.
  */
 export interface GsapAnimationEditCallbacks {
+  onEnablePropertyKeyframes?: (animationId: string) => void;
+  onEditPropertyKeyframe?: (animationId: string, property: string, percentage: number,
+    edit: { action: "add" | "update" | "remove" | "move" | "ease"; value?: number | string; toPercentage?: number; ease?: string; resolvedFromValues?: Record<string, number | string> }) => void;
   onUpdateProperty: (animationId: string, property: string, value: number | string) => void;
   onUpdateMeta: (
     animationId: string,

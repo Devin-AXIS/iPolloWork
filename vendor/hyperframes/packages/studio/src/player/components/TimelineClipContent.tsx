@@ -16,12 +16,8 @@ export const TimelineClipContent = memo(function TimelineClipContent({
   body,
 }: TimelineClipContentProps) {
   return (
-    <div className={`hf-timeline-clip-content is-${variant}`}>
-      <div className="hf-timeline-clip-content__header">
-        <span className="hf-timeline-clip-content__label">{label}</span>
-        {timecode && <span className="hf-timeline-clip-content__timecode">{timecode}</span>}
-      </div>
-      {body && <div className="hf-timeline-clip-content__body">{body}</div>}
+    <div className={`hf-timeline-clip-content is-${variant}`} aria-label={label} title={timecode ? `${label} • ${timecode}` : label}>
+      {body && <div className="hf-timeline-clip-content__body" style={{ inset: 0 }}>{body}</div>}
     </div>
   );
 });

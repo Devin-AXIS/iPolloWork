@@ -11,7 +11,7 @@ import {
   GENERIC_FAMILIES,
   iterateFontFamilyDeclarations,
   resolveFontFamilyDeclarationFamilies,
-} from "../deterministicFonts.js";
+} from "@hyperframes/core/fonts/embed";
 
 /**
  * Re-export the BROWSER_GPU_NOT_SOFTWARE code so distributed adapters and
@@ -25,7 +25,7 @@ export { BROWSER_GPU_NOT_SOFTWARE } from "@hyperframes/engine";
  * @font-face injector consume the same surface, so the parser lives next to
  * the data.
  */
-export { parseFontFamilyValue } from "../deterministicFonts.js";
+export { parseFontFamilyValue } from "@hyperframes/core/fonts/embed";
 
 /**
  * Typed plan-validation error. Workflow adapters key retry policies off the
@@ -67,17 +67,15 @@ export interface ValidateNoGpuEncodeInput {
  */
 export const SYSTEM_FONT_USED = "SYSTEM_FONT_USED";
 
-/**
- * Typed code for {@link validateDistributedDuration}. A duration this large
- * almost always means an unbounded runtime timeline escaped into plan(),
- * e.g. GSAP `repeat: -1` reporting its internal sentinel duration. Letting
- * that reach chunk planning creates billions of frames and turns an authoring
- * error into worker churn.
- */
+/** Typed code for invalid duration metadata resolved by the shared browser probe. */
 export const DISTRIBUTED_DURATION_OUT_OF_RANGE = "DISTRIBUTED_DURATION_OUT_OF_RANGE";
+/** Generic alias; the legacy value remains stable for workflow retry policies. */
+export const RENDER_DURATION_OUT_OF_RANGE = DISTRIBUTED_DURATION_OUT_OF_RANGE;
 
-/** Distributed renders are operationally bounded to one day of output. */
+/** All render paths are operationally bounded to one day of output. */
 export const MAX_DISTRIBUTED_DURATION_SECONDS = 24 * 60 * 60;
+/** Generic alias retained alongside the distributed public API. */
+export const MAX_RENDER_DURATION_SECONDS = MAX_DISTRIBUTED_DURATION_SECONDS;
 
 /**
  * Reject any config that would let GPU encode or hardware-GL slip into a
@@ -128,8 +126,8 @@ export function validateNoSystemFonts(compiledHtml: string): void {
     const families = resolveFontFamilyDeclarationFamilies(declaration, customProperties);
     if (families.length === 0) continue;
     const primaryRaw = families[0]!;
-    // Unresolved var() primaries are left to the browser; resolved custom
-    // properties are checked above so common `--font: system-ui` aliases fail.
+    // A var() primary is checked as its resolved value or, when undefined, its
+    // fallback, so `--font: system-ui` and `var(--font, system-ui)` both fail.
     if (!GENERIC_FAMILIES.has(primaryRaw.toLowerCase())) continue;
     throw new PlanValidationError(
       SYSTEM_FONT_USED,
@@ -143,13 +141,13 @@ export function validateNoSystemFonts(compiledHtml: string): void {
   }
 }
 
-export function validateDistributedDuration(input: {
+export function validateRenderDuration(input: {
   duration: number;
   totalFrames: number;
   fps: number;
 }): void {
   const { duration, totalFrames, fps } = input;
-  const maxFrames = Math.ceil(MAX_DISTRIBUTED_DURATION_SECONDS * fps);
+  const maxFrames = Math.ceil(MAX_RENDER_DURATION_SECONDS * fps);
   if (
     Number.isFinite(duration) &&
     duration > 0 &&
@@ -163,12 +161,21 @@ export function validateDistributedDuration(input: {
   }
 
   throw new PlanValidationError(
-    DISTRIBUTED_DURATION_OUT_OF_RANGE,
-    `[planValidation] Distributed render duration is out of range: ` +
+    RENDER_DURATION_OUT_OF_RANGE,
+    `[planValidation] Render duration is out of range: ` +
       `duration=${String(duration)}s totalFrames=${String(totalFrames)} fps=${String(fps)} ` +
-      `(maxDuration=${String(MAX_DISTRIBUTED_DURATION_SECONDS)}s, maxFrames=${String(maxFrames)}). ` +
+      `(maxDuration=${String(MAX_RENDER_DURATION_SECONDS)}s, maxFrames=${String(maxFrames)}). ` +
       `This usually means an unbounded timeline escaped into render planning, such as ` +
       `GSAP repeat:-1 / yoyo loops without an explicit finite root duration. Add a finite ` +
       `data-duration or replace infinite repeats with a finite repeat count before rendering.`,
   );
+}
+
+/** Backward-compatible distributed entry point for existing adopters. */
+export function validateDistributedDuration(input: {
+  duration: number;
+  totalFrames: number;
+  fps: number;
+}): void {
+  validateRenderDuration(input);
 }

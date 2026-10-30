@@ -40,12 +40,40 @@ export {
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 
 export {
+  extractCompiledHtmlParityContract,
+  type CompiledHtmlParityContract,
+  type HtmlParityComposition,
+  type HtmlParityResource,
+  type HtmlParityTimedElement,
+} from "./htmlParityContract";
+
+export {
   RUNTIME_BOOTSTRAP_ATTR,
   injectScriptsAtHeadStart,
+  injectTagsAtHeadStart,
   injectScriptsIntoHtml,
+  insertBeforeCloseTag,
+  insertRuntimeTag,
+  isRuntimeFileUrl,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
+
+export { addScenePartsManifest } from "./scenePartsManifest";
+
+// Script ordering shared by the bundler and the producer coalescers
+export {
+  AFTER_FONTS_SCRIPT_TYPE,
+  compositionStyle,
+  cssStyleMergeKey,
+  deferScriptsUntilFonts,
+  headStyleRuns,
+  inlineScriptRuns,
+  isJavaScriptType,
+  styleElementsFor,
+  type CompositionStyle,
+  type InlineScriptRun,
+} from "./scriptRuns";
 
 // Static guard
 export {
@@ -63,6 +91,7 @@ export {
 
 // Sub-composition inlining (shared between bundler and producer)
 export {
+  ensureExternalLinkTag,
   inlineSubCompositions,
   type InlineSubCompositionsOptions,
   type InlineSubCompositionsResult,
@@ -80,3 +109,12 @@ export {
 
 // Asset-path primitives (shared across core, producer, CLI)
 export { CSS_URL_RE, PATH_ATTRS, isNonRelativeUrl, isPathInside } from "./assetPaths";
+
+export {
+  AUDIO_GROUP_RENDER_ID_ATTR,
+  MEDIA_RENDER_ID_ATTR,
+  assignMediaRenderIds,
+} from "./mediaRenderIds";
+
+export { ensureExternalScriptTag } from "./externalScripts";
+export { emitMountedModuleScripts } from "./importMaps";

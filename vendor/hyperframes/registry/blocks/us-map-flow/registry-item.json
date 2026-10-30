@@ -5,12 +5,21 @@
   "librarySection": "interface-animation",
   "title": "US Flow Map",
   "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
-  "tags": ["data", "map", "geography", "usa", "flow", "connections", "arcs"],
+  "tags": ["component", "data", "map", "geography", "usa", "flow", "connections", "arcs", "theme"],
+  "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "US Flow Map", "url": "https://www.hyperframes.dev/catalog/blocks/us-map-flow" },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "data": { "version": 1, "kind": "route-value", "mode": "replace", "rowId": "routeId", "binding": { "variable": "routes", "encoding": "route-value-list" }, "columns": [{ "id": "from", "label": "From", "labelZh": "起点", "type": "string", "role": "source", "required": true }, { "id": "to", "label": "To", "labelZh": "终点", "type": "string", "role": "target", "required": true }, { "id": "value", "label": "Volume", "labelZh": "流量", "type": "number", "role": "value", "required": true }], "minRows": 1, "maxRows": 30, "highlightVariable": "highlight", "valueFormat": { "precision": 0, "notation": "standard" } }, "ai": { "slots": ["title", "routes", "highlight", "source"], "instructions": "AI may replace routes and volumes while preserving valid named cities, readable arcs, and a deterministic timeline." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
   },
   "duration": 12,
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Interstate Flow Connections", "maxLength": 72, "update": "live" },
+    { "id": "routes", "label": "Routes", "description": "Route volumes, edited as structured rows.", "type": "string", "default": "San Francisco>New York:100,Los Angeles>Chicago:85,Seattle>Austin:70", "maxLength": 2000, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "San Francisco>New York", "maxLength": 64, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source: Illustrative data", "maxLength": 64, "update": "live" }
+  ],
   "files": [
     {
       "path": "us-map-flow.html",

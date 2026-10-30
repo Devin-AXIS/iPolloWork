@@ -25,14 +25,12 @@ export type ResourceSnapshot = {
 };
 
 export type DesktopCloudSyncChangeKind = "new" | "modified" | "removed";
-export type DesktopCloudSyncResourceKind = "llmProvider" | "marketplace" | "plugin" | "configItem";
+export type DesktopCloudSyncResourceKind = "llmProvider";
 
 export type DesktopCloudSyncChange = {
   id: string;
   kind: DesktopCloudSyncChangeKind;
   resourceKind: DesktopCloudSyncResourceKind;
-  marketplaceId?: string;
-  pluginId?: string;
   previousLastUpdatedAt: string | null;
   nextLastUpdatedAt: string | null;
   queuedAt: number;
@@ -59,27 +57,8 @@ type CloudImportedProvider = {
   updatedAt: string | null;
 };
 
-type CloudImportedMarketplace = {
-  marketplaceId: string;
-  updatedAt: string | null;
-};
-
-type CloudImportedPluginFile = {
-  configObjectId: string;
-  updatedAt: string | null;
-};
-
-type CloudImportedPlugin = {
-  pluginId: string;
-  marketplaceId: string | null;
-  updatedAt: string | null;
-  files: CloudImportedPluginFile[];
-};
-
 type WorkspaceCloudImports = {
   providers: Record<string, CloudImportedProvider>;
-  marketplaces: Record<string, CloudImportedMarketplace>;
-  plugins: Record<string, CloudImportedPlugin>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -189,60 +168,10 @@ function readImportedProviders(value: unknown): Record<string, CloudImportedProv
   return providers;
 }
 
-function readImportedMarketplaces(value: unknown): Record<string, CloudImportedMarketplace> {
-  if (!isRecord(value)) return {};
-
-  const marketplaces: Record<string, CloudImportedMarketplace> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (!isRecord(entry)) continue;
-    const marketplaceId = readString(entry.marketplaceId) ?? key.trim();
-    if (!marketplaceId) continue;
-    marketplaces[marketplaceId] = {
-      marketplaceId,
-      updatedAt: readString(entry.updatedAt),
-    };
-  }
-  return marketplaces;
-}
-
-function readImportedPluginFiles(value: unknown): CloudImportedPluginFile[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((entry) => {
-    if (!isRecord(entry)) return [];
-    const configObjectId = readString(entry.configObjectId);
-    if (!configObjectId) return [];
-    return [{
-      configObjectId,
-      updatedAt: readString(entry.updatedAt),
-    }];
-  });
-}
-
-function readImportedPlugins(value: unknown): Record<string, CloudImportedPlugin> {
-  if (!isRecord(value)) return {};
-
-  const plugins: Record<string, CloudImportedPlugin> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (!isRecord(entry)) continue;
-    const pluginId = readString(entry.pluginId) ?? key.trim();
-    if (!pluginId) continue;
-    plugins[pluginId] = {
-      pluginId,
-      marketplaceId: readString(entry.marketplaceId),
-      updatedAt: readString(entry.updatedAt),
-      files: readImportedPluginFiles(entry.files),
-    };
-  }
-  return plugins;
-}
-
 export function readWorkspaceCloudImports(ipollowork: Record<string, unknown>): WorkspaceCloudImports {
   const cloudImports = isRecord(ipollowork.cloudImports) ? ipollowork.cloudImports : {};
   return {
     providers: readImportedProviders(cloudImports.providers),
-    marketplaces: readImportedMarketplaces(cloudImports.marketplaces),
-    plugins: readImportedPlugins(cloudImports.plugins),
   };
 }
 
@@ -252,12 +181,7 @@ function readChange(value: unknown): DesktopCloudSyncChange | null {
   const kind = value.kind === "new" || value.kind === "modified" || value.kind === "removed"
     ? value.kind
     : null;
-  const resourceKind = value.resourceKind === "llmProvider" ||
-    value.resourceKind === "marketplace" ||
-    value.resourceKind === "plugin" ||
-    value.resourceKind === "configItem"
-    ? value.resourceKind
-    : null;
+  const resourceKind = value.resourceKind === "llmProvider" ? value.resourceKind : null;
   const queuedAt = typeof value.queuedAt === "number" && Number.isFinite(value.queuedAt)
     ? value.queuedAt
     : Date.now();
@@ -267,8 +191,6 @@ function readChange(value: unknown): DesktopCloudSyncChange | null {
     id,
     kind,
     resourceKind,
-    marketplaceId: readString(value.marketplaceId) ?? undefined,
-    pluginId: readString(value.pluginId) ?? undefined,
     previousLastUpdatedAt: readString(value.previousLastUpdatedAt),
     nextLastUpdatedAt: readString(value.nextLastUpdatedAt),
     queuedAt,
@@ -317,8 +239,8 @@ function contextKey(snapshot: ResourceSnapshot): string {
   return [snapshot.organizationId, snapshot.orgMemberId].join("::");
 }
 
-function changeKey(change: Pick<DesktopCloudSyncChange, "id" | "marketplaceId" | "pluginId" | "resourceKind">) {
-  return [change.resourceKind, change.marketplaceId ?? "", change.pluginId ?? "", change.id].join("::");
+function changeKey(change: Pick<DesktopCloudSyncChange, "id" | "resourceKind">) {
+  return [change.resourceKind, change.id].join("::");
 }
 
 function mergePendingChanges(previous: DesktopCloudSyncChange[], next: DesktopCloudSyncChange[]) {
@@ -330,27 +252,10 @@ function mergePendingChanges(previous: DesktopCloudSyncChange[], next: DesktopCl
   ];
 }
 
-function findRemotePlugin(snapshot: ResourceSnapshot, input: { marketplaceId?: string | null; pluginId: string }) {
-  const preferredMarketplaceId = input.marketplaceId?.trim() ?? "";
-  if (preferredMarketplaceId) {
-    const marketplace = snapshot.resources.marketplaces[preferredMarketplaceId];
-    const plugin = marketplace?.plugins.find((entry) => entry.pluginId === input.pluginId) ?? null;
-    if (plugin) return { marketplaceId: preferredMarketplaceId, plugin };
-  }
-
-  for (const [marketplaceId, marketplace] of Object.entries(snapshot.resources.marketplaces)) {
-    const plugin = marketplace.plugins.find((entry) => entry.pluginId === input.pluginId) ?? null;
-    if (plugin) return { marketplaceId, plugin };
-  }
-  return null;
-}
-
 function queueInstalledChange(input: {
   changes: DesktopCloudSyncChange[];
   id: string;
   installedLastUpdatedAt: string | null;
-  marketplaceId?: string;
-  pluginId?: string;
   queuedAt: number;
   remoteLastUpdatedAt: string | null;
   resourceKind: DesktopCloudSyncResourceKind;
@@ -360,8 +265,6 @@ function queueInstalledChange(input: {
       id: input.id,
       kind: "removed",
       resourceKind: input.resourceKind,
-      marketplaceId: input.marketplaceId,
-      pluginId: input.pluginId,
       previousLastUpdatedAt: input.installedLastUpdatedAt,
       nextLastUpdatedAt: null,
       queuedAt: input.queuedAt,
@@ -374,8 +277,6 @@ function queueInstalledChange(input: {
       id: input.id,
       kind: "new",
       resourceKind: input.resourceKind,
-      marketplaceId: input.marketplaceId,
-      pluginId: input.pluginId,
       previousLastUpdatedAt: null,
       nextLastUpdatedAt: input.remoteLastUpdatedAt,
       queuedAt: input.queuedAt,
@@ -388,8 +289,6 @@ function queueInstalledChange(input: {
       id: input.id,
       kind: "modified",
       resourceKind: input.resourceKind,
-      marketplaceId: input.marketplaceId,
-      pluginId: input.pluginId,
       previousLastUpdatedAt: input.installedLastUpdatedAt,
       nextLastUpdatedAt: input.remoteLastUpdatedAt,
       queuedAt: input.queuedAt,
@@ -413,44 +312,6 @@ function diffInstalledCloudResources(
       remoteLastUpdatedAt: snapshot.resources.llmProviders[provider.cloudProviderId] ?? null,
       resourceKind: "llmProvider",
     });
-  }
-
-  for (const marketplace of Object.values(cloudImports.marketplaces)) {
-    queueInstalledChange({
-      changes,
-      id: marketplace.marketplaceId,
-      installedLastUpdatedAt: marketplace.updatedAt,
-      queuedAt,
-      remoteLastUpdatedAt: snapshot.resources.marketplaces[marketplace.marketplaceId]?.lastUpdatedAt ?? null,
-      resourceKind: "marketplace",
-    });
-  }
-
-  for (const plugin of Object.values(cloudImports.plugins)) {
-    const remote = findRemotePlugin(snapshot, { marketplaceId: plugin.marketplaceId, pluginId: plugin.pluginId });
-    queueInstalledChange({
-      changes,
-      id: plugin.pluginId,
-      installedLastUpdatedAt: plugin.updatedAt,
-      marketplaceId: remote?.marketplaceId ?? plugin.marketplaceId ?? undefined,
-      queuedAt,
-      remoteLastUpdatedAt: remote?.plugin.lastUpdatedAt ?? null,
-      resourceKind: "plugin",
-    });
-
-    for (const file of plugin.files) {
-      const remoteConfigItem = remote?.plugin.configItems.find((entry) => entry.configItemId === file.configObjectId) ?? null;
-      queueInstalledChange({
-        changes,
-        id: file.configObjectId,
-        installedLastUpdatedAt: file.updatedAt,
-        marketplaceId: remote?.marketplaceId ?? plugin.marketplaceId ?? undefined,
-        pluginId: plugin.pluginId,
-        queuedAt,
-        remoteLastUpdatedAt: remoteConfigItem?.lastUpdatedAt ?? null,
-        resourceKind: "configItem",
-      });
-    }
   }
 
   return changes;

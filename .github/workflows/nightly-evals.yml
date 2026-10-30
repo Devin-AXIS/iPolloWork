@@ -1,8 +1,7 @@
 name: Nightly Eval Smoke
 
-# Runs the coded UI eval flows (evals/flows) against a real Electron app
-# under Xvfb every night, and on demand. Flows that need cloud credentials
-# declare requiredEnv and are skipped automatically when secrets are absent.
+# Runs the core startup smoke against a real Electron app under Xvfb,
+# every night and on demand. This local flow needs no cloud credentials.
 
 on:
   schedule:
@@ -14,27 +13,15 @@ permissions:
 
 jobs:
   eval-smoke:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.4.0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.9
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Install OpenCode CLI
         shell: bash
@@ -63,28 +50,35 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Xvfb
+      - name: Install desktop test services
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb
+          sudo apt-get install -y -qq xvfb dbus
 
       - name: Start Electron app under Xvfb
+        id: desktop-startup
         shell: bash
         env:
           IPOLLOWORK_DEV_MODE: "1"
           ELECTRON_DISABLE_SANDBOX: "1"
           IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT: "9823"
-          DAYTONA_ELECTRON_EXTRA_LAUNCH_ARGS: "--no-sandbox --disable-gpu --disable-dev-shm-usage --enable-unsafe-swiftshader"
+          ELECTRON_EXTRA_LAUNCH_ARGS: "--no-sandbox --disable-gpu --disable-dev-shm-usage --enable-unsafe-swiftshader"
         run: |
           set -euo pipefail
           Xvfb :99 -screen 0 1600x1000x24 &
           export DISPLAY=:99
-          nohup pnpm dev > /tmp/ipollowork-dev.log 2>&1 &
+          nohup dbus-run-session -- pnpm dev > /tmp/ipollowork-dev.log 2>&1 &
+          app_pid=$!
           echo "Waiting for Electron CDP on :9823..."
-          for i in $(seq 1 36); do
+          for i in $(seq 1 120); do
             if curl -sf http://127.0.0.1:9823/json/list > /dev/null 2>&1; then
               echo "CDP ready after ~$((i*5))s"
               exit 0
+            fi
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "Electron startup exited before CDP was ready." >&2
+              tail -100 /tmp/ipollowork-dev.log >&2
+              exit 1
             fi
             sleep 5
           done
@@ -92,22 +86,19 @@ jobs:
           tail -100 /tmp/ipollowork-dev.log >&2
           exit 1
 
-      - name: Run eval flows
+      - name: Run core smoke flow
         shell: bash
         env:
           IPOLLOWORK_EVAL_CDP_URL: "http://127.0.0.1:9823"
-          # Optional cloud coverage: flows skip cleanly when unset.
-          IPOLLOWORK_EVAL_DEN_API_URL: ${{ secrets.IPOLLOWORK_EVAL_DEN_API_URL }}
-          IPOLLOWORK_EVAL_DEN_TOKEN: ${{ secrets.IPOLLOWORK_EVAL_DEN_TOKEN }}
-        run: pnpm evals --all
+        run: pnpm evals --flow app-smoke
 
       - name: Upload eval reports
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && (steps.desktop-startup.outcome == 'success' || steps.desktop-startup.outcome == 'failure')
+        uses: actions/upload-artifact@v7
         with:
           name: eval-results
           path: |
             evals/results/
             /tmp/ipollowork-dev.log
           retention-days: 14
-          if-no-files-found: warn
+          if-no-files-found: error

@@ -1,19 +1,205 @@
+import { isTweenConfigKey } from "@hyperframes/core/gsap-constants";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { StableElementLocator } from "@hyperframes/core/motion-presets";
-import type {
-  KeyframeCacheEntry,
-  KeyframeCacheUpdate,
-} from "../player/store/playerStore";
+import type { KeyframeCacheEntry, KeyframeCacheUpdate } from "../player/store/playerStore";
 import {
   buildTimelineAnimationSegments,
   type TimelineAnimationOwnerRange,
 } from "../utils/timelineAnimationSegments";
 import { buildTimelineElementKey } from "../player/lib/timelineElementHelpers";
+import type { TimelineElement } from "../player/store/playerStore";
+import { isAnimationSharedForOwner } from "../utils/timelineAnimationSegments";
+import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 
 export type TimelineSegmentsByElement = Map<
   string,
   NonNullable<KeyframeCacheEntry["animationSegments"]>
 >;
+
+export interface TimelinePropertyRowDefinition {
+  kind: "group" | "property";
+  key: string;
+  label: string;
+  property?: string;
+}
+
+/** Standard channels offered by the property keyframe recording menu. */
+export const TIMELINE_EMPTY_PROPERTY_ROWS: readonly TimelinePropertyRowDefinition[] = [
+  {kind:"property",key:"x",property:"x",label:"X"},
+  {kind:"property",key:"y",property:"y",label:"Y"},
+  {kind:"property",key:"scale",property:"scale",label:"Scale"},
+  {kind:"property",key:"rotation",property:"rotation",label:"Rotation"},
+  {kind:"property",key:"opacity",property:"opacity",label:"Opacity"},
+];
+
+/** Only timed authored channels appear by default. Rows remain presentation-only. */
+export function buildTimelinePropertyRows(
+  animations: readonly GsapAnimation[],
+  revealedProperties: readonly string[] = [],
+): TimelinePropertyRowDefinition[] {
+  const authored = new Set(animations.filter((animation) =>
+    animation.method !== "set" && animation.duration !== 0 && resolveTweenStart(animation) !== null,
+  ).flatMap((animation) => [
+    ...Object.keys(animation.properties),
+    ...(animation.keyframes?.keyframes.flatMap((frame) => Object.keys(frame.properties)) ?? []),
+  ]).filter((property) => property !== "_auto" && property !== "id" && !isTweenConfigKey(property)));
+  const properties = new Set([...authored, ...revealedProperties]);
+  const labels = new Map(TIMELINE_EMPTY_PROPERTY_ROWS.map((row) => [row.key, row.label]));
+  const order = ["x", "y", "xPercent", "yPercent", "translateX", "translateY", "scale", "scaleX", "scaleY", "rotation", "rotationX", "rotationY", "rotationZ", "opacity", "autoAlpha"];
+  return [...order.filter((property) => properties.has(property)), ...[...properties].filter((property) => !order.includes(property))]
+    .map((property) => ({kind:"property",key:property,property,label:labels.get(property) ?? property}));
+}
+
+export interface TimelinePropertyPoint {
+  animation: GsapAnimation;
+  percentage: number;
+  time: number;
+  value?: number | string;
+  ease?: string;
+  readOnly: boolean;
+  fromFlat: boolean;
+}
+
+/** Empty channels can start animation only if no existing alias owns them. */
+export function timelinePropertyHasAuthoredChannel(
+  animations: readonly GsapAnimation[],
+  property: string,
+): boolean {
+  const aliases =
+    property === "x"
+      ? ["x", "translateX"]
+      : property === "y"
+        ? ["y", "translateY"]
+        : property === "rotation" || property === "rotationZ"
+          ? ["rotation", "rotationZ"]
+          : property.startsWith("scale")
+            ? ["scale", "scaleX", "scaleY"]
+            : property === "opacity" || property === "autoAlpha"
+              ? ["opacity", "autoAlpha"]
+              : [property];
+  if (
+    [
+      "x",
+      "y",
+      "xPercent",
+      "yPercent",
+      "translateX",
+      "translateY",
+      "scale",
+      "scaleX",
+      "scaleY",
+      "rotation",
+      "rotationX",
+      "rotationY",
+      "rotationZ",
+    ].includes(property)
+  )
+    aliases.push("transform");
+  return animations.some((animation) =>
+    aliases.some(
+      (channel) =>
+        channel in animation.properties ||
+        channel in (animation.fromProperties ?? {}) ||
+        animation.keyframes?.keyframes.some((frame) => channel in frame.properties),
+    ),
+  );
+}
+
+export function canStartTimelinePropertyAnimation(
+  animations: readonly GsapAnimation[],
+  element: TimelineElement,
+  property: string,
+): boolean {
+  return (
+    !element.timelineLocked &&
+    element.duration > 0 &&
+    !timelinePropertyHasAuthoredChannel(animations, property) &&
+    animations.every(
+      (animation) =>
+        !animation.hasUnresolvedSelector &&
+        !animation.hasUnresolvedKeyframes &&
+        (!animation.provenance || animation.provenance.kind === "literal") &&
+        !animation.arcPath?.enabled &&
+        !isAnimationSharedForOwner(animation, element.domId ?? element.id, {
+          hfId: element.hfId,
+          selector: element.selector,
+        }),
+    )
+  );
+}
+
+export function isTimelinePropertyAnimationEditable(
+  animation: GsapAnimation,
+  element: TimelineElement,
+  root?: ParentNode,
+): boolean {
+  return (
+    !element.timelineLocked &&
+    !animation.hasUnresolvedKeyframes &&
+    !animation.hasUnresolvedSelector &&
+    !animation.durationUnresolved &&
+    !animation.arcPath?.enabled &&
+    (!animation.provenance || animation.provenance.kind === "literal") &&
+    typeof animation.position === "number" &&
+    resolveTweenDuration(animation) > 0 &&
+    animation.method !== "set" &&
+    (!animation.keyframes || animation.keyframes.format === "percentage") &&
+    !isAnimationSharedForOwner(animation, element.domId ?? element.id, {
+      hfId: element.hfId,
+      root,
+      selector: element.selector,
+    })
+  );
+}
+
+/** Each point retains source tween identity. Equal times never merge channels. */
+export function buildTimelinePropertyPoints(
+  animations: readonly GsapAnimation[],
+  element: TimelineElement,
+  property: string,
+  root?: ParentNode,
+): TimelinePropertyPoint[] {
+  return animations
+    .flatMap((animation) => {
+      const start = resolveTweenStart(animation);
+      if (start === null || animation.method === "set" || animation.duration === 0) return [];
+      const readOnly = !isTimelinePropertyAnimationEditable(animation, element, root);
+      const frames =
+        animation.keyframes?.keyframes ??
+        (property in animation.properties
+          ? [
+              {
+                percentage: 0,
+                properties:
+                  animation.method === "fromTo"
+                    ? (animation.fromProperties ?? {})
+                    : animation.method === "from"
+                      ? animation.properties
+                      : {},
+              },
+              {
+                percentage: 100,
+                properties: animation.method === "from" ? {} : animation.properties,
+              },
+            ]
+          : []);
+      return frames
+        .filter((frame) => property in frame.properties || !animation.keyframes)
+        .map((frame) => ({
+          animation,
+          percentage: frame.percentage,
+          time:
+            start +
+            (resolveTweenDuration(animation) * frame.percentage) / 100 +
+            (element.expandedParentStart ?? 0),
+          value: frame.properties[property],
+          ease: "ease" in frame && typeof frame.ease === "string" ? frame.ease : undefined,
+          readOnly,
+          fromFlat: !animation.keyframes,
+        }));
+    })
+    .sort((a, b) => a.time - b.time);
+}
 
 interface TimelineMotionTarget {
   id: string;
@@ -204,4 +390,35 @@ export function buildTimelineCacheUpdates(
     { elementId: id, data },
     ...(sourceFile !== "index.html" ? [{ elementId: `index.html#${id}`, data }] : []),
   ]);
+}
+
+/** Resolve one channel without guessing between overlapping animations. Existing points are navigation-only. */
+export function resolveTimelinePropertyKeyframeTarget(
+  animations: readonly GsapAnimation[], element: TimelineElement, property: string,
+  time: number, selectedAnimationId?: string, root?: ParentNode,
+): { kind: "existing"; point: TimelinePropertyPoint } |
+   { kind: "add"; animationId: string; percentage: number } |
+   { kind: "blocked" } {
+  if (element.timelineLocked || time < element.start || time > element.start + element.duration)
+    return { kind: "blocked" };
+  const points = buildTimelinePropertyPoints(animations, element, property, root);
+  const atTime = points.filter(point => Math.abs(point.time - time) < 0.001);
+  const existing = atTime.find(point => point.animation.id === selectedAnimationId) ??
+    (atTime.length === 1 ? atTime[0] : undefined);
+  if (existing) return { kind: "existing", point: existing };
+  if (atTime.length > 0) return { kind: "blocked" };
+  const localTime = time - (element.expandedParentStart ?? 0);
+  const candidates = animations.filter(animation =>
+    isTimelinePropertyAnimationEditable(animation, element, root) &&
+    (property in animation.properties || animation.keyframes?.keyframes.some(frame => property in frame.properties)) &&
+    localTime >= (resolveTweenStart(animation) ?? Infinity) &&
+    localTime <= (resolveTweenStart(animation) ?? -Infinity) + resolveTweenDuration(animation),
+  );
+  const animation = candidates.find(item => item.id === selectedAnimationId) ??
+    (candidates.length === 1 ? candidates[0] : undefined);
+  if (animation) return { kind: "add", animationId: animation.id,
+    percentage: ((localTime - (resolveTweenStart(animation) ?? 0)) / resolveTweenDuration(animation)) * 100 };
+  if (canStartTimelinePropertyAnimation(animations, element, property))
+    return { kind: "add", animationId: "", percentage: ((time - element.start) / element.duration) * 100 };
+  return { kind: "blocked" };
 }

@@ -1,0 +1,12 @@
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - "@deepseek-ai/*"
+
+packages:
+  - "."
+
+allowBuilds:
+  esbuild: true
+  # HyperFrames may load the bundled ONNX runtime for media analysis.
+  onnxruntime-node: true
+  sharp: true

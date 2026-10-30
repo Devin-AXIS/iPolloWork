@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-forma-portfolio",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "kind": "design",
   "category": "site",
   "subcategory": "creative-portfolio",
@@ -10,7 +10,8 @@
     "creative",
     "portfolio",
     "design",
-    "studio"
+    "studio",
+    "topic:culture"
   ],
   "surface": "design",
   "title": "Forma Studio",

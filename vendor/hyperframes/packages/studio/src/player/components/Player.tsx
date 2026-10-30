@@ -3,6 +3,8 @@ import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readin
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
+import { STUDIO_PREVIEW_TIME_PARAM, STUDIO_PREVIEW_FRAME_ONLY_PARAM } from "@hyperframes/core/studio-preview-mark";
+import { usePlayerStore } from "../store/playerStore";
 // NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
 // at module load, which throws under SSR. Defer the import to the mount effect
 // so it only runs in the browser.
@@ -26,6 +28,8 @@ interface PlayerProps {
 
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
+  readonly ready: boolean;
+  currentTime: number;
 }
 
 const MEDIA_HAVE_CURRENT_DATA = 2;
@@ -35,6 +39,7 @@ const MEDIA_NETWORK_NO_SOURCE = 3;
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
 const REFRESH_LOADING_OVERLAY_DELAY_MS = 220;
 const DEFERRED_VISUAL_READY_TIMEOUT_MS = 800;
+const AVATAR_CUTOUT_VISUAL_READY_TIMEOUT_MS = 5_000;
 const DEFERRED_VISUAL_READY_PAINTS = 2;
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
@@ -56,16 +61,13 @@ export function shouldShowRefreshLoadingOverlay({
 export function CompositionRefreshLoadingOverlay() {
   return (
     <div
-      className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
+      className="absolute right-3 top-3 z-30 pointer-events-none select-none"
       data-hyperframes-ignore=""
       data-testid="composition-refresh-loading-overlay"
       draggable={false}
       style={{ transition: "opacity 180ms ease-out" }}
-      onDragStart={(event) => event.preventDefault()}
-      onMouseDown={(event) => event.preventDefault()}
-      onPointerDown={(event) => event.preventDefault()}
     >
-      <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
+      <div className="flex items-center gap-2 rounded-md bg-neutral-900/90 px-3 py-2 shadow-sm" role="status" aria-live="polite">
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
         <p className="text-xs text-neutral-400">Preparing preview…</p>
       </div>
@@ -142,6 +144,32 @@ function isVisuallyActive(element: HTMLElement): boolean {
   );
 }
 
+function isPendingAvatarCutoutForeground(video: HTMLVideoElement): boolean {
+  return (
+    video.hasAttribute("data-avatar-source") &&
+    (Boolean(video.error) ||
+      video.networkState === MEDIA_NETWORK_NO_SOURCE ||
+      video.readyState < MEDIA_HAVE_CURRENT_DATA)
+  );
+}
+
+function documentHasPendingAvatarCutout(doc: Document, depth = 0): boolean {
+  for (const video of doc.querySelectorAll<HTMLVideoElement>("video[data-avatar-source]")) {
+    if (isVisuallyActive(video) && isPendingAvatarCutoutForeground(video)) return true;
+  }
+  if (depth >= 2) return false;
+  for (const childFrame of doc.querySelectorAll<HTMLIFrameElement>("iframe")) {
+    if (!isVisuallyActive(childFrame)) continue;
+    try {
+      const childDoc = childFrame.contentDocument;
+      if (childDoc && documentHasPendingAvatarCutout(childDoc, depth + 1)) return true;
+    } catch {
+      // Cross-origin child frames are covered by the bounded generic handoff.
+    }
+  }
+  return false;
+}
+
 function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
   if (doc.fonts?.status !== "loaded") return true;
 
@@ -150,11 +178,13 @@ function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
   }
 
   for (const video of doc.querySelectorAll<HTMLVideoElement>("video")) {
+    const pendingAvatarCutout = isPendingAvatarCutoutForeground(video);
     if (
       isVisuallyActive(video) &&
-      !video.error &&
-      video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
-      video.readyState < MEDIA_HAVE_CURRENT_DATA
+      (pendingAvatarCutout ||
+        (!video.error &&
+          video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
+          video.readyState < MEDIA_HAVE_CURRENT_DATA))
     ) {
       return true;
     }
@@ -165,7 +195,7 @@ function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
     if (!isVisuallyActive(childFrame)) continue;
     try {
       const childDoc = childFrame.contentDocument;
-      if (!childDoc || childDoc.readyState !== "complete") return true;
+      if (!childDoc || childDoc.readyState === "loading") return true;
       if (documentHasPendingVisualAssets(childDoc, depth + 1)) return true;
     } catch {
       // Cross-origin child frames cannot expose readiness. The two-paint gate
@@ -179,7 +209,9 @@ function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
 export function isDeferredFrameVisuallyReady(iframe: HTMLIFrameElement): boolean {
   try {
     const doc = iframe.contentDocument;
-    return Boolean(doc && doc.readyState === "complete" && !documentHasPendingVisualAssets(doc));
+    // Runtime readiness has already fired. Unrelated later-scene downloads can
+    // delay window.load, but only the restored frame's visible assets gate handoff.
+    return Boolean(doc && doc.readyState !== "loading" && !documentHasPendingVisualAssets(doc));
   } catch {
     return true;
   }
@@ -211,10 +243,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const playerRef = useRef<HyperframesPlayerElement | null>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [compositionLoading, setCompositionLoading] = useState(true);
-    const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
+    const [compositionError, setCompositionError] = useState(false);
+    const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(false);
     const previousRefreshTokenRef = useRef(refreshToken);
 
     // eslint-disable-next-line no-restricted-syntax
@@ -247,6 +281,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
       let revealRaf = 0;
+      let revealTimer: ReturnType<typeof setTimeout> | null = null;
 
       // Dynamic import registers the custom element in the browser only.
       import("@hyperframes/player").then(() => {
@@ -254,11 +289,16 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
+        playerRef.current = player;
         const srcUrl = new URL(
           directUrl || `/api/projects/${projectId}/preview`,
           window.location.origin,
         );
         applyPreviewVariablesToUrl(srcUrl);
+        const playback = usePlayerStore.getState();
+        const previewTime = playback.requestedSeekTime ?? playback.currentTime;
+        srcUrl.searchParams.set(STUDIO_PREVIEW_TIME_PARAM, String(previewTime));
+        if (!playback.isPlaying) srcUrl.searchParams.set(STUDIO_PREVIEW_FRAME_ONLY_PARAM, "1");
         // A staged refresh mounts a new player, but the browser can still serve
         // the previous HTML document when its URL is unchanged. Carry the
         // refresh token into the request so a persisted delete cannot be
@@ -270,6 +310,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.setAttribute("shader-capture-scale", "1");
         player.setAttribute("shader-loading", "player");
         player.setAttribute("src", src);
+        player.currentTime = previewTime;
         player.setAttribute("width", String(portrait ? 1080 : 1920));
         player.setAttribute("height", String(portrait ? 1920 : 1080));
         player.style.width = "100%";
@@ -312,6 +353,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         let deferredReadyHandled = false;
         const handleReady = () => {
           setCompositionLoading(false);
+          setCompositionError(false);
           if (!deferReveal) return;
           if (deferredReadyHandled) return;
           deferredReadyHandled = true;
@@ -322,15 +364,28 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           onLoad();
           let visibleAt = 0;
           let readyPaints = 0;
+          // Background documents suspend RAF. Keep the same readiness checks
+          // progressing so a saved edit can replace its stale preview there too.
+          const scheduleRevealCheck = () => {
+            if (document.hidden) revealTimer = setTimeout(notifyWhenRestored, 50);
+            else revealRaf = requestAnimationFrame(notifyWhenRestored);
+          };
           const notifyWhenRestored = () => {
             if (canceled) return;
             if (iframe.style.visibility === "hidden") {
-              revealRaf = requestAnimationFrame(notifyWhenRestored);
+              scheduleRevealCheck();
               return;
             }
             if (visibleAt === 0) visibleAt = performance.now();
-            const timedOut = performance.now() - visibleAt >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
-            if (timedOut || isDeferredFrameVisuallyReady(iframe)) {
+            const doc = iframe.contentDocument;
+            const elapsedMs = performance.now() - visibleAt;
+            const pendingAvatarCutout = Boolean(doc && documentHasPendingAvatarCutout(doc));
+            if (pendingAvatarCutout && elapsedMs >= AVATAR_CUTOUT_VISUAL_READY_TIMEOUT_MS) {
+              onError?.();
+              return;
+            }
+            const timedOut = elapsedMs >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
+            if (!pendingAvatarCutout && (timedOut || isDeferredFrameVisuallyReady(iframe))) {
               readyPaints += 1;
             } else {
               readyPaints = 0;
@@ -339,12 +394,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               onReadyToReveal?.();
               return;
             }
-            revealRaf = requestAnimationFrame(notifyWhenRestored);
+            scheduleRevealCheck();
           };
           notifyWhenRestored();
         };
         const handleError = () => {
           setCompositionLoading(false);
+          setCompositionError(true);
           onError?.();
         };
         player.addEventListener("ready", handleReady);
@@ -357,7 +413,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // load event reaches this listener. Once the replacement has already
           // handed off, that late load must not reopen a redundant overlay over
           // the freshly revealed preview.
-          if (!deferredReadyHandled) setCompositionLoading(true);
+          setCompositionLoading(!player.ready && !deferredReadyHandled);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");
@@ -395,6 +451,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           if (revealRaf) cancelAnimationFrame(revealRaf);
+          if (revealTimer) clearTimeout(revealTimer);
           container.removeChild(player);
           // Clear the forwarded ref only if it still points to THIS iframe.
           // During crossfade refreshes the retiring Player unmounts after the
@@ -417,6 +474,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       return () => {
         canceled = true;
         cleanup?.();
+        playerRef.current = null;
       };
     });
 
@@ -457,6 +515,32 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           </div>
         )}
         {showRefreshOverlay && <CompositionRefreshLoadingOverlay />}
+        {compositionError && (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-neutral-950 text-center text-sm text-neutral-200"
+            role="alert"
+            data-testid="composition-error-overlay"
+          >
+            <p>Preview could not load.</p>
+            <button
+              type="button"
+              className="rounded border border-neutral-600 px-3 py-1.5 hover:border-neutral-400"
+              onClick={() => {
+                const player = playerRef.current;
+                const src = player?.getAttribute("src");
+                if (!player || !src) return;
+                const url = new URL(src, window.location.origin);
+                url.searchParams.set("_hfRetry", String(Date.now()));
+                setCompositionError(false);
+                setCompositionLoading(true);
+                setCompositionOverlayDeferred(false);
+                player.setAttribute("src", `${url.pathname}${url.search}`);
+              }}
+            >
+              Retry preview
+            </button>
+          </div>
+        )}
       </div>
     );
   },

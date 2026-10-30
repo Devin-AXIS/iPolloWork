@@ -31,7 +31,7 @@ test.afterEach(() => {
 });
 
 test("switches the protocol to this repository's development Electron entrypoint", () => {
-  const script = path.join(root, "切到开发版.cmd");
+  const script = path.join(root, "scripts", "windows", "use-development-protocol.cmd");
   assert.equal(existsSync(script), true, "development switch script should exist");
 
   const temp = mkdtempSync(path.join(os.tmpdir(), "ipollowork-electron-"));
@@ -46,7 +46,7 @@ test("switches the protocol to this repository's development Electron entrypoint
 });
 
 test("restores the protocol to a validated production executable", () => {
-  const script = path.join(root, "恢复正式版.cmd");
+  const script = path.join(root, "scripts", "windows", "restore-production-protocol.cmd");
   assert.equal(existsSync(script), true, "production restore script should exist");
   const temp = mkdtempSync(path.join(os.tmpdir(), "ipollowork-production-"));
   const executable = path.join(temp, "iPolloWork.exe");
@@ -61,7 +61,7 @@ test("restores the protocol to a validated production executable", () => {
 });
 
 test("does not change the current handler when production cannot be found", () => {
-  const script = path.join(root, "恢复正式版.cmd");
+  const script = path.join(root, "scripts", "windows", "restore-production-protocol.cmd");
   execFileSync("reg.exe", ["add", `${registryRoot}\\shell\\open\\command`, "/ve", "/d", "sentinel", "/f"], { stdio: "ignore" });
 
   assert.throws(() => run(script, { IPOLLOWORK_PRODUCTION_EXE: path.join(os.tmpdir(), "missing-ipollowork.exe"), IPOLLOWORK_SKIP_PRODUCTION_DISCOVERY: "1" }));

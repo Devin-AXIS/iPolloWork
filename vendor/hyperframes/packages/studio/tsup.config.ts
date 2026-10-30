@@ -26,7 +26,6 @@ export default defineConfig({
     "@hyperframes/core",
     "@hyperframes/player",
     "@hyperframes/sdk",
-    "@phosphor-icons/react",
     "bpm-detective",
     "dompurify",
     "marked",

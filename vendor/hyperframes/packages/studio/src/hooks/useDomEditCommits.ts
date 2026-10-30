@@ -1,4 +1,7 @@
+import { getEditableSourceFileForElement } from "../components/editor/domEditingDom";
+import { parseCompositionVariables, updateTextVariableBinding } from "@hyperframes/parsers/composition";
 import { useCallback, useRef } from "react";
+import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
 
@@ -35,7 +38,7 @@ import {
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
@@ -176,6 +179,53 @@ export function useDomEditCommits({
         });
       }
 
+      // A canvas text edit writes the native text, its declaration and the
+      // selected instance override atomically. The next preview/open/form then
+      // reads the same value instead of restoring a stale parameter override.
+      const host = selection.element.closest<HTMLElement>("[data-composition-src], [data-composition-file]");
+      const hostId = host?.id;
+      const hostPath = host ? getEditableSourceFileForElement(host, activeCompPath).sourceFile : null;
+      const sourceDoc = new DOMParser().parseFromString(originalContent, "text/html");
+      const declaration = sourceDoc.querySelector("[data-composition-variables]");
+      const defaults = declaration ? Object.fromEntries(parseCompositionVariables(declaration).map((v) => [v.id, v.default])) : {};
+      const overrides: Record<string, unknown> = JSON.parse(host?.getAttribute("data-variable-values") ?? "{}");
+      const values = { ...defaults, ...overrides };
+      const updates: Record<string, unknown> = {};
+      for (const op of operations) {
+        if (op.type !== "text-content" || op.value === null) continue;
+        const target = op.childSelector
+          ? selection.element.querySelectorAll(op.childSelector)[op.childIndex ?? 0]
+          : selection.element;
+        const inner = target?.children.length === 1 ? target.firstElementChild : null;
+        const binding = inner?.getAttribute("data-var-text") ?? target?.getAttribute("data-var-text");
+        if (!binding) continue;
+        const update = updateTextVariableBinding(binding, { ...values, ...updates }, op.value);
+        if (update) updates[update.id] = update.value;
+      }
+      if (hostId && hostPath && Object.keys(updates).length && !options?.prepareContent) {
+        domEditSaveTimestampRef.current = Date.now();
+        const hostPatch = {
+          target: { id: hostId },
+          operations: [{ type: "attribute" as const, property: "variable-values", value: JSON.stringify({ ...overrides, ...updates }) }],
+        };
+        const batches = targetPath === hostPath
+          ? [{ sourceFile: targetPath, patches: [patchBody, hostPatch] }]
+          : [{ sourceFile: targetPath, patches: [patchBody] }, { sourceFile: hostPath, patches: [hostPatch] }];
+        const result = await patchElementBatches(pid, batches);
+        if (!result.durable) throw new DomEditPersistUnresolvableError(targetPath);
+        const files = Object.fromEntries(result.files.filter((file) => file.changed).map((file) => [file.sourceFile, { before: file.before, after: file.after }]));
+        if (Object.keys(files).length) await editHistory.recordEdit({ label: options?.label ?? "Edit text", kind: "source", coalesceKey: options?.coalesceKey, coalesceMs: options?.coalesceMs, files });
+        host.setAttribute("data-variable-values", hostPatch.operations[0]!.value);
+        const root = host.querySelector("[data-hf-live-variables]") ?? host;
+        const runtime = (previewIframeRef.current?.contentWindow as (Window & {
+          __hyperframes?: { updateVariables?: (root: Element, patch: Record<string, unknown>) => boolean };
+        }) | null)?.__hyperframes;
+        runtime?.updateVariables?.(root, updates);
+        forceReloadSdkSession?.();
+        if (!options?.skipRefresh) refreshDomEditSelectionFromPreview(selection);
+        return;
+      }
+
       // Skip the SDK path when prepareContent is set (e.g. @font-face injection
       // for a custom font): sdkCutoverPersist serializes only the patched DOM
       // and would drop the injected content. Let the server path run prepareContent.
@@ -201,7 +251,7 @@ export function useDomEditCommits({
         `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
           body: JSON.stringify(patchBody),
         },
       );
@@ -282,6 +332,8 @@ export function useDomEditCommits({
       reloadPreview,
       showToast,
       forceReloadSdkSession,
+      previewIframeRef,
+      refreshDomEditSelectionFromPreview,
       onTrySdkPersist,
     ],
   );
@@ -408,6 +460,7 @@ export function useDomEditCommits({
     handleDomAddTextField,
     handleDomRemoveTextField,
   } = useDomEditTextCommits({
+    projectId,
     activeCompPath,
     previewIframeRef,
     domEditSelection,

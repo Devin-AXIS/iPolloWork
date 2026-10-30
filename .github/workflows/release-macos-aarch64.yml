@@ -37,17 +37,17 @@ on:
         description: "Build + upload ipollowork-orchestrator sidecar release assets"
         required: false
         type: boolean
-        default: true
+        default: false
       publish_npm:
         description: "Publish ipollowork-orchestrator/ipollowork-server to npm if versions changed"
         required: false
         type: boolean
-        default: true
+        default: false
       publish_daytona_snapshot:
         description: "Build + push Daytona worker snapshot"
         required: false
         type: boolean
-        default: true
+        default: false
       build_electron:
         description: "Build + publish Electron desktop artifacts (macOS/Linux/Windows)"
         required: false
@@ -73,7 +73,7 @@ jobs:
     name: Resolve Release Metadata
     # SignPath trusted builds require every job leading to the Windows signing
     # request to use GitHub-hosted runners.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_tag: ${{ steps.resolve.outputs.release_tag }}
       release_name: ${{ steps.resolve.outputs.release_name }}
@@ -142,7 +142,7 @@ jobs:
               "## What's new" \
               "$TAG" \
               "- Download the attached installer for your platform." \
-              "- Electron builds use the attached latest-mac.yml updater feed."
+              "- In-app updates use the installers; Mac update ZIPs are delivered from the cloud."
           fi
 
           draft="${INPUT_DRAFT:-}"
@@ -180,16 +180,16 @@ jobs:
 
           publish_sidecars="${INPUT_PUBLISH_SIDECARS:-}"
           if [ -z "$publish_sidecars" ]; then
-            publish_sidecars="${DEFAULT_PUBLISH_SIDECARS:-true}"
+            publish_sidecars="${DEFAULT_PUBLISH_SIDECARS:-false}"
           fi
           publish_npm="${INPUT_PUBLISH_NPM:-}"
           if [ -z "$publish_npm" ]; then
-            publish_npm="${DEFAULT_PUBLISH_NPM:-true}"
+            publish_npm="${DEFAULT_PUBLISH_NPM:-false}"
           fi
 
           publish_daytona_snapshot="${INPUT_PUBLISH_DAYTONA_SNAPSHOT:-}"
           if [ -z "$publish_daytona_snapshot" ]; then
-            publish_daytona_snapshot="${DEFAULT_PUBLISH_DAYTONA_SNAPSHOT:-true}"
+            publish_daytona_snapshot="${DEFAULT_PUBLISH_DAYTONA_SNAPSHOT:-false}"
           fi
 
           TAG="${TAG//$'\n'/}"
@@ -247,20 +247,32 @@ jobs:
     needs: resolve-release
     # SignPath trusted builds require every job leading to the Windows signing
     # request to use GitHub-hosted runners.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          # Dispatch-based recovery builds from the selected workflow ref so a
+          # packaging fix can repair an existing tag without moving that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 22.22.1
+
+      - name: Verify recovery source contains the release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "${RELEASE_TAG}^{}" HEAD; then
+            echo "Recovery ref $(git rev-parse HEAD) does not contain ${RELEASE_TAG}; refusing to replace published assets from unrelated source." >&2
+            exit 1
+          fi
 
       - name: Verify tag matches app versions
         run: node scripts/release/verify-tag.mjs --tag "$RELEASE_TAG"
@@ -287,12 +299,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-14
+          - platform: macos-15
             os_type: macos
             artifact: electron-macos-arm64
             electron_args: "--mac --arm64"
             target_triple: aarch64-apple-darwin
-          - platform: macos-14
+          - platform: macos-15-intel
             os_type: macos
             artifact: electron-macos-x64
             electron_args: "--mac --x64"
@@ -320,9 +332,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          # Dispatch-based recovery builds from the selected workflow ref so a
+          # packaging fix can repair an existing tag without moving that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Enable git long paths (Windows)
@@ -330,21 +344,8 @@ jobs:
         shell: pwsh
         run: git config --global core.longpaths true
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.4.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          # Bun >= 1.3.10 is required to compile bun-windows-arm64 sidecars.
-          bun-version: 1.3.10
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Get pnpm store path
         id: pnpm-store
@@ -352,16 +353,19 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-electron-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-electron-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-electron-pnpm-
+            ${{ runner.os }}-${{ runner.arch }}-electron-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify installer-only publishing and native update provider
+        run: node --test scripts/release/publish-electron-assets.test.mjs apps/desktop/electron/github-installer-provider.test.mjs apps/desktop/electron/updater.test.mjs
 
       - name: Write Electron notary API key (macOS)
         if: matrix.os_type == 'macos' && env.MACOS_NOTARIZE == 'true'
@@ -403,6 +407,18 @@ jobs:
           echo "macOS Electron release assets must be notarized. Re-run with notarize=true or set MACOS_NOTARIZE=true." >&2
           exit 1
 
+      - name: Build Agent engine packages
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --clean --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
+
+      - name: Build remaining signed cloud resources
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-video-resources.mjs --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
+
       - name: Build Electron app
         shell: bash
         env:
@@ -421,6 +437,7 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.NOTARY_KEY_PATH }}
         run: |
           set -euo pipefail
+          ulimit -n 65536
           pnpm --dir apps/desktop exec electron-builder \
             --config electron-builder.yml \
             ${{ matrix.electron_args }} \
@@ -488,7 +505,7 @@ jobs:
       - name: Upload unsigned Windows installer for SignPath
         if: matrix.os_type == 'windows' && env.SIGN_WINDOWS == 'true'
         id: upload-unsigned-windows-installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-${{ matrix.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/signpath-unsigned/*.exe
@@ -530,27 +547,106 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "::warning::Publishing unsigned Windows installer because SIGN_WINDOWS is not enabled."
+          echo "::notice::Windows code signing is disabled; publishing the requested unsigned installer."
 
-      - name: Upload Electron release assets
+      - name: Upload only the native desktop installer
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          assets=(apps/desktop/dist-electron/ipollowork-*)
-          if [ ${#assets[@]} -eq 0 ]; then
-            echo "No Electron release assets found in apps/desktop/dist-electron" >&2
+          assets=(
+            apps/desktop/dist-electron/ipollowork-win-*.exe
+            apps/desktop/dist-electron/ipollowork-mac-*.dmg
+            apps/desktop/dist-electron/ipollowork-linux-*.AppImage
+          )
+          if [ ${#assets[@]} -ne 1 ]; then
+            echo "Expected exactly one native desktop installer, found ${#assets[@]}" >&2
             exit 1
           fi
           gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
 
-      - name: Upload Electron updater manifest artifact
-        uses: actions/upload-artifact@v4
+      - name: Stage native updater receipt
+        shell: bash
+        run: node scripts/release/publish-electron-assets.mjs --stage-updater apps/desktop/dist-electron "$RELEASE_TAG"
+
+      - name: Upload Mac updater ZIP to cloud storage
+        if: matrix.os_type == 'macos'
+        shell: bash
+        env:
+          UPDATE_SSH_KEY: ${{ secrets.DESKTOP_UPDATE_SSH_KEY }}
+          RESOURCE_SSH_HOST: ${{ vars.DESKTOP_RESOURCE_SSH_HOST }}
+          RESOURCE_SSH_KNOWN_HOSTS: ${{ vars.DESKTOP_RESOURCE_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${UPDATE_SSH_KEY:?Missing cloud updater publishing key}"
+          key_file="$RUNNER_TEMP/update-publish-key"
+          hosts_file="$RUNNER_TEMP/update-publish-hosts"
+          printf '%s\n' "$UPDATE_SSH_KEY" > "$key_file"
+          printf '%s\n' "$RESOURCE_SSH_KNOWN_HOSTS" > "$hosts_file"
+          chmod 600 "$key_file" "$hosts_file"
+          trap 'rm -f "$key_file" "$hosts_file"' EXIT
+          sftp -i "$key_file" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$hosts_file" \
+            -b apps/desktop/dist-electron/cloud-upload.txt \
+            "ipollo-update-publisher@${RESOURCE_SSH_HOST#*@}"
+
+      - name: Upload native updater receipt
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: apps/desktop/dist-electron/latest*.yml
+          path: apps/desktop/dist-electron/update-info.json
+          if-no-files-found: error
+
+      - name: Publish signed cloud resources through restricted SSH tunnel
+        shell: bash
+        env:
+          RESOURCE_SSH_KEY: ${{ secrets.DESKTOP_RESOURCE_SSH_KEY }}
+          RESOURCE_SSH_HOST: ${{ vars.DESKTOP_RESOURCE_SSH_HOST }}
+          RESOURCE_SSH_KNOWN_HOSTS: ${{ vars.DESKTOP_RESOURCE_SSH_KNOWN_HOSTS }}
+          IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN: ${{ secrets.IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${RESOURCE_SSH_KEY:?Missing resource publishing SSH key}"
+          : "${RESOURCE_SSH_HOST:?Missing resource publishing SSH host}"
+          : "${RESOURCE_SSH_KNOWN_HOSTS:?Missing pinned SSH host key}"
+          : "${IPOLLO_DESKTOP_RESOURCE_ADMIN_TOKEN:?Missing resource publishing token}"
+          key_file="$RUNNER_TEMP/resource-publish-key"
+          hosts_file="$RUNNER_TEMP/resource-publish-hosts"
+          printf '%s\n' "$RESOURCE_SSH_KEY" > "$key_file"
+          printf '%s\n' "$RESOURCE_SSH_KNOWN_HOSTS" > "$hosts_file"
+          chmod 600 "$key_file" "$hosts_file"
+          ssh -N -L 127.0.0.1:4319:127.0.0.1:3100 \
+            -i "$key_file" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$hosts_file" \
+            -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
+            "$RESOURCE_SSH_HOST" &
+          tunnel_pid=$!
+          trap 'kill "$tunnel_pid" 2>/dev/null || true; rm -f "$key_file" "$hosts_file"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --max-time 2 http://127.0.0.1:4319/api/ready > /dev/null; then break; fi
+            kill -0 "$tunnel_pid"
+            sleep 1
+          done
+          resource_version="$(node --input-type=module -e 'import { DESKTOP_RESOURCE_APP_VERSION as version } from "./apps/desktop/electron/app-version.mjs"; console.log(version)')"
+          node apps/desktop/scripts/publish-desktop-resources.mjs \
+            --directory apps/desktop/dist-engine-packs --app-version "$resource_version" \
+            --platform "${{ matrix.os_type }}" --arch "$(node -p process.arch)" \
+            --base-url http://127.0.0.1:4319
+
+      - name: Prove cloud resource delivery and native archive installation
+        id: resource-proof
+        env:
+          IPOLLOWORK_RESOURCE_PROOF_ARCHIVE_DIR: apps/desktop/dist-engine-packs
+        run: node evals/runner/run.mjs --flow desktop-resource-install --out apps/desktop/resource-install-proof
+
+      - name: Upload native resource installation proof
+        if: always() && (steps.resource-proof.outcome == 'success' || steps.resource-proof.outcome == 'failure')
+        uses: actions/upload-artifact@v7
+        with:
+          name: resource-install-${{ matrix.artifact }}
+          path: apps/desktop/resource-install-proof
           if-no-files-found: error
 
   publish-electron-assets:
@@ -558,16 +654,15 @@ jobs:
     needs: [resolve-release, verify-release, publish-electron]
     if: |
       always() &&
-      needs.resolve-release.outputs.build_electron == 'true' &&
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
       needs.publish-electron.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Dispatch-based release recovery uses the workflow ref so fixes to
           # release asset publishing can run without moving an already-shipped tag.
@@ -575,50 +670,41 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 22.22.1
 
-      - name: Download Electron updater manifest artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: electron-*
-          path: ${{ runner.temp }}/electron-dist
-
-      - name: Upload merged updater manifests
+      - name: Download native updater receipts
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish-electron-assets.mjs --manifests-only "${{ runner.temp }}/electron-dist" "$RELEASE_TAG"
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'electron-*' --dir "$RUNNER_TEMP/electron-dist"
+
+      - name: Publish update metadata and retain only six installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/publish-electron-assets.mjs --metadata-dir "${{ runner.temp }}/electron-dist" "$RELEASE_TAG"
 
   release-orchestrator-sidecars:
     name: Build + Upload ipollowork-orchestrator Sidecars
     needs: [resolve-release, verify-release]
     if: needs.resolve-release.outputs.publish_sidecars == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 22.22.1
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.4.0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          # Bun >= 1.3.10 is required to compile bun-windows-arm64 sidecars.
-          bun-version: "1.3.10"
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Get pnpm store path
         id: pnpm-store
@@ -626,7 +712,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -708,12 +794,12 @@ jobs:
       needs.verify-release.result == 'success' &&
       (needs.release-orchestrator-sidecars.result == 'success' || needs.release-orchestrator-sidecars.result == 'skipped') &&
       needs.resolve-release.outputs.publish_npm == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Dispatch-based release recovery uses the workflow ref so fixes to
           # npm release automation can run without moving an already-shipped tag.
@@ -721,20 +807,12 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 22.22.1
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.4.0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          # Bun >= 1.3.10 is required to compile bun-windows-arm64 sidecars.
-          bun-version: "1.3.10"
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Get pnpm store path
         id: pnpm-store
@@ -742,7 +820,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -851,17 +929,18 @@ jobs:
     needs: [resolve-release, publish-electron, publish-release]
     if: |
       always() &&
+      vars.AUR_PUBLISH_ENABLED == 'true' &&
       needs.resolve-release.result == 'success' &&
       needs.publish-electron.result == 'success' &&
       (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout dev
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: dev
           fetch-depth: 0
@@ -906,23 +985,28 @@ jobs:
       - verify-release
       - publish-electron
       - publish-electron-assets
-      - release-orchestrator-sidecars
-      - publish-npm
-      - publish-daytona-snapshot
     if: |
       always() &&
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
       (needs.publish-electron.result == 'success' || needs.publish-electron.result == 'skipped') &&
-      (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped') &&
-      (needs.release-orchestrator-sidecars.result == 'success' || needs.release-orchestrator-sidecars.result == 'skipped') &&
-      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
-      (needs.publish-daytona-snapshot.result == 'success' || needs.publish-daytona-snapshot.result == 'skipped')
-    runs-on: ubuntu-latest
+      (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped')
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
       RELEASE_PRERELEASE: ${{ needs.resolve-release.outputs.prerelease }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.1
+      - name: Verify the release contains only six complete installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/publish-electron-assets.mjs "$RELEASE_TAG"
+
       - name: Publish release after assets are ready
         env:
           GH_TOKEN: ${{ github.token }}

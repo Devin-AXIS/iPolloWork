@@ -40,7 +40,7 @@
     >
       <div class="map-container">
         <div class="header">
-          <h1 class="headline">PIB per c&aacute;pita por Comunidad Aut&oacute;noma</h1>
+          <h1 class="headline" data-ipw-ai-slot="title">PIB per c&aacute;pita por Comunidad Aut&oacute;noma</h1>
           <p class="subtitle">Producto Interior Bruto per c&aacute;pita, estimaci&oacute;n 2024</p>
         </div>
 
@@ -55,7 +55,7 @@
           <span class="legend-label legend-high">Alto</span>
         </div>
 
-        <div class="source">Fuente: Instituto Nacional de Estad&iacute;stica</div>
+        <div class="source" data-ipw-ai-slot="source">Fuente: Instituto Nacional de Estad&iacute;stica</div>
       </div>
 
       <style>
@@ -153,10 +153,30 @@
           color: #475569;
           opacity: 0;
         }
+        #spain-map { background: var(--ipw-color-bg, #0f172a); color: var(--ipw-color-text, #e2e8f0); font-family: var(--ipw-font-body, Inter, sans-serif); }
+        #spain-map .headline { color: var(--ipw-color-text, #f8fafc); font-family: var(--ipw-font-display, Inter, sans-serif); }
+        #spain-map .subtitle, #spain-map .legend-labels, #spain-map .source { color: var(--ipw-color-muted, #94a3b8); }
+        #spain-map .region-path { stroke: var(--ipw-color-border, #1e293b); }
       </style>
 
       <script>
         (function () {
+          var root = document.querySelector("#spain-map");
+          var values = Object.assign(
+            {
+              title: "PIB per cápita por Comunidad Autónoma",
+              values: "MAD:38100,PVA:36800,NAV:35200,CAT:33700,AND:20200",
+              highlight: "MAD",
+              source: "Fuente: Instituto Nacional de Estadística",
+            },
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {},
+          );
+          root.querySelector(".headline").textContent = String(values.title);
+          root.querySelector(".source").textContent = String(values.source);
+          var themeAccent =
+            getComputedStyle(root).getPropertyValue("--ipw-color-primary").trim() || "#dc2626";
           var SPAIN_TOPO_URL =
             "https://cdn.jsdelivr.net/npm/es-atlas@0.6.0/es/autonomous_regions.json";
 
@@ -181,6 +201,16 @@
             18: { name: "Ceuta", abbr: "CEU", gdp: 21000 },
             19: { name: "Melilla", abbr: "MEL", gdp: 19500 },
           };
+          String(values.values)
+            .split(",")
+            .forEach(function (entry) {
+              var separator = entry.lastIndexOf(":");
+              var abbr = entry.slice(0, separator).trim().toUpperCase();
+              var gdp = Number(entry.slice(separator + 1));
+              for (var key in data) {
+                if (data[key].abbr === abbr && Number.isFinite(gdp)) data[key].gdp = gdp;
+              }
+            });
 
           var nameMap = {};
           for (var key in data) {
@@ -263,6 +293,10 @@
                 el.setAttribute("data-region", info.abbr);
                 el.setAttribute("data-gdp", String(info.gdp));
                 el.style.fill = gdpToColor(info.gdp);
+                if (info.abbr === String(values.highlight).trim().toUpperCase()) {
+                  el.style.fill = themeAccent;
+                  el.style.strokeWidth = "4";
+                }
                 regionsGroup.appendChild(el);
 
                 var centroid = path.centroid(feature);

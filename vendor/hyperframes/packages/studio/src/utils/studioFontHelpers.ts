@@ -52,7 +52,7 @@ export function injectPreviewGoogleFont(doc: Document, fontFamilyValue: string):
 }
 
 export function injectPreviewImportedFont(doc: Document, asset: ImportedFontAsset): void {
-  const id = `studio-imported-font-${asset.family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const id = `studio-imported-font-${asset.path.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   if (doc.getElementById(id)) return;
   const style = doc.createElement("style");
   style.id = id;
@@ -65,7 +65,7 @@ export function ensureImportedFontFace(
   asset: ImportedFontAsset,
   sourceFile: string,
 ): string {
-  const css = importedFontFaceCss(asset, toRelativeProjectAssetPath(sourceFile, asset.path));
+  const css = importedFontFaceCssFor(asset, sourceFile);
   if (html.includes(css)) return html;
 
   const styleRe = /<style\b[^>]*data-hf-studio-fonts=(["'])true\1[^>]*>([\s\S]*?)<\/style>/i;
@@ -80,4 +80,8 @@ export function ensureImportedFontFace(
     return html.replace(/<\/head>/i, `  ${styleTag}\n  </head>`);
   }
   return `${styleTag}\n${html}`;
+}
+
+export function importedFontFaceCssFor(asset: ImportedFontAsset, sourceFile: string): string {
+  return importedFontFaceCss(asset, toRelativeProjectAssetPath(sourceFile, asset.path));
 }

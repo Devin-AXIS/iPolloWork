@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { PendingPermission } from "../src/app/types";
+import type { ConversationPermission } from "../src/react-app/domains/session/engine/conversation-engine";
 
 import {
   PermissionApprovalPanel,
+  PermissionAllowMenu,
+  PendingConfirmationNotice,
   permissionDetailRows,
 } from "../src/react-app/domains/session/chat/permission-approval-modal";
 
@@ -13,24 +15,31 @@ const permissionPanelUrl = new URL(
   import.meta.url,
 );
 
-function pendingPermission(overrides: Partial<PendingPermission> = {}): PendingPermission {
+function pendingPermission(overrides: Partial<ConversationPermission> = {}): ConversationPermission {
   return {
     id: "permission-1",
-    sessionID: "session-1",
-    permission: "bash",
-    patterns: ["rm -rf dist"],
+    sessionId: "session-1",
+    kind: "bash",
+    resources: ["rm -rf dist"],
+    remember: [],
     metadata: {},
-    always: {
-      session: false,
-      project: false,
-    },
     receivedAt: 1,
-    protocol: "legacy",
+    native: null,
     ...overrides,
   };
 }
 
 describe("permission approval modal helpers", () => {
+  test("a missing approval has an explicit waiting notice and a stop action, never an allow action", () => {
+    let stops = 0;
+    const html = renderToStaticMarkup(React.createElement(PendingConfirmationNotice, { waitingFor: "approval", onStop: () => { stops += 1; } }));
+    expect(html).toContain('role="status"');
+    expect(html).toContain('data-testid="pending-confirmation-notice"');
+    expect(html).toContain("Confirmation details unavailable");
+    expect(html).toContain("Stop this run");
+    expect(html).not.toContain("Allow once");
+    expect(stops).toBe(0);
+  });
   test("surfaces risk-bearing metadata as review rows", () => {
     expect(
       permissionDetailRows({
@@ -85,17 +94,47 @@ describe("permission approval modal helpers", () => {
       match[0].replace(/<[^>]*>/g, "").trim(),
     );
 
-    expect(buttonLabels).toEqual(["Deny", "Allow once"]);
+    expect(buttonLabels).toEqual(["Deny", "Allow once", ""]);
     expect(html).not.toContain("Allow for session");
+    expect(html).toContain('data-testid="permission-allow-once"');
+    expect(html).toContain('data-testid="permission-allow-options"');
     const source = await Bun.file(permissionPanelUrl).text();
     expect(source).toContain('props.respondPermission?.(props.permissionId, "always")');
     expect(source).toContain('t("session.allow_for_session")');
+    expect(source).toContain('t("session.permission_decision_hint")');
+    expect(source).toContain("<DropdownMenuGroup>");
+  });
+
+  test("the primary action approves once directly while the separate menu trigger never approves", () => {
+    const replies: Array<[string, "once" | "always" | "reject"]> = [];
+    const element = PermissionAllowMenu({ permissionId: "native-permission", respondPermission: (id, reply) => { replies.push([id, reply]); } });
+    const [primary, menu] = React.Children.toArray(element.props.children);
+    if (!React.isValidElement<{ onClick: () => void; disabled: boolean }>(primary)) throw new Error("Missing primary permission button");
+    if (!React.isValidElement<{ children: React.ReactNode }>(menu)) throw new Error("Missing independent permission menu");
+    const [trigger] = React.Children.toArray(menu.props.children);
+    if (!React.isValidElement<{ onClick?: () => void; render: React.ReactElement<{ onClick?: () => void }> }>(trigger)) throw new Error("Missing menu trigger");
+
+    expect(trigger.props.onClick).toBeUndefined();
+    trigger.props.render.props.onClick?.();
+    expect(replies).toEqual([]);
+    expect(primary.props.disabled).toBe(false);
+    primary.props.onClick();
+    expect(replies).toEqual([["native-permission", "once"]]);
+  });
+
+  test("both permission controls stay disabled while replying or when no reply handler exists", () => {
+    for (const props of [{ busy: true, respondPermission: () => {} }, {}]) {
+      const html = renderToStaticMarkup(React.createElement(PermissionAllowMenu, { permissionId: "permission", ...props }));
+      const buttons = Array.from(html.matchAll(/<button\b[\s\S]*?<\/button>/g), (match) => match[0]);
+      expect(buttons).toHaveLength(2);
+      expect(buttons.every((button) => /\bdisabled=""/.test(button))).toBe(true);
+    }
   });
 
   test("uses readable labels for generic permission titles", () => {
     const html = renderToStaticMarkup(
       React.createElement(PermissionApprovalPanel, {
-        permission: pendingPermission({ permission: "todowrite" }),
+        permission: pendingPermission({ kind: "todowrite" }),
         respondPermission: () => {},
       }),
     );

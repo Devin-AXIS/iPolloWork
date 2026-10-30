@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-product-launch",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "product-launch",
@@ -10,7 +10,8 @@
     "pptx-compatible",
     "product",
     "launch",
-    "roadmap"
+    "roadmap",
+    "topic:product"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

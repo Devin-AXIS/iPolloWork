@@ -15,16 +15,16 @@ permissions:
 
 jobs:
   i18n-audit:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 22.22.1
 
       - name: Run i18n audit
         run: node scripts/i18n-audit.mjs --ci

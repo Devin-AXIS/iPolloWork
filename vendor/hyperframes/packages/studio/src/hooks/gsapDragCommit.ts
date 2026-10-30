@@ -437,6 +437,7 @@ export async function commitAllPositionPathsOffset(
   gsapPos: { x: number; y: number },
   selector: string,
   callbacks: GsapDragCommitCallbacks,
+  ownedSelectors: string[],
 ): Promise<void> {
   const element = selection.element;
   const { newX, newY, baseGsapX, baseGsapY } = computeDraggedGsapPosition(
@@ -462,6 +463,7 @@ export async function commitAllPositionPathsOffset(
     {
       type: "offset-position-paths",
       targetSelector: selector,
+      ownedSelectors,
       deltaX,
       deltaY,
     },

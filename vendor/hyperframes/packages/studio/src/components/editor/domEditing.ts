@@ -42,6 +42,7 @@ export {
   resolveDomEditCapabilities,
   resolveDomEditSelection,
   serializeDomEditTextFields,
+  previewDomTextField,
 } from "./domEditingLayers";
 
 // Agent prompt

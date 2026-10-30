@@ -1,3 +1,4 @@
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 import type { RefObject } from "react";
 import type { ArcPathSegment, GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
@@ -115,6 +116,8 @@ export interface PropertyPanelProps {
     property: string,
     value: number | string,
   ) => void;
+  onEnablePropertyKeyframes?: GsapAnimationEditCallbacks["onEnablePropertyKeyframes"];
+  onEditPropertyKeyframe?: GsapAnimationEditCallbacks["onEditPropertyKeyframe"];
   onRemoveKeyframe?: (animationId: string, percentage: number) => void;
   onUpdateKeyframeEase?: (animationId: string, percentage: number, ease: string) => void;
   onSetAllKeyframeEases?: (animationId: string, ease: string) => void;
@@ -123,6 +126,7 @@ export interface PropertyPanelProps {
     selection: DomEditSelection,
     property: string,
     value: number | string,
+    options?: { positionDelta: number },
   ) => Promise<void>;
   onCommitAnimatedProperties?: (
     selection: DomEditSelection,

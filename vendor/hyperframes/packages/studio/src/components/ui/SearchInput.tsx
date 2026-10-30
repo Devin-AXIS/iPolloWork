@@ -1,51 +1,26 @@
-// fallow-ignore-file unused-file
-// (consumers land in the sidebar/panels PR later in this stack)
-import { type InputHTMLAttributes } from "react";
+import { type ComponentPropsWithRef } from "react";
+import { Search } from "lucide-react";
+import { Input } from "@ipollowork/ui/controls";
 
-interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
+interface SearchInputProps extends Omit<ComponentPropsWithRef<"input">, "type"> {
   /** Accessible name — placeholder alone is not one. */
   "aria-label": string;
 }
 
 /**
- * Shared search input — one visual system (panel-input tokens) for every
+ * Shared search input — the public Input with a search icon for every
  * panel search box, with a required accessible name.
  */
-export function SearchInput({ className = "", ...props }: SearchInputProps) {
+export function SearchInput({ className = "", style, ...props }: SearchInputProps) {
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] ${className}`}
+      data-slot="studio-search"
+      className={`relative min-w-0 ${className}`}
     >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 256 256"
-        fill="none"
-        className="flex-shrink-0"
-        aria-hidden="true"
-      >
-        <circle
-          cx="116"
-          cy="116"
-          r="76"
-          stroke="currentColor"
-          strokeWidth="22"
-          className="text-panel-text-5"
-        />
-        <line
-          x1="170"
-          y1="170"
-          x2="232"
-          y2="232"
-          stroke="currentColor"
-          strokeWidth="22"
-          strokeLinecap="round"
-          className="text-panel-text-5"
-        />
-      </svg>
-      <input
-        type="text"
-        className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-5"
+      <Search size={16} strokeWidth={1.75} className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-panel-text-3" aria-hidden="true" />
+      <Input
+        type="search"
+        style={{ ...style, paddingInlineStart: 32, fontSize: "var(--ui-meta-size)", lineHeight: "var(--ui-meta-line)" }}
         {...props}
       />
     </div>

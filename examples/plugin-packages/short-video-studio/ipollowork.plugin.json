@@ -1,0 +1,379 @@
+{
+  "schemaVersion": 2,
+  "id": "short-video-studio",
+  "name": "短片创作工作台",
+  "description": "创作画布、剧本分镜、角色素材、Work 模型生成与原生多轨剪辑交接。独立安装，左侧对话控制。",
+  "category": "设计与创作",
+  "defaultEnabled": true,
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true
+  },
+  "package": {
+    "version": "0.1.3",
+    "publisher": {
+      "id": "smart-future-school",
+      "name": "智慧未来学校"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "smart-future-school/short-video-studio"
+  },
+  "permissions": [
+    {
+      "id": "workspace-read",
+      "reason": "读取用户选择的短片图片、视频和音频。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "保存独立短片项目和新建多轨剪辑工程；不覆盖已有剪辑。"
+    }
+  ],
+  "resources": [
+    {
+      "type": "ui",
+      "id": "studio",
+      "label": "短片工作台",
+      "path": "ui/studio.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://short-video-studio/studio",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false
+      }
+    },
+    {
+      "type": "local-service",
+      "id": "service",
+      "label": "短片服务",
+      "path": "service/studio.mjs",
+      "required": true,
+      "requires": [
+        "action:openai-image-generation/status",
+        "action:openai-image-generation/image_generate",
+        "action:openai-image-generation/image_edit",
+        "action:video-generation/status",
+        "action:video-generation/submit",
+        "action:video-generation/jobs",
+        "action:video-generation/inspect",
+        "action:media/status",
+        "action:media/speech_synthesize_workspace_file"
+      ],
+      "provides": [
+        "action:project-list",
+        "action:project-create",
+        "action:project-read",
+        "action:project-save",
+        "action:project-restore",
+        "action:capabilities",
+        "action:asset-import",
+        "action:asset-upload",
+        "action:asset-read",
+        "action:generate",
+        "action:generation-status",
+        "action:arrange",
+        "action:handoff"
+      ],
+      "actions": [
+        {
+          "id": "project-list",
+          "title": "列出短片项目",
+          "description": "列出短片项目",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "project-create",
+          "title": "创建短片项目",
+          "description": "创建短片项目",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "project-read",
+          "title": "读取短片项目",
+          "description": "读取短片项目",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "project-save",
+          "title": "保存短片项目",
+          "description": "保存短片项目",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "project": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "project-restore",
+          "title": "恢复历史版本",
+          "description": "恢复历史版本",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "number"
+              },
+              "snapshot": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "capabilities",
+          "title": "读取 Work 生成渠道",
+          "description": "读取 Work 生成渠道",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "asset-import",
+          "title": "导入工作区素材",
+          "description": "导入工作区素材",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "metadata": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "asset-upload",
+          "title": "分块上传本地素材",
+          "description": "分块上传本地素材",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "uploadId": {
+                "type": "string"
+              },
+              "filename": {
+                "type": "string"
+              },
+              "total": {
+                "type": "number"
+              },
+              "offset": {
+                "type": "number"
+              },
+              "data": {
+                "type": "string"
+              },
+              "durationSeconds": {
+                "type": "number"
+              },
+              "hasAudio": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "asset-read",
+          "title": "读取项目素材预览",
+          "description": "读取项目素材预览",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "assetId": {
+                "type": "string"
+              },
+              "offset": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "generate",
+          "title": "通过 Work 渠道生成素材",
+          "description": "通过 Work 渠道生成素材",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "number"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "generation-status",
+          "title": "查询任务并保存已完成素材",
+          "description": "查询任务并保存已完成素材",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "arrange",
+          "title": "分镜编排到独立轨道",
+          "description": "分镜编排到独立轨道",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "handoff",
+          "title": "交接原生多轨剪辑工程",
+          "description": "交接原生多轨剪辑工程",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "short-video-studio",
+      "label": "短片创作",
+      "path": "skills/short-video-studio",
+      "requires": [
+        "service:service"
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "type": "workspace-app",
+      "ref": "studio",
+      "label": "短片工作台"
+    },
+    {
+      "type": "conversation-template",
+      "label": "创作短片",
+      "description": "打开独立短片工作台，在左侧对话中完成创作。",
+      "prompt": "打开短片创作工作台。我希望在画布中规划和生成短片，再交到现有视频工具分轨剪辑。",
+      "mode": "video"
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Short Video Studio",
+        "description": "Plan storyboards, characters and media on a creative canvas, generate assets through Work, and hand off to native multitrack editing.",
+        "category": "Design & Creative",
+        "resources": {
+          "studio": {
+            "label": "Short Video Studio"
+          },
+          "service": {
+            "label": "Short Video Service"
+          },
+          "short-video-studio": {
+            "label": "Short Video Creation"
+          }
+        },
+        "permissions": {
+          "workspace-read": {
+            "reason": "Read short video images, videos and audio selected by the user."
+          },
+          "workspace-write": {
+            "reason": "Save independent short video projects and create multitrack edits without replacing existing edits."
+          }
+        }
+      }
+    }
+  }
+}

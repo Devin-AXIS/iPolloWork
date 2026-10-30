@@ -12,6 +12,7 @@ import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRu
 // ── Types ──
 
 export interface UseDomEditAttributeCommitsParams {
+  projectId?: string | null;
   activeCompPath: string | null;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -101,7 +102,7 @@ export function useDomEditAttributeCommits({
   refreshDomEditSelectionFromPreview,
   persistDomEditOperations,
 }: UseDomEditAttributeCommitsParams) {
-  const domAttributeCommitVersionRef = useRef(new Map<string, number>());
+  const domAttributeCommitVersionRef = useRef(new Map<string, symbol>());
 
   const commitDataAttribute = useCallback(
     async (attr: string, value: string | null, options: DataAttributeCommitOptions) => {
@@ -272,6 +273,12 @@ export function useDomEditAttributeCommits({
 
   const handleDomAttributeCommit = useCallback(
     async (attr: string, value: string) => {
+      if (
+        (attr === "duration" || attr === "data-duration") &&
+        domEditSelection?.isCompositionHost
+      ) {
+        return handleDomAttributesCommit(domEditSelection, { duration: value }, "Resize component");
+      }
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/-/g, " ")}`,
         coalescePrefix: "attr",
@@ -279,7 +286,7 @@ export function useDomEditAttributeCommits({
         refreshAfter: true,
       });
     },
-    [commitDataAttribute],
+    [commitDataAttribute, domEditSelection, handleDomAttributesCommit],
   );
 
   const handleDomAttributeLiveCommit = useCallback(

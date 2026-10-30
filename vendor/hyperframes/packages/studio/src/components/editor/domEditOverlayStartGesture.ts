@@ -114,6 +114,7 @@ export function startGesture(
     selection?: DomEditSelection;
     rect?: OverlayRect | null;
     resizeHandle?: ResizeHandle;
+    captureTarget?: HTMLElement;
   },
 ): boolean {
   const sel = options?.selection ?? opts.selectionRef.current;
@@ -244,7 +245,7 @@ export function startGesture(
       : undefined;
   e.preventDefault();
   e.stopPropagation();
-  e.currentTarget.setPointerCapture(e.pointerId);
+  (options?.captureTarget ?? e.currentTarget).setPointerCapture(e.pointerId);
   opts.rafPausedRef.current = true;
   opts.gestureRef.current = {
     kind,

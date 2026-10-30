@@ -20,6 +20,8 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomPathOffsetCommit"
   | "handleDomGroupPathOffsetCommit"
   | "handleDomZIndexReorderCommit"
+  | "handleAvatarCutout"
+  | "avatarCutoutProgress"
   | "handleDomBoxSizeCommit"
   | "handleDomRotationCommit"
   | "handleDomManualEditsReset"
@@ -29,6 +31,7 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomAddTextField"
   | "handleDomRemoveTextField"
   | "handleAskAgent"
+  | "openImageWorkbench"
   | "handleAgentModalSubmit"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
@@ -72,6 +75,7 @@ export interface DomEditActionsValue extends Pick<
   | "invalidateGsapCache"
   | "previewIframeRef"
   | "commitMutation"
+  | "commitGsapMutationForSelection"
   | "applyMarqueeSelection"
   | "handleUpdateKeyframeEase"
   | "handleSetAllKeyframeEases"
@@ -148,6 +152,8 @@ export function DomEditProvider({
     handleDomPathOffsetCommit,
     handleDomGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,
+    handleAvatarCutout,
+    avatarCutoutProgress,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
@@ -158,6 +164,7 @@ export function DomEditProvider({
     handleDomAddTextField,
     handleDomRemoveTextField,
     handleAskAgent,
+    openImageWorkbench,
     handleAgentModalSubmit,
     handleBlockedDomMove,
     handleDomManualDragStart,
@@ -205,6 +212,7 @@ export function DomEditProvider({
     invalidateGsapCache,
     previewIframeRef,
     commitMutation,
+    commitGsapMutationForSelection,
     applyMarqueeSelection,
     handleUpdateKeyframeEase,
     handleSetAllKeyframeEases,
@@ -238,6 +246,8 @@ export function DomEditProvider({
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
+      handleAvatarCutout,
+      avatarCutoutProgress,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
       handleDomManualEditsReset,
@@ -247,6 +257,7 @@ export function DomEditProvider({
       handleDomAddTextField,
       handleDomRemoveTextField,
       handleAskAgent,
+      openImageWorkbench,
       handleAgentModalSubmit,
       handleBlockedDomMove,
       handleDomManualDragStart,
@@ -290,6 +301,7 @@ export function DomEditProvider({
       invalidateGsapCache,
       previewIframeRef,
       commitMutation: stableCommitMutation,
+      commitGsapMutationForSelection,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
       handleSetAllKeyframeEases,
@@ -309,6 +321,8 @@ export function DomEditProvider({
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
+      handleAvatarCutout,
+      avatarCutoutProgress,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
       handleDomManualEditsReset,
@@ -318,6 +332,7 @@ export function DomEditProvider({
       handleDomAddTextField,
       handleDomRemoveTextField,
       handleAskAgent,
+      openImageWorkbench,
       handleAgentModalSubmit,
       handleBlockedDomMove,
       handleDomManualDragStart,
@@ -361,6 +376,7 @@ export function DomEditProvider({
       invalidateGsapCache,
       previewIframeRef,
       stableCommitMutation,
+      commitGsapMutationForSelection,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
       handleSetAllKeyframeEases,

@@ -1,3 +1,5 @@
+import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -32,6 +34,7 @@ import {
   installPageFunctionGuard,
   seekCompositionTimeline,
   waitForCompositionFonts,
+  waitForRuntimeReady,
   type SeekCompositionTimelineOptions,
 } from "../capture/captureCompositionFrame.js";
 
@@ -202,6 +205,8 @@ async function runLayoutAudit(
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
   const { buildChromeArgs } = await import("@hyperframes/engine");
+  const { assertWebGpuAdapterAvailable, compositionRequiresWebGpu, resolveLocalBrowserGpuMode } =
+    await import("../browser/gpuPolicy.js");
   const html = await bundleProjectHtml(projectDir);
   const server = await serveStaticProjectHtml(
     projectDir,
@@ -212,10 +217,16 @@ async function runLayoutAudit(
 
   try {
     const browser = await ensureBrowser();
-    chromeBrowser = await puppeteer.default.launch({
+    const requestedGpuMode = resolveLocalBrowserGpuMode();
+    const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
+    const requiresWebGpu = compositionRequiresWebGpu(html);
+    chromeBrowser = await launchManagedBrowser(puppeteer.default, {
       headless: true,
       executablePath: browser.executablePath,
-      args: buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
+      args: buildChromeArgs(
+        { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
+        { browserGpuMode: resolvedGpuMode },
+      ),
     });
 
     const page = await chromeBrowser.newPage();
@@ -225,12 +236,9 @@ async function runLayoutAudit(
       waitUntil: "domcontentloaded",
       timeout: resolveDiagnosticNavigationTimeoutMs(),
     });
+    await assertWebGpuAdapterAvailable(page, requiresWebGpu);
     await alignViewportToComposition(page, server.url);
-    await page
-      .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {
-        timeout: opts.timeout,
-      })
-      .catch(() => {});
+    await waitForRuntimeReady(page, opts.timeout);
     await waitForCompositionFonts(page, 750);
     await new Promise((resolveSettle) => setTimeout(resolveSettle, 250));
 
@@ -378,6 +386,7 @@ async function runMotionPass(
     width: window.innerWidth,
     height: window.innerHeight,
   }));
+  await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   const frames = await collectMotionFrames(page, times, selectors, livenessScopes);
   return { issues: evaluateMotion(frames, spec.assertions, canvas), sampleCount: frames.length };
@@ -412,7 +421,7 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
   } else {
     console.error(`${c.error("✗")} ${message}`);
   }
-  process.exit(1);
+  failCommand();
 }
 
 export function parseAt(value: unknown): number[] | undefined {
@@ -568,7 +577,8 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
               2,
             ),
           );
-          process.exit(ok ? 0 : 1);
+          setCommandExitCode(ok ? 0 : 1);
+          return;
         }
 
         if (result.samples.length === 0) {
@@ -576,7 +586,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           console.log(
             `${c.error("✗")} Could not determine composition duration — no layout samples run`,
           );
-          process.exit(1);
+          failCommand();
         }
 
         console.log();
@@ -607,7 +617,8 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
         const suffix = limited.truncated ? c.dim(`, truncated at ${maxIssues} issue(s)`) : "";
         console.log(`${ok ? c.success("◇") : c.error("◇")}  ${parts.join(", ")}${suffix}`);
 
-        process.exit(ok ? 0 : 1);
+        setCommandExitCode(ok ? 0 : 1);
+        return;
       } catch (err) {
         const message = normalizeErrorMessage(err);
         if (args.json) {
@@ -630,10 +641,10 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
               2,
             ),
           );
-          process.exit(1);
+          failCommand();
         }
         console.error(`${c.error("✗")} Inspect failed: ${message}`);
-        process.exit(1);
+        failCommand();
       }
     },
   });

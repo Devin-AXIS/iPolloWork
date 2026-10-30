@@ -29,12 +29,18 @@ import type {
   AudioElement,
   ExtractedFrames,
   ImageElement,
+  ParallelProgress,
   VideoElement,
 } from "@hyperframes/engine";
 import type { CompiledComposition } from "../htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { isPathInside } from "../../utils/paths.js";
-import type { ProgressCallback, RenderJob, RenderStatus } from "../renderOrchestrator.js";
+import type {
+  ProgressCallback,
+  RenderJob,
+  RenderStageProgress,
+  RenderStatus,
+} from "../renderOrchestrator.js";
 
 export interface CompositionMetadata {
   duration: number;
@@ -52,6 +58,19 @@ export interface CompositionMetadata {
  * HTML and we want to ignore sub-millisecond float noise.
  */
 export const BROWSER_MEDIA_EPSILON = 0.0001;
+
+/**
+ * Resolve the browser/runtime end for a media element.
+ *
+ * `data-end` is compiler-generated metadata, while `data-duration` is the
+ * authored/runtime value. A render variable can replace a placeholder source
+ * and update `data-duration` after compilation, leaving the compiler-clamped
+ * `data-end` stale. Prefer the live duration when present so the audio/video
+ * extraction window follows the runtime media slot.
+ */
+export function resolveBrowserMediaEnd(start: number, end: number, duration: number): number {
+  return Number.isFinite(duration) && duration > 0 ? start + duration : end;
+}
 
 export function writeFileExclusiveSync(path: string, data: NodeJS.ArrayBufferView | string): void {
   try {
@@ -106,10 +125,10 @@ export function resolveDeviceScaleFactor(input: {
   alphaRequested: boolean;
 }): number {
   if (!input.outputResolution) return 1;
-  // Single source of truth for the aspect/alpha/HDR/scale constraints, shared
+  // Single source of truth for the aspect/HDR/scale constraints, shared
   // with the CLI render pre-flight so both raise the identical, actionable
   // message. This is the deep defense-in-depth throw; the pre-flight aborts
-  // long before this runs on the common (aspect/alpha) mistakes.
+  // long before this runs on common compatibility mistakes.
   const compat = checkOutputResolutionCompatibility({
     compositionWidth: input.compositionWidth,
     compositionHeight: input.compositionHeight,
@@ -232,10 +251,12 @@ export function updateJobStatus(
   stage: string,
   progress: number,
   onProgress?: ProgressCallback,
+  stageProgress?: RenderStageProgress,
 ): void {
   job.warnings ??= [];
   job.status = status;
   job.currentStage = stage;
+  job.stageProgress = stageProgress;
   const boundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
   job.progress = Math.max(job.progress, boundedProgress);
   if (status === "failed" || status === "complete" || status === "cancelled") {
@@ -250,6 +271,127 @@ export function updateJobStatus(
             : "completed";
   }
   if (onProgress) void onProgress(job, stage);
+}
+
+const PROGRESS_REPORT_INTERVAL_MS = 250;
+const lastFrameReportAt = new WeakMap<RenderJob, number>();
+const lastStartupReportAt = new WeakMap<RenderJob, number>();
+const lastReportSent = new WeakMap<RenderJob, string>();
+
+// The job updates on every call; the callback fires on the first call per job, when forced, and at
+// most once per interval in between, never twice in a row with the same stage and percent.
+function reportThrottled(
+  lastReportAt: WeakMap<RenderJob, number>,
+  job: RenderJob,
+  stage: string,
+  progress: number,
+  onProgress: ProgressCallback | undefined,
+  force: boolean,
+  stageProgress: RenderStageProgress,
+  status: RenderStatus = "rendering",
+): void {
+  const now = Date.now();
+  const last = lastReportAt.get(job);
+  const sent = `${stage}|${progress}`;
+  const due =
+    lastReportSent.get(job) !== sent &&
+    (force || last === undefined || now - last >= PROGRESS_REPORT_INTERVAL_MS);
+  if (due) {
+    lastReportAt.set(job, now);
+    lastReportSent.set(job, sent);
+  }
+  updateJobStatus(job, status, stage, progress, due ? onProgress : undefined, stageProgress);
+}
+
+/** Capture-loop progress: the first frame, the last frame, and at most four reports a second between. */
+export function reportFrameProgress(
+  job: RenderJob,
+  stage: string,
+  progress: number,
+  onProgress: ProgressCallback | undefined,
+  done: number,
+  total: number,
+): void {
+  reportThrottled(lastFrameReportAt, job, stage, progress, onProgress, done === total, {
+    code: "capture",
+    done,
+    total,
+  });
+}
+
+const lastEncodeReportAt = new WeakMap<RenderJob, number>();
+
+/** Frames ffmpeg has encoded, from where capture left the bar up to 90%; same cadence as capture. */
+export function reportEncodeProgress(
+  job: RenderJob,
+  done: number,
+  total: number,
+  onProgress: ProgressCallback | undefined,
+  from: number,
+): void {
+  if (total <= 0) return;
+  const frames = Math.min(done, total);
+  reportThrottled(
+    lastEncodeReportAt,
+    job,
+    `Encoding frame ${frames}/${total}`,
+    from + ((90 - from) * frames) / total,
+    onProgress,
+    frames === total,
+    { code: "encode", done: frames, total },
+    "encoding",
+  );
+}
+
+const lastAssembleReportAt = new WeakMap<RenderJob, number>();
+
+/** Seconds of the final file written, 90% to 99%: only a complete file reaches 100. */
+export function reportAssembleProgress(
+  job: RenderJob,
+  done: number,
+  total: number,
+  onProgress: ProgressCallback | undefined,
+): void {
+  if (total <= 0) return;
+  const seconds = Math.min(done, total);
+  reportThrottled(
+    lastAssembleReportAt,
+    job,
+    "Assembling final video",
+    90 + (9 * seconds) / total,
+    onProgress,
+    seconds >= total,
+    { code: "assemble", done: seconds, total },
+    "assembling",
+  );
+}
+
+const workerPhasesByJob = new WeakMap<RenderJob, Map<number, string>>();
+
+/** Browser warm-up before the first frame, from the parallel workers' phase events. */
+export function reportWorkerStartup(
+  job: RenderJob,
+  progress: ParallelProgress,
+  onProgress: ProgressCallback | undefined,
+): void {
+  const phase = progress.latestWorkerPhase;
+  if (!phase) return;
+  const phases = workerPhasesByJob.get(job) ?? new Map<number, string>();
+  workerPhasesByJob.set(job, phases);
+  phases.set(phase.workerId, phase.phase);
+  // ponytail: ids past a smaller retry's worker count are stale, so they are not counted
+  const ready = [...phases].filter(
+    ([id, p]) => id < progress.activeWorkers && (p === "frame_capture" || p === "frame_encode"),
+  ).length;
+  reportThrottled(
+    lastStartupReportAt,
+    job,
+    `Starting browsers (${ready}/${progress.activeWorkers} ready)`,
+    job.progress,
+    onProgress,
+    false,
+    { code: "start_browsers", done: ready, total: progress.activeWorkers },
+  );
 }
 
 /**
@@ -293,7 +435,7 @@ type MaterializePathModule = {
 type MaterializeFileSystem = {
   existsSync: (path: string) => boolean;
   mkdirSync: (path: string, options: { recursive: true }) => unknown;
-  symlinkSync: (target: string, path: string) => unknown;
+  symlinkSync: (target: string, path: string, type?: "dir" | "junction") => unknown;
   cpSync: (src: string, dest: string, options: { recursive: true }) => unknown;
   // Optional: only the stale-entry (EEXIST) recovery path calls it, and the
   // default fileSystem always supplies it. Test doubles that never trigger
@@ -399,31 +541,55 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
  * external callers should use `executeRenderJob` instead.
  */
 // Stage one video's extracted-frame dir into the compiled dir. Default is a
-// single symlink (cheap; the in-process renderer); `materializeSymlinks` copies
-// instead (distributed plan() needs a self-contained dir). On Windows without
-// Developer Mode/Administrator symlink creation is rejected with EPERM/EACCES,
-// which failed high/standard renders — degrade to a copy there rather than
-// throwing. Non-permission errors still propagate so real failures aren't hidden.
+// directory link (cheap; the in-process renderer); `materializeSymlinks` copies
+// instead (distributed plan() needs a self-contained dir). On Windows, try a
+// junction if symlink privileges are unavailable before falling back to a copy.
 // One-time guard for the symlink→copy fallback notice below.
 let warnedSymlinkFallback = false;
 
+// Junctions avoid Windows symlink privileges. POSIX keeps its copy fallback.
+function tryWindowsFrameJunction(
+  fileSystem: MaterializeFileSystem,
+  src: string,
+  dest: string,
+): boolean {
+  if (process.platform !== "win32") return false;
+  try {
+    fileSystem.symlinkSync(src, dest, "junction");
+    return true;
+  } catch (error) {
+    const code =
+      error instanceof Error && "code" in error && typeof error.code === "string"
+        ? error.code
+        : undefined;
+    if (
+      ["EPERM", "EACCES", "UNKNOWN", "EINVAL", "ENOSYS", "EOPNOTSUPP", "ENOTSUP"].includes(
+        code ?? "",
+      )
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 // Create the symlink, degrading to a copy on Windows' no-symlink-privilege
-// errors (EPERM/EACCES, plus UNKNOWN — some Windows builds surface a symlink
-// privilege denial as an UNKNOWN-coded error rather than EPERM). Non-permission
-// errors propagate.
+// errors (EPERM/EACCES, plus UNKNOWN), trying a Windows junction first.
+// Other symlink errors and non-capability junction errors propagate.
 function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
   try {
-    fileSystem.symlinkSync(src, dest);
+    fileSystem.symlinkSync(src, dest, "dir");
   } catch (err) {
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
     if (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN") throw err;
+    if (tryWindowsFrameJunction(fileSystem, src, dest)) return;
     // Copying is measurably slower than symlinking, so surface the degrade once
     // — it explains a render that suddenly got heavier and saves a support
     // round-trip diagnosing slow frame staging on Windows.
     if (!warnedSymlinkFallback) {
       warnedSymlinkFallback = true;
       defaultLogger.info(
-        `[Render] Symlinking extracted frames was rejected (${code}); copying them into the compiled dir instead. Expected on Windows without Developer Mode/Administrator.`,
+        `[Render] Linking extracted frames was rejected (${code}); copying them into the compiled dir instead.`,
       );
     }
     fileSystem.cpSync(src, dest, { recursive: true });

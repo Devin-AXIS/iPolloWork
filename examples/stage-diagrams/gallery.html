@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Stage Diagrams</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=Inter+Tight:wght@500;700;800&family=Doto:wght@700;900&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+  :root{
+    --stage-accent:#7C8CFF;
+    --bg:#020203;--fg:#EDEDF0;--mu:#8B8B93;--line:rgba(255,255,255,.08);--card:#0A0A0C;--chip:rgba(255,255,255,.05);
+    color-scheme:dark;
+  }
+  :root[data-theme=light]{--bg:#EFEEE8;--fg:#111113;--mu:#6B6B70;--line:rgba(0,0,0,.09);--card:#F6F6F3;--chip:rgba(0,0,0,.04);color-scheme:light}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:Geist,"PingFang SC",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .mono{font-family:"Geist Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;font-size:11px}
+  .wrap{max-width:1440px;margin:0 auto;padding:0 32px}
+  header{padding:72px 0 40px}
+  .eyebrow{color:var(--mu);display:flex;gap:18px;align-items:center}
+  .eyebrow i{width:6px;height:6px;border-radius:50%;background:var(--stage-accent);box-shadow:0 0 12px var(--stage-accent);display:inline-block}
+  h1{font-weight:400;font-size:clamp(40px,6vw,84px);letter-spacing:-.035em;line-height:1;margin:24px 0 20px}
+  h1 em{font-style:normal;color:var(--stage-accent)}
+  .lede{color:var(--mu);font-size:17px;line-height:1.6;max-width:640px;margin:0}
+  .bar{position:sticky;top:0;z-index:5;background:color-mix(in oklab,var(--bg) 82%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  .bar .wrap{display:flex;gap:28px;align-items:center;flex-wrap:wrap;padding-top:14px;padding-bottom:14px}
+  .ctl{display:flex;gap:10px;align-items:center}
+  .ctl>.mono{color:var(--mu);margin-right:4px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:999px;padding:3px}
+  .seg button{all:unset;cursor:pointer;padding:6px 12px;border-radius:999px;color:var(--mu);font:500 12px Geist,system-ui}
+  .seg button[aria-pressed=true]{background:var(--chip);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line)}
+  .seg button:focus-visible{outline:2px solid var(--stage-accent);outline-offset:2px}
+  .spacer{flex:1}
+  .count{color:var(--mu)}
+  section.group{padding:64px 0 8px}
+  .ghead{display:flex;align-items:baseline;gap:18px;border-top:1px solid var(--line);padding-top:22px;margin-bottom:28px}
+  .ghead h2{font-weight:400;font-size:28px;letter-spacing:-.02em;margin:0}
+  .ghead p{margin:0;color:var(--mu);font-size:14px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:36px 28px}
+  .player{aspect-ratio:16/9;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px var(--line);background:var(--card)}
+  .player iframe{display:block;width:100%;height:100%;border:0}
+  .meta{display:flex;gap:14px;align-items:baseline;margin-top:16px}
+  .meta .n{color:var(--mu)}
+  .meta h3{margin:0;font-weight:500;font-size:17px;letter-spacing:-.01em}
+  .meta h3 span{color:var(--mu);font-weight:400;margin-left:8px;font-size:14px}
+  .meta .id{margin-left:auto;color:var(--mu);border:1px solid var(--line);padding:3px 8px;border-radius:6px;text-transform:none}
+  .desc{color:var(--mu);font-size:13.5px;line-height:1.6;margin:8px 0 0 34px;max-width:560px}
+  .acts{display:flex;gap:8px;margin:12px 0 0 34px}
+  .acts button{all:unset;cursor:pointer;font:500 12px Geist,system-ui;color:var(--fg);padding:7px 12px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--line);background:var(--chip)}
+  .acts button:hover{box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--stage-accent) 60%,transparent)}
+  footer{padding:80px 0 60px;color:var(--mu);font-size:13px}
+  footer code{font-family:"Geist Mono",monospace;font-size:12px;background:var(--chip);padding:2px 6px;border-radius:5px}
+  /* presenter */
+  .present{position:fixed;inset:0;z-index:20;background:#000;display:none;align-items:center;justify-content:center;flex-direction:column}
+  :root[data-theme=light] .present{background:var(--sd-bg,#F6F6F3)}
+  .present.on{display:flex}
+  .present .stagebox{width:min(100vw,calc(100vh * 16 / 9 - 60px));aspect-ratio:16/9}
+  .present .stagebox iframe{display:block;width:100%;height:100%;border:0}
+  .present .hud{position:absolute;left:24px;right:24px;bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:12px;color:#8B8B93}
+  .present-actions{display:flex;align-items:center;gap:18px}
+  .present .x{position:absolute;top:16px;right:20px;all:unset;cursor:pointer;color:#8B8B93;font:500 12px "Geist Mono";letter-spacing:.08em;position:absolute}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;transition:.3s;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;z-index:30}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+  /* hero: 3D wall */
+  .hero{position:relative;min-height:min(92vh,980px);overflow:hidden;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);align-items:center;
+    background:radial-gradient(70% 80% at 85% 10%,color-mix(in oklab,var(--stage-accent) 14%,transparent),transparent 65%),radial-gradient(60% 60% at 0% 100%,color-mix(in oklab,var(--stage-accent) 10%,transparent),transparent 70%),var(--bg)}
+  .hero-copy{position:relative;z-index:2;padding:96px 0 96px max(32px,calc((100vw - 1440px)/2 + 32px))}
+  .hero h1{font-family:"Inter Tight",Geist,sans-serif;font-weight:600;font-size:clamp(56px,8vw,128px);line-height:.92;letter-spacing:-.05em;margin:28px 0 28px;}
+  .hero h1 .dot{font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;letter-spacing:-.02em;color:var(--stage-accent)}
+  .hero .lede{font-size:16px}
+  .specs{display:grid;grid-template-columns:repeat(4,auto);gap:0;margin-top:40px;border-top:1px solid var(--line);max-width:560px}
+  .specs div{padding:14px 18px 0 0}
+  .specs b{display:block;font:700 34px/1 "Inter Tight",sans-serif;letter-spacing:-.04em}
+  .specs span{color:var(--mu)}
+  .wall{position:relative;height:100%;min-height:720px;perspective:2200px}
+  .plane{position:absolute;left:2%;top:50%;width:1180px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px;
+    transform:translateY(-50%) rotateX(24deg) rotateZ(-12deg) rotateY(4deg);transform-style:preserve-3d;animation:float 14s ease-in-out infinite alternate}
+  .plane stage-diagram{border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px var(--line),0 30px 60px -20px rgba(0,0,0,.35)}
+  @keyframes float{to{transform:translateY(-52%) rotateX(22deg) rotateZ(-10deg) rotateY(2deg)}}
+  @media (prefers-reduced-motion:reduce){.plane{animation:none}}
+  @media (max-width:980px){.hero{grid-template-columns:1fr}.hero-copy{padding:64px 16px 0}.wall{min-height:420px}.plane{width:760px}.specs{grid-template-columns:repeat(2,auto)}
+  }
+  @media (max-width:980px){.grid{grid-template-columns:1fr}.wrap{padding:0 16px}header{padding:48px 0 28px}.desc,.acts{margin-left:0}.bar .wrap{gap:14px}}
+  @media (max-width:600px){#palette-control{width:100%;flex-wrap:wrap}#palette{max-width:100%;flex-wrap:wrap}.present .hud{left:12px;right:12px}.present-actions [data-i18n=presentHint]{display:none}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="hero-copy">
+    <div class="eyebrow mono"><i></i><span>Stage Diagrams</span><span>v3.0</span><span data-i18n="tagline">发布 · 讲解 · 教学</span></div>
+    <h1>Stage<br><span class="dot">Diagrams</span></h1>
+    <p class="lede" data-i18n="lede">发布会与宣传片级的动态图表组件：数据驱动、多套演示配色，四套皮肤（Keynote / 电影感 / 点阵电子 / 瑞士杂志），3D 运镜，逐帧导出 MP4。</p>
+    <div class="specs mono"><div><b>35</b><span data-i18n="types">种类型</span></div><div><b>04</b><span data-i18n="skins">种皮肤</span></div><div><b>04</b><span data-i18n="cameras">种运镜</span></div><div><b>4K</b><span data-i18n="export">MP4 导出</span></div></div>
+  </div>
+  <div class="wall" aria-hidden="true"><div class="plane">
+    <stage-diagram type="stat" skin="keynote" chrome="none"></stage-diagram>
+    <stage-diagram type="architecture" skin="keynote" layout="poster"></stage-diagram>
+    <stage-diagram type="orbit" chrome="none"></stage-diagram>
+    <stage-diagram type="hub" skin="keynote" layout="poster"></stage-diagram>
+    <stage-diagram type="mindmap" skin="keynote" chrome="none"></stage-diagram>
+    <stage-diagram type="scurve" skin="keynote" theme="dark" chrome="none"></stage-diagram>
+    <stage-diagram type="timeline" skin="keynote" chrome="none"></stage-diagram>
+    <stage-diagram type="versus" skin="keynote" chrome="none"></stage-diagram>
+    <stage-diagram type="pipeline" chrome="none"></stage-diagram>
+  </div></div>
+</header>
+
+<div class="bar">
+  <div class="wrap">
+    <div class="ctl"><span class="mono" data-i18n="language">语言</span><div class="seg" id="language"><button type="button" data-v="zh" lang="zh-CN">中文</button><button type="button" data-v="en" lang="en">English</button></div></div>
+    <div class="ctl"><span class="mono" data-i18n="theme">主题</span><div class="seg" id="theme"><button aria-pressed="false" data-v="light" data-i18n="light">浅色</button><button aria-pressed="false" data-v="dark" data-i18n="dark">深色</button></div></div>
+    <div class="ctl"><span class="mono" data-i18n="skin">皮肤</span><div class="seg" id="skin"><button aria-pressed="true" data-v="keynote">Keynote</button><button aria-pressed="false" data-v="cinematic" data-i18n="cinematic">电影感</button><button aria-pressed="false" data-v="dot" data-i18n="dot">点阵</button><button aria-pressed="false" data-v="editorial" data-i18n="editorial">杂志</button></div></div>
+    <div class="ctl"><span class="mono" data-i18n="layout">布局</span><div class="seg" id="layout"><button aria-pressed="true" data-v="full" data-i18n="full">完整</button><button aria-pressed="false" data-v="card" data-i18n="card">卡片</button><button aria-pressed="false" data-v="poster" data-i18n="poster">海报</button></div></div>
+    <div class="ctl" id="palette-control"><span class="mono" data-i18n="palette">演示配色</span><div class="seg" id="palette"><button aria-pressed="true" data-v="accent" data-i18n="paletteDefault">默认</button><button aria-pressed="false" data-v="mono" data-i18n="mono">黑白</button><button aria-pressed="false" data-v="porcelain" data-i18n="porcelain">青瓷蓝</button><button aria-pressed="false" data-v="palm" data-i18n="palm">椰林绿</button><button aria-pressed="false" data-v="wire" data-i18n="wire">编辑部红</button></div></div>
+    <div class="ctl"><span class="mono" data-i18n="camera">运镜</span><div class="seg" id="camera"><button aria-pressed="true" data-v="auto" data-i18n="auto">自动</button><button aria-pressed="false" data-v="steady" data-i18n="steady">平稳</button><button aria-pressed="false" data-v="overhead" data-i18n="overhead">俯视</button><button aria-pressed="false" data-v="dimension" data-i18n="dimension">立体</button><button aria-pressed="false" data-v="focus" data-i18n="focusCam" title="仅时间线、旅程、流程等沿路径展开的图表">聚焦</button></div></div>
+    <div class="ctl"><span class="mono" data-i18n="motion">动效</span><div class="seg" id="motion"><button aria-pressed="true" data-v="loop" data-i18n="loop">循环</button><button aria-pressed="false" data-v="intro" data-i18n="intro">入场</button><button aria-pressed="false" data-v="none" data-i18n="static">静止</button></div></div>
+    <div class="spacer"></div>
+    <span class="mono count" id="count"></span>
+  </div>
+</div>
+
+<main class="wrap" id="main"></main>
+
+<footer class="wrap">
+  <p><span data-i18n="usage">用法：</span><code>&lt;script src="stage-diagrams.js"&gt;&lt;/script&gt;</code> → <code>&lt;stage-diagram type="hub" accent="#7C8CFF"&gt;&lt;script type="application/json"&gt;{...}&lt;/script&gt;&lt;/stage-diagram&gt;</code><span data-i18n="usageHint">。点击图表重播动画；“全屏演示”中用 ← → 切换、Esc 退出。</span></p>
+</footer>
+
+<div class="present" id="present" aria-modal="true" role="dialog">
+  <button class="x" id="px">ESC ✕</button>
+  <div class="stagebox" id="pbox"></div>
+  <div class="hud mono"><span id="pname"></span><div class="present-actions"><div class="seg" id="present-language"><button type="button" data-v="zh" lang="zh-CN">中文</button><button type="button" data-v="en" lang="en">English</button></div><span data-i18n="presentHint">← → 切换 · 点击重播</span></div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="skill/assets/stage-diagrams.js"></script>
+<script src="gallery-i18n.js"></script>
+<script>
+(() => {
+  const SD = window.StageDiagrams;
+  const translations = window.StageGalleryI18n;
+  const GROUPS = [
+    ['essentials', '基础', 'Essentials', '决策、发散、时间、交集、旅程、排期、定位、对比、层级', 'Decisions, ideas, timelines, overlap, journeys, schedules, positioning, comparisons, and hierarchy'],
+    ['process', '流程与转化', 'Process', '协作、循环、流水线、汇聚、归因', 'Collaboration, cycles, pipelines, convergence, and root cause analysis'],
+    ['systems', '系统与平台', 'Systems', '集成中枢、分层平台、架构、时序、状态', 'Integration hubs, platform layers, architecture, sequences, and states'],
+    ['editorial', '叙事与高光', 'Narrative', '发布会主视觉：生态、增长曲线、圈层、关键数据、前后对比', 'Launch visuals: ecosystems, growth curves, rings, key metrics, and before and after'],
+    ['frameworks', '框架与模型', 'Frameworks', '方法论与战略框架：分区盘、菱形、拐点曲线、胶囊、双核、圈层、环形、汇聚、立体象限、回路、嵌套', 'Methods and strategy: discs, diamonds, turning points, capsules, bridges, zones, radial models, quadrants, loops, and nesting'],
+  ];
+  const UI = {
+    zh: { tagline: '发布 · 讲解 · 教学', lede: '发布会与宣传片级的动态图表组件：数据驱动、多套演示配色，四套皮肤（Keynote / 电影感 / 点阵电子 / 瑞士杂志），3D 运镜，逐帧导出 MP4。', types: '种类型', skins: '种皮肤', cameras: '种运镜', export: 'MP4 导出', language: '语言', theme: '主题', light: '浅色', dark: '深色', skin: '皮肤', cinematic: '电影感', dot: '点阵', editorial: '杂志', layout: '布局', full: '完整', card: '卡片', poster: '海报', camera: '运镜', auto: '自动', steady: '平稳', overhead: '俯视', dimension: '立体', focusCam: '聚焦', on: '开', off: '关', motion: '动效', loop: '循环', intro: '入场', static: '静止', usage: '用法：', usageHint: '。图库播放的就是视频组件本身；点击图表重播，“全屏演示”中用 ← → 切换、Esc 退出。', presentHint: '← → 切换 · 点击重播', present: '全屏演示', copy: '复制代码', replay: '重播', diagrams: '个图表', copied: '已复制', copyFailed: '复制失败，请手动复制', palette: '演示配色', paletteDefault: '默认', mono: '黑白', porcelain: '青瓷蓝', palm: '椰林绿', wire: '编辑部红' },
+    en: { tagline: 'Launch · Explain · Teach', lede: 'Animated diagrams for launches and films. Data driven, preset palettes, four visual styles (Keynote, Cinematic, Dot, Editorial), 3D camera moves, and frame by frame MP4 export.', types: 'Types', skins: 'Skins', cameras: 'Cameras', export: 'MP4 Export', language: 'Language', theme: 'Theme', light: 'Light', dark: 'Dark', skin: 'Skin', cinematic: 'Cinematic', dot: 'Dot', editorial: 'Editorial', layout: 'Layout', full: 'Full', card: 'Card', poster: 'Poster', camera: 'Camera', auto: 'Auto', steady: 'Steady', overhead: 'Overhead', dimension: 'Dimension', focusCam: 'Focus', on: 'On', off: 'Off', motion: 'Motion', loop: 'Loop', intro: 'Intro', static: 'Static', usage: 'Usage: ', usageHint: '. The gallery plays the actual video components. Click a diagram to replay it; in full screen, use ← → to navigate and Esc to close.', presentHint: '← → Navigate · Click to replay', present: 'Present', copy: 'Copy code', replay: 'Replay', diagrams: 'diagrams', copied: 'Copied', copyFailed: 'Copy failed. Please copy manually.', palette: 'Demo palette', paletteDefault: 'Default', mono: 'Mono', porcelain: 'Porcelain Blue', palm: 'Palm Green', wire: 'Editorial Red' },
+  };
+  const ORDER = {
+    essentials: ['decision', 'mindmap', 'timeline', 'venn', 'journey', 'roadmap', 'quadrant', 'matrix', 'tree'],
+    process: ['swimlane', 'cycle', 'pipeline', 'funnel', 'fishbone'],
+    systems: ['hub', 'stack', 'architecture', 'sequence', 'state'],
+    editorial: ['orbit', 'scurve', 'rings', 'stat', 'versus'],
+    frameworks: ['disc', 'diamond', 'valley', 'capsule', 'bridge', 'zones', 'radial', 'bowtie', 'cube', 'loops', 'nested'],
+  };
+  const state = { theme: 'light', motion: 'loop', camera: 'auto', skin: 'keynote', layout: 'full', palette: 'accent', lang: 'zh' };
+  try { Object.assign(state, JSON.parse(localStorage.getItem('stage-gallery') || '{}')); } catch (e) {}
+  if (state.lang !== 'en') state.lang = 'zh';
+  if (!['keynote', 'cinematic', 'dot', 'editorial'].includes(state.skin)) state.skin = 'keynote';
+  if (!['accent', 'mono', 'porcelain', 'palm', 'wire'].includes(state.palette)) state.palette = 'accent';
+  delete state.accent;
+  if (!['auto', 'steady', 'overhead', 'dimension', 'focus'].includes(state.camera)) state.camera = 'auto';
+  if (!['full', 'card', 'poster'].includes(state.layout)) state.layout = 'full';
+  const save = () => { try { localStorage.setItem('stage-gallery', JSON.stringify(state)); } catch (e) {} };
+  const englishSamples = {};
+  function translateData(value) {
+    if (typeof value === 'string') return translations.text[value] || value;
+    if (Array.isArray(value)) return value.map(translateData);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, part]) => [key, translateData(part)]));
+    return value;
+  }
+  function sampleFor(type) {
+    if (state.lang === 'zh') return SD.SAMPLES[type];
+    if (!englishSamples[type]) {
+      const meta = SD.META[type];
+      const data = translateData(SD.SAMPLES[type]);
+      englishSamples[type] = { ...data, title: meta.en, desc: translations.desc[type], meta: meta.en,
+        copy: { eyebrow: 'Stage Diagrams', title: meta.en, subtitle: translations.desc[type] } };
+    }
+    return englishSamples[type];
+  }
+
+  const main = document.getElementById('main');
+  const all = [], players = [];
+  // Every card plays the real video component (src/<name>/) in player.html, loaded when it scrolls near view.
+  // English card / poster copy for one diagram (its title and description from the gallery translations).
+  const copyFor = type => { const meta = SD.META[type] || {}, desc = translations.desc[type] || ''; return { copyEyebrow: 'Stage Diagrams', copyTitle: meta.en, copySubtitle: desc }; };
+  const playerUrl = type => `player.html?${new URLSearchParams({ type, lang: state.lang, copy: JSON.stringify(copyFor(type)), theme: state.theme, camera: state.camera, skin: state.skin, layout: state.layout, palette: state.palette, motion: state.motion })}`;
+  const post = (player, message) => { const frame = player.querySelector('iframe'); if (frame && frame.contentWindow) frame.contentWindow.postMessage(message, '*'); };
+  const broadcast = message => { players.forEach(player => post(player, message)); const frame = document.querySelector('#pbox iframe'); if (frame) frame.contentWindow.postMessage(message, '*'); };
+  const watch = new IntersectionObserver(entries => entries.forEach(({ target, isIntersecting }) => {
+    if (isIntersecting && !target.querySelector('iframe')) target.innerHTML = `<iframe src="${playerUrl(target.dataset.type)}" title="${target.dataset.type}" loading="lazy"></iframe>`;
+    post(target, { cmd: isIntersecting ? 'play' : 'pause' });
+  }), { rootMargin: '300px 0px' });
+  let n = 0;
+  GROUPS.forEach(([g, zh, en, sub], groupIndex) => {
+    const sec = document.createElement('section');
+    sec.className = 'group';
+    sec.dataset.group = g;
+    sec.innerHTML = `<div class="ghead"><span class="mono" style="color:var(--mu)">${String(groupIndex + 1).padStart(2, '0')} / ${String(GROUPS.length).padStart(2, '0')}</span><h2>${zh}</h2><p>${sub}</p></div><div class="grid"></div>`;
+    const grid = sec.querySelector('.grid');
+    ORDER[g].forEach(type => {
+      const m = SD.META[type] || {};
+      n++;
+      const it = document.createElement('article');
+      it.className = 'item';
+      it.dataset.type = type;
+      it.innerHTML = `<div class="player" data-type="${type}"></div>
+        <div class="meta"><span class="mono n">${String(n).padStart(2, '0')}</span><h3>${m.zh}</h3><span class="mono id">${type}</span></div>
+        <p class="desc">${m.desc}</p>
+        <div class="acts"><button data-act="present">全屏演示</button><button data-act="copy">复制代码</button><button data-act="replay">重播</button></div>`;
+      const player = it.querySelector('.player');
+      it.querySelector('[data-act=present]').onclick = () => present(all.indexOf(type));
+      it.querySelector('[data-act=replay]').onclick = () => post(player, { cmd: 'replay' });
+      players.push(player);
+      it.querySelector('[data-act=copy]').onclick = () => copy(type);
+      all.push(type);
+      grid.appendChild(it);
+    });
+    main.appendChild(sec);
+  });
+  players.forEach(player => watch.observe(player));
+
+  function setTheme(t) {
+    state.theme = t; save();
+    document.documentElement.dataset.theme = t;
+    document.querySelectorAll('.plane stage-diagram').forEach(e => e.setAttribute('theme', t));
+    broadcast({ set: { theme: t } });
+    seg('theme', t);
+  }
+  function setMotion(m) {
+    state.motion = m; save();
+    broadcast({ motion: m });
+    seg('motion', m);
+  }
+  function setCamera(c) {
+    state.camera = c; save();
+    broadcast({ set: { camera: c } });
+    seg('camera', c);
+  }
+  function setSkin(v) {
+    state.skin = v; save();
+    broadcast({ set: { skin: v } });
+    seg('skin', v);
+  }
+  function setLayout(v) {
+    state.layout = v; save();
+    broadcast({ set: { layout: v } });
+    seg('layout', v);
+  }
+  function setPalette(v) {
+    state.palette = v; save();
+    broadcast({ set: { palette: v } });
+    seg('palette', v);
+  }
+  function seg(id, v) { document.querySelectorAll(`#${id} button`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); }
+  document.querySelectorAll('#theme button').forEach(b => b.onclick = () => setTheme(b.dataset.v));
+  document.querySelectorAll('#motion button').forEach(b => b.onclick = () => setMotion(b.dataset.v));
+  document.querySelectorAll('#skin button').forEach(b => b.onclick = () => setSkin(b.dataset.v));
+  document.querySelectorAll('#layout button').forEach(b => b.onclick = () => setLayout(b.dataset.v));
+  document.querySelectorAll('#palette button').forEach(b => b.onclick = () => setPalette(b.dataset.v));
+  document.querySelectorAll('#camera button').forEach(b => b.onclick = () => setCamera(b.dataset.v));
+  setTheme(state.theme); setMotion(state.motion); setCamera(state.camera); setSkin(state.skin); setLayout(state.layout); setPalette(state.palette);
+
+  // presenter
+  const P = document.getElementById('present'), box = document.getElementById('pbox'), pname = document.getElementById('pname');
+  let cur = 0;
+  function present(i) {
+    cur = (i + all.length) % all.length;
+    const t = all[cur], m = SD.META[t];
+    box.innerHTML = `<iframe src="${playerUrl(t)}" title="${t}"></iframe>`;
+    pname.textContent = `${String(cur + 1).padStart(2, '0')} / ${all.length} · ${m[state.lang]}`;
+    P.classList.add('on');
+  }
+  function close() { P.classList.remove('on'); box.innerHTML = ''; }
+  document.getElementById('px').onclick = close;
+  addEventListener('keydown', e => {
+    if (!P.classList.contains('on')) return;
+    if (e.key === 'Escape') close();
+    if (e.key === 'ArrowRight') present(cur + 1);
+    if (e.key === 'ArrowLeft') present(cur - 1);
+  });
+
+  // copy snippet
+  const toast = document.getElementById('toast');
+  function copy(type) {
+    const data = JSON.stringify(sampleFor(type), null, 2);
+    const code = `<script src="stage-diagrams.js"><\/script>\n<stage-diagram type="${type}" theme="${state.theme}"${state.palette === 'accent' ? '' : ` palette="${state.palette}"`}>\n<script type="application/json">\n${data}\n<\/script>\n</stage-diagram>`;
+    (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject()).then(() => show(`${UI[state.lang].copied} ${type}`), () => show(UI[state.lang].copyFailed));
+  }
+  function show(msg) { toast.textContent = msg; toast.classList.add('on'); clearTimeout(show._t); show._t = setTimeout(() => toast.classList.remove('on'), 1800); }
+
+  function setLanguage(lang) {
+    state.lang = lang === 'en' ? 'en' : 'zh'; save();
+    const ui = UI[state.lang];
+    document.documentElement.lang = state.lang === 'en' ? 'en' : 'zh-CN';
+    document.title = state.lang === 'en' ? 'Stage Diagrams — Gallery' : 'Stage Diagrams — 展示中心';
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = ui[el.dataset.i18n]; });
+    document.querySelectorAll('#main section.group').forEach(sec => {
+      const group = GROUPS.find(row => row[0] === sec.dataset.group);
+      sec.querySelector('h2').textContent = group[state.lang === 'en' ? 2 : 1];
+      sec.querySelector('.ghead p').textContent = group[state.lang === 'en' ? 4 : 3];
+    });
+    document.querySelectorAll('#main article.item').forEach(item => {
+      const type = item.dataset.type, meta = SD.META[type];
+      item.querySelector('h3').textContent = meta[state.lang];
+      item.querySelector('.desc').textContent = state.lang === 'en' ? translations.desc[type] : meta.desc;
+      item.querySelector('[data-act=present]').textContent = ui.present;
+      item.querySelector('[data-act=copy]').textContent = ui.copy;
+      item.querySelector('[data-act=replay]').textContent = ui.replay;
+    });
+    document.getElementById('count').textContent = `${all.length} ${ui.diagrams}`;
+    customElements.whenDefined('stage-diagram').then(() => {
+      document.querySelectorAll('.plane stage-diagram').forEach(el => { el.data = state.lang === 'en' ? sampleFor(el.getAttribute('type')) : null; });
+    });
+    if (P.classList.contains('on')) pname.textContent = `${String(cur + 1).padStart(2, '0')} / ${all.length} · ${SD.META[all[cur]][state.lang]}`;
+    players.forEach(player => post(player, { set: { lang: state.lang, copy: copyFor(player.dataset.type) } }));
+    const presented = document.querySelector('#pbox iframe');
+    if (presented) presented.contentWindow.postMessage({ set: { lang: state.lang, copy: copyFor(all[cur]) } }, '*');
+    seg('language', state.lang);
+    seg('present-language', state.lang);
+  }
+  document.querySelectorAll('#language button, #present-language button').forEach(b => b.onclick = () => setLanguage(b.dataset.v));
+  setLanguage(state.lang);
+})();
+</script>
+</body>
+</html>

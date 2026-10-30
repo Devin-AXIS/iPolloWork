@@ -5,6 +5,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { homedir } from "node:os";
 
 import { ApiError } from "../errors.js";
+import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
 
 export const GOOGLE_WORKSPACE_EXTENSION_ID = "google-workspace";
@@ -503,17 +504,7 @@ function googleWorkspaceStatusPayload(record: Record<string, unknown> | null = n
 }
 
 async function fetchGoogleJson(url: string, init: RequestInit = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GOOGLE_WORKSPACE_API_TIMEOUT_MS);
-  let response: Response;
-  try {
-    response = await fetch(url, { ...init, signal: controller.signal });
-  } catch (error) {
-    if ((error as { name?: string })?.name === "AbortError") throw new Error("Google request timed out. Check your connection and try again.");
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const response = await providerFetch(url, { ...init, signal: AbortSignal.timeout(GOOGLE_WORKSPACE_API_TIMEOUT_MS) });
   const text = await response.text();
   let payload: unknown = null;
   if (text.trim()) {
@@ -1096,7 +1087,7 @@ async function googleWorkspaceReadFile(config: ServerConfig, args: Record<string
   const url = exportMime
     ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`
     : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const response = await providerFetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(GOOGLE_WORKSPACE_API_TIMEOUT_MS) });
   const content = await response.text();
   if (!response.ok) throw new Error(`Google Drive read failed (${response.status}): ${content}`);
   return { metadata, content };
@@ -1234,7 +1225,7 @@ export async function googleWorkspaceRunScopeSmokeTest(config: ServerConfig) {
     body: multipartRelatedBody({ name: "iPolloWork Google Workspace smoke test.txt", mimeType: "text/plain" }, `iPolloWork Google Workspace smoke test created at ${createdAt}.`, driveBoundary),
   });
   if (isRecord(driveFile) && typeof driveFile.id === "string") {
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveFile.id)}?alt=media`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const response = await providerFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveFile.id)}?alt=media`, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!response.ok) throw new Error(`Google Drive smoke read failed (${response.status}): ${await response.text()}`);
   }
   const draft = await fetchGoogleJson("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+artifacts/
+release/
+coverage/
+*.log
+.DS_Store
+
+.local/
+.data/
+*.key
+*.pem
+*.p12

@@ -19,6 +19,20 @@ export function groupScopedLayerRoots(
   return els.filter(isHtmlElement);
 }
 
+/** Artwork selects its authored group; text remains directly editable. */
+export function previewGroupScope(
+  target: HTMLElement,
+  activeGroup: HTMLElement | null,
+): HTMLElement | null {
+  if (activeGroup?.contains(target)) return activeGroup;
+  if (
+    target.namespaceURI === "http://www.w3.org/2000/svg" ||
+    target.closest("[data-hf-edit-as-unit]")
+  )
+    return null;
+  return target.closest<HTMLElement>("[data-hf-group]");
+}
+
 export function resolveGroupCapture(
   startEl: HTMLElement,
   activeGroupElement: HTMLElement | null,

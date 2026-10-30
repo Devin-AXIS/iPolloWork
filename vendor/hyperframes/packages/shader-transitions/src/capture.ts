@@ -47,18 +47,21 @@ export interface CaptureSceneOptions {
   forceVisible?: boolean;
   preferBrowserPaint?: boolean;
   scale?: number;
+  requestAnimationFrame?: Window["requestAnimationFrame"];
 }
 
-function forceSceneVisibleInClone(source: HTMLElement, cloneDoc: Document): void {
+function showSceneAndClips(scene: HTMLElement): void {
+  scene.style.opacity = "1";
+  scene.style.setProperty("visibility", "visible", "important");
+  scene.querySelectorAll<HTMLElement>("[data-start]").forEach((el) => {
+    el.style.setProperty("visibility", "visible", "important");
+  });
+}
+
+export function forceSceneVisibleInClone(source: HTMLElement, cloneDoc: Document): void {
   if (!source.id) return;
   const clone = cloneDoc.getElementById(source.id);
-  if (!(clone instanceof HTMLElement)) return;
-
-  clone.style.opacity = "1";
-  clone.style.visibility = "visible";
-  clone.querySelectorAll<HTMLElement>("[data-start]").forEach((el) => {
-    el.style.visibility = "visible";
-  });
+  if (clone instanceof HTMLElement) showSceneAndClips(clone);
 }
 
 function stabilizeTransformedBoxShadows(root: HTMLElement): void {
@@ -117,17 +120,21 @@ async function captureSceneWithHtmlInCanvas(
   bgColor: string,
   width: number,
   height: number,
+  options: CaptureSceneOptions,
 ): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas") as CanvasWithLayoutSubtree;
   canvas.width = width;
   canvas.height = height;
   canvas.setAttribute("layoutsubtree", "");
   canvas.style.cssText = `position:fixed;top:0;left:0;width:${width}px;height:${height}px;z-index:-9999;pointer-events:none;opacity:0`;
-  canvas.appendChild(sceneEl.cloneNode(true));
+  const clone = sceneEl.cloneNode(true) as HTMLElement;
+  if (options.forceVisible) showSceneAndClips(clone);
+  canvas.appendChild(clone);
   document.body.appendChild(canvas);
 
   try {
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    const requestFrame = options.requestAnimationFrame ?? window.requestAnimationFrame.bind(window);
+    await new Promise<void>((r) => requestFrame(() => requestFrame(() => r())));
     const ctx = canvas.getContext("2d") as CanvasRenderingContext2DWithDrawElement;
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, width, height);
@@ -153,7 +160,7 @@ export function captureScene(
   options: CaptureSceneOptions = {},
 ): Promise<HTMLCanvasElement> {
   if (isHtmlInCanvasCaptureSupported() && !options.preferBrowserPaint) {
-    return captureSceneWithHtmlInCanvas(sceneEl, bgColor, width, height).catch(() =>
+    return captureSceneWithHtmlInCanvas(sceneEl, bgColor, width, height, options).catch(() =>
       captureSceneWithHtml2Canvas(sceneEl, bgColor, width, height, options),
     );
   }

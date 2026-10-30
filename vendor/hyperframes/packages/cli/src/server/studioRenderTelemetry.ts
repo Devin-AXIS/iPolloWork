@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { freemem } from "node:os";
-import type { Fps } from "@hyperframes/core";
+import type { CanvasResolution, Fps } from "@hyperframes/core";
 import { fpsToNumber } from "@hyperframes/core";
 import type { RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
@@ -20,10 +20,29 @@ import { bytesToMb } from "../telemetry/system.js";
 export interface StudioRenderOpts {
   fps: Fps;
   quality: string;
+  /** Output container format; Studio requests are constrained to these three. */
+  format?: "mp4" | "webm" | "mov";
+  /** Named canvas preset the Studio request asked for; undefined renders at the composition's native dimensions. */
+  outputResolution?: CanvasResolution;
+  // gif_fps_capped/hdr_mode/video_frame_format are deliberately absent: Studio
+  // has no gif/png-sequence option and createRenderJob never receives an
+  // hdrMode or videoFrameFormat from the Studio request type, so there is no
+  // per-request value: see the PR description for the full reasoning.
   // Telemetry id of the browser user who triggered the render, so the render
   // outcome joins their studio_session_start / studio_render_start events.
   // Undefined for older studio clients → falls back to the install anonymousId.
   distinctId?: string;
+  /**
+   * The browser profile that triggered this render has telemetry disabled.
+   *
+   * The CLI's own policy cannot see a localStorage opt-out or `DoNotTrack` in
+   * someone else's browser, so without this the server happily emitted
+   * render_complete / render_error for a user who had opted out — the events
+   * merely landed on the install id instead of theirs, which is worse, not
+   * better. Explicit `true` only: an old client sends nothing here, and that
+   * is not consent withdrawn.
+   */
+  telemetryOptOut?: boolean;
 }
 
 type RenderCompleteProps = Parameters<typeof trackRenderComplete>[0];
@@ -103,6 +122,7 @@ export function emitStudioRenderError(
   // user-supplied worker count (the producer picks its default), so on early
   // failures we genuinely don't know one. The CLI side has the value from
   // `options.workers` even before `job.perfSummary` exists; studio doesn't.
+  if (opts.telemetryOptOut === true) return;
   trackRenderError({
     fps: fpsToNumber(opts.fps),
     quality: opts.quality,
@@ -111,6 +131,8 @@ export function emitStudioRenderError(
     failedStage,
     errorMessage: err instanceof Error ? err.message : String(err),
     elapsedMs,
+    outputFormat: opts.format,
+    outputResolutionPreset: opts.outputResolution,
     distinctId: opts.distinctId,
     ...renderJobObservabilityTelemetryPayload(job),
     ...memSnapshot(),
@@ -122,6 +144,7 @@ export function emitStudioRenderComplete(
   elapsedMs: number,
   perf: RenderPerfSummary | undefined,
 ): void {
+  if (opts.telemetryOptOut === true) return;
   trackRenderComplete({
     durationMs: elapsedMs,
     fps: fpsToNumber(opts.fps),
@@ -129,6 +152,8 @@ export function emitStudioRenderComplete(
     docker: false,
     gpu: false,
     source: "studio",
+    outputFormat: opts.format,
+    outputResolutionPreset: opts.outputResolution,
     distinctId: opts.distinctId,
     ...perfPayload(perf, elapsedMs),
     ...memSnapshot(),

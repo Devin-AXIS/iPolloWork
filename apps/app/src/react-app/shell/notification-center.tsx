@@ -5,6 +5,7 @@ import {
   CircleCheck,
   Info,
   OctagonX,
+  RefreshCw,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
@@ -13,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
+import { formatRelativeTime } from "@/app/utils";
+import type { EnterpriseMessage } from "@ipollowork/types/enterprise";
 import {
   useNotificationStore,
   type AppNotification,
@@ -24,6 +27,8 @@ import { useControlAction, type iPolloWorkControlAction } from "./control/contro
 import { openNotificationCenterEvent, requestOpenMarketplacePlugin } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { useShellConfig } from "./shell-config";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
+import { EnterpriseMessageList, useEnterpriseMessages } from "@/react-app/domains/enterprise";
 
 const SEVERITY_ICONS: Record<NotificationSeverity, LucideIcon> = {
   info: Info,
@@ -39,17 +44,9 @@ const SEVERITY_CLASSES: Record<NotificationSeverity, string> = {
   error: "text-red-11",
 };
 
-function formatTimeAgo(timestamp: number): string {
-  const elapsed = Date.now() - timestamp;
-  if (elapsed < 60_000) return t("notifications.just_now");
-  const minutes = Math.floor(elapsed / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(timestamp).toLocaleDateString();
-}
+type NotificationEntry =
+  | { type: "local"; notification: AppNotification; timestamp: number }
+  | { type: "enterprise"; message: EnterpriseMessage; timestamp: number };
 
 /**
  * Notification bell with unread badge + popover panel. Mounted in the
@@ -64,29 +61,37 @@ export function NotificationBell({ className }: { className?: string }) {
   const clearAll = useNotificationStore((state) => state.clearAll);
   const reloadCoordinator = useReloadCoordinator();
   const navigate = useNavigate();
+  const enterprise = useActiveEnterpriseConnection();
+  const enterpriseInbox = useEnterpriseMessages(enterprise);
+  const entries = useMemo<NotificationEntry[]>(() => [
+    ...notifications.map<NotificationEntry>((notification) => ({ type: "local", notification, timestamp: notification.updatedAt })),
+    ...enterpriseInbox.items.map<NotificationEntry>((message) => ({ type: "enterprise", message, timestamp: Date.parse(message.createdAt) })),
+  ].sort((a, b) => b.timestamp - a.timestamp), [notifications, enterpriseInbox.items]);
 
   const notificationsListAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "notifications.list",
     label: "List notifications",
     description: "Return the current notification center entries.",
     sideEffect: "none",
-    execute: () => notifications.map((n) => ({
-      id: n.id,
-      kind: n.kind,
-      severity: n.severity,
-      title: n.title,
-      body: n.body,
-      count: n.count,
-      readAt: n.readAt,
-      actionType: n.action?.type ?? null,
-      actionLabel: n.actionLabel ?? null,
-    })),
-  }), [notifications]);
+    execute: () => entries.map((entry) => {
+      if (entry.type === "enterprise") return {
+        id: entry.message.id, kind: entry.message.kind, severity: "info", title: entry.message.title,
+        body: null, count: 1, readAt: entry.message.readAt, source: enterprise?.shortName,
+        actionType: "open-enterprise-message", actionLabel: null,
+      };
+      const n = entry.notification;
+      return {
+        id: n.id, kind: n.kind, severity: n.severity, title: n.title, body: n.body,
+        count: n.count, readAt: n.readAt, source: n.kind === "cloud" ? "iPolloCloud" : "iPolloWork",
+        actionType: n.action?.type ?? null, actionLabel: n.actionLabel ?? null,
+      };
+    }),
+  }), [entries, enterprise?.shortName]);
   useControlAction(notificationsListAction);
 
   const unreadCount = useMemo(
-    () => notifications.filter((notification) => notification.readAt === null).length,
-    [notifications],
+    () => notifications.filter((notification) => notification.readAt === null).length + enterpriseInbox.unread,
+    [notifications, enterpriseInbox.unread],
   );
 
   useEffect(() => {
@@ -133,6 +138,7 @@ export function NotificationBell({ className }: { className?: string }) {
       <PopoverTrigger
         render={
           <Button
+            data-testid="notification-center-trigger"
             variant="ghost"
             size="icon-sm"
             className={cn("rounded-xl text-gray-10 transition-colors hover:bg-muted hover:text-foreground", className)}
@@ -152,37 +158,34 @@ export function NotificationBell({ className }: { className?: string }) {
           </Button>
         }
       />
-      <PopoverContent align="end" sideOffset={8} className="w-96 gap-0 p-0">
+      <PopoverContent data-testid="notification-center" align="end" sideOffset={8} className="w-96 max-w-[calc(100vw-2rem)] gap-0 p-0">
         <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <p className="text-sm font-semibold">{t("notifications.title")}</p>
-          {notifications.length > 0 ? (
+          <div className="flex items-center gap-1">
+          {enterprise?.features?.messaging ? <Button variant="ghost" size="icon-sm" disabled={enterpriseInbox.loading} aria-label={t("notifications.refresh")} onClick={enterpriseInbox.refresh}><RefreshCw className="size-3.5" /></Button> : null}
+          {entries.length > 0 ? (
             <Button
+              data-testid="notification-clear-all"
               variant="ghost"
               size="sm"
               className="text-xs text-muted-foreground"
-              onClick={clearAll}
+              onClick={() => clearAll(enterpriseInbox.clearBoundary())}
             >
               {t("notifications.clear_all")}
             </Button>
           ) : null}
+          </div>
         </div>
-        {notifications.length === 0 ? (
+        <div className="max-h-96 overflow-y-auto py-1">
+          {enterprise ? <EnterpriseMessageList key={`${enterprise.origin}:${enterprise.id}:${enterprise.membership.id}`} connection={enterprise} inbox={enterpriseInbox} onExit={() => setOpen(false)} renderMessages={(renderMessage) => entries.map((entry) => entry.type === "enterprise" ? renderMessage(entry.message) : <NotificationRow key={`local:${entry.notification.id}`} notification={entry.notification} onAction={runAction} />)} /> : notifications.map((notification) => <NotificationRow key={notification.id} notification={notification} onAction={runAction} />)}
+        {entries.length === 0 && !enterpriseInbox.loading && !enterpriseInbox.error ? (
           <div className="flex flex-col items-center gap-1 px-6 py-10 text-center">
             <Bell className="mb-2 size-5 text-muted-foreground/60" />
             <p className="text-sm font-medium">{t("notifications.empty")}</p>
             <p className="text-xs text-muted-foreground">{t("notifications.empty_hint")}</p>
           </div>
-        ) : (
-          <div className="max-h-96 overflow-y-auto py-1">
-            {notifications.map((notification) => (
-              <NotificationRow
-                key={notification.id}
-                notification={notification}
-                onAction={runAction}
-              />
-            ))}
-          </div>
-        )}
+        ) : null}
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -203,6 +206,7 @@ function NotificationRow({
 
   return (
     <div
+      data-notification-source={notification.kind === "cloud" ? "iPolloCloud" : "iPolloWork"}
       className={cn(
         "flex items-start gap-3 px-4 py-3",
         unread ? "bg-primary/5" : "opacity-80",
@@ -220,13 +224,14 @@ function NotificationRow({
             ) : null}
           </p>
           <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-            {formatTimeAgo(notification.updatedAt)}
+            {formatRelativeTime(notification.updatedAt)}
             {unread ? <span className="size-1.5 rounded-full bg-primary" /> : null}
           </span>
         </div>
         {notification.body ? (
           <p className="line-clamp-2 text-xs text-muted-foreground">{notification.body}</p>
         ) : null}
+        <p className="text-xs text-muted-foreground">{t("notifications.source")}: {notification.kind === "cloud" ? "iPolloCloud" : "iPolloWork"}</p>
         {notification.action && notification.actionLabel ? (
           <div className="mt-1.5">
             <Button variant="outline" size="sm" onClick={() => onAction(notification)}>

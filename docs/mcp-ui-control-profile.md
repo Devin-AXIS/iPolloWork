@@ -49,7 +49,7 @@ This may navigate iPolloWork away from the user's current session while the look
 
 ### iPolloWork agents
 
-Inside iPolloWork, the supported way to grant an agent this UI-control surface is **Settings -> Extensions -> Show hidden**, then connect the hidden **iPolloWork UI Control** MCP. The built-in preview tools injected by the extensions-preview plugin (`ipollowork_ui_*`) are disabled by default to keep sessions uncluttered; set `IPOLLOWORK_UI_CONTROL_TOOLS=1` only for internal tooling that still needs that preview surface.
+Inside iPolloWork, the supported way to grant an agent this UI-control surface is **Settings -> Extensions -> Show hidden**, then connect the hidden **iPolloWork UI Control** MCP. The retired OpenCode preview plugin is no longer bundled; this MCP remains the supported UI-control entry.
 
 ## Install
 

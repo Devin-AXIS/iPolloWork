@@ -1,0 +1,120 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spatial-camera-suite",
+  "version": "1.1.0",
+  "type": "hyperframes:block",
+  "title": "Spatial Camera Suite",
+  "description": "A theme-aware spatial interface stage with eight seekable camera and carrier recipes: the original five shots plus subject tracking, card-to-page morph and gathered lockup.",
+  "tags": [
+    "component",
+    "media",
+    "camera",
+    "spatial",
+    "parallax",
+    "3d",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "media",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "shotStyle",
+        "imageUrl",
+        "items"
+      ],
+      "instructions": "Use a scene-relevant shotStyle. `items` is up to three pipe-separated `label::detail` pairs; prefix exactly one featured label with `*`. Original five shots retain their behavior. subject-follow-track keeps a moving featured card framed; container-morph expands that same card into its page; gather-lockup brings the same three cards into one cluster. Supply real project-local imageUrl only for visual evidence. All eight styles use one deterministic timeline and shared camera; do not stack another camera transform."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "spatial-camera-suite.html",
+      "target": "compositions/spatial-camera-suite.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Scene title",
+      "type": "string",
+      "default": "A clearer view, from every angle.",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "shotStyle",
+      "label": "Spatial shot recipe",
+      "type": "enum",
+      "default": "depth-layer-moves",
+      "options": [
+        {
+          "value": "graze-face-tour",
+          "label": "Graze Face Tour · 贴面掠游"
+        },
+        {
+          "value": "depth-layer-moves",
+          "label": "Depth Layer Moves · 景深层移"
+        },
+        {
+          "value": "spotlight-hero-card",
+          "label": "Spotlight Hero Card · 聚光主卡"
+        },
+        {
+          "value": "runway-ground-skim",
+          "label": "Runway Ground Skim · 跑道低掠"
+        },
+        {
+          "value": "steep-tilt-glide",
+          "label": "Steep Tilt Glide · 大倾角滑行"
+        },
+        {
+          "value": "subject-follow-track",
+          "label": "Subject Follow Track · 主体跟拍"
+        },
+        {
+          "value": "container-morph",
+          "label": "Container Morph · 卡片展开"
+        },
+        {
+          "value": "gather-lockup",
+          "label": "Gather Lockup · 聚合收束"
+        }
+      ],
+      "update": "rebuild"
+    },
+    {
+      "id": "imageUrl",
+      "label": "Optional hero image URL",
+      "type": "string",
+      "default": "",
+      "maxLength": 2000,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Cards (label::detail | ...)",
+      "type": "string",
+      "default": "*Signal::See the pattern|Decision::Choose the next move|Action::Move with confidence",
+      "maxLength": 300,
+      "update": "live"
+    }
+  ]
+}

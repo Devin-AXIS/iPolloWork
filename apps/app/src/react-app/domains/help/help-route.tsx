@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n";
-import { cn } from "@/lib/utils";
 import { usePlatform } from "@/react-app/kernel/platform";
 import { searchFaqItems } from "@/app/lib/faq";
 
@@ -159,32 +158,30 @@ export function HelpRoute() {
           <div className="grid min-h-0 min-w-0 gap-6 md:grid-cols-[220px_minmax(0,1fr)]">
             <aside className="min-w-0 md:sticky md:top-6 md:self-start">
               <div className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible">
-                <button
+                <Button
                   type="button"
-                  className={cn(
-                    "shrink-0 rounded-xl px-3 py-2 text-left text-sm transition-colors",
-                    category === null ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
+                  variant={category === null ? "secondary" : "ghost"}
+                  className="justify-start"
+                  aria-pressed={category === null}
                   onClick={() => updateSearchParam("category", null)}
                 >
                   {t("help.all_categories")}
                   <span className="ml-2 text-xs opacity-70">{faqDocument.items.length}</span>
-                </button>
+                </Button>
                 {faqDocument.categories.map((itemCategory) => (
-                  <button
+                  <Button
                     key={itemCategory}
                     type="button"
-                    className={cn(
-                      "shrink-0 rounded-xl px-3 py-2 text-left text-sm transition-colors",
-                      category === itemCategory ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
+                    variant={category === itemCategory ? "secondary" : "ghost"}
+                    className="justify-start"
+                    aria-pressed={category === itemCategory}
                     onClick={() => updateSearchParam("category", itemCategory)}
                   >
                     {itemCategory}
                     <span className="ml-2 text-xs opacity-70">
                       {faqDocument.items.filter((item) => item.category === itemCategory).length}
                     </span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </aside>

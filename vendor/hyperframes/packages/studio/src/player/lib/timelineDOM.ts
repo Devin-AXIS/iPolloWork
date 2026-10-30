@@ -27,6 +27,7 @@ import {
   isTimelineIgnoredElement,
   readTimelineClipLabel,
   readTimelineElementZIndex,
+  findTimelineDomNodeForClip,
 } from "./timelineElementHelpers";
 
 // Re-export helpers that were previously public from this module so that
@@ -50,6 +51,7 @@ export {
   // fallow-ignore-next-line unused-exports
   getTimelineElementIdentity,
   findTimelineDomNodeForClip,
+  filterEditableTimelineManifestClips,
 } from "./timelineElementHelpers";
 
 // Re-export iframe helpers so the hook can keep a single import source.
@@ -164,9 +166,11 @@ export function createTimelineElementFromManifestClip(params: {
 
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
+    entry.timelinePaint = readTimelinePaint(hostEl);
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    entry.inlineScopeKind = readInlineScopeKind(hostEl);
     const timelineKind = hostEl.getAttribute("data-timeline-kind");
     if (isTimelineKind(timelineKind)) entry.timelineKind = timelineKind;
     const timelineGroupId = hostEl.getAttribute("data-timeline-group");
@@ -177,8 +181,7 @@ export function createTimelineElementFromManifestClip(params: {
   if (clip.kind === "composition" && clip.compositionId) {
     let resolvedSrc = clip.compositionSrc;
     if (!resolvedSrc) {
-      hostEl =
-        doc?.querySelector(`[data-composition-id="${CSS.escape(clip.compositionId)}"]`) ?? hostEl;
+      hostEl ??= doc ? findTimelineDomNodeForClip(doc, clip, fallbackIndex) : null;
       resolvedSrc =
         hostEl?.getAttribute("data-composition-src") ??
         hostEl?.getAttribute("data-composition-file") ??
@@ -272,6 +275,8 @@ export function createImplicitTimelineLayersFromDOM(
       timingSource: "implicit",
       track: maxTrack + 1 + layers.length,
     };
+    layer.inlineScopeKind = readInlineScopeKind(child);
+    layer.timelinePaint = readTimelinePaint(child);
     const timelineKind = child.getAttribute("data-timeline-kind");
     if (isTimelineKind(timelineKind)) layer.timelineKind = timelineKind;
     const timelineRole = child.getAttribute("data-timeline-role");
@@ -284,7 +289,44 @@ export function createImplicitTimelineLayersFromDOM(
   return layers;
 }
 
-/** Collect addressable untimed descendants without coupling them to runtime tree parsing. */
+/** Author-declared grouping only; labels are never structural metadata. */
+export function readInlineScopeKind(element: Element): TimelineElement["inlineScopeKind"] {
+  if (element.classList.contains("scene") || element.getAttribute("data-timeline-kind") === "scene" ||
+      element.getAttribute("data-timeline-role") === "scene") return "scene";
+  if (element.hasAttribute("data-hf-group") || element.getAttribute("data-timeline-kind") === "group") return "group";
+  return undefined;
+}
+
+/** A leaf fill swatch stays readable even when its authored geometry is only a few pixels. */
+function readTimelinePaint(element: Element): string | undefined {
+  if (element.children.length || element.textContent?.trim()) return undefined;
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  if (!style) return undefined;
+  if (style.backgroundImage && style.backgroundImage !== "none") {
+    // Image-backed layers retain real captured thumbnails; only CSS gradients are swatches.
+    return style.backgroundImage.includes("url(") ? undefined : style.backgroundImage;
+  }
+  const color = style.backgroundColor;
+  return color && color !== "transparent" && !/rgba\([^)]*,\s*0(?:\.0*)?\s*\)$/.test(color)
+    ? color : undefined;
+}
+
+/** Only the node's own content counts; a container does not inherit its children's visuals. */
+function hasOwnTimelineVisual(element: Element): boolean {
+  if (["img", "video", "svg", "canvas", "audio"].includes(element.tagName.toLowerCase())) return true;
+  if (Array.from(element.childNodes).some(node => node.nodeType === 3 && node.textContent?.trim())) return true;
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  if (!style) return false;
+  const painted = (color: string) => Boolean(color && color !== "transparent" &&
+    !/rgba\([^)]*,\s*0(?:\.0*)?\s*\)$/.test(color));
+  return painted(style.backgroundColor) || Boolean(style.backgroundImage && style.backgroundImage !== "none") ||
+    ["Top", "Right", "Bottom", "Left"].some(side =>
+      !["none", "hidden", ""].includes(style.getPropertyValue(`border-${side.toLowerCase()}-style`)) &&
+      parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 &&
+      painted(style.getPropertyValue(`border-${side.toLowerCase()}-color`))) ||
+    Boolean(style.boxShadow && style.boxShadow !== "none");
+}
+
 export function collectDomClipChildren(
   doc: Document,
   clips: readonly ClipManifestClip[],
@@ -293,6 +335,8 @@ export function collectDomClipChildren(
   const children: DomClipChild[] = [];
   const parentMap = new Map<string, string>();
   const collectedTreeIds = new Set<string>();
+  // Scoped to this scan: structural edits get fresh indexes on the next message.
+  const selectorIndexes = new Map<string, Map<Element, number>>();
   const manifestTreeIds = new Set(clips.flatMap((clip) => (clip.id ? [clip.id] : [])));
   const descendantSourceByHostId = new Map(
     clips.flatMap((clip) => {
@@ -302,14 +346,21 @@ export function collectDomClipChildren(
       return sourceFile ? [[clip.id, sourceFile] as const] : [];
     }),
   );
-  const resolvedHostElements = new Set(resolvedClipHosts.values());
+  const resolvedHostIds = new Map<Element, string>();
+  for (const [clip, element] of resolvedClipHosts) {
+    if (clip.id) resolvedHostIds.set(element, clip.id);
+  }
 
   const collect = (parentEl: Element, parentId: string, hostId: string) => {
     for (const child of Array.from(parentEl.children)) {
       // A resolved timed host owns its own descendant tree. Crossing this
       // boundary would attach those descendants to an earlier outer clip; the
       // global identity de-duplication would then keep the wrong timing forever.
-      if (resolvedHostElements.has(child)) continue;
+      const timedChildId = resolvedHostIds.get(child);
+      if (timedChildId) {
+        if (timedChildId !== parentId) parentMap.set(timedChildId, parentId);
+        continue;
+      }
       let childParentId = parentId;
       try {
         const selector = getTimelineElementSelector(child);
@@ -320,7 +371,7 @@ export function collectDomClipChildren(
           // resolved manifest host is the authoritative owner for descendants.
           const sourceFile =
             descendantSourceByHostId.get(hostId) ?? getTimelineElementSourceFile(child);
-          const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
+          const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector, selectorIndexes);
           const domId = htmlChild.id || undefined;
           const hfId = child.getAttribute("data-hf-id") || undefined;
           const authoredTreeId =
@@ -342,8 +393,12 @@ export function collectDomClipChildren(
             const isGroup = child.hasAttribute("data-hf-group");
             children.push({
               id: treeId,
+              hasVisualContent: hasOwnTimelineVisual(child),
+              timelinePaint: readTimelinePaint(child),
+              inlineScopeKind: readInlineScopeKind(child),
               domId,
               hfId,
+              hidden: child.hasAttribute("data-hidden"),
               selector,
               selectorIndex,
               sourceFile,
@@ -381,7 +436,7 @@ export function collectDomClipChildren(
       if (!isImplicitTimelineLayerCandidate(compositionRoot, child)) continue;
       const selector = getTimelineElementSelector(child);
       if (!selector) continue;
-      const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
+      const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector, selectorIndexes);
       const sourceFile = getTimelineElementSourceFile(child);
       const identity = buildTimelineElementIdentity({
         preferredId: child.id || null,
@@ -490,6 +545,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
 
     const timelineRole = el.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    entry.inlineScopeKind = readInlineScopeKind(el);
     const timelineKind = el.getAttribute("data-timeline-kind");
     if (isTimelineKind(timelineKind)) entry.timelineKind = timelineKind;
     const timelineGroupId = el.getAttribute("data-timeline-group");
@@ -524,6 +580,7 @@ export function mergeTimelineElementsPreservingDowngrades(
   nextElements: TimelineElement[],
   currentDuration: number,
   nextDuration: number,
+  previewDocument?: Document | null,
 ): TimelineElement[] {
   const safeCurrentDuration = Number.isFinite(currentDuration) ? currentDuration : 0;
   const safeNextDuration = Number.isFinite(nextDuration) ? nextDuration : 0;
@@ -537,16 +594,20 @@ export function mergeTimelineElementsPreservingDowngrades(
   }
 
   const nextIdentities = new Set(nextElements.map(getTimelineElementIdentity));
-  const preserved = currentElements.filter(
-    (element) =>
-      !nextIdentities.has(getTimelineElementIdentity(element)) &&
-      // Only preserve enriched sub-composition children (compositionSrc set),
-      // which a bare DOM re-scan legitimately drops and enrichMissingCompositions
-      // re-adds. A TOP-LEVEL element missing from the fresh scan was genuinely
-      // removed (undo of a split, a delete), so let it go — otherwise undoing a
-      // split leaves a ghost clip in the timeline even though the file is reverted.
-      element.compositionSrc != null,
-  );
+  const preserved = currentElements.filter((element) => {
+    if (nextIdentities.has(getTimelineElementIdentity(element)) || !element.compositionSrc) return false;
+    // A DOM re-scan can omit a real reference-start composition. Preserve
+    // those hosts, but not components removed by history restore: having a
+    // compositionSrc alone also describes top-level clips deleted by Redo.
+    if (!previewDocument) return true;
+    const selector = element.hfId
+      ? `[data-hf-id="${CSS.escape(element.hfId)}"]`
+      : element.domId ? `#${CSS.escape(element.domId)}` : element.selector;
+    if (!selector) return false;
+    return Array.from(previewDocument.querySelectorAll(selector)).some((node) =>
+      !element.sourceFile || getTimelineElementSourceFile(node) === element.sourceFile,
+    );
+  });
   if (preserved.length === 0) return nextElements;
   return [...nextElements, ...preserved];
 }

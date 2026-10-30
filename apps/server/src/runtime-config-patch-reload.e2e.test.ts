@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startServer } from "./server.js";
+import {
+  ipolloworkRuntimeConfigFilePath,
+  keepiPolloWorkRuntimeConfigFileFresh,
+  writeiPolloWorkRuntimeConfigFile,
+} from "./ipollowork-runtime-config.js";
+import { disposeRuntimeOpencodeConfigStore, readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import type { ReloadEvent, ServerConfig } from "./types.js";
 
 const stops: Array<() => void | Promise<void>> = [];
@@ -57,7 +63,7 @@ async function startiPolloWorkServer(workspaceRoot: string) {
   };
   const server = await startServer(config);
   stops.push(() => server.stop());
-  return { base: `http://127.0.0.1:${server.port}`, token: config.token };
+  return { base: `http://127.0.0.1:${server.port}`, token: config.token, config };
 }
 
 async function patchConfig(base: string, token: string, payload: Record<string, unknown>): Promise<void> {
@@ -84,6 +90,72 @@ async function sleep(ms: number): Promise<void> {
 }
 
 describe("workspace config patch reload events", () => {
+  test("compaction patches persist through config reads and engine projection and only reload on changes", async () => {
+    const root = await createWorkspaceRoot();
+    const opencodePath = join(root, "opencode.jsonc");
+    const source = JSON.stringify({ compaction: { auto: true, prune: true } });
+    await writeFile(opencodePath, source);
+    const { base, token, config } = await startiPolloWorkServer(root);
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+    const unsubscribe = keepiPolloWorkRuntimeConfigFileFresh(config, "ws_1");
+    const options = { prune: false, tail_turns: 3, preserve_recent_tokens: 8_000, reserved: 16_000 };
+
+    try {
+      for (const auto of [false, true]) {
+        if (auto) await sleep(800);
+        await patchConfig(base, token, { opencode: { compaction: auto ? { auto } : { auto, ...options } } });
+        await disposeRuntimeOpencodeConfigStore(config);
+        expect((await readRuntimeOpencodeConfig(config, "ws_1")).compaction).toEqual({ auto, ...options });
+
+        const response = await fetch(`${base}/workspace/ws_1/config`, { headers: auth(token) });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ opencode: { compaction: { auto, ...options } } });
+
+        let projected: unknown;
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          const runtime: unknown = JSON.parse(await readFile(ipolloworkRuntimeConfigFilePath(config), "utf8"));
+          projected = isRecord(runtime) ? runtime.compaction : undefined;
+          if (isRecord(projected) && projected.auto === auto) break;
+          await sleep(20);
+        }
+        expect(projected).toEqual({ auto, ...options });
+        expect(await readEvents(base, token)).toHaveLength(auto ? 2 : 1);
+      }
+
+      await sleep(800);
+      await patchConfig(base, token, { opencode: { compaction: { auto: true } } });
+      expect(await readEvents(base, token)).toHaveLength(2);
+      expect(await readFile(opencodePath, "utf8")).toBe(source);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  test("invalid compaction values leave the saved settings and reload events unchanged", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token, config } = await startiPolloWorkServer(root);
+    await patchConfig(base, token, { opencode: { compaction: { auto: false } } });
+
+    for (const compaction of [
+      { auto: "false" },
+      { prune: 1 },
+      { tail_turns: -1 },
+      { preserve_recent_tokens: 1.5 },
+      { reserved: Number.MAX_SAFE_INTEGER + 1 },
+      null,
+    ]) {
+      const response = await fetch(`${base}/workspace/ws_1/config`, {
+        method: "PATCH",
+        headers: auth(token),
+        body: JSON.stringify({ opencode: { compaction } }),
+      });
+      expect(response.status).toBe(400);
+    }
+
+    expect((await readRuntimeOpencodeConfig(config, "ws_1")).compaction).toEqual({ auto: false });
+    expect(await readEvents(base, token)).toHaveLength(1);
+  });
+
   test("identical runtime provider patches do not emit another config reload event", async () => {
     const root = await createWorkspaceRoot();
     const { base, token } = await startiPolloWorkServer(root);

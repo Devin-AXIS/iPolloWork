@@ -11,6 +11,13 @@
  */
 
 import type { RuntimeTimelineLike } from "./types";
+import {
+  parseStrictFiniteTimingNumber,
+  resolveNaturalMediaTimelineDuration,
+  resolveTimedImageDurationSeconds,
+} from "./playbackRate";
+import { isMediaElement } from "./domRealm";
+import { findRootCompositionElement } from "./compositionDimension";
 
 export interface ClipNode {
   readonly id: string;
@@ -51,9 +58,7 @@ interface StartResolverLike {
 }
 
 function parseNum(value: string | null): number | null {
-  if (value == null) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  return parseStrictFiniteTimingNumber(value);
 }
 
 function durationFromTimeline(
@@ -67,12 +72,12 @@ function durationFromTimeline(
 }
 
 function durationFromMedia(el: Element): number | null {
-  if (!(el instanceof HTMLMediaElement) || !Number.isFinite(el.duration)) return null;
-  const mediaStart =
-    parseNum(el.getAttribute("data-playback-start")) ??
-    parseNum(el.getAttribute("data-media-start")) ??
-    0;
-  return el.duration > mediaStart ? el.duration - mediaStart : null;
+  if (isMediaElement(el)) {
+    return Number.isFinite(el.duration)
+      ? resolveNaturalMediaTimelineDuration(el, el.duration)
+      : null;
+  }
+  return resolveTimedImageDurationSeconds(el);
 }
 
 // Used only to filter out zero-duration (decorative) elements at build time.
@@ -114,7 +119,7 @@ export function createClipTree(params: {
   const { startResolver, timelineRegistry, rootDuration } = params;
   const elementToNode = new Map<Element, MutableClipNode>();
 
-  const root = document.querySelector("[data-composition-id]");
+  const root = findRootCompositionElement();
   let ordinal = 0;
 
   for (const el of document.querySelectorAll("[data-start]")) {

@@ -1,3 +1,4 @@
+import { fetchParsedAnimations } from "./useGsapTweenCache";
 // fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
@@ -8,6 +9,7 @@ import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 import {
+  buildInlineSceneMoveChanges,
   applyTimelineStackingReorder,
   buildPatchTarget,
   patchIframeDomTiming,
@@ -16,12 +18,15 @@ import {
   extendRootDurationIfNeeded,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
+  timelineResizePlaybackAttributes,
+  assertTimelineStretchIsSafe,
 } from "./timelineEditingHelpers";
 import {
   captureDurationRollback,
   finishClipTimingFallback,
   readFileContent,
   syncPreviewContentDuration,
+  rollbackTimelineStretchTiming,
 } from "./timelineTimingSync";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
@@ -90,6 +95,7 @@ export function useTimelineEditing({
   publishSdkSession,
   forceReloadSdkSession,
   handleDomZIndexReorderCommitRef,
+  onAnimationTimingCommitted,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
@@ -160,10 +166,30 @@ export function useTimelineEditing({
     publishSdkSession,
     showToast,
     writeProjectFile,
+    onAnimationTimingCommitted,
   });
   const handleTimelineElementMove = useCallback(
     // fallow-ignore-next-line complexity
     (element: TimelineElement, updates: TimelineMoveUpdates) => {
+      if (element.inlineScopeKind === "scene" && !element.compositionSrc && updates.start !== element.start) {
+        return (async () => {
+          const path = element.sourceFile || activeCompPath || "index.html";
+          const projectId = projectIdRef.current;
+          if (!projectId) return;
+          try {
+            const source = await readFileContent(projectId, path);
+            const parsed = await fetchParsedAnimations(projectId, path);
+            if (!parsed || parsed.multipleTimelines || parsed.unsupportedTimelinePattern)
+              throw new Error("This scene has unresolved animation timing. Its original animation was preserved.");
+            const changes = buildInlineSceneMoveChanges(new DOMParser().parseFromString(source, "text/html"), element, updates.start, parsed.animations);
+            await groupEditing.handleTimelineGroupMove(changes, {expectedSource: {path, content: source}});
+          } catch (error) {
+            reloadPreview();
+            showToast(getStudioSaveErrorMessage(error), "info");
+            throw error;
+          }
+        })();
+      }
       const commitMove = () => {
         const targetPath = element.sourceFile || activeCompPath || "index.html";
         const startChanged = updates.start !== element.start;
@@ -279,6 +305,7 @@ export function useTimelineEditing({
             }
             return moveFallback();
           })
+          .then(() => onAnimationTimingCommitted?.())
           .catch((error) => {
             // Failed persist: revert the optimistic duration readout + live root.
             rollbackDuration();
@@ -300,26 +327,43 @@ export function useTimelineEditing({
       domEditSaveTimestampRef,
       timelineElements,
       handleDomZIndexReorderCommitRef,
+      onAnimationTimingCommitted,
       showToast,
+      groupEditing.handleTimelineGroupMove,
     ],
   );
 
   const handleTimelineElementResize = useCallback(
     // fallow-ignore-next-line complexity
-    (
+    async (
       element: TimelineElement,
-      updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+      updates: Pick<TimelineElement, "start" | "duration" | "playbackStart"> & {
+        resizeMode?: "trim" | "stretch";
+      },
     ) => {
+      const mode = updates.resizeMode ?? "trim";
+      if (mode === "stretch") {
+        try {
+          timelineResizePlaybackAttributes(element, updates, mode);
+          await assertTimelineStretchIsSafe(
+            projectIdRef.current ?? "",
+            element.sourceFile || activeCompPath || "index.html",
+            element,
+            previewIframeRef.current,
+          );
+        } catch (error) {
+          showToast(getStudioSaveErrorMessage(error), "error");
+          throw error;
+        }
+      }
       const liveAttrs: Array<[string, string]> = [
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
       ];
-      if (updates.playbackStart != null) {
-        const liveAttr =
-          element.playbackStartAttr === "playback-start"
-            ? "data-playback-start"
-            : "data-media-start";
-        liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
+      for (const [name, value] of Object.entries(
+        timelineResizePlaybackAttributes(element, updates, mode),
+      )) {
+        liveAttrs.push([`data-${name}`, value ?? ""]);
       }
       if (element.timingSource === "implicit") {
         liveAttrs.push(["data-hf-preserve-flow", "1"]);
@@ -332,85 +376,81 @@ export function useTimelineEditing({
       // Snapshot the duration BEFORE the optimistic updates below so a failed
       // persist can roll the readout + live root back (see captureDurationRollback).
       const rollbackDuration = captureDurationRollback(previewIframeRef.current);
-      // needsExtension gates the SDK path (setTiming can't grow the root duration), so read the store BEFORE the readout sync below optimistically updates it.
-      const needsExtension = extendRootDurationIfNeeded(updates.start + updates.duration);
+      extendRootDurationIfNeeded(updates.start + updates.duration);
       // Optimistic duration readout: content-driven (grow AND shrink), from the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const targetPath = element.sourceFile || activeCompPath || "index.html";
+      let timingSaved = false;
+      const timingFiles: Record<string, { before: string; after: string }> = {};
       const buildResizePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
-        return buildTimelineResizeTimingPatch(original, target, element, updates);
+        const after = buildTimelineResizeTimingPatch(original, target, element, updates, mode);
+        timingFiles[targetPath] = { before: original, after };
+        return after;
       };
-      const hasPbsAdjustment =
-        updates.playbackStart != null ||
-        (updates.start !== element.start && element.playbackStart != null);
-      // Server-path fallback: after persisting the attr patch, scale GSAP tween
-      // positions/durations on the server, then soft-reload with the rewritten
-      // script (timing-only resize) — same no-flash path as move; full reload is
-      // the fallback.
-      const coalesceKey = `timeline-resize:${element.hfId ?? element.id}`;
+      const coalesceKey = `timeline-${mode}:${element.hfId ?? element.id}`;
+      const label = mode === "stretch" ? "Stretch timeline clip" : "Trim timeline clip";
       const resizeFallback = () =>
-        enqueueEdit(element, "Resize timeline clip", buildResizePatches, coalesceKey).then(() =>
-          finishClipTimingFallback({
+        enqueueEdit(element, label, buildResizePatches, coalesceKey).then(() => {
+          timingSaved = true;
+          return finishClipTimingFallback({
             iframe: previewIframeRef.current,
             reloadPreview,
             projectId: projectIdRef.current,
             targetPath,
-            domId: element.domId,
-            label: "Resize timeline clip",
+            domId:
+              mode === "stretch" &&
+              !element.compositionSrc &&
+              !["video", "audio"].includes(element.tag.toLowerCase())
+                ? element.domId
+                : undefined,
+            label,
             coalesceKey,
             recordEdit,
+            throwOnGsapError: mode === "stretch",
             edit: {
               kind: "scale",
               from: { start: element.start, duration: element.duration },
               to: { start: updates.start, duration: updates.duration },
             },
-          }),
-        );
-      const persistDone =
-        sdkSession &&
-        element.hfId &&
-        element.timingSource !== "implicit" &&
-        !hasPbsAdjustment &&
-        !needsExtension
-          ? sdkTimingPersist(
-              element.hfId,
-              targetPath,
-              { start: updates.start, duration: updates.duration },
-              sdkSession,
-              {
-                editHistory: { recordEdit },
-                writeProjectFile,
-                reloadPreview,
-                domEditSaveTimestampRef,
-                compositionPath: activeCompPath,
-                // Capture on-disk bytes as the undo `before` so undoing a timing
-                // resize restores the file verbatim, not a normalized full-DOM re-emit.
-                readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
-                publishSession: publishSdkSession,
-              },
-              { label: "Resize timeline clip", coalesceKey },
-            ).then((result) => {
-              if (!cutoverCommittedOrThrow(result)) return resizeFallback();
-            })
-          : resizeFallback();
-      return persistDone.catch((error) => {
-        // Failed persist: revert the optimistic duration readout + live root.
-        rollbackDuration();
-        showToast(getStudioSaveErrorMessage(error), "error");
-        throw error;
-      });
+          });
+        });
+      // Source timing patches keep trim independent of the SDK's automatic animation retiming.
+      const persistDone = resizeFallback();
+      return persistDone
+        .then(() => onAnimationTimingCommitted?.())
+        .catch(async (error) => {
+          // Failed persist: revert the optimistic duration readout + live root.
+          rollbackDuration();
+          if (mode === "stretch" && timingSaved && projectIdRef.current) {
+            try {
+              await rollbackTimelineStretchTiming({
+                projectId: projectIdRef.current,
+                files: timingFiles,
+                label,
+                coalesceKey,
+                recordEdit,
+              });
+            } catch (rollbackError) {
+              console.error(
+                "[Timeline] Stretch timing rollback requires convergence",
+                rollbackError,
+              );
+            }
+          }
+          reloadPreview();
+          onAnimationTimingCommitted?.();
+          showToast(getStudioSaveErrorMessage(error), "error");
+          throw error;
+        });
     },
     [
       previewIframeRef,
       enqueueEdit,
       activeCompPath,
-      sdkSession,
-      publishSdkSession,
       recordEdit,
-      writeProjectFile,
       reloadPreview,
-      domEditSaveTimestampRef,
       showToast,
+      onAnimationTimingCommitted,
     ],
   );
 
@@ -525,7 +565,9 @@ export function useTimelineEditing({
             },
           );
           if (!removeResponse.ok) {
-            const data = (await removeResponse.json().catch(() => ({}))) as { error?: unknown };
+            const data = (await removeResponse.json().catch(() => ({}))) as {
+              error?: unknown;
+            };
             const detail = typeof data.error === "string" ? `: ${data.error}` : "";
             // DOM-only media rows can outlive the source element after another
             // edit or a preview reload. Treat that stale row as already removed
@@ -649,7 +691,9 @@ export function useTimelineEditing({
         status === "locked"
           ? "This layer is locked in the composition source."
           : status === "nested-context"
-            ? "Open the parent composition to edit this nested layer."
+            ? element.inlineScopeKind
+              ? "Scene and group trimming is not supported yet. Existing animations were preserved."
+              : "Open the parent composition to edit this nested layer."
             : status === "missing-target"
               ? "This layer has no stable source target to save the edit."
               : status === "invalid-duration"

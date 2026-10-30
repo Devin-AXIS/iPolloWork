@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.web-proto-editorial",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "site",
   "subcategory": "design",
@@ -10,7 +10,8 @@
     "design",
     "editorial",
     "minimalist",
-    "serif"
+    "serif",
+    "topic:product"
   ],
   "surface": "design",
   "title": "Editorial Prototype",

@@ -1,12 +1,14 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { ToastToneInput } from "../utils/studioHelpers";
 
 export interface StudioShellValue {
   projectId: string;
   activeCompPath: string | null;
   setActiveCompPath: (path: string | null) => void;
-  showToast: (message: string, tone?: "error" | "info") => void;
+  showToast: (message: string, tone?: ToastToneInput) => number;
+  dismissToast: (id: number) => void;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   editHistory: {
     canUndo: boolean;
@@ -34,6 +36,7 @@ export interface StudioShellValue {
 }
 
 export interface StudioPlaybackValue {
+  hostAiEditing?: boolean;
   captionEditMode: boolean;
   compositionLoading: boolean;
   refreshKey: number;
@@ -89,6 +92,7 @@ export function StudioShellProvider({
     activeCompPath,
     setActiveCompPath,
     showToast,
+    dismissToast,
     previewIframeRef,
     editHistory,
     handleUndo,
@@ -105,6 +109,7 @@ export function StudioShellProvider({
       activeCompPath,
       setActiveCompPath,
       showToast,
+      dismissToast,
       previewIframeRef,
       editHistory,
       handleUndo,
@@ -122,6 +127,7 @@ export function StudioShellProvider({
       renderQueue,
       setActiveCompPath,
       showToast,
+      dismissToast,
       previewIframeRef,
       handleUndo,
       handleRedo,
@@ -140,6 +146,7 @@ export function StudioPlaybackProvider({
   children: ReactNode;
 }) {
   const {
+    hostAiEditing,
     captionEditMode,
     compositionLoading,
     refreshKey,
@@ -151,6 +158,7 @@ export function StudioPlaybackProvider({
 
   const stable = useMemo<StudioPlaybackValue>(
     () => ({
+      hostAiEditing,
       captionEditMode,
       compositionLoading,
       refreshKey,
@@ -160,6 +168,7 @@ export function StudioPlaybackProvider({
       refreshPreviewDocumentVersion,
     }),
     [
+      hostAiEditing,
       captionEditMode,
       compositionLoading,
       refreshKey,

@@ -1,3 +1,4 @@
+import { resolveEnabledSdkFamilies } from "../../utils/sdkCutoverPolicy";
 export type StudioFeatureFlagEnv = Record<string, boolean | string | undefined>;
 
 const STUDIO_PREVIEW_MANUAL_DRAGGING_ENV = "VITE_STUDIO_ENABLE_PREVIEW_MANUAL_DRAGGING";
@@ -50,20 +51,6 @@ export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   [STUDIO_INSPECTOR_PANELS_ENV, "VITE_STUDIO_INSPECTOR_PANELS_ENABLED"],
   true,
-);
-
-export const STUDIO_BLOCKS_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_BLOCKS_PANEL", "VITE_STUDIO_BLOCKS_PANEL_ENABLED"],
-  true,
-);
-
-// Keep the illustration authoring entry hidden until its Studio workflow is
-// ready to ship. Existing illustration assets remain available in Assets.
-export const STUDIO_ILLUSTRATION_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_ILLUSTRATION_PANEL"],
-  false,
 );
 
 export const STUDIO_GSAP_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
@@ -121,10 +108,8 @@ export const STUDIO_SDK_RESOLVER_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
-// Studio inspector redesign ("Ledger, flat" — design_handoff_studio_inspector):
-// The Figma inspector is now the only supported Layer-panel implementation.
-// Keeping it behind an environment switch caused existing desktop sessions to
-// silently render the retired Effects / Clip / Transparency groups instead.
-export const STUDIO_FLAT_INSPECTOR_ENABLED = true;
-
 export const STUDIO_MANUAL_EDITING_DISABLED_TITLE = "Manual editing is temporarily disabled";
+
+// Official SDK operation-family switches, shared by the existing embedded editor.
+export const STUDIO_SDK_CUTOVER_FAMILIES = resolveEnabledSdkFamilies(env, STUDIO_SDK_CUTOVER_ENABLED);
+export const STUDIO_API_SAME_ORIGIN_CREDENTIALS = true;
