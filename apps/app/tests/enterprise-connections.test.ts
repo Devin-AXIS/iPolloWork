@@ -22,7 +22,7 @@ import {
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
 import { IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateManifestV1Schema } from "@ipollowork/types/templates";
 import { enterpriseFeaturesSchema } from "@ipollowork/types/enterprise";
-import { activateEnterpriseWorkContext, activatePersonalWorkContext, clearEnterpriseLoginState, readActiveEnterpriseConnection, readActiveWorkContextId } from "../src/app/lib/work-context";
+import { activateEnterpriseWorkContext, activatePersonalWorkContext, clearEnterpriseLoginState, readActiveEnterpriseConnection, readActiveWorkContextId, restoreEnterpriseLoginState, workContextChangedEvent } from "../src/app/lib/work-context";
 
 const originalWindow = globalThis.window;
 
@@ -144,6 +144,36 @@ describe("enterprise connections", () => {
     window.localStorage.setItem("ipollowork.work-context.v1", `enterprise:${inactive.id}`);
     expect(readActiveEnterpriseConnection()).toBeNull();
     await expect(activateEnterpriseWorkContext(inactive)).rejects.toThrow("enterprise_signin_required");
+  });
+
+  test("cold start preserves the selected enterprise without exposing credentials until Cloud verifies the account", async () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    await activateEnterpriseWorkContext(connectedEnterprise);
+    setEnterpriseConnectionAccount(null);
+    expect(readActiveWorkContextId()).toBe("enterprise:ent_medical");
+    expect(readEnterpriseConnections()).toEqual([]);
+    expect(readActiveEnterpriseConnection()).toBeNull();
+
+    const changes: unknown[] = [];
+    window.dispatchEvent = (event) => {
+      if (event.type === workContextChangedEvent && event instanceof CustomEvent) changes.push(event.detail);
+      return true;
+    };
+    restoreEnterpriseLoginState({ userId: "account-a", baseUrl: "http://i.ipollo.ai", token: "cloud-session" });
+    expect(readActiveWorkContextId()).toBe("enterprise:ent_medical");
+    expect(readActiveEnterpriseConnection()?.membership.id).toBe("member-1");
+    expect(changes).toEqual(["enterprise:ent_medical"]);
+  });
+
+  test("verification clears a saved enterprise selection missing from the verified account", async () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    await activateEnterpriseWorkContext(connectedEnterprise);
+    setEnterpriseConnectionAccount(null);
+    window.localStorage.setItem("ipollowork.den.authToken", "account-b-session");
+    restoreEnterpriseLoginState({ userId: "account-b", baseUrl: "http://i.ipollo.ai", token: "account-b-session" });
+    expect(readActiveWorkContextId()).toBe("personal");
+    expect(readActiveEnterpriseConnection()).toBeNull();
+    expect(readEnterpriseConnections()).toEqual([]);
   });
 
   test.each(["2020-01-01T00:00:00.000Z", "invalid-date"])("expired or malformed enterprise sessions hide all enterprise features (%s)", async (expiresAt) => {

@@ -566,6 +566,10 @@ function connectionStorageKey(): string | null {
     ? connectionAccount.storageKey : null;
 }
 
+export function hasVerifiedEnterpriseConnectionAccount(): boolean {
+  return connectionStorageKey() !== null;
+}
+
 /** Select only after Cloud has verified the account; tokens never form the persistent cache key. */
 export function setEnterpriseConnectionAccount(account: { userId: string; baseUrl: string; token: string } | null) {
   if (typeof window === "undefined") return;

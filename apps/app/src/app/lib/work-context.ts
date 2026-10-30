@@ -9,6 +9,7 @@ import {
   type WorkspaceInfo,
 } from "./desktop";
 import {
+  hasVerifiedEnterpriseConnectionAccount,
   readEnterpriseConnections,
   setEnterpriseConnectionAccount,
   type EnterpriseConnection,
@@ -85,6 +86,9 @@ export function readActiveWorkContextId(): WorkContextId {
   if (stored) {
     if (
       stored !== PERSONAL_WORK_CONTEXT_ID
+      // A cold start has no verified account yet. Preserve the selection while
+      // Cloud checks the session; connection credentials remain unavailable.
+      && hasVerifiedEnterpriseConnectionAccount()
       && !readEnterpriseConnections().some((connection) => enterpriseWorkContextId(connection.id) === stored)
     ) {
       window.localStorage.setItem(ACTIVE_WORK_CONTEXT_KEY, PERSONAL_WORK_CONTEXT_ID);
@@ -185,6 +189,13 @@ function commitActiveContext(contextId: WorkContextId) {
 export function clearEnterpriseLoginState() {
   setEnterpriseConnectionAccount(null);
   commitActiveContext(PERSONAL_WORK_CONTEXT_ID);
+}
+
+export function restoreEnterpriseLoginState(account: NonNullable<Parameters<typeof setEnterpriseConnectionAccount>[0]>) {
+  setEnterpriseConnectionAccount(account);
+  if (hasVerifiedEnterpriseConnectionAccount()) {
+    commitActiveContext(readActiveWorkContextId());
+  }
 }
 
 async function localServerClient() {

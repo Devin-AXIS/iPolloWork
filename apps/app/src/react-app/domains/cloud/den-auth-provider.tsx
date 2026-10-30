@@ -22,8 +22,7 @@ import {
   type DenUser,
 } from "../../../app/lib/den";
 import { exchangeHandoffAndSignIn } from "../../../app/lib/den-handoff";
-import { setEnterpriseConnectionAccount } from "../../../app/lib/enterprise-connections";
-import { clearEnterpriseLoginState } from "../../../app/lib/work-context";
+import { clearEnterpriseLoginState, restoreEnterpriseLoginState } from "../../../app/lib/work-context";
 import {
   denSessionUpdatedEvent,
   denSettingsChangedEvent,
@@ -132,7 +131,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
 
       if (currentRun !== refreshTokenRef.current) return;
 
-      setEnterpriseConnectionAccount({ userId: nextUser.id, baseUrl: settings.baseUrl, token });
+      restoreEnterpriseLoginState({ userId: nextUser.id, baseUrl: settings.baseUrl, token });
       await ensureDenActiveOrganization({
         forceServerSync:
           !settings.activeOrgId?.trim() || !settings.activeOrgSlug?.trim(),
@@ -172,7 +171,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
     const handleSessionUpdated = (event: WindowEventMap[typeof denSessionUpdatedEvent]) => {
       const detail = event.detail;
       if (detail?.status === "success" && detail.user && detail.baseUrl && detail.token) {
-        setEnterpriseConnectionAccount({ userId: detail.user.id, baseUrl: detail.baseUrl, token: detail.token });
+        restoreEnterpriseLoginState({ userId: detail.user.id, baseUrl: detail.baseUrl, token: detail.token });
       } else if (detail?.status === "signed_out") {
         clearEnterpriseLoginState();
       }
