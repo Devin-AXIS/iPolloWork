@@ -57,10 +57,10 @@
   "homepage": "https://github.com/Devin-AXIS/deepseek-design#deepseek-idesign",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0-0",
-    "@deepseek-ai/dsh-client-ui-conversation": ">=0.0.1-rc.1 <0.2.0-0",
-    "@deepseek-ai/dsh-host-webserver": ">=0.0.1-rc.1 <0.2.0-0",
-    "@deepseek-ai/dsh-workspace": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-conversation": ">=0.0.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.0.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-workspace": ">=0.0.1-rc.1 <0.3.0-0",
     "react": "^18.2.0"
   },
   "peerDependenciesMeta": {
