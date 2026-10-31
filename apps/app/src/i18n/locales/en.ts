@@ -1874,7 +1874,7 @@ export default {
   "composer.computer_use_permissions_setup": "Set up",
   "composer.any_file_type_supported": "Any file type is supported.",
   "composer.attach_files": "Attach files",
-  "composer.attachments_require_multimodal": "This model can attach text and code files. Switch to a multimodal model for images or PDFs.",
+  "composer.attachments_require_multimodal": "This model can attach text and code files. Switch to a multimodal model for images, video, or PDFs.",
   "composer.behavior_label": "Behavior",
   "composer.configure": "Configure",
   "composer.default_agent": "Default agent",
