@@ -2006,6 +2006,27 @@ describe("model runtime adapters", () => {
     });
   });
 
+  test.each(["https://oneapi.eoffcn.com", "https://oneapi.eoffcn.com/v1/"])("routes Anthropic requests under /v1 for %s", (baseURL) => {
+    expect(openCodeProviderEngineAdapter.buildCompatibleProviderPatch({
+      id: "offcn",
+      name: "Offcn",
+      api: "anthropic-messages",
+      baseURL,
+      models: { "deepseek-v4-pro-260425": { name: "DeepSeek V4 Pro" } },
+    })).toMatchObject({
+      "offcn": {
+        npm: "@ai-sdk/anthropic",
+        options: { baseURL: "https://oneapi.eoffcn.com/v1" },
+      },
+    });
+    expect(() => openCodeProviderEngineAdapter.buildCompatibleProviderPatch({
+      id: "invalid",
+      name: "Invalid",
+      api: "anthropic-messages",
+      models: {},
+    })).toThrow("API URL is required");
+  });
+
   test("connects the DSH DeepSeek route as a callable shared OpenCode provider", async () => {
     const { calls, client } = createOpenCodeProviderClient();
     const runtimePatches: unknown[] = [];
@@ -2132,7 +2153,7 @@ describe("model runtime adapters", () => {
     expect(connectedIds).toContain("deepseek-official");
   });
 
-  test("connects the OrcaRouter compatible provider preset as a callable shared OpenCode provider", async () => {
+  test.each(["orcarouter", "offcn"])("connects the %s preset with a personal key and its own protocol", async (providerId) => {
     const { calls, client } = createOpenCodeProviderClient();
     const runtimePatches: unknown[] = [];
     const mirroredCredentials: Array<{ key: string; value: string }> = [];
@@ -2195,18 +2216,18 @@ describe("model runtime adapters", () => {
       markEngineConfigReloadRequired: () => {},
     });
 
-    await store.openProviderAuthModal({ preferredProviderId: "orcarouter" });
+    await store.openProviderAuthModal({ preferredProviderId: providerId });
     expect(store.getSnapshot()).toMatchObject({
       providerAuthModalOpen: true,
-      providerAuthPreferredProviderId: "orcarouter",
+      providerAuthPreferredProviderId: providerId,
       providerAuthMethods: {
-        orcarouter: [{ type: "api", label: expect.any(String) }],
+        [providerId]: [{ type: "api", label: expect.any(String) }],
       },
     });
 
-    await store.submitProviderApiKey("orcarouter", "secret");
+    await store.submitProviderApiKey(providerId, "secret");
 
-    expect(runtimePatches).toEqual([{
+    expect(runtimePatches).toEqual([providerId === "orcarouter" ? {
       opencode: {
         provider: {
           orcarouter: {
@@ -2226,11 +2247,31 @@ describe("model runtime adapters", () => {
           },
         },
       },
+    } : {
+      opencode: {
+        provider: {
+          "offcn": {
+            npm: "@ai-sdk/anthropic",
+            name: "Offcn",
+            options: { baseURL: "https://oneapi.eoffcn.com/v1" },
+            models: {
+              "deepseek-v4-pro-260425": {
+                name: "DeepSeek V4 Pro",
+                attachment: true,
+                reasoning: true,
+                tool_call: true,
+                modalities: { input: ["text", "image"], output: ["text"] },
+                limit: { context: 128_000, output: 8_192 },
+              },
+            },
+          },
+        },
+      },
     }]);
     expect(calls).toContainEqual({
       name: "set",
       value: {
-        providerID: "orcarouter",
+        providerID: providerId,
         auth: { type: "api", key: "secret" },
       },
     });
@@ -2244,32 +2285,46 @@ describe("model runtime adapters", () => {
       calls.findIndex((call) => call.name === "reload-engine"),
     );
     expect(mirroredCredentials[0]).toEqual({
-      key: sharedProviderCredentialEnvKey("orcarouter"),
+      key: sharedProviderCredentialEnvKey(providerId),
       value: "secret",
     });
-    expect(mirroredCredentials[1]?.key).toBe(sharedProviderProfileEnvKey("orcarouter"));
-    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject({
+    expect(mirroredCredentials[1]?.key).toBe(sharedProviderProfileEnvKey(providerId));
+    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject(providerId === "orcarouter" ? {
       providerId: "orcarouter",
       api: "openai-completions",
       baseURL: "https://api.orcarouter.ai/v1",
+    } : {
+      providerId: "offcn",
+      api: "anthropic-messages",
+      baseURL: "https://oneapi.eoffcn.com",
+      models: [{ id: "deepseek-v4-pro-260425", name: "DeepSeek V4 Pro" }],
     });
-    expect(connectedIds).toContain("orcarouter");
+    expect(JSON.stringify(runtimePatches)).not.toContain("secret");
+    expect(mirroredCredentials[1]?.value).not.toContain("secret");
+    expect(connectedIds).toContain(providerId);
   });
 
-  test("imports a shared API key once per workspace across sibling stores", async () => {
+  test.each(["deepseek-official", "offcn"])("restores %s with its protocol in each workspace", async (providerId) => {
     const { calls, client } = createOpenCodeProviderClient();
-    const credentialKey = sharedProviderCredentialEnvKey("deepseek-official");
-    const profileKey = sharedProviderProfileEnvKey("deepseek-official");
-    const profile = JSON.stringify({
+    const credentialKey = sharedProviderCredentialEnvKey(providerId);
+    const profileKey = sharedProviderProfileEnvKey(providerId);
+    const profile = JSON.stringify(providerId === "deepseek-official" ? {
       schemaVersion: 1,
       providerId: "deepseek-official",
       displayName: "DeepSeek",
       api: "openai-completions",
       baseURL: "https://api.deepseek.com",
       models: [{ id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" }],
+    } : {
+      schemaVersion: 1,
+      providerId,
+      displayName: "Offcn",
+      api: "anthropic-messages",
+      baseURL: "https://oneapi.eoffcn.com",
+      models: [{ id: "deepseek-v4-pro-260425", name: "DeepSeek V4 Pro" }],
     });
     const runtimePatches: unknown[] = [];
-    let workspaceId = "workspace-shared-import";
+    let workspaceId = `workspace-shared-import-${providerId}`;
     let workspaceRoot = "C:\\workspace";
     const serverClient = {
       listUserEnvKeys: async () => ({ keys: [credentialKey, profileKey] }),
@@ -2329,7 +2384,7 @@ describe("model runtime adapters", () => {
 
     await store.refreshProviders();
     await store.refreshProviders();
-    workspaceId = "workspace-enterprise-import";
+    workspaceId = `workspace-enterprise-import-${providerId}`;
     workspaceRoot = "C:\\enterprise-workspace";
     await store.refreshProviders({ force: true });
     const siblingStore = createProviderAuthStore(storeOptions);
@@ -2337,10 +2392,10 @@ describe("model runtime adapters", () => {
 
     expect(store.getSnapshot().connectedProviderIds).toEqual([
       "opencode",
-      "deepseek-official",
+      providerId,
     ]);
 
-    const expectedRuntimePatch = {
+    const expectedRuntimePatch = providerId === "deepseek-official" ? {
       opencode: {
         provider: {
           "deepseek-official": {
@@ -2357,20 +2412,32 @@ describe("model runtime adapters", () => {
           },
         },
       },
+    } : {
+      opencode: { provider: { "offcn": {
+        npm: "@ai-sdk/anthropic",
+        name: "Offcn",
+        options: { baseURL: "https://oneapi.eoffcn.com/v1" },
+        models: { "deepseek-v4-pro-260425": {
+          name: "DeepSeek V4 Pro", attachment: true, reasoning: true, tool_call: true,
+          contextWindow: 128_000, maxTokens: 8_192,
+          modalities: { input: ["text", "image"], output: ["text"] },
+          limit: { context: 128_000, output: 8_192 },
+        } },
+      } } },
     };
     expect(runtimePatches).toEqual([expectedRuntimePatch, expectedRuntimePatch]);
     expect(calls.filter((call) => call.name === "set")).toEqual([
       {
         name: "set",
         value: {
-          providerID: "deepseek-official",
+          providerID: providerId,
           auth: { type: "api", key: "secret" },
         },
       },
       {
         name: "set",
         value: {
-          providerID: "deepseek-official",
+          providerID: providerId,
           auth: { type: "api", key: "secret" },
         },
       },

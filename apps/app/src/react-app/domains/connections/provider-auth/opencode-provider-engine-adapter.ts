@@ -282,14 +282,21 @@ export const openCodeProviderEngineAdapter: ModelRuntimeAdapter = {
   buildCompatibleProviderPatch(profile) {
     const api = profile.api?.trim();
     const baseURL = profile.baseURL?.trim();
-    if (!api && !baseURL) {
+    const isAnthropicProtocol = api === "anthropic-messages";
+    const isProtocol = isAnthropicProtocol || api === "openai-completions" || api === "openai-responses";
+    const apiUrl = isProtocol ? undefined : api;
+    if (!apiUrl && !baseURL) {
       throw new Error("Compatible provider API URL is required");
     }
+    // AI SDK appends /messages; Anthropic's native SDK appends /v1/messages.
+    const sdkBaseURL = isAnthropicProtocol && baseURL
+      ? `${baseURL.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1`
+      : baseURL;
     return {
       [profile.id]: {
-        npm: profile.npm ?? "@ai-sdk/openai-compatible",
+        npm: profile.npm ?? (isAnthropicProtocol ? "@ai-sdk/anthropic" : "@ai-sdk/openai-compatible"),
         name: profile.name,
-        ...(api ? { api } : { options: { baseURL } }),
+        ...(apiUrl ? { api: apiUrl } : { options: { baseURL: sdkBaseURL } }),
         models: profile.models,
       },
     };
