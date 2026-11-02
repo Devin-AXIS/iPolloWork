@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 
 async function openVideoStudio(ctx) {
   const hasStudio = await ctx.eval(
-    'Boolean(document.querySelector(\'iframe[title*="HyperFrames"], iframe[title*="视频工作室"]\'))',
+    'Boolean(document.querySelector(\'iframe[data-video-studio], iframe[title*="视频工作室"]\'))',
   );
   if (!hasStudio) {
     await ctx.eval(`(() => {
@@ -12,7 +12,7 @@ async function openVideoStudio(ctx) {
     })()`);
   }
   await ctx.waitFor(
-    'Boolean(document.querySelector(\'iframe[title*="HyperFrames"], iframe[title*="视频工作室"]\'))',
+    'Boolean(document.querySelector(\'iframe[data-video-studio], iframe[title*="视频工作室"]\'))',
     { timeoutMs: 60_000, label: "Video Studio iframe" },
   );
 }
@@ -133,7 +133,7 @@ export default {
             ]), "Both component sections should remain visible with Avatar selected");
             const tabsBottom = await studioEval(ctx, ctx.videoSoundContextId,
               `document.querySelector('[data-testid="component-subtabs"]').getBoundingClientRect().bottom`);
-            const overlayTop = await ctx.eval(`document.querySelector('[data-testid="video-avatar-tab-content"]').getBoundingClientRect().top - document.querySelector('iframe[title*="视频工作室"],iframe[title*="HyperFrames"]').getBoundingClientRect().top`);
+            const overlayTop = await ctx.eval(`document.querySelector('[data-testid="video-avatar-tab-content"]').getBoundingClientRect().top - document.querySelector('iframe[title*="视频工作室"],iframe[data-video-studio]').getBoundingClientRect().top`);
             ctx.assert(overlayTop >= tabsBottom, "Avatar panel must not cover the secondary tabs");
             await ctx.expectText("使用视频配音");
           },
@@ -230,7 +230,7 @@ export default {
               return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2};
             })()`);
             const frame = await ctx.eval(`(() => {
-              const rect = document.querySelector('iframe[title*="HyperFrames"],iframe[title*="视频工作室"]').getBoundingClientRect();
+              const rect = document.querySelector('iframe[data-video-studio],iframe[title*="视频工作室"]').getBoundingClientRect();
               return {x: rect.x, y: rect.y};
             })()`);
             await ctx.client.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: frame.x + tab.x, y: frame.y + tab.y});

@@ -1521,6 +1521,7 @@ export function VideoPanel({
                 key={`${sessionId}:${revision}`}
                 src={studioUrl}
                 title={t("video.iframe_title")}
+                data-video-studio=""
                 allow="autoplay; fullscreen"
                 allowFullScreen
                 className="h-full w-full border-0"

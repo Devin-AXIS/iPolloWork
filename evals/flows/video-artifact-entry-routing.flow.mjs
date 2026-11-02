@@ -15,7 +15,7 @@ const ARTIFACT_STATE = `(() => {
     activeEntries: activeEntries.length,
     supportingFiles: supportingFiles.length,
     videoFrames: document.querySelectorAll(
-      'iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]',
+      'iframe[title="Video Studio"], iframe[title="视频工作台"]',
     ).length,
     panelTabs: document.querySelectorAll('button[aria-label^="Select tab"]').length,
   };
@@ -89,7 +89,7 @@ export default {
               entry?.closest("button")?.click();
             })()`);
             await ctx.waitFor(
-              `Boolean(document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]'))`,
+              `Boolean(document.querySelector('iframe[title="Video Studio"], iframe[title="视频工作台"]'))`,
               { timeoutMs: 60_000, label: "opened Video Studio from the only active entry" },
             );
           },
@@ -115,7 +115,7 @@ export default {
               close?.click();
             })()`);
             await ctx.waitFor(
-              `!document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]')`,
+              `!document.querySelector('iframe[title="Video Studio"], iframe[title="视频工作台"]')`,
               { timeoutMs: 30_000, label: "closed Video Studio while output card remains" },
             );
           },
@@ -141,7 +141,7 @@ export default {
               close?.click();
             })()`);
             await ctx.waitFor(
-              `!document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]')`,
+              `!document.querySelector('iframe[title="Video Studio"], iframe[title="视频工作台"]')`,
               { timeoutMs: 30_000, label: "closed right-side Video Studio" },
             );
             await ctx.eval(`(() => {
@@ -150,7 +150,7 @@ export default {
               entry?.closest("button")?.click();
             })()`);
             await ctx.waitFor(
-              `document.querySelector('iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]')?.dataset.loaded === "true"`,
+              `document.querySelector('iframe[title="Video Studio"], iframe[title="视频工作台"]')?.dataset.loaded === "true"`,
               { timeoutMs: 60_000, label: "loaded current Video Studio" },
             );
             await new Promise((resolve) => setTimeout(resolve, 2_000));
@@ -167,7 +167,7 @@ export default {
             const route = await ctx.eval(`(() => {
               const sessionId = window.location.hash.match(/\\/session\\/([^/?#]+)/)?.[1] || "";
               const src = document.querySelector(
-                'iframe[title="HyperFrames Video Studio"], iframe[title="HyperFrames 视频工作室"]',
+                'iframe[title="Video Studio"], iframe[title="视频工作台"]',
               )?.getAttribute("src") || "";
               return { sessionId, src };
             })()`);

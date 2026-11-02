@@ -1,5 +1,5 @@
 import {evaluate} from '../runner/cdp.mjs';
-const iframeSelector='iframe[title*="HyperFrames"]';
+const iframeSelector='iframe[data-video-studio]';
 async function wait(frame,expression){for(let i=0;i<200;i++){if(await evaluate(frame,expression))return;await new Promise(r=>setTimeout(r,60));}throw Error('Studio did not settle: '+expression);}
 async function getFrame(ctx){
  const origin=await ctx.eval("new URL(document.querySelector("+JSON.stringify(iframeSelector)+").src).origin");

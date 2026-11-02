@@ -10,7 +10,7 @@ async function metrics(ctx) {
     const work = document.querySelector('[data-testid="right-workspace"]');
     return {left:width('[data-slot="sidebar-gap"]'),main:main.getBoundingClientRect().width,right:work.getBoundingClientRect().width,
       viewport:innerWidth,mainHidden:main.inert,rightHidden:work.inert,transition:getComputedStyle(work).transitionProperty,
-      sameContent:(!window.__workspaceProofContent || work.firstElementChild===window.__workspaceProofContent) && (!window.__workspaceProofFrame || (document.querySelector('iframe[title*="HyperFrames"]')===window.__workspaceProofFrame && window.__workspaceProofFrame.src===window.__workspaceProofFrameSrc))};
+      sameContent:(!window.__workspaceProofContent || work.firstElementChild===window.__workspaceProofContent) && (!window.__workspaceProofFrame || (document.querySelector('iframe[data-video-studio]')===window.__workspaceProofFrame && window.__workspaceProofFrame.src===window.__workspaceProofFrameSrc))};
   })()`);
 }
 async function down(ctx, selector) {
@@ -56,7 +56,7 @@ export default {
   await pause(300);
   const initial=await metrics(ctx);
   await ctx.eval("void(window.__workspaceProofContent=document.querySelector('[data-testid=right-workspace]').firstElementChild)");
-  await ctx.eval('void(window.__workspaceProofFrame=document.querySelector(\'iframe[title*="HyperFrames"]\'))');
+  await ctx.eval('void(window.__workspaceProofFrame=document.querySelector(\'iframe[data-video-studio]\'))');
   await ctx.eval('void(window.__workspaceProofFrameSrc=window.__workspaceProofFrame?.src)');
   let split;
   try {

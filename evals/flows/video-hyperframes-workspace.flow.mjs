@@ -19,14 +19,14 @@ export default {
             if (proofWorkspaceId && proofSessionId) {
               await ctx.navigateHash(`/workspace/${proofWorkspaceId}/session/${proofSessionId}`);
               await ctx.waitFor(`Boolean(
-                [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                [...document.querySelectorAll('iframe[data-video-studio]')]
                   .some((iframe) => iframe.getClientRects().length > 0)
                 || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('index.html'))
                 || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
               )`, { timeoutMs: 60_000, label: "configured video proof session" });
             }
             const hasStudioEntry = await ctx.eval(`Boolean(
-              [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+              [...document.querySelectorAll('iframe[data-video-studio]')]
                 .some((iframe) => iframe.getClientRects().length > 0)
               || [...document.querySelectorAll('[title="index.html"]')].some((node) => node.closest('button'))
               || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('index.html'))
@@ -36,14 +36,14 @@ export default {
               await ctx.clickText("视频", { selector: "button" });
             }
             await ctx.waitFor(`Boolean(
-              [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+              [...document.querySelectorAll('iframe[data-video-studio]')]
                 .some((iframe) => iframe.getClientRects().length > 0)
               || [...document.querySelectorAll('[title="index.html"]')].some((node) => node.closest('button'))
               || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('index.html'))
               || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
             )`, { timeoutMs: 30_000, label: "Video Studio entry" });
             await ctx.eval(`(() => {
-              if ([...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+              if ([...document.querySelectorAll('iframe[data-video-studio]')]
                 .some((iframe) => iframe.getClientRects().length > 0)) return;
               const openButton = [...document.querySelectorAll('button')]
                 .find((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
@@ -54,14 +54,14 @@ export default {
                   .find((button) => button.textContent?.includes('index.html'));
               openButton?.click();
             })()`);
-            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, {
+            await ctx.waitFor(`document.querySelector('iframe[data-video-studio]')?.dataset.loaded === "true"`, {
               timeoutMs: 30_000,
               label: "Studio loaded from bundled resources",
             });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              loaded: document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === 'true',
+              loaded: document.querySelector('iframe[data-video-studio]')?.dataset.loaded === 'true',
               failed: /Cloud resource manifest|启动失败/.test(document.body.innerText),
             }))()`);
             ctx.assert(state.loaded && !state.failed, `Bundled Studio did not load: ${JSON.stringify(state)}`);
@@ -80,24 +80,24 @@ export default {
           voiceover: vo[1],
           action: async () => {
             await ctx.waitFor(`Boolean(
-              [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+              [...document.querySelectorAll('iframe[data-video-studio]')]
                 .some((iframe) => iframe.getClientRects().length > 0)
               || document.querySelector('[data-testid="video-resource-download-progress"]')
               || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
             )`, { timeoutMs: 30000, label: "Video Studio startup" });
             await ctx.eval(`(() => {
-              if ([...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+              if ([...document.querySelectorAll('iframe[data-video-studio]')]
                 .some((iframe) => iframe.getClientRects().length > 0)) return;
               [...document.querySelectorAll('button')]
                 .find((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
                 ?.click();
             })()`);
-            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, { timeoutMs: 720000, label: "loaded HyperFrames Studio" });
+            await ctx.waitFor(`document.querySelector('iframe[data-video-studio]')?.dataset.loaded === "true"`, { timeoutMs: 720000, label: "loaded HyperFrames Studio" });
             await new Promise((resolve) => setTimeout(resolve, 1200));
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              iframe: [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+              iframe: [...document.querySelectorAll('iframe[data-video-studio]')]
                 .some((iframe) => iframe.getClientRects().length > 0),
               failed: document.body.innerText.includes('启动失败') || document.body.innerText.includes('failed to start'),
               designTab: [...document.querySelectorAll('[role="tab"]')].some((node) => node.textContent?.includes('Design')),
@@ -115,7 +115,7 @@ export default {
           voiceover: vo[2],
           action: async () => {},
           assert: async () => {
-            const iframe = await ctx.eval(`document.querySelector('iframe[title*="HyperFrames"]')?.getAttribute('src') || ''`);
+            const iframe = await ctx.eval(`document.querySelector('iframe[data-video-studio]')?.getAttribute('src') || ''`);
             ctx.assert(iframe.includes("#project/"), `Studio project route is wrong: ${iframe}`);
           },
         });
