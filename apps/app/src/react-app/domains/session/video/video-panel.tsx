@@ -51,7 +51,6 @@ import {
 } from "../design/design-system-theme-contract";
 import { StudioInspectorPanel } from "../panel/studio-inspector-panel";
 import {
-  HYPERFRAMES_STUDIO_LABEL,
   hyperframesStudioPort,
   hyperframesStudioUrl,
   videoProjectDirectory,
@@ -177,7 +176,7 @@ export function VideoPanel({
   const [resourcesReady, setResourcesReady] = React.useState(Boolean(runtime));
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
   const [startupStage, setStartupStage] = React.useState<StudioStartupStage>("starting-service");
-  const [detail, setDetail] = React.useState(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`);
+  const [detail, setDetail] = React.useState(t("video.starting_studio"));
   const [studioFrameLoaded, setStudioFrameLoaded] = React.useState(false);
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [studioHistoryReady, setStudioHistoryReady] = React.useState(false);
@@ -1244,7 +1243,7 @@ export function VideoPanel({
     setStudioChromeReady(false);
     setActiveStudioPort(studioPort);
     setStartupStage("starting-service");
-    setDetail(t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL }));
+    setDetail(t("video.starting_studio"));
     if (isRemoteWorkspace) {
       setStatus("failed");
       setDetail(t("video.local_workspaces"));
@@ -1503,7 +1502,7 @@ export function VideoPanel({
                       setStatus("starting");
                       setStartupStage("starting-service");
                       setDetail(
-                        t("video.starting_hyperframes", { version: HYPERFRAMES_STUDIO_LABEL }),
+                        t("video.starting_studio"),
                       );
                       setStudioFrameLoaded(false);
                       studioChromeReadyRef.current = false;

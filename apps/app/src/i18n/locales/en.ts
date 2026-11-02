@@ -1541,7 +1541,7 @@ export default {
   "composer.plugin_files_unavailable": "Plugin files are unavailable.",
   "composer.model_unavailable": "Model no longer available",
   "composer.model_load_failed": "Could not load models · Retry",
-  "video.starting_hyperframes": "Starting HyperFrames {version}...",
+  "video.starting_studio": "Starting Video Studio...",
   "video.local_workspaces": "Video Studio is available for local workspaces.",
   "video.requires_desktop": "HyperFrames requires the iPolloWork desktop app.",
   "video.could_not_start": "Could not start HyperFrames.",
