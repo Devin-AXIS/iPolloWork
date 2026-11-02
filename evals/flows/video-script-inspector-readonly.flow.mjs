@@ -8,7 +8,7 @@ export default {
   steps: [{ name: '只读布局走查，不保存或提交任务', async run(ctx) {
     ctx.assert(await ctx.eval("navigator.userAgent.includes('Electron')"), 'Real Electron client');
     const tree = await ctx.client.send('Page.getFrameTree');
-    const src = await ctx.eval("document.querySelector('iframe[title*=HyperFrames]').src");
+    const src = await ctx.eval("document.querySelector('iframe[data-video-studio]').src");
     const entry = tree.frameTree.childFrames.find(e => e.frame.url.startsWith(new URL(src).origin));
     ctx.assert(entry, 'Existing video Studio iframe');
     const world = await ctx.client.send('Page.createIsolatedWorld', { frameId: entry.frame.id, worldName: 'script-inspector-readonly' });

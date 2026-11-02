@@ -1822,8 +1822,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 /*
- * HyperFrames brand loader. Shared by preview overlays that need a calm,
- * branded loading state instead of a generic spinner.
+ * Shared loading status for preview overlays.
  */
 .hf-loader {
   display: flex;
@@ -1851,20 +1850,11 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   background: rgba(0, 0, 0, 0.52);
 }
 
-.hf-loader-mark-frame {
+.hf-loader-indicator-frame {
   display: grid;
   place-items: center;
   overflow: visible;
   transform-origin: 50% 50%;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-user-drag: none;
-}
-
-.hf-loader-mark {
-  display: block;
-  overflow: visible;
-  filter: drop-shadow(0 0 7px rgba(79, 219, 94, 0.2));
   user-select: none;
   -webkit-user-select: none;
   -webkit-user-drag: none;

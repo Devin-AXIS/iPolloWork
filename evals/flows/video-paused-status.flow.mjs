@@ -6,7 +6,7 @@ export default {
     await ctx.prove("A stopped conversation releases the editing warning and groups previous video failures", {
       voiceover: "停止对话后，视频不再显示 AI 修改中；此前失败的视频任务收进独立历史记录。",
       action: async () => {
-        await ctx.waitFor("Boolean(document.querySelector('iframe[title=\"HyperFrames 视频工作室\"]'))");
+        await ctx.waitFor("Boolean(document.querySelector('iframe[title=\"视频工作台\"]'))");
         await ctx.waitForText("历史视频任务有");
       },
       assert: async () => {

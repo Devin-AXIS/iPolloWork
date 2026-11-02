@@ -30,8 +30,6 @@ export {
   videoProjectId,
 };
 
-export const HYPERFRAMES_STUDIO_LABEL = "Local HyperFrames Studio";
-
 export function videoProjectSessionIdFromEntryPath(path: string) {
   const match = /^video\/([^/]+)\/index\.html$/i.exec(path.trim().replaceAll("\\", "/").replace(/^\.\//, ""));
   return match?.[1] ?? null;

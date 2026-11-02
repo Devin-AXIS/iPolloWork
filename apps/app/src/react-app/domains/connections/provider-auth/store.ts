@@ -90,6 +90,7 @@ import {
 import { IPOLLOOS_PROVIDER, ipolloOSRuntimeModels } from "./ipolloos-provider";
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
 import { ORCAROUTER_PROVIDER, orcarouterRuntimeModels } from "./orcarouter-provider";
+import { OFFCN_PROVIDER } from "./offcn-provider";
 import {
   modelRuntimeAdapters,
   type CompatibleProviderProfile,
@@ -314,11 +315,17 @@ type CompatibleProviderPreset = {
   providerId: string;
   name: string;
   baseURL: string;
+  api?: SharedProviderProfile["api"];
+  npm?: string;
   models(modelIds?: string[]): CompatibleProviderProfile["models"];
 };
 
 const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
   { ...IPOLLOOS_PROVIDER, models: () => ({}) },
+  {
+    ...OFFCN_PROVIDER,
+    models: () => OFFCN_PROVIDER.models,
+  },
   {
     ...DEEPSEEK_OFFICIAL_PROVIDER,
     models: () => DEEPSEEK_OFFICIAL_PROVIDER.models,
@@ -376,6 +383,8 @@ function compatibleProviderProfile(
         id: preset.providerId,
         name: preset.name,
         baseURL: preset.baseURL,
+        ...(preset.api ? { api: preset.api } : {}),
+        ...(preset.npm ? { npm: preset.npm } : {}),
         models: preset.models(modelIds),
       }
     : null;
@@ -1535,6 +1544,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           for (const entry of connections) {
             if (!entry.apiKey) continue;
             const profile = entry.profile;
+            const preset = compatibleProviderProfile(entry.providerId, profile.models.map((model) => model.id));
             if (
               profile?.baseURL
               && !nativeProviderIds.has(entry.providerId)
@@ -1545,8 +1555,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
                   id: entry.providerId,
                   name: profile.displayName,
                   baseURL: profile.baseURL,
+                  api: profile.api,
                   models: entry.runtimeModels ?? Object.fromEntries(
                     profile.models.map((model) => [model.id, {
+                      ...preset?.models[model.id],
                       name: model.name ?? model.id,
                       ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
                       ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
@@ -1764,21 +1776,22 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
     }
 
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !isDesktopProviderBlocked({
-        providerId: ORCAROUTER_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      const existing = merged[ORCAROUTER_PROVIDER.providerId] ?? [];
+    for (const provider of [ORCAROUTER_PROVIDER, OFFCN_PROVIDER]) {
+      if (
+        !getProviderEngineAdapter().capabilities.customProviders ||
+        isDesktopProviderBlocked({
+          providerId: provider.providerId,
+          checkRestriction: options.checkDesktopAppRestriction,
+        })
+      ) continue;
+      const existing = merged[provider.providerId] ?? [];
       if (!existing.some((method) => method.type === "api")) {
-        merged[ORCAROUTER_PROVIDER.providerId] = [
+        merged[provider.providerId] = [
           ...existing,
           {
             type: "api",
             label: t("providers.api_key_label"),
-            description: "Connect OrcaRouter with an API key and use it from every supported agent engine.",
+            description: `Connect ${provider.name} with your personal API key.`,
           },
         ];
       }

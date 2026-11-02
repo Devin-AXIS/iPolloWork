@@ -37,11 +37,13 @@ export const PROVIDER_LABELS: Record<string, string> = {
   tokenstar: "TokenStar",
   ipolloos: "iPolloOS 本地模型",
   "deepseek-official": "DeepSeek",
+  "offcn": "Offcn",
 };
 
 const RECOMMENDED_PROVIDER_IDS = [
   IPOLLOWORK_MODELS_PROVIDER_ID,
   "ipolloos",
+  "offcn",
   "openai",
   "anthropic",
   "google",

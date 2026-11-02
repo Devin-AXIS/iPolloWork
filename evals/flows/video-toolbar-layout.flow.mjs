@@ -1,5 +1,5 @@
 import {evaluate} from '../runner/cdp.mjs';
-const iframeSelector='iframe[title*="HyperFrames"]';
+const iframeSelector='iframe[data-video-studio]';
 async function wait(frame,expression){for(let i=0;i<100;i++){if(await evaluate(frame,expression))return;await new Promise(r=>setTimeout(r,50));}throw Error('Studio state did not settle: '+expression);}
 async function mouse(ctx,frame,selector){
  const point=await evaluate(frame,"(()=>{const e=document.querySelector("+JSON.stringify(selector)+");e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()");
