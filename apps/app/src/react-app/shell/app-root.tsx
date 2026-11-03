@@ -36,6 +36,8 @@ import {
 } from "./control/control-provider";
 import { SessionRoute } from "./session-route";
 import { SettingsRoute } from "./settings-route";
+import { ElectronUpdaterContext, useElectronUpdaterState } from "../domains/settings/state/electron-updater-state";
+import { notifyAlert } from "./notifications";
 import { ShellConfigProvider } from "./shell-config";
 
 
@@ -578,6 +580,20 @@ function BrandThemeControlActions() {
 
 let appOpenedCaptured = false;
 
+function reportUpdaterError(message: string) {
+  notifyAlert({
+    kind: "update",
+    title: t("notifications.updater_error"),
+    body: message,
+    dedupeKey: "updater-error",
+  });
+}
+
+function AppUpdaterProvider({ children }: { children: ReactNode }) {
+  const updater = useElectronUpdaterState(reportUpdaterError);
+  return <ElectronUpdaterContext.Provider value={updater}>{children}</ElectronUpdaterContext.Provider>;
+}
+
 export function AppRoot() {
   useDesktopFontZoomBehavior();
   const [, setLocaleVersion] = useState(0);
@@ -600,6 +616,7 @@ export function AppRoot() {
     <>
       <DevProfiler id="AppRoot">
         <ShellConfigProvider>
+        <AppUpdaterProvider>
         <AppMenuProvider>
         <IPolloWorkControlProvider>
           <IPolloWorkRouteControlActions />
@@ -669,6 +686,7 @@ export function AppRoot() {
           </DenSigninGate>
         </IPolloWorkControlProvider>
         </AppMenuProvider>
+        </AppUpdaterProvider>
         </ShellConfigProvider>
         <LoadingOverlay />
       </DevProfiler>

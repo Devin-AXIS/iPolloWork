@@ -113,7 +113,7 @@ export type RuntimeOpencodeConfigWriteListener = (
 ) => void;
 
 const writeListeners = new Set<RuntimeOpencodeConfigWriteListener>();
-const providerChannelWriteListeners = new Set<(config: ServerConfig) => void>();
+const providerChannelWriteListeners = new Set<(config: ServerConfig) => Promise<void>>();
 
 /**
  * Observe runtime config writes. Used to keep derived state (e.g. the
@@ -240,7 +240,7 @@ export function runtimeExternalDirectory(config: RuntimeOpencodeConfig): Record<
   return externalDirectory ?? {};
 }
 
-export function onRuntimeProviderChannelsWrite(listener: (config: ServerConfig) => void): () => void {
+export function onRuntimeProviderChannelsWrite(listener: (config: ServerConfig) => Promise<void>): () => void {
   providerChannelWriteListeners.add(listener);
   return () => providerChannelWriteListeners.delete(listener);
 }
@@ -263,10 +263,12 @@ export async function writeRuntimeProviderChannels(
     const current = row ? parseRuntimeProviderChannels(row.channelsJson) : {};
     const channels = normalizeRuntimeProviderChannels(updater(current));
     const channelsJson = JSON.stringify(channels);
-    if (row?.channelsJson === channelsJson) return { channels, changed: false };
-    db.upsertProviderChannels({ channelsJson, updatedAt: Date.now() });
-    for (const listener of providerChannelWriteListeners) listener(config);
-    return { channels, changed: true };
+    const changed = row?.channelsJson !== channelsJson;
+    if (changed) db.upsertProviderChannels({ channelsJson, updatedAt: Date.now() });
+    // Wait for engine-visible config before callers dispose an instance.
+    // Identical retries must also repair a failed projection.
+    await Promise.all([...providerChannelWriteListeners].map((listener) => listener(config)));
+    return { channels, changed };
   });
   providerChannelWriteQueueByPath.set(path, mutation.then(
     () => undefined,
