@@ -216,9 +216,9 @@ export function keepiPolloWorkRuntimeConfigFileFresh(config: ServerConfig, works
     if (writtenWorkspaceId !== workspaceId) return;
     void writeiPolloWorkRuntimeConfigFile(writeConfig, workspaceId).catch(() => undefined);
   });
-  const disposeProviderChannels = onRuntimeProviderChannelsWrite((writeConfig) => {
+  const disposeProviderChannels = onRuntimeProviderChannelsWrite(async (writeConfig) => {
     if (writeConfig !== config) return;
-    void writeiPolloWorkRuntimeConfigFile(writeConfig, workspaceId).catch(() => undefined);
+    await writeiPolloWorkRuntimeConfigFile(writeConfig, workspaceId);
   });
   return () => {
     disposeWorkspaceConfig();

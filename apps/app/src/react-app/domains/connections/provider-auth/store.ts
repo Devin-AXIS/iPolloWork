@@ -2009,10 +2009,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       const runtimeRestarted = await reloadProviderEngine(client, {
         runtimeEnvironmentChanged: optionsArg?.runtimeEnvironmentChanged,
       });
-      if (runtimeRestarted) {
-        await refreshProviderListQueries(getReactQueryClient());
-        return null;
-      }
+      await refreshProviderListQueries(getReactQueryClient());
+      if (runtimeRestarted) return null;
     }
 
     const activeClient = options.client() ?? client;
@@ -2147,6 +2145,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         false,
         { refreshProviderLists: false },
       );
+      await refreshProviderListQueries(getReactQueryClient());
       return { connected: true, message: `${t("status.connected")} ${resolved}` };
     };
 
@@ -2286,6 +2285,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         force: true,
         skipSharedImport: true,
       });
+      // Other projects may still have a fresh cached catalog for their directory.
+      await refreshProviderListQueries(getReactQueryClient());
       if (compatibleProfile) {
         const syntheticProviderId = compatibleProfile.id;
         const nextConnected = [

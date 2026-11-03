@@ -38,6 +38,8 @@ import {
   getRemoteWorkspaceConnectionKey,
   testRemoteWorkspaceConnection,
 } from "@/react-app/domains/workspace/remote-workspace-diagnostics";
+import { providerListQueryKey } from "@/react-app/infra/provider-list-query";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import { setTemplateSessionTypes } from "@/react-app/domains/session/sidebar/session-type";
 import { mergeConversationSessionUpdate } from "@/react-app/domains/session/engine/conversation-engine";
@@ -161,7 +163,20 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     writeActiveWorkspaceId(workspaceId);
     const endpoint = endpointForWorkspace(selectedWorkspace);
     if (endpoint) {
-      void endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true }).catch(() => undefined);
+      void endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true }).then(async () => {
+        if (selectedWorkspace.workspaceType !== "local"
+          || (selectedWorkspace.engineId || DEFAULT_ENGINE_ID) !== DEFAULT_ENGINE_ID) return;
+        // The initial catalog read can finish before activation reloads the
+        // directory's OpenCode instance. Discard that read after activation.
+        const queryClient = getReactQueryClient();
+        const queryKey = providerListQueryKey({
+          engineId: DEFAULT_ENGINE_ID,
+          baseUrl: endpoint.opencodeBaseUrl,
+          directory: selectedWorkspace.path,
+        });
+        await queryClient.cancelQueries({ queryKey });
+        await queryClient.invalidateQueries({ queryKey });
+      }).catch(() => undefined);
     }
     if (!isDesktopRuntime()) return;
     void workspaceSetSelected(workspaceId)

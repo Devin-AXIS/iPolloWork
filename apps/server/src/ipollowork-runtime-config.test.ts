@@ -220,19 +220,14 @@ describe("ipollowork runtime config file", () => {
       },
     }));
 
-    let providers: Record<string, Record<string, unknown>> = {};
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const parsed = await readConfigFile(config);
-      providers = (parsed.provider ?? {}) as Record<string, Record<string, unknown>>;
-      if (providers.shared) break;
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    expect(providers.shared).toMatchObject({
-      options: { baseURL: "https://models.example/v1" },
-    });
-    expect(providers.opencode).toMatchObject({
-      api: "https://opencode.example/v1",
-      options: { apiKey: "account-key" },
+    expect(await readConfigFile(config)).toMatchObject({
+      provider: {
+        shared: { options: { baseURL: "https://models.example/v1" } },
+        opencode: {
+          api: "https://opencode.example/v1",
+          options: { apiKey: "account-key" },
+        },
+      },
     });
   });
 

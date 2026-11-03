@@ -100,7 +100,9 @@ export function UpdatesView(props: UpdatesViewProps) {
                           ? t("settings.update_ready_version", undefined, { version: updateVersion ?? "" })
                           : updateState === "error"
                             ? t("settings.update_check_failed")
-                            : t("settings.update_uptodate")}
+                            : updateLastCheckedAt && !updateErrorMessage
+                              ? t("settings.update_uptodate")
+                              : t("settings.updates_title")}
                 </LayoutSectionItemTitle>
                 <LayoutSectionItemDescription>
                   {updateState === "idle" && updateLastCheckedAt
@@ -116,7 +118,7 @@ export function UpdatesView(props: UpdatesViewProps) {
                     <Button
                       variant="outline"
                       onClick={() => void props.checkForUpdates()}
-                      disabled={props.busy || updateState === "checking" || updateState === "downloading"}
+                      disabled={props.busy || updateState === "checking" || updateState === "downloading" || updateState === "ready"}
                     >
                       {updateState === "checking" ? <Spinner className="size-4" /> : null}
                       {t("settings.update_check_button")}
