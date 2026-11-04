@@ -32,7 +32,6 @@ import {
   TOKENSTAR_PROVIDER,
 } from "./tokenstar-provider";
 import { ORCAROUTER_PROVIDER } from "./orcarouter-provider";
-import { OFFCN_PROVIDER } from "./offcn-provider";
 import {
   buildProviderAuthEntries,
   getProviderAuthEntryGroups,
@@ -958,12 +957,6 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                       >
                         No API key? Visit OrcaRouter to get one.
                       </button>
-                    </div>
-                  ) : null}
-                  {selectedEntry.id === OFFCN_PROVIDER.providerId ? (
-                    <div className="rounded-lg border border-gray-6/60 bg-gray-1/60 px-3 py-2.5 text-xs text-gray-10 space-y-1.5">
-                      <div>填写你在 Offcn One API 申请的个人 Key，额度和用量按个人 Key 计算。</div>
-                      <div>模型：DeepSeek V4 Pro</div>
                     </div>
                   ) : null}
                   {selectedTokenStarConnected ? (

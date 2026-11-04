@@ -1,4 +1,4 @@
-import { compareProviders } from "@/app/utils/providers";
+import { compareProviders, isUnsupportedProvider } from "@/app/utils/providers";
 import type {
   ProviderAuthMethod,
   ProviderAuthProvider,
@@ -37,13 +37,11 @@ export const PROVIDER_LABELS: Record<string, string> = {
   tokenstar: "TokenStar",
   ipolloos: "iPolloOS 本地模型",
   "deepseek-official": "DeepSeek",
-  "offcn": "Offcn",
 };
 
 const RECOMMENDED_PROVIDER_IDS = [
   IPOLLOWORK_MODELS_PROVIDER_ID,
   "ipolloos",
-  "offcn",
   "openai",
   "anthropic",
   "google",
@@ -193,6 +191,7 @@ export const buildProviderAuthEntries = (options: BuildProviderAuthEntriesOption
   const entriesById = new Map<string, ProviderAuthEntry>();
 
   for (const id of Object.keys(methods)) {
+    if (isUnsupportedProvider(id)) continue;
     const provider = providersById.get(id);
     const entryMethods = (methods[id] ?? []).filter((method) => {
       if (isAnthropicProvider(id, provider?.name) && isClaudeProMaxMethod(method)) {
