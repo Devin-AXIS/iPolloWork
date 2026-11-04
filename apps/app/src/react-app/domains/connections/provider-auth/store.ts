@@ -42,7 +42,6 @@ import { isDesktopRuntime, safeStringify } from "../../../../app/utils";
 import {
   compareProviders,
   filterProviderList,
-  isUnsupportedProvider,
 } from "../../../../app/utils/providers";
 import { getReactQueryClient } from "../../../infra/query-client";
 import {
@@ -727,8 +726,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           ...options.providerConnectedIds().filter((providerId) => configuredRuntimeProviderIds.has(providerId)),
           ...state.accountConnectedProviderIds,
         ].filter((providerId) => (
-          !isUnsupportedProvider(providerId)
-          && !disabledProviderIds.has(providerId)
+          !disabledProviderIds.has(providerId)
           && !explicitlyDisconnectedProviderIds.has(providerId.trim().toLowerCase())
         ))),
       ],
@@ -1035,9 +1033,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const assertProviderAllowedByDesktopPolicy = (providerId: string) => {
-    if (isUnsupportedProvider(providerId)) {
-      throw new Error(`${providerId} is no longer supported.`);
-    }
     if (
       isDesktopProviderBlocked({
         providerId,
@@ -1479,8 +1474,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
       const keySet = new Set(keys);
       const providerIds = sharedProviderIdsFromEnvKeys(keys).filter((id) =>
-        !isUnsupportedProvider(id)
-        && (id !== IPOLLOOS_PROVIDER.providerId || options.selectedWorkspaceDisplay().workspaceType === "local"),
+        id !== IPOLLOOS_PROVIDER.providerId || options.selectedWorkspaceDisplay().workspaceType === "local",
       );
       const connectionResults = await Promise.allSettled(providerIds.map(async (providerId) => {
         const credentialKey = sharedProviderCredentialEnvKey(providerId);

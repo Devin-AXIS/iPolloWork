@@ -2,8 +2,6 @@ import type { ProviderListResponse } from "../types";
 
 const PINNED_PROVIDER_ORDER = ["opencode", "openai", "anthropic"] as const;
 
-export const isUnsupportedProvider = (id: string) => id.trim().toLowerCase() === "offcn";
-
 export const providerPriorityRank = (id: string) => {
   const normalized = id.trim().toLowerCase();
   const index = PINNED_PROVIDER_ORDER.indexOf(
@@ -32,12 +30,12 @@ export const filterProviderList = (
     const trimmed = id.trim();
     return trimmed ? [trimmed] : [];
   }));
-  const isAvailable = (id: string) => !isUnsupportedProvider(id) && !disabled.has(id);
+  if (!disabled.size) return value;
   return {
-    all: value.all.filter((provider) => isAvailable(provider.id)),
-    connected: value.connected.filter(isAvailable),
+    all: value.all.filter((provider) => !disabled.has(provider.id)),
+    connected: value.connected.filter((id) => !disabled.has(id)),
     default: Object.fromEntries(
-      Object.entries(value.default).filter(([id]) => isAvailable(id)),
+      Object.entries(value.default).filter(([id]) => !disabled.has(id)),
     ),
   };
 };
