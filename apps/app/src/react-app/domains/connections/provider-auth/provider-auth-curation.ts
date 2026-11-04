@@ -1,4 +1,4 @@
-import { compareProviders, isUnsupportedProvider } from "@/app/utils/providers";
+import { compareProviders } from "@/app/utils/providers";
 import type {
   ProviderAuthMethod,
   ProviderAuthProvider,
@@ -191,7 +191,6 @@ export const buildProviderAuthEntries = (options: BuildProviderAuthEntriesOption
   const entriesById = new Map<string, ProviderAuthEntry>();
 
   for (const id of Object.keys(methods)) {
-    if (isUnsupportedProvider(id)) continue;
     const provider = providersById.get(id);
     const entryMethods = (methods[id] ?? []).filter((method) => {
       if (isAnthropicProvider(id, provider?.name) && isClaudeProMaxMethod(method)) {

@@ -22,7 +22,6 @@ import type {
   ProviderModel,
 } from "../../app/types";
 import { dispatchNewProviders } from "../../app/lib/provider-events";
-import { isUnsupportedProvider } from "../../app/utils/providers";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import {
   modelRuntimeAdapters,
@@ -432,7 +431,6 @@ export function getConnectedProviderItems(value: ProviderListResponse | null | u
   const connected = new Set(value?.connected ?? []);
   return (value?.all ?? []).filter(
     (provider) =>
-      !isUnsupportedProvider(provider.id) &&
       connected.has(provider.id) &&
       (provider.source !== "custom" ||
         provider.id === "opencode" ||
@@ -457,7 +455,6 @@ export function getSelectableChatProviderItems(value: ProviderListResponse | nul
  */
 export function getChatProviderCatalogItems(value: ProviderListResponse | null | undefined) {
   return (value?.all ?? []).filter((provider) => {
-    if (isUnsupportedProvider(provider.id)) return false;
     if (Object.keys(provider.models ?? {}).length === 0) return false;
     if (provider.id.trim().toLowerCase() === "opencode") return true;
     return provider.source !== "env";
