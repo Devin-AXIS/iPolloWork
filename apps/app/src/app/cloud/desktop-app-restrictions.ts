@@ -1,6 +1,7 @@
 import type { DesktopPolicyKey } from "@ipollowork/types/den/desktop-policies";
 import type { DenDesktopConfig } from "../lib/den";
 import type { ModelRef } from "../types";
+import { isUnsupportedProvider } from "../utils/providers";
 
 export type DesktopAppRestrictionKey = DesktopPolicyKey;
 
@@ -23,6 +24,7 @@ export function isDesktopProviderBlocked(input: {
 }) {
   const providerId = input.providerId.trim().toLowerCase();
   if (!providerId) return false;
+  if (isUnsupportedProvider(providerId)) return true;
 
   if (providerId === DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID) {
     return input.checkRestriction({ restriction: "allowZenModel" });

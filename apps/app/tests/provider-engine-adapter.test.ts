@@ -42,6 +42,8 @@ import { iPolloWorkServerError } from "../src/app/lib/ipollowork-server";
 import { resolveWorkspaceEndpoint } from "../src/app/lib/workspace-endpoint";
 import type { ProviderListItem } from "../src/app/types";
 import { resolveEngineSelectableChatModel } from "../src/react-app/infra/preferred-chat-model";
+import { filterProviderList } from "../src/app/utils/providers";
+import { isDesktopModelBlocked } from "../src/app/cloud/desktop-app-restrictions";
 
 function createOpenCodeProviderClient() {
   const calls: Array<{ name: string; value?: unknown }> = [];
@@ -2006,17 +2008,49 @@ describe("model runtime adapters", () => {
     });
   });
 
-  test.each(["https://oneapi.eoffcn.com", "https://oneapi.eoffcn.com/v1/"])("routes Anthropic requests under /v1 for %s", (baseURL) => {
+  test("excludes retired Offcn models and defaults from a saved runtime catalog", () => {
+    const supportedProvider: ProviderListItem = {
+      id: "deepseek-official", name: "DeepSeek", source: "config", env: [],
+      models: { "deepseek-v4-pro": { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", capabilities: {} } },
+    };
+    const retiredProvider: ProviderListItem = {
+      id: "offcn", name: "Offcn", source: "config", env: [],
+      models: { "deepseek-v4-pro-260425": { id: "deepseek-v4-pro-260425", name: "DeepSeek V4 Pro", capabilities: {} } },
+    };
+    const savedCatalog = {
+      all: [retiredProvider, supportedProvider],
+      connected: ["offcn", "deepseek-official"],
+      default: { offcn: "deepseek-v4-pro-260425", "deepseek-official": "deepseek-v4-pro" },
+    };
+    const filtered = filterProviderList(savedCatalog, []);
+    expect(filtered).toEqual({
+      all: [supportedProvider],
+      connected: ["deepseek-official"],
+      default: { "deepseek-official": "deepseek-v4-pro" },
+    });
+    expect(getChatProviderCatalogItems(savedCatalog)).toEqual([supportedProvider]);
+    expect(getChatModelCatalogEntries(savedCatalog).map((entry) => entry.provider.id)).toEqual(["deepseek-official"]);
+    expect(isDesktopModelBlocked({
+      model: { providerID: " OFFCN ", modelID: "deepseek-v4-pro-260425" },
+      checkRestriction: () => false,
+    })).toBe(true);
+    expect(isDesktopModelBlocked({
+      model: { providerID: "deepseek-official", modelID: "deepseek-v4-pro" },
+      checkRestriction: () => false,
+    })).toBe(false);
+  });
+
+  test.each(["https://gateway.example.com", "https://gateway.example.com/v1/"])("routes Anthropic requests under /v1 for %s", (baseURL) => {
     expect(openCodeProviderEngineAdapter.buildCompatibleProviderPatch({
-      id: "offcn",
-      name: "Offcn",
+      id: "custom-anthropic",
+      name: "Custom Anthropic",
       api: "anthropic-messages",
       baseURL,
       models: { "deepseek-v4-pro-260425": { name: "DeepSeek V4 Pro" } },
     })).toMatchObject({
-      "offcn": {
+      "custom-anthropic": {
         npm: "@ai-sdk/anthropic",
-        options: { baseURL: "https://oneapi.eoffcn.com/v1" },
+        options: { baseURL: "https://gateway.example.com/v1" },
       },
     });
     expect(() => openCodeProviderEngineAdapter.buildCompatibleProviderPatch({
@@ -2153,7 +2187,8 @@ describe("model runtime adapters", () => {
     expect(connectedIds).toContain("deepseek-official");
   });
 
-  test.each(["orcarouter", "offcn"])("connects the %s preset with a personal key and its own protocol", async (providerId) => {
+  test("connects the OrcaRouter preset with a personal key", async () => {
+    const providerId = "orcarouter";
     const { calls, client } = createOpenCodeProviderClient();
     const runtimePatches: unknown[] = [];
     const mirroredCredentials: Array<{ key: string; value: string }> = [];
@@ -2227,7 +2262,7 @@ describe("model runtime adapters", () => {
 
     await store.submitProviderApiKey(providerId, "secret");
 
-    expect(runtimePatches).toEqual([providerId === "orcarouter" ? {
+    expect(runtimePatches).toEqual([{
       opencode: {
         provider: {
           orcarouter: {
@@ -2243,26 +2278,6 @@ describe("model runtime adapters", () => {
               "qwen/qwen3.7-max": { name: "Qwen3.7 Max" },
               "minimax/minimax-m2.7": { name: "MiniMax M2.7" },
               "grok/grok-4.3": { name: "Grok 4.3" },
-            },
-          },
-        },
-      },
-    } : {
-      opencode: {
-        provider: {
-          "offcn": {
-            npm: "@ai-sdk/anthropic",
-            name: "Offcn",
-            options: { baseURL: "https://oneapi.eoffcn.com/v1" },
-            models: {
-              "deepseek-v4-pro-260425": {
-                name: "DeepSeek V4 Pro",
-                attachment: true,
-                reasoning: true,
-                tool_call: true,
-                modalities: { input: ["text", "image"], output: ["text"] },
-                limit: { context: 128_000, output: 8_192 },
-              },
             },
           },
         },
@@ -2289,22 +2304,17 @@ describe("model runtime adapters", () => {
       value: "secret",
     });
     expect(mirroredCredentials[1]?.key).toBe(sharedProviderProfileEnvKey(providerId));
-    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject(providerId === "orcarouter" ? {
+    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject({
       providerId: "orcarouter",
       api: "openai-completions",
       baseURL: "https://api.orcarouter.ai/v1",
-    } : {
-      providerId: "offcn",
-      api: "anthropic-messages",
-      baseURL: "https://oneapi.eoffcn.com",
-      models: [{ id: "deepseek-v4-pro-260425", name: "DeepSeek V4 Pro" }],
     });
     expect(JSON.stringify(runtimePatches)).not.toContain("secret");
     expect(mirroredCredentials[1]?.value).not.toContain("secret");
     expect(connectedIds).toContain(providerId);
   });
 
-  test.each(["deepseek-official", "offcn"])("restores %s with its protocol in each workspace", async (providerId) => {
+  test.each(["deepseek-official", "custom-anthropic", "offcn"])("restores only supported shared providers: %s", async (providerId) => {
     const { calls, client } = createOpenCodeProviderClient();
     const credentialKey = sharedProviderCredentialEnvKey(providerId);
     const profileKey = sharedProviderProfileEnvKey(providerId);
@@ -2318,9 +2328,9 @@ describe("model runtime adapters", () => {
     } : {
       schemaVersion: 1,
       providerId,
-      displayName: "Offcn",
+      displayName: "Custom Anthropic",
       api: "anthropic-messages",
-      baseURL: "https://oneapi.eoffcn.com",
+      baseURL: "https://gateway.example.com",
       models: [{ id: "deepseek-v4-pro-260425", name: "DeepSeek V4 Pro" }],
     });
     const runtimePatches: unknown[] = [];
@@ -2328,9 +2338,10 @@ describe("model runtime adapters", () => {
     let workspaceRoot = "C:\\workspace";
     const serverClient = {
       listUserEnvKeys: async () => ({ keys: [credentialKey, profileKey] }),
-      getUserEnv: async (key: string) => ({
-        item: { key, value: key === credentialKey ? "secret" : profile },
-      }),
+      getUserEnv: async (key: string) => {
+        calls.push({ name: "get-user-env" });
+        return { item: { key, value: key === credentialKey ? "secret" : profile } };
+      },
       getConfig: async () => ({ opencode: { provider: {} } }),
       patchConfig: async (_workspaceId: string, patch: unknown) => {
         calls.push({ name: "patch-config" });
@@ -2390,6 +2401,21 @@ describe("model runtime adapters", () => {
     const siblingStore = createProviderAuthStore(storeOptions);
     await siblingStore.refreshProviders({ force: true });
 
+    if (providerId === "offcn") {
+      expect(calls.some((call) => call.name === "get-user-env")).toBe(false);
+      expect(store.getSnapshot().connectedProviderIds).not.toContain("offcn");
+      expect(runtimePatches).toEqual([]);
+      expect(calls.some((call) => call.name === "set")).toBe(false);
+      await store.openProviderAuthModal();
+      expect(store.getSnapshot().providerAuthProviders.some((provider) => provider.id === "offcn")).toBe(false);
+      expect(store.getSnapshot().providerAuthMethods.offcn).toBeUndefined();
+      await expect(store.submitProviderApiKey("offcn", "secret")).rejects.toThrow("no longer supported");
+      expect(store.getSnapshot().providerAuthBusy).toBe(false);
+      expect(runtimePatches).toEqual([]);
+      expect(calls.some((call) => call.name === "set")).toBe(false);
+      return;
+    }
+
     expect(store.getSnapshot().connectedProviderIds).toEqual([
       "opencode",
       providerId,
@@ -2413,15 +2439,12 @@ describe("model runtime adapters", () => {
         },
       },
     } : {
-      opencode: { provider: { "offcn": {
+      opencode: { provider: { "custom-anthropic": {
         npm: "@ai-sdk/anthropic",
-        name: "Offcn",
-        options: { baseURL: "https://oneapi.eoffcn.com/v1" },
+        name: "Custom Anthropic",
+        options: { baseURL: "https://gateway.example.com/v1" },
         models: { "deepseek-v4-pro-260425": {
-          name: "DeepSeek V4 Pro", attachment: true, reasoning: true, tool_call: true,
-          contextWindow: 128_000, maxTokens: 8_192,
-          modalities: { input: ["text", "image"], output: ["text"] },
-          limit: { context: 128_000, output: 8_192 },
+          name: "DeepSeek V4 Pro",
         } },
       } } },
     };

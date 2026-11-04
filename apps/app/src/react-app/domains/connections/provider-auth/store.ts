@@ -42,6 +42,7 @@ import { isDesktopRuntime, safeStringify } from "../../../../app/utils";
 import {
   compareProviders,
   filterProviderList,
+  isUnsupportedProvider,
 } from "../../../../app/utils/providers";
 import { getReactQueryClient } from "../../../infra/query-client";
 import {
@@ -90,7 +91,6 @@ import {
 import { IPOLLOOS_PROVIDER, ipolloOSRuntimeModels } from "./ipolloos-provider";
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
 import { ORCAROUTER_PROVIDER, orcarouterRuntimeModels } from "./orcarouter-provider";
-import { OFFCN_PROVIDER } from "./offcn-provider";
 import {
   modelRuntimeAdapters,
   type CompatibleProviderProfile,
@@ -322,10 +322,6 @@ type CompatibleProviderPreset = {
 
 const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
   { ...IPOLLOOS_PROVIDER, models: () => ({}) },
-  {
-    ...OFFCN_PROVIDER,
-    models: () => OFFCN_PROVIDER.models,
-  },
   {
     ...DEEPSEEK_OFFICIAL_PROVIDER,
     models: () => DEEPSEEK_OFFICIAL_PROVIDER.models,
@@ -731,7 +727,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           ...options.providerConnectedIds().filter((providerId) => configuredRuntimeProviderIds.has(providerId)),
           ...state.accountConnectedProviderIds,
         ].filter((providerId) => (
-          !disabledProviderIds.has(providerId)
+          !isUnsupportedProvider(providerId)
+          && !disabledProviderIds.has(providerId)
           && !explicitlyDisconnectedProviderIds.has(providerId.trim().toLowerCase())
         ))),
       ],
@@ -1038,6 +1035,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const assertProviderAllowedByDesktopPolicy = (providerId: string) => {
+    if (isUnsupportedProvider(providerId)) {
+      throw new Error(`${providerId} is no longer supported.`);
+    }
     if (
       isDesktopProviderBlocked({
         providerId,
@@ -1479,7 +1479,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
       const keySet = new Set(keys);
       const providerIds = sharedProviderIdsFromEnvKeys(keys).filter((id) =>
-        id !== IPOLLOOS_PROVIDER.providerId || options.selectedWorkspaceDisplay().workspaceType === "local",
+        !isUnsupportedProvider(id)
+        && (id !== IPOLLOOS_PROVIDER.providerId || options.selectedWorkspaceDisplay().workspaceType === "local"),
       );
       const connectionResults = await Promise.allSettled(providerIds.map(async (providerId) => {
         const credentialKey = sharedProviderCredentialEnvKey(providerId);
@@ -1776,22 +1777,21 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
     }
 
-    for (const provider of [ORCAROUTER_PROVIDER, OFFCN_PROVIDER]) {
-      if (
-        !getProviderEngineAdapter().capabilities.customProviders ||
-        isDesktopProviderBlocked({
-          providerId: provider.providerId,
-          checkRestriction: options.checkDesktopAppRestriction,
-        })
-      ) continue;
-      const existing = merged[provider.providerId] ?? [];
+    if (
+      getProviderEngineAdapter().capabilities.customProviders &&
+      !isDesktopProviderBlocked({
+        providerId: ORCAROUTER_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      const existing = merged[ORCAROUTER_PROVIDER.providerId] ?? [];
       if (!existing.some((method) => method.type === "api")) {
-        merged[provider.providerId] = [
+        merged[ORCAROUTER_PROVIDER.providerId] = [
           ...existing,
           {
             type: "api",
             label: t("providers.api_key_label"),
-            description: `Connect ${provider.name} with your personal API key.`,
+            description: "Connect OrcaRouter with your personal API key.",
           },
         ];
       }
@@ -2224,9 +2224,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       setStateField("providerAuthBusy", false);
       throw new Error(t("providers.api_key_required"));
     }
-    assertProviderAllowedByDesktopPolicy(providerId);
     const resolvedProviderId = providerId.trim().toLowerCase();
     try {
+    assertProviderAllowedByDesktopPolicy(resolvedProviderId);
     const portableProfile = compatibleProviderProfile(resolvedProviderId, modelIds);
     if (resolvedProviderId === IPOLLOOS_PROVIDER.providerId && portableProfile) {
       if (options.selectedWorkspaceDisplay().workspaceType !== "local" || !isDesktopRuntime()) throw new Error("iPolloOS 渠道仅用于本机开发客户端。");

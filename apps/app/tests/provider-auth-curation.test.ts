@@ -58,7 +58,7 @@ const providers: ProviderAuthProvider[] = [
 ];
 
 describe("provider auth curation", () => {
-  test("keeps Offcn visible as a separate recommended DeepSeek gateway", () => {
+  test("excludes the retired Offcn provider even when the runtime still reports it", () => {
     const entries = buildProviderAuthEntries({
       authMethods: { ...apiMethods, "offcn": [{ type: "api", label: "API key" }] },
       connectedProviderIds: ["offcn"],
@@ -66,10 +66,8 @@ describe("provider auth curation", () => {
       isRemoteWorker: false,
       showiPolloWorkModelsSubscribe: false,
     });
-    expect(getProviderAuthEntryGroups(entries, "").recommended).toContainEqual(expect.objectContaining({
-      id: "offcn", name: "Offcn", connected: true,
-    }));
-    expect(getProviderAuthEntryGroups(entries, "OFFCN").recommended.map((entry) => entry.id)).toEqual(["offcn"]);
+    expect(entries.some((entry) => entry.id === "offcn")).toBe(false);
+    expect(getProviderAuthEntryGroups(entries, "OFFCN").recommended).toEqual([]);
     expect(getProviderAuthEntryGroups(entries, "deepseek").recommended.map((entry) => entry.id)).toEqual(["deepseek-official"]);
   });
 
