@@ -9,6 +9,7 @@ import { ApiError } from "../errors.js";
 import type { AuthorizationAccess, AuthorizationServiceId } from "../authorization-center.js";
 import { resolveWithinRoot } from "../paths.js";
 import { providerFetch } from "../provider-fetch.js";
+import { readLimitedRequestBody } from "../limited-request-body.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { generateCodexImage, optimizeCodexImagePrompt } from "./codex-image-generation.js";
 import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
@@ -18,6 +19,25 @@ import { rememberImageEditResult, saveImageEditResult, validateImageEditSource }
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ID = "openai-image-generation";
 const IMAGE_API_TIMEOUT_MS = 120_000;
 const MAX_IMAGE_INPUT_BYTES = 25 * 1024 * 1024;
+
+const MINIMAX_REFERENCE_ENDPOINTS: Record<string, string> = {
+  "global_en": "https://api.minimax.io/v1/image_generation",
+  "cn_zh": "https://api.minimaxi.com/v1/image_generation"
+};
+const MINIMAX_REFERENCE_MODELS: readonly string[] = ["image-01", "image-01-live"];
+const MINIMAX_REFERENCE_SCHEMA = {
+  type: "object",
+  properties: {
+    sourcePath: { type: "string", description: "Workspace PNG or JPEG portrait under 10 MB, preferably one front-facing character." },
+    prompt: { type: "string", maxLength: 1500, description: "Describe a new image using the reference character. Composition and pixels are not preserved." },
+    model: { type: "string", enum: [...MINIMAX_REFERENCE_MODELS] },
+    region: { type: "string", enum: Object.keys(MINIMAX_REFERENCE_ENDPOINTS), description: "Regional endpoint. Defaults to global_en." },
+    filename: { type: "string", description: "Optional name for the new PNG artifact." },
+  },
+  required: ["sourcePath", "prompt", "model"],
+  additionalProperties: false,
+};
+
 
 type ImageModelAdapterId = "openai" | "openai-codex" | "volcengine-ark" | "unavailable";
 
@@ -136,6 +156,15 @@ const imageParameterSchemas = Object.fromEntries(["size", "quality"].map((key) =
 }]));
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
+  {
+    extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
+    action: "minimax_image_reference",
+    title: "Generate a MiniMax character reference image",
+    description: "Generate a new image from a character portrait with MiniMax. Does not support masks, selections, or preserving the source composition. Connect MiniMax Images in Authorization Center first.",
+    effect: "write" as const,
+    inputSchema: MINIMAX_REFERENCE_SCHEMA,
+  },
+
   {
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_edit_save",
@@ -697,6 +726,64 @@ async function saveImageArtifact(workspace: WorkspaceInfo, fileName: string, byt
   return path;
 }
 
+async function generateMiniMaxReferenceArtifact(config: ServerConfig, authorization: AuthorizationAccess, args: Record<string, unknown>, context: Record<string, unknown>) {
+  if (config.readOnly) throw new ApiError(403, "read_only", "Workspace is read-only");
+  if (Object.keys(args).some(key => !Object.hasOwn(MINIMAX_REFERENCE_SCHEMA.properties, key))) {
+    throw new ApiError(400, "invalid_payload", "MiniMax character reference accepts sourcePath, prompt, model, region and filename only; masks and selections are unsupported.");
+  }
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value !== "string") throw new ApiError(400, "invalid_payload", `${key} must be a string`);
+  }
+  const sourcePath = readStringField(args, "sourcePath");
+  const prompt = readStringField(args, "prompt");
+  const model = readStringField(args, "model");
+  const region = readStringField(args, "region") || "global_en";
+  if (!sourcePath || !prompt || [...prompt].length > 1500 || !MINIMAX_REFERENCE_MODELS.includes(model) || !Object.hasOwn(MINIMAX_REFERENCE_ENDPOINTS, region)) {
+    throw new ApiError(400, "invalid_payload", "A portrait sourcePath, prompt up to 1500 characters, supported MiniMax image model and region are required.");
+  }
+  const workspace = workspaceForContext(config, context);
+  const path = await resolveWithinRoot(workspace.path, resolveSafeChildPath(workspace.path, sourcePath));
+  const info = await stat(path);
+  if (!info.isFile() || !info.size || info.size >= 10 * 1024 * 1024) {
+    throw new ApiError(400, "invalid_image", "MiniMax reference must be a PNG or JPEG image smaller than 10 MB.");
+  }
+  const image = await readFile(path);
+  if (image.byteLength >= 10 * 1024 * 1024) throw new ApiError(400, "invalid_image", "MiniMax reference must be smaller than 10 MB.");
+  const metadata = await sharp(image).metadata().catch(() => null);
+  if (!metadata || (metadata.format !== "png" && metadata.format !== "jpeg")) {
+    throw new ApiError(400, "invalid_image", "MiniMax reference must be a PNG or JPEG image.");
+  }
+  const apiKey = (await authorization.read("minimax-images")).MINIMAX_API_KEY?.trim();
+  if (!apiKey) throw new ApiError(400, "minimax_api_key_missing", "Connect MiniMax Images in Authorization Center before using character references.");
+  let payload: unknown;
+  try {
+    const response = await providerFetch(MINIMAX_REFERENCE_ENDPOINTS[region], {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, prompt, subject_reference: [{ type: "character", image_file: `data:image/${metadata.format};base64,${image.toString("base64")}` }], response_format: "base64", n: 1 }),
+      signal: AbortSignal.timeout(IMAGE_API_TIMEOUT_MS),
+      redirect: "error",
+    });
+    if (!response.ok) throw new ApiError(502, "minimax_image_reference_failed", `MiniMax image request failed (HTTP ${response.status}).`);
+    payload = JSON.parse(new TextDecoder().decode(await readLimitedRequestBody(response, Math.ceil(MAX_IMAGE_INPUT_BYTES / 3) * 4 + 64 * 1024)));
+  } catch (error) {
+    throw providerRequestError(error, { providerLabel: "MiniMax", operation: "character reference generation", timeoutCode: "minimax_image_reference_timeout", unavailableCode: "minimax_image_reference_failed" });
+  }
+  const baseResponse = isRecord(payload) && isRecord(payload.base_resp) ? payload.base_resp : null;
+  if (baseResponse?.status_code !== 0) throw new ApiError(502, "minimax_image_reference_failed", "MiniMax image request failed. Check the account balance, permissions and reference image.");
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+  const encoded = data && Array.isArray(data.image_base64) && data.image_base64.length === 1 ? data.image_base64[0] : null;
+  if (typeof encoded !== "string" || !encoded.length || encoded.length > Math.ceil(MAX_IMAGE_INPUT_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new ApiError(502, "minimax_image_reference_invalid_response", "MiniMax did not return one valid base64 image.");
+  }
+  const decoded = Buffer.from(encoded, "base64");
+  const bytes = await sharp(decoded).png().toBuffer().catch(() => { throw new ApiError(502, "minimax_image_reference_invalid_response", "MiniMax returned an invalid image."); });
+  const outputMetadata = await sharp(bytes).metadata();
+  const filename = `${slugifyImageArtifactName(readStringField(args, "filename") || prompt)}-${randomUUID()}.png`;
+  const resultPath = await saveImageArtifact(workspace, filename, bytes);
+  return { path: resultPath, bytes: bytes.byteLength, width: outputMetadata.width, height: outputMetadata.height, model, modelLabel: `MiniMax ${model}`, provider: "minimax", region, workspaceId: workspace.id };
+}
+
 async function generateImageArtifact(config: ServerConfig, authorization: AuthorizationAccess, args: Record<string, unknown>, context: Record<string, unknown>) {
   const prompt = readStringField(args, "prompt");
   if (!prompt) throw new ApiError(400, "invalid_payload", "prompt is required");
@@ -819,7 +906,7 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
     return { ok: true, extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID, action, result: { selectionId, sourcePath }, context };
   }
   // Capture and validate ownership before a long-running provider request.
-  const sessionId = (action === "image_generate" || action === "image_edit") && context.sessionId
+  const sessionId = (action === "image_generate" || action === "image_edit" || action === "minimax_image_reference") && context.sessionId
     ? sessionArtifactOwner(context.sessionId)
     : null;
   if (action === "status") {
@@ -831,8 +918,10 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
       context,
     };
   }
-  if (action === "image_generate") {
-    const result = await generateImageArtifact(config, authorization, args, context);
+  if (action === "image_generate" || action === "minimax_image_reference") {
+    const result = action === "minimax_image_reference"
+      ? await generateMiniMaxReferenceArtifact(config, authorization, args, context)
+      : await generateImageArtifact(config, authorization, args, context);
     if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path, undefined, {
       id: randomUUID(), kind: "image", model: result.modelLabel, completedAt: Date.now(), width: result.width, height: result.height,
     });
