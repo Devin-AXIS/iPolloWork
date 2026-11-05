@@ -291,7 +291,7 @@ async function mutateLocalizedSkill(ctx, method) {
 export default {
   id: "settings-extensions-mcp",
   title: "MCP settings view renders apps and entry points",
-  spec: "evals/browser-extension-flows.md",
+  spec: "evals/unified-browser-runtime-flows.md",
   steps: [
     {
       name: "App booted",

@@ -1,8 +1,16 @@
+import { createProgressWriter } from "../whisper/progress.js";
+import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { existsSync, writeFileSync } from "node:fs";
-import { findParakeet, transcribeWithParakeet } from "../whisper/parakeet.js";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
+import {
+  findParakeet,
+  PARAKEET_LANGUAGES,
+  parakeetSpeaks,
+  transcribeWithParakeet,
+} from "../whisper/parakeet.js";
 
 type CaptionExportFormat = "srt" | "vtt";
 
@@ -31,7 +39,7 @@ import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
 // entering the sync-import graph. Below this floor the whisper spawn has no
 // realistic chance of completing even on the fastest hardware for the shortest clip.
 const CLI_TIMEOUT_MIN_MS = 5000;
-import { trackCommandFailure, trackTranscribeUnavailable } from "../telemetry/events.js";
+import { trackTranscribeUnavailable } from "../telemetry/events.js";
 
 export default defineCommand({
   meta: {
@@ -54,7 +62,7 @@ export default defineCommand({
     engine: {
       type: "string",
       description:
-        "ASR engine: auto (Parakeet if installed, else whisper), parakeet, or whisper. Default: auto. Parakeet is more accurate and faster; enable with `uv pip install parakeet-mlx`.",
+        "ASR engine: auto (Parakeet if installed and it covers --language, else whisper), parakeet, or whisper. Default: auto. Parakeet is more accurate and faster; install it with `hyperframes models install parakeet`.",
       alias: "e",
     },
     model: {
@@ -64,12 +72,13 @@ export default defineCommand({
     },
     language: {
       type: "string",
-      description: "Language code (e.g. en, es, ja). Filters out non-target language speech.",
+      description:
+        "Language code (e.g. en, es, ja). Whisper transcribes as this language; Parakeet, used when it covers it, detects the language itself.",
       alias: "l",
     },
     json: {
       type: "boolean",
-      description: "Output result as JSON",
+      description: "Output result as JSON; progress JSON lines go to stderr",
       default: false,
     },
     to: {
@@ -86,6 +95,12 @@ export default defineCommand({
       description:
         "Keep each transcript entry as its own caption cue (skip word-level grouping). Use when exporting an already-cued transcript whose entries have no internal spaces, e.g. single-word or CJK captions.",
       default: false,
+    },
+    "runtime-install": {
+      type: "boolean",
+      default: true,
+      description:
+        "Allow installing the Whisper runtime. Use --no-runtime-install to require an existing runtime; model downloads remain allowed.",
     },
     optional: {
       type: "boolean",
@@ -108,9 +123,8 @@ export default defineCommand({
     const inputPath = resolve(args.input);
     if (!existsSync(inputPath)) {
       const message = `File not found: ${args.input}`;
-      trackCommandFailure("transcribe", message);
       console.error(c.error(message));
-      process.exit(1);
+      failCommand(1, message);
     }
 
     // Default to the directory containing the input file so transcript.json
@@ -146,6 +160,7 @@ export default defineCommand({
       language: args.language,
       json: args.json,
       optional: args.optional,
+      installRuntime: args["runtime-install"],
       timeoutMs,
     });
   },
@@ -175,13 +190,12 @@ function parseTimeoutMs(raw: string | undefined, json: boolean): number | undefi
 }
 
 function failWith(message: string, json: boolean): never {
-  trackCommandFailure("transcribe", message);
   if (json) {
     console.log(JSON.stringify({ ok: false, error: message }));
   } else {
     console.error(c.error(message));
   }
-  process.exit(1);
+  failCommand(1, message);
 }
 
 function parseExportFormat(
@@ -266,6 +280,20 @@ async function exportTranscript(
 // Transcribe audio/video with whisper
 // ---------------------------------------------------------------------------
 
+type Runner = "sherpa" | "parakeet-mlx" | "whisper";
+
+const PARAKEET_INSTALL_COMMAND = "hyperframes models install parakeet";
+
+/** auto and parakeet prefer sherpa-onnx, then parakeet-mlx, then whisper, in Parakeet's languages. */
+function pickRunner(engine: string, sherpaUsable: () => boolean, language?: string): Runner {
+  if (engine === "whisper" || !parakeetSpeaks(language)) return "whisper";
+  if (sherpaUsable()) return "sherpa";
+  return findParakeet() ? "parakeet-mlx" : "whisper";
+}
+
+/** When Parakeet fails, only auto falls back; an explicit --engine parakeet fails with the error. */
+const parakeetFallsBack = (engine: string) => engine === "auto";
+
 // fallow-ignore-next-line complexity
 async function transcribeAudio(
   inputPath: string,
@@ -276,56 +304,113 @@ async function transcribeAudio(
     language?: string;
     json?: boolean;
     optional?: boolean;
+    installRuntime?: boolean;
     timeoutMs?: number;
   },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
-  const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
-    await import("../whisper/normalize.js");
+  const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
 
-  // Engine: auto (Parakeet if installed, else whisper), or forced parakeet/whisper.
+  const {
+    DecodeCancelled,
+    prepareSherpaWav,
+    sherpaParakeetInstalled,
+    sherpaUnsupportedReason,
+    transcribeWithSherpa,
+  } = await import("../whisper/sherpa.js");
+  const { createRenderCancellationScope, stoppedByCancelSignal } =
+    await import("../utils/renderCancellation.js");
+
   const engine = (opts.engine ?? "auto").toLowerCase();
   if (engine !== "auto" && engine !== "parakeet" && engine !== "whisper") {
     failWith(`Unknown --engine: ${opts.engine}. Use auto, parakeet, or whisper.`, !!opts.json);
   }
-  const useParakeet = engine === "parakeet" || (engine === "auto" && !!findParakeet());
+  const unsupported = sherpaUnsupportedReason();
+  const sherpaUsable = () => !unsupported && sherpaParakeetInstalled();
+  let runner = pickRunner(engine, sherpaUsable, opts.language);
+  if (engine === "parakeet" && runner === "whisper") {
+    failWith(
+      !parakeetSpeaks(opts.language)
+        ? `Parakeet does not transcribe --language ${opts.language}; it covers ${PARAKEET_LANGUAGES.split(" ").join(", ")}. Use --engine whisper.`
+        : (unsupported ??
+            `Parakeet is not installed. Install it with: ${PARAKEET_INSTALL_COMMAND} (or use --engine whisper)`),
+      !!opts.json,
+    );
+  }
 
   const model = opts.model ?? DEFAULT_MODEL;
   // --model selects the whisper model only; Parakeet uses its own fixed model.
-  if (useParakeet && opts.model && !opts.json) {
+  if (runner !== "whisper" && opts.model && !opts.json) {
     console.error(
       c.dim(`  Note: --model applies to the whisper engine only; ignored under Parakeet.`),
     );
   }
-  const label = useParakeet ? "Parakeet" : model;
+  const label = (r: Runner) => c.accent(r === "whisper" ? model : "Parakeet");
   const spin = opts.json ? null : clack.spinner();
-  spin?.start(`Transcribing with ${c.accent(label)}...`);
-
-  try {
-    const result = useParakeet
-      ? transcribeWithParakeet(inputPath, dir, {
-          language: opts.language,
-          onProgress: spin ? (msg) => spin.message(msg) : undefined,
-        })
-      : await transcribe(inputPath, dir, {
+  spin?.start(`Transcribing with ${label(runner)}...`);
+  const onProgress = spin ? (msg: string) => spin.message(msg) : undefined;
+  const onEvent = opts.json ? createProgressWriter(process.stderr) : undefined;
+  let wavPath = inputPath;
+  // Before audio prep: under --json no spinner listens for SIGINT, so Ctrl-C would kill Node.
+  let cancellation = runner === "sherpa" ? createRenderCancellationScope() : null;
+  const run = (r: Runner) => {
+    switch (r) {
+      case "sherpa":
+        return transcribeWithSherpa(wavPath, dir, {
+          onProgress,
+          onEvent,
+          signal: cancellation!.signal,
+        });
+      case "parakeet-mlx":
+        return transcribeWithParakeet(wavPath, dir, {
+          onProgress,
+          onEvent,
+        });
+      case "whisper":
+        return transcribe(wavPath, dir, {
           model,
           language: opts.language,
-          onProgress: spin ? (msg) => spin.message(msg) : undefined,
+          onProgress,
+          onEvent,
           timeoutMs: opts.timeoutMs,
+          installRuntime: opts.installRuntime,
+          startCancellation: () => (cancellation ??= createRenderCancellationScope()).signal,
         });
-
-    let { words } = loadTranscript(result.transcriptPath);
-
-    if (result.speechOnsetSeconds != null) {
-      const before = words.length;
-      words = stripBeforeOnset(words, result.speechOnsetSeconds);
-      const stripped = before - words.length;
-      if (stripped > 0 && !opts.json) {
-        spin?.message(
-          `Stripped ${stripped} words before speech onset at ${result.speechOnsetSeconds.toFixed(1)}s`,
-        );
+      default: {
+        const unreachable: never = r;
+        throw new Error(`Unknown transcription runner: ${unreachable}`);
       }
     }
+  };
+
+  try {
+    // Outside the fallback: an unreadable input is not a Parakeet failure. The fallback reuses it.
+    if (runner === "sherpa") wavPath = prepareSherpaWav(inputPath, onProgress);
+    let result: Awaited<ReturnType<typeof run>>;
+    try {
+      result = await run(runner);
+    } catch (err) {
+      if (runner !== "sherpa" || err instanceof DecodeCancelled) throw err;
+      const reason = normalizeErrorMessage(err).replace(/\.+$/, "");
+      const parakeetError = `Parakeet failed: ${reason}. To repair it, run: ${PARAKEET_INSTALL_COMMAND}`;
+      if (!parakeetFallsBack(engine)) throw new Error(parakeetError);
+      runner = pickRunner(engine, () => false, opts.language);
+      spin?.clear();
+      console.error(c.warn(`${parakeetError}. Using ${runner} for this run.`));
+      spin?.start(`Transcribing with ${label(runner)}...`);
+      try {
+        result = await run(runner);
+      } catch (fallbackErr) {
+        // Ctrl-C reaches whisper too, so it can stop on its own signal before the scope aborts it.
+        if (stoppedByCancelSignal(fallbackErr as { signal?: string })) {
+          throw new DecodeCancelled("Transcription cancelled");
+        }
+        const why = normalizeErrorMessage(fallbackErr);
+        throw new Error(`${parakeetError}. The ${runner} fallback failed too: ${why}`);
+      }
+    }
+
+    const { words } = loadTranscript(result.transcriptPath);
 
     writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
     patchCaptionHtml(dir, words);
@@ -334,8 +419,9 @@ async function transcribeAudio(
       console.log(
         JSON.stringify({
           ok: true,
-          engine: useParakeet ? "parakeet" : "whisper",
-          model: useParakeet ? "parakeet-tdt-0.6b-v3" : model,
+          engine: runner === "whisper" ? "whisper" : "parakeet",
+          model: result.model,
+          detectedLanguage: result.detectedLanguage,
           wordCount: words.length,
           durationSeconds: result.durationSeconds,
           speechOnsetSeconds: result.speechOnsetSeconds,
@@ -354,14 +440,26 @@ async function transcribeAudio(
       );
     }
   } catch (err) {
+    if (err instanceof DecodeCancelled || cancellation?.signal.aborted) {
+      const message = "Transcription cancelled";
+      if (opts.json) console.log(JSON.stringify({ ok: false, error: message }));
+      else spin?.stop(c.warn(message));
+      setCommandExitCode(130);
+      return;
+    }
     // Surface the last few lines of the ASR subprocess's stderr, which
     // execFileSync captures but otherwise drops on the floor — that's where
     // parakeet-mlx / whisper report the actual failure cause.
+    const base = err instanceof Error ? err.message : String(err);
     const stderr =
       err && typeof err === "object" && "stderr" in err && err.stderr
-        ? String(err.stderr).trim().split("\n").slice(-3).join("\n")
+        ? String(err.stderr)
+            .trim()
+            .split("\n")
+            .slice(-3)
+            .filter((line) => !base.includes(line))
+            .join("\n")
         : "";
-    const base = err instanceof Error ? err.message : String(err);
     const message = stderr ? `${base}\n${stderr}` : base;
 
     // whisper-cpp is an optional prerequisite, not part of the CLI. When it is
@@ -370,24 +468,33 @@ async function transcribeAudio(
     // not inflate the cli_error budget, and let `--optional` callers continue.
     if (isWhisperUnavailable(err)) {
       trackTranscribeUnavailable({ optional: opts.optional === true });
+      const install =
+        engine === "auto" && parakeetSpeaks(opts.language) && !unsupported
+          ? PARAKEET_INSTALL_COMMAND
+          : undefined;
       if (opts.json) {
-        console.log(JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable" }));
+        console.log(
+          JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable", install }),
+        );
       } else {
-        spin?.stop(c.warn(`Captions skipped — ${message}`));
+        const orParakeet = install ? `\nOr transcribe with Parakeet after: ${install}` : "";
+        spin?.stop(c.warn(`Captions skipped — ${message}${orParakeet}`));
       }
       // Optional callers (pipelines) treat a missing prerequisite as a clean
       // skip; explicit runs still surface non-zero. Set the status and return
       // rather than guarding a process.exit() on the flag.
-      process.exitCode = opts.optional ? 0 : 1;
+      setCommandExitCode(opts.optional ? 0 : 1);
       return;
     }
 
-    trackCommandFailure("transcribe", err);
     if (opts.json) {
       console.log(JSON.stringify({ ok: false, error: message }));
     } else {
       spin?.stop(c.error(`Transcription failed: ${message}`));
     }
-    process.exit(1);
+    failCommand(1, err);
+  } finally {
+    cancellation?.dispose();
+    if (wavPath !== inputPath) rmSync(wavPath, { force: true });
   }
 }

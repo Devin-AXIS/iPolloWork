@@ -18,15 +18,14 @@ import { useGsapAnimationFetchFallback } from "./useGsapAnimationFetchFallback";
 import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureTelemetry";
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 import type { PatchTarget } from "../utils/sourcePatcher";
-import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 import {
-  collectTimelineAncestorIds,
   resolveTimelineTreeSelectionId,
   resolveTimelineTreeSelectionKey,
 } from "../player/lib/timelineTreeSelection";
 
 export interface UseDomEditWiringParams {
+  sourcePanelActive?: boolean;
   projectId: string | null;
   activeCompPath: string | null;
   domEditSelection: DomEditSelection | null;
@@ -49,8 +48,6 @@ export interface UseDomEditWiringParams {
   ) => void;
   buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
-  selectSidebarTab?: (tab: SidebarTab) => void;
-  getSidebarTab?: () => SidebarTab;
   // GSAP script commit ops (from useGsapScriptCommits)
   updateGsapProperty: (
     sel: DomEditSelection,
@@ -128,6 +125,7 @@ export interface UseDomEditWiringParams {
 
 // fallow-ignore-next-line complexity
 export function useDomEditWiring({
+  sourcePanelActive,
   // fallow-ignore-next-line code-duplication
   projectId,
   activeCompPath,
@@ -146,8 +144,6 @@ export function useDomEditWiring({
   applyDomSelection,
   buildDomSelectionFromTarget,
   openSourceForSelection,
-  selectSidebarTab,
-  getSidebarTab,
   updateGsapProperty,
   updateGsapMeta,
   deleteGsapAnimation,
@@ -170,22 +166,20 @@ export function useDomEditWiring({
 }: UseDomEditWiringParams) {
   const timelineElements = usePlayerStore((state) => state.elements);
   const clipManifest = usePlayerStore((state) => state.clipManifest);
-  const clipParentMap = usePlayerStore((state) => state.clipParentMap);
   const domClipChildren = usePlayerStore((state) => state.domClipChildren);
   // ── Click-to-source navigation ──
 
   const onClickToSource = useCallback(
     (selection: DomEditSelection) => {
-      if (!openSourceForSelection || !selectSidebarTab) return;
+      if (!openSourceForSelection) return;
       if (!selection.sourceFile) return;
-      selectSidebarTab("code");
       openSourceForSelection(selection.sourceFile, {
         id: selection.id,
         selector: selection.selector,
         selectorIndex: selection.selectorIndex,
       });
     },
-    [openSourceForSelection, selectSidebarTab],
+    [openSourceForSelection],
   );
 
   // ── DOM selection -> timeline element sync ──
@@ -206,11 +200,9 @@ export function useDomEditWiring({
     const treeId = resolveTimelineTreeSelectionId(selectionIdentity);
     if (!treeId) return;
     const key = resolveTimelineTreeSelectionKey(selectionIdentity);
-    store.expandTimelineElementIds(collectTimelineAncestorIds(treeId, clipParentMap));
     if (key !== store.selectedElementId) store.setSelectedElementId(key);
   }, [
     clipManifest,
-    clipParentMap,
     domClipChildren,
     domEditSelection?.hfId,
     domEditSelection?.id,
@@ -298,6 +290,7 @@ export function useDomEditWiring({
   // ── Preview sync side-effects ──
 
   useDomEditPreviewSync({
+    sourcePanelActive,
     previewIframe,
     activeCompPath,
     captionEditMode,
@@ -309,7 +302,6 @@ export function useDomEditWiring({
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,
     openSourceForSelection,
-    getSidebarTab,
     gsapCacheVersion,
   });
 

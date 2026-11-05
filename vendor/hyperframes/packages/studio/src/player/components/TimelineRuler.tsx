@@ -1,20 +1,22 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
+import { useStudioI18n } from "../../i18n";
 import type { TimelineTheme } from "./timelineTheme";
 import {
-  GUTTER,
   RULER_H,
   TRACKS_LEFT_PAD,
   formatTimelineTickLabel,
   type TimelineVisibleWindow,
 } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
-import { secondsToFrame } from "../lib/time";
+import { secondsToFrame, STUDIO_PREVIEW_FPS } from "../lib/time";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 
 interface TimelineRulerProps {
+  navigation?: ReactNode;
   major: number[];
   minor: number[];
   pps: number;
+  timeOffset?: number;
   trackContentWidth: number;
   totalH: number;
   effectiveDuration: number;
@@ -22,12 +24,15 @@ interface TimelineRulerProps {
   theme: TimelineTheme;
   beatAnalysis?: MusicBeatAnalysis | null;
   visibleWindow: TimelineVisibleWindow;
+  gutterWidth: number;
 }
 
 export const TimelineRuler = memo(function TimelineRuler({
+  navigation,
   major,
   minor,
   pps,
+  timeOffset = 0,
   trackContentWidth,
   totalH,
   effectiveDuration,
@@ -35,7 +40,9 @@ export const TimelineRuler = memo(function TimelineRuler({
   theme,
   beatAnalysis,
   visibleWindow,
+  gutterWidth,
 }: TimelineRulerProps) {
+  const { tx } = useStudioI18n();
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const beatTimes = beatAnalysis?.beatTimes ?? [];
   const beatStrengths = beatAnalysis?.beatStrengths ?? [];
@@ -53,13 +60,13 @@ export const TimelineRuler = memo(function TimelineRuler({
           the ruler's own small ticks mark intervals (no full-height lines). */}
       <svg
         className="absolute pointer-events-none"
-        style={{ left: GUTTER + TRACKS_LEFT_PAD, width: trackContentWidth, zIndex: 0 }}
+        style={{ left: gutterWidth + TRACKS_LEFT_PAD, width: trackContentWidth, zIndex: 0 }}
         height={totalH}
       >
         {showBeats &&
           beatTimes.map((t, i) => {
             if (t < visibleWindow.startTime || t > visibleWindow.endTime) return null;
-            const x = t * pps;
+            const x = (t - timeOffset) * pps;
             // Louder beats → brighter line. Gamma curve widens the contrast.
             const strength = Math.pow(Math.min(1, beatStrengths[i] ?? 0.5), 2.2);
             const opacity = 0.08 + strength * 0.62;
@@ -85,21 +92,21 @@ export const TimelineRuler = memo(function TimelineRuler({
         className="hf-timeline-ruler sticky top-0 flex"
         style={{
           height: RULER_H,
-          width: GUTTER + TRACKS_LEFT_PAD + trackContentWidth,
+          width: gutterWidth + TRACKS_LEFT_PAD + trackContentWidth,
           zIndex: 70,
         }}
       >
         <div
           className="hf-timeline-ruler-gutter sticky left-0 z-[12] flex-shrink-0"
           style={{
-            width: GUTTER,
+            width: gutterWidth,
             // Ruler corner uses the panel surface — same as the ruler strip
             // itself, and NO right border: the ruler band stays completely
             // clean until 00:00 (the header-boundary line belongs to the track
             // rows below, not the ruler).
             background: theme.shellBackground,
           }}
-        />
+        ><div className="flex h-full min-w-0 items-center gap-2 px-3 text-[11px] text-[var(--hf-panel-text-3)]">{navigation ?? <span className="shrink-0">{tx("Layers")}</span>}</div></div>
         {/* Left breathing pad — scrolls with the content, so 00:00 starts a
             beat right of the gutter (see TRACKS_LEFT_PAD). */}
         <div
@@ -122,38 +129,46 @@ export const TimelineRuler = memo(function TimelineRuler({
               GUTTER + t * pps (see getTimelinePlayheadLeft). Without the shift
               a tick spans [x, x+1) and its center is half a pixel right. */}
           {minor
-            .filter((t) => t >= visibleWindow.startTime && t <= visibleWindow.endTime)
+            .filter(
+              (t) =>
+                t + timeOffset >= visibleWindow.startTime &&
+                t + timeOffset <= visibleWindow.endTime,
+            )
             .map((t) => (
-            <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps - 0.5 }}>
-              <div
-                className="hf-timeline-ruler-minor-tick h-2 w-px"
-                style={{ background: theme.tickMinor }}
-              />
-            </div>
+              <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps - 0.5 }}>
+                <div
+                  className="hf-timeline-ruler-minor-tick h-2 w-px"
+                  style={{ background: theme.tickMinor }}
+                />
+              </div>
             ))}
 
           {major
-            .filter((t) => t >= visibleWindow.startTime && t <= visibleWindow.endTime)
+            .filter(
+              (t) =>
+                t + timeOffset >= visibleWindow.startTime &&
+                t + timeOffset <= visibleWindow.endTime,
+            )
             .map((t) => (
-            <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps - 0.5 }}>
-              <span
-                className="hf-timeline-ruler-label absolute font-mono tabular-nums leading-none whitespace-nowrap"
-                style={{
-                  color: theme.tickText,
-                  left: 5,
-                  top: 5,
-                  fontSize: 10,
-                }}
-              >
-                {timeDisplayMode === "frame"
-                  ? secondsToFrame(t)
-                  : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
-              </span>
-              <div
-                className="hf-timeline-ruler-major-tick w-px"
-                style={{ height: RULER_H, background: theme.tickMajor }}
-              />
-            </div>
+              <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps - 0.5 }}>
+                <span
+                  className="hf-timeline-ruler-label absolute font-mono tabular-nums leading-none whitespace-nowrap"
+                  style={{
+                    color: theme.tickText,
+                    left: 5,
+                    top: 5,
+                    fontSize: 10,
+                  }}
+                >
+                  {timeDisplayMode === "frame"
+                    ? secondsToFrame(t)
+                    : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval, STUDIO_PREVIEW_FPS)}
+                </span>
+                <div
+                  className="hf-timeline-ruler-major-tick w-px"
+                  style={{ height: RULER_H, background: theme.tickMajor }}
+                />
+              </div>
             ))}
         </div>
       </div>

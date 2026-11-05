@@ -1,0 +1,27 @@
+iPollo Onto
+Copyright (c) 2026 Different AI, Inc.
+
+Repository: https://github.com/Devin-AXIS/iPollo-Onto
+Related host: https://github.com/Devin-AXIS/iPolloWork
+
+This independent project follows the authorization rules of the iPolloWork
+Source Available License. The license is adapted to the iPollo Onto product
+name, repository address and release date. Its reference to a historical MIT
+notice file is omitted because this new repository has no such historical
+release; rights already granted to third-party or previously licensed code
+remain unchanged. This is a source-available license, not an OSI open-source
+license. The root LICENSE controls use of this project's original code.
+
+Third-party packages remain separately licensed. The exact dependency graph
+is recorded in pnpm-lock.yaml. Package managers install each package's license
+notices alongside its code. Source and workflow plugin releases do not bundle
+node_modules or compiled third-party libraries. If you distribute a compiled
+application, preserve the licenses and notices of the dependencies you bundle.
+
+The workflow plugin uses the public iPolloWork package manifest and checksum
+contract; it includes this notice and the project's license. It does not
+contain the iPolloWork runtime or another product's application core.
+
+Modified distribution, 14 October 2026: imported from commit c209c8b8ebdb36773232632e83a02de52360882f. The host collection adds a bundled local server and PostgreSQL launcher, encrypted optional connection settings, and independent signed cloud packaging. Original business UI, PostgreSQL schema, project MCP permission boundaries, branding, and license are retained.
+
+- Distribution 0.1.6: run Electron-hosted SQLite services in Node mode using the bundled executable; no external runtime is required.

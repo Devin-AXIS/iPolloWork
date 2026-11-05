@@ -3,16 +3,18 @@ import test from "node:test";
 
 import { nextClientVersion } from "./package-client.mjs";
 
-test("client package sequence starts at 0.1.0", () => {
-  assert.equal(nextClientVersion("0.0.0"), "0.1.0");
-  assert.equal(nextClientVersion("0.1.0"), "0.2.0");
+test("client packaging advances a semantic patch version", () => {
+  assert.equal(nextClientVersion("0.0.0"), "0.0.1");
+  assert.equal(nextClientVersion("0.50.30"), "0.50.31");
 });
 
-test("client package sequence rolls the hundredth release into the next major", () => {
-  assert.equal(nextClientVersion("0.99.0"), "1.0.0");
-  assert.equal(nextClientVersion("1.99.0"), "2.0.0");
+test("client packaging preserves the selected major and minor version", () => {
+  assert.equal(nextClientVersion("0.99.0"), "0.99.1");
+  assert.equal(nextClientVersion("1.100.9"), "1.100.10");
 });
 
-test("client package sequence rejects patch versions", () => {
-  assert.throws(() => nextClientVersion("0.17.20"), /X\.Y\.0 release sequence/);
+test("client packaging rejects malformed versions", () => {
+  for (const version of ["v0.50.30", "0.50", "01.2.3", "0.50.30-beta"]) {
+    assert.throws(() => nextClientVersion(version), /semantic versioning/);
+  }
 });

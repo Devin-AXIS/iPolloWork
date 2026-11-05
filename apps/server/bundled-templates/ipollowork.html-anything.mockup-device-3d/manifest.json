@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.mockup-device-3d",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "other",
   "subcategory": "product",
@@ -12,7 +12,8 @@
     "mockup",
     "iphone",
     "macbook",
-    "html-in-canvas"
+    "html-in-canvas",
+    "topic:product"
   ],
   "surface": "design",
   "title": "Device 3D Showcase",

@@ -34,7 +34,7 @@ bun run typecheck  # Type-check
 - CodeMirror 6 (editor)
 - Tailwind CSS (styling)
 - Vite (bundler)
-- Phosphor Icons
+- Lucide icons
 
 ## Documentation
 

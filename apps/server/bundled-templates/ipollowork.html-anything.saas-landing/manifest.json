@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.saas-landing",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "site",
   "subcategory": "marketing",
@@ -9,7 +9,8 @@
   "tags": [
     "marketing",
     "saas",
-    "landing"
+    "landing",
+    "topic:product"
   ],
   "surface": "design",
   "title": "SaaS Landing",

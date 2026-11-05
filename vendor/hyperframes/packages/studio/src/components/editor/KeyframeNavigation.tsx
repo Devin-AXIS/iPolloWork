@@ -91,7 +91,6 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
   currentPercentage,
   onSeek,
   onAddKeyframe,
-  onRemoveKeyframe,
   onConvertToKeyframes,
 }: KeyframeNavigationProps) {
   const { tx } = useStudioI18n();
@@ -131,8 +130,8 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
   const handleDiamondClick = () => {
     if (diamondState === "ghost") {
       onConvertToKeyframes();
-    } else if (diamondState === "active" && atCurrent) {
-      onRemoveKeyframe(atCurrent.tweenPercentage ?? atCurrent.percentage);
+    } else if (diamondState === "active") {
+      return;
     } else {
       onAddKeyframe(clipToTweenPercentage(propertyKeyframes, currentPercentage));
     }
@@ -156,7 +155,7 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
           diamondState === "ghost"
             ? tx(`Convert ${propertyLabel} to keyframes`)
             : diamondState === "active"
-              ? tx(`Remove ${propertyLabel} keyframe`)
+              ? tx("Keyframe at playhead")
               : tx(`Add ${propertyLabel} keyframe`)
         }
       />

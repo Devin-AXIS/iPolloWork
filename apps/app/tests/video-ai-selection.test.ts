@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolveVideoAiSelectionTarget } from "../src/react-app/domains/session/video/video-ai-selection";
+import { resolveVideoAiSelectionTarget } from "@ipollowork/video-studio/bridge";
 
 describe("Video Ask AI selection target", () => {
   test("prefers the stable HyperFrames id over generated selectors", () => {

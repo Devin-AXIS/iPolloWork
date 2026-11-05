@@ -26,7 +26,7 @@ import {
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import { isInstantHold, selectorFromSelection } from "./gsapShared";
+import { isInstantHold, selectorFromSelection, getOwnedAnimationSelectors } from "./gsapShared";
 import {
   findGsapPositionAnimation,
   pickClosestToPlayhead,
@@ -287,9 +287,16 @@ export async function tryGsapDragIntercept(
   }
 
   const cbs = { commitMutation: persistMutation, fetchAnimations: fetchFallbackAnimations };
-  const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
-  if (options?.altKey || !shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) {
-    await commitAllPositionPathsOffset(selection, offset, gsapPos, selector, cbs);
+  const { activeKeyframePct } = usePlayerStore.getState();
+  if (options?.altKey || !shouldCommitAnimationKeyframe(activeKeyframePct)) {
+    await commitAllPositionPathsOffset(
+      selection,
+      offset,
+      gsapPos,
+      selector,
+      cbs,
+      getOwnedAnimationSelectors(selection, resolvedAnimations),
+    );
     return true;
   }
 
@@ -310,10 +317,7 @@ export async function tryGsapDragIntercept(
     }
   }
 
-  // Alt-drag already means "shift the whole path" — the global auto-keyframe
-  // toggle (#1808) just makes that the default while it's off, so a manual
-  // edit on an already-animated element nudges the animation instead of
-  // inserting/updating a keyframe at the playhead.
+  // The explicitly selected timeline point owns this edit.
   await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
   return true;
 }
@@ -382,14 +386,13 @@ export async function tryGsapRotationIntercept(
     return true;
   }
 
-  const { autoKeyframeEnabled, activeKeyframePct, setActiveKeyframePct } =
+  const { activeKeyframePct, setActiveKeyframePct } =
     usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
 
-  // With auto-keyframe off (#1808), a rotation tween already exists for this
-  // element (checked above) so nudge it as a whole rather than adding a
-  // keyframe at the playhead.
-  if (!shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) {
+  // Without an explicitly selected point, nudge the existing rotation tween
+  // as a whole rather than adding a keyframe at the playhead.
+  if (!shouldCommitAnimationKeyframe(activeKeyframePct)) {
     await commitWholePropertyOffset(
       selection,
       anim,

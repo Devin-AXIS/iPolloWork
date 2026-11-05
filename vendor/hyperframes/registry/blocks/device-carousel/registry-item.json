@@ -1,0 +1,103 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "device-carousel",
+  "version": "1.2.0",
+  "type": "hyperframes:block",
+  "title": "Device Carousel",
+  "description": "Travel across three product screens with perspective, depth separation and a moving focus.",
+  "tags": [
+    "component",
+    "product",
+    "camera",
+    "parallax",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "media",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "screenUrls",
+        "labels",
+        "note",
+        "carouselMode"
+      ],
+      "instructions": "Use up to three real project-local screen URLs separated by |, and three short labels separated by |. Screens use a 332:562 portrait crop. Empty URLs show clearly marked illustrative screens, not product evidence. This 8s scene visits three independent depth planes and returns to an overview. Captions remain outside the camera. Do not stack a second transform animation on its camera or depth planes. Optional carouselMode=flow-belt moves three persistent screens on a smoothly accelerating and stopping belt; the sample screen ornaments share the belt clock. depth-tour remains the default."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "device-carousel.html",
+      "target": "compositions/device-carousel.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "One product. Every moment.",
+      "maxLength": 76,
+      "update": "live"
+    },
+    {
+      "id": "screenUrls",
+      "label": "Screen URLs (url | url | url)",
+      "type": "string",
+      "default": "",
+      "maxLength": 6000,
+      "update": "live"
+    },
+    {
+      "id": "labels",
+      "label": "Screen labels (label | label | label)",
+      "type": "string",
+      "default": "Discover|Create|Review",
+      "maxLength": 120,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Supporting note",
+      "type": "string",
+      "default": "A continuous journey through your product",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "carouselMode",
+      "label": "Carousel motion",
+      "type": "enum",
+      "default": "depth-tour",
+      "options": [
+        {
+          "value": "depth-tour",
+          "label": "Depth Tour · 景深切换"
+        },
+        {
+          "value": "flow-belt",
+          "label": "Flow Belt · 连续流动"
+        }
+      ],
+      "update": "rebuild"
+    }
+  ]
+}

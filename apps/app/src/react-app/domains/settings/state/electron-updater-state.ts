@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { createContext, useContext, useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { isElectronRuntime, safeStringify } from "../../../../app/utils";
 import { t } from "../../../../i18n";
@@ -19,11 +19,27 @@ export type SettingsUpdateStatus = {
 type ElectronUpdaterBridge = NonNullable<Window["__IPOLLOWORK_ELECTRON__"]>["updater"] & {
   onDownloadProgress?: (callback: (data: { transferred: number; total: number; percent: number; bytesPerSecond: number }) => void) => (() => void);
 };
-type UseElectronUpdaterStateOptions = {
-  updateAutoCheck: boolean;
-  updateAutoDownload: boolean;
-  setError: (message: string | null) => void;
-};
+const AUTO_CHECK_KEY = "ipollowork.react.settings.update-auto-check";
+const AUTO_DOWNLOAD_KEY = "ipollowork.react.settings.update-auto-download";
+
+function useUpdatePreference(key: string, fallback: boolean) {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem(key);
+      return stored === null ? fallback : stored === "1";
+    } catch {
+      return fallback;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, value ? "1" : "0");
+    } catch {
+      // Keep the preference for this launch when storage is unavailable.
+    }
+  }, [key, value]);
+  return [value, setValue] as const;
+}
 
 type ElectronUpdaterEnvState = {
   appVersion: string | null;
@@ -84,19 +100,9 @@ function releaseNotesToText(value: unknown): string | undefined {
   return undefined;
 }
 
-function updateProgress(event: unknown): { downloaded?: number; total?: number } | null {
-  if (!event || typeof event !== "object") return null;
-  const data = event as { data?: unknown };
-  if (!data.data || typeof data.data !== "object") return null;
-  const payload = data.data as { chunkLength?: unknown; contentLength?: unknown };
-  return {
-    downloaded: typeof payload.chunkLength === "number" ? payload.chunkLength : undefined,
-    total: typeof payload.contentLength === "number" ? payload.contentLength : undefined,
-  };
-}
-
-export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions) {
-  const { updateAutoCheck, updateAutoDownload, setError } = options;
+export function useElectronUpdaterState(setError: (message: string) => void) {
+  const [updateAutoCheck, setUpdateAutoCheck] = useUpdatePreference(AUTO_CHECK_KEY, true);
+  const [updateAutoDownload, setUpdateAutoDownload] = useUpdatePreference(AUTO_DOWNLOAD_KEY, false);
   const [updateStatus, setUpdateStatus] = useState<SettingsUpdateStatus>(null);
   const [envState, dispatchEnvState] = useReducer(electronUpdaterEnvReducer, {
     appVersion: null,
@@ -104,6 +110,8 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
   });
   const { appVersion, updateEnv } = envState;
   const autoCheckKeyRef = useRef<string | null>(null);
+  const checking = useRef(false);
+  const downloading = useRef(false);
 
   useEffect(() => {
     if (!isElectronRuntime()) return;
@@ -138,6 +146,9 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
       return;
     }
 
+    if (downloading.current) return;
+    downloading.current = true;
+
     // Subscribe to incremental progress events from the main process so
     // the UI updates in real time instead of staying stuck at 0 bytes.
     let unsubProgress: (() => void) | null = null;
@@ -168,7 +179,10 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
         ...(current ?? {}),
         state: "ready",
       }));
+    } catch (error) {
+      setUpdateStatus({ state: "error", message: describeError(error) });
     } finally {
+      downloading.current = false;
       unsubProgress?.();
     }
   }, [setError]);
@@ -182,6 +196,8 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
       return;
     }
 
+    if (checking.current || downloading.current || updateStatus?.state === "ready") return;
+    checking.current = true;
     setUpdateStatus({ state: "checking" });
     try {
       const result = await bridge.check();
@@ -230,15 +246,19 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
       }
     } catch (error) {
       setUpdateStatus({ state: "error", message: describeError(error) });
+    } finally {
+      checking.current = false;
     }
-  }, [downloadUpdate, setError, updateAutoDownload]);
+  }, [downloadUpdate, setError, updateAutoDownload, updateStatus?.state]);
 
   useEffect(() => {
-    if (!updateAutoCheck || updateEnv?.supported === false) return;
-    const key = appVersion ?? "unknown";
-    if (autoCheckKeyRef.current === key) return;
-    autoCheckKeyRef.current = key;
-    void checkForUpdates();
+    if (!updateAutoCheck || !appVersion || updateEnv?.supported === false) return;
+    if (autoCheckKeyRef.current !== appVersion) {
+      autoCheckKeyRef.current = appVersion;
+      void checkForUpdates();
+    }
+    const interval = window.setInterval(() => void checkForUpdates(), 24 * 60 * 60 * 1000);
+    return () => window.clearInterval(interval);
   }, [appVersion, checkForUpdates, updateAutoCheck, updateEnv?.supported]);
 
   // Run a check when the native "Check for Updates..." menu item was used.
@@ -257,13 +277,21 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
       setError(message);
       return;
     }
-    const result = await bridge.installAndRestart();
-    if (!result?.ok) {
-      setUpdateStatus({ state: "error", message: result?.reason ?? "Update install failed." });
+    try {
+      const result = await bridge.installAndRestart();
+      if (!result?.ok) {
+        setUpdateStatus({ state: "error", message: result?.reason ?? "Update install failed." });
+      }
+    } catch (error) {
+      setUpdateStatus({ state: "error", message: describeError(error) });
     }
   }, [setError]);
 
   return {
+    updateAutoCheck,
+    setUpdateAutoCheck,
+    updateAutoDownload,
+    setUpdateAutoDownload,
     appVersion,
     updateEnv,
     updateStatus,
@@ -271,4 +299,12 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
     downloadUpdate,
     installUpdateAndRestart,
   };
+}
+
+export const ElectronUpdaterContext = createContext<ReturnType<typeof useElectronUpdaterState> | null>(null);
+
+export function useElectronUpdater() {
+  const value = useContext(ElectronUpdaterContext);
+  if (!value) throw new Error("ElectronUpdaterContext is missing");
+  return value;
 }

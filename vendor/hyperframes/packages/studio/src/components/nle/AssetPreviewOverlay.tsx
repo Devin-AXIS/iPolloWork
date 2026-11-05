@@ -1,33 +1,31 @@
 /**
  * CapCut-style asset preview overlay rendered inside PreviewPane.
  *
- * Shown when the user clicks an asset card that has NOT yet been added to the
- * timeline. Displays the media (image / video / audio) as a compact floating
+ * Shown when the user clicks any image/video asset card, whether or not it is
+ * already on the timeline. Displays the media as a compact floating
  * card over the canvas — the canvas stays visible behind a barely-tinted
  * click-catcher — without modifying the composition (no undo entry, no file
  * mutation).
  *
  * Dismiss: X button, Escape key, click outside the card, or any playhead
  * activity (starting playback / seeking) — the canvas refocuses.
- * Switching to another not-added asset replaces the current preview.
+ * Switching to another asset replaces the current preview.
  */
 import { useEffect, useCallback } from "react";
-import { VIDEO_EXT, IMAGE_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
+import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { shouldDismissAssetPreview } from "../../utils/assetPreviewDismiss";
 import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
-import { HtmlIllustrationPreview } from "../sidebar/HtmlIllustrationPreview";
 import { useStudioI18n } from "../../i18n";
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
 }
 
-type AssetKind = "image" | "video" | "audio" | "html";
+type AssetKind = "image" | "video" | "audio";
 
 function resolveAssetKind(path: string): AssetKind {
-  if (isHtmlIllustrationAsset(path)) return "html";
   if (VIDEO_EXT.test(path)) return "video";
   if (IMAGE_EXT.test(path)) return "image";
   return "audio";
@@ -57,15 +55,6 @@ function AssetPreviewMedia({
         muted
         playsInline
         className="max-w-full max-h-[40vh] rounded"
-      />
-    );
-  }
-  if (kind === "html") {
-    return (
-      <HtmlIllustrationPreview
-        src={serveUrl}
-        title={name}
-        className="w-[52vw] max-w-full rounded"
       />
     );
   }

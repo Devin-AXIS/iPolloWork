@@ -1,14 +1,17 @@
+import { buildTimelinePropertyRows } from "../../hooks/gsapTimelineSegmentCache";
+import { createTimelineClipIndex, queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { memo, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BeatStrip } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
-import { TimelineClipAnimationSegments } from "./TimelineClipAnimationSegments";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
+import { TimelinePropertyKeyframes } from "./TimelinePropertyKeyframes";
 import { TimelineLayerHeader } from "./TimelineLayerHeader";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
 import type { TimelineTheme } from "./timelineTheme";
 import {
   TRACK_H,
+  type TimelinePresentationRow,
   TRACKS_LEFT_PAD,
   CLIP_Y,
   CLIP_HANDLE_W,
@@ -37,7 +40,10 @@ import {
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { renderClipChildren } from "./timelineClipChildren";
-import { resolveTimelineKind } from "./timelineLayerPresentation";
+import {
+  resolveTimelineKind,
+  resolveTimelineLayerPrimaryElement,
+} from "./timelineLayerPresentation";
 import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
 
 /**
@@ -47,7 +53,15 @@ import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
  * duplicated prop list.
  */
 export interface TimelineLaneBaseProps {
+  editingMode?: "master" | "scene";
+  presentationRows?: TimelinePresentationRow[];
+  expandedLayerKeys?: ReadonlySet<string>;
+  onToggleLayerProperties?: (element: TimelineElement) => void;
+  onScheduleLayerProperties?: (element: TimelineElement) => void;
+  onCancelScheduledLayerProperties?: () => void;
   pps: number;
+  timeOffset?: number;
+  gutterWidth: number;
   trackContentWidth: number;
   theme: TimelineTheme;
   displayTrackOrder: number[];
@@ -96,8 +110,6 @@ export interface TimelineLaneBaseProps {
     fromClipPercentage: number,
     toClipPercentage: number,
   ) => void;
-  canMoveAnimationSegment?: TimelineEditCallbacks["canMoveAnimationSegment"];
-  onMoveAnimationSegment?: TimelineEditCallbacks["onMoveAnimationSegment"];
   /**
    * Right-click on EMPTY lane space (not on a clip — those preventDefault
    * before this fires — not the gutter/ruler, not below the lanes). `time` is
@@ -121,7 +133,15 @@ interface TimelineLanesProps extends TimelineLaneBaseProps {
 }
 
 export const TimelineLanes = memo(function TimelineLanes({
+  editingMode = "scene",
+  presentationRows,
+  expandedLayerKeys,
+  onToggleLayerProperties,
+  onScheduleLayerProperties,
+  onCancelScheduledLayerProperties,
   pps,
+  timeOffset = 0,
+  gutterWidth,
   trackContentWidth,
   theme,
   displayTrackOrder,
@@ -157,12 +177,6 @@ export const TimelineLanes = memo(function TimelineLanes({
   keyframeCache,
   selectedKeyframes,
   currentTime,
-  onClickKeyframe,
-  onShiftClickKeyframe,
-  onContextMenuKeyframe,
-  onMoveKeyframe,
-  canMoveAnimationSegment,
-  onMoveAnimationSegment,
   onContextMenuLane,
   beatAnalysis,
   visibleWindow,
@@ -173,17 +187,27 @@ export const TimelineLanes = memo(function TimelineLanes({
   onRazorSplit,
   onRazorSplitAll,
 }: TimelineLanesProps) {
-  const clipParentMap = usePlayerStore((state) => state.clipParentMap);
-  const expandedTimelineElementIds = usePlayerStore((state) => state.expandedTimelineElementIds);
-  const expandableParentIds = useMemo(() => new Set(clipParentMap.values()), [clipParentMap]);
   const tracksByNumber = new Map(tracks);
-  const visibleTrackOrder = displayTrackOrder.slice(
-    visibleWindow.firstTrackIndex,
-    visibleWindow.lastTrackIndexExclusive,
-  );
-  const topSpacerHeight = visibleWindow.firstTrackIndex * TRACK_H;
-  const bottomSpacerHeight =
-    (displayTrackOrder.length - visibleWindow.lastTrackIndexExclusive) * TRACK_H;
+  const clipIndex = useMemo(() => createTimelineClipIndex(tracks), [tracks]);
+  const pinnedIdentities = new Set([
+    ...selectedElementIds,
+    ...(selectedElementId ? [selectedElementId] : []),
+    ...(draggedElement ? [draggedElement.key ?? draggedElement.id] : []),
+    ...(hoveredClip ? [hoveredClip] : []),
+    ...(draggedClip?.selectionKeys ?? []),
+  ]);
+  const visibleTrackOrder = [
+    ...new Set(
+      displayTrackOrder.slice(visibleWindow.firstTrackIndex, visibleWindow.lastTrackIndexExclusive),
+    ),
+  ];
+  const firstVisibleRow =
+    visibleTrackOrder.length > 0 ? displayTrackOrder.indexOf(visibleTrackOrder[0]) : 0;
+  const lastVisibleTrack = visibleTrackOrder[visibleTrackOrder.length - 1];
+  const lastVisibleRow =
+    lastVisibleTrack === undefined ? 0 : displayTrackOrder.lastIndexOf(lastVisibleTrack) + 1;
+  const topSpacerHeight = firstVisibleRow * TRACK_H;
+  const bottomSpacerHeight = (displayTrackOrder.length - lastVisibleRow) * TRACK_H;
   const collectGestureEligibleKeys = (
     canEdit: (element: TimelineElement) => boolean,
   ): ReadonlySet<string> => {
@@ -237,6 +261,12 @@ export const TimelineLanes = memo(function TimelineLanes({
         // fallow-ignore-next-line complexity
         visibleTrackOrder.map((trackNum) => {
           const els = tracksByNumber.get(trackNum) ?? [];
+          const visibleClips = queryTimelineClipIndex(
+            clipIndex,
+            trackNum,
+            { start: visibleWindow.startTime, end: visibleWindow.endTime },
+            pinnedIdentities,
+          );
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
@@ -257,145 +287,154 @@ export const TimelineLanes = memo(function TimelineLanes({
             const key = element.key ?? element.id;
             return selectedElementId === key || selectedElementIds.has(key);
           });
-          const expanded = els.some(
-            (element) =>
-              expandedTimelineElementIds.has(element.domId ?? element.id) ||
-              expandedTimelineElementIds.has(element.key ?? element.id),
+          const primaryElement = resolveTimelineLayerPrimaryElement(
+            els,
+            selectedElementId,
+            currentTime,
           );
-          const expandable = els.some((element) =>
-            expandableParentIds.has(element.domId ?? element.id),
+          const expanded = Boolean(
+            primaryElement && expandedLayerKeys?.has(primaryElement.key ?? primaryElement.id),
           );
+          const expandable = Boolean(primaryElement);
+          const authoredRows = buildTimelinePropertyRows(
+            primaryElement
+              ? (keyframeCache?.get(primaryElement.key ?? primaryElement.id)?.propertyAnimations ??
+                  (primaryElement.domId
+                    ? keyframeCache?.get(primaryElement.domId)?.propertyAnimations
+                    : undefined) ??
+                  [])
+              : [],
+          );
+          const propertyRows =
+            presentationRows?.filter(
+              (row): row is Extract<TimelinePresentationRow, { kind: "group" | "property" }> =>
+                row.track === trackNum && row.kind !== "layer",
+            ) ?? [];
           return (
-            <div
-              key={trackNum}
-              className="hf-timeline-lane relative flex"
-              style={{ height: TRACK_H }}
-            >
-              <TimelineLayerHeader
-                track={trackNum}
-                elements={els}
-                hidden={isTrackHidden}
-                locked={isTrackLocked}
-                selected={isTrackSelected}
-                expanded={expanded}
-                expandable={expandable}
-                theme={theme}
-                visualStyle={ts}
-                onToggleHidden={(hidden) => {
-                  void onToggleTrackHidden?.(trackNum, hidden);
-                }}
-                onToggleLocked={(locked) => {
-                  void onToggleTrackLocked?.(trackNum, locked);
-                }}
-                onSelect={(element) => {
-                  const elementKey = element ? (element.key ?? element.id) : null;
-                  usePlayerStore
-                    .getState()
-                    .setSelection(elementKey ? [elementKey] : [], elementKey);
-                  const selectionTime = usePlayerStore.getState().currentTime;
-                  const nextTime = resolveTimelineSelectionSeekTime(selectionTime, element);
-                  if (nextTime != null) onSeek?.(nextTime);
-                  onSelectElement?.(element);
-                }}
-                onToggleExpanded={(element) => {
-                  usePlayerStore
-                    .getState()
-                    .toggleExpandedTimelineElementId(element.domId ?? element.id);
-                }}
-                onReorderPointerDown={
-                  onMoveElement
-                    ? (event, element) => {
-                        if (
-                          event.button !== 0 ||
-                          usePlayerStore.getState().activeTool === "razor"
-                        ) {
-                          return;
+            <div key={trackNum} className="hf-timeline-layer-block">
+              <div className="hf-timeline-lane relative flex" style={{ height: TRACK_H }}>
+                <TimelineLayerHeader
+                  editingMode={editingMode}
+                  onDrillDown={onDrillDown}
+                  onScheduleExpanded={onScheduleLayerProperties}
+                  onCancelScheduledExpansion={onCancelScheduledLayerProperties}
+                  track={trackNum}
+                  elements={els}
+                  primaryElement={primaryElement}
+                  hidden={isTrackHidden}
+                  locked={isTrackLocked}
+                  selected={isTrackSelected}
+                  expanded={expanded}
+                  expandable={expandable && (authoredRows.length > 0 || propertyRows.length > 0)}
+                  theme={theme}
+                  visualStyle={ts}
+                  gutterWidth={gutterWidth}
+                  onToggleHidden={(hidden) => {
+                    void onToggleTrackHidden?.(trackNum, hidden);
+                  }}
+                  onToggleLocked={(locked) => {
+                    void onToggleTrackLocked?.(trackNum, locked);
+                  }}
+                  onSelect={(element) => {
+                    const elementKey = element ? (element.key ?? element.id) : null;
+                    usePlayerStore
+                      .getState()
+                      .setSelection(elementKey ? [elementKey] : [], elementKey);
+                    const selectionTime = usePlayerStore.getState().currentTime;
+                    const nextTime = resolveTimelineSelectionSeekTime(selectionTime, element);
+                    if (nextTime != null) onSeek?.(nextTime);
+                    onSelectElement?.(element);
+                  }}
+                  onToggleExpanded={(element) => {
+                    onToggleLayerProperties?.(element);
+                  }}
+                  onReorderPointerDown={
+                    onMoveElement
+                      ? (event, element) => {
+                          if (
+                            event.button !== 0 ||
+                            usePlayerStore.getState().activeTool === "razor"
+                          ) {
+                            return;
+                          }
+                          const elementKey = element.key ?? element.id;
+                          setSelectedElementId(elementKey);
+                          onSelectElement?.(element);
+                          const lane = event.currentTarget.closest(".hf-timeline-lane");
+                          const bounds =
+                            lane instanceof HTMLElement
+                              ? lane.getBoundingClientRect()
+                              : event.currentTarget.getBoundingClientRect();
+                          startClipDrag(
+                            element,
+                            event,
+                            "layer-order",
+                            bounds,
+                            new Set([elementKey]),
+                          );
                         }
-                        const elementKey = element.key ?? element.id;
-                        setSelectedElementId(elementKey);
-                        onSelectElement?.(element);
-                        const lane = event.currentTarget.closest(".hf-timeline-lane");
-                        const bounds =
-                          lane instanceof HTMLElement
-                            ? lane.getBoundingClientRect()
-                            : event.currentTarget.getBoundingClientRect();
-                        startClipDrag(element, event, "layer-order", bounds, new Set([elementKey]));
-                      }
-                    : undefined
-                }
-              />
-              {/* Left breathing pad — empty lane surface before t=0, scrolling
+                      : undefined
+                  }
+                />
+                {/* Left breathing pad — empty lane surface before t=0, scrolling
                   with the content (the horizontal TRACKS_TOP_PAD). Sits OUTSIDE
                   the time-mapped content div so clip/beat/menu math stays
                   content-relative (clip left = t·pps). */}
-              <div
-                aria-hidden="true"
-                className="flex-shrink-0"
-                style={{ width: TRACKS_LEFT_PAD }}
-              />
-              <div
-                style={{
-                  width: trackContentWidth,
-                  background: rowBackground,
-                  borderBottom: `1px solid ${theme.rowBorder}`,
-                  opacity: isTrackHidden ? 0.35 : 1,
-                  transition: "opacity 120ms ease",
-                }}
-                className="hf-timeline-row relative"
-                onContextMenu={(e: React.MouseEvent) => {
-                  // Clip / keyframe-diamond context menus preventDefault at the
-                  // target before this bubble handler runs — respect them so a
-                  // right-click on a clip never also opens the gap menu.
-                  if (e.defaultPrevented || !onContextMenuLane) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const time = (e.clientX - rect.left) / pps;
-                  if (time < 0) return;
-                  e.preventDefault();
-                  onContextMenuLane(e, trackNum, time);
-                }}
-              >
-                {/* Beat dots on the active track (the one holding the selection),
+                <div
+                  aria-hidden="true"
+                  className="flex-shrink-0"
+                  style={{ width: TRACKS_LEFT_PAD }}
+                />
+                <div
+                  style={{
+                    width: trackContentWidth,
+                    background: rowBackground,
+                    borderBottom: `1px solid ${theme.rowBorder}`,
+                    opacity: isTrackHidden ? 0.35 : 1,
+                    transition: "opacity 120ms ease",
+                  }}
+                  className="hf-timeline-row relative"
+                  onContextMenu={(e: React.MouseEvent) => {
+                    // Clip / keyframe-diamond context menus preventDefault at the
+                    // target before this bubble handler runs — respect them so a
+                    // right-click on a clip never also opens the gap menu.
+                    if (e.defaultPrevented || !onContextMenuLane) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const time = timeOffset + (e.clientX - rect.left) / pps;
+                    if (time < 0) return;
+                    e.preventDefault();
+                    onContextMenuLane(e, trackNum, time);
+                  }}
+                >
+                  {/* Beat dots on the active track (the one holding the selection),
                     falling back to the music track when nothing is selected. */}
-                {beatStripOnTrack && (
-                  <BeatStrip
-                    beatTimes={beatAnalysis?.beatTimes}
-                    beatStrengths={beatAnalysis?.beatStrengths}
-                    pps={pps}
-                    visibleTimeRange={visibleWindow}
-                  />
-                )}
-                {isPendingTrack && (
-                  <div
-                    className="absolute inset-0 flex items-center"
-                    style={{
-                      paddingLeft: 16,
-                      color: ts.label,
-                      fontSize: 11,
-                      letterSpacing: "0.06em",
-                      textTransform: "uppercase",
-                      opacity: 0.5,
-                    }}
-                  >
-                    New track
-                  </div>
-                )}
-                {
-                  // fallow-ignore-next-line complexity
-                  els
-                    .filter((el) => {
-                      const elementKey = el.key ?? el.id;
-                      const forceVisible =
-                        selectedElementId === elementKey ||
-                        selectedElementIds.has(elementKey) ||
-                        hoveredClip === elementKey ||
-                        draggedClip?.selectionKeys.has(elementKey) === true;
-                      return (
-                        forceVisible ||
-                        (el.start <= visibleWindow.endTime &&
-                          el.start + el.duration >= visibleWindow.startTime)
-                      );
-                    })
-                    .map((el) => {
+                  {beatStripOnTrack && (
+                    <BeatStrip
+                      beatTimes={beatAnalysis?.beatTimes}
+                      beatStrengths={beatAnalysis?.beatStrengths}
+                      pps={pps}
+                      timeOffset={timeOffset}
+                      visibleTimeRange={visibleWindow}
+                    />
+                  )}
+                  {isPendingTrack && (
+                    <div
+                      className="absolute inset-0 flex items-center"
+                      style={{
+                        paddingLeft: 16,
+                        color: ts.label,
+                        fontSize: 11,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        opacity: 0.5,
+                      }}
+                    >
+                      New track
+                    </div>
+                  )}
+                  {
+                    // fallow-ignore-next-line complexity
+                    visibleClips.map((el) => {
                       const elementKey = el.key ?? el.id;
                       const clipStyle =
                         elementStyles.get(elementKey) ?? getTrackStyle(resolveTimelineKind(el));
@@ -413,7 +452,6 @@ export const TimelineLanes = memo(function TimelineLanes({
                       if (isDraggingClip) return null;
                       const previewElement = getPreviewElement(el);
                       const cacheEntry = keyframeCache?.get(elementKey);
-                      const isPrimarySelection = selectedElementId === elementKey;
                       // Passenger of a live multi-drag: slide by the SAME formation
                       // delta (the grabbed clip's group-clamped delta) via a
                       // compositor transform on a same-geometry wrapper (absolute
@@ -448,6 +486,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                           }}
                           el={previewElement}
                           pps={pps}
+                          timeOffset={timeOffset}
                           clipY={CLIP_Y}
                           isSelected={isSelected}
                           isHovered={hoveredClip === clipKey}
@@ -491,6 +530,10 @@ export const TimelineLanes = memo(function TimelineLanes({
                               setResizingClip({
                                 element: el,
                                 edge,
+                                resizeMode:
+                                  usePlayerStore.getState().activeTool === "stretch"
+                                    ? "stretch"
+                                    : "trim",
                                 selectionKeys: gestureSelection,
                                 originClientX: e.clientX,
                                 originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
@@ -506,7 +549,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                             (e) => {
                               if (e.button !== 0) return;
                               if (usePlayerStore.getState().activeTool === "razor") return;
-                              if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
+                              if (e.shiftKey) {
                                 shiftClickClipRef.current = {
                                   element: el,
                                   anchorX: e.clientX,
@@ -614,19 +657,52 @@ export const TimelineLanes = memo(function TimelineLanes({
                               // Empty-lane clicks remain the explicit way to clear selection.
                               usePlayerStore.getState().setSelection([elementKey], elementKey);
                               const selectionTime = usePlayerStore.getState().currentTime;
-                              const nextTime = resolveTimelineSelectionSeekTime(
-                                selectionTime,
-                                previewElement,
-                              );
+                              const nextTime = resolveTimelineSelectionSeekTime(selectionTime, previewElement);
                               if (nextTime != null) onSeek?.(nextTime);
                               onSelectElement?.(el);
+                              onCancelScheduledLayerProperties?.();
                             }
                           }
                           onDoubleClick={(e) => {
                             e.stopPropagation();
+                            onCancelScheduledLayerProperties?.();
                             if (suppressClickRef.current) return;
-                            if (isComposition && onDrillDown) onDrillDown(el);
+                            if ((isComposition || (!el.sceneLayer && el.inlineScopeKind)) && onDrillDown)
+                              onDrillDown(el);
                           }}
+                          animationContent={
+                            <>
+                              {STUDIO_KEYFRAMES_ENABLED &&
+                                cacheEntry &&
+                                cacheEntry.keyframes.length > 0 && (
+                                  <TimelineClipDiamonds
+                                    keyframesData={cacheEntry}
+                                    clipStart={previewElement.start}
+                                    clipDuration={previewElement.duration}
+                                    clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                                    clipHeightPx={TRACK_H - CLIP_Y * 2}
+                                    isSelected={isSelected}
+                                    currentPercentage={
+                                      previewElement.duration > 0
+                                        ? ((currentTime - previewElement.start) /
+                                            previewElement.duration) *
+                                          100
+                                        : 0
+                                    }
+                                    elementId={elementKey}
+                                    selectedKeyframes={selectedKeyframes}
+                                    // Aggregated marks are navigation-only. Property rows own edits.
+                                    onClickKeyframe={(pct) =>
+                                      onSeek?.(
+                                        previewElement.start +
+                                          (previewElement.duration * pct) / 100,
+                                      )
+                                    }
+                                    suppressClickRef={suppressClickRef}
+                                  />
+                                )}
+                            </>
+                          }
                         >
                           {renderClipChildren(
                             previewElement,
@@ -634,46 +710,6 @@ export const TimelineLanes = memo(function TimelineLanes({
                             renderClipContent,
                             renderClipOverlay,
                           )}
-                          {cacheEntry?.animationSegments && (
-                            <TimelineClipAnimationSegments
-                              segments={cacheEntry.animationSegments}
-                              ownerElement={el}
-                              canMoveAnimationSegment={
-                                isPrimarySelection ? canMoveAnimationSegment : undefined
-                              }
-                              onMoveAnimationSegment={
-                                isPrimarySelection ? onMoveAnimationSegment : undefined
-                              }
-                              suppressClickRef={suppressClickRef}
-                            />
-                          )}
-                          {STUDIO_KEYFRAMES_ENABLED &&
-                            cacheEntry &&
-                            cacheEntry.keyframes.length > 0 && (
-                              <TimelineClipDiamonds
-                                keyframesData={cacheEntry}
-                                clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                                clipHeightPx={TRACK_H - 2 * CLIP_Y}
-                                beatsActive={beatStripOnTrack}
-                                isSelected={isSelected}
-                                currentPercentage={
-                                  previewElement.duration > 0
-                                    ? ((currentTime - previewElement.start) /
-                                        previewElement.duration) *
-                                      100
-                                    : 0
-                                }
-                                elementId={elementKey}
-                                selectedKeyframes={selectedKeyframes}
-                                onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
-                                onShiftClickKeyframe={
-                                  STUDIO_MULTI_SELECTION_ENABLED ? onShiftClickKeyframe : undefined
-                                }
-                                onContextMenuKeyframe={onContextMenuKeyframe}
-                                onMoveKeyframe={onMoveKeyframe}
-                                suppressClickRef={suppressClickRef}
-                              />
-                            )}
                         </TimelineClip>
                       );
                       if (!isPassenger) return clip;
@@ -692,8 +728,31 @@ export const TimelineLanes = memo(function TimelineLanes({
                         </div>
                       );
                     })
-                }
+                  }
+                </div>
               </div>
+              {primaryElement &&
+                propertyRows.map((row, index) => (
+                  <TimelinePropertyKeyframes
+                    isLastPropertyRow={index === propertyRows.length - 1}
+                    timeOffset={timeOffset}
+                    key={row.key}
+                    element={primaryElement}
+                    row={row}
+                    animations={
+                      keyframeCache?.get(primaryElement.key ?? primaryElement.id)
+                        ?.propertyAnimations ??
+                      (primaryElement.domId
+                        ? keyframeCache?.get(primaryElement.domId)?.propertyAnimations
+                        : undefined) ??
+                      []
+                    }
+                    pps={pps}
+                    gutterWidth={gutterWidth}
+                    trackContentWidth={trackContentWidth}
+                    onSeek={onSeek}
+                  />
+                ))}
             </div>
           );
         })

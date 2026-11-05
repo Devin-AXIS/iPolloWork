@@ -23,12 +23,14 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
   beatTimes,
   beatStrengths,
   pps,
+  timeOffset = 0,
   highlightTime,
   visibleTimeRange,
 }: {
   beatTimes: number[] | undefined;
   beatStrengths: number[] | undefined;
   pps: number;
+  timeOffset?: number;
   /** Snap guide time — drawn as a bright line even when it is not a beat. */
   highlightTime?: number | null;
   visibleTimeRange?: Pick<TimelineVisibleWindow, "startTime" | "endTime">;
@@ -41,10 +43,7 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
       {visibleBeatTimes?.map((t, i) => {
-        if (
-          visibleTimeRange &&
-          (t < visibleTimeRange.startTime || t > visibleTimeRange.endTime)
-        ) {
+        if (visibleTimeRange && (t < visibleTimeRange.startTime || t > visibleTimeRange.endTime)) {
           return null;
         }
         const isHighlight = highlightTime != null && Math.abs(t - highlightTime) < 1e-3;
@@ -55,7 +54,7 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
             key={`${t}-${i}`}
             className="absolute top-0 bottom-0"
             style={{
-              left: t * pps,
+              left: (t - timeOffset) * pps,
               width: isHighlight ? 2 : 1,
               background: `rgba(34,197,94,${opacity.toFixed(3)})`,
               boxShadow: isHighlight ? "0 0 6px rgba(34,197,94,0.9)" : undefined,
@@ -68,7 +67,7 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
         <div
           className="absolute top-0 bottom-0"
           style={{
-            left: highlightTime * pps,
+            left: (highlightTime - timeOffset) * pps,
             width: 2,
             background: "rgba(34,197,94,1)",
             boxShadow: "0 0 6px rgba(34,197,94,0.9)",
@@ -89,11 +88,13 @@ export const BeatStrip = memo(function BeatStrip({
   beatTimes,
   beatStrengths,
   pps,
+  timeOffset = 0,
   visibleTimeRange,
 }: {
   beatTimes: number[] | undefined;
   beatStrengths: number[] | undefined;
   pps: number;
+  timeOffset?: number;
   visibleTimeRange?: Pick<TimelineVisibleWindow, "startTime" | "endTime">;
 }) {
   // Active drag: which beat and how far (px) it's been dragged.
@@ -109,10 +110,7 @@ export const BeatStrip = memo(function BeatStrip({
       style={{ top: CLIP_Y, height: BEAT_BAND_H, background: "rgba(0,0,0,0.28)", zIndex: 11 }}
     >
       {beatTimes.map((t, i) => {
-        if (
-          visibleTimeRange &&
-          (t < visibleTimeRange.startTime || t > visibleTimeRange.endTime)
-        ) {
+        if (visibleTimeRange && (t < visibleTimeRange.startTime || t > visibleTimeRange.endTime)) {
           return null;
         }
         // Louder beats → larger, brighter dot. Gamma curve widens the contrast.
@@ -120,7 +118,7 @@ export const BeatStrip = memo(function BeatStrip({
         const r = 1.5 + strength * 2.5;
         const opacity = 0.25 + strength * 0.75;
         const dxPx = drag?.index === i ? drag.dx : 0;
-        const x = t * pps + dxPx;
+        const x = (t - timeOffset) * pps + dxPx;
         return (
           <div
             key={`${t}-${i}`}

@@ -42,6 +42,7 @@ export interface DraggedClipState {
 }
 
 export interface ResizingClipState {
+  resizeMode?: "trim" | "stretch";
   element: TimelineElement;
   edge: "start" | "end";
   /** Frozen at pointerdown; modifier-free trims affect only the grabbed clip. */

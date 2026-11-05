@@ -1,4 +1,4 @@
-import { Body, Container, Head, Heading, Hr, Html, Preview, Section, Text } from "@react-email/components"
+import { Body, Container, Head, Heading, Hr, Html, Preview, Section, Text } from "react-email"
 
 export type FeedbackEmailProps = {
   name: string

@@ -6,7 +6,7 @@ import type { PublishSdkSession } from "../utils/sdkCutover";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -46,6 +46,8 @@ export interface UseTimelineEditingOptions {
   publishSdkSession?: PublishSdkSession;
   /** Resync the SDK session after a server-authoritative timeline write. */
   forceReloadSdkSession?: () => void;
+  /** Refresh parsed inspector animations and timeline keyframes after the final timing rewrite. */
+  onAnimationTimingCommitted?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
 }
 

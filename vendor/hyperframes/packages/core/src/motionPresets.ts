@@ -1,7 +1,11 @@
+import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
+import { addAnimationWithKeyframesToScript } from "@hyperframes/parsers/gsap-writer-acorn";
+import type { GsapAnimation } from "@hyperframes/parsers";
 import { MOTION_PRESETS, resolveStructuredTextRecipe } from "./motionPresetCatalog.js";
 import { buildPresetKeyframes } from "./motionPresetKeyframes.js";
 import {
   compileStructuredTextMotion,
+  structuredMotionSelector,
   isStructuredTextPreset,
   type CompiledStructuredTextMotion,
   type StructuredTextRecipe,
@@ -317,6 +321,19 @@ function readExtraString(value: unknown): string | null {
   }
 }
 
+/** Manual points are reserved GSAP metadata, never animated property channels. */
+export function hasManualMotionKeyframes(animation: GsapAnimation): boolean {
+  const data = readExtraString(animation.extras?.data);
+  return (
+    data === "hf-manual-keyframes" ||
+    animation.keyframes?.keyframes.some(
+      (frame) =>
+        readExtraString(frame.properties.data) === "hf-manual-keyframe" ||
+        ("origin" in frame && frame.origin === "manual"),
+    ) === true
+  );
+}
+
 export function readMotionInstanceFromExtras(
   extras: Record<string, unknown> | undefined,
 ): MotionInstance | null {
@@ -390,6 +407,9 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
       // wrapper), giving Studio a stable, direct replacement handle.
       id: instance.id,
       data: encodeMotionData({ ...instance, parameters: validated.parameters }),
+      ...(["element.enter.bounce-card", "motion.emphasis.magnetic-snap"].includes(preset.id)
+        ? { immediateRender: true }
+        : {}),
       ...(instance.loop && instance.repeat > 0 ? { repeat: instance.repeat } : {}),
       ...(stagger > 0 ? { stagger } : {}),
     },
@@ -405,6 +425,8 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {
+  if (preset.id.startsWith("camera.")) return 3;
+  if (preset.id.startsWith("transition.")) return 0.9;
   const migratedCaptionDuration = MIGRATED_CAPTION_DURATIONS[preset.id];
   if (migratedCaptionDuration !== undefined) return migratedCaptionDuration;
   if (preset.id.startsWith("background.")) return 3.2;
@@ -474,4 +496,148 @@ export function createMotionInstance(input: {
     repeat,
     parameters: validated.parameters,
   };
+}
+
+export function structuredTrackTargetCount(
+  structured: NonNullable<ReturnType<typeof compileMotionInstance>["structured"]>,
+  role: NonNullable<
+    ReturnType<typeof compileMotionInstance>["structured"]
+  >["tracks"][number]["role"],
+): number {
+  if (role === "particle") return structured.particles?.length ?? 0;
+  const layer = structured.layers.find((candidate) => candidate.role === role);
+  return layer?.perUnit ? structured.units.length : 1;
+}
+
+export function readAuthoredMotionPositionBase(
+  animations: readonly GsapAnimation[],
+  targetSelector: string,
+): { x: number; y: number } {
+  const base = { x: 0, y: 0 };
+  for (const animation of animations) {
+    if (
+      animation.targetSelector !== targetSelector ||
+      animation.method !== "set" ||
+      !animation.global ||
+      animation.extras?.data === "hf-hold"
+    ) {
+      continue;
+    }
+    const x = animation.properties.x ?? animation.properties.translateX;
+    const y = animation.properties.y ?? animation.properties.translateY;
+    if (typeof x === "number") base.x = x;
+    if (typeof y === "number") base.y = y;
+  }
+  return base;
+}
+
+export function rebaseCompiledMotionKeyframes(
+  keyframes: ReturnType<typeof compileMotionInstance>["keyframes"],
+  base: { x: number; y: number },
+): ReturnType<typeof compileMotionInstance>["keyframes"] {
+  return keyframes.map((keyframe) => {
+    const properties = { ...keyframe.properties };
+    for (const property of ["x", "translateX"] as const) {
+      if (typeof properties[property] === "number") properties[property] += base.x;
+    }
+    for (const property of ["y", "translateY"] as const) {
+      if (typeof properties[property] === "number") properties[property] += base.y;
+    }
+    return { ...keyframe, properties };
+  });
+}
+
+/** Recompiling a preset is safe only while its channels still match its generated source.
+ * Compare through the canonical writer/parser so legacy unmarked edits and split channels
+ * are protected as well as explicitly recorded manual points. */
+export function motionSourceMatchesPreset(
+  animations: readonly GsapAnimation[],
+  sourceText: string,
+  authoredPositionBase: { x: number; y: number } = { x: 0, y: 0 },
+): boolean {
+  const groups = new Map<string, Array<{ animation: GsapAnimation; instance: MotionInstance }>>();
+  for (const animation of animations) {
+    const instance = readMotionInstanceFromExtras(animation.extras);
+    if (!instance) continue;
+    const entry = { animation, instance };
+    if (hasManualMotionKeyframes(entry.animation)) return false;
+    const group = groups.get(entry.instance.id) ?? [];
+    group.push(entry);
+    groups.set(entry.instance.id, group);
+  }
+  for (const group of groups.values()) {
+    const instance = group[0]?.instance;
+    if (!instance) continue;
+    let expectedSource = "const tl = gsap.timeline({ paused: true });";
+    const compiled = compileMotionInstance(instance, sourceText);
+    if (compiled.structured) {
+      for (const [trackIndex, track] of compiled.structured.tracks.entries()) {
+        const targetCount = structuredTrackTargetCount(compiled.structured, track.role);
+        const staggerSpan = track.stagger * Math.max(0, targetCount - 1);
+        expectedSource = addAnimationWithKeyframesToScript(
+          expectedSource,
+          structuredMotionSelector(instance.target.selector, track.role),
+          compiled.position + track.position,
+          track.duration,
+          track.keyframes,
+          undefined,
+          undefined,
+          {
+            ...compiled.extras,
+            id: `${instance.id}:${trackIndex}:${track.role}`,
+            ...(instance.loop && instance.repeat > 0
+              ? {
+                  repeatDelay: Number(
+                    Math.max(0, instance.duration - track.duration - staggerSpan).toFixed(12),
+                  ),
+                }
+              : {}),
+            stagger: track.stagger,
+          },
+        ).script;
+      }
+    } else {
+      expectedSource = addAnimationWithKeyframesToScript(
+        expectedSource,
+        compiled.targetSelector,
+        compiled.position,
+        compiled.duration,
+        compiled.targetSelector === instance.target.selector
+          ? rebaseCompiledMotionKeyframes(compiled.keyframes, authoredPositionBase)
+          : compiled.keyframes,
+        compiled.ease,
+        undefined,
+        compiled.extras,
+      ).script;
+    }
+    const expected = parseGsapScriptAcorn(expectedSource).animations.filter(
+      (animation) => readMotionInstanceFromExtras(animation.extras)?.id === instance.id,
+    );
+    if (expected.length !== group.length) return false;
+    const shape = (animation: GsapAnimation) =>
+      JSON.stringify({
+        selector: animation.targetSelector,
+        method: animation.method,
+        position: animation.resolvedStart ?? animation.position,
+        duration: animation.duration,
+        ease: animation.ease,
+        keyframes: animation.keyframes,
+        properties: Object.entries(animation.properties)
+          .filter(([key]) => key !== "id" && key !== "data")
+          .sort(([first], [second]) => first.localeCompare(second)),
+        arcPath: animation.arcPath,
+        extras: Object.entries(animation.extras ?? {})
+          .filter(([key]) => key !== "data" && key !== "id")
+          .sort(([first], [second]) => first.localeCompare(second)),
+      });
+    const expectedShapes = expected.map(shape).sort();
+    if (
+      group
+        .map((entry) => shape(entry.animation))
+        .sort()
+        .some((value, index) => value !== expectedShapes[index])
+    )
+      return false;
+  }
+  return true;
 }

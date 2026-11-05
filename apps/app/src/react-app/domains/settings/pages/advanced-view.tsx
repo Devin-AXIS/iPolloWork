@@ -13,7 +13,7 @@ import { advancedLocalReducer, initialAdvancedLocalState } from "./advanced-view
 import {
   AdvancedDeveloperSection,
   AdvancedOrganizationServerSection,
-  AdvancedRuntimeMigrationSection,
+  AdvancedRuntimeConfigSection,
   AdvancedRuntimeSection,
 } from "./advanced-view-sections";
 
@@ -40,8 +40,7 @@ export type AdvancedViewProps = {
   toggleDeveloperMode: () => void;
   opencodeDevModeEnabled: boolean;
   openDebugDeepLink: (rawUrl: string) => Promise<{ ok: boolean; message: string }>;
-  canMigrateRuntimeConfig: boolean;
-  migrateRuntimeConfig: () => Promise<{ migrated: boolean; keys: string[] }>;
+  canReadRuntimeConfig: boolean;
   getRuntimeConfigStatus: () => Promise<iPolloWorkRuntimeConfigStatus>;
   organizationServer: AdvancedOrganizationServerSession;
   cloudMcpUrl: string | null;
@@ -62,8 +61,6 @@ export function AdvancedView(props: AdvancedViewProps) {
     deepLinkInput: debugDeepLinkInput,
     deepLinkBusy: debugDeepLinkBusy,
     deepLinkStatus: debugDeepLinkStatus,
-    migrationBusy,
-    migrationStatus,
   } = localState;
 
   const clientStatusLabel = (() => {
@@ -110,7 +107,7 @@ export function AdvancedView(props: AdvancedViewProps) {
       ];
 
   const ipolloworkDetailLines = props.ipolloworkServerStatus === "connected"
-    ? ["Runtime DB, workspace config, and migration diagnostics are available."]
+    ? ["Runtime DB and workspace config diagnostics are available."]
     : ["Runtime config diagnostics need the iPolloWork server connection."];
 
   const submitDebugDeepLink = async () => {
@@ -135,7 +132,7 @@ export function AdvancedView(props: AdvancedViewProps) {
   };
 
   const refreshRuntimeConfigStatus = async () => {
-    if (!props.canMigrateRuntimeConfig) {
+    if (!props.canReadRuntimeConfig) {
       setConfigStatus(null);
       return;
     }
@@ -152,29 +149,7 @@ export function AdvancedView(props: AdvancedViewProps) {
 
   useEffect(() => {
     void refreshRuntimeConfigStatus();
-  }, [props.canMigrateRuntimeConfig]);
-
-  const migrateRuntimeConfig = async () => {
-    if (props.busy || migrationBusy || !props.canMigrateRuntimeConfig) return;
-    dispatchLocal({ type: "migrationStart" });
-    try {
-      const result = await props.migrateRuntimeConfig();
-      await refreshRuntimeConfigStatus();
-      dispatchLocal({
-        type: "migrationStatus",
-        status: result.migrated
-          ? `Migrated legacy runtime config: ${result.keys.join(", ")}.`
-          : "No legacy runtime config found for this workspace.",
-      });
-    } catch (error) {
-      dispatchLocal({
-        type: "migrationStatus",
-        status: error instanceof Error ? error.message : "Failed to migrate legacy runtime config.",
-      });
-    } finally {
-      dispatchLocal({ type: "migrationDone" });
-    }
-  };
+  }, [props.canReadRuntimeConfig]);
 
   return (
     <LayoutStack>
@@ -201,16 +176,12 @@ export function AdvancedView(props: AdvancedViewProps) {
         ipolloworkDetailLines={ipolloworkDetailLines}
       />
 
-      <AdvancedRuntimeMigrationSection
-        busy={props.busy}
-        canMigrate={props.canMigrateRuntimeConfig}
-        migrationBusy={migrationBusy}
-        migrationStatus={migrationStatus}
+      <AdvancedRuntimeConfigSection
+        canRead={props.canReadRuntimeConfig}
         configStatus={configStatus}
         configStatusBusy={configStatusBusy}
         configStatusError={configStatusError}
         onRefresh={refreshRuntimeConfigStatus}
-        onMigrate={migrateRuntimeConfig}
       />
 
       <AdvancedDeveloperSection

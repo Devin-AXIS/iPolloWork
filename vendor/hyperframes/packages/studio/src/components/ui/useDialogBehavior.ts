@@ -14,6 +14,7 @@ interface DialogBehaviorOptions {
    * draft the user hasn't submitted). Direct onClose calls are not guarded.
    */
   canClose?: () => boolean;
+  trapFocus?: boolean;
 }
 
 /**
@@ -27,6 +28,7 @@ export function useDialogBehavior({
   onClose,
   containerRef,
   canClose,
+  trapFocus = true,
 }: DialogBehaviorOptions) {
   const restoreRef = useRef<HTMLElement | null>(null);
   const canCloseRef = useRef(canClose);
@@ -50,12 +52,14 @@ export function useDialogBehavior({
     (first ?? container)?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
+      const activeDialog = document.activeElement?.closest('[role="dialog"]');
+      if (activeDialog && activeDialog !== containerRef.current) return;
       if (e.key === "Escape") {
         e.stopPropagation();
         requestClose();
         return;
       }
-      if (e.key !== "Tab") return;
+      if (e.key !== "Tab" || !trapFocus) return;
       const el = containerRef.current;
       if (!el) return;
       const focusables = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE));
@@ -77,7 +81,7 @@ export function useDialogBehavior({
       restoreRef.current?.focus();
       restoreRef.current = null;
     };
-  }, [open, containerRef, requestClose]);
+  }, [open, containerRef, requestClose, trapFocus]);
 
   return { requestClose };
 }

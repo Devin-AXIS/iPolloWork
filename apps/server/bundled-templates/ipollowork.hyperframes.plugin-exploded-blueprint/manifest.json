@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.plugin-exploded-blueprint",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "plugins",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "plugins"
+    "plugins",
+    "topic:product"
   ],
   "surface": "video",
   "title": "Plugin Exploded Blueprint",

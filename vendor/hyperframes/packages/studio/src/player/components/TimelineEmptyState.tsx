@@ -1,5 +1,5 @@
 import type { DragEventHandler } from "react";
-import { GUTTER, RULER_H } from "./timelineLayout";
+import { DEFAULT_TIMELINE_GUTTER_WIDTH, RULER_H } from "./timelineLayout";
 import { useStudioI18n } from "../../i18n";
 
 interface TimelineEmptyStateProps {
@@ -30,13 +30,13 @@ export function TimelineEmptyState({
       {/* Ruler */}
       <div
         className="flex-shrink-0 border-b border-neutral-800/40 flex items-end relative"
-        style={{ height: RULER_H, paddingLeft: GUTTER }}
+        style={{ height: RULER_H, paddingLeft: DEFAULT_TIMELINE_GUTTER_WIDTH }}
       >
         {[0, 10, 20, 30, 40, 50].map((s) => (
           <div
             key={s}
             className="flex flex-col items-center"
-            style={{ position: "absolute", left: GUTTER + s * 14 }}
+            style={{ position: "absolute", left: DEFAULT_TIMELINE_GUTTER_WIDTH + s * 14 }}
           >
             <span className="text-[9px] text-neutral-600 font-mono tabular-nums leading-none mb-0.5">
               {`${Math.floor(s / 60)

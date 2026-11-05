@@ -13,9 +13,11 @@ import {
   Bold,
   Check,
   ChevronDown,
+  Copy,
   FlipHorizontal2,
   Grip,
   Image,
+  Video,
   Italic,
   Link2,
   List,
@@ -49,6 +51,7 @@ import { DesignGradientPicker } from "./design-gradient-picker";
 import { DesignImageFitSelect, type DesignImageFitMode } from "./design-image-fit-select";
 import { DesignPanelSelect } from "./design-panel-select";
 import panelSelectChevron from "./assets/panel-select-chevron.svg";
+import { StudioInspectorPanel } from "../panel/studio-inspector-panel";
 
 type DesignPropertiesInspectorProps = {
   selection: DesignSelection | null;
@@ -66,6 +69,8 @@ type DesignPropertiesInspectorProps = {
   onDelete: () => void;
   onChooseReplacementImage: () => void;
   onChooseBackgroundImage: () => void;
+  onChooseVideo?: () => void;
+  mediaBusy?: boolean;
   children?: React.ReactNode;
 };
 
@@ -94,6 +99,8 @@ function ElementPropertiesContent({
   onDelete,
   onChooseReplacementImage,
   onChooseBackgroundImage,
+  onChooseVideo,
+  mediaBusy,
 }: Omit<DesignPropertiesInspectorProps, "selection" | "activeTab" | "onActiveTabChange" | "children"> & { selection: DesignSelection }) {
   const fontSize = numericValue(selection.styles.fontSize, 16);
   const lineHeight = numericValue(selection.styles.lineHeight, 14);
@@ -103,11 +110,14 @@ function ElementPropertiesContent({
   const shadowIntensity = shadowIntensityValue(selection.styles.boxShadow);
   const fillField = selection.colorField;
   const backgroundValue = selection.styles[fillField];
-  const [imageFillOpen, setImageFillOpen] = React.useState(false);
+  const [mediaFillOpen, setMediaFillOpen] = React.useState<"image" | "video" | null>(null);
+  React.useEffect(() => setMediaFillOpen(null), [selection.id, selection.media?.kind]);
   const [linkOpen, setLinkOpen] = React.useState(Boolean(selection.href));
   const [linkDraft, setLinkDraft] = React.useState(selection.href);
   const [aspectRatioLocked, setAspectRatioLocked] = React.useState(false);
-  const fillType = imageFillOpen && selection.tag !== "img" ? "image" : fillTypeFor(selection);
+  const [htmlCopied, setHtmlCopied] = React.useState(false);
+  const htmlCopyFeedbackTimer = React.useRef<number | null>(null);
+  const fillType = mediaFillOpen ?? fillTypeFor(selection);
   const isMixed = (field: DesignStyleField) => mixedStyleFields.includes(field);
 
   React.useEffect(() => {
@@ -116,6 +126,30 @@ function ElementPropertiesContent({
   }, [selection.id, selection.href]);
 
   React.useEffect(() => setAspectRatioLocked(false), [selection.id]);
+
+  React.useEffect(() => {
+    setHtmlCopied(false);
+    if (htmlCopyFeedbackTimer.current !== null) window.clearTimeout(htmlCopyFeedbackTimer.current);
+    htmlCopyFeedbackTimer.current = null;
+  }, [selection.id]);
+
+  React.useEffect(() => () => {
+    if (htmlCopyFeedbackTimer.current !== null) window.clearTimeout(htmlCopyFeedbackTimer.current);
+  }, []);
+
+  const copySelectedHtml = async () => {
+    try {
+      await navigator.clipboard.writeText(selection.html);
+      setHtmlCopied(true);
+      if (htmlCopyFeedbackTimer.current !== null) window.clearTimeout(htmlCopyFeedbackTimer.current);
+      htmlCopyFeedbackTimer.current = window.setTimeout(() => {
+        setHtmlCopied(false);
+        htmlCopyFeedbackTimer.current = null;
+      }, 2_000);
+    } catch {
+      // Clipboard access can be denied by the host; keep the action available for retry.
+    }
+  };
 
   const width = numericValue(selection.styles.width, selection.rect.width);
   const height = numericValue(selection.styles.height, selection.rect.height);
@@ -132,18 +166,18 @@ function ElementPropertiesContent({
 
   const applyFillType = (type: FillType) => {
     if (type === "none") {
-      setImageFillOpen(false);
+      setMediaFillOpen(null);
       onApplyFields({ backgroundColor: "transparent", backgroundImage: "none" });
     }
     if (type === "solid") {
-      setImageFillOpen(false);
+      setMediaFillOpen(null);
       onApplyFields({ backgroundColor: isTransparentColor(backgroundValue) ? FILL_COLORS[0] ?? "#2f6de1" : backgroundValue, backgroundImage: "none" });
     }
     if (type === "gradient") {
-      setImageFillOpen(false);
+      setMediaFillOpen(null);
       onApplyFields({ backgroundImage: DEFAULT_GRADIENT });
     }
-    if (type === "image") setImageFillOpen(true);
+    if (type === "image" || type === "video") setMediaFillOpen(type);
   };
 
   const applyPixels = (field: DesignStyleField, value: string, remember?: boolean) => {
@@ -309,11 +343,12 @@ function ElementPropertiesContent({
       </InspectorSection> : null}
 
       <InspectorSection title={t("design.properties.section.fill")}>
-        {!isMultiSelection ? <div className="grid grid-cols-4 gap-1.5">
+        {!isMultiSelection ? <div className="grid grid-flow-col auto-cols-fr gap-1.5">
           <PropertyButton active={fillType === "none"} aria-label="No fill" onClick={() => applyFillType("none")}><Minus /></PropertyButton>
           <PropertyButton active={fillType === "solid"} aria-label="Solid fill" onClick={() => applyFillType("solid")}><span className="size-3 rounded-[2px] border border-current" /></PropertyButton>
           <PropertyButton active={fillType === "gradient"} aria-label="Gradient fill" onClick={() => applyFillType("gradient")}><Grip /></PropertyButton>
-          <PropertyButton active={fillType === "image"} aria-label="Image fill" onClick={() => applyFillType("image")}><Image /></PropertyButton>
+          <PropertyButton active={fillType === "image"} aria-label={t("media.workbench.image_fill")} title={t("media.workbench.image_fill")} onClick={() => applyFillType("image")}><Image /></PropertyButton>
+          {onChooseVideo && !isMultiSelection ? <PropertyButton active={fillType === "video"} aria-label={t("media.workbench.video_fill")} title={t("media.workbench.video_fill")} onClick={() => applyFillType("video")}><Video /></PropertyButton> : null}
         </div> : null}
         {isMultiSelection ? <>
           <ColorField label={t("design.properties.field.text_color")} mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />
@@ -321,6 +356,7 @@ function ElementPropertiesContent({
         </> : <>
           {fillType === "solid" ? <ColorField value={backgroundValue || "#000000"} onChange={(value, remember) => onApplyField(fillField, value, remember)} /> : null}
           {fillType === "gradient" ? <DesignGradientPicker value={selection.styles.backgroundImage} recommendationColors={gradientRecommendationColors} onChange={(value, remember) => onApplyField("backgroundImage", value, remember)} /> : null}
+          {fillType === "video" && onChooseVideo ? <VideoFillPicker selection={selection} onChoose={onChooseVideo} onApplyFields={onApplyFields} busy={mediaBusy} /> : null}
           {fillType === "image" ? <ImageFillPicker selection={selection} onApplyFields={onApplyFields} onChooseImage={selection.tag === "img" ? onChooseReplacementImage : onChooseBackgroundImage} /> : null}
         </>}
       </InspectorSection>
@@ -351,7 +387,22 @@ function ElementPropertiesContent({
       </InspectorSection>
       </fieldset>
 
-      <InspectorSection title="HTML" last>
+      <InspectorSection
+        title="HTML"
+        action={
+          <button
+            type="button"
+            className="flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-foreground active:text-background [&_svg]:size-3.5"
+            aria-label={htmlCopied ? t("message.copied") : t("message.copy")}
+            title={htmlCopied ? t("message.copied") : t("message.copy")}
+            data-testid="copy-selected-html"
+            onClick={() => void copySelectedHtml()}
+          >
+            {htmlCopied ? <><Check /><span aria-live="polite">{t("message.copied")}</span></> : <Copy />}
+          </button>
+        }
+        last
+      >
         <textarea
           readOnly
           value={selection.html}
@@ -383,8 +434,9 @@ export function DesignSystemInspectorShell({ onClose, children }: Pick<DesignPro
 
 function InspectorShell({ activeTab, onActiveTabChange, onClose, children, designSystemOnly = false }: Pick<DesignPropertiesInspectorProps, "activeTab" | "onActiveTabChange" | "onClose" | "children"> & { designSystemOnly?: boolean }) {
   return (
-    <aside className="flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-border bg-background text-foreground" aria-label="Design inspector">
-      <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-border bg-background !px-4">
+    <StudioInspectorPanel
+      ariaLabel="Design inspector"
+      header={<header className="relative flex h-[58px] w-full shrink-0 items-center border-b border-border bg-background px-4">
         <div className="flex w-[240px] shrink-0 gap-1">
           {!designSystemOnly ? <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-foreground transition-colors", activeTab === "element" ? "bg-muted" : "hover:bg-muted")} aria-pressed={activeTab === "element"}>{t("design.properties.tabs.element")}</button> : null}
           <button type="button" onClick={() => onActiveTabChange("design-system")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-1 text-[12px] font-semibold leading-none text-foreground transition-colors", activeTab === "design-system" ? "bg-muted" : "hover:bg-muted")} aria-pressed={activeTab === "design-system"}>{t("design.properties.tabs.design_system")}</button>
@@ -392,19 +444,19 @@ function InspectorShell({ activeTab, onActiveTabChange, onClose, children, desig
         <button type="button" className="absolute right-4 grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" onClick={onClose} aria-label={t("design.properties.action.close")}>
           <X className="size-4" strokeWidth={1.7} />
         </button>
-      </header>
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {children}
-      </div>
-    </aside>
+      </header>}
+    >
+      {children}
+    </StudioInspectorPanel>
   );
 }
 
-type FillType = "none" | "solid" | "gradient" | "image";
+type FillType = "none" | "solid" | "gradient" | "image" | "video";
 
 const DEFAULT_GRADIENT = "linear-gradient(180deg, #2e6bdb 0%, #76e3e9 100%)";
 
 function fillTypeFor(selection: DesignSelection): FillType {
+  if (selection.tag === "video" || selection.media?.kind === "video") return "video";
   if (selection.tag === "img") return "image";
   const image = selection.styles.backgroundImage.trim();
   if (/^url\(/i.test(image)) return "image";
@@ -412,8 +464,23 @@ function fillTypeFor(selection: DesignSelection): FillType {
   return isTransparentColor(selection.styles.backgroundColor) ? "none" : "solid";
 }
 
+function VideoFillPicker({ selection, onChoose, onApplyFields, busy }: {
+  selection: DesignSelection; onChoose: () => void;
+  onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void; busy?: boolean;
+}) {
+  const fit = selection.styles.objectFit;
+  return <div className="mt-3 space-y-3">
+    <DesignImageFitSelect value={fit === "contain" ? "fit" : fit === "fill" ? "fill" : "crop"}
+      onChange={mode => onApplyFields({ objectFit: mode === "fit" ? "contain" : mode === "fill" ? "fill" : "cover", objectPosition: "50% 50%" })} />
+    <div className="relative flex h-[100px] items-center justify-center overflow-hidden rounded-lg bg-muted">
+      {selection.media?.kind === "video" ? <video src={selection.media.preview} muted playsInline preload="metadata" className="absolute inset-0 size-full object-cover" /> : <Video className="absolute size-8 text-muted-foreground/40" />}
+      <button type="button" disabled={busy} onClick={onChoose} className="relative rounded-lg bg-foreground px-4 py-2 text-[10px] text-background focus-visible:ring-2 disabled:opacity-50">{t("design.properties.action.choose_media")}</button>
+    </div>
+  </div>;
+}
+
 function ImageFillPicker({ selection, onApplyFields, onChooseImage }: { selection: DesignSelection; onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void; onChooseImage: () => void }) {
-  const backgroundSource = selection.styles.backgroundImage.match(/^url\(["']?(.*?)["']?\)$/i)?.[1] ?? (selection.tag === "img" ? selection.source : "");
+  const backgroundSource = selection.styles.backgroundImage.match(/^url\(["']?(.*?)["']?\)$/i)?.[1] ?? (selection.tag === "img" ? selection.src : "");
   const mode = imageFitMode(selection);
   const applyMode = (next: ImageFitMode) => onApplyFields(imageModeStyles(selection, next));
 
@@ -495,10 +562,13 @@ function ShadowIntensityControl({ value, shadow, onChange }: { value: number; sh
   );
 }
 
-function InspectorSection({ title, children, last = false }: { title: string; children: React.ReactNode; last?: boolean }) {
+function InspectorSection({ title, action, children, last = false }: { title: string; action?: React.ReactNode; children: React.ReactNode; last?: boolean }) {
   return (
     <section className={cn("px-4 py-3.5", !last && "border-b border-border")}>
-      <h3 className="mb-3 text-[14px] font-medium text-foreground">{title}</h3>
+      <div className="mb-3 flex min-h-7 items-center justify-between gap-2">
+        <h3 className="text-[14px] font-medium text-foreground">{title}</h3>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -682,7 +752,7 @@ function FontFamilyPicker({ value, onChange, mixed = false }: { value: string; o
         <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={mixed ? undefined : { fontFamily: currentFamily }}>{mixed ? t("design.properties.mixed") : currentFamily}</span>
         <img src={panelSelectChevron} alt="" className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 rounded-xl border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_18px_rgba(37,41,49,0.11)] before:hidden">
+      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 p-3">
         <Input
           autoFocus
           value={query}

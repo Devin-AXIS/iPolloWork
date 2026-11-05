@@ -3,8 +3,6 @@ export const TOKENSTAR_PROVIDER = {
   name: "TokenStar",
   baseURL: "https://api.tokenstar.io/v1",
   fallbackModels: [
-    { id: "gpt-5.4", name: "GPT 5.4" },
-    { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
     { id: "gpt-5.5", name: "GPT 5.5" },
     { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
     { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },
@@ -36,10 +34,6 @@ const humanizeModelName = (id: string) =>
 
 export function tokenStarModelName(id: string) {
   return TOKENSTAR_PROVIDER.fallbackModels.find((model) => model.id === id)?.name ?? humanizeModelName(id);
-}
-
-export function tokenStarModelSupportsEffort(id: string) {
-  return id === "gpt-5.5" || id.startsWith("gpt-5.6-");
 }
 
 export function tokenStarRuntimeModels(modelIds: string[]) {
@@ -74,3 +68,4 @@ export function parseTokenStarModels(value: unknown): TokenStarModel[] {
     return [{ id, name }];
   });
 }
+import { tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";

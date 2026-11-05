@@ -21,10 +21,10 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
-const { useNotificationStore } = await import("../src/react-app/kernel/notification-store");
+const { useNotificationStore, PERSISTED_NOTIFICATION_STORE_KEY } = await import("../src/react-app/kernel/notification-store");
 
 function reset() {
-  useNotificationStore.setState({ notifications: [] });
+  useNotificationStore.setState({ notifications: [], clearedSources: {} });
   storage.clear();
 }
 
@@ -106,6 +106,36 @@ describe("notification store", () => {
     add({ kind: "system", title: "Two" });
     clearAll();
     expect(useNotificationStore.getState().notifications).toHaveLength(0);
+  });
+
+  test("clear all persists a source boundary without clearing another enterprise or member", async () => {
+    const { add, clearAll } = useNotificationStore.getState();
+    add({ kind: "system", title: "Local notification" });
+    clearAll({ id: "enterprise-a:member-a", through: 1000 });
+    clearAll({ id: "enterprise-b:member-a", through: 2000 });
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    expect(useNotificationStore.getState().clearedSources["enterprise-a:member-b"]).toBeUndefined();
+    await useNotificationStore.persist.rehydrate();
+    expect(useNotificationStore.getState().clearedSources).toEqual({ "enterprise-a:member-a": 1000, "enterprise-b:member-a": 2000 });
+  });
+
+  test("a stale clear and a personal clear cannot undo a saved remote boundary", () => {
+    const { clearAll } = useNotificationStore.getState();
+    clearAll({ id: "enterprise:member", through: 2000 });
+    clearAll({ id: "enterprise:member", through: 1000 });
+    clearAll();
+    expect(useNotificationStore.getState().clearedSources["enterprise:member"]).toBe(2000);
+  });
+
+  test("legacy and malformed saved clear boundaries do not break notifications", async () => {
+    storage.set(PERSISTED_NOTIFICATION_STORE_KEY, JSON.stringify({ state: { notifications: [] }, version: 0 }));
+    await useNotificationStore.persist.rehydrate();
+    expect(useNotificationStore.getState().clearedSources).toEqual({});
+    storage.set(PERSISTED_NOTIFICATION_STORE_KEY, JSON.stringify({ state: { notifications: [], clearedSources: { valid: 1000, negative: -1, text: "2000", object: {} } }, version: 0 }));
+    await useNotificationStore.persist.rehydrate();
+    expect(useNotificationStore.getState().clearedSources).toEqual({ valid: 1000 });
+    useNotificationStore.getState().add({ kind: "system", title: "New event" });
+    expect(useNotificationStore.getState().notifications[0].title).toBe("New event");
   });
 
   test("caps the list at 100 entries", () => {

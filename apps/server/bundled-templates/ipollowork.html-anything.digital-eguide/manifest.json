@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.digital-eguide",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "article",
   "subcategory": "marketing",
@@ -11,7 +11,8 @@
     "eguide",
     "lookbook",
     "lead magnet",
-    "playbook"
+    "playbook",
+    "topic:education"
   ],
   "surface": "design",
   "title": "Digital E-Guide",

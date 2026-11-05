@@ -52,6 +52,21 @@ export interface ZOrderPatch {
   zIndex: number;
 }
 
+/** Place a person between the composition background and every content layer. */
+export function resolveAvatarLowLayer(target: HTMLElement): ZOrderPatch[] {
+  const { entries } = getFamily(target);
+  const siblings = entries.filter(entry => entry.element !== target)
+    .sort((a, b) => a.zIndex - b.zIndex || a.domIndex - b.domIndex);
+  const isBackground = ({ element }: RenderEntry) =>
+    element.getAttribute("data-layer-role") === "background" ||
+    /^(?:background|bg|backdrop)(?:[-_\d]|$)/i.test(element.id) ||
+    Array.from(element.classList).some(name => /^(?:background|bg|backdrop)$/.test(name));
+  const order = [...siblings.filter(isBackground).map(entry => entry.element), target,
+    ...siblings.filter(entry => !isBackground(entry)).map(entry => entry.element)];
+  return order.map((element, zIndex) => ({ element, zIndex: zIndex + 1 }))
+    .filter(patch => readEffectiveZIndex(patch.element) !== patch.zIndex);
+}
+
 /** Injectable knobs for the pure resolver (kept mockable like rect reading). */
 export interface ZOrderResolveOptions {
   /**

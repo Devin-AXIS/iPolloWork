@@ -21,6 +21,22 @@ export interface IframeGsap {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// GSAP reserves `data` for metadata; native keyframe writers round-trip it.
+export const MANUAL_KEYFRAME_MARKER = "hf-manual-keyframe";
+
+export function markManualKeyframe(
+  mutation: Record<string, unknown>,
+): Record<string, unknown> {
+  const properties = mutation.properties;
+  if (
+    mutation.type !== "add-keyframe" ||
+    !properties ||
+    typeof properties !== "object" ||
+    Array.isArray(properties)
+  ) return mutation;
+  return { ...mutation, properties: { ...properties, data: MANUAL_KEYFRAME_MARKER } };
+}
+
 export const PROPERTY_DEFAULTS: Record<string, number> = {
   opacity: 1,
   x: 0,
@@ -193,4 +209,19 @@ export function parsePercentageKeyframes(
 /** Convert a tween-relative percentage to an absolute time. */
 export function toAbsoluteTime(tweenPos: number, tweenDur: number, percentage: number): number {
   return tweenPos + (percentage / 100) * tweenDur;
+}
+
+/** Selectors proven to address only this element in the current preview. */
+export function getOwnedAnimationSelectors(
+  selection: DomEditSelection,
+  animations: GsapAnimation[],
+): string[] {
+  return [...new Set(animations.map(animation => animation.targetSelector))].filter(target => {
+    try {
+      const matches = selection.element.ownerDocument.querySelectorAll(target);
+      return matches.length === 1 && matches[0] === selection.element;
+    } catch {
+      return false;
+    }
+  });
 }

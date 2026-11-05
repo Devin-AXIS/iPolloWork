@@ -3,6 +3,7 @@ import { usePlayerStore } from "../player";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import { clampNumber, type RightPanelTab } from "../utils/studioHelpers";
 import { parseProjectIdFromHash } from "../utils/projectRouting";
+import type { ResolveDomSelectionOptions } from "./useDomSelection";
 import {
   buildStudioHash,
   parseStudioUrlStateFromHash,
@@ -24,7 +25,7 @@ interface UseStudioUrlStateParams {
   domEditSelection: DomEditSelection | null;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
-    options?: { preferClipAncestor?: boolean },
+    options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
   applyDomSelection: (
     selection: DomEditSelection | null,
@@ -168,7 +169,7 @@ export function useStudioUrlState({
         applyDomSelection(null, { revealPanel: false });
         return true;
       }
-      void buildDomSelectionFromTarget(element, { preferClipAncestor: false }).then((resolved) => {
+      void buildDomSelectionFromTarget(element, { exactTarget: true }).then((resolved) => {
         applyDomSelection(resolved, { revealPanel: false });
       });
       return true;
@@ -178,6 +179,15 @@ export function useStudioUrlState({
 
   useEffect(() => {
     if (!projectId || hydratedSeekRef.current || compositionLoading) return;
+    const playback = usePlayerStore.getState();
+    if (initialState.currentTime === 0 && !initialState.selection && playback.liveGenerationActive && playback.liveGeneration && playback.isPlaying) {
+      // The host's default t=0 is startup state, not a user seek that should
+      // pause a first publication which became playable before URL hydration.
+      stableTimeRef.current = playback.currentTime;
+      hydratedSeekRef.current = true;
+      hydratedInitialTimeRef.current = true;
+      return;
+    }
     const nextTime =
       duration > 0
         ? clampNumber(initialState.currentTime ?? 0, 0, duration)

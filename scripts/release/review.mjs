@@ -6,6 +6,7 @@ const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const args = process.argv.slice(2);
 const outputJson = args.includes("--json");
 const strict = args.includes("--strict");
+const requireSidecars = args.includes("--require-sidecars");
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const readText = (path) => readFileSync(path, "utf8");
@@ -111,7 +112,8 @@ if (existsSync(sidecarManifestPath)) {
       `${serverEntry ?? "?"} vs ${versions.server ?? "?"}`,
     );
   }
-} else {
+} else if (requireSidecars) {
+  addCheck("Sidecar manifest exists", false, "Build the requested orchestrator sidecars before publishing them.");
   addWarning(
     "Sidecar manifest missing (run pnpm --filter ipollowork-orchestrator build:sidecars).",
   );

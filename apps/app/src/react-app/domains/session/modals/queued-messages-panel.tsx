@@ -1,114 +1,94 @@
 /** @jsxImportSource react */
-import { useEffect, useMemo, useState } from "react";
-import { ListPlus, Trash2, X } from "lucide-react";
+import { useState } from "react";
+import { CornerDownRight, LoaderCircle, Pencil, Play, Send, Trash2 } from "lucide-react";
 
 import { t } from "@/i18n";
 
 export type QueuedMessagesPanelProps = {
   messages: string[];
+  paused?: boolean;
+  canContinue?: boolean;
+  onContinue?: () => void;
+  editable?: boolean[];
+  onEdit?: (index: number) => void;
+  steerable: boolean[];
+  onSteer?: (index: number) => Promise<void>;
   onRemove: (index: number) => void;
-  onRemoveMany: (indices: number[]) => void;
 };
 
-/**
- * Shows the follow-up messages the user has queued while the agent is busy.
- * Rendered above the composer (mirrors the QuestionPanel header style). Each
- * entry can be removed with an X. The whole panel hides when the queue is
- * empty — callers should simply not render it in that case, but we also guard
- * here for safety.
- */
+/** Compact follow-up list shown while the current task is running. */
 export function QueuedMessagesPanel(props: QueuedMessagesPanelProps) {
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(() => new Set());
-
-  useEffect(() => {
-    setSelectedIndices((current) => {
-      const next = new Set<number>();
-      current.forEach((index) => {
-        if (index < props.messages.length) next.add(index);
-      });
-      return next;
-    });
-    if (props.messages.length === 0) setSelectionMode(false);
-  }, [props.messages.length]);
-
-  const selectedCount = selectedIndices.size;
-  const allSelected = selectedCount > 0 && selectedCount === props.messages.length;
-  const selectedList = useMemo(() => [...selectedIndices].sort((left, right) => left - right), [selectedIndices]);
+  const [steeringIndex, setSteeringIndex] = useState<number | null>(null);
 
   if (props.messages.length === 0) return null;
 
-  const toggleSelection = (index: number) => {
-    setSelectedIndices((current) => {
-      const next = new Set(current);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  };
-
-  const removeSelected = () => {
-    if (selectedList.length === 0) return;
-    if (!window.confirm(t("composer.queued_delete_selected_confirm", { count: selectedList.length }))) return;
-    props.onRemoveMany(selectedList);
-    setSelectedIndices(new Set());
-    setSelectionMode(false);
+  const steer = async (index: number) => {
+    if (!props.onSteer || steeringIndex !== null) return;
+    setSteeringIndex(index);
+    try {
+      await props.onSteer(index);
+    } finally {
+      setSteeringIndex(null);
+    }
   };
 
   return (
-    <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-[18px] border border-dls-border bg-dls-surface shadow-[0_12px_36px_rgba(15,23,42,0.18)]">
-      <div className="border-b border-dls-border px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-5 shrink-0 items-center justify-center rounded-full border border-gray-7/40 bg-gray-3/40 text-gray-11">
-              <ListPlus size={12} />
-            </div>
-            <div className="text-sm font-medium leading-5 text-gray-12">
-              {t("composer.queued_count", { count: props.messages.length })}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {selectionMode ? (
-              <>
-                <button type="button" onClick={() => setSelectedIndices(allSelected ? new Set() : new Set(props.messages.map((_, index) => index)))} className="rounded-md px-2 py-1 text-xs text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12">
-                  {allSelected ? t("composer.queued_select_none") : t("composer.queued_select_all")}
-                </button>
-                <button type="button" onClick={removeSelected} disabled={selectedCount === 0} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-10 transition-colors hover:bg-red-3 hover:text-red-11 disabled:pointer-events-none disabled:opacity-45">
-                  <Trash2 size={12} />
-                  {t("composer.queued_delete_selected", { count: selectedCount })}
-                </button>
-              </>
-            ) : null}
-            <button type="button" onClick={() => { setSelectionMode((value) => !value); setSelectedIndices(new Set()); }} className="rounded-md px-2 py-1 text-xs text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12">
-              {selectionMode ? t("common.cancel") : t("composer.queued_select")}
-            </button>
-          </div>
+    <div data-testid="queued-messages-panel" className="max-h-52 overflow-auto border-b border-dls-border/70 bg-transparent">
+      {props.paused ? (
+        <div className="flex items-center justify-between gap-3 border-b border-dls-border/50 px-4 py-2">
+          <span className="text-sm text-gray-11">{t("composer.queue_paused", { count: props.messages.length })}</span>
+          <button type="button" data-testid="queued-messages-continue" disabled={!props.canContinue} onClick={props.onContinue} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:opacity-50">
+            <Play size={14} strokeWidth={1.75} aria-hidden="true" />{t("composer.continue_queue")}
+          </button>
         </div>
-      </div>
-
-      <div className="max-h-48 space-y-2 overflow-auto px-4 py-3">
-        {props.messages.map((message, index) => (
+      ) : null}
+      {props.messages.map((message, index) => {
+        const steering = steeringIndex === index;
+        const canSteer = Boolean(props.onSteer && props.steerable[index]);
+        return (
           <div
             key={index}
-            className="flex items-start justify-between gap-3 rounded-xl border border-gray-6 bg-gray-1 px-3 py-2.5"
+            data-queued-message-index={index}
+            className="group flex min-h-12 items-center gap-3 border-b border-dls-border/50 px-4 py-2.5 last:border-b-0"
           >
-            {selectionMode ? (
-              <input type="checkbox" checked={selectedIndices.has(index)} onChange={() => toggleSelection(index)} aria-label={t("composer.queued_select_item", { index: index + 1 })} className="mt-1 size-4 shrink-0 accent-primary" />
-            ) : null}
-            <div className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-5 text-gray-11">
+            <CornerDownRight size={16} strokeWidth={1.75} className="shrink-0 text-gray-9" aria-hidden="true" />
+            <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-12" title={message}>
               {message}
             </div>
-            <button
-              type="button"
-              onClick={() => props.onRemove(index)}
-              className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12"
-              title={t("common.remove")}
-            >
-              <X size={13} />
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              {props.onEdit && props.editable?.[index] ? (
+                <button type="button" onClick={() => props.onEdit?.(index)} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12" title={t("composer.edit_queued")}>
+                  <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />{t("common.edit")}
+                </button>
+              ) : null}
+              {canSteer ? (
+                <button
+                  type="button"
+                  data-testid="queued-message-steer"
+                  disabled={steeringIndex !== null}
+                  onClick={() => { void steer(index); }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12 disabled:opacity-50"
+                  title={t("composer.steer_queued_hint")}
+                >
+                  {steering
+                    ? <LoaderCircle size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+                    : <Send size={14} strokeWidth={1.75} aria-hidden="true" />}
+                  {t("composer.steer_queued")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => props.onRemove(index)}
+                className="flex size-8 items-center justify-center rounded-lg text-gray-9 transition-colors hover:bg-gray-3 hover:text-gray-12"
+                title={t("common.remove")}
+                aria-label={t("common.remove")}
+              >
+                <Trash2 size={15} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }

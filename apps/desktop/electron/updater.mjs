@@ -1,35 +1,13 @@
 import { rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+
+import { resolveDesktopAppVersion } from "./app-version.mjs";
+import { createGithubInstallerProvider, RELEASE_API_URL } from "./github-installer-provider.mjs";
 
 const LEGACY_ELECTRON_UPDATER_CHANNEL_FILENAME = "electron-updater-channel.v1.json";
-const OFFICIAL_ELECTRON_UPDATER_FEED = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
+const OFFICIAL_ELECTRON_UPDATER_FEED = RELEASE_API_URL;
 
-// In dev mode, app.getVersion() returns the Electron framework version
-// (e.g. "35.7.5") instead of the iPolloWork app version. Read from
-// package.json so the UI always shows the correct version.
-const __updater_dirname = path.dirname(fileURLToPath(import.meta.url));
-let _cachedAppVersion = null;
-function resolveAppVersion(app) {
-  if (_cachedAppVersion) return _cachedAppVersion;
-  const electronVersion = app.getVersion();
-  // If packaged, app.getVersion() is correct (set by electron-builder).
-  if (app.isPackaged) {
-    _cachedAppVersion = electronVersion;
-    return electronVersion;
-  }
-  // In dev, read from package.json.
-  try {
-    const pkgPath = path.resolve(__updater_dirname, "..", "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-    _cachedAppVersion = pkg.version || electronVersion;
-  } catch {
-    _cachedAppVersion = electronVersion;
-  }
-  return _cachedAppVersion;
-}
 export function normalizeElectronUpdaterChannel(_value) {
   return "stable";
 }
@@ -102,7 +80,7 @@ function comparePrereleaseIdentifiers(left, right) {
   return 0;
 }
 
-function compareVersions(left, right) {
+export function compareVersions(left, right) {
   const parsedLeft = parseComparableVersion(left);
   const parsedRight = parseComparableVersion(right);
   if (!parsedLeft || !parsedRight) return null;
@@ -127,7 +105,7 @@ function updaterChannelState(app) {
   return {
     channel: normalized,
     feedUrl: electronUpdaterFeedUrl(normalized),
-    currentVersion: resolveAppVersion(app),
+    currentVersion: resolveDesktopAppVersion(app),
   };
 }
 
@@ -137,7 +115,7 @@ async function applyElectronUpdaterFeed(app, updater) {
   updater.allowPrerelease = false;
   updater.allowDowngrade = false;
   if (updater?.setFeedURL) {
-    updater.setFeedURL({ provider: "generic", url: state.feedUrl });
+    updater.setFeedURL({ provider: "custom", updateProvider: await createGithubInstallerProvider() });
   }
   return state;
 }
@@ -195,8 +173,7 @@ async function cleanStaleUpdaterState(app) {
 // electron-updater wiring. Packaged-only; dev builds skip this so the
 // updater doesn't try to probe a non-existent release channel.
 export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
-  let autoUpdaterInstance = null;
-  let autoUpdaterLoaded = false;
+  let autoUpdaterPromise;
   let checkedUpdateVersion = null;
 
   function sendToRenderer(channel, data) {
@@ -210,16 +187,13 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     }
   }
 
-  async function ensureAutoUpdater() {
-    if (!app.isPackaged) return null;
-    if (autoUpdaterLoaded) return autoUpdaterInstance;
-    autoUpdaterLoaded = true;
+  async function initializeAutoUpdater() {
     try {
       const mod = await import("electron-updater");
-      autoUpdaterInstance = mod.autoUpdater ?? mod.default?.autoUpdater ?? null;
+      const autoUpdaterInstance = mod.autoUpdater ?? mod.default?.autoUpdater ?? null;
       if (autoUpdaterInstance) {
         autoUpdaterInstance.autoDownload = false;
-        autoUpdaterInstance.autoInstallOnAppQuit = true;
+        autoUpdaterInstance.autoInstallOnAppQuit = false;
         // Differential (blockmap) downloads reconstruct the update zip from the
         // installed app + a diff. On macOS that reconstructed bundle is what
         // feeds Squirrel's fragile move-based install, and is a common trigger
@@ -229,6 +203,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
         // Make Squirrel.Mac write contents in place rather than moving whole
         // bundles (see enableSquirrelDirectContentsWrite for why).
         await enableSquirrelDirectContentsWrite();
+        await applyElectronUpdaterFeed(app, autoUpdaterInstance);
         autoUpdaterInstance.on("error", (err) => {
           console.warn("[updater] error", err);
         });
@@ -243,13 +218,20 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
             delta: info.delta ?? 0,
           });
         });
-        await applyElectronUpdaterFeed(app, autoUpdaterInstance);
       }
+      return autoUpdaterInstance;
     } catch (error) {
       console.warn("[updater] electron-updater not available", error);
-      autoUpdaterInstance = null;
+      return null;
     }
-    return autoUpdaterInstance;
+  }
+
+  async function ensureAutoUpdater() {
+    if (!app.isPackaged) return null;
+    autoUpdaterPromise ??= initializeAutoUpdater();
+    const updater = await autoUpdaterPromise;
+    if (!updater) autoUpdaterPromise = undefined;
+    return updater;
   }
 
   ipcMain.handle("ipollowork:updater:getState", async () => {
@@ -259,14 +241,19 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
 
   ipcMain.handle("ipollowork:updater:check", async () => {
     const updater = await ensureAutoUpdater();
-    const channelState = updater
-      ? await applyElectronUpdaterFeed(app, updater)
-      : updaterChannelState(app);
-    if (!updater) return { available: false, reason: "unavailable", ...channelState };
+    const channelState = updaterChannelState(app);
+    if (!updater) {
+      const reason = app.isPackaged ? "Failed to initialize the desktop updater." : "unavailable";
+      return { available: false, reason, ...channelState };
+    }
     try {
       const result = await updater.checkForUpdates();
-      const info = result?.updateInfo ?? null;
-      const currentVersion = resolveAppVersion(app);
+      if (!result) {
+        checkedUpdateVersion = null;
+        return { available: false, reason: "This installation does not support in-app updates.", ...channelState };
+      }
+      const info = result.updateInfo;
+      const currentVersion = resolveDesktopAppVersion(app);
       const available = Boolean(info?.version && isVersionNewer(info.version, currentVersion));
       checkedUpdateVersion = available ? info.version : null;
       return {
@@ -287,8 +274,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     const updater = await ensureAutoUpdater();
     if (!updater) return { ok: false, reason: "unavailable" };
     try {
-      await applyElectronUpdaterFeed(app, updater);
-      const currentVersion = resolveAppVersion(app);
+      const currentVersion = resolveDesktopAppVersion(app);
       if (!checkedUpdateVersion || !isVersionNewer(checkedUpdateVersion, currentVersion)) {
         const result = await updater.checkForUpdates();
         const info = result?.updateInfo ?? null;

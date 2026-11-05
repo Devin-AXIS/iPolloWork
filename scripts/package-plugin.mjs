@@ -5,11 +5,12 @@ import { dirname, relative, resolve, sep } from "node:path";
 
 const requireFromApp = createRequire(new URL("../apps/app/package.json", import.meta.url));
 const JSZip = requireFromApp("jszip");
+const { PLUGIN_PACKAGE_MAX_BYTES, PLUGIN_PACKAGE_MAX_FILES } = requireFromApp("@ipollowork/types/plugins");
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
 const PACKAGE_SIGNATURE_PREFIX = "ipollowork-plugin-package-v1\0";
-const MAX_PACKAGE_BYTES = 10 * 1024 * 1024;
-const MAX_PACKAGE_FILES = 512;
+const MAX_PACKAGE_BYTES = PLUGIN_PACKAGE_MAX_BYTES;
+const MAX_PACKAGE_FILES = PLUGIN_PACKAGE_MAX_FILES;
 
 function usage() {
   return "Usage: node scripts/package-plugin.mjs --root <package-root> --out <archive.ipollowork-plugin> --private-key <ed25519.pem> --key-id <id>";
@@ -112,7 +113,7 @@ async function main() {
   if (!Array.isArray(manifest.resources)) throw new Error("Plugin package resources are required");
 
   const paths = new Set();
-  for (const resource of manifest.resources) {
+  for (const resource of [...manifest.resources, ...manifest.engineBindings?.flatMap(binding => binding.capabilities) ?? []]) {
     if (!resource.path) continue;
     for (const path of await resourceFiles(input.root, resource.path)) paths.add(path);
   }
@@ -158,7 +159,7 @@ async function main() {
   const output = await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } });
   await mkdir(dirname(input.out), { recursive: true });
   await writeFile(input.out, output, { mode: 0o644 });
-  process.stdout.write(`${JSON.stringify({ output: input.out, pluginId: manifest.id, version: manifest.package.version, sha256: digest, files: totalFiles, bytes: totalBytes, archiveBytes: output.byteLength })}\n`);
+  process.stdout.write(`${JSON.stringify({ output: input.out, pluginId: manifest.id, version: manifest.package.version, sha256: digest, files: totalFiles, bytes: totalBytes, archiveBytes: output.byteLength, archiveSha256: createHash("sha256").update(output).digest("hex") })}\n`);
 }
 
 await main();

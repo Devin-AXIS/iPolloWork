@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { pluginUiRuntime, workspaceUiChunk, WORKSPACE_CHUNK_LIMIT_KB } from "@ipollowork/ui/build-plugin-runtime";
 
 const portValue = Number.parseInt(process.env.PORT ?? "", 10);
 const devPort = Number.isFinite(portValue) && portValue > 0 ? portValue : 5173;
@@ -71,6 +72,8 @@ const migrationReleaseEnv = loadMigrationReleaseEnv();
 const isElectronPackagedBuild = process.env.IPOLLOWORK_ELECTRON_BUILD === "1";
 
 export default defineConfig({
+  // Worktrees can share node_modules; each dev server needs its own optimizer cache.
+  cacheDir: resolve(appRoot, "../../.ipollowork-dev/vite", String(devPort)),
   base: isElectronPackagedBuild ? "./" : "/",
   define: {
     ...Object.fromEntries(
@@ -82,6 +85,7 @@ export default defineConfig({
     "import.meta.env.VITE_IPOLLOWORK_APP_VERSION": JSON.stringify(buildAppVersion),
   },
   plugins: [
+    pluginUiRuntime(),
     {
       name: "ipollowork-dev-server-id",
       configureServer(server) {
@@ -105,7 +109,11 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+    chunkSizeWarningLimit: WORKSPACE_CHUNK_LIMIT_KB,
     rollupOptions: {
+      output: {
+        manualChunks: workspaceUiChunk,
+      },
       input: {
         app: resolve(appRoot, "index.html"),
         overlay: resolve(appRoot, "overlay.html"),

@@ -1,3 +1,4 @@
+export const WAVEFORM_LAYER_Z = 1;
 import { memo, useRef, useState, useCallback, useEffect } from "react";
 
 interface AudioWaveformProps {
@@ -63,6 +64,25 @@ function fakePeaks(url: string, count: number): number[] {
 // Module-level cache so decoded audio persists across re-renders and re-mounts
 const peaksCache = new Map<string, number[]>();
 const decodeInFlight = new Map<string, Promise<number[]>>();
+const MAX_PEAKS_CACHE_ENTRIES = 64;
+
+function readCachedPeaks(key: string): number[] | null {
+  const cached = peaksCache.get(key);
+  if (!cached) return null;
+  peaksCache.delete(key);
+  peaksCache.set(key, cached);
+  return cached;
+}
+
+function cachePeaks(key: string, peaks: number[]): void {
+  peaksCache.delete(key);
+  peaksCache.set(key, peaks);
+  while (peaksCache.size > MAX_PEAKS_CACHE_ENTRIES) {
+    const oldest = peaksCache.keys().next().value;
+    if (oldest === undefined) break;
+    peaksCache.delete(oldest);
+  }
+}
 
 /**
  * Audio waveform rendered from real PCM data via Web Audio API.
@@ -81,7 +101,7 @@ export const AudioWaveform = memo(function AudioWaveform({
   const barsRef = useRef<HTMLDivElement | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
-  const [peaks, setPeaks] = useState<number[] | null>(peaksCache.get(cacheKey) ?? null);
+  const [peaks, setPeaks] = useState<number[] | null>(() => readCachedPeaks(cacheKey));
 
   useEffect(() => {
     if (peaks || !cacheKey) return;
@@ -108,7 +128,7 @@ export const AudioWaveform = memo(function AudioWaveform({
       )
         .catch(() => fakePeaks(cacheKey, 4000))
         .then((p) => {
-          peaksCache.set(cacheKey, p);
+          cachePeaks(cacheKey, p);
           return p;
         })
         .finally(() => decodeInFlight.delete(cacheKey));
@@ -183,7 +203,11 @@ export const AudioWaveform = memo(function AudioWaveform({
   );
 
   return (
-    <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
+    <div
+      ref={setContainerRef}
+      className="absolute inset-0 overflow-hidden"
+      style={{ zIndex: WAVEFORM_LAYER_Z }}
+    >
       <div ref={barsRef} className="absolute left-0 right-0 bottom-0" style={{ top: 16 }} />
       {/* Shimmer while decoding */}
       {!peaks && (

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en" data-ipw-template="vertical-social-story" data-composition-variables='[{"id":"eyebrow","type":"string","label":"Eyebrow","default":"9:16 / SOCIAL STORY"},{"id":"title","type":"string","label":"Title","default":"Turn complex work into clear progress."},{"id":"subtitle","type":"string","label":"Subtitle","default":"Start with one idea. Let intelligent collaboration carry it through to a finished result."},{"id":"metric","type":"string","label":"Metric","default":"3x"},{"id":"metricLabel","type":"string","label":"Metric label","default":"faster from plan to delivery"},{"id":"proofA","type":"string","label":"Proof point one","default":"Tasks, files, and agents stay in one workspace"},{"id":"proofB","type":"string","label":"Proof point two","default":"Every step keeps its context, status, and result"},{"id":"cta","type":"string","label":"Call to action","default":"Start your next project"},{"id":"brandName","type":"string","label":"Brand name","default":"iPolloWork"},{"id":"logoUrl","type":"string","label":"Brand logo","default":"assets/ipollowork-logo.svg?v=20260729"}]'>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Vertical Social Story</title>
+    <link rel="icon" href="data:," />
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+      #vertical-social-story { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: var(--ipw-color-bg); }
+      h1, h2, h3, p { margin: 0; }
+      .clip { position: absolute; inset: 0; overflow: hidden; }
+      .scene { width: 1080px; height: 1920px; padding: 90px var(--ipw-page-padding) 150px; background: var(--ipw-color-bg); }
+      .scene-intro { z-index: 1; }
+      .scene-proof { z-index: 2; will-change: clip-path; }
+      .scene-final { z-index: 3; will-change: clip-path; }
+      .safe-frame { position: absolute; inset: 42px; border: 2px solid var(--ipw-color-border); border-radius: 54px; pointer-events: none; }
+      .scene-index { position: absolute; top: 94px; right: 76px; color: var(--ipw-color-muted); font: 800 16px/1 ui-monospace, monospace; letter-spacing: .14em; }
+      .micro-label { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border: 2px solid currentColor; border-radius: 999px; font: 800 15px/1 ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; }
+
+      .brand-bar { position: absolute; left: 72px; bottom: 62px; z-index: 20; display: inline-flex; align-items: center; gap: 18px; min-height: 60px; padding: 0 20px; border: 2px solid var(--ipw-color-border); border-radius: 999px; background: var(--ipw-color-surface); box-shadow: 0 14px 36px rgb(20 33 61 / 10%); color: var(--ipw-color-text); }
+      .brand-logo { width: 30px; height: 30px; object-fit: contain; }
+      .brand-name { font-size: 20px; font-weight: 900; letter-spacing: -.035em; }
+      .brand-separator { width: 1px; height: 22px; background: var(--ipw-color-border); }
+      .format-label { color: var(--ipw-color-muted); font: 800 13px/1 ui-monospace, monospace; letter-spacing: .1em; }
+
+      .scene-intro { background: var(--ipw-color-bg); }
+      .intro-copy { position: relative; z-index: 3; margin-top: 120px; }
+      .eyebrow { color: var(--ipw-color-text); border-color: var(--ipw-color-primary); }
+      .scene-intro-title { margin-top: 42px; max-width: 870px; font-family: var(--ipw-font-display); font-size: calc(102px * var(--ipw-type-scale)); line-height: .98; font-weight: 900; letter-spacing: -.072em; }
+      .scene-intro-subtitle { margin-top: 38px; max-width: 760px; color: var(--ipw-color-muted); font-size: calc(27px * var(--ipw-type-scale)); line-height: 1.48; font-weight: 620; }
+      .workflow-stage { position: absolute; left: 72px; right: 72px; top: 930px; height: 700px; }
+      .workflow-rail { position: absolute; left: 62px; top: 104px; width: 4px; height: 430px; border-radius: 4px; background: var(--ipw-color-border); transform-origin: center top; }
+      .flow-dot { position: absolute; left: 49px; top: 92px; z-index: 2; width: 30px; height: 30px; border: 8px solid var(--ipw-color-bg); border-radius: 50%; background: var(--ipw-color-primary); box-shadow: 0 0 0 2px var(--ipw-color-primary); }
+      .workflow-card { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: 112px 1fr auto; align-items: center; min-height: 150px; padding: 26px 28px 26px 24px; border: 2px solid var(--ipw-color-border); border-radius: var(--ipw-card-radius); background: var(--ipw-card-bg); box-shadow: var(--ipw-card-shadow); }
+      .workflow-card:nth-of-type(1) { top: 18px; }
+      .workflow-card:nth-of-type(2) { top: 198px; left: 64px; }
+      .workflow-card:nth-of-type(3) { top: 378px; left: 128px; }
+      .step-number { position: relative; z-index: 3; display: grid; place-items: center; width: 74px; height: 74px; border-radius: 22px; background: var(--ipw-color-text); color: var(--ipw-color-surface); font: 900 22px/1 ui-monospace, monospace; }
+      .workflow-card:nth-of-type(2) .step-number { background: var(--ipw-color-primary); }
+      .workflow-card:nth-of-type(3) .step-number { background: var(--ipw-color-secondary); color: var(--ipw-color-text); }
+      .step-copy span { display: block; color: var(--ipw-color-muted); font: 800 13px/1 ui-monospace, monospace; letter-spacing: .13em; }
+      .step-copy strong { display: block; margin-top: 12px; font-size: 29px; line-height: 1.1; letter-spacing: -.035em; }
+      .step-status { display: inline-flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 14px; border-radius: 999px; background: var(--ipw-color-secondary); color: var(--ipw-color-success); font: 800 13px/1 ui-monospace, monospace; letter-spacing: .06em; }
+      .step-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+      .scene-proof { background: var(--ipw-color-text); color: var(--ipw-color-bg); }
+      .scene-proof .safe-frame { border-color: rgb(245 242 235 / 18%); }
+      .scene-proof .scene-index { color: rgb(245 242 235 / 52%); }
+      .proof-kicker { margin-top: 74px; color: var(--ipw-color-accent); }
+      .metric-panel { position: absolute; left: 72px; right: 72px; top: 248px; display: grid; grid-template-columns: 350px 1fr; align-items: end; min-height: 350px; padding: 50px; border: 2px solid rgb(245 242 235 / 18%); border-radius: 46px; background: rgb(255 255 255 / 5%); }
+      .proof-metric { color: var(--ipw-color-primary); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: calc(224px * var(--ipw-type-scale)); line-height: .78; font-weight: 950; letter-spacing: -.11em; }
+      .proof-label { max-width: 430px; padding-bottom: 6px; color: var(--ipw-color-bg); font-size: calc(41px * var(--ipw-type-scale)); line-height: 1.06; font-weight: 850; letter-spacing: -.045em; }
+      .signal-panel { position: absolute; left: 72px; right: 72px; top: 646px; height: 350px; padding: 42px 44px; border-radius: 40px; background: var(--ipw-color-secondary); color: var(--ipw-color-text); overflow: hidden; }
+      .signal-heading { display: flex; align-items: center; justify-content: space-between; font: 850 14px/1 ui-monospace, monospace; letter-spacing: .12em; }
+      .signal-live { display: inline-flex; align-items: center; gap: 9px; color: var(--ipw-color-success); }
+      .signal-live::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+      .signal-chart { display: flex; align-items: flex-end; gap: 18px; height: 198px; margin-top: 32px; padding: 0 8px 4px; border-bottom: 2px solid rgb(20 33 61 / 18%); }
+      .signal-bar { flex: 1; border-radius: 13px 13px 5px 5px; background: var(--ipw-color-text); transform-origin: center bottom; }
+      .signal-bar:nth-child(1) { height: 42%; opacity: .28; }
+      .signal-bar:nth-child(2) { height: 55%; opacity: .42; }
+      .signal-bar:nth-child(3) { height: 50%; opacity: .55; }
+      .signal-bar:nth-child(4) { height: 72%; opacity: .72; }
+      .signal-bar:nth-child(5) { height: 88%; background: var(--ipw-color-primary); }
+      .signal-bar:nth-child(6) { height: 100%; background: var(--ipw-color-accent); }
+      .proof-list { position: absolute; left: 72px; right: 72px; top: 1040px; display: grid; gap: 20px; }
+      .proof-card { display: grid; grid-template-columns: 92px 1fr; align-items: start; min-height: 190px; padding: 34px 38px; border: 2px solid rgb(245 242 235 / 18%); border-radius: 36px; background: rgb(255 255 255 / 6%); font-size: calc(26px * var(--ipw-type-scale)); line-height: 1.38; font-weight: 700; }
+      .proof-number { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; background: var(--ipw-color-accent); color: var(--ipw-color-text); font: 900 16px/1 ui-monospace, monospace; }
+
+      .scene-final { background: var(--ipw-color-secondary); }
+      .scene-final .safe-frame { border-color: rgb(20 33 61 / 18%); }
+      .final-kicker { margin-top: 74px; color: var(--ipw-color-success); }
+      .final-visual { position: absolute; left: 72px; right: 72px; top: 260px; height: 590px; }
+      .orbit { position: absolute; left: 50%; top: 50%; width: 520px; height: 520px; margin: -260px 0 0 -260px; border: 2px solid rgb(20 33 61 / 18%); border-radius: 50%; }
+      .orbit-inner { position: absolute; inset: 70px; border: 2px solid rgb(20 33 61 / 15%); border-radius: 50%; }
+      .orbit-core { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 230px; height: 230px; margin: -115px 0 0 -115px; border-radius: 72px; background: var(--ipw-color-primary); box-shadow: 0 32px 70px rgb(239 91 64 / 28%); color: var(--ipw-color-text); font: 950 64px/1 var(--ipw-font-display); letter-spacing: -.08em; transform: rotate(-7deg); }
+      .orbit-node { position: absolute; display: grid; place-items: center; min-width: 160px; height: 64px; padding: 0 18px; border: 2px solid var(--ipw-color-border); border-radius: 999px; background: var(--ipw-color-surface); box-shadow: 0 16px 36px rgb(20 33 61 / 10%); font: 850 15px/1 ui-monospace, monospace; letter-spacing: .08em; }
+      .orbit-node-a { left: 32px; top: 80px; }
+      .orbit-node-b { right: 24px; top: 164px; }
+      .orbit-node-c { left: 126px; bottom: 26px; }
+      .final-copy { position: absolute; left: 72px; right: 72px; top: 910px; }
+      .final-title { max-width: 900px; font-family: var(--ipw-font-display); font-size: calc(94px * var(--ipw-type-scale)); line-height: .98; font-weight: 920; letter-spacing: -.068em; }
+      .final-support { margin-top: 34px; max-width: 760px; color: var(--ipw-color-muted); font-size: calc(27px * var(--ipw-type-scale)); line-height: 1.45; font-weight: 650; }
+      .final-cta { margin-top: 54px; display: inline-flex; min-height: 86px; align-items: center; gap: 20px; padding: 0 30px 0 34px; border-radius: 999px; background: var(--ipw-color-text); color: var(--ipw-color-surface); box-shadow: 0 24px 50px rgb(20 33 61 / 18%); font-size: calc(25px * var(--ipw-type-scale)); font-weight: 900; }
+      .cta-arrow { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--ipw-color-primary); font-size: 25px; }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
+  </head>
+  <body>
+    <main id="vertical-social-story" data-composition-id="vertical-social-story" data-start="0" data-width="1080" data-height="1920" data-duration="12">
+      <section class="scene clip scene-intro" id="scene-intro" data-ipw-scene data-start="0" data-duration="4.5" data-track-index="1">
+        <div class="safe-frame"></div>
+        <span class="scene-index" data-layout-allow-overlap>01 / 03</span>
+        <div class="intro-copy">
+          <span class="micro-label eyebrow" data-var-text="eyebrow">9:16 / SOCIAL STORY</span>
+          <h1 class="scene-intro-title" data-var-text="title">Turn complex work into clear progress.</h1>
+          <p class="scene-intro-subtitle" data-var-text="subtitle">Start with one idea. Let intelligent collaboration carry it through to a finished result.</p>
+        </div>
+        <div class="workflow-stage">
+          <div class="workflow-rail"></div>
+          <div class="flow-dot"></div>
+          <article class="workflow-card">
+            <span class="step-number">01</span>
+            <div class="step-copy"><span>START</span><strong>Shape the brief</strong></div>
+            <span class="step-status">READY</span>
+          </article>
+          <article class="workflow-card">
+            <span class="step-number">02</span>
+            <div class="step-copy"><span>BUILD</span><strong>Coordinate the work</strong></div>
+            <span class="step-status">LIVE</span>
+          </article>
+          <article class="workflow-card">
+            <span class="step-number">03</span>
+            <div class="step-copy"><span>SHIP</span><strong>Deliver with context</strong></div>
+            <span class="step-status">DONE</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="scene clip scene-proof" id="scene-proof" data-ipw-scene data-start="4" data-duration="4.5" data-track-index="2">
+        <div class="safe-frame"></div>
+        <span class="scene-index" data-layout-allow-overlap>02 / 03</span>
+        <span class="micro-label proof-kicker">MOMENTUM, MEASURED</span>
+        <div class="metric-panel">
+          <h2 class="proof-metric" data-var-text="metric">3x</h2>
+          <p class="proof-label" data-var-text="metricLabel">faster from plan to delivery</p>
+        </div>
+        <div class="signal-panel">
+          <div class="signal-heading"><span>PROJECT VELOCITY</span><span class="signal-live">LIVE SIGNAL</span></div>
+          <div class="signal-chart">
+            <i class="signal-bar"></i><i class="signal-bar"></i><i class="signal-bar"></i><i class="signal-bar"></i><i class="signal-bar"></i><i class="signal-bar"></i>
+          </div>
+        </div>
+        <div class="proof-list">
+          <article class="proof-card"><span class="proof-number">01</span><span data-var-text="proofA">Tasks, files, and agents stay in one workspace</span></article>
+          <article class="proof-card"><span class="proof-number">02</span><span data-var-text="proofB">Every step keeps its context, status, and result</span></article>
+        </div>
+      </section>
+
+      <section class="scene clip scene-final" id="scene-final" data-ipw-scene data-start="8" data-duration="4" data-track-index="3">
+        <div class="safe-frame"></div>
+        <span class="scene-index" data-layout-allow-overlap>03 / 03</span>
+        <span class="micro-label final-kicker">ONE CONNECTED FLOW</span>
+        <div class="final-visual">
+          <div class="orbit"><div class="orbit-inner"></div></div>
+          <div class="orbit-core">GO</div>
+          <span class="orbit-node orbit-node-a">IDEA</span>
+          <span class="orbit-node orbit-node-b">BUILD</span>
+          <span class="orbit-node orbit-node-c">IMPACT</span>
+        </div>
+        <div class="final-copy">
+          <h2 class="final-title">Move from idea<br />to impact.</h2>
+          <p class="final-support">Keep the thinking, making, and delivery moving in one clear direction.</p>
+          <span class="final-cta"><span data-var-text="cta">Start your next project</span><span class="cta-arrow">→</span></span>
+        </div>
+      </section>
+
+      <footer class="brand-bar">
+        <img class="brand-logo" data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260729" alt="Brand logo" />
+        <span class="brand-name" data-var-text="brandName">iPolloWork</span>
+        <i class="brand-separator"></i>
+        <span class="format-label">1080 × 1920</span>
+      </footer>
+    </main>
+    <script>
+      const timeline = gsap.timeline({ paused: true });
+
+      timeline.addLabel('intro', 0);
+      timeline.fromTo('.scene-intro .safe-frame', { opacity: 0, scale: .97 }, { opacity: 1, scale: 1, duration: .8, ease: 'sine.out' }, 'intro');
+      timeline.fromTo('.scene-intro .scene-index, .eyebrow', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: .55, stagger: .08, ease: 'power3.out' }, 'intro+=.1');
+      timeline.fromTo('.scene-intro-title', { opacity: 0, y: 64 }, { opacity: 1, y: 0, duration: .9, ease: 'expo.out' }, 'intro+=.34');
+      timeline.fromTo('.scene-intro-subtitle', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: .7, ease: 'power3.out' }, 'intro+=.92');
+      timeline.fromTo('.workflow-rail', { scaleY: 0 }, { scaleY: 1, duration: 1.15, ease: 'sine.inOut' }, 'intro+=1.18');
+      timeline.fromTo('.workflow-card', { opacity: 0, y: 54, scale: .975 }, { opacity: 1, y: 0, scale: 1, duration: .66, stagger: .16, ease: 'expo.out' }, 'intro+=1.18');
+      timeline.fromTo('.flow-dot', { opacity: 0, y: 0 }, { opacity: 1, y: 360, duration: 1.4, ease: 'sine.inOut' }, 'intro+=1.42');
+      timeline.to('.scene-intro .intro-copy', { y: -24, duration: .42, ease: 'power2.in' }, 3.5);
+      timeline.to('.scene-intro .workflow-stage', { y: -24, duration: .42, ease: 'power2.in' }, 3.52);
+
+      timeline.addLabel('proof', 4);
+      timeline.fromTo('.scene-proof', { clipPath: 'inset(100% 0 0 0)' }, { clipPath: 'inset(0% 0 0 0)', duration: .62, ease: 'power3.inOut' }, 'proof');
+      timeline.fromTo('.scene-proof .safe-frame', { opacity: 0, scale: .97 }, { opacity: 1, scale: 1, duration: .78, ease: 'sine.out' }, 'proof');
+      timeline.fromTo('.scene-proof .scene-index, .proof-kicker', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: .52, stagger: .08, ease: 'power3.out' }, 'proof+=.08');
+      timeline.fromTo('.metric-panel', { opacity: 0, y: 48, scale: .98 }, { opacity: 1, y: 0, scale: 1, duration: .75, ease: 'expo.out' }, 'proof+=.28');
+      timeline.fromTo('.proof-metric', { opacity: 0, y: 44 }, { opacity: 1, y: 0, duration: .72, ease: 'expo.out' }, 'proof+=.48');
+      timeline.fromTo('.proof-label', { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: .62, ease: 'power3.out' }, 'proof+=.68');
+      timeline.fromTo('.signal-panel', { opacity: 0, y: 56 }, { opacity: 1, y: 0, duration: .72, ease: 'expo.out' }, 'proof+=.86');
+      timeline.fromTo('.signal-bar', { scaleY: .04 }, { scaleY: 1, duration: .82, stagger: .08, ease: 'power4.out' }, 'proof+=1.18');
+      timeline.fromTo('.proof-card', { opacity: 0, y: 44 }, { opacity: 1, y: 0, duration: .62, stagger: .15, ease: 'expo.out' }, 'proof+=1.5');
+      timeline.to('.scene-proof .metric-panel, .scene-proof .signal-panel, .scene-proof .proof-list', { y: -24, duration: .42, stagger: .025, ease: 'power2.in' }, 7.5);
+
+      timeline.addLabel('final', 8);
+      timeline.fromTo('.scene-final', { clipPath: 'inset(100% 0 0 0)' }, { clipPath: 'inset(0% 0 0 0)', duration: .62, ease: 'power3.inOut' }, 'final');
+      timeline.fromTo('.scene-final .safe-frame', { opacity: 0, scale: .97 }, { opacity: 1, scale: 1, duration: .8, ease: 'sine.out' }, 'final');
+      timeline.fromTo('.scene-final .scene-index, .final-kicker', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: .52, stagger: .08, ease: 'power3.out' }, 'final+=.08');
+      timeline.fromTo('.orbit, .orbit-inner', { opacity: 0, scale: .72 }, { opacity: 1, scale: 1, duration: 1.05, stagger: .1, ease: 'expo.out' }, 'final+=.25');
+      timeline.fromTo('.orbit-core', { opacity: 0, scale: .72, rotation: -18 }, { opacity: 1, scale: 1, rotation: -7, duration: .82, ease: 'expo.out' }, 'final+=.48');
+      timeline.fromTo('.orbit-node', { opacity: 0, scale: .82, y: 22 }, { opacity: 1, scale: 1, y: 0, duration: .58, stagger: .12, ease: 'power4.out' }, 'final+=.72');
+      timeline.fromTo('.final-title', { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: .82, ease: 'expo.out' }, 'final+=1.18');
+      timeline.fromTo('.final-support', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: .62, ease: 'power3.out' }, 'final+=1.64');
+      timeline.fromTo('.final-cta', { opacity: 0, y: 30, scale: .96 }, { opacity: 1, y: 0, scale: 1, duration: .68, ease: 'expo.out' }, 'final+=1.96');
+      timeline.fromTo('.cta-arrow', { x: -8, opacity: .45 }, { x: 0, opacity: 1, duration: .45, ease: 'sine.out' }, 'final+=2.35');
+
+      timeline.fromTo('.brand-bar', { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: .65, ease: 'power3.out' }, .25);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["vertical-social-story"] = timeline;
+    </script>
+  </body>
+</html>

@@ -16,7 +16,6 @@ export { resolveSeekPercent };
 
 /* ── Icon sub-components ─────────────────────────────────────────── */
 
-
 function PlayPauseIcon({ playing }: { playing: boolean }) {
   return (
     <span className="relative inline-flex h-4 w-4 items-center justify-center" aria-hidden="true">
@@ -59,9 +58,7 @@ const MuteButton = memo(function MuteButton({
         aria-label={label}
         aria-pressed={effectiveAudioMuted}
         className={`relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-40 ${
-          effectiveAudioMuted
-            ? "bg-[#e8eaed] opacity-60"
-            : "hover:bg-[#e8eaed]"
+          effectiveAudioMuted ? "bg-[#e8eaed] opacity-60" : "hover:bg-[#e8eaed]"
         }`}
       >
         <img src={volumeIconSrc} width="24" height="24" alt="" aria-hidden="true" />
@@ -90,9 +87,7 @@ const LoopButton = memo(function LoopButton({
         }}
         disabled={disabled}
         className={`flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-40 ${
-          loopEnabled
-            ? "bg-[#dff6f6]"
-            : "hover:bg-[#e8eaed]"
+          loopEnabled ? "bg-[#dff6f6]" : "hover:bg-[#e8eaed]"
         }`}
         aria-label={loopEnabled ? t("player.disableLoop") : t("player.enableLoop")}
         aria-pressed={loopEnabled}
@@ -116,7 +111,7 @@ function SeekBarMarker({ position, duration }: { position: number; duration: num
         transform: "translate(-50%, -50%)",
         width: "2px",
         height: "10px",
-        background: "#3CE6AC",
+        background: "#1FBAC0",
         borderRadius: "1px",
       }}
     />
@@ -140,7 +135,7 @@ function WorkAreaOverlay({
         style={{
           left: `${inPoint !== null ? Math.min(100, (inPoint / duration) * 100) : 0}%`,
           right: `${outPoint !== null ? 100 - Math.min(100, (outPoint / duration) * 100) : 0}%`,
-          background: "rgba(60,230,172,0.15)",
+          background: "rgba(31,186,192,0.15)",
         }}
       />
       {inPoint !== null && <SeekBarMarker position={inPoint} duration={duration} />}
@@ -186,7 +181,7 @@ const SeekBar = memo(function SeekBar({
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
       aria-valuenow={0}
-      className={`group flex h-6 min-w-[96px] flex-1 items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/30 ${
+      className={`group flex h-6 min-w-[96px] flex-1 items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/30 ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
       style={{ touchAction: "none" }}
@@ -198,13 +193,13 @@ const SeekBar = memo(function SeekBar({
         <div
           ref={progressFillRef}
           className="absolute top-0 bottom-0 left-0 z-[1] rounded-full"
-          style={{ background: "#20bbc0" }}
+          style={{ background: "#1FBAC0" }}
         />
         <div
           ref={progressThumbRef}
-          className="absolute top-1/2 z-[4] h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#20bbc0] transition-transform group-hover:scale-110"
+          className="absolute top-1/2 z-[4] h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1FBAC0] transition-transform group-hover:scale-110"
           style={{
-            boxShadow: "0 0 0 0 rgba(32,187,192,0.14)",
+            boxShadow: "0 0 0 0 rgba(31,186,192,0.14)",
           }}
         />
       </div>
@@ -217,6 +212,8 @@ const SeekBar = memo(function SeekBar({
 interface PlayerControlsProps {
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
+  timeOffset?: number;
+  displayDuration?: number;
   disabled?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -225,10 +222,14 @@ interface PlayerControlsProps {
 export const PlayerControls = memo(function PlayerControls({
   onTogglePlay,
   onSeek,
+  timeOffset = 0,
+  displayDuration,
   disabled = false,
 }: PlayerControlsProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const duration = usePlayerStore((s) => s.duration);
+  const sourceDuration = usePlayerStore((s) => s.duration);
+  const duration = displayDuration ?? sourceDuration;
+  const seekLocal = useCallback((time: number) => onSeek(time + timeOffset), [onSeek, timeOffset]);
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const playbackRate = usePlayerStore((s) => s.playbackRate);
   const audioMuted = usePlayerStore((s) => s.audioMuted);
@@ -236,10 +237,22 @@ export const PlayerControls = memo(function PlayerControls({
   const setPlaybackRate = usePlayerStore.getState().setPlaybackRate;
   const setAudioMuted = usePlayerStore.getState().setAudioMuted;
   const setLoopEnabled = usePlayerStore.getState().setLoopEnabled;
-  const inPoint = usePlayerStore((s) => s.inPoint);
-  const outPoint = usePlayerStore((s) => s.outPoint);
-  const setInPoint = usePlayerStore.getState().setInPoint;
-  const setOutPoint = usePlayerStore.getState().setOutPoint;
+  const sourceInPoint = usePlayerStore((s) => s.inPoint);
+  const inPoint =
+    sourceInPoint != null && sourceInPoint >= timeOffset && sourceInPoint <= timeOffset + duration
+      ? sourceInPoint - timeOffset
+      : null;
+  const sourceOutPoint = usePlayerStore((s) => s.outPoint);
+  const outPoint =
+    sourceOutPoint != null &&
+    sourceOutPoint >= timeOffset &&
+    sourceOutPoint <= timeOffset + duration
+      ? sourceOutPoint - timeOffset
+      : null;
+  const setInPoint = (time: number | null) =>
+    usePlayerStore.getState().setInPoint(time == null ? null : time + timeOffset);
+  const setOutPoint = (time: number | null) =>
+    usePlayerStore.getState().setOutPoint(time == null ? null : time + timeOffset);
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const setTimeDisplayMode = usePlayerStore.getState().setTimeDisplayMode;
   const { t } = useStudioI18n();
@@ -251,6 +264,8 @@ export const PlayerControls = memo(function PlayerControls({
   const sliderRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const currentTimeRef = useRef(0);
+  const timeOffsetRef = useRef(timeOffset);
+  timeOffsetRef.current = timeOffset;
   const timeDisplayModeRef = useRef(timeDisplayMode);
   timeDisplayModeRef.current = timeDisplayMode;
 
@@ -261,10 +276,11 @@ export const PlayerControls = memo(function PlayerControls({
 
   useEffect(() => {
     if (!timeDisplayRef.current) return;
-    const t = currentTimeRef.current;
+    const t = Math.max(0, Math.min(duration, usePlayerStore.getState().currentTime - timeOffset));
+    currentTimeRef.current = t;
     timeDisplayRef.current.textContent =
       timeDisplayMode === "frame" ? formatFrameTime(t, duration) : formatTime(t);
-  }, [duration, timeDisplayMode]);
+  }, [duration, timeDisplayMode, timeOffset]);
 
   const { handlePointerDown } = useSeekBarDrag(
     {
@@ -277,8 +293,9 @@ export const PlayerControls = memo(function PlayerControls({
       durationRef,
       currentTimeRef,
       timeDisplayModeRef,
+      timeOffsetRef,
     },
-    onSeek,
+    seekLocal,
     disabled,
     duration,
   );
@@ -289,13 +306,13 @@ export const PlayerControls = memo(function PlayerControls({
       const step = e.shiftKey ? 10 : 1;
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        onSeek(stepFrameTime(currentTimeRef.current, -step));
+        seekLocal(stepFrameTime(currentTimeRef.current, -step));
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        onSeek(Math.min(duration, stepFrameTime(currentTimeRef.current, step)));
+        seekLocal(Math.min(duration, stepFrameTime(currentTimeRef.current, step)));
       }
     },
-    [disabled, timelineReady, duration, onSeek],
+    [disabled, timelineReady, duration, seekLocal],
   );
 
   return (
@@ -375,7 +392,7 @@ export const PlayerControls = memo(function PlayerControls({
           outPoint={outPoint}
           setInPoint={setInPoint}
           setOutPoint={setOutPoint}
-          onSeek={onSeek}
+          onSeek={seekLocal}
         />
       </div>
     </div>

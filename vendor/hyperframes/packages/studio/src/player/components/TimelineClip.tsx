@@ -1,4 +1,7 @@
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { clampAudioGain } from "@hyperframes/core/audio-gain";
+import { TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
+import { memo, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import {
   defaultTimelineTheme,
@@ -13,11 +16,13 @@ import { resolveTimelineClipLabel, resolveTimelineKind } from "./timelineLayerPr
 interface TimelineClipProps {
   el: TimelineElement;
   pps: number;
+  timeOffset?: number;
   clipY: number;
   isSelected: boolean;
   isHovered: boolean;
   isDragging?: boolean;
   hasCustomContent: boolean;
+  animationContent?: ReactNode;
   capabilities: TimelineEditCapabilities;
   theme?: TimelineTheme;
   visualStyle: TimelineTrackStyle;
@@ -36,11 +41,13 @@ interface TimelineClipProps {
 export const TimelineClip = memo(function TimelineClip({
   el,
   pps,
+  timeOffset = 0,
   clipY,
   isSelected,
   isHovered,
   isDragging = false,
   hasCustomContent,
+  animationContent,
   capabilities,
   theme = defaultTimelineTheme,
   visualStyle,
@@ -54,21 +61,19 @@ export const TimelineClip = memo(function TimelineClip({
   onContextMenu,
   children,
 }: TimelineClipProps) {
-  const leftPx = el.start * pps;
+  const fade = useClipFadeDraft(el);
+  const hasFades = el.tag === "audio" || el.hasAudio;
+  const leftPx = (el.start - timeOffset) * pps;
   const widthPx = Math.max(el.duration * pps, 4);
   const isMicroClip = widthPx < 40;
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
   const displayLabel = resolveTimelineClipLabel(el);
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
-  const showLabel = !hasCustomContent && !isMicroClip;
-  const showDefaultText = !hasCustomContent && !isMicroClip;
-  const startLabel = el.start.toFixed(1);
-  const endLabel = (el.start + el.duration).toFixed(1);
   const timelineKind = resolveTimelineKind(el);
   const clipClassName = [
     "timeline-clip",
     "absolute",
-    hasCustomContent ? "overflow-visible" : "overflow-hidden",
+    hasCustomContent || animationContent ? "overflow-visible" : "overflow-hidden",
     isSelected ? "is-selected" : "",
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
@@ -114,12 +119,13 @@ export const TimelineClip = memo(function TimelineClip({
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
       data-timeline-kind={timelineKind}
+      aria-label={`${displayLabel} • ${(el.start - timeOffset).toFixed(1)}s – ${(el.start + el.duration - timeOffset).toFixed(1)}s`}
       className={clipClassName}
       style={style}
       title={
         isComposition
           ? el.compositionSrc
-          : `${displayLabel} • ${el.start.toFixed(1)}s – ${(el.start + el.duration).toFixed(1)}s`
+          : `${displayLabel} • ${(el.start - timeOffset).toFixed(1)}s – ${(el.start + el.duration - timeOffset).toFixed(1)}s`
       }
       onPointerEnter={onHoverStart}
       onPointerLeave={onHoverEnd}
@@ -188,13 +194,88 @@ export const TimelineClip = memo(function TimelineClip({
           />
         </div>
       )}
-      {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
-      {showDefaultText && (
-        <span className="timeline-clip__timecode">
-          {startLabel}-{endLabel}s
-        </span>
-      )}
       {children}
+      {animationContent}
+      {hasFades && isSelected && widthPx >= 100 && <ClipVolumeInput element={el} />}
+      {hasFades && (
+        <TimelineClipFades
+          el={el}
+          pps={pps}
+          widthPx={widthPx}
+          showHandles={(isHovered || isSelected) && !isDragging}
+          focusable={isSelected}
+          fade={fade}
+        />
+      )}
     </div>
   );
 });
+
+/** Clip gain shares the official attribute writer and preview/export gain contract. */
+function ClipVolumeInput({ element }: { element: TimelineElement }) {
+  const { onSetElementAttributeLive, onSetElementAttributeQuiet, onRevertElementAttributeLive } =
+    useTimelineEditContextOptional();
+  const authored = element.volume ?? 1;
+  const [value, setValue] = useState(String(Math.round(authored * 100)));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setValue(String(Math.round(authored * 100))), [element.key, authored]);
+  const revert = () => {
+    onRevertElementAttributeLive?.(element, "data-volume");
+    setValue(String(Math.round(authored * 100)));
+  };
+  const save = async () => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || !value.trim()) {
+      revert();
+      return;
+    }
+    const gain = clampAudioGain(numeric / 100);
+    if (saving || gain === authored || !onSetElementAttributeQuiet) return;
+    setSaving(true);
+    try {
+      await onSetElementAttributeQuiet(element, "data-volume", String(gain), "Change clip volume");
+    } catch {
+      revert();
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <label
+      className="absolute right-5 bottom-1 z-[8] flex items-center gap-0.5 rounded bg-panel-bg/90 px-1 text-[9px] text-panel-text-1"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <input
+        aria-label={`音量 ${element.label ?? element.id} (%)`}
+        type="number"
+        min="0"
+        max="400"
+        step="5"
+        value={value}
+        disabled={saving || !onSetElementAttributeQuiet}
+        className="w-8 bg-transparent text-right outline-none"
+        onChange={(event) => {
+          const next = event.target.value;
+          setValue(next);
+          if (next.trim() && Number.isFinite(Number(next)))
+            onSetElementAttributeLive?.(
+              element,
+              "data-volume",
+              String(clampAudioGain(Number(next) / 100)),
+            );
+        }}
+        onBlur={() => void save()}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            revert();
+          }
+        }}
+      />
+      %
+    </label>
+  );
+}

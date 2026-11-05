@@ -13,6 +13,14 @@ export { parseStoryboard } from "./parseStoryboard.js";
 export {
   setFrameField,
   setFrameVoiceover,
+  setFrameSpeaker,
+  setFrameVoiceSelection,
+  setStoryboardGlobal,
   setFrameStatus,
+  setFrameTitle,
+  appendStoryboardFrame,
+  removeStoryboardFrame,
+  moveStoryboardFrame,
   VOICEOVER_ALIASES,
+  SPEAKER_ALIASES,
 } from "./editStoryboard.js";

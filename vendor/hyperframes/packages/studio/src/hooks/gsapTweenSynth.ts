@@ -5,14 +5,17 @@ import type {
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "./gsapShared";
 
+type TimelineKeyframe = GsapPercentageKeyframe & { origin?: "manual" | "preset" | "authored" };
+
 export function deduplicateKeyframes(
-  keyframes: GsapPercentageKeyframe[],
-): GsapPercentageKeyframe[] {
-  const byPct = new Map<number, GsapPercentageKeyframe>();
+  keyframes: TimelineKeyframe[],
+): TimelineKeyframe[] {
+  const byPct = new Map<number, TimelineKeyframe>();
   for (const kf of keyframes) {
     const existing = byPct.get(kf.percentage);
     if (existing) {
       existing.properties = { ...existing.properties, ...kf.properties };
+      if (kf.origin === "manual") existing.origin = "manual";
       if (kf.ease) existing.ease = kf.ease;
     } else {
       byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });

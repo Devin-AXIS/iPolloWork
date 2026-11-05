@@ -14,6 +14,8 @@ export interface StoryboardGridProps {
   pendingComments: FrameCommentEntry[] | null;
   /** Project signature the board was loaded with (busts poster caches). */
   posterVersion?: string;
+  /** Authored storyboard aspect ratio. */
+  aspectRatio: number;
 }
 
 /** The contact sheet: ordered frame tiles in a responsive grid. */
@@ -25,6 +27,7 @@ export function StoryboardGrid({
   onCommentDraftChange,
   pendingComments,
   posterVersion,
+  aspectRatio,
 }: StoryboardGridProps) {
   if (frames.length === 0) {
     return (
@@ -48,6 +51,7 @@ export function StoryboardGrid({
             pendingComments?.find((entry) => entry.frame === frame.index)?.text ?? null
           }
           posterVersion={posterVersion}
+          aspectRatio={aspectRatio}
         />
       ))}
     </div>

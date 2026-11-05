@@ -308,6 +308,19 @@ if (shouldRun("--dangling")) {
   }
   console.log();
 
+  // Declared key families are checked against the canonical dictionary. A family
+  // groups runtime values (voice IDs, categories) while retaining one literal prefix.
+  for (const file of sourceFiles) {
+    const content = readFileSync(file, "utf-8");
+    for (const call of content.matchAll(/\btranslationKey\(\s*([^,\n]+)/g)) {
+      const match = call[1].match(/^["']([^"']+)["']$/);
+      if (!match || ![...enKeys].some(key => key.startsWith(match[1]))) {
+        console.log(`  ✗ unknown translation family "${match?.[1] ?? call[1]}" in ${file.replace(REPO_ROOT + "/", "")}`);
+        exitCode = 1;
+      }
+    }
+  }
+
   // --- 7. Dynamic t() calls (keys built at runtime) ---
   console.log("=== Dynamic t() calls (keys built at runtime) ===");
   const dynamicPattern = /\b(?:t|translate|tr)\(\s*(`[^`]*\$\{|[^"'][^,)]*\+)/g;

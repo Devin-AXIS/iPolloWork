@@ -30,6 +30,15 @@ export const PLAYER_STYLES = /* css */ `
     pointer-events: auto;
   }
 
+  .hfp-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+  }
+
   .hfp-poster {
     position: absolute;
     inset: 0;
@@ -81,19 +90,22 @@ export const PLAYER_STYLES = /* css */ `
     font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
-  .hfp-shader-loader-mark {
-    width: 86px;
-    height: 86px;
-    display: grid;
-    place-items: center;
-    overflow: visible;
+  .hfp-shader-loader-indicator {
+    width: 28px;
+    height: 28px;
+    box-sizing: border-box;
+    border: 3px solid rgba(244, 247, 251, 0.2);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: hfp-loader-spin 0.8s linear infinite;
   }
 
-  .hfp-shader-loader-mark svg {
-    display: block;
-    overflow: visible;
-    filter: drop-shadow(0 0 5px rgba(79, 219, 94, 0.16));
-    pointer-events: none;
+  @keyframes hfp-loader-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .hfp-shader-loader:not(.hfp-visible):not(.hfp-hiding) .hfp-shader-loader-indicator {
+    animation-play-state: paused;
   }
 
   .hfp-shader-loader-title {
@@ -122,6 +134,10 @@ export const PLAYER_STYLES = /* css */ `
     -webkit-background-clip: text;
     background-clip: text;
     animation: hfp-shader-loader-sheen 1.9s linear infinite;
+  }
+
+  .hfp-shader-loader:not(.hfp-visible):not(.hfp-hiding) .hfp-shader-loader-title-text {
+    animation-play-state: paused;
   }
 
   .hfp-shader-loader-detail {

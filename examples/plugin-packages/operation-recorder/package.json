@@ -1,0 +1,33 @@
+{
+  "name": "ipollowork-operation-recorder-plugin",
+  "version": "0.4.2",
+  "private": true,
+  "type": "module",
+  "description": "Independent semantic operation recorder and portable Agent Skill compiler for iPolloWork.",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "packageManager": "pnpm@11.4.0",
+  "scripts": {
+    "check": "tsc --noEmit && node --check ui/app.js && node --check scripts/build.mjs && node --check scripts/start.mjs && node --check native/recorder.mjs && node --check native/accessibility.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.ts tests/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/start.mjs",
+    "package:plugin": "node scripts/build.mjs --sign",
+    "verify:host": "bun scripts/verify-host.ts",
+    "verify:desktop": "node scripts/verify-desktop.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Devin-AXIS/iPolloWork.git",
+    "directory": "examples/plugin-packages/operation-recorder"
+  },
+  "dependencies": {
+    "koffi": "3.3.2",
+    "uiohook-napi": "1.5.5"
+  }
+}

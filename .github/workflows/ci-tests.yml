@@ -20,21 +20,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [blacksmith-4vcpu-ubuntu-2204, macos-14]
+        os: [ubuntu-24.04, macos-15]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.4.0
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Install OpenCode CLI
         shell: bash
@@ -113,23 +106,83 @@ jobs:
       - name: Verify OpenCode
         run: opencode --version
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run app unit tests
-        run: pnpm --filter @ipollowork/app test
+      - name: Prepare complete bundled plugins
+        run: pnpm plugins:package --desktop
 
-      - name: Run server unit tests
-        run: pnpm --filter ipollowork-server test
+      - name: Build runtime contracts
+        run: pnpm --filter ipollowork-server build
 
-      - name: Run desktop unit tests
-        run: pnpm --filter @ipollowork/desktop test
+      - name: Compile native macOS computer-use runtime
+        if: runner.os == 'macOS'
+        run: pnpm --filter @ipollowork/handsfree check
 
-      - name: Typecheck Electron main against the IPC contract
-        run: pnpm --filter @ipollowork/desktop typecheck:electron
+      - name: Validate source and release contracts
+        run: |
+          node scripts/i18n-audit.mjs --ci
+          node --test scripts/release/package-client.test.mjs
+
+      - name: Provide bundled video codecs to tests
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { createRequire } from 'node:module';
+          import { appendFileSync } from 'node:fs';
+          import { dirname } from 'node:path';
+          const require = createRequire(new URL('./apps/desktop/package.json', `file://${process.cwd()}/`));
+          const ffmpeg = require('@ffmpeg-installer/ffmpeg').path;
+          const ffprobe = require('@ffprobe-installer/ffprobe').path;
+          appendFileSync(process.env.GITHUB_ENV, `HYPERFRAMES_FFMPEG_PATH=${ffmpeg}\nHYPERFRAMES_FFPROBE_PATH=${ffprobe}\n`);
+          appendFileSync(process.env.GITHUB_PATH, `${dirname(ffmpeg)}\n${dirname(ffprobe)}\n`);
+          NODE
+
+      - name: Run the shared source checks and test suites
+        shell: bash
+        run: |
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            sandbox="$(node -e "const path=require('node:path');const electron=require('./apps/desktop/node_modules/electron');process.stdout.write(path.join(path.dirname(electron),'chrome-sandbox'))")"
+            sudo chown root:root "$sandbox"
+            sudo chmod 4755 "$sandbox"
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends openbox
+            xvfb-run -a bash -c '
+              openbox &
+              window_manager=$!
+              trap "kill $window_manager" EXIT
+              pnpm check
+            '
+          else
+            pnpm check
+          fi
 
       - name: Run e2e tests
         run: pnpm --filter @ipollowork/app test:e2e
+
+  business-components:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.1
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install HyperFrames dependencies
+        working-directory: vendor/hyperframes
+        run: bun install --frozen-lockfile
+      - name: Build and validate all 35 business components
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node examples/stage-diagrams/build.mjs
+      - name: Upload the five current component packs and AI adapter
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage-diagrams-4.0.0
+          path: examples/stage-diagrams/dist/hyperframes/
+          if-no-files-found: error

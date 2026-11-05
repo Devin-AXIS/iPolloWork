@@ -8,40 +8,52 @@ export interface GifEncodeArgsInput {
   outputPath: string;
   fps: Fps;
   loop: number;
+  preserveAlpha: boolean;
+  wholeFrames?: boolean;
 }
 
 function fpsToFfmpegArg(fps: Fps): string {
   return fps.den === 1 ? String(fps.num) : `${fps.num}/${fps.den}`;
 }
 
-export function buildGifPalettegenArgs(input: GifEncodeArgsInput): string[] {
-  const fpsArg = fpsToFfmpegArg(input.fps);
+const KEEP_FILTER_GRAPH_WHEN_FRAMES_DROP_ALPHA = ["-reinit_filter", "0"];
+const WRITE_EVERY_FRAME_WHOLE = ["-gifflags", "0"];
+
+function framesInput(input: GifEncodeArgsInput, fpsArg: string): string[] {
   return [
-    "-y",
     "-framerate",
     fpsArg,
+    ...KEEP_FILTER_GRAPH_WHEN_FRAMES_DROP_ALPHA,
     "-i",
     join(input.framesDir, input.framePattern),
+  ];
+}
+
+export function buildGifPalettegenArgs(input: GifEncodeArgsInput): string[] {
+  const fpsArg = fpsToFfmpegArg(input.fps);
+  const transparency = input.preserveAlpha ? ":reserve_transparent=1" : "";
+  return [
+    "-y",
+    ...framesInput(input, fpsArg),
     "-vf",
-    `fps=${fpsArg},palettegen=stats_mode=diff`,
+    `fps=${fpsArg},palettegen=stats_mode=diff${transparency}`,
     input.palettePath,
   ];
 }
 
 export function buildGifPaletteuseArgs(input: GifEncodeArgsInput): string[] {
   const fpsArg = fpsToFfmpegArg(input.fps);
+  const transparency = input.preserveAlpha ? ":alpha_threshold=128" : "";
   return [
     "-y",
-    "-framerate",
-    fpsArg,
-    "-i",
-    join(input.framesDir, input.framePattern),
+    ...framesInput(input, fpsArg),
     "-i",
     input.palettePath,
     "-lavfi",
-    `fps=${fpsArg} [x]; [x][1:v] paletteuse=dither=sierra2_4a`,
+    `fps=${fpsArg} [x]; [x][1:v] paletteuse=dither=sierra2_4a${transparency}`,
     "-loop",
     String(input.loop),
+    ...(input.wholeFrames ? WRITE_EVERY_FRAME_WHOLE : []),
     input.outputPath,
   ];
 }

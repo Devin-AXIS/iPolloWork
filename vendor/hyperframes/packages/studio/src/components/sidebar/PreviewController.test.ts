@@ -52,4 +52,18 @@ describe("PreviewController", () => {
 
     expect(signal?.aborted).toBe(true);
   });
+
+  it("can reactivate after the development strict-mode cleanup cycle", async () => {
+    const cleanup = vi.fn();
+    const controller = new PreviewController();
+
+    controller.dispose();
+    controller.activate();
+    controller.start("strict-mode-preview", async () => cleanup);
+    await Promise.resolve();
+
+    expect(controller.activeId).toBe("strict-mode-preview");
+    controller.dispose();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
 });

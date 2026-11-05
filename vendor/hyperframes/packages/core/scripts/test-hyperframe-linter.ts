@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lintHyperframeHtml } from "@hyperframes/lint";
+import { readJsonAttr } from "../../lint/src/utils";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VALID_COMPOSITION = `
@@ -81,6 +82,31 @@ async function testDetectsOverlappingGsapTweens() {
   assert.equal(overlapFinding?.severity, "warning");
 }
 
+async function testJsonAttributeEntityDecoding() {
+  const branches = JSON.stringify({ version: 1, kind: "category-value", rows: [
+    { id: "branch-1", label: 'Sales "growth" & profit', sub: "literal &quot; and &amp;" },
+    { id: "branch-2", label: "服务与支持", leaves: "输入、输出" },
+  ] });
+  const values = { title: 'Quoted "title" & literal &quot; <value>', branches, motionCueTimes: '{"step-1":0.3,"step-2":2}' };
+  const json = JSON.stringify(values);
+  const encoded = json.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  const tag = `<div id="stage" data-variable-values="${encoded}"></div>`;
+  assert.equal(readJsonAttr(tag, "data-variable-values"), json, "host-escaped nested JSON must be decoded exactly once");
+  const parsed = JSON.parse(readJsonAttr(tag, "data-variable-values") ?? "null");
+  assert.deepEqual(parsed, values, "literal quote and ampersand entities must survive one HTML decode");
+  assert.deepEqual(JSON.parse(parsed.branches), JSON.parse(branches), "the nested row document must remain intact");
+  assert.equal(readJsonAttr('<div data-variable-values=\'{"title":"Hello"}\'>', "data-variable-values"), '{"title":"Hello"}');
+  assert.equal(readJsonAttr('<div data-variable-values="{&#34;title&#34;:&#x22;Hello&#x22;}">', "data-variable-values"), '{"title":"Hello"}');
+  assert.equal(readJsonAttr('<div data-variable-values-extra="{}">', "data-variable-values"), null);
+
+  const declarations = JSON.stringify(Object.keys(values).map(id => ({ id, type: "string", label: id, default: "" }))).replaceAll('"', "&quot;");
+  const html = VALID_COMPOSITION.replace("<html>", `<html data-composition-variables="${declarations}">`).replace('<div id="stage"></div>', tag);
+  const result = await lintHyperframeHtml(html);
+  assert.equal(result.ok, true, JSON.stringify(result.findings));
+  const invalid = await lintHyperframeHtml(VALID_COMPOSITION.replace('<div id="stage"></div>', '<div id="stage" data-variable-values="{&quot;title&quot;:"></div>'));
+  assert.ok(invalid.findings.some(finding => finding.code === "invalid_variable_values_json"), "malformed JSON must still be rejected after entity decoding");
+}
+
 function testCliJsonOutput() {
   const tempDir = mkdtempSync(path.join(tmpdir(), "hf-core-lint-script-"));
   try {
@@ -104,6 +130,7 @@ async function main() {
   await testCleanFixturePasses();
   await testDetectsMissingCompositionHostId();
   await testDetectsOverlappingGsapTweens();
+  await testJsonAttributeEntityDecoding();
   testCliJsonOutput();
   console.log("hyperframe linter tests passed");
 }

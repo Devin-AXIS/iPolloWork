@@ -368,10 +368,20 @@ actor MCPServer {
         guard let appURL = applicationURL(named: name) else {
             return ["ok": false, "error": "App '\(name)' was not found."]
         }
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        let app = try await NSWorkspace.shared.openApplication(at: appURL, configuration: config)
-        return ["ok": true, "app": app.localizedName ?? name]
+        let launchedName: String = try await withCheckedThrowingContinuation { continuation in
+            Task { @MainActor in
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                NSWorkspace.shared.openApplication(at: appURL, configuration: config) { app, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: app?.localizedName ?? name)
+                    }
+                }
+            }
+        }
+        return ["ok": true, "app": launchedName]
     }
 
     private func handleOpenURL(args: [String: Any]) async throws -> [String: Any] {
@@ -382,8 +392,18 @@ actor MCPServer {
             guard let appURL = applicationURL(named: appName) else {
                 return ["ok": false, "error": "App '\(appName)' was not found."]
             }
-            _ = try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration())
-            return ["ok": true]
+            let opened: Bool = try await withCheckedThrowingContinuation { continuation in
+                Task { @MainActor in
+                    NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) { app, error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: app != nil)
+                        }
+                    }
+                }
+            }
+            return ["ok": opened]
         }
         return ["ok": NSWorkspace.shared.open(url)]
     }
@@ -401,7 +421,7 @@ actor MCPServer {
     private func cuaScreenshotResult() async throws -> [[String: Any]] {
         guard let screen = NSScreen.main else { throw ComputerUseError.screenshotFailed }
         cuaSnapshotFrontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        let cgImage = await screenCaptureKitDisplayImage() ?? CGWindowListCreateImage(CGRect.null, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution])
+        let cgImage = await screenCaptureKitDisplayImage()
         guard let cgImage else {
             throw ComputerUseError.screenshotFailed
         }
@@ -468,9 +488,6 @@ actor MCPServer {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId(for: trimmed)) {
             return url
-        }
-        if let path = NSWorkspace.shared.fullPath(forApplication: trimmed) {
-            return URL(fileURLWithPath: path)
         }
         let candidates = [
             "/Applications/\(trimmed).app",

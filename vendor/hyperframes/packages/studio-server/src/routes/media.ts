@@ -1,9 +1,9 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, mkdirSync } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, dirname, extname, join, posix } from "node:path";
 import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
-import { resolveWithinProject } from "../helpers/safePath.js";
+import { mkdirWithinProject, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
 
 const VIDEO_EXTENSIONS = new Set([
@@ -29,12 +29,13 @@ type BackgroundRemovalDevice = "auto" | "cpu" | "coreml" | "cuda";
 interface BackgroundRemovalBody {
   inputPath?: string;
   outputPath?: string;
+  foregroundPath?: string;
   createBackgroundPlate?: boolean;
   quality?: string;
   device?: string;
 }
 
-type JobWithCreatedAt = MediaProcessingJobState & { createdAt: number };
+type JobWithCreatedAt = MediaProcessingJobState & { createdAt: number; requestKey: string };
 type ProbeMediaMetadata = typeof probeMediaMetadata;
 
 function isVideoPath(path: string): boolean {
@@ -63,23 +64,46 @@ function slugFileBase(path: string): string {
   return name || "media";
 }
 
-function uniqueAssetPath(projectDir: string, assetPath: string): string {
+function uniqueAssetPath(
+  projectDir: string,
+  assetPath: string,
+  taken: ReadonlySet<string>,
+): string {
   const ext = extname(assetPath);
   const withoutExt = assetPath.slice(0, -ext.length);
   let candidate = assetPath;
-  for (let index = 2; existsSync(join(projectDir, candidate)); index++) {
+  for (let index = 2; taken.has(candidate) || existsSync(join(projectDir, candidate)); index++) {
     candidate = `${withoutExt}-${index}${ext}`;
   }
   return candidate;
 }
 
-function defaultOutputPath(projectDir: string, inputPath: string): string {
+function defaultOutputPath(
+  projectDir: string,
+  inputPath: string,
+  taken: ReadonlySet<string>,
+): string {
   const ext = isImagePath(inputPath) ? ".png" : ".webm";
-  return uniqueAssetPath(projectDir, `assets/cutouts/${slugFileBase(inputPath)}-cutout${ext}`);
+  return uniqueAssetPath(
+    projectDir,
+    `assets/cutouts/${slugFileBase(inputPath)}-cutout${ext}`,
+    taken,
+  );
 }
 
-function defaultPlatePath(projectDir: string, inputPath: string): string {
-  return uniqueAssetPath(projectDir, `assets/cutouts/${slugFileBase(inputPath)}-plate.webm`);
+function defaultPlatePath(
+  projectDir: string,
+  inputPath: string,
+  taken: ReadonlySet<string>,
+): string {
+  return uniqueAssetPath(projectDir, `assets/cutouts/${slugFileBase(inputPath)}-plate.webm`, taken);
+}
+
+function outputsInFlight(mediaJobs: Map<string, JobWithCreatedAt>): Set<string> {
+  const running = [...mediaJobs.values()].filter((job) => job.status === "processing");
+  return new Set(
+    running.flatMap((job) => [job.outputAssetPath, job.backgroundOutputAssetPath ?? ""]),
+  );
 }
 
 function makeJobId(projectId: string, mediaJobs: Map<string, JobWithCreatedAt>): string {
@@ -111,6 +135,9 @@ export function registerMediaRoutes(
 ): void {
   const mediaJobs = new Map<string, JobWithCreatedAt>();
   const TTL_MS = 300_000;
+  const CLEANUP_INTERVAL_MS = 60_000;
+  const MAX_MEDIA_JOBS = 256;
+  let cleanupTimer: ReturnType<typeof setInterval> | null = null;
   const readMediaMetadata = options.probeMediaMetadata ?? probeMediaMetadata;
 
   function cleanupFinishedJobs(): void {
@@ -120,6 +147,23 @@ export function registerMediaRoutes(
         mediaJobs.delete(id);
       }
     }
+    const finishedOldestFirst = Array.from(mediaJobs.entries())
+      .filter(([, job]) => job.status === "complete" || job.status === "failed")
+      .sort(([, left], [, right]) => left.createdAt - right.createdAt);
+    while (mediaJobs.size >= MAX_MEDIA_JOBS && finishedOldestFirst.length > 0) {
+      const oldest = finishedOldestFirst.shift();
+      if (oldest) mediaJobs.delete(oldest[0]);
+    }
+    if (mediaJobs.size === 0 && cleanupTimer) {
+      clearInterval(cleanupTimer);
+      cleanupTimer = null;
+    }
+  }
+
+  function ensureCleanupTimer(): void {
+    if (cleanupTimer) return;
+    cleanupTimer = setInterval(cleanupFinishedJobs, CLEANUP_INTERVAL_MS);
+    if (typeof cleanupTimer === "object" && "unref" in cleanupTimer) cleanupTimer.unref();
   }
 
   api.get("/projects/:id/media/metadata", async (c) => {
@@ -145,6 +189,9 @@ export function registerMediaRoutes(
     // fallow-ignore-next-line complexity
     async (c) => {
       cleanupFinishedJobs();
+      if (mediaJobs.size >= MAX_MEDIA_JOBS) {
+        return c.json({ error: "too many active media jobs" }, 429);
+      }
       if (!adapter.startBackgroundRemoval) {
         return c.json({ error: "background removal is not available in this Studio server" }, 501);
       }
@@ -171,17 +218,46 @@ export function registerMediaRoutes(
         return c.json({ error: "background removal supports video or image assets only" }, 400);
       }
 
-      const requestedOutput = body.outputPath ? normalizeProjectAssetPath(body.outputPath) : "";
+      const requestedOutput = body.outputPath
+        ? posix.normalize(normalizeProjectAssetPath(body.outputPath))
+        : "";
       if (requestedOutput && containsNullByte(requestedOutput)) {
         return c.json({ error: "forbidden" }, 403);
       }
       if (requestedOutput && !resolveWithinProject(project.dir, requestedOutput)) {
         return c.json({ error: "forbidden" }, 403);
       }
+      let foregroundPath: string | undefined;
+      if (body.foregroundPath) {
+        if (!inputIsVideo || body.createBackgroundPlate) {
+          return c.json({ error: "foreground reuse requires a video without a background plate" }, 400);
+        }
+        const foregroundAssetPath = normalizeProjectAssetPath(body.foregroundPath);
+        if (/^(?:https?:|data:|blob:)/i.test(foregroundAssetPath)) {
+          return c.json({ error: "foreground requires a project-local video" }, 400);
+        }
+        if (containsNullByte(foregroundAssetPath)) return c.json({ error: "forbidden" }, 403);
+        foregroundPath = resolveWithinProject(project.dir, foregroundAssetPath) ?? undefined;
+        if (!foregroundPath) return c.json({ error: "forbidden" }, 403);
+        if (!isVideoPath(foregroundPath)) return c.json({ error: "foreground must be a video" }, 400);
+        if (!existsSync(foregroundPath)) return c.json({ error: "foreground not found" }, 404);
+      }
+      const requestKey = JSON.stringify([
+        project.dir, inputPath, requestedOutput, foregroundPath,
+        body.createBackgroundPlate === true, normalizeQuality(body.quality), normalizeDevice(body.device),
+      ]);
+      const existing = [...mediaJobs.values()].find(
+        (job) => job.status === "processing" && job.requestKey === requestKey,
+      );
+      if (existing) return c.json({
+        jobId: existing.id, status: existing.status, outputPath: existing.outputAssetPath,
+        backgroundOutputPath: existing.backgroundOutputAssetPath,
+      });
+      const taken = outputsInFlight(mediaJobs);
       const outputAssetPath = requestedOutput
-        ? uniqueAssetPath(project.dir, requestedOutput)
-        : defaultOutputPath(project.dir, inputAssetPath);
-      const outputPath = resolveWithinProject(project.dir, outputAssetPath);
+        ? uniqueAssetPath(project.dir, requestedOutput, taken)
+        : defaultOutputPath(project.dir, inputAssetPath, taken);
+      const outputPath = pinWithinProject(project.dir, outputAssetPath);
       if (!outputPath) return c.json({ error: "forbidden" }, 403);
       if (inputIsVideo && !VIDEO_OUTPUT_EXTENSIONS.has(extname(outputAssetPath).toLowerCase())) {
         return c.json({ error: "video background removal output must be .webm or .mov" }, 400);
@@ -196,16 +272,17 @@ export function registerMediaRoutes(
         if (!inputIsVideo) {
           return c.json({ error: "background plates are only supported for video inputs" }, 400);
         }
-        backgroundOutputAssetPath = defaultPlatePath(project.dir, inputAssetPath);
+        taken.add(outputAssetPath);
+        backgroundOutputAssetPath = defaultPlatePath(project.dir, inputAssetPath, taken);
         backgroundOutputPath =
-          resolveWithinProject(project.dir, backgroundOutputAssetPath) ?? undefined;
+          pinWithinProject(project.dir, backgroundOutputAssetPath) ?? undefined;
         if (!backgroundOutputPath) {
           return c.json({ error: "forbidden" }, 403);
         }
       }
 
-      mkdirSync(dirname(outputPath), { recursive: true });
-      if (backgroundOutputPath) mkdirSync(dirname(backgroundOutputPath), { recursive: true });
+      mkdirWithinProject(project.dir, dirname(outputPath));
+      if (backgroundOutputPath) mkdirWithinProject(project.dir, dirname(backgroundOutputPath));
 
       const jobId = makeJobId(project.id, mediaJobs);
       const state = adapter.startBackgroundRemoval({
@@ -214,6 +291,7 @@ export function registerMediaRoutes(
         inputAssetPath,
         outputPath,
         outputAssetPath,
+        foregroundPath,
         backgroundOutputPath,
         backgroundOutputAssetPath,
         quality: normalizeQuality(body.quality),
@@ -221,7 +299,9 @@ export function registerMediaRoutes(
         jobId,
       }) as JobWithCreatedAt;
       state.createdAt = Date.now();
+      state.requestKey = requestKey;
       mediaJobs.set(jobId, state);
+      ensureCleanupTimer();
 
       return c.json({
         jobId,

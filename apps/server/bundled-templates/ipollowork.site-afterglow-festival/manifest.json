@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-afterglow-festival",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "events",
@@ -10,7 +10,8 @@
     "events",
     "playful",
     "responsive",
-    "themeable"
+    "themeable",
+    "topic:events"
   ],
   "surface": "design",
   "title": "Afterglow Festival",

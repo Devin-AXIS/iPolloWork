@@ -1,0 +1,7 @@
+/* Core-v1 site structural baseline. Theme values belong to the active template. */
+[data-ipw-layout],[data-ipw-layout] *{box-sizing:border-box}
+[data-ipw-layout]{width:100%;color:var(--ipw-color-text);font-family:var(--ipw-font-body)}
+[data-ipw-layout] :where(h1,h2,h3,p,ol,ul,blockquote){overflow-wrap:anywhere}
+[data-ipw-layout] :where(h1,h2,h3){font-family:var(--ipw-font-display);text-wrap:balance}
+[data-ipw-layout] :where(a,button){font:inherit}
+[data-ipw-layout] img{max-width:100%;height:auto}

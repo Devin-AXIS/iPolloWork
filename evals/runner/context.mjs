@@ -519,7 +519,28 @@ export class EvalContext {
       closeClients.push(client);
     }
     try {
-      const buffer = preCapturedBuffer ?? await captureScreenshot(screenshotClient);
+      let buffer = preCapturedBuffer;
+      if (!buffer) {
+        const attempts = !sandbox && !targetSelector ? 3 : 1;
+        let lastError = null;
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          try {
+            await screenshotClient.send("Page.bringToFront").catch(() => undefined);
+            buffer = await captureScreenshot(screenshotClient, {
+              fromSurface: options.fromSurface,
+            });
+            break;
+          } catch (error) {
+            lastError = error;
+            if (attempt + 1 >= attempts) break;
+            this.log(`Primary screenshot attempt ${attempt + 1}/${attempts} failed: ${error instanceof Error ? error.message : String(error)}`);
+            await this.reconnect();
+            screenshotClient = this.client;
+            if (!textTargetSelector) textClient = screenshotClient;
+          }
+        }
+        if (!buffer) throw lastError;
+      }
       await writeFile(join(this.outDir, fileName), buffer);
       this.screenshots.push(fileName);
       const bodyText = await evaluate(textClient, "document.body.innerText").catch(() => "");

@@ -5,12 +5,21 @@
   "librarySection": "interface-animation",
   "title": "US Map",
   "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
-  "tags": ["data", "map", "geography", "usa", "choropleth"],
+  "tags": ["component", "data", "map", "geography", "usa", "choropleth", "theme"],
+  "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "US Map", "url": "https://www.hyperframes.dev/catalog/blocks/us-map" },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "data": { "version": 1, "kind": "region-value", "mode": "override", "rowId": "region", "binding": { "variable": "values", "encoding": "key-value-list" }, "columns": [{ "id": "region", "label": "State code", "labelZh": "州代码", "type": "string", "role": "id", "required": true }, { "id": "value", "label": "Population density", "labelZh": "人口密度", "type": "number", "role": "value", "required": true }], "minRows": 1, "maxRows": 51, "highlightVariable": "highlight", "valueFormat": { "unit": "people/mi²", "precision": 1, "notation": "standard" } }, "ai": { "slots": ["title", "values", "highlight", "source"], "instructions": "AI may replace state values or add an annotation, but must retain valid state abbreviations and a readable choropleth." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
   },
   "duration": 12,
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Population Density by State", "maxLength": 72, "update": "live" },
+    { "id": "values", "label": "State data", "description": "State density overrides, edited as structured rows.", "type": "string", "default": "CA:253.9,TX:112.8,FL:410.5,NY:415.3,NJ:1263", "maxLength": 2000, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "NJ", "maxLength": 4, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source: U.S. Census Bureau", "maxLength": 64, "update": "live" }
+  ],
   "files": [
     {
       "path": "us-map.html",

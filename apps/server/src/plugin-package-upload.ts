@@ -1,12 +1,18 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
+import {
+  pluginPackageArchiveExtension,
+  PLUGIN_PACKAGE_MAX_BYTES,
+  PLUGIN_PACKAGE_MAX_FILES,
+  type PluginPackageArchiveFormat,
+} from "@ipollowork/types/plugins";
 import { z } from "zod";
 
 import { ApiError } from "./errors.js";
 
-const MAX_PLUGIN_PACKAGE_FILES = 512;
-const MAX_PLUGIN_PACKAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PLUGIN_PACKAGE_FILES = PLUGIN_PACKAGE_MAX_FILES;
+const MAX_PLUGIN_PACKAGE_BYTES = PLUGIN_PACKAGE_MAX_BYTES;
 
 const uploadSchema = z.object({
   archiveName: z.string().trim().min(1).max(255),
@@ -60,7 +66,7 @@ export function parsePluginPackageUpload(value: unknown): PluginPackageUpload {
     seen.add(path);
     totalBytes += decodeBase64(file.contentBase64).byteLength;
     if (totalBytes > MAX_PLUGIN_PACKAGE_BYTES) {
-      throw new ApiError(413, "plugin_package_upload_too_large", "Plugin package exceeds 10 MB");
+      throw new ApiError(413, "plugin_package_upload_too_large", "Plugin package exceeds 32 MB");
     }
   }
   if (!seen.has("ipollowork.plugin.json")) {
@@ -71,9 +77,21 @@ export function parsePluginPackageUpload(value: unknown): PluginPackageUpload {
 
 export async function withMaterializedPluginPackageUpload<T>(
   value: unknown,
+  format: PluginPackageArchiveFormat,
   operation: (input: { archiveName: string; packageRoot: string }) => Promise<T>,
 ): Promise<T> {
   const upload = parsePluginPackageUpload(value);
+  const expectedExtension = pluginPackageArchiveExtension(format);
+  if (!upload.archiveName.toLowerCase().endsWith(expectedExtension)) {
+    throw new ApiError(
+      400,
+      "plugin_package_archive_format_invalid",
+      format === "install"
+        ? `Installable plugin packages must use the ${expectedExtension} extension`
+        : `Plugin Workshop source archives must use the ${expectedExtension} extension`,
+      { format, expectedExtension },
+    );
+  }
   const packageRoot = await mkdtemp(join(tmpdir(), "ipollowork-plugin-import-"));
   try {
     for (const file of upload.files) {

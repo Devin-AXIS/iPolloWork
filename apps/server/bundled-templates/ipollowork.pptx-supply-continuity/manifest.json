@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-supply-continuity",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "operations",
@@ -10,7 +10,8 @@
     "operations",
     "technical",
     "pptx-compatible",
-    "themeable"
+    "themeable",
+    "topic:business"
   ],
   "pptxCompatibility": "native-editable",
   "surface": "design",

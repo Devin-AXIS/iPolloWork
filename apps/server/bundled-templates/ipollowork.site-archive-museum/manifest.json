@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.site-archive-museum",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "design",
   "category": "site",
   "subcategory": "culture",
@@ -10,7 +10,8 @@
     "culture",
     "editorial",
     "responsive",
-    "themeable"
+    "themeable",
+    "topic:culture"
   ],
   "surface": "design",
   "title": "Archive Museum",

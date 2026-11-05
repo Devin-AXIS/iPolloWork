@@ -1,6 +1,6 @@
-import type { ProviderConfig } from "@opencode-ai/sdk/v2/client";
-
-export type LocalProviderModelConfig = NonNullable<ProviderConfig["models"]>[string];
+export type LocalProviderModelConfig = Record<string, unknown> & {
+  name: string;
+};
 
 export type LocalProviderInstallInput = {
   providerId: string;

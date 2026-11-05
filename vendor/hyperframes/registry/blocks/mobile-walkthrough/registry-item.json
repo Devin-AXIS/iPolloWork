@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mobile-walkthrough",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Mobile Walkthrough",
+  "description": "A phone-focused UI walkthrough with editable task steps and a selected interaction state.",
+  "tags": ["component", "interface", "mobile", "walkthrough", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "media", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["appName", "headline", "steps", "activeStep"], "instructions": "Use three concise mobile actions separated by vertical bars and select the one-based step to emphasize." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "mobile-walkthrough.html", "target": "compositions/mobile-walkthrough.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "appName", "label": "App name", "type": "string", "default": "Momentum", "maxLength": 32, "update": "live" },
+    { "id": "headline", "label": "Headline", "type": "string", "default": "A complete flow in three taps", "maxLength": 72, "update": "live" },
+    { "id": "steps", "label": "Steps", "description": "Separate three steps with |", "type": "string", "default": "Capture the idea|Shape the next move|Send it forward", "maxLength": 180, "update": "live" },
+    { "id": "activeStep", "label": "Active step", "type": "number", "default": 2, "min": 1, "max": 3, "step": 1, "update": "live" }
+  ]
+}

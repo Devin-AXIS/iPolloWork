@@ -1,11 +1,13 @@
 // Shared scaffolding for the lightweight composition servers used by `play` and
 // `present`: locating the built runtime/player/slideshow bundles, serving
 // composition asset files, and binding to a free port.
+import { createHash } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { getMimeType } from "@hyperframes/studio-server";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 
 /**
  * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
@@ -63,16 +65,33 @@ export function resolveSlideshowPath(): string | null {
   return candidates.find((p) => existsSync(p)) ?? null;
 }
 
-/** Inject the runtime <script> into composition HTML before </body> (or at the end). */
+/**
+ * Inject the runtime <script> at the top of the composition's <head>, ahead of
+ * every author script. Compositions read `window.__hyperframes.getVariables()`
+ * from an inline script at init, so a runtime appended before </body> is not
+ * loaded yet at that point and the documented API is undefined. The compiled
+ * render path hoists the runtime into <head> the same way; this keeps the
+ * served `play` document in parity with it. Placement falls back to before
+ * <body>, then to the top of the document, for fragments without a <head>.
+ */
 export function injectRuntime(html: string): string {
-  const runtimeTag = `<script src="/runtime.js"></script>`;
-  return html.includes("</body>")
-    ? html.replace("</body>", `${runtimeTag}\n</body>`)
-    : html + `\n${runtimeTag}`;
+  return injectTagsAtHeadStart(html, `<script src="/runtime.js"></script>`);
 }
 
 export function assetContentType(filePath: string): string {
   return getMimeType(filePath);
+}
+
+/** `body` with a content validator, or a 304 when the browser already holds these bytes. */
+export function revalidatedResponse(
+  body: string,
+  contentType: string,
+  ifNoneMatch: string | undefined,
+): Response {
+  const etag = `"${createHash("sha256").update(body).digest("base64url").slice(0, 27)}"`;
+  const headers = { "Content-Type": contentType, "Cache-Control": "no-cache", ETag: etag };
+  if (ifNoneMatch === etag) return new Response(null, { status: 304, headers });
+  return new Response(body, { status: 200, headers });
 }
 
 /**
@@ -86,9 +105,16 @@ export function buildRangeResponse(
   filePath: string,
   contentType: string,
   rangeHeader: string | undefined,
+  ifNoneMatch?: string,
 ): Response {
-  const size = statSync(filePath).size;
+  const { size, mtimeMs } = statSync(filePath);
   const last = size - 1;
+  // Always revalidated, so an edited asset is seen; unchanged bytes cost a 304, not a refetch.
+  const cache = {
+    "Cache-Control": "no-cache",
+    ETag: `"${mtimeMs.toString(36)}-${size.toString(36)}"`,
+  };
+  if (ifNoneMatch === cache.ETag) return new Response(null, { status: 304, headers: cache });
   const match = rangeHeader ? /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim()) : null;
 
   const body = (start: number, end: number): ReadableStream<Uint8Array> | null =>
@@ -100,6 +126,7 @@ export function buildRangeResponse(
     return new Response(body(0, last), {
       status: 200,
       headers: {
+        ...cache,
         "Content-Type": contentType,
         "Accept-Ranges": "bytes",
         "Content-Length": String(size),
@@ -120,6 +147,7 @@ export function buildRangeResponse(
   return new Response(body(start, end), {
     status: 206,
     headers: {
+      ...cache,
       "Content-Type": contentType,
       "Accept-Ranges": "bytes",
       "Content-Range": `bytes ${start}-${end}/${size}`,

@@ -29,7 +29,7 @@ type UpdateDownloadProgressProps = {
 function UpdateDownloadProgress(props: UpdateDownloadProgressProps) {
   const downloadedBytes = props.downloadedBytes ?? 0;
   const progressPercent =
-    props.totalBytes != null && props.totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / props.totalBytes) * 100)) : 0;
+    props.totalBytes != null && props.totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / props.totalBytes) * 100)) : null;
   const progressLabel = (
     <>
       {formatBytes(downloadedBytes)}
@@ -38,9 +38,9 @@ function UpdateDownloadProgress(props: UpdateDownloadProgressProps) {
   );
 
   return (
-    <Progress value={progressPercent} className="w-full">
+    <Progress value={progressPercent} className="w-full" getAriaValueText={() => progressPercent == null ? t("settings.update_downloading") : `${progressPercent}%`}>
       <ProgressLabel className="text-sm text-muted-foreground font-normal">{progressLabel}</ProgressLabel>
-      <ProgressValue className="text-sm" />
+      {progressPercent != null ? <ProgressValue className="text-sm" /> : null}
     </Progress>
   );
 }
@@ -100,7 +100,9 @@ export function UpdatesView(props: UpdatesViewProps) {
                           ? t("settings.update_ready_version", undefined, { version: updateVersion ?? "" })
                           : updateState === "error"
                             ? t("settings.update_check_failed")
-                            : t("settings.update_uptodate")}
+                            : updateLastCheckedAt && !updateErrorMessage
+                              ? t("settings.update_uptodate")
+                              : t("settings.updates_title")}
                 </LayoutSectionItemTitle>
                 <LayoutSectionItemDescription>
                   {updateState === "idle" && updateLastCheckedAt
@@ -116,7 +118,7 @@ export function UpdatesView(props: UpdatesViewProps) {
                     <Button
                       variant="outline"
                       onClick={() => void props.checkForUpdates()}
-                      disabled={props.busy || updateState === "checking" || updateState === "downloading"}
+                      disabled={props.busy || updateState === "checking" || updateState === "downloading" || updateState === "ready"}
                     >
                       {updateState === "checking" ? <Spinner className="size-4" /> : null}
                       {t("settings.update_check_button")}

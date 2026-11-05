@@ -1,4 +1,4 @@
-import { Body, Container, Head, Heading, Html, Preview, Section, Text } from "@react-email/components"
+import { Body, Container, Head, Heading, Html, Preview, Section, Text } from "react-email"
 
 export type VerificationEmailProps = {
   verificationCode: string

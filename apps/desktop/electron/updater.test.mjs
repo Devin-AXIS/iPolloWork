@@ -31,7 +31,7 @@ describe("official updater feed", () => {
     assert.equal(normalizeElectronUpdaterChannel("stable"), "stable");
     assert.equal(
       electronUpdaterFeedUrl("alpha"),
-      "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download",
+      "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/latest",
     );
   });
 

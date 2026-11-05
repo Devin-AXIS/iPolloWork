@@ -115,6 +115,12 @@ export function diffSoftReloadableRestore(
   for (const [key, nextEl] of nextByKey) {
     const prevEl = prevByKey.get(key);
     if (!prevEl || prevEl.tagName !== nextEl.tagName) return null;
+    // Media replacements need fresh decoder/runtime bindings. Syncing all
+    // authored attributes in place also erases transforms from gsap.set()
+    // outside the timeline, which a seek alone cannot restore.
+    if (/^(VIDEO|AUDIO)$/.test(nextEl.tagName) && prevEl.getAttribute("src") !== nextEl.getAttribute("src")) {
+      return null;
+    }
     if (!attributesEqual(prevEl, nextEl)) changedElementKeys.push(key);
   }
   // Confirm nothing OUTSIDE identified-element attributes and GSAP scripts changed.
@@ -267,3 +273,5 @@ export function applyUndoRestoreToPreview(
   }
   return "soft";
 }
+
+export type RestoreFiles = Record<string, UndoRestoreFile>;

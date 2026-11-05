@@ -98,7 +98,7 @@ export function getToolActivityLabel(part: AnyToolPart): string {
     return key ? `Requesting ${key}` : "Requesting an environment variable"
   }
   if (isTaskToolPart(part)) {
-    const description = part.input?.description?.trim()
+    const description = part.input?.description?.replace(/\[project-agent:[^\]]+\]\s*/gu, "").trim()
     return description
       ? `Agent: ${truncateText(description, 56)}`
       : "Running an agent"

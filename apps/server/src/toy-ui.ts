@@ -380,7 +380,6 @@ export const TOY_UI_HTML = `<!doctype html>
             <div class="tabs" id="tabs">
               <button class="tab active" data-tab="share">Share</button>
               <button class="tab" data-tab="skills">Skills</button>
-              <button class="tab" data-tab="plugins">Plugins</button>
               <button class="tab" data-tab="apps">Apps</button>
               <button class="tab" data-tab="config">Config</button>
             </div>
@@ -436,15 +435,6 @@ export const TOY_UI_HTML = `<!doctype html>
                 <span class="small">Managed in <span class="mono">.opencode/skills/</span></span>
               </div>
               <div class="list" id="skills"></div>
-            </div>
-
-            <div class="panel hidden" data-panel="plugins">
-              <div class="row">
-                <input class="input" id="plugin-spec" type="text" placeholder="plugin spec" />
-                <button class="btn" id="btn-plugin-add">Add</button>
-                <button class="btn" id="btn-plugins-refresh">Refresh</button>
-              </div>
-              <div class="list" id="plugins"></div>
             </div>
 
             <div class="panel hidden" data-panel="apps">
@@ -509,8 +499,6 @@ const tokensEl = qs("#tokens");
 const exportEl = qs("#export");
 const importEl = qs("#import");
 const skillsEl = qs("#skills");
-const pluginsEl = qs("#plugins");
-const pluginSpecEl = qs("#plugin-spec");
 const mcpEl = qs("#mcp");
 const hostIdEl = qs("#host-id");
 const pillRun = qs("#pill-run");
@@ -1180,63 +1168,6 @@ async function refreshSkills(workspaceId) {
   }
 }
 
-async function refreshPlugins(workspaceId) {
-  if (!pluginsEl) return;
-  pluginsEl.innerHTML = "";
-  try {
-    const data = await apiFetch("/workspace/" + encodeURIComponent(workspaceId) + "/plugins");
-    const items = Array.isArray(data && data.items) ? data.items : [];
-    if (!items.length) {
-      const empty = document.createElement("div");
-      empty.className = "item";
-      empty.textContent = "No plugins.";
-      pluginsEl.appendChild(empty);
-      return;
-    }
-    for (const item of items) {
-      const row = document.createElement("div");
-      row.className = "item";
-      const top = document.createElement("div");
-      top.className = "row";
-      const left = document.createElement("div");
-      const spec = document.createElement("div");
-      spec.className = "mono";
-      spec.textContent = item.spec;
-      const meta = document.createElement("div");
-      meta.className = "small";
-      meta.textContent = (item.source ? String(item.source) : "") + (item.scope ? " / " + String(item.scope) : "");
-      left.appendChild(spec);
-      if (meta.textContent) left.appendChild(meta);
-
-      const delBtn = document.createElement("button");
-      delBtn.className = "btn danger";
-      delBtn.textContent = "Remove";
-      delBtn.disabled = item.source !== "config";
-      delBtn.onclick = async () => {
-        try {
-          await apiFetch(
-            "/workspace/" + encodeURIComponent(workspaceId) + "/plugins/" + encodeURIComponent(item.spec),
-            { method: "DELETE" },
-          );
-          await refreshPlugins(workspaceId);
-        } catch (e) {
-          setStatus(e && e.message ? e.message : "Remove failed", "bad");
-        }
-      };
-
-      top.appendChild(left);
-      top.appendChild(delBtn);
-      row.appendChild(top);
-      pluginsEl.appendChild(row);
-    }
-  } catch (e) {
-    const warn = document.createElement("div");
-    warn.className = "item";
-    warn.textContent = e && e.message ? e.message : "Plugins unavailable";
-    pluginsEl.appendChild(warn);
-  }
-}
-
 async function refreshMcp(workspaceId) {
   if (!mcpEl) return;
   mcpEl.innerHTML = "";
@@ -1325,7 +1256,6 @@ async function main() {
         setTab(tab);
         try {
           if (tab === "skills") await refreshSkills(workspaceId);
-          if (tab === "plugins") await refreshPlugins(workspaceId);
           if (tab === "apps") await refreshMcp(workspaceId);
           if (tab === "share") await refreshTokens().catch(() => undefined);
         } catch {
@@ -1506,29 +1436,6 @@ async function main() {
 
   qs("#btn-skills-refresh").onclick = async () => {
     await refreshSkills(workspaceId).catch((e) => setStatus(e && e.message ? e.message : "skills failed", "bad"));
-  };
-
-  qs("#btn-plugins-refresh").onclick = async () => {
-    await refreshPlugins(workspaceId).catch((e) => setStatus(e && e.message ? e.message : "plugins failed", "bad"));
-  };
-
-  qs("#btn-plugin-add").onclick = async () => {
-    const spec = pluginSpecEl && pluginSpecEl.value ? String(pluginSpecEl.value).trim() : "";
-    if (!spec) {
-      setStatus("plugin spec required", "bad");
-      return;
-    }
-    try {
-      await apiFetch("/workspace/" + encodeURIComponent(workspaceId) + "/plugins", {
-        method: "POST",
-        body: JSON.stringify({ spec }),
-      });
-      if (pluginSpecEl) pluginSpecEl.value = "";
-      await refreshPlugins(workspaceId);
-      setStatus("Plugin added", "ok");
-    } catch (e) {
-      setStatus(e && e.message ? e.message : "plugin add failed", "bad");
-    }
   };
 
   qs("#btn-mcp-refresh").onclick = async () => {

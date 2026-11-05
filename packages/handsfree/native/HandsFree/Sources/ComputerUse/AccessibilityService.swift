@@ -371,36 +371,30 @@ final class AccessibilityService: @unchecked Sendable {
     }
 
     private func captureScreenshot(target: WindowTarget) async throws -> (Data, ScreenshotMetadata) {
-        let cgImage = await screenCaptureKitImage(target: target) ?? legacyCaptureImage(target: target)
+        let cgImage = await screenCaptureKitImage(target: target)
         guard let cgImage else { throw ComputerUseError.screenshotFailed }
 
         return try encodeScreenshot(cgImage, capturedBounds: target.bounds)
     }
 
-    private func legacyCaptureImage(target: WindowTarget) -> CGImage? {
-        if let windowNumber = target.windowNumber {
-            return CGWindowListCreateImage(
-                CGRect.null,
-                .optionIncludingWindow,
-                CGWindowID(windowNumber),
-                [.bestResolution, .boundsIgnoreFraming]
-            )
-        }
-
-        return CGWindowListCreateImage(target.bounds, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution])
-    }
-
     private func screenCaptureKitImage(target: WindowTarget) async -> CGImage? {
-        guard let windowNumber = target.windowNumber else { return nil }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            guard let window = content.windows.first(where: { Int($0.windowID) == windowNumber }) else { return nil }
             let configuration = SCStreamConfiguration()
             let scale = screenScale(for: target.bounds)
             configuration.width = max(1, Int(target.bounds.width * scale))
             configuration.height = max(1, Int(target.bounds.height * scale))
             configuration.showsCursor = false
-            let filter = SCContentFilter(desktopIndependentWindow: window)
+            let filter: SCContentFilter
+            if let windowNumber = target.windowNumber,
+               let window = content.windows.first(where: { Int($0.windowID) == windowNumber }) {
+                filter = SCContentFilter(desktopIndependentWindow: window)
+            } else if let display = content.displays.first(where: { $0.frame.contains(target.bounds) }) {
+                filter = SCContentFilter(display: display, excludingWindows: [])
+                configuration.sourceRect = target.bounds.offsetBy(dx: -display.frame.minX, dy: -display.frame.minY)
+            } else {
+                return nil
+            }
             return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
         } catch {
             return nil

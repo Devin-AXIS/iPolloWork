@@ -1,0 +1,122 @@
+- id: sdk-jsonrpc-server
+  name: '@deepseek-ai/dsh-sdk-jsonrpc-server'
+
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  disabled: !!js process.env.DSH_PROVIDER !== 'deepseek-official'
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    baseURL: !!js process.env.DEEPSEEK_BASE_URL || undefined
+    thinking: enabled
+    reasoningEffort: max
+
+- id: llm-ipollowork
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  disabled: !!js process.env.DSH_PROVIDER !== 'ipollowork'
+  config:
+    providers:
+      ipollowork:
+        displayName: iPolloWork
+        apiKeyEnv: IPOLLOWORK_API_KEY
+        api: openai-completions
+        baseURL: !!js process.env.IPOLLOWORK_INFERENCE_BASE_URL
+        models:
+          - id: !!js process.env.DSH_MODEL
+            name: !!js process.env.DSH_MODEL
+            contextWindow: 128000
+
+- id: sandbox-policy
+  name: '@deepseek-ai/dsh-sandbox-policy'
+  config:
+    mode: !!js process.env.DSH_PERMISSION_MODE
+    workspaceRoot: !!js process.env.DSH_CWD
+
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+
+- id: bash
+  name: '@deepseek-ai/dsh-bash-local'
+  config:
+    cwd: !!js process.env.DSH_CWD
+    timeoutMs: 60000
+
+- id: agent-spine
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    persona: !!js process.env.DSH_SYSTEM_PROMPT
+    workspaceContext:
+      maxBytes: 65536
+    skills:
+      enabled: true
+    tools:
+      mode: !!js process.env.DSH_TOOL_MODE
+    toolBash:
+      enableRunInBackground: false
+    toolJobs: false
+    goals: {}
+
+- id: sessions
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js process.env.DSH_SESSION_ROOT
+
+- id: checkpoints
+  name: '@deepseek-ai/dsh-session-checkpoint-policy'
+
+- id: code-runtime
+  name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+
+- id: subagent
+  name: '@deepseek-ai/dsh-subagent'
+
+- id: subagent-spawn
+  name: '@deepseek-ai/dsh-subagent-spawn-in-process'
+  config:
+    providerName: spawn
+
+- id: tool-subagent
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: spawn
+    toolName: subagent
+    backgroundMode: one-shot
+    enableRunInBackground: false
+    maxDepth: 1
+
+- id: workflow
+  name: '@deepseek-ai/dsh-workflow-worker-thread'
+  config:
+    provider: spawn
+
+- id: tool-workflow
+  name: '@deepseek-ai/dsh-tool-workflow'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+- id: fs
+  name: '@deepseek-ai/dsh-fs-sandbox'
+  config:
+    cwd: !!js process.env.DSH_CWD
+
+- id: fs-observation
+  name: '@deepseek-ai/dsh-fs-observation-policy'
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: token-meter
+  name: '@deepseek-ai/dsh-token-meter'
+
+- id: compaction
+  name: '@deepseek-ai/dsh-compaction-basic'
+  config:
+    thresholdRatio: 0.8
+    retainRatio: 0.16
+    maxTokens: 8192
+    compactionRetries: 1
+
+- id: repeat-reminder
+  name: '@deepseek-ai/dsh-repeat-tool-reminder'

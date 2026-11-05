@@ -14,30 +14,50 @@ type Logger = {
 
 type DirectoryTreeWatcher = {
   scheduleRescan: () => void;
-  close: () => void;
+  close: () => Promise<void>;
 };
 
 type WorkspaceReloadWatcher = {
   refreshBaseline: (reasons?: ReloadReason[]) => Promise<void>;
-  close: () => void;
+  close: () => Promise<void>;
 };
+
+export type ReloadWatcherHandle = {
+  close: () => Promise<void>;
+  reconcileWorkspaces: () => Promise<void>;
+  refreshWorkspace: (workspaceId: string, reasons?: ReloadReason[]) => Promise<void>;
+};
+
+function closeFsWatcher(watcher: FSWatcher | null): Promise<void> {
+  if (!watcher) return Promise.resolve();
+  return new Promise((resolveClose) => {
+    const finish = () => resolveClose();
+    watcher.once("close", finish);
+    try {
+      watcher.close();
+    } catch {
+      watcher.off("close", finish);
+      finish();
+    }
+  });
+}
 
 export function startReloadWatchers(input: {
   config: ServerConfig;
   reloadEvents: ReloadEventStore;
   logger?: Logger | null;
   debounceMs?: number;
-}): { close: () => void; refreshWorkspace: (workspaceId: string, reasons?: ReloadReason[]) => Promise<void> } {
+}): ReloadWatcherHandle {
   const { config, reloadEvents } = input;
   const logger = input.logger ?? null;
   const debounceMs = typeof input.debounceMs === "number" ? input.debounceMs : 750;
 
-  const workspaceWatchers = new Map<string, WorkspaceReloadWatcher>();
+  const workspaceWatchers = new Map<string, { path: string; watcher: WorkspaceReloadWatcher }>();
 
-  for (const workspace of config.workspaces) {
+  const startWorkspaceWatcher = (workspace: WorkspaceInfo) => {
     try {
       const watcher = startWorkspaceReloadWatcher({ workspace, reloadEvents, logger, debounceMs });
-      workspaceWatchers.set(workspace.id, watcher);
+      workspaceWatchers.set(workspace.id, { path: resolve(workspace.path), watcher });
     } catch (error) {
       logger?.log("warn", "Reload watcher failed to start", {
         workspaceId: workspace.id,
@@ -45,6 +65,10 @@ export function startReloadWatchers(input: {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  };
+
+  for (const workspace of config.workspaces) {
+    startWorkspaceWatcher(workspace);
   }
 
   if (config.workspaces.length) {
@@ -54,18 +78,28 @@ export function startReloadWatchers(input: {
   }
 
   return {
-    close: () => {
-      for (const watcher of workspaceWatchers.values()) {
-        try {
-          watcher.close();
-        } catch {
-          // ignore
-        }
-      }
+    close: async () => {
+      const closing = Array.from(workspaceWatchers.values(), ({ watcher }) => watcher.close());
       workspaceWatchers.clear();
+      await Promise.all(closing);
+    },
+    reconcileWorkspaces: async () => {
+      const nextPaths = new Map(config.workspaces.map((workspace) => [workspace.id, resolve(workspace.path)]));
+      const closing: Promise<void>[] = [];
+
+      for (const [workspaceId, current] of workspaceWatchers) {
+        if (nextPaths.get(workspaceId) === current.path) continue;
+        workspaceWatchers.delete(workspaceId);
+        closing.push(current.watcher.close());
+      }
+      await Promise.all(closing);
+
+      for (const workspace of config.workspaces) {
+        if (!workspaceWatchers.has(workspace.id)) startWorkspaceWatcher(workspace);
+      }
     },
     refreshWorkspace: async (workspaceId: string, reasons?: ReloadReason[]) => {
-      await workspaceWatchers.get(workspaceId)?.refreshBaseline(reasons);
+      await workspaceWatchers.get(workspaceId)?.watcher.refreshBaseline(reasons);
     },
   };
 }
@@ -83,22 +117,35 @@ function startWorkspaceReloadWatcher(input: {
   const trees: DirectoryTreeWatcher[] = [];
   const baselines = new Map<ReloadReason, string>();
   const pendingChecks = new Map<ReloadReason, { timer: ReturnType<typeof setTimeout>; trigger?: ReloadTrigger }>();
+  const closingWatchers = new Set<Promise<void>>();
 
   let closed = false;
   let rootWatcher: FSWatcher | null = null;
   let opencodeRootWatcher: FSWatcher | null = null;
 
-  const closeAll = () => {
+  const queueWatcherClose = (watcher: FSWatcher | null): Promise<void> => {
+    const closing = closeFsWatcher(watcher);
+    closingWatchers.add(closing);
+    void closing.finally(() => closingWatchers.delete(closing));
+    return closing;
+  };
+
+  const closeAll = async () => {
+    if (closed) return;
     closed = true;
     for (const pending of pendingChecks.values()) {
       clearTimeout(pending.timer);
     }
     pendingChecks.clear();
-    for (const tree of trees) {
-      tree.close();
-    }
-    rootWatcher?.close();
-    opencodeRootWatcher?.close();
+    const closing = [
+      ...closingWatchers,
+      ...trees.map((tree) => tree.close()),
+      queueWatcherClose(rootWatcher),
+      queueWatcherClose(opencodeRootWatcher),
+    ];
+    rootWatcher = null;
+    opencodeRootWatcher = null;
+    await Promise.all(closing);
   };
 
   const refreshBaseline = async (reasons: ReloadReason[] = fingerprintedReloadReasons) => {
@@ -179,7 +226,7 @@ function startWorkspaceReloadWatcher(input: {
 
   const ensureOpencodeRootWatcher = () => {
     if (!existsSync(opencodeRoot)) {
-      opencodeRootWatcher?.close();
+      queueWatcherClose(opencodeRootWatcher);
       opencodeRootWatcher = null;
       return;
     }
@@ -382,27 +429,33 @@ function createDirectoryTreeWatcher(input: {
   const resolvedRoot = resolve(rootDir);
 
   const watchers = new Map<string, FSWatcher>();
+  const closingWatchers = new Set<Promise<void>>();
   let closed = false;
   let scanTimer: ReturnType<typeof setTimeout> | null = null;
   let scanning = false;
   let rescanRequested = false;
   let lastRootExists = existsSync(resolvedRoot);
 
-  const close = () => {
+  const queueWatcherClose = (watcher: FSWatcher | null | undefined): Promise<void> => {
+    const closing = closeFsWatcher(watcher ?? null);
+    closingWatchers.add(closing);
+    void closing.finally(() => closingWatchers.delete(closing));
+    return closing;
+  };
+
+  const close = async () => {
     if (closed) return;
     closed = true;
     if (scanTimer) {
       clearTimeout(scanTimer);
       scanTimer = null;
     }
-    for (const watcher of watchers.values()) {
-      try {
-        watcher.close();
-      } catch {
-        // ignore
-      }
-    }
+    const closing = [
+      ...closingWatchers,
+      ...Array.from(watchers.values(), (watcher) => queueWatcherClose(watcher)),
+    ];
     watchers.clear();
+    await Promise.all(closing);
   };
 
   const record = (path: string) => {
@@ -520,28 +573,21 @@ function createDirectoryTreeWatcher(input: {
       }
       if (!existsNow) {
         for (const watcher of watchers.values()) {
-          try {
-            watcher.close();
-          } catch {
-            // ignore
-          }
+          queueWatcherClose(watcher);
         }
         watchers.clear();
         return;
       }
 
       const dirs = await scanDirs();
+      if (closed) return;
       for (const dir of dirs) {
         ensureWatcher(dir);
       }
       for (const dir of Array.from(watchers.keys())) {
         if (!dirs.has(dir)) {
           const watcher = watchers.get(dir);
-          try {
-            watcher?.close();
-          } catch {
-            // ignore
-          }
+          queueWatcherClose(watcher);
           watchers.delete(dir);
         }
       }

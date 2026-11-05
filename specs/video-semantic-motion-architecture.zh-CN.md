@@ -92,7 +92,7 @@ interface MotionInstance {
 | 写入服务 | `vendor/hyperframes/packages/studio-server/src/routes/files.ts` | 验证目标、替换同阶段动画、文字拆分、原子保存 |
 | Studio UI | `SemanticMotionPanel.tsx` 与现有 Property Panel | 目标分类、预设选择、参数控件、预览 |
 | 运行时 | `gsapRuntimePatch.ts`、Player、NLE Preview | 无闪烁更新、保守回退和双缓冲刷新 |
-| AI 入口 | `apps/server/src/opencode-plugins/ipollowork-extensions-preview.ts` | 会话锁定、预设查询和类型化变更工具 |
+| AI 入口 | `apps/server/src/engine-host-tools.ts` | 会话锁定、预设查询和类型化变更工具 |
 
 UI 和 AI 最终都调用 Studio Server 的 `mutate-motion` 写入路径；服务端验证器和 Core 注册表是硬性真相。
 

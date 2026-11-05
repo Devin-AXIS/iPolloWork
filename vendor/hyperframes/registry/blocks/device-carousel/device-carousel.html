@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"One product. Every moment.","maxLength":76},{"id":"screenUrls","label":"Screen URLs (url | url | url)","type":"string","default":"","maxLength":6000},{"id":"labels","label":"Screen labels (label | label | label)","type":"string","default":"Discover|Create|Review","maxLength":120},{"id":"note","label":"Supporting note","type":"string","default":"A continuous journey through your product","maxLength":100},{"id":"carouselMode","label":"Carousel motion","type":"enum","default":"depth-tour","options":[{"value":"depth-tour","label":"Depth Tour · 景深切换"},{"value":"flow-belt","label":"Flow Belt · 连续流动"}]}]'>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1920,height=1080" />
+  <title>Device Carousel</title>
+  <style>
+    *{box-sizing:border-box}[hidden]{display:none!important}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}
+    #device-carousel{--bg:var(--ipw-color-bg,#f4f6f8);--ink:var(--ipw-color-text,#172126);--muted:var(--ipw-color-muted,#647078);--primary:var(--ipw-color-primary,#20bbc0);--surface:var(--ipw-color-surface,#fff);--border:var(--ipw-color-border,#d7dde1);position:relative;width:1920px;height:1080px;overflow:hidden;color:var(--ink);font-family:var(--ipw-font-body,Inter,sans-serif)}
+    .dc-fill{position:absolute;inset:0;background:var(--bg)}.dc-grid{position:absolute;inset:220px -200px 80px;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:90px 90px;opacity:.32;mask-image:radial-gradient(ellipse,#000,transparent 68%);}
+    .dc-header{position:absolute;left:130px;right:130px;top:78px;display:flex;align-items:end;justify-content:space-between;gap:65px}.dc-header h1{font:650 62px/1.08 var(--ipw-font-display,Inter,sans-serif);letter-spacing:-.045em;margin:0;max-width:1180px}.dc-header p{font-size:21px;line-height:1.4;color:var(--muted);max-width:360px;margin:0;text-align:right}
+    .dc-stage{position:absolute;left:0;top:240px;width:1920px;height:700px;perspective:1600px}
+    .dc-deck{position:absolute;inset:0;transform-style:preserve-3d}
+    .dc-device{position:absolute;top:30px;width:350px;height:580px;border:9px solid var(--ink);border-radius:38px;background:var(--surface);box-shadow:0 42px 60px color-mix(in srgb,var(--ink) 18%,transparent);transform-origin:center;overflow:hidden}
+    .dc-device:nth-child(1){left:335px}.dc-device:nth-child(2){left:785px}.dc-device:nth-child(3){left:1235px}
+    .dc-camera{position:absolute;top:10px;left:calc(50% - 37px);width:74px;height:15px;border-radius:20px;background:var(--ink);z-index:2}.dc-screen{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .dc-sample{position:absolute;inset:0;padding:58px 25px 25px;background:var(--surface)}.dc-sample small{font-size:12px;letter-spacing:.1em;color:var(--muted)}.dc-sample h2{font-size:30px;font-weight:600;letter-spacing:-.04em;margin:16px 0 24px}.dc-hero{height:155px;border-radius:18px;background:color-mix(in srgb,var(--primary) 15%,var(--surface));display:grid;place-items:center}
+    .dc-orbit{width:87px;height:87px;border:2px solid var(--primary);border-radius:28px;rotate:-20deg;box-shadow:15px 15px 0 -3px var(--surface),15px 15px 0 -1px var(--primary)}
+    .dc-device:nth-child(2) .dc-orbit{border-radius:50%;rotate:25deg}.dc-device:nth-child(3) .dc-orbit{border-radius:4px;rotate:45deg}
+    .dc-line{height:11px;border-radius:6px;background:var(--border);margin-top:25px;width:88%}.dc-line.short{width:57%;margin-top:14px}.dc-rows{display:flex;gap:12px;margin-top:27px}.dc-rows i{height:65px;flex:1;border:1px solid var(--border);border-radius:12px}
+    .dc-sample em{position:absolute;bottom:24px;font-size:11px;font-style:normal;color:var(--muted)}.dc-device-labels{position:absolute;left:0;right:0;bottom:65px;display:flex;justify-content:center;gap:70px}.dc-label{font-size:19px;color:var(--muted);min-width:130px;text-align:center}.dc-label b{color:var(--primary);margin-right:12px;font-weight:500}.dc-rule{position:absolute;left:130px;right:130px;bottom:32px;height:2px;background:var(--border)}.dc-rule i{display:block;width:100%;height:100%;background:var(--primary);transform-origin:left}
+  </style>
+</head>
+<body>
+  <main id="device-carousel" class="dc-root" data-composition-id="device-carousel" data-width="1920" data-height="1080" data-start="0" data-duration="8">
+    <div class="dc-fill"></div><div class="dc-grid" data-motion-role="background" data-layout-allow-overflow></div>
+    <header class="dc-header"><h1 data-ipw-variable="title" data-ipw-ai-slot="title"></h1><p data-ipw-variable="note" data-ipw-ai-slot="note"></p></header>
+    <section class="dc-stage"><div class="dc-deck" data-motion-role="camera" data-ipw-ai-slot="screenUrls"></div></section>
+    <div class="dc-device-labels" data-ipw-ai-slot="labels"></div><div class="dc-rule"><i></i></div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines=window.__timelines||{};
+    (function(){
+      const root=document.getElementById("device-carousel"),id=root.dataset.compositionId||"device-carousel";
+      const values={title:"One product. Every moment.",screenUrls:"",labels:"Discover|Create|Review",note:"A continuous journey through your product",carouselMode:"depth-tour",...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
+      if(!["depth-tour","flow-belt"].includes(String(values.carouselMode)))throw new Error("Unsupported carousel mode: "+values.carouselMode);
+      root.querySelectorAll("[data-ipw-variable]").forEach(el=>{el.textContent=String(values[el.dataset.ipwVariable]??"");});
+      const urls=String(values.screenUrls).split("|").map(value=>value.trim()),names=String(values.labels).split("|").map(value=>value.trim());
+      const deck=root.querySelector(".dc-deck"),labels=root.querySelector(".dc-device-labels");
+      for(let index=0;index<3;index++){
+        const name=names[index]||["Discover","Create","Review"][index],device=document.createElement("article");
+        device.className="dc-device";device.dataset.motionRole="depth-plane";
+        const camera=document.createElement("i");camera.className="dc-camera";device.append(camera);
+        if(urls[index]){const image=document.createElement("img");image.className="dc-screen";image.src=urls[index];image.alt=name;device.append(image);}
+        else{const sample=document.createElement("div");sample.className="dc-sample";sample.innerHTML='<small>YOUR WORKSPACE</small><h2></h2><div class="dc-hero"><div class="dc-orbit"></div></div><div class="dc-line"></div><div class="dc-line short"></div><div class="dc-rows"><i></i><i></i><i></i></div><em>Illustrative screen</em>';sample.querySelector("h2").textContent=name;device.append(sample);}
+        deck.append(device);
+        const label=document.createElement("span"),number=document.createElement("b");label.className="dc-label";number.textContent="0"+(index+1);label.append(number,document.createTextNode(name));labels.append(label);
+      }
+      const devices=[...root.querySelectorAll(".dc-device")],tl=gsap.timeline({paused:true});
+      const overview=index=>({x:0,y:index===1?-12:12,z:0,rotationY:(1-index)*12,scale:.94,opacity:1,filter:"blur(0px)"});
+      const pose=(index,focus)=>index===focus?{x:0,y:-20,z:160,rotationY:0,scale:1.03,opacity:1,filter:"blur(0px)"}:{x:(index-focus)*26,y:28,z:-65,rotationY:(focus-index)*18,scale:.9,opacity:.48,filter:"blur(1.5px)"};
+      tl.fromTo(root.querySelector(".dc-header"),{y:20,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);
+      if(values.carouselMode!=="flow-belt"){
+      devices.forEach((device,index)=>tl.fromTo(device,{...overview(index),y:85,rotationY:30,opacity:0},{...overview(index),duration:.95,ease:"power3.out"},index*.08));
+      tl.fromTo(deck,{x:0,rotationY:-4},{x:110,rotationY:2,duration:1.25,ease:"power2.inOut"},1.05);
+      // Independent depth planes and a slower background create parallax rather than one flat entrance.
+      [0,1,2].forEach((focus)=>{
+        const start=1.05+focus*1.9;
+        devices.forEach((device,index)=>tl.to(device,{...pose(index,focus),duration:1.05,ease:"power3.inOut"},start));
+        if(focus>0)tl.to(deck,{x:focus===1?0:-110,rotationY:focus===1?0:-2,duration:1.25,ease:"power2.inOut"},start);
+      });
+      devices.forEach((device,index)=>tl.to(device,{...overview(index),duration:.85,ease:"power2.inOut"},6.85));
+      tl.to(deck,{x:0,rotationY:0,duration:.85,ease:"power2.inOut"},6.85);
+      }else{
+        // Integral of a smooth velocity profile: the scene clock stops with the belt.
+        const frames=devices.map(()=>({})),interior=devices.map(()=>({})),previous=[];
+        function distance(time){
+          if(time<=0)return 0;
+          if(time<1)return 390*(time/2-Math.sin(Math.PI*time)/(2*Math.PI));
+          if(time<4)return 195+390*(time-1);
+          const u=Math.min(2,time-4);
+          return 1365+390*(u/2+Math.sin(Math.PI*u/2)/Math.PI);
+        }
+        for(let step=0;step<=96;step++){
+          const p=step/96,travel=distance(p*6),phase=travel/780;
+          devices.forEach(function(device,index){
+            const baseCenter=180+780*index,center=((baseCenter-travel+215)%2340+2340)%2340-215;
+            frames[index][(p*100)+"%"]={x:center-(510+450*index),y:0,z:0,rotationY:0,scale:1,opacity:1,filter:"blur(0px)",ease:previous[index]!==undefined&&center-previous[index]>1000?"steps(1)":"none"};
+            previous[index]=center;
+            interior[index][(p*100)+"%"]={rotation:phase*50,ease:"none"};
+          });
+        }
+        devices.forEach(function(device,index){
+          device.dataset.ipwCarrier="screen-"+index;
+          tl.to(device,{keyframes:frames[index],duration:6,ease:"none"},1.25);
+          const orbit=device.querySelector(".dc-orbit");if(orbit)tl.to(orbit,{keyframes:interior[index],duration:6,ease:"none"},1.25);
+        });
+      }
+      tl.fromTo(root.querySelector(".dc-grid"),{x:35},{x:-35,duration:8,ease:"none"},0);
+      tl.fromTo(root.querySelector(".dc-rule i"),{scaleX:0},{scaleX:1,duration:8,ease:"none"},0);
+      window.__timelines[id]=tl;tl.seek(0);
+    })();
+  </script>
+</body>
+</html>

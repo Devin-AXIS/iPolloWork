@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   resolveElementVisibleTiming,
   syncLegacyFrameCarousel,
   syncTimedClipVisibility,
+  syncPreviewSceneScope,
   wrapAdapterWithTimedClipVisibility,
 } from "./timedClipVisibility";
 
@@ -56,14 +57,14 @@ describe("syncTimedClipVisibility", () => {
   it("keeps compiled sub-compositions visible from preserved authored timing", () => {
     const root = document.getElementById("root")!;
     root.innerHTML = `
-      <div id="effect" data-composition-id="effect-ending" data-start="8"
+      <div id="outro" data-composition-id="outro-card" data-start="8"
         data-hf-authored-duration="3.4" data-track-index="0" style="position:absolute"></div>`;
 
     syncTimedClipVisibility(document, 9.7);
-    expect(sceneState("effect").visibility).toBe("visible");
+    expect(sceneState("outro").visibility).toBe("visible");
 
     syncTimedClipVisibility(document, 11.4);
-    expect(sceneState("effect").visibility).toBe("hidden");
+    expect(sceneState("outro").visibility).toBe("hidden");
   });
 
   it("shows only the newest overlapping scene even when scenes use different tracks", () => {
@@ -218,5 +219,56 @@ describe("syncLegacyFrameCarousel", () => {
     expect(sceneState("frame-2").visibility).toBe("visible");
     expect((document.getElementById("frame-1") as HTMLElement).style.opacity).toBe("0");
     expect((document.getElementById("frame-2") as HTMLElement).style.opacity).toBe("1");
+  });
+});
+
+describe("scene preview scope", () => {
+  it("isolates other scenes, preserves shared layers and restores the preview on exit", () => {
+    document.body.innerHTML =
+      '<div id="brand">Shared</div><section id="alpha" class="scene" data-start="8" data-duration="8"><span id="title" data-start="0" data-duration="8">Title</span></section><section id="beta" class="scene" data-start="0" data-duration="8"><video></video></section>';
+    const video = document.querySelector("video")!;
+    vi.spyOn(video, "pause").mockImplementation(() => {});
+    const scope = { id: "alpha", domId: "alpha", tag: "section", start: 8, duration: 8, track: 0 };
+    const target = syncPreviewSceneScope(document, scope);
+    syncTimedClipVisibility(document, 11, target);
+    expect(document.querySelector("#beta")?.hasAttribute("data-hf-studio-scope-hidden")).toBe(true);
+    expect(document.querySelector("#brand")?.hasAttribute("data-hf-studio-scope-hidden")).toBe(
+      false,
+    );
+    expect(sceneState("alpha").visibility).toBe("visible");
+    expect(video.muted).toBe(true);
+    syncPreviewSceneScope(document, null);
+    expect(document.querySelector("[data-hf-studio-scope-hidden]")).toBeNull();
+    expect(document.querySelector("style[data-hf-studio-scene-mask]")).toBeNull();
+    expect(video.muted).toBe(false);
+    expect(document.getElementById("alpha")?.getAttribute("data-start")).toBe("8");
+  });
+  it("keeps a selected overlapping scene visible and seeks its last frame without changing root duration", () => {
+    document.body.innerHTML =
+      '<section id="alpha" class="scene clip" data-start="8" data-duration="8" data-track-index="0"></section><section id="beta" class="scene clip" data-start="10" data-duration="8" data-track-index="1"></section>';
+    let time = 11;
+    const scope = { id: "alpha", domId: "alpha", tag: "section", start: 8, duration: 8, track: 0 };
+    const adapter = wrapAdapterWithTimedClipVisibility(
+      {
+        play: vi.fn(),
+        pause: vi.fn(),
+        seek: (next) => {
+          time = next;
+        },
+        getTime: () => time,
+        getDuration: () => 24,
+        isPlaying: () => false,
+      },
+      () => document,
+      30,
+      () => scope,
+    );
+    adapter.seek(11);
+    expect(sceneState("alpha").visibility).toBe("visible");
+    expect(adapter.getDuration()).toBe(24);
+    adapter.seek(16);
+    expect(time).toBeCloseTo(16 - 1 / 30);
+    expect(sceneState("alpha").visibility).toBe("visible");
+    expect(document.querySelector("#beta")?.hasAttribute("data-hf-studio-scope-hidden")).toBe(true);
   });
 });

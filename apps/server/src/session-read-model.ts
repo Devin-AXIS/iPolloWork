@@ -45,6 +45,8 @@ export const sessionTodoSchema = z
 export const sessionInfoSchema = z
   .object({
     id: z.string(),
+    engineId: z.string().optional(),
+    totalTokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
     title: z.string().nullish(),
     slug: z.string().nullish(),
     parentID: z.string().nullish(),

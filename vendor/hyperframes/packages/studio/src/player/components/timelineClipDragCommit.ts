@@ -3,7 +3,7 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 // Type-only: erased at runtime, so the timelineZMirror → timelineClipDragCommit
 // value-import edge stays acyclic.
 import type { ZMirrorLaneMove } from "./timelineZMirror";
-import { classifyZone, normalizeToZones } from "./timelineZones";
+import { classifyZone } from "./timelineZones";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import { getTimelineEditCapabilities } from "./timelineEditing";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
@@ -171,12 +171,6 @@ export function persistMoveEdits(
   );
 }
 
-/**
- * A fractional track value for a NEW lane inserted at boundary `insertRow` in
- * `trackOrder` (0 = above the top, `length` = below the bottom). normalizeToZones
- * then compacts it to a distinct integer lane between its neighbours, and the
- * clips at/below the insert shift down by one — the sanctioned index-renumber.
- */
 /** Same-source-file predicate: authored track numbers only compare within ONE
  *  file's coordinate space (an expanded sub-comp child's authoredTrack is in ITS
  *  file, not the host timeline's). `undefined` means the active composition. */
@@ -190,15 +184,9 @@ export const sameSourceFile = (a: TimelineElement, b: TimelineElement): boolean 
  * a host clip next to expanded rows) carries authored values in a different
  * coordinate space, and borrowing them would write a foreign file's numbering.
  *
- * Lane semantics after normalizeToZones: each distinct authored track owns one
- * base lane, and time-overlapping same-track clips spill onto adjacent display
- * sub-lanes (packTrackLanes). A spill sub-lane IS a legal drop target (Timeline's
- * trackOrder lists it): its occupants share the base lane's authored track by
- * construction, so the same-file occupant lookup returns that authored track and
- * the drop persists as a same-track join. The clip may then DISPLAY on a
- * different sub-lane than it was dropped on — the spill re-packs
- * deterministically by stable id, first-fit — but the persisted track is
- * correct.
+ * Display-only legacy overlap subrows retain the same authored track identity.
+ * Scene layer rows also retain authoredTrack, so dropping onto an occupied row
+ * resolves to that row's authored value without rewriting other source tracks.
  *
  * Fallbacks when the lane has no same-file occupant (e.g. an expanded child
  * dropped on a lane holding only other files' clips — the display-lane integer
@@ -395,7 +383,7 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
   }).catch(() => undefined);
 }
 
-/** Build the one sanctioned multi-clip write: atomically insert and compact a
+/** Build the one sanctioned multi-clip write: atomically insert a track in a
  * source-file zone, then let the caller sync the deliberate vertical stacking. */
 // fallow-ignore-next-line complexity
 function buildTrackInsertEdits(
@@ -424,20 +412,14 @@ function buildTrackInsertEdits(
     sameSourceFile(src, element) &&
     classifyZone(src) === writableZone &&
     src.expandedParentStart == null;
-  const topologyOrder = [...new Set(elements.filter(writable).map((e) => e.track))].sort(
-    (a, b) => a - b,
-  );
-  const topologyInsertRow = topologyOrder.filter((track) => track < targetTrack).length;
-  const topologyTargetTrack = insertTrackValue(topologyOrder, topologyInsertRow);
-  const normalized = normalizeToZones(
-    elements.filter(writable).map((e) => {
-      if (keyOf(e) === editKey) {
-        return { ...e, start: previewStart, track: topologyTargetTrack };
-      }
-      if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
-      return e;
-    }),
-  );
+  const insertedTrack = Math.max(0, Math.ceil(targetTrack));
+  const normalized = elements.filter(writable).map((e) => {
+    const authoredTrack = e.authoredTrack ?? e.track;
+    return { ...e,
+      start: keyOf(e) === editKey ? previewStart : multi?.keys.has(keyOf(e)) ? multi.movedStart(e) : e.start,
+      track: keyOf(e) === editKey ? insertedTrack : authoredTrack >= insertedTrack ? authoredTrack + 1 : authoredTrack,
+    };
+  });
   const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
   // A partial zone renumber creates collisions; refuse a shifted locked row.
   for (const norm of normalized) {

@@ -22,6 +22,7 @@ import {
   type DenUser,
 } from "../../../app/lib/den";
 import { exchangeHandoffAndSignIn } from "../../../app/lib/den-handoff";
+import { clearEnterpriseLoginState, restoreEnterpriseLoginState } from "../../../app/lib/work-context";
 import {
   denSessionUpdatedEvent,
   denSettingsChangedEvent,
@@ -107,6 +108,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
     const token = settings.authToken?.trim() ?? "";
 
     if (!token) {
+      clearEnterpriseLoginState();
       setUser(null);
       setError(null);
       lastSignalRetryAtRef.current = null;
@@ -129,6 +131,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
 
       if (currentRun !== refreshTokenRef.current) return;
 
+      restoreEnterpriseLoginState({ userId: nextUser.id, baseUrl: settings.baseUrl, token });
       await ensureDenActiveOrganization({
         forceServerSync:
           !settings.activeOrgId?.trim() || !settings.activeOrgSlug?.trim(),
@@ -145,6 +148,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
 
       const failureStatus = resolveDenAuthFailureStatus(nextError);
       if (failureStatus === "signed_out") {
+        clearEnterpriseLoginState();
         clearDenSession();
         setUser(null);
         lastSignalRetryAtRef.current = null;
@@ -164,7 +168,13 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
 
     if (typeof window === "undefined") return;
 
-    const handleSessionUpdated = () => {
+    const handleSessionUpdated = (event: WindowEventMap[typeof denSessionUpdatedEvent]) => {
+      const detail = event.detail;
+      if (detail?.status === "success" && detail.user && detail.baseUrl && detail.token) {
+        restoreEnterpriseLoginState({ userId: detail.user.id, baseUrl: detail.baseUrl, token: detail.token });
+      } else if (detail?.status === "signed_out") {
+        clearEnterpriseLoginState();
+      }
       void refresh();
     };
 

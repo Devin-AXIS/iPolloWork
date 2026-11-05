@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.prompt-ab-laboratory",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "ai-testing",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "ai-testing"
+    "ai-testing",
+    "topic:data"
   ],
   "surface": "video",
   "title": "Prompt A/B Laboratory",

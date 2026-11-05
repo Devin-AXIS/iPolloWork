@@ -1,9 +1,6 @@
 /** @jsxImportSource react */
-import * as React from "react";
-import { createPortal } from "react-dom";
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import panelSelectChevron from "./assets/panel-select-chevron.svg";
 
 export type DesignPanelSelectOption<T extends string = string> = {
   label: string;
@@ -22,98 +19,24 @@ type DesignPanelSelectProps<T extends string> = {
   showValue?: boolean;
 };
 
+/** Design fields retain their layout API, but delegate interaction to the public Select. */
 export function DesignPanelSelect<T extends string>({
-  value,
-  options,
-  onChange,
-  ariaLabel,
-  className,
-  menuClassName,
-  textClassName,
-  showValue = true,
+  value, options, onChange, ariaLabel, className, menuClassName, textClassName, showValue = true,
 }: DesignPanelSelectProps<T>) {
-  const [open, setOpen] = React.useState(false);
-  const [openAbove, setOpenAbove] = React.useState(false);
-  const [menuRect, setMenuRect] = React.useState<DOMRect | null>(null);
-  const rootRef = React.useRef<HTMLDivElement>(null);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-  const selected = options.find((option) => option.value === value) ?? options[0];
-
-  const toggleOpen = () => {
-    if (!open && rootRef.current) {
-      const rect = rootRef.current.getBoundingClientRect();
-      const menuHeight = options.length * 34 + 24;
-      setOpenAbove(window.innerHeight - rect.bottom < menuHeight + 12 && rect.top > menuHeight + 12);
-      setMenuRect(rect);
-    }
-    setOpen((current) => !current);
-  };
-
-  React.useEffect(() => {
-    if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target instanceof Node ? event.target : null;
-      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
+  const selected = options.find(option => option.value === value) ?? options[0];
   return (
-    <div ref={rootRef} className={cn("relative min-w-0", className)}>
-      <button
-        type="button"
-        className={cn(
-          "flex h-full w-full items-center rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-[#9cbdf0]",
-          showValue ? "justify-between gap-2 px-2" : "justify-center p-0",
-        )}
-        onClick={toggleOpen}
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {showValue ? <span className={cn("min-w-0 flex-1 truncate text-[13px] text-foreground", textClassName)}>{selected?.label ?? value}</span> : null}
-        <img src={panelSelectChevron} alt="" width="16" height="16" className={cn("block size-4 shrink-0 transition-transform", open && "rotate-180")} />
-      </button>
-      {open && menuRect ? createPortal(
-        <div
-          ref={menuRef}
-          className={cn("fixed z-[70] min-w-[120px] overflow-hidden rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_18px_rgba(37,41,49,0.11)]", menuClassName)}
-          style={{
-            left: menuRect.left,
-            top: openAbove ? undefined : menuRect.bottom + 12,
-            bottom: openAbove ? window.innerHeight - menuRect.top + 12 : undefined,
-            width: menuRect.width,
-          }}
-          role="listbox"
-          aria-label={ariaLabel}
-        >
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              aria-selected={option.value === value}
-              disabled={option.disabled}
-              className={cn("flex h-[34px] w-full items-center rounded-lg px-2.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40", option.value === value && "bg-muted")}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      ) : null}
+    <div data-slot="design-panel-select" className={cn("relative min-w-0", className)}>
+      <Select value={selected?.value ?? value} onValueChange={next => {
+        const option = options.find(option => option.value === next);
+        if (option && !option.disabled) onChange(option.value);
+      }}>
+        <SelectTrigger aria-label={ariaLabel} className={cn("h-full! w-full border-0 bg-transparent px-2 text-xs font-normal shadow-none focus-visible:ring-0", !showValue && "justify-center p-0")}>
+          {showValue ? <SelectValue className={cn("min-w-0 truncate", textClassName)}>{selected?.label ?? value}</SelectValue> : null}
+        </SelectTrigger>
+        <SelectContent align="start" className={cn("w-(--anchor-width) min-w-0 p-1 [&_[role=option]]:min-h-7 [&_[role=option]]:py-1 [&_[role=option]]:text-xs", menuClassName)}>
+          {options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

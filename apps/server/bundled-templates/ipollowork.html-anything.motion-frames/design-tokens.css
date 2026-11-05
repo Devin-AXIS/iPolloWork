@@ -1,13 +1,13 @@
 :root {
-  --ipw-color-bg: #f3eee5;
-  --ipw-color-surface: #fffaf2;
-  --ipw-color-text: #1a1816;
-  --ipw-color-muted: #7a766c;
-  --ipw-color-border: #d8d0c4;
-  --ipw-color-primary: #c0563b;
-  --ipw-color-secondary: #c0563b;
-  --ipw-color-accent: #c0563b;
-  --ipw-color-on-primary: #ffffff;
+  --ipw-color-bg: #080b12;
+  --ipw-color-surface: #101827;
+  --ipw-color-text: #edf4ff;
+  --ipw-color-muted: #91a1b8;
+  --ipw-color-border: #26364e;
+  --ipw-color-primary: #6ee7ff;
+  --ipw-color-secondary: #8794ff;
+  --ipw-color-accent: #ffb86b;
+  --ipw-color-on-primary: #080b12;
   --ipw-font-display: Inter, ui-sans-serif, system-ui, sans-serif;
   --ipw-font-body: Inter, ui-sans-serif, system-ui, sans-serif;
   --ipw-body-line-height: 1.5;
@@ -15,8 +15,8 @@
   --ipw-page-padding: 32px;
   --ipw-section-space: 72px;
   --ipw-button-radius: 8px;
-  --ipw-card-bg: #fffaf2;
-  --ipw-card-border: #d8d0c4;
+  --ipw-card-bg: #101827;
+  --ipw-card-border: #26364e;
   --ipw-card-radius: 14px;
   --ipw-card-shadow: none;
 }

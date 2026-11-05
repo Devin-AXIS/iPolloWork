@@ -1,5 +1,5 @@
 import React, { type CSSProperties } from "react"
-import { Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text } from "@react-email/components"
+import { Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text } from "react-email"
 import { DEFAULT_IPOLLOWORK_DOWNLOAD_URL, desktopCapabilities } from "./desktop-capabilities.js"
 
 export type OrganizationInviteEmailProps = {

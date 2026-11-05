@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-const sonnerPath = new URL("../src/components/ui/sonner.tsx", import.meta.url);
+const sonnerPath = new URL("../../../packages/ui/src/react/sonner.tsx", import.meta.url);
 
 describe("toast close button", () => {
   test("dismisses on pointer down before overlapping drag surfaces can capture click", async () => {
@@ -10,6 +10,6 @@ describe("toast close button", () => {
     expect(source).toContain("onPointerDown={dismiss}");
     expect(source).toContain("onClick={dismiss}");
     expect(source).toContain("sonnerToast.dismiss(id)");
-    expect(source).toContain("relative z-50");
+    expect(source).toMatch(/data-slot="toast-close"[^>]*className="[^"]*\bz-50\b/);
   });
 });

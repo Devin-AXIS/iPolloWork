@@ -1,102 +1,131 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import {
-  AppWindow,
-  BarChart3,
+  BookImage,
   Building2,
+  Check,
+  ChartBarBig,
+  ChevronDown,
+  Clapperboard,
+  Cloud,
   Download,
-  Eye,
-  FileChartColumnIncreasing,
-  FileText,
-  Film,
-  FolderOpen,
+  FileImage,
+  Folders,
   Globe2,
-  Image,
-  LayoutTemplate,
+  IdCard,
   Loader2,
-  MoreHorizontal,
-  PanelsTopLeft,
+  PictureInPicture2,
   Plus,
   Presentation,
   Search,
-  Trash2,
-  Upload,
+  Star,
+  type LucideIcon,
 } from "lucide-react";
 import {
-  TEMPLATE_STYLE_LABELS,
+  matchesTemplateFilters,
   TEMPLATE_PACKAGE_FILE_ACCEPT,
   isPptxCompatibleTemplate,
   type TemplateCatalogItem,
   type TemplateCategory,
-  type PptxCompatibility,
   type TemplateStyle,
+  type TemplateTopicFilter,
 } from "@ipollowork/types/templates";
 
+import { Alert, AlertDescription, AlertAction, AlertTitle } from "@/components/ui/alert";
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { CardActionsMenu } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonStyleScopeProvider } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
+import { TemplateCatalogFilters } from "@/components/template-catalog-filters";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { t } from "@/i18n";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
-import type { WorkContextId } from "@/app/lib/work-context";
-import type { EnterpriseConnection, EnterpriseResource } from "@/app/lib/enterprise-connections";
-import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise/work-resource-scope-switch";
+import type { EnterpriseResource } from "@/app/lib/enterprise-connections";
+import type { EnterpriseConnection } from "@/app/lib/enterprise-connections";
+import { readRemoteTemplateCard } from "@/app/lib/enterprise-connections";
+import { EnterpriseResourceStatus, EnterpriseResourceMenuItems, EnterpriseResourceSubmissionDialog, type EnterpriseResourceSubmission, EnterpriseResourceActionDialog, type EnterpriseResourceAction } from "@/react-app/domains/enterprise";
 
 type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
-type TemplatePreviewSelection = { template: TemplateCatalogItem; enterpriseResourceId?: string };
+type TemplatePreviewSelection = { template: TemplateCatalogItem; remoteResourceId?: string; coverDataUrl?: string };
 
 type CategoryDefinition = {
   id: TemplateCategory;
   labelKey: string;
-  detailKey: string;
-  Icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
 };
 
 const CATEGORIES: CategoryDefinition[] = [
-  { id: "site", labelKey: "template_market.category.site", detailKey: "template_market.category.site_detail", Icon: Globe2 },
-  { id: "video", labelKey: "template_market.category.video", detailKey: "template_market.category.video_detail", Icon: Film },
-  { id: "app", labelKey: "template_market.category.app", detailKey: "template_market.category.app_detail", Icon: AppWindow },
-  { id: "slides", labelKey: "template_market.category.slides", detailKey: "template_market.category.slides_detail", Icon: Presentation },
-  { id: "poster", labelKey: "template_market.category.poster", detailKey: "template_market.category.poster_detail", Icon: Image },
-  { id: "cards", labelKey: "template_market.category.cards", detailKey: "template_market.category.cards_detail", Icon: PanelsTopLeft },
-  { id: "report", labelKey: "template_market.category.report", detailKey: "template_market.category.report_detail", Icon: FileChartColumnIncreasing },
-  { id: "article", labelKey: "template_market.category.article", detailKey: "template_market.category.article_detail", Icon: FileText },
-  { id: "other", labelKey: "template_market.category.other", detailKey: "template_market.category.other_detail", Icon: FolderOpen },
+  { id: "site", labelKey: "template_market.category.site", icon: Globe2 },
+  { id: "video", labelKey: "template_market.category.video", icon: Clapperboard },
+  { id: "slides", labelKey: "template_market.category.slides", icon: Presentation },
+  { id: "app", labelKey: "template_market.category.app", icon: PictureInPicture2 },
+  { id: "poster", labelKey: "template_market.category.poster", icon: FileImage },
+  { id: "cards", labelKey: "template_market.category.cards", icon: IdCard },
+  { id: "report", labelKey: "template_market.category.report", icon: ChartBarBig },
+  { id: "article", labelKey: "template_market.category.article", icon: BookImage },
+  { id: "other", labelKey: "template_market.category.other", icon: Folders },
 ];
 
-type AuthoringType = CategoryDefinition & { key: string; pptxCompatibility?: PptxCompatibility };
-const AUTHORING_TYPES: AuthoringType[] = CATEGORIES.flatMap((category) => category.id === "slides"
-  ? [
-      { ...category, key: "slides", labelKey: "template_authoring.type.slides", detailKey: "template_authoring.type.slides_detail" },
-      { ...category, key: "pptx", labelKey: "template_authoring.type.pptx", detailKey: "template_authoring.type.pptx_detail", pptxCompatibility: "native-editable" as const },
-    ]
-  : [{ ...category, key: category.id }]);
+const PRIMARY_CATEGORIES = CATEGORIES.slice(0, 4);
+const MORE_CATEGORIES = CATEGORIES.slice(4);
 
-const STYLE_ORDER = Object.keys(TEMPLATE_STYLE_LABELS) as TemplateStyle[];
-const templateStyleLabel = (style: TemplateStyle) => t(`template_market.style.${style}`);
+const templateStyleLabel = (style: TemplateStyle) => t(translationKey("template_market.style.", style));
 const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
 const TEMPLATE_COVER_ROOT_MARGIN = "480px 0px";
+const FAVORITE_TEMPLATE_IDS_STORAGE_KEY = "ipollowork.template-favorites.v1";
 
-function templateMatches(input: { template: TemplateCatalogItem; category: TemplateCategory | "all"; style: TemplateStyle | "all"; source: "all" | "mine"; query: string }) {
-  const { template, category, style, source, query } = input;
-  if (category !== "all" && template.manifest.category !== category) return false;
-  if (style !== "all" && template.manifest.style !== style) return false;
-  if (source === "mine" && template.sourceType !== "local") return false;
-  if (!query) return true;
-  return [template.manifest.title, template.manifest.description, template.manifest.subcategory, template.manifest.style, ...template.manifest.tags]
-    .join(" ").toLowerCase().includes(query);
+type TemplateMarketView = "explore" | "my";
+type MyTemplateCollection = "all" | "favorites" | "mine";
+export type TemplateCatalogSource = "builtin" | "cloud" | "enterprise";
+
+const MY_TEMPLATE_COLLECTIONS: MyTemplateCollection[] = ["all", "favorites", "mine"];
+
+function readFavoriteTemplateIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(FAVORITE_TEMPLATE_IDS_STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((value): value is string => typeof value === "string"));
+  } catch {
+    return new Set();
+  }
 }
 
-function enterpriseResourceMatches(input: { resource: EnterpriseResource; category: TemplateCategory | "all"; query: string }) {
-  const { resource, category, query } = input;
+function writeFavoriteTemplateIds(ids: ReadonlySet<string>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(FAVORITE_TEMPLATE_IDS_STORAGE_KEY, JSON.stringify([...ids]));
+}
+
+function templateFormatLabel(template: TemplateCatalogItem) {
+  if (isPptxCompatibleTemplate(template.manifest)) return "PPTX";
+  return template.manifest.surface === "video" ? "Video" : "HTML";
+}
+
+export function cloudResourceMatches(input: {
+  resource: EnterpriseResource;
+  installed?: TemplateCatalogItem;
+  category: TemplateCategory | "all";
+  style: TemplateStyle | "all";
+  topic: TemplateTopicFilter;
+  query: string;
+}) {
+  const { resource, installed, category, style, topic, query } = input;
+  const normalized = query.trim().toLowerCase();
+  const metadataMatches = !normalized || [resource.name, resource.description, resource.category, resource.enterpriseCategory]
+    .join(" ").toLowerCase().includes(normalized);
+  if (installed) {
+    return matchesTemplateFilters(installed.manifest, { category, style, topic })
+      && (metadataMatches || matchesTemplateFilters(installed.manifest, { query: normalized }));
+  }
+  if (style !== "all" || (topic !== "all" && topic !== "unclassified")) return false;
   if (category !== "all" && resource.category !== category) return false;
-  return !query || [resource.name, resource.description, resource.category, resource.enterpriseCategory]
-    .join(" ").toLowerCase().includes(query);
-}
-
-function isTemplateCategory(value: string): value is TemplateCategory {
-  return CATEGORIES.some((entry) => entry.id === value);
+  return metadataMatches;
 }
 
 function TemplateCover({ template, getCover, className, alt = "", eager = false }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; className?: string; alt?: string; eager?: boolean }) {
@@ -105,6 +134,7 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
   const [src, setSrc] = React.useState("");
   const [failed, setFailed] = React.useState(false);
   const [retry, setRetry] = React.useState(0);
+  const loadCover = React.useEffectEvent((id: string) => getCover(id));
 
   React.useEffect(() => {
     if (eager || shouldLoad) {
@@ -134,9 +164,10 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
     }, TEMPLATE_COVER_TIMEOUT_MS);
     setSrc("");
     setFailed(false);
-    void getCover(template.manifest.id).then(({ data, contentType }) => {
+    void loadCover(template.manifest.id).then(({ data, contentType }) => {
       if (!active) return;
       window.clearTimeout(timeout);
+      setFailed(false);
       objectUrl = URL.createObjectURL(new Blob([data], { type: contentType ?? "image/svg+xml" }));
       setSrc(objectUrl);
     }).catch(() => {
@@ -144,22 +175,18 @@ function TemplateCover({ template, getCover, className, alt = "", eager = false 
       if (active) setFailed(true);
     });
     return () => { active = false; window.clearTimeout(timeout); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [getCover, retry, shouldLoad, template.installedVersion, template.manifest.id, template.manifest.version]);
+  }, [retry, shouldLoad, template.installedVersion, template.manifest.id, template.manifest.version]);
   if (!shouldLoad) return <div ref={placeholderRef} data-template-cover-lazy className={cn("h-full w-full bg-muted", className)} />;
   if (failed) {
     return (
-      <div className={cn("grid h-full w-full place-items-center bg-muted p-4 text-center", className)}>
-        <div className="max-w-full">
-          <p className="truncate text-xs font-medium text-foreground">{template.manifest.title}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">{t("template_market.cover_failed")}</p>
-          <Button type="button" variant="outline" size="sm" className="mt-3 h-7 rounded-lg px-2 text-[11px]" onClick={(event) => { event.stopPropagation(); setRetry((value) => value + 1); }}>
-            {t("template_market.retry_cover")}
-          </Button>
-        </div>
-      </div>
+      <Alert variant="destructive" className={cn("flex h-full w-full flex-col items-center justify-center rounded-none text-center", className)}>
+        <AlertTitle className="max-w-full truncate">{template.manifest.title}</AlertTitle>
+        <AlertDescription>{t("template_market.cover_failed")}</AlertDescription>
+        <AlertAction><Button type="button" variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); setRetry((value) => value + 1); }}>{t("template_market.retry_cover")}</Button></AlertAction>
+      </Alert>
     );
   }
-  return src ? <img src={src} alt={alt} decoding="async" className={cn("h-full w-full object-cover", className)} /> : <div className={cn("h-full w-full animate-pulse bg-muted", className)} />;
+  return src ? <img src={src} alt={alt} decoding="async" onError={() => setFailed(true)} className={cn("h-full w-full object-cover", className)} /> : <Skeleton aria-label={t("settings.marketplace.loading")} className={cn("h-full w-full rounded-none", className)} />;
 }
 
 export type TemplateMarketDialogProps = {
@@ -170,217 +197,353 @@ export type TemplateMarketDialogProps = {
   error: string | null;
   busyId: string | null;
   getCover: TemplateCoverLoader;
-  enterprise: EnterpriseConnection | null;
-  resourceScope: WorkContextId;
-  enterpriseResources: EnterpriseResource[];
-  onResourceScopeChange: (scope: WorkContextId) => void;
-  onInstallEnterprise: (resource: EnterpriseResource) => void;
+  remoteResources: EnterpriseResource[];
+  cloudAvailable: boolean;
+  enterpriseAvailable: boolean;
+  enterpriseConnection?: EnterpriseConnection | null;
+  source: TemplateCatalogSource;
+  onSelectSource: (source: TemplateCatalogSource) => void;
+  onInstallRemote: (resource: EnterpriseResource) => void;
   onRefresh: () => void;
+  onLoadMore?: () => void;
+  exportPackage?: (template: TemplateCatalogItem) => Promise<File>;
   onUse: (template: TemplateCatalogItem) => void;
+  onCustom: (category: TemplateCategory) => void;
   onInstall: (templateId: string) => void;
-  onUninstall: (templateId: string) => void;
-  onExport: (template: TemplateCatalogItem) => void;
   onImport: (file: File) => Promise<boolean>;
-  canCreate: boolean;
-  onCreate: (input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility }) => Promise<string | null> | string | null | void;
 };
 
 export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
+  const [submission, setSubmission] = React.useState<EnterpriseResourceSubmission | null>(null);
   const [category, setCategory] = React.useState<TemplateCategory | "all">("all");
   const [style, setStyle] = React.useState<TemplateStyle | "all">("all");
-  const [source, setSource] = React.useState<"all" | "mine">("all");
+  const [topic, setTopic] = React.useState<TemplateTopicFilter>("all");
+  const [resourceAction, setResourceAction] = React.useState<EnterpriseResourceAction | null>(null);
+  React.useEffect(() => { setResourceAction(null); setSubmission(null); }, [props.enterpriseConnection?.id, props.enterpriseConnection?.membership.id, props.source, props.open]);
+  const [view, setView] = React.useState<TemplateMarketView>("explore");
+  const [myCollection, setMyCollection] = React.useState<MyTemplateCollection>("all");
   const [query, setQuery] = React.useState("");
+  const [favoriteIds, setFavoriteIds] = React.useState(readFavoriteTemplateIds);
   const [pendingImport, setPendingImport] = React.useState<File | null>(null);
   const [previewSelection, setPreviewSelection] = React.useState<TemplatePreviewSelection | null>(null);
-  const [createOpen, setCreateOpen] = React.useState(false);
-  const [creatingType, setCreatingType] = React.useState<string | null>(null);
   const importRef = React.useRef<HTMLInputElement>(null);
-  const enterpriseMode = props.resourceScope !== "personal";
+  const remoteCatalogMode = props.source !== "builtin";
+  const enterpriseLabel = props.enterpriseConnection?.name ?? t("enterprise_connection.enterprise");
+  const remoteSourceLabel = props.source === "enterprise"
+    ? enterpriseLabel
+    : t("enterprise_connection.cloud");
 
-  React.useEffect(() => { if (props.open) props.onRefresh(); }, [props.open, props.onRefresh]);
-  const styleOptions = React.useMemo(() => {
-    const available = new Set(props.templates.map((item) => item.manifest.style));
-    return STYLE_ORDER.filter((id) => available.has(id)).map((id) => ({ id, label: templateStyleLabel(id) }));
-  }, [props.templates]);
-
+  const refreshCatalog = React.useEffectEvent(() => props.onRefresh());
+  React.useEffect(() => { if (props.open) refreshCatalog(); }, [props.open, props.source, props.enterpriseConnection?.id, props.enterpriseConnection?.origin, props.enterpriseConnection?.membership.id, props.enterpriseConnection?.session.token]);
   React.useEffect(() => {
-    if (style !== "all" && !styleOptions.some((option) => option.id === style)) setStyle("all");
-  }, [style, styleOptions]);
+    if (!props.open) setTopic("all");
+  }, [props.open]);
 
   const visible = React.useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return props.templates.filter((template) => templateMatches({ template, category, style, source, query: normalized }));
-  }, [category, props.templates, query, source, style]);
-  const visibleEnterpriseResources = React.useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return props.enterpriseResources.filter((resource) => enterpriseResourceMatches({ resource, category, query: normalized }));
-  }, [category, props.enterpriseResources, query]);
-  const enterpriseTemplateInstallations = React.useMemo(() => {
+    return props.templates.filter((template) => {
+      if (!matchesTemplateFilters(template.manifest, { category, style, topic, query: normalized })) return false;
+      if (view === "explore") return template.sourceType !== "local";
+      if (myCollection === "favorites") return favoriteIds.has(template.manifest.id);
+      if (myCollection === "mine") return template.sourceType === "local";
+      return template.sourceType === "local" || favoriteIds.has(template.manifest.id);
+    });
+  }, [category, favoriteIds, myCollection, props.templates, query, style, topic, view]);
+  const myTemplatesEmpty = !props.templates.some(
+    (template) => template.sourceType === "local" || favoriteIds.has(template.manifest.id),
+  );
+  const remoteTemplateInstallations = React.useMemo(() => {
     const templatesById = new Map(props.templates.map((template) => [template.manifest.id, template]));
     const installations = new Map<string, TemplateCatalogItem>();
-    for (const resource of props.enterpriseResources) {
-      const installed = (resource.sourceTemplateId ? templatesById.get(resource.sourceTemplateId) : undefined)
+    for (const resource of props.remoteResources) {
+      const installed = (resource.manifestId ? templatesById.get(resource.manifestId) : undefined)
         ?? templatesById.get(resource.slug);
       if (installed) installations.set(resource.id, installed);
     }
     return installations;
-  }, [props.enterpriseResources, props.templates]);
+  }, [props.remoteResources, props.templates]);
+  const visibleRemoteResources = React.useMemo(() => {
+    return props.remoteResources.filter((resource) => cloudResourceMatches({
+      resource,
+      installed: remoteTemplateInstallations.get(resource.id),
+      category,
+      style,
+      topic,
+      query,
+    }));
+  }, [category, props.remoteResources, query, remoteTemplateInstallations, style, topic]);
   const previewTemplate = previewSelection?.template ?? null;
-  const previewEnterpriseResource = previewSelection?.enterpriseResourceId
-    ? props.enterpriseResources.find((resource) => resource.id === previewSelection.enterpriseResourceId)
+  const previewRemoteResource = previewSelection?.remoteResourceId
+    ? props.remoteResources.find((resource) => resource.id === previewSelection.remoteResourceId)
     : undefined;
-  const previewEnterpriseCurrent = Boolean(
-    previewEnterpriseResource?.latestVersion
-      && previewEnterpriseResource.latestVersion.version === previewTemplate?.installedVersion,
+  const previewRemoteCurrent = Boolean(
+    previewRemoteResource?.latestVersion
+      && previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion,
   );
-  const previewPrimaryLabel = previewEnterpriseResource
-    ? previewEnterpriseCurrent ? t("template_market.use_template") : t("template_market.update_template")
+  const previewPrimaryLabel = previewRemoteResource
+    ? previewRemoteCurrent ? t("template_market.use_template") : t(previewTemplate?.installed ? "template_market.update_template" : "template_market.install_template")
     : previewTemplate?.updateAvailable
       ? t("template_market.update_template")
       : previewTemplate?.installed ? t("template_market.use_template") : t("template_market.install_template");
   const runPreviewPrimaryAction = () => {
     if (!previewTemplate) return;
     const template = previewTemplate;
-    const enterpriseResource = previewEnterpriseResource;
+    const remoteResource = previewRemoteResource;
     setPreviewSelection(null);
-    if (enterpriseResource) {
-      if (previewEnterpriseCurrent) props.onUse(template);
-      else props.onInstallEnterprise(enterpriseResource);
+    if (remoteResource) {
+      if (previewRemoteCurrent) props.onUse(template);
+      else props.onInstallRemote(remoteResource);
     } else if (template.updateAvailable || !template.installed) {
       props.onInstall(template.manifest.id);
     } else {
       props.onUse(template);
     }
   };
-  const categoryCounts = React.useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    const counts = new Map<TemplateCategory, number>();
-    for (const item of CATEGORIES) counts.set(item.id, 0);
-    if (enterpriseMode) {
-      for (const resource of props.enterpriseResources) {
-        if (enterpriseResourceMatches({ resource, category: "all", query: normalized })) {
-          if (isTemplateCategory(resource.category)) {
-            counts.set(resource.category, (counts.get(resource.category) ?? 0) + 1);
-          }
-        }
-      }
-    } else {
-      for (const template of props.templates) {
-        if (templateMatches({ template, category: "all", style, source, query: normalized })) {
-          counts.set(template.manifest.category, (counts.get(template.manifest.category) ?? 0) + 1);
-        }
-      }
+  const toggleFavorite = React.useCallback((templateId: string) => {
+    setFavoriteIds((current) => {
+      const next = new Set(current);
+      if (next.has(templateId)) next.delete(templateId);
+      else next.add(templateId);
+      writeFavoriteTemplateIds(next);
+      return next;
+    });
+  }, []);
+  const selectView = (nextView: TemplateMarketView) => {
+    setView(nextView);
+    setTopic("all");
+    if (nextView === "my") {
+      setCategory("all");
+      setStyle("all");
+      if (remoteCatalogMode) props.onSelectSource("builtin");
     }
-    return counts;
-  }, [enterpriseMode, props.enterpriseResources, props.templates, query, source, style]);
-  const allCount = React.useMemo(() => {
-    let count = 0;
-    for (const value of categoryCounts.values()) count += value;
-    return count;
-  }, [categoryCounts]);
+  };
+  const exploreTemplates = () => {
+    setView("explore");
+    setTopic("all");
+    setCategory("all");
+    setStyle("all");
+    setQuery("");
+  };
+  const catalogTab = view === "my" ? "my" : props.source;
+  const moreCategoryActive = MORE_CATEGORIES.some((item) => item.id === category);
 
   return (
     <>
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent showCloseButton className="flex h-[min(650px,calc(100dvh-160px))] max-w-[960px] flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100%-160px)] sm:max-w-[960px] max-[720px]:h-[calc(100dvh-32px)] max-[720px]:w-[calc(100%-32px)]">
-        <DialogHeader className="border-b border-border px-6 py-5 pr-14">
-          <div className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><LayoutTemplate className="size-4" /></span>
-            <div>
-              <DialogTitle>{t("template_market.title")}</DialogTitle>
-              <DialogDescription className="mt-1 text-xs">{t("template_market.description")}</DialogDescription>
-            </div>
-          </div>
+      <DialogContent showCloseButton className="flex h-[min(650px,calc(100dvh-160px))] min-h-[420px] w-[min(960px,calc(100dvw-160px))] min-w-[640px] max-h-[calc(100dvh-32px)] max-w-[calc(100dvw-32px)] resize flex-col gap-0 overflow-hidden p-0 max-[720px]:h-[calc(100dvh-32px)] max-[720px]:w-[calc(100%-32px)] max-[720px]:min-w-[320px]">
+        <DialogHeader className="mt-4 w-full shrink-0 px-6 text-left">
+          <DialogTitle>{t("template_market.title")}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-6 py-3">
-          <WorkResourceScopeSwitch enterprise={props.enterprise} value={props.resourceScope} onChange={props.onResourceScopeChange} />
-          <div className="relative min-w-48 flex-1 sm:max-w-xs"><Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("template_market.search_placeholder")} className="h-9 rounded-xl pl-8 text-xs" /></div>
-          {!enterpriseMode ? <Button variant={source === "mine" ? "default" : "outline"} size="sm" className="min-w-0 rounded-xl" onClick={() => setSource((value) => value === "mine" ? "all" : "mine")}><span className="truncate">{t("template_market.my_templates")}</span></Button> : null}
-          {!enterpriseMode && props.canCreate ? <Button size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => setCreateOpen(true)}><Plus className="size-3.5" /><span className="truncate">{t("template_authoring.create")}</span></Button> : null}
-          <input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
-          {!enterpriseMode ? <Button variant="outline" size="sm" className="min-w-0 rounded-xl" disabled={props.busyId !== null} onClick={() => importRef.current?.click()}><Upload className="size-3.5" /><span className="truncate">{t("template_market.import_package")}</span></Button> : null}
+        <Tabs value={catalogTab} onValueChange={(value) => { if (value === "my") selectView("my"); else if (value === "builtin" || value === "cloud" || value === "enterprise") { selectView("explore"); props.onSelectSource(value); } }} className="min-h-0 flex-1 gap-0">
+        <div className="mt-4 w-full shrink-0 px-6">
+          <div className="flex min-h-9 flex-wrap items-center gap-3">
+            <TabsList className="min-w-0 max-w-full shrink-0" aria-label={t("template_market.title")}>
+              <TabsTrigger value="my" className="flex-none shrink-0">{t("template_market.my_tab")}</TabsTrigger>
+              <TabsTrigger value="builtin" className="flex-none shrink-0">{t("template_market.source_builtin")}</TabsTrigger>
+              {props.cloudAvailable ? <TabsTrigger value="cloud" className="flex-none shrink-0">{t("enterprise_connection.cloud")}</TabsTrigger> : null}
+              {props.enterpriseAvailable ? <TabsTrigger value="enterprise" className="min-w-0 flex-initial" title={enterpriseLabel}><span className="max-w-48 truncate">{enterpriseLabel}</span></TabsTrigger> : null}
+            </TabsList>
+            <input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
+            <ButtonStyleScopeProvider value="settings" flat><div role="group" aria-label="模板操作" className="ml-auto flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              className="shadow-none"
+              disabled={props.busyId !== null || remoteCatalogMode}
+              onClick={() => props.onCustom(category === "all" ? "slides" : category)}
+            >
+              <Plus className="size-3.5" />{t("template_market.custom_title")}
+            </Button>
+            <Tooltip>
+              <TooltipTrigger render={<Button variant="outline" className="w-[90px] shadow-none" disabled={props.busyId !== null || remoteCatalogMode} onClick={() => importRef.current?.click()} />}>
+                <Download className="size-3.5" />{t("template_market.import")}
+              </TooltipTrigger>
+              <TooltipContent positionerClassName="z-[90]">{t("template_market.import_tooltip")}</TooltipContent>
+            </Tooltip>
+            </div></ButtonStyleScopeProvider>
+          </div>
+        </div>
+        <TabsContent value={catalogTab} className="flex min-h-0 flex-1 flex-col">
+        <div className="w-full shrink-0 px-6">
+          <InputGroup className="mt-4"><InputGroupAddon><Search aria-hidden="true" className="size-4" /></InputGroupAddon><InputGroupInput value={query} onChange={(event) => setQuery(event.currentTarget.value)} aria-label={t("template_market.search_placeholder")} placeholder={t("template_market.search_placeholder")} /></InputGroup>
+
+          <div className="mt-2 flex h-9 items-center gap-4 overflow-x-auto">
+            {view === "explore" ? <div className="flex min-w-max items-center gap-4">
+            <Button type="button" size="sm" variant={category === "all" ? "secondary" : "ghost"} aria-pressed={category === "all"} onClick={() => setCategory("all")}>{t("template_market.all_types")}</Button>
+            {PRIMARY_CATEGORIES.map(({ id, labelKey, icon: Icon }) => <Button key={id} type="button" size="sm" variant={category === id ? "secondary" : "ghost"} aria-pressed={category === id} onClick={() => setCategory(id)}><Icon className="size-3.5" />{t(labelKey)}</Button>)}
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" size="sm" variant={moreCategoryActive ? "secondary" : "ghost"} aria-pressed={moreCategoryActive} />}>
+                {t("template_market.more")}<ChevronDown className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" alignOffset={4} sideOffset={7} positionerClassName="z-[90]" className="w-[196px] min-w-[196px]">
+                {MORE_CATEGORIES.map(({ id, labelKey, icon: Icon }) => <DropdownMenuItem key={id} className={cn("whitespace-nowrap font-['PingFang_SC',sans-serif] text-foreground", category === id && "bg-muted")} onClick={() => setCategory(id)}><Icon className="size-3.5" />{t(labelKey)}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            </div> : <>
+            <div role="group" className="flex min-w-max gap-1" aria-label={t("template_market.my_templates")}>
+              {MY_TEMPLATE_COLLECTIONS.map((item) => <Button key={item} size="sm" variant={myCollection === item ? "secondary" : "ghost"} aria-pressed={myCollection === item} onClick={() => setMyCollection(item)}>{t(translationKey("template_market.my_", item))}</Button>)}
+            </div>
+            <DropdownMenu>
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <span className="font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[18px] text-foreground">{t("template_market.type_label")}</span>
+                <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" className="w-[132px] justify-between" />}>
+                  {category === "all" ? t("template_market.all") : t(CATEGORIES.find((item) => item.id === category)?.labelKey ?? "template_market.category.other")}<ChevronDown className="size-4" />
+                </DropdownMenuTrigger>
+              </div>
+              <DropdownMenuContent align="start" positionerClassName="z-[90]" className="min-w-52">
+                <DropdownMenuItem onClick={() => setCategory("all")}>{category === "all" ? <Check className="size-3.5" /> : <span className="size-3.5" />}{t("template_market.all")}</DropdownMenuItem>
+                {CATEGORIES.map(({ id, labelKey, icon: Icon }) => <DropdownMenuItem key={id} onClick={() => setCategory(id)}>{category === id ? <Check className="size-3.5" /> : <Icon className="size-3.5" />}{t(labelKey)}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            </>}
+            <div className={cn("flex shrink-0 items-center gap-4", view === "explore" && "ml-auto")}>
+              <TemplateCatalogFilters
+                templates={props.templates}
+                category={category}
+                style={style}
+                topic={topic}
+                onStyleChange={setStyle}
+                onTopicChange={setTopic}
+              />
+            </div>
+          </div>
         </div>
 
-        {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2"><Upload className="size-4 text-primary" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}
+        {pendingImport ? <div className="mx-6 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2"><Download className="size-4 text-foreground" /><span className="min-w-40 flex-1 truncate text-xs">{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB</span><Button variant="ghost" size="sm" disabled={props.busyId !== null} onClick={() => setPendingImport(null)}>{t("common.cancel")}</Button><Button size="sm" className="rounded-lg" disabled={props.busyId !== null} onClick={async () => { if (await props.onImport(pendingImport)) setPendingImport(null); }}>{props.busyId === "import" ? <Loader2 className="size-3.5 animate-spin" /> : null}{t("template_market.install")}</Button></div> : null}
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <aside className="hidden w-48 shrink-0 border-r border-border bg-muted/10 p-3 md:block">
-            <button type="button" onClick={() => setCategory("all")} className={cn("mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium", category === "all" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:bg-background/60 hover:text-foreground")}><LayoutTemplate className="size-3.5" /><span className="min-w-0 flex-1 truncate">{t("template_market.all_templates")}</span><span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{allCount}</span></button>
-            {CATEGORIES.map(({ id, labelKey, Icon }) => <button key={id} type="button" onClick={() => setCategory(id)} className={cn("mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium", category === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:bg-background/60 hover:text-foreground")}><Icon className="size-3.5" /><span className="min-w-0 flex-1 truncate">{t(labelKey)}</span><span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{categoryCounts.get(id) ?? 0}</span></button>)}
-          </aside>
-          <section className="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-5">
-            <div className="mb-5 flex flex-wrap gap-2 md:hidden"><Button variant={category === "all" ? "default" : "outline"} size="sm" className="rounded-xl" onClick={() => setCategory("all")}>{t("template_market.all")} <span className="ml-1 text-[10px] opacity-70">{allCount}</span></Button>{CATEGORIES.map(({ id, labelKey }) => <Button key={id} variant={category === id ? "default" : "outline"} size="sm" className="rounded-xl" onClick={() => setCategory(id)}>{t(labelKey)} <span className="ml-1 text-[10px] opacity-70">{categoryCounts.get(id) ?? 0}</span></Button>)}</div>
-            {!enterpriseMode ? <div className="mb-5 flex flex-wrap items-center gap-2"><span className="mr-1 text-[11px] font-medium text-muted-foreground">{t("template_market.style_label")}</span><button type="button" onClick={() => setStyle("all")} className={cn("rounded-full px-2.5 py-1 text-[11px] transition", style === "all" ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>{t("template_market.all_styles")}</button>{styleOptions.map((option) => <button key={option.id} type="button" onClick={() => setStyle(option.id)} className={cn("rounded-full px-2.5 py-1 text-[11px] transition", style === option.id ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>{option.label}</button>)}</div> : null}
-            {props.loading ? <div data-testid="template-catalog-loading" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-60 animate-pulse rounded-2xl bg-muted" />)}</div> : props.error ? <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-xl" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : enterpriseMode ? (visibleEnterpriseResources.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{visibleEnterpriseResources.map((resource) => <EnterpriseTemplateCard key={resource.id} resource={resource} installedTemplate={enterpriseTemplateInstallations.get(resource.id)} getCover={props.getCover} sourceLabel={props.enterprise?.shortName ?? resource.enterpriseCategory} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} onPreview={(template) => setPreviewSelection({ template, enterpriseResourceId: resource.id })} onInstall={() => props.onInstallEnterprise(resource)} onUse={() => { const template = enterpriseTemplateInstallations.get(resource.id); if (template) props.onUse(template); }} onUninstall={() => { const template = enterpriseTemplateInstallations.get(resource.id); if (template) props.onUninstall(template.manifest.id); }} />)}</div> : <div className="rounded-2xl border border-dashed border-border p-10 text-center"><Building2 className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("enterprise_connection.enterprise_templates_empty")}</p></div>) : visible.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} onUninstall={() => props.onUninstall(template.manifest.id)} onExport={template.sourceType === "local" ? () => props.onExport(template) : undefined} />)}</div> : <div className="rounded-2xl border border-dashed border-border p-10 text-center"><LayoutTemplate className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
-          </section>
+        <div className="mt-3 min-h-0 w-full flex-1 overflow-y-auto [scrollbar-gutter:stable] px-6 pb-6">
+          {props.loading && !props.templates.length && !props.remoteResources.length ? <div data-testid="template-catalog-loading" role="status" aria-label={t("settings.marketplace.loading")} className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-[227px] rounded-lg" />)}</div> : props.error ? <Alert variant="destructive"><AlertDescription>{props.error}</AlertDescription><AlertAction><Button variant="outline" size="sm" onClick={props.onRefresh}>{t("template_market.retry")}</Button></AlertAction></Alert> : remoteCatalogMode && view === "explore" ? (visibleRemoteResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleRemoteResources.map((resource) => {
+            const installedTemplate = remoteTemplateInstallations.get(resource.id);
+            return <RemoteTemplateCard key={`${props.source}:${props.enterpriseConnection?.id}:${resource.id}:${resource.latestVersion?.digest}`} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={favoriteIds.has(resource.manifestId ?? resource.slug)} connection={props.source === "enterprise" ? props.enterpriseConnection ?? undefined : undefined} source={props.source} sourceLabel={remoteSourceLabel} onManage={setResourceAction} onToggleFavorite={toggleFavorite} onPreview={(template, coverDataUrl) => setPreviewSelection({ template, remoteResourceId: resource.id, coverDataUrl })} onInstall={() => props.onInstallRemote(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
+          })}</div> : <Empty><EmptyMedia variant="icon">{props.source === "enterprise" ? <Building2 /> : <Cloud />}</EmptyMedia><EmptyDescription>{t(props.source === "enterprise" ? "enterprise_connection.enterprise_templates_empty" : "enterprise_connection.cloud_templates_empty")}</EmptyDescription>{query || category !== "all" || style !== "all" || topic !== "all" ? <Button variant="outline" size="sm" onClick={exploreTemplates}>{t("help.clear_search")}</Button> : null}</Empty>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} onSubmit={view === "my" && template.sourceType === "local" && template.installed && props.enterpriseConnection?.features?.templatePublishing && props.exportPackage ? () => {
+            const exportPackage = props.exportPackage;
+            if (exportPackage) setSubmission({ name: template.manifest.title, prepareFile: () => exportPackage(template) });
+          } : undefined} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : view === "my" && myCollection === "all" && myTemplatesEmpty ? <Empty><EmptyMedia variant="icon"><TemplateIcon /></EmptyMedia><EmptyTitle>{t("template_market.my_empty_title")}</EmptyTitle><Button type="button" size="sm" onClick={exploreTemplates}>{t("template_market.explore_templates")}</Button></Empty> : <Empty><EmptyMedia variant="icon"><TemplateIcon /></EmptyMedia><EmptyTitle>{t("template_market.no_match_title")}</EmptyTitle><EmptyDescription>{t("template_market.no_match_desc")}</EmptyDescription><Button variant="outline" size="sm" onClick={() => { setQuery(""); setCategory("all"); setStyle("all"); setTopic("all"); }}>{t("help.clear_search")}</Button></Empty>}
+          {remoteCatalogMode && props.onLoadMore ? <Button variant="outline" className="mt-4" disabled={props.loading} onClick={props.onLoadMore}>加载更多模板</Button> : null}
         </div>
+        </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
+    {props.enterpriseConnection && submission ? <EnterpriseResourceSubmissionDialog key={`${props.enterpriseConnection.id}:${props.enterpriseConnection.membership.id}`} connection={props.enterpriseConnection} type="template" submission={submission} onClose={() => setSubmission(null)} /> : null}
+    {props.enterpriseConnection && resourceAction ? <EnterpriseResourceActionDialog connection={props.enterpriseConnection} action={resourceAction} onClose={() => setResourceAction(null)} onChanged={props.onRefresh} /> : null}
     <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewSelection(null); }}>
       <DialogContent showCloseButton className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">
         {previewTemplate ? <>
-          <div className="aspect-video overflow-hidden bg-muted"><TemplateCover template={previewTemplate} getCover={props.getCover} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} eager /></div>
+          <div className="aspect-video overflow-hidden bg-muted">{previewSelection?.coverDataUrl ? <img src={previewSelection.coverDataUrl} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} className="h-full w-full object-cover" /> : <TemplateCover template={previewTemplate} getCover={props.getCover} alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} eager />}</div>
           <div className="relative z-10 flex flex-col gap-5 border-t border-border bg-popover px-6 pb-5 pt-8 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0 flex-1"><div className="flex min-h-7 flex-wrap items-center gap-2"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle>{isPptxCompatibleTemplate(previewTemplate.manifest) ? <Badge className="text-[10px]">{t("template_market.pptx_compatible")}</Badge> : null}<Badge variant="outline" className="text-[10px]">{t(CATEGORIES.find((item) => item.id === previewTemplate.manifest.category)?.labelKey ?? "template_market.category.other")}</Badge><Badge variant="outline" className="text-[10px]">{templateStyleLabel(previewTemplate.manifest.style)}</Badge></div><DialogDescription className="mt-2 line-clamp-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-muted-foreground">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div>
-            <div className="flex shrink-0 items-center gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewSelection(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={props.busyId !== null || Boolean(previewEnterpriseResource && !previewEnterpriseResource.latestVersion)} onClick={runPreviewPrimaryAction}>{props.busyId === previewTemplate.manifest.id || props.busyId === previewEnterpriseResource?.id ? <Loader2 className="size-3.5 animate-spin" /> : null}{previewPrimaryLabel}</Button></div>
+            <div className="flex shrink-0 items-center gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewSelection(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={props.busyId !== null || Boolean(previewRemoteResource && (!previewRemoteResource.latestVersion || previewRemoteResource.lifecycle?.installable === false))} onClick={runPreviewPrimaryAction}>{props.busyId === previewTemplate.manifest.id || props.busyId === previewRemoteResource?.id ? <Loader2 className="size-3.5 animate-spin" /> : null}{previewPrimaryLabel}</Button></div>
           </div>
         </> : null}
-      </DialogContent>
-    </Dialog>
-    <Dialog open={createOpen && !enterpriseMode && props.canCreate} onOpenChange={(open) => { if (!creatingType) setCreateOpen(open); }}>
-      <DialogContent showCloseButton className="max-w-2xl gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-6 py-5 pr-14">
-          <DialogTitle>{t("template_authoring.choose_type")}</DialogTitle>
-          <DialogDescription className="mt-1 text-xs">{t("template_authoring.choose_type_description")}</DialogDescription>
-        </DialogHeader>
-        <div className="grid max-h-[min(560px,70dvh)] gap-2 overflow-y-auto p-4 sm:grid-cols-2">
-          {AUTHORING_TYPES.map(({ key, id, labelKey, detailKey, Icon, pptxCompatibility }) => (
-            <button
-              key={key}
-              type="button"
-              className="flex min-h-20 items-center gap-3 rounded-xl border border-border px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              disabled={creatingType !== null}
-              onClick={async () => {
-                setCreatingType(key);
-                try {
-                  const created = await props.onCreate({ category: id, pptxCompatibility });
-                  if (created) {
-                    setCreateOpen(false);
-                    props.onOpenChange(false);
-                  }
-                } finally {
-                  setCreatingType(null);
-                }
-              }}
-            >
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground"><Icon className="size-4" /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{t(labelKey)}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{t(detailKey)}</span></span>
-              {creatingType === key ? <Loader2 className="size-4 shrink-0 animate-spin text-primary" /> : null}
-            </button>
-          ))}
-        </div>
       </DialogContent>
     </Dialog>
     </>
   );
 }
 
-function EnterpriseTemplateCard({ resource, installedTemplate, getCover, sourceLabel, busy, disabled, onPreview, onInstall, onUse, onUninstall }: { resource: EnterpriseResource; installedTemplate?: TemplateCatalogItem; getCover: TemplateCoverLoader; sourceLabel: string; busy: boolean; disabled: boolean; onPreview: (template: TemplateCatalogItem) => void; onInstall: () => void; onUse: () => void; onUninstall: () => void }) {
+function RemoteTemplateCard({ resource, installedTemplate, getCover, busy, disabled, favorite, connection, source, sourceLabel, onManage, onToggleFavorite, onPreview, onInstall, onUse }: { resource: EnterpriseResource; installedTemplate?: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; disabled: boolean; favorite: boolean; connection?: EnterpriseConnection; source: TemplateCatalogSource; sourceLabel: string; onManage: (action: EnterpriseResourceAction) => void; onToggleFavorite: (templateId: string) => void; onPreview: (template: TemplateCatalogItem, coverDataUrl?: string) => void; onInstall: () => void; onUse: () => void }) {
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const [preview, setPreview] = React.useState<Awaited<ReturnType<typeof readRemoteTemplateCard>> | null>(null);
+  const [failed, setFailed] = React.useState(false);
+  const [retry, setRetry] = React.useState(0);
+  const loadPreview = React.useEffectEvent(() => readRemoteTemplateCard(resource, { connection }));
+  React.useEffect(() => {
+    if (!resource.latestVersion) return;
+    let active = true;
+    const load = () => {
+      setFailed(false);
+      setPreview(null);
+      void loadPreview().then((card) => { if (active) setPreview(card); })
+        .catch(() => { if (active) setFailed(true); });
+    };
+    const target = cardRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") { load(); return () => { active = false; }; }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      load();
+    }, { rootMargin: TEMPLATE_COVER_ROOT_MARGIN });
+    observer.observe(target);
+    return () => { active = false; observer.disconnect(); };
+  }, [connection?.id, connection?.origin, connection?.membership.id, connection?.session.token, resource.id, resource.latestVersion?.digest, resource.latestVersion?.version, retry]);
   const currentVersionInstalled = Boolean(installedTemplate && resource.latestVersion?.version === installedTemplate.installedVersion);
   const action = currentVersionInstalled ? onUse : onInstall;
   const label = currentVersionInstalled
     ? t("template_market.use")
     : installedTemplate ? t("template_market.update") : t("enterprise_connection.install_from_enterprise");
-  if (installedTemplate) {
-    return <TemplateCard template={installedTemplate} getCover={getCover} busy={disabled} onPreview={() => onPreview(installedTemplate)} onUse={onUse} onInstall={onInstall} onUninstall={onUninstall} primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel} />;
-  }
-  return <article className="overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm"><div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Building2 className="size-4" /></div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{resource.description}</p></div></div><div className="mt-4 flex items-center justify-between gap-2"><div className="flex min-w-0 gap-1.5"><Badge variant="outline" className="truncate text-[10px]">{resource.enterpriseCategory}</Badge>{resource.latestVersion ? <Badge variant="secondary" className="text-[10px]">v{resource.latestVersion.version}</Badge> : null}</div><Button variant={currentVersionInstalled ? "outline" : "default"} size="sm" className="h-7 rounded-lg px-2.5 text-[11px]" disabled={disabled || !resource.latestVersion} onClick={action}>{busy ? <Loader2 className="size-3 animate-spin" /> : null}{label}</Button></div></article>;
+  const template: TemplateCatalogItem | undefined = preview ? {
+    manifest: preview.manifest, sourceType: "market", installed: Boolean(installedTemplate),
+    installedVersion: installedTemplate?.installedVersion ?? null,
+    updateAvailable: Boolean(installedTemplate && !currentVersionInstalled), verified: false,
+  } : installedTemplate;
+  const openPreview = () => { if (template) onPreview(template, preview?.coverDataUrl); };
+  return <div ref={cardRef} className="min-w-0" data-testid="remote-template-card" data-source={source}>
+    <TemplateCardFrame
+      title={resource.name}
+      style={template?.manifest.style}
+      format={template ? templateFormatLabel(template) : undefined}
+      sourceLabel={sourceLabel}
+      status={resource.lifecycle ? <EnterpriseResourceStatus resource={resource} /> : undefined}
+      cover={failed ? <Alert variant="destructive" className="flex h-full flex-col items-center justify-center rounded-none text-center">
+        <AlertDescription>{t("template_market.cover_failed")}</AlertDescription>
+        <AlertAction><Button variant="outline" size="sm" onClick={() => setRetry((value) => value + 1)}>{t("template_market.retry_cover")}</Button></AlertAction>
+      </Alert> : preview ? <img src={preview.coverDataUrl} alt={t("template_market.cover_alt", { title: resource.name })} decoding="async" className="h-full w-full object-cover" onError={() => setFailed(true)} />
+        : installedTemplate ? <TemplateCover template={installedTemplate} getCover={getCover} />
+        : <Skeleton aria-label={t("settings.marketplace.loading")} className="h-full w-full rounded-none" />}
+      busy={busy}
+      disabled={disabled || !resource.latestVersion || resource.lifecycle?.installable === false}
+      favorite={favorite}
+      favoriteDisabled={!template}
+      onToggleFavorite={() => { if (template) onToggleFavorite(template.manifest.id); }}
+      onPreview={template && !failed ? openPreview : undefined}
+      previewTestId="remote-template-preview"
+      primaryAction={action}
+      primaryLabel={label}
+      actions={source === "enterprise" ? <div data-slot="card-footer">
+        <CardActionsMenu label={`${resource.name}的操作`} disabled={busy}>
+          <DropdownMenuItem disabled={disabled || !resource.latestVersion || resource.lifecycle?.installable === false} onClick={action}>{label}</DropdownMenuItem>
+          <DropdownMenuItem disabled={!template && !failed} onClick={() => { if (template) onPreview(template, preview?.coverDataUrl); else if (failed) setRetry((value) => value + 1); }}>{t(failed && !template ? "template_market.retry_cover" : "template_market.view")}</DropdownMenuItem>
+          {connection ? <EnterpriseResourceMenuItems connection={connection} resource={resource} busy={disabled} onAction={onManage} /> : null}
+        </CardActionsMenu>
+      </div> : undefined}
+    />
+  </div>;
 }
 
-function TemplateCard({ template, getCover, busy, onPreview, onUse, onInstall, onUninstall, onExport, primaryAction: primaryActionOverride, primaryLabel: primaryLabelOverride, sourceLabel }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; onPreview: () => void; onUse: () => void; onInstall: () => void; onUninstall: () => void; onExport?: () => void; primaryAction?: () => void; primaryLabel?: string; sourceLabel?: string }) {
-  const category = CATEGORIES.find((item) => item.id === template.manifest.category);
+function TemplateCard({ template, getCover, busy, favorite, onToggleFavorite, onPreview, onUse, onInstall, primaryAction: primaryActionOverride, primaryLabel: primaryLabelOverride, sourceLabel, onSubmit }: { template: TemplateCatalogItem; getCover: TemplateCoverLoader; busy: boolean; favorite: boolean; onToggleFavorite: () => void; onPreview: () => void; onUse: () => void; onInstall: () => void; primaryAction?: () => void; primaryLabel?: string; sourceLabel?: string; onSubmit?: () => void }) {
   const primaryAction = primaryActionOverride ?? (template.updateAvailable ? onInstall : template.installed ? onUse : onInstall);
   const primaryLabel = primaryLabelOverride ?? (template.updateAvailable ? t("template_market.update") : template.installed ? t("template_market.use") : t("template_market.install"));
-  return <article className="group overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-lg"><button type="button" className="relative block aspect-[16/9] w-full overflow-hidden bg-muted text-left" onClick={onPreview} aria-label={t("template_market.preview_aria", { title: template.manifest.title })}><TemplateCover template={template} getCover={getCover} alt={t("template_market.cover_alt", { title: template.manifest.title })} /><div className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/55 to-transparent p-3"><Badge variant="secondary" className="bg-black/35 text-[10px] text-white backdrop-blur">{category ? t(category.labelKey) : null}</Badge><span className="rounded-full bg-black/35 px-2 py-1 text-[10px] text-white backdrop-blur">{templateStyleLabel(template.manifest.style)}</span></div></button><div className="p-4"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-1.5"><h3 className="truncate text-sm font-semibold">{template.manifest.title}</h3>{isPptxCompatibleTemplate(template.manifest) ? <Badge className="text-[10px]">{t("template_market.pptx_compatible")}</Badge> : null}</div><p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{template.manifest.description}</p></div><div className="flex items-center gap-1">{template.updateAvailable ? <Badge className="text-[10px]">{t("template_market.update")}</Badge> : null}{sourceLabel ? <Badge variant="outline" className="max-w-24 truncate text-[10px]">{sourceLabel}</Badge> : template.sourceType === "local" ? <Badge variant="outline" className="text-[10px]">{t("template_market.mine_badge")}</Badge> : <Badge variant="outline" className="text-[10px]">{t("template_market.official_badge")}</Badge>}{template.installed ? <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" className="size-7 rounded-lg text-muted-foreground" aria-label={t("template_market.more_actions_aria", { title: template.manifest.title })} />}><MoreHorizontal className="size-3.5" /></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-36">{template.sourceType === "local" && onExport ? <DropdownMenuItem disabled={busy} onClick={onExport}>{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}{t("template_market.export_package")}</DropdownMenuItem> : null}<DropdownMenuItem variant="destructive" disabled={busy} onClick={onUninstall}><Trash2 className="size-3.5" />{t("template_market.uninstall_template")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : null}</div></div><div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5"><span className="truncate text-[10px] text-muted-foreground">{template.manifest.tags.slice(0, 2).join(" / ") || template.manifest.subcategory}</span><Button variant="outline" size="sm" className="h-7 rounded-lg px-2 text-[11px]" onClick={onPreview}><Eye className="size-3" />{t("template_market.preview")}</Button><Button size="sm" className="h-7 rounded-lg px-2.5 text-[11px]" disabled={busy} onClick={primaryAction}>{busy ? <Loader2 className="size-3 animate-spin" /> : null}{primaryLabel}</Button></div></div></article>;
+  return <TemplateCardFrame actions={onSubmit ? <CardActionsMenu label={`${template.manifest.title}的操作`} disabled={busy}><DropdownMenuItem onClick={primaryAction}>{primaryLabel}</DropdownMenuItem><DropdownMenuItem onClick={onSubmit}>投稿到企业</DropdownMenuItem></CardActionsMenu> : undefined} title={template.manifest.title} style={template.manifest.style} format={templateFormatLabel(template)} cover={<TemplateCover template={template} getCover={getCover} alt={t("template_market.cover_alt", { title: template.manifest.title })} />} busy={busy} disabled={busy} favorite={favorite} onToggleFavorite={onToggleFavorite} onPreview={onPreview} primaryAction={primaryAction} primaryLabel={primaryLabel} sourceLabel={sourceLabel ?? t(template.sourceType === "local" ? "template_market.mine_badge" : "template_market.official_badge")} />;
+}
+
+function TemplateCardFrame({ title, style, format, cover, busy, disabled, favorite, favoriteDisabled, onToggleFavorite, onPreview, primaryAction, primaryLabel, sourceLabel, actions, status, previewTestId }: { title: string; style?: TemplateStyle; format?: string; cover: React.ReactNode; busy: boolean; disabled: boolean; favorite: boolean; favoriteDisabled?: boolean; onToggleFavorite: () => void; onPreview?: () => void; primaryAction: () => void; primaryLabel: string; sourceLabel: string; actions?: React.ReactNode; status?: React.ReactNode; previewTestId?: string }) {
+  return (
+    <article className="flex min-h-[227px] min-w-0 flex-col gap-3 overflow-hidden rounded-lg border-2 border-transparent bg-muted/50 pb-4 transition-colors duration-150 hover:border-[var(--project-dialog-accent)]">
+      <div className="relative block h-[137px] w-full shrink-0 overflow-hidden rounded-lg bg-muted" data-template-cover>
+        {cover}
+        <Tooltip>
+          <TooltipTrigger render={<button type="button" data-testid={previewTestId} disabled={!onPreview} className="absolute inset-0 h-full w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 disabled:pointer-events-none" onClick={onPreview} aria-label={t("template_market.preview_aria", { title })} />} />
+          <TooltipContent positionerClassName="z-[90]">{format ? t("template_market.format_tooltip", { format }) : title}</TooltipContent>
+        </Tooltip>
+        {style ? <span className="pointer-events-none absolute bottom-4 right-2 rounded-[18px] bg-muted-foreground px-2 py-0.5 font-['PingFang_SC',sans-serif] text-xs font-medium leading-[18px] text-background">{templateStyleLabel(style)}</span> : null}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col px-2">
+        <div className="flex h-5 min-w-0 items-center justify-between gap-2">
+          <h3 title={title} className="truncate font-['PingFang_SC',sans-serif] text-sm font-bold leading-5 text-foreground">{title}</h3>
+          <span className="max-w-24 shrink-0 truncate font-['PingFang_SC',sans-serif] text-xs font-medium leading-[18px] text-primary">{sourceLabel}</span>
+        </div>
+        {status}
+        <div className="mt-3 flex h-7 items-center justify-between gap-3">
+          <Tooltip>
+            <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" className={cn("h-7 rounded-lg px-2 font-['PingFang_SC',sans-serif] text-[13px] font-semibold leading-[18px]", favorite ? "text-foreground" : "text-muted-foreground")} disabled={favoriteDisabled} aria-pressed={favorite} aria-label={t(favorite ? "template_market.remove_favorite" : "template_market.add_favorite", { title })} onClick={onToggleFavorite} />}>
+              <Star className={cn("size-3.5", favorite && "fill-current")} />{t("template_market.favorite")}
+            </TooltipTrigger>
+            <TooltipContent positionerClassName="z-[90]">{t(favorite ? "template_market.remove_from_favorites" : "template_market.add_to_favorites")}</TooltipContent>
+          </Tooltip>
+          {actions ?? <Button size="sm" className="h-7 rounded-lg px-2 font-['PingFang_SC',sans-serif] text-[13px] font-semibold leading-[18px] shadow-none" disabled={disabled} onClick={primaryAction}>{busy ? <Loader2 className="size-3 animate-spin" /> : null}{primaryLabel}</Button>}
+        </div>
+      </div>
+    </article>
+  );
 }

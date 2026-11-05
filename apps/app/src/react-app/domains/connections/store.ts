@@ -40,7 +40,6 @@ import type {
 import { isDesktopRuntime, normalizeDirectoryPath, safeStringify } from "../../../app/utils";
 
 import type { iPolloWorkServerStore } from "./ipollowork-server-store";
-import { attemptSilentMcpReauth } from "./mcp-silent-reauth";
 import {
   CLOUD_MCP_SERVER_NAME,
   clearCloudMcpUnhealthyRemintAttempt,
@@ -71,7 +70,6 @@ export type ConnectionsStoreSnapshot = {
   selectedMcp: string | null;
   mcpAuthModalOpen: boolean;
   mcpAuthEntry: McpDirectoryInfo | null;
-  mcpAuthNeedsReload: boolean;
 };
 
 type MutableState = ConnectionsStoreSnapshot;
@@ -109,7 +107,6 @@ export function createConnectionsStore(options: {
     selectedMcp: null,
     mcpAuthModalOpen: false,
     mcpAuthEntry: null,
-    mcpAuthNeedsReload: false,
   };
 
   const emitChange = () => {
@@ -126,7 +123,6 @@ export function createConnectionsStore(options: {
       selectedMcp: state.selectedMcp,
       mcpAuthModalOpen: state.mcpAuthModalOpen,
       mcpAuthEntry: state.mcpAuthEntry,
-      mcpAuthNeedsReload: state.mcpAuthNeedsReload,
     };
   };
 
@@ -373,37 +369,6 @@ export function createConnectionsStore(options: {
     return undefined;
   };
 
-  /**
-   * Quiet self-heal for remote OAuth MCPs stuck in "Sign in needed": the
-   * engine only refreshes tokens reactively (once per transport), so an
-   * expired access token strands the entry until the user clicks Sign in.
-   * `mcp.connect` retries the stored refresh-token grant on a fresh
-   * transport — silently, never opening a browser or modal. Mirrors
-   * syncCloudControlMcp, but for user-added connectors.
-   */
-  async function healUnhealthyMcpEntries(servers: McpServerEntry[], statuses: McpStatusMap) {
-    if (disposed || snapshot.mcpAuthModalOpen || snapshot.mcpConnectingName) return;
-    const activeClient = options.client();
-    const projectDir = options.projectDir().trim();
-    if (!activeClient || !projectDir) return;
-    const attempted = await attemptSilentMcpReauth({
-      client: activeClient,
-      directory: projectDir,
-      servers,
-      statuses,
-    }).catch(() => false);
-    if (!attempted || disposed) return;
-    try {
-      const status = unwrap(await activeClient.mcp.status({ directory: projectDir }));
-      setStateField(
-        "mcpStatuses",
-        filterConfiguredStatuses(status as McpStatusMap, snapshot.mcpServers),
-      );
-    } catch {
-      // Post-heal status refresh is best-effort; the next refresh picks it up.
-    }
-  }
-
   async function refreshMcpServers() {
     if (disposed) return;
 
@@ -428,7 +393,6 @@ export function createConnectionsStore(options: {
             ? `Some MCPs could not be registered with the engine: ${failedNames}. They may appear disconnected — try reloading the engine.`
             : serverResult.next.length ? null : "No MCP servers configured yet.",
         }));
-        void healUnhealthyMcpEntries(serverResult.next, serverResult.nextStatuses);
         return;
       }
     } catch (error) {
@@ -546,7 +510,6 @@ export function createConnectionsStore(options: {
         mcpStatuses: nextStatuses,
         mcpStatus: next.length ? null : "No MCP servers configured yet.",
       }));
-      void healUnhealthyMcpEntries(next, nextStatuses);
     } catch (error) {
       mutateState((current) => ({
         ...current,
@@ -818,7 +781,6 @@ export function createConnectionsStore(options: {
         mutateState((current) => ({
           ...current,
           mcpAuthEntry: entry,
-          mcpAuthNeedsReload: true,
           mcpAuthModalOpen: true,
         }));
       } else {
@@ -992,45 +954,15 @@ export function createConnectionsStore(options: {
           url: entry.config.url,
           oauth: true,
         },
-      mcpAuthNeedsReload: false,
       mcpAuthModalOpen: true,
     }));
   }
 
   async function logoutMcpAuth(name: string) {
-    const ipolloworkSnapshot = getiPolloWorkSnapshot();
-    const isRemoteWorkspace =
-      options.workspaceType() === "remote" ||
-      (!isDesktopRuntime() && ipolloworkSnapshot.ipolloworkServerStatus === "connected");
-    const projectDir = options.projectDir().trim();
-
-    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
+    const { ipolloworkClient, ipolloworkWorkspaceId, canUseiPolloWorkServer } =
       await resolveWritableiPolloWorkTarget();
-
-    if (isRemoteWorkspace && !canUseiPolloWorkServer) {
-      setStateField("mcpStatus", "iPolloWork server unavailable. MCP auth is read-only.");
-      return;
-    }
-
-    if (hasiPolloWorkTarget && !canUseiPolloWorkServer) {
-      setStateField("mcpStatus", "iPolloWork server MCP auth is read-only.");
-      return;
-    }
-
-    if (!canUseiPolloWorkServer && !isDesktopRuntime()) {
-      setStateField("mcpStatus", t("mcp.desktop_required"));
-      return;
-    }
-
-    const activeClient = canUseiPolloWorkServer ? options.client() : await ensureActiveClient();
-    if (!activeClient && !canUseiPolloWorkServer) {
+    if (!canUseiPolloWorkServer || !ipolloworkClient || !ipolloworkWorkspaceId) {
       setStateField("mcpStatus", t("mcp.connect_server_first"));
-      return;
-    }
-
-    const resolvedProjectDir = activeClient ? await resolveProjectDir(activeClient, projectDir) : projectDir;
-    if (!resolvedProjectDir && !canUseiPolloWorkServer) {
-      setStateField("mcpStatus", t("mcp.pick_workspace_first"));
       return;
     }
 
@@ -1038,29 +970,7 @@ export function createConnectionsStore(options: {
     setStateField("mcpStatus", null);
 
     try {
-      if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
-        await ipolloworkClient.logoutMcpAuth(ipolloworkWorkspaceId, safeName);
-      } else {
-        if (!activeClient || !resolvedProjectDir) {
-          throw new Error(t("mcp.connect_server_first"));
-        }
-        try {
-          await activeClient.mcp.disconnect({ directory: resolvedProjectDir, name: safeName });
-        } catch {
-          // ignore
-        }
-        await activeClient.mcp.auth.remove({ directory: resolvedProjectDir, name: safeName });
-      }
-
-      try {
-        if (activeClient && resolvedProjectDir) {
-          const status = unwrap(await activeClient.mcp.status({ directory: resolvedProjectDir }));
-          setStateField("mcpStatuses", status as McpStatusMap);
-        }
-      } catch {
-        // ignore
-      }
-
+      await ipolloworkClient.logoutMcpAuth(ipolloworkWorkspaceId, safeName);
       await refreshMcpServers();
       setStateField("mcpStatus", t("mcp.logout_success").replace("{server}", safeName));
     } catch (error) {
@@ -1185,7 +1095,6 @@ export function createConnectionsStore(options: {
       ...current,
       mcpAuthModalOpen: false,
       mcpAuthEntry: null,
-      mcpAuthNeedsReload: false,
     }));
   }
 
@@ -1282,9 +1191,6 @@ export function createConnectionsStore(options: {
     },
     get mcpAuthEntry() {
       return snapshot.mcpAuthEntry;
-    },
-    get mcpAuthNeedsReload() {
-      return snapshot.mcpAuthNeedsReload;
     },
     closeMcpAuthModal,
     completeMcpAuthModal,

@@ -1,3 +1,4 @@
+import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
@@ -14,7 +15,7 @@ export const examples: Example[] = [
 
 function fail(message: string): never {
   console.error(c.error(message));
-  process.exit(1);
+  failCommand();
 }
 
 /** Locate the music track + its on-disk audio, or fail with a clear message. */
@@ -22,7 +23,8 @@ function resolveMusicTarget(project: ProjectDir): { rel: string; audioPath: stri
   const src = findMusicAudioSrc(readFileSync(project.indexPath, "utf-8"));
   if (!src) {
     fail(
-      'No music track found. Add data-timeline-role="music" to the <audio> element ' +
+      'No music track found. Add data-timeline-role="music" to the <audio> element, or to a ' +
+        '<video data-has-audio="true"> whose own sound is the music ' +
         "(or give it an id like music/bgm/soundtrack).",
     );
   }

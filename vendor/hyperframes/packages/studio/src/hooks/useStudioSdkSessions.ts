@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect } from "react";
 import { useSdkSession } from "./useSdkSession";
 import { usePreviewVariablesStore } from "./previewVariablesStore";
 
@@ -17,8 +17,10 @@ import { usePreviewVariablesStore } from "./previewVariablesStore";
 export function useStudioSdkSessions(
   projectId: string | null,
   activeCompPath: string | null,
-  domEditSaveTimestampRef: MutableRefObject<number>,
   masterCompPath: string | null,
+  fileTree: readonly string[] = [],
+  fileTreeLoaded = false,
+  onAbsentRead?: (path: string) => void,
 ) {
   // On the master view (no explicit comp) the schema panels target the project's
   // resolved main composition — the first `.html` in the tree, not a hardcoded
@@ -27,7 +29,9 @@ export function useStudioSdkSessions(
   const sdkHandle = useSdkSession(
     projectId,
     activeCompPath ?? masterCompPath,
-    domEditSaveTimestampRef,
+    fileTree,
+    fileTreeLoaded,
+    onAbsentRead,
   );
   const editFlowSdkSession = activeCompPath ? sdkHandle.session : null;
   useEffect(() => {

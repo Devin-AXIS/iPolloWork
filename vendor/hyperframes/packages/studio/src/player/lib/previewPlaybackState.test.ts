@@ -136,7 +136,7 @@ describe("setPreviewPlaybackActive", () => {
     expect(play).not.toHaveBeenCalled();
   });
 
-  it("mutes legacy voiceovers that have no scene synchronization metadata", () => {
+  it("preserves audible voiceovers without scene synchronization metadata", () => {
     const pause = vi.fn();
     const legacyVoiceover = {
       getAttribute: (name: string) => name === "data-start" || name === "data-duration" ? null : "",
@@ -152,7 +152,8 @@ describe("setPreviewPlaybackActive", () => {
 
     setPreviewPlaybackActive(iframe, true);
 
-    expect(legacyVoiceover.muted).toBe(true);
-    expect(pause).toHaveBeenCalledOnce();
+    expect(legacyVoiceover.muted).toBe(false);
+    expect(pause).not.toHaveBeenCalled();
+    expect(legacyVoiceover.setAttribute).not.toHaveBeenCalled();
   });
 });

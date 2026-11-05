@@ -1,0 +1,66 @@
+{
+  "name": "dsh-jev-decision-model",
+  "version": "0.1.2",
+  "description": "Jev Decision Engine for Agent Harnesses: native DeepSeek Harness, plus OpenCode and Codex Harness through iPolloWork",
+  "keywords": [
+    "jev",
+    "typesafe-ai",
+    "decision-engine",
+    "agent-harness",
+    "ai-agents",
+    "plugin",
+    "ipollowork",
+    "ipollowork-plugin",
+    "deepseek-harness",
+    "deepseek-plugin",
+    "deepseek-harness-plugin",
+    "dsh",
+    "dsh-plugin",
+    "opencode",
+    "opencode-plugin",
+    "codex",
+    "codex-plugin",
+    "codex-harness-plugin",
+    "dpc-plugin",
+    "apollo-plugin"
+  ],
+  "author": "iPolloWork",
+  "type": "module",
+  "private": true,
+  "main": "./service/dsh.mjs",
+  "exports": {
+    ".": "./service/dsh.mjs",
+    "./client": "./service/jev.mjs"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "packageManager": "pnpm@11.4.0",
+  "files": [
+    "service",
+    "skills",
+    "assets/jev.png",
+    "ipollowork.plugin.json",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test tests/jev.test.mjs",
+    "test:dsh": "node --test tests/dsh.test.mjs",
+    "test:work": "bun test tests/work.test.ts",
+    "package:work": "node scripts/package-work.mjs",
+    "package:dsh": "pnpm pack --pack-destination dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Devin-AXIS/jev-dsh-decision.git"
+  },
+  "devDependencies": {
+    "jszip": "3.10.1"
+  }
+}

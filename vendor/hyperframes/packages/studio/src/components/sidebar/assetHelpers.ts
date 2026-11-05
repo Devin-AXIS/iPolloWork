@@ -1,9 +1,8 @@
-import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
 
-export type MediaCategory = "audio" | "illustrations" | "images" | "video" | "fonts";
+export type MediaCategory = "audio" | "images" | "video" | "fonts";
 
 export function getCategory(path: string): MediaCategory | null {
-  if (isHtmlIllustrationAsset(path)) return "illustrations";
   if (AUDIO_EXT.test(path)) return "audio";
   if (IMAGE_EXT.test(path)) return "images";
   if (VIDEO_EXT.test(path)) return "video";
@@ -60,12 +59,57 @@ export function formatDuration(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * Keep implementation files for generated avatars out of the material library.
+ * They remain in the project for retries, audio preservation, and layered
+ * cutout playback, but only the assembled movie is a user-facing material.
+ */
+export function filterMaterialLibraryAssets(
+  paths: string[],
+  usedPaths: ReadonlySet<string> = new Set(),
+): string[] {
+  const normalized = paths.map((path) => path.replaceAll("\\", "/"));
+  const transparentLongAvatarIds = new Set<string>();
+  const transparentShortAvatarIds = new Set<string>();
+  const usedAssetBases = new Set(Array.from(usedPaths, basename));
+
+  for (const path of normalized) {
+    const long = /^assets\/avatar-long-(.+)\.(?:webm|mov)$/i.exec(path);
+    if (long) {
+      transparentLongAvatarIds.add(long[1]);
+      continue;
+    }
+    const short = /^assets\/avatar-(.+)\.(?:webm|mov)$/i.exec(path);
+    if (short) transparentShortAvatarIds.add(short[1]);
+  }
+
+  return paths.filter((path, index) => {
+    const value = normalized[index];
+    if (/^renders\/avatar-cutouts\//i.test(value)) return false;
+    const legacyCutout = /^assets\/cutouts\/(.+)-cutout(?:-\d+)?\.[^.]+$/i.exec(value);
+    if (
+      legacyCutout &&
+      !usedPaths.has(path) &&
+      usedAssetBases.has(legacyCutout[1])
+    )
+      return false;
+    if (/^assets\/avatar-(?:reference|voice)-/i.test(value)) return false;
+    if (/^renders\/avatar-(?!long-).+-\d+-\d+\.mp4$/i.test(value)) return false;
+    if (/^renders\/avatar-(?!long-).+-\d+\.wav$/i.test(value)) return false;
+
+    const longSource = /^renders\/avatar-long-(.+)\.mp4$/i.exec(value);
+    if (longSource && transparentLongAvatarIds.has(longSource[1])) return false;
+    const shortSource = /^renders\/(.+)\.mp4$/i.exec(value);
+    if (shortSource && transparentShortAvatarIds.has(shortSource[1])) return false;
+    return true;
+  });
+}
+
 export const CATEGORY_LABELS: Record<MediaCategory, string> = {
   audio: "Audio",
-  illustrations: "Illustrations",
   images: "Images",
   video: "Video",
   fonts: "Fonts",
 };
 
-export const FILTER_ORDER: MediaCategory[] = ["illustrations", "images", "video", "audio", "fonts"];
+export const FILTER_ORDER: MediaCategory[] = ["images", "video", "audio", "fonts"];

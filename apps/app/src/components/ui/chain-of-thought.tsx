@@ -36,6 +36,8 @@ export const ChainOfThoughtTrigger = ({
   ...props
 }: ChainOfThoughtTriggerProps) => (
   <CollapsibleTrigger
+    // Base UI 1.4.x consumes id without forwarding it to its default button.
+    render={<button id={props.id} />}
     className={cn(
       "group text-muted-foreground hover:text-foreground flex w-full min-w-0 cursor-pointer items-center justify-start gap-1 overflow-hidden text-start text-sm transition-colors",
       className

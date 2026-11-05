@@ -6,7 +6,7 @@ description: frame proof, HTML frames, screenshots, recording, PR proof, e2e evi
 # Daytona Recording Artifacts
 
 Use this skill to collect proof that a Daytona UI flow works.
-Use `daytona-flow-validator` before declaring the flow passed. If the user asks
+Use `fraimz` before declaring the flow passed. If the user asks
 to do e2e tests for a feature, frame proof is required unless they explicitly
 ask for non-UI or mock-only validation.
 
@@ -147,7 +147,7 @@ daytona exec "$SANDBOX" -- 'bash .devcontainer/capture-daytona-screenshot.sh'
 Use this after important states: welcome screen, workspace created, settings
 connected, task response visible, error state reproduced, or final success.
 
-Before sharing any screenshot URL, follow `daytona-flow-validator` and inspect
+Before sharing any screenshot URL, follow `fraimz` and inspect
 the saved PNG itself. Confirm the visible image shows the claimed state and is
 not covered by a native picker, modal, toast, desktop window, or unrelated
 overlay. If the screenshot does not match, recapture and inspect a replacement.

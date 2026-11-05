@@ -1,16 +1,10 @@
+import { useProjectFileWriter } from "./useProjectFileWriter";
 import { useState, useCallback, useMemo, useRef } from "react";
 import type { EditingFile } from "../utils/studioHelpers";
 import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
-import {
-  createStudioSaveHttpError,
-  retryStudioSave,
-  StudioFileConflictError,
-  StudioSaveNetworkError,
-} from "../utils/studioSaveDiagnostics";
-import { createStudioWriteToken, studioExpectedFileVersion } from "../utils/studioFileVersion";
 import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
 
@@ -18,7 +12,7 @@ import { useEditorSave } from "./useEditorSave";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -52,17 +46,8 @@ export function useFileManager({
   projectIdRef.current = projectId;
 
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
-  const fileVersionScope = useMemo(
-    () => ({ projectId, versions: new Map<string, string | null>() }),
-    [projectId],
-  );
-  const fileVersions = fileVersionScope.versions;
-  const observeProjectFileVersion = useCallback(
-    (path: string, version: string | null) => {
-      fileVersions.set(path, version);
-    },
-    [fileVersions],
-  );
+  const { fileVersions, observeProjectFileVersion, readProjectFile, readOptionalProjectFile,
+    writeProjectFile: writeProjectFileRaw } = useProjectFileWriter({ projectId });
 
   // ── File tree ──
 
@@ -77,127 +62,25 @@ export function useFileManager({
     fontAssets,
   } = useFileTree({ projectId, projectIdRef });
 
-  // ── Core file I/O ──
-
-  const readProjectFile = useCallback(
-    async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}`,
-      );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await response.json()) as { content?: string; version?: string };
-      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
-      fileVersions.set(path, data.version ?? response.headers.get("etag"));
-      return data.content;
-    },
-    [fileVersions, projectId],
-  );
-
-  const writeProjectFile = useCallback(
-    async (path: string, content: string, expectedContent?: string): Promise<void> => {
-      if (!projectId) throw new Error("No active project");
-      const writeProjectId = projectId;
-      let expectedVersion = await studioExpectedFileVersion(fileVersions, path, expectedContent);
-      if (expectedVersion === undefined) {
-        const preflight = await fetch(
-          `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
-        );
-        if (preflight.ok) {
-          const data = (await preflight.json()) as { content?: string; version?: string };
-          throw new StudioFileConflictError({
-            filePath: path,
-            currentVersion: data.version ?? preflight.headers.get("etag"),
-            currentContent: data.content ?? null,
-            attemptedContent: content,
-          });
-        } else if (preflight.status === 404) {
-          expectedVersion = null;
-        } else {
-          throw await createStudioSaveHttpError(preflight, `Failed to read ${path} before save`);
-        }
-      }
-      const writeToken = createStudioWriteToken();
-      await retryStudioSave(async () => {
-        let response: Response;
-        try {
-          response = await fetch(
-            `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
-            {
-              method: "PUT",
-              headers: {
-                "Content-Type": "text/plain",
-                "X-Hyperframes-Write-Token": writeToken,
-                ...(expectedVersion ? { "If-Match": expectedVersion } : { "If-None-Match": "*" }),
-              },
-              body: content,
-            },
-          );
-        } catch (error) {
-          throw new StudioSaveNetworkError(`Failed to save ${path}: network error`, {
-            cause: error,
-          });
-        }
-        if (response.status === 409) {
-          const conflict = (await response.json().catch(() => null)) as {
-            currentVersion?: string | null;
-            currentContent?: string | null;
-          } | null;
-          const currentVersion = conflict?.currentVersion ?? null;
-          if (currentVersion && conflict?.currentContent === content) {
-            fileVersions.set(path, currentVersion);
-            return;
-          }
-          throw new StudioFileConflictError({
-            filePath: path,
-            currentVersion,
-            currentContent: conflict?.currentContent ?? null,
-            attemptedContent: content,
-          });
-        }
-        if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
-        const result = (await response.json()) as { version?: string };
-        const version = result.version ?? response.headers.get("etag");
-        if (!version)
-          throw new Error(`Save response for ${path} did not include a content version`);
-        fileVersions.set(path, version);
-      });
-      if (projectIdRef.current === writeProjectId && editingPathRef.current === path) {
-        setEditingFile({ path, content });
-      }
-    },
-    [fileVersions, projectId],
-  );
-
+  // The official writer owns versions, conflict checks, receipts and retries.
   const updateEditingFileContent = useCallback((path: string, content: string) => {
-    if (editingPathRef.current === path) {
-      setEditingFile({ path, content });
-    }
+    if (editingPathRef.current === path) setEditingFile({ path, content });
   }, []);
-
-  const readOptionalProjectFile = useCallback(
-    async (path: string): Promise<string> => {
-      if (!projectId) throw new Error("No active project");
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
-      );
-      if (!response.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await response.json()) as { content?: string; version?: string };
-      fileVersions.set(path, data.version ?? response.headers.get("etag"));
-      return typeof data.content === "string" ? data.content : "";
-    },
-    [fileVersions, projectId],
-  );
+  const writeProjectFile = useCallback(async (path: string, content: string, expectedContent?: string | null) => {
+    const writeProjectId = projectIdRef.current;
+    domEditSaveTimestampRef.current = Date.now();
+    await writeProjectFileRaw(path, content, expectedContent);
+    if (projectIdRef.current === writeProjectId && editingPathRef.current === path) setEditingFile({ path, content });
+  }, [writeProjectFileRaw, domEditSaveTimestampRef]);
 
   // ── Editor save (debounced content change) ──
 
-  const { saveRafRef, handleContentChange } = useEditorSave({
+  const { saveRafRef, handleContentChange, getPendingCandidate, flushPendingSave, discardPendingSave } = useEditorSave({
     editingPathRef,
     projectIdRef,
     readProjectFile,
     writeProjectFile,
     recordEdit,
-    domEditSaveTimestampRef,
     setRefreshKey,
     showToast,
   });
@@ -507,6 +390,9 @@ export function useFileManager({
     // Callbacks
     handleFileSelect,
     handleContentChange,
+    getPendingCandidate,
+    flushPendingSave,
+    discardPendingSave,
     refreshFileTree,
     uploadProjectFiles,
     handleCreateFile,

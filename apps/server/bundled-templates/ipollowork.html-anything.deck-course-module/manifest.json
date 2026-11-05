@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.deck-course-module",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "slides",
   "subcategory": "education",
@@ -10,7 +10,8 @@
     "education",
     "course",
     "workshop",
-    "training"
+    "training",
+    "topic:education"
   ],
   "surface": "design",
   "title": "Course Module Deck",

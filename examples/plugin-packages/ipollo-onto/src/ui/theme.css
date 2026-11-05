@@ -1,0 +1,201 @@
+/* Standalone defaults follow iPolloWork's app shell. A host can supply --dls-* tokens. */
+:root {
+  --data-accent: var(--dls-accent, #011627);
+  --data-accent-hover: var(--dls-accent-hover, #000000);
+  --data-on-accent: var(--dls-accent-fg, #ffffff);
+  --data-surface: var(--dls-surface, #ffffff);
+  --data-sidebar: var(--dls-sidebar, #fcfcfc);
+  --data-canvas: var(--dls-canvas, #f9fafb);
+  --data-muted: var(--dls-surface-muted, #f1f3f5);
+  --data-hover: var(--dls-hover, #f0f2f4);
+  --data-selected: var(--dls-active, #e8ecf0);
+  --data-border: #e8eaed;
+  --data-border-strong: #cdd3da;
+  --data-text: var(--dls-text-primary, #1c2024);
+  --data-text-secondary: var(--dls-text-secondary, #60646c);
+  --data-focus: var(--data-accent);
+  --data-success: #27815f;
+  --data-warning: #9b6a21;
+  --data-danger: #c4383f;
+  --data-shadow: 0 8px 24px #0f172a0d;
+  --data-radius-sm: 4px;
+  --data-radius: 8px;
+  --data-radius-lg: 12px;
+  --data-input-bg: color-mix(in srgb, var(--data-canvas) 65%, var(--data-surface));
+  --data-input-border: var(--data-border);
+  --data-input-ring: color-mix(in srgb, var(--data-accent) 12%, transparent);
+  --data-label-green-bg: #e5f2eb;
+  --data-label-green: #27815f;
+  --data-label-blue-bg: #e8effa;
+  --data-label-blue: #4b71a5;
+  --data-label-orange-bg: #faf0df;
+  --data-label-orange: #986a2c;
+  --data-label-violet-bg: #f0ebf8;
+  --data-label-violet: #81649b;
+}
+
+/* One input surface for built-in fields and independently loaded field plugins. */
+.radix-themes
+  :is(
+    .rt-TextFieldRoot,
+    .rt-TextAreaRoot,
+    .rt-SelectTrigger.rt-variant-surface,
+    .field-picker-trigger,
+    .field-tags
+  ) {
+  --text-field-selection-color: var(--data-selected);
+  --text-field-focus-color: var(--data-border-strong);
+  --input-stroke: var(--data-input-border);
+  --input-halo: transparent;
+  background: var(--data-input-bg);
+  background-clip: border-box;
+  color: var(--data-text);
+  border: 0;
+  border-radius: var(--data-radius);
+  box-shadow:
+    inset 0 0 0 1px var(--input-stroke),
+    0 0 0 3px var(--input-halo);
+  outline: none;
+  font-size: 13px;
+  transition:
+    background-color 140ms,
+    box-shadow 140ms;
+}
+.radix-themes :is(.rt-TextFieldRoot, .rt-SelectTrigger.rt-variant-surface, .field-picker-trigger) {
+  min-height: 34px;
+}
+.radix-themes
+  :is(
+    .rt-TextFieldRoot,
+    .rt-TextAreaRoot,
+    .rt-SelectTrigger.rt-variant-surface,
+    .field-picker-trigger,
+    .field-tags
+  ):hover {
+  --input-stroke: var(--data-border-strong);
+}
+.radix-themes :is(.rt-TextFieldRoot, .rt-TextAreaRoot, .field-tags):focus-within,
+.radix-themes
+  :is(.rt-SelectTrigger.rt-variant-surface, .field-picker-trigger):is(
+    :focus-visible,
+    [data-state='open']
+  ) {
+  --input-stroke: color-mix(in srgb, var(--data-accent) 48%, var(--data-border));
+  --input-halo: var(--data-input-ring);
+  background: var(--data-surface);
+}
+.radix-themes
+  :is(
+    .rt-TextFieldRoot,
+    .rt-TextAreaRoot,
+    .rt-SelectTrigger.rt-variant-surface,
+    .field-picker-trigger,
+    .field-tags
+  ):is(:disabled, :has(:disabled)) {
+  --input-stroke: var(--data-border);
+  --input-halo: transparent;
+  background: var(--data-muted);
+  color: var(--data-text-secondary);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.radix-themes :is(.rt-TextFieldRoot, .rt-TextAreaRoot):has([aria-invalid='true']) {
+  --input-stroke: var(--data-danger);
+}
+.radix-themes :is(.rt-TextFieldInput, .rt-TextAreaInput)::placeholder,
+.radix-themes .field-picker-trigger[data-empty='true'] {
+  color: var(--data-text-secondary);
+}
+.radix-themes :is(.rt-TextFieldInput, .rt-TextAreaInput) {
+  font-size: inherit;
+}
+.radix-themes :is(.rt-TextFieldSlot, .rt-SelectIcon, .field-picker-trigger > svg) {
+  color: var(--data-text-secondary);
+}
+.radix-themes:is(.rt-SelectContent, .field-choice-popover, .field-date-popover),
+.radix-themes :is(.rt-SelectContent, .field-choice-popover, .field-date-popover) {
+  background: var(--data-surface);
+  color: var(--data-text);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px var(--data-border),
+    var(--data-shadow);
+}
+.radix-themes .rt-SelectItem {
+  border-radius: 6px;
+  font-size: 13px;
+}
+.radix-themes .rt-SelectItem[data-highlighted] {
+  background: var(--data-selected);
+  color: var(--data-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .radix-themes
+    :is(
+      .rt-TextFieldRoot,
+      .rt-TextAreaRoot,
+      .rt-SelectTrigger,
+      .field-picker-trigger,
+      .field-tags
+    ) {
+    transition: none;
+  }
+}
+
+:root[data-appearance='dark'] {
+  --data-accent: var(--dls-accent, #dce8f2);
+  --data-accent-hover: var(--dls-accent-hover, #f4f8fc);
+  --data-on-accent: var(--dls-accent-fg, #101922);
+  --data-surface: var(--dls-surface, #111418);
+  --data-sidebar: var(--dls-sidebar, #15191e);
+  --data-canvas: var(--dls-canvas, #101318);
+  --data-muted: var(--dls-surface-muted, #1d232a);
+  --data-hover: var(--dls-hover, #242c35);
+  --data-selected: var(--dls-active, #2b3540);
+  --data-border: #2a313a;
+  --data-border-strong: #414d5b;
+  --data-text: var(--dls-text-primary, #eef1f5);
+  --data-text-secondary: var(--dls-text-secondary, #a6b0bc);
+  --data-success: #70c6a1;
+  --data-warning: #e7b66c;
+  --data-danger: #fa8d95;
+  --data-shadow: 0 8px 24px #00000040;
+  --data-label-green-bg: #1a352b;
+  --data-label-green: #85cfac;
+  --data-label-blue-bg: #1c2e46;
+  --data-label-blue: #9cbef2;
+  --data-label-orange-bg: #372a1a;
+  --data-label-orange: #dfb173;
+  --data-label-violet-bg: #2d2440;
+  --data-label-violet: #bea8e6;
+}
+
+/* Radix primitives and custom components share one accent contract. */
+.radix-themes[data-accent-color='gray'] {
+  --accent-1: var(--data-surface);
+  --accent-2: var(--data-canvas);
+  --accent-3: var(--data-muted);
+  --accent-4: var(--data-selected);
+  --accent-5: var(--data-border);
+  --accent-6: var(--data-border-strong);
+  --accent-7: var(--data-border-strong);
+  --accent-8: var(--data-text-secondary);
+  --accent-9: var(--data-accent);
+  --accent-10: var(--data-accent-hover);
+  --accent-11: var(--data-accent);
+  --accent-12: var(--data-text);
+  --accent-a3: var(--data-muted);
+  --accent-a4: var(--data-selected);
+  --accent-a5: var(--data-border);
+  --accent-a6: var(--data-border-strong);
+  --accent-a7: var(--data-border-strong);
+  --accent-a8: var(--data-text-secondary);
+  --accent-a9: var(--data-accent);
+  --accent-a10: var(--data-accent-hover);
+  --accent-a11: var(--data-accent);
+  --accent-a12: var(--data-text);
+  --accent-contrast: var(--data-on-accent);
+  --accent-surface: var(--data-canvas);
+  --accent-indicator: var(--data-accent);
+  --accent-track: var(--data-accent);
+}

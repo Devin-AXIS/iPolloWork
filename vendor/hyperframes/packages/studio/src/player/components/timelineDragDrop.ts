@@ -9,6 +9,7 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   ppsRef: RefObject<number>;
   durationRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
+  gutterWidthRef: RefObject<number>;
 }
 
 type TimelinePlacement = { start: number; track: number };
@@ -45,6 +46,7 @@ export function useTimelineAssetDrop({
   ppsRef,
   durationRef,
   trackOrderRef,
+  gutterWidthRef,
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
@@ -79,6 +81,7 @@ export function useTimelineAssetDrop({
           duration: durationRef.current,
           trackHeight: TRACK_H,
           trackOrder: trackOrderRef.current,
+          gutterWidth: gutterWidthRef.current,
         },
         clientX,
         clientY,
@@ -86,7 +89,7 @@ export function useTimelineAssetDrop({
       const start = Math.max(0, usePlayerStore.getState().currentTime);
       return { start, track };
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef],
+    [scrollRef, ppsRef, durationRef, trackOrderRef, gutterWidthRef],
   );
 
   const handleAssetDrop = useCallback(

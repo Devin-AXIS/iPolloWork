@@ -1,4 +1,6 @@
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { create } from "zustand";
+import type { VideoLiveGeneration } from "@ipollowork/types/hyperframes";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { BeatEditState } from "../../utils/beatEditing";
 import type { TimelineAnimationSegment } from "../../utils/timelineAnimationSegments";
@@ -15,6 +17,7 @@ export interface KeyframeCacheEntry {
     tweenPercentage?: number;
     /** Which property group the source tween belongs to (position, scale, rotation, visual, etc.). */
     propertyGroup?: string;
+    origin?: "manual" | "preset" | "authored";
     properties: Record<string, number | string>;
     ease?: string;
   }>;
@@ -22,6 +25,8 @@ export interface KeyframeCacheEntry {
   easeEach?: string;
   /** Clip-local GSAP timing bars. Derived from existing tweens; never persisted separately. */
   animationSegments?: TimelineAnimationSegment[];
+  /** Unmerged source tweens, retaining exact IDs and per-property ownership. */
+  propertyAnimations?: GsapAnimation[];
 }
 
 export interface KeyframeCacheUpdate {
@@ -29,18 +34,20 @@ export interface KeyframeCacheUpdate {
   data: KeyframeCacheEntry | undefined;
 }
 
-/** Ordinary edits affect the full animation unless auto-keyframing is enabled
- * or the user explicitly selected a timeline keyframe. */
-export function shouldCommitAnimationKeyframe(
-  autoKeyframeEnabled: boolean,
-  activeKeyframePct: number | null,
-): boolean {
-  return autoKeyframeEnabled || activeKeyframePct != null;
+/** Ordinary edits affect the full animation; only an explicitly selected
+ * timeline keyframe limits the edit to one point. */
+export function shouldCommitAnimationKeyframe(activeKeyframePct: number | null): boolean {
+  return activeKeyframePct != null;
 }
 
 export interface TimelineElement {
+  fadeIn?: number;
+  fadeOut?: number;
+  hasAudio?: boolean;
   id: string;
   label?: string;
+  /** Read-only fill preview for a leaf shape; never persisted into the artwork. */
+  timelinePaint?: string;
   /** Timeline clip caption, independent from the layer-tree label. */
   clipLabel?: string;
   key?: string;
@@ -52,8 +59,7 @@ export interface TimelineElement {
    * The data-track-index as written in the source file. Set at the manifest
    * translation boundary (createTimelineElementFromManifestClip) from the
    * runtime clip's verbatim track, and preserved through display-lane remaps
-   * (normalizeToZones packs sparse authored tracks onto contiguous display
-   * lanes; expanded sub-comp children get synthetic display rows). Lane edits
+   * (legacy overlaps and scene layers get synthetic display rows). Lane edits
    * must persist THIS space — writing a display-lane number into a sparse file
    * re-targets the wrong track. For an expanded child the value is in its OWN
    * source file's coordinate space, not the host timeline's.
@@ -106,6 +112,11 @@ export interface TimelineElement {
    * authored group share one timeline color; independent clips remain distinct.
    */
   timelineGroupId?: string;
+  /** Same-file scene/group navigation; source timing remains global. */
+  inlineScopeKind?: "scene" | "group";
+  sharedLayer?: boolean;
+  /** Scene-only display metadata; DOM ancestry and source timing stay unchanged. */
+  sceneLayer?: { role: "scene" | "group" | "element"; parentLabel?: string };
   /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child
@@ -136,7 +147,7 @@ export type TimelineKind =
   | "element";
 
 export type ZoomMode = "fit" | "manual";
-type TimelineTool = "select" | "razor";
+type TimelineTool = "select" | "stretch" | "razor" | "annotate" | "annotate-lasso";
 
 export interface SelectElementOptions {
   preserveSet?: boolean;
@@ -161,6 +172,9 @@ function resolveElementSelection(
 
 interface PlayerState {
   isPlaying: boolean;
+  liveGenerationActive: boolean;
+  liveGeneration: VideoLiveGeneration | null;
+  liveGenerationResumePending: boolean;
   currentTime: number;
   duration: number;
   timelineReady: boolean;
@@ -191,6 +205,8 @@ interface PlayerState {
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
   outPoint: number | null;
 
+  thumbnailMode: "adaptive" | "hidden";
+  setThumbnailMode: (mode: "adaptive" | "hidden") => void;
   activeTool: TimelineTool;
   setActiveTool: (tool: TimelineTool) => void;
 
@@ -201,6 +217,24 @@ interface PlayerState {
 
   /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
+  selectedTimelineEffect: {
+    ownerKey: string;
+    animationId: string;
+    property?: string;
+    time?: number;
+  } | null;
+  setSelectedTimelineEffect: (
+    effect: { ownerKey: string; animationId: string; property?: string; time?: number } | null,
+  ) => void;
+  selectedPropertyKeyframe: {
+    ownerKey: string;
+    property: string;
+    animationId: string;
+    time: number;
+  } | null;
+  setSelectedPropertyKeyframe: (
+    point: { ownerKey: string; property: string; animationId: string; time: number } | null,
+  ) => void;
   activeKeyframePct: number | null;
   setActiveKeyframePct: (pct: number | null) => void;
   /** Motion-path "set destination" mode. Armed from the preview toolbar (replaces
@@ -211,10 +245,6 @@ interface PlayerState {
   setMotionPathArmed: (armed: boolean) => void;
   motionPathCreateAvailable: boolean;
   setMotionPathCreateAvailable: (available: boolean) => void;
-  /** Enables implicit playhead keyframes for ordinary element edits. Explicitly
-   *  selecting a keyframe still edits that keyframe while this is disabled. */
-  autoKeyframeEnabled: boolean;
-  setAutoKeyframeEnabled: (enabled: boolean) => void;
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
@@ -358,6 +388,12 @@ interface ElementDeleteTarget {
 /** A DOM-only timeline child (no data-start) and its nesting context. */
 export interface DomClipChild {
   id: string;
+  /** Own text or painted surface, excluding descendants and layout-only wrappers. */
+  hasVisualContent?: boolean;
+  timelinePaint?: string;
+  inlineScopeKind?: "scene" | "group";
+  /** Own authored eye state; ancestor hiding is derived by the expanded tree. */
+  hidden?: boolean;
   /** Actual DOM id when `id` is a selector/hf-id backed tree identity. */
   domId?: string;
   hfId?: string;
@@ -384,8 +420,10 @@ interface BeatHistoryEntry {
 // without triggering re-renders on every frame.
 type TimeListener = (time: number) => void;
 const _timeListeners = new Set<TimeListener>();
+let _currentTime = 0;
 export const liveTime = {
-  notify: (t: number) => _timeListeners.forEach((cb) => cb(t)),
+  get: () => _currentTime,
+  notify: (t: number) => { _currentTime = t; _timeListeners.forEach((cb) => cb(t)); },
   subscribe: (cb: TimeListener) => {
     _timeListeners.add(cb);
     return () => _timeListeners.delete(cb);
@@ -394,6 +432,9 @@ export const liveTime = {
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
+  liveGenerationActive: false,
+  liveGeneration: null,
+  liveGenerationResumePending: false,
   currentTime: 0,
   duration: 0,
   timelineReady: false,
@@ -414,6 +455,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   inPoint: null,
   outPoint: null,
 
+  thumbnailMode: readStudioUiPreferences().thumbnailMode ?? "adaptive",
+  setThumbnailMode: (mode) => {
+    writeStudioUiPreferences({ thumbnailMode: mode });
+    set({ thumbnailMode: mode });
+  },
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
 
@@ -427,17 +473,28 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
   clearSelectedKeyframes: () => set({ selectedKeyframes: new Set() }),
 
+  selectedTimelineEffect: null,
+  setSelectedTimelineEffect: (effect) =>
+    set({
+      selectedTimelineEffect: effect,
+      selectedPropertyKeyframe: null,
+      selectedKeyframes: new Set(),
+      activeKeyframePct: null,
+    }),
+  selectedPropertyKeyframe: null,
+  setSelectedPropertyKeyframe: (point) =>
+    set({
+      selectedPropertyKeyframe: point,
+      ...(point ? { selectedTimelineEffect: point } : {}),
+      selectedKeyframes: new Set(),
+      activeKeyframePct: null,
+    }),
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
   motionPathArmed: false,
   setMotionPathArmed: (armed) => set({ motionPathArmed: armed }),
   motionPathCreateAvailable: false,
   setMotionPathCreateAvailable: (available) => set({ motionPathCreateAvailable: available }),
-  // Ordinary Studio edits must remain stable for the element's whole lifetime.
-  // Keyframes are added explicitly from the timeline unless a future UI enables
-  // implicit auto-keyframing.
-  autoKeyframeEnabled: false,
-  setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
 
   selectedElementIds: new Set<string>(),
   setSelection: (ids, anchor) => set(resolveElementSelection(ids, anchor)),
@@ -554,8 +611,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         if (target.domId) return candidate.domId === target.domId;
         return Boolean(
           target.selector &&
-            candidate.selector === target.selector &&
-            (candidate.selectorIndex ?? 0) === (target.selectorIndex ?? 0),
+          candidate.selector === target.selector &&
+          (candidate.selectorIndex ?? 0) === (target.selectorIndex ?? 0),
         );
       };
       const removedIds = new Set<string>();
@@ -715,6 +772,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         ? {
             selectedElementId: id,
             selectedElementIds,
+            selectedPropertyKeyframe: null,
+            selectedTimelineEffect: null,
             activeKeyframePct: null,
             motionPathArmed: false,
           }
@@ -753,9 +812,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // Resets project-specific state when switching compositions.
   // playbackRate, audioMuted, loopEnabled, zoomMode, and manualZoomPercent are intentionally preserved
   // because they are user preferences that should survive project switches.
+  // The host owns liveGenerationActive and clears it on project teardown; a late
+  // editor mount must not erase a busy message already received from the host.
   reset: () =>
     set({
       isPlaying: false,
+      liveGeneration: null,
+      liveGenerationResumePending: false,
       currentTime: 0,
       duration: 0,
       timelineReady: false,
@@ -769,6 +832,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       outPoint: null,
       activeTool: "select",
       selectedKeyframes: new Set(),
+      selectedPropertyKeyframe: null,
+      selectedTimelineEffect: null,
       selectedElementIds: new Set(),
       clipRevealRequest: null,
       keyframeCache: new Map(),

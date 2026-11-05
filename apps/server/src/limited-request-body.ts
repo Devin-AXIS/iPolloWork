@@ -1,7 +1,7 @@
 import { ApiError } from "./errors.js";
 
 export async function readLimitedRequestBody(
-  request: Request,
+  request: Pick<Request, "headers" | "body">,
   maxBytes: number,
   error = { code: "template_package_too_large", message: "Template package exceeds 50 MB" },
 ): Promise<Uint8Array> {

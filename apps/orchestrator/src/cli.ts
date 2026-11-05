@@ -678,7 +678,7 @@ async function resolveHostOpencodeGlobalDataDir(): Promise<string | null> {
     );
   }
 
-  const files = ["auth.json", "mcp-auth.json"];
+  const files = ["auth.json"];
   for (const candidate of Array.from(
     new Set(candidates.map((item) => resolve(expandTildePath(item)))),
   )) {
@@ -2748,7 +2748,7 @@ async function ensureOpencodeStateLayout(
     opencodeDataDir &&
     (await isDir(layout.importDataDir))
   ) {
-    for (const file of ["auth.json", "mcp-auth.json"]) {
+    for (const file of ["auth.json"]) {
       const dest = join(opencodeDataDir, file);
       if (await fileExists(dest)) continue;
       const source = join(layout.importDataDir, file);
@@ -3479,7 +3479,7 @@ async function writeSandboxEntrypoint(options: {
     `mkdir -p ${shQuote(opencodeConfigDir)}`,
     `if [ -d ${shQuote(hostOpencodeConfigDir)} ]; then cp -R ${shQuote(`${hostOpencodeConfigDir}/.`)} ${shQuote(opencodeConfigDir)} 2>/dev/null || true; fi`,
     'mkdir -p "$XDG_DATA_HOME/opencode"',
-    `if [ -d ${shQuote(hostOpencodeDataDir)} ]; then cp ${shQuote(`${hostOpencodeDataDir}/auth.json`)} \"$XDG_DATA_HOME/opencode/auth.json\" 2>/dev/null || true; cp ${shQuote(`${hostOpencodeDataDir}/mcp-auth.json`)} \"$XDG_DATA_HOME/opencode/mcp-auth.json\" 2>/dev/null || true; fi`,
+    `if [ -d ${shQuote(hostOpencodeDataDir)} ]; then cp ${shQuote(`${hostOpencodeDataDir}/auth.json`)} \"$XDG_DATA_HOME/opencode/auth.json\" 2>/dev/null || true; fi`,
     `export OPENCODE_URL=${shQuote(`http://127.0.0.1:${SANDBOX_INTERNAL_OPENCODE_PORT}`)}`,
     `export OPENCODE_CLIENT=ipollowork-orchestrator`,
     `export OPENCODE_HOT_RELOAD=${shQuote(options.opencode.hotReload.enabled ? "1" : "0")}`,

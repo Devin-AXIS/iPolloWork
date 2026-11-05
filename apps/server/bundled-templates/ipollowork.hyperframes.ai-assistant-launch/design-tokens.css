@@ -1,0 +1,30 @@
+:root {
+  --ipw-color-bg: #070708;
+  --ipw-color-surface: #f3f3f5;
+  --ipw-color-text: #0d0d10;
+  --ipw-color-muted: #73737c;
+  --ipw-color-border: #e3e3e8;
+  --ipw-color-primary: #3ecf8e;
+  --ipw-color-secondary: #8b7cf6;
+  --ipw-color-accent: #3ecf8e;
+  --ipw-color-on-primary: #ffffff;
+  --ipw-font-display: "Inter", "SF Pro Display", -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+  --ipw-font-body: "Inter", "SF Pro Text", -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+  --ipw-body-line-height: 1.5;
+  --ipw-content-width: 1200px;
+  --ipw-page-padding: 32px;
+  --ipw-section-space: 72px;
+  --ipw-button-radius: 14px;
+  --ipw-card-bg: #ffffff;
+  --ipw-card-border: #e3e3e8;
+  --ipw-card-radius: 28px;
+  --ipw-card-shadow: 0 30px 70px rgba(20, 20, 40, .08);
+}
+html:root, html:root body, html:root [class] {
+  --bg: var(--ipw-color-bg) !important; --page: var(--ipw-color-bg) !important; --paper: var(--ipw-color-bg) !important;
+  --surface: var(--ipw-color-surface) !important; --panel: var(--ipw-color-surface) !important; --white: var(--ipw-color-surface) !important;
+  --ink: var(--ipw-color-text) !important; --fg: var(--ipw-color-text) !important; --text: var(--ipw-color-text) !important;
+  --muted: var(--ipw-color-muted) !important; --steel: var(--ipw-color-muted) !important;
+  --line: var(--ipw-color-border) !important; --border: var(--ipw-color-border) !important;
+  --accent: var(--ipw-color-primary) !important; --primary: var(--ipw-color-primary) !important;
+}

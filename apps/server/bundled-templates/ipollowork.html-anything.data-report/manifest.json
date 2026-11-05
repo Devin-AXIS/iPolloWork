@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.data-report",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "report",
   "subcategory": "finance",
@@ -10,7 +10,8 @@
     "finance",
     "data",
     "report",
-    "chart"
+    "chart",
+    "topic:data"
   ],
   "surface": "design",
   "title": "Data Visualization Report",

@@ -5,6 +5,7 @@ export function parseDelimitedSpreadsheet(content: string, delimiter: string): S
   let row: string[] = [];
   let cell = "";
   let quoted = false;
+  let start = 0;
 
   for (let index = 0; index < content.length; index += 1) {
     const char = content[index];
@@ -12,35 +13,41 @@ export function parseDelimitedSpreadsheet(content: string, delimiter: string): S
 
     if (quoted) {
       if (char === '"' && next === '"') {
-        cell += '"';
+        cell += content.slice(start, index) + '"';
         index += 1;
+        start = index + 1;
       } else if (char === '"') {
+        cell += content.slice(start, index);
+        start = index + 1;
         quoted = false;
-      } else {
-        cell += char;
       }
       continue;
     }
 
     if (char === '"') {
+      cell += content.slice(start, index);
+      start = index + 1;
       quoted = true;
       continue;
     }
     if (char === delimiter) {
-      row.push(cell);
+      row.push(cell + content.slice(start, index));
+      start = index + 1;
       cell = "";
       continue;
     }
     if (char === "\n") {
-      row.push(cell);
+      row.push(cell + content.slice(start, index));
+      start = index + 1;
       rows.push(row);
       row = [];
       cell = "";
       continue;
     }
-    if (char !== "\r") cell += char;
+    if (char === "\r") { cell += content.slice(start, index); start = index + 1; }
   }
 
+  cell += content.slice(start);
   if (cell || row.length) {
     row.push(cell);
     rows.push(row);

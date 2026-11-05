@@ -1,5 +1,7 @@
 import { useEffect, useMemo } from "react";
 import type { TimelineElement } from "../player";
+import { usePlayerStore } from "../player/store/playerStore";
+import { resolveTimelineTreeSelectionKey } from "../player/lib/timelineTreeSelection";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 
@@ -75,19 +77,30 @@ export function useTimelineSelectionPreviewSync({
         : domEditSelection
           ? [domEditSelection]
           : [];
+    const tree = usePlayerStore.getState();
+    const resolveCurrentId = (selection: DomEditSelection) => {
+      const key = resolveTimelineTreeSelectionKey({elementId:selection.id ?? undefined,
+        hfId:selection.hfId,sourceFile:selection.sourceFile,selector:selection.selector,
+        selectorIndex:selection.selectorIndex,elements:timelineElements,
+        manifest:tree.clipManifest ?? [],domClipChildren:tree.domClipChildren});
+      return timelineElements.some((element) => (element.key ?? element.id) === key)
+        ? key : resolveTimelineIdForSelection(selection,timelineElements,activeCompPath);
+    };
     const currentIds = currentSelections
-      .map((selection) =>
-        resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
-      )
+      .map(resolveCurrentId)
       .filter((id): id is string => Boolean(id));
     const currentAnchor = domEditSelection
-      ? resolveTimelineIdForSelection(domEditSelection, timelineElements, activeCompPath)
+      ? resolveCurrentId(domEditSelection)
       : null;
 
     if (selectedIds.length === 0) {
       if (currentSelections.length > 0) applyDomSelection(null, { revealPanel: false });
       return;
     }
+    // A canvas-picked child can belong to a collapsed timeline row. Its exact
+    // tree key is already selected; absence from the visible rows is not a deselect.
+    if (currentSelections.every(selection => selection.element.isConnected) &&
+      selectionIdsMatch(currentIds, selectedIds, currentAnchor, selectedElementId)) return;
     let cancelled = false;
     const syncSelection = async () => {
       const resolved: Array<{ id: string; selection: DomEditSelection }> = [];

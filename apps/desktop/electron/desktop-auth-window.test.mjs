@@ -2,10 +2,37 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  clearDesktopAuthSession,
   classifyDesktopAuthNavigation,
+  DESKTOP_AUTH_SESSION_PARTITION,
   desktopAuthCallbackBrandScript,
   isProviderAuthCallbackUrl,
 } from "./desktop-auth-window.mjs";
+
+test("clears the isolated desktop authentication session", async () => {
+  const calls = [];
+  const authSession = {
+    async clearStorageData() {
+      calls.push(["storage"]);
+    },
+    async clearCache() {
+      calls.push(["cache"]);
+    },
+  };
+
+  await clearDesktopAuthSession({
+    fromPartition(partition) {
+      calls.push(["partition", partition]);
+      return authSession;
+    },
+  });
+
+  assert.deepEqual(calls, [
+    ["partition", DESKTOP_AUTH_SESSION_PARTITION],
+    ["storage"],
+    ["cache"],
+  ]);
+});
 
 test("keeps HTTPS identity redirects inside the isolated auth window", () => {
   assert.deepEqual(

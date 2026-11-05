@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getWorkspaceSnapIntent } from "../src/react-app/shell/workspace-shell-layout";
 import { readFileSync } from "node:fs";
 
 const layoutSource = readFileSync(
@@ -13,6 +14,10 @@ const uiStateSource = readFileSync(
   new URL("../src/react-app/shell/ui-state-store.ts", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
+const settingsRouteSource = readFileSync(
+  new URL("../src/react-app/shell/settings-route.tsx", import.meta.url),
+  "utf8",
+).replaceAll("\r\n", "\n");
 
 function functionBody(source: string, start: string, end: string) {
   const startIndex = source.indexOf(start);
@@ -23,6 +28,15 @@ function functionBody(source: string, start: string, end: string) {
 }
 
 describe("workspace resize performance", () => {
+  test("uses a shared snap policy for both workspaces and preserves canceled gestures", () => {
+    const dragBody = functionBody(sessionPageSource, "const startRightPanelResize =", "const handleDesignAskAi =");
+    expect(dragBody).toContain("getWorkspaceSnapIntent(requestedWidth");
+    expect(dragBody).not.toContain("videoTabActive &&");
+    expect(dragBody).toContain('stopEvent.type === "pointercancel"');
+    expect(dragBody).toContain('changeMode(intent === "expand" ? "right" : "main")');
+    expect(dragBody).toContain('changeMode("split")');
+  });
+
   test("updates the left sidebar DOM per frame and commits store state on release", () => {
     const dragBody = functionBody(
       layoutSource,
@@ -32,12 +46,12 @@ describe("workspace resize performance", () => {
     const moveBody = functionBody(
       dragBody,
       "const handleMove = (moveEvent: PointerEvent) => {",
-      "const handleStop = () => {",
+      "const handleStop = (stopEvent: PointerEvent) => {",
     );
 
     expect(moveBody).toContain("window.requestAnimationFrame(applyPendingWidth)");
     expect(moveBody).not.toContain("setLeftSidebarWidth(");
-    expect(dragBody).toContain("setLeftSidebarWidth(nextWidth);");
+    expect(dragBody).toContain("setLeftSidebarWidth(finalWidth);");
     expect(dragBody).toContain("setPointerCapture(event.pointerId)");
   });
 
@@ -50,7 +64,7 @@ describe("workspace resize performance", () => {
     const moveBody = functionBody(
       dragBody,
       "const handleMove = (moveEvent: PointerEvent) => {",
-      "const handleStop = () => {",
+      "const handleStop = (stopEvent: PointerEvent) => {",
     );
 
     expect(moveBody).toContain("window.requestAnimationFrame(applyPendingWidth)");
@@ -71,5 +85,84 @@ describe("workspace resize performance", () => {
     expect(uiStateSource).not.toContain(
       "state.workspaceLeftSidebarResizing === previous.workspaceLeftSidebarResizing",
     );
+  });
+
+  test("lets embedded settings shrink to the main workspace width", () => {
+    expect(sessionPageSource).toContain(
+      '<div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">',
+    );
+  });
+
+  test("uses sidebar navigation instead of a floating close action for full workspace views", () => {
+    expect(sessionPageSource).not.toContain("floatingHeaderActionClosesWorkspaceView");
+    expect(sessionPageSource).not.toContain("floatingHeaderActionLabel");
+    expect(sessionPageSource).not.toContain("floatingRightPanelToggleOffset");
+  });
+
+  test("returns extensions and schedule views to conversation when a session is opened", () => {
+    const start = sessionPageSource.indexOf("const handleSidebarOpenSession = useCallback");
+    const end = sessionPageSource.indexOf("const handleSidebarOpenSessionSearch", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const handler = sessionPageSource.slice(start, end);
+    expect(handler).toContain("setMainWorkspaceView(null);");
+    expect(handler.indexOf("setMainWorkspaceView(null);")).toBeLessThan(
+      handler.indexOf("props.sidebar.onOpenSession(workspaceId, sessionId);"),
+    );
+  });
+
+  test("returns extensions and schedule views to the new-task starter", () => {
+    const handler = functionBody(
+      sessionPageSource,
+      "const handleSidebarCreateTask = useCallback",
+      "const handleSidebarOpenSessionSearch",
+    );
+    expect(handler).toContain("closeExpandedWorkSurface();");
+    expect(handler).toContain("setMainWorkspaceView(null);");
+    expect(handler.indexOf("setMainWorkspaceView(null);")).toBeLessThan(
+      handler.indexOf("props.sidebar.onCreateTaskInWorkspace(workspaceId, type, templateId, templateScope);"),
+    );
+    expect(sessionPageSource).toContain("onCreateTaskInWorkspace={handleSidebarCreateTask}");
+  });
+
+  test("shows an accessible loading state while extensions initialize", () => {
+    expect(settingsRouteSource).toContain('loading && route.tab === "extensions"');
+    expect(settingsRouteSource).toContain('data-testid="extensions-loading"');
+    expect(settingsRouteSource).toContain('role="status"');
+    expect(settingsRouteSource).toContain('t("settings.loading")');
+  });
+
+  test("keeps the starter navigation shell while hiding its title", () => {
+    expect(sessionPageSource).toContain("mac:titlebar-drag");
+    expect(sessionPageSource).toContain(
+      'const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "schedule";',
+    );
+    expect(sessionPageSource).toContain('const projectWorkActiveView = mainWorkspaceView === "project-overview"');
+    expect(sessionPageSource).toContain("{showMainHeaderTitle ? (");
+  });
+});
+
+
+describe("workspace snap hysteresis", () => {
+  test("a fast boundary crossing arms a stop before additional travel can snap", () => {
+    expect(getWorkspaceSnapIntent(100, 320, 800, null, 100)).toBeNull();
+    expect(getWorkspaceSnapIntent(21, 320, 800, null, 100)).toBeNull();
+    expect(getWorkspaceSnapIntent(20, 320, 800, null, 100)).toBe("collapse");
+    expect(getWorkspaceSnapIntent(1000, 320, 800, null, 1000)).toBeNull();
+    expect(getWorkspaceSnapIntent(1079, 320, 800, null, 1000)).toBeNull();
+    expect(getWorkspaceSnapIntent(1080, 320, 800, null, 1000)).toBe("expand");
+  });
+  test("requires intentional overshoot to enter a snap candidate", () => {
+    expect(getWorkspaceSnapIntent(320, 320, 800, null)).toBeNull();
+    expect(getWorkspaceSnapIntent(241, 320, 800, null)).toBeNull();
+    expect(getWorkspaceSnapIntent(240, 320, 800, null)).toBe("collapse");
+    expect(getWorkspaceSnapIntent(879, 320, 800, null)).toBeNull();
+    expect(getWorkspaceSnapIntent(880, 320, 800, null)).toBe("expand");
+  });
+  test("keeps a candidate stable until the pointer returns across its release threshold", () => {
+    expect(getWorkspaceSnapIntent(280, 320, 800, "collapse")).toBe("collapse");
+    expect(getWorkspaceSnapIntent(281, 320, 800, "collapse")).toBeNull();
+    expect(getWorkspaceSnapIntent(840, 320, 800, "expand")).toBe("expand");
+    expect(getWorkspaceSnapIntent(839, 320, 800, "expand")).toBeNull();
   });
 });

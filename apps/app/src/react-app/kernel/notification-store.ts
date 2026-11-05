@@ -56,10 +56,18 @@ export type NotificationInput = {
 
 type NotificationStore = {
   notifications: AppNotification[];
+  clearedSources: Record<string, number>;
   add: (input: NotificationInput) => void;
   markAllRead: () => void;
-  clearAll: () => void;
+  clearAll: (source?: { id: string; through: number }) => void;
 };
+
+function sanitizeClearedSources(value: unknown): Record<string, number> {
+  if (typeof value !== "object" || value === null) return {};
+  return Object.fromEntries(Object.entries(value)
+    .filter((entry): entry is [string, number] => entry[0].length <= 1024 && typeof entry[1] === "number" && Number.isFinite(entry[1]) && entry[1] > 0)
+    .sort((a, b) => b[1] - a[1]).slice(0, MAX_NOTIFICATIONS));
+}
 
 function prune(notifications: AppNotification[]): AppNotification[] {
   const cutoff = Date.now() - MAX_AGE_MS;
@@ -139,6 +147,7 @@ export const useNotificationStore = create<NotificationStore>()(
   persist(
     (set) => ({
       notifications: [],
+      clearedSources: {},
       add: (input) =>
         set((state) => {
           const now = Date.now();
@@ -194,14 +203,23 @@ export const useNotificationStore = create<NotificationStore>()(
             ),
           };
         }),
-      clearAll: () => set({ notifications: [] }),
+      clearAll: (source) => set((state) => ({
+        notifications: [],
+        clearedSources: source ? sanitizeClearedSources({
+          ...state.clearedSources,
+          [source.id]: Math.max(state.clearedSources[source.id] ?? 0, source.through),
+        }) : state.clearedSources,
+      })),
     }),
     {
       name: PERSISTED_NOTIFICATION_STORE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ notifications: state.notifications }),
+      partialize: (state) => ({ notifications: state.notifications, clearedSources: state.clearedSources }),
       merge: (persistedState, currentState) => ({
         ...currentState,
+        clearedSources: sanitizeClearedSources(
+          typeof persistedState === "object" && persistedState !== null ? Reflect.get(persistedState, "clearedSources") : null,
+        ),
         notifications: prune(
           sanitizeNotifications(
             typeof persistedState === "object" && persistedState !== null

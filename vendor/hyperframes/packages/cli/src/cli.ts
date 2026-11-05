@@ -8,15 +8,16 @@
 //
 // commandFailed must be declared here (before the handlers) so the EPIPE
 // stream-error path can set it before process.exit(0). The telemetry exit
-// handler reads this flag to determine success/failure — an EPIPE exit
-// should NOT score as success:true in telemetry.
+// handler reads this flag to determine success/failure — an EPIPE that
+// interrupts a command should NOT score as success:true, but one that
+// arrives after the render artifact was validated is the normal agent-pipe
+// teardown and must stay success:true (see handleStreamEpipe).
 let commandFailed = false;
 
 for (const stream of [process.stdout, process.stderr]) {
   stream.on("error", (err) => {
     if ((err as NodeJS.ErrnoException).code === "EPIPE") {
-      commandFailed = true;
-      process.exit(0);
+      handleStreamEpipe();
     }
   });
 }
@@ -25,12 +26,12 @@ for (const stream of [process.stdout, process.stderr]) {
 // The shaderTransitionWorkerPool lives in the producer package and resolves
 // its worker entry by probing for a sibling `.js` file next to
 // `import.meta.url`. When this CLI is bundled by tsup, the producer code is
-// inlined into `cli.js`, but `import.meta.url` resolves to the producer's
+// bundled into chunks beside cli.js, but `import.meta.url` resolves to the producer's
 // own dist path (NOT cli.js) on some module-graph layouts — so the sibling
 // probe lands in a directory that does not contain the bundled worker.
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
 // the pool where to find it via the published env-var override.
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
@@ -62,35 +63,12 @@ if (rootVersionRequested) {
 // ── Load .env from CWD ─────────────────────────────────────────────────────
 // Agents run from the project directory where .env holds API keys (Gemini,
 // HeyGen, ElevenLabs). Load it automatically so they don't need `source .env`.
+const { applyDotEnv } = await import("./utils/dotEnv.js");
 try {
   const { readFileSync } = await import("node:fs");
   const { resolve } = await import("node:path");
   const envPath = resolve(process.cwd(), ".env");
-  const envContent = readFileSync(envPath, "utf-8");
-  for (const rawLine of envContent.split("\n")) {
-    let line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    // Tolerate `export FOO=bar` (common in dotfile-style .env files).
-    if (line.startsWith("export ")) line = line.slice(7).trim();
-    const eqIdx = line.indexOf("=");
-    if (eqIdx < 1) continue;
-    const key = line.slice(0, eqIdx).trim();
-    let val = line.slice(eqIdx + 1).trim();
-    if (val.startsWith('"') || val.startsWith("'")) {
-      // Quoted value: take until the matching closing quote; leave the rest.
-      // Anything after a closing quote (including `# comment`) is dropped.
-      const quote = val.charAt(0);
-      const end = val.indexOf(quote, 1);
-      if (end > 0) val = val.slice(1, end);
-      else val = val.slice(1); // unterminated quote — best-effort, strip opener
-    } else {
-      // Unquoted value: strip inline `# comment` (requires whitespace before #
-      // to avoid eating `pass#word` style values).
-      const commentMatch = val.match(/\s+#/);
-      if (commentMatch?.index !== undefined) val = val.slice(0, commentMatch.index).trim();
-    }
-    if (key && !(key in process.env)) process.env[key] = val;
-  }
+  applyDotEnv(readFileSync(envPath, "utf-8"), process.env);
 } catch {
   /* .env not present — fine, env vars may be set another way */
 }
@@ -99,13 +77,43 @@ try {
 // Telemetry, update checks, and heavy modules are imported only when needed.
 // For --help we skip telemetry entirely.
 
-import { defineCommand, runMain } from "citty";
+import { defineCommand, runCommand } from "citty";
 import type { ArgsDef, CommandDef } from "citty";
 import { getRunId } from "./telemetry/runId.js";
 import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
 import { isRenderSucceeded } from "./utils/render-success-state.js";
+import { resolveCommandUsage } from "./utils/commandUsageResolution.js";
+import { isDevMode } from "./utils/env.js";
+import {
+  CliResultSignal,
+  CliRuntimeError,
+  CliUsageError,
+  consumeCommandResult,
+  registerRootExitCodeSanitizer,
+  registerRootExitRequester,
+  type CommandResult,
+} from "./utils/commandResult.js";
+import { registerRunningCli } from "./utils/runningCli.js";
+
+registerRunningCli();
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
+
+// Runs before commands/preview.js is imported, so a missing or stale
+// package is named here instead of crashing deep inside that import.
+async function assertStudioWorkspaceBuilt(): Promise<void> {
+  if (!isDevMode()) return;
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const { checkStudioWorkspaceBuild, formatWorkspaceBuildProblems } =
+    await import("./utils/workspaceBuildCheck.js");
+  const problems = checkStudioWorkspaceBuild(repoRoot);
+  if (problems.length === 0) return;
+  console.error(formatWorkspaceBuildProblems(problems));
+  throw new CliRuntimeError("Studio workspace build check failed", {
+    exitCode: 1,
+    presented: true,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // CLI definition — all commands are lazy-loaded via dynamic import()
@@ -115,46 +123,52 @@ const commandLoaders = {
   init: () => import("./commands/init.js").then((m) => m.default),
   add: () => import("./commands/add.js").then((m) => m.default),
   catalog: () => import("./commands/catalog.js").then((m) => m.default),
+  "media-use": () => import("./commands/media-use.js").then((m) => m.default),
   play: () => import("./commands/play.js").then((m) => m.default),
   present: () => import("./commands/present.js").then((m) => m.default),
-  preview: () => import("./commands/preview.js").then((m) => m.default),
+  preview: () =>
+    assertStudioWorkspaceBuilt().then(() => import("./commands/preview.js").then((m) => m.default)),
+  publish: () => import("./commands/publish.js").then((m) => m.default),
+  open: () => import("./commands/open.js").then((m) => m.default),
+  "catch-up": () => import("./commands/catch-up.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
   check: () => import("./commands/check.js").then((m) => m.default),
   beats: () => import("./commands/beats.js").then((m) => m.default),
+  "normalize-audio": () => import("./commands/normalize-audio.js").then((m) => m.default),
   inspect: () => import("./commands/inspect.js").then((m) => m.default),
   keyframes: () => import("./commands/keyframes.js").then((m) => m.default),
   layout: () => import("./commands/layout.js").then((m) => m.default),
   info: () => import("./commands/info.js").then((m) => m.default),
   compositions: () => import("./commands/compositions.js").then((m) => m.default),
+  timeline: () => import("./commands/timeline.js").then((m) => m.default),
+  history: () => import("./commands/history.js").then((m) => m.default),
   benchmark: () => import("./commands/benchmark.js").then((m) => m.default),
   browser: () => import("./commands/browser.js").then((m) => m.default),
   "remove-background": () => import("./commands/remove-background.js").then((m) => m.default),
   transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
+  usage: () => import("./commands/usage.js").then((m) => m.default),
+  models: () => import("./commands/models.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
+  clean: () => import("./commands/clean.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
   telemetry: () => import("./commands/telemetry.js").then((m) => m.default),
   events: () => import("./commands/events.js").then((m) => m.default),
   validate: () => import("./commands/validate.js").then((m) => m.default),
   snapshot: () => import("./commands/snapshot.js").then((m) => m.default),
+  "media-treatment": () =>
+    import("./commands/media-treatment.js").then((m) => m.mediaTreatmentCommand),
   "grade-compare": () => import("./commands/grade-compare.js").then((m) => m.default),
   compare: () => import("./commands/compare.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
   figma: () => import("./commands/figma.js").then((m) => m.default),
 };
 
-// Wrap each command's run() so a thrown failure reports its reason to telemetry
-// before citty catches the error and exits 1. The error is re-thrown unchanged,
-// preserving citty's print + exit-1 behavior. Commands that call process.exit()
-// themselves (e.g. `browser path`) bypass this and report inline.
 const subCommands = Object.fromEntries(
-  Object.entries(commandLoaders).map(([name, load]) => [
-    name,
-    trackCommandFailures(load, (err) => reportCommandFailure(command, err)),
-  ]),
+  Object.entries(commandLoaders).map(([name, load]) => [name, trackCommandFailures(load)]),
 );
 
 const main = defineCommand({
@@ -180,7 +194,6 @@ const hasJsonFlag = process.argv.includes("--json");
 // Captured references — populated when the lazy imports resolve.
 // Used in exit handlers where dynamic import() is unsafe (beforeExit loops,
 // exit handler is synchronous-only).
-let _flush: (() => Promise<void>) | undefined;
 let _flushSync: (() => void) | undefined;
 let _trackCliError:
   | ((props: {
@@ -203,13 +216,19 @@ let _trackCommandResult:
 let _printUpdateNotice: (() => void) | undefined;
 let _printStalePinNotice: (() => void) | undefined;
 let _printSkillsUpdateNotice: (() => void) | undefined;
+let telemetryReady: Promise<void> = Promise.resolve();
 
 // `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
 // skips the per-command wrapper (no duplicate cli_command, no first-run notice
 // printed into a skill's captured output).
-if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
-  import("./telemetry/index.js").then((mod) => {
-    _flush = mod.flush;
+if (
+  !isHelp &&
+  command !== "telemetry" &&
+  command !== "events" &&
+  command !== "usage" &&
+  command !== "unknown"
+) {
+  telemetryReady = import("./telemetry/index.js").then((mod) => {
     _flushSync = mod.flushSync;
     _trackCliError = mod.trackCliError;
     _trackCommandResult = mod.trackCommandResult;
@@ -221,6 +240,8 @@ if (!isHelp && command !== "telemetry" && command !== "events" && command !== "u
 
 // `events` skips the update check too — a skill-usage beacon must not add
 // network latency or trigger a background self-upgrade on the calling skill.
+// `telemetry` skips it because update metadata must never race the command
+// that changes the user's telemetry preference.
 // `skills` is excluded from the SKILLS nudge for the same reason `upgrade` is
 // excluded from the self-update notice: a command that is itself actively
 // checking/reconciling skills (`skills check`, `skills update`) must not also
@@ -232,62 +253,120 @@ if (
   !hasJsonFlag &&
   command !== "upgrade" &&
   command !== "events" &&
-  command !== "skills"
+  command !== "telemetry" &&
+  command !== "skills" &&
+  command !== "usage"
 ) {
   // Report any completed auto-install from the previous run first, before
   // kicking off the next check — so the user sees "updated to vX" once and
   // we don't over-print.
   import("./utils/autoUpdate.js").then((mod) => mod.reportCompletedUpdate()).catch(() => {});
 
-  import("./utils/updateCheck.js").then(async (mod) => {
-    _printUpdateNotice = mod.printUpdateNotice;
-    _printStalePinNotice = mod.printStalePinNotice;
-    const result = await mod.checkForUpdate().catch(() => null);
-    if (result?.updateAvailable) {
-      const auto = await import("./utils/autoUpdate.js").catch(() => null);
-      auto?.scheduleBackgroundInstall(result.latest, result.current);
-    }
-  });
+  import("./utils/updateCheck.js")
+    .then(async (mod) => {
+      _printUpdateNotice = mod.printUpdateNotice;
+      _printStalePinNotice = mod.printStalePinNotice;
+      const result = mod.cachedUpdateCheck();
+      if (result.updateAvailable) {
+        const auto = await import("./utils/autoUpdate.js").catch(() => null);
+        auto?.scheduleBackgroundInstall(result.latest, result.current);
+      }
+    })
+    .catch(() => {});
 
-  // Skills freshness nudge — same gating as the CLI self-update notice. The
-  // check is cached (24h) and best-effort: it never blocks or fails the command.
-  import("./utils/skillsUpdateCheck.js").then(async (mod) => {
-    _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-    await mod.checkSkillsForUpdate().catch(() => null);
-  });
+  // Skills freshness nudge — same gating as the CLI self-update notice.
+  import("./utils/skillsUpdateCheck.js")
+    .then((mod) => {
+      _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
+    })
+    .catch(() => {});
+
+  // The notices read the caches; a detached child refreshes them for the next run.
+  import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});
+}
+
+// A command run on a project the desktop app chatted about since it was last caught up on ends by saying so.
+let _appHistoryNotice: string | null = null;
+if (!isHelp && !["unknown", "catch-up", "events", "telemetry"].includes(command)) {
+  import("./utils/appHistory.js")
+    .then((mod) => {
+      _appHistoryNotice = mod.appHistoryNotice(process.cwd(), process.argv.slice(3));
+    })
+    .catch(() => {});
 }
 
 const commandStart = Date.now();
 const runId = getRunId();
+let finalized = false;
 
-// Async flush for normal exit. `beforeExit` re-fires every time the
-// event loop drains, and the async `_flush()` itself schedules new
-// work — so a plain `on` listener would print the update notice (and
-// re-flush) once per drain (the user-reported double-print). `once`
-// detaches after first invocation, which is what we want for both.
+// Root-only lifecycle fan-in: telemetry, notices, flushing, then exit code.
 // fallow-ignore-next-line complexity
-process.once("beforeExit", () => {
-  _flush?.().catch(() => {});
+async function finalizeCli(result: CommandResult): Promise<void> {
+  if (finalized) return;
+  finalized = true;
+  // Once the artifact has validated and been committed to disk, the run
+  // delivered — anything recorded as a failure after that is teardown noise.
+  // The uncaughtException / unhandledRejection handlers already consult
+  // isRenderSucceeded(), but a post-render throw that the command wrapper
+  // CATCHES never reaches them: it becomes an ordinary non-zero
+  // CommandResult, and a valid render is reported as a failure. Sanitizing
+  // here, once, is what those handlers cannot cover, and it keeps the exit
+  // code and the telemetry record from disagreeing about the same run.
+  const exitCode = isRenderSucceeded() ? 0 : result.exitCode;
+  commandFailed ||= exitCode !== 0;
+  await telemetryReady.catch(() => {});
+  _trackCommandResult?.({
+    command,
+    success: exitCode === 0 && commandSucceededForTelemetry(),
+    exitCode,
+    durationMs: Date.now() - commandStart,
+    runId,
+  });
+  // No network wait: the exit handler's flushSync() delivers what is still queued.
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
     _printStalePinNotice?.();
     _printSkillsUpdateNotice?.();
+  }
+  if (_appHistoryNotice) process.stderr.write(`◇  ${_appHistoryNotice}\n`);
+  process.exitCode = exitCode;
+}
+
+registerRootExitRequester((exitCode) => {
+  void finalizeCli({
+    exitCode,
+    kind: exitCode === 0 ? "success" : "runtime_error",
+    presented: true,
+  }).finally(() => process.exit(exitCode));
+});
+
+registerRootExitCodeSanitizer(() => {
+  if (process.exitCode !== undefined && process.exitCode !== 0) {
+    process.exitCode = 0;
   }
 });
 
 // Sync-only: exit handlers cannot await promises or drain microtasks.
 // _trackCommandResult / _trackCliError are captured references resolved
 // at init time, so they're callable synchronously here.
-process.on("exit", (code) => {
-  _trackCommandResult?.({
-    command,
-    success: code === 0 && !commandFailed,
-    exitCode: code,
-    durationMs: Date.now() - commandStart,
-    runId,
-  });
-  _flushSync?.();
-});
+process.on(
+  "exit",
+  // fallow-ignore-next-line complexity
+  (code) => {
+    if (!finalized) {
+      _trackCommandResult?.({
+        command,
+        success: code === 0 && commandSucceededForTelemetry(),
+        exitCode: code,
+        durationMs: Date.now() - commandStart,
+        runId,
+      });
+    }
+    // Unconditional: this is the exit-time delivery for every command (gating it on `finalized`
+    // was the 0.7.65 render_complete loss). Empty queue is a no-op; uuids make re-sends idempotent.
+    _flushSync?.();
+  },
+);
 
 // Report a CLI error event to telemetry. Extracted from the process-error
 // handlers so their bodies stay simple linear branches (see fallow CRAP
@@ -334,6 +413,30 @@ function exitAfterPostRenderTermination(
   process.exit(0);
 }
 
+// A closed pipe (EPIPE) is the NORMAL teardown when the CLI runs under a
+// piped agent (Claude Code, Codex, …) — the reader may stop consuming as
+// soon as it has what it needs. Exit cleanly, but only score the run as a
+// failure when the pipe died BEFORE the render artifact was validated:
+// unconditionally setting `commandFailed = true` here marked every piped
+// successful render as success:false (0.7.65–0.7.90). Delivery of anything
+// still queued (render_complete's eager flush() dies with the process) is
+// owned by the unconditional flushSync() in the `exit` handler below.
+function handleStreamEpipe(): never {
+  if (!isRenderSucceeded()) commandFailed = true;
+  process.exit(0);
+}
+
+// Success gate for the cli_command_result telemetry field. `commandFailed`
+// can be set by pre-artifact noise — a stray unhandledRejection mid-render,
+// or an EPIPE that fires before validation on a run that still completes.
+// Once the render artifact has been validated (`isRenderSucceeded()`), that
+// earlier noise must not score the run as a failure: the run delivered.
+// Genuine failures keep a non-zero exit code and are caught by the
+// `exitCode === 0 &&` half of the expression at both call sites.
+function commandSucceededForTelemetry(): boolean {
+  return !commandFailed || isRenderSucceeded();
+}
+
 // Terminate the process after a genuine CLI failure — mark commandFailed,
 // emit telemetry, flush, exit(1). Same rationale as above: keeps the arrow
 // handler linear so fallow CRAP stays under threshold.
@@ -349,8 +452,7 @@ function exitAfterCliFailure(
 
 process.on("uncaughtException", (error) => {
   if ((error as NodeJS.ErrnoException).code === "EPIPE") {
-    commandFailed = true;
-    process.exit(0);
+    handleStreamEpipe();
   }
   // Post-artifact-validated shutdown throws must not turn a valid render
   // into an exit-1 "no final error message" failure. The render command
@@ -376,6 +478,7 @@ process.on("unhandledRejection", (reason) => {
     return;
   }
   commandFailed = true;
+  process.exitCode = 1;
   emitCliErrorEvent("unhandled_rejection", error);
 });
 
@@ -388,4 +491,41 @@ async function showUsage<T extends ArgsDef>(
   return impl(cmd as CommandDef, parent as CommandDef | undefined);
 }
 
-runMain(main, { showUsage });
+async function showRequestedUsage(): Promise<void> {
+  const requested = await resolveCommandUsage(main as CommandDef, argv);
+  return showUsage(requested.command, requested.parent);
+}
+
+function commandResultForError(error: unknown): CommandResult {
+  if (error instanceof CliResultSignal) return error.result;
+  if (error instanceof CliUsageError || error instanceof CliRuntimeError) return error.result;
+  return { exitCode: 1, kind: "runtime_error" };
+}
+
+// Root-only command boundary; keeping every result path here prevents modules
+// from bypassing output, telemetry, or finalizers.
+// fallow-ignore-next-line complexity
+async function executeCli(): Promise<void> {
+  let result: CommandResult = { exitCode: 0, kind: "success" };
+  try {
+    if (isHelp) await showRequestedUsage();
+    else await runCommand(main, { rawArgs: argv });
+  } catch (error) {
+    result = commandResultForError(error);
+    if (!(error instanceof CliResultSignal)) {
+      commandFailed = true;
+      await reportCommandFailure(command, error);
+      const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
+      if (error instanceof CliUsageError && !error.result.presented) await showRequestedUsage();
+      if (!typed || !error.result.presented) {
+        console.error(error instanceof Error ? error.message : String(error));
+      }
+    }
+  } finally {
+    const pending = consumeCommandResult();
+    if (pending.exitCode !== 0 || result.exitCode === 0) result = pending;
+    await finalizeCli(result);
+  }
+}
+
+await executeCli();

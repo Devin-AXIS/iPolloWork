@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.cost-saving-waterfall",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "finance",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "finance"
+    "finance",
+    "topic:data"
   ],
   "surface": "video",
   "title": "Cost Saving Waterfall",

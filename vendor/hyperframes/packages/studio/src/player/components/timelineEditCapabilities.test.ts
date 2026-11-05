@@ -67,3 +67,8 @@ describe("timeline edit capabilities", () => {
     });
   });
 });
+
+ test("a same-file scene can request a validated whole move but cannot trim or stretch", () => {
+  expect(getTimelineEditCapabilities({tag:"section",domId:"scene",duration:4,inlineScopeKind:"scene"})).toMatchObject({canMove:true,canTrimStart:false,canTrimEnd:false});
+  expect(getTimelineEditCapabilities({tag:"section",domId:"scene",duration:4,inlineScopeKind:"scene",expandedParentStart:2})).toMatchObject({canMove:false});
+ });

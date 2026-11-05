@@ -1,15 +1,23 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { CaretDown } from "@phosphor-icons/react";
-import { MEDIA_EXT, FONT_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
+import { ChevronDown, ChevronRight, Upload } from "lucide-react";
+import { Button } from "@ipollowork/ui/controls";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@ipollowork/ui/empty";
+import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER } from "./assetHelpers";
+import {
+  type MediaCategory,
+  CATEGORY_LABELS,
+  filterMaterialLibraryAssets,
+  getCategory,
+  FILTER_ORDER,
+} from "./assetHelpers";
 import { AudioRow } from "./AudioRow";
 import { AssetCard, FontRow } from "./AssetCard";
 import { useStudioI18n } from "../../i18n";
-import importIconSrc from "../../icons/figmaAssetsImport.svg?url";
-import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import { SearchInput } from "../ui/SearchInput";
+import { resolveGeneratedAvatarMaterialPath } from "../../utils/timelineAssetDrop";
 
 const ASSET_VIRTUAL_OVERSCAN_PX = 480;
 
@@ -44,7 +52,7 @@ function VirtualAssetSlot({
         render()
       ) : kind === "tile" ? (
         <div aria-hidden="true" className="min-w-0">
-          <div className="aspect-[37/26] w-full rounded-lg bg-panel-input/35" />
+          <div className="h-[100px] w-full rounded-lg bg-panel-input/35" />
           <div className="h-[23px]" />
         </div>
       ) : (
@@ -62,6 +70,7 @@ interface AssetsTabProps {
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAssetToTimeline?: (path: string) => void;
+  focusedHostAsset?: string;
 }
 
 export type UsageFilter = "all" | "used" | "unused";
@@ -132,7 +141,11 @@ export function deriveUsedPaths(elements: Array<{ src?: string }>): Set<string> 
       // Malformed encoding — use as-is
     }
 
-    if (s) paths.add(s);
+    if (s) {
+      paths.add(s);
+      const avatarMaterial = resolveGeneratedAvatarMaterialPath(s);
+      if (avatarMaterial) paths.add(avatarMaterial);
+    }
   }
   return paths;
 }
@@ -145,6 +158,7 @@ export const AssetsTab = memo(function AssetsTab({
   onDelete,
   onRename,
   onAddAssetToTimeline,
+  focusedHostAsset,
 }: AssetsTabProps) {
   const { tx } = useStudioI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -156,6 +170,12 @@ export const AssetsTab = memo(function AssetsTab({
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [usageFilter, setUsageFilter] = useState<"all" | "used" | "unused">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    if (!focusedHostAsset) return;
+    setUsageFilter("all");
+    setCollapsedCategories(new Set());
+    setSearchQuery(focusedHostAsset.split("/").pop()?.replace(/\.[^.]*$/, "") ?? "");
+  }, [focusedHostAsset]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<MediaCategory>>(new Set());
   const [manifest, setManifest] = useState<
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
@@ -285,8 +305,12 @@ export const AssetsTab = memo(function AssetsTab({
   const elements = usePlayerStore((s) => s.elements);
   const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
   const allMediaAssets = useMemo(
-    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a) || isHtmlIllustrationAsset(a)),
-    [assets],
+    () =>
+      filterMaterialLibraryAssets(
+        assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
+        usedPaths,
+      ),
+    [assets, usedPaths],
   );
   const mediaAssets = useMemo(() => {
     const all = filterByUsage(allMediaAssets, usedPaths, usageFilter);
@@ -307,7 +331,7 @@ export const AssetsTab = memo(function AssetsTab({
     });
   }, [allMediaAssets, searchQuery, manifest, usageFilter, usedPaths]);
   const categorized = useMemo(() => {
-    const groups: Record<MediaCategory, string[]> = { audio: [], illustrations: [], images: [], video: [], fonts: [] };
+    const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
     for (const a of mediaAssets) {
       const cat = getCategory(a);
       if (cat) groups[cat].push(a);
@@ -359,36 +383,37 @@ export const AssetsTab = memo(function AssetsTab({
       {dragOver && (
         <div className="pointer-events-none absolute inset-2 z-50 grid place-items-center rounded-lg border-2 border-dashed border-panel-accent/70 bg-panel-bg/90">
           <div className="flex flex-col items-center gap-1 text-center">
-            <span className="text-xs font-semibold text-panel-accent">{tx("Drop files to upload")}</span>
-            <span className="text-[10px] text-panel-text-3">{tx("Images, video, audio, and fonts")}</span>
+            <span className="text-xs font-semibold text-panel-accent">
+              {tx("Drop files to upload")}
+            </span>
+            <span className="text-[11px] text-panel-text-3">
+              {tx("Images, video, audio, and fonts")}
+            </span>
           </div>
         </div>
       )}
-      {/* Header — matches design panel Section pattern */}
-      <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[15px] pt-3">
-        <div className="flex items-end gap-2">
-          <label className="grid min-w-0 flex-1 gap-[5px] text-[10px] font-medium leading-3 text-panel-text-3">
-            {tx("Source")}
-            <select
-              disabled
-              title={tx("Source selection is not available yet")}
-              value="project-01"
-              className="h-[34px] min-w-0 cursor-not-allowed rounded-md border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 opacity-100 outline-none"
-            >
-              <option value="project-01">{tx("Project 01")}</option>
-            </select>
-          </label>
+      {/* Search and import share the same compact row. */}
+      <div className="flex-shrink-0 border-b border-panel-border px-4 pb-3">
+        <div className="flex h-8 items-center gap-2">
+            <SearchInput
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={tx("Search assets…")}
+              aria-label={tx("Search assets…")}
+              className="flex-1"
+            />
           {/* Import */}
           {onImport && (
             <>
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-[34px] w-auto flex-none items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-[#858a94] bg-panel-bg px-3 text-xs font-medium text-panel-text-1 transition-colors hover:bg-panel-input"
+                className="flex-none"
               >
-                <img src={importIconSrc} alt="" className="h-4 w-4" />
+                <Upload aria-hidden="true" className="size-4" />
                 {tx("Import")}
-              </button>
+              </Button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -406,51 +431,18 @@ export const AssetsTab = memo(function AssetsTab({
           )}
         </div>
 
-        <div className="mt-[10px] flex h-[34px] items-center gap-2 rounded-md bg-panel-input px-[11px]">
-          <img src={searchIconSrc} alt="" className="h-4 w-4 flex-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={tx("Search assets…")}
-            className="min-w-0 w-full bg-transparent text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af]"
-          />
-        </div>
-
         <div className="mt-[10px] flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setUsageFilter("all")}
-            className={`h-7 rounded-md px-2.5 text-[10px] font-semibold transition-colors ${
-              usageFilter === "all"
-                ? "bg-[#171816] text-[#ffffff] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
-                : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
-            }`}
-          >
-            {tx("All")} {allMediaAssets.length}
-          </button>
-          <button
-            type="button"
-            onClick={() => setUsageFilter("used")}
-            className={`h-7 rounded-md px-2.5 text-[10px] font-semibold transition-colors ${
-              usageFilter === "used"
-                ? "bg-[#171816] text-[#ffffff] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
-                : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
-            }`}
-          >
-            {tx("In use")} {usageCounts.used}
-          </button>
-          <button
-            type="button"
-            onClick={() => setUsageFilter("unused")}
-            className={`h-7 rounded-md px-2.5 text-[10px] font-semibold transition-colors ${
-              usageFilter === "unused"
-                ? "bg-[#171816] text-[#ffffff] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
-                : "bg-panel-input text-panel-text-2 hover:text-panel-text-1"
-            }`}
-          >
-            {tx("Unused")} {usageCounts.unused}
-          </button>
+          {[
+            { id: "all", label: tx("All"), count: allMediaAssets.length },
+            { id: "used", label: tx("In use"), count: usageCounts.used },
+            { id: "unused", label: tx("Unused"), count: usageCounts.unused },
+          ].map(({ id, label, count }) => (
+            <Button key={id} variant="ghost" size="sm" aria-pressed={usageFilter === id}
+              className="aria-pressed:bg-muted aria-pressed:text-foreground"
+              onClick={() => { if (id === "all" || id === "used" || id === "unused") setUsageFilter(id); }}>
+              {label} {count}
+            </Button>
+          ))}
         </div>
       </div>
 
@@ -460,26 +452,13 @@ export const AssetsTab = memo(function AssetsTab({
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
         {mediaAssets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="text-neutral-700"
-            >
-              <path
-                d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
-            </svg>
-            <p className="text-[10px] text-neutral-600 text-center">{tx("Drop media files here")}</p>
-          </div>
+          <Empty variant="ghost" className="h-full">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Upload aria-hidden="true" /></EmptyMedia>
+              <EmptyTitle>{tx(searchQuery || usageFilter !== "all" ? "No matching assets" : "Drop media files here")}</EmptyTitle>
+            </EmptyHeader>
+            {(searchQuery || usageFilter !== "all") && <Button variant="ghost" onClick={() => { setSearchQuery(""); setUsageFilter("all"); }}>{tx("Clear filters")}</Button>}
+          </Empty>
         ) : (
           visibleCategories.map((cat) => (
             <section key={cat} className="border-b border-panel-border">
@@ -487,21 +466,15 @@ export const AssetsTab = memo(function AssetsTab({
                 type="button"
                 aria-expanded={!collapsedCategories.has(cat)}
                 onClick={() => toggleCategory(cat)}
-                className="relative flex h-12 w-full items-center justify-between px-4 text-panel-text-1 transition-colors hover:bg-panel-input/50"
+                className="hf-panel-accordion-header w-full"
               >
-                <span className="flex items-center gap-[7px] text-sm font-semibold">
-                  <CaretDown
-                    aria-hidden="true"
-                    weight="bold"
-                    className={`h-3 w-3 flex-none text-[#858a94] transition-transform ${collapsedCategories.has(cat) ? "-rotate-90" : ""}`}
-                  />
-                  {tx(CATEGORY_LABELS[cat])}
-                </span>
-                <span className="text-xs font-normal tabular-nums">{categorized[cat].length}</span>
-                <span
-                  className="absolute inset-y-0 left-0 w-[3px] bg-[#20bbc0]"
-                  aria-hidden="true"
-                />
+                {!collapsedCategories.has(cat) ? (
+                  <ChevronDown aria-hidden="true" size={14} strokeWidth={1.5} className="hf-panel-accordion-chevron" />
+                ) : (
+                  <ChevronRight aria-hidden="true" size={14} strokeWidth={1.5} className="hf-panel-accordion-chevron" />
+                )}
+                <span className="hf-panel-accordion-label flex-1 text-left">{tx(CATEGORY_LABELS[cat])}</span>
+                <span className="hf-panel-accordion-count">{categorized[cat].length}</span>
               </button>
               {!collapsedCategories.has(cat) &&
                 cat === "audio" &&
@@ -527,7 +500,7 @@ export const AssetsTab = memo(function AssetsTab({
                     )}
                   />
                 ))}
-              {!collapsedCategories.has(cat) && (cat === "illustrations" || cat === "images" || cat === "video") && (
+              {!collapsedCategories.has(cat) && (cat === "images" || cat === "video") && (
                 <div className="grid grid-cols-2 gap-x-[10px] gap-y-[14px] px-4 pb-6 pt-[14px]">
                   {categorized[cat].map((a) => (
                     <VirtualAssetSlot

@@ -25,8 +25,7 @@ interface TimelineOverlaysProps {
   showShortcutHint: boolean;
   showPopover: boolean;
   rangeSelection: TimelineRangeSelection | null;
-  setShowPopover: (value: boolean) => void;
-  setRangeSelection: (value: TimelineRangeSelection | null) => void;
+  onCloseRangeSelection: () => void;
   kfContextMenu: KeyframeDiamondContextMenuState | null;
   setKfContextMenu: (value: KeyframeDiamondContextMenuState | null) => void;
   onDeleteKeyframe: TimelineEditCallbacks["onDeleteKeyframe"];
@@ -48,8 +47,7 @@ export function TimelineOverlays({
   showShortcutHint,
   showPopover,
   rangeSelection,
-  setShowPopover,
-  setRangeSelection,
+  onCloseRangeSelection,
   kfContextMenu,
   setKfContextMenu,
   onDeleteKeyframe,
@@ -75,10 +73,9 @@ export function TimelineOverlays({
           rangeEnd={rangeSelection.end}
           anchorX={rangeSelection.anchorX}
           anchorY={rangeSelection.anchorY}
-          onClose={() => {
-            setShowPopover(false);
-            setRangeSelection(null);
-          }}
+          selectedElements={rangeSelection.selectedElements}
+          selectionKind={rangeSelection.kind}
+          onClose={onCloseRangeSelection}
         />
       )}
 

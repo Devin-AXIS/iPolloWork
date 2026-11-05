@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 /**
- * Builds a distributable desktop client from a single release sequence.
- *
- * Source checkouts use 0.0.0 as the unshipped baseline. Each `package` call
- * advances to the next patch release.
+ * Builds a distributable desktop client using the next semantic patch version.
  * The flow deliberately does not commit, tag, push, or publish remotely.
  */
 import { spawnSync } from "node:child_process";
@@ -28,14 +25,13 @@ export function nextClientVersion(version) {
   const match = versionPattern.exec(version);
   if (!match) {
     throw new Error(
-      `Client version must use semantic versioning (X.Y.Z), got "${version}".`,
+      `Client version must use X.Y.Z semantic versioning, got "${version}".`,
     );
   }
 
   const major = Number(match[1]);
   const minor = Number(match[2]);
-  const patch = Number(match[3]);
-  return `${major}.${minor}.${patch + 1}`;
+  return `${major}.${minor}.${Number(match[3]) + 1}`;
 }
 
 function parseArgs(argv) {

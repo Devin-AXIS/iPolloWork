@@ -1,0 +1,64 @@
+name: Star History
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: star-history
+  cancel-in-progress: true
+
+jobs:
+  update:
+    if: github.repository == 'Devin-AXIS/iPolloWork'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out updater
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: source
+          persist-credentials: false
+
+      - name: Check out chart data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: star-history
+          path: chart
+
+      - name: Read current star count
+        id: repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          response="$(curl --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}")"
+          count="$(jq --exit-status '.stargazers_count | select(type == "number" and . >= 0)' <<<"${response}")"
+          echo "count=${count}" >> "${GITHUB_OUTPUT}"
+
+      - name: Render chart
+        run: |
+          node source/scripts/update-star-history.mjs \
+            --repository "${GITHUB_REPOSITORY}" \
+            --count "${{ steps.repository.outputs.count }}" \
+            --data chart/docs/star-history/data.json \
+            --output-dir chart/docs/star-history
+
+      - name: Publish changed chart
+        working-directory: chart
+        run: |
+          if git diff --quiet -- docs/star-history; then
+            echo "Star history is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/star-history/data.json docs/star-history/star-history-light.svg docs/star-history/star-history-dark.svg
+          git commit -m "chore: update star history [skip ci]"
+          git push origin HEAD:star-history

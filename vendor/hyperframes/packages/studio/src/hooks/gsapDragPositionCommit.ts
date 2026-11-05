@@ -92,7 +92,7 @@ interface DragRuntimeGsap {
   set: (target: Element, vars: Record<string, unknown>) => void;
 }
 interface DragRuntimeTimeline {
-  seek: (time: number) => void;
+  seek: (time: number, suppressEvents?: boolean) => void;
 }
 interface DragRuntime {
   gsapLib: DragRuntimeGsap;
@@ -128,6 +128,31 @@ function resolveDragRuntime(
     el,
     mainTl: mainTl as DragRuntimeTimeline,
   };
+}
+
+/** Capture the missing flat-tween endpoint before an explicit conversion,
+ * then restore the visible playhead. Never substitute identity defaults. */
+export function captureFlatTweenEndpoint(
+  animation: GsapAnimation,
+  iframe: HTMLIFrameElement | null,
+  currentTime: number,
+): Record<string, number | string> | null {
+  if (animation.method === "fromTo") return {};
+  const runtime = resolveDragRuntime(iframe, animation.targetSelector);
+  const start = resolveTweenStart(animation);
+  if (!runtime || start === null) return null;
+  const endpoint: Record<string, number | string> = {};
+  try {
+    runtime.mainTl.seek(animation.method === "from" ? start + resolveTweenDuration(animation) : start, true);
+    for (const property of Object.keys(animation.properties)) {
+      const value = runtime.gsapLib.getProperty(runtime.el, property);
+      if (typeof value !== "number" || !Number.isFinite(value)) return null;
+      endpoint[property] = value;
+    }
+    return endpoint;
+  } finally {
+    runtime.mainTl.seek(currentTime, true);
+  }
 }
 
 // fallow-ignore-next-line complexity

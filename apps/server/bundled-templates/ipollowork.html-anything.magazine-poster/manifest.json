@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.magazine-poster",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "poster",
   "subcategory": "marketing",
@@ -11,7 +11,8 @@
     "magazine",
     "newsprint",
     "editorial",
-    "manifesto"
+    "manifesto",
+    "topic:product"
   ],
   "surface": "design",
   "title": "Magazine Poster",

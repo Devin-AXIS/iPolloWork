@@ -65,9 +65,13 @@ ReactDOM.createRoot(root).render(
   </React.StrictMode>,
 );
 
-window.requestAnimationFrame(() => {
+const hideStartupSplash = () => {
   const splash = document.getElementById("ipollowork-startup-splash");
-  if (!splash) return;
+  if (!splash || splash.dataset.hiding === "true") return;
   splash.dataset.hiding = "true";
+  window.dispatchEvent(new Event("ipollowork:startup-ready"));
   window.setTimeout(() => splash.remove(), 180);
-});
+};
+
+window.requestAnimationFrame(hideStartupSplash);
+window.setTimeout(hideStartupSplash, 250);

@@ -234,6 +234,11 @@ export const t = (
   return out;
 };
 
+/** Resolve a declared translation family without duplicating its keys at each call site. */
+export const translationKey = (prefix: string, value: string | number | boolean | null | undefined): string => {
+  return `${prefix}${value}`;
+};
+
 /**
  * Initialize locale from localStorage
  * Call this during app initialization

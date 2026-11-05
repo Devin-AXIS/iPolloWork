@@ -15,6 +15,7 @@ export interface ShaderLoaderElements {
   title: HTMLSpanElement;
   detail: HTMLDivElement;
   transitionValue: HTMLSpanElement;
+  transitionRow: HTMLDivElement;
   frameLabel: HTMLSpanElement;
   frameValue: HTMLSpanElement;
   frameRow: HTMLDivElement;
@@ -50,25 +51,9 @@ export function createShaderLoader(): ShaderLoaderElements {
   panel.className = "hfp-shader-loader-panel";
   panel.draggable = false;
 
-  const markFrame = document.createElement("div");
-  markFrame.className = "hfp-shader-loader-mark";
-  markFrame.draggable = false;
-  markFrame.innerHTML = [
-    '<svg width="78" height="78" viewBox="0 0 100 100" fill="none" aria-hidden="true" draggable="false">',
-    '<path d="M10.1851 57.8021L33.1145 73.8313C36.2202 75.9978 41.5173 73.5433 42.4816 69.4984L51.7611 30.4271C52.7253 26.3822 48.5802 23.9277 44.4602 26.0942L13.917 42.1235C6.96677 45.7676 4.97564 54.1579 10.1851 57.8021Z" fill="url(#hfp-shader-loader-grad-left)"/>',
-    '<path d="M87.5129 57.5141L56.9696 73.5433C52.8371 75.7098 48.7046 73.2553 49.6688 69.2104L58.9483 30.1391C59.9125 26.0942 65.2097 23.6397 68.3154 25.8062L91.2447 41.8354C96.4668 45.4796 94.4631 53.8699 87.5129 57.5141Z" fill="url(#hfp-shader-loader-grad-right)"/>',
-    "<defs>",
-    '<linearGradient id="hfp-shader-loader-grad-left" x1="48.5676" y1="25" x2="44.7804" y2="71.9384" gradientUnits="userSpaceOnUse">',
-    '<stop stop-color="#06E3FA"/>',
-    '<stop offset="1" stop-color="#4FDB5E"/>',
-    "</linearGradient>",
-    '<linearGradient id="hfp-shader-loader-grad-right" x1="54.8282" y1="73.8392" x2="72.0989" y2="32.8932" gradientUnits="userSpaceOnUse">',
-    '<stop stop-color="#06E3FA"/>',
-    '<stop offset="1" stop-color="#4FDB5E"/>',
-    "</linearGradient>",
-    "</defs>",
-    "</svg>",
-  ].join("");
+  const indicator = document.createElement("div");
+  indicator.className = "hfp-shader-loader-indicator";
+  indicator.setAttribute("aria-hidden", "true");
 
   const titleContainer = document.createElement("div");
   titleContainer.className = "hfp-shader-loader-title";
@@ -106,7 +91,7 @@ export function createShaderLoader(): ShaderLoaderElements {
   const transitionStatus = createProgressRow("transition");
   const frameStatus = createProgressRow("transition frame");
 
-  panel.appendChild(markFrame);
+  panel.appendChild(indicator);
   panel.appendChild(titleContainer);
   panel.appendChild(detail);
   panel.appendChild(track);
@@ -119,6 +104,7 @@ export function createShaderLoader(): ShaderLoaderElements {
     title: titleText,
     detail,
     transitionValue: transitionStatus.value,
+    transitionRow: transitionStatus.row,
     frameLabel: frameStatus.label,
     frameValue: frameStatus.value,
     frameRow: frameStatus.row,

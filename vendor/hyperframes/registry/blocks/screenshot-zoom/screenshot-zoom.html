@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Focus on what matters","maxLength":76},{"id":"imageUrl","label":"Screenshot URL","type":"string","default":"","maxLength":2000},{"id":"focusX","label":"Focus X (%)","type":"number","default":52,"min":0,"max":100,"step":1},{"id":"focusY","label":"Focus Y (%)","type":"number","default":27,"min":0,"max":100,"step":1}]'>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1920,height=1080" />
+  <title>Screenshot Zoom</title>
+  <style>
+    *{box-sizing:border-box}[hidden]{display:none!important}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}
+    #screenshot-zoom{--bg:var(--ipw-color-bg,#f4f6f8);--ink:var(--ipw-color-text,#172126);--muted:var(--ipw-color-muted,#647078);--primary:var(--ipw-color-primary,#20bbc0);--surface:var(--ipw-color-surface,#fff);--border:var(--ipw-color-border,#d7dde1);position:relative;width:1920px;height:1080px;overflow:hidden;color:var(--ink);font-family:var(--ipw-font-body,Inter,sans-serif)}
+    .sz-fill{position:absolute;inset:0;background:var(--bg)}
+    .sz-header{position:absolute;left:130px;right:130px;top:76px;display:flex;align-items:end;justify-content:space-between;gap:60px}
+    .sz-header h1{margin:0;max-width:1320px;font:650 62px/1.1 var(--ipw-font-display,Inter,sans-serif);letter-spacing:-.045em}.sz-eyebrow{font-size:18px;letter-spacing:.12em;color:var(--muted);white-space:nowrap}
+    .sz-plane{position:absolute;left:130px;top:235px;width:1660px;height:740px;border:1px solid var(--border);border-radius:28px;overflow:hidden;background:var(--surface);box-shadow:0 40px 85px color-mix(in srgb,var(--ink) 16%,transparent)}
+    .sz-chrome{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;padding:0 24px}.sz-chrome i{width:9px;height:9px;border-radius:50%;background:var(--border)}.sz-chrome span{margin-left:auto;font-size:14px;color:var(--muted)}
+    .sz-viewport{position:absolute;inset:48px 0 0;overflow:hidden}.sz-world{position:absolute;inset:0;transform-origin:50% 50%}
+    .sz-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .sz-demo{position:absolute;inset:0;display:grid;grid-template-columns:280px 1fr;background:var(--surface)}
+    .sz-nav{border-right:1px solid var(--border);padding:38px 30px}.sz-brand{font-size:25px;letter-spacing:-.04em;margin-bottom:46px;font-weight:750}.sz-nav p{padding:15px 18px;font-size:19px;color:var(--muted)}.sz-nav p:first-of-type{background:color-mix(in srgb,var(--primary) 13%,var(--surface));color:var(--ink);border-radius:10px}
+    .sz-main{padding:38px 46px}.sz-main h2{font-size:30px;font-weight:600;margin:0 0 27px}.sz-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}.sz-stat{padding:22px;border:1px solid var(--border);border-radius:15px}.sz-stat small{color:var(--muted);font-size:16px}.sz-stat strong{display:block;font-size:38px;font-weight:550;margin-top:10px;letter-spacing:-.04em}
+    .sz-chart{position:relative;margin-top:26px;height:278px;padding:26px;border:1px solid var(--border);border-radius:15px;overflow:hidden}.sz-chart b{font-size:18px;font-weight:550}.sz-chart svg{position:absolute;left:26px;right:26px;bottom:22px;width:calc(100% - 52px);height:180px}.sz-caption{font-size:13px;color:var(--muted);margin-top:18px}
+    .sz-focus{position:absolute;width:240px;height:150px;border:2px solid var(--primary);border-radius:14px;translate:-50% -50%;box-shadow:0 0 0 8px color-mix(in srgb,var(--primary) 12%,transparent);pointer-events:none}
+    .sz-progress{position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--primary);transform-origin:left}
+  </style>
+</head>
+<body>
+  <main id="screenshot-zoom" class="sz-root" data-composition-id="screenshot-zoom" data-width="1920" data-height="1080" data-start="0" data-duration="8">
+    <div class="sz-fill"></div>
+    <header class="sz-header"><h1 data-ipw-variable="title" data-ipw-ai-slot="title"></h1><span class="sz-eyebrow">FOCUS / DETAIL</span></header>
+    <section class="sz-plane" data-motion-role="product-plane">
+      <div class="sz-chrome"><i></i><i></i><i></i><span>Workspace</span></div>
+      <div class="sz-viewport" data-motion-role="viewport">
+        <div class="sz-world" data-motion-role="camera" data-layout-allow-overflow data-layout-allow-occlusion>
+          <div class="sz-demo">
+            <aside class="sz-nav"><div class="sz-brand">Workspace</div><p>Overview</p><p>Projects</p><p>Insights</p><p>Activity</p></aside>
+            <div class="sz-main"><h2>Overview</h2><div class="sz-stats"><div class="sz-stat"><small>Projects</small><strong>24</strong></div><div class="sz-stat"><small>Active members</small><strong>128</strong></div><div class="sz-stat"><small>Completion</small><strong>92%</strong></div></div>
+              <div class="sz-chart"><b>Weekly activity</b><svg viewBox="0 0 980 180" preserveAspectRatio="none" aria-label="Illustrative activity chart"><path d="M0 150H980M0 90H980M0 30H980" stroke="var(--border)" fill="none"/><path d="M0 156 C95 150 100 112 190 125 S310 65 390 84 S520 98 590 50 S710 88 785 36 S920 20 980 8" stroke="var(--primary)" stroke-width="5" fill="none" /></svg></div>
+              <div class="sz-caption">Illustrative data · replace with your screenshot</div>
+            </div>
+          </div>
+          <img class="sz-image" data-ipw-ai-slot="imageUrl" alt="Product screenshot" hidden />
+          <div class="sz-focus" data-ipw-ai-slot="focusX"><span data-ipw-ai-slot="focusY"></span></div>
+        </div>
+      </div>
+      <div class="sz-progress"></div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines=window.__timelines||{};
+    (function(){
+      const root=document.getElementById("screenshot-zoom"),id=root.dataset.compositionId||"screenshot-zoom";
+      const values={title:"Focus on what matters",imageUrl:"",focusX:52,focusY:27,...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};
+      root.querySelector("[data-ipw-variable=title]").textContent=String(values.title);
+      const image=root.querySelector(".sz-image"),imageUrl=String(values.imageUrl).trim();
+      if(imageUrl){image.src=imageUrl;image.hidden=false;root.querySelector(".sz-demo").hidden=true;}
+      const percent=(value,fallback)=>Number.isFinite(Number(value))?Math.max(0,Math.min(100,Number(value))):fallback;
+      const focusX=percent(values.focusX,52),focusY=percent(values.focusY,27),focus=root.querySelector(".sz-focus");
+      focus.style.left=focusX+"%";focus.style.top=focusY+"%";
+      // The camera world equals the clipped viewport. Clamp its focal point so no edge reveals blank space.
+      const zoom=2.1,margin=50/zoom,center=value=>Math.max(margin,Math.min(100-margin,value));
+      const wide={xPercent:0,yPercent:0,scale:1},near={xPercent:(50-center(focusX))*zoom,yPercent:(50-center(focusY))*zoom,scale:zoom};
+      const world=root.querySelector(".sz-world"),tl=gsap.timeline({paused:true});
+      tl.fromTo(root.querySelector(".sz-plane"),{rotationY:-13,rotationX:7,x:-65,scale:.92,transformPerspective:1800},{rotationY:0,rotationX:0,x:0,scale:1,duration:1.25,ease:"power3.out"},0);
+      tl.fromTo(root.querySelector(".sz-header"),{y:22,opacity:0},{y:0,opacity:1,duration:.6,ease:"power2.out"},0);
+      tl.fromTo(world,wide,{...near,duration:1.9,ease:"power3.inOut"},1.5);
+      tl.fromTo(focus,{opacity:0},{opacity:1,duration:.35,ease:"power2.out"},3.1).to(focus,{opacity:0,duration:.3},5.05);
+      tl.to(world,{...wide,duration:1.85,ease:"power3.inOut"},5.3);
+      tl.fromTo(root.querySelector(".sz-progress"),{scaleX:0},{scaleX:1,duration:8,ease:"none"},0);
+      window.__timelines[id]=tl;tl.seek(0);
+    })();
+  </script>
+</body>
+</html>

@@ -1,5 +1,7 @@
 import { memo, useCallback } from "react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
+import { t } from "@/i18n";
 import {
   selectSessionIsStickyBottom,
   selectSessionTopClippedMessageId,
@@ -27,20 +29,25 @@ const JumpToStartButton = memo(function JumpToStartButton({
   return (
     <button
       type="button"
-      className="rounded-full px-3 py-1.5 text-xs text-dls-text transition-colors hover:bg-dls-hover"
+      className="flex size-8 items-center justify-center rounded-lg text-dls-text transition-colors hover:bg-dls-hover"
+      data-testid="jump-to-message-start"
+      aria-label={t("session.scroll.jump_to_start")}
+      title={t("session.scroll.jump_to_start")}
       onClick={handleClick}
     >
-      Jump to start
+      <ArrowUp className="size-3.5" />
     </button>
   );
 });
 
 type JumpToLatestButtonProps = {
   onJumpToLatest: (behavior?: ScrollBehavior) => void;
+  showNewContent: boolean;
 };
 
 const JumpToLatestButton = memo(function JumpToLatestButton({
   onJumpToLatest,
+  showNewContent,
 }: JumpToLatestButtonProps) {
   const handleClick = useCallback(() => {
     onJumpToLatest("smooth");
@@ -49,10 +56,14 @@ const JumpToLatestButton = memo(function JumpToLatestButton({
   return (
     <button
       type="button"
-      className="rounded-full px-3 py-1.5 text-xs text-dls-text transition-colors hover:bg-dls-hover"
+      className="flex h-8 items-center justify-center gap-1 rounded-lg px-2 text-dls-text transition-colors hover:bg-dls-hover"
+      data-testid="jump-to-latest"
+      aria-label={t("session.scroll.jump_to_latest")}
+      title={t("session.scroll.jump_to_latest")}
       onClick={handleClick}
     >
-      Jump to latest
+      <ArrowDown className="size-3.5" />
+      {showNewContent ? <span className="text-xs">{t("session.scroll.new_content")}</span> : null}
     </button>
   );
 });
@@ -79,13 +90,13 @@ export const SessionScrollOverlay = memo(function SessionScrollOverlay({
   }
 
   return (
-    <div className="pointer-events-none absolute bottom-2 left-1/2 z-30 flex -translate-x-1/2 justify-center">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-dls-border bg-dls-surface/95 p-1 shadow-(--dls-card-shadow) backdrop-blur-md">
+    <div className="pointer-events-none absolute bottom-3 right-3 z-30 flex justify-end" data-testid="session-scroll-overlay">
+      <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-dls-border bg-dls-surface/95 p-0.5 backdrop-blur-md">
         {showJumpToStart ? (
           <JumpToStartButton onJumpToStartOfMessage={onJumpToStartOfMessage} />
         ) : null}
         {showJumpToLatest ? (
-          <JumpToLatestButton onJumpToLatest={onJumpToLatest} />
+          <JumpToLatestButton onJumpToLatest={onJumpToLatest} showNewContent={isStreaming} />
         ) : null}
       </div>
     </div>

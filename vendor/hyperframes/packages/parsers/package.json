@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.7.60",
+  "version": "0.8.140",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -22,6 +22,12 @@
       "types": "./src/index.ts"
     },
     "./package.json": "./package.json",
+    "./slideshow/scene-id": {
+      "bun": "./src/slideshow/sceneId.ts",
+      "node": "./dist/slideshow/sceneId.js",
+      "import": "./src/slideshow/sceneId.ts",
+      "types": "./src/slideshow/sceneId.ts"
+    },
     "./gsap-parser": {
       "bun": "./src/gsapParserExports.ts",
       "node": "./dist/gsapParserExports.js",
@@ -105,6 +111,36 @@
       "node": "./dist/assetResolution.js",
       "import": "./src/assetResolution.ts",
       "types": "./src/assetResolution.ts"
+    },
+    "./media-duration": {
+      "bun": "./src/mediaDuration.ts",
+      "node": "./dist/mediaDuration.js",
+      "import": "./src/mediaDuration.ts",
+      "types": "./src/mediaDuration.ts"
+    },
+    "./media-duration-fixtures": {
+      "bun": "./src/mediaDurationFixtures.ts",
+      "node": "./dist/mediaDurationFixtures.js",
+      "import": "./src/mediaDurationFixtures.ts",
+      "types": "./src/mediaDurationFixtures.ts"
+    },
+    "./top-level-elements": {
+      "bun": "./src/topLevelElements.ts",
+      "node": "./dist/topLevelElements.js",
+      "import": "./src/topLevelElements.ts",
+      "types": "./src/topLevelElements.ts"
+    },
+    "./color-grading-contract": {
+      "bun": "./src/colorGradingContract.ts",
+      "node": "./dist/colorGradingContract.js",
+      "import": "./src/colorGradingContract.ts",
+      "types": "./src/colorGradingContract.ts"
+    },
+    "./composition-duration": {
+      "bun": "./src/compositionDuration.ts",
+      "node": "./dist/compositionDuration.js",
+      "import": "./src/compositionDuration.ts",
+      "types": "./src/compositionDuration.ts"
     }
   },
   "publishConfig": {
@@ -115,6 +151,10 @@
         "types": "./dist/index.d.ts"
       },
       "./package.json": "./package.json",
+      "./slideshow/scene-id": {
+        "import": "./dist/slideshow/sceneId.js",
+        "types": "./dist/slideshow/sceneId.d.ts"
+      },
       "./gsap-parser": {
         "import": "./dist/gsapParserExports.js",
         "types": "./dist/gsapParserExports.d.ts"
@@ -196,6 +236,7 @@
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
-  }
+    "vitest": "^4.1.11"
+  },
+  "peerDependencies": {}
 }

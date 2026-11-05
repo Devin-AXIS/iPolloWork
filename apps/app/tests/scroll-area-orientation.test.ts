@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-const scrollAreaUrl = new URL("../src/components/ui/scroll-area.tsx", import.meta.url);
+const scrollAreaUrl = new URL("../../../packages/ui/src/react/scroll-area.tsx", import.meta.url);
 const globalCssUrl = new URL("../src/app/index.css", import.meta.url);
 
 describe("scroll area orientation", () => {

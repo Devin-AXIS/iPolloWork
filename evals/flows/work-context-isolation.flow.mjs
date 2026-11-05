@@ -227,8 +227,8 @@ export default {
             const templatesClicked = await ctx.eval(clickButton("/^(?:模版|Templates)$/u"));
             ctx.assert(templatesClicked === true, "Expected the Templates button.");
             await ctx.waitFor(
-              `Boolean(document.querySelector('[role="dialog"]')) && document.body.innerText.includes("资源来源")`,
-              { timeoutMs: 30_000, label: "Enterprise Templates resource source" },
+              `Boolean(document.querySelector('[role="dialog"]')) && document.body.innerText.includes("模板来源") && document.body.innerText.includes("内置") && document.body.innerText.includes("Cloud")`,
+              { timeoutMs: 30_000, label: "Explore template source" },
             );
             sawTemplatesScope = true;
             await ctx.eval(`(() => {
@@ -243,7 +243,7 @@ export default {
           },
           assert: async () => {
             ctx.assert(sawExtensionsScope, "Extensions must expose the Enterprise resource source.");
-            ctx.assert(sawTemplatesScope, "Templates must expose the Enterprise resource source.");
+            ctx.assert(sawTemplatesScope, "Explore must expose Built-in and Cloud template sources.");
             await ctx.expectNoText("Request failed with 404");
             await ctx.expectText("企业记忆与个人空间完全独立");
           },

@@ -1,3 +1,4 @@
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./domEditingTypes";
 import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
 import { parsePxMetricValue, type PropertyPanelProps } from "./propertyPanelHelpers";
@@ -6,6 +7,7 @@ interface TransformCommitDeps {
   element: DomEditSelection;
   styles: Record<string, string>;
   hasGsapAnimation: boolean;
+  layoutPosition: { x: number; y: number };
   gsapAnimId: string | null;
   gsapKeyframes: unknown;
   currentPct: number;
@@ -19,15 +21,15 @@ interface TransformCommitDeps {
 
 /**
  * Build the X/Y, W/H and rotation field commit handlers for the property panel.
- * Each handler routes the value into the GSAP animation when the element is
- * animated (matching the drag gesture and keyframe buttons), and otherwise
- * falls through to the manual transform setter.
+ * Layout X/Y always offset the entire authored path, regardless of selected
+ * keyframes. Size and rotation retain their existing commit behavior.
  */
 // fallow-ignore-next-line unit-size
 export function createTransformCommitHandlers({
   element,
   styles,
   hasGsapAnimation,
+  layoutPosition,
   gsapAnimId,
   gsapKeyframes,
   currentPct,
@@ -65,14 +67,16 @@ export function createTransformCommitHandlers({
   const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null) return;
-    if (
-      commitAnimatedTransformValue(
-        axis,
-        parsed,
-        "Cannot edit position — animation callbacks not available",
-      )
-    )
+    if (hasGsapAnimation) {
+      if (onCommitAnimatedProperty) {
+        void onCommitAnimatedProperty(element, axis, parsed, {
+          positionDelta: parsed - layoutPosition[axis],
+        });
+      } else {
+        showToast?.("Cannot edit position — animation callbacks not available");
+      }
       return;
+    }
     const current = readStudioPathOffset(element.element);
     void Promise.resolve(
       onSetManualOffset(element, {
@@ -126,4 +130,20 @@ export function createTransformCommitHandlers({
   };
 
   return { commitManualOffset, commitManualSize, commitManualRotation };
+}
+
+/** Layout position is the static GSAP base, not the playhead's interpolated pose. */
+export function readLayoutPosition(
+  animations: GsapAnimation[],
+  manualOffset: { x: number; y: number },
+): { x: number; y: number } {
+  const position = { ...manualOffset };
+  for (const animation of animations) {
+    if (animation.method !== "set" || !animation.global) continue;
+    const x = animation.properties.x ?? animation.properties.translateX;
+    const y = animation.properties.y ?? animation.properties.translateY;
+    if (typeof x === "number") position.x = x;
+    if (typeof y === "number") position.y = y;
+  }
+  return position;
 }

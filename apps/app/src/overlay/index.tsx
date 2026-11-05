@@ -45,10 +45,6 @@ function ContextMenuSurface({
   onChoose: (itemId: string) => void;
   onClose: () => void;
 }) {
-  React.useEffect(() => {
-    // document.querySelector<HTMLButtonElement>(MENU_ITEM_SELECTOR)?.focus();
-  }, [request.id]);
-
   return (
     <div
       className="dark h-dvh overflow-hidden bg-transparent text-popover-foreground p-px"

@@ -9,7 +9,6 @@
  * centralized here.
  */
 
-import { rmSync } from "node:fs";
 import {
   type BeforeCaptureHook,
   type CaptureSession,
@@ -28,15 +27,16 @@ import {
   type TransitionRange,
   blitHdrImageLayer,
   blitHdrVideoLayer,
-  closeHdrVideoFrameSource,
   selectDomLayerShowIds,
 } from "../../hdrCompositor.js";
+import { cleanupHdrVideoFrameSource } from "./captureHdrResources.js";
 import {
   type HdrPerfCollector,
   type HdrPerfTimingKey,
   timeHdrPhase,
   timeHdrPhaseAsync,
 } from "../hdrPerf.js";
+import { encoderFailureError } from "../encoderInterruption.js";
 
 // ─── Hybrid path gating + partitioning ─────────────────────────────────────
 
@@ -364,12 +364,18 @@ export async function captureTransitionFrameOnWorker(
 export function ensureFrameWritten(
   frameWritten: boolean,
   frameIndex: number,
-  encoder?: { getExitError: () => string | undefined },
+  encoder?: {
+    getExitError: () => string | undefined;
+    getExitFailureReason?: () => "external_interruption" | undefined;
+  },
 ): void {
   if (frameWritten) return;
   const reason = encoder?.getExitError();
   const base = `Streaming encoder exited before frame ${frameIndex} was written`;
-  throw new Error(reason ? `${base}: ${reason}` : base);
+  throw encoderFailureError(base, {
+    error: reason,
+    failureReason: encoder?.getExitFailureReason?.(),
+  });
 }
 
 // ─── HDR video raw-frame cleanup (sequential path only) ────────────────────
@@ -402,17 +408,7 @@ export function cleanupEndedHdrVideos(args: {
       if (!stillNeeded) {
         const frameSource = hdrVideoFrameSources.get(videoId);
         if (frameSource) {
-          closeHdrVideoFrameSource(frameSource, log);
-          try {
-            rmSync(frameSource.dir, { recursive: true, force: true });
-          } catch (err) {
-            log.warn("Failed to clean up HDR raw frame directory", {
-              videoId,
-              frameDir: frameSource.dir,
-              rawPath: frameSource.rawPath,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
+          cleanupHdrVideoFrameSource(frameSource, log);
           hdrVideoFrameSources.delete(videoId);
         }
         cleanedUpVideos.add(videoId);

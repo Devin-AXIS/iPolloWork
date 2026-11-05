@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.social-spotify-card",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "kind": "design",
   "category": "cards",
   "subcategory": "personal",
@@ -12,7 +12,8 @@
     "music",
     "now-playing",
     "card",
-    "overlay"
+    "overlay",
+    "topic:social"
   ],
   "surface": "design",
   "title": "Spotify Now-Playing Card",

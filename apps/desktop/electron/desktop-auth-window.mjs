@@ -9,6 +9,12 @@ const DESKTOP_AUTH_CLOSE_CONTROL_ID = "ipollowork-desktop-auth-close";
 
 const IPOLLOWORK_AUTH_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="iPolloWork logo"><title>iPolloWork logo</title><rect width="512" height="512" rx="256" fill="#ffffff"/><rect x="226" y="70" width="60" height="76" rx="22" fill="#000000"/><rect x="115" y="185" width="286" height="62" rx="24" fill="#000000" transform="rotate(31 258 216)"/><rect x="111" y="270" width="290" height="62" rx="24" fill="#000000" transform="rotate(-31 256 301)"/><rect x="226" y="250" width="60" height="172" rx="22" fill="#000000"/></svg>`;
 
+export async function clearDesktopAuthSession(electronSession) {
+  const authSession = electronSession.fromPartition(DESKTOP_AUTH_SESSION_PARTITION);
+  await authSession.clearStorageData();
+  await authSession.clearCache();
+}
+
 function desktopAuthCloseControlScript() {
   return `(() => {
     const id = ${JSON.stringify(DESKTOP_AUTH_CLOSE_CONTROL_ID)};

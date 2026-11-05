@@ -22,6 +22,7 @@ describe("getLatestArtifactAssistantMessageId", () => {
       },
     ];
 
+    messages.push({ id: "studio-result:job-1", role: "assistant", parts: [{ type: "text", text: "Video generated" }] });
     expect(getLatestArtifactAssistantMessageId(messages)).toBe("msg_answer");
   });
 });

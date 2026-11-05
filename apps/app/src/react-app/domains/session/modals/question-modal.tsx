@@ -1,13 +1,13 @@
 /** @jsxImportSource react */
 import { useEffect, useReducer } from "react";
-import type { QuestionInfo } from "@opencode-ai/sdk/v2/client";
 import { Check, ChevronRight, HelpCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n";
+import type { ConversationQuestionInfo } from "../engine/conversation-engine";
 
 export type QuestionPanelProps = {
-  questions: QuestionInfo[];
+  questions: ConversationQuestionInfo[];
   busy: boolean;
   onReply: (answers: string[][]) => void;
 };

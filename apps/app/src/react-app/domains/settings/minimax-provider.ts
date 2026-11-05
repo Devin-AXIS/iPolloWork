@@ -1,5 +1,3 @@
-import type { ProviderConfig } from "@opencode-ai/sdk/v2/client";
-
 export type MiniMaxEndpointId =
   | "global-openai"
   | "global-anthropic"
@@ -100,11 +98,11 @@ export function getMiniMaxEndpoint(endpointId: MiniMaxEndpointId): MiniMaxEndpoi
   return endpoint;
 }
 
-export function buildMiniMaxProviderConfig(endpointId: MiniMaxEndpointId): ProviderConfig {
+export function buildMiniMaxProviderConfig(endpointId: MiniMaxEndpointId) {
   const endpoint = getMiniMaxEndpoint(endpointId);
   const models = Object.fromEntries(
     MINIMAX_PROVIDER.models.map((model) => {
-      const modelConfig: NonNullable<ProviderConfig["models"]>[string] = {
+      const modelConfig = {
         id: model.id,
         name: model.id,
         attachment: model.inputModalities.some((modality) => modality !== "text"),

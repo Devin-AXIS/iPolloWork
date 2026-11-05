@@ -5,6 +5,11 @@ import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditOverrides } from "./useResolvedTimelineEditCallbacks";
 
 export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
+  navigation?: ReactNode;
+  editingMode?: "master" | "scene";
+  inlineScope?: TimelineElement;
+  timeOffset?: number;
+  visibleDuration?: number;
   onSeek?: (time: number) => void;
   onDrillDown?: (element: TimelineElement) => void;
   renderClipContent?: (
@@ -14,9 +19,6 @@ export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverri
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
   onSelectElement?: (element: TimelineElement | null) => void;
-  onContextMenuElement?: (
-    element: TimelineElement,
-    anchor: { x: number; y: number },
-  ) => void;
+  onContextMenuElement?: (element: TimelineElement, anchor: { x: number; y: number }) => void;
   theme?: Partial<TimelineTheme>;
 }

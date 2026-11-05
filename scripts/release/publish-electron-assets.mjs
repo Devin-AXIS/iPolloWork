@@ -1,221 +1,146 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
+import { createReadStream, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { CLOUD_UPDATE_BASE, RELEASE_REPOSITORY, UPDATE_METADATA_PATTERN, releaseUpdateInfo, updateMetadataBlock } from "../../apps/desktop/electron/github-installer-provider.mjs";
 
-const args = process.argv.slice(2);
-const manifestsOnly = args.includes("--manifests-only");
-const positional = args.filter((arg) => arg !== "--manifests-only");
-const [distRootArg, releaseTag] = positional;
-
-if (!distRootArg || !releaseTag) {
-  console.error("Usage: node scripts/release/publish-electron-assets.mjs [--manifests-only] <dist-root> <release-tag>");
-  process.exit(2);
+export function installerNames(tag) {
+  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) throw new Error("Invalid desktop release tag.");
+  const version = tag.slice(1);
+  return [
+    `ipollowork-win-x64-${version}.exe`,
+    `ipollowork-win-arm64-${version}.exe`,
+    `ipollowork-mac-x64-${version}.dmg`,
+    `ipollowork-mac-arm64-${version}.dmg`,
+    `ipollowork-linux-x86_64-${version}.AppImage`,
+    `ipollowork-linux-arm64-${version}.AppImage`,
+  ];
 }
 
-const repo = process.env.GITHUB_REPOSITORY;
-if (!repo) {
-  console.error("GITHUB_REPOSITORY is required.");
-  process.exit(2);
-}
-
-const distRoot = resolve(distRootArg);
-const outputDir = resolve(process.env.RUNNER_TEMP || ".", "ipollowork-electron-manifests");
-mkdirSync(outputDir, { recursive: true });
-
-function walk(dir) {
-  const entries = [];
-  for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry);
-    const stat = statSync(path);
-    if (stat.isDirectory()) entries.push(...walk(path));
-    else if (stat.isFile()) entries.push(path);
-  }
-  return entries;
-}
-
-function isUpdaterManifest(path) {
-  return /^latest.*\.ya?ml$/.test(basename(path));
-}
-
-function isReleaseAsset(path) {
-  if (isUpdaterManifest(path)) return false;
-  if (!basename(path).startsWith("ipollowork-")) return false;
-  return /\.(AppImage|blockmap|dmg|exe|rpm|zip)$/i.test(path) || /\.tar\.gz$/i.test(path);
-}
-
-function runGh(args) {
-  const result = spawnSync("gh", args, { stdio: "inherit", encoding: "utf8" });
-  if (result.status !== 0) process.exit(result.status ?? 1);
-}
-
-function parseManifest(path) {
-  const raw = readFileSync(path, "utf8");
-  const parsed = { files: [] };
-  let currentFile = null;
-
-  for (const line of raw.split(/\r?\n/)) {
-    const topLevel = line.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
-    if (topLevel) {
-      const [, key, value] = topLevel;
-      if (key !== "files") parsed[key] = unquoteYamlScalar(value);
-      currentFile = null;
-      continue;
-    }
-
-    const fileStart = line.match(/^\s*-\s+([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
-    if (fileStart) {
-      const [, key, value] = fileStart;
-      currentFile = {};
-      currentFile[key] = parseYamlScalar(value);
-      parsed.files.push(currentFile);
-      continue;
-    }
-
-    const fileProp = line.match(/^\s{4}([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
-    if (fileProp && currentFile) {
-      const [, key, value] = fileProp;
-      currentFile[key] = parseYamlScalar(value);
+export function validateInstallers(release, tag) {
+  if (release.tag_name !== tag || !Array.isArray(release.assets)) throw new Error("Unexpected release response.");
+  const expected = installerNames(tag);
+  for (const name of expected) {
+    const matches = release.assets.filter((asset) => asset.name === name);
+    if (matches.length !== 1) throw new Error(`Expected exactly one installer: ${name}`);
+    const asset = matches[0];
+    if (asset.state !== "uploaded" || !Number.isSafeInteger(asset.size) || asset.size <= 0
+      || !/^sha256:[a-f0-9]{64}$/.test(asset.digest ?? "")) {
+      throw new Error(`Installer is incomplete or has no GitHub SHA-256 digest: ${name}`);
     }
   }
+  return release.assets.filter((asset) => !expected.includes(asset.name));
+}
 
-  if (!parsed.version) throw new Error(`Missing version in ${path}`);
-  if (!Array.isArray(parsed.files) || parsed.files.length === 0) {
-    throw new Error(`Missing files in ${path}`);
+function gh(args) {
+  const result = spawnSync("gh", args, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(result.stderr.trim() || `gh failed with status ${result.status}`);
+  return result.stdout;
+}
+
+function readRelease(tag, repo, runGh = gh) {
+  // GitHub's tag endpoint only returns published releases. The CLI also
+  // resolves pending draft tags, so use its ID for the full REST response.
+  const id = runGh(["release", "view", tag, "--repo", repo, "--json", "databaseId", "--jq", ".databaseId"]).trim();
+  if (!/^[1-9]\d*$/.test(id)) throw new Error("GitHub release ID is missing or invalid.");
+  return JSON.parse(runGh(["api", `repos/${repo}/releases/${id}`]));
+}
+
+export function finalizeInstallerRelease(tag, { repo, prune = false, runGh = gh }) {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo ?? "")) throw new Error("GITHUB_REPOSITORY is required.");
+  installerNames(tag);
+  const read = () => readRelease(tag, repo, runGh);
+  let release = read();
+  const extra = validateInstallers(release, tag);
+  if (extra.length && !prune) throw new Error(`Non-installer release assets: ${extra.map((asset) => asset.name).join(", ")}`);
+  // Validate every installer before removing anything from an existing release.
+  for (const asset of extra) runGh(["release", "delete-asset", tag, asset.name, "--repo", repo, "--yes"]);
+  if (extra.length) release = read();
+  if (validateInstallers(release, tag).length) throw new Error("Non-installer assets remain after cleanup.");
+  return release;
+}
+
+export async function stageUpdater(directory, tag) {
+  const os = { win32: "win", darwin: "mac", linux: "linux" }[process.platform];
+  installerNames(tag);
+  if (!os || !["x64", "arm64"].includes(process.arch)) throw new Error("Unsupported native build target.");
+  const arch = process.platform === "linux" && process.arch === "x64" ? "x86_64" : process.arch;
+  const ext = { win32: "exe", darwin: "zip", linux: "AppImage" }[process.platform];
+  const name = `ipollowork-${os}-${arch}-${tag.slice(1)}.${ext}`;
+  const file = resolve(directory, name);
+  const hash = createHash("sha512");
+  for await (const chunk of createReadStream(file)) hash.update(chunk);
+  const digest = hash.digest();
+  const remoteName = `${digest.toString("hex")}-${name}`;
+  const url = process.platform === "darwin" ? `${CLOUD_UPDATE_BASE}${tag}/${remoteName}`
+    : `https://github.com/${RELEASE_REPOSITORY}/releases/download/${tag}/${name}`;
+  const metadata = { version: tag.slice(1), files: { [`${process.platform}-${process.arch}`]: { url, size: (await stat(file)).size, sha512: digest.toString("base64") } } };
+  writeFileSync(join(directory, "update-info.json"), `${JSON.stringify(metadata)}\n`);
+  if (process.platform === "darwin") {
+    writeFileSync(join(directory, "cloud-upload.txt"), `-mkdir /releases/${tag}\nput "${file}" /releases/${tag}/${remoteName}\n`);
   }
-  return parsed;
+  return metadata;
 }
 
-function unquoteYamlScalar(value) {
-  const trimmed = String(value || "").trim();
-  return trimmed.replace(/^['"]|['"]$/g, "");
-}
-
-function parseYamlScalar(value) {
-  const unquoted = unquoteYamlScalar(value);
-  if (/^\d+$/.test(unquoted)) return Number(unquoted);
-  return unquoted;
-}
-
-function quoteYamlScalar(value) {
-  const string = String(value ?? "");
-  if (!string || /[:#\[\]{}&,*!|>'"%@`\s]/.test(string)) {
-    return `'${string.replace(/'/g, "''")}'`;
-  }
-  return string;
-}
-
-function stringifyManifest(manifest) {
-  const lines = [`version: ${quoteYamlScalar(manifest.version)}`, "files:"];
-  for (const file of manifest.files) {
-    lines.push(`  - url: ${quoteYamlScalar(file.url)}`);
-    for (const [key, value] of Object.entries(file)) {
-      if (key === "url") continue;
-      lines.push(`    ${key}: ${typeof value === "number" ? value : quoteYamlScalar(value)}`);
-    }
-  }
-  if (manifest.releaseDate) lines.push(`releaseDate: ${quoteYamlScalar(manifest.releaseDate)}`);
-  return `${lines.join("\n")}\n`;
-}
-
-function sortFiles(files) {
-  const rank = (url) => {
-    const value = String(url || "");
-    if (value.includes("arm64")) return 0;
-    if (value.includes("x64") || value.includes("x86_64")) return 1;
-    return 2;
-  };
-  return [...files].sort((left, right) => {
-    const byRank = rank(left.url) - rank(right.url);
-    if (byRank !== 0) return byRank;
-    const leftExt = extname(String(left.url || ""));
-    const rightExt = extname(String(right.url || ""));
-    if (leftExt === ".zip" && rightExt !== ".zip") return -1;
-    if (rightExt === ".zip" && leftExt !== ".zip") return 1;
-    return String(left.url || "").localeCompare(String(right.url || ""));
-  });
-}
-
-function mergeManifests(name, paths) {
-  const manifests = paths.map(parseManifest);
-  const version = manifests[0].version;
-  for (const manifest of manifests) {
-    if (manifest.version !== version) {
-      throw new Error(`${name} has mixed versions: ${version} and ${manifest.version}`);
-    }
-  }
-
-  const filesByUrl = new Map();
-  for (const manifest of manifests) {
-    for (const file of manifest.files) {
-      if (!file?.url) throw new Error(`${name} contains a file entry without url.`);
-      filesByUrl.set(file.url, file);
-    }
-  }
-
-  const releaseDates = manifests.map((manifest) => manifest.releaseDate).filter(Boolean).sort();
-  const merged = {
-    version,
-    files: sortFiles([...filesByUrl.values()]),
-  };
-  if (releaseDates.length) merged.releaseDate = releaseDates[releaseDates.length - 1];
-  return merged;
-}
-
-function validateManifest(name, manifest) {
-  const urls = manifest.files.map((file) => String(file.url || ""));
-  if (name === "latest-mac.yml") {
-    for (const arch of ["mac-arm64", "mac-x64"]) {
-      if (!urls.some((url) => url.includes(arch))) {
-        throw new Error(`${name} is missing ${arch} artifacts.`);
+export function mergeUpdaterMetadata(directory, release) {
+  const metadata = { version: release.tag_name.slice(1), files: {} };
+  function visit(folder) {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const file = join(folder, entry.name);
+      if (entry.isDirectory()) visit(file);
+      else if (entry.name === "update-info.json") {
+        const part = JSON.parse(readFileSync(file, "utf8"));
+        if (part.version !== metadata.version) throw new Error("Mixed updater versions.");
+        for (const [target, info] of Object.entries(part.files)) {
+          if (metadata.files[target]) throw new Error(`Duplicate updater target: ${target}`);
+          metadata.files[target] = info;
+        }
       }
     }
   }
-  if (name === "latest.yml") {
-    for (const arch of ["win-arm64", "win-x64"]) {
-      if (!urls.some((url) => url.includes(arch))) {
-        throw new Error(`${name} is missing ${arch} artifacts.`);
+  visit(directory);
+  if (Object.keys(metadata.files).length !== 6) throw new Error("Expected six native updater receipts.");
+  const body = `${String(release.body ?? "").replace(UPDATE_METADATA_PATTERN, "").trim()}\n\n${updateMetadataBlock(metadata)}\n`;
+  // Draft attachments use temporary `untagged-*` URLs. Preview their published
+  // URLs without relaxing the desktop provider's public-feed validation.
+  const assets = release.draft ? release.assets.map((asset) => ({ ...asset,
+    browser_download_url: `https://github.com/${RELEASE_REPOSITORY}/releases/download/${release.tag_name}/${asset.name}`,
+  })) : release.assets;
+  const candidate = { ...release, draft: false, prerelease: false, body, assets };
+  for (const platform of ["win32", "darwin", "linux"]) {
+    for (const arch of ["x64", "arm64"]) releaseUpdateInfo(candidate, { platform, arch });
+  }
+  return { body, metadata };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const args = process.argv.slice(2);
+  if (args[0] === "--stage-updater" && args.length === 3) {
+    await stageUpdater(args[1], args[2]);
+  } else {
+    const tag = args.at(-1);
+    const repo = process.env.GITHUB_REPOSITORY;
+    if (args[0] === "--metadata-dir" && args.length === 3) {
+      // Keep old attachments until all six update receipts and cloud ZIPs pass.
+      const release = readRelease(tag, repo);
+      validateInstallers(release, tag);
+      const { body, metadata } = mergeUpdaterMetadata(args[1], release);
+      for (const [target, file] of Object.entries(metadata.files)) {
+        if (!target.startsWith("darwin-")) continue;
+        const response = await fetch(file.url, { method: "HEAD", signal: AbortSignal.timeout(30_000) });
+        if (!response.ok || Number(response.headers.get("content-length")) !== file.size) throw new Error(`Cloud updater is unavailable: ${target}`);
       }
+      const notes = join(args[1], "release-notes.md");
+      writeFileSync(notes, body);
+      gh(["release", "edit", tag, "--repo", repo, "--notes-file", notes]);
+    } else if (!(args.length === 1 || (args.length === 2 && args[0] === "--prune"))) {
+      throw new Error("Usage: publish-electron-assets.mjs [--prune | --metadata-dir <directory>] <release-tag>");
     }
+    const release = finalizeInstallerRelease(tag, { repo, prune: args.includes("--prune") || args[0] === "--metadata-dir" });
+    console.log(JSON.stringify({ tag: release.tag_name, installers: release.assets.map(({ name, size, digest }) => ({ name, size, digest })) }, null, 2));
   }
-  if (name === "latest-linux.yml" && urls.some((url) => url.includes("arm64"))) {
-    throw new Error(`${name} should remain the Linux x64 feed; arm64 belongs in latest-linux-arm64.yml.`);
-  }
-  if (name === "latest-linux-arm64.yml" && !urls.some((url) => url.includes("arm64"))) {
-    throw new Error(`${name} is missing Linux arm64 artifacts.`);
-  }
-}
-
-const files = walk(distRoot);
-const releaseAssets = files.filter(isReleaseAsset);
-const manifestsByName = new Map();
-
-for (const path of files.filter(isUpdaterManifest)) {
-  const name = basename(path);
-  const current = manifestsByName.get(name) || [];
-  current.push(path);
-  manifestsByName.set(name, current);
-}
-
-if (!manifestsOnly && releaseAssets.length === 0) {
-  console.error(`No Electron release assets found under ${distRoot}`);
-  process.exit(1);
-}
-
-if (manifestsByName.size === 0) {
-  console.error(`No Electron updater manifests found under ${distRoot}`);
-  process.exit(1);
-}
-
-if (!manifestsOnly) {
-  runGh(["release", "upload", releaseTag, ...releaseAssets, "--repo", repo, "--clobber"]);
-}
-
-for (const [name, paths] of [...manifestsByName.entries()].sort()) {
-  const manifest = mergeManifests(name, paths);
-  validateManifest(name, manifest);
-  const outputPath = join(outputDir, name);
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, stringifyManifest(manifest), "utf8");
-  runGh(["release", "upload", releaseTag, `${outputPath}#${name}`, "--repo", repo, "--clobber"]);
 }

@@ -21,9 +21,9 @@ describe("PPTX-compatible templates", () => {
 
   test("places native-editable slides before visual-first slides", () => {
     const templates = sortTemplatesForCatalog([
-      { category: "slides", title: "Visual Deck", pptxCompatibility: undefined },
-      { category: "site", title: "Website", pptxCompatibility: undefined },
-      { category: "slides", title: "Native Deck", pptxCompatibility: "native-editable" },
+      { id: "test.visual", category: "slides", title: "Visual Deck", pptxCompatibility: undefined },
+      { id: "test.website", category: "site", title: "Website", pptxCompatibility: undefined },
+      { id: "test.native", category: "slides", title: "Native Deck", pptxCompatibility: "native-editable" },
     ]);
 
     expect(templates.map((template) => template.title)).toEqual([

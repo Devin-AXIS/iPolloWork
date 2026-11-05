@@ -160,7 +160,7 @@ export interface TimelineMediaElement extends TimelineElementBase {
   isAroll?: boolean;
   sourceWidth?: number;
   sourceHeight?: number;
-  volume?: number; // 0-1 (0% to 100%), default 1.0
+  volume?: number; // linear gain; 0 is silent, 1 is 0 dB, values above 1 boost
   hasAudio?: boolean; // For videos - indicates if video has audio track
 }
 
@@ -437,7 +437,10 @@ export interface PlayerAPI {
   ensureTimeline(): void;
   enableRenderMode(): void;
   disableRenderMode(): void;
-  renderSeek(time: number, options?: { suppressEvents?: boolean }): void;
+  renderSeek(
+    time: number,
+    options?: { suppressEvents?: boolean; subFrameDivisions?: number; exact?: boolean },
+  ): void;
   getElementVisibility(elementId: string): { visible: boolean; opacity?: number };
   getVisibleElements(): Array<{ id: string; tagName: string; start: number; end: number }>;
   getRenderState(): {

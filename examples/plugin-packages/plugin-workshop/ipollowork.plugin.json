@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "id": "plugin-workshop",
+  "name": "插件工坊",
+  "description": "在对话中制作插件，在右侧工坊预览、测试、导入和导出本地插件包。",
+  "category": "开发工具",
+  "icon": { "src": "/ext-plugin-workshop.svg" },
+  "source": { "format": "ipollowork-extension-manifest", "origin": "local", "trusted": false },
+  "package": {
+    "version": "0.1.1",
+    "publisher": { "id": "ipollowork", "name": "iPolloWork" },
+    "compatibility": { "ipollowork": ">=0.50.18" },
+    "updateId": "ipollowork/plugin-workshop"
+  },
+  "resources": [{
+    "type": "skill",
+    "id": "plugin-workshop",
+    "label": "插件制作",
+    "path": "skills/plugin-workshop/SKILL.md",
+    "required": true
+  }],
+  "contributions": [{
+    "type": "session-side-panel",
+    "ref": "plugin-workshop",
+    "label": "插件工坊",
+    "location": "session-right-pane"
+  }],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Plugin Workshop",
+        "description": "Create plugins in conversation and preview, test, import and export local packages in the workshop.",
+        "category": "Developer Tools",
+        "resources": { "plugin-workshop": { "label": "Plugin authoring" } }
+      }
+    }
+  }
+}

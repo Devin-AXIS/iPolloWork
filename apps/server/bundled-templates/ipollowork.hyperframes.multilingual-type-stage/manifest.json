@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.multilingual-type-stage",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "localization",
@@ -9,7 +9,8 @@
   "tags": [
     "video",
     "hyperframes",
-    "localization"
+    "localization",
+    "topic:culture"
   ],
   "surface": "video",
   "title": "Multilingual Type Stage",

@@ -30,6 +30,12 @@ export interface BrowserDiagnosticSummary {
   consoleWarnings: number;
 }
 
+/**
+ * Which capture stage produced the frames. Maps 1:1 from `CapturePlan.kind`
+ * (see `capturePathForPlanKind`); named in render telemetry as `capture_path`.
+ */
+export type CapturePath = "streaming" | "disk" | "segmented" | "hdr_layered";
+
 export interface RenderCaptureObservability {
   forceScreenshot: boolean;
   captureMode: "screenshot" | "beginframe";
@@ -45,7 +51,7 @@ export interface RenderCaptureObservability {
    * render re-ran via screenshot. NARROWED semantics since the pinned-fallback
    * retry was widened (review): OOM- and generic-capture-error-triggered
    * fallbacks report FALSE here, with `deFallbackReason` ∈ {oom,
-   * capture_error}. The "any fallback fired" signal is `deFallbackReason`
+   * de_renderer_stall, encoder_death, parallel_stall, capture_error}. The "any fallback fired" signal is `deFallbackReason`
    * being set, NOT this flag — dashboards keyed on `de_self_verify_fallback =
    * true` as any-fallback must migrate to `de_fallback_reason IS NOT NULL`.
    */
@@ -53,14 +59,15 @@ export interface RenderCaptureObservability {
   /**
    * Why the capture-stage retry (self-verify OR the pinned-worker-count
    * fallback) fired: "blank"/"psnr" for a real self-verify trip,
-   * "oom"/"capture_error" for the widened generic-failure retry. Set
+   * "oom"/"de_renderer_stall"/"encoder_death"/"parallel_stall"/"capture_error"
+   * for the widened generic-failure retry. Set
    * whenever a fallback is attempted, independent of whether that retry
    * itself later succeeds — so a render that fails AFTER a fallback attempt
    * (perfSummary never built) is still distinguishable in failure-path
    * telemetry from one that never attempted any fallback.
    */
   deFallbackReason?: string;
-  /** The failing PSNR (dB) when `deFallbackReason === "psnr"`; undefined for blank/oom/capture_error (no score exists). */
+  /** The failing PSNR (dB) when `deFallbackReason === "psnr"`; undefined for every other reason (no score exists). */
   deFallbackFailedDb?: number;
   /** Frame index the verification failure was detected at; set for both "psnr" and "blank" fallback reasons. */
   deFallbackFrameIndex?: number;
@@ -70,18 +77,105 @@ export interface RenderCaptureObservability {
   deWorkerInversion?: "inverted" | "reverted";
   /** Worker count the resolver would have used absent the inversion; undefined if it never fired. */
   dePreInversionWorkers?: number;
+  /**
+   * Element count for the short-comp band gate (`resolveCompositionElementCount`):
+   * the LIVE DOM size from the already-running probe session when one is
+   * initialized, falling back to a static scan of the compiled HTML
+   * (`scanElementTags`) otherwise. Live is authoritative — a static scan
+   * cannot see elements a composition's own script creates at runtime.
+   *
+   * Emitted on every render, not just inverted ones — this is the variable the
+   * short-comp inversion band is gated on, and the fleet distribution of it is
+   * unknown. Without it there is no way to tell whether the 2500 ceiling opens
+   * the band for most short comps or almost none, and no way to re-derive the
+   * threshold from real content instead of synthetic sweeps.
+   */
+  compositionElementCount?: number;
+  /**
+   * Provenance of `compositionElementCount`: "live" (measured from the probe
+   * session's real DOM — sees runtime-generated elements) or "static" (source
+   * markup scan, which does not). The probe is CONDITIONAL, so this is not a
+   * detail: only a `live` count may open the short band, and the fleet rate of
+   * "static" sizes the population a future conditional-probe-launch would
+   * unlock for the band.
+   */
+  compositionElementCountSource?: "live" | "static";
+  /**
+   * Per-tag breakdown of the same static scan behind `compositionElementCount`
+   * — one shared regex pass feeds both fields, so a fleet query summing this
+   * map's values always reconciles against the integer. Capped by
+   * `scanElementTags` (top tags by count + an `other` bucket) so a
+   * pathological composition's distinct tag count can't inflate the event
+   * payload. Only set when
+   * `compositionElementCountSource` is "static" — the live path measures a
+   * DOM node count directly and never runs this scan.
+   */
+  compositionElementTags?: Readonly<Record<string, number>>;
+  /**
+   * `<video data-aroll="true">` elements from the same static scan as
+   * `compositionElementTags`. Only set when `compositionElementCountSource`
+   * is "static".
+   */
+  arollVideoCount?: number;
+  /**
+   * `<video data-media-source="heygen">` elements from the same static scan
+   * as `compositionElementTags` — the media-use skill stamps this attribute
+   * only when the mounted video's ledger record traces to the "heygen.video"
+   * provider. Only set when `compositionElementCountSource` is "static".
+   */
+  heygenVideoCount?: number;
+  /** Runtime adapters exercised (see `KNOWN_RUNTIME_ADAPTERS`), a live+static union, always set. */
+  adaptersUsed?: readonly string[];
+  /** Element/attribute counts from the same static scan; only set when the source above is "static". */
+  audioCount?: number;
+  imageCount?: number;
+  subCompositionCount?: number;
+  audioGroupCount?: number;
+  colorGradingCount?: number;
+  hasLut?: boolean;
+  /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
+  rootBodyMismatch?: boolean;
+  rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
+  /**
+   * Short-comp band decision, emitted only when the band is DECISIVE — every
+   * other inversion-eligibility condition passed and only the floor (250 vs
+   * 900) differed. "applied": the element count cleared the ceiling too, so
+   * with routing enabled (HF_DE_SHORT_BAND_ROUTE) this render inverts; in the
+   * baseline release the same value is the COUNTERFACTUAL "would have
+   * inverted". "skipped_elements": the element ceiling was the only blocker.
+   * Unset: the band could not have affected this render (ineligible for some
+   * other reason, or already inverting at 900+). The selector is computed
+   * identically before and after the routing flip, and the skipped/oversize
+   * renders form the concurrent control for the difference-in-differences
+   * read — that is the entire point of the field.
+   */
+  deShortBand?: "applied" | "skipped_elements" | "unmeasured";
   /** DE parallel-router outcome: "routed" (fired, held) | "reverted" (fired, self-verify retry rolled back). */
   deParallelRouter?: "routed" | "reverted";
+  /**
+   * Low-cardinality GPU bucket (`<backend>/<vendor>`) from the DE probe
+   * session. Lives on capture observability (not just perfSummary) so a hard
+   * failure — crash / OOM / timeout — still reports which GPU backend it hit:
+   * that is precisely the cohort the win32 D3D11 rollout must attribute.
+   */
+  deGpuRenderer?: string;
   /** Worker count the resolver would have used absent the router; undefined if it never fired. */
   dePreRouterWorkers?: number;
   /**
-   * Non-DE parallel-streaming router outcome (HF_CAPTURE_PARALLEL_STREAM):
-   * "screenshot" | "beginframe" — the render passed every gate AND the kill
-   * switch was on, so it was routed through the interleaved streaming encoder
-   * (the value is the capture mode that streamed); "eligible_off" — the render
-   * passed every gate EXCEPT the kill switch (passive cohort-sizing signal for
-   * the default-off soak: how many renders WOULD route if enabled). Absent =
+   * Non-DE parallel-streaming router outcome. "screenshot" | "beginframe" —
+   * the render passed every gate and the router was on for its capture mode
+   * (BeginFrame by default; screenshot only with HF_CAPTURE_PARALLEL_STREAM
+   * set), so it streamed through the interleaved encoder; the value is the
+   * mode that streamed. "eligible_off" — the render passed every gate but the
+   * router was off for it: the screenshot cohort the mode split holds back,
+   * plus explicit HF_CAPTURE_PARALLEL_STREAM=false opt-outs. Absent =
    * ineligible regardless of the switch.
+   *
+   * The mode comes from resolveParallelCaptureMode, which mirrors the engine's
+   * launch rule, not from the platform-only captureMode label. The two can
+   * disagree on Linux with system Chrome or DPR > 1 (captureMode says
+   * "beginframe", this field says "screenshot"); this field is the one that
+   * matches what actually streamed.
    */
   captureParallelStream?: "screenshot" | "beginframe" | "eligible_off";
   protocolTimeoutMs?: number;
@@ -96,6 +190,23 @@ export interface RenderCaptureObservability {
    */
   transientRetries?: number;
   memoryExhaustionDetected?: boolean;
+  /**
+   * Chrome process memory from the engine's per-session sampler (Phase −1 of
+   * the long-form render plan). Updated live during capture so a
+   * render_error still carries the last known state — the failure path never
+   * builds a RenderPerfSummary, so this is the only channel that survives a
+   * mid-capture target loss.
+   */
+  chromeBrowserRssPeakMb?: number;
+  chromeRendererRssPeakMb?: number;
+  chromeRssLastMb?: number;
+  chromeGpuProcessSeenLastSample?: boolean;
+  chromeMemorySamples?: number;
+  /** Which capture stage ran. Set once the capture plan resolves. */
+  capturePath?: CapturePath;
+  /** Segmented capture only (Phase 2): current segment and retries so far. */
+  segmentIndex?: number;
+  segmentRetries?: number;
 }
 
 export interface RenderExtractionObservability {
@@ -109,6 +220,8 @@ export interface RenderExtractionObservability {
   vfrPreflightCount?: number;
   cacheHits?: number;
   cacheMisses?: number;
+  /** Per-source transient download/metadata/FFmpeg retries performed during extraction. */
+  transientRetries?: number;
   /**
    * Per-clip captured-vs-expected-frame gauges. Emitted by the parity gate
    * at extract finalization (see `videoFrameCoverage.ts`). Undefined when
@@ -128,7 +241,7 @@ export interface RenderExtractionObservability {
    * a coarse proxy for the ts=1784144554 field signal shape (147-clip
    * composition, 130 word-level caption divs authored-clip-count-scaled
    * failure). Static scan; dynamic script-inserted timed clips land in
-   * the probe-stage's `hasRuntimeInsertedMedia` path (PR #2474).
+   * the probe-stage's `hasRuntimeMediaChanges` path (PR #2474).
    */
   authoredTimedClipCount?: number;
 }
@@ -136,6 +249,21 @@ export interface RenderExtractionObservability {
 export interface RenderInitObservability {
   initDurationMs?: number;
   tweenCount?: number;
+  /**
+   * Live DOM element count at end of capture-session init; undefined when
+   * the measurement failed (never 0). Observational: measured after routing
+   * has already been decided, so it cannot gate — it exists because the
+   * routing gate's own count is only available on the ~17% of renders that
+   * get a probe session, leaving the fleet element-count distribution (and
+   * any large-runtime-DOM tail) unreadable for the rest.
+   *
+   * Not interchangeable with `RenderCaptureObservability.compositionElementCount`:
+   * that one is measured pre-routing from the probe session (or a static
+   * scan) and is what the band gates on. This one is measured post-routing
+   * from the capture session and covers renders the gate cannot see. Query
+   * the former for router behaviour, this for distribution/tail analysis.
+   */
+  elementCount?: number;
 }
 
 export interface RenderObservabilitySummary {
@@ -237,23 +365,33 @@ function readUnsignedIntAfter(line: string, prefix: string): number | undefined 
   return digits > 0 ? value : undefined;
 }
 
-function summarizeInitObservability(lines: string[]): RenderInitObservability | undefined {
-  let initDurationMs: number | undefined;
-  let tweenCount: number | undefined;
+/** Max of two optional readings — multiple worker/session INIT records can appear; keep the worst. */
+function maxReading(current: number | undefined, next: number | undefined): number | undefined {
+  if (next === undefined) return current;
+  return current === undefined ? next : Math.max(current, next);
+}
+
+function summarizeInitObservability(
+  lines: string[],
+  fallback?: RenderInitObservability,
+): RenderInitObservability | undefined {
+  // Console parsing only sees THIS process's session buffer, so parallel
+  // workers' INIT lines never reach it — their init telemetry arrives
+  // structured via the per-worker perf summaries instead. Seed with that and
+  // let the console parse (same max semantics) refine it.
+  let initDurationMs: number | undefined = fallback?.initDurationMs;
+  let tweenCount: number | undefined = fallback?.tweenCount;
+  let elementCount: number | undefined = fallback?.elementCount;
   for (const line of lines) {
     if (!line.includes("[FrameCapture:INIT]")) continue;
-    const duration = readUnsignedIntAfter(line, "initDurationMs=");
-    const tweens = readUnsignedIntAfter(line, "tweenCount=");
-    // Multiple worker/session INIT records can appear; keep the worst observed startup cost.
-    if (duration !== undefined) {
-      initDurationMs = initDurationMs === undefined ? duration : Math.max(initDurationMs, duration);
-    }
-    if (tweens !== undefined) {
-      tweenCount = tweenCount === undefined ? tweens : Math.max(tweenCount, tweens);
-    }
+    initDurationMs = maxReading(initDurationMs, readUnsignedIntAfter(line, "initDurationMs="));
+    tweenCount = maxReading(tweenCount, readUnsignedIntAfter(line, "tweenCount="));
+    elementCount = maxReading(elementCount, readUnsignedIntAfter(line, "elementCount="));
   }
-  if (initDurationMs === undefined && tweenCount === undefined) return undefined;
-  return { initDurationMs, tweenCount };
+  if (initDurationMs === undefined && tweenCount === undefined && elementCount === undefined) {
+    return undefined;
+  }
+  return { initDurationMs, tweenCount, elementCount };
 }
 
 // fallow-ignore-next-line complexity
@@ -369,6 +507,8 @@ export class RenderObservabilityRecorder {
   summary(input: {
     lastBrowserConsole: string[];
     capture: RenderCaptureObservability;
+    /** Structured init telemetry from per-worker perf summaries — the only success-path channel parallel workers have (their console buffers propagate on failure only). */
+    initFallback?: RenderInitObservability;
     extraction?: RenderExtractionObservability;
     compositionHash?: string;
   }): RenderObservabilitySummary {
@@ -383,7 +523,7 @@ export class RenderObservabilityRecorder {
       browserDiagnostics: summarizeBrowserDiagnostics(input.lastBrowserConsole),
       capture: { ...input.capture },
       extraction: input.extraction ? { ...input.extraction } : undefined,
-      init: summarizeInitObservability(input.lastBrowserConsole),
+      init: summarizeInitObservability(input.lastBrowserConsole, input.initFallback),
     };
   }
 

@@ -9,9 +9,6 @@ import {
   type DenSettings,
 } from "../../../app/lib/den";
 import type { iPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
-import { unwrap } from "../../../app/lib/opencode";
-import type { Client, McpServerEntry, McpStatusMap } from "../../../app/types";
-import { attemptSilentMcpReauth } from "./mcp-silent-reauth";
 import {
   CLOUD_MCP_SERVER_NAME,
   isCloudMcpSyncMarkerFresh,
@@ -31,14 +28,12 @@ export function getSessionMcpMaintenanceTargetKey(input: {
   client: Pick<iPolloWorkServerClient, "baseUrl" | "token">;
   cloudSignedIn: boolean;
   workspaceId: string;
-  directory: string;
 }): string {
   return JSON.stringify([
     input.client.baseUrl.trim().replace(/\/+$/, ""),
     input.client.token?.trim() ?? "",
     input.cloudSignedIn ? "signed-in" : "local-only",
     input.workspaceId.trim(),
-    input.directory.trim(),
   ]);
 }
 
@@ -120,50 +115,19 @@ export async function syncCloudControlMcpInBackground(input: {
   return "synced";
 }
 
-export async function healWorkspaceMcpInBackground(input: {
-  client: CloudMcpMaintenanceClient;
-  workspaceId: string;
-  opencodeClient: Client;
-  directory: string;
-}): Promise<boolean> {
-  const workspaceId = input.workspaceId.trim();
-  const directory = input.directory.trim();
-  if (!workspaceId || !directory) return false;
-
-  const listed = await input.client.listMcp(workspaceId);
-  const servers = listed.items.map((entry) => ({
-    name: entry.name,
-    config: entry.config as McpServerEntry["config"],
-  }));
-  if (servers.length === 0) return false;
-
-  const statuses = unwrap(await input.opencodeClient.mcp.status({ directory })) as McpStatusMap;
-  return attemptSilentMcpReauth({
-    client: input.opencodeClient,
-    directory,
-    servers,
-    statuses,
-  });
-}
-
 export function useSessionMcpMaintenance(input: {
   cloudSignedIn: boolean;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
-  opencodeClient: Client | null;
-  directory: string;
 }) {
   useEffect(() => {
     const workspaceId = input.workspaceId?.trim() ?? "";
-    const directory = input.directory.trim();
     const client = input.client;
-    const opencodeClient = input.opencodeClient;
-    if (!client || !opencodeClient || !workspaceId || !directory) return;
+    if (!client || !input.cloudSignedIn || !workspaceId) return;
     const targetKey = getSessionMcpMaintenanceTargetKey({
       client,
       cloudSignedIn: input.cloudSignedIn,
       workspaceId,
-      directory,
     });
 
     let cancelled = false;
@@ -172,18 +136,10 @@ export function useSessionMcpMaintenance(input: {
       await runSessionMcpMaintenanceTask({
         targetKey,
         task: async () => {
-        if (input.cloudSignedIn) {
           await syncCloudControlMcpInBackground({
             client,
             workspaceId,
           }).catch(() => "skipped");
-        }
-        await healWorkspaceMcpInBackground({
-          client,
-          workspaceId,
-          opencodeClient,
-          directory,
-        }).catch(() => false);
         },
       });
     };
@@ -202,5 +158,5 @@ export function useSessionMcpMaintenance(input: {
       window.removeEventListener("focus", handleFocus);
       window.clearInterval(interval);
     };
-  }, [input.client, input.cloudSignedIn, input.directory, input.opencodeClient, input.workspaceId]);
+  }, [input.client, input.cloudSignedIn, input.workspaceId]);
 }

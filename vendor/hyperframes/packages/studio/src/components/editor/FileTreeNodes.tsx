@@ -1,12 +1,12 @@
 import { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
-  PencilSimple,
+  Pencil,
   Copy,
-  Trash,
+  Trash2,
   FilePlus,
-  FolderSimplePlus,
-  FolderSimple,
-} from "@phosphor-icons/react";
+  FolderPlus,
+  Folder,
+} from "lucide-react";
 import { ChevronDown, ChevronRight } from "../../icons/SystemIcons";
 import {
   FileIcon,
@@ -86,7 +86,7 @@ export function ContextMenu({
               onClose();
             }}
           >
-            <FilePlus size={12} weight="duotone" className="text-neutral-500" />
+            <FilePlus size={12} strokeWidth={1.8} className="text-neutral-500" />
             New File
           </button>
           <button
@@ -96,7 +96,7 @@ export function ContextMenu({
               onClose();
             }}
           >
-            <FolderSimplePlus size={12} weight="duotone" className="text-neutral-500" />
+            <FolderPlus size={12} strokeWidth={1.8} className="text-neutral-500" />
             New Folder
           </button>
           <div className="border-t border-neutral-700 my-1" />
@@ -111,7 +111,7 @@ export function ContextMenu({
               onClose();
             }}
           >
-            <FilePlus size={12} weight="duotone" className="text-neutral-500" />
+            <FilePlus size={12} strokeWidth={1.8} className="text-neutral-500" />
             New File
           </button>
           <div className="border-t border-neutral-700 my-1" />
@@ -124,7 +124,7 @@ export function ContextMenu({
           onClose();
         }}
       >
-        <PencilSimple size={12} weight="duotone" className="text-neutral-500" />
+        <Pencil size={12} strokeWidth={1.8} className="text-neutral-500" />
         Rename
       </button>
       {!state.targetIsFolder && (
@@ -135,7 +135,7 @@ export function ContextMenu({
             onClose();
           }}
         >
-          <Copy size={12} weight="duotone" className="text-neutral-500" />
+          <Copy size={12} strokeWidth={1.8} className="text-neutral-500" />
           Duplicate
         </button>
       )}
@@ -147,7 +147,7 @@ export function ContextMenu({
           onClose();
         }}
       >
-        <Trash size={12} weight="duotone" />
+        <Trash2 size={12} strokeWidth={1.8} />
         Delete
       </button>
     </div>
@@ -217,7 +217,7 @@ export function InlineInput({
       style={{ paddingLeft: `${8 + depth * 12 + (isFolder ? 0 : 14)}px` }}
     >
       {isFolder ? (
-        <FolderSimple size={SZ_ICON} weight="duotone" color="#6B7280" className="flex-shrink-0" />
+        <Folder size={SZ_ICON} strokeWidth={1.8} color="#6B7280" className="flex-shrink-0" />
       ) : (
         <FileIcon path={value} />
       )}
@@ -227,7 +227,7 @@ export function InlineInput({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
-        className="flex-1 min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border border-neutral-600 outline-none focus:border-[#3CE6AC]"
+        className="flex-1 min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border border-neutral-600 outline-none focus:border-[#1FBAC0]"
         spellCheck={false}
       />
     </div>
@@ -435,7 +435,7 @@ export const TreeFolder = memo(function TreeFolder({
         }}
         onDragLeave={onDragLeave}
         className={`w-full flex items-center gap-1.5 px-2.5 py-1 min-h-7 text-left text-xs text-neutral-400 hover:bg-neutral-800/30 hover:text-neutral-300 transition-colors ${
-          isDragOver ? "bg-[#3CE6AC]/10 outline outline-1 outline-[#3CE6AC]/40" : ""
+          isDragOver ? "bg-[#1FBAC0]/10 outline outline-1 outline-[#1FBAC0]/40" : ""
         }`}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
       >

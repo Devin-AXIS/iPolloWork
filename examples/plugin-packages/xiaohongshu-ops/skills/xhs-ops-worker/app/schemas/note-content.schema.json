@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "body", "topics", "cards", "sourceKnowledgeIds", "managedComments"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "body": { "type": "string", "minLength": 1, "maxLength": 10000 },
+    "topics": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string", "minLength": 1, "maxLength": 80 } },
+    "cards": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["heading", "body"],
+        "properties": {
+          "heading": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "body": { "type": "string", "minLength": 1, "maxLength": 600 }
+        }
+      }
+    },
+    "sourceKnowledgeIds": { "type": "array", "minItems": 1, "maxItems": 30, "items": { "type": "string" } },
+    "managedComments": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["accountId", "body"],
+        "properties": {
+          "accountId": { "type": "integer", "minimum": 1 },
+          "body": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      }
+    }
+  }
+}

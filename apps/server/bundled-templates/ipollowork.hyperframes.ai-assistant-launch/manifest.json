@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.ai-assistant-launch",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "product-launch",
+  "style": "cinematic",
+  "tags": [
+    "topic:product",
+    "video",
+    "ai",
+    "assistant",
+    "agent",
+    "launch",
+    "saas",
+    "ui",
+    "promo"
+  ],
+  "surface": "video",
+  "title": "AI 助手发布宣传片",
+  "description": "一套 46 秒、硅谷 AI 产品发布片风格的通用宣传模板：暗场聚光开场、一句话主张、对话输入与附件、任务自动执行、三项核心能力、多角色场景、成果拼贴，最后以上线平台和品牌落版收尾。所有文案与强调色均可替换，适用于任何 AI 助手或 Agent 产品。",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition in the style of contemporary AI product launch films, using HyperFrames kinetic-type, progressive-build, focus-transfer and montage patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "productName",
+        "label": "产品名称",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "brandName",
+        "label": "品牌名称",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "品牌标识",
+        "type": "image",
+        "group": "brand"
+      },
+      {
+        "id": "primaryColor",
+        "label": "主强调色",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "secondaryColor",
+        "label": "辅助强调色",
+        "type": "color",
+        "group": "theme"
+      },
+      {
+        "id": "kicker",
+        "label": "开场引语",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "tagline",
+        "label": "核心主张",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "subline",
+        "label": "主张补充",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "labelChat",
+        "label": "对话场景标题",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "promptText",
+        "label": "示例指令",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "attachA",
+        "label": "附件一",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "attachB",
+        "label": "附件二",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "attachC",
+        "label": "附件三",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "labelPlan",
+        "label": "执行场景标题",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "taskTitle",
+        "label": "任务名称",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "stepA",
+        "label": "执行步骤一",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "stepB",
+        "label": "执行步骤二",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "stepC",
+        "label": "执行步骤三",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "stepD",
+        "label": "执行步骤四",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "featureA",
+        "label": "能力一",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "featureADesc",
+        "label": "能力一说明",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "featureB",
+        "label": "能力二",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "featureBDesc",
+        "label": "能力二说明",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "featureC",
+        "label": "能力三",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "featureCDesc",
+        "label": "能力三说明",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseA",
+        "label": "场景一",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseADesc",
+        "label": "场景一说明",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseB",
+        "label": "场景二",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseBDesc",
+        "label": "场景二说明",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseC",
+        "label": "场景三",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseCDesc",
+        "label": "场景三说明",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseD",
+        "label": "场景四",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "useCaseDDesc",
+        "label": "场景四说明",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "montageLine",
+        "label": "能力汇总语",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "availability",
+        "label": "上线提示",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "platforms",
+        "label": "可用平台",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "cta",
+        "label": "行动号召",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "url",
+        "label": "官网地址",
+        "type": "text",
+        "group": "content"
+      }
+    ],
+    "tokens": "design-tokens.css"
+  },
+  "applyChecklist": [
+    "替换产品名称、品牌标识与官网地址；默认的 Nova 与 nova.example.com 仅为示例。",
+    "示例指令、执行步骤、附件名应来自产品的真实使用流程，不要编造用户数据或成效数字。",
+    "三项核心能力与四个使用场景按产品真实卖点改写，保持每条标题简短（中文 4–8 字）。",
+    "用主/辅强调色匹配品牌色；开场渐变、执行进度、能力卡片与图表会同步变化。",
+    "如需旁白或配乐，按 46 秒节奏对齐：0–4.4 开场、8.8 对话、15.4 执行、23 能力、29.6 场景、36.6 汇总、40.6 落版。"
+  ],
+  "minimumAppVersion": "0.17.24"
+}

@@ -11,6 +11,10 @@ ipollowork-server --workspace /path/to/workspace --approval auto
 
 `ipollowork-server` ships as a compiled binary, so Bun is not required at runtime.
 
+Exact selected-region image editing requires the native `sharp` processor. Use the desktop app or the Node-based server (`node dist/cli.js`) with optional dependencies enabled for this feature. The standalone Bun executable currently cannot load this processor: it still starts normally, but selected-image editing fails explicitly with `image_processor_unavailable` before contacting a model. Desktop builds include and unpack the native dependencies.
+
+The implementation reuses the repository's already locked `sharp` 0.34.5 (Apache-2.0) for PNG/JPEG/WebP decoding and pixel composition instead of maintaining custom codecs. It adds platform-specific native binaries to the server/desktop installation, is loaded only for selected edits, and bounds input bytes and decoded pixels before processing.
+
 Or from source:
 
 ```bash
@@ -86,9 +90,7 @@ Sandbox advertisement (for capability discovery):
 - `PATCH /workspace/:id/config`
 - `GET /workspace/:id/events`
 - `POST /workspace/:id/engine/reload`
-- `GET /workspace/:id/plugins`
-- `POST /workspace/:id/plugins`
-- `DELETE /workspace/:id/plugins/:name`
+- `GET /w/:id/capabilities` (includes engine-specific session write support)
 - `GET /workspace/:id/skills`
 - `POST /workspace/:id/skills`
 - `GET /workspace/:id/mcp`
@@ -101,6 +103,23 @@ Sandbox advertisement (for capability discovery):
 - `GET /workspace/:id/export`
 - `POST /workspace/:id/import/preview`
 - `POST /workspace/:id/import`
+
+Sessions (the same API works for OpenCode and DeepSeek Harness workspaces):
+
+- `GET /workspace/:id/sessions`
+- `POST /workspace/:id/sessions` (body: `{ "title"?: string }`)
+- `GET /workspace/:id/sessions/:sessionId/messages`
+- `POST /workspace/:id/sessions/:sessionId/prompt` (body: `{ "text": string, "model"?: { "providerID": string, "modelID": string }, "mode"?: string, "reasoningEffort"?: string, "clientTimeZone"?: string }`)
+
+Enterprise summary snapshots:
+
+- `POST /workspace/:id/sessions/:sessionId/share-summary` requires a collaborator token, an enterprise workspace, and a connected `{ model: { providerID, modelID } }`. It summarizes completed conversation text without running tools or modifying the original conversation.
+- `POST /workspace/:id/enterprise-shares/import` accepts `{ snapshot, model?, engineId? }`, creates an independent conversation, and returns `{ item, workspaceId }`. Repeated accepts for the same enterprise/member/share return the original conversation, including after a server restart. An interrupted creation returns `enterprise_import_pending` instead of blindly creating a duplicate.
+- `GET /workspace/:id/sessions/:sessionId/enterprise-share` reads the locally stored reference snapshot. Importing does not start a model turn; the app supplies the snapshot as user reference text on the first question.
+
+The local server owns summary generation and local conversation storage. iPolloEnterprise must own recipient authorization, departments, message delivery/read/accept state, resource permissions, review, and package storage. Client role checks only control presentation. The enterprise service must enforce tenant/member permissions for every endpoint, including downloads. Shared contracts are in `packages/types/src/enterprise.ts`; enterprise request paths and pagination/search parameters are in `apps/app/src/app/lib/enterprise-client.ts`.
+
+New enterprise features are enabled only when `/api/v1/client-manifest` advertises the corresponding flags (`membership`, `directory`, `messaging`, `sessionSharing`, `resourceManagement`, `resourcePermissions`, `templatePublishing`, `extensionPublishing`). Missing flags keep new actions unavailable. Snapshot messages retain independent read, accept, ignore, and revoke timestamps; access updates use a revision to reject concurrent changes.
 
 Token management (host/owner auth):
 
@@ -148,3 +167,9 @@ Approvals endpoints:
 - `POST /approvals/:id` with `{ "reply": "allow" | "deny" }`
 
 Set `IPOLLOWORK_APPROVAL_MODE=auto` to auto-approve during local development.
+
+## Automatic template previews
+
+Template cards can render the declared HTML entry and package assets without a separately supplied cover. Missing covers default to `cover.png`. Imported and personal templates always render a 960×540 screenshot from their entry, so a stale packaged cover cannot hide updated content. Built-ins reuse their versioned PNG covers. Screenshots use the server-only Apache-2.0 `playwright-core` runtime and are cached by immutable package content under the runtime data directory. Each process renders one template at a time, coalesces duplicate requests, allows at most 32 pending jobs and closes each browser after 25 seconds. The isolated context has no account cookies and cannot load host files, external network assets, WebSockets or service workers. Windows uses installed Edge/Chrome; macOS uses installed Chrome/Edge; headless deployments install Chromium with `node node_modules/playwright-core/cli.js install chromium --only-shell` and persist `PLAYWRIGHT_BROWSERS_PATH`, or configure `IPOLLO_TEMPLATE_BROWSER`.
+
+Cloud and Enterprise card previews are fetched through authenticated metadata endpoints before installation. Installing a package remains an explicit user action.

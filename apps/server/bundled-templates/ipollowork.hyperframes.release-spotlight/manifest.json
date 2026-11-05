@@ -1,12 +1,19 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.hyperframes.release-spotlight",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "video",
   "subcategory": "release-announcement",
   "style": "swiss",
-  "tags": ["video", "release", "changelog", "features", "announcement"],
+  "tags": [
+    "video",
+    "release",
+    "changelog",
+    "features",
+    "announcement",
+    "topic:product"
+  ],
   "surface": "video",
   "title": "Release Spotlight",
   "description": "A disciplined release announcement with a version reveal, three feature beats, one proof metric, and a clean call to action.",

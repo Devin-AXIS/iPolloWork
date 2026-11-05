@@ -28,26 +28,40 @@ const RESIZE_HANDLE_HIT_PX = 24;
 type CropInset = { top: number; right: number; bottom: number; left: number };
 const NO_CROP_INSET: CropInset = { top: 0, right: 0, bottom: 0, left: 0 };
 
-function resizeHandleStyle(
+export function resizeHandleStyle(
   def: (typeof RESIZE_HANDLE_DEFS)[number],
   overlayRect: { left: number; top: number; width: number; height: number },
   cropInset?: CropInset,
 ): React.CSSProperties {
-  const half = RESIZE_HANDLE_HIT_PX / 2;
   const inset = cropInset ?? NO_CROP_INSET;
-  const style: React.CSSProperties = { cursor: def.cursor, touchAction: "none" };
+  // Keep a clear center for dragging small artwork. The visible dots retain
+  // their size; only their invisible hit areas shrink when corners overlap.
+  const width = Math.min(
+    RESIZE_HANDLE_HIT_PX,
+    Math.max(1, overlayRect.width - inset.left - inset.right - 8),
+  );
+  const height = Math.min(
+    RESIZE_HANDLE_HIT_PX,
+    Math.max(1, overlayRect.height - inset.top - inset.bottom - 8),
+  );
+  const style: React.CSSProperties = {
+    cursor: def.cursor,
+    touchAction: "none",
+    width,
+    height,
+  };
   // Position relative to the overlay container (not the selection box).
   // This ensures the dots render as siblings of the box border div — strictly
   // above it — rather than as children where the parent border can visually
   // overlap the dot circle at the corner.
   style.left =
     def.x === "left"
-      ? overlayRect.left + inset.left - half
-      : overlayRect.left + overlayRect.width - inset.right - half;
+      ? overlayRect.left + inset.left - width / 2
+      : overlayRect.left + overlayRect.width - inset.right - width / 2;
   style.top =
     def.y === "top"
-      ? overlayRect.top + inset.top - half
-      : overlayRect.top + overlayRect.height - inset.bottom - half;
+      ? overlayRect.top + inset.top - height / 2
+      : overlayRect.top + overlayRect.height - inset.bottom - height / 2;
   return style;
 }
 
@@ -91,7 +105,7 @@ export function DomEditGroupChrome({
       ))}
       <div
         data-dom-edit-selection-box="true"
-        className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
+        className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(31,186,192,0.3)]"
         style={{
           left: groupBounds.left,
           top: groupBounds.top,
@@ -208,7 +222,7 @@ export function DomEditSelectionChrome({
         >
           {cropOutlineInsetPx && (
             <div
-              className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+              className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(31,186,192,0.25)]"
               style={{
                 left: cropOutlineInsetPx.left,
                 top: cropOutlineInsetPx.top,
@@ -240,7 +254,7 @@ export function DomEditSelectionChrome({
                   gestures.startGesture("resize", e, { resizeHandle: def.handle });
                 }}
               >
-                <div className="pointer-events-none h-[12px] w-[12px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
+                <div className="pointer-events-none h-[12px] w-[12px] shrink-0 rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
               </div>
             ),
           )}

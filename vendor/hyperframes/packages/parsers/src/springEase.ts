@@ -23,66 +23,46 @@ export const SPRING_PRESETS: SpringPreset[] = [
   { name: "spring-heavy", label: "Heavy", mass: 3, stiffness: 200, damping: 20 },
 ];
 
-/**
- * Solve a damped harmonic oscillator and return a GSAP CustomEase data string.
- *
- * The output is an SVG path (`M0,0 L... L...`) that CustomEase.create() accepts.
- * The curve is normalized so x spans [0,1] and the spring settles at y = 1.
- *
- * @param mass - Spring mass (> 0)
- * @param stiffness - Spring stiffness constant (> 0)
- * @param damping - Damping coefficient (> 0)
- * @param steps - Number of sample points (default 120)
- */
+/** Absolute normalized spring time; independent of seek order and shared with CustomEase. */
+export function sampleSpringEase(
+  mass: number,
+  stiffness: number,
+  damping: number,
+  progress: number,
+): number {
+  if (![mass, stiffness, damping].every((value) => Number.isFinite(value) && value > 0) || !Number.isFinite(progress)) {
+    throw new RangeError("Spring values must be finite, with positive mass, stiffness and damping");
+  }
+  if (progress <= 0) return 0;
+  if (progress >= 1) return 1;
+  const w0 = Math.sqrt(stiffness / mass);
+  const zeta = damping / (2 * Math.sqrt(stiffness * mass));
+  const decayRate = zeta < 1 ? zeta * w0 : zeta * w0 - w0 * Math.sqrt(zeta * zeta - 1);
+  const settleDuration = Math.min((zeta < 1 ? 5 : 4) / Math.max(decayRate, 0.01), 10);
+  const simT = progress * Math.max(settleDuration, 1);
+  if (zeta < 1) {
+    const wd = w0 * Math.sqrt(1 - zeta * zeta);
+    return 1 - Math.exp(-zeta * w0 * simT) *
+      (Math.cos(wd * simT) + ((zeta * w0) / wd) * Math.sin(wd * simT));
+  }
+  if (zeta === 1) return 1 - (1 + w0 * simT) * Math.exp(-w0 * simT);
+  const s1 = -w0 * (zeta - Math.sqrt(zeta * zeta - 1));
+  const s2 = -w0 * (zeta + Math.sqrt(zeta * zeta - 1));
+  return 1 + (s1 * Math.exp(s2 * simT) - s2 * Math.exp(s1 * simT)) / (s2 - s1);
+}
+
 export function generateSpringEaseData(
   mass: number,
   stiffness: number,
   damping: number,
   steps = 120,
 ): string {
-  const w0 = Math.sqrt(stiffness / mass);
-  const zeta = damping / (2 * Math.sqrt(stiffness * mass));
-
-  // Determine simulation duration: time until oscillation settles within threshold of 1.0.
-  // Underdamped: ~5 time constants. Critically/overdamped: characteristic decay time.
-  let settleDuration: number;
-  if (zeta < 1) {
-    settleDuration = Math.min(5 / (zeta * w0), 10);
-  } else {
-    const decayRate = zeta * w0 - w0 * Math.sqrt(zeta * zeta - 1);
-    settleDuration = Math.min(4 / Math.max(decayRate, 0.01), 10);
-  }
-  const simDuration = Math.max(settleDuration, 1);
-
+  if (!Number.isInteger(steps) || steps < 2 || steps > 1024) throw new RangeError("Spring samples must be an integer from 2 to 1024");
   const segments: string[] = ["M0,0"];
-
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
-    const simT = t * simDuration;
-    let value: number;
-
-    if (zeta < 1) {
-      // Underdamped — oscillates before settling
-      const wd = w0 * Math.sqrt(1 - zeta * zeta);
-      value =
-        1 -
-        Math.exp(-zeta * w0 * simT) *
-          (Math.cos(wd * simT) + ((zeta * w0) / wd) * Math.sin(wd * simT));
-    } else if (zeta === 1) {
-      // Critically damped — fastest approach without oscillation
-      value = 1 - (1 + w0 * simT) * Math.exp(-w0 * simT);
-    } else {
-      // Overdamped — slow exponential approach
-      const s1 = -w0 * (zeta - Math.sqrt(zeta * zeta - 1));
-      const s2 = -w0 * (zeta + Math.sqrt(zeta * zeta - 1));
-      value = 1 + (s1 * Math.exp(s2 * simT) - s2 * Math.exp(s1 * simT)) / (s2 - s1);
-    }
-
-    segments.push(`${t.toFixed(4)},${value.toFixed(4)}`);
+    segments.push(`${t.toFixed(4)},${sampleSpringEase(mass, stiffness, damping, t).toFixed(4)}`);
   }
-
-  // Force exact endpoint
   segments[segments.length - 1] = "1,1";
-
   return `${segments[0]} L${segments.slice(1).join(" ")}`;
 }

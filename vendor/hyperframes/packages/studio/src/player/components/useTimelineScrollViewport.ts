@@ -1,3 +1,4 @@
+import { markTimelineMotion } from "./timelineMotion";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { shouldShowTimelineShortcutHint } from "./timelineLayout";
@@ -51,6 +52,7 @@ export function useTimelineScrollViewport(
 
   const flushScrollViewport = useCallback(() => {
     viewportRafRef.current = 0;
+    markTimelineMotion();
     const el = pendingViewportElementRef.current;
     pendingViewportElementRef.current = null;
     if (!el) return;

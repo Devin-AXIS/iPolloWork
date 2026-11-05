@@ -1,0 +1,3134 @@
+// fallow-ignore-file code-duplication
+import { describe, expect, it, mock, beforeAll } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runInThisContext } from "node:vm";
+import { parseHTML } from "linkedom";
+import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
+import { redactTelemetryString } from "@hyperframes/core";
+import { defaultLogger } from "../logger.js";
+import { NotMediaPayloadError } from "@hyperframes/engine";
+import {
+  collectExternalAssets,
+  compileForRender,
+  injectSdkPositionEditsRenderScript,
+  detectAncestorBackgroundImage,
+  detectRenderModeHints,
+  detectShaderTransitionUsage,
+  detectThreeDTransformUsage,
+  discoverMediaFromBrowser,
+  discoverAudioVolumeAutomationFromTimeline,
+  discoverVideoVisibilityFromTimeline,
+  inlineExternalScripts,
+  localizeRemoteMediaSources,
+  localizeRemoteImageSources,
+  localizeRemoteFontFaces,
+  recompileWithResolutions,
+  resolveCompositionDurations,
+} from "./htmlCompiler.js";
+import { validateNoSystemFonts } from "./render/planValidation.js";
+
+describe("discoverMediaFromBrowser", () => {
+  async function discover(
+    html: string,
+    currentSrcById: Record<string, string>,
+    serializeCallback = false,
+    intrinsicDurationById: Record<string, number> = {},
+  ) {
+    const { document } = parseHTML(html);
+    for (const [id, currentSrc] of Object.entries(currentSrcById)) {
+      const element = document.getElementById(id);
+      if (element) Object.defineProperty(element, "currentSrc", { value: currentSrc });
+    }
+    for (const [id, duration] of Object.entries(intrinsicDurationById)) {
+      const element = document.getElementById(id);
+      if (element) Object.defineProperty(element, "duration", { value: duration });
+    }
+    const previousDocument = Reflect.get(globalThis, "document");
+    Reflect.set(globalThis, "document", document);
+    try {
+      return await discoverMediaFromBrowser({
+        evaluate: async (collect) => {
+          if (!serializeCallback) return collect();
+          const isolated = runInThisContext(`(${collect.toString()})`) as typeof collect;
+          return isolated();
+        },
+      } as never);
+    } finally {
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, "document");
+      else Reflect.set(globalThis, "document", previousDocument);
+    }
+  }
+
+  it("uses the selected currentSrc from a variable-bound nested source", async () => {
+    const media = await discover(
+      `<video id="clip" data-start="0" data-end="1">
+        <source src="fallback.mp4" data-var-src="clip_src" />
+      </video>`,
+      { clip: "https://cdn.example/runtime.webm" },
+    );
+
+    expect(media).toHaveLength(1);
+    expect(media[0]).toMatchObject({
+      id: "clip",
+      tagName: "video",
+      src: "https://cdn.example/runtime.webm",
+    });
+  });
+
+  it("discovers variable-bound images with the same generated id as the static parser", async () => {
+    const media = await discover(
+      `<img src="first.png" /><img src="fallback.png" data-var-src="hero_src" />`,
+      {},
+    );
+
+    expect(media).toHaveLength(1);
+    expect(media[0]).toMatchObject({ id: "hf-img-1", tagName: "image" });
+  });
+
+  it("uses intrinsic duration only for variable media with an inferred duration", async () => {
+    const media = await discover(
+      `<audio id="inferred" src="fallback.wav" data-start="0" data-duration="3" data-end="3" data-var-src="track" data-hf-inferred-duration></audio>
+       <audio id="authored" src="fallback.wav" data-start="0" data-duration="3" data-end="3" data-var-src="track"></audio>`,
+      { inferred: "selected.wav", authored: "selected.wav" },
+      false,
+      { inferred: 6.530612, authored: 6.530612 },
+    );
+
+    expect(media.find((item) => item.id === "inferred")?.duration).toBe(6.530612);
+    expect(media.find((item) => item.id === "inferred")?.durationInferred).toBe(true);
+    expect(media.find((item) => item.id === "authored")?.duration).toBe(3);
+    expect(media.find((item) => item.id === "authored")?.durationInferred).toBe(false);
+  });
+
+  it("discovers the owning image for a variable-bound picture source", async () => {
+    const media = await discover(
+      `<picture>
+        <source src="fallback.webp" data-var-src="hero_src" />
+        <img id="hero" src="fallback.png" />
+      </picture>`,
+      { hero: "https://cdn.example/runtime.avif" },
+    );
+
+    expect(media).toHaveLength(1);
+    expect(media[0]).toMatchObject({
+      id: "hero",
+      tagName: "image",
+      src: "https://cdn.example/runtime.avif",
+    });
+  });
+
+  it("keeps strict timing parsing self-contained after Puppeteer serializes the callback", async () => {
+    const media = await discover(
+      '<video id="clip" src="clip.mp4" data-start="0" data-end="2" data-duration="2" data-media-start="1"></video>',
+      {},
+      true,
+    );
+    expect(media[0]).toMatchObject({ start: 0, end: 2, duration: 2, mediaStart: 1 });
+  });
+
+  it("reports colliding empty-src videos by render id, not author id", async () => {
+    const media = await discover(
+      `<video id="clip" data-hf-render-id="clip" src="" data-start="0" data-end="4" data-media-start="10"></video>` +
+        `<video id="clip" data-hf-render-id="clip__hf2" src="" data-start="4" data-end="8" data-media-start="40"></video>`,
+      {},
+    );
+    expect(media.map((entry) => entry.id)).toEqual(["clip", "clip__hf2"]);
+    expect(media.map((entry) => entry.mediaStart)).toEqual([10, 40]);
+  });
+});
+
+function validTestMediaResponse(): Response {
+  const bytes = new Uint8Array([
+    0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 0x69, 0x73, 0x6f, 0x6d,
+    0x6d, 0x70, 0x34, 0x32,
+  ]);
+  return new Response(bytes, { status: 200 });
+}
+
+function validTestImageResponse(): Response {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  return new Response(png, { status: 200 });
+}
+
+describe("injectSdkPositionEditsRenderScript", () => {
+  it("injects before </body> when SDK position-edit markers are present", () => {
+    const html =
+      '<html><body><h1 data-x="-231" data-y="-139" data-hf-edit-base-x="0" data-hf-edit-base-y="0">Hi</h1></body></html>';
+    const out = injectSdkPositionEditsRenderScript(html);
+    expect(out).toContain("<script>");
+    expect(out.indexOf("<script>")).toBeLessThan(out.indexOf("</body>"));
+    expect(out).toContain("data-hf-edit-base-x");
+  });
+
+  it("injects before the document's own </body>, not inside an inlined script that prints one", () => {
+    const vendor = 'p.print("</body>")';
+    const html = `<html><body><h1 data-hf-edit-base-x="0">Hi</h1><script>${vendor}</script></body></html>`;
+    const out = injectSdkPositionEditsRenderScript(html);
+    expect(out).toContain(`<script>${vendor}</script><script>`);
+    expect(out.endsWith("</script></body></html>")).toBe(true);
+  });
+
+  it("appends the script when there is no </body> tag", () => {
+    const out = injectSdkPositionEditsRenderScript('<div data-hf-edit-base-y="0"></div>');
+    expect(out.startsWith('<div data-hf-edit-base-y="0"></div>')).toBe(true);
+    expect(out).toContain("<script>");
+  });
+
+  it("is a no-op for style/text-only HTML", () => {
+    const html = '<html><body><h1 style="color:#f00">Hi</h1></body></html>';
+    expect(injectSdkPositionEditsRenderScript(html)).toBe(html);
+  });
+});
+
+// ── collectExternalAssets ──────────────────────────────────────────────────
+
+describe("collectExternalAssets", () => {
+  let projectDir: string;
+  let externalDir: string;
+
+  beforeAll(() => {
+    // Create a project dir and an external dir with assets
+    const base = mkdtempSync(join(tmpdir(), "hf-compiler-test-"));
+    projectDir = join(base, "project");
+    externalDir = join(base, "external");
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(externalDir, { recursive: true });
+
+    // Internal asset (should NOT be collected)
+    writeFileSync(join(projectDir, "logo.png"), "fake-png");
+
+    // External asset (should be collected)
+    writeFileSync(join(externalDir, "hero.png"), "fake-hero");
+    writeFileSync(join(externalDir, "font.woff2"), "fake-font");
+  });
+
+  it("does not collect assets inside projectDir", () => {
+    const html = `<html><body><img src="logo.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(0);
+    expect(result.html).toBe(html); // unchanged
+  });
+
+  it("collects and rewrites assets outside projectDir via src attribute", () => {
+    const html = `<html><body><img src="../external/hero.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(1);
+
+    const [safeKey, absPath] = [...result.externalAssets.entries()][0]!;
+    expect(safeKey).toContain("hf-ext/");
+    expect(safeKey).toContain("external/hero.png");
+    expect(absPath).toBe(join(externalDir, "hero.png"));
+    expect(result.html).toContain(safeKey);
+    expect(result.html).not.toContain("../external/hero.png");
+  });
+
+  it("collects and rewrites CSS url() references outside projectDir", () => {
+    const html = `<html><head><style>.bg { background: url(../external/hero.png); }</style></head><body></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(1);
+    expect(result.html).toContain("hf-ext/");
+    expect(result.html).not.toContain("../external/hero.png");
+  });
+
+  it("collects and rewrites inline style url() references", () => {
+    const html = `<html><body><div style="background-image: url('../external/hero.png')"></div></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(1);
+    expect(result.html).toContain("hf-ext/");
+  });
+
+  it("skips http/https URLs", () => {
+    const html = `<html><body><img src="https://cdn.example.com/img.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(0);
+  });
+
+  it("skips data: URIs", () => {
+    const html = `<html><body><img src="data:image/png;base64,abc123"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(0);
+  });
+
+  it("skips absolute paths", () => {
+    const html = `<html><body><img src="/usr/share/fonts/foo.woff"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(0);
+  });
+
+  it("skips fragment references", () => {
+    const html = `<html><body><a href="#section">link</a></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(0);
+  });
+
+  it("skips external paths that don't exist on disk", () => {
+    const html = `<html><body><img src="../nonexistent/nope.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(0);
+  });
+
+  it("deduplicates multiple references to the same external file", () => {
+    const html = `<html><head>
+      <style>.a { background: url(../external/hero.png); } .b { background: url(../external/hero.png); }</style>
+    </head><body><img src="../external/hero.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    // Same file referenced 3 times, but Map deduplicates
+    expect(result.externalAssets.size).toBe(1);
+  });
+
+  it("handles paths with .. that resolve back into projectDir", () => {
+    // projectDir/subdir/../logo.png = projectDir/logo.png (inside project)
+    mkdirSync(join(projectDir, "subdir"), { recursive: true });
+    const html = `<html><body><img src="subdir/../logo.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(0); // stays inside projectDir
+  });
+
+  it("collects multiple different external assets", () => {
+    const html = `<html><body>
+      <img src="../external/hero.png">
+      <link href="../external/font.woff2">
+    </body></html>`;
+    const result = collectExternalAssets(html, projectDir);
+    expect(result.externalAssets.size).toBe(2);
+  });
+});
+
+// ── inlineExternalScripts ──────────────────────────────────────────────────
+
+describe("inlineExternalScripts", () => {
+  it("returns HTML unchanged when no external scripts exist", async () => {
+    const html = `<html><body><script>var x = 1;</script></body></html>`;
+    const result = await inlineExternalScripts(html);
+    expect(result).toBe(html);
+  });
+
+  it("skips local script src (not http)", async () => {
+    const html = `<html><body><script src="./lib/app.js"></script></body></html>`;
+    const result = await inlineExternalScripts(html);
+    expect(result).toBe(html);
+  });
+
+  it("leaves a CDN runtime link for the file server to strip", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => new Response("window.__hyperframeRuntime = {};"));
+    globalThis.fetch = fetchMock as any;
+    try {
+      const html = `<html><head><script src="https://cdn.example.com/hyperframe.runtime.iife.js"></script></head><body></body></html>`;
+      expect(await inlineExternalScripts(html)).toBe(html);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("inlines a CDN script on successful fetch", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response("var gsap = {};", { status: 200 })) as any;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/gsap.min.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect(result).toContain("/* inlined: https://cdn.example.com/gsap.min.js */");
+      expect(result).toContain("var gsap = {};");
+      expect(result).not.toContain('src="https://cdn.example.com/gsap.min.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("verifies raw script bytes using the strongest supported SRI metadata", async () => {
+    // Include a BOM: decoding before hashing would incorrectly reject these bytes.
+    const bytes = Buffer.from("\ufeffwindow.integrityWitness = true;");
+    const digest = (algorithm: string, data = bytes) =>
+      `${algorithm}-${createHash(algorithm).update(data).digest("base64")}`;
+    const good384 = digest("sha384");
+    const bad384 = digest("sha384", Buffer.from("changed CDN bytes"));
+    const cases = [
+      { metadata: good384, accepted: true },
+      { metadata: good384.replace("sha384", "SHA384"), accepted: true },
+      { metadata: bad384.replace("sha384", "SHA384"), accepted: false },
+      { metadata: bad384.replace("sha384", "sHa384"), accepted: false },
+      { metadata: `${digest("sha256")} ${bad384.replace("sha384", "SHA384")}`, accepted: false },
+      { metadata: bad384, accepted: false },
+      { metadata: `${digest("sha256")} ${bad384}`, accepted: false },
+      { metadata: `${bad384} ${good384}`, accepted: true },
+      { metadata: `${good384} ${digest("sha512", Buffer.from("changed"))}`, accepted: false },
+      { metadata: `${bad384} ${digest("sha512")}`, accepted: true },
+      { metadata: `\t${good384}?reserved\n`, accepted: true },
+      { metadata: good384.replaceAll("+", "-").replaceAll("/", "_"), accepted: true },
+      { metadata: "sha384-YQ==", accepted: false },
+      { metadata: "sha1-unknown malformed", accepted: true },
+    ];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response(bytes)) as any;
+    try {
+      for (const { metadata, accepted } of cases) {
+        const html = `<script src="https://cdn.example.com/script.js" integrity="${metadata}" crossorigin="anonymous"></script>`;
+        if (!accepted) {
+          await expect(inlineExternalScripts(html)).rejects.toThrow(
+            "Subresource integrity mismatch",
+          );
+          continue;
+        }
+        const result = await inlineExternalScripts(html);
+        expect(result).toContain("window.integrityWitness = true;");
+        expect(result).not.toContain('src="https://cdn.example.com/script.js"');
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("preserves non-src script attributes when inlining", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () => new Response('console.log("module");', { status: 200 }),
+    ) as any;
+
+    try {
+      const html =
+        '<html><body><script type="module" data-role="boot" src="https://cdn.example.com/module.js"></script></body></html>';
+      const result = await inlineExternalScripts(html);
+
+      expect(result).toMatch(/<script\b[^>]*\btype="module"/);
+      expect(result).toMatch(/<script\b[^>]*\bdata-role="boot"/);
+      expect(result).toContain('console.log("module");');
+      expect(result).not.toContain('src="https://cdn.example.com/module.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("escapes </script in downloaded content", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () => new Response('var x = "</script><script>alert(1)</script>";', { status: 200 }),
+    ) as any;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/evil.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      // Should escape </script to <\/script
+      expect(result).not.toContain("</script><script>alert(1)</script>");
+      expect(result).toContain("<\\/script");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("preserves literal replacement tokens in downloaded script content", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () =>
+        new Response('const before = "$`"; const after = "$\'"; const both = "$&";', {
+          status: 200,
+        }),
+    ) as any;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/d3.min.js"></script><div>tail</div></body></html>`;
+      const result = await inlineExternalScripts(html);
+
+      expect(result).toContain('const before = "$`";');
+      expect(result).toContain('const after = "$\'";');
+      expect(result).toContain('const both = "$&";');
+      expect(result.match(/<script>/g)?.length).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("returns a fragment when the input has no html/body wrapper", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response("var d3 = {};", { status: 200 })) as any;
+
+    try {
+      const html = '<script src="https://cdn.example.com/d3.min.js"></script><div>tail</div>';
+      const result = await inlineExternalScripts(html);
+
+      expect(result).not.toMatch(/<!DOCTYPE|<html|<head|<body/i);
+      expect(result).toContain("var d3 = {};");
+      expect(result).toContain("<div>tail</div>");
+      expect(result).not.toContain('src="https://cdn.example.com/d3.min.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("warns but keeps original tag when fetch fails", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => {
+      throw new Error("Network error");
+    }) as any;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/gsap.min.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      // Original script tag should remain since download failed
+      expect(result).toContain('src="https://cdn.example.com/gsap.min.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("handles multiple CDN scripts with mixed success/failure", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string) => {
+      if (url.includes("gsap")) {
+        return new Response("var gsap = {};", { status: 200 });
+      }
+      throw new Error("404");
+    }) as any;
+
+    try {
+      const html = `<html><body>
+        <script src="https://cdn.example.com/gsap.min.js"></script>
+        <script src="https://cdn.example.com/lottie.min.js"></script>
+      </body></html>`;
+      const result = await inlineExternalScripts(html);
+      // GSAP should be inlined
+      expect(result).toContain("var gsap = {};");
+      // Lottie should remain as original tag
+      expect(result).toContain('src="https://cdn.example.com/lottie.min.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("handles duplicate CDN URLs (same script referenced twice)", async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchCount = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCount++;
+      return new Response("var gsap = {};", { status: 200 });
+    }) as any;
+
+    try {
+      const html = `<html><body>
+        <script src="https://cdn.example.com/gsap.min.js"></script>
+        <script src="https://cdn.example.com/gsap.min.js"></script>
+      </body></html>`;
+      const result = await inlineExternalScripts(html);
+      // Both identical script tags should be fetched and replaced independently.
+      expect(fetchCount).toBe(2);
+      expect(
+        result.match(/\/\* inlined: https:\/\/cdn\.example\.com\/gsap\.min\.js \*\//g)?.length,
+      ).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("detectRenderModeHints", () => {
+  it("recommends screenshot mode for iframe compositions", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <iframe src="./target.html"></iframe>
+  </div>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(true);
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["iframe"]);
+  });
+
+  it("recommends screenshot mode for inline requestAnimationFrame loops", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080"></div>
+  <script>
+    function tick() {
+      requestAnimationFrame(tick);
+    }
+    tick();
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(true);
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["requestAnimationFrame"]);
+  });
+
+  it("ignores requestAnimationFrame inside comments and external scripts", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080"></div>
+  <script src="./runtime.js"></script>
+  <script>
+    // requestAnimationFrame(loop);
+    /* requestAnimationFrame(otherLoop); */
+    const label = "safe";
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(false);
+    expect(result.reasons).toEqual([]);
+  });
+
+  it("ignores compiler-generated nested mount wrappers when detecting requestAnimationFrame", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080"></div>
+  <script>
+    (function(){
+      var __compId = "intro";
+      var __run = function() {
+        const label = "safe";
+      };
+      if (!__compId) { __run(); return; }
+      /* __HF_COMPILER_MOUNT_START__ */
+      var __selector = '[data-composition-id="intro"]';
+      var __attempt = 0;
+      var __tryRun = function() {
+        if (document.querySelector(__selector)) { __run(); return; }
+        if (++__attempt >= 8) { __run(); return; }
+        requestAnimationFrame(__tryRun);
+      };
+      __tryRun();
+      /* __HF_COMPILER_MOUNT_END__ */
+    })();
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(false);
+    expect(result.reasons).toEqual([]);
+  });
+
+  it("still flags user-authored requestAnimationFrame inside nested composition scripts", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080"></div>
+  <script>
+    (function(){
+      var __compId = "intro";
+      var __run = function() {
+        function tick() {
+          requestAnimationFrame(tick);
+        }
+        tick();
+      };
+      if (!__compId) { __run(); return; }
+      /* __HF_COMPILER_MOUNT_START__ */
+      var __selector = '[data-composition-id="intro"]';
+      var __attempt = 0;
+      var __tryRun = function() {
+        if (document.querySelector(__selector)) { __run(); return; }
+        if (++__attempt >= 8) { __run(); return; }
+        requestAnimationFrame(__tryRun);
+      };
+      __tryRun();
+      /* __HF_COMPILER_MOUNT_END__ */
+    })();
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(true);
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["requestAnimationFrame"]);
+  });
+
+  it("detects html-in-canvas API via layoutsubtree canvas attribute", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <canvas id="glass-canvas" layoutsubtree width="1920" height="1080">
+      <div class="panel">Glass content</div>
+    </canvas>
+  </div>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.reasons.map((reason) => reason.code)).toContain("htmlInCanvas");
+    expect(result.recommendScreenshot).toBe(true);
+  });
+
+  it("does not flag htmlInCanvas for plain canvas elements without layoutsubtree", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <canvas id="my-canvas" width="1920" height="1080"></canvas>
+  </div>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.reasons.map((reason) => reason.code)).not.toContain("htmlInCanvas");
+  });
+
+  it("does not recommend screenshot mode for nested compositions that hoist GSAP from a CDN script", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-mode-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0"></div>
+  </div>
+</body></html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "intro.html"),
+      `<template id="intro-template">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <div data-composition-id="intro" data-width="1920" data-height="1080">
+    <div class="title">Hello</div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["intro"] = gsap.timeline({ paused: true });
+    </script>
+  </div>
+</template>`,
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => {
+      return new Response(
+        "window.gsap = { timeline: function() { return { paused: true }; } }; function __ticker(){ requestAnimationFrame(__ticker); }",
+        { status: 200 },
+      );
+    }) as any;
+
+    try {
+      const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+      expect(result.renderModeHints.recommendScreenshot).toBe(false);
+      expect(result.renderModeHints.reasons).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rebases a direct nested entry's sibling assets without changing project-root assets", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-direct-entry-base-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(join(compositionsDir, "sibling.png"), "sibling");
+    writeFileSync(join(projectDir, "root.png"), "root");
+    const entryPath = join(compositionsDir, "scene.html");
+    writeFileSync(
+      entryPath,
+      `<!doctype html><html><body>
+  <div data-composition-id="scene" data-width="100" data-height="100" data-duration="1">
+    <img id="sibling" src="sibling.png" />
+    <img id="root" src="root.png" />
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, entryPath, projectDir);
+    const { document } = parseHTML(compiled.html);
+
+    expect(document.querySelector("#sibling")?.getAttribute("src")).toBe(
+      "compositions/sibling.png",
+    );
+    expect(document.querySelector("#root")?.getAttribute("src")).toBe("root.png");
+  });
+
+  // Shared fixture builder for the assertSubCompositionsUsable / EmptyCompositionError
+  // pre-flight tests below. `subCompFiles` is a map of compositions/-relative
+  // filename to raw file content (empty string / malformed text / valid HTML).
+  // `hosts` is the data-composition-src host markup injected into the root
+  // composition's timeline div, in order, at 1s each.
+  function makeSubCompProject(
+    dirPrefix: string,
+    hosts: Array<{ id: string; src: string }>,
+    subCompFiles: Record<string, string>,
+  ): string {
+    const projectDir = mkdtempSync(join(tmpdir(), dirPrefix));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    const hostMarkup = hosts
+      .map(
+        (h, i) =>
+          `<div data-composition-id="${h.id}" data-composition-src="${h.src}" data-start="${i}" data-duration="1"></div>`,
+      )
+      .join("\n      ");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>
+    <div data-composition-id="main" data-width="100" data-height="100" data-start="0" data-duration="${hosts.length}">
+      ${hostMarkup}
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = { duration: function() { return ${hosts.length}; } };
+    </script>
+  </body>
+</html>`,
+    );
+    for (const [name, content] of Object.entries(subCompFiles)) {
+      writeFileSync(join(compositionsDir, name), content);
+    }
+    return projectDir;
+  }
+
+  function validSubCompHtml(compId: string, label: string, nestedSrc?: string): string {
+    const inner = nestedSrc
+      ? `<div data-composition-id="${label}" data-composition-src="${nestedSrc}" data-start="0" data-duration="1"></div>`
+      : `<div class="title">${label}</div>`;
+    return `<!doctype html><html><body>
+  <div data-composition-id="${compId}" data-width="100" data-height="100">
+    ${inner}
+  </div>
+</body></html>`;
+  }
+
+  it("compileForRender aborts with EmptyCompositionError when a sub-composition file is empty", async () => {
+    // The shared inliner (inlineSubCompositions.ts, packages/core) stays
+    // tolerant of empty/unparsable sub-compositions — it skips the scene and
+    // keeps going, silently, so preview/studio can keep iterating on a
+    // partially-authored project. That tolerance is intentional and tested
+    // separately in packages/core/src/compiler/inlineSubCompositions.test.ts.
+    //
+    // But a *render* that silently drops a scene produces a materially
+    // broken video with no visible error — worse than refusing to render.
+    // compileForRender (render-only) runs a pre-flight check
+    // (assertSubCompositionsUsable, using the same checkSubCompositionUsability
+    // helper the inliner and hyperframes lint use) before any compilation
+    // work starts, and aborts immediately instead of silently producing a
+    // broken render 45+ seconds later.
+    const projectDir = makeSubCompProject(
+      "hf-empty-subcomp-",
+      [{ id: "intro", src: "compositions/intro.html" }],
+      { "intro.html": "" },
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/intro\.html/);
+  });
+
+  it("compileForRender aborts naming every unusable sub-composition at once", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-empty-subcomp-multi-",
+      [
+        { id: "intro", src: "compositions/intro.html" },
+        { id: "outro", src: "compositions/outro.html" },
+      ],
+      { "intro.html": "", "outro.html": "not valid html at all, just text" },
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/intro\.html[\s\S]*compositions\/outro\.html/);
+  });
+
+  it("compileForRender aborts naming a data-composition-src that points at a folder", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-folder-subcomp-",
+      [{ id: "intro", src: "compositions/intro" }],
+      {},
+    );
+    try {
+      mkdirSync(join(projectDir, "compositions", "intro"));
+      writeFileSync(
+        join(projectDir, "compositions", "intro", "index.html"),
+        validSubCompHtml("intro", "Intro"),
+      );
+
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/compositions\/intro[\s\S]*a folder, not an HTML file/);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender aborts when a data-composition-src reference points at a missing file", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-missing-subcomp-",
+      [{ id: "intro", src: "compositions/does-not-exist.html" }],
+      {},
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/does-not-exist\.html/);
+  });
+
+  it("compileForRender preserves a bare fragment's markup, sibling styles, and script", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-fragment-subcomp-",
+      [{ id: "intro", src: "compositions/intro.html" }],
+      {
+        "intro.html": `<style>.fragment-title { color: rgb(12, 34, 56); }</style>
+<div data-composition-id="intro" data-width="100" data-height="100"><div class="fragment-title">Bare fragment</div></div>
+<script>window.__fragmentLoaded = true;</script>`,
+      },
+    );
+    try {
+      const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+      const { document } = parseHTML(result.html);
+      expect(document.querySelector(".fragment-title")?.textContent).toBe("Bare fragment");
+      expect(result.html).toContain("rgb(12, 34, 56)");
+      expect(result.html).toContain("window.__fragmentLoaded = true");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender succeeds when the sub-composition file is valid (happy path)", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-valid-subcomp-",
+      [{ id: "intro", src: "compositions/intro.html" }],
+      { "intro.html": validSubCompHtml("intro", "Hello") },
+    );
+
+    const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(result.html).toContain("data-composition-id");
+  });
+
+  it("compileForRender succeeds when a valid sub-composition itself references a nested valid sub-composition", async () => {
+    // Regression guard: data-composition-src is always root-relative, even
+    // from within a nested sub-composition (matches parseSubCompositions,
+    // which threads the original projectDir unchanged through every
+    // recursion level — never dirname(parentFile)). The pre-flight check
+    // must resolve nested references the same way, or it aborts renders
+    // that would have actually succeeded (false-positive abort).
+    //
+    // parent.html lives in compositions/ and references child.html using the
+    // same root-relative "compositions/..." form — not "./child.html".
+    const projectDir = makeSubCompProject(
+      "hf-nested-subcomp-valid-",
+      [{ id: "parent", src: "compositions/parent.html" }],
+      {
+        "parent.html": validSubCompHtml("parent", "child", "compositions/child.html"),
+        "child.html": validSubCompHtml("child", "Nested Hello"),
+      },
+    );
+
+    const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(result.html).toContain("data-composition-id");
+  });
+
+  it("compileForRender aborts naming a broken nested (grandchild) sub-composition", async () => {
+    // child.html is empty — the grandchild scene, referenced root-relative
+    // from parent.html which itself lives in compositions/.
+    const projectDir = makeSubCompProject(
+      "hf-nested-subcomp-broken-",
+      [{ id: "parent", src: "compositions/parent.html" }],
+      {
+        "parent.html": validSubCompHtml("parent", "child", "compositions/child.html"),
+        "child.html": "",
+      },
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/child\.html/);
+  });
+});
+
+describe("detectThreeDTransformUsage", () => {
+  it("detects CSS perspective property", () => {
+    expect(detectThreeDTransformUsage("<style>.s { perspective: 1000px; }</style>")).toBe(true);
+  });
+
+  it("detects transform-style preserve-3d", () => {
+    expect(detectThreeDTransformUsage("<style>.c { transform-style: preserve-3d; }</style>")).toBe(
+      true,
+    );
+  });
+
+  it("detects backface-visibility", () => {
+    expect(detectThreeDTransformUsage("<style>.f { backface-visibility: hidden; }</style>")).toBe(
+      true,
+    );
+  });
+
+  it("detects perspective() transform function", () => {
+    expect(detectThreeDTransformUsage('<div style="transform: perspective(500px)"></div>')).toBe(
+      true,
+    );
+  });
+
+  it("detects GSAP transformPerspective", () => {
+    expect(
+      detectThreeDTransformUsage("<script>gsap.to(el, { transformPerspective: 800 })</script>"),
+    ).toBe(true);
+  });
+
+  it("does not match flat GSAP rotationX without a perspective context", () => {
+    expect(detectThreeDTransformUsage("<script>gsap.to(el, { rotationX: 180 })</script>")).toBe(
+      false,
+    );
+  });
+
+  it("does not match translateZ(0) promotion hack", () => {
+    expect(detectThreeDTransformUsage('<div style="transform: translateZ(0)"></div>')).toBe(false);
+  });
+
+  it("does not match perspective: none", () => {
+    expect(detectThreeDTransformUsage("<style>.s { perspective: none; }</style>")).toBe(false);
+  });
+});
+
+describe("detectAncestorBackgroundImage", () => {
+  const wrap = (headCss: string, bodyAttrs = "", inner = "") =>
+    `<!doctype html><html><head><style>${headCss}</style></head><body${bodyAttrs ? ` ${bodyAttrs}` : ""}>` +
+    `<div id="root" data-composition-id="main" data-duration="10">${inner}</div></body></html>`;
+
+  it("detects a linear-gradient body background from a style rule", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("body { background: linear-gradient(135deg, #1b2735, #090a0f); }"),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a url() background-image on html", () => {
+    expect(detectAncestorBackgroundImage(wrap('html { background-image: url("bg.png"); }'))).toBe(
+      true,
+    );
+  });
+
+  it("detects an inline gradient style on body", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("", 'style="background: radial-gradient(circle, #111, #000)"'),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a class-selected wrapper between body and the root", () => {
+    const html =
+      "<!doctype html><html><head><style>.page-bg { background-image: linear-gradient(#111, #000); }</style></head>" +
+      '<body><div class="page-bg"><div data-composition-id="main" data-duration="10"></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+  });
+
+  it("ignores background-image on elements inside the composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap(
+          "#hero { background-image: linear-gradient(#111, #000); }",
+          "",
+          '<div id="hero"></div>',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores plain background-color ancestors", () => {
+    expect(detectAncestorBackgroundImage(wrap("html, body { background: #0d1117; }"))).toBe(false);
+  });
+
+  it("returns false without a composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        "<html><head><style>body { background: linear-gradient(#111, #000); }</style></head><body></body></html>",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("detectShaderTransitionUsage", () => {
+  it("detects authored HyperShader initialization", () => {
+    const html = `<!doctype html>
+<html><body>
+  <script src="https://cdn.jsdelivr.net/npm/@hyperframes/shader-transitions/dist/index.global.js"></script>
+  <script>
+    window.HyperShader.init({
+      scenes: ["s1", "s2"],
+      transitions: [{ time: 1, shader: "cinematic-zoom", duration: 0.5 }],
+    });
+  </script>
+</body></html>`;
+
+    expect(detectShaderTransitionUsage(html)).toBe(true);
+  });
+
+  it("ignores comments and external scripts by themselves", () => {
+    const html = `<!doctype html>
+<html><body>
+  <script src="https://cdn.jsdelivr.net/npm/@hyperframes/shader-transitions/dist/index.global.js"></script>
+  <script>
+    // window.HyperShader.init({ scenes: ["s1", "s2"], transitions: [] });
+    const label = "safe";
+  </script>
+</body></html>`;
+
+    expect(detectShaderTransitionUsage(html)).toBe(false);
+  });
+});
+
+describe("system-primary font normalization", () => {
+  it("promotes Inter before system/generic primary stacks before distributed plan validation", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-system-primary-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head>
+    <style>
+      :root { --system-font: -apple-system, BlinkMacSystemFont, sans-serif; }
+      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+      .system-ui { font-family: system-ui, sans-serif; }
+      .var-font { font-family: var(--system-font), sans-serif; }
+      .deterministic { font-family: "Montserrat", system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="root"
+      data-width="640"
+      data-height="360"
+      data-duration="1"
+      data-font-family="ui-monospace, monospace"
+      style="--inline-system-font: system-ui, sans-serif; font-family: sans-serif"
+    >
+      <span class="var-font">Hello</span>
+    </div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
+    const compact = compiled.html.replace(/\s+/g, "");
+    expect(compact).toContain("--system-font:Inter,-apple-system,BlinkMacSystemFont,sans-serif");
+    expect(compact).toContain("font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif");
+    expect(compact).toContain("font-family:Inter,system-ui,sans-serif");
+    expect(compact).toContain("font-family:var(--system-font),sans-serif");
+    expect(compact).toContain('font-family:"Montserrat",system-ui,sans-serif');
+    expect(compact).toContain('data-font-family="Inter,ui-monospace,monospace"');
+    expect(compact).toContain('data-hyperframes-deterministic-fonts="true"');
+
+    const { document } = parseHTML(compiled.html);
+    const rootStyle = document.querySelector('[data-composition-id="root"]')?.getAttribute("style");
+    expect(rootStyle).toContain("--inline-system-font: Inter, system-ui, sans-serif");
+    expect(rootStyle).toContain("font-family: Inter, sans-serif");
+  });
+
+  it("promotes Inter inside the fallback of an undefined var() before plan validation", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-var-system-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: var(
+          --font-display,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Helvetica Neue",
+          Arial,
+          sans-serif
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Hello</div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
+    expect(compiled.html.replace(/\s+/g, "")).toContain(
+      'font-family:var(--font-display,Inter,-apple-system,BlinkMacSystemFont,"HelveticaNeue",Arial,sans-serif)',
+    );
+  });
+});
+
+describe("local font embedding", () => {
+  it("embeds one font file once when sub-compositions use equivalent relative paths", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-local-font-dedupe-"));
+    const assetsDir = join(projectDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(join(assetsDir, "shared.woff2"), "fake-woff2");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "A"; src: url("assets/shared.woff2"); }
+  @font-face { font-family: "B"; src: url("./assets/shared.woff2"); }
+  @font-face { font-family: "C"; src: url("assets/../assets/shared.woff2"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
+
+    const originalInfo = defaultLogger.info;
+    const embeddedMessages: string[] = [];
+    defaultLogger.info = (message) => {
+      if (message.includes("Embedded local font file")) embeddedMessages.push(message);
+    };
+
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } finally {
+      defaultLogger.info = originalInfo;
+    }
+
+    expect(embeddedMessages).toHaveLength(1);
+  });
+
+  it("keeps large local font collections file-backed instead of expanding them into HTML", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-large-local-font-"));
+    const assetsDir = join(projectDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(join(assetsDir, "large.ttc"), Buffer.alloc(6 * 1024 * 1024, 0x41));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face {
+    font-family: "LargeLocal";
+    src: url("assets/large.ttc") format("collection");
+  }
+  @font-face {
+    font-family: "LargeLocalAlias";
+    src: url("./assets/large.ttc") format("collection");
+  }
+  @font-face {
+    font-family: "LargeLocalNormalized";
+    src: url("assets/../assets/large.ttc") format("collection");
+  }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    Text
+  </div>
+</body></html>`,
+    );
+
+    const originalInfo = defaultLogger.info;
+    const fileBackedMessages: string[] = [];
+    defaultLogger.info = (message) => {
+      if (message.includes("Kept large local font file-backed")) {
+        fileBackedMessages.push(message);
+      }
+    };
+
+    let compiled: Awaited<ReturnType<typeof compileForRender>>;
+    try {
+      compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } finally {
+      defaultLogger.info = originalInfo;
+    }
+
+    expect(compiled.html).toContain('url("assets/large.ttc")');
+    expect(compiled.html).toContain('url("./assets/large.ttc")');
+    expect(compiled.html).toContain('url("assets/../assets/large.ttc")');
+    expect(compiled.html).not.toContain("data:font/collection;base64,");
+    expect(Buffer.byteLength(compiled.html)).toBeLessThan(1024 * 1024);
+    expect(fileBackedMessages).toHaveLength(1);
+  });
+});
+
+describe("template-wrapped sub-composition media offsets", () => {
+  function writeTemplateWrappedProject(
+    hostAttrs: string,
+    mediaAttrs: string = 'data-start="0" data-duration="4"',
+    extraMediaMarkup: string = "",
+  ): {
+    projectDir: string;
+    indexPath: string;
+  } {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-template-offset-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="root"
+      data-start="0"
+      data-width="640"
+      data-height="360"
+      data-duration="4"
+    >
+      <div
+        id="scene-host"
+        data-composition-id="scene"
+        data-composition-src="compositions/scene.html"
+        ${hostAttrs}
+      ></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 4 };
+    </script>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "scene.html"),
+      `<template id="scene-template">
+  <div
+    data-composition-id="scene"
+    data-start="0"
+    data-width="640"
+    data-height="360"
+    data-duration="4"
+  >
+    <style>.title { opacity: 0; }</style>
+    <h1 class="title">Scene</h1>
+    <video
+      id="scene-video"
+      src="../assets/clip.mp4"
+      ${mediaAttrs}
+      data-track-index="0"
+    ></video>
+    ${extraMediaMarkup}
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = { duration: () => 4 };
+    </script>
+  </div>
+</template>`,
+    );
+
+    return { projectDir, indexPath: join(projectDir, "index.html") };
+  }
+
+  it("offsets template-wrapped media to the host start during compile", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="2" data-duration="2" data-width="640" data-height="360"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    // The 4s clip closes with its 2s host (data-start 2 + data-duration 2),
+    // not at its own authored end.
+    expect(compiled.videos).toHaveLength(1);
+    expect(compiled.videos[0]).toMatchObject({
+      id: "scene-video",
+      start: 2,
+      end: 4,
+    });
+    expect(compiled.audios).toHaveLength(1);
+    expect(compiled.audios[0]).toMatchObject({
+      id: "scene-video-audio",
+      start: 2,
+      end: 4,
+    });
+  });
+
+  it("offsets nested media by a host data-start id-ref to a sibling slot", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-chained-slots-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    const scene = (id: string) => `<template>
+  <div data-composition-id="${id}" data-start="0" data-duration="2" data-width="640" data-height="360">
+    <video id="${id}-video" src="../assets/clip.mp4" data-start="0" data-duration="2" data-track-index="0"></video>
+  </div>
+</template>`;
+    writeFileSync(join(compositionsDir, "hook.html"), scene("hook"));
+    writeFileSync(join(compositionsDir, "body.html"), scene("body"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-start="0" data-duration="4" data-width="640" data-height="360">
+    <div data-composition-id="hook" data-composition-src="compositions/hook.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="body" data-composition-src="compositions/body.html" data-start="hook" data-duration="2"></div>
+  </div>
+  <script>window.__timelines = { root: { duration: () => 4 } };</script>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const byId = Object.fromEntries(compiled.videos.map((v) => [v.id, v]));
+    expect(byId["hook-video"]).toMatchObject({ start: 0, end: 2 });
+    expect(byId["body-video"]).toMatchObject({ start: 2, end: 4 });
+  });
+
+  it("preserves first-pass media offsets when durations are resolved after inlining", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="2" data-width="640" data-height="360"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    expect(compiled.videos[0]?.start).toBe(2);
+
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [{ id: "scene-host", duration: 2 }],
+      projectDir,
+      projectDir,
+    );
+
+    expect(recompiled.videos).toHaveLength(1);
+    expect(recompiled.videos[0]).toMatchObject({
+      id: "scene-video",
+      start: 2,
+      end: 6,
+    });
+    expect(recompiled.audios).toHaveLength(1);
+    expect(recompiled.audios[0]).toMatchObject({
+      id: "scene-video-audio",
+      start: 2,
+      end: 6,
+    });
+  });
+
+  it("offsets scene-local media in compositions that start much later on the timeline", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="20" data-duration="6" data-width="640" data-height="360"',
+      'data-start="1.5" data-duration="4"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(1);
+    expect(compiled.videos[0]).toMatchObject({
+      id: "scene-video",
+      start: 21.5,
+      end: 25.5,
+    });
+    expect(compiled.audios).toHaveLength(1);
+    expect(compiled.audios[0]).toMatchObject({
+      id: "scene-video-audio",
+      start: 21.5,
+      end: 25.5,
+    });
+  });
+
+  it("includes explicit audio from template-wrapped sub-compositions", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="5" data-duration="6" data-width="640" data-height="360"',
+      'data-start="1" data-duration="4"',
+      `<audio
+        id="scene-audio"
+        src="../assets/narration.wav"
+        data-start="2"
+        data-duration="3"
+        data-track-index="1"
+      ></audio>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.audios).toContainEqual(
+      expect.objectContaining({
+        id: "scene-audio",
+        start: 7,
+        end: 10,
+      }),
+    );
+  });
+
+  it("flattens the sub-composition root onto the host in compiled render HTML", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="20" data-duration="6" data-width="640" data-height="360"',
+      'data-start="1.5" data-duration="4"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    const { document } = parseHTML(compiled.html);
+    const host = document.querySelector("#scene-host");
+
+    expect(host?.getAttribute("data-composition-id")).toBe("scene");
+    expect(host?.getAttribute("data-start")).toBe("20");
+    expect(host?.getAttribute("data-width")).toBe("640");
+    expect(host?.querySelector(".title")?.textContent).toBe("Scene");
+    expect(
+      Array.from(host?.children ?? []).some(
+        (child) => child.getAttribute("data-composition-id") === "scene",
+      ),
+    ).toBe(false);
+    expect(compiled.html).toContain('[data-composition-id="scene"] .title');
+    expect(compiled.html).toContain("new Proxy(window.document");
+    expect(compiled.html).toContain("__hfNormalizeSelector");
+  });
+
+  it("resolves a class selector on the authored root wrapper itself (issue #1847 repro)", async () => {
+    // The original bug report: a sub-composition root authored as
+    // `<div id="scene-root" class="scene-wrapper">` styled via
+    // `.scene-wrapper .title { color: red }`. Class-based descendant
+    // selectors anchored on the authored root's own class only resolve if
+    // the root survives as a real element in the render DOM, not just via
+    // id-selector rewriting to [data-hf-authored-id].
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-class-wrapper-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>
+    <div id="root" data-composition-id="root" data-start="0" data-width="1920" data-height="1080" data-duration="3">
+      <div
+        id="scene-host"
+        data-composition-id="scene"
+        data-composition-src="compositions/scene.html"
+        data-start="0"
+        data-duration="3"
+      ></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 3 };
+    </script>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "scene.html"),
+      `<template id="scene-template">
+  <div id="scene-root" class="scene-wrapper" data-composition-id="scene" data-width="1920" data-height="1080" data-duration="3">
+    <div class="title">ISSUE 1847 REPRO</div>
+    <style>
+      .scene-wrapper { background: #111; }
+      .scene-wrapper .title { color: red; }
+    </style>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = { duration: () => 3 };
+    </script>
+  </div>
+</template>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const host = document.querySelector("#scene-host");
+
+    const wrapper = host?.querySelector(".scene-wrapper");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.getAttribute("data-hf-authored-id")).toBe("scene-root");
+    expect(wrapper?.querySelector(".title")?.textContent).toBe("ISSUE 1847 REPRO");
+    // The authored class selector round-trips unmodified: no id rewriting
+    // is needed for a class selector, only the wrapper element surviving.
+    expect(compiled.html).toContain(".scene-wrapper .title");
+  });
+
+  it("preserves the inferred composition boundary when the host has no composition id", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-anonymous-host-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" data-composition-id="root" data-width="640" data-height="360">
+      <div id="scene-host" data-composition-src="compositions/scene.html" data-start="0"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "scene.html"),
+      `<template id="scene-template">
+  <div data-composition-id="scene" data-width="640" data-height="360" data-duration="4">
+    <style>.title { opacity: 0; }</style>
+    <h1 class="title">Scene</h1>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.scene = { duration: () => 4 };
+    </script>
+  </div>
+</template>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const host = document.querySelector("#scene-host");
+
+    expect(host?.getAttribute("data-composition-id")).toBeNull();
+    // The host has no data-composition-id of its own, but the composition's
+    // own id is restored onto the flattened wrapper, so root-scoped
+    // selectors and self-referencing scripts still resolve.
+    const wrapper = host?.querySelector("[data-hf-inner-root]");
+    expect(wrapper?.getAttribute("data-composition-id")).toBe("scene");
+    expect(wrapper?.querySelector(".title")?.textContent).toBe("Scene");
+    expect(compiled.html).toContain('var __hfCompId = "scene";');
+  });
+});
+
+// ── injectTextRenderingRule (via compileForRender) ─────────────────────────
+//
+// Forces `text-rendering: geometricPrecision` so chrome-headless-shell
+// (BeginFrame) and full Chrome lay text out identically. See
+// `injectTextRenderingRule` in htmlCompiler.ts for full context.
+
+describe("text-rendering rule injection", () => {
+  it("injects a single geometricPrecision rule into <head> for a full-document composition", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-text-rendering-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+<head><title>t</title></head>
+<body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    <h1>Hello</h1>
+  </div>
+</body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    const { document } = parseHTML(compiled.html);
+    const styleEls = document.querySelectorAll("style[data-hyperframes-text-rendering]");
+    expect(styleEls.length).toBe(1);
+    expect((styleEls[0]?.textContent || "").replace(/\s+/g, "")).toContain(
+      "html,body,*{text-rendering:geometricPrecision}",
+    );
+    expect(styleEls[0]?.parentElement?.tagName.toLowerCase()).toBe("head");
+  });
+
+  it("includes geometricPrecision in the fragment-wrap fallback stylesheet", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-text-rendering-frag-"));
+    // Fragment (no <html>/<head>/<body>) — exercises ensureFullDocument.
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<div data-composition-id="root" data-width="640" data-height="360" data-duration="1"><h1>Hi</h1></div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html.replace(/\s+/g, "")).toContain("text-rendering:geometricPrecision");
+    expect(compiled.html.replace(/\s+/g, "")).toContain('font-family:"Inter",sans-serif');
+  });
+});
+
+// ── crossorigin stripping ───────────────────────────────────────────────────
+//
+// External images/videos with crossorigin="anonymous" force CORS-mode requests
+// against the renderer's localhost file server. S3 and similar origins reject
+// those requests, so the element renders blank. The strip removes the attribute
+// so the browser falls back to no-cors (visual-only) mode.
+
+describe("crossorigin attribute stripping", () => {
+  it("strips crossorigin from <img> elements", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-crossorigin-img-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    <img id="hero" src="https://example.com/photo.jpg" crossorigin="anonymous" alt="" />
+    <img id="plain" src="local.jpg" alt="" />
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html).not.toContain('crossorigin="anonymous"');
+    expect(compiled.html).toContain('id="hero"');
+    expect(compiled.html).toContain('id="plain"');
+  });
+
+  it("strips crossorigin from <video> elements", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-crossorigin-video-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    <video id="clip" src="https://example.com/clip.mp4" crossorigin="anonymous" data-start="0" data-duration="1"></video>
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html).not.toContain("crossorigin");
+    expect(compiled.html).toContain('id="clip"');
+  });
+
+  it("strips crossorigin from <audio> elements", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-crossorigin-audio-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="5">
+    <audio id="bgm" src="https://example.com/bgm.mp3" crossorigin="anonymous" data-start="0" data-duration="5" data-volume="0.8"></audio>
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html).not.toContain("crossorigin");
+    expect(compiled.html).toContain('id="bgm"');
+  });
+});
+
+// ── remote media localization ────────────────────────────────────────────────
+//
+// Tests run on localizeRemoteMediaSources directly (exported for testing) to
+// avoid invoking ffprobe / the full compileForRender pipeline. fetch is patched
+// in-process for success cases; the unit lane's refused network covers fallback.
+
+describe("localizeRemoteMediaSources", () => {
+  it("rewrites remote <video> src to _remote_media path when download succeeds", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => validTestMediaResponse();
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-ok-"));
+      const html = `<video id="v1" src="https://media-ok.example.com/a/clip.mp4" data-start="0" data-end="10" muted></video>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+      expect(result).not.toContain("https://media-ok.example.com/");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("preserves original URL on download failure without throwing", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-dl-fail-"));
+    const url = "https://example.com/will-404-localize-test.mp4";
+    const html = `<video id="v1" src="${url}" data-start="0" data-end="10" muted></video>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+    expect(result).toContain(url);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("logs only a safe fingerprint and host for a signed-URL media failure", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalWarn = defaultLogger.warn;
+    const warnings: unknown[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () =>
+      new Response("<!doctype html><html><body>expired</body></html>", { status: 200 });
+    defaultLogger.warn = (message, meta) => warnings.push({ message, meta });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-safe-log-"));
+      const url = "https://cdn.example/private/customer.mp4?X-Amz-Signature=super-secret-signature";
+      const html = `<video id="v1" src="${url}" data-start="0" data-end="10"></video>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+
+      expect(result).toContain(url);
+      expect(remoteMediaAssets.size).toBe(0);
+      expect(warnings).toHaveLength(1);
+      const serialized = JSON.stringify(warnings);
+      expect(serialized).toContain("cdn.example");
+      expect(serialized).toContain("urlFingerprint");
+      expect(serialized).not.toContain("customer.mp4");
+      expect(serialized).not.toContain("super-secret-signature");
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = originalFetch;
+      defaultLogger.warn = originalWarn;
+    }
+  });
+
+  it("deduplicates: two tags with the same src URL → one download", async () => {
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return validTestMediaResponse();
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-dedup-"));
+      const html = `<video id="v1" src="https://dedup.example.com/b/shared.mp4" data-start="0" data-end="10" muted></video>
+<video id="v2" src="https://dedup.example.com/b/shared.mp4" data-start="10" data-end="20" muted></video>`;
+      await localizeRemoteMediaSources(html, dl);
+      expect(fetchCount).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("does not rewrite local (non-HTTP) src paths", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-dl-local-"));
+    const html = `<video id="v1" src="assets/local.mp4" data-start="0" data-end="10" muted></video>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+    expect(result).toContain("assets/local.mp4");
+    expect(result).not.toContain("_remote_media/");
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("localizes remote <source> children of a <video>", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => validTestMediaResponse();
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-src-"));
+      const html = `<video id="rec" data-start="0" data-end="5" muted>
+<source src="https://src-ok.example.com/rec.mp4" type="video/mp4">
+<source src="https://src-ok.example.com/rec.webm" type="video/webm">
+</video>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+      expect(result).not.toContain("https://src-ok.example.com/");
+      expect(remoteMediaAssets.size).toBe(2);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("rewrites src in both double-quoted and single-quoted attributes", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => validTestMediaResponse();
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-quotes-"));
+      const html = `<video id="v1" src="https://q.example.com/c/dq.mp4" data-start="0" data-end="10" muted></video>
+<audio id="a1" src='https://q.example.com/c/sq.mp3' data-start="0" data-end="10"></audio>`;
+      const { html: result } = await localizeRemoteMediaSources(html, dl);
+      expect(result).not.toContain("https://q.example.com/");
+      expect(result.match(/_remote_media\//g)?.length).toBe(2);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("uses path.basename for OS-portable filename extraction from downloaded path", () => {
+    // Guards against the prior absPath.split('/').at(-1) pattern. On Windows
+    // path.join uses `\` separators; splitting on `/` would return the entire
+    // path as a single element, producing a garbage relPath. path.basename is
+    // OS-aware and extracts the filename correctly on both platforms.
+    const { basename: b } = require("node:path");
+    expect(b("/tmp/_remote_media/download_abc123.mp4")).toBe("download_abc123.mp4");
+  });
+});
+
+// ── localizeRemoteImageSources ───────────────────────────────────────────────
+//
+// Regression coverage for the agent-pipeline `<img>` flicker bug: producer's
+// frame-capture has no `pollImagesReady` analog of `pollVideosReady`, so a
+// composition with raw S3 `<img src="https://...">` URLs (astral / daphne /
+// hyperion multi-v2 outputs) reaches Chrome with a network dependency that
+// races the readiness gate AND can be evicted mid-render. Localising before
+// render is the architectural fix; `pollImagesReady` in frameCapture is the
+// defense-in-depth layer.
+//
+// Mirrors the localizeRemoteMediaSources test shape; fetch is patched in
+// for success cases and a real 404 covers the fallback path.
+
+describe("localizeRemoteImageSources", () => {
+  it("rewrites remote <img> src to _remote_media path when download succeeds", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => validTestImageResponse();
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-ok-"));
+      const html = `<img class="hero" src="https://img-ok.example.com/photo.png" />`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+      expect(result).not.toContain("https://img-ok.example.com/");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("preserves original URL on download failure without throwing", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-img-fail-"));
+    const url = "https://example.com/will-404-image-localize-test.png";
+    const html = `<img src="${url}" />`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+    expect(result).toContain(url);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("deduplicates: two <img> tags with the same src URL → one download", async () => {
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return validTestImageResponse();
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-dedup-"));
+      const html = `<img src="https://dedup-img.example.com/hero.jpg" />
+<img src="https://dedup-img.example.com/hero.jpg" />`;
+      await localizeRemoteImageSources(html, dl);
+      expect(fetchCount).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("does not rewrite local (non-HTTP) src paths", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-img-local-"));
+    const html = `<img src="assets/hero.png" />`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+    expect(result).toContain("assets/hero.png");
+    expect(result).not.toContain("_remote_media/");
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("does not rewrite data: URI src", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-img-data-"));
+    const html = `<img src="data:image/svg+xml,%3Csvg/%3E" />`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+    expect(result).toContain("data:image/svg+xml");
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("rewrites both double-quoted and single-quoted src attributes", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => validTestImageResponse();
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-quotes-"));
+      const html = `<img src="https://q-img.example.com/dq.png" />
+<img src='https://q-img.example.com/sq.jpg' />`;
+      const { html: result } = await localizeRemoteImageSources(html, dl);
+      expect(result).not.toContain("https://q-img.example.com/");
+      expect(result.match(/_remote_media\//g)?.length).toBe(2);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("does not match data-src (lazy-loader placeholder), only the real src attribute", async () => {
+    // A lazy-loader emits the real asset in `data-src` and a placeholder in
+    // `src`. We must localise what Chrome actually paints (the real `src`),
+    // not the `data-src` URL — matching `data-src` would download an asset the
+    // render never shows and could break the loader's runtime swap.
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return validTestImageResponse();
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-datasrc-"));
+      const html = `<img data-src="https://lazy.example.com/real.png" src="https://cdn.example.com/placeholder.png" />`;
+      const { html: result } = await localizeRemoteImageSources(html, dl);
+      // The real src is localised; the data-src URL is left untouched.
+      expect(result).toContain("https://lazy.example.com/real.png");
+      expect(result).not.toContain("https://cdn.example.com/placeholder.png");
+      expect(fetchCount).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("handles src attribute not as the first attribute (agent-pipeline shape)", async () => {
+    // The 02_kobe astral-pipeline composition that surfaced this bug emits
+    // <img> tags with `class` before `src`. Regex must not assume src position.
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => validTestImageResponse();
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-attr-order-"));
+      const html = `<img class="kobe-cutout" alt="kobe" src="https://astral.example.com/d828bca.png" />`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+      expect(result).not.toContain("https://astral.example.com/");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+});
+
+// ── localizeRemoteFontFaces ──────────────────────────────────────────────────
+
+describe("localizeRemoteFontFaces", () => {
+  const FONT_URL = "https://gen-os-static.s3.us-east-2.amazonaws.com/fonts/komika-axis.ttf";
+
+  it("rewrites @font-face url() inside <style> to _remote_media/ path", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(16), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-"));
+      const html = `<style>
+@font-face {
+  font-family: "Komika Axis";
+  src: url("${FONT_URL}") format("truetype");
+}
+</style>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      expect(result).not.toContain(FONT_URL);
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("ignores url() references outside @font-face (e.g. background-image)", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(16), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-bg-"));
+      const BG_URL = "https://cdn.example.com/bg.png";
+      const html = `<style>
+body { background-image: url("${BG_URL}"); }
+@font-face { font-family: "F"; src: url("${FONT_URL}") format("truetype"); }
+</style>`;
+      const { html: result } = await localizeRemoteFontFaces(html, dl);
+      // Font URL rewritten, background URL untouched
+      expect(result).not.toContain(FONT_URL);
+      expect(result).toContain(BG_URL);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("preserves original URL when download fails", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(null, { status: 403 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-fail-"));
+      const FAIL_URL = "https://fail-font.example.com/f.ttf";
+      const html = `<style>@font-face { font-family: "F"; src: url("${FAIL_URL}") format("truetype"); }</style>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      expect(result).toContain(FAIL_URL);
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("deduplicates: same font URL in two @font-face blocks → 1 download", async () => {
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return new Response(new Uint8Array(16), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-dedup-"));
+      const DEDUP_URL = "https://dedup-font.example.com/d.ttf";
+      const html = `<style>
+@font-face { font-family: "F1"; src: url("${DEDUP_URL}") format("truetype"); font-weight: 400; }
+@font-face { font-family: "F2"; src: url("${DEDUP_URL}") format("truetype"); font-weight: 700; }
+</style>`;
+      const { remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      expect(fetchCount).toBe(1);
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("no-ops when no @font-face blocks are present", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-noop-"));
+    const html = `<style>body { color: red; }</style>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("ignores local (non-HTTP) @font-face src URLs", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-local-"));
+    const html = `<style>@font-face { font-family: "F"; src: url("assets/fonts/f.ttf") format("truetype"); }</style>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  // ── External <link rel="stylesheet"> inlining ──
+
+  it("leaves Google Fonts <link> tags untouched", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-gf-"));
+    const html = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700">
+<link rel="stylesheet" href="https://fonts.gstatic.com/s/inter/inter.css">
+<style>body { color: red; }</style>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    // Google Fonts links should remain as-is — the deterministic font injector handles them
+    expect(result).toContain("fonts.googleapis.com");
+    expect(result).toContain("fonts.gstatic.com");
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("does not process non-stylesheet <link> tags (rel=icon, rel=preconnect)", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-nonss-"));
+    const html = `<link rel="icon" href="https://cdn.example.com/favicon.ico">
+<link rel="preconnect" href="https://cdn.example.com">
+<link rel="dns-prefetch" href="https://cdn.example.com">`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("inlines @font-face rules from external non-Google stylesheet and downloads font files", async () => {
+    const EXTERNAL_FONT_URL = "https://cdn.example.com/fonts/custom.woff2";
+    const STYLESHEET_URL = "https://cdn.example.com/fonts/style.css";
+    const fakeCss = `
+/* Reset styles */
+body { margin: 0; }
+@font-face {
+  font-family: "CustomFont";
+  src: url("${EXTERNAL_FONT_URL}") format("woff2");
+  font-weight: 400;
+}
+h1 { font-size: 2rem; }`;
+
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async (url: string) => {
+      if (url === STYLESHEET_URL) {
+        return new Response(fakeCss, { status: 200 });
+      }
+      // Font file download
+      return new Response(new Uint8Array(16), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-ext-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">
+<style>body { color: red; }</style>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // The <link> tag should be replaced with an inline <style> containing the @font-face
+      expect(result).not.toContain(`href="${STYLESHEET_URL}"`);
+      expect(result).not.toContain(STYLESHEET_URL);
+      expect(result).not.toContain("<link");
+      expect(result).toContain("@font-face");
+      expect(result).toContain("CustomFont");
+      // The remote font URL should be rewritten to a local path
+      expect(result).not.toContain(EXTERNAL_FONT_URL);
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("keeps <link> tag when external stylesheet fetch fails (graceful degradation)", async () => {
+    const STYLESHEET_URL = "https://down.example.com/fonts.css";
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(null, { status: 503 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-extfail-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // Original link tag preserved on failure
+      expect(result).toContain(STYLESHEET_URL);
+      expect(result).toContain("<link");
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("rejects a stylesheet redirect to a private host before the second request", async () => {
+    const STYLESHEET_URL = "https://styles.example.com/fonts.css";
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://169.254.169.254/latest/meta-data/" },
+      });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-private-redirect-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+
+      expect(fetchCount).toBe(1);
+      expect(result).toBe(html);
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("does not log a signed stylesheet path or query on failure", async () => {
+    const STYLESHEET_URL =
+      "https://styles.example.com/private/customer.css?X-Amz-Signature=super-secret";
+    const originalFetch = globalThis.fetch;
+    const originalWarn = defaultLogger.warn;
+    const warnings: unknown[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () =>
+      new Response(null, { status: 503, statusText: STYLESHEET_URL });
+    defaultLogger.warn = (message, meta) => warnings.push({ message, meta });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-safe-style-log-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      await localizeRemoteFontFaces(html, dl);
+
+      const serialized = JSON.stringify(warnings);
+      expect(serialized).toContain("styles.example.com");
+      expect(serialized).toContain("urlFingerprint");
+      expect(serialized).not.toContain("customer.css");
+      expect(serialized).not.toContain("super-secret");
+    } finally {
+      globalThis.fetch = originalFetch;
+      defaultLogger.warn = originalWarn;
+    }
+  });
+
+  it("keeps <link> tag when external stylesheet has no @font-face rules", async () => {
+    const STYLESHEET_URL = "https://cdn.example.com/reset.css";
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () =>
+      new Response("body { margin: 0; } h1 { color: blue; }", { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-noff-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // No @font-face → keep the original link tag (non-font CSS may be needed)
+      expect(result).toContain(STYLESHEET_URL);
+      expect(result).toContain("<link");
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("handles multiple external stylesheets, mixing Google and non-Google", async () => {
+    const FONT_CDN_URL = "https://use.typekit.net/abc123.css";
+    const FONT_FILE_URL = "https://use.typekit.net/af/font.woff2";
+    const fontCss = `@font-face { font-family: "AdobeFont"; src: url("${FONT_FILE_URL}") format("woff2"); }`;
+
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async (url: string) => {
+      if (url === FONT_CDN_URL) return new Response(fontCss, { status: 200 });
+      return new Response(new Uint8Array(16), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-multi-"));
+      const html = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto">
+<link rel="stylesheet" href="${FONT_CDN_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // Google link untouched
+      expect(result).toContain("fonts.googleapis.com");
+      // Typekit link inlined — the <link> tag is replaced; the URL only appears in a CSS comment
+      expect(result).not.toContain(`href="${FONT_CDN_URL}"`);
+      expect(result).toContain("AdobeFont");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+});
+
+describe("discoverAudioVolumeAutomationFromTimeline", () => {
+  it("treats trailing-garbage duration as unknown instead of truncating automation sampling", async () => {
+    class TestAudioElement {
+      id = "music";
+      dataset = { start: "0", duration: "5s", volume: "0" };
+      volume = 0;
+    }
+    class TestVideoElement {}
+    const audio = new TestAudioElement();
+    const previous = {
+      window: globalThis.window,
+      document: globalThis.document,
+      audio: globalThis.HTMLAudioElement,
+      video: globalThis.HTMLVideoElement,
+    };
+    globalThis.window = {
+      __timelines: { root: { totalTime: (time: number) => (audio.volume = time < 7 ? 0 : 1) } },
+    } as any;
+    globalThis.document = {
+      querySelector: () => ({ getAttribute: () => "root" }),
+      getElementById: () => audio,
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+    try {
+      const page = { evaluate: async (fn: (arg: any) => unknown, arg: unknown) => fn(arg) } as any;
+      const [automation] = await discoverAudioVolumeAutomationFromTimeline(page, ["music"], 10, 1);
+      expect(automation?.keyframes).toContainEqual({ time: 7, volume: 1 });
+    } finally {
+      globalThis.window = previous.window;
+      globalThis.document = previous.document;
+      globalThis.HTMLAudioElement = previous.audio;
+      globalThis.HTMLVideoElement = previous.video;
+    }
+  });
+
+  it("emits plateau boundaries around a sampled volume change", async () => {
+    class TestAudioElement {
+      id = "music";
+      dataset = { start: "0", duration: "3", volume: "0.8" };
+      volume = 0.8;
+    }
+    class TestVideoElement {}
+
+    const audio = new TestAudioElement();
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const previousAudioElement = globalThis.HTMLAudioElement;
+    const previousVideoElement = globalThis.HTMLVideoElement;
+
+    globalThis.window = {
+      __timelines: {
+        root: {
+          totalTime: (time: number) => {
+            audio.volume = time < 1.05 ? 0.8 : 0.2;
+          },
+        },
+      },
+    } as any;
+    globalThis.document = {
+      querySelector: (selector: string) =>
+        selector === "[data-composition-id]"
+          ? { getAttribute: (name: string) => (name === "data-composition-id" ? "root" : null) }
+          : null,
+      getElementById: (id: string) => (id === "music" ? audio : null),
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+
+      const [automation] = await discoverAudioVolumeAutomationFromTimeline(page, ["music"], 3, 10);
+
+      expect(automation?.keyframes).toContainEqual({ time: 1, volume: 0.8 });
+      expect(automation?.keyframes).toContainEqual({ time: 1.1, volume: 0.2 });
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 0.5)).toBeCloseTo(0.8, 6);
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 1.5)).toBeCloseTo(0.2, 6);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+      globalThis.HTMLAudioElement = previousAudioElement;
+      globalThis.HTMLVideoElement = previousVideoElement;
+    }
+  });
+
+  it("prefers runtime duration over stale data-end while sampling video-derived audio", async () => {
+    class TestAudioElement {}
+    class TestVideoElement {
+      id = "bg-video";
+      dataset = { start: "0", end: "0.25", duration: "1", volume: "0" };
+      volume = 0;
+    }
+
+    const video = new TestVideoElement();
+    const seekCalls: { time: number; suppressEvents: boolean | undefined }[] = [];
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const previousAudioElement = globalThis.HTMLAudioElement;
+    const previousVideoElement = globalThis.HTMLVideoElement;
+
+    globalThis.window = {
+      __timelines: {
+        root: {
+          totalTime: (time: number, suppressEvents?: boolean) => {
+            seekCalls.push({ time, suppressEvents });
+            video.volume = Math.min(1, Math.max(0, time));
+          },
+        },
+      },
+    } as any;
+    globalThis.document = {
+      querySelector: (selector: string) =>
+        selector === "[data-composition-id]"
+          ? { getAttribute: (name: string) => (name === "data-composition-id" ? "root" : null) }
+          : null,
+      getElementById: (id: string) => (id === "bg-video" ? video : null),
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+
+      const result = await discoverAudioVolumeAutomationFromTimeline(
+        page,
+        ["bg-video-audio"],
+        1,
+        2,
+      );
+
+      expect(result).toEqual([
+        {
+          id: "bg-video-audio",
+          keyframes: [
+            { time: 0, volume: 0 },
+            { time: 0.5, volume: 0.5 },
+            { time: 1, volume: 1 },
+          ],
+        },
+      ]);
+      expect(seekCalls.length).toBeGreaterThan(0);
+      expect(seekCalls.every((call) => call.suppressEvents === true)).toBe(true);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+      globalThis.HTMLAudioElement = previousAudioElement;
+      globalThis.HTMLVideoElement = previousVideoElement;
+    }
+  });
+});
+
+describe("resolveCompositionDurations strict literal timing", () => {
+  it("falls through whitespace data-duration to a valid composition duration", async () => {
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    globalThis.window = { __timelines: {} } as any;
+    globalThis.document = {
+      getElementById: () => ({
+        getAttribute: (name: string) =>
+          name === "data-duration" ? "   " : name === "data-composition-duration" ? "5" : null,
+      }),
+    } as any;
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+      const result = await resolveCompositionDurations(page, [
+        { id: "scene", tagName: "div", start: 0, mediaStart: 0, playbackRate: 1 },
+      ]);
+      expect(result).toEqual([{ id: "scene", duration: 5 }]);
+    } finally {
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
+    }
+  });
+
+  it("does not partially parse trailing-garbage composition duration", async () => {
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    globalThis.window = { __timelines: {} } as any;
+    globalThis.document = {
+      getElementById: () => ({
+        getAttribute: (name: string) => (name === "data-composition-duration" ? "5s" : null),
+      }),
+    } as any;
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+      const result = await resolveCompositionDurations(page, [
+        { id: "scene", tagName: "div", start: 0, mediaStart: 0, playbackRate: 1 },
+      ]);
+      expect(result).toEqual([]);
+    } finally {
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
+    }
+  });
+});
+
+describe("discoverVideoVisibilityFromTimeline", () => {
+  it("returns scene visibility windows for auto-start videos", async () => {
+    const duration = 2;
+    const sampleStep = 0.1;
+    const windows = [
+      { id: "v0", start: 0.2, end: 0.7 },
+      { id: "v1", start: 0.5, end: 1.2 },
+      { id: "v2", start: 1.0, end: 1.8 },
+      { id: "v3", start: 0.0, end: 0.4 },
+    ];
+
+    type SceneEl = { opacityAt: (t: number) => number };
+    const videos = windows.map((win) => {
+      const sceneEl: SceneEl = {
+        opacityAt: (t) => (t >= win.start && t <= win.end ? 1 : 0),
+      };
+      return {
+        id: win.id,
+        closest: (selector: string) => (selector === ".scene" ? sceneEl : null),
+      };
+    });
+
+    let currentTime = 0;
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+
+    globalThis.window = {
+      __timelines: {
+        root: {
+          totalTime: (time: number) => {
+            currentTime = time;
+          },
+        },
+      },
+      getComputedStyle: (el: SceneEl) => ({
+        opacity: String(el.opacityAt(currentTime)),
+      }),
+    } as typeof globalThis.window;
+    globalThis.document = {
+      querySelectorAll: (selector: string) =>
+        selector === "video[data-hf-auto-start]" ? videos : [],
+      querySelector: (selector: string) =>
+        selector === "[data-composition-id]"
+          ? { getAttribute: (name: string) => (name === "data-composition-id" ? "root" : null) }
+          : null,
+    } as typeof globalThis.document;
+
+    try {
+      const page = {
+        evaluate: async (fn: (arg: number) => unknown, arg: number) => fn(arg),
+      };
+
+      const result = await discoverVideoVisibilityFromTimeline(page as never, duration);
+
+      expect(result).toHaveLength(windows.length);
+      for (const win of windows) {
+        const found = result.find((entry) => entry.videoId === win.id);
+        expect(found).toBeDefined();
+        expect(found!.visibleStart).toBeGreaterThanOrEqual(win.start - sampleStep);
+        expect(found!.visibleStart).toBeLessThanOrEqual(win.start + sampleStep);
+        expect(found!.visibleEnd).toBeGreaterThanOrEqual(win.end - sampleStep);
+        expect(found!.visibleEnd).toBeLessThanOrEqual(win.end + sampleStep);
+      }
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+});
+describe("sub-composition variable injection (render path, #2064)", () => {
+  function writeSubCompVarProject(hostVars: string): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"color","type":"color","label":"Color","default":"#000000"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="card-bg"></div>
+      <script>
+        var color = __hyperframes.getVariables().color || "#000000";
+        document.querySelector('[data-composition-id="card"] .card-bg').style.background = color;
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="320" data-height="240">
+      <div data-composition-id="card-1" data-composition-src="compositions/card.html" data-start="0" data-duration="3" data-track-index="1" ${hostVars}></div>
+    </div>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("injects the __hfVariablesByComp writer so JS getVariables() sees per-instance values", async () => {
+    // Regression for #2064: render inlined the sub-comp reader scripts but never
+    // emitted the writer, so window.__hyperframes.getVariables() returned {} and
+    // parametrized sub-comps shipped blank/default text in the final MP4 while
+    // snapshot QA passed.
+    const projectDir = writeSubCompVarProject(`data-variable-values='{"color":"#00ff00"}'`);
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+    expect(compiled.html).toContain("#00ff00");
+  });
+
+  it("still injects the declared default even with no per-instance override", async () => {
+    const projectDir = writeSubCompVarProject("");
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+    expect(compiled.html).toContain('"card-1":{"color":"#000000"}');
+  });
+
+  it("scopes per-instance values when one sub-comp is mounted multiple times (template reuse)", async () => {
+    // #2066 fixed the single-instance case but left a preview/render divergence:
+    // two mounts of the SAME sub-comp (same authored data-composition-id) with
+    // different data-variable-values collapsed to one __hfVariablesByComp key
+    // and one scope selector, so the last mount clobbered the earlier one and
+    // all-but-one instance rendered blank. The producer now assigns per-instance
+    // runtime ids (card__hf1, card__hf2), mirroring the preview bundler.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-multi-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_A"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_B"}' data-start="0" data-duration="3" data-track-index="2"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const ids = Array.from(
+      document.querySelectorAll('[data-composition-file="compositions/card.html"]'),
+    ).map((h) => h.getAttribute("data-composition-id"));
+    // Each instance gets a unique runtime id, in document order.
+    expect(ids).toContain("card__hf1");
+    expect(ids).toContain("card__hf2");
+    // And each carries its own per-instance values — no cross-instance clobber.
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+  });
+
+  it("assigns a distinct runtime id to every mount when the same sub-comp appears 3+ times", async () => {
+    // Pins the uniqueCompositionId(baseId, index) progression beyond two: the
+    // third and fourth mounts must land as card__hf3 / card__hf4, each with its
+    // own values.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-multi3-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    const mounts = ["A", "B", "C", "D"]
+      .map(
+        (label, i) =>
+          `<div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_${label}"}' data-start="0" data-duration="3" data-track-index="${i + 1}"></div>`,
+      )
+      .join("\n      ");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      ${mounts}
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const ids = Array.from(
+      parseHTML(compiled.html).document.querySelectorAll(
+        '[data-composition-file="compositions/card.html"]',
+      ),
+    ).map((h) => h.getAttribute("data-composition-id"));
+    expect(ids).toEqual(["card__hf1", "card__hf2", "card__hf3", "card__hf4"]);
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+    expect(compiled.html).toContain('"card__hf3":{"label":"CARD_C"}');
+    expect(compiled.html).toContain('"card__hf4":{"label":"CARD_D"}');
+  });
+
+  it("assigns unique runtime ids to repeated sub-compositions discovered during inlining", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-nested-multi-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "c.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"C_DEFAULT"}]'>
+  <body>
+    <div data-composition-id="c" data-width="160" data-height="120">
+      <div class="c-label"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions", "b.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"B_DEFAULT"}]'>
+  <body>
+    <div data-composition-id="b" data-width="320" data-height="240">
+      <div class="b-label"></div>
+      <div data-composition-id="c" data-composition-src="compositions/c.html" data-variable-values='{"label":"C_CHILD"}' data-start="0" data-duration="3" data-track-index="1"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions", "a.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div data-composition-id="a" data-width="640" data-height="240">
+      <div data-composition-id="b" data-composition-src="compositions/b.html" data-variable-values='{"label":"B_LEFT"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="b" data-composition-src="compositions/b.html" data-variable-values='{"label":"B_RIGHT"}' data-start="0" data-duration="3" data-track-index="2"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="3" data-track-index="1"></div>
+    </div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const idsByFile = (file: string) =>
+      Array.from(document.querySelectorAll(`[data-composition-file="${file}"]`)).map((host) =>
+        host.getAttribute("data-composition-id"),
+      );
+
+    expect(idsByFile("compositions/b.html")).toEqual(["b__hf1", "b__hf2"]);
+    expect(idsByFile("compositions/c.html")).toEqual(["c__hf1", "c__hf2"]);
+    expect(compiled.html).toContain('"b__hf1":{"label":"B_LEFT"}');
+    expect(compiled.html).toContain('"b__hf2":{"label":"B_RIGHT"}');
+    expect(compiled.html).toContain('"c__hf1":{"label":"C_CHILD"}');
+    expect(compiled.html).toContain('"c__hf2":{"label":"C_CHILD"}');
+  });
+
+  it("leaves a single-mount sub-comp's authored id untouched while renaming a duplicated one", async () => {
+    // Pins the "single instances are untouched" claim: a solo mount keeps its
+    // authored data-composition-id; only the duplicated sub-comp is renamed.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-mixed-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    const declare = (id: string) =>
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="${id}" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`;
+    writeFileSync(join(projectDir, "compositions", "solo.html"), declare("solo"));
+    writeFileSync(join(projectDir, "compositions", "card.html"), declare("card"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="solo" data-composition-src="compositions/solo.html" data-variable-values='{"label":"SOLO"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_A"}' data-start="0" data-duration="3" data-track-index="2"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_B"}' data-start="0" data-duration="3" data-track-index="3"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    // Solo mount keeps its authored id (not renamed to solo__hf1).
+    expect(compiled.html).toContain('"solo":{"label":"SOLO"}');
+    expect(compiled.html).not.toContain("solo__hf");
+    // Duplicated card mounts are renamed per-instance.
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+  });
+
+  it("omits the writer when the sub-comp declares no variables at all", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-none-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "plain.html"),
+      `<!DOCTYPE html><html><body><div data-composition-id="plain" data-width="320" data-height="240"><span>hi</span></div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body><div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="320" data-height="240"><div data-composition-id="p-1" data-composition-src="compositions/plain.html" data-start="0" data-duration="3" data-track-index="1"></div></div></body></html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).not.toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+  });
+});
+
+// ── Markup payload sniff (STUDIO-5433) ─────────────────────────────────────
+//
+// Producer's `resolveMediaDuration` is a two-step pipeline (download → probe)
+// that runs on every media element without an authored duration. Before this
+// defense, an authoring bug that handed a `.html` payload through as a video
+// src produced an opaque `[mov,mp4,m4a,3gp,3g2,mj2 @ ...] moov atom not found`
+// from ffprobe — the `mov,mp4,…` prefix is ffprobe's demuxer probe order, NOT
+// the file's true format, so every alert routed as a codec/ffmpeg bug. The
+// byte-level sniff itself is unit-tested in
+// `engine/src/utils/notMediaPayload.test.ts`; what is pinned here is the
+// compiler's handling of the verdict, which differs by element type.
+
+describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
+  function writeProject(mediaTag: string): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-payload-sniff-e2e-"));
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(
+      join(projectDir, "assets", "nested.html"),
+      "<!DOCTYPE html>\n<html><head><title>streamed-preview</title></head><body></body></html>",
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-start="0" data-duration="4">
+      ${mediaTag}
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 4 };
+    </script>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("aborts with NotMediaPayloadError before ffprobe when a <video> src is an HTML payload", async () => {
+    // Mimics STUDIO-5433: an a-roll element whose src points at a legitimate
+    // 6.5 KB `<!DOCTYPE html>` preview page instead of the rendered MP4.
+    const projectDir = writeProject(
+      '<video id="v1" src="assets/nested.html" data-start="0" muted></video>',
+    );
+
+    let caught: unknown;
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(NotMediaPayloadError);
+    const err = caught as NotMediaPayloadError;
+    // Routing metadata, not just a readable string: these are what the server's
+    // SAFE_RENDER_ERROR_CODES allowlist and the distributed retry sets key off.
+    expect(err.code).toBe("NOT_MEDIA_PAYLOAD");
+    expect(err.owner).toBe("user");
+    expect(err.retryable).toBe(false);
+    // Correlation is the hashed element id — the authored src never reaches a
+    // message that producer forwards to API clients.
+    expect(err.elementFingerprints).toHaveLength(1);
+    expect(err.message).not.toContain("assets/nested.html");
+    // Also the ordering pin: this fixture is an input ffprobe rejects, so if
+    // the sniff ran after the probe the rejection would be ffprobe's untyped
+    // error and this assertion would fail.
+  });
+
+  it("drops an <audio> document payload to duration 0 and warns instead of failing the render", async () => {
+    // The audio/video split is the compiler's contract: an unprobeable audio
+    // src is excluded from the render, and only video surfaces its probe
+    // failure. A hard abort here would take down renders that used to succeed
+    // without the offending audio.
+    const projectDir = writeProject(
+      '<audio id="a1" src="assets/nested.html" data-start="0"></audio>',
+    );
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+    const compiled = await compileForRender(
+      projectDir,
+      join(projectDir, "index.html"),
+      projectDir,
+      { log },
+    );
+
+    expect(compiled.html).not.toContain('id="a1" src="assets/nested.html" data-end');
+    expect(warnings.join("\n")).toContain("text document");
+    expect(warnings.join("\n")).toContain("a1");
+  });
+});
+
+describe("duplicate media ids across nested compositions", () => {
+  // Element ids are unique per composition FILE; the render document is the
+  // inlined union of every file. The producer used to merge the per-file media
+  // lists and deduplicate by id, so colliding clips collapsed into one entry
+  // and the survivor's frames were injected onto whichever element came first
+  // in the document — leaving the visible scene without footage (#3340).
+  function sceneWithVideoId(label: string, mediaStart: number): string {
+    return `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <video id="clip" src="../assets/long-take.mp4" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="0"></video>
+</div>`;
+  }
+
+  function writeTwoSceneProject(
+    sceneAFile: string,
+    sceneBFile: string = sceneAFile,
+    sceneBody: (label: string, mediaStart: number) => string = sceneWithVideoId,
+  ): { projectDir: string; indexPath: string } {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-dup-media-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head></head><body>
+  <div id="root" data-composition-id="root" data-start="0" data-duration="6"
+       data-width="640" data-height="360">
+    <div id="scene-a-host" data-composition-id="scene-a" data-composition-src="compositions/${sceneAFile}"
+         data-start="0" data-duration="3" data-width="640" data-height="360"></div>
+    <div id="scene-b-host" data-composition-id="scene-b" data-composition-src="compositions/${sceneBFile}"
+         data-start="3" data-duration="3" data-width="640" data-height="360"></div>
+  </div>
+</body></html>`,
+    );
+
+    const wrap = (label: string, mediaStart: number) =>
+      `<template id="${label}-template">\n${sceneBody(label, mediaStart)}\n</template>`;
+    writeFileSync(join(compositionsDir, sceneAFile), wrap("scene-a", 5));
+    if (sceneBFile !== sceneAFile) {
+      writeFileSync(join(compositionsDir, sceneBFile), wrap("scene-b", 50));
+    }
+
+    return { projectDir, indexPath: join(projectDir, "index.html") };
+  }
+
+  it("keeps both clips when two scenes declare the same video id", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject("scene-a.html", "scene-b.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(2);
+    expect(compiled.videos[0]).toMatchObject({ start: 0, end: 3, mediaStart: 5 });
+    expect(compiled.videos[1]).toMatchObject({ start: 3, end: 6, mediaStart: 50 });
+  });
+
+  it("gives the colliding clips ids that each address one element", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject("scene-a.html", "scene-b.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    const ids = compiled.videos.map((v) => v.id);
+    expect(new Set(ids).size).toBe(2);
+
+    // One element per id is exactly what the frame injector relies on.
+    const { document } = parseHTML(compiled.html);
+    for (const id of ids) {
+      expect(document.querySelectorAll(`[data-hf-render-id="${id}"]`)).toHaveLength(1);
+    }
+  });
+
+  it("keeps author ids intact so scene CSS and scripts still resolve", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject("scene-a.html", "scene-b.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    const { document } = parseHTML(compiled.html);
+    expect(document.querySelectorAll('video[id="clip"]')).toHaveLength(2);
+  });
+
+  it("keeps both clips when the same scene file is mounted twice", async () => {
+    // The author cannot make these unique: it is one file, mounted twice.
+    const { projectDir, indexPath } = writeTwoSceneProject("scene.html");
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(2);
+    expect(compiled.videos[0]).toMatchObject({ start: 0, end: 3 });
+    expect(compiled.videos[1]).toMatchObject({ start: 3, end: 6 });
+  });
+
+  it("keeps both clips when neither scene names its video", async () => {
+    // No authored id at all: the timing compiler numbers auto-ids per file, so
+    // both scenes arrive as `hf-video-0`.
+    const { projectDir, indexPath } = writeTwoSceneProject(
+      "scene-a.html",
+      "scene-b.html",
+      (label, mediaStart) =>
+        `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <video src="../assets/long-take.mp4" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="0"></video>
+</div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(2);
+    expect(compiled.videos.map((v) => v.mediaStart)).toEqual([5, 50]);
+  });
+
+  it("keeps both audio tracks when two scenes declare the same audio id", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject(
+      "scene-a.html",
+      "scene-b.html",
+      (label, mediaStart) =>
+        `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <audio id="vo" src="../assets/narration.wav" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="1"></audio>
+</div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.audios).toHaveLength(2);
+    expect(compiled.audios[0]).toMatchObject({ start: 0, end: 3, mediaStart: 5 });
+    expect(compiled.audios[1]).toMatchObject({ start: 3, end: 6, mediaStart: 50 });
+  });
+
+  it("stamps unique render ids on empty-src videos across two scenes", async () => {
+    const { projectDir, indexPath } = writeTwoSceneProject(
+      "scene-a.html",
+      "scene-b.html",
+      (label, mediaStart) =>
+        `<div data-composition-id="${label}" data-start="0" data-duration="3"
+     data-width="640" data-height="360">
+  <video id="clip" src="" data-start="0" data-duration="3"
+         data-media-start="${mediaStart}" data-track-index="0"></video>
+</div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    // Static parse still omits empty src from the media list; the stamp is
+    // what the snapshot uses to keep the two clips distinct.
+    expect(compiled.videos).toHaveLength(0);
+    const { document } = parseHTML(compiled.html);
+    expect(
+      Array.from(document.querySelectorAll("video")).map((el) =>
+        el.getAttribute("data-hf-render-id"),
+      ),
+    ).toEqual(["clip", "clip__hf2"]);
+  });
+});
+
+describe("STUDIO-5433 — ffprobe failure includes src URL for attribution", () => {
+  function writeCorruptVideoProject(videoSrc: string, assetBytes: Buffer): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-studio-5433-"));
+    mkdirSync(join(projectDir, "assets"), { recursive: true });
+    writeFileSync(join(projectDir, "assets", "clip.mp4"), assetBytes);
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" data-composition-id="root" data-start="0" data-duration="4" data-width="640" data-height="360">
+      <video
+        id="clip"
+        src="${videoSrc}"
+        data-start="0"
+        data-duration="4"
+        data-width="640"
+        data-height="360"
+      ></video>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 4 };
+    </script>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("wraps the ffprobe error with [src=<relative-path>] when the local video is corrupt", async () => {
+    // 0-byte mp4 — ffprobe reports "Invalid data found when processing input",
+    // the same class as the STUDIO-5433 moov failure. Fail-fast semantics remain
+    // (video branch throws, unlike audio's graceful-degrade to duration=0).
+    const projectDir = writeCorruptVideoProject("assets/clip.mp4", Buffer.alloc(0));
+
+    let thrown: unknown;
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    // A bare relative path IS the redactor's `BARE_RELATIVE_PATH` shape (one
+    // separator + a media extension), so it lands as `[path]`. The attribution
+    // that matters is the remote-URL case below; a local relative src carries
+    // no host to attribute and the redactor is right to drop it.
+    expect(message).toContain("[src=[path]]");
+    // Original ffprobe diagnostic must still be present so failure classifiers
+    // downstream (e.g. hyperframes_render_metrics.py) continue to match.
+    expect(message).toMatch(/ffprobe|Invalid data|No video stream/i);
+  });
+
+  // The STUDIO-5433 case is a remote src, and that is the shape whose
+  // attribution has to survive redaction: host + path kept, query dropped so a
+  // pre-signed signature never reaches telemetry. Pinned on the redactor
+  // directly — driving a remote src through `compileForRender` would need a
+  // download stub, and the wrapper's only transform IS this call.
+  it("keeps host and path but drops the query when redacting a remote src", () => {
+    expect(redactTelemetryString("https://cdn.example.com/renders/clip.mp4?sig=abc123&exp=1")).toBe(
+      "https://cdn.example.com/renders/clip.mp4?\u2026",
+    );
+  });
+});
+
+describe("nested CDN integrity", () => {
+  it("verifies a nested pin before returning compiled HTML, including a duplicate root script", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-nested-sri-"));
+    const src = "https://cdn.example.com/pinned.js";
+    const bytes = "window.nestedIntegrityWitness = true;";
+    const integrity = `sha384-${createHash("sha384").update(bytes).digest("base64")}`;
+    writeFileSync(
+      join(dir, "index.html"),
+      `<html><head><script src="${src}"></script></head><body><div data-composition-id="root" data-width="320" data-height="180" data-duration="1"><div data-composition-id="child" data-composition-src="child.html"></div></div></body></html>`,
+    );
+    writeFileSync(
+      join(dir, "child.html"),
+      `<html><head><script src="${src}" integrity="${integrity}" crossorigin="anonymous"></script></head><body><div data-composition-id="child" data-width="320" data-height="180" data-duration="1">Child</div></body></html>`,
+    );
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = mock(async () => new Response(bytes)) as any;
+      await expect(compileForRender(dir, join(dir, "index.html"), dir)).resolves.toBeDefined();
+      globalThis.fetch = mock(async () => new Response("window.compromised = true;")) as any;
+      await expect(compileForRender(dir, join(dir, "index.html"), dir)).rejects.toThrow(
+        "Subresource integrity mismatch",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

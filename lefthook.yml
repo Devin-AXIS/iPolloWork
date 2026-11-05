@@ -1,0 +1,6 @@
+pre-commit:
+  commands:
+    whitespace:
+      run: git diff --cached --check
+    maintainability:
+      run: node .codex/skills/ipollowork-maintainable-code/scripts/audit-changes.mjs

@@ -81,10 +81,9 @@ export async function tryGsapResizeIntercept(
   );
 
   let anim = resolved?.anim ?? null;
-  const { activeKeyframePct, autoKeyframeEnabled, setActiveKeyframePct } =
+  const { activeKeyframePct, setActiveKeyframePct } =
     usePlayerStore.getState();
   const shouldCommitKeyframe = shouldCommitAnimationKeyframe(
-    autoKeyframeEnabled,
     activeKeyframePct,
   );
   logResize("intercept-enter", {
@@ -275,9 +274,7 @@ export async function tryGsapResizeIntercept(
     );
   };
 
-  // With auto-keyframe off (#1808), `anim` is already a real (non-"set")
-  // tween for this resize group, so nudge it as a whole rather than adding a
-  // keyframe at the playhead.
+  // Without an explicitly selected point, resize the whole existing tween.
   if (!shouldCommitKeyframe) {
     await commitWholePropertyOffset(
       selection,

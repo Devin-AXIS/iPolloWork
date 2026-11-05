@@ -1,21 +1,33 @@
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { videoProjectDirectory } from "./video-project";
 
 export const VOICEOVER_SETTINGS_FILE = "voiceover.json";
 export const MAX_VOICE_SAMPLE_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_COSYVOICE_MODEL = "cosyvoice-v3-flash";
+export const DEFAULT_COSYVOICE_VOICE = "longanyang";
 const VIDEO_VOICE_DISPLAY_PREFIX = "Video voice display:";
 
 export type VideoVoiceSource = "preset" | "cloned";
+export type VideoVoiceSelectionMode = "auto" | "manual";
 
-export type VideoVoiceoverSettings = {
+export type VideoVoiceControls = {
+  rate: number;
+  pitch: number;
+  volume: number;
+  instruction: string;
+};
+
+export type VideoVoiceoverSettings = VideoVoiceControls & {
   provider: "aliyun-bailian";
   model: string;
   voiceId: string;
   source: VideoVoiceSource;
+  enabled: boolean;
+  selectionMode: VideoVoiceSelectionMode;
   updatedAt: string;
 };
 
-export type VideoVoiceAiReference = Pick<VideoVoiceoverSettings, "model" | "voiceId"> & {
+export type VideoVoiceAiReference = Pick<VideoVoiceoverSettings, "model" | "voiceId" | "rate" | "pitch" | "volume" | "instruction"> & {
   label: string;
 };
 
@@ -25,12 +37,85 @@ export type VoiceSampleDescriptor = {
   type?: string;
 };
 
+type VoiceSampleValidationMessages = {
+  invalidType: string;
+  empty: string;
+  tooLarge: string;
+};
+
+const DEFAULT_VOICE_SAMPLE_VALIDATION_MESSAGES: VoiceSampleValidationMessages = {
+  invalidType: "请选择 WAV、MP3 或 M4A 音频文件。",
+  empty: "音频文件为空，无法复刻。",
+  tooLarge: "音频文件不能超过 10 MB。",
+};
+
+export const BAILIAN_PRESET_GROUPS = ["narration", "warm", "character", "marketing", "dialect"] as const;
+export const BAILIAN_VOICE_LANGUAGES = ["all", "mandarin", "english", "dialect"] as const;
+export const BAILIAN_VOICE_GENDERS = ["all", "female", "male", "character"] as const;
+export const BAILIAN_VOICE_AGES = ["all", "young", "adult", "child", "senior", "character"] as const;
+export const BAILIAN_VOICE_STYLES = ["auto", "neutral", "warm", "energetic", "happy", "serious"] as const;
+
+export type BailianVoiceLanguage = Exclude<(typeof BAILIAN_VOICE_LANGUAGES)[number], "all">;
+export type BailianVoiceGender = Exclude<(typeof BAILIAN_VOICE_GENDERS)[number], "all">;
+export type BailianVoiceAge = Exclude<(typeof BAILIAN_VOICE_AGES)[number], "all">;
+export type BailianVoiceStyle = (typeof BAILIAN_VOICE_STYLES)[number];
+
+// Official cosyvoice-v3-flash catalog (2026-09-14):
+// https://help.aliyun.com/zh/model-studio/cosyvoice-voice-list
+// Display names and descriptions live in the locale dictionaries.
 export const BAILIAN_PRESET_VOICES = [
-  { id: "longanyang", label: "龙安阳", description: "阳光自然的中文男声" },
-  { id: "longanhuan_v3", label: "龙安欢", description: "明朗欢快的中文女声" },
-  { id: "longanlang_v3", label: "龙安朗", description: "清爽清晰的中文男声" },
-  { id: "longyingmu_v3", label: "龙莺木", description: "知性沉稳的中文女声" },
+  { id: "longanyang", group: "narration", gender: "male", age: "young", languages: ["mandarin", "english"] },
+  { id: "longanhuan_v3", group: "narration", gender: "female", age: "young", languages: ["mandarin", "english", "dialect"] },
+  { id: "longanlang_v3", group: "narration", gender: "male", age: "young", languages: ["mandarin"] },
+  { id: "longyingmu_v3", group: "narration", gender: "female", age: "adult", languages: ["mandarin"] },
+  { id: "longanzhi_v3", group: "narration", gender: "male", age: "adult", languages: ["mandarin"] },
+  { id: "longanyun_v3", group: "warm", gender: "male", age: "young", languages: ["mandarin"] },
+  { id: "longwan_v3", group: "warm", gender: "female", age: "young", languages: ["mandarin"] },
+  { id: "longhuhu_v3", group: "character", gender: "female", age: "child", languages: ["mandarin"] },
+  { id: "longjielidou_v3", group: "character", gender: "male", age: "child", languages: ["mandarin"] },
+  { id: "longlaobo_v3", group: "character", gender: "male", age: "senior", languages: ["mandarin"] },
+  { id: "longjiqi_v3", group: "character", gender: "character", age: "character", languages: ["mandarin"] },
+  { id: "longhouge_v3", group: "character", gender: "character", age: "character", languages: ["mandarin"] },
+  { id: "longanxuan_v3", group: "marketing", gender: "female", age: "young", languages: ["mandarin"] },
+  { id: "longyingxiao_v3", group: "marketing", gender: "female", age: "young", languages: ["mandarin"] },
+  { id: "longanyue_v3", group: "dialect", gender: "male", age: "young", languages: ["dialect"] },
+  { id: "longshange_v3", group: "dialect", gender: "male", age: "adult", languages: ["dialect"] },
 ] as const;
+
+export const DEFAULT_VIDEO_VOICE_CONTROLS: VideoVoiceControls = {
+  rate: 1,
+  pitch: 1,
+  volume: 50,
+  instruction: "",
+};
+
+export function videoVoiceInstruction(style: BailianVoiceStyle): string {
+  if (style === "neutral" || style === "auto") return "";
+  const instructions: Record<Exclude<BailianVoiceStyle, "auto" | "neutral">, string> = {
+    warm: "请用温暖亲切的表达方式说。",
+    energetic: "请用有活力、节奏明快的表达方式说。",
+    happy: "请用开心愉悦的情绪说。",
+    serious: "请用沉稳严肃的表达方式说。",
+  };
+  return instructions[style];
+}
+
+export function videoVoiceStyle(instruction: string): BailianVoiceStyle {
+  return BAILIAN_VOICE_STYLES.find((style) => videoVoiceInstruction(style) === instruction) ?? "auto";
+}
+
+export function defaultVideoVoiceoverSettings(now = new Date().toISOString()): VideoVoiceoverSettings {
+  return {
+    provider: "aliyun-bailian",
+    model: DEFAULT_COSYVOICE_MODEL,
+    voiceId: DEFAULT_COSYVOICE_VOICE,
+    source: "preset",
+    enabled: true,
+    selectionMode: "auto",
+    ...DEFAULT_VIDEO_VOICE_CONTROLS,
+    updatedAt: now,
+  };
+}
 
 // Earlier Video Studio builds paired these v1 voices with cosyvoice-v3-flash.
 // Model Studio rejects that combination with its opaque Engine 418 response.
@@ -68,6 +153,29 @@ export function videoVoiceoverSettingsPath(sessionId: string) {
   return `${videoProjectDirectory(sessionId)}/${VOICEOVER_SETTINGS_FILE}`;
 }
 
+export function videoVoiceoverAvailability(status: unknown, savedContent: string | null) {
+  const configured = isRecord(status)
+    && status.ok === true
+    && isRecord(status.result)
+    && isRecord(status.result.output)
+    && status.result.output.configured === true;
+  const saved = savedContent ? parseVideoVoiceoverSettings(savedContent) : null;
+  return { configured, enabled: configured && saved?.enabled !== false };
+}
+
+export async function readVideoVoiceoverAvailability(
+  client: Pick<iPolloWorkServerClient, "callMedia" | "readWorkspaceFile">,
+  workspaceId: string,
+  sessionId: string,
+  workspaceRoot?: string,
+) {
+  const [status, saved] = await Promise.all([
+    client.callMedia("status", {}, workspaceRoot ? { directory: workspaceRoot } : undefined).catch(() => null),
+    client.readWorkspaceFile(workspaceId, videoVoiceoverSettingsPath(sessionId)).catch(() => null),
+  ]);
+  return videoVoiceoverAvailability(status, saved?.content ?? null);
+}
+
 export function parseVideoVoiceoverSettings(content: string): VideoVoiceoverSettings | null {
   try {
     const value: unknown = JSON.parse(content);
@@ -84,7 +192,23 @@ export function parseVideoVoiceoverSettings(content: string): VideoVoiceoverSett
       || (source !== "preset" && source !== "cloned")
       || typeof updatedAt !== "string" || !updatedAt.trim()
     ) return null;
-    return { provider, model, voiceId, source, updatedAt };
+    const rate = typeof value.rate === "number" && value.rate >= 0.5 && value.rate <= 2 ? value.rate : DEFAULT_VIDEO_VOICE_CONTROLS.rate;
+    const pitch = typeof value.pitch === "number" && value.pitch >= 0.5 && value.pitch <= 2 ? value.pitch : DEFAULT_VIDEO_VOICE_CONTROLS.pitch;
+    const volume = typeof value.volume === "number" && value.volume >= 0 && value.volume <= 100 ? value.volume : DEFAULT_VIDEO_VOICE_CONTROLS.volume;
+    const instruction = typeof value.instruction === "string" ? value.instruction.trim().slice(0, 100) : "";
+    return {
+      provider,
+      model,
+      voiceId,
+      source,
+      enabled: value.enabled !== false,
+      selectionMode: value.selectionMode === "auto" ? "auto" : "manual",
+      rate,
+      pitch,
+      volume,
+      instruction,
+      updatedAt,
+    };
   } catch {
     return null;
   }
@@ -116,23 +240,115 @@ export function parseVideoVoiceDisplayMetadata(text: string): VideoVoiceAiRefere
     const voiceId = readString(value, "voiceId");
     const model = readString(value, "model");
     const label = readString(value, "label");
-    return voiceId && model && label ? { voiceId, model, label } : null;
+    if (!voiceId || !model || !label) return null;
+    return {
+      voiceId,
+      model,
+      label,
+      rate: typeof value.rate === "number" ? value.rate : DEFAULT_VIDEO_VOICE_CONTROLS.rate,
+      pitch: typeof value.pitch === "number" ? value.pitch : DEFAULT_VIDEO_VOICE_CONTROLS.pitch,
+      volume: typeof value.volume === "number" ? value.volume : DEFAULT_VIDEO_VOICE_CONTROLS.volume,
+      instruction: typeof value.instruction === "string" ? value.instruction : "",
+    };
   } catch {
     return null;
   }
 }
 
-export function validateVoiceSampleFile(file: VoiceSampleDescriptor): string | null {
+export function validateVoiceSampleFile(
+  file: VoiceSampleDescriptor,
+  messages: VoiceSampleValidationMessages = DEFAULT_VOICE_SAMPLE_VALIDATION_MESSAGES,
+): string | null {
   const extension = file.name.split(".").pop()?.toLowerCase();
   if (extension !== "wav" && extension !== "mp3" && extension !== "m4a") {
-    return "请选择 WAV、MP3 或 M4A 音频文件。";
+    return messages.invalidType;
   }
-  if (!Number.isFinite(file.size) || file.size <= 0) return "音频文件为空，无法复刻。";
-  if (file.size > MAX_VOICE_SAMPLE_BYTES) return "音频文件不能超过 10 MB。";
+  if (!Number.isFinite(file.size) || file.size <= 0) return messages.empty;
+  if (file.size > MAX_VOICE_SAMPLE_BYTES) return messages.tooLarge;
   return null;
+}
+
+/** Encode a bounded, mono PCM recording in the WAV format accepted by voice cloning. */
+export function encodeVoiceSampleWav(samples: Float32Array, sampleRate: number) {
+  if (!Number.isInteger(sampleRate) || sampleRate < 8000 || sampleRate > 48000) throw new Error("Invalid recording sample rate");
+  const count = Math.min(samples.length, sampleRate * 60);
+  const buffer = new ArrayBuffer(44 + count * 2);
+  const view = new DataView(buffer);
+  const text = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index++) view.setUint8(offset + index, value.charCodeAt(index));
+  };
+  text(0, "RIFF");
+  view.setUint32(4, 36 + count * 2, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, count * 2, true);
+  for (let index = 0; index < count; index++) {
+    const sample = Number.isFinite(samples[index]) ? Math.max(-1, Math.min(1, samples[index])) : 0;
+    view.setInt16(44 + index * 2, sample * (sample < 0 ? 32768 : 32767), true);
+  }
+  return buffer;
 }
 
 export function voiceSampleWorkspacePath(sessionId: string, fileName: string, timestamp = Date.now()) {
   const extension = fileName.split(".").pop()?.toLowerCase() || "wav";
   return `${videoProjectDirectory(sessionId)}/.voice-samples/${timestamp}-${extension}.${extension}`;
+}
+
+/** Read what is actually attached to the composition, never infer it from a draft preference. */
+export function appliedVideoVoices(content: string) {
+  const document = new DOMParser().parseFromString(content, "text/html");
+  return Array.from(document.getElementsByTagName("audio")).filter((audio) =>
+    audio.getAttribute("src") && (
+      audio.getAttribute("data-ipw-voiceover") === "true"
+      || /^(?:voiceover|vo-|narration-)/.test(audio.getAttribute("id") ?? "")
+    ),
+  ).map((audio) => ({
+    voiceId: audio.getAttribute("data-ipw-voice"),
+    model: audio.getAttribute("data-ipw-voice-model"),
+    rate: audio.getAttribute("data-ipw-voice-rate"),
+    pitch: audio.getAttribute("data-ipw-voice-pitch"),
+    volume: audio.getAttribute("data-ipw-voice-volume"),
+    instruction: audio.getAttribute("data-ipw-voice-instruction"),
+  }));
+}
+
+export type AppliedVideoVoice = ReturnType<typeof appliedVideoVoices>[number];
+
+export function videoVoiceNeedsUpdate(settings: VideoVoiceoverSettings, voices: readonly AppliedVideoVoice[]) {
+  return voices.length === 0 || voices.some((voice) =>
+    !voice.voiceId || voice.model !== settings.model
+    || (settings.selectionMode === "manual" && voice.voiceId !== settings.voiceId)
+    || voice.rate === null || Number(voice.rate) !== settings.rate
+    || voice.pitch === null || Number(voice.pitch) !== settings.pitch
+    || voice.volume === null || Number(voice.volume) !== settings.volume
+    || voice.instruction !== settings.instruction,
+  );
+}
+
+export const VIDEO_VOICEOVER_REQUEST = "ipollowork:generate-video-voiceover";
+export type VideoVoiceoverRequest = {
+  conversationId: string;
+  videoSessionId: string;
+  settings: VideoVoiceoverSettings;
+  updating: boolean;
+  resolve: (dispatched: boolean) => void;
+  reject: (error: Error) => void;
+};
+
+export function requestVideoVoiceover(input: Omit<VideoVoiceoverRequest, "resolve" | "reject">) {
+  return new Promise<boolean>((resolve, reject) => {
+    const event = new CustomEvent<VideoVoiceoverRequest>(VIDEO_VOICEOVER_REQUEST, {
+      cancelable: true,
+      detail: { ...input, resolve, reject },
+    });
+    if (window.dispatchEvent(event)) reject(new Error("The video conversation is not available."));
+  });
 }

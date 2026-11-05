@@ -205,14 +205,14 @@ export default {
 
         try {
           const closed = await ctx.eval(`(() => {
-            const frame = document.querySelector('iframe[title="HyperFrames 视频工作室"], iframe[title="HyperFrames Video Studio"]');
+            const frame = document.querySelector('iframe[title="视频工作台"], iframe[title="Video Studio"]');
             if (!frame) return true;
             const button = document.querySelector('button[aria-label="关闭视频工作室"], button[aria-label="Close Video Studio"]');
             button?.click();
             return Boolean(button);
           })()`);
           ctx.assert(closed, "The embedded Video Studio could not be closed before isolated proof setup.");
-          await ctx.waitFor('!document.querySelector(\'iframe[title="HyperFrames 视频工作室"], iframe[title="HyperFrames Video Studio"]\')', {
+          await ctx.waitFor('!document.querySelector(\'iframe[title="视频工作台"], iframe[title="Video Studio"]\')', {
             timeoutMs: 20_000,
             label: "embedded Studio to close",
           });

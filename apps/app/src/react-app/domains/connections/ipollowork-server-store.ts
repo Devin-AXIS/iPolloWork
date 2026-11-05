@@ -47,7 +47,6 @@ export type iPolloWorkServerStoreSnapshot = {
   ipolloworkServerWorkspaceReady: boolean;
   resolvediPolloWorkCapabilities: iPolloWorkServerCapabilities | null;
   ipolloworkServerCanWriteSkills: boolean;
-  ipolloworkServerCanWritePlugins: boolean;
   ipolloworkServerHostInfo: iPolloWorkServerInfo | null;
   ipolloworkServerDiagnostics: iPolloWorkServerDiagnostics | null;
   ipolloworkReconnectBusy: boolean;
@@ -230,9 +229,6 @@ export function createiPolloWorkServerStore(options: CreateiPolloWorkServerStore
       ipolloworkServerCanWriteSkills:
         ipolloworkServerReady &&
         (resolvediPolloWorkCapabilities?.skills?.write ?? false),
-      ipolloworkServerCanWritePlugins:
-        ipolloworkServerReady &&
-        (resolvediPolloWorkCapabilities?.plugins?.write ?? false),
       ipolloworkServerHostInfo: state.ipolloworkServerHostInfo,
       ipolloworkServerDiagnostics: state.ipolloworkServerDiagnostics,
       ipolloworkReconnectBusy: state.ipolloworkReconnectBusy,

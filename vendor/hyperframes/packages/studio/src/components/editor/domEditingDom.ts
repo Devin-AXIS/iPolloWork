@@ -336,6 +336,7 @@ export function getSelectorIndex(
   selector: string | undefined,
   sourceFile: string,
   activeCompositionPath: string | null,
+  cache?: Map<string, Map<Element, number>>,
 ): number | undefined {
   if (!selector) return undefined;
 
@@ -343,5 +344,6 @@ export function getSelectorIndex(
     isHtmlElement(candidate)
       ? getEditableSourceFileForElement(candidate, activeCompositionPath).sourceFile
       : undefined,
+    cache,
   );
 }

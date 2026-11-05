@@ -10,6 +10,8 @@ export interface TimelineTrackStyle {
   dragging?: string;
 }
 
+export const CLIP_TRIM_HIT_PX = 8;
+
 export interface TimelineTheme {
   shellBackground: string;
   shellBorder: string;
@@ -39,12 +41,12 @@ export interface TimelineTheme {
 }
 
 const timelineTrackStyle = (): TimelineTrackStyle => ({
-  accent: "#20BBC0",
+  accent: "#1FBAC0",
   clip: "var(--hf-timeline-clip-bg)",
   clipActive: "var(--hf-timeline-clip-active)",
   border: "var(--hf-timeline-clip-border)",
   hover: "var(--hf-timeline-clip-hover)",
-  dragging: "#20BBC0",
+  dragging: "#1FBAC0",
   label: "var(--hf-timeline-clip-text)",
 });
 

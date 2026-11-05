@@ -13,8 +13,9 @@
  */
 
 import { useCallback } from "react";
+import { lastVideoFrameTime } from "@hyperframes/core/runtime/protocol";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import type { PlaybackAdapter } from "../lib/playbackTypes";
+import type { PlaybackAdapter, PlaybackRange } from "../lib/playbackTypes";
 
 interface UseTimelinePlayerLoopParams {
   rafRef: React.MutableRefObject<number>;
@@ -22,6 +23,7 @@ interface UseTimelinePlayerLoopParams {
   getAdapter: () => PlaybackAdapter | null;
   setCurrentTime: (v: number) => void;
   setIsPlaying: (v: boolean) => void;
+  playbackRangeRef?: React.RefObject<PlaybackRange | null>;
 }
 
 interface UseTimelinePlayerLoopResult {
@@ -35,11 +37,10 @@ export function resolveForwardPlaybackWindow(input: {
   storeDuration: number;
   inPoint: number | null;
   outPoint: number | null;
+  playbackRange?: PlaybackRange | null;
 }): { duration: number; loopStart: number; loopEnd: number } | null {
   const adapterDuration =
-    Number.isFinite(input.adapterDuration) && input.adapterDuration > 0
-      ? input.adapterDuration
-      : 0;
+    Number.isFinite(input.adapterDuration) && input.adapterDuration > 0 ? input.adapterDuration : 0;
   const storeDuration =
     Number.isFinite(input.storeDuration) && input.storeDuration > 0 ? input.storeDuration : 0;
   // A positive adapter duration is authoritative, including after an edit that
@@ -48,16 +49,22 @@ export function resolveForwardPlaybackWindow(input: {
   const duration = adapterDuration || storeDuration;
   if (duration <= 0) return null;
 
+  const hardStart = input.playbackRange
+    ? Math.max(0, Math.min(input.playbackRange.start, duration))
+    : 0;
+  const hardEnd = input.playbackRange
+    ? Math.max(hardStart, Math.min(input.playbackRange.end, duration))
+    : duration;
   const requestedStart =
     input.inPoint !== null && Number.isFinite(input.inPoint)
-      ? Math.max(0, Math.min(input.inPoint, duration))
-      : 0;
+      ? Math.max(hardStart, Math.min(input.inPoint, hardEnd))
+      : hardStart;
   const requestedEnd =
     input.outPoint !== null && Number.isFinite(input.outPoint)
-      ? Math.max(0, Math.min(input.outPoint, duration))
-      : duration;
+      ? Math.max(hardStart, Math.min(input.outPoint, hardEnd))
+      : hardEnd;
   if (requestedStart >= requestedEnd) {
-    return { duration, loopStart: 0, loopEnd: duration };
+    return { duration, loopStart: hardStart, loopEnd: hardEnd };
   }
   return { duration, loopStart: requestedStart, loopEnd: requestedEnd };
 }
@@ -68,6 +75,7 @@ export function useTimelinePlayerLoop({
   getAdapter,
   setCurrentTime,
   setIsPlaying,
+  playbackRangeRef,
 }: UseTimelinePlayerLoopParams): UseTimelinePlayerLoopResult {
   const stopReverseLoop = useCallback(() => {
     cancelAnimationFrame(reverseRafRef.current);
@@ -85,6 +93,7 @@ export function useTimelinePlayerLoop({
           storeDuration: state.duration,
           inPoint: state.inPoint,
           outPoint: state.outPoint,
+          playbackRange: playbackRangeRef?.current,
         });
         // Runtime readiness can briefly expose no usable duration. Keep the RAF
         // alive until the authored/store duration or full adapter arrives; zero
@@ -94,7 +103,19 @@ export function useTimelinePlayerLoop({
           return;
         }
         const { duration, loopEnd, loopStart } = playbackWindow;
-        const time = Math.min(rawTime, duration);
+        const time = Math.max(loopStart, Math.min(rawTime, loopEnd));
+        const publication = state.liveGeneration?.status === "generating"
+          ? state.liveGeneration : null;
+        if (!playbackRangeRef?.current && publication && time >= Math.min(duration, publication.readyDuration) - 1e-6) {
+          const boundary = Math.min(duration, publication.readyDuration);
+          adapter.pause();
+          adapter.seek(lastVideoFrameTime(boundary, duration, 30));
+          liveTime.notify(boundary);
+          setCurrentTime(boundary);
+          if (!state.liveGenerationActive) usePlayerStore.setState({ isPlaying: false, liveGenerationResumePending: state.isPlaying });
+          // Keep playback intent: Pause still cancels it, and the next publication resumes it.
+          return;
+        }
         liveTime.notify(time); // direct DOM updates, no React re-render
         if (time >= loopEnd) {
           if (state.loopEnabled) {
@@ -107,16 +128,25 @@ export function useTimelinePlayerLoop({
             return;
           }
           if (adapter.isPlaying()) adapter.pause();
-          setCurrentTime(time); // sync Zustand once at end
+          const heldTime = playbackRangeRef?.current ? Math.max(loopStart, loopEnd - 1 / 30) : time;
+          if (playbackRangeRef?.current) adapter.seek(heldTime);
+          liveTime.notify(heldTime);
+          setCurrentTime(heldTime); // sync Zustand once at end
           setIsPlaying(false);
           cancelAnimationFrame(rafRef.current);
           return;
         }
+        // getAdapter() can promote a seek-driven bootstrap adapter to the
+        // native runtime adapter while playback is already in progress. The
+        // promotion pauses the old adapter; carry the still-active store intent
+        // onto the replacement so the picture and transport button cannot
+        // silently diverge.
+        if (state.isPlaying && !adapter.isPlaying()) adapter.play();
       }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
-  }, [rafRef, getAdapter, setCurrentTime, setIsPlaying]);
+  }, [rafRef, getAdapter, setCurrentTime, setIsPlaying, playbackRangeRef]);
 
   const stopRAFLoop = useCallback(() => {
     cancelAnimationFrame(rafRef.current);

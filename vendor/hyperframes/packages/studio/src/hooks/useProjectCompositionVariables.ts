@@ -6,7 +6,7 @@ import type { EditHistoryKind } from "../utils/editHistory";
 /** Records an edit into the studio's undo history (label + kind + per-file before/after). */
 export type RecordEditFn = (entry: {
   label: string;
-  kind: EditHistoryKind;
+  kind?: EditHistoryKind;
   files: Record<string, { before: string; after: string }>;
 }) => Promise<void>;
 

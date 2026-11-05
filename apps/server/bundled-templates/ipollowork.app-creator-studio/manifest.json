@@ -1,14 +1,15 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.app-creator-studio",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "design",
   "category": "app",
   "subcategory": "creator",
   "style": "bold",
   "tags": [
     "creator",
-    "workspace"
+    "workspace",
+    "topic:business"
   ],
   "surface": "design",
   "title": "Creator Studio",

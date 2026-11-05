@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.html-anything.deck-graphify-dark",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "kind": "design",
   "category": "slides",
   "subcategory": "engineering",
@@ -11,7 +11,8 @@
     "graph",
     "dev tool",
     "ai",
-    "cli"
+    "cli",
+    "topic:product"
   ],
   "surface": "design",
   "title": "Graphify Dark Deck",

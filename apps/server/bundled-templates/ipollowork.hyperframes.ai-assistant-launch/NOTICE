@@ -1,0 +1,9 @@
+iPolloWork official template
+
+Original composition in the style of contemporary AI product launch films, built on HyperFrames motion catalog patterns.
+Upstream: https://github.com/heygen-com/hyperframes
+License: Apache-2.0
+
+Bundled animation runtime: GSAP 3.14.2, Copyright 2025 GreenSock.
+GSAP is distributed under its Standard License: https://gsap.com/standard-license.
+The original license header is retained in assets/gsap.min.js.

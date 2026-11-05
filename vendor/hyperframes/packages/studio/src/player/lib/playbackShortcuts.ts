@@ -9,6 +9,7 @@
 const PLAYBACK_FRAME_STEP_CODES = new Set(["ArrowLeft", "ArrowRight"]);
 
 const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
+  "[data-playback-shortcuts='off']",
   "input",
   "textarea",
   "select",
@@ -20,6 +21,7 @@ const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
   "[role='combobox']",
   "[role='menuitem']",
   "[role='radio']",
+  "[role='separator']",
   "[role='slider']",
   "[role='spinbutton']",
   "[role='switch']",

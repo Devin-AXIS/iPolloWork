@@ -4,16 +4,32 @@
 // in the browser.
 type BpmDetect = (buffer: AudioBuffer) => number;
 let bpmDetectivePromise: Promise<BpmDetect | null> | null = null;
-function loadBpmDetective(): Promise<BpmDetect | null> {
-  if (!bpmDetectivePromise) {
-    bpmDetectivePromise = import(
-      // @ts-ignore -- no type declarations for bpm-detective
-      "bpm-detective"
-    )
-      .then((m) => ((m as { default?: BpmDetect }).default ?? (m as unknown as BpmDetect)) || null)
-      .catch(() => null);
+
+const defaultBpmDetectiveImport = () =>
+  // @ts-ignore -- no type declarations for bpm-detective
+  import("bpm-detective");
+
+export function loadBpmDetective(
+  importFn: () => Promise<unknown> = defaultBpmDetectiveImport,
+): Promise<BpmDetect | null> {
+  const useCache = importFn === defaultBpmDetectiveImport;
+  if (useCache && bpmDetectivePromise) {
+    return bpmDetectivePromise;
   }
-  return bpmDetectivePromise;
+
+  const promise = importFn()
+    .then((m) => ((m as { default?: BpmDetect }).default ?? (m as unknown as BpmDetect)) || null)
+    .catch(() => {
+      // Reset the cached promise so a transient import failure can be retried
+      // on the next call instead of being cached as null for the session.
+      if (useCache) bpmDetectivePromise = null;
+      return null;
+    });
+
+  if (useCache) {
+    bpmDetectivePromise = promise;
+  }
+  return promise;
 }
 
 const WINDOW_SIZE = 1024;
@@ -196,18 +212,27 @@ function gateBeatsBySilence(
   return { times, strengths, peak };
 }
 
+export interface MusicAnalysisOptions {
+  pause?: () => Promise<void>;
+}
+
 // fallow-ignore-next-line complexity
-export async function analyzeMusicFromBuffer(audioBuffer: AudioBuffer): Promise<MusicBeatAnalysis> {
+export async function analyzeMusicFromBuffer(
+  audioBuffer: AudioBuffer,
+  { pause }: MusicAnalysisOptions = {},
+): Promise<MusicBeatAnalysis> {
   const channelData = audioBuffer.getChannelData(0);
   const sampleRate = audioBuffer.sampleRate;
   const duration = audioBuffer.duration;
 
+  await pause?.();
   const rawBeats = await detectBeats(audioBuffer);
   const onsetBpm = computeBpmFromBeats(rawBeats);
 
   let detectiveBpm: number | null = null;
+  const detect = await loadBpmDetective();
+  await pause?.();
   try {
-    const detect = await loadBpmDetective();
     if (detect) detectiveBpm = detect(audioBuffer);
   } catch {
     // Not enough peaks or browser context unavailable
@@ -245,6 +270,7 @@ export async function analyzeMusicFromBuffer(audioBuffer: AudioBuffer): Promise<
     regularizeBpm = detectiveBpm;
   }
 
+  await pause?.();
   const gridBeats =
     regularizeBpm !== null ? regularizeBeats(rawBeats, regularizeBpm, duration) : rawBeats;
   const gated = gateBeatsBySilence(gridBeats, channelData, sampleRate);
@@ -272,13 +298,16 @@ export async function detectBeatsFromUrl(url: string): Promise<number[]> {
   }
 }
 
-export async function analyzeMusicFromUrl(url: string): Promise<MusicBeatAnalysis> {
+export async function analyzeMusicFromUrl(
+  url: string,
+  options: MusicAnalysisOptions = {},
+): Promise<MusicBeatAnalysis> {
   const audioContext = new AudioContext();
   try {
     const response = await fetch(url);
     const arrayBuffer = await response.arrayBuffer();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    return analyzeMusicFromBuffer(audioBuffer);
+    return analyzeMusicFromBuffer(audioBuffer, options);
   } finally {
     await audioContext.close();
   }

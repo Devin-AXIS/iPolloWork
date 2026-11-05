@@ -20,6 +20,7 @@ import {
 import { t } from "../../../../i18n";
 import type { SettingsTab } from "../../../../app/types";
 import { Button } from "@/components/ui/button";
+import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 
 export type GeneralSettingsViewProps = {
   onNavigateTab: (tab: SettingsTab) => void;
@@ -86,7 +87,7 @@ function SettingsCard(props: {
 
 export function GeneralSettingsView(props: GeneralSettingsViewProps) {
   return (
-    <div className="w-full max-w-3xl space-y-8">
+    <div className={`${settingsStandardContentClass} space-y-8`}>
       {/* Workspace settings */}
       <div className="space-y-3">
         <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-dls-secondary">

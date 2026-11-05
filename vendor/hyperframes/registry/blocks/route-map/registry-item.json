@@ -1,0 +1,45 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "route-map",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "librarySection": "interface-animation",
+  "title": "Route Map",
+  "description": "Theme-aware animated map route with a focused location and annotation contract.",
+  "tags": ["component", "map", "route", "travel", "data", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "maps",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": ["title", "origin", "destination", "annotation"],
+      "instructions": "Keep the route legible. AI may rewrite the named slots, reposition the component, or add a short annotation beside it without replacing the seekable timeline."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "route-map.html",
+      "target": "compositions/route-map.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "A route that connects markets", "maxLength": 72, "update": "live" },
+    { "id": "origin", "label": "Origin", "type": "string", "default": "Shanghai", "maxLength": 28, "update": "live" },
+    { "id": "destination", "label": "Destination", "type": "string", "default": "Singapore", "maxLength": 28, "update": "live" },
+    { "id": "annotation", "label": "Annotation", "type": "string", "default": "One reusable route. No scene rewrite required.", "maxLength": 96, "update": "live" }
+  ]
+}
