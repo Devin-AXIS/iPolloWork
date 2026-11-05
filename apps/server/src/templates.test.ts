@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { IPOLLOWORK_PACKAGE_EXTENSION, MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, TEMPLATE_TOPIC_OPTIONS, getTemplateTopic, matchesTemplateFilters, templateManifestV1Schema, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { isCustomerVisibleBundledTemplate, adoptLegacyVideoSession, createTemplateAuthoringSession, exportLocalTemplatePackage, exportTemplateFromSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
+import { isCustomerVisibleBundledTemplate, adoptLegacyVideoSession, createTemplateAuthoringSession, disposeTemplateStore, exportLocalTemplatePackage, exportTemplateFromSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -859,7 +859,9 @@ describe("template installations", () => {
         } else {
           for (const file of ["acceptance.md", "catalog.md", "layout.md", "motion-principles.md", "shared-contract.md", "shared.css", "statement-visual.html", "two-zone.html", "step-sequence.html", "evidence-wall.html", "relationship-map.html", "timeline.html", "checkpoint.html", "waterfall.html", "feature-orbit.html"]) {
             const library = `core-v1-video-${file}`;
-            expect(await readFile(join(builtTemplatesRoot, library), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, library), "utf8"));
+            const built = await readFile(join(builtTemplatesRoot, library), "utf8");
+            const bundled = await readFile(join(bundledTemplatesRoot, library), "utf8");
+            expect(built.replaceAll("\r\n", "\n")).toBe(bundled.replaceAll("\r\n", "\n"));
           }
           for (const file of ["catalog", "component-map", ...videoMotionPatternIds]) {
             const library = `core-v1-video-motion-${file}.md`;
@@ -952,6 +954,7 @@ describe("template installations", () => {
     expect((await readTemplateSession(serverConfig, ws, "session_existing")).manifest).toEqual(legacyManifest);
     expect(JSON.parse(await readFile(join(existingRoot, "manifest.json"), "utf8"))).toEqual(legacyManifest);
     for (const [path, contents] of Object.entries(userFiles)) expect(await readFile(join(existingRoot, path), "utf8")).toBe(contents);
+    await disposeTemplateStore(serverConfig);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -1044,6 +1047,7 @@ describe("template installations", () => {
     ).get("__ipollowork_personal__", "local.compatible-package");
     migrated.close();
     expect(row?.packageHash).not.toBe(legacyArchiveHash);
+    await disposeTemplateStore(serverConfig);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -1104,6 +1108,7 @@ describe("template installations", () => {
         expect(await readFile(join(sourceRoot, "manifest.json"), "utf8")).toBe(sourceManifest);
       }
     } finally {
+      await disposeTemplateStore(serverConfig);
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -1387,6 +1392,7 @@ describe("template installations", () => {
     const materialized = await materializeTemplate(serverConfig, ws, imported.manifest.id, "video_export_only_roundtrip");
     expect(await readFile(join(ws.path, "video", "video_export_only_roundtrip", "assets", "bgm.mp3"))).toEqual(bgm);
     expect(await readFile(join(ws.path, materialized.state.entry), "utf8")).toContain('src="assets/bgm.mp3"');
+    await disposeTemplateStore(serverConfig);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -1419,6 +1425,7 @@ describe("template installations", () => {
     expect(entry).toContain("data-composition-id");
     expect(entry).toContain("data-track");
     expect(existsSync(join(ws.path, "video", "video_roundtrip", ".hyperframes", "backup"))).toBe(false);
+    await disposeTemplateStore(serverConfig);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -1465,6 +1472,7 @@ describe("template installations", () => {
       await Promise.all(Array.from({ length: count }, (_, index) => writeFile(join(row.packagePath, `extra-${start + index}.txt`), "")));
     }
     await expect(exportLocalTemplatePackage(serverConfig, ws.id, installed.manifest.id)).rejects.toMatchObject({ code: "template_package_too_large" });
+    await disposeTemplateStore(serverConfig);
     await rm(root, { recursive: true, force: true });
   }, 30_000);
 

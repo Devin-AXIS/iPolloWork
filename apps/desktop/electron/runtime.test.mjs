@@ -48,6 +48,11 @@ describe("windowsProxyEnvFromServer", () => {
       HTTPS_PROXY: "http://proxy.example:8080",
     }), {});
   });
+
+  it("preserves an explicit direct connection for all child-process traffic", () => {
+    assert.deepEqual(windowsProxyEnvFromServer("127.0.0.1:7890", { NO_PROXY: "*" }), {});
+    assert.deepEqual(windowsProxyEnvFromServer("127.0.0.1:7890", { no_proxy: "*" }), {});
+  });
 });
 
 describe("applyEmbeddedServerEnvironment", () => {
