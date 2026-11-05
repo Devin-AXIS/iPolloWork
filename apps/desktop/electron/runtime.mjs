@@ -619,6 +619,7 @@ function normalizeProxyUrl(value) {
 }
 
 export function windowsProxyEnvFromServer(proxyServer, baseEnv = {}) {
+  if (String(baseEnv.NO_PROXY ?? baseEnv.no_proxy ?? "").trim() === "*") return {};
   if (
     baseEnv.HTTP_PROXY || baseEnv.HTTPS_PROXY || baseEnv.ALL_PROXY
     || baseEnv.http_proxy || baseEnv.https_proxy || baseEnv.all_proxy
