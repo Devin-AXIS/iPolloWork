@@ -56,13 +56,17 @@ function createOpenCodeProviderClient() {
         models: {
           ...Object.fromEntries([
             "big-pickle",
-            "space-bunny-free",
-            "cat-jam-free",
-            "longcat-2.5-preview-free",
-            "step-5-preview-free",
             "mimo-v2.6-flash-free",
+            "deepseek-v4.1-flash-free",
+            "glm-5.3-flash-free",
+            "longcat-2.5-free",
+            "iceman-free",
+            "inkling-2-small-free",
+            "beam-free",
+            "flint-40b-free",
+            "nemotron-3.5-super-vl-free",
             "nemotron-3.5-lightning-free",
-            "muse-spark-1.3-contributor-free",
+            "minimax-m3.1-flash-free",
             "mimo-v2.5-free",
             "nemotron-3-ultra-free",
           ].map((id) => [id, {
@@ -1244,13 +1248,17 @@ describe("model runtime adapters", () => {
     const providers = await fetchProviderList({ client, engineId: DEFAULT_ENGINE_ID });
     expect(Object.keys(providers.all[0]?.models ?? {})).toEqual([
       "big-pickle",
-      "space-bunny-free",
-      "cat-jam-free",
-      "longcat-2.5-preview-free",
-      "step-5-preview-free",
       "mimo-v2.6-flash-free",
+      "deepseek-v4.1-flash-free",
+      "glm-5.3-flash-free",
+      "longcat-2.5-free",
+      "iceman-free",
+      "inkling-2-small-free",
+      "beam-free",
+      "flint-40b-free",
+      "nemotron-3.5-super-vl-free",
       "nemotron-3.5-lightning-free",
-      "muse-spark-1.3-contributor-free",
+      "minimax-m3.1-flash-free",
     ]);
     expect(providers.all[0]?.models["x-preview-f-free"]).toBeUndefined();
     expect(providers.connected).toEqual(["opencode"]);

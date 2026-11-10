@@ -102,6 +102,7 @@ import {
   type TemplateCoverLoader,
 } from "@/components/chat/new-conversation-starter";
 import { parseComposerParts, replaceDesignSelectionToken } from "../surface/composer/composer-draft";
+import { MAX_ATTACHMENT_BYTES } from "../sync/attachment-support";
 import { getComposerAttachments, getComposerDraft, getComposerPasteParts, getInitialTaskOptions, newTaskComposerScope, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
@@ -1065,8 +1066,15 @@ function InitialProjectTaskStarter({
   };
 
   const attachFiles = (files: File[]) => {
+    const oversized = files.filter((file) => file.size > MAX_ATTACHMENT_BYTES);
+    if (oversized.length) {
+      toast.warning(
+        oversized.length === 1 ? `${oversized[0]?.name ?? "File"} is too large` : `${oversized.length} files are too large`,
+        { description: `Files over ${formatBytes(MAX_ATTACHMENT_BYTES)} were skipped.` },
+      );
+    }
     const next = files
-      .filter((file) => file.size <= 25 * 1024 * 1024)
+      .filter((file) => file.size <= MAX_ATTACHMENT_BYTES)
       .map((file): ComposerAttachment => {
         const image = file.type.startsWith("image/");
         return {

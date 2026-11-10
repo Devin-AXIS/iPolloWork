@@ -109,6 +109,20 @@ describe("applyEmbeddedServerEnvironment", () => {
 });
 
 describe("managedOpencodeEnvironment", () => {
+  it("uses a refreshed local model catalog without enabling startup network fetches", async () => {
+    const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-model-cache-"));
+    const catalogPath = path.join(cacheRoot, "opencode", "models.json");
+    try {
+      assert.equal(managedOpencodeEnvironment({ XDG_CACHE_HOME: cacheRoot }).OPENCODE_MODELS_PATH, undefined);
+      await mkdir(path.dirname(catalogPath));
+      await writeFile(catalogPath, '{"openai":{"models":{}}}');
+      assert.equal(managedOpencodeEnvironment({ XDG_CACHE_HOME: cacheRoot }).OPENCODE_MODELS_PATH, catalogPath);
+      assert.equal(managedOpencodeEnvironment({ XDG_CACHE_HOME: cacheRoot, OPENCODE_MODELS_PATH: "  custom-models.json  " }).OPENCODE_MODELS_PATH, "custom-models.json");
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   it("forwards only managed OpenCode home and config paths", () => {
     assert.deepEqual(managedOpencodeEnvironment({
       HOME: " C:\\runtime-home ",

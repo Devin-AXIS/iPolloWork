@@ -1,5 +1,7 @@
 import type { ComposerAttachment } from "@/app/types";
 
+export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+
 /**
  * Which attachment media types can be sent to the model as file parts.
  *
