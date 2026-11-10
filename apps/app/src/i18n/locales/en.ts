@@ -1880,7 +1880,7 @@ export default {
   "composer.default_agent": "Default agent",
   "composer.delegate_external_agents": "Delegate external agent",
   "composer.external_agents_label": "External agents",
-  "composer.file_exceeds_limit": "{name} exceeds the 8MB limit.",
+  "composer.file_exceeds_limit": "{name} exceeds the {limit}MB limit.",
   "composer.file_kind": "File",
   "composer.image_kind": "Image",
   "composer.inserted_links_unsupported": "Inserted links for unsupported files.",

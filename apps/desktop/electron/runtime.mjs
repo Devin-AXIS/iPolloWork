@@ -125,12 +125,20 @@ const MANAGED_OPENCODE_ENV_KEYS = [
 ];
 
 export function managedOpencodeEnvironment(sourceEnv = {}) {
-  return Object.fromEntries(
+  const env = Object.fromEntries(
     MANAGED_OPENCODE_ENV_KEYS.flatMap((name) => {
       const value = String(sourceEnv[name] ?? "").trim();
       return value ? [[name, value]] : [];
     }),
   );
+  // Offline OpenCode skips its refreshed catalog unless a local file is explicit.
+  const modelsPath = String(sourceEnv.OPENCODE_MODELS_PATH ?? "").trim();
+  const cachedModels = sourceEnv.XDG_CACHE_HOME
+    ? path.join(sourceEnv.XDG_CACHE_HOME, "opencode", "models.json")
+    : null;
+  if (modelsPath) env.OPENCODE_MODELS_PATH = modelsPath;
+  else if (cachedModels && existsSync(cachedModels)) env.OPENCODE_MODELS_PATH = cachedModels;
+  return env;
 }
 
 export function stageBundledOpencodeRuntime(sourceDir, targetDir) {

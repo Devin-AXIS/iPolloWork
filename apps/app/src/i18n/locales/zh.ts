@@ -1878,7 +1878,7 @@ export default {
   "composer.default_agent": "默认智能体",
   "composer.delegate_external_agents": "委派外部智能体",
   "composer.external_agents_label": "外部智能体",
-  "composer.file_exceeds_limit": "{name}超过8MB限制。",
+  "composer.file_exceeds_limit": "{name}超过{limit}MB限制。",
   "composer.file_kind": "文件",
   "composer.image_kind": "图片",
   "composer.inserted_links_unsupported": "已为不支持的文件插入链接。",

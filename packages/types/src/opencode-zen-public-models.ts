@@ -7,16 +7,26 @@ type OpenCodeZenPublicModelProfile = {
 };
 
 const OPENCODE_ZEN_PUBLIC_MODEL_PROFILES = new Map<string, OpenCodeZenPublicModelProfile>([
-  // Chat/tool models present in Zen's live catalog and models.dev on 2026-10-15.
+  // Chat/tool models present in Zen's live catalog on 2026-11-10.
   // Jev uses System One rather than a chat API and is intentionally excluded.
   ["big-pickle", { name: "Big Pickle", agentCompatible: true, sessionAffinity: true, contextWindow: 200_000, maxTokens: 32_000 }],
-  ["space-bunny-free", { name: "Space Bunny Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_048_576, maxTokens: 524_288 }],
-  ["cat-jam-free", { name: "Cat Jam Free", agentCompatible: true, sessionAffinity: true, contextWindow: 262_144, maxTokens: 131_072 }],
-  ["longcat-2.5-preview-free", { name: "LongCat 2.5 Preview Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 131_072 }],
-  ["step-5-preview-free", { name: "Step 5 Preview Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 65_536 }],
   ["mimo-v2.6-flash-free", { name: "MiMo-V2.6-Flash Free", agentCompatible: true, sessionAffinity: true, contextWindow: 200_000, maxTokens: 32_000 }],
+  ["deepseek-v4.1-flash-free", { name: "DeepSeek V4.1 Flash Free", agentCompatible: true, sessionAffinity: true, contextWindow: 200_000, maxTokens: 32_000 }],
+  ["glm-5.3-flash-free", { name: "GLM-5.3-Flash Free", agentCompatible: true, sessionAffinity: true, contextWindow: 200_000, maxTokens: 32_000 }],
+  ["longcat-2.5-free", { name: "LongCat 2.5 Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 262_144 }],
+  ["iceman-free", { name: "Iceman Free", agentCompatible: true, sessionAffinity: true, contextWindow: 262_144, maxTokens: 131_072 }],
+  ["inkling-2-small-free", { name: "Inkling 2 Small Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_048_576, maxTokens: 131_072 }],
+  ["beam-free", { name: "Beam Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_048_576, maxTokens: 131_072 }],
+  ["flint-40b-free", { name: "Flint 40B Free", agentCompatible: true, sessionAffinity: true, contextWindow: 262_144, maxTokens: 65_536 }],
+  ["nemotron-3.5-super-vl-free", { name: "Nemotron 3.5 Super VL Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_048_576, maxTokens: 131_072 }],
   ["nemotron-3.5-lightning-free", { name: "Nemotron 3.5 Lightning Free", agentCompatible: true, sessionAffinity: true, contextWindow: 262_144, maxTokens: 262_144 }],
-  ["muse-spark-1.3-contributor-free", { name: "Muse Spark 1.3 Contributor Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_048_576, maxTokens: 131_072 }],
+  ["minimax-m3.1-flash-free", { name: "MiniMax M3.1 Flash Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 512_000 }],
+  // Retired from the live catalog by 2026-11-10. Preserve saved-session labels.
+  ["space-bunny-free", { name: "Space Bunny Free", agentCompatible: false, sessionAffinity: true, contextWindow: 1_048_576, maxTokens: 524_288 }],
+  ["cat-jam-free", { name: "Cat Jam Free", agentCompatible: false, sessionAffinity: true, contextWindow: 262_144, maxTokens: 131_072 }],
+  ["longcat-2.5-preview-free", { name: "LongCat 2.5 Preview Free", agentCompatible: false, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 131_072 }],
+  ["step-5-preview-free", { name: "Step 5 Preview Free", agentCompatible: false, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 65_536 }],
+  ["muse-spark-1.3-contributor-free", { name: "Muse Spark 1.3 Contributor Free", agentCompatible: false, sessionAffinity: true, contextWindow: 1_048_576, maxTokens: 131_072 }],
   // Retired from the live catalog by 2026-10-15. Preserve saved-session labels.
   ["mimo-v2.5-free", { name: "MiMo-V2.5 Free", agentCompatible: false, sessionAffinity: true, contextWindow: 200_000, maxTokens: 32_000 }],
   ["nemotron-3-ultra-free", { name: "Nemotron 3 Ultra Free", agentCompatible: false, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 128_000 }],
